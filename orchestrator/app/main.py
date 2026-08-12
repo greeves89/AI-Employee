@@ -995,6 +995,11 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_workflow_runs_status ON workflow_runs (status)"))
             # Organisation (#394-org): folders + sharing.
             await conn.execute(_txt("ALTER TABLE workflows ADD COLUMN IF NOT EXISTS folder_id varchar"))
+            # Webhook-Ausloeser koennen einen Workflow starten statt eines
+            # Einzelauftrags (#392). Leer = Auftrag wie bisher.
+            await conn.execute(_txt(
+                "ALTER TABLE event_triggers ADD COLUMN IF NOT EXISTS workflow_id varchar"
+            ))
             await conn.execute(_txt(
                 "CREATE TABLE IF NOT EXISTS workflow_folders ("
                 "id varchar PRIMARY KEY, name varchar NOT NULL, user_id varchar NOT NULL,"

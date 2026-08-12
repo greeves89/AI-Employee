@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.181.0] - 2026-08-12
+
+### Neu
+- **Webhooks können ganze Workflow-Ketten auslösen (#392).** Motor, Zeitplan und
+  Baukasten standen bereits; es fehlte genau der Auslöser von aussen. Ein
+  `EventTrigger` mit gesetztem `workflow_id` startet jetzt einen `WorkflowRun`
+  statt eines Einzelauftrags.
+  **Bewusst über den vorhandenen Auslöser**, nicht als zweites System daneben:
+  Treffererkennung, Bedingungen, Sicherheitsprüfung der Nutzlast und Zähler gelten
+  damit für beide Ziele gleich.
+- Die Nutzlast landet unter `trigger` im Lauf-Kontext und ist über die
+  **vorhandene** Platzhalter-Ersetzung `{{trigger}}` erreichbar — dazu
+  `{{trigger_prompt}}`, `{{trigger_source}}`, `{{trigger_event}}`. Auf 8000 Zeichen
+  begrenzt, sonst wandert sie ungebremst in jeden Prompt der Kette.
+- Zeigt ein Auslöser auf einen fehlenden oder abgeschalteten Workflow, wird
+  ersatzweise ein Auftrag angelegt und das protokolliert — ein verschluckter
+  Auslöser ist die Sorte Fehler, die niemand bemerkt, bis sie teuer wird.
+
+### Behoben
+- `event.task_id = tasks_created[0]` hätte den ganzen Webhook mit einem IndexError
+  beantwortet, sobald alle Auslöser Workflows starten und kein Auftrag entsteht.
+
+### Test
+- `test_webhook_starts_workflow.py` — Lauf startet, Nutzlast kommt an und ist über
+  die vorhandene Ersetzung erreichbar, fehlender/abgeschalteter Workflow fällt
+  zurück statt zu verschwinden, Nutzlast wird begrenzt.
+
+---
+
 ## [1.180.0] - 2026-08-12
 
 ### Neu

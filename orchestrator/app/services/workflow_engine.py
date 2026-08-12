@@ -80,14 +80,22 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def start_run(workflow: Workflow, db, run_id: str | None = None) -> WorkflowRun:
-    """Create a fresh run positioned at the workflow's start step."""
+async def start_run(
+    workflow: Workflow, db, run_id: str | None = None, context: dict | None = None
+) -> WorkflowRun:
+    """Create a fresh run positioned at the workflow's start step.
+
+    ``context`` setzt Startwerte, auf die Schritte per ``{{name}}`` zugreifen —
+    genau die Mechanik, die auch Schritt-Ergebnisse benutzen. Ein von aussen
+    ausgeloester Lauf (#392) legt dort seine Nutzlast unter ``trigger`` ab, ohne
+    dass es dafuer eine zweite Ersetzungslogik braeuchte.
+    """
     defn = workflow.definition or {}
     run = WorkflowRun(
         id=run_id or f"wfr_{uuid.uuid4().hex[:12]}",
         workflow_id=workflow.id,
         status="running",
-        context={},
+        context=dict(context or {}),
         current_step=defn.get("start"),
         current_task_id=None,
     )

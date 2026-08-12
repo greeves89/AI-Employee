@@ -34,6 +34,8 @@ class EventTriggerCreate(BaseModel):
     priority: int = 5
     model: str | None = None
     enabled: bool = True
+    # Statt eines Einzelauftrags eine Workflow-Kette starten (#392).
+    workflow_id: str | None = None
 
 
 class EventTriggerUpdate(BaseModel):
@@ -45,6 +47,7 @@ class EventTriggerUpdate(BaseModel):
     priority: int | None = None
     model: str | None = None
     enabled: bool | None = None
+    workflow_id: str | None = None
 
 
 def _to_response(t: EventTrigger) -> dict:
@@ -58,6 +61,7 @@ def _to_response(t: EventTrigger) -> dict:
         "prompt_template": t.prompt_template,
         "priority": t.priority,
         "model": t.model,
+        "workflow_id": t.workflow_id,
         "enabled": t.enabled,
         "fire_count": t.fire_count,
         "last_fired_at": t.last_fired_at.isoformat() if t.last_fired_at else None,
@@ -137,6 +141,7 @@ async def create_trigger(
         payload_conditions=body.payload_conditions,
         prompt_template=body.prompt_template,
         priority=body.priority,
+        workflow_id=body.workflow_id,
         model=body.model,
         enabled=body.enabled,
     )
@@ -235,6 +240,7 @@ async def create_trigger_for_agent(
         payload_conditions=body.payload_conditions,
         prompt_template=body.prompt_template,
         priority=body.priority,
+        workflow_id=body.workflow_id,
         model=body.model,
         enabled=body.enabled,
     )

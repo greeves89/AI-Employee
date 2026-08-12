@@ -29,6 +29,44 @@ from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
 
+
+async def _start_workflow_from_trigger(
+    db: AsyncSession, trigger, prompt: str, payload: dict, source: str, event_type: str
+) -> dict | None:
+    """Einen Workflow-Lauf aus einem Webhook-Auslöser starten (#392).
+
+    Gibt die Kennungen zurück oder ``None``, wenn der Workflow fehlt oder
+    abgeschaltet ist — dann fällt der Aufrufer bewusst auf den Auftragsweg zurück,
+    statt den Auslöser stillschweigend zu verschlucken.
+
+    Die Nutzlast landet unter ``trigger`` im Lauf-Kontext. Damit greift die
+    vorhandene Platzhalter-Ersetzung des Motors (``{{trigger}}``) ohne eine zweite
+    Ersetzungslogik, und der aus dem Auslöser bereits gefüllte Prompt steht unter
+    ``trigger_prompt`` bereit.
+    """
+    from app.models.workflow import Workflow
+    from app.services.workflow_engine import start_run
+
+    workflow = (await db.execute(
+        select(Workflow).where(Workflow.id == trigger.workflow_id)
+    )).scalar_one_or_none()
+    if workflow is None or not workflow.enabled:
+        return None
+
+    run = await start_run(workflow, db, context={
+        "trigger": {"result": json.dumps(payload, ensure_ascii=False)[:8000]},
+        "trigger_prompt": {"result": prompt},
+        "trigger_source": {"result": source},
+        "trigger_event": {"result": event_type},
+    })
+    logger.info("[Webhook] Trigger %s startete Workflow-Lauf %s", trigger.name, run.id)
+    return {
+        "workflow_id": workflow.id,
+        "run_id": run.id,
+        "trigger_id": trigger.id,
+        "trigger_name": trigger.name,
+    }
+
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
@@ -210,10 +248,33 @@ async def receive_webhook(
 
     tasks_created = []
 
+    workflows_started = []
+
     if triggers:
         # Fire each matching trigger
         for trigger in triggers:
             prompt = await fire_trigger(trigger, payload, str(source), str(event_type), db)
+
+            # Ziel Workflow statt Einzelauftrag (#392). Alles davor — Treffer,
+            # Bedingungen, Sicherheitspruefung der Nutzlast, Zaehler — ist
+            # identisch; nur was ausgeloest wird, unterscheidet sich.
+            if getattr(trigger, "workflow_id", None):
+                started = await _start_workflow_from_trigger(
+                    db, trigger, prompt, payload, str(source), str(event_type)
+                )
+                if started:
+                    workflows_started.append(started)
+                    continue
+                # Kein Workflow gefunden oder abgeschaltet: NICHT stillschweigend
+                # nichts tun. Der Auftragsweg unten ist der ehrlichere Ausgang —
+                # ein verschluckter Ausloeser ist genau die Sorte Fehler, die
+                # niemand bemerkt, bis sie teuer wird.
+                logger.warning(
+                    "[Webhook] Trigger %s zeigt auf Workflow %s — nicht nutzbar, "
+                    "es wird ersatzweise ein Auftrag angelegt",
+                    trigger.name, trigger.workflow_id,
+                )
+
             task_id = uuid.uuid4().hex[:12]
             title = f"Trigger: {trigger.name} ({source}/{event_type})"
             task = Task(
@@ -259,14 +320,19 @@ async def receive_webhook(
         await redis.client.lpush(f"agent:{agent_id}:tasks", task_payload)
         tasks_created.append({"task_id": task_id, "trigger_id": None, "trigger_name": None})
 
-    # Update webhook event with first task link
-    event.task_id = tasks_created[0]["task_id"]
+    # Update webhook event with first task link. Seit #392 kann ein Auslöser
+    # statt eines Auftrags einen Workflow starten — dann gibt es hier keinen
+    # Auftrag zu verknuepfen, und ein blinder Zugriff auf [0] wuerde den ganzen
+    # Webhook mit einem IndexError beantworten.
+    if tasks_created:
+        event.task_id = tasks_created[0]["task_id"]
     await db.commit()
 
     return {
         "status": "accepted",
         "webhook_event_id": event.id,
         "tasks": tasks_created,
+        "workflows": workflows_started,
         "agent_id": agent_id,
     }
 
