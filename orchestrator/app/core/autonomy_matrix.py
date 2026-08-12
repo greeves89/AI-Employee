@@ -142,7 +142,21 @@ def matrix_to_prompt(matrix: dict[str, str]) -> str:
     if deny:
         lines.append(f"FORBIDDEN — never do these, refuse and tell the user: {_labels(deny)}.")
     lines.extend([
-        "For anything not clearly covered, call `request_approval`. Never do a FORBIDDEN action.",
+        # Ohne diesen Satz legt ein vorsichtiges Modell „Chat / Telegram senden:
+        # Freigabe noetig" auf die eigene ANTWORT aus und traut sich nicht
+        # loszulegen. Mr. Design am 2026-08-12, woertlich: „Wenn ich das streng
+        # auslege, duerfte ich ohne Approval nicht einmal antworten." Er wusste,
+        # dass er schreiben und Shell nutzen darf — und blieb trotzdem stehen.
+        "Replying to whoever gave you this work — in the chat, as a task result, "
+        "or as an answer to another agent — is NEVER approval-gated. The "
+        "capabilities above are about ACTIONS ON THE OUTSIDE WORLD, not about "
+        "talking to your own principal. Answer freely, always.",
+        # Der Auffangsatz galt bis v1.178.2 fuer alles Unklare — also auch fuer
+        # Lesen, Denken und Berichten. Er gehoert auf Aussenwirkung begrenzt.
+        "If something is not clearly covered AND it has an effect outside your "
+        "container, call `request_approval`. Everything inside your container "
+        "that is listed as allowed above needs no asking — just do it.",
+        "Never do a FORBIDDEN action.",
         "=== END AUTONOMY MATRIX ===",
         "",
     ])

@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.178.3] - 2026-08-12
+
+### Behoben
+- **Eine Ankündigung galt als erledigte Aufgabe.** Beim Kunden standen zwei
+  delegierte Aufträge auf `COMPLETED`, in deren Ergebnis wörtlich steht: "Ich
+  habe inhaltlich noch keine Repo-Änderungen umgesetzt (nur angekündigt)."
+  Das Abschluss-Gatter prüfte nur, ob `rate_task` gerufen wurde — nicht, ob
+  gearbeitet wurde. Ein Agent, der bloß ankündigte, wurde deshalb aufgefordert,
+  die Bewertung nachzuholen, tat das, und der Lauf endete als Erfolg. Drei Züge,
+  ein einziger Werkzeugaufruf, und das war die Bewertung selbst.
+  Das Gatter fordert jetzt **zuerst die Arbeit**; die Buchhaltung kommt danach.
+- **Antworten war faktisch freigabepflichtig.** Auf L3 steht "Chat / Telegram
+  senden" unter "Requires approval". Mr. Design dazu auf Nachfrage wörtlich:
+  "Wenn ich das streng auslege, dürfte ich ohne Approval nicht einmal
+  antworten." Er wusste, dass er Dateien schreiben und Shell nutzen darf — und
+  blieb trotzdem stehen. Der Autonomie-Block sagt jetzt ausdrücklich, dass die
+  Antwort an den eigenen Auftraggeber nie freigabepflichtig ist, und begrenzt
+  den Auffangsatz auf Wirkung **außerhalb** des Containers.
+
+### Test
+- `agent/tests/test_announcement_is_not_completion.py` — Buchhaltung allein ist
+  keine Arbeit; eine reine Lese-Prüfung dagegen schon.
+- `orchestrator/tests/test_autonomy_reply_is_never_gated.py` — die Ausnahme ist
+  da und nennt alle drei Rückwege; die Rechte selbst bleiben unverändert.
+
+---
+
 ## [1.178.2] - 2026-08-12
 
 ### Behoben

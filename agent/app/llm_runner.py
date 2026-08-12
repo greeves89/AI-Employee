@@ -108,13 +108,53 @@ class LLMRunner:
         )
         return self._context_window
 
-    @staticmethod
-    def _compliance_gaps(tools_called: set[str], lightweight: bool) -> list[str]:
-        """Mandatory closing steps the agent skipped (enforced, not prompt-only).
+    #: Werkzeuge, die zum Abschluss-Ritual gehoeren oder nur den eigenen Kopf
+    #: befragen. Keines davon veraendert etwas an der Aufgabe.
+    _BOOKKEEPING_TOOLS = frozenset({
+        "rate_task", "skill_rate", "memory_save", "memory_search", "memory_list",
+        "memory_delete", "brain_search", "brain_related", "skill_search",
+        "list_todos", "update_todos", "search_tools", "notify_user",
+        "escalate_if_unsure", "request_approval", "check_approval",
+    })
 
-        Lightweight (chat-style) tasks don't require task reflection.
+    @classmethod
+    def _did_substantive_work(cls, tools_called: set[str]) -> bool:
+        """Hat der Agent die Aufgabe ueberhaupt angefasst?
+
+        Jede echte Aufgabe braucht mindestens EINEN Griff nach draussen — lesen,
+        suchen, ausfuehren, schreiben. Selbst eine reine Lese-Pruefung liest
+        Dateien. Bleibt nur das Abschluss-Ritual uebrig, hat der Agent geredet
+        und nicht gearbeitet.
+        """
+        return bool(tools_called - cls._BOOKKEEPING_TOOLS)
+
+    @classmethod
+    def _compliance_gaps(cls, tools_called: set[str], lightweight: bool) -> list[str]:
+        """Was der Lauf noch schuldig ist — Arbeit zuerst, Buchhaltung danach.
+
+        Die Reihenfolge ist der Kern. Bis v1.178.2 fragte dieses Gatter nur nach
+        dem Abschluss-Ritual. Ein Agent, der die Aufgabe blosss ANKUENDIGTE und
+        keinen einzigen Werkzeugaufruf machte, wurde deshalb aufgefordert,
+        ``rate_task`` nachzuholen — tat das brav, und der Lauf endete als
+        **COMPLETED**. Beim Kunden standen so am 2026-08-12 zwei Auftraege auf
+        „erledigt", in deren Ergebnis woertlich steht: „Ich habe inhaltlich noch
+        keine Repo-Aenderungen umgesetzt (nur angekuendigt)." Drei Zuege, ein
+        einziger Werkzeugaufruf — und der war die Bewertung selbst.
+
+        Das Gatter hat die Ankuendigung damit nicht nur durchgelassen, sondern
+        sie in einen erfolgreichen Abschluss hineingerettet. Der Team-Lead meldete
+        anschliessend wahrheitsgemaess „erledigt", weil der Task so dastand.
         """
         gaps: list[str] = []
+        if not lightweight and not cls._did_substantive_work(tools_called):
+            # Zuerst die Arbeit. Alles andere waere die Aufforderung, den
+            # Papierkram fuer eine nicht getane Aufgabe zu erledigen.
+            gaps.append(
+                "actually DO the task — you have not called a single tool that "
+                "touches it. Announcing what you will do is not doing it. Start "
+                "now: read the files, run the checks, make the changes"
+            )
+            return gaps
         if not lightweight and "rate_task" not in tools_called:
             gaps.append("call rate_task to record this task's quality")
         if "skill_install" in tools_called and "skill_rate" not in tools_called:
