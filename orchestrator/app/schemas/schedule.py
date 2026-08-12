@@ -65,7 +65,13 @@ class ScheduleCreate(BaseModel):
             )
         if self.cron_expression:
             self.cron_expression = _validate_cron(self.cron_expression)
-        self.timezone = _validate_timezone(self.timezone)
+        # None/empty means "use the agent's own timezone" — resolved later in the
+        # create_schedule endpoint, which has DB access to look the agent up. Only
+        # validate when the caller actually named one; ZoneInfo(None) raises a raw
+        # TypeError (not caught below), which crashed every no-timezone request with
+        # a 500 instead of leaving the field for the endpoint to fill in (#572).
+        if self.timezone:
+            self.timezone = _validate_timezone(self.timezone)
         return self
 
 
