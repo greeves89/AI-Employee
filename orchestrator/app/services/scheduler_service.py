@@ -72,6 +72,7 @@ class SchedulerService:
         self._channel_responder = None
         self._teams_meetings = None
         self._slack_gateway = None
+        self._discord_gateway = None
         self._codex_refresh_counter = 0
         # Rhythmus-Invariante wird alle 5 Minuten geprueft — beim ersten Tick sofort,
         # damit ein frisch gestarteter Orchestrator die Zeitplaene nicht erst spaeter anlegt.
@@ -266,10 +267,12 @@ class SchedulerService:
                     try:
                         if self._teams_gateway is None:
                             from app.core.channel_gateway import ChannelResponder
+                            from app.services.discord_gateway import DiscordGateway
                             from app.services.slack_gateway import SlackGateway
                             from app.services.teams_gateway import TeamsGateway
                             self._teams_gateway = TeamsGateway(self.redis)
                             self._slack_gateway = SlackGateway(self.redis)
+                            self._discord_gateway = DiscordGateway(self.redis)
                             self._channel_responder = ChannelResponder(self.redis)
 
                         # EIN Lauscher je Agent bedient alle abgefragten Kanaele.
@@ -282,6 +285,9 @@ class SchedulerService:
                         slack_result = await self._slack_gateway.tick()
                         if slack_result:
                             logger.info("[Scheduler] Slack: %s", slack_result)
+                        discord_result = await self._discord_gateway.tick()
+                        if discord_result:
+                            logger.info("[Scheduler] Discord: %s", discord_result)
                         # Termine: Agent als Beisitzer an den laufenden Termin-Chat
                         # haengen bzw. nach dem Termin das Transkript ablegen. Haengt am
                         # selben Takt und an derselben Chat-Liste wie der Teams-Eingang.

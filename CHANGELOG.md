@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.182.0] - 2026-08-12
+
+### Sicherheit
+- **Der DLP-Egress-Filter galt nur für Telegram.** Teams, Slack und WhatsApp
+  schickten ungeprüft hinaus — auf einer Klinikanlage genau der Fall, für den es
+  den Filter gibt. Er sitzt jetzt in `channel_gateway.send_reply`, der einen
+  Stelle, durch die alle abgefragten Kanäle senden. Damit gilt er automatisch
+  auch für jeden Kanal, der später dazukommt.
+  Blockierte Nachrichten werden nicht stillschweigend verschluckt: der Empfänger
+  bekommt denselben Hinweis wie bei Telegram, sonst wartet er auf eine Antwort,
+  die nie kommt.
+
+### Neu
+- **Discord als vierter Kanal (#195, #139).** Nach dem Muster von Slack:
+  abgefragt statt über die dauerhafte WebSocket, weil in einem Kliniknetz nur
+  ausgehendes HTTPS verlässlich erlaubt ist. Der Ablauf bleibt im
+  `channel_gateway`, der Kanal liefert nur Herkunft und Rückweg.
+  Lange Antworten werden an Absätzen geteilt statt abgeschnitten — eine halbe
+  Antwort sieht aus wie eine ganze.
+
+### Geändert
+- `test_channel_gateway` prüft die Lauscher-Liste jetzt gegen die Kanalliste statt
+  gegen eine Aufzählung. Beim nächsten Kanal schlägt er von selbst an, wenn ihn
+  jemand im Lauscher vergisst.
+
+### Test
+- `test_discord_and_dlp_per_channel.py` — der Filter greift auf allen vier
+  Kanälen, Discord ist registriert (eigenes Kennungs-Präfix, im Lauscher),
+  Nachrichten werden geteilt statt gekürzt, Bot-Nachrichten laufen nicht zurück.
+
+---
+
 ## [1.181.0] - 2026-08-12
 
 ### Neu

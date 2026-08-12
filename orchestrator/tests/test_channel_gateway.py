@@ -329,9 +329,18 @@ class OneResponderTests(unittest.TestCase):
     Baustein vermeiden soll."""
 
     def test_one_responder_serves_all_polled_channels(self):
+        """Gegen die Kanalliste geprueft, nicht gegen eine Aufzaehlung.
+
+        Vorher stand hier eine feste Liste. Beim vierten Kanal (Discord) faellt so
+        ein Test zwar auf — aber erst, nachdem jemand ihn angepasst hat, und er
+        haette genauso gut nur ergaenzt statt geprueft werden koennen. So schlaegt
+        er beim naechsten Kanal von selbst an, wenn ihn jemand im Lauscher vergisst:
+        dann antwortet der Agent, und niemand sieht es.
+        """
         from app.core.channel_gateway import ChannelResponder
-        self.assertEqual(set(ChannelResponder.HANDLED),
-                         {gw.CHANNEL_TEAMS, gw.CHANNEL_SLACK, gw.CHANNEL_WHATSAPP})
+
+        polled = set(gw.KNOWN_CHANNELS) - {gw.CHANNEL_TELEGRAM}
+        self.assertEqual(set(ChannelResponder.HANDLED), polled)
 
     def test_telegram_keeps_its_streaming_path(self):
         """Telegram laesst die Nachricht mitwachsen und kann deshalb nicht auf
