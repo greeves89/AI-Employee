@@ -153,6 +153,8 @@ class LLMChatHandler:
         self.log_publisher = log_publisher
         self.is_running = False
         self._provider: BaseLLMProvider | None = None
+        # Modelle, die in dieser Sitzung schon ausgefallen sind (#200).
+        self._models_tried: set[str] = set()
         self._tool_executor = ToolExecutor()
         self._mcp_client = MCPHTTPClient()
         # Execute MCP tool calls on the same client that ran discovery (shared
@@ -377,6 +379,42 @@ class LLMChatHandler:
             self._activated = self._activated[-MAX_ACTIVATED_TOOLS:]
         return "Folgende Tools sind ab deinem nächsten Schritt aufrufbar:\n" + "\n".join(lines)
 
+    async def _switch_to_fallback(self, message_id: str, error_text: str | None) -> bool:
+        """Auf das nächste Ausweichmodell umstellen (#200) — wie im Auftragslauf.
+
+        Bewusst dieselbe Entscheidung aus ``model_fallback``: Kapazitätsprobleme
+        weichen aus, Einrichtungsfehler scheitern sofort. Zwei Auslegungen davon
+        wären genau die Sorte Doppelpflege, die hier schon mehrfach zugeschlagen hat.
+        """
+        from app import model_fallback
+
+        if not model_fallback.is_retryable(error_text):
+            return False
+        chain = model_fallback.parse_chain(settings.llm_fallback_models)
+        target = model_fallback.next_model(
+            settings.llm_model_name, chain, self._models_tried
+        )
+        if not target:
+            return False
+
+        previous = settings.llm_model_name
+        self._models_tried.add(previous)
+        settings.llm_model_name = target
+        if self._provider:
+            try:
+                await self._provider.close()
+            except Exception:  # noqa: BLE001
+                logger.debug("Alter Provider liess sich nicht schliessen", exc_info=True)
+        self._provider = None
+
+        logger.warning("[Modell] %s antwortete nicht (%s) — weiter mit %s",
+                       previous, (error_text or "")[:120], target)
+        await self.log_publisher.publish_chat(
+            message_id, "system",
+            {"message": f"[Modellwechsel: {previous} → {target}]"},
+        )
+        return True
+
     def _get_provider(self) -> BaseLLMProvider:
         if not self._provider:
             self._provider = create_provider(
@@ -485,6 +523,7 @@ class LLMChatHandler:
                 has_tool_calls = False
                 turn_text = ""
                 turn_tool_calls: list[dict] = []
+                switched_model = False
 
                 async for event in provider.stream_completion(self._history, tools):
                     if event.type == "text_delta":
@@ -527,6 +566,13 @@ class LLMChatHandler:
                     elif event.type == "error":
                         if self._stopping:
                             return await self._finish_cancelled(message_id, start_time, num_turns)
+                        # Gleiche Ausfallsicherheit wie im Auftragslauf (#200) —
+                        # im Chat merkt der Mensch einen Ausfall sofort, hier ist
+                        # sie also eher wichtiger als dort.
+                        if await self._switch_to_fallback(message_id, event.text):
+                            switched_model = True
+                            provider = self._get_provider()
+                            break
                         await self.log_publisher.publish_chat(
                             message_id, "error", {"message": event.text}
                         )
@@ -534,6 +580,11 @@ class LLMChatHandler:
                         result = {"status": "error", "error": event.text}
                         await self.log_publisher.publish_chat(message_id, "done", result)
                         return result
+
+                if switched_model:
+                    # Derselbe Zug, anderes Modell — es gab keine verwertbare
+                    # Antwort, die in den Verlauf gehoerte.
+                    continue
 
                 # Add assistant response to history
                 if turn_text and not turn_tool_calls:

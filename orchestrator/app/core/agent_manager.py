@@ -951,6 +951,11 @@ class AgentManager:
             "LLM_TOOLS_ENABLED": str(cfg.get("tools_enabled", True)).lower(),
             "LLM_THINKING_MODE": cfg.get("thinking_mode", "auto"),
             "LLM_REASONING_EFFORT": cfg.get("reasoning_effort", "") or "",
+            # Ausweichmodelle bei Rate-Limit/Ueberlastung (#200). Liste oder
+            # kommagetrennter Text, beides erlaubt — leer heisst kein Ausweichen.
+            "LLM_FALLBACK_MODELS": ",".join(cfg["fallback_models"])
+            if isinstance(cfg.get("fallback_models"), list)
+            else (cfg.get("fallback_models") or ""),
             # Azure OpenAI specifics (empty for other providers)
             "LLM_API_VERSION": cfg.get("api_version", "") or "",
             "LLM_DEPLOYMENT": cfg.get("deployment", "") or "",

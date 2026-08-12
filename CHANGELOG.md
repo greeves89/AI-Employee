@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.180.0] - 2026-08-12
+
+### Neu
+- **Modell-Fallback bei Ausfall (#200).** Antwortet das Modell nicht — Rate-Limit,
+  Zeitüberschreitung, Überlastung, Wartungsfenster einer Azure-Bereitstellung —
+  wechselt der Lauf auf das nächste Modell der Kette, statt abzubrechen. Kette je
+  Agent über `fallback_models` (Reihenfolge ist die Entscheidung des Betreibers).
+  In **beiden** Laufzeiten verdrahtet: Auftragslauf und Chat.
+- **Einrichtungsfehler weichen bewusst NICHT aus.** Falscher Schlüssel, falscher
+  Bereitstellungsname, Inhaltsablehnung: dort hilft kein zweites Modell, die Kette
+  würde denselben Fehler nur teurer wiederholen und die Ursache verdecken. Ein
+  „401 Unauthorized, please try again later" gilt deshalb als Einrichtungsfehler,
+  nicht als Kapazitätsproblem.
+- Jeder Wechsel wird sichtbar protokolliert (vorher → nachher → Grund). Ein stiller
+  Modellwechsel wäre schlimmer als keiner: andere Antwortqualität, andere Kosten,
+  kein auffindbarer Grund.
+
+### Test
+- `agent/tests/test_model_fallback.py` — beide Richtungen, inklusive der Fälle, in
+  denen NICHT gewechselt werden darf, und dass beide Laufzeiten den Schalter haben.
+
+---
+
 ## [1.179.0] - 2026-08-12
 
 ### Neu

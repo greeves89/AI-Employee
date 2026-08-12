@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     llm_thinking_mode: str = "auto"  # "off", "auto", "on"
     llm_reasoning_effort: str = ""  # "" (API default), "low", "medium", "high" — OpenAI reasoning models only
     llm_api_version: str = ""  # Azure OpenAI api-version (e.g. 2024-10-21)
+    # Ausweichmodelle bei Rate-Limit/Zeitueberschreitung/Ueberlastung (#200),
+    # kommagetrennt und in dieser Reihenfolge. Leer = kein Ausweichen, dann
+    # scheitert der Lauf wie bisher. Nur Bereitstellungsnamen desselben Zugangs —
+    # ein anderer Endpunkt braucht einen anderen Zugang.
+    llm_fallback_models: str = ""
 
     # Chat watchdogs. Codex CLI can legitimately spend a long time in a
     # single `codex exec` turn while still streaming tool activity; default 0

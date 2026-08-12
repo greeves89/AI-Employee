@@ -81,6 +81,9 @@ class LLMRunner:
         # tool call fails with "Unknown MCP tool".
         self._tool_executor._mcp_client = self._mcp_client
         self._all_tools: list[dict] | None = None
+        # Modelle, die in diesem Lauf schon ausgefallen sind (#200) — verhindert,
+        # dass die Ausweichkette im Kreis laeuft.
+        self._models_tried: set[str] = set()
         # Lazy tool loading: tools activated on demand via search_tools (LRU-capped).
         # Only CORE + search_tools + these are sent per request → under the 128 cap.
         self._activated: list[str] = []
@@ -220,6 +223,49 @@ class LLMRunner:
             self._activated = self._activated[-MAX_ACTIVATED_TOOLS:]
         return "Folgende Tools sind ab deinem nächsten Schritt aufrufbar:\n" + "\n".join(lines)
 
+    async def _switch_to_fallback(self, task_id: str, error_text: str | None) -> bool:
+        """Auf das nächste Ausweichmodell umstellen — wenn es sich lohnt (#200).
+
+        Gibt zurück, ob gewechselt wurde. Bei ``False`` scheitert der Lauf wie
+        bisher; das ist der richtige Ausgang für Einrichtungsfehler.
+
+        Der Wechsel wird **sichtbar protokolliert**. Ein stiller Modellwechsel
+        wäre schlimmer als keiner: dann wundert sich später jemand über andere
+        Antwortqualität oder andere Kosten und findet den Grund nicht mehr.
+        """
+        from app import model_fallback
+
+        if not model_fallback.is_retryable(error_text):
+            return False
+        chain = model_fallback.parse_chain(settings.llm_fallback_models)
+        target = model_fallback.next_model(
+            settings.llm_model_name, chain, self._models_tried
+        )
+        if not target:
+            return False
+
+        previous = settings.llm_model_name
+        self._models_tried.add(previous)
+        settings.llm_model_name = target
+        # Der Anbieter haelt Modellname und Circuit-Breaker fest — er muss neu
+        # gebaut werden, sonst laeuft der naechste Zug wieder ins alte Modell.
+        if self._provider:
+            try:
+                await self._provider.close()
+            except Exception:  # noqa: BLE001
+                logger.debug("Alter Provider liess sich nicht schliessen", exc_info=True)
+        self._provider = None
+        self._context_window = 0          # anderes Modell, anderes Fenster
+
+        logger.warning("[Modell] %s antwortete nicht (%s) — weiter mit %s",
+                       previous, (error_text or "")[:120], target)
+        await self.log_publisher.publish(
+            task_id, "system",
+            {"message": f"[Modellwechsel: {previous} → {target}, Grund: "
+                        f"{(error_text or 'unbekannt')[:120]}]"},
+        )
+        return True
+
     def _get_provider(self) -> BaseLLMProvider:
         if not self._provider:
             self._provider = create_provider(
@@ -333,6 +379,7 @@ class LLMRunner:
                 has_tool_calls = False
                 turn_text = ""
                 turn_tool_calls: list[dict] = []
+                switched_model = False
                 tools = await self._get_tools()  # re-fetch each turn: picks up search_tools activations
 
                 async for event in provider.stream_completion(messages, tools):
@@ -371,6 +418,16 @@ class LLMRunner:
                             overhead_tokens = max(overhead_tokens, gap)
 
                     elif event.type == "error":
+                        # Ausweichen statt aufgeben (#200): bei Rate-Limit,
+                        # Zeitueberschreitung oder Ueberlastung ist der Auftrag
+                        # nicht unloesbar — nur dieses Modell antwortet gerade
+                        # nicht. Einrichtungsfehler (falscher Schluessel, falscher
+                        # Bereitstellungsname) weichen bewusst NICHT aus, sonst
+                        # verdeckt die Kette die eigentliche Ursache.
+                        if await self._switch_to_fallback(task_id, event.text):
+                            switched_model = True
+                            provider = self._get_provider()
+                            break
                         await self.log_publisher.publish(
                             task_id, "error", {"message": event.text}
                         )
@@ -380,6 +437,13 @@ class LLMRunner:
                             "error": event.text,
                             "num_turns": num_turns,
                         }
+
+                if switched_model:
+                    # Derselbe Zug, anderes Modell. Der Verlauf bleibt unberuehrt:
+                    # es gab keine verwertbare Antwort, die hineingehoerte. Der
+                    # Zugzaehler wurde bereits erhoeht — das ist Absicht, sonst
+                    # koennte eine dauerhaft ausfallende Kette endlos laufen.
+                    continue
 
                 # Add assistant message to history
                 if turn_text and not turn_tool_calls:
