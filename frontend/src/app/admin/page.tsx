@@ -68,6 +68,17 @@ type Tab =
 // their own <Header>). They don't depend on the admin page's own data load.
 const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp"];
 
+// Das Menüband ist zweistufig: oben die Themengruppe, darunter deren Unterreiter.
+// So bleiben alle Bereiche sichtbar, ohne dass 13 Reiter in einer Zeile scrollen.
+const TAB_GROUPS: { id: string; label: string; icon: typeof Users; tabs: Tab[] }[] = [
+  { id: "people", label: "Nutzer & Rollen", icon: Users, tabs: ["users", "roles"] },
+  { id: "agents", label: "Agenten", icon: Cpu, tabs: ["agents", "assignments"] },
+  { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains"] },
+  { id: "security", label: "Sicherheit", icon: Shield, tabs: ["secrets", "dlp", "audit"] },
+  { id: "ops", label: "Betrieb", icon: HeartPulse, tabs: ["health", "budget", "feedback"] },
+  { id: "system", label: "System", icon: SettingsIcon, tabs: ["settings"] },
+];
+
 const stateColors: Record<string, string> = {
   running: "bg-emerald-500",
   idle: "bg-blue-500",
@@ -374,14 +385,16 @@ export default function AdminPage() {
     }
   };
 
+  const pendingFeedback = feedbackItems.filter((f) => f.status === "pending").length;
+
   const tabs: { id: Tab; label: string; icon: typeof Users; count?: number }[] = [
     { id: "users", label: "Users", icon: Users, count: users.length },
-    { id: "agents", label: "All Agents", icon: Cpu, count: agents.length },
+    { id: "agents", label: "Alle Agenten", icon: Cpu, count: agents.length },
     { id: "assignments", label: "Zuweisungen", icon: UserCog, count: assignments.length || undefined },
-    { id: "roles", label: "Rollen", icon: Shield },
-    { id: "feedback", label: "Feedback", icon: MessageSquare, count: feedbackItems.filter((f) => f.status === "pending").length || undefined },
+    { id: "roles", label: "Rollen", icon: Shield, count: customRoles.length || undefined },
+    { id: "feedback", label: "Feedback", icon: MessageSquare, count: pendingFeedback || undefined },
     { id: "budget", label: "Budget", icon: DollarSign },
-    { id: "settings", label: "Settings", icon: SettingsIcon },
+    { id: "settings", label: "Einstellungen", icon: SettingsIcon },
     { id: "ai-accounts", label: "AI-Accounts", icon: Cpu },
     { id: "second-brains", label: "Second Brains", icon: Brain },
     { id: "secrets", label: "Key Management", icon: KeyRound },
@@ -389,6 +402,9 @@ export default function AdminPage() {
     { id: "audit", label: "Audit Log", icon: ScrollText },
     { id: "dlp", label: "DLP-Filter", icon: Shield },
   ];
+
+  const tabById = new Map(tabs.map((t) => [t.id, t]));
+  const activeGroup = TAB_GROUPS.find((g) => g.tabs.includes(tab)) ?? TAB_GROUPS[0];
 
   return (
     <div>
@@ -403,34 +419,64 @@ export default function AdminPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {/* Tabs — horizontally scrollable so they never wrap, fits any width */}
-        <div className="mb-6 flex gap-1 overflow-x-auto rounded-xl border border-border/50 bg-card/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {tabs.map((t) => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={cn(
-                  "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all",
-                  tab === t.id
-                    ? "bg-accent text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {t.label}
-                {t.count != null && t.count > 0 && (
-                  <span className={cn(
-                    "ml-1 px-1.5 py-0.5 rounded text-[10px]",
-                    t.id === "feedback" ? "bg-amber-500/20 text-amber-400" : "bg-foreground/10"
-                  )}>
-                    {t.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* Menüband, zweistufig: Themengruppe oben, Unterreiter darunter */}
+        <div className="mb-5">
+          <div className="flex gap-1 overflow-x-auto rounded-xl border border-border/50 bg-card/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {TAB_GROUPS.map((g) => {
+              const Icon = g.icon;
+              const active = activeGroup.id === g.id;
+              const alert = g.tabs.includes("feedback") && pendingFeedback > 0;
+              return (
+                <button
+                  key={g.id}
+                  onClick={() => { if (!g.tabs.includes(tab)) setTab(g.tabs[0]); }}
+                  className={cn(
+                    "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-all",
+                    active
+                      ? "bg-accent text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {g.label}
+                  {alert && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />}
+                </button>
+              );
+            })}
+          </div>
+
+          {activeGroup.tabs.length > 1 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
+              {activeGroup.tabs.map((id) => {
+                const t = tabById.get(id);
+                if (!t) return null;
+                const Icon = t.icon;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setTab(id)}
+                    className={cn(
+                      "flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all",
+                      tab === id
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-transparent text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {t.label}
+                    {t.count != null && t.count > 0 && (
+                      <span className={cn(
+                        "rounded px-1.5 py-0.5 text-[10px]",
+                        id === "feedback" ? "bg-amber-500/20 text-amber-400" : "bg-foreground/10"
+                      )}>
+                        {t.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {EMBEDDED_TABS.includes(tab) ? (
@@ -980,6 +1026,7 @@ export default function AdminPage() {
                     prev.map((u) => u.id === userId ? { ...u, custom_role_id: customRoleId } : u)
                   );
                 }}
+                onRolesChanged={setCustomRoles}
               />
             )}
 

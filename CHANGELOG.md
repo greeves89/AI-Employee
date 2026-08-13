@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.199.0] - 2026-08-13
+
+### Geändert
+- **Die Rollenverwaltung zeigt unten nur noch die Mitglieder der Rolle.**
+  Kundenwunsch: *„UNTEN sind alle User in der App zu sehen, aber ich brauche
+  dort nur die User (aufklappbar) die wirklich in der Rolle."* Bisher stand dort
+  jeder Nutzer der Plattform mit einer eigenen Auswahlbox daneben — bei vielen
+  Nutzern eine Wand aus Dropdowns, in der man die eigentliche Frage („wer gehört
+  zu dieser Rolle?") nicht beantworten konnte. Jetzt: ein aufklappbarer Block
+  **Mitglieder** mit Zähler, darin ausschließlich die Nutzer dieser Rolle,
+  Entfernen direkt an der Zeile.
+- **Hinzufügen läuft jetzt über die Suche statt über 40 Dropdowns.** „User
+  hinzufügen" öffnet eine Namens-/E-Mail-Suche über die Nicht-Mitglieder. Steckt
+  jemand schon in einer anderen Rolle, steht das daneben — ein Umhängen ist damit
+  sichtbar und nicht versehentlich.
+- In der Rollenliste links steht pro Rolle die Mitgliederzahl.
+- **Das Admin-Menüband ist zweistufig statt 13 Reiter in einer Scrollzeile.**
+  Kundenwunsch: *„Gern kann auch einfach mal das komplette Menüband angepasst
+  werden und thematisch zusammengefasst werden und dann mit subtabs gearbeitet
+  werden."* Sechs Themengruppen — Nutzer & Rollen, Agenten, KI & Wissen,
+  Sicherheit, Betrieb, System — mit den jeweiligen Unterreitern darunter. Damit
+  ist jeder Bereich ohne seitliches Scrollen erreichbar; offenes Feedback meldet
+  sich mit einem Punkt an der Gruppe.
+
+---
+
 ## [1.198.1] - 2026-08-13
 
 ### Behoben
