@@ -911,39 +911,58 @@ class SchedulerService:
             if settled:
                 await db.commit()
 
-            orphans = (await db.execute(
-                select(AgentPlanItem).where(
-                    AgentPlanItem.status == "planned",
-                    AgentPlanItem.planned_start.isnot(None),
-                    AgentPlanItem.schedule_id.is_(None),
-                    AgentPlanItem.plan_date >= _date.today(),
-                )
-            )).scalars().all()
-            for item in orphans:
-                schedule_id = _uuid.uuid4().hex[:8]
-                db.add(Schedule(
-                    id=schedule_id,
-                    name=f"[Plan] {item.title[:60]}",
-                    prompt=block_prompt(item),
-                    interval_seconds=0,
-                    priority=0 if item.priority == "high" else 1,
-                    agent_id=item.agent_id,
-                    enabled=True,
-                    # Verpasste Zeiten werden nachgeholt — aber GESTAFFELT. Fuenf
-                    # Bloecke, deren Zeit vorbei ist, wuerden sonst gleichzeitig
-                    # feuern; auf einem Pi bringt das die CLI zum Absturz (exit -6).
-                    next_run_at=max(
-                        item.planned_start,
-                        datetime.now(timezone.utc) + timedelta(minutes=3 * armed),
-                    ) if item.planned_start < datetime.now(timezone.utc)
-                    else item.planned_start,
-                ))
-                item.schedule_id = schedule_id
-                armed += 1
-            if armed:
-                # Ohne das faellt beim Verlassen der Sitzung alles weg: die Zeitplaene
-                # waren angelegt und beim naechsten Blick wieder verschwunden.
-                await db.commit()
+            # Arming orphans (SELECT unclaimed items, INSERT a Schedule each) is not
+            # atomic by itself: two scheduler ticks — from this process or another
+            # orchestrator replica — can both SELECT the same "schedule_id IS NULL"
+            # item before either COMMITs, and each create its OWN Schedule row for
+            # it. That is exactly what happened for #548 on 2026-08-13: one plan
+            # block ("Deploy-Gate Status pruefen") got two independent Schedule
+            # rows, each later fired its own [Plan] task, and the two tasks sent
+            # contradicting Telegram updates to the user. The per-agent dispatch
+            # lock above doesn't help here — it guards *dispatch*, this races
+            # earlier, at *schedule creation*. Hold a short-lived global lock
+            # around select+insert so only one process can arm orphans at a time;
+            # by the time a second process gets the lock, the first has already
+            # committed, so the item no longer shows up as an orphan.
+            lock_token = await self.redis.acquire_lock("arm_plan_blocks", ttl_seconds=25)
+            if lock_token is None:
+                return armed
+            try:
+                orphans = (await db.execute(
+                    select(AgentPlanItem).where(
+                        AgentPlanItem.status == "planned",
+                        AgentPlanItem.planned_start.isnot(None),
+                        AgentPlanItem.schedule_id.is_(None),
+                        AgentPlanItem.plan_date >= _date.today(),
+                    )
+                )).scalars().all()
+                for item in orphans:
+                    schedule_id = _uuid.uuid4().hex[:8]
+                    db.add(Schedule(
+                        id=schedule_id,
+                        name=f"[Plan] {item.title[:60]}",
+                        prompt=block_prompt(item),
+                        interval_seconds=0,
+                        priority=0 if item.priority == "high" else 1,
+                        agent_id=item.agent_id,
+                        enabled=True,
+                        # Verpasste Zeiten werden nachgeholt — aber GESTAFFELT. Fuenf
+                        # Bloecke, deren Zeit vorbei ist, wuerden sonst gleichzeitig
+                        # feuern; auf einem Pi bringt das die CLI zum Absturz (exit -6).
+                        next_run_at=max(
+                            item.planned_start,
+                            datetime.now(timezone.utc) + timedelta(minutes=3 * armed),
+                        ) if item.planned_start < datetime.now(timezone.utc)
+                        else item.planned_start,
+                    ))
+                    item.schedule_id = schedule_id
+                    armed += 1
+                if armed:
+                    # Ohne das faellt beim Verlassen der Sitzung alles weg: die Zeitplaene
+                    # waren angelegt und beim naechsten Blick wieder verschwunden.
+                    await db.commit()
+            finally:
+                await self.redis.release_lock("arm_plan_blocks", lock_token)
         return armed
 
     async def _night_runs(
