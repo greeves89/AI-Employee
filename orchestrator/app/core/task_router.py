@@ -33,6 +33,35 @@ BUDGET_FALLBACK_MODEL = "claude-haiku-4-5-20251001"
 _ID_ALPHABET = string.digits + string.ascii_lowercase
 
 
+class UnknownAgentError(Exception):
+    """Delegation an einen Agenten, den es nicht (mehr) gibt.
+
+    Die Meldung ist an den AGENTEN gerichtet, nicht an ein Protokoll — sie nennt
+    die Kollegen, die es wirklich gibt, damit er seinen Auftrag im selben Zug
+    korrigieren kann, statt auf ein Ergebnis zu warten, das nie kommt.
+    """
+
+    def __init__(self, agent_id: str, kollegen: list[tuple[str, str]] | None = None):
+        self.agent_id = agent_id
+        self.kollegen = kollegen or []
+        if self.kollegen:
+            liste = ", ".join(f"{name} ({aid})" for aid, name in self.kollegen)
+            hinweis = (
+                f" Dein Team ist: {liste}. Schicke den Auftrag an eine dieser "
+                f"Kennungen — oder rufe `list_my_team` auf, falls du unsicher bist."
+            )
+        else:
+            hinweis = (
+                " Rufe `list_my_team` auf, um zu sehen, an wen du delegieren "
+                "kannst."
+            )
+        super().__init__(
+            f"Es gibt keinen Agenten mit der Kennung '{agent_id}'. Moeglicherweise "
+            f"wurde er geloescht, seit du ihn kennengelernt hast — deine Erinnerung "
+            f"kann also stimmen und trotzdem veraltet sein.{hinweis}"
+        )
+
+
 def _make_task_id() -> str:
     """Generate a prefixed task ID: t{8 random alphanum chars}.
 
@@ -280,21 +309,19 @@ class TaskRouter:
                 return task
 
         if not await self._agent_exists(agent_id):
+            # Frueher landete das als PENDING OHNE agent_id in der Datenbank — und
+            # blieb dort liegen: der Reparaturlauf sucht ausdruecklich nur
+            # PENDING-Auftraege MIT agent_id. Niemand erfuhr davon, am wenigsten
+            # der Auftraggeber, der auf ein Ergebnis wartete, das nie kommen kann.
+            #
+            # Beim Kunden am 2026-08-13 fuenf solcher Waisen an einen Kollegen,
+            # den es einmal GAB und der geloescht wurde. Die Erinnerung des
+            # Agenten war korrekt — nur hatte ihm niemand gesagt, dass sich die
+            # Welt geaendert hat. Genau das holt der Fehler jetzt nach: er nennt
+            # die Kollegen, die es wirklich gibt, damit der Agent sich im selben
+            # Zug selbst korrigieren kann.
             logger.warning("Cannot route task %s to missing agent %s", scrub_log(task_id), scrub_log(agent_id))
-            task = Task(
-                id=task_id,
-                title=title,
-                prompt=prompt,
-                status=TaskStatus.PENDING,
-                priority=priority,
-                model=model,
-                parent_task_id=parent_task_id,
-                metadata_=dict(metadata or {}),
-            )
-            self.db.add(task)
-            await self.db.commit()
-            await self.db.refresh(task)
-            return task
+            raise UnknownAgentError(agent_id, await self._delegatable_agents(created_by_agent))
 
         # Content-based routing (opt-in per agent): pick a model tier from the
         # prompt itself, like OpenWebUI's router — but only when the caller
@@ -378,6 +405,36 @@ class TaskRouter:
 
         existing = await self.db.scalar(select(Agent.id).where(Agent.id == agent_id))
         return existing is not None
+
+    async def _delegatable_agents(self, created_by_agent: str | None) -> list[tuple[str, str]]:
+        """An wen darf dieser Agent wirklich delegieren — (id, name).
+
+        Die Teams des Auftraggebers, nicht alle Agenten der Anlage: die
+        Mandantentrennung gilt auch in einer Fehlermeldung. Ohne Auftraggeber
+        (Zeitplan, Oberflaeche) bleibt die Liste leer — dann nennt der Fehler nur
+        die unbekannte Kennung.
+        """
+        if not created_by_agent:
+            return []
+        try:
+            from app.models.agent import Agent
+            from app.models.team import Team
+
+            teams = (await self.db.execute(select(Team))).scalars().all()
+            ids: set[str] = set()
+            for t in teams:
+                mitglieder = set(t.member_agent_ids or [])
+                if created_by_agent in mitglieder:
+                    ids |= mitglieder
+            ids.discard(created_by_agent)
+            if not ids:
+                return []
+            rows = (await self.db.execute(
+                select(Agent.id, Agent.name).where(Agent.id.in_(ids))
+            )).all()
+            return sorted((r[0], r[1]) for r in rows)
+        except Exception:  # noqa: BLE001 — eine Fehlermeldung darf nie selbst scheitern
+            return []
 
     async def _publish_activity(self, agent_id: str, message: str) -> None:
         """Publish an activity event to the agent's log channel + history."""

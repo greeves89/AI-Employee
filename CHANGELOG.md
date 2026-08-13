@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.195.0] - 2026-08-13
+
+### Behoben
+- **Delegation an einen gelöschten Agenten scheitert jetzt laut statt still.**
+  Bisher landete so ein Auftrag als `PENDING` **ohne `agent_id`** in der Datenbank
+  — und blieb dort für immer liegen, denn der Reparaturlauf sucht ausdrücklich
+  nur `PENDING`-Aufträge **mit** `agent_id`. Niemand erfuhr davon, am wenigsten
+  der Auftraggeber, der auf ein Ergebnis wartete, das nicht kommen konnte. Auf dem
+  Pi lagen **13** solcher Waisen.
+- Der Fehler ist an den **Agenten** gerichtet und nennt die Kollegen, die es
+  wirklich gibt (nur die seines Teams — die Mandantentrennung gilt auch in einer
+  Fehlermeldung). Damit korrigiert er seinen Auftrag im selben Zug selbst.
+  Auslöser war ein Agent, dessen Erinnerung **korrekt** war: den Kollegen gab es
+  einmal, er wurde gelöscht, und niemand hatte es ihm gesagt.
+- Im Hintergrund reißt nichts ab: ein Workflow-Schritt auf einen gelöschten
+  Agenten lässt den Lauf **mit Begründung** scheitern statt stumm zu hängen, und
+  ein fortgesetzter Auftrag wird verworfen statt bei jedem Start erneut versucht.
+
+---
+
 ## [1.194.0] - 2026-08-13
 
 ### Geändert

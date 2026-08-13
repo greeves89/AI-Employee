@@ -8,7 +8,10 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.datastructures import MutableHeaders
+
+from app.core.task_router import UnknownAgentError
 
 from app.api.router import api_router
 from app.api.ws import init_stream_manager
@@ -1859,15 +1862,23 @@ clean Markdown; you don't need to commit.
                 orig.notified = True
                 await db.commit()
 
-            new_task = await router.create_and_route_task(
-                title=meta.get("title") or f"[Resumed] {job.ref_id or job.id}",
-                prompt=prompt,
-                priority=int(meta.get("priority") or 5),
-                agent_id=meta.get("agent_id"),
-                model=meta.get("model"),
-                metadata={"resumed_from_task": job.ref_id, "resumed_from_job": job.id,
-                          "resume_count": resume_count},
-            )
+            try:
+                new_task = await router.create_and_route_task(
+                    title=meta.get("title") or f"[Resumed] {job.ref_id or job.id}",
+                    prompt=prompt,
+                    priority=int(meta.get("priority") or 5),
+                    agent_id=meta.get("agent_id"),
+                    model=meta.get("model"),
+                    metadata={"resumed_from_task": job.ref_id, "resumed_from_job": job.id,
+                              "resume_count": resume_count},
+                )
+            except UnknownAgentError as e:
+                # Der Agent wurde geloescht, waehrend seine Aufgabe unterbrochen
+                # war. Sie kann niemandem mehr gehoeren — den Auftrag verwerfen,
+                # statt ihn bei jedem Start erneut zu versuchen.
+                logger.warning("[Resume] Job %s verworfen: %s", job.id, e)
+                await delete_job(db, job.id)
+                return
             await delete_job(db, job.id)
             logger.info(
                 f"[Resume] Re-enqueued interrupted job {job.id} (task {job.ref_id}) as new task {new_task.id}"
@@ -2072,6 +2083,17 @@ else:
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization"],
     )
+
+
+# Delegation an einen Agenten, den es nicht (mehr) gibt: 400 mit der vollen
+# Meldung. Sie ist an den AGENTEN gerichtet — er liest sie als Werkzeug-Antwort
+# und kann seinen Auftrag im selben Zug korrigieren. Zentral registriert, damit
+# JEDER Weg zur Auftragserstellung sie gleich behandelt (Werkzeug, Oberflaeche,
+# Team-Ansicht, Zeitplan) statt jeder fuer sich.
+@app.exception_handler(UnknownAgentError)
+async def _unknown_agent_handler(request, exc: UnknownAgentError):  # noqa: ARG001
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
 
 app.include_router(api_router, prefix="/api/v1")
 
