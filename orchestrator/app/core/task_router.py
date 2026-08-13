@@ -1726,6 +1726,35 @@ class TaskRouter:
         except Exception as e:
             logger.warning(f"Could not notify parent agent for subtask {subtask.id}: {e}")
 
+    async def _persist_task_card(self, task: Task, payload: dict,
+                                 session_id: str | None) -> None:
+        """Die Kachel als Zeile im Chatverlauf — damit sie ein Neuladen ueberlebt.
+
+        Eine Zeile je Auftrag, beim Abschluss aktualisiert statt verdoppelt: zwei
+        Kacheln fuer denselben Auftrag waeren schlimmer als keine.
+        """
+        try:
+            from app.models.chat_message import ChatMessage as _CM
+
+            row = (await self.db.execute(
+                select(_CM).where(_CM.message_id == f"card-{task.id}")
+            )).scalar_one_or_none()
+            if row is None:
+                row = _CM(
+                    agent_id=(task.metadata_ or {}).get("created_by_agent"),
+                    session_id=session_id,
+                    message_id=f"card-{task.id}",
+                    role="system",
+                    content="",
+                )
+                self.db.add(row)
+            row.meta = {**(row.meta or {}), "task_card": payload}
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(row, "meta")
+            await self.db.commit()
+        except Exception:  # noqa: BLE001
+            logger.debug("[Kachel] nicht im Verlauf gespeichert", exc_info=True)
+
     async def publish_task_card(self, task: Task, phase: str) -> None:
         """Kachel im Chat des Auftraggebers — Live-Stand eines delegierten Auftrags.
 
@@ -1757,23 +1786,31 @@ class TaskRouter:
                     select(_A.name).where(_A.id == task.agent_id)
                 )).scalar_one_or_none()
 
+            payload = {
+                "task_id": task.id,
+                "title": task.title,
+                "phase": phase,                      # queued | done
+                "status": getattr(task.status, "value", str(task.status)),
+                "assigned_agent_id": task.agent_id,
+                "assigned_agent_name": name or task.agent_id,
+                "result_preview": (task.result or task.error or "")[:400],
+                "cost_usd": task.cost_usd,
+                "duration_ms": task.duration_ms,
+            }
+
+            # Dauerhaft im Verlauf ablegen, nicht nur waehrend des Laufs senden.
+            # Sonst ist die Kachel nach einem Neuladen weg — und mit ihr die
+            # einzige Spur, dass ueberhaupt jemand beauftragt wurde. Bilder und
+            # angebotene Dateien liegen aus demselben Grund im Verlauf.
+            await self._persist_task_card(task, payload, meta.get("chat_session_id"))
+
             await self.redis.client.publish(
                 f"agent:{delegator}:chat:response",
                 json.dumps({
                     "type": "task_card",
                     "agent_id": delegator,
                     "session_id": meta.get("chat_session_id"),
-                    "data": {
-                        "task_id": task.id,
-                        "title": task.title,
-                        "phase": phase,                      # queued | done
-                        "status": getattr(task.status, "value", str(task.status)),
-                        "assigned_agent_id": task.agent_id,
-                        "assigned_agent_name": name or task.agent_id,
-                        "result_preview": (task.result or task.error or "")[:400],
-                        "cost_usd": task.cost_usd,
-                        "duration_ms": task.duration_ms,
-                    },
+                    "data": payload,
                 }),
             )
         except Exception:  # noqa: BLE001

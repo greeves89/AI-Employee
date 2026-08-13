@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.190.0] - 2026-08-13
+
+### Neu
+- **Delegierte Aufträge bleiben dauerhaft im Chat.** Die Kachel lebte bisher nur im
+  Browser und war nach jedem Neuladen weg — und mit ihr die einzige Spur im
+  Gespräch, dass überhaupt jemand beauftragt wurde. Sie liegt jetzt als Zeile im
+  Chatverlauf (`meta.task_card`), genau wie angebotene Dateien und Bilder, und wird
+  beim Öffnen des Gesprächs wiederhergestellt.
+  Eine Zeile je Auftrag: beim Abschluss wird sie **aktualisiert**, nicht verdoppelt.
+
+---
+
 ## [1.189.0] - 2026-08-13
 
 ### Behoben

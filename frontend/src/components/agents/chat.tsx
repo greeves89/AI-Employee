@@ -554,6 +554,21 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         if (hasMore) {
           console.warn("[Chat] More than 500 messages in session - older messages not shown");
         }
+        // Gespeicherte Auftrags-Kacheln zurueckholen. Ohne das waren sie nach
+        // jedem Neuladen weg — und mit ihnen die einzige Spur im Gespraech, dass
+        // ueberhaupt jemand beauftragt wurde.
+        const wiederhergestellt: Record<string, TaskCard> = {};
+        for (const m of history) {
+          const gespeichert = (m as { meta?: { task_card?: TaskCard } }).meta?.task_card;
+          if (gespeichert?.task_id) {
+            wiederhergestellt[gespeichert.task_id] = {
+              ...gespeichert,
+              at: new Date(m.timestamp).getTime() || Date.now(),
+            };
+          }
+        }
+        setTaskCards(wiederhergestellt);
+
         if (history.length > 0) {
           const restored: ChatMessage[] = history.map((m) => {
             // Convert legacy toolCalls to steps
