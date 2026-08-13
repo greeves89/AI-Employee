@@ -495,9 +495,15 @@ und Anzahl der Läufe sagen nichts darüber, **ob die Arbeit taugt**; diese Kart
 - **Bewertungen** — der Schnitt deiner Daumen/Sterne auf seine Aufgaben.
 - **Im Dienst seit** — die Grundlage für die Probezeit-Bilanz.
 
-Oben rechts stellst du den **Zeitraum** um (7 / 30 / 90 Tage). Fehlt ihm die Einrichtung
-oder fehlen die Verantwortungsbereiche, steht das als **Warnung** in der Karte — das ist
-dann der erste Hebel, nicht das Modell.
+Oben rechts stellst du den **Zeitraum** um (7 / 30 / 90 Tage). Fehlen ihm die
+**Verantwortungsbereiche**, steht das als **Warnung** in der Karte — das ist dann der
+erste Hebel, nicht das Modell.
+
+> **Seit 1.194.0:** Das frühere Abzeichen „Nicht eingerichtet" ist entfallen. Ein neuer
+> Agent gilt sofort als eingerichtet — was er tun soll, steht in seiner **Vorlage**, ein
+> Einrichtungsgespräch führt er nicht mehr. Übrig bleibt genau eine Warnung, und die ist
+> die wichtige: **ohne Verantwortungsbereiche werden seine proaktiven Läufe
+> übersprungen**. Wie du sie hinterlegst, steht in Abschnitt 5.4.
 
 ### 5.7 Szenario: Vom leeren Agenten zum fertigen Helfer
 1. **Agents → + New Agent → Leerer Agent.**
