@@ -215,6 +215,45 @@ class NoFalseWorksElsewhereBannerTests(unittest.TestCase):
         self.assertIn("const eigenerZugEndeteRef = useRef(0);", CHAT)
 
 
+class WorkInProgressIsVisibleTests(unittest.TestCase):
+    """Kundenwunsch (Uhde, 13.08.2026): „Ich wollte im Chat eine Anzeige haben,
+    dass noch am Thema gearbeitet wird (in Progress, warte noch auf SubAgents
+    Rueckmeldung oder so etwas)."
+
+    Die Luecke: nach dem Delegieren ist der Zug des Agenten BEENDET. Also laeuft
+    kein „Thinking..."-Spinner, obwohl die Auftraege noch laufen — der Mensch sah
+    nichts und musste nachfragen. Die Kacheln zeigen jede Aufgabe einzeln; hier
+    fehlte der Stand in EINER Zeile.
+    """
+
+    def test_it_does_not_depend_on_the_agents_own_turn(self):
+        """Der springende Punkt: unabhaengig von ``isWaiting``, sonst waere die
+        Anzeige genau dann weg, wenn man sie braucht."""
+        block = _block("{offeneAuftraege.length > 0 && (", 900)
+        self.assertNotIn("isWaiting", block)
+
+    def test_it_shows_how_many_are_done(self):
+        block = _block("{offeneAuftraege.length > 0 && (", 900)
+        self.assertIn("auftraegeGesamt - offeneAuftraege.length", block)
+
+    def test_it_names_who_is_still_missing(self):
+        """„warte noch auf SubAgents" — WER aussteht, nicht nur dass etwas laeuft."""
+        block = _block("{offeneAuftraege.length > 0 && (", 900)
+        self.assertIn("assigned_agent_name", block)
+
+    def test_each_colleague_is_named_once(self):
+        block = _block("{offeneAuftraege.length > 0 && (", 900)
+        self.assertIn("new Set(", block)
+
+    def test_only_unfinished_orders_count_as_open(self):
+        self.assertIn('alleAuftraege.filter((k) => k.phase !== "done")', CHAT)
+
+    def test_a_dismissed_card_leaves_the_count(self):
+        """Das Kreuz entfernt den Eintrag aus ``taskCards`` — die Ableitung
+        haengt daran, also verschwindet er hier von selbst."""
+        self.assertIn("const alleAuftraege = useMemo(() => Object.values(taskCards)", CHAT)
+
+
 class TheTypeIsRealTests(unittest.TestCase):
     """Ein Zweig auf einen Ereignistyp, den es nicht gibt, ist toter Code. Beim
     Bauen fiel genau das auf (``"thinking"`` steht nicht in der Union)."""

@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.197.0] - 2026-08-13
+
+### Hinzugefügt
+- **„In Arbeit"-Anzeige im Chat, solange delegierte Aufträge laufen.**
+  Kundenwunsch: *„Ich wollte im Chat eine Anzeige haben, dass noch am Thema
+  gearbeitet wird (in Progress, warte noch auf SubAgents Rückmeldung)."*
+  Die Lücke war echt: **nach dem Delegieren ist der Zug des Agenten beendet**,
+  also lief kein „Thinking…"-Spinner, obwohl die Aufträge noch liefen. Wer nicht
+  nachfragte, sah gar nichts.
+- Die Zeile nennt den Stand (*3 von 5 erledigt*) **und wen es noch braucht**
+  (*wartet auf DevAgent, MarketingMaker*) — nicht nur, dass irgendetwas läuft.
+- Sie hängt bewusst **nicht** am eigenen Zug des Agenten, sonst wäre sie genau
+  dann verschwunden, wenn man sie braucht. Ausgeblendete Kacheln zählen nicht
+  mehr mit.
+
+---
+
 ## [1.196.0] - 2026-08-13
 
 ### Geändert

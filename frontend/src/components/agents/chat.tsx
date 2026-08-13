@@ -390,6 +390,16 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // Delegierte Auftraege dieses Gespraechs, nach Auftragskennung.
   const [taskCards, setTaskCards] = useState<Record<string, TaskCard>>({});
+  // Stand aller delegierten Auftraege dieses Gespraechs — die Grundlage der
+  // Sammelanzeige „In Arbeit". Nur was noch nicht fertig ist zaehlt als offen;
+  // ein ausgeblendetes Kaertchen (Kreuz) verschwindet hier automatisch mit, weil
+  // es aus `taskCards` entfernt wird.
+  const alleAuftraege = useMemo(() => Object.values(taskCards), [taskCards]);
+  const offeneAuftraege = useMemo(
+    () => alleAuftraege.filter((k) => k.phase !== "done"),
+    [alleAuftraege],
+  );
+  const auftraegeGesamt = alleAuftraege.length;
   // Aufgabe, deren Einzelheiten gerade im Fenster stehen (null = zu).
   const [cardDetail, setCardDetail] = useState<TaskCard | null>(null);
   const [cardDetailFull, setCardDetailFull] = useState<Record<string, unknown> | null>(null);
@@ -1943,6 +1953,29 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           }
           return <MessageRow key={`${msg.id}-${msg.role}`} message={msg} onFork={forkFrom} onRewind={rewindTo} />;
         })}
+        {/* „Es wird noch am Thema gearbeitet." — Wunsch des Kunden (13.08.2026):
+            Nach dem Delegieren ist der Zug des Agenten BEENDET, also laeuft kein
+            Spinner, obwohl die Auftraege noch laufen. Genau in dieser Luecke sah
+            der Mensch bisher nichts und musste nachfragen. Die Kacheln zeigen
+            jede Aufgabe einzeln — hier steht der Stand in EINER Zeile, und zwar
+            unabhaengig davon, ob der Agent selbst gerade denkt. */}
+        {offeneAuftraege.length > 0 && (
+          <div className="flex items-center gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-400" />
+            <div className="flex min-w-0 flex-col">
+              <span className="text-xs text-amber-200/90">
+                In Arbeit — {auftraegeGesamt - offeneAuftraege.length} von {auftraegeGesamt}{" "}
+                {auftraegeGesamt === 1 ? "Auftrag" : "Aufträgen"} erledigt
+              </span>
+              <span className="truncate text-[10px] text-muted-foreground">
+                {/* WER noch aussteht, nicht nur „irgendetwas laeuft" — das war
+                    der eigentliche Wunsch: „warte noch auf SubAgents". */}
+                wartet auf {Array.from(new Set(offeneAuftraege.map(
+                  (k) => k.assigned_agent_name || "einen Kollegen"))).join(", ")}
+              </span>
+            </div>
+          </div>
+        )}
         {isWaiting && !messages.some((m) => m.isStreaming) && (
           <div className="flex items-start gap-3 pl-1 py-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-500/20 shrink-0">
