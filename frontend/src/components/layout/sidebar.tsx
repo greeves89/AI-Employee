@@ -43,7 +43,6 @@ import remarkGfm from "remark-gfm";
 import { NotificationBell } from "./notification-bell";
 import { UpdateBanner } from "./update-banner";
 import { UserMenu } from "./user-menu";
-import { FeedbackModal } from "@/components/feedback/feedback-modal";
 import { useAuthStore } from "@/lib/auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { getMyPermissions, getPendingApprovalCount, type RolePermissions } from "@/lib/api";
@@ -131,7 +130,6 @@ export function Sidebar() {
   const { theme, toggleTheme } = useTheme();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebarCollapsed();
   // The desktop icon-rail (collapsed) must NOT apply on mobile — there the sidebar is
   // an off-canvas drawer that always shows the full menu. Track the lg breakpoint.
@@ -265,7 +263,11 @@ export function Sidebar() {
               </div>
             </div>
             <button
-              onClick={() => setFeedbackOpen(true)}
+              onClick={() => {
+                // Startet den Widget-Flow (Element anpinnen) statt des alten Modals.
+                closeMobile();
+                window.dispatchEvent(new CustomEvent("feedback-widget:open"));
+              }}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-all"
               title="Feedback senden"
             >
@@ -274,8 +276,6 @@ export function Sidebar() {
           </>
         )}
       </div>
-
-      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 scrollbar-thin">

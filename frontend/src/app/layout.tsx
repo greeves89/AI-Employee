@@ -6,6 +6,7 @@ import { AuthGuard } from "@/components/auth/auth-guard";
 import { DialogProvider } from "@/components/ui/dialog-provider";
 import { PwaRegistrar } from "@/components/pwa-registrar";
 import { ConciergeWidget } from "@/components/concierge/concierge-widget";
+import { FeedbackWidget } from "@/components/feedback/feedback-widget";
 import { cn } from "@/lib/utils";
 import "./globals.css";
 
@@ -52,6 +53,8 @@ export default function RootLayout({
               {children}
               {/* Nur fuer Administratoren; blendet sich sonst selbst aus. */}
               <ConciergeWidget />
+              {/* Feedback-Gedöns: auf jeder Route, blendet sich ohne Session aus. */}
+              <FeedbackWidget />
             </AuthGuard>
           </DialogProvider>
         </ThemeProvider>
