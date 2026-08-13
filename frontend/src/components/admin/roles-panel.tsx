@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import { ChevronDown, Loader2, Plus, Save, Search, Shield, Trash2, UserPlus, Users, X } from "lucide-react";
 import * as api from "@/lib/api";
-import type { CustomRole, RolePermissions, MountCatalogEntry, AgentSecretEntry, McpServerInfo } from "@/lib/api";
+import type { CustomRole, RolePermissions, MountCatalogEntry, AgentSecretEntry, McpServerInfo, CustomPage } from "@/lib/api";
 import type { AdminUser, AgentTemplate, AIAccount, Integration } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/dialog-provider";
 
+// Fest eingebaute Menuepunkte. Selbst angelegte Seiten kommen zur Laufzeit dazu
+// (siehe ``menuOptions``) — deshalb steht hier nur, was im Code verdrahtet ist.
 const MENU_PATHS = [
   "/dashboard",
   "/agents",
@@ -127,6 +129,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
   const [secrets, setSecrets] = useState<AgentSecretEntry[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [customPages, setCustomPages] = useState<CustomPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   // Mitglieder-Sektion: aufklappbar, zeigt nur die User DIESER Rolle
@@ -176,10 +179,22 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
 
   const roleNameById = useMemo(() => new Map(roles.map((r) => [r.id, r.name])), [roles]);
 
+  // Menuepfade zum Abhaken: die eingebauten plus die selbst angelegten Seiten.
+  // Ohne den zweiten Teil waere eine neue Seite zwar da, aber in keiner Rolle
+  // freischaltbar — und damit fuer alle ausser Administratoren unsichtbar.
+  const menuOptions = useMemo(() => {
+    const builtin = MENU_PATHS.map((path) => ({ path, label: path }));
+    const pages = customPages.map((p) => ({
+      path: p.menu_path,
+      label: `${p.title} (${p.menu_path})`,
+    }));
+    return [...builtin, ...pages];
+  }, [customPages]);
+
   const reload = async () => {
     setLoading(true);
     try {
-      const [roleData, templateData, mountData, aiAccountData, secretData, mcpData, integrationData] = await Promise.all([
+      const [roleData, templateData, mountData, aiAccountData, secretData, mcpData, integrationData, pageData] = await Promise.all([
         api.listRoles(),
         api.getTemplates(),
         api.getAgentMountCatalog(),
@@ -187,6 +202,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
         api.listSecrets().catch(() => [] as AgentSecretEntry[]),
         api.getMcpServers().then((r) => r.servers).catch(() => [] as McpServerInfo[]),
         api.getIntegrations().then((r) => r.integrations).catch(() => [] as Integration[]),
+        api.listCustomPages().then((r) => r.pages).catch(() => [] as CustomPage[]),
       ]);
       setRoles(roleData.roles);
       onRolesChanged?.(roleData.roles);
@@ -196,6 +212,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
       setSecrets(secretData);
       setMcpServers(mcpData);
       setIntegrations(integrationData);
+      setCustomPages(pageData);
       if (selectedId !== "new") {
         const role = roleData.roles.find((r) => r.id === selectedId);
         setDraft(draftFromRole(role));
@@ -518,15 +535,15 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
 
             <PermissionBlock title="Menüpfade">
               <div className="flex flex-wrap gap-2">
-                {MENU_PATHS.map((path) => (
+                {menuOptions.map((opt) => (
                   <ToggleChip
-                    key={path}
-                    active={draft.menu_paths == null || draft.menu_paths.includes(path)}
+                    key={opt.path}
+                    active={draft.menu_paths == null || draft.menu_paths.includes(opt.path)}
                     muted={draft.menu_paths == null}
-                    label={path}
+                    label={opt.label}
                     onClick={() => setDraft((d) => ({
                       ...d,
-                      menu_paths: toggleListValue(d.menu_paths, path),
+                      menu_paths: toggleListValue(d.menu_paths, opt.path),
                     }))}
                   />
                 ))}

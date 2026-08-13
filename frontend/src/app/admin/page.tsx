@@ -38,6 +38,7 @@ import {
   HeartPulse,
   ScrollText,
   Brain,
+  AppWindow,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 
@@ -56,13 +57,15 @@ import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { MountPermissionsModal } from "@/components/admin/mount-permissions-modal";
 import { RolesPanel } from "@/components/admin/roles-panel";
+import { PagesPanel } from "@/components/admin/pages-panel";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 import { formatMoney } from "@/lib/money";
 
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
-  | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit" | "dlp";
+  | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit" | "dlp"
+  | "pages";
 
 // Tabs whose content is a full embedded page component (rendered without
 // their own <Header>). They don't depend on the admin page's own data load.
@@ -76,7 +79,7 @@ const TAB_GROUPS: { id: string; label: string; icon: typeof Users; tabs: Tab[] }
   { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains"] },
   { id: "security", label: "Sicherheit", icon: Shield, tabs: ["secrets", "dlp", "audit"] },
   { id: "ops", label: "Betrieb", icon: HeartPulse, tabs: ["health", "budget", "feedback"] },
-  { id: "system", label: "System", icon: SettingsIcon, tabs: ["settings"] },
+  { id: "system", label: "System", icon: SettingsIcon, tabs: ["settings", "pages"] },
 ];
 
 const stateColors: Record<string, string> = {
@@ -401,6 +404,7 @@ export default function AdminPage() {
     { id: "health", label: "Health", icon: HeartPulse },
     { id: "audit", label: "Audit Log", icon: ScrollText },
     { id: "dlp", label: "DLP-Filter", icon: Shield },
+    { id: "pages", label: "Seiten & Links", icon: AppWindow },
   ];
 
   const tabById = new Map(tabs.map((t) => [t.id, t]));
@@ -1029,6 +1033,8 @@ export default function AdminPage() {
                 onRolesChanged={setCustomRoles}
               />
             )}
+
+            {tab === "pages" && <PagesPanel />}
 
             {tab === "budget" && (
               <BudgetTab

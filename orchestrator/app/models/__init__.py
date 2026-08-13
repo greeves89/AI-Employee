@@ -43,6 +43,7 @@ from app.models.vault_chunk import VaultChunk
 from app.models.job_state import JobState
 from app.models.reflection_run import ReflectionRun
 from app.models.app_share import AppShare, APP_SHARE_SCOPES
+from app.models.custom_page import CustomPage, GROUP_KEYS, OPEN_MODES
 
 __all__ = [
     "AppShare", "APP_SHARE_SCOPES",
@@ -73,4 +74,5 @@ __all__ = [
     "VaultChunk",
     "JobState",
     "ReflectionRun",
+    "CustomPage", "GROUP_KEYS", "OPEN_MODES",
 ]
