@@ -222,6 +222,15 @@ class Settings(BaseSettings):
     feedback_webhook_url: str = ""
     feedback_webhook_api_key: str = ""
 
+    # Feedback-Widget: MD-Dateien (+PNG-Screenshots) sind die Source of Truth,
+    # abgelegt in diesem Verzeichnis (Compose-Volume, ueberlebt Redeploys).
+    feedback_dir: str = "/data/feedback"
+    # Beim Speichern automatisch ein GitHub-Issue anlegen (best-effort, nutzt
+    # die GitHub-Integration aus oauth_integrations). Default aus.
+    feedback_issue_enabled: bool = False
+    # Ziel-Repo fuer Feedback-Issues ("owner/repo"). Leer -> Default-Repo.
+    github_repo: str = ""
+
     # GitHub API token for skill crawler (avoids 60 req/h rate limit → 5000 req/h)
     github_token: str = ""
 

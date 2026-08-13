@@ -39,6 +39,14 @@ class Feedback(Base):
     )
     admin_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     github_issue_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Widget-Feedback ("Feedback-Gedöns"): gepinntes Element + Ablage im MD-Store.
+    # Alle nullable — Alt-Einträge aus dem Modal haben sie nicht.
+    page: Mapped[str | None] = mapped_column(String, nullable=True)
+    element_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    selector: Mapped[str | None] = mapped_column(String, nullable=True)
+    sentiment: Mapped[str | None] = mapped_column(String, nullable=True)
+    md_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    screenshot_file: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

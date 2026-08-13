@@ -121,6 +121,10 @@ services:
       OAUTH_ANTHROPIC_SCOPES: ${OAUTH_ANTHROPIC_SCOPES:-}
       FEEDBACK_WEBHOOK_URL: ${FEEDBACK_WEBHOOK_URL:-}
       FEEDBACK_WEBHOOK_API_KEY: ${FEEDBACK_WEBHOOK_API_KEY:-}
+      # Feedback-Widget: MD+PNG-Ablage (Volume unten) + optionale Issue-Spiegelung
+      FEEDBACK_DIR: /data/feedback
+      FEEDBACK_ISSUE_ENABLED: ${FEEDBACK_ISSUE_ENABLED:-false}
+      GITHUB_REPO: ${GITHUB_REPO:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       CLAUDE_CODE_OAUTH_REFRESH_TOKEN: ${CLAUDE_CODE_OAUTH_REFRESH_TOKEN:-}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-claude-sonnet-4-6}
@@ -179,6 +183,8 @@ services:
       - ./VERSION:/VERSION:ro
       - ./CHANGELOG.md:/CHANGELOG.md:ro
       - ai-employee-shared:/shared
+      # Feedback-Widget: MD-Dateien + Screenshots ueberleben Redeploys
+      - feedback_data:/data/feedback
       - ${HOME}/.ai-employee:/host-auth:ro
       # Second Brains base — orchestrator provisions per-department vault folders here
       - ${SECONDBRAIN_BASE:-/srv/secondbrain}:/srv/secondbrain
@@ -348,6 +354,7 @@ volumes:
   redis_data:
   embedding_models:
   stt_models:
+  feedback_data:
   ai-employee-shared:
     external: true
 

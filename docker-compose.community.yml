@@ -92,11 +92,17 @@ services:
       # Agent image this orchestrator spawns
       AGENT_IMAGE: "ghcr.io/greeves89/ai-employee-agent:${AI_EMPLOYEE_VERSION:-latest}"
       AGENT_NETWORK: ai-employee-network
+      # Feedback-Widget: MD+PNG-Ablage (Volume unten) + optionale Issue-Spiegelung
+      FEEDBACK_DIR: /data/feedback
+      FEEDBACK_ISSUE_ENABLED: ${FEEDBACK_ISSUE_ENABLED:-false}
+      GITHUB_REPO: ${GITHUB_REPO:-}
     volumes:
       # Docker socket is required so the orchestrator can spawn agent containers
       - /var/run/docker.sock:/var/run/docker.sock
       # Shared volume accessible by all agents for cross-agent file exchange
       - ai-employee-shared:/shared
+      # Feedback-Widget: MD-Dateien + Screenshots ueberleben Redeploys
+      - feedback_data:/data/feedback
     deploy:
       resources:
         limits:
@@ -174,6 +180,8 @@ volumes:
     name: ai-employee-embedding-models
   ai-employee-shared:
     name: ai-employee-shared
+  feedback_data:
+    name: ai-employee-feedback-data
 
 networks:
   internal:
