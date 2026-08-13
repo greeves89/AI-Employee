@@ -109,6 +109,26 @@ class RedisService:
         'return redis.call("del", KEYS[1]) else return 0 end'
     )
 
+    async def acquire_lock(self, key: str, ttl_seconds: int = 20) -> str | None:
+        """Atomically acquire a short-lived named lock (SET NX EX).
+
+        Generic building block behind acquire_dispatch_lock. Returns a token
+        to release the lock with, or None if another holder already has it.
+        """
+        if not self.client:
+            return None
+        token = secrets.token_hex(8)
+        acquired = await self.client.set(f"lock:{key}", token, nx=True, ex=ttl_seconds)
+        return token if acquired else None
+
+    async def release_lock(self, key: str, token: str) -> None:
+        if not self.client or not token:
+            return
+        try:
+            await self.client.eval(self._RELEASE_LOCK_SCRIPT, 1, f"lock:{key}", token)
+        except Exception as e:
+            logger.warning("Failed to release lock %s: %s", scrub_log(key), e)
+
     async def acquire_dispatch_lock(self, agent_id: str, ttl_seconds: int = 20) -> str | None:
         """Atomically acquire a short-lived per-agent task-dispatch lock.
 
@@ -121,25 +141,10 @@ class RedisService:
         Returns a token to release the lock with, or None if another
         dispatch for this agent is already in flight.
         """
-        if not self.client:
-            return None
-        token = secrets.token_hex(8)
-        acquired = await self.client.set(
-            f"agent:{agent_id}:dispatch_lock", token, nx=True, ex=ttl_seconds
-        )
-        return token if acquired else None
+        return await self.acquire_lock(f"agent:{agent_id}:dispatch_lock", ttl_seconds)
 
     async def release_dispatch_lock(self, agent_id: str, token: str) -> None:
-        if not self.client or not token:
-            return
-        try:
-            await self.client.eval(
-                self._RELEASE_LOCK_SCRIPT, 1, f"agent:{agent_id}:dispatch_lock", token
-            )
-        except Exception as e:
-            logger.warning(
-                "Failed to release dispatch lock for agent %s: %s", scrub_log(agent_id), e
-            )
+        await self.release_lock(f"agent:{agent_id}:dispatch_lock", token)
 
     async def subscribe(self, channel: str):
         if not self.client:
