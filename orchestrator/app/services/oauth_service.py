@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.encryption import decrypt_token, encrypt_token
 from app.core.log_redaction import scrub_log
+from app.core.url_guard import check_outbound_url
 from app.core.oauth_providers import (
     PROVIDERS,
     apply_tenant,
@@ -341,17 +342,39 @@ class OAuthService:
         logger.info("Refreshed token for %s (user=%s)", integration.provider.value, integration.user_id)
         return integration
 
-    async def store_pat(self, provider_name: str, token: str, user_id: str | None = None) -> OAuthIntegration:
-        """Store a Personal Access Token (e.g., GitHub PAT)."""
+    async def store_pat(
+        self,
+        provider_name: str,
+        token: str,
+        user_id: str | None = None,
+        base_url: str | None = None,
+    ) -> OAuthIntegration:
+        """Store a Personal Access Token (e.g., GitHub PAT).
+
+        `base_url` (#532 phase 2) points the token at a self-hosted instance —
+        currently only meaningful for provider="github" (GitHub Enterprise
+        Server). Ignored for providers without a self-hosted variant.
+        """
         provider_enum = OAuthProvider(provider_name)
         if not _is_per_user(provider_name):
             user_id = None
         provider = get_provider(provider_name)
+        host_type = "github" if (base_url and provider_name == "github") else None
+        userinfo_url = provider.userinfo_url
+        if host_type == "github" and base_url:
+            userinfo_url = f"{base_url.rstrip('/')}/api/v3/user"
+            # base_url is user-supplied (self-hosted GHES) — without this check a
+            # caller could point it at an internal service or the cloud metadata
+            # endpoint and use this server to probe it (SSRF).
+            allowed, reason = check_outbound_url(userinfo_url)
+            if not allowed:
+                raise ValueError(f"Invalid base_url: {reason}")
         account_label = None
-        if provider.userinfo_url:
+        if userinfo_url:
             async with httpx.AsyncClient() as client:
+                # codeql[py/partial-ssrf]: userinfo_url is validated by check_outbound_url above.
                 resp = await client.get(
-                    provider.userinfo_url,
+                    userinfo_url,
                     headers={
                         "Authorization": f"Bearer {token}" if not token.startswith("ghp_") else f"token {token}",
                         "Accept": "application/json",
@@ -373,6 +396,8 @@ class OAuthService:
             integration.expires_at = None
             integration.scopes = " ".join(get_provider_scopes(provider))
             integration.account_label = account_label
+            integration.host_type = host_type
+            integration.base_url = base_url if host_type else None
         else:
             integration = OAuthIntegration(
                 provider=provider_enum,
@@ -381,6 +406,8 @@ class OAuthService:
                 token_type="token",
                 scopes=" ".join(get_provider_scopes(provider)),
                 account_label=account_label,
+                host_type=host_type,
+                base_url=base_url if host_type else None,
             )
             self.db.add(integration)
 

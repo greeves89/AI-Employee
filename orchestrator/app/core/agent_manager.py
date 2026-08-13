@@ -1198,7 +1198,10 @@ class AgentManager:
             integration = result.scalar_one_or_none()
             if integration:
                 token = decrypt_token(integration.access_token_encrypted)
-                env.update(get_git_host_provider("github").get_agent_env(token))
+                provider = get_git_host_provider(
+                    integration.host_type or "github", integration.base_url
+                )
+                env.update(provider.get_agent_env(token))
         if "microsoft" in agent_integrations and user_id:
             from sqlalchemy import and_ as _sqland
             result = await self.db.execute(

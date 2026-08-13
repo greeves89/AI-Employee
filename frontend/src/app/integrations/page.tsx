@@ -247,6 +247,8 @@ export default function IntegrationsPage() {
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [patToken, setPatToken] = useState("");
+  const [patBaseUrl, setPatBaseUrl] = useState("");
+  const [patSelfHosted, setPatSelfHosted] = useState(false);
   const [patSaving, setPatSaving] = useState<string | null>(null);
   const [patVisible, setPatVisible] = useState(false);
   const [setupExpanded, setSetupExpanded] = useState<string | null>(null);
@@ -330,9 +332,12 @@ export default function IntegrationsPage() {
     if (!patToken.trim()) return;
     setPatSaving(provider);
     try {
-      const result = await api.savePatToken(provider, patToken.trim());
+      const baseUrl = patSelfHosted ? patBaseUrl.trim() : "";
+      const result = await api.savePatToken(provider, patToken.trim(), baseUrl);
       setToast({ type: "success", message: `Connected to ${provider} as ${result.account_label || "unknown"}` });
       setPatToken("");
+      setPatBaseUrl("");
+      setPatSelfHosted(false);
       setPatVisible(false);
       await loadIntegrations();
     } catch (e) {
@@ -569,6 +574,29 @@ export default function IntegrationsPage() {
                         <p className="text-[10px] text-muted-foreground/50 mt-1.5">
                           Create a token at github.com/settings/tokens with repo, workflow, and read:org scopes
                         </p>
+
+                        {integration.provider === "github" && (
+                          <div className="mt-3">
+                            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={patSelfHosted}
+                                onChange={(e) => setPatSelfHosted(e.target.checked)}
+                                className="h-3 w-3"
+                              />
+                              Self-hosted (GitHub Enterprise Server)
+                            </label>
+                            {patSelfHosted && (
+                              <input
+                                type="text"
+                                value={patBaseUrl}
+                                onChange={(e) => setPatBaseUrl(e.target.value)}
+                                placeholder="https://ghe.example.com"
+                                className="mt-1.5 w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                              />
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

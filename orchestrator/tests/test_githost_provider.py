@@ -27,6 +27,45 @@ def test_get_agent_env_sets_both_token_vars():
     assert env == {"GITHUB_TOKEN": "test_pat_abc123", "GH_TOKEN": "test_pat_abc123"}
 
 
+# --- #532 phase 2: base_url (GitHub Enterprise Server) ---
+
+
+def test_registry_with_base_url_routes_to_ghes_api():
+    provider = get_git_host_provider("github", "https://ghe.example.com")
+    assert isinstance(provider, GitHubHostProvider)
+    assert provider.api_base == "https://ghe.example.com/api/v3"
+    assert provider.host == "ghe.example.com"
+
+
+def test_registry_without_base_url_still_uses_public_github():
+    provider = get_git_host_provider("github", None)
+    assert provider.api_base == "https://api.github.com"
+    assert provider.host is None
+
+
+def test_registry_base_url_trailing_slash_stripped():
+    provider = get_git_host_provider("github", "https://ghe.example.com/")
+    assert provider.api_base == "https://ghe.example.com/api/v3"
+
+
+def test_get_agent_env_sets_gh_host_for_ghes():
+    provider = GitHubHostProvider(api_base="https://ghe.example.com/api/v3", host="ghe.example.com")
+    env = provider.get_agent_env("tok")
+    assert env == {"GITHUB_TOKEN": "tok", "GH_TOKEN": "tok", "GH_HOST": "ghe.example.com"}
+
+
+@pytest.mark.asyncio
+async def test_ghes_provider_hits_enterprise_api_base():
+    client = _client(get_resp=_resp(200, {"items": [{"number": 5}]}))
+    provider = GitHubHostProvider(api_base="https://ghe.example.com/api/v3", host="ghe.example.com")
+
+    result = await provider.search_open_issue(client, "tok", "org/repo", "x")
+
+    assert result == 5
+    args, _ = client.get.call_args
+    assert args[0] == "https://ghe.example.com/api/v3/search/issues"
+
+
 def _client(get_resp=None, post_resp=None, patch_resp=None):
     client = AsyncMock()
     if get_resp is not None:

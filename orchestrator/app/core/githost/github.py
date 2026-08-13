@@ -11,10 +11,17 @@ from app.core.githost.base import GitHostProvider
 
 
 class GitHubHostProvider(GitHostProvider):
-    api_base = "https://api.github.com"
+    def __init__(self, api_base: str = "https://api.github.com", host: str | None = None):
+        self.api_base = api_base
+        # `gh` needs GH_HOST (bare hostname, no scheme) to target a GitHub
+        # Enterprise Server instance instead of github.com.
+        self.host = host
 
     def get_agent_env(self, token: str) -> dict[str, str]:
-        return {"GITHUB_TOKEN": token, "GH_TOKEN": token}
+        env = {"GITHUB_TOKEN": token, "GH_TOKEN": token}
+        if self.host:
+            env["GH_HOST"] = self.host
+        return env
 
     async def search_open_issue(
         self, client: httpx.AsyncClient, token: str, repo: str, title: str
