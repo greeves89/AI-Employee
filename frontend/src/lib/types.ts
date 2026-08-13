@@ -525,6 +525,13 @@ export interface Feedback {
   status: FeedbackStatus;
   admin_notes: string | null;
   github_issue_url: string | null;
+  // Widget-Feedback: gepinntes Element + Ablage im MD-Store (leer bei Alt-Einträgen).
+  page: string | null;
+  element_label: string | null;
+  selector: string | null;
+  sentiment: string | null;
+  md_file: string | null;
+  screenshot_file: string | null;
   created_at: string;
   updated_at: string | null;
 }

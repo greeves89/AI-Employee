@@ -1,0 +1,56 @@
+/* Feedback-Widget ("Feedback-Gedöns") — Farben über die Theme-Variablen aus
+   globals.css, damit Light- und Dark-Mode ohne Extra-Regeln stimmen. */
+.fbw-fab { position: fixed; right: 76px; bottom: 20px; z-index: 900; display: inline-flex; align-items: center; gap: 8px;
+  background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border: none; border-radius: 24px; padding: 10px 16px;
+  font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 6px 20px hsl(var(--primary) / .25); }
+.fbw-fab:hover { filter: brightness(1.1); }
+.fbw-hi { position: fixed; z-index: 940; pointer-events: none; border: 2px solid hsl(var(--primary)); background: hsl(var(--primary) / .10); border-radius: 4px; transition: all .04s linear; }
+.fbw-hint { position: fixed; z-index: 950; top: 16px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px;
+  background: hsl(var(--card)); color: hsl(var(--card-foreground)); border: 1px solid hsl(var(--border)); padding: 10px 16px; border-radius: 10px;
+  font-size: 13.5px; font-weight: 500; box-shadow: 0 6px 20px rgb(0 0 0 / .28); }
+.fbw-hint button { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); border: none; border-radius: 7px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.fbw-panel { position: fixed; right: 20px; bottom: 20px; z-index: 950; width: 360px; max-width: calc(100vw - 32px);
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: 14px; box-shadow: 0 14px 44px rgb(0 0 0 / .3);
+  padding: 14px; color: hsl(var(--card-foreground)); font-size: 14px; line-height: 1.5; }
+.fbw-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.fbw-head > span { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; }
+.fbw-head button { background: none; border: none; color: hsl(var(--muted-foreground)); cursor: pointer; padding: 2px; }
+.fbw-pin { font-size: 12.5px; background: hsl(var(--muted)); border-radius: 8px; padding: 7px 10px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.fbw-pin > span:first-child { color: hsl(var(--muted-foreground)); }
+.fbw-page { margin-left: auto; font-size: 10.5px; color: hsl(var(--muted-foreground)); font-family: var(--font-mono), ui-monospace, Menlo, monospace; }
+.fbw-user { font-size: 11.5px; color: hsl(var(--muted-foreground)); display: inline-flex; align-items: center; gap: 4px; margin-top: 5px; }
+.fbw-sent { display: flex; gap: 6px; margin: 10px 0 6px; }
+.fbw-sent button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid hsl(var(--border));
+  background: transparent; border-radius: 8px; padding: 7px 4px; font: inherit; font-size: 12px; color: hsl(var(--muted-foreground)); cursor: pointer; }
+.fbw-sent button.on { font-weight: 600; background: hsl(var(--muted) / .5); }
+.fbw-cats { display: flex; gap: 6px; margin: 0 0 6px; }
+.fbw-cats button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid hsl(var(--border));
+  background: transparent; border-radius: 8px; padding: 5px 3px; font: inherit; font-size: 11px; color: hsl(var(--muted-foreground)); cursor: pointer; }
+.fbw-cats button.on { font-weight: 600; color: hsl(var(--primary)); border-color: hsl(var(--primary) / .5); background: hsl(var(--primary) / .08); }
+.fbw-shot { margin: 8px 0 2px; }
+.fbw-shot-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: hsl(var(--muted-foreground)); cursor: pointer; user-select: none; }
+.fbw-shot-toggle input { accent-color: hsl(var(--primary)); cursor: pointer; }
+.fbw-shot-busy { color: hsl(var(--muted-foreground) / .6); font-style: italic; }
+.fbw-shot-thumb { display: block; margin-top: 7px; width: 100%; max-height: 150px; object-fit: cover; object-position: top left;
+  border: 1px solid hsl(var(--border)); border-radius: 8px; }
+.fbw-msgs { display: flex; flex-direction: column; gap: 7px; margin: 8px 0; max-height: 200px; overflow-y: auto; }
+.fbw-msg { padding: 8px 11px; border-radius: 9px; font-size: 13px; line-height: 1.5; }
+.fbw-msg.user { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); align-self: flex-end; max-width: 88%; }
+.fbw-msg.bot { background: hsl(var(--muted)); color: hsl(var(--card-foreground)); align-self: flex-start; max-width: 92%; }
+.fbw-error { font-size: 12.5px; color: hsl(var(--destructive)); margin: 4px 0; }
+.fbw-panel textarea { width: 100%; border: 1px solid hsl(var(--input)); background: transparent; color: inherit; border-radius: 9px;
+  padding: 9px 11px; font: inherit; font-size: 13.5px; resize: vertical; outline: none; }
+.fbw-panel textarea:focus { border-color: hsl(var(--ring)); }
+.fbw-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 9px; }
+.fbw-btn { display: inline-flex; align-items: center; gap: 6px; background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+  border: none; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; }
+.fbw-btn:hover { filter: brightness(1.1); }
+.fbw-btn:disabled { opacity: .5; cursor: default; }
+.fbw-btn.ghost { background: none; color: hsl(var(--muted-foreground)); border: 1px solid hsl(var(--border)); }
+.fbw-btn.ghost:hover { background: hsl(var(--muted) / .5); color: hsl(var(--card-foreground)); filter: none; }
+.fbw-done { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; padding: 6px 0; flex-wrap: wrap; }
+.fbw-done svg { color: hsl(var(--success)); }
+.fbw-issue { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: hsl(var(--primary)); text-decoration: none; }
+.fbw-issue:hover { text-decoration: underline; }
+.fbw-spin { animation: fbw-rotate 1s linear infinite; }
+@keyframes fbw-rotate { to { transform: rotate(360deg); } }

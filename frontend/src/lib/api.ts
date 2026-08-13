@@ -1958,6 +1958,35 @@ export async function createFeedback(data: {
   });
 }
 
+// Feedback-Widget: genau EINE Requirements-Rückfrage vom LLM.
+export async function feedbackWidgetReply(
+  messages: { role: "user" | "bot"; text: string }[],
+  context: Record<string, unknown>,
+): Promise<{ reply: string }> {
+  return fetchJSON(`${getBase()}/feedback/reply`, {
+    method: "POST",
+    body: JSON.stringify({ messages, context }),
+  });
+}
+
+// Feedback-Widget: speichert MD (+PNG) serverseitig und legt den DB-Eintrag an.
+// Der User kommt aus der Session — bewusst kein user-Feld im Payload.
+export async function feedbackWidgetSave(
+  messages: { role: "user" | "bot"; text: string }[],
+  context: Record<string, unknown>,
+  screenshot: string | null,
+): Promise<{ ok: boolean; id: string; screenshot: string | null; issue_url?: string }> {
+  return fetchJSON(`${getBase()}/feedback/save`, {
+    method: "POST",
+    body: JSON.stringify({ messages, context, screenshot }),
+  });
+}
+
+// URL des gespeicherten Feedback-Screenshots (admin-only, Auth via Cookie).
+export function feedbackImageUrl(fid: string): string {
+  return `${getBase()}/feedback/image/${encodeURIComponent(fid)}`;
+}
+
 // Agent Assignments (Admin)
 export async function assignAgentToUser(userId: string, templateId: number, name?: string, budgetUsd?: number): Promise<{ status: string; agent_id: string; agent_name: string; user_name: string; template_name: string }> {
   return fetchJSON(`${getBase()}/admin/assign-agent`, {

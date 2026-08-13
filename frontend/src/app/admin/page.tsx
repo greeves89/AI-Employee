@@ -24,6 +24,9 @@ import {
   Bug,
   Lightbulb,
   TrendingUp,
+  Camera,
+  ThumbsUp,
+  ThumbsDown,
   ChevronDown,
   DollarSign,
   AlertTriangle,
@@ -1452,6 +1455,13 @@ const CATEGORY_COLORS: Record<string, string> = {
   general: "text-zinc-400",
 };
 
+// Sentiment aus dem Feedback-Widget (leer bei Alt-Einträgen aus dem Modal).
+const SENTIMENTS: Record<string, { label: string; icon: typeof ThumbsUp; color: string }> = {
+  positiv: { label: "Gefällt mir", icon: ThumbsUp, color: "text-emerald-400" },
+  negativ: { label: "Stört mich", icon: ThumbsDown, color: "text-orange-400" },
+  wunsch: { label: "Wunsch", icon: Lightbulb, color: "text-amber-400" },
+};
+
 function FeedbackTab({
   items,
   loading,
@@ -1566,6 +1576,7 @@ function FeedbackTab({
         const CatIcon = CATEGORY_ICONS[f.category] || MessageSquare;
         const catColor = CATEGORY_COLORS[f.category] || "text-zinc-400";
         const statusCfg = STATUS_OPTIONS.find((s) => s.value === f.status) || STATUS_OPTIONS[0];
+        const sentiment = f.sentiment ? SENTIMENTS[f.sentiment] : undefined;
         const isExpanded = expandedNotes === f.id;
 
         return (
@@ -1594,6 +1605,12 @@ function FeedbackTab({
                       {statusCfg.label}
                     </span>
                     <span className="text-[10px] text-muted-foreground/50 capitalize">{f.category}</span>
+                    {sentiment && (
+                      <span className={cn("inline-flex items-center gap-1 text-[10px]", sentiment.color)}>
+                        <sentiment.icon className="h-3 w-3" />
+                        {sentiment.label}
+                      </span>
+                    )}
                   </div>
                   {f.description && (
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{f.description}</p>
@@ -1601,6 +1618,23 @@ function FeedbackTab({
                   <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground/50">
                     <span>{f.user_name || f.user_id}</span>
                     <span>{new Date(f.created_at).toLocaleString("de-DE")}</span>
+                    {f.page && <span className="font-mono">{f.page}</span>}
+                    {f.element_label && (
+                      <span className="truncate max-w-[180px]" title={f.selector || undefined}>
+                        Element: {f.element_label}
+                      </span>
+                    )}
+                    {f.screenshot_file && f.md_file && (
+                      <a
+                        href={api.feedbackImageUrl(f.md_file.replace(/\.md$/, ""))}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        <Camera className="h-3 w-3" />
+                        Screenshot
+                      </a>
+                    )}
                     {f.github_issue_url && (
                       <a
                         href={f.github_issue_url}
