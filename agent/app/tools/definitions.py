@@ -592,7 +592,14 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "list_team",
-            "description": "List all agents in your team with their names, roles, and current status.",
+            "description": (
+                "SYSTEM-WIDE directory of agents visible to you across teams, with names, "
+                "roles and status. Use it to FIND someone outside your own team. "
+                "This is NOT your team: when asked 'which agents do you have / who is on "
+                "your team', answer from list_my_team ALONE and never merge these entries "
+                "into it — an agent from another team is not your colleague, and naming "
+                "them as one leads to work handed to someone who never picks it up."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {},

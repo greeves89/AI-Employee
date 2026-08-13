@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.191.0] - 2026-08-13
+
+### Geändert
+- **Kacheln: laufende unten fest, fertige im Verlauf.** Bisher standen alle
+  dauerhaft am Ende, und der Chat lief oberhalb weiter — der Stand blieb im Weg,
+  auch wenn längst alles fertig war.
+  Jetzt: **laufende** Aufträge liegen als schmaler Streifen über dem Eingabefeld
+  (der Stand darf einem beim Lesen nicht wegscrollen), **fertige** wandern in den
+  Verlauf — kompakt, zu zweit nebeneinander, mitscrollend und anklickbar.
+
+### Behoben
+- **Der Agent zählte Kollegen aus fremden Teams als sein Team auf.** Er rief
+  `list_my_team` UND `list_team` und verschmolz beides. `list_team` ist aber das
+  **systemweite** Verzeichnis; bei Custom-LLM stand in der Beschreibung sogar
+  wörtlich „all agents in your team". Beide Laufzeiten sagen jetzt klar, dass es
+  nicht das eigene Team ist und die Einträge nicht hineingemischt werden dürfen.
+- **Tote Mitglieder erschienen als Kollegen.** Eine Kennung ohne Agenten (`6e4210c1`
+  im Team „AI DEV") wurde als Mitglied „ohne Rolle" ausgegeben — der Lead hätte ihr
+  Arbeit geben können, die nie jemand annimmt. Sie steht jetzt getrennt unter
+  `stale_member_ids` und nicht mehr in der Mitgliederliste.
+
+---
+
 ## [1.190.1] - 2026-08-13
 
 ### Behoben

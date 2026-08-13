@@ -204,9 +204,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "list_team",
       description:
-        "List the agents visible to you (your own team members plus other teams' leads) with " +
-        "their roles and current status. Use this to find someone to delegate to or message. " +
-        "For the exact roster of YOUR team — including who the lead is — use list_my_team.",
+        "SYSTEM-WIDE directory: agents visible to you across teams (your own members plus " +
+        "other teams' leads), with roles and status. Use it to FIND someone outside your team. " +
+        "\n\nThis is NOT your team. When asked 'which agents do you have / who is on your team', " +
+        "answer from list_my_team ALONE and do not merge these entries into it — an agent from " +
+        "another team is not your colleague, and naming them as such leads to work being handed " +
+        "to someone who never picks it up.",
       inputSchema: {
         type: "object",
         properties: {},

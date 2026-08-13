@@ -1128,6 +1128,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     }
   }, []);
 
+  const alleKacheln = Object.values(taskCards).sort((a, b) => a.at - b.at);
+  const laufendeKacheln = alleKacheln.filter((c) => c.phase !== "done");
+  const erledigteKacheln = alleKacheln.filter((c) => c.phase === "done");
+
   const jumpToLatest = useCallback(() => {
     followRef.current = true;
     setShowJumpToLatest(false);
@@ -1817,75 +1821,65 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
             </div>
           </div>
         )}
-        {/* Delegierte Auftraege dieses Gespraechs. Sie stehen bewusst am Ende und
-            nicht mitten im Verlauf: eine Kachel aktualisiert sich (wartet ->
-            erledigt), eine Chatnachricht kann das nicht. */}
-        {Object.keys(taskCards).length > 0 && viewMode !== "overview" && (
-          <div className="mx-auto w-full max-w-3xl space-y-2 px-4 pb-2">
-            {Object.values(taskCards)
-              .sort((a, b) => a.at - b.at)
-              .map((card) => {
-                const laeuft = card.phase !== "done";
-                const gescheitert = card.status === "failed";
-                return (
-                  <div
-                    key={card.task_id}
-                    className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
-                      laeuft
-                        ? "border-amber-500/40 bg-amber-500/5"
-                        : gescheitert
-                          ? "border-destructive/40 bg-destructive/5"
-                          : "border-emerald-600/40 bg-emerald-600/5"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      {laeuft ? (
-                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-amber-500" />
-                      ) : gescheitert ? (
-                        <XCircle className="h-4 w-4 shrink-0 text-destructive" />
-                      ) : (
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                      )}
-                      <span className="min-w-0 flex-1 truncate font-medium">{card.title}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {card.assigned_agent_name}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-3 pl-6 text-xs text-muted-foreground">
-                      <span>
-                        {card.kind === "message"
-                          ? laeuft
-                            ? "gesendet, wartet auf Antwort"
-                            : "beantwortet"
-                          : laeuft
-                            ? "in Arbeit"
-                            : gescheitert
-                              ? "fehlgeschlagen"
-                              : "abgeschlossen"}
-                      </span>
-                      {card.duration_ms ? <span>{Math.round(card.duration_ms / 1000)} s</span> : null}
-                      {card.kind === "message" ? null : (
-                        <button
-                          type="button"
-                          onClick={() => openCardDetail(card)}
-                          className="ml-auto underline-offset-2 hover:underline"
-                        >
-                          Details
-                        </button>
-                      )}
-                    </div>
-                    {!laeuft && card.result_preview ? (
-                      <p className="mt-1 line-clamp-2 pl-6 text-xs text-muted-foreground">
-                        {card.result_preview}
-                      </p>
-                    ) : null}
+        {/* Fertige Auftraege: klein, nebeneinander, laufen mit dem Verlauf mit.
+            Laufende stehen stattdessen unten fest (siehe Streifen ueber dem
+            Eingabefeld) — sonst scrollt einem der Stand weg, waehrend man liest. */}
+        {erledigteKacheln.length > 0 && viewMode !== "overview" && (
+          <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-2 px-4 pb-2 sm:grid-cols-2">
+            {erledigteKacheln.map((card) => {
+              const gescheitert = card.status === "failed";
+              return (
+                <button
+                  key={card.task_id}
+                  type="button"
+                  onClick={() => openCardDetail(card)}
+                  className={`rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-accent/40 ${
+                    gescheitert
+                      ? "border-destructive/40 bg-destructive/5"
+                      : "border-emerald-600/30 bg-emerald-600/5"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    {gescheitert ? (
+                      <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate font-medium">{card.title}</span>
                   </div>
-                );
-              })}
+                  <div className="mt-0.5 flex items-center gap-2 pl-5 text-[11px] text-muted-foreground">
+                    <span className="truncate">{card.assigned_agent_name}</span>
+                    {card.duration_ms ? <span>{Math.round(card.duration_ms / 1000)} s</span> : null}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* Laufende Auftraege bleiben stehen, solange sie laufen — der Stand darf
+          einem nicht wegscrollen, waehrend man liest. Fertige wandern in den
+          Verlauf (siehe oben). */}
+      {laufendeKacheln.length > 0 && viewMode !== "overview" && (
+        <div className="pointer-events-auto absolute bottom-24 left-1/2 z-10 w-full max-w-3xl -translate-x-1/2 space-y-1.5 px-4">
+          {laufendeKacheln.map((card) => (
+            <button
+              key={card.task_id}
+              type="button"
+              onClick={() => openCardDetail(card)}
+              className="flex w-full items-center gap-2 rounded-lg border border-amber-500/40 bg-card/95 px-3 py-1.5 text-left text-xs shadow-lg backdrop-blur transition-colors hover:bg-accent/40"
+            >
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-500" />
+              <span className="min-w-0 flex-1 truncate font-medium">{card.title}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {card.assigned_agent_name}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Wer hochgescrollt hat, kommt mit einem Klick zurueck. Ohne das bleibt
           man in einem langen Gespraech oben stehen und muesste sich per Hand bis
