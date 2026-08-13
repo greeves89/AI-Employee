@@ -45,14 +45,79 @@ import { UpdateBanner } from "./update-banner";
 import { UserMenu } from "./user-menu";
 import { useAuthStore } from "@/lib/auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
-import { getMyPermissions, getPendingApprovalCount, type RolePermissions } from "@/lib/api";
+import {
+  getMyPermissions,
+  getPendingApprovalCount,
+  listMyCustomPages,
+  type CustomPage,
+  type RolePermissions,
+} from "@/lib/api";
+import { pageIcon } from "@/lib/page-icons";
 
 type NavItem = {
   href: string;
   label: string;
   icon: React.ElementType;
   simpleVisible: boolean;
+  /** Gesetzt bei selbst angelegten Menuepunkten der Art "Link": der Eintrag
+   *  oeffnet die Adresse direkt in einem neuen Tab, statt erst unsere Seite zu
+   *  laden, die nur einen Knopf dorthin zeigt. */
+  external?: string;
 };
+
+/** Nur echte Webadressen taugen als Ziel eines Menuepunkts.
+ *
+ *  Alles andere — allen voran ``javascript:`` — waere fremder Code, der beim
+ *  Klick in unserer eigenen Oberflaeche liefe, mit der Sitzung des Angemeldeten.
+ *  Der Server prueft das bereits beim Anlegen und Aendern; hier steht die zweite
+ *  Sperre fuer Eintraege, die auf anderem Weg in die Datenbank gelangt sind.
+ *  Ein ungueltiger Eintrag verschwindet lieber, als still auf ``#`` zu zeigen —
+ *  ein Menuepunkt, der nichts tut, sieht aus wie ein Fehler und wird gemeldet. */
+function nurWebAdresse(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  return /^https?:\/\//i.test(url.trim()) ? url.trim() : undefined;
+}
+
+/** Ein Menuepunkt fuehrt entweder in die Anwendung (Next-Link) oder nach draussen
+ *  (neuer Tab). Beide Darstellungen — eingeklappt und ausgeklappt — brauchen
+ *  dieselbe Unterscheidung, deshalb steht sie hier an einer Stelle. */
+function NavShell({
+  item,
+  className,
+  title,
+  onClick,
+  children,
+}: {
+  item: NavItem;
+  className: string;
+  title?: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  if (item.external) {
+    // Zweites Schloss. Der Server laesst beim Anlegen und Aendern nur http/https
+    // durch (custom_pages._validate_url) — aber Zeilen aus der Zeit davor oder
+    // aus einem direkten Datenbankzugriff kaemen daran vorbei, und ein
+    // ``javascript:``-Wert im ``href`` waere fremder Code in unserer Oberflaeche.
+    return (
+      <a
+        href={item.external}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={title}
+        onClick={onClick}
+        className={className}
+      >
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link href={item.href} title={title} onClick={onClick} className={className}>
+      {children}
+    </Link>
+  );
+}
 
 type NavGroup = {
   label: string;
@@ -147,6 +212,7 @@ export function Sidebar() {
   const [aboutVersion, setAboutVersion] = useState<string | null>(null);
   const [aboutChangelog, setAboutChangelog] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<RolePermissions | null>(null);
+  const [customPages, setCustomPages] = useState<CustomPage[]>([]);
   // GitHub-star nudge: highlight the Star link at most once per calendar day.
   const [starNudge, setStarNudge] = useState(false);
 
@@ -172,6 +238,19 @@ export function Sidebar() {
     getMyPermissions()
       .then((d) => setPermissions(d.permissions))
       .catch(() => setPermissions(null));
+  }, [user?.id, user?.custom_role_id, user?.role]);
+
+  // Vom Administrator angelegte Menuepunkte. Der Server liefert hier bereits nur,
+  // was diese Rolle sehen darf — die Adresse einer fremden Seite soll niemand
+  // bekommen, nur weil die Seitenleiste sie hinterher ausgeblendet haette.
+  useEffect(() => {
+    if (!user) {
+      setCustomPages([]);
+      return;
+    }
+    listMyCustomPages()
+      .then((d) => setCustomPages(d.pages))
+      .catch(() => setCustomPages([]));
   }, [user?.id, user?.custom_role_id, user?.role]);
 
   useEffect(() => {
@@ -220,17 +299,39 @@ export function Sidebar() {
     return allowed.some((path) => href === path || href.startsWith(`${path.replace(/\/$/, "")}/`));
   };
 
+  // Angelegte Seiten in ihre Gruppe einsortieren. Sie stehen ans Ende der Gruppe,
+  // damit die gewohnten Punkte ihren Platz behalten; untereinander entscheidet die
+  // im Verwaltungsbereich vergebene Reihenfolge (der Server liefert schon sortiert).
+  const extraItemsFor = (groupKey: string): NavItem[] =>
+    customPages
+      .filter((p) => p.group_key === groupKey)
+      .map((p) => ({
+        href: p.menu_path,
+        label: p.title,
+        icon: pageIcon(p.icon),
+        simpleVisible: true,
+        external: p.open_mode === "link" ? nurWebAdresse(p.url) : undefined,
+      }));
+
   const visibleGroups = navGroups
     .filter((group) => !group.adminOnly || isAdmin)
-    .map((group) => ({ ...group, items: group.items.filter((item) => canSeePath(item.href)) }))
+    .map((group) => ({
+      ...group,
+      items: [...group.items, ...extraItemsFor(group.key)].filter((item) => canSeePath(item.href)),
+    }))
     .filter((group) => group.items.length > 0);
 
   // In collapsed mode, show all visible items (groups are irrelevant)
   const allItems = visibleGroups.flatMap((g) => g.items);
 
+  // Genauer Pfad oder ein Unterpfad davon — nicht blosses startsWith. Sonst
+  // faerbte /p/kunde auch /p/kunden-portal mit ein, sobald zwei angelegte Seiten
+  // mit demselben Wortanfang beginnen. Nach draussen fuehrende Punkte sind nie aktiv.
+  const isItemActive = (item: NavItem) =>
+    !item.external && (pathname === item.href || pathname.startsWith(`${item.href}/`));
+
   // Check if any item in a group is active
-  const isGroupActive = (group: NavGroup) =>
-    group.items.some((item) => pathname.startsWith(item.href));
+  const isGroupActive = (group: NavGroup) => group.items.some(isItemActive);
 
   return (
     <aside
@@ -283,11 +384,11 @@ export function Sidebar() {
           // Collapsed: just icons
           allItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname.startsWith(item.href);
+            const isActive = isItemActive(item);
             return (
-              <Link
+              <NavShell
                 key={item.href}
-                href={item.href}
+                item={item}
                 title={item.label}
                 onClick={closeMobile}
                 className={cn(
@@ -305,7 +406,7 @@ export function Sidebar() {
                     <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400" />
                   )}
                 </span>
-              </Link>
+              </NavShell>
             );
           })
         ) : (
@@ -337,11 +438,11 @@ export function Sidebar() {
                   <div className="mt-0.5 space-y-0.5">
                     {group.items.map((item) => {
                       const Icon = item.icon;
-                      const isActive = pathname.startsWith(item.href);
+                      const isActive = isItemActive(item);
                       return (
-                        <Link
+                        <NavShell
                           key={item.href}
-                          href={item.href}
+                          item={item}
                           onClick={closeMobile}
                           className={cn(
                             "group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150",
@@ -367,7 +468,7 @@ export function Sidebar() {
                           ) : isActive ? (
                             <div className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_6px_rgba(59,130,246,0.5)]" />
                           ) : null}
-                        </Link>
+                        </NavShell>
                       );
                     })}
                   </div>

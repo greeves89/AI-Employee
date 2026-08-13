@@ -447,6 +447,16 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // Elternseite neu gebaut (und die WS-Verbindung neu aufgesetzt) wird.
   const onTurnChangeRef = useRef(onTurnChange);
   useEffect(() => { onTurnChangeRef.current = onTurnChange; });
+  // Welche Gespraechszeilen in der Seitenleiste als „arbeitet" markiert sind.
+  // Die Liste von der Elternseite kommt aus einer Abfrage im 15-Sekunden-Takt —
+  // fuer den EIGENEN laufenden Zug wissen wir es hier sofort und genauer. Ohne
+  // das blieb die Zeile blass, waehrend im Fenster schon „Thinking..." lief: ein
+  // Chat sah je nach Ausloeser des Zuges unterschiedlich aus.
+  const beschaeftigteFaeden = useMemo(() => {
+    const faeden = new Set(busySessionIds || []);
+    if (isWaiting && activeSessionId) faeden.add(activeSessionId);
+    return Array.from(faeden);
+  }, [busySessionIds, isWaiting, activeSessionId]);
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
@@ -935,7 +945,16 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     // beantwortet), hebt das die Anzeige wieder an.
     if (type === "text" || type === "tool_call" || type === "tool_result") {
       if (pendingCountRef.current === 0) pendingCountRef.current = 1;
-      if (!isWaitingRef.current) setIsWaiting(true);
+      if (!isWaitingRef.current) {
+        setIsWaiting(true);
+        // Ein Zug, den der Agent VON SICH AUS beginnt — nach einer Delegation,
+        // nach einer Fertigmeldung, aus einem Zeitplan — faengt ohne unser
+        // Zutun an. Die Elternseite erfaehrt davon sonst erst beim naechsten
+        // 15-Sekunden-Takt, und ein kurzer Zug ist bis dahin vorbei: der
+        // Spinner an der Gespraechszeile blieb aus, obwohl gearbeitet wurde.
+        // Ein Chat muss gleich aussehen, egal wer den Zug angestossen hat.
+        onTurnChangeRef.current?.();
+      }
     }
 
     // Kachel eines delegierten Auftrags — eigener Zustand, kein Chatverlauf:
@@ -1765,7 +1784,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           className="border-r border-border bg-card/40"
           sessions={sessions.map((s) => ({ ...s, fallbackLabel: s.label }))}
           selectedId={activeSessionId}
-          busyIds={busySessionIds}
+          busyIds={beschaeftigteFaeden}
           onSelect={switchSession}
           onNew={createNewSession}
           newDisabled={!isConnected}
@@ -1963,9 +1982,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           <div className="flex items-center gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-400" />
             <div className="flex min-w-0 flex-col">
+              {/* Nur die OFFENEN zaehlen. Ein Bruch „3 von 6" bezog sich auf das
+                  ganze Gespraech und war nicht lesbar, wenn man gerade 4 Auftraege
+                  vergeben hatte — man sucht dann die 6, die es im Bild nicht gibt.
+                  Was hier zaehlt, ist ohnehin nur: worauf warte ich noch. */}
               <span className="text-xs text-amber-200/90">
-                In Arbeit — {auftraegeGesamt - offeneAuftraege.length} von {auftraegeGesamt}{" "}
-                {auftraegeGesamt === 1 ? "Auftrag" : "Aufträgen"} erledigt
+                {offeneAuftraege.length}{" "}
+                {offeneAuftraege.length === 1 ? "Auftrag läuft noch" : "Aufträge laufen noch"}
               </span>
               <span className="truncate text-[10px] text-muted-foreground">
                 {/* WER noch aussteht, nicht nur „irgendetwas laeuft" — das war
@@ -2793,7 +2816,7 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
             groups.push({ kind: "text", content: step.content, idx: i });
           }
         });
-        return groups.map((g) =>
+        return groups.map((g, gi) =>
           g.kind === "text" ? (
             <div key={`text-${g.idx}`}>
               <MarkdownContent content={g.content} />
@@ -2805,7 +2828,18 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
             <ToolCluster
               key={`tools-${g.idx}`}
               steps={g.steps}
-              isStreaming={message.isStreaming && g.steps.some((s) => s.status === "running")}
+              // Der Zug laeuft — mehr braucht die Anzeige nicht zu wissen. Vorher
+              // stand hier zusaetzlich „und ein Werkzeug arbeitet gerade", womit
+              // die Bedingung genau in der Denkpause zwischen den Werkzeugen
+              // falsch wurde: alle Ergebnisse zurueck, der Agent verarbeitet sie,
+              // und die Zeile sagte „4 Tools" statt „Arbeitet…". Es sah
+              // eingeschlafen aus, obwohl gearbeitet wurde.
+              //
+              // Nur die LETZTE Kette im Turn darf den nachrichtenweiten Streaming-
+              // Zustand erben — sonst zeigten laengst fertige, frueher im selben
+              // Turn abgeschlossene Ketten weiter „Arbeitet…" und klappten erst
+              // alle gemeinsam um, wenn der GESAMTE Turn endete.
+              isStreaming={message.isStreaming && gi === groups.length - 1}
             />
           )
         );
@@ -3022,12 +3056,16 @@ function formatAudioTime(seconds: number) {
 
 /* ─── Tool Call Block (Claude CLI Style) ────────────────────────────── */
 
-function ToolCluster({ steps }: { steps: ToolStep[]; isStreaming?: boolean }) {
+function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: boolean }) {
   // Stays compact (overlapping bubbles) at all times — even while the agent is
   // working — so it doesn't pop open and resize on every tool call. The running
   // tool's bubble shows a live spinner; click to expand for details.
   const [expanded, setExpanded] = useState(false);
-  const anyRunning = steps.some((s) => s.status === "running");
+  // ``isStreaming`` wurde uebergeben, aber nie ausgepackt — die Information war
+  // da und wurde verworfen. Sie ist der eigentliche Punkt: „arbeitet" heisst,
+  // dass der ZUG laeuft, nicht dass gerade ein Werkzeug rechnet. Zwischen zwei
+  // Werkzeugen denkt der Agent, und genau dann sah es tot aus.
+  const anyRunning = isStreaming || steps.some((s) => s.status === "running");
 
   if (expanded) {
     return (
@@ -3086,7 +3124,10 @@ function ToolCluster({ steps }: { steps: ToolStep[]; isStreaming?: boolean }) {
           </span>
         )}
       </div>
-      <span className="text-[11px] text-muted-foreground group-hover:text-foreground">
+      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground group-hover:text-foreground">
+        {/* „es dreht sich kein Kreis" — aus dem ersten Kundenfeedback zu dieser
+            Zeile. Ein Wort allein liest man nicht als Bewegung. */}
+        {anyRunning && <Loader2 className="h-3 w-3 animate-spin text-amber-500" />}
         {anyRunning ? "Arbeitet…" : `${steps.length} ${steps.length === 1 ? "Tool" : "Tools"}`} · Details
       </span>
     </button>

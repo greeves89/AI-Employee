@@ -5,6 +5,173 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.200.1] - 2026-08-13
+
+### Behoben
+- **Die Protokoll-Ansichten waren im hellen Erscheinungsbild unlesbar.** Der
+  Kasten stand fest auf Schwarz, während die Zeilen darin dem Erscheinungsbild
+  folgen (`text-foreground`) — im hellen Modus also **dunkle Schrift auf
+  schwarzem Grund**. Nicht nur unpassend, stellenweise schlicht nicht lesbar.
+- Betroffen waren **drei** Stellen mit demselben Muster: das Live-Feld der
+  Aufgabenseite, die Zeitreise-Ansicht darunter und der Live-Terminal des
+  Agenten. Alle drei folgen jetzt dem Erscheinungsbild.
+- Die Akzentfarben der Zeilen (Werkzeug, Fehler, Ergebnis) waren auf schwarzen
+  Grund abgestimmt und auf hellem ausgewaschen — im hellen Modus jetzt eine
+  dunklere Stufe. **Der dunkle Modus bleibt unverändert.**
+- Unangetastet: der Kiosk-Bildschirm (absichtlich schwarz) und der Rand hinter
+  Bildschirmfotos.
+
+---
+
+## [1.200.0] - 2026-08-13
+
+### Neu
+- **Eigene Menüpunkte für fremde Seiten.** Ein Administrator legt eine Seite an
+  (`/p/<kurzname>`), und sie erscheint als regulärer Menüpunkt — wahlweise
+  **eingebettet** (`iframe`) oder als **Link** im neuen Tab. Anlass war OpenWebUI
+  beim Kunden: die Oberfläche soll nicht „daneben" stehen, sondern im selben Menü
+  erreichbar sein wie alles andere.
+- **Keine zweite Rechte-Logik.** Wer die Seite sieht, entscheidet die vorhandene
+  Rechtevergabe (`permissions.menu_paths`) — der Kurzname wird zum Rechte-Pfad.
+- Ob sich eine fremde Seite überhaupt einbetten lässt, bestimmt allein diese
+  Seite (`X-Frame-Options` / `frame-ancestors`). Das lässt sich weder erzwingen
+  noch vorher erkennen; die Oberfläche weist darauf hin und bietet den Weg im
+  neuen Tab an.
+
+### Sicherheit
+- **Menüziele nur nach `http`/`https`** — doppelt geprüft. Der Server weist
+  andere Schemata beim Anlegen *und* beim Ändern ab; die Oberfläche prüft
+  zusätzlich, für Einträge, die auf anderem Weg in die Datenbank gelangen. Ein
+  `javascript:`-Ziel wäre fremder Code, der beim Klick in unserer eigenen
+  Oberfläche liefe — mit der Sitzung des Angemeldeten.
+
+### Behoben
+- **Konfliktreste im CHANGELOG entfernt.** Seit einem unfertigen Rebase am
+  Vormittag standen `<<<<<<< HEAD`-Marken zwischen den Einträgen 1.192.0 und
+  1.191.2 in der Datei — beide Releases sind echt und stehen jetzt wieder
+  vollständig da.
+
+---
+
+## [1.199.1] - 2026-08-13
+
+### Behoben
+- **„Eine Toolkette ist durch, aber der macht noch immer den Spinner mit
+  Arbeitet.“** Wenn ein Agent im selben Zug mehrere Werkzeugketten nacheinander
+  abarbeitet (etwa zwei Auftraege an zwei verschiedene Agenten delegieren),
+  hing der „Arbeitet…“-Zustand jeder Kette am GESAMTEN Nachrichtenturn statt an
+  der eigenen Kette. Eine laengst fertige Kette (alle Haekchen gruen) zeigte
+  trotzdem weiter den drehenden Kreis — und erst wenn der komplette Turn zu
+  Ende war, klappten ALLE Ketten gleichzeitig auf ihre Endanzeige um, statt
+  jede fuer sich, sobald sie selbst fertig ist.
+- Nur die zuletzt begonnene Kette im Turn erbt jetzt den laufenden Zustand;
+  jede fruehere Kette richtet sich nach dem Status ihrer eigenen Werkzeuge.
+
+---
+
+## [1.199.0] - 2026-08-13
+
+### Geändert
+- **Die Rollenverwaltung zeigt unten nur noch die Mitglieder der Rolle.**
+  Kundenwunsch: *„UNTEN sind alle User in der App zu sehen, aber ich brauche
+  dort nur die User (aufklappbar) die wirklich in der Rolle."* Bisher stand dort
+  jeder Nutzer der Plattform mit einer eigenen Auswahlbox daneben — bei vielen
+  Nutzern eine Wand aus Dropdowns, in der man die eigentliche Frage („wer gehört
+  zu dieser Rolle?") nicht beantworten konnte. Jetzt: ein aufklappbarer Block
+  **Mitglieder** mit Zähler, darin ausschließlich die Nutzer dieser Rolle,
+  Entfernen direkt an der Zeile.
+- **Hinzufügen läuft jetzt über die Suche statt über 40 Dropdowns.** „User
+  hinzufügen" öffnet eine Namens-/E-Mail-Suche über die Nicht-Mitglieder. Steckt
+  jemand schon in einer anderen Rolle, steht das daneben — ein Umhängen ist damit
+  sichtbar und nicht versehentlich.
+- In der Rollenliste links steht pro Rolle die Mitgliederzahl.
+- **Das Admin-Menüband ist zweistufig statt 13 Reiter in einer Scrollzeile.**
+  Kundenwunsch: *„Gern kann auch einfach mal das komplette Menüband angepasst
+  werden und thematisch zusammengefasst werden und dann mit subtabs gearbeitet
+  werden."* Sechs Themengruppen — Nutzer & Rollen, Agenten, KI & Wissen,
+  Sicherheit, Betrieb, System — mit den jeweiligen Unterreitern darunter. Damit
+  ist jeder Bereich ohne seitliches Scrollen erreichbar; offenes Feedback meldet
+  sich mit einem Punkt an der Gruppe.
+
+---
+
+## [1.198.2] - 2026-08-13
+
+### Sicherheit
+- **Zweite Sperre gegen `javascript:` in selbst angelegten Menüpunkten.** Der
+  Server ließ schon immer nur `http`/`https` durch — beim Anlegen *und* beim
+  Ändern. Die Oberfläche prüft das Schema jetzt zusätzlich, für Einträge, die
+  vor dem Validator entstanden sind oder auf anderem Weg in die Datenbank
+  gelangen. Ein ungültiger Eintrag verschwindet, statt still auf `#` zu zeigen.
+
+---
+
+## [1.198.1] - 2026-08-13
+
+### Behoben
+- **„Es wirkt ein wenig wie eingeschlafen."** Während der Agent nur Werkzeuge
+  aufrief, stand über der Werkzeugzeile „4 Tools" statt „Arbeitet…" — und nichts
+  bewegte sich. Die Bedingung fragte, ob gerade ein **Werkzeug** rechnet, nicht
+  ob der **Zug** läuft. Genau in der Denkpause zwischen zwei Werkzeugen (alle
+  Ergebnisse zurück, der Agent verarbeitet sie) wurde sie falsch. Der obere
+  „Thinking…"-Block half nicht: der weicht, sobald eine Antwortnachricht
+  existiert.
+- Das nötige Wissen wurde bereits übergeben, aber **nie ausgepackt** —
+  `isStreaming` stand in der Typangabe der Komponente und wurde verworfen.
+- Dazu ein Kreis, der sich wirklich dreht. „Arbeitet…" allein liest man nicht als
+  Bewegung — das stand schon im ersten Kundenfeedback zu dieser Zeile.
+
+---
+
+## [1.198.0] - 2026-08-13
+
+### Geändert
+- **Der Chat sieht jetzt gleich aus, egal wer den Zug angestoßen hat.**
+  Kundenwunsch: *„wenn er nach einer Delegation noch weiter arbeitet, dann muss
+  sich der Chat-Link in der Sidebar wie im normalen Chat weiter drehen."*
+- Beginnt der Agent **von sich aus** einen Zug — nach einer Delegation, nach
+  einer Fertigmeldung, aus einem Zeitplan — erfuhr die Seite davon bisher erst
+  beim nächsten 15-Sekunden-Takt. Ein kurzer Zug war bis dahin vorbei: die
+  Gesprächszeile blieb blass, obwohl im Fenster „Thinking…" lief. Das erste
+  Ereignis eines solchen Zuges löst jetzt sofort ein Nachfassen aus.
+- Der **eigene** laufende Zug markiert seine Gesprächszeile unmittelbar, statt
+  auf die abgefragte Liste zu warten.
+
+---
+
+## [1.197.2] - 2026-08-13
+
+### Geändert
+- **Die „In Arbeit"-Zeile zählt nur noch die offenen Aufträge.** Der Bruch
+  („3 von 6") bezog sich auf das ganze Gespräch und war nicht lesbar, wenn man
+  gerade 4 Aufträge vergeben hatte — man sucht dann die 6, die im Bild nicht
+  vorkommen. Jetzt steht dort schlicht, worauf noch gewartet wird.
+
+---
+
+## [1.197.1] - 2026-08-13
+
+### Behoben
+- **Kacheln fehlten, sobald der Agent `create_task_batch` wählte.** In derselben
+  Sekunde entstanden vier Aufträge desselben Auftraggebers — zwei trugen den
+  Gesprächsfaden, zwei nicht. Es gibt **drei** Werkzeuge, die Aufträge anlegen
+  (`create_task`, `create_task_batch`, `delegate_and_wait`); jedes baute seine
+  Nutzlast selbst, und als der Faden dazukam, wurde er an zwei von dreien
+  angehängt. Alle drei gehen jetzt über **einen** gemeinsamen Bauplan — ein neues
+  Feld gilt damit sofort für alle.
+- **Der Notweg des Orchestrators überstand keine Parallelarbeit.** Kennt der
+  Werkzeugserver den Faden nicht (Claude Code), ermittelt ihn der Orchestrator
+  selbst — bisher aus `current_task`, das aber nur **eine** Arbeit trägt. Der
+  Agent lief nebenher an einer Zeitplan-Aufgabe, dort stand deren Kennung, und
+  der Chat war unsichtbar. Jetzt zählt die vollständige Liste der laufenden
+  Arbeiten; bei mehreren offenen Gesprächen wird bewusst **nicht** geraten — eine
+  Kachel im falschen Chat wäre schlimmer als keine.
+- Der alte Test **zählte** nur, wie oft der Faden angehängt wird („zweimal,
+  passt") — und war deshalb zufrieden, während das dritte Werkzeug fehlte. Er
+  prüft jetzt jedes Werkzeug einzeln.
+
+---
+
 ## [1.197.0] - 2026-08-13
 
 ### Hinzugefügt

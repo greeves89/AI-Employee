@@ -229,20 +229,22 @@ class WorkInProgressIsVisibleTests(unittest.TestCase):
     def test_it_does_not_depend_on_the_agents_own_turn(self):
         """Der springende Punkt: unabhaengig von ``isWaiting``, sonst waere die
         Anzeige genau dann weg, wenn man sie braucht."""
-        block = _block("{offeneAuftraege.length > 0 && (", 900)
+        # Nur der eigene Block — ein zu weites Fenster reicht in den
+        # NACHBARBLOCK hinein, der zu Recht auf ``isWaiting`` prueft.
+        block = _block("{offeneAuftraege.length > 0 && (", 1600).split("\n        )}", 1)[0]
         self.assertNotIn("isWaiting", block)
 
-    def test_it_shows_how_many_are_done(self):
-        block = _block("{offeneAuftraege.length > 0 && (", 900)
-        self.assertIn("auftraegeGesamt - offeneAuftraege.length", block)
+    def test_it_counts_only_what_is_still_open(self):
+        block = _block("{offeneAuftraege.length > 0 && (", 1600)
+        self.assertIn("offeneAuftraege.length}", block)
 
     def test_it_names_who_is_still_missing(self):
         """„warte noch auf SubAgents" — WER aussteht, nicht nur dass etwas laeuft."""
-        block = _block("{offeneAuftraege.length > 0 && (", 900)
+        block = _block("{offeneAuftraege.length > 0 && (", 1600)
         self.assertIn("assigned_agent_name", block)
 
     def test_each_colleague_is_named_once(self):
-        block = _block("{offeneAuftraege.length > 0 && (", 900)
+        block = _block("{offeneAuftraege.length > 0 && (", 1600)
         self.assertIn("new Set(", block)
 
     def test_only_unfinished_orders_count_as_open(self):
@@ -252,6 +254,80 @@ class WorkInProgressIsVisibleTests(unittest.TestCase):
         """Das Kreuz entfernt den Eintrag aus ``taskCards`` — die Ableitung
         haengt daran, also verschwindet er hier von selbst."""
         self.assertIn("const alleAuftraege = useMemo(() => Object.values(taskCards)", CHAT)
+
+
+class AChatLooksTheSameWhoeverStartedTheTurnTests(unittest.TestCase):
+    """Kundenwunsch (13.08.2026): „wenn er nach einer Delegation noch weiter
+    arbeitet, dann muss sich der Chat-Link in der Sidebar wie auch im normalen
+    Chat weiter drehen … generell sollte der Chat an sich immer gleich aussehen."
+
+    Ein Zug, den der Agent VON SICH AUS beginnt — nach einer Delegation, nach
+    einer Fertigmeldung, aus einem Zeitplan — faengt ohne Zutun des Fensters an.
+    Die Elternseite fragt den Agentenzustand nur alle 15 Sekunden ab; ein kurzer
+    Zug war bis dahin vorbei, und die Gespraechszeile blieb blass, obwohl im
+    Fenster „Thinking..." lief.
+    """
+
+    def test_an_agent_started_turn_refreshes_the_page(self):
+        block = _block('if (type === "text" || type === "tool_call" || type === "tool_result") {', 900)
+        self.assertIn("onTurnChangeRef.current?.()", block)
+
+    def test_only_on_the_transition_not_every_event(self):
+        """Sonst eine Abfrage je Zeichen des Antwortstroms."""
+        block = _block('if (type === "text" || type === "tool_call" || type === "tool_result") {', 900)
+        self.assertIn("if (!isWaitingRef.current) {", block)
+
+    def test_the_own_running_turn_marks_its_row_immediately(self):
+        self.assertIn("if (isWaiting && activeSessionId) faeden.add(activeSessionId);", CHAT)
+
+    def test_the_rail_uses_the_combined_set(self):
+        """Die abgefragte Liste allein hinkt dem Geschehen hinterher."""
+        self.assertIn("busyIds={beschaeftigteFaeden}", CHAT)
+        self.assertIn("new Set(busySessionIds || [])", CHAT)
+
+
+class ItNeverLooksAsleepBetweenToolsTests(unittest.TestCase):
+    """Kundenmeldung (13.08.2026): „da steht nicht 'in arbeit' und darunter dann
+    die tool calls — es wirkt ein wenig wie eingeschlafen."
+
+    Der Zug lief, alle vier Werkzeug-Ergebnisse waren zurueck, und der Agent
+    verarbeitete sie. In genau dieser Denkpause stand „4 Tools" statt
+    „Arbeitet…": die Bedingung fragte, ob gerade ein WERKZEUG rechnet, nicht ob
+    der ZUG laeuft. Der obere „Thinking..."-Block half nicht — der weicht, sobald
+    eine Antwortnachricht existiert.
+    """
+
+    def test_the_running_turn_alone_decides(self):
+        self.assertIn(
+            'const anyRunning = isStreaming || steps.some((s) => s.status === "running");',
+            CHAT,
+        )
+
+    def test_the_flag_is_actually_unpacked(self):
+        """Es wurde uebergeben, aber nie ausgepackt — die Information war da und
+        wurde verworfen."""
+        self.assertIn("function ToolCluster({ steps, isStreaming }", CHAT)
+
+    def test_the_caller_does_not_tie_it_to_a_running_tool(self):
+        """``message.isStreaming && ein Werkzeug laeuft`` war die Einschraenkung,
+        die in der Denkpause falsch wurde — die darf nicht zurueckkehren."""
+        block = _block("<ToolCluster", 1500)
+        self.assertIn("message.isStreaming", block)
+        self.assertNotIn("g.steps.some(", block)
+
+    def test_only_the_last_chain_of_a_turn_shows_work(self):
+        """Nachtrag zu meiner eigenen Fassung: ``message.isStreaming`` allein war
+        zu grob. Ein Zug kann MEHRERE Werkzeugketten haben; dann zeigten auch
+        die laengst fertigen frueheren Ketten „Arbeitet…" und klappten erst
+        gemeinsam um, wenn der ganze Zug endete. Nur die letzte laeuft wirklich."""
+        block = _block("<ToolCluster", 1500)
+        self.assertIn("gi === groups.length - 1", block)
+
+    def test_there_is_something_that_actually_moves(self):
+        """„es dreht sich kein Kreis" — ein Wort allein liest man nicht als
+        Bewegung."""
+        block = _block('{anyRunning && <Loader2', 200)
+        self.assertIn("animate-spin", block)
 
 
 class TheTypeIsRealTests(unittest.TestCase):

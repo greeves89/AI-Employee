@@ -105,9 +105,19 @@ class TheAgentAttachesItsThreadTests(unittest.TestCase):
         self.assertIn("current_chat_session.set(chat_session_id)", src)
 
     def test_task_creation_attaches_it(self):
+        """Frueher wurde hier GEZAEHLT, wie oft ``_session_field()`` vorkommt —
+        „zweimal, passt". Genau das ging schief: es gibt DREI Werkzeuge, die
+        Auftraege anlegen, und das dritte (``create_task_batch``) fehlte. Der
+        Test war zufrieden, der Kunde sah keine Kacheln.
+
+        Jetzt zaehlt nicht die Menge, sondern dass alle drei ueber denselben
+        Bauplan gehen — siehe agent/tests/test_every_task_carries_its_thread.py."""
         src = (self.AGENT / "app/tools/api_client.py").read_text()
-        # create_task und der Stapel aus delegate_and_wait
-        self.assertGreaterEqual(src.count("**_session_field()"), 2)
+        self.assertIn("**_session_field()", src.split("def _task_payload", 1)[1][:1600])
+        for werkzeug in ("create_task", "create_task_batch", "delegate_and_wait"):
+            with self.subTest(werkzeug=werkzeug):
+                rumpf = src.split(f"async def {werkzeug}(", 1)[1][:2400]
+                self.assertIn("_task_payload(", rumpf)
 
 
 if __name__ == "__main__":

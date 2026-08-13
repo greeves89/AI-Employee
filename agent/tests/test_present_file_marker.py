@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from app import agent_runner as agent_runner_module
 from app.agent_runner import AgentRunner
 
 
@@ -87,7 +88,8 @@ class _FakeLogPublisher:
 
 
 @pytest.mark.anyio
-async def test_present_file_delivered_via_telegram(tmp_path):
+async def test_present_file_delivered_via_telegram(tmp_path, monkeypatch):
+    monkeypatch.setattr(agent_runner_module.settings, "workspace_dir", str(tmp_path))
     f = tmp_path / "podcast.mp3"
     f.write_bytes(b"ID3 fake audio bytes")
     redis = _FakeRedis()
@@ -113,8 +115,9 @@ async def test_present_file_delivered_via_telegram(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_telegram_fallback_on_present_file_failure(tmp_path):
+async def test_telegram_fallback_on_present_file_failure(tmp_path, monkeypatch):
     """A missing or oversized file must not raise and must not publish."""
+    monkeypatch.setattr(agent_runner_module.settings, "workspace_dir", str(tmp_path))
     redis = _FakeRedis()
     runner = AgentRunner(log_publisher=_FakeLogPublisher(redis, "agent-1"))
 
@@ -126,4 +129,21 @@ async def test_telegram_fallback_on_present_file_failure(tmp_path):
     big = tmp_path / "big.bin"
     big.write_bytes(b"\0" * (20 * 1024 * 1024 + 1))
     await runner._deliver_present_file_via_telegram({"path": str(big)})
+    assert redis.published == []
+
+
+@pytest.mark.anyio
+async def test_present_file_outside_workspace_refused(tmp_path, monkeypatch):
+    """A path outside the agent's own workspace must be refused, never delivered."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setattr(agent_runner_module.settings, "workspace_dir", str(workspace))
+    outside = tmp_path / "outside" / "secret.mp3"
+    outside.parent.mkdir()
+    outside.write_bytes(b"not yours")
+
+    redis = _FakeRedis()
+    runner = AgentRunner(log_publisher=_FakeLogPublisher(redis, "agent-1"))
+    await runner._deliver_present_file_via_telegram({"path": str(outside)})
+
     assert redis.published == []

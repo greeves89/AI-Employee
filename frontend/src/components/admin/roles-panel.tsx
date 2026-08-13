@@ -2,13 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";
-import { Loader2, Plus, Save, Shield, Trash2, Users } from "lucide-react";
+import { ChevronDown, Loader2, Plus, Save, Search, Shield, Trash2, UserPlus, Users, X } from "lucide-react";
 import * as api from "@/lib/api";
-import type { CustomRole, RolePermissions, MountCatalogEntry, AgentSecretEntry, McpServerInfo } from "@/lib/api";
+import type { CustomRole, RolePermissions, MountCatalogEntry, AgentSecretEntry, McpServerInfo, CustomPage } from "@/lib/api";
 import type { AdminUser, AgentTemplate, AIAccount, Integration } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/dialog-provider";
 
+// Fest eingebaute Menuepunkte. Selbst angelegte Seiten kommen zur Laufzeit dazu
+// (siehe ``menuOptions``) — deshalb steht hier nur, was im Code verdrahtet ist.
 const MENU_PATHS = [
   "/dashboard",
   "/agents",
@@ -113,9 +115,10 @@ function permissionsFromDraft(draft: RoleDraft): RolePermissions {
 interface Props {
   users: AdminUser[];
   onUserRoleAssigned: (userId: string, customRoleId: number | null) => void;
+  onRolesChanged?: (roles: CustomRole[]) => void;
 }
 
-export function RolesPanel({ users, onUserRoleAssigned }: Props) {
+export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props) {
   const toast = useToast();
   const [roles, setRoles] = useState<CustomRole[]>([]);
   const [selectedId, setSelectedId] = useState<number | "new">("new");
@@ -126,8 +129,14 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
   const [secrets, setSecrets] = useState<AgentSecretEntry[]>([]);
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [customPages, setCustomPages] = useState<CustomPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Mitglieder-Sektion: aufklappbar, zeigt nur die User DIESER Rolle
+  const [membersOpen, setMembersOpen] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [memberQuery, setMemberQuery] = useState("");
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
 
   // Model names offered for the per-group allowlist — gathered from the configured AI accounts.
   const modelOptions = useMemo(() => {
@@ -146,10 +155,46 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
     [roles, selectedId],
   );
 
+  // Wie viele User hängen an welcher Rolle — für die Liste links und den Zähler oben.
+  const memberCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const u of users) {
+      if (u.custom_role_id != null) counts.set(u.custom_role_id, (counts.get(u.custom_role_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [users]);
+
+  const members = useMemo(
+    () => (selectedRole ? users.filter((u) => u.custom_role_id === selectedRole.id) : []),
+    [users, selectedRole],
+  );
+
+  const candidates = useMemo(() => {
+    if (!selectedRole) return [];
+    const q = memberQuery.trim().toLowerCase();
+    return users
+      .filter((u) => u.custom_role_id !== selectedRole.id)
+      .filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+  }, [users, selectedRole, memberQuery]);
+
+  const roleNameById = useMemo(() => new Map(roles.map((r) => [r.id, r.name])), [roles]);
+
+  // Menuepfade zum Abhaken: die eingebauten plus die selbst angelegten Seiten.
+  // Ohne den zweiten Teil waere eine neue Seite zwar da, aber in keiner Rolle
+  // freischaltbar — und damit fuer alle ausser Administratoren unsichtbar.
+  const menuOptions = useMemo(() => {
+    const builtin = MENU_PATHS.map((path) => ({ path, label: path }));
+    const pages = customPages.map((p) => ({
+      path: p.menu_path,
+      label: `${p.title} (${p.menu_path})`,
+    }));
+    return [...builtin, ...pages];
+  }, [customPages]);
+
   const reload = async () => {
     setLoading(true);
     try {
-      const [roleData, templateData, mountData, aiAccountData, secretData, mcpData, integrationData] = await Promise.all([
+      const [roleData, templateData, mountData, aiAccountData, secretData, mcpData, integrationData, pageData] = await Promise.all([
         api.listRoles(),
         api.getTemplates(),
         api.getAgentMountCatalog(),
@@ -157,14 +202,17 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
         api.listSecrets().catch(() => [] as AgentSecretEntry[]),
         api.getMcpServers().then((r) => r.servers).catch(() => [] as McpServerInfo[]),
         api.getIntegrations().then((r) => r.integrations).catch(() => [] as Integration[]),
+        api.listCustomPages().then((r) => r.pages).catch(() => [] as CustomPage[]),
       ]);
       setRoles(roleData.roles);
+      onRolesChanged?.(roleData.roles);
       setTemplates(templateData.templates);
       setMounts(mountData.mounts);
       setAiAccounts(aiAccountData);
       setSecrets(secretData);
       setMcpServers(mcpData);
       setIntegrations(integrationData);
+      setCustomPages(pageData);
       if (selectedId !== "new") {
         const role = roleData.roles.find((r) => r.id === selectedId);
         setDraft(draftFromRole(role));
@@ -182,6 +230,8 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
   }, []);
 
   const selectRole = (role: CustomRole | "new") => {
+    setAddOpen(false);
+    setMemberQuery("");
     if (role === "new") {
       setSelectedId("new");
       setDraft(draftFromRole());
@@ -206,12 +256,16 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
           description: draft.description,
           permissions,
         });
-        setRoles((prev) => prev.map((r) => r.id === updated.id ? updated : r));
+        const next = roles.map((r) => r.id === updated.id ? updated : r);
+        setRoles(next);
+        onRolesChanged?.(next);
         setDraft(draftFromRole(updated));
         toast.success("Rolle gespeichert", name);
       } else {
         const created = await api.createRole(name, draft.description, permissions);
-        setRoles((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+        const next = [...roles, created].sort((a, b) => a.name.localeCompare(b.name));
+        setRoles(next);
+        onRolesChanged?.(next);
         setSelectedId(created.id);
         setDraft(draftFromRole(created));
         toast.success("Rolle erstellt", name);
@@ -228,7 +282,9 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
     setSaving(true);
     try {
       await api.deleteRole(draft.id);
-      setRoles((prev) => prev.filter((r) => r.id !== draft.id));
+      const next = roles.filter((r) => r.id !== draft.id);
+      setRoles(next);
+      onRolesChanged?.(next);
       users
         .filter((u) => u.custom_role_id === draft.id)
         .forEach((u) => onUserRoleAssigned(u.id, null));
@@ -241,10 +297,16 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
     }
   };
 
-  const assign = async (userId: string, roleId: string) => {
-    const parsed = roleId ? Number(roleId) : null;
-    await api.assignUserRole(userId, parsed);
-    onUserRoleAssigned(userId, parsed);
+  const assign = async (userId: string, customRoleId: number | null) => {
+    setPendingUserId(userId);
+    try {
+      await api.assignUserRole(userId, customRoleId);
+      onUserRoleAssigned(userId, customRoleId);
+    } catch (e) {
+      toast.error("Zuweisung fehlgeschlagen", String(e));
+    } finally {
+      setPendingUserId(null);
+    }
   };
 
   if (loading) {
@@ -283,8 +345,11 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
               )}
             >
               <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold">{role.name}</span>
+                <Shield className="h-4 w-4 shrink-0 text-primary" />
+                <span className="truncate text-sm font-semibold">{role.name}</span>
+                <span className="ml-auto shrink-0 rounded-md bg-foreground/10 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  {memberCounts.get(role.id) ?? 0}
+                </span>
               </div>
               {role.description && (
                 <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{role.description}</p>
@@ -470,15 +535,15 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
 
             <PermissionBlock title="Menüpfade">
               <div className="flex flex-wrap gap-2">
-                {MENU_PATHS.map((path) => (
+                {menuOptions.map((opt) => (
                   <ToggleChip
-                    key={path}
-                    active={draft.menu_paths == null || draft.menu_paths.includes(path)}
+                    key={opt.path}
+                    active={draft.menu_paths == null || draft.menu_paths.includes(opt.path)}
                     muted={draft.menu_paths == null}
-                    label={path}
+                    label={opt.label}
                     onClick={() => setDraft((d) => ({
                       ...d,
-                      menu_paths: toggleListValue(d.menu_paths, path),
+                      menu_paths: toggleListValue(d.menu_paths, opt.path),
                     }))}
                   />
                 ))}
@@ -533,31 +598,121 @@ export function RolesPanel({ users, onUserRoleAssigned }: Props) {
           </div>
         </div>
 
-        <div className="rounded-xl border border-foreground/[0.08] bg-card/70 p-5">
-          <div className="mb-3 flex items-center gap-2">
+        <div className="rounded-xl border border-foreground/[0.08] bg-card/70">
+          <button
+            type="button"
+            onClick={() => setMembersOpen((o) => !o)}
+            className="flex w-full items-center gap-2 px-5 py-4 text-left"
+          >
             <Users className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold">User-Zuweisung</h3>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {users.map((u) => (
-              <div key={u.id} className="flex items-center justify-between gap-3 rounded-lg border border-foreground/[0.06] bg-background/60 px-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{u.name}</p>
-                  <p className="truncate text-[11px] text-muted-foreground">{u.email}</p>
+            <h3 className="text-sm font-semibold">Mitglieder</h3>
+            {selectedRole && (
+              <span className="rounded-md bg-foreground/10 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                {members.length}
+              </span>
+            )}
+            <span className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
+              {selectedRole ? selectedRole.name : "keine Rolle gewählt"}
+              <ChevronDown className={cn("h-4 w-4 transition-transform", membersOpen && "rotate-180")} />
+            </span>
+          </button>
+
+          {membersOpen && (
+            <div className="border-t border-foreground/[0.06] p-5 pt-4">
+              {!selectedRole ? (
+                <p className="text-xs text-muted-foreground">
+                  Rolle zuerst speichern — danach lassen sich hier User zuweisen.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {members.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Noch niemand in dieser Rolle.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {members.map((u) => (
+                        <div
+                          key={u.id}
+                          className="flex items-center justify-between gap-3 rounded-lg border border-foreground/[0.06] bg-background/60 px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{u.name}</p>
+                            <p className="truncate text-[11px] text-muted-foreground">{u.email}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => assign(u.id, null)}
+                            disabled={pendingUserId === u.id}
+                            title="Aus der Rolle entfernen"
+                            className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                          >
+                            {pendingUserId === u.id
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <X className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {addOpen ? (
+                    <div className="rounded-lg border border-foreground/[0.08] bg-background/60 p-3">
+                      <div className="mb-2 flex items-center gap-2">
+                        <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                        <input
+                          autoFocus
+                          value={memberQuery}
+                          onChange={(e) => setMemberQuery(e.target.value)}
+                          placeholder="Name oder E-Mail suchen"
+                          className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { setAddOpen(false); setMemberQuery(""); }}
+                          className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="max-h-56 space-y-1 overflow-y-auto">
+                        {candidates.length === 0 ? (
+                          <p className="px-1 py-2 text-xs text-muted-foreground">Kein passender User.</p>
+                        ) : candidates.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            disabled={pendingUserId === u.id}
+                            onClick={() => assign(u.id, selectedRole.id)}
+                            className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-foreground/[0.05] disabled:opacity-50"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm">{u.name}</p>
+                              <p className="truncate text-[11px] text-muted-foreground">{u.email}</p>
+                            </div>
+                            <span className="shrink-0 text-[11px] text-muted-foreground">
+                              {pendingUserId === u.id
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : u.custom_role_id != null
+                                  ? `aktuell: ${roleNameById.get(u.custom_role_id) ?? "andere Rolle"}`
+                                  : u.role}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setAddOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-foreground/[0.08] px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      User hinzufügen
+                    </button>
+                  )}
                 </div>
-                <select
-                  value={u.custom_role_id ?? ""}
-                  onChange={(e) => assign(u.id, e.target.value).catch((err) => toast.error("Zuweisung fehlgeschlagen", String(err)))}
-                  className="w-40 rounded-md border border-foreground/[0.08] bg-background px-2 py-1.5 text-xs outline-none"
-                >
-                  <option value="">Enum: {u.role}</option>
-                  {roles.map((role) => (
-                    <option key={role.id} value={role.id}>{role.name}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

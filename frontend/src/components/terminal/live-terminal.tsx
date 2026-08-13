@@ -23,7 +23,7 @@ export function LiveTerminal({ agentId }: LiveTerminalProps) {
   }, [messages]);
 
   return (
-    <div className="rounded-lg border border-border bg-black flex flex-col h-full">
+    <div className="rounded-lg border border-border bg-foreground/[0.03] dark:bg-black flex flex-col h-full">
       {/* Terminal header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="flex items-center gap-2">
@@ -68,16 +68,16 @@ function LogLine({ event }: { event: LogEvent }) {
   switch (event.type) {
     case "text":
       return (
-        <div className="text-green-400">
+        <div className="text-green-700 dark:text-green-400">
           <span className="text-muted-foreground text-xs mr-2">{time}</span>
           {String(data.text || "")}
         </div>
       );
     case "tool_call":
       return (
-        <div className="text-blue-400">
+        <div className="text-blue-600 dark:text-blue-400">
           <span className="text-muted-foreground text-xs mr-2">{time}</span>
-          <span className="text-yellow-400">[{String(data.tool || "")}]</span>{" "}
+          <span className="text-yellow-700 dark:text-yellow-400">[{String(data.tool || "")}]</span>{" "}
           <span className="text-muted-foreground">
             {JSON.stringify(data.input || {}).slice(0, 200)}
           </span>
@@ -91,7 +91,7 @@ function LogLine({ event }: { event: LogEvent }) {
       );
     case "error":
       return (
-        <div className="text-red-400">
+        <div className="text-red-600 dark:text-red-400">
           <span className="text-muted-foreground text-xs mr-2">{time}</span>
           ERROR: {String(data.message || "")}
         </div>
@@ -105,7 +105,7 @@ function LogLine({ event }: { event: LogEvent }) {
       );
     case "result":
       return (
-        <div className="text-emerald-400 border-t border-border mt-2 pt-2">
+        <div className="text-emerald-700 dark:text-emerald-400 border-t border-border mt-2 pt-2">
           <span className="text-muted-foreground text-xs mr-2">{time}</span>
           Task completed - Cost: {formatMoney(Number(data.cost_usd || 0))} |
           Duration: {Number(data.duration_ms || 0)}ms |

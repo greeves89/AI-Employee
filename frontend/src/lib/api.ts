@@ -3923,3 +3923,64 @@ export async function delegateToTeam(
 export async function getTeamTasks(id: string): Promise<{ tasks: Task[]; total: number; team_id: string }> {
   return fetchJSON(`${getBase()}/teams/${id}/tasks`);
 }
+
+// --- Eigene Menuepunkte: fremde Seiten als Rahmen oder Link -------------------
+// Der Server liefert unter /mine nur, was die Rolle sehen darf (menu_paths) —
+// die Seitenleiste filtert nicht selbst nach, sie zeigt einfach was ankommt.
+
+export type CustomPageOpenMode = "iframe" | "link";
+
+export interface CustomPage {
+  id: number;
+  slug: string;
+  title: string;
+  description: string | null;
+  url: string;
+  icon: string;
+  group_key: string;
+  open_mode: CustomPageOpenMode;
+  sort_order: number;
+  enabled: boolean;
+  allow_media: boolean;
+  menu_path: string;
+}
+
+export interface CustomPageInput {
+  slug: string;
+  title: string;
+  url: string;
+  description?: string | null;
+  icon?: string;
+  group_key?: string;
+  open_mode?: CustomPageOpenMode;
+  sort_order?: number;
+  enabled?: boolean;
+  allow_media?: boolean;
+}
+
+/** Menuepunkte fuer den angemeldeten Nutzer (bereits nach Rolle gefiltert). */
+export async function listMyCustomPages(): Promise<{ pages: CustomPage[] }> {
+  return fetchJSON(`${getBase()}/custom-pages/mine`);
+}
+
+/** Eine Seite zum Anzeigen. 403, wenn die Rolle sie nicht sehen darf. */
+export async function getCustomPageBySlug(slug: string): Promise<CustomPage> {
+  return fetchJSON(`${getBase()}/custom-pages/by-slug/${encodeURIComponent(slug)}`);
+}
+
+/** Alle Seiten inkl. abgeschalteter — nur fuer Administratoren. */
+export async function listCustomPages(): Promise<{ pages: CustomPage[]; groups: string[]; modes: CustomPageOpenMode[] }> {
+  return fetchJSON(`${getBase()}/custom-pages/`);
+}
+
+export async function createCustomPage(body: CustomPageInput): Promise<CustomPage> {
+  return fetchJSON(`${getBase()}/custom-pages/`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateCustomPage(id: number, body: Partial<CustomPageInput>): Promise<CustomPage> {
+  return fetchJSON(`${getBase()}/custom-pages/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function deleteCustomPage(id: number): Promise<{ deleted: number; menu_path: string }> {
+  return fetchJSON(`${getBase()}/custom-pages/${id}`, { method: "DELETE" });
+}
