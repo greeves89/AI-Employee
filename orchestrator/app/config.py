@@ -238,6 +238,14 @@ class Settings(BaseSettings):
     oauth_github_scopes: str = ""
     oauth_anthropic_scopes: str = ""
 
+    # Opt-in "prompt" value for the Microsoft authorize URL (env: OAUTH_MICROSOFT_PROMPT).
+    # Empty by default = no forced prompt, so a tenant-wide admin consent grant is
+    # honored on connect. Tenants with end-user consent disabled can never satisfy a
+    # forced "prompt=consent" dialog — Entra re-forces it on every attempt even after
+    # the grant exists (#571). Set to "consent" to restore the old forced-reconsent
+    # behaviour where that is actually wanted.
+    oauth_microsoft_prompt: str = ""
+
     # Skill file attachments — stored on shared Docker volume
     skill_files_root: str = "/shared/skill-files"
 

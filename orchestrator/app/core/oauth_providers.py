@@ -110,7 +110,13 @@ PROVIDERS: dict[str, OAuthProviderConfig] = {
             "Contacts.ReadWrite",
             "People.Read",
         ],
-        auth_extra_params={"prompt": "consent"},
+        # No forced prompt by default (#571): tenants with end-user consent disabled
+        # can never satisfy a forced "prompt=consent" dialog, even after an admin
+        # grants tenant-wide consent — Entra re-forces the dialog on every attempt.
+        # Unlike Google, Microsoft returns a refresh token whenever offline_access is
+        # granted, so no prompt override is needed for that. Opt back in per-deployment
+        # via oauth_microsoft_prompt (see get_provider_extra_params below).
+        auth_extra_params={},
         client_id_setting="oauth_microsoft_client_id",
         client_secret_setting="oauth_microsoft_client_secret",
     ),
@@ -212,6 +218,22 @@ def get_provider_scopes(provider: OAuthProviderConfig) -> list[str]:
     if override.strip():
         return [s.strip() for s in override.split(",") if s.strip()]
     return list(provider.scopes)
+
+
+def get_provider_extra_params(provider: OAuthProviderConfig) -> dict[str, str]:
+    """Return the effective authorize-URL extra params for a provider.
+
+    Same override pattern as get_provider_scopes: static config from PROVIDERS,
+    plus a per-deployment opt-in. Currently only Microsoft's "prompt" is
+    configurable (oauth_microsoft_prompt, empty by default) — see #571.
+    """
+    from app.config import settings
+    params = dict(provider.auth_extra_params)
+    if provider.name == "microsoft":
+        prompt = getattr(settings, "oauth_microsoft_prompt", "").strip()
+        if prompt:
+            params["prompt"] = prompt
+    return params
 
 
 def is_provider_available(provider: OAuthProviderConfig) -> bool:
