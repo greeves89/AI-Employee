@@ -277,6 +277,80 @@ class InputRecorder:
         return {"ok": True}
 
 
+class VoiceCapture:
+    """Capture microphone audio from the human at the keyboard, chunked and
+    streamed upstream — the desktop counterpart to the browser's getUserMedia()
+    capture (issue #478 phase 1). Server-side wiring (feeding chunks into a
+    RealtimeVoiceSession) is a later phase; here the bridge only records and
+    forwards, same lifecycle discipline as InputRecorder: only between an
+    explicit start/stop, never buffered to disk, logs loudly at both ends.
+    """
+
+    SAMPLE_RATE = 16000  # matches what the STT providers already expect
+    CHANNELS = 1
+    CHUNK_MS = 100  # small enough for low latency, large enough not to flood the WS
+
+    def __init__(self, emit) -> None:
+        self._emit = emit          # called with one {chunk_b64, ...} dict per chunk
+        self._stream = None
+        self.active = False
+
+    def _on_audio(self, indata, frames, time_info, status) -> None:
+        if status:
+            log.debug("Voice capture status: %s", status)
+        import numpy as np
+
+        pcm16 = (indata[:, 0] * 32767.0).astype(np.int16).tobytes()
+        self._emit({
+            "chunk_b64": base64.b64encode(pcm16).decode("ascii"),
+            "sample_rate": self.SAMPLE_RATE,
+            "channels": self.CHANNELS,
+            "ts": time.time(),
+        })
+
+    def start(self) -> dict:
+        if self.active:
+            return {"ok": True, "already_active": True}
+        try:
+            import sounddevice as sd
+        except ImportError:
+            return {
+                "ok": False,
+                "error": "sounddevice is not installed — voice capture unavailable. "
+                         "Install it with: pip install sounddevice",
+            }
+        try:
+            stream = sd.InputStream(
+                samplerate=self.SAMPLE_RATE,
+                channels=self.CHANNELS,
+                blocksize=int(self.SAMPLE_RATE * self.CHUNK_MS / 1000),
+                callback=self._on_audio,
+            )
+            stream.start()
+        except Exception as e:  # noqa: BLE001 — no mic, permission denied, device busy, ...
+            return {"ok": False, "error": f"Mikrofon liess sich nicht oeffnen: {e}"}
+        self._stream = stream
+        log.warning(
+            "VOICE CAPTURE STARTED — microphone audio is being streamed until you stop it."
+        )
+        self.active = True
+        return {"ok": True}
+
+    def stop(self) -> dict:
+        if not self.active:
+            return {"ok": True, "already_stopped": True}
+        if self._stream is not None:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._stream = None
+        self.active = False
+        log.warning("VOICE CAPTURE STOPPED — no longer streaming microphone audio.")
+        return {"ok": True}
+
+
 def _applescript_string_literal(value: str) -> str:
     """Escape a value for safe interpolation into a double-quoted AppleScript
     string literal. Without this, an app name containing '"' can break out of
@@ -578,6 +652,8 @@ class CommandDispatcher:
         self._ctrl = InputController()
         # Set by the WS client so human-capture events can be pushed upstream.
         self.input_recorder: InputRecorder | None = None
+        # Set by the WS client so microphone chunks can be pushed upstream.
+        self.voice_capture: VoiceCapture | None = None
 
     def dispatch(self, command: dict) -> dict:
         action = command.get("action", "")
@@ -593,6 +669,16 @@ class CommandDispatcher:
                 if not self.input_recorder:
                     return {"ok": False, "error": "input capture not wired up"}
                 return self.input_recorder.stop()
+
+            elif action == "start_voice_capture":
+                if not self.voice_capture:
+                    return {"ok": False, "error": "voice capture not wired up"}
+                return self.voice_capture.start()
+
+            elif action == "stop_voice_capture":
+                if not self.voice_capture:
+                    return {"ok": False, "error": "voice capture not wired up"}
+                return self.voice_capture.stop()
 
             elif action == "screenshot":
                 # Fehlende Freigabe ist KEIN Screenshot — lieber ein klarer Fehler als
@@ -797,12 +883,16 @@ class Bridge:
         # land in a thread-safe queue and are drained by an asyncio task that
         # owns the WebSocket (never send from the listener thread directly).
         self._input_events: queue.Queue = queue.Queue(maxsize=1000)
+        # Same pattern for microphone chunks — sounddevice calls back on its
+        # own audio thread, never from the asyncio loop.
+        self._voice_events: queue.Queue = queue.Queue(maxsize=1000)
 
     def _ensure_dispatcher(self) -> CommandDispatcher:
         if self.dispatcher is None:
             log.info("Initializing desktop control")
             self.dispatcher = CommandDispatcher()
             self.dispatcher.input_recorder = InputRecorder(self._queue_input_event)
+            self.dispatcher.voice_capture = VoiceCapture(self._queue_voice_event)
             log.info("Desktop control ready")
         return self.dispatcher
 
@@ -812,6 +902,13 @@ class Bridge:
             self._input_events.put_nowait(event)
         except queue.Full:
             log.warning("Input-capture queue full — dropping event")
+
+    def _queue_voice_event(self, event: dict) -> None:
+        """Called from the sounddevice audio thread — must not block or send."""
+        try:
+            self._voice_events.put_nowait(event)
+        except queue.Full:
+            log.warning("Voice-capture queue full — dropping chunk")
 
     async def _drain_input_events(self, ws) -> None:
         """Forward queued human-capture events to the orchestrator."""
@@ -826,6 +923,22 @@ class Bridge:
                 return
             try:
                 await ws.send(json.dumps({"type": "input_event", "event": event}))
+            except Exception:  # noqa: BLE001 — connection gone; reconnect loop handles it
+                return
+
+    async def _drain_voice_events(self, ws) -> None:
+        """Forward queued microphone chunks to the orchestrator."""
+        while self._running:
+            try:
+                event = await asyncio.get_event_loop().run_in_executor(
+                    None, self._voice_events.get, True, 0.5
+                )
+            except queue.Empty:
+                continue
+            except Exception:  # noqa: BLE001 — loop shutting down
+                return
+            try:
+                await ws.send(json.dumps({"type": "voice_chunk", "event": event}))
             except Exception:  # noqa: BLE001 — connection gone; reconnect loop handles it
                 return
 
@@ -875,7 +988,8 @@ class Bridge:
                     # falsche Zusage verlaesst, verspricht dem Nutzer etwas.
                     "capabilities": ["screenshot", "click", "type", "key", "scroll", "move", "drag",
                                      "open_app", "open_url", "close_app", "get_clipboard",
-                                     "set_clipboard", "start_input_capture", "stop_input_capture"]
+                                     "set_clipboard", "start_input_capture", "stop_input_capture",
+                                     "start_voice_capture", "stop_voice_capture"]
                                     + (["ax_tree", "find_element", "wait_for_element"]
                                        if ax_tree_available() else []),
                     "ax_tree_available": ax_tree_available(),
@@ -893,14 +1007,19 @@ class Bridge:
                     }))
 
                 drain_task = asyncio.create_task(self._drain_input_events(ws))
+                voice_drain_task = asyncio.create_task(self._drain_voice_events(ws))
                 try:
                     async for raw in ws:
                         await self._handle_message(ws, raw)
                 finally:
                     drain_task.cancel()
+                    voice_drain_task.cancel()
                     if self.dispatcher and self.dispatcher.input_recorder:
                         # Never leave a keylogger running past the connection.
                         self.dispatcher.input_recorder.stop()
+                    if self.dispatcher and self.dispatcher.voice_capture:
+                        # Never leave the microphone open past the connection.
+                        self.dispatcher.voice_capture.stop()
 
             except websockets.ConnectionClosed as e:
                 # 1008 = the server REJECTED us (session expired/unknown, wrong

@@ -5,6 +5,10 @@ Pillow>=10.0.0
 # Replay-Modus: observe the human's own clicks/keystrokes to demonstrate a
 # workflow once. Only listens between an explicit start/stop (see InputRecorder).
 pynput>=1.7.6
+# Voice-on-Desktop Phase 1 (#478): capture the human's microphone, chunked and
+# streamed upstream. Only listens between an explicit start/stop (see VoiceCapture).
+sounddevice>=0.4.6
+numpy>=1.26.0
 # System tray app
 rumps>=0.4.0; sys_platform == "darwin"
 pystray>=0.19.0; sys_platform != "darwin"
