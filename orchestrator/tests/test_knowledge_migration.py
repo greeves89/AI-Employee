@@ -98,13 +98,30 @@ class TheMigrationRunsOnRecreateTests(unittest.TestCase):
     """Ein Helfer, den niemand ruft, aendert nichts — dieselbe Falle wie bei den
     eigenen Abo-Zugaengen, die einen halben Tag ungenutzt im Baum lagen."""
 
-    def test_it_is_wired_into_the_container_refresh(self):
+    def test_both_recreate_paths_call_it(self):
+        """Die erste Fassung hing nur in ``restart_agent`` — das Neuerstellen
+        laeuft aber ueber ``update_agent``. Beim Kunden passierte deshalb
+        schlicht nichts, obwohl die Version stimmte."""
         import inspect
 
         from app.core import agent_manager
 
         src = inspect.getsource(agent_manager)
-        self.assertIn("migrated = strip_onboarding_block(", src)
+        self.assertEqual(src.count("await self.migrate_knowledge_file("), 2)
+
+    def test_the_shared_helper_exists(self):
+        from app.core.agent_manager import AgentManager
+
+        self.assertTrue(hasattr(AgentManager, "migrate_knowledge_file"))
+
+    def test_update_agent_reaches_it_through_refresh_instructions(self):
+        """``update_agent`` ruft ``refresh_instructions``; dort haengt sie."""
+        import inspect
+
+        from app.core.agent_manager import AgentManager
+
+        src = inspect.getsource(AgentManager.refresh_instructions)
+        self.assertIn("migrate_knowledge_file", src)
 
 
 if __name__ == "__main__":

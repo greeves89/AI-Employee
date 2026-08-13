@@ -1670,24 +1670,7 @@ class AgentManager:
             mode = agent.mode or config.get("mode", "claude_code")
             for target_file in instructions_paths(mode):
                 self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
-            # knowledge.md nachziehen: der Onboarding-Abschnitt ist entfallen, die
-            # Datei liegt aber im Volume und ueberlebt jedes Neuerstellen. Ohne
-            # diesen Schritt fragen Bestandsagenten weiterhin mitten im Auftrag
-            # nach ihrer Rolle. Nur der Kopf wird ersetzt, Gelerntes bleibt.
-            try:
-                _, current_knowledge = self.docker.exec_in_container(
-                    container.id, ["cat", "/workspace/knowledge.md"]
-                )
-                migrated = strip_onboarding_block(current_knowledge or "")
-                if migrated:
-                    self.docker.write_file_in_container(
-                        container.id, "/workspace/knowledge.md", migrated
-                    )
-                    logger.info("[Wissen] Onboarding-Abschnitt bei %s entfernt",
-                                scrub_log(agent_id))
-            except Exception as e:  # noqa: BLE001
-                logger.warning("[Wissen] knowledge.md von %s nicht migriert: %s",
-                               scrub_log(agent_id), scrub_log(e))
+            await self.migrate_knowledge_file(container.id, agent_id)
 
             # Clean up old CLAUDE.md if this is now a custom_llm agent (one-time migration)
             if mode != "claude_code":
@@ -1739,6 +1722,32 @@ class AgentManager:
         await self._publish_event(agent_id, "system", "Agent started")
         return agent
 
+    async def migrate_knowledge_file(self, container_id: str, agent_id: str) -> bool:
+        """Den entfallenen Onboarding-Abschnitt aus der Wissensdatei nehmen.
+
+        Bewusst an EINER Stelle und von beiden Wegen gerufen (``restart_agent``
+        und ``update_agent`` ueber ``refresh_instructions``). Die erste Fassung
+        hing nur in ``restart_agent`` — das Neuerstellen laeuft aber ueber
+        ``update_agent``, und so passierte beim Kunden schlicht nichts. Genau
+        dieselbe Falle wie zwei Mal zuvor an diesem Wochenende.
+        """
+        try:
+            _, current = self.docker.exec_in_container(
+                container_id, ["cat", "/workspace/knowledge.md"]
+            )
+            migrated = strip_onboarding_block(current or "")
+            if not migrated:
+                return False
+            self.docker.write_file_in_container(
+                container_id, "/workspace/knowledge.md", migrated
+            )
+            logger.info("[Wissen] Onboarding-Abschnitt bei %s entfernt", scrub_log(agent_id))
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Wissen] knowledge.md von %s nicht migriert: %s",
+                           scrub_log(agent_id), scrub_log(e))
+            return False
+
     async def refresh_instructions(self, agent: Agent) -> bool:
         """Schreibt die aktuelle Anleitung in einen BESTEHENDEN Container.
 
@@ -1761,6 +1770,9 @@ class AgentManager:
             )
             for path in instructions_paths(mode):
                 self.docker.write_file_in_container(agent.container_id, path, rendered)
+            # Wissensdatei mitziehen — sie liegt im Volume und ueberlebt sonst
+            # jede Aenderung an der Vorlage.
+            await self.migrate_knowledge_file(agent.container_id, agent.id)
             return True
         except Exception as e:  # noqa: BLE001 — Anleitung ist wichtig, aber nicht kritisch
             logger.warning(f"Could not refresh instructions for agent {agent.id}: {e}")

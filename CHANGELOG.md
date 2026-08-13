@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.187.2] - 2026-08-13
+
+### Behoben
+- **Die Wissens-Migration aus 1.187.1 lief nie.** Sie hing in `restart_agent`, das
+  Neuerstellen läuft aber über `update_agent` — beim Kunden stand nach dem
+  Ausrollen weiterhin „Onboarding Status: NOT COMPLETED" in der `knowledge.md`.
+  Sie liegt jetzt als `migrate_knowledge_file()` an EINER Stelle und wird von
+  **beiden** Wegen gerufen (`restart_agent` direkt, `update_agent` über
+  `refresh_instructions`). Ein Test zählt beide Aufrufe.
+
+---
+
 ## [1.187.1] - 2026-08-13
 
 ### Behoben
