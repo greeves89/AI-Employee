@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.197.2] - 2026-08-13
+
+### Geändert
+- **Die „In Arbeit"-Zeile zählt nur noch die offenen Aufträge.** Der Bruch
+  („3 von 6") bezog sich auf das ganze Gespräch und war nicht lesbar, wenn man
+  gerade 4 Aufträge vergeben hatte — man sucht dann die 6, die im Bild nicht
+  vorkommen. Jetzt steht dort schlicht, worauf noch gewartet wird.
+
+---
+
 ## [1.197.1] - 2026-08-13
 
 ### Behoben

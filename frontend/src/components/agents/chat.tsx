@@ -1963,9 +1963,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           <div className="flex items-center gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-400" />
             <div className="flex min-w-0 flex-col">
+              {/* Nur die OFFENEN zaehlen. Ein Bruch „3 von 6" bezog sich auf das
+                  ganze Gespraech und war nicht lesbar, wenn man gerade 4 Auftraege
+                  vergeben hatte — man sucht dann die 6, die es im Bild nicht gibt.
+                  Was hier zaehlt, ist ohnehin nur: worauf warte ich noch. */}
               <span className="text-xs text-amber-200/90">
-                In Arbeit — {auftraegeGesamt - offeneAuftraege.length} von {auftraegeGesamt}{" "}
-                {auftraegeGesamt === 1 ? "Auftrag" : "Aufträgen"} erledigt
+                {offeneAuftraege.length}{" "}
+                {offeneAuftraege.length === 1 ? "Auftrag läuft noch" : "Aufträge laufen noch"}
               </span>
               <span className="truncate text-[10px] text-muted-foreground">
                 {/* WER noch aussteht, nicht nur „irgendetwas laeuft" — das war

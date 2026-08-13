@@ -229,20 +229,22 @@ class WorkInProgressIsVisibleTests(unittest.TestCase):
     def test_it_does_not_depend_on_the_agents_own_turn(self):
         """Der springende Punkt: unabhaengig von ``isWaiting``, sonst waere die
         Anzeige genau dann weg, wenn man sie braucht."""
-        block = _block("{offeneAuftraege.length > 0 && (", 900)
+        # Nur der eigene Block — ein zu weites Fenster reicht in den
+        # NACHBARBLOCK hinein, der zu Recht auf ``isWaiting`` prueft.
+        block = _block("{offeneAuftraege.length > 0 && (", 1600).split("\n        )}", 1)[0]
         self.assertNotIn("isWaiting", block)
 
-    def test_it_shows_how_many_are_done(self):
-        block = _block("{offeneAuftraege.length > 0 && (", 900)
-        self.assertIn("auftraegeGesamt - offeneAuftraege.length", block)
+    def test_it_counts_only_what_is_still_open(self):
+        block = _block("{offeneAuftraege.length > 0 && (", 1600)
+        self.assertIn("offeneAuftraege.length}", block)
 
     def test_it_names_who_is_still_missing(self):
         """„warte noch auf SubAgents" — WER aussteht, nicht nur dass etwas laeuft."""
-        block = _block("{offeneAuftraege.length > 0 && (", 900)
+        block = _block("{offeneAuftraege.length > 0 && (", 1600)
         self.assertIn("assigned_agent_name", block)
 
     def test_each_colleague_is_named_once(self):
-        block = _block("{offeneAuftraege.length > 0 && (", 900)
+        block = _block("{offeneAuftraege.length > 0 && (", 1600)
         self.assertIn("new Set(", block)
 
     def test_only_unfinished_orders_count_as_open(self):
