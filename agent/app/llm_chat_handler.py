@@ -155,6 +155,10 @@ class LLMChatHandler:
         self._provider: BaseLLMProvider | None = None
         # Modelle, die in dieser Sitzung schon ausgefallen sind (#200).
         self._models_tried: set[str] = set()
+        # Wie oft in diesem Lauf schon wegen einer abgerissenen Verbindung
+        # wiederholt wurde. Begrenzt, damit ein dauerhaft kaputter Weg nicht
+        # still im Kreis laeuft.
+        self._connection_retries: int = 0
         self._tool_executor = ToolExecutor()
         self._mcp_client = MCPHTTPClient()
         # Execute MCP tool calls on the same client that ran discovery (shared
@@ -379,6 +383,36 @@ class LLMChatHandler:
             self._activated = self._activated[-MAX_ACTIVATED_TOOLS:]
         return "Folgende Tools sind ab deinem nächsten Schritt aufrufbar:\n" + "\n".join(lines)
 
+    async def _retry_after_connection_glitch(self, task_id: str, error_text: str | None) -> bool:
+        """Abgerissene Verbindung: DENSELBEN Aufruf noch einmal, kurz gewartet.
+
+        Ein Modellwechsel waere hier die falsche Antwort — das Modell ist in
+        Ordnung, die Leitung war es nicht. Und ohne gefuellte Ausweichkette
+        (Regelfall) haette der Wechsel ohnehin nichts zu wechseln: der Lauf starb
+        an einem einzigen abgerissenen Lesevorgang, nach 40 Zuegen Arbeit.
+
+        Hoechstens zwei Versuche. Reisst es dreimal, liegt es nicht am Zufall,
+        und stilles Weiterprobieren wuerde nur den echten Grund verdecken.
+        """
+        from app import model_fallback
+
+        if not model_fallback.is_connection_glitch(error_text):
+            return False
+        if self._connection_retries >= 2:
+            return False
+        self._connection_retries += 1
+        wartezeit = 2 * self._connection_retries
+        logger.warning(
+            "[Verbindung] abgerissen (%s) — Versuch %d/2 in %ds",
+            (error_text or "")[:120], self._connection_retries, wartezeit,
+        )
+        await self.log_publisher.publish(
+            task_id, "system",
+            {"message": f"[Verbindung abgerissen — neuer Versuch {self._connection_retries}/2]"},
+        )
+        await asyncio.sleep(wartezeit)
+        return True
+
     async def _switch_to_fallback(self, message_id: str, error_text: str | None) -> bool:
         """Auf das nächste Ausweichmodell umstellen (#200) — wie im Auftragslauf.
 
@@ -569,6 +603,13 @@ class LLMChatHandler:
                         # Gleiche Ausfallsicherheit wie im Auftragslauf (#200) —
                         # im Chat merkt der Mensch einen Ausfall sofort, hier ist
                         # sie also eher wichtiger als dort.
+                        # Erst der billige Fall: abgerissene Verbindung, derselbe
+                        # Aufruf noch einmal. Siehe llm_runner — gleiche Regel in
+                        # beiden Laufzeiten, sonst ist der Chat schlechter dran.
+                        if await self._retry_after_connection_glitch(message_id, event.text):
+                            switched_model = True   # Merker heisst „Zug wiederholen"
+                            provider = self._get_provider()
+                            break
                         if await self._switch_to_fallback(message_id, event.text):
                             switched_model = True
                             provider = self._get_provider()
@@ -582,7 +623,8 @@ class LLMChatHandler:
                         return result
 
                 if switched_model:
-                    # Derselbe Zug, anderes Modell — es gab keine verwertbare
+                    # Zug wiederholen (anderes Modell ODER dasselbe nach einer
+                    # abgerissenen Verbindung) — es gab keine verwertbare
                     # Antwort, die in den Verlauf gehoerte.
                     continue
 

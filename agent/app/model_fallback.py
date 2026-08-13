@@ -32,6 +32,30 @@ RETRYABLE_MARKERS: tuple[str, ...] = (
     "model_not_available", "currently unavailable",
 )
 
+#: Die Verbindung ist mittendrin abgerissen. Das ist etwas anderes als „das
+#: Modell antwortet nicht": das Modell ist in Ordnung, die Leitung war es nicht.
+#: Ein Modellwechsel hilft hier nichts — derselbe Aufruf noch einmal schon.
+#:
+#: Anlass: Bei einem Kunden scheiterten am 2026-08-13 drei Aufgaben an
+#: ``ReadError('')``. Der Abbruch traf jedes Mal die Antwort des Modells, immer
+#: kurz nachdem ein groesserer Stapel Werkzeug-Ergebnisse zurueckging. Keiner der
+#: Marker oben passte, also galt der Fehler als endgueltig — und eine Aufgabe,
+#: die 40 Zuege gelaufen war, starb an einem einzigen abgerissenen Lesevorgang.
+#:
+#: ``httpx`` verpackt den Socket-Fehler; der eigentliche Grund steht in der
+#: Ursachenkette, die ``describe_failure`` mitliefert. Deshalb stehen hier beide
+#: Ebenen — die Huelle und der Kern.
+CONNECTION_MARKERS: tuple[str, ...] = (
+    "readerror", "read error",
+    "connecterror", "connection error",
+    "connectionreset", "connection reset",
+    "remotedisconnected", "server disconnected", "disconnected without response",
+    "incompleteread", "incomplete read", "endofstream", "end of stream",
+    "connection aborted", "connection closed", "broken pipe",
+    "sslerror", "ssleoferror", "eof occurred",
+    "protocolerror", "peer closed",
+)
+
 #: Anzeichen für einen Einrichtungsfehler. Die schlagen VOR den obigen zu: eine
 #: Meldung wie „401 Unauthorized, try again later" darf nicht als Kapazitäts-
 #: problem durchgehen, sonst probiert die Kette alle Modelle mit demselben
@@ -52,6 +76,22 @@ def parse_chain(raw: str | None) -> list[str]:
         if name and name not in seen:
             seen.append(name)
     return seen
+
+
+def is_connection_glitch(error_text: str | None) -> bool:
+    """Ist die Verbindung abgerissen — lohnt also derselbe Aufruf noch einmal?
+
+    Bewusst getrennt von ``is_retryable``: dort geht es um „dieses Modell kann
+    gerade nicht", hier um „die Leitung war weg". Der Unterschied entscheidet, ob
+    man das Modell wechselt oder schlicht noch einmal fragt. Ein
+    Einrichtungsfehler bleibt auch hier endgueltig.
+    """
+    text = (error_text or "").lower()
+    if not text:
+        return False
+    if any(m in text for m in FATAL_MARKERS):
+        return False
+    return any(m in text for m in CONNECTION_MARKERS)
 
 
 def is_retryable(error_text: str | None) -> bool:

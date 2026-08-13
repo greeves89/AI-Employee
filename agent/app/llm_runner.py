@@ -84,6 +84,10 @@ class LLMRunner:
         # Modelle, die in diesem Lauf schon ausgefallen sind (#200) — verhindert,
         # dass die Ausweichkette im Kreis laeuft.
         self._models_tried: set[str] = set()
+        # Wie oft in diesem Lauf schon wegen einer abgerissenen Verbindung
+        # wiederholt wurde. Begrenzt, damit ein dauerhaft kaputter Weg nicht
+        # still im Kreis laeuft.
+        self._connection_retries: int = 0
         # Lazy tool loading: tools activated on demand via search_tools (LRU-capped).
         # Only CORE + search_tools + these are sent per request → under the 128 cap.
         self._activated: list[str] = []
@@ -222,6 +226,36 @@ class LLMRunner:
         if len(self._activated) > MAX_ACTIVATED_TOOLS:
             self._activated = self._activated[-MAX_ACTIVATED_TOOLS:]
         return "Folgende Tools sind ab deinem nächsten Schritt aufrufbar:\n" + "\n".join(lines)
+
+    async def _retry_after_connection_glitch(self, task_id: str, error_text: str | None) -> bool:
+        """Abgerissene Verbindung: DENSELBEN Aufruf noch einmal, kurz gewartet.
+
+        Ein Modellwechsel waere hier die falsche Antwort — das Modell ist in
+        Ordnung, die Leitung war es nicht. Und ohne gefuellte Ausweichkette
+        (Regelfall) haette der Wechsel ohnehin nichts zu wechseln: der Lauf starb
+        an einem einzigen abgerissenen Lesevorgang, nach 40 Zuegen Arbeit.
+
+        Hoechstens zwei Versuche. Reisst es dreimal, liegt es nicht am Zufall,
+        und stilles Weiterprobieren wuerde nur den echten Grund verdecken.
+        """
+        from app import model_fallback
+
+        if not model_fallback.is_connection_glitch(error_text):
+            return False
+        if self._connection_retries >= 2:
+            return False
+        self._connection_retries += 1
+        wartezeit = 2 * self._connection_retries
+        logger.warning(
+            "[Verbindung] abgerissen (%s) — Versuch %d/2 in %ds",
+            (error_text or "")[:120], self._connection_retries, wartezeit,
+        )
+        await self.log_publisher.publish(
+            task_id, "system",
+            {"message": f"[Verbindung abgerissen — neuer Versuch {self._connection_retries}/2]"},
+        )
+        await asyncio.sleep(wartezeit)
+        return True
 
     async def _switch_to_fallback(self, task_id: str, error_text: str | None) -> bool:
         """Auf das nächste Ausweichmodell umstellen — wenn es sich lohnt (#200).
@@ -424,6 +458,14 @@ class LLMRunner:
                         # nicht. Einrichtungsfehler (falscher Schluessel, falscher
                         # Bereitstellungsname) weichen bewusst NICHT aus, sonst
                         # verdeckt die Kette die eigentliche Ursache.
+                        # Erst der billige Fall: die Verbindung riss ab. Dann
+                        # hilft DERSELBE Aufruf noch einmal — ein Modellwechsel
+                        # waere die falsche Antwort und ohne gefuellte Kette
+                        # ohnehin wirkungslos.
+                        if await self._retry_after_connection_glitch(task_id, event.text):
+                            switched_model = True   # Merker heisst „Zug wiederholen"
+                            provider = self._get_provider()
+                            break
                         if await self._switch_to_fallback(task_id, event.text):
                             switched_model = True
                             provider = self._get_provider()
@@ -439,7 +481,9 @@ class LLMRunner:
                         }
 
                 if switched_model:
-                    # Derselbe Zug, anderes Modell. Der Verlauf bleibt unberuehrt:
+                    # Zug wiederholen — entweder mit anderem Modell oder, nach
+                    # einer abgerissenen Verbindung, mit demselben. Der Verlauf
+                    # bleibt unberuehrt:
                     # es gab keine verwertbare Antwort, die hineingehoerte. Der
                     # Zugzaehler wurde bereits erhoeht — das ist Absicht, sonst
                     # koennte eine dauerhaft ausfallende Kette endlos laufen.

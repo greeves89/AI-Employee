@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.203.0] - 2026-08-13
+
+### Behoben
+- **Eine abgerissene Verbindung tötet nicht mehr die ganze Aufgabe.** Bei einem
+  Kunden scheiterten drei Aufgaben an `ReadError('')` — der Abbruch traf jeweils
+  das Lesen der Modell-Antwort. Eine Aufgabe, die vierzig Züge gelaufen war,
+  starb an einem einzigen abgerissenen Lesevorgang.
+- Zwei Lücken lagen übereinander: die Fehlerprüfung kannte nur „das Modell kann
+  gerade nicht" (Rate-Limit, 5xx, Überlastung) — ein Socket-Abbruch passte auf
+  keinen Marker. Und selbst mit Treffer hätte es nichts genutzt: die Wiederholung
+  wechselt das **Modell**, und die Ausweichkette ist im Regelfall leer.
+- Der Verbindungsabbruch ist jetzt eine **eigene Kategorie**: nicht Modell
+  wechseln, sondern **denselben Aufruf noch einmal**. Das Modell war in Ordnung,
+  die Leitung war es nicht. Höchstens zwei Versuche mit wachsender Pause — reißt
+  es dreimal, liegt es nicht am Zufall und der echte Grund muss sichtbar werden.
+- Ein Einrichtungsfehler (falscher Schlüssel, falscher Bereitstellungsname) bleibt
+  auch hier sofort endgültig.
+- Der Mensch sieht die Wiederholung im Protokoll — ein stilles Nochmal-Versuchen
+  würde nur verschleiern, warum ein Lauf länger dauert.
+- Gilt in **beiden** Laufzeiten (Auftrag und Chat).
+
+---
+
 ## [1.202.0] - 2026-08-13
 
 ### Geändert
