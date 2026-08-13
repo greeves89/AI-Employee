@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.188.0] - 2026-08-13
+
+### Neu
+- **Auch Nachrichten an Kollegen erscheinen als Kachel.** Bisher gab es sie nur für
+  delegierte Aufträge — eine Nachricht an einen anderen Agenten verschwand spurlos,
+  obwohl sie für den Menschen dasselbe bedeutet: „ich habe jemanden angesprochen und
+  warte auf Antwort".
+  Die Kachel zeigt „gesendet, wartet auf Antwort" und wechselt auf „beantwortet",
+  sobald die Antwort kommt (erkannt über `reply_to` — es entsteht keine zweite
+  Kachel, die vorhandene wird geschlossen).
+
+---
+
 ## [1.187.2] - 2026-08-13
 
 ### Behoben

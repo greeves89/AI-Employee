@@ -104,6 +104,7 @@ interface TaskCard {
   status: string;
   assigned_agent_id?: string;
   assigned_agent_name?: string;
+  kind?: "task" | "message";
   result_preview?: string;
   cost_usd?: number | null;
   duration_ms?: number | null;
@@ -1813,19 +1814,25 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                     </div>
                     <div className="mt-1 flex items-center gap-3 pl-6 text-xs text-muted-foreground">
                       <span>
-                        {laeuft
-                          ? "in Arbeit"
-                          : gescheitert
-                            ? "fehlgeschlagen"
-                            : "abgeschlossen"}
+                        {card.kind === "message"
+                          ? laeuft
+                            ? "gesendet, wartet auf Antwort"
+                            : "beantwortet"
+                          : laeuft
+                            ? "in Arbeit"
+                            : gescheitert
+                              ? "fehlgeschlagen"
+                              : "abgeschlossen"}
                       </span>
                       {card.duration_ms ? <span>{Math.round(card.duration_ms / 1000)} s</span> : null}
-                      <a
-                        href={`/tasks/${card.task_id}`}
-                        className="ml-auto underline-offset-2 hover:underline"
-                      >
-                        Details
-                      </a>
+                      {card.kind === "message" ? null : (
+                        <a
+                          href={`/tasks/${card.task_id}`}
+                          className="ml-auto underline-offset-2 hover:underline"
+                        >
+                          Details
+                        </a>
+                      )}
                     </div>
                     {!laeuft && card.result_preview ? (
                       <p className="mt-1 line-clamp-2 pl-6 text-xs text-muted-foreground">

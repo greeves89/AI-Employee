@@ -1887,6 +1887,49 @@ async def send_message_to_agent(
         db.add(db_msg)
         await db.commit()
 
+        # Kachel im Chat des ABSENDERS. Bisher gab es sie nur fuer delegierte
+        # Auftraege — eine Nachricht an einen Kollegen verschwand dagegen
+        # spurlos, obwohl sie fuer den Menschen dasselbe bedeutet: "ich habe
+        # jemanden angesprochen und warte auf Antwort".
+        #
+        # Kommt die Nachricht selbst als ANTWORT (reply_to gesetzt), wird nicht
+        # eine zweite Kachel erzeugt, sondern die des Absenders geschlossen.
+        try:
+            if is_agent_principal(user) and body.from_agent_id:
+                if body.reply_to:
+                    await redis.client.publish(
+                        f"agent:{agent_id}:chat:response",
+                        json.dumps({
+                            "type": "task_card",
+                            "agent_id": agent_id,
+                            "data": {
+                                "task_id": f"msg-{body.reply_to}",
+                                "phase": "done",
+                                "status": "completed",
+                                "result_preview": body.text[:400],
+                            },
+                        }),
+                    )
+                else:
+                    await redis.client.publish(
+                        f"agent:{body.from_agent_id}:chat:response",
+                        json.dumps({
+                            "type": "task_card",
+                            "agent_id": body.from_agent_id,
+                            "data": {
+                                "task_id": f"msg-{message_id}",
+                                "title": body.text[:120],
+                                "phase": "queued",
+                                "status": "sent",
+                                "kind": "message",
+                                "assigned_agent_id": agent_id,
+                                "assigned_agent_name": agent.name,
+                            },
+                        }),
+                    )
+        except Exception:  # noqa: BLE001 — eine Anzeige haelt keine Zustellung auf
+            logger.debug("[Kachel] Nachricht nicht angezeigt", exc_info=True)
+
         # Publish event for real-time frontend updates
         await redis.client.publish("agent:messages", json.dumps({
             "id": message_id,
