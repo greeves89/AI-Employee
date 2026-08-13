@@ -256,6 +256,36 @@ class WorkInProgressIsVisibleTests(unittest.TestCase):
         self.assertIn("const alleAuftraege = useMemo(() => Object.values(taskCards)", CHAT)
 
 
+class AChatLooksTheSameWhoeverStartedTheTurnTests(unittest.TestCase):
+    """Kundenwunsch (13.08.2026): „wenn er nach einer Delegation noch weiter
+    arbeitet, dann muss sich der Chat-Link in der Sidebar wie auch im normalen
+    Chat weiter drehen … generell sollte der Chat an sich immer gleich aussehen."
+
+    Ein Zug, den der Agent VON SICH AUS beginnt — nach einer Delegation, nach
+    einer Fertigmeldung, aus einem Zeitplan — faengt ohne Zutun des Fensters an.
+    Die Elternseite fragt den Agentenzustand nur alle 15 Sekunden ab; ein kurzer
+    Zug war bis dahin vorbei, und die Gespraechszeile blieb blass, obwohl im
+    Fenster „Thinking..." lief.
+    """
+
+    def test_an_agent_started_turn_refreshes_the_page(self):
+        block = _block('if (type === "text" || type === "tool_call" || type === "tool_result") {', 900)
+        self.assertIn("onTurnChangeRef.current?.()", block)
+
+    def test_only_on_the_transition_not_every_event(self):
+        """Sonst eine Abfrage je Zeichen des Antwortstroms."""
+        block = _block('if (type === "text" || type === "tool_call" || type === "tool_result") {', 900)
+        self.assertIn("if (!isWaitingRef.current) {", block)
+
+    def test_the_own_running_turn_marks_its_row_immediately(self):
+        self.assertIn("if (isWaiting && activeSessionId) faeden.add(activeSessionId);", CHAT)
+
+    def test_the_rail_uses_the_combined_set(self):
+        """Die abgefragte Liste allein hinkt dem Geschehen hinterher."""
+        self.assertIn("busyIds={beschaeftigteFaeden}", CHAT)
+        self.assertIn("new Set(busySessionIds || [])", CHAT)
+
+
 class TheTypeIsRealTests(unittest.TestCase):
     """Ein Zweig auf einen Ereignistyp, den es nicht gibt, ist toter Code. Beim
     Bauen fiel genau das auf (``"thinking"`` steht nicht in der Union)."""

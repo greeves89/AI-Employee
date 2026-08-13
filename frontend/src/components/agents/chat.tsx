@@ -447,6 +447,16 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // Elternseite neu gebaut (und die WS-Verbindung neu aufgesetzt) wird.
   const onTurnChangeRef = useRef(onTurnChange);
   useEffect(() => { onTurnChangeRef.current = onTurnChange; });
+  // Welche Gespraechszeilen in der Seitenleiste als „arbeitet" markiert sind.
+  // Die Liste von der Elternseite kommt aus einer Abfrage im 15-Sekunden-Takt —
+  // fuer den EIGENEN laufenden Zug wissen wir es hier sofort und genauer. Ohne
+  // das blieb die Zeile blass, waehrend im Fenster schon „Thinking..." lief: ein
+  // Chat sah je nach Ausloeser des Zuges unterschiedlich aus.
+  const beschaeftigteFaeden = useMemo(() => {
+    const faeden = new Set(busySessionIds || []);
+    if (isWaiting && activeSessionId) faeden.add(activeSessionId);
+    return Array.from(faeden);
+  }, [busySessionIds, isWaiting, activeSessionId]);
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
@@ -935,7 +945,16 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     // beantwortet), hebt das die Anzeige wieder an.
     if (type === "text" || type === "tool_call" || type === "tool_result") {
       if (pendingCountRef.current === 0) pendingCountRef.current = 1;
-      if (!isWaitingRef.current) setIsWaiting(true);
+      if (!isWaitingRef.current) {
+        setIsWaiting(true);
+        // Ein Zug, den der Agent VON SICH AUS beginnt — nach einer Delegation,
+        // nach einer Fertigmeldung, aus einem Zeitplan — faengt ohne unser
+        // Zutun an. Die Elternseite erfaehrt davon sonst erst beim naechsten
+        // 15-Sekunden-Takt, und ein kurzer Zug ist bis dahin vorbei: der
+        // Spinner an der Gespraechszeile blieb aus, obwohl gearbeitet wurde.
+        // Ein Chat muss gleich aussehen, egal wer den Zug angestossen hat.
+        onTurnChangeRef.current?.();
+      }
     }
 
     // Kachel eines delegierten Auftrags — eigener Zustand, kein Chatverlauf:
@@ -1765,7 +1784,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           className="border-r border-border bg-card/40"
           sessions={sessions.map((s) => ({ ...s, fallbackLabel: s.label }))}
           selectedId={activeSessionId}
-          busyIds={busySessionIds}
+          busyIds={beschaeftigteFaeden}
           onSelect={switchSession}
           onNew={createNewSession}
           newDisabled={!isConnected}

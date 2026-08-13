@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.198.0] - 2026-08-13
+
+### Geändert
+- **Der Chat sieht jetzt gleich aus, egal wer den Zug angestoßen hat.**
+  Kundenwunsch: *„wenn er nach einer Delegation noch weiter arbeitet, dann muss
+  sich der Chat-Link in der Sidebar wie im normalen Chat weiter drehen."*
+- Beginnt der Agent **von sich aus** einen Zug — nach einer Delegation, nach
+  einer Fertigmeldung, aus einem Zeitplan — erfuhr die Seite davon bisher erst
+  beim nächsten 15-Sekunden-Takt. Ein kurzer Zug war bis dahin vorbei: die
+  Gesprächszeile blieb blass, obwohl im Fenster „Thinking…" lief. Das erste
+  Ereignis eines solchen Zuges löst jetzt sofort ein Nachfassen aus.
+- Der **eigene** laufende Zug markiert seine Gesprächszeile unmittelbar, statt
+  auf die abgefragte Liste zu warten.
+
+---
+
 ## [1.197.2] - 2026-08-13
 
 ### Geändert
