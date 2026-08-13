@@ -57,7 +57,7 @@ jobs:
         working-directory: orchestrator
         run: |
           pip install --no-cache-dir -e .
-          pip install --no-cache-dir pytest pytest-asyncio aiosqlite ruff
+          pip install --no-cache-dir pytest pytest-asyncio aiosqlite ruff numpy
       # Undefinierte Namen sind zur Laufzeit ein NameError, aber beim Import
       # unsichtbar. Genau so lief das Anlegen eines Agenten fuenf Tage lang in
       # einen 500 ("cannot access local variable 'config'"), waehrend die Tests
