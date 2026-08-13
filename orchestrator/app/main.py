@@ -1114,6 +1114,34 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure app_shares table: {e}")
 
+    # Eigene Menuepunkte (fremde Seiten im Rahmen oder als Link). Wie bei den
+    # uebrigen jungen Tabellen idempotent beim Start statt per Migration — eine
+    # Bestandsinstallation kaeme sonst ohne Handanlegen nicht an die Funktion.
+    try:
+        from app.db.session import engine as _eng_cp
+        from sqlalchemy import text as _txt_cp
+        async with _eng_cp.begin() as conn:
+            await conn.execute(_txt_cp(
+                "CREATE TABLE IF NOT EXISTS custom_pages ("
+                "id serial PRIMARY KEY, slug varchar(64) NOT NULL UNIQUE, title varchar(120) NOT NULL,"
+                "description varchar(400), url text NOT NULL,"
+                "icon varchar(60) NOT NULL DEFAULT 'Globe',"
+                "group_key varchar(20) NOT NULL DEFAULT 'collab',"
+                "open_mode varchar(10) NOT NULL DEFAULT 'iframe',"
+                "sort_order integer NOT NULL DEFAULT 0,"
+                "enabled boolean NOT NULL DEFAULT true,"
+                "allow_media boolean NOT NULL DEFAULT false,"
+                "created_by varchar,"
+                "created_at timestamptz NOT NULL DEFAULT now(),"
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_cp(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_custom_pages_slug ON custom_pages (slug)"
+            ))
+        logger.info("custom_pages table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure custom_pages table: {e}")
+
     # Eigener Claude-/Codex-Zugang je Nutzer. Getrennte Zugaenge = getrennte
     # Token-Familien: die Rotation des einen kann die des anderen nicht mehr
     # umbringen (der Grund, weshalb Codex-Recreates bis heute serialisiert werden).
