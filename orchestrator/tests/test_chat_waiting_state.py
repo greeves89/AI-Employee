@@ -308,12 +308,20 @@ class ItNeverLooksAsleepBetweenToolsTests(unittest.TestCase):
         wurde verworfen."""
         self.assertIn("function ToolCluster({ steps, isStreaming }", CHAT)
 
-    def test_the_caller_no_longer_narrows_it(self):
-        """``message.isStreaming && ein Werkzeug laeuft`` war genau die
-        Einschraenkung, die in der Denkpause falsch wurde."""
-        block = _block("<ToolCluster", 700)
-        self.assertIn("isStreaming={message.isStreaming}", block)
-        self.assertNotIn('isStreaming={message.isStreaming && g.steps.some(', block)
+    def test_the_caller_does_not_tie_it_to_a_running_tool(self):
+        """``message.isStreaming && ein Werkzeug laeuft`` war die Einschraenkung,
+        die in der Denkpause falsch wurde — die darf nicht zurueckkehren."""
+        block = _block("<ToolCluster", 1500)
+        self.assertIn("message.isStreaming", block)
+        self.assertNotIn("g.steps.some(", block)
+
+    def test_only_the_last_chain_of_a_turn_shows_work(self):
+        """Nachtrag zu meiner eigenen Fassung: ``message.isStreaming`` allein war
+        zu grob. Ein Zug kann MEHRERE Werkzeugketten haben; dann zeigten auch
+        die laengst fertigen frueheren Ketten „Arbeitet…" und klappten erst
+        gemeinsam um, wenn der ganze Zug endete. Nur die letzte laeuft wirklich."""
+        block = _block("<ToolCluster", 1500)
+        self.assertIn("gi === groups.length - 1", block)
 
     def test_there_is_something_that_actually_moves(self):
         """„es dreht sich kein Kreis" — ein Wort allein liest man nicht als

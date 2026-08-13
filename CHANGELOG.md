@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.200.0] - 2026-08-13
+
+### Neu
+- **Eigene Menüpunkte für fremde Seiten.** Ein Administrator legt eine Seite an
+  (`/p/<kurzname>`), und sie erscheint als regulärer Menüpunkt — wahlweise
+  **eingebettet** (`iframe`) oder als **Link** im neuen Tab. Anlass war OpenWebUI
+  beim Kunden: die Oberfläche soll nicht „daneben" stehen, sondern im selben Menü
+  erreichbar sein wie alles andere.
+- **Keine zweite Rechte-Logik.** Wer die Seite sieht, entscheidet die vorhandene
+  Rechtevergabe (`permissions.menu_paths`) — der Kurzname wird zum Rechte-Pfad.
+- Ob sich eine fremde Seite überhaupt einbetten lässt, bestimmt allein diese
+  Seite (`X-Frame-Options` / `frame-ancestors`). Das lässt sich weder erzwingen
+  noch vorher erkennen; die Oberfläche weist darauf hin und bietet den Weg im
+  neuen Tab an.
+
+### Sicherheit
+- **Menüziele nur nach `http`/`https`** — doppelt geprüft. Der Server weist
+  andere Schemata beim Anlegen *und* beim Ändern ab; die Oberfläche prüft
+  zusätzlich, für Einträge, die auf anderem Weg in die Datenbank gelangen. Ein
+  `javascript:`-Ziel wäre fremder Code, der beim Klick in unserer eigenen
+  Oberfläche liefe — mit der Sitzung des Angemeldeten.
+
+### Behoben
+- **Konfliktreste im CHANGELOG entfernt.** Seit einem unfertigen Rebase am
+  Vormittag standen `<<<<<<< HEAD`-Marken zwischen den Einträgen 1.192.0 und
+  1.191.2 in der Datei — beide Releases sind echt und stehen jetzt wieder
+  vollständig da.
+
+---
+
 ## [1.199.1] - 2026-08-13
 
 ### Behoben
