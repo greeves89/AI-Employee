@@ -1040,7 +1040,31 @@ class OrchestratorAPIClient:
                 if t.get("status") in ("completed", "failed"):
                     results[tid] = t
 
-        lines = [f"{len(results)}/{len(task_ids)} Auftraege abgeschlossen:"]
+        done, total = len(results), len(task_ids)
+        # Die Rueckgabe muss unmissverstaendlich sagen, dass das Warten VORBEI ist.
+        #
+        # Am 2026-08-13 hat ein Team-Lead genau hier den falschen Schluss gezogen:
+        # ``delegate_and_wait`` kam mit dem fertigen Ergebnis zurueck, und er
+        # schrieb dem Menschen trotzdem „Angestossen: Mr. Design erstellt JETZT
+        # das Paket". Der Mensch las „laeuft", wartete 18 Minuten und musste
+        # nachfragen — dabei war die Arbeit beim Zurueckkommen dieses Aufrufs
+        # bereits erledigt.
+        #
+        # Ein blosses „1/1 Auftraege abgeschlossen" reichte dafuer nicht. Der
+        # Unterschied zwischen „ich habe angestossen" und „ich habe das Ergebnis"
+        # muss in der Rueckgabe selbst stehen, nicht in der Werkzeugbeschreibung,
+        # die zwanzig Zuege vorher gelesen wurde.
+        if done == total:
+            head = (f"FERTIG: alle {total} Auftraege sind abgeschlossen. Das hier "
+                    f"ist das ENDERGEBNIS, kein Zwischenstand. Gib es dem Menschen "
+                    f"wieder und sage ausdruecklich, dass die Arbeit erledigt ist. "
+                    f"Schreibe NICHT, dass etwas 'angestossen' wurde oder 'jetzt "
+                    f"laeuft'.")
+        else:
+            head = (f"TEILWEISE FERTIG: {done} von {total} Auftraegen sind zurueck, "
+                    f"{total - done} laufen noch. Berichte beides getrennt — was "
+                    f"vorliegt und worauf noch gewartet wird.")
+        lines = [head, ""]
         for tid in task_ids:
             t = results.get(tid)
             if not t:

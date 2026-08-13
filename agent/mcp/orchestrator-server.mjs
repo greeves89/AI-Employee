@@ -1020,17 +1020,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const pending = taskIds.filter((id) => !results[id]);
       const lines = taskIds.map((id) => {
         const r = results[id];
-        if (!r) return `  #${id}: ⏳ still running (timed out)`;
-        const icon = r.status === "completed" ? "✅" : "❌";
-        return `${icon} #${id} "${r.title}"\n${r.result}`;
+        if (!r) return `  #${id}: still running (timed out)`;
+        return `[${r.status}] #${id} "${r.title}"\n${r.result}`;
       });
+      // Die Rueckgabe muss sagen, dass das Warten VORBEI ist. Ein Team-Lead hat
+      // am 2026-08-13 aus einem fertigen Ergebnis ein "wurde angestossen, laeuft
+      // jetzt" gemacht; der Mensch wartete 18 Minuten auf etwas, das schon fertig
+      // war. Ohne Emojis — harte Vorgabe fuer nutzersichtbaren Text.
+      const done = Object.keys(results).length;
+      const head = pending.length === 0
+        ? `FERTIG: alle ${taskIds.length} Auftraege sind abgeschlossen. Das hier ist ` +
+          `das ENDERGEBNIS, kein Zwischenstand. Gib es dem Menschen wieder und sage ` +
+          `ausdruecklich, dass die Arbeit erledigt ist. Schreibe NICHT, dass etwas ` +
+          `"angestossen" wurde oder "jetzt laeuft".`
+        : `TEILWEISE FERTIG: ${done} von ${taskIds.length} Auftraegen sind zurueck, ` +
+          `${pending.length} laufen noch. Berichte beides getrennt.`;
       return {
         content: [{
           type: "text",
-          text:
-            `Delegated ${taskIds.length} tasks. ` +
-            `${Object.keys(results).length} finished, ${pending.length} timed out.\n\n` +
-            wrapData("subtask-results", lines.join("\n\n---\n\n")),
+          text: `${head}\n\n` + wrapData("subtask-results", lines.join("\n\n---\n\n")),
         }],
       };
     }
@@ -1041,9 +1049,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         ids.map((id) => apiCall(`/tasks/${id}`).catch(() => ({ id, status: "error", result: "not found" })))
       );
       const lines = statuses.map((t) => {
-        const icon = t.status === "completed" ? "✅" : t.status === "failed" ? "❌" : t.status === "running" ? "🔄" : "⏳";
-        const cost = t.cost_usd ? ` ($${t.cost_usd.toFixed(4)})` : "";
-        return `${icon} #${t.id} [${t.status}]${cost}: ${t.title || ""}${t.result ? `\n  → ${t.result.substring(0, 300)}` : ""}`;
+        const cost = t.cost_usd ? ` (${t.cost_usd.toFixed(4)} USD)` : "";
+        return `#${t.id} [${t.status}]${cost}: ${t.title || ""}${t.result ? `\n  -> ${t.result.substring(0, 300)}` : ""}`;
       });
       return {
         content: [{

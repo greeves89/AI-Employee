@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.186.1] - 2026-08-13
+
+### Behoben
+- **Ein zurückgekommenes Ergebnis wurde als „angestoßen" gemeldet.** Die Kette war
+  vollständig korrekt — nachweisbar aus den Werkzeugaufrufen des Team-Leads:
+  `list_my_team` → Projekt mit `bash`/`read_file` geprüft → `update_todos` →
+  `delegate_and_wait(agent_id=…, timeout_seconds=300)` → danach `memory_save`,
+  `rate_task`. Dass nach dem Warten noch Aufrufe kamen, beweist: der Aufruf ist
+  **mit dem Ergebnis** zurückgekehrt.
+  Trotzdem schrieb der Lead „Angestoßen: Mr. Design erstellt **jetzt** das Paket".
+  Der Mensch las „läuft" und wartete 18 Minuten auf etwas, das fertig war.
+  Die Rückgabe von `delegate_and_wait` sagt jetzt in der **ersten Zeile**, dass das
+  Warten vorbei ist („FERTIG … das ist das ENDERGEBNIS, kein Zwischenstand"), und
+  untersagt ausdrücklich die Formulierung „angestoßen"/„läuft jetzt". Teilweise
+  fertige Stapel bleiben klar als solche benannt.
+  In **beiden** Laufzeiten: Custom-LLM und stdio-MCP (Claude Code, Codex).
+
+- **Emojis aus allen MCP-Servern entfernt** — `get_tasks_status`, Brain-Server und
+  Freigabe-Server trugen sie in nutzersichtbarem Text. Der Test sucht jetzt im
+  ganzen Verzeichnis: eine Regel, die nur dort geprüft wird, wo man gerade
+  hinsieht, ist keine Regel.
+
+### Test
+- `agent/tests/test_delegation_result_is_not_a_kickoff.py`
+
+---
+
 ## [1.186.0] - 2026-08-13
 
 ### Behoben
