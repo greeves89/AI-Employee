@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.193.0] - 2026-08-13
+
+### Geändert
+- **Auftrags-Kacheln sind jetzt Elemente des Chatverlaufs.** Sie stehen an der
+  Stelle, an der der Auftrag vergeben wurde — alles Spätere kommt darunter.
+  Vorher hingen sie in einer eigenen Zone am Ende und rutschten bei jeder neuen
+  Nachricht mit; laufende Aufträge lagen sogar in einem getrennten Streifen über
+  dem Eingabefeld.
+  Der Zustand wechselt an Ort und Stelle: „in Arbeit" → „abgeschlossen".
+  Die beiden alten Darstellungsblöcke sind entfallen.
+
+---
+
 ## [1.192.2] - 2026-08-13
 
 ### Neu

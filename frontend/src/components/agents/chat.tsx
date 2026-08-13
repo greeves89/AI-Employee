@@ -77,6 +77,8 @@ interface ChatMessage {
   isQueued?: boolean;
   steps?: AssistantStep[];
   toolCalls?: { tool: string; input: string }[];
+  /** Verweist auf eine Auftrags-Kachel; die Zeile wird dann als Kachel gezeichnet. */
+  taskCardId?: string;
   meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; presented_files?: ChatFile[] };
   images?: ChatImage[];
   files?: ChatFile[];
@@ -573,13 +575,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         // Die Kachel-Zeilen selbst gehoeren NICHT in den Nachrichtenstrom — sie
         // haben keinen Text und wurden sonst als leere graue Blasen gezeichnet.
         // Ihr Inhalt steckt in ``meta.task_card`` und wird als Kachel gerendert.
-        const ohneKachelzeilen = history.filter(
-          (m) => !(m as { meta?: { task_card?: unknown } }).meta?.task_card,
-        );
-
-        if (ohneKachelzeilen.length > 0) {
-          const restored: ChatMessage[] = ohneKachelzeilen.map((m) => {
+        if (history.length > 0) {
+          const restored: ChatMessage[] = history.map((m) => {
             // Convert legacy toolCalls to steps
+            const kachel = (m as { meta?: { task_card?: TaskCard } }).meta?.task_card;
             let steps: AssistantStep[] | undefined;
             if (m.role === "assistant") {
               steps = [];
@@ -614,6 +613,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
               meta: m.meta ?? undefined,
               images: m.role === "assistant" && presented?.length ? presented : m.images,
               files: m.role === "assistant" && presentedFiles?.length ? presentedFiles : undefined,
+              // Kachel-Zeile: wird als Kachel gezeichnet, nicht als Blase.
+              taskCardId: (m.meta as { task_card?: TaskCard } | undefined)?.task_card?.task_id,
             };
           });
           // Deduplicate by id+role
@@ -868,6 +869,18 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         next[card.task_id] = { ...(next[card.task_id] || {}), ...card, at: Date.now() };
         return next;
       });
+      // Einmalig eine Zeile im Verlauf anlegen — an DIESER Stelle gehoert sie hin.
+      setMessages((prev) =>
+        prev.some((m) => m.taskCardId === card.task_id)
+          ? prev
+          : [...prev, {
+              id: `card-${card.task_id}`,
+              role: "system" as const,
+              content: "",
+              timestamp: new Date().toISOString(),
+              taskCardId: card.task_id,
+            }],
+      );
       return;
     }
 
@@ -1134,10 +1147,6 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       setCardDetailFull(null);   // Kachelangaben genuegen dann
     }
   }, []);
-
-  const alleKacheln = Object.values(taskCards).sort((a, b) => a.at - b.at);
-  const laufendeKacheln = alleKacheln.filter((c) => c.phase !== "done");
-  const erledigteKacheln = alleKacheln.filter((c) => c.phase === "done");
 
   const jumpToLatest = useCallback(() => {
     followRef.current = true;
@@ -1779,9 +1788,69 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
             </button>
           </div>
         )}
-        {messages.filter((msg, idx, arr) => arr.findIndex((m) => m.id === msg.id && m.role === msg.role) === idx).map((msg) => (
-          <MessageRow key={`${msg.id}-${msg.role}`} message={msg} onFork={forkFrom} onRewind={rewindTo} />
-        ))}
+        {messages.filter((msg, idx, arr) => arr.findIndex((m) => m.id === msg.id && m.role === msg.role) === idx).map((msg) => {
+          // Eine Auftrags-Kachel ist ein Element des VERLAUFS, keine eigene Zone:
+          // sie steht dort, wo der Auftrag vergeben wurde, und alles Spaetere
+          // kommt darunter. Vorher hingen alle Kacheln am Ende und rutschten bei
+          // jeder neuen Nachricht mit.
+          const karte = taskCards[msg.taskCardId || ""];
+          if (msg.taskCardId && karte) {
+            const laeuft = karte.phase !== "done";
+            const gescheitert = karte.status === "failed";
+            return (
+              <div key={`${msg.id}-card`} className="mx-auto w-full max-w-3xl px-4 py-1">
+                <div
+                  className={`group relative rounded-lg border px-2.5 py-1.5 pr-7 text-xs ${
+                    laeuft
+                      ? "border-amber-500/40 bg-amber-500/5"
+                      : gescheitert
+                        ? "border-destructive/40 bg-destructive/5"
+                        : "border-emerald-600/30 bg-emerald-600/5"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => openCardDetail(karte)}
+                    className="block w-full text-left"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {laeuft ? (
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-500" />
+                      ) : gescheitert ? (
+                        <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate font-medium">{karte.title}</span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {karte.assigned_agent_name}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 pl-5 text-[11px] text-muted-foreground">
+                      {laeuft ? "in Arbeit" : gescheitert ? "fehlgeschlagen" : "abgeschlossen"}
+                      {karte.duration_ms ? ` · ${Math.round(karte.duration_ms / 1000)} s` : ""}
+                    </div>
+                  </button>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Kachel ausblenden"
+                    title="Ausblenden"
+                    onClick={() => setTaskCards((prev) => {
+                      const next = { ...prev };
+                      delete next[karte.task_id];
+                      return next;
+                    })}
+                    className="absolute right-1.5 top-1.5 cursor-pointer rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100"
+                  >
+                    <X className="h-3 w-3" />
+                  </span>
+                </div>
+              </div>
+            );
+          }
+          return <MessageRow key={`${msg.id}-${msg.role}`} message={msg} onFork={forkFrom} onRewind={rewindTo} />;
+        })}
         {isWaiting && !messages.some((m) => m.isStreaming) && (
           <div className="flex items-start gap-3 pl-1 py-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-500/20 shrink-0">
@@ -1828,97 +1897,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
             </div>
           </div>
         )}
-        {/* Fertige Auftraege: klein, nebeneinander, laufen mit dem Verlauf mit.
-            Laufende stehen stattdessen unten fest (siehe Streifen ueber dem
-            Eingabefeld) — sonst scrollt einem der Stand weg, waehrend man liest. */}
-        {erledigteKacheln.length > 0 && viewMode !== "overview" && (
-          <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-2 px-4 pb-2 sm:grid-cols-2">
-            {erledigteKacheln.map((card) => {
-              const gescheitert = card.status === "failed";
-              return (
-                <button
-                  key={card.task_id}
-                  type="button"
-                  onClick={() => openCardDetail(card)}
-                  className={`group relative rounded-lg border px-2.5 py-1.5 pr-7 text-left text-xs transition-colors hover:bg-accent/40 ${
-                    gescheitert
-                      ? "border-destructive/40 bg-destructive/5"
-                      : "border-emerald-600/30 bg-emerald-600/5"
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    {gescheitert ? (
-                      <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
-                    ) : (
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate font-medium">{card.title}</span>
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-2 pl-5 text-[11px] text-muted-foreground">
-                    <span className="truncate">{card.assigned_agent_name}</span>
-                    {card.duration_ms ? <span>{Math.round(card.duration_ms / 1000)} s</span> : null}
-                  </div>
-                  {/* Wegklicken. Solange die Kachel nicht an ihrer Stelle im
-                      Verlauf sitzt, sondern am Ende klebt, ist das der schnellste
-                      Weg, sie loszuwerden, wenn man sie gesehen hat. Nur die
-                      Anzeige — der Auftrag selbst bleibt. */}
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    aria-label="Kachel ausblenden"
-                    title="Ausblenden"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTaskCards((prev) => {
-                        const next = { ...prev };
-                        delete next[card.task_id];
-                        return next;
-                      });
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        setTaskCards((prev) => {
-                          const next = { ...prev };
-                          delete next[card.task_id];
-                          return next;
-                        });
-                      }
-                    }}
-                    className="absolute right-1.5 top-1.5 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100"
-                  >
-                    <X className="h-3 w-3" />
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
         <div ref={bottomRef} />
       </div>
-
-      {/* Laufende Auftraege bleiben stehen, solange sie laufen — der Stand darf
-          einem nicht wegscrollen, waehrend man liest. Fertige wandern in den
-          Verlauf (siehe oben). */}
-      {laufendeKacheln.length > 0 && viewMode !== "overview" && (
-        <div className="mx-auto w-full max-w-3xl shrink-0 space-y-1.5 border-t border-border/60 px-4 pb-2 pt-2">
-          {laufendeKacheln.map((card) => (
-            <button
-              key={card.task_id}
-              type="button"
-              onClick={() => openCardDetail(card)}
-              className="flex w-full items-center gap-2 rounded-lg border border-amber-500/40 bg-card/95 px-3 py-1.5 text-left text-xs shadow-lg backdrop-blur transition-colors hover:bg-accent/40"
-            >
-              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-500" />
-              <span className="min-w-0 flex-1 truncate font-medium">{card.title}</span>
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {card.assigned_agent_name}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* Wer hochgescrollt hat, kommt mit einem Klick zurueck. Ohne das bleibt
           man in einem langen Gespraech oben stehen und muesste sich per Hand bis
