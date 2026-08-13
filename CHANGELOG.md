@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.202.0] - 2026-08-13
+
+### Geändert
+- **Die Agenten lernen die Namensregel selbst.** Sie schreiben inzwischen Code,
+  Commits, Pull Requests und Issues — ohne Regel machen sie denselben Fehler wie
+  wir, nur schneller und öfter. Die Anweisung steht jetzt in der Agenten-Anleitung
+  und damit modusübergreifend bei Claude Code, Codex und Custom-LLM.
+- Sie verbietet nicht nur, sondern sagt, **was stattdessen** dahin gehört
+  („beim Kunden", „eine Kundenanlage", `example.com`), **warum** es beiläufig
+  passiert (man notiert, wo ein Fehler auftrat — und der Ort hat einen Namen),
+  und **wohin der Klarname gehört**: ins Gedächtnis des Agenten, nicht ins
+  Repository. Ein privates Repo ist ausdrücklich keine Ausnahme.
+- Bestandsagenten bekommen die Anleitung beim nächsten Update oder Neustart.
+
+---
+
 ## [1.201.0] - 2026-08-13
 
 ### Sicherheit
