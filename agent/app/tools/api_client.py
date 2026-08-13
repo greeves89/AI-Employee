@@ -69,17 +69,41 @@ class OrchestratorAPIClient:
 
     # ── Task Management (orchestrator-server.mjs) ──
 
+    @staticmethod
+    def _task_payload(t: dict, *, standard_titel: str = "Task", vorgabe_prio: int = 5) -> dict:
+        """EIN Bauplan fuer jeden Auftrag, den ein Agent anlegt.
+
+        Es gibt drei Werkzeuge, die Auftraege erzeugen — ``create_task``,
+        ``create_task_batch`` und ``delegate_and_wait`` — und sie bauten ihre
+        Nutzlast jeweils selbst zusammen. Als der Gespraechsfaden dazukam, wurde
+        er an zwei von dreien angehaengt; ``create_task_batch`` blieb aussen vor.
+        Folge beim Nutzer am 2026-08-13: **in derselben Sekunde** trugen zwei
+        Auftraege den Faden und zwei nicht — fuer die einen erschien eine Kachel
+        im Chat, fuer die anderen nicht.
+
+        Deshalb hier gebuendelt: ein Feld, das kuenftig dazukommt, gilt sofort
+        fuer alle drei Wege. Drei fast gleiche Stellen zu pflegen heisst, eine
+        davon zu vergessen.
+        """
+        return {
+            "title": t.get("title", standard_titel),
+            "prompt": t.get("prompt", ""),
+            "priority": t.get("priority", vorgabe_prio),
+            "agent_id": t.get("agent_id"),
+            **({"model": t["model"]} if t.get("model") else {}),
+            **_session_field(),
+        }
+
     async def create_task(self, params: dict) -> str:
         """Create a task for self or another agent."""
         agent_id = params.get("agent_id", self.agent_id)
         body = {
-            "title": params.get("title", "Task from agent"),
-            "prompt": params.get("prompt", ""),
-            "priority": params.get("priority", 0),
-            "agent_id": agent_id,
-            "model": params.get("model"),
+            **self._task_payload(
+                {**params, "agent_id": agent_id},
+                standard_titel="Task from agent",
+                vorgabe_prio=0,
+            ),
             "created_by_agent": self.agent_id,
-            **_session_field(),
         }
         result = await self._request("POST", "/tasks/", json=body)
         if isinstance(result, str):
@@ -966,15 +990,7 @@ class OrchestratorAPIClient:
         if not tasks:
             return "Error: tasks list is required"
         body = {
-            "tasks": [
-                {
-                    "title": t.get("title", "Task"),
-                    "prompt": t.get("prompt", ""),
-                    "priority": t.get("priority", 5),
-                    "agent_id": t.get("agent_id"),
-                }
-                for t in tasks
-            ],
+            "tasks": [self._task_payload(t) for t in tasks],
             "created_by_agent": self.agent_id,
         }
         result = await self._request("POST", "/tasks/batch", json=body)
@@ -1007,16 +1023,7 @@ class OrchestratorAPIClient:
         timeout = max(10, min(int(params.get("timeout_seconds") or 300), 600))
 
         body = {
-            "tasks": [
-                {
-                    "title": t.get("title", "Task"),
-                    "prompt": t.get("prompt", ""),
-                    "priority": t.get("priority", 5),
-                    "agent_id": t.get("agent_id"),
-                    **_session_field(),
-                }
-                for t in tasks[:20]
-            ],
+            "tasks": [self._task_payload(t) for t in tasks[:20]],
             "created_by_agent": self.agent_id,
         }
         batch = await self._request("POST", "/tasks/batch", json=body)

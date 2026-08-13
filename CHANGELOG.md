@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.197.1] - 2026-08-13
+
+### Behoben
+- **Kacheln fehlten, sobald der Agent `create_task_batch` wählte.** In derselben
+  Sekunde entstanden vier Aufträge desselben Auftraggebers — zwei trugen den
+  Gesprächsfaden, zwei nicht. Es gibt **drei** Werkzeuge, die Aufträge anlegen
+  (`create_task`, `create_task_batch`, `delegate_and_wait`); jedes baute seine
+  Nutzlast selbst, und als der Faden dazukam, wurde er an zwei von dreien
+  angehängt. Alle drei gehen jetzt über **einen** gemeinsamen Bauplan — ein neues
+  Feld gilt damit sofort für alle.
+- **Der Notweg des Orchestrators überstand keine Parallelarbeit.** Kennt der
+  Werkzeugserver den Faden nicht (Claude Code), ermittelt ihn der Orchestrator
+  selbst — bisher aus `current_task`, das aber nur **eine** Arbeit trägt. Der
+  Agent lief nebenher an einer Zeitplan-Aufgabe, dort stand deren Kennung, und
+  der Chat war unsichtbar. Jetzt zählt die vollständige Liste der laufenden
+  Arbeiten; bei mehreren offenen Gesprächen wird bewusst **nicht** geraten — eine
+  Kachel im falschen Chat wäre schlimmer als keine.
+- Der alte Test **zählte** nur, wie oft der Faden angehängt wird („zweimal,
+  passt") — und war deshalb zufrieden, während das dritte Werkzeug fehlte. Er
+  prüft jetzt jedes Werkzeug einzeln.
+
+---
+
 ## [1.197.0] - 2026-08-13
 
 ### Hinzugefügt

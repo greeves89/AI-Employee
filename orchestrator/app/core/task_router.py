@@ -1799,11 +1799,32 @@ class TaskRouter:
         if not agent_id or not (self.redis and self.redis.client):
             return None
         try:
-            raw = await self.redis.client.hget(f"agent:{agent_id}:status", "current_task")
-            if not raw:
+            status = await self.redis.client.hgetall(f"agent:{agent_id}:status")
+            if not status:
                 return None
-            value = raw.decode() if isinstance(raw, bytes) else str(raw)
-            return value[5:] if value.startswith("chat:") else None
+
+            def _text(wert) -> str:
+                return wert.decode() if isinstance(wert, bytes) else str(wert or "")
+
+            eintraege = {_text(k): _text(v) for k, v in status.items()}
+            aktuell = eintraege.get("current_task", "")
+            if aktuell.startswith("chat:"):
+                return aktuell[5:]
+
+            # ``current_task`` traegt nur EINE Arbeit. Agenten laufen aber
+            # parallel (MAX_PARALLEL_TASKS/-CHATS): wer nebenher einen
+            # Zeitplan-Auftrag abarbeitet, hat dort dessen Kennung stehen — und
+            # der Chat, in dem der Mensch gerade sitzt, war unsichtbar. Genau so
+            # gingen am 2026-08-13 zwei von vier Kacheln verloren.
+            # ``active_sessions`` fuehrt ALLE laufenden Arbeiten. Genau ein
+            # offenes Gespraech ist eindeutig; bei mehreren waere jede Wahl
+            # geraten, und eine Kachel im falschen Chat ist schlimmer als keine.
+            try:
+                laufend = json.loads(eintraege.get("active_sessions") or "[]")
+            except (TypeError, ValueError):
+                return None
+            faeden = [str(e)[5:] for e in laufend if str(e).startswith("chat:")]
+            return faeden[0] if len(faeden) == 1 else None
         except Exception:  # noqa: BLE001
             return None
 
