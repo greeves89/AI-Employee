@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.188.1] - 2026-08-13
+
+### Behoben
+- **Der Frager erfuhr nie, dass eine Antwort eingetroffen ist.** Am 2026-08-13
+  fragte ein Lead einen Kollegen, prüfte sofort und meldete korrekt „hat noch nicht
+  geantwortet" — die Antwort kam **90 Sekunden später**. Danach blieb der Lead bei
+  seiner Aussage, bis der Nutzer „und?" schrieb; erst dann sah er sie.
+  Trifft eine Antwort ein (`reply_to` gesetzt), bekommt der ursprüngliche Frager sie
+  jetzt aktiv in seinen Chat gelegt, mit der Aufforderung, dem Menschen kurz zu
+  berichten. Kein Pollen, kein Nachfragen.
+
+---
+
 ## [1.188.0] - 2026-08-13
 
 ### Neu

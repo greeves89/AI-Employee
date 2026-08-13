@@ -1897,6 +1897,24 @@ async def send_message_to_agent(
         try:
             if is_agent_principal(user) and body.from_agent_id:
                 if body.reply_to:
+                    # Eine Antwort ist eingetroffen. Der urspruengliche Frager
+                    # erfaehrt davon sonst NIE von selbst: er muesste pollen oder
+                    # der Mensch muesste nachfragen. Am 2026-08-13 kam die Antwort
+                    # 90 Sekunden nach der Frage — der Lead hatte da schon
+                    # "noch nicht geantwortet" gemeldet und blieb dabei, bis der
+                    # Nutzer "und?" schrieb.
+                    await redis.client.lpush(
+                        f"agent:{agent_id}:chat",
+                        json.dumps({
+                            "id": uuid.uuid4().hex[:12],
+                            "text": (
+                                f"[Rueckmeldung] {sender} hat auf deine Frage "
+                                f"geantwortet:\n\n{body.text[:1500]}\n\n"
+                                "Berichte dem Menschen kurz, was daraus folgt."
+                            ),
+                            "source": "webapp",
+                        }),
+                    )
                     await redis.client.publish(
                         f"agent:{agent_id}:chat:response",
                         json.dumps({
