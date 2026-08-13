@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.200.1] - 2026-08-13
+
+### Behoben
+- **Die Protokoll-Ansichten waren im hellen Erscheinungsbild unlesbar.** Der
+  Kasten stand fest auf Schwarz, während die Zeilen darin dem Erscheinungsbild
+  folgen (`text-foreground`) — im hellen Modus also **dunkle Schrift auf
+  schwarzem Grund**. Nicht nur unpassend, stellenweise schlicht nicht lesbar.
+- Betroffen waren **drei** Stellen mit demselben Muster: das Live-Feld der
+  Aufgabenseite, die Zeitreise-Ansicht darunter und der Live-Terminal des
+  Agenten. Alle drei folgen jetzt dem Erscheinungsbild.
+- Die Akzentfarben der Zeilen (Werkzeug, Fehler, Ergebnis) waren auf schwarzen
+  Grund abgestimmt und auf hellem ausgewaschen — im hellen Modus jetzt eine
+  dunklere Stufe. **Der dunkle Modus bleibt unverändert.**
+- Unangetastet: der Kiosk-Bildschirm (absichtlich schwarz) und der Rand hinter
+  Bildschirmfotos.
+
+---
+
 ## [1.200.0] - 2026-08-13
 
 ### Neu
