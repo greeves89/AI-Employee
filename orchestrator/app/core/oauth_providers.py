@@ -109,6 +109,12 @@ PROVIDERS: dict[str, OAuthProviderConfig] = {
             "Tasks.ReadWrite",
             "Contacts.ReadWrite",
             "People.Read",
+            # Teams meeting transcripts (transcript-to-tasks feature). Delegated;
+            # OnlineMeetingTranscript.Read.All needs admin consent — requested from
+            # the tenant admin (SKBS: Christian) before rollout. After the consent
+            # every user must re-login once so the refresh token covers the scopes.
+            "OnlineMeetings.Read",
+            "OnlineMeetingTranscript.Read.All",
         ],
         # No forced prompt by default (#571): tenants with end-user consent disabled
         # can never satisfy a forced "prompt=consent" dialog, even after an admin

@@ -1544,7 +1544,6 @@ und ohne CHANGELOG-Eintrag**; hier nachgetragen:
 
 ---
 
-<<<<<<< HEAD
 ## [1.192.0] - 2026-08-13
 
 ### Neu
@@ -1562,7 +1561,9 @@ und ohne CHANGELOG-Eintrag**; hier nachgetragen:
   Request. Optional wird jedes Feedback best-effort als GitHub-Issue
   gespiegelt (`FEEDBACK_ISSUE_ENABLED`, Default aus) — ein Issue-Fehler
   verliert nie Feedback. Der alte Feedback-Modal-Dialog ist damit ersetzt.
-=======
+
+---
+
 ## [1.191.2] - 2026-08-13
 
 ### Behoben
@@ -1572,7 +1573,6 @@ und ohne CHANGELOG-Eintrag**; hier nachgetragen:
 
 ---
 
->>>>>>> a1c8fc1 (fix(chat): Kachel-Streifen ueberdeckt das Eingabefeld nicht mehr)
 ## [1.191.1] - 2026-08-13
 
 ### Behoben
