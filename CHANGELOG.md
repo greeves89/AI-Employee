@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.188.2] - 2026-08-13
+
+### Geändert
+- **„Details" an der Auftrags-Kachel öffnet ein Fenster statt einer neuen Seite.**
+  Ein Seitenwechsel reisst aus dem Gespräch heraus: der Verlauf ist weg, der
+  Rückweg kostet einen Klick, und wer nur kurz nachsehen wollte, verliert den Faden.
+  Das Fenster zeigt Bearbeiter, Stand, Dauer, den Auftragstext und das Ergebnis —
+  und darunter weiterhin den Weg auf die vollständige Aufgabenseite, für alles,
+  was dort mehr steht (Zeitreise, Kosten, Schritte).
+  Läuft der Auftrag noch, sagt das Fenster das ausdrücklich, statt leer zu bleiben.
+
+---
+
 ## [1.188.1] - 2026-08-13
 
 ### Behoben
