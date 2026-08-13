@@ -570,8 +570,15 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         }
         setTaskCards(wiederhergestellt);
 
-        if (history.length > 0) {
-          const restored: ChatMessage[] = history.map((m) => {
+        // Die Kachel-Zeilen selbst gehoeren NICHT in den Nachrichtenstrom — sie
+        // haben keinen Text und wurden sonst als leere graue Blasen gezeichnet.
+        // Ihr Inhalt steckt in ``meta.task_card`` und wird als Kachel gerendert.
+        const ohneKachelzeilen = history.filter(
+          (m) => !(m as { meta?: { task_card?: unknown } }).meta?.task_card,
+        );
+
+        if (ohneKachelzeilen.length > 0) {
+          const restored: ChatMessage[] = ohneKachelzeilen.map((m) => {
             // Convert legacy toolCalls to steps
             let steps: AssistantStep[] | undefined;
             if (m.role === "assistant") {
@@ -1863,7 +1870,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           einem nicht wegscrollen, waehrend man liest. Fertige wandern in den
           Verlauf (siehe oben). */}
       {laufendeKacheln.length > 0 && viewMode !== "overview" && (
-        <div className="pointer-events-auto absolute bottom-24 left-1/2 z-10 w-full max-w-3xl -translate-x-1/2 space-y-1.5 px-4">
+        <div className="mx-auto w-full max-w-3xl shrink-0 space-y-1.5 border-t border-border/60 px-4 pb-2 pt-2">
           {laufendeKacheln.map((card) => (
             <button
               key={card.task_id}

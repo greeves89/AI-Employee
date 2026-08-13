@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.192.1] - 2026-08-13
+
+### Behoben
+- **Leere graue Blasen im Verlauf.** Die gespeicherten Kachel-Zeilen haben keinen
+  Text und wurden trotzdem als Nachrichten gezeichnet — vier Aufträge ergaben vier
+  leere Blasen. Ihr Inhalt steckt in `meta.task_card`; sie werden jetzt aus dem
+  Nachrichtenstrom herausgefiltert und ausschliesslich als Kachel dargestellt.
+
+### Noch offen
+- Fertige Kacheln stehen am **Ende** des Verlaufs, dadurch erscheinen neue
+  Nachrichten darüber statt darunter. Richtig wäre: jede Kachel an ihrer Stelle im
+  Gesprächsverlauf, neue Nachrichten danach.
+
+---
+
+<<<<<<< HEAD
 ## [1.192.0] - 2026-08-13
 
 ### Neu
@@ -22,6 +38,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Request. Optional wird jedes Feedback best-effort als GitHub-Issue
   gespiegelt (`FEEDBACK_ISSUE_ENABLED`, Default aus) — ein Issue-Fehler
   verliert nie Feedback. Der alte Feedback-Modal-Dialog ist damit ersetzt.
+=======
+## [1.191.2] - 2026-08-13
+
+### Behoben
+- **Der Streifen der laufenden Aufträge lag über dem Eingabefeld.** Er war absolut
+  positioniert und überdeckte den Composer. Er steht jetzt im normalen Fluss direkt
+  darüber, mit Trennlinie — nichts überlappt mehr.
+
+---
+
+>>>>>>> a1c8fc1 (fix(chat): Kachel-Streifen ueberdeckt das Eingabefeld nicht mehr)
 ## [1.191.1] - 2026-08-13
 
 ### Behoben
