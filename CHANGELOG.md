@@ -47,6 +47,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.198.2] - 2026-08-13
+
+### Sicherheit
+- **Zweite Sperre gegen `javascript:` in selbst angelegten Menüpunkten.** Der
+  Server ließ schon immer nur `http`/`https` durch — beim Anlegen *und* beim
+  Ändern. Die Oberfläche prüft das Schema jetzt zusätzlich, für Einträge, die
+  vor dem Validator entstanden sind oder auf anderem Weg in die Datenbank
+  gelangen. Ein ungültiger Eintrag verschwindet, statt still auf `#` zu zeigen.
+
+---
+
 ## [1.198.1] - 2026-08-13
 
 ### Behoben
