@@ -40,10 +40,18 @@ class TheCallbackUsesTheKeyTheAgentReadsTests(unittest.TestCase):
     def test_the_origin_session_comes_from_the_task(self):
         self.assertIn('(task.metadata_ or {}).get("chat_session_id")', self.src)
 
-    def test_there_is_a_fallback_for_tasks_without_a_thread(self):
-        """Ueber den stdio-MCP-Server (Claude Code, Codex) entstandene Auftraege
-        fuehren keinen Faden mit — die duerfen nicht wieder im Nichts landen."""
-        self.assertIn("_latest_chat_session", self.src)
+    def test_there_is_NO_fallback_to_some_other_thread(self):
+        """Der frueher hier eingebaute Auffangweg „zuletzt benutzter Faden" war
+        ein Rueckschritt: bei mehreren parallelen Gespraechen schrieb er die
+        Rueckmeldung in ein FREMDES Gespraech. Beim Kunden tauchten dadurch am
+        2026-08-13 Auftraege in Unterhaltungen auf, zu denen sie nicht gehoerten.
+
+        Lieber keine Einspeisung als eine im falschen Faden — Kachel und Verlauf
+        zeigen den Stand ohnehin."""
+        self.assertNotIn("_latest_chat_session", self.src)
+
+    def test_only_the_originating_thread_is_used(self):
+        self.assertIn('(task.metadata_ or {}).get("chat_session_id")', self.src)
 
 
 class NoEmojiInUserFacingTextTests(unittest.TestCase):

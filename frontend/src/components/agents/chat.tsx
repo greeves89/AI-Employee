@@ -560,7 +560,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         const wiederhergestellt: Record<string, TaskCard> = {};
         for (const m of history) {
           const gespeichert = (m as { meta?: { task_card?: TaskCard } }).meta?.task_card;
-          if (gespeichert?.task_id) {
+          if (gespeichert?.task_id
+              && (!gespeichert.session_id || gespeichert.session_id === activeSessionId)) {
             wiederhergestellt[gespeichert.task_id] = {
               ...gespeichert,
               at: new Date(m.timestamp).getTime() || Date.now(),
@@ -852,6 +853,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     if (type === "task_card") {
       const card = data as unknown as TaskCard;
       if (!card?.task_id) return;
+      // Nur im eigenen Gespraech. Eine Kachel ohne Faden gehoert in KEINES —
+      // sie in allen zu zeigen war der Fehler.
+      if (!card.session_id || card.session_id !== activeSessionIdRef.current) return;
       setTaskCards((prev) => {
         const next = { ...prev };
         next[card.task_id] = { ...(next[card.task_id] || {}), ...card, at: Date.now() };

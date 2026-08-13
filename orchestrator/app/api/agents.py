@@ -1802,19 +1802,33 @@ def _is_busy_with_task(status: dict) -> bool:
     return bool(current_task) and not current_task.startswith(("chat:", "msg:"))
 
 
-async def _latest_session_for(db: AsyncSession, agent_id: str) -> str | None:
-    """Der zuletzt benutzte Gespraechsfaden dieses Agenten.
+async def _session_of_message(db: AsyncSession, message_id: str | None) -> str | None:
+    """Der Gespraechsfaden, aus dem die urspruengliche Frage stammt.
 
-    Eine Rueckmeldung ohne Faden landet in ``webapp:default`` — einem Gespraech,
-    das niemand ansieht. Der zuletzt benutzte ist fast immer der richtige: dort
-    hat der Mensch gerade gefragt.
+    Bewusst NICHT „der zuletzt benutzte Faden": bei mehreren parallelen
+    Gespraechen schrieb dieser Auffangweg die Antwort in ein FREMDES Gespraech.
+    Lieber keine Einspeisung als eine im falschen Faden — die Kachel und der
+    Verlauf zeigen den Stand ohnehin.
     """
+    if not message_id:
+        return None
     try:
+        from app.models.agent_message import AgentMessage as _AM
         from app.models.chat_message import ChatMessage as _CM
 
+        frage = (await db.execute(
+            select(_AM).where(_AM.message_id == message_id)
+        )).scalar_one_or_none()
+        if frage is None or not frage.from_agent_id:
+            return None
+        # Der Faden, in dem der Frager zum Zeitpunkt der Frage gearbeitet hat.
         return (await db.execute(
             select(_CM.session_id)
-            .where(_CM.agent_id == agent_id, _CM.session_id.isnot(None))
+            .where(
+                _CM.agent_id == frage.from_agent_id,
+                _CM.session_id.isnot(None),
+                _CM.timestamp <= frage.timestamp,
+            )
             .order_by(_CM.timestamp.desc())
             .limit(1)
         )).scalar_one_or_none()
@@ -1924,7 +1938,7 @@ async def send_message_to_agent(
                     # "noch nicht geantwortet" gemeldet und blieb dabei, bis der
                     # Nutzer "und?" schrieb.
                     _cb_id = uuid.uuid4().hex[:12]
-                    _origin = await _latest_session_for(db, agent_id)
+                    _origin = await _session_of_message(db, body.reply_to)
                     if _origin:
                         await redis.client.setex(
                             f"chat:msg:{_cb_id}:session", 3600, _origin

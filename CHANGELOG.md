@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.190.1] - 2026-08-13
+
+### Behoben
+- **Kacheln erschienen in fremden Gesprächen.** Beim Kunden tauchten delegierte
+  Aufträge in Unterhaltungen auf, zu denen sie nicht gehörten. Ursache: eine Kachel
+  ohne Ursprungsfaden wurde trotzdem gespeichert und angezeigt — und gehört damit
+  in **jedes** Gespräch. Sie trägt jetzt ihren Faden mit, wird nur dort gespeichert
+  und nur dort angezeigt.
+- **Rückmeldungen landeten im falschen Gespräch.** Der in 1.186.0 eingebaute
+  Auffangweg „zuletzt benutzter Faden" war ein Rückschritt: bei mehreren parallelen
+  Unterhaltungen schrieb er die Antwort in eine fremde. Es gilt jetzt
+  ausschliesslich der Faden, in dem wirklich beauftragt bzw. gefragt wurde
+  (bei Antworten über die ursprüngliche Nachricht ermittelt).
+  Lieber keine Einspeisung als eine im falschen Faden — Kachel und Verlauf zeigen
+  den Stand ohnehin.
+
+### Bemerkung
+- Der `ruff F821`-Test hat dabei einen Fehler in meiner eigenen Änderung gefunden,
+  bevor er ausgeliefert wurde (eine Ersetzung hatte an zwei Stellen gegriffen).
+
+---
+
 ## [1.190.0] - 2026-08-13
 
 ### Neu

@@ -1796,13 +1796,19 @@ class TaskRouter:
                 "result_preview": (task.result or task.error or "")[:400],
                 "cost_usd": task.cost_usd,
                 "duration_ms": task.duration_ms,
+                # Ohne den Faden kann das Fenster nicht entscheiden, ob die
+                # Kachel hierher gehoert — und zeigte sie in JEDEM Gespraech.
+                "session_id": meta.get("chat_session_id"),
             }
 
             # Dauerhaft im Verlauf ablegen, nicht nur waehrend des Laufs senden.
             # Sonst ist die Kachel nach einem Neuladen weg — und mit ihr die
             # einzige Spur, dass ueberhaupt jemand beauftragt wurde. Bilder und
             # angebotene Dateien liegen aus demselben Grund im Verlauf.
-            await self._persist_task_card(task, payload, meta.get("chat_session_id"))
+            # Ohne Faden gehoert die Kachel in kein Gespraech. Sie trotzdem zu
+            # speichern hiess: sie taucht in ALLEN auf.
+            if meta.get("chat_session_id"):
+                await self._persist_task_card(task, payload, meta["chat_session_id"])
 
             await self.redis.client.publish(
                 f"agent:{delegator}:chat:response",
@@ -1892,10 +1898,11 @@ class TaskRouter:
                 #  * Der Text trug Emojis, obwohl sie in nutzersichtbarem Text
                 #    ausdruecklich nicht vorkommen duerfen.
                 callback_id = uuid.uuid4().hex[:12]
-                origin_session = (
-                    (task.metadata_ or {}).get("chat_session_id")
-                    or await self._latest_chat_session(delegator_agent_id)
-                )
+                # NUR der Faden, in dem wirklich beauftragt wurde. Der
+                # frueher hier benutzte Auffangweg „zuletzt benutzter Faden" hat
+                # bei mehreren parallelen Gespraechen Rueckmeldungen in ein
+                # FREMDES Gespraech geschrieben — schlimmer als gar keine.
+                origin_session = (task.metadata_ or {}).get("chat_session_id")
                 marker = "Erledigt" if status == "completed" else "Fehlgeschlagen"
                 chat_notification = json.dumps({
                     "id": callback_id,
