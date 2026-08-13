@@ -36,6 +36,20 @@ def _session_field() -> dict:
     return {"chat_session_id": session} if session else {}
 
 
+def _truncate_preserving_words(text: str, limit: int) -> str:
+    """Kuerzt an der letzten Wortgrenze statt mitten im Wort.
+
+    Ein blosses ``text[:limit]`` schnitt regelmaessig ab, bevor ein Sub-Agent
+    nach seinen Pflicht-Vorabchecks ueberhaupt bei der eigentlichen Antwort
+    ankam — die sah dadurch aus, als fehle sie komplett.
+    """
+    if len(text) <= limit:
+        return text
+    cut = text.rfind(" ", 0, limit)
+    at = cut if cut > 0 else limit
+    return text[:at].rstrip() + " […]"
+
+
 class OrchestratorAPIClient:
     """HTTP client for orchestrator API - same endpoints used by MCP servers."""
 
@@ -1079,7 +1093,7 @@ class OrchestratorAPIClient:
                 lines.append(f"  - #{tid}: laeuft noch (Frist von {timeout}s erreicht)")
                 continue
             lines.append(f"  - #{tid} \"{t.get('title', '')}\" [{t.get('status')}]: "
-                         f"{str(t.get('result') or '(keine Ausgabe)')[:1500]}")
+                         f"{_truncate_preserving_words(str(t.get('result') or '(keine Ausgabe)'), 1500)}")
         return "\n".join(lines)
 
     async def list_my_team(self, params: dict) -> str:

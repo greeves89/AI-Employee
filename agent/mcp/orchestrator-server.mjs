@@ -27,6 +27,17 @@ const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
 function wrapData(source, content) {
   return `[EXTERNAL-DATA source="${source}"]\n${content}\n[/EXTERNAL-DATA]`;
 }
+
+// Ein blosses .substring(0, n) schneidet mitten im Wort ab, wenn ein Sub-Agent
+// erst seine Pflicht-Vorabchecks beschreibt, bevor die eigentliche Antwort
+// kommt — die Antwort sah dadurch aus, als fehle sie komplett. Schneidet
+// stattdessen an der letzten Wortgrenze vor dem Limit.
+function truncatePreservingWords(text, limit) {
+  if (text.length <= limit) return text;
+  const cut = text.lastIndexOf(" ", limit);
+  const at = cut > 0 ? cut : limit;
+  return `${text.slice(0, at).trimEnd()} […]`;
+}
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "claude-sonnet-4-6";
 
 async function apiCall(path, options = {}) {
@@ -1053,7 +1064,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       );
       const lines = statuses.map((t) => {
         const cost = t.cost_usd ? ` (${t.cost_usd.toFixed(4)} USD)` : "";
-        return `#${t.id} [${t.status}]${cost}: ${t.title || ""}${t.result ? `\n  -> ${t.result.substring(0, 300)}` : ""}`;
+        return `#${t.id} [${t.status}]${cost}: ${t.title || ""}${t.result ? `\n  -> ${truncatePreservingWords(t.result, 1000)}` : ""}`;
       });
       return {
         content: [{
