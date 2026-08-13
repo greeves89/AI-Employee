@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.load_balancer import LoadBalancer
 from app.core.log_redaction import scrub_log
+from app.core.text_preview import truncate_preserving_words
 from app.models.agent import Agent
 from app.models.approval_rule import ApprovalRule
 from app.models.task import Task, TaskStatus, is_terminal_task_status
@@ -1971,7 +1972,15 @@ class TaskRouter:
         """
         try:
             status = "completed" if task.status == TaskStatus.COMPLETED else "failed"
-            result_preview = (task.result or task.error or "No output")[:800]
+            # Ein blosses [:800] schnitt regelmaessig mitten im Wort ab, wenn ein
+            # Sub-Agent erst seine Pflicht-Vorabchecks beschreibt, bevor die
+            # eigentliche Antwort kommt — die sah dadurch aus, als fehle sie
+            # komplett (Bericht 2026-08-13: "Hallo Welt" nie erreicht, weil der
+            # Vorspann laenger als das Limit war). truncate_preserving_words
+            # schneidet an der letzten Wortgrenze statt mitten im Wort.
+            result_preview = truncate_preserving_words(
+                task.result or task.error or "No output", 2000
+            )
 
             # Wake the delegating agent if it idle-stopped while waiting, so it
             # actually consumes the queued result (mirrors dispatch).
@@ -2024,7 +2033,7 @@ class TaskRouter:
                     "text": (
                         f"[Rueckmeldung: {marker}] Der Auftrag '{task.title}' "
                         f"(#{task.id}) ist {'abgeschlossen' if status == 'completed' else 'gescheitert'}.\n"
-                        f"Ergebnis: {result_preview[:300]}\n\n"
+                        f"Ergebnis: {result_preview}\n\n"
                         "Berichte dem Menschen kurz, was dabei herausgekommen ist. "
                         "Wenn das Ergebnis die Aufgabe nicht erfuellt, sage das deutlich."
                     ),
