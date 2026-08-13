@@ -711,6 +711,24 @@ async def _init_db_from_models() -> None:
     except Exception as e:
         logger.warning(f"Could not ensure agents.source_agent_id: {e}")
 
+    # Einrichtungshaken normalisieren. Das Einrichtungsgespraech ist entfallen —
+    # der Agent haelt sich an seine Vorlage. Ein Bestandsagent, der noch auf
+    # `false` steht, koennte den Haken nie mehr bekommen: das Interview, das ihn
+    # setzte, gibt es nicht mehr. Er bliebe in der Oberflaeche fuer immer als
+    # "nicht eingerichtet" markiert. Einmalig geradeziehen, idempotent.
+    try:
+        async with engine.begin() as conn:
+            res = await conn.execute(_sql_text(
+                "UPDATE agents SET config = jsonb_set("
+                "  config::jsonb, '{onboarding_complete}', 'true'::jsonb, true"
+                ")::json "
+                "WHERE coalesce((config->>'onboarding_complete')::boolean, false) IS NOT TRUE"
+            ))
+            if res.rowcount:
+                logger.info("Einrichtungshaken normalisiert: %d Agent(en)", res.rowcount)
+    except Exception as e:
+        logger.warning(f"Could not normalise onboarding_complete: {e}")
+
     await engine.dispose()
 
     result = subprocess.run(

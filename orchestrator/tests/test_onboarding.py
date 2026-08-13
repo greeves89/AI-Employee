@@ -39,16 +39,71 @@ class StateTests(unittest.TestCase):
         self.assertNotEqual(ob.onboarding_note(_agent()), "")
         self.assertNotEqual(ob.onboarding_note(_agent(onboarding_complete=True)), "")
 
-    def test_note_tells_the_agent_to_ask_not_to_halt(self):
+    def test_note_asks_for_duties_not_for_a_briefing(self):
+        """Das Einrichtungsgespraech ist entfallen (Entscheidung des Nutzers am
+        2026-08-13: „onboarding raus, der soll sich an seine Vorlage halten").
+        Uebrig bleibt die einzige Luecke, die ihn wirklich lahmlegt."""
         note = ob.onboarding_note(_agent())
         self.assertIn("notify_user", note)
         self.assertIn("complete_onboarding", note)
-        self.assertIn("NICHT still", note)
+        self.assertIn("VERANTWORTUNGSBEREICHE", note)
+
+    def test_the_note_no_longer_conducts_an_interview(self):
+        """Genau das war der Widerspruch: das Interview war aus knowledge.md
+        entfernt, wurde aber vom Zeitplaner weiter eingeblendet."""
+        note = ob.onboarding_note(_agent())
+        self.assertNotIn("Welche Rolle sollst du ausfuellen", note)
+        self.assertNotIn("EINRICHTUNG STEHT AUS", note)
+        gesprochen = ob.onboarding_note(_agent(), spoken=True)
+        self.assertNotIn("wofuer du mich brauchst", gesprochen)
 
     def test_spoken_note_is_for_the_phone_not_the_log(self):
         note = ob.onboarding_note(_agent(), spoken=True)
-        self.assertIn("wofuer du mich brauchst", note)
+        self.assertIn("Verantwortungsbereiche", note)
         self.assertNotIn("notify_user", note)   # am Telefon meldet man sich nicht per Werkzeug
+
+
+class NoLeftoverSetupFlagTests(unittest.TestCase):
+    """Nachfrage des Nutzers am 2026-08-13: „da wir das onboarding abgestellt
+    hatten, wurde das auch im Frontend beruecksichtigt?"
+
+    Teilweise nicht. Das Interview war aus ``knowledge.md`` entfernt, aber der
+    Haken ``onboarding_complete`` wurde fuer neue ``claude_code``-Agenten weiter
+    auf ``false`` gesetzt — und *nichts* konnte ihn danach noch auf ``true``
+    bringen, weil genau das Gespraech ihn setzte. Folge: dauerhaft das Abzeichen
+    „nicht eingerichtet" in der Oberflaeche UND uebersprungene proaktive Laeufe.
+    """
+
+    def test_new_agents_count_as_set_up(self):
+        src = (ORCH / "app/core/agent_manager.py").read_text()
+        self.assertIn('"onboarding_complete": True,', src)
+        self.assertNotIn('False if mode == "claude_code" else True', src)
+
+    def test_existing_agents_are_normalised_at_startup(self):
+        """Ohne das bleibt jeder Bestandsagent auf ``false`` haengen."""
+        main = (ORCH / "app/main.py").read_text()
+        self.assertIn("'{onboarding_complete}', 'true'::jsonb", main)
+
+    def test_the_normalisation_is_idempotent(self):
+        """Es darf nur anfassen, was noch nicht ``true`` ist — sonst schreibt
+        jeder Start jede Zeile neu."""
+        main = (ORCH / "app/main.py").read_text()
+        self.assertIn(
+            "WHERE coalesce((config->>'onboarding_complete')::boolean, false) IS NOT TRUE",
+            main,
+        )
+
+    def test_the_card_no_longer_shows_a_setup_badge(self):
+        card = (REPO / "frontend/src/components/dashboard/agent-card.tsx").read_text()
+        self.assertNotIn("Nicht eingerichtet", card)
+        self.assertNotIn("UserCog", card, "Symbol muss auch aus dem Import raus")
+
+    def test_the_card_still_warns_about_missing_duties(self):
+        """Diese Warnung bleibt richtig: ohne Bereiche wird der proaktive Lauf
+        wirklich uebersprungen."""
+        card = (REPO / "frontend/src/components/dashboard/agent-card.tsx").read_text()
+        self.assertIn("has_responsibilities === false", card)
+        self.assertIn("AlertTriangle", card)
 
 
 class CompletionTests(unittest.TestCase):
@@ -157,9 +212,14 @@ class NoAssignmentTests(unittest.TestCase):
     def setUpClass(cls):
         cls.sched = (ORCH / "app/services/scheduler_service.py").read_text()
 
-    def test_run_is_skipped_when_briefing_is_missing(self):
-        self.assertIn("not (is_onboarded(_agent) and has_duties(_agent))", self.sched)
-        skip = self.sched.split("not (is_onboarded(_agent) and has_duties(_agent))", 1)[1][:600]
+    def test_run_is_skipped_when_duties_are_missing(self):
+        """Frueher wurde zusaetzlich der Einrichtungshaken geprueft. Seit das
+        Einrichtungsgespraech entfallen ist, war das eine Falle: nichts konnte den
+        Haken noch setzen, ein Bestandsagent mit `false` waere fuer immer
+        uebersprungen worden."""
+        self.assertNotIn("is_onboarded(_agent)", self.sched)
+        self.assertIn("not has_duties(_agent)", self.sched)
+        skip = self.sched.split("not has_duties(_agent)", 1)[1][:600]
         self.assertIn("_nudge_missing_assignment", skip)
         self.assertIn("schedule.next_run_at = _calc_next_run(schedule, now)", skip)
         self.assertIn("return", skip)

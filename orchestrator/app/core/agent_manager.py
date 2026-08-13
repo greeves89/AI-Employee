@@ -1431,7 +1431,12 @@ class AgentManager:
             config={
                 "session_volume": session_volume,
                 "role": role or "",
-                "onboarding_complete": False if mode == "claude_code" else True,
+                # Das Einrichtungsgespraech ist entfallen — der Agent haelt sich an
+                # seine Vorlage. Ein Agent, der hier auf `false` stuende, bekaeme
+                # ein Interview eingeblendet, das es nicht mehr gibt, und seine
+                # proaktiven Laeufe wuerden dauerhaft uebersprungen: nichts koennte
+                # den Haken je setzen. Was er tun soll, steht in Rolle und Vorlage.
+                "onboarding_complete": True,
                 "model_provider": self._model_provider_for_mode(mode, effective_llm),
                 "integrations": integrations or [],
                 "permissions": agent_permissions,

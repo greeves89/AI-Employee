@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.194.0] - 2026-08-13
+
+### Geändert
+- **Das Onboarding ist jetzt vollständig entfernt — auch dort, wo es noch
+  nachwirkte.** Das Einrichtungsgespräch war in 1.187.x aus `knowledge.md`
+  entfernt worden, der Rest der Mechanik lief aber weiter: neue
+  `claude_code`-Agenten bekamen weiterhin `onboarding_complete: false`, und der
+  Zeitplaner blendete ihnen bei **jedem** proaktiven Lauf genau das abgeschaffte
+  Interview ein („Welche Rolle sollst du ausfüllen?"). Neue Agenten gelten jetzt
+  als eingerichtet — was sie tun sollen, steht in ihrer Vorlage.
+- **Der Zeitplaner prüft nur noch die Verantwortungsbereiche.** Der zusätzlich
+  geprüfte Einrichtungshaken war zur Falle geworden: seit das Gespräch entfällt,
+  konnte ihn nichts mehr setzen. Ein Bestandsagent mit `false` wäre für immer von
+  proaktiven Läufen ausgeschlossen gewesen.
+- **Bestandsagenten werden beim Start einmalig geradegezogen** (idempotent), damit
+  kein Agent mit einem Haken zurückbleibt, den niemand mehr setzen kann.
+- **Das Abzeichen „Nicht eingerichtet" ist von der Agentenkachel entfernt.** Es
+  hätte nur noch einen Zustand angezeigt, den man nicht mehr ändern kann. Das
+  Dreieck „Kein Auftrag — es fehlen Verantwortungsbereiche" bleibt: es ist
+  weiterhin richtig, denn ohne Bereiche werden proaktive Läufe übersprungen.
+
+---
+
 ## [1.193.2] - 2026-08-13
 
 ### Behoben

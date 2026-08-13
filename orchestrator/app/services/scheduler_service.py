@@ -713,18 +713,23 @@ class SchedulerService:
             # (beim Kunden 493 Laeufe, 51 USD, null Ergebnis). Jetzt wird der Lauf gar nicht
             # erst gestartet — stattdessen bekommt der Besitzer EINE Benachrichtigung, und
             # die Agentenkachel traegt ein Ausrufezeichen.
-            from app.core.onboarding import is_onboarded, has_duties, onboarding_note
+            # Nur noch EINE Bedingung: hat er Verantwortungsbereiche. Der frueher
+            # zusaetzlich gepruefte Einrichtungshaken war eine Falle, seit das
+            # Einrichtungsgespraech entfallen ist — nichts konnte ihn mehr setzen,
+            # also waeren die Laeufe eines Bestandsagenten fuer immer uebersprungen
+            # worden.
+            from app.core.onboarding import has_duties, onboarding_note
             from app.models.agent import Agent as _Agent
             _agent = (await db.execute(
                 select(_Agent).where(_Agent.id == schedule.agent_id)
             )).scalar_one_or_none() if schedule.agent_id else None
-            if _agent is not None and not (is_onboarded(_agent) and has_duties(_agent)):
+            if _agent is not None and not has_duties(_agent):
                 await self._nudge_missing_assignment(db, _agent)
                 schedule.next_run_at = _calc_next_run(schedule, now)
                 logger.info(
-                    "[Scheduler] %s uebersprungen — Agent %s hat keinen Auftrag "
-                    "(eingerichtet=%s, Bereiche=%s)",
-                    schedule.name, _agent.id, is_onboarded(_agent), has_duties(_agent),
+                    "[Scheduler] %s uebersprungen — Agent %s hat keine "
+                    "Verantwortungsbereiche",
+                    schedule.name, _agent.id,
                 )
                 return
 

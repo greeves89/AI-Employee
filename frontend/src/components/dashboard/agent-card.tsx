@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, AlertTriangle, ArrowUpCircle, Plug, Wallet, Zap, Loader2 } from "lucide-react";
+import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, AlertTriangle, ArrowUpCircle, Plug, Wallet, Zap, Loader2 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -106,12 +106,12 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                   </span>
                 )}
                 {/* Ohne Auftrag kann der Agent nichts tun: der proaktive Lauf wird dann
-                    uebersprungen. Das muss man an der Kachel sehen, nicht erst im Log. */}
-                {!agent.onboarding_complete ? (
-                  <span title="Nicht eingerichtet — er weiß noch nicht, wofür er da ist" className="shrink-0">
-                    <UserCog className="h-3 w-3 text-amber-400 animate-pulse" />
-                  </span>
-                ) : agent.has_responsibilities === false ? (
+                    uebersprungen. Das muss man an der Kachel sehen, nicht erst im Log.
+                    Das frühere Abzeichen „nicht eingerichtet" ist entfallen — das
+                    Einrichtungsgespräch gibt es nicht mehr, der Agent hält sich an
+                    seine Vorlage. Es hätte nur noch einen Zustand angezeigt, den
+                    niemand mehr ändern kann. */}
+                {agent.has_responsibilities === false ? (
                   <span
                     title="Kein Auftrag — es fehlen Verantwortungsbereiche. Proaktive Läufe werden übersprungen."
                     className="shrink-0"
@@ -119,7 +119,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                     <AlertTriangle className="h-3 w-3 text-amber-400 animate-pulse" />
                   </span>
                 ) : (
-                  <span title="Eingerichtet & beauftragt" className="shrink-0">
+                  <span title="Beauftragt — Verantwortungsbereiche hinterlegt" className="shrink-0">
                     <UserCheck className="h-3 w-3 text-emerald-400" />
                   </span>
                 )}
