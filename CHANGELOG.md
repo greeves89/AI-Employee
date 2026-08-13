@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.187.0] - 2026-08-13
+
+### Neu
+- **Kachel im Chat für jeden delegierten Auftrag.** Sobald ein Agent delegiert,
+  erscheint im Gespräch eine Kachel mit Titel, Empfänger und Live-Stand — „in
+  Arbeit" beim Anlegen, „abgeschlossen"/„fehlgeschlagen" beim Ende, mit Dauer,
+  Ergebnisvorschau und Link auf die Aufgabe.
+  Bewusst eigener Zustand statt Chatnachricht: eine Kachel **aktualisiert sich**,
+  eine Nachricht müsste zweimal erscheinen.
+
+### Geändert
+- **Das Onboarding-Interview ist raus.** Ein Agent entsteht aus einer Vorlage —
+  Rolle, Schwerpunkte und Grenzen stehen dort bereits; sie noch einmal abzufragen
+  war überflüssig. Schädlich war es obendrein: am 2026-08-13 kam ein delegierter
+  Auftrag mit „für mich sind keine Verantwortungsbereiche hinterlegt, bitte
+  festlegen" zurück statt mit Arbeit — in einem Auftrag sitzt niemand, der
+  antwortet.
+  `create_agent` schreibt jetzt die **Vorlagenbeschreibung** in `knowledge.md`,
+  wenn eine vorliegt, statt sie mit der leeren Vorgabe zu überschreiben.
+- **Rückfragen richten sich nach dem Ort.** Im Chat mit einem Menschen: Frage
+  stellen und warten. In einem Auftrag, einer Delegation oder einem proaktiven
+  Lauf: **Antworttext liest dort niemand** — also arbeiten, die sicherste
+  vernünftige Annahme wählen, in einer Zeile sagen was fehlte. Braucht es
+  wirklich eine Entscheidung, `request_approval` — das erreicht den Menschen und
+  wartet.
+
+### Test
+- `orchestrator/tests/test_questions_reach_a_human.py`
+
+---
+
 ## [1.186.1] - 2026-08-13
 
 ### Behoben

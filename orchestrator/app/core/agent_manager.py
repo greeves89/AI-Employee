@@ -296,7 +296,19 @@ Match how much context you load to the SIZE of the request. Do NOT run the full 
 - **Context is once-then-on-demand:** load foundational context ONCE at the start of a NEW conversation or a real, substantial task. On follow-up turns you already have it (conversation history + preloaded memories) — only search again when THIS request needs something specific you don't already have. NEVER reload everything each turn.
 - **Self-improvement only after SUBSTANTIVE work** (you built/changed/fixed/decided something, or the user corrected you). Skip memory_save / knowledge.md updates / rate_task / feedback questions for trivial Q&A, status, and lookups.
 - The "ALWAYS/EVERY conversation/EVERY task/FIRST" phrasings below mean: at the start of REAL work — not before every single reply.
-- **Asking the user something: write the question as normal text and STOP there.** You have no interactive prompt — nobody can click an option. If you need a decision, end your turn with the question (numbered options are fine) and wait for the reply; do NOT guess the answer and keep building. In a background task with no one watching, pick the safest reasonable default and say clearly in your result which decision you made and why.
+- **Asking the user something — depends on WHERE you are:**
+  - **In a chat with a human:** write the question as normal text and STOP there. You have
+    no interactive prompt — nobody can click an option. Numbered options are fine; wait for
+    the reply instead of guessing and building on.
+  - **In a task, a delegated job, or a proactive run: NOBODY READS YOUR ANSWER TEXT.**
+    A question written there reaches no one — it ends up in a task result, and the run counts
+    as finished with a question instead of a result. On a customer system on 2026-08-13 a
+    delegated design job came back asking for its own onboarding; nobody could answer, and no
+    work was done.
+    So: **do the work** with what you have and pick the safest reasonable default, then say in
+    ONE line what you were missing and which decision you made. If a decision is genuinely
+    required before you can continue, call `request_approval` — that one reaches the human and
+    waits. Plain text does not.
 
 ## Environment
 - Workspace: `/workspace/` (persistent across tasks) — **YOURS ALONE. No other agent can see it.**
@@ -617,31 +629,30 @@ My workspace has a soft quota of **$AGENT_WORKSPACE_SIZE_GB GB**.
 
 DEFAULT_KNOWLEDGE_MD = """# Agent Knowledge Base
 
-## Onboarding Status: NOT COMPLETED
-**IMPORTANT: On my FIRST conversation, I MUST conduct an onboarding interview!**
+## Meine Rolle
 
-### Onboarding Interview Steps:
-1. Introduce myself and explain that I'm a new team member that needs setup
-2. Ask the user: "What role should I fill?" (e.g., Developer, Researcher, Writer, Analyst, DevOps, etc.)
-3. Ask: "What are my main responsibilities?"
-4. Ask: "Are there things I should NOT do or be careful about?"
-5. Ask: "What tools, languages, or frameworks should I focus on?"
-6. Ask: "Any other preferences or instructions?"
-7. After getting answers, update THIS file (knowledge.md) with my complete profile
-8. Change "Onboarding Status" above to "COMPLETED"
-9. Write a brief summary of my role to /shared/team.json (read existing, add myself)
+Meine Rolle, meine Schwerpunkte und meine Grenzen stehen in meiner **Vorlage** und in
+meiner Agenten-Konfiguration. Die gelten — ich frage sie nicht noch einmal ab.
 
-## My Role
-<!-- Filled in after onboarding interview -->
+**Kein Onboarding-Interview.** Frueher stand hier die Anweisung, bei der ersten
+Unterhaltung Rolle, Aufgaben und Grenzen zu erfragen. Das war schon dann ueberfluessig,
+wenn ein Agent aus einer Vorlage entsteht — dort ist all das bereits festgelegt —, und
+es hat aktiv geschadet: am 2026-08-13 kam ein delegierter Auftrag mit der Rueckfrage
+„fuer mich sind keine Verantwortungsbereiche hinterlegt, bitte festlegen" zurueck,
+statt mit Arbeit. In einem Auftrag sitzt niemand, der antwortet.
 
-## My Responsibilities
-<!-- Filled in after onboarding interview -->
+Fehlt mir etwas fuer eine konkrete Aufgabe:
+1. Ich **arbeite trotzdem** und waehle die sicherste vernuenftige Annahme.
+2. Ich sage in EINER Zeile, was gefehlt hat und wie ich entschieden habe.
+3. Braucht es wirklich eine Entscheidung, rufe ich `request_approval` — das erreicht
+   einen Menschen und wartet. Eine Frage als Fliesstext erreicht in einem Auftrag
+   niemanden.
 
-## Boundaries & Rules
-<!-- Filled in after onboarding interview -->
+## Verantwortungsbereiche
 
-## Tech Stack & Skills
-<!-- Filled in after onboarding interview -->
+Was ich dauerhaft besitze, pflegt der Mensch in meinen Einstellungen (Bereich
+„Verantwortungsbereiche"). Sind dort keine hinterlegt, arbeite ich auftragsbezogen —
+das ist kein Fehler und kein Grund, eine Aufgabe anzuhalten.
 
 ## Learned Patterns
 <!-- I update this section after each task with new learnings -->
@@ -1201,7 +1212,8 @@ class AgentManager:
             env.setdefault("GH_TOKEN", github_token)
         return env
 
-    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str = "l3") -> Agent:
+    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str = "l3",
+                           knowledge_md: str | None = None) -> Agent:
         agent_id = uuid.uuid4().hex[:8]
         container_name = f"ai-agent-{_container_slug(name)}-{agent_id}"
         volume_name = f"workspace-{agent_id}"
@@ -1339,8 +1351,13 @@ class AgentManager:
         try:
             for _path in instructions_paths(mode):
                 self.docker.write_file_in_container(container.id, _path, claude_md)
+            # Kommt der Agent aus einer Vorlage, gilt DEREN Beschreibung. Die
+            # leere Vorgabe wuerde sie ueberschreiben — und genau deshalb stand
+            # bei jedem Vorlagen-Agenten "Onboarding NOT COMPLETED", obwohl Rolle,
+            # Schwerpunkte und Grenzen laengst festgelegt waren.
             self.docker.write_file_in_container(
-                container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
+                container.id, "/workspace/knowledge.md",
+                (knowledge_md or "").strip() or DEFAULT_KNOWLEDGE_MD,
             )
             logger.info(
                 "Initialized %s + knowledge.md for agent %s (mode=%s)",

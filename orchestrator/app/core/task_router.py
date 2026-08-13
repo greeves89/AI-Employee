@@ -366,6 +366,9 @@ class TaskRouter:
         await self._publish_activity(agent_id, f"Task queued: {title} (priority: {priority})")
 
         await self.db.refresh(task)
+        # Kachel im Chat des Auftraggebers: ab jetzt sieht der Mensch, dass etwas
+        # laeuft — statt auf eine Rueckmeldung zu warten, die frueher nie kam.
+        await self.publish_task_card(task, "queued")
         return task
 
     async def _agent_exists(self, agent_id: str | None) -> bool:
@@ -568,6 +571,9 @@ class TaskRouter:
         )
         if delegator_id and delegator_id != agent_id:
             logger.info("Firing delegation callback for task %s → delegator %s", task.id, delegator_id)
+            # Erst die Kachel aktualisieren (sofort sichtbar), dann den Lead
+            # anstossen (der braucht einen ganzen Zug).
+            await self.publish_task_card(task, "done")
             await self._notify_delegating_agent(task, delegator_id)
 
         # Request user rating via notification + Telegram inline keyboard
@@ -1719,6 +1725,59 @@ class TaskRouter:
                     )
         except Exception as e:
             logger.warning(f"Could not notify parent agent for subtask {subtask.id}: {e}")
+
+    async def publish_task_card(self, task: Task, phase: str) -> None:
+        """Kachel im Chat des Auftraggebers — Live-Stand eines delegierten Auftrags.
+
+        Ein Team-Lead schreibt „ich habe beauftragt" und der Mensch sieht danach
+        nichts: kein Fortschritt, kein Ende, keine Rueckfrage. Er muss nachfragen,
+        um zu erfahren, ob ueberhaupt etwas passiert. Diese Kachel schliesst die
+        Luecke — sie erscheint beim Anlegen und aktualisiert sich beim Abschluss.
+
+        Bewusst OHNE ``message_id``: der Weiterleiter im WS laesst Ereignisse ohne
+        Nachrichtenkennung immer durch (Steuerereignisse). Mit einer fremden
+        Kennung wuerde die Kachel als „gehoert zu einem anderen Chat" verworfen.
+
+        Fehler hier duerfen den Auftrag nie anhalten — eine Anzeige ist kein
+        Betriebsmittel.
+        """
+        try:
+            meta = task.metadata_ or {}
+            delegator = meta.get("created_by_agent")
+            if not (delegator and self.redis and self.redis.client):
+                return
+            if delegator == task.agent_id:
+                return  # sich selbst beauftragen ist keine Delegation
+
+            name = None
+            if task.agent_id:
+                from app.models.agent import Agent as _A
+
+                name = (await self.db.execute(
+                    select(_A.name).where(_A.id == task.agent_id)
+                )).scalar_one_or_none()
+
+            await self.redis.client.publish(
+                f"agent:{delegator}:chat:response",
+                json.dumps({
+                    "type": "task_card",
+                    "agent_id": delegator,
+                    "session_id": meta.get("chat_session_id"),
+                    "data": {
+                        "task_id": task.id,
+                        "title": task.title,
+                        "phase": phase,                      # queued | done
+                        "status": getattr(task.status, "value", str(task.status)),
+                        "assigned_agent_id": task.agent_id,
+                        "assigned_agent_name": name or task.agent_id,
+                        "result_preview": (task.result or task.error or "")[:400],
+                        "cost_usd": task.cost_usd,
+                        "duration_ms": task.duration_ms,
+                    },
+                }),
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("[Kachel] konnte nicht gesendet werden", exc_info=True)
 
     async def _latest_chat_session(self, agent_id: str) -> str | None:
         """Der zuletzt benutzte Gesprächsfaden dieses Agenten.

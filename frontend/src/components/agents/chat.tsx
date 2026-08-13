@@ -86,9 +86,29 @@ interface ChatEvent {
   agent_id: string;
   message_id: string;
   session_id?: string;  // owning session (set by the server) — used to isolate chat tabs
-  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file";
+  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card";
   data: Record<string, unknown>;
   timestamp: string;
+}
+
+/** Ein delegierter Auftrag als Kachel im Chat.
+ *
+ * Ohne die sah der Mensch nach „ich habe beauftragt" nichts mehr: kein
+ * Fortschritt, kein Ende. Er musste nachfragen, um zu erfahren, ob ueberhaupt
+ * etwas passiert — am 2026-08-13 nach 18 Minuten Stille.
+ */
+interface TaskCard {
+  task_id: string;
+  title: string;
+  phase: "queued" | "done";
+  status: string;
+  assigned_agent_id?: string;
+  assigned_agent_name?: string;
+  result_preview?: string;
+  cost_usd?: number | null;
+  duration_ms?: number | null;
+  session_id?: string | null;
+  at: number;
 }
 
 interface SessionTab {
@@ -365,6 +385,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     });
   };
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Delegierte Auftraege dieses Gespraechs, nach Auftragskennung.
+  const [taskCards, setTaskCards] = useState<Record<string, TaskCard>>({});
   const [input, setInput] = useState("");
   // Per-message reasoning depth, picked by the user (like the thinking selector
   // in ChatGPT/Claude Code). "" = leave the agent's harness at its default.
@@ -802,6 +824,20 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     // different session (another tab, a background task, a voice delegation)
     // must NOT bleed into this view.
     if (event.session_id && activeSessionIdRef.current && event.session_id !== activeSessionIdRef.current) {
+      return;
+    }
+
+    // Kachel eines delegierten Auftrags — eigener Zustand, kein Chatverlauf:
+    // sie aktualisiert sich an Ort und Stelle (queued -> done), statt zweimal
+    // als Nachricht aufzutauchen.
+    if (type === "task_card") {
+      const card = data as unknown as TaskCard;
+      if (!card?.task_id) return;
+      setTaskCards((prev) => {
+        const next = { ...prev };
+        next[card.task_id] = { ...(next[card.task_id] || {}), ...card, at: Date.now() };
+        return next;
+      });
       return;
     }
 
@@ -1739,6 +1775,66 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
               </div>
               <LiveActivity agentId={agentId} />
             </div>
+          </div>
+        )}
+        {/* Delegierte Auftraege dieses Gespraechs. Sie stehen bewusst am Ende und
+            nicht mitten im Verlauf: eine Kachel aktualisiert sich (wartet ->
+            erledigt), eine Chatnachricht kann das nicht. */}
+        {Object.keys(taskCards).length > 0 && viewMode !== "overview" && (
+          <div className="mx-auto w-full max-w-3xl space-y-2 px-4 pb-2">
+            {Object.values(taskCards)
+              .sort((a, b) => a.at - b.at)
+              .map((card) => {
+                const laeuft = card.phase !== "done";
+                const gescheitert = card.status === "failed";
+                return (
+                  <div
+                    key={card.task_id}
+                    className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                      laeuft
+                        ? "border-amber-500/40 bg-amber-500/5"
+                        : gescheitert
+                          ? "border-destructive/40 bg-destructive/5"
+                          : "border-emerald-600/40 bg-emerald-600/5"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {laeuft ? (
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-amber-500" />
+                      ) : gescheitert ? (
+                        <XCircle className="h-4 w-4 shrink-0 text-destructive" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate font-medium">{card.title}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {card.assigned_agent_name}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-3 pl-6 text-xs text-muted-foreground">
+                      <span>
+                        {laeuft
+                          ? "in Arbeit"
+                          : gescheitert
+                            ? "fehlgeschlagen"
+                            : "abgeschlossen"}
+                      </span>
+                      {card.duration_ms ? <span>{Math.round(card.duration_ms / 1000)} s</span> : null}
+                      <a
+                        href={`/tasks/${card.task_id}`}
+                        className="ml-auto underline-offset-2 hover:underline"
+                      >
+                        Details
+                      </a>
+                    </div>
+                    {!laeuft && card.result_preview ? (
+                      <p className="mt-1 line-clamp-2 pl-6 text-xs text-muted-foreground">
+                        {card.result_preview}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })}
           </div>
         )}
         <div ref={bottomRef} />
