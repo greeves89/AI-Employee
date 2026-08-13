@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.201.0] - 2026-08-13
+
+### Sicherheit
+- **Kunden-, Firmen- und Personennamen aus dem Repo entfernt.** Das Repo ist
+  öffentlich; der Name eines Kunden stand an 34 Stellen in 20 Dateien — in
+  Kommentaren, Tests, im CHANGELOG und im Benutzerhandbuch. Dazu der Nachname
+  einer realen Ansprechperson in einem Test.
+- **Die gravierendste Stelle war die Produkt-Oberfläche:** In den Einstellungen
+  standen die internen Adressen eines Kunden als Platzhalter (Mailserver,
+  Dienstkonto, interne IP). Die sah **jeder** Nutzer der Software — auch jeder
+  andere Kunde. Ersetzt durch `example.com` bzw. neutrale Werte.
+- **Eine Prüfung wacht darüber** (`test_no_customer_names_in_repo.py`): sie
+  durchsucht den gesamten Quelltext nach einer Sperrliste und schlägt fehl, bevor
+  ein Name wieder hineinrutscht. Ein Vorsatz reicht dafür nicht — der Ort eines
+  Fehlers hat nun einmal einen Namen, und man schreibt ihn beiläufig auf.
+- Der Sachverhalt bleibt überall nachvollziehbar: statt des Namens steht jetzt
+  „beim Kunden" bzw. „eine Kundenanlage". Klarnamen gehören ins
+  Projekt-Gedächtnis, nicht ins öffentliche Repo.
+- **Reichweite:** Das schützt den aktuellen Stand. Was einmal öffentlich gepusht
+  wurde, bleibt in der git-Historie und in fremden Klonen.
+
+---
+
 ## [1.200.2] - 2026-08-13
 
 ### Behoben
@@ -209,7 +232,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Geändert
 - **Fehler des Modell-Aufrufs erklären sich jetzt selbst.** Auslöser: drei
-  Aufgaben bei SKBS scheiterten mit `Unexpected error: ReadError('')` — die
+  Aufgaben bei der Kundenanlage scheiterten mit `Unexpected error: ReadError('')` — die
   Klammer war **leer**. Um überhaupt einzugrenzen, *wo* es reißt, mussten 110
   gespeicherte Aufgabenschritte durchgesehen werden.
 - **Die Ursachenkette wird mitgeliefert.** `httpx` verpackt den Socket-Abbruch;
@@ -3314,7 +3337,7 @@ Drei Fehler aus dem ersten echten Sprach-Test der Desktop-Bridge — alle drei s
 
 ## [1.132.0] — 2026-08-04
 
-Erste Nachbesserungen aus dem Kundentest von v1.131.0 (Klinikum Braunschweig).
+Erste Nachbesserungen aus dem Kundentest von v1.131.0.
 
 ### Fixed
 - **Freigaben kamen im Sprachchat nie beim Nutzer an — der Agent handelte ohne sie (#474).** Ruft der Agent `request_approval`, legt der Orchestrator die Anfrage an und der Agent wartet bis zu 10 Minuten auf Antwort. Der Text-Chat zeigt dafür ein Widget; die **Voice-Session hatte keins** — die Frage lief nur als Text durch die Live-Aktivität, war nicht beantwortbar, und nach dem Timeout machte der Agent weiter. Dasselbe Muster wie beim `AskUserQuestion`-Fehler in v1.130.2: eine Rückfrage, die nirgends ankommt, wird zur stillen Selbstermächtigung. Die Sprachsitzung zeigt jetzt dieselbe Freigabe-Karte mit Frage, Kontext und den Antwortmöglichkeiten aus `request_approval` — und pollt durchgehend, nicht nur während eines laufenden Turns (im Sprachmodus arbeitet der Agent oft weiter, während man schon wieder redet).
@@ -4483,7 +4506,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 ### Fixed
 - **Voice Fokus-Modus zeigt jetzt korrekt „Fokus-Modus aktiv" (orange) statt „Hört zu…".** Bei aktivem Fokus (Mikro aus) blieb die Status-Pille auf lila „Hört zu…", obwohl der Agent gar nicht zuhört, sondern im Hintergrund arbeitet. Neu: solange eine Aufgabe läuft → orange „Fokus-Modus aktiv", danach grün „Fokus-Modus – bereit"; ohne Fokus wie gehabt (zuhören lila, bereit grün). (`frontend/src/components/agents/voice-session.tsx`)
 - **Explorer: Löschen-Button für Dateien und Ordner.** Das Backend-Delete (`DELETE /agents/{id}/files`, ownership- und `/workspace/`-gesichert) und die API-Funktion existierten bereits, nur der UI-Button fehlte. Jetzt pro Eintrag ein Papierkorb-Button (auf Hover) mit Bestätigungsdialog. (`frontend/src/app/files/page.tsx`)
-- **Realtime-Badge „Nova Sonic" → „Realtime".** Der Badge im Voice-Modal zeigte immer „Nova Sonic", auch wenn die Session über Azure-Realtime lief (SKBS) — irreführend. Jetzt engine-neutral „Realtime". (`frontend/src/components/agents/voice-session.tsx`)
+- **Realtime-Badge „Nova Sonic" → „Realtime".** Der Badge im Voice-Modal zeigte immer „Nova Sonic", auch wenn die Session über Azure-Realtime lief (Kundenanlage) — irreführend. Jetzt engine-neutral „Realtime". (`frontend/src/components/agents/voice-session.tsx`)
 
 ## [1.99.104] — 2026-07-07
 
@@ -4522,12 +4545,12 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 ## [1.99.98] — 2026-07-06
 
 ### Fixed
-- **Realtime-Voice-Selektor zeigt jetzt die im AI-Account hinterlegten Modelle statt einer festen Katalog-Liste.** Vorher listete `list_realtime_models` pro Provider-Typ mehrere fest verdrahtete Modelle (gpt-realtime + gpt-4o-realtime + mini) — alle mit derselben Engine+Account, sodass beim Anklicken eines Modells alle als „Aktiv" markiert wurden. Neu wird pro Account genau das/die dort konfigurierte(n) Modell(e) angezeigt (SKBS Azure realtime → nur `gpt-realtime`) → eindeutige Auswahl. (`api/ai_accounts.py::list_realtime_models`)
+- **Realtime-Voice-Selektor zeigt jetzt die im AI-Account hinterlegten Modelle statt einer festen Katalog-Liste.** Vorher listete `list_realtime_models` pro Provider-Typ mehrere fest verdrahtete Modelle (gpt-realtime + gpt-4o-realtime + mini) — alle mit derselben Engine+Account, sodass beim Anklicken eines Modells alle als „Aktiv" markiert wurden. Neu wird pro Account genau das/die dort konfigurierte(n) Modell(e) angezeigt (der Kundenanlage Azure realtime → nur `gpt-realtime`) → eindeutige Auswahl. (`api/ai_accounts.py::list_realtime_models`)
 
 ## [1.99.97] — 2026-07-06
 
 ### Added
-- **Azure OpenAI Realtime als zweite Voice-Engine (flüssiges Auto-Speech-to-Speech OHNE AWS).** Neben AWS Nova Sonic gibt es jetzt eine `AzureRealtimeSession`, die das OpenAI-Realtime-WS-Protokoll gegen Azures `/openai/v1/realtime` (Modell `gpt-realtime`, GA) spricht. Damit bekommen Deployments ohne AWS (z.B. SKBS) dasselbe kontinuierliche Sprach-Erlebnis wie Nova Sonic — über die vorhandene Azure-OpenAI-Ressource, ohne separaten Speech-Key, ohne externen Edge-TTS, ohne lokalen stt-service. Browser-16kHz-Audio wird auf 24kHz upgesampelt; Ausgabe läuft über den bestehenden glatten PCM-Playback-Pfad. Der `ask_agent`/`refine_task`-Delegations- und Tool-Layer wird wiederverwendet (Tool-Format automatisch Nova↔OpenAI konvertiert). Auswählbar in den Voice-Settings („GPT Realtime (GA)"); Provider `azure-realtime` im AI-Accounts-Bereich. E2E gegen echtes SKBS-Azure verifiziert. (`voice_providers/realtime_azure_openai.py`, `realtime_catalog.py`, `realtime_voice_session.py`, `api/ws.py`)
+- **Azure OpenAI Realtime als zweite Voice-Engine (flüssiges Auto-Speech-to-Speech OHNE AWS).** Neben AWS Nova Sonic gibt es jetzt eine `AzureRealtimeSession`, die das OpenAI-Realtime-WS-Protokoll gegen Azures `/openai/v1/realtime` (Modell `gpt-realtime`, GA) spricht. Damit bekommen Deployments ohne AWS (z.B. der Kundenanlage) dasselbe kontinuierliche Sprach-Erlebnis wie Nova Sonic — über die vorhandene Azure-OpenAI-Ressource, ohne separaten Speech-Key, ohne externen Edge-TTS, ohne lokalen stt-service. Browser-16kHz-Audio wird auf 24kHz upgesampelt; Ausgabe läuft über den bestehenden glatten PCM-Playback-Pfad. Der `ask_agent`/`refine_task`-Delegations- und Tool-Layer wird wiederverwendet (Tool-Format automatisch Nova↔OpenAI konvertiert). Auswählbar in den Voice-Settings („GPT Realtime (GA)"); Provider `azure-realtime` im AI-Accounts-Bereich. E2E gegen echtes der Kundenanlage-Azure verifiziert. (`voice_providers/realtime_azure_openai.py`, `realtime_catalog.py`, `realtime_voice_session.py`, `api/ws.py`)
 
 ## [1.99.96] — 2026-07-06
 
@@ -4551,7 +4574,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 
 ### Fixed
 - **Datei-Anhänge im Chat werden jetzt tatsächlich gelesen (PDF u.a.).** Der Agent bekam beim Anhängen nur eine passive Notiz („Datei in /workspace") und riet aus dem Dateinamen. Neu: explizite Anweisung mit vollem Pfad, die Datei ZUERST mit dem Read-Tool zu öffnen (PDFs/Bilder unterstützt). (`frontend/src/components/agents/chat.tsx`)
-- **Alembic-Branch bereinigt.** `#300` (gpt-5.5-Backfill, `515d03f814a0`) war vom falschen Parent abgezweigt → zwei Heads, `alembic upgrade head` mehrdeutig. Merge-Migration `0ea61527a17e` vereint sie wieder zu einem Single-Head (Pi + SKBS).
+- **Alembic-Branch bereinigt.** `#300` (gpt-5.5-Backfill, `515d03f814a0`) war vom falschen Parent abgezweigt → zwei Heads, `alembic upgrade head` mehrdeutig. Merge-Migration `0ea61527a17e` vereint sie wieder zu einem Single-Head (Pi + der Kundenanlage).
 
 ## [1.99.92] — 2026-07-06
 
@@ -4833,7 +4856,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 ## [1.99.25] — 2026-07-03
 
 ### Changed
-- **Voice-Settings sind jetzt realtime-first** und passen zum aktuellen Voice-Layer. Die Provider-Konfiguration zeigt oben die **Echtzeit-Sprachmodelle** (AWS Bedrock Nova Sonic / Azure Realtime — aus den konfigurierten AI-Accounts, via `GET /ai-accounts/realtime-models`) als primäre, empfohlene Auswahl und setzt damit den Plattform-Default (`voice_interaction_model` + `voice_interaction_account_id`). Die alte STT→LLM→TTS-Pipeline (faster-whisper/Edge-TTS/Interaction-LLM) ist in einen eingeklappten **„Klassische Pipeline (Fallback)"**-Bereich gewandert — nicht entfernt, weil Deployments ohne Realtime-Account (z. B. SKBS ohne AWS) sie als Rückfallebene brauchen; „Aktiv"-Badge zeigt, welcher Modus gerade greift. Backend: `/settings/voice` liefert + `PATCH /settings/` akzeptiert die Realtime-Felder. (`orchestrator/app/api/settings.py`, `orchestrator/app/schemas/settings.py`, `frontend/src/components/settings/voice-settings.tsx`)
+- **Voice-Settings sind jetzt realtime-first** und passen zum aktuellen Voice-Layer. Die Provider-Konfiguration zeigt oben die **Echtzeit-Sprachmodelle** (AWS Bedrock Nova Sonic / Azure Realtime — aus den konfigurierten AI-Accounts, via `GET /ai-accounts/realtime-models`) als primäre, empfohlene Auswahl und setzt damit den Plattform-Default (`voice_interaction_model` + `voice_interaction_account_id`). Die alte STT→LLM→TTS-Pipeline (faster-whisper/Edge-TTS/Interaction-LLM) ist in einen eingeklappten **„Klassische Pipeline (Fallback)"**-Bereich gewandert — nicht entfernt, weil Deployments ohne Realtime-Account (z. B. der Kundenanlage ohne AWS) sie als Rückfallebene brauchen; „Aktiv"-Badge zeigt, welcher Modus gerade greift. Backend: `/settings/voice` liefert + `PATCH /settings/` akzeptiert die Realtime-Felder. (`orchestrator/app/api/settings.py`, `orchestrator/app/schemas/settings.py`, `frontend/src/components/settings/voice-settings.tsx`)
 
 ## [1.99.24] — 2026-07-03
 
@@ -4856,7 +4879,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 - **Jarvis zeigt Bilder & Dateien.** Präsentiert der Agent während einer Voice-Aufgabe ein Bild (`present_image`) oder eine Datei (`present_file`), erscheint es jetzt live im rechten Panel des Jarvis-Cockpits — Bilder inline gerendert, Dateien als Karte mit Name/Beschriftung. Dieselben `image`/`file`-Events, die der Text-Chat rendert, werden über den `on_event`-Callback durchgereicht (`agent_chat_bridge`, `RealtimeVoiceSession._emit_activity` → `media`-Event). (`orchestrator/app/services/agent_chat_bridge.py`, `realtime_voice_session.py`, `frontend/src/components/agents/voice-session.tsx`)
 
 ### Security
-- **Kiosk-Voice-Ticket gehärtet** (Regression aus 1.99.20 behoben, vom Security-Review gefunden). Der token-mintende Endpoint `POST /kiosk/ws-ticket/{id}` ist jetzt (a) **standardmäßig deaktiviert** — nur aktiv wenn `KIOSK_VOICE_ENABLED` gesetzt ist (Pi-Kiosk; auf Multi-Tenant-Boxen wie SKBS 404 → kein Token-Minting), und (b) **least-privilege**: das Ticket wird an den **Agent-Owner** gebunden statt an einen globalen Admin (Admin nur noch Bootstrap-Fallback für Owner-lose Agenten). (`orchestrator/app/api/kiosk.py`)
+- **Kiosk-Voice-Ticket gehärtet** (Regression aus 1.99.20 behoben, vom Security-Review gefunden). Der token-mintende Endpoint `POST /kiosk/ws-ticket/{id}` ist jetzt (a) **standardmäßig deaktiviert** — nur aktiv wenn `KIOSK_VOICE_ENABLED` gesetzt ist (Pi-Kiosk; auf Multi-Tenant-Boxen wie der Kundenanlage 404 → kein Token-Minting), und (b) **least-privilege**: das Ticket wird an den **Agent-Owner** gebunden statt an einen globalen Admin (Admin nur noch Bootstrap-Fallback für Owner-lose Agenten). (`orchestrator/app/api/kiosk.py`)
 
 ## [1.99.20] — 2026-07-03
 
@@ -4943,7 +4966,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 ## [1.99.8] — 2026-07-03
 
 ### Added
-- **Realtime-Sprache über AI-Accounts konfigurierbar (kundenfähig).** AWS-Bedrock-Zugänge (und vorbereitend Azure-Realtime / Brave-Websearch) werden jetzt als **AI-Account** angelegt (verschlüsselte Creds, wiederverwendbar) statt per Server-`.env` hardcodiert. Damit kann jeder Kunde (z. B. SKBS) seinen eigenen AWS-Account eintragen und Nova Sonic nutzen.
+- **Realtime-Sprache über AI-Accounts konfigurierbar (kundenfähig).** AWS-Bedrock-Zugänge (und vorbereitend Azure-Realtime / Brave-Websearch) werden jetzt als **AI-Account** angelegt (verschlüsselte Creds, wiederverwendbar) statt per Server-`.env` hardcodiert. Damit kann jeder Kunde (z. B. der Kundenanlage) seinen eigenen AWS-Account eintragen und Nova Sonic nutzen.
   - AI-Accounts: neue Provider-Typen `bedrock` / `azure-realtime` / `brave-search`; Formular mit AWS Access Key ID + Region + Secret (`frontend/src/app/ai-accounts/view.tsx`, `orchestrator/app/api/ai_accounts.py`).
   - **Realtime-Modell-Selektor** im Agenten-Sprach-Setup: listet die verfügbaren Realtime-Modelle je konfiguriertem Provider (z. B. „Nova Sonic 2 · AWS Bedrock (Pi)"), Auswahl Modell ↔ Provider. Endpoint `GET /ai-accounts/realtime-models`; Katalog `orchestrator/app/core/realtime_catalog.py`.
   - `RealtimeVoiceSession` löst die Creds jetzt auf: **verknüpfter AI-Account → Plattform-Default-Account → env** (Pi-Bootstrap bleibt als Fallback). Modell-ID pro Agent wählbar. Config: `interaction_account_id` + `interaction_model_id`.
@@ -4955,7 +4978,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
   - **Direkt-Tools (Millisekunden, kein Agent-Round-Trip):** `get_agent_status` (läuft/idle, aktuelle Aufgabe, Queue), `list_agent_tasks` (letzte Aufgaben inkl. Fehlerursache), `get_agent_settings` (Modell/Modus/Provider/Autonomie/Budget) — lesen direkt aus DB/Redis. Nur echte **Arbeit** geht noch über `ask_agent`.
   - **Sprech-Füller:** Vor einer Delegation (`ask_agent`, dauert Sekunden) sagt Nova Sonic jetzt kurz etwas („Moment, ich kümmere mich darum"), damit keine Stille entsteht.
   - **Barge-in:** Redet der Nutzer, während der Agent spricht, stoppt die Audio-Ausgabe sofort (Energie-VAD im Browser) — plus „Unterbrechen"-Button. (`orchestrator/app/services/realtime_voice_session.py`, `frontend/src/components/agents/voice-session.tsx`)
-- **Plattform-Default-Interaktionsmodell.** Neuer Fallback: Agenten ohne eigene Einstellung folgen einer Plattform-Vorgabe (`voice_interaction_model`), sodass **alle Agenten einheitlich** dasselbe Sprach-Verhalten haben — auf dem Pi „nova_sonic", auf SKBS leer (klassisch). Ein Per-Agent-Wert überschreibt weiterhin. (`orchestrator/app/api/ws.py`)
+- **Plattform-Default-Interaktionsmodell.** Neuer Fallback: Agenten ohne eigene Einstellung folgen einer Plattform-Vorgabe (`voice_interaction_model`), sodass **alle Agenten einheitlich** dasselbe Sprach-Verhalten haben — auf dem Pi „nova_sonic", auf der Kundenanlage leer (klassisch). Ein Per-Agent-Wert überschreibt weiterhin. (`orchestrator/app/api/ws.py`)
 
 ## [1.99.6] — 2026-07-03
 
@@ -4969,7 +4992,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
   - Backend: `orchestrator/app/services/voice_providers/realtime_nova_sonic.py` (bidirektionaler Bedrock-Stream + Tool-Use via `aws-sdk-bedrock-runtime`), `realtime_voice_session.py` (Browser-PCM ↔ Nova Sonic ↔ Agent), gemeinsamer Delegations-Helper `agent_chat_bridge.py` (auch von der klassischen `VoiceSession` genutzt). WS-Route wählt den Pfad per `agent.config["interaction_model"]`. Endpoint `PUT /agents/{id}/interaction-model`.
   - Frontend: kontinuierlicher 16-kHz-PCM-Aufnahme-/24-kHz-Wiedergabe-Modus im Voice-Modal (`voice-session.tsx`), Per-Agent-Selektor „Sprach-Interaktion" (`interaction-model-card.tsx`).
   - Verifiziert: echte deutsche Sprache → Transkription → `ask_agent`-Tool-Call → Tool-Ergebnis → gesprochene Antwort, end-to-end gegen echtes AWS Bedrock (Raspberry Pi, ARM). Der Browser-Mic-Test steht noch aus.
-  - AWS-Zugangsdaten sind **Pi-only** (in der Pi-`.env`), nicht auf SKBS.
+  - AWS-Zugangsdaten sind **Pi-only** (in der Pi-`.env`), nicht auf der Kundenanlage.
 
 ## [1.99.4] — 2026-07-02
 

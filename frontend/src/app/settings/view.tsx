@@ -1993,7 +1993,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   label="EWS-Server (Host)"
                   value={exchangeServerUrl}
                   onChange={setExchangeServerUrl}
-                  placeholder="mail.klinikum-bs.de"
+                  placeholder="mail.example.com"
                   mono
                 />
                 <SelectField
@@ -2012,7 +2012,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                       label="Service-Account (UPN)"
                       value={exchangeSvcUser}
                       onChange={setExchangeSvcUser}
-                      placeholder="svc-aiemployee@klinikum-bs.de"
+                      placeholder="svc-aiemployee@example.com"
                       mono
                     />
                     <CredentialField
@@ -2055,7 +2055,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                         label="Relay-Host"
                         value={smtpHost}
                         onChange={setSmtpHost}
-                        placeholder="192.168.20.213 / mail.klinikum-bs.de"
+                        placeholder="192.168.10.20 / mail.example.com"
                         mono
                       />
                     </div>
@@ -2107,7 +2107,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     label="Erlaubte Empfänger-Domains"
                     value={smtpAllowedDomains}
                     onChange={setSmtpAllowedDomains}
-                    placeholder="leer = nur eigene Domain · z.B. skbs.de, partner.de · * = alle"
+                    placeholder="leer = nur eigene Domain · z.B. firma.de, partner.de · * = alle"
                     hint="Schutz gegen Massenversand: standardmäßig darf der Agent nur an die eigene Domain senden."
                     mono
                   />

@@ -145,7 +145,7 @@ class VoiceToolTests(unittest.IsolatedAsyncioTestCase):
     async def test_no_bridge_says_so_instead_of_deflecting(self):
         v = self._voice()
         with unittest.mock.patch.object(cu, "_find_user_session", new=AsyncMock(return_value=None)):
-            out = await v._desktop("open", "https://servicedesk.skbs.de/wm")
+            out = await v._desktop("open", "https://servicedesk.example.com/wm")
         self.assertIn("Bridge", out)
         self.assertNotIn("selbst", out.lower())   # kein "ruf es selbst auf"
 

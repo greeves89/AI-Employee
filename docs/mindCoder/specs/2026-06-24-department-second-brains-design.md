@@ -3,7 +3,7 @@
 **Datum:** 2026-06-24
 **Status:** Entwurf zur Abnahme
 **Branch:** `feat/department-second-brains`
-**Kontext:** Kunden-Deployment SKBS (Klinikum Braunschweig), Host `skbs-s-kichat`, AI-Employee v1.55.36
+**Kontext:** Kunden-Deployment, Host `kunden-host`, AI-Employee v1.55.36
 
 ---
 

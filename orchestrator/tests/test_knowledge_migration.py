@@ -37,7 +37,7 @@ UI/UX Designer fuer klinische Anwendungen
 
 ## Learned Patterns
 - Kontrastpruefung immer gegen WCAG AA, nicht nach Gefuehl
-- Der Kunde nennt sein Haus konsequent "skbs", klein geschrieben
+- Der Kunde nennt sein Haus konsequent "kliniq", klein geschrieben
 
 ## Errors & Fixes
 - Logo nie nachzeichnen — nur verifizierte Originaldatei
@@ -63,7 +63,7 @@ class LearnedContentSurvivesTests(unittest.TestCase):
     def test_learned_patterns_survive_verbatim(self):
         out = strip_onboarding_block(ALT)
         self.assertIn("Kontrastpruefung immer gegen WCAG AA", out)
-        self.assertIn('konsequent "skbs", klein geschrieben', out)
+        self.assertIn('konsequent "kliniq", klein geschrieben', out)
 
     def test_errors_and_fixes_survive(self):
         out = strip_onboarding_block(ALT)

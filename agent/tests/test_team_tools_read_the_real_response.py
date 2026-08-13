@@ -55,7 +55,7 @@ TEAMS_LIST = {
             "member_agent_ids": ["68ce2abd", "3be824dd", "61c45555"],
             "lead_agent_id": "68ce2abd",
             "is_active": True,
-            "created_by": "c.uhde@example.invalid",
+            "created_by": "m.mustermann@example.invalid",
         }
     ]
 }

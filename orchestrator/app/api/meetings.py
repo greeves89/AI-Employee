@@ -8,7 +8,7 @@ which produces a structured protocol + action items and stores it.
 
 Transcription order:
   1. Local faster-whisper STT service (``settings.stt_service_url``) — used on
-     hosts that run it (e.g. SKBS).
+     hosts that run it (e.g. a customer host).
   2. Fallback: OpenAI Whisper (``/v1/audio/transcriptions``) — for hosts WITHOUT
      a local STT service (e.g. the Pi). Key from the platform setting
      ``voice_openai_api_key`` or the ``OPENAI_API_KEY`` env.
@@ -85,7 +85,7 @@ async def transcribe_chunk(
     filename = file.filename or "chunk.webm"
     content_type = file.content_type or "audio/webm"
 
-    # 1) Local STT service (SKBS and any host that runs faster-whisper).
+    # 1) Local STT service (any host that runs faster-whisper).
     try:
         return {"text": await _transcribe_local(raw, filename, content_type)}
     except httpx.HTTPError as e:

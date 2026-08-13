@@ -1,6 +1,6 @@
 """Keyless web search for the realtime voice interaction layer.
 
-DuckDuckGo HTML endpoint — no API key, so it works on every deployment (Pi, SKBS)
+DuckDuckGo HTML endpoint — no API key, so it works on every deployment (Pi, Kundenanlage)
 out of the box. Mirrors the agent container's own ``web_search`` tool
 (``agent/app/tools/executor.py``); the two runtimes are separate deployables and
 cannot import each other, so the small DDG parser lives in both.

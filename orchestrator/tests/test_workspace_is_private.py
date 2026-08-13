@@ -1,7 +1,7 @@
 """Delegierte Pfade müssen beim Empfänger existieren.
 
 Am 2026-08-12 beauftragte der CEO-Agent Mr. Design und Dr. Code mit Arbeit an
-``/workspace/projects/skbs-systemlandkarte``. Bei IHM gibt es das Verzeichnis —
+``/workspace/projects/kunden-systemlandkarte``. Bei IHM gibt es das Verzeichnis —
 sein Volume ist 854 MB groß und enthält drei Projekte. Bei den beiden anderen
 nicht: deren Volumes sind 36 KB groß und waren es seit ihrer Anlage.
 

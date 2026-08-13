@@ -1,6 +1,6 @@
 """Ein Fehler muss erklaeren, was passiert ist — sonst kostet er eine Stunde.
 
-Kundenfall SKBS, 2026-08-13: Drei Aufgaben scheiterten mit
+Kundenfall bei einem Kunden, 2026-08-13: Drei Aufgaben scheiterten mit
 
     Unexpected error: ReadError('')
 

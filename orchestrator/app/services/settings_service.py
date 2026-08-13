@@ -110,7 +110,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "apns_bundle_id",
     "apns_sandbox",
     # On-prem Exchange (EWS) — admin connection config (per-user auth via impersonation)
-    "exchange_server_url",            # e.g. "mail.klinikum-bs.de" (EWS host)
+    "exchange_server_url",            # e.g. "mail.example.com" (EWS host)
     "exchange_auth_mode",             # "service_account" | "modern_auth" | "basic"
     "exchange_service_account_user",  # service-account UPN (service_account mode)
     "exchange_tenant_id",             # Entra tenant (modern_auth mode)

@@ -4,7 +4,7 @@
 **Version:** 1.154.0
 **Stand:** 7. August 2026
 **Zielgruppe:** Endanwender & Administratoren
-**Instanz:** skbs-s-kichat.klinikum-bs.de
+**Instanz:** ki-chat.example.com
 
 ---
 
@@ -219,7 +219,7 @@ Kapitel erklärt die Übersichtsseite und wie du Schritt für Schritt einen Agen
 Seitenleiste → **Agents**. Jeder Agent erscheint als **Kachel**. Was du darauf siehst:
 
 - **Name** des Agenten (oben links auf der Kachel).
-- **Modell-/Account-Badge** (z. B. *SKBS – Azure*) — zeigt, mit welchem Modell er denkt.
+- **Modell-/Account-Badge** (z. B. *Firma – Azure*) — zeigt, mit welchem Modell er denkt.
 - **Update-Badge** (orange „Update") — erscheint nur, wenn eine **neue Container-Version**
   bereitsteht. Klick darauf bzw. **Update** aktualisiert ihn (Workspace bleibt erhalten).
 - **Status-Punkt**: *Idle* (bereit, nichts zu tun), *Working* (arbeitet gerade),
@@ -288,7 +288,7 @@ einzelnen Agenten.
 **Die Kopfzeile** (oben):
 - **Live-Werte** — CPU-Auslastung, belegter Arbeitsspeicher und Festplatte (z. B.
   *45 MB / 10 GB*).
-- **Modell-/Account-Anzeige** — z. B. *SKBS – Azure / gpt-5.4*.
+- **Modell-/Account-Anzeige** — z. B. *Firma – Azure / gpt-5.4*.
 - **Restart** — startet den Container neu (z. B. wenn er hängt; Daten bleiben erhalten).
 - **Custom LLM** — Schnellzugriff auf die Modell-/LLM-Einstellung.
 - **Status-Badge** rechts — *Idle* / *Working* / …
@@ -1224,7 +1224,7 @@ Stellschrauben. Klick **+ Neue Rolle** und fülle aus:
 - **Mountshares** — welche **Second Brains** die Gruppe nutzen darf (z. B.
   *brain-it_operations*).
 - **AI-Accounts (Konten)** — welche zentralen Modell-Zugänge erlaubt sind (z. B.
-  *SKBS – Azure*).
+  *Firma – Azure*).
 - **Keys / Secrets** — welche hinterlegten Secrets die Gruppe nutzen darf.
 - **MCP-Server / Tools** — welche MCP-Anbindungen erlaubt sind (*SharePoint-MCP, DMS-MCP,
   MediaWiki-MCP*).

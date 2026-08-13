@@ -58,5 +58,5 @@ Einsatzstellen:
 
 - Build-Verification (next build + Python-Syntax).
 - Initialen-Fallback: lokale Accounts sehen sofort Initialen (kein Request-
-  Fehlerbild). Foto-Pfad braucht einen echten Microsoft-SSO-Login (SKBS) —
+  Fehlerbild). Foto-Pfad braucht einen echten Microsoft-SSO-Login (Kundenanlage) —
   Verifikation dort nach Deploy.

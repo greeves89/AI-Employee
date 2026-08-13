@@ -216,7 +216,7 @@ class NoFalseWorksElsewhereBannerTests(unittest.TestCase):
 
 
 class WorkInProgressIsVisibleTests(unittest.TestCase):
-    """Kundenwunsch (Uhde, 13.08.2026): „Ich wollte im Chat eine Anzeige haben,
+    """Kundenwunsch (13.08.2026): „Ich wollte im Chat eine Anzeige haben,
     dass noch am Thema gearbeitet wird (in Progress, warte noch auf SubAgents
     Rueckmeldung oder so etwas)."
 

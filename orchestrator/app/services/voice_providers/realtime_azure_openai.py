@@ -16,7 +16,7 @@ Audio: the browser streams 16 kHz PCM (the Nova live path); Azure Realtime wants
 24 kHz pcm16, so we upsample on the way in. Azure streams 24 kHz PCM back, which
 the frontend already plays at 24 kHz — no client change.
 
-Protocol confirmed live against the SKBS Azure endpoint (session.created →
+Protocol confirmed live against a customer Azure endpoint (session.created →
 session.update → conversation.item.create → response.create → response.output_*).
 """
 

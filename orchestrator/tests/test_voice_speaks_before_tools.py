@@ -39,7 +39,7 @@ class SpeakBeforeToolsTests(unittest.TestCase):
 
     def test_rule_reaches_both_engines(self):
         """AWS (Nova Sonic) und Azure (gpt-realtime) bekommen denselben Prompt —
-        SKBS laeuft auf Azure, der Pi auf AWS."""
+        Die Kundenanlage laeuft auf Azure, der Pi auf AWS."""
         import inspect
         from app.services.realtime_voice_session import RealtimeVoiceSession
         src = inspect.getsource(RealtimeVoiceSession)

@@ -70,14 +70,14 @@ class SettingsUpdate(BaseModel):
     voice_interaction_account_id: str | None = None  # AI-account id providing the realtime creds
     nova_sonic_voice: str | None = None              # voiceId des Echtzeit-Gespraechs
     # On-prem Exchange (EWS) connection config — auth is per-user via impersonation
-    exchange_server_url: str | None = None               # EWS host, e.g. "mail.klinikum-bs.de"
+    exchange_server_url: str | None = None               # EWS host, e.g. "mail.example.com"
     exchange_auth_mode: str | None = None                # "service_account" | "modern_auth" | "basic"
     exchange_service_account_user: str | None = None     # service-account UPN
     exchange_service_account_password: str | None = None # secret
     exchange_tenant_id: str | None = None                # Entra tenant (modern_auth)
     exchange_mcp_external_enabled: bool | None = None
     # SMTP relay for SENDING mail — the universal send path (works where EWS is blocked).
-    smtp_relay_host: str | None = None                    # relay host/IP, e.g. "192.168.20.213"
+    smtp_relay_host: str | None = None                    # relay host/IP, e.g. "192.168.10.20"
     smtp_relay_port: str | None = None                    # default 25
     smtp_relay_starttls: bool | None = None               # use STARTTLS if offered (default true)
     smtp_relay_verify_tls: bool | None = None             # verify relay cert (default true); disable only for a trusted internal relay
