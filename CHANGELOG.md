@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.196.0] - 2026-08-13
+
+### Geändert
+- **Fehler des Modell-Aufrufs erklären sich jetzt selbst.** Auslöser: drei
+  Aufgaben bei SKBS scheiterten mit `Unexpected error: ReadError('')` — die
+  Klammer war **leer**. Um überhaupt einzugrenzen, *wo* es reißt, mussten 110
+  gespeicherte Aufgabenschritte durchgesehen werden.
+- **Die Ursachenkette wird mitgeliefert.** `httpx` verpackt den Socket-Abbruch;
+  `ReadError` ist nur die Hülle, darunter steht der eigentliche Grund
+  (`ConnectionResetError`, `SSLEOFError`, `EndOfStream`, `IncompleteRead`). Genau
+  der wurde bisher weggeworfen.
+- **Die Umstände stehen dabei:** Modell, Endpunkt (nur Host), Anzahl Nachrichten,
+  Größe der Anfrage in Zeichen und die Laufzeit bis zum Abbruch. Damit sagt der
+  nächste Vorfall selbst, ob es an Größe, Endpunkt oder Zeitpunkt liegt.
+- Gilt für **alle** Anbieter (OpenAI/Azure, Anthropic, Gemini) und alle
+  Fehlerstellen — auch `Connection failed` und `Request timed out`, die bisher
+  ebenfalls ohne Kontext meldeten.
+- **Ohne Inhalte:** Größen, Anzahl und Host ja — Prompt nein. Die Abfragezeichen-
+  kette wird abgeschnitten, damit der Gemini-Schlüssel (`?key=…`) nicht in
+  Protokollen landet.
+
+---
+
 ## [1.195.0] - 2026-08-13
 
 ### Behoben

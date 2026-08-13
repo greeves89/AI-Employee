@@ -15,12 +15,18 @@ Auto-detection priority:
 
 import json
 import logging
+import time
 from typing import AsyncIterator
 
 import httpx
 
 from app import multimodal
-from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
+from app.providers.base import (
+    BaseLLMProvider,
+    ChatMessage,
+    LLMEvent,
+    describe_failure,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +220,11 @@ class OpenAIProvider(BaseLLMProvider):
         """Stream via the OpenAI Responses API."""
         body = self._build_responses_body(messages, tools)
         headers = self._headers()
+        _start = time.monotonic()
+
+        def _diag(e):
+            return describe_failure(e, url=url, body=body, messages=messages,
+                                    model=self.model, started=_start)
 
         input_tokens = 0
         output_tokens = 0
@@ -301,13 +312,13 @@ class OpenAIProvider(BaseLLMProvider):
                         pending_calls.clear()
 
         except httpx.ConnectError as e:
-            yield LLMEvent(type="error", text=f"Connection failed: {e}")
+            yield LLMEvent(type="error", text=f"Connection failed: {_diag(e)}")
             return
-        except httpx.ReadTimeout:
-            yield LLMEvent(type="error", text="Request timed out")
+        except httpx.ReadTimeout as e:
+            yield LLMEvent(type="error", text=f"Request timed out: {_diag(e)}")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {_diag(e)}")
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
@@ -430,6 +441,12 @@ class OpenAIProvider(BaseLLMProvider):
         input_tokens = 0
         output_tokens = 0
         pending_tool_calls: dict[int, dict] = {}
+        _start = time.monotonic()
+
+        def _diag(e):
+            return describe_failure(e, url=url, body=body,
+                                    messages=body.get("messages"),
+                                    model=self.model, started=_start)
 
         try:
             async with self.http.stream("POST", url, json=body, headers=headers) as response:
@@ -513,13 +530,13 @@ class OpenAIProvider(BaseLLMProvider):
                         yield _ev
 
         except httpx.ConnectError as e:
-            yield LLMEvent(type="error", text=f"Connection failed: {e}")
+            yield LLMEvent(type="error", text=f"Connection failed: {_diag(e)}")
             return
-        except httpx.ReadTimeout:
-            yield LLMEvent(type="error", text="Request timed out")
+        except httpx.ReadTimeout as e:
+            yield LLMEvent(type="error", text=f"Request timed out: {_diag(e)}")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {_diag(e)}")
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
@@ -690,6 +707,11 @@ class OpenAIProvider(BaseLLMProvider):
         """Stream via the legacy Completions API."""
         body = self._build_legacy_body(messages)
         headers = self._headers()
+        _start = time.monotonic()
+
+        def _diag(e):
+            return describe_failure(e, url=url, body=body, messages=messages,
+                                    model=self.model, started=_start)
 
         input_tokens = 0
         output_tokens = 0
@@ -728,13 +750,13 @@ class OpenAIProvider(BaseLLMProvider):
                         yield LLMEvent(type="text_delta", text=text)
 
         except httpx.ConnectError as e:
-            yield LLMEvent(type="error", text=f"Connection failed: {e}")
+            yield LLMEvent(type="error", text=f"Connection failed: {_diag(e)}")
             return
-        except httpx.ReadTimeout:
-            yield LLMEvent(type="error", text="Request timed out")
+        except httpx.ReadTimeout as e:
+            yield LLMEvent(type="error", text=f"Request timed out: {_diag(e)}")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {_diag(e)}")
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
