@@ -1873,6 +1873,15 @@ class TaskRouter:
                     "chat_session_id": origin_session,
                     "source": "webapp",
                 })
+                # Zuordnung Nachricht -> Gespraechsfaden hinterlegen. Ohne sie
+                # verwirft der Weiterleiter im WS die Antwort des Leads: er kennt
+                # nur Kennungen, die DIESER Browser gesendet hat, und eine vom
+                # Orchestrator angestossene Antwort ist fuer ihn fremd. Sie landete
+                # dadurch in der Datenbank, aber nie auf dem Bildschirm.
+                if origin_session:
+                    await self.redis.client.setex(
+                        f"chat:msg:{callback_id}:session", 3600, origin_session
+                    )
                 await self.redis.client.lpush(
                     f"agent:{delegator_agent_id}:chat", chat_notification
                 )

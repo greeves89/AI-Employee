@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.189.0] - 2026-08-13
+
+### Behoben
+- **Die Rückmeldung des Leads entstand, kam aber nie auf den Bildschirm.** Beim
+  Kunden wurde die Kachel grün („abgeschlossen", mit Ergebnis) — und der Lead
+  schrieb nichts mehr, obwohl er „ich sag dir Bescheid" angekündigt hatte.
+  Ursache: der Weiterleiter im WebSocket schottet Gespräche gegeneinander ab und
+  kennt nur die Nachrichtenkennungen, die **dieser Browser** gesendet hat. Eine vom
+  Orchestrator angestossene Rückmeldung (Fertigmeldung, Antwort eines Kollegen)
+  trägt eine fremde Kennung — und fiel damit genau durch die Abschottung, die
+  fremde Gespräche fernhalten soll. Die Antwort stand in `chat_messages`, aber nie
+  im Fenster; sichtbar erst nach Neuladen oder auf „und?".
+  Der Orchestrator hinterlegt jetzt beim Anstossen den Zielfaden
+  (`chat:msg:{id}:session`, eine Stunde haltbar); der Weiterleiter sieht dort nach,
+  **bevor** er verwirft, und liefert nur aus, wenn der Faden zu diesem Fenster
+  gehört. Die Abschottung bleibt damit unangetastet.
+
+### Test
+- `orchestrator/tests/test_orchestrator_replies_reach_the_screen.py`
+
+---
+
 ## [1.188.2] - 2026-08-13
 
 ### Geändert

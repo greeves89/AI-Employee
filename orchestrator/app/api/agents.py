@@ -1802,6 +1802,26 @@ def _is_busy_with_task(status: dict) -> bool:
     return bool(current_task) and not current_task.startswith(("chat:", "msg:"))
 
 
+async def _latest_session_for(db: AsyncSession, agent_id: str) -> str | None:
+    """Der zuletzt benutzte Gespraechsfaden dieses Agenten.
+
+    Eine Rueckmeldung ohne Faden landet in ``webapp:default`` — einem Gespraech,
+    das niemand ansieht. Der zuletzt benutzte ist fast immer der richtige: dort
+    hat der Mensch gerade gefragt.
+    """
+    try:
+        from app.models.chat_message import ChatMessage as _CM
+
+        return (await db.execute(
+            select(_CM.session_id)
+            .where(_CM.agent_id == agent_id, _CM.session_id.isnot(None))
+            .order_by(_CM.timestamp.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 @router.post("/{agent_id}/message")
 async def send_message_to_agent(
     agent_id: str,
@@ -1903,10 +1923,17 @@ async def send_message_to_agent(
                     # 90 Sekunden nach der Frage — der Lead hatte da schon
                     # "noch nicht geantwortet" gemeldet und blieb dabei, bis der
                     # Nutzer "und?" schrieb.
+                    _cb_id = uuid.uuid4().hex[:12]
+                    _origin = await _latest_session_for(db, agent_id)
+                    if _origin:
+                        await redis.client.setex(
+                            f"chat:msg:{_cb_id}:session", 3600, _origin
+                        )
                     await redis.client.lpush(
                         f"agent:{agent_id}:chat",
                         json.dumps({
-                            "id": uuid.uuid4().hex[:12],
+                            "id": _cb_id,
+                            "chat_session_id": _origin,
                             "text": (
                                 f"[Rueckmeldung] {sender} hat auf deine Frage "
                                 f"geantwortet:\n\n{body.text[:1500]}\n\n"

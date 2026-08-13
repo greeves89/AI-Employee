@@ -573,6 +573,27 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                             _mid = str(_fwd.get("message_id") or "")
                             if _mid:
                                 _sid = _mid_to_session.get(_mid)
+                                if _sid is None:
+                                    # Nicht von diesem Browser gesendet — aber
+                                    # womoeglich vom Orchestrator angestossen
+                                    # (Fertigmeldung einer Delegation, Antwort
+                                    # eines Kollegen). Der hinterlegt dabei den
+                                    # Zielfaden; ohne diesen Blick verwarf die
+                                    # Abschottung genau die Rueckmeldungen, auf
+                                    # die der Mensch wartet. Sie standen in der
+                                    # Datenbank und nie auf dem Bildschirm.
+                                    try:
+                                        _raw = await _redis.client.get(
+                                            f"chat:msg:{_mid}:session"
+                                        )
+                                        if _raw:
+                                            _looked = (_raw.decode() if isinstance(_raw, bytes)
+                                                       else str(_raw))
+                                            if _looked == _session["id"]:
+                                                _sid = _looked
+                                                _mid_to_session[_mid] = _looked
+                                    except Exception:  # noqa: BLE001
+                                        pass
                                 if _sid is not None:  # own chat → tag + forward
                                     _fwd["session_id"] = _sid
                                     try:
