@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.200.2] - 2026-08-13
+
+### Behoben
+- **Team-Lead-Rückmeldung endete mitten im Wort, bevor die eigentliche Antwort
+  auftauchte.** Ein Team-Lead delegierte vier Testaufgaben ("gib exakt 'Hallo
+  Welt' aus"); drei von vier Rückmeldungen brachen ab ("...reinen Au", "...I",
+  "...lc"), noch bevor der geforderte Satz im sichtbaren Text erschien. Ursache:
+  die Fertigmeldung wurde zweimal mit einem blossen `text[:n]` gekürzt (erst auf
+  800, dann nochmal auf 300 Zeichen), ohne auf Wortgrenzen zu achten — der
+  Pflicht-Vorspann der Sub-Agenten (Vorab-Checks: Tools laden, TODOs,
+  Brain/Memory, Skill-Suche) war oft schon länger als das Limit. Kürzt jetzt an
+  der letzten Wortgrenze, gleicher Fix in allen drei Harnessen (Webapp-Chat,
+  Claude-Code-MCP, Custom-LLM).
+
+---
+
 ## [1.200.1] - 2026-08-13
 
 ### Behoben
