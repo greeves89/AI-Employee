@@ -6,6 +6,7 @@ import json
 import pytest
 
 from app.agent_runner import AgentRunner
+from app.config import settings
 
 
 def test_parse_present_file_marker_from_string():
@@ -87,7 +88,8 @@ class _FakeLogPublisher:
 
 
 @pytest.mark.anyio
-async def test_present_file_delivered_via_telegram(tmp_path):
+async def test_present_file_delivered_via_telegram(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "workspace_dir", str(tmp_path))
     f = tmp_path / "podcast.mp3"
     f.write_bytes(b"ID3 fake audio bytes")
     redis = _FakeRedis()
