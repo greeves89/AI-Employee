@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.187.1] - 2026-08-13
+
+### Behoben
+- **Bestandsagenten trugen den Onboarding-Abschnitt weiter.** 1.187.0 hat ihn aus
+  der Standardvorlage entfernt — das half aber nur **neuen** Agenten. Die
+  `knowledge.md` liegt im Volume des Agenten und überlebt jedes Neuerstellen
+  (absichtlich, dort steht Gelerntes). Auf der Kundenanlage stand deshalb weiterhin
+  „Onboarding Status: NOT COMPLETED — I MUST conduct an onboarding interview", und
+  die Agenten hielten weiter Aufträge an, um nach ihrer Rolle zu fragen.
+  Beim Neuerstellen wird der Abschnitt jetzt entfernt. **Nur der Kopf** wird
+  ersetzt: alles ab dem ersten Abschnitt, den der Agent selbst gefüllt haben
+  könnte, bleibt Zeichen für Zeichen stehen — ein Wissensspeicher, den eine
+  Migration ausräumt, wäre teurer als das Problem.
+
+### Test
+- `orchestrator/tests/test_knowledge_migration.py` — Gelerntes überlebt wörtlich,
+  zweimal migrieren ändert nichts, und der Helfer wird auch wirklich gerufen.
+
+---
+
 ## [1.187.0] - 2026-08-13
 
 ### Neu

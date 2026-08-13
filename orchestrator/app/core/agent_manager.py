@@ -662,6 +662,35 @@ das ist kein Fehler und kein Grund, eine Aufgabe anzuhalten.
 """
 
 
+def strip_onboarding_block(knowledge: str) -> str | None:
+    """Den ueberholten Onboarding-Abschnitt aus einer bestehenden knowledge.md nehmen.
+
+    ``None`` heisst: nichts zu tun.
+
+    Die Datei liegt im Volume des Agenten und wird beim Neuerstellen bewusst NICHT
+    ueberschrieben — dort steht Gelerntes drin. Folge: Agenten, die vor dem
+    Wegfall des Interviews entstanden sind, tragen die Anweisung weiter mit sich
+    herum und halten damit weiter Auftraege an, um nach ihrer Rolle zu fragen.
+
+    Deshalb wird hier **nur der Kopf** ersetzt: alles ab dem ersten Abschnitt, den
+    der Agent selbst gefuellt haben koennte, bleibt Zeichen fuer Zeichen stehen.
+    Eine Datei, die den Block nicht (mehr) hat, wird nicht angefasst.
+    """
+    if not knowledge or "Onboarding Status: NOT COMPLETED" not in knowledge:
+        return None
+
+    # Erster Abschnitt, der dem Agenten gehoert. Ab da wird nichts mehr angefasst.
+    keep_from = len(knowledge)
+    for marker in ("## Learned Patterns", "## Errors & Fixes", "## My Role"):
+        pos = knowledge.find(marker)
+        if pos != -1:
+            keep_from = min(keep_from, pos)
+    tail = knowledge[keep_from:] if keep_from < len(knowledge) else ""
+
+    head = DEFAULT_KNOWLEDGE_MD.split("## Learned Patterns")[0]
+    return head + tail if tail else DEFAULT_KNOWLEDGE_MD
+
+
 def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) -> str:
     """Return a CLAUDE.md section listing mounted host directories, or empty string.
 
@@ -1641,6 +1670,25 @@ class AgentManager:
             mode = agent.mode or config.get("mode", "claude_code")
             for target_file in instructions_paths(mode):
                 self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
+            # knowledge.md nachziehen: der Onboarding-Abschnitt ist entfallen, die
+            # Datei liegt aber im Volume und ueberlebt jedes Neuerstellen. Ohne
+            # diesen Schritt fragen Bestandsagenten weiterhin mitten im Auftrag
+            # nach ihrer Rolle. Nur der Kopf wird ersetzt, Gelerntes bleibt.
+            try:
+                _, current_knowledge = self.docker.exec_in_container(
+                    container.id, ["cat", "/workspace/knowledge.md"]
+                )
+                migrated = strip_onboarding_block(current_knowledge or "")
+                if migrated:
+                    self.docker.write_file_in_container(
+                        container.id, "/workspace/knowledge.md", migrated
+                    )
+                    logger.info("[Wissen] Onboarding-Abschnitt bei %s entfernt",
+                                scrub_log(agent_id))
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[Wissen] knowledge.md von %s nicht migriert: %s",
+                               scrub_log(agent_id), scrub_log(e))
+
             # Clean up old CLAUDE.md if this is now a custom_llm agent (one-time migration)
             if mode != "claude_code":
                 try:
