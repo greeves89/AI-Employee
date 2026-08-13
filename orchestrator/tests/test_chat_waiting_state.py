@@ -286,6 +286,42 @@ class AChatLooksTheSameWhoeverStartedTheTurnTests(unittest.TestCase):
         self.assertIn("new Set(busySessionIds || [])", CHAT)
 
 
+class ItNeverLooksAsleepBetweenToolsTests(unittest.TestCase):
+    """Kundenmeldung (13.08.2026): „da steht nicht 'in arbeit' und darunter dann
+    die tool calls — es wirkt ein wenig wie eingeschlafen."
+
+    Der Zug lief, alle vier Werkzeug-Ergebnisse waren zurueck, und der Agent
+    verarbeitete sie. In genau dieser Denkpause stand „4 Tools" statt
+    „Arbeitet…": die Bedingung fragte, ob gerade ein WERKZEUG rechnet, nicht ob
+    der ZUG laeuft. Der obere „Thinking..."-Block half nicht — der weicht, sobald
+    eine Antwortnachricht existiert.
+    """
+
+    def test_the_running_turn_alone_decides(self):
+        self.assertIn(
+            'const anyRunning = isStreaming || steps.some((s) => s.status === "running");',
+            CHAT,
+        )
+
+    def test_the_flag_is_actually_unpacked(self):
+        """Es wurde uebergeben, aber nie ausgepackt — die Information war da und
+        wurde verworfen."""
+        self.assertIn("function ToolCluster({ steps, isStreaming }", CHAT)
+
+    def test_the_caller_no_longer_narrows_it(self):
+        """``message.isStreaming && ein Werkzeug laeuft`` war genau die
+        Einschraenkung, die in der Denkpause falsch wurde."""
+        block = _block("<ToolCluster", 700)
+        self.assertIn("isStreaming={message.isStreaming}", block)
+        self.assertNotIn('isStreaming={message.isStreaming && g.steps.some(', block)
+
+    def test_there_is_something_that_actually_moves(self):
+        """„es dreht sich kein Kreis" — ein Wort allein liest man nicht als
+        Bewegung."""
+        block = _block('{anyRunning && <Loader2', 200)
+        self.assertIn("animate-spin", block)
+
+
 class TheTypeIsRealTests(unittest.TestCase):
     """Ein Zweig auf einen Ereignistyp, den es nicht gibt, ist toter Code. Beim
     Bauen fiel genau das auf (``"thinking"`` steht nicht in der Union)."""

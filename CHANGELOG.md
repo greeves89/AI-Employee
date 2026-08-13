@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.198.1] - 2026-08-13
+
+### Behoben
+- **„Es wirkt ein wenig wie eingeschlafen."** Während der Agent nur Werkzeuge
+  aufrief, stand über der Werkzeugzeile „4 Tools" statt „Arbeitet…" — und nichts
+  bewegte sich. Die Bedingung fragte, ob gerade ein **Werkzeug** rechnet, nicht
+  ob der **Zug** läuft. Genau in der Denkpause zwischen zwei Werkzeugen (alle
+  Ergebnisse zurück, der Agent verarbeitet sie) wurde sie falsch. Der obere
+  „Thinking…"-Block half nicht: der weicht, sobald eine Antwortnachricht
+  existiert.
+- Das nötige Wissen wurde bereits übergeben, aber **nie ausgepackt** —
+  `isStreaming` stand in der Typangabe der Komponente und wurde verworfen.
+- Dazu ein Kreis, der sich wirklich dreht. „Arbeitet…" allein liest man nicht als
+  Bewegung — das stand schon im ersten Kundenfeedback zu dieser Zeile.
+
+---
+
 ## [1.198.0] - 2026-08-13
 
 ### Geändert

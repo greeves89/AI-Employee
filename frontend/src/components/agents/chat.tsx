@@ -2828,7 +2828,13 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
             <ToolCluster
               key={`tools-${g.idx}`}
               steps={g.steps}
-              isStreaming={message.isStreaming && g.steps.some((s) => s.status === "running")}
+              // Der Zug laeuft — mehr braucht die Anzeige nicht zu wissen. Vorher
+              // stand hier zusaetzlich „und ein Werkzeug arbeitet gerade", womit
+              // die Bedingung genau in der Denkpause zwischen den Werkzeugen
+              // falsch wurde: alle Ergebnisse zurueck, der Agent verarbeitet sie,
+              // und die Zeile sagte „4 Tools" statt „Arbeitet…". Es sah
+              // eingeschlafen aus, obwohl gearbeitet wurde.
+              isStreaming={message.isStreaming}
             />
           )
         );
@@ -3045,12 +3051,16 @@ function formatAudioTime(seconds: number) {
 
 /* ─── Tool Call Block (Claude CLI Style) ────────────────────────────── */
 
-function ToolCluster({ steps }: { steps: ToolStep[]; isStreaming?: boolean }) {
+function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: boolean }) {
   // Stays compact (overlapping bubbles) at all times — even while the agent is
   // working — so it doesn't pop open and resize on every tool call. The running
   // tool's bubble shows a live spinner; click to expand for details.
   const [expanded, setExpanded] = useState(false);
-  const anyRunning = steps.some((s) => s.status === "running");
+  // ``isStreaming`` wurde uebergeben, aber nie ausgepackt — die Information war
+  // da und wurde verworfen. Sie ist der eigentliche Punkt: „arbeitet" heisst,
+  // dass der ZUG laeuft, nicht dass gerade ein Werkzeug rechnet. Zwischen zwei
+  // Werkzeugen denkt der Agent, und genau dann sah es tot aus.
+  const anyRunning = isStreaming || steps.some((s) => s.status === "running");
 
   if (expanded) {
     return (
@@ -3109,7 +3119,10 @@ function ToolCluster({ steps }: { steps: ToolStep[]; isStreaming?: boolean }) {
           </span>
         )}
       </div>
-      <span className="text-[11px] text-muted-foreground group-hover:text-foreground">
+      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground group-hover:text-foreground">
+        {/* „es dreht sich kein Kreis" — aus dem ersten Kundenfeedback zu dieser
+            Zeile. Ein Wort allein liest man nicht als Bewegung. */}
+        {anyRunning && <Loader2 className="h-3 w-3 animate-spin text-amber-500" />}
         {anyRunning ? "Arbeitet…" : `${steps.length} ${steps.length === 1 ? "Tool" : "Tools"}`} · Details
       </span>
     </button>
