@@ -1840,7 +1840,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                   key={card.task_id}
                   type="button"
                   onClick={() => openCardDetail(card)}
-                  className={`rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-accent/40 ${
+                  className={`group relative rounded-lg border px-2.5 py-1.5 pr-7 text-left text-xs transition-colors hover:bg-accent/40 ${
                     gescheitert
                       ? "border-destructive/40 bg-destructive/5"
                       : "border-emerald-600/30 bg-emerald-600/5"
@@ -1858,6 +1858,38 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                     <span className="truncate">{card.assigned_agent_name}</span>
                     {card.duration_ms ? <span>{Math.round(card.duration_ms / 1000)} s</span> : null}
                   </div>
+                  {/* Wegklicken. Solange die Kachel nicht an ihrer Stelle im
+                      Verlauf sitzt, sondern am Ende klebt, ist das der schnellste
+                      Weg, sie loszuwerden, wenn man sie gesehen hat. Nur die
+                      Anzeige — der Auftrag selbst bleibt. */}
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Kachel ausblenden"
+                    title="Ausblenden"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTaskCards((prev) => {
+                        const next = { ...prev };
+                        delete next[card.task_id];
+                        return next;
+                      });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setTaskCards((prev) => {
+                          const next = { ...prev };
+                          delete next[card.task_id];
+                          return next;
+                        });
+                      }
+                    }}
+                    className="absolute right-1.5 top-1.5 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100"
+                  >
+                    <X className="h-3 w-3" />
+                  </span>
                 </button>
               );
             })}

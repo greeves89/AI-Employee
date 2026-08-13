@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.192.2] - 2026-08-13
+
+### Neu
+- **Kacheln lassen sich wegklicken.** Ein kleines Kreuz oben rechts (erscheint beim
+  Darüberfahren) blendet eine erledigte Kachel aus. Nur die Anzeige — der Auftrag
+  selbst bleibt bestehen und ist über die Aufgabenseite erreichbar.
+  Solange die Kacheln noch am Ende des Verlaufs kleben statt an ihrer Stelle zu
+  sitzen, ist das der schnellste Weg, sie loszuwerden, wenn man sie gesehen hat.
+
+### Weiterhin offen
+- Die Kacheln gehören an die Position im Gespräch, an der der Auftrag vergeben
+  wurde — nicht ans Ende. Siehe HANDOVER.
+
+---
+
 ## [1.192.1] - 2026-08-13
 
 ### Behoben
