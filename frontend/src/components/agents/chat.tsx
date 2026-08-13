@@ -355,7 +355,7 @@ function ContextRing({ percent }: { percent: number }) {
   );
 }
 
-export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds }: { agentId: string; initialSessionId?: string | null; embedded?: boolean; busySessionIds?: string[] }) {
+export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds, onTurnChange }: { agentId: string; initialSessionId?: string | null; embedded?: boolean; busySessionIds?: string[]; onTurnChange?: () => void }) {
   const { simpleMode } = useSimpleMode();
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -422,6 +422,16 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   const [historyReloadKey, setHistoryReloadKey] = useState(0);
   const isWaitingRef = useRef(false);
   const pendingCountRef = useRef(0);
+  // Notbremse gegen haengende Anzeige: wann kam zuletzt ein Ereignis fuer diesen
+  // Faden, und wie oft hintereinander meldete der Agent "nicht beschaeftigt".
+  // Ohne das bleibt "Thinking..." stehen, sobald ein `done` unterwegs verloren
+  // geht (z.B. weil die Faden-Abschottung es verwirft).
+  const lastEventAtRef = useRef(0);
+  const notBusyStreakRef = useRef(0);
+  // Ueber einen Ref, damit der Ereignis-Verteiler nicht bei jedem Rendern der
+  // Elternseite neu gebaut (und die WS-Verbindung neu aufgesetzt) wird.
+  const onTurnChangeRef = useRef(onTurnChange);
+  useEffect(() => { onTurnChangeRef.current = onTurnChange; });
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
@@ -658,6 +668,18 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     loadHistory();
   }, [agentId, activeSessionId, historyReloadKey]);
 
+  // Beim Wechsel des Gespraechs gehoert der Wartezustand des vorigen nicht mehr
+  // hierher. Der Zaehler lebt im Fenster, nicht im Gespraech — und die Ereignisse
+  // des verlassenen Gespraechs werden von der Faden-Abschottung verworfen, koennen
+  // ihn also nie mehr herunterzaehlen. Ohne diesen Schnitt zeigte JEDES neu
+  // geoeffnete Gespraech "Thinking...", weil ein fremder Zug den Zaehler oben hielt.
+  useEffect(() => {
+    pendingCountRef.current = 0;
+    notBusyStreakRef.current = 0;
+    lastEventAtRef.current = 0;
+    setIsWaiting(false);
+  }, [activeSessionId]);
+
   // Live-resume: while a conversation is open, poll the agent's status. If the agent
   // is working on THIS session but not via our own turn (we re-entered mid-run), show
   // a live indicator; when it finishes, reload history so the answer appears — even
@@ -675,6 +697,29 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         setLiveElsewhere(busy && !isWaitingRef.current);
         if (prevBusy && !busy) setHistoryReloadKey((k) => k + 1);  // a turn just finished
         prevBusy = busy;
+
+        // Notbremse: der Agent selbst ist die Wahrheit. Meldet er ueber mehrere
+        // Runden hinweg, dass er an diesem Faden NICHT arbeitet, und kam auch
+        // laenger kein Ereignis, dann laeuft nichts mehr — egal was der Zaehler
+        // sagt. Bewusst traege (3 Runden = 12s UND 20s Ruhe), weil der Anlauf
+        // eines Zuges mehrere Sekunden dauert und ein zu eiliger Abbruch die
+        // Anzeige mitten im Denken loeschen wuerde.
+        if (!busy && isWaitingRef.current) {
+          notBusyStreakRef.current += 1;
+          const ruhe = Date.now() - lastEventAtRef.current;
+          if (notBusyStreakRef.current >= 3 && ruhe > 20000) {
+            notBusyStreakRef.current = 0;
+            pendingCountRef.current = 0;
+            setIsWaiting(false);
+            setMessages((prev) =>
+              prev
+                .filter((m) => !m.isQueued)
+                .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
+            );
+          }
+        } else {
+          notBusyStreakRef.current = 0;
+        }
       } catch { /* transient — ignore */ }
     };
     check();
@@ -853,6 +898,24 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     // must NOT bleed into this view.
     if (event.session_id && activeSessionIdRef.current && event.session_id !== activeSessionIdRef.current) {
       return;
+    }
+
+    lastEventAtRef.current = Date.now();
+    notBusyStreakRef.current = 0;
+
+    // Der Zustand des Agenten hat sich soeben geaendert — die Elternseite soll
+    // ihn JETZT nachladen statt beim naechsten Takt ihrer 15-Sekunden-Abfrage.
+    if (type === "done" || type === "cancelled" || type === "error") {
+      onTurnChangeRef.current?.();
+    }
+
+    // Ein laufender Zug zeigt sich durch seine Ereignisse, nicht durch eine
+    // Zaehlung abgeschickter Nachrichten. Faengt der Agent einen WEITEREN Zug an
+    // (die zweite Nachricht wurde nicht mitgefaltet, sondern eigenstaendig
+    // beantwortet), hebt das die Anzeige wieder an.
+    if (type === "text" || type === "tool_call" || type === "tool_result") {
+      if (pendingCountRef.current === 0) pendingCountRef.current = 1;
+      if (!isWaitingRef.current) setIsWaiting(true);
     }
 
     // Kachel eines delegierten Auftrags — eigener Zustand, kein Chatverlauf:
@@ -1070,10 +1133,20 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           setTotalTurns((t) => t + meta.num_turns);
           setMessageCount((c) => c + 1);
         }
-        // Decrement pending count - only stop waiting when all messages are processed
-        pendingCountRef.current = Math.max(0, pendingCountRef.current - 1);
-        if (pendingCountRef.current === 0) {
-          setIsWaiting(false);
+        // `done` beendet den ZUG, nicht "eine von N Nachrichten". Live-Steering
+        // faltet nachgereichte Nachrichten in den laufenden Zug — die Antwort
+        // kommt unter der Kennung der ERSTEN, es gibt also nur EIN `done`. Wer
+        // hier je Nachricht herunterzaehlte, blieb bei zwei schnell
+        // hintereinander gesendeten Nachrichten dauerhaft auf 1 stehen: Spinner
+        // und Stop-Knopf blieben aktiv, obwohl der Agent laengst fertig war.
+        // Faengt der Agent doch noch einen eigenen Zug fuer die zweite Nachricht
+        // an, hebt dessen erstes Ereignis die Anzeige wieder an (siehe oben).
+        pendingCountRef.current = 0;
+        setIsWaiting(false);
+        // Die Steering-Hinweise sind Live-Zustand, kein Verlauf. Nach dem Zug
+        // sind sie unwahr ("steering current agent turn" — es laeuft keiner).
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].isQueued) msgs.splice(i, 1);
         }
       }
 
@@ -1223,7 +1296,16 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     setPendingImages([]);
     setPendingFiles([]);
     pendingCountRef.current += 1;
+    // Zaehlt als Lebenszeichen — sonst schlaegt die Notbremse waehrend des
+    // Anlaufs zu, in dem der Agent noch gar nicht als beschaeftigt gilt.
+    lastEventAtRef.current = Date.now();
+    notBusyStreakRef.current = 0;
     setIsWaiting(true);
+    // Gleich nachfassen: die „Aktiver Chat"-Anzeige haengt am Zustand des
+    // Agenten, den die Elternseite nur alle 15 Sekunden abfragt. Genau daher
+    // kamen die beobachteten sieben Sekunden — im Mittel die halbe Wartezeit auf
+    // den naechsten Takt, nicht die Anlaufzeit des Agenten.
+    onTurnChangeRef.current?.();
     inputRef.current?.focus();
 
     setSessions((prev) =>

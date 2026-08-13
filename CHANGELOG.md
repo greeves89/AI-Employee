@@ -5,6 +5,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.193.1] - 2026-08-13
+
+### Behoben
+- **„Thinking…" blieb stehen, obwohl der Agent fertig war.** Das Chatfenster
+  rechnete *eine Nachricht = ein Zug*: beim Senden hoch, beim `done` herunter,
+  und erst bei null hörte das Warten auf. Live-Steering faltet eine nachgereichte
+  Nachricht aber in den **laufenden** Zug — die Antwort kommt unter der Kennung
+  der ersten, es gibt genau **ein** `done`. Zwei schnell hintereinander gesendete
+  Nachrichten ließen den Zähler dauerhaft auf 1 stehen: Spinner und Stop-Knopf
+  blieben für immer aktiv. `done` beendet jetzt den Zug, Punkt; ein wirklich
+  folgender Zug hebt die Anzeige über sein erstes Ereignis wieder an.
+- **Drei geöffnete Gespräche zeigten gleichzeitig „Thinking…".** Derselbe Zähler
+  gehörte dem Fenster, nicht dem Gespräch — beim Wechsel blieb er stehen, und die
+  Ereignisse des verlassenen Gesprächs werden von der Faden-Abschottung
+  verworfen, konnten ihn also nie mehr herunterzählen. Beim Gesprächswechsel wird
+  er jetzt zurückgesetzt.
+- **„Message received — steering current agent turn" blieb dauerhaft stehen**,
+  unterhalb der fertigen Antwort. Der Hinweis wurde nur entfernt, wenn für genau
+  diese Kennung eine Antwortnachricht entstand; eine gefaltete Nachricht bekommt
+  nie eine eigene. Er ist Live-Zustand und verschwindet jetzt mit dem Zug.
+- **Notbremse:** Geht ein `done` doch einmal verloren, gilt der Agent selbst als
+  Wahrheit — meldet er über mehrere Runden, dass er an diesem Faden nicht
+  arbeitet, endet die Anzeige. Bewusst träge, damit sie nie mitten im Denken
+  abbricht.
+
+### Geändert
+- **„Aktiver Chat" erscheint jetzt in ein bis zwei statt in sieben Sekunden.**
+  Die Anzeige hängt am Zustand des Agenten, den die Agentenseite nur alle 15
+  Sekunden abfragte — im Mittel wartete man 7,5 Sekunden auf den nächsten Takt.
+  Der Agent war längst dran. Nach dem Absenden und am Ende eines Zuges fasst die
+  Seite jetzt kurz nach, ohne dauerhaft häufiger abzufragen.
+
+---
+
 ## [1.193.0] - 2026-08-13
 
 ### Geändert

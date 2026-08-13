@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -163,19 +163,34 @@ export default function AgentDetailPage() {
     if (visible) setActiveSub(requestedTab as SubKey);
   }, [requestedTab, groupsForMode]);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await api.getAgent(agentId);
-        setAgent(data as Agent);
-      } catch {
-        // ignore
-      }
-    };
-    load();
-    const interval = setInterval(load, 15000);
-    return () => clearInterval(interval);
+  const ladeAgent = useCallback(async () => {
+    try {
+      const data = await api.getAgent(agentId);
+      setAgent(data as Agent);
+    } catch {
+      // ignore
+    }
   }, [agentId]);
+
+  useEffect(() => {
+    ladeAgent();
+    const interval = setInterval(ladeAgent, 15000);
+    return () => clearInterval(interval);
+  }, [ladeAgent]);
+
+  // Nach dem Absenden einer Chatnachricht kurz nachfassen. Die „Aktiver
+  // Chat"-Anzeige haengt an `current_task` des Agenten; der Takt oben liegt bei
+  // 15 Sekunden, im Mittel wartete man also 7,5 Sekunden auf die Anzeige — genau
+  // die vom Kunden gemessenen sieben. Der Agent selbst war da laengst dran.
+  // Ein kurzer Stoss trifft den Moment, in dem er den Auftrag aufnimmt, ohne
+  // dauerhaft haeufiger abzufragen.
+  const nachfassenTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const nachfassen = useCallback(() => {
+    nachfassenTimers.current.forEach(clearTimeout);
+    nachfassenTimers.current = [600, 1800, 4000].map((ms) => setTimeout(ladeAgent, ms));
+    ladeAgent();
+  }, [ladeAgent]);
+  useEffect(() => () => { nachfassenTimers.current.forEach(clearTimeout); }, []);
 
   if (!agent) {
     return (
@@ -474,6 +489,7 @@ export default function AgentDetailPage() {
               agentId={agentId}
               initialSessionId={chatFocusSession}
               busySessionIds={busyChatSessions}
+              onTurnChange={nachfassen}
             />
           )}
           {activeSub === "speech" && (
