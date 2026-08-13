@@ -55,6 +55,18 @@ import conf.d/*.caddy
 		}
 	}
 
+	# Feedback-Widget: der save-Pfad traegt einen base64-PNG-Screenshot
+	# (~0,2–1 MB, theoretisch bis ~11 MB) — explizites 12MB-Limit statt
+	# unbegrenzt; das Backend deckelt das decodierte Bild zusaetzlich bei 8MB.
+	# Achtung: laeuft auf dem Host noch ein nginx davor, braucht der fuer
+	# diesen Pfad `client_max_body_size 12m;`.
+	handle /api/v1/feedback/save {
+		request_body {
+			max_size 12MB
+		}
+		reverse_proxy ai-employee-orchestrator:8000
+	}
+
 	# API + health endpoints → orchestrator
 	handle /api/* {
 		reverse_proxy ai-employee-orchestrator:8000

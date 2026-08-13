@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.192.0] - 2026-08-13
+
+### Neu
+- **In-App-Feedback-Widget („Feedback-Gedöns").** Feedback heftet jetzt an der
+  Stelle, an der es entsteht: schwebender Button auf jeder Seite → konkretes
+  UI-Element anpinnen → Viewport-Screenshot mit rotem Rahmen ums Element
+  (abwählbar) → Sentiment (gefällt/stört/Wunsch) + Kategorie + Freitext → das
+  LLM stellt genau EINE schärfende Requirements-Rückfrage („Direkt speichern"
+  überspringt sie, auch ohne LLM-Zugang).
+  Abgelegt wird pro Feedback eine Markdown-Datei mit Frontmatter (wer · Seite ·
+  Element · Sentiment · Zeit) plus PNG in einem eigenen Volume (`FEEDBACK_DIR`,
+  übersteht Redeploys) — zusätzlich wie bisher ein DB-Eintrag für die
+  Admin-Liste, die neue Einträge samt Seite/Element/Screenshot zeigt. Der
+  Username kommt ausschließlich aus der validierten Session, nie aus dem
+  Request. Optional wird jedes Feedback best-effort als GitHub-Issue
+  gespiegelt (`FEEDBACK_ISSUE_ENABLED`, Default aus) — ein Issue-Fehler
+  verliert nie Feedback. Der alte Feedback-Modal-Dialog ist damit ersetzt.
 ## [1.191.1] - 2026-08-13
 
 ### Behoben
