@@ -1726,6 +1726,30 @@ class TaskRouter:
         except Exception as e:
             logger.warning(f"Could not notify parent agent for subtask {subtask.id}: {e}")
 
+    async def _session_of_running_turn(self, agent_id: str | None) -> str | None:
+        """Der Gespraechsfaden, in dem dieser Agent GERADE arbeitet.
+
+        Auftraege, die ueber den stdio-MCP-Server entstehen (Claude Code, Codex),
+        fuehren keinen Faden mit — der Werkzeugserver kennt die Sitzung des Chats
+        nicht. Der Agent selbst schreibt sie aber waehrend eines Zuges in seinen
+        Statuseintrag (``current_task = "chat:{faden}"``).
+
+        Das ist NICHT der frueher hier benutzte Auffangweg „zuletzt benutzter
+        Faden": gefragt wird nach dem Gespraech, das in DIESEM Moment laeuft. Es
+        ist damit dasselbe, in dem der Mensch gerade sitzt — und nicht irgendein
+        anderes.
+        """
+        if not agent_id or not (self.redis and self.redis.client):
+            return None
+        try:
+            raw = await self.redis.client.hget(f"agent:{agent_id}:status", "current_task")
+            if not raw:
+                return None
+            value = raw.decode() if isinstance(raw, bytes) else str(raw)
+            return value[5:] if value.startswith("chat:") else None
+        except Exception:  # noqa: BLE001
+            return None
+
     async def _persist_task_card(self, task: Task, payload: dict,
                                  session_id: str | None) -> None:
         """Die Kachel als Zeile im Chatverlauf — damit sie ein Neuladen ueberlebt.
@@ -1773,6 +1797,7 @@ class TaskRouter:
         try:
             meta = task.metadata_ or {}
             delegator = meta.get("created_by_agent")
+            session = meta.get("chat_session_id") or await self._session_of_running_turn(delegator)
             if not (delegator and self.redis and self.redis.client):
                 return
             if delegator == task.agent_id:
@@ -1798,7 +1823,7 @@ class TaskRouter:
                 "duration_ms": task.duration_ms,
                 # Ohne den Faden kann das Fenster nicht entscheiden, ob die
                 # Kachel hierher gehoert — und zeigte sie in JEDEM Gespraech.
-                "session_id": meta.get("chat_session_id"),
+                "session_id": session,
             }
 
             # Dauerhaft im Verlauf ablegen, nicht nur waehrend des Laufs senden.
@@ -1807,15 +1832,27 @@ class TaskRouter:
             # angebotene Dateien liegen aus demselben Grund im Verlauf.
             # Ohne Faden gehoert die Kachel in kein Gespraech. Sie trotzdem zu
             # speichern hiess: sie taucht in ALLEN auf.
-            if meta.get("chat_session_id"):
-                await self._persist_task_card(task, payload, meta["chat_session_id"])
+            if session:
+                # Den ermittelten Faden am Auftrag festhalten — sonst sucht die
+                # spaetere Fertigmeldung ihn vergeblich, weil der Agent laengst
+                # in einem anderen Zug steckt.
+                if not meta.get("chat_session_id"):
+                    try:
+                        from sqlalchemy.orm.attributes import flag_modified
+
+                        task.metadata_ = {**meta, "chat_session_id": session}
+                        flag_modified(task, "metadata_")
+                        await self.db.commit()
+                    except Exception:  # noqa: BLE001
+                        logger.debug("[Kachel] Faden nicht am Auftrag vermerkt", exc_info=True)
+                await self._persist_task_card(task, payload, session)
 
             await self.redis.client.publish(
                 f"agent:{delegator}:chat:response",
                 json.dumps({
                     "type": "task_card",
                     "agent_id": delegator,
-                    "session_id": meta.get("chat_session_id"),
+                    "session_id": session,
                     "data": payload,
                 }),
             )

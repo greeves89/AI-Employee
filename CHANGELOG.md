@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.191.1] - 2026-08-13
+
+### Behoben
+- **Für Claude- und Codex-Agenten erschien gar keine Kachel mehr.** Aufträge über
+  den stdio-MCP-Server führen keinen Gesprächsfaden mit — und seit der
+  Isolations-Korrektur (1.190.1) wird ohne Faden nichts mehr angezeigt. Ergebnis:
+  vier delegierte Aufgaben, keine einzige Kachel.
+  Der Orchestrator ermittelt den Faden jetzt selbst aus dem **laufenden Zug** des
+  Agenten (`agent:{id}:status → current_task = "chat:{faden}"`) und hält ihn am
+  Auftrag fest, damit auch die spätere Fertigmeldung ihn findet.
+  Das ist ausdrücklich **nicht** der frühere Auffangweg „zuletzt benutzter Faden":
+  gefragt wird nach dem Gespräch, das in diesem Moment läuft — also genau dem, in
+  dem der Mensch gerade sitzt.
+
+---
+
 ## [1.191.0] - 2026-08-13
 
 ### Geändert
