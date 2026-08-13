@@ -809,7 +809,14 @@ async def lifespan(app: FastAPI):
 
     # Mirror WARNING+ logs (redacted) to /shared/platform-errors.log so agents can
     # read platform errors from the shared volume and help fix the platform.
-    from app.core.platform_error_log import setup_platform_error_log
+    from app.core.platform_error_log import setup_console_logging, setup_platform_error_log
+
+    # Zuerst die Konsole: ohne Ausgabe-Handler war alles unterhalb von WARNING
+    # unsichtbar, und eine Diagnose anhand fehlender Log-Zeilen ist Raten.
+    _console_level = setup_console_logging()
+    logger.info("Konsolen-Logging aktiv (Stufe %s)",
+                logging.getLevelName(_console_level))
+
     if setup_platform_error_log():
         logger.info("Platform error log active -> /shared/platform-errors.log (secret-redacted)")
 

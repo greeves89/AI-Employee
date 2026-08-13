@@ -1720,6 +1720,31 @@ class TaskRouter:
         except Exception as e:
             logger.warning(f"Could not notify parent agent for subtask {subtask.id}: {e}")
 
+    async def _latest_chat_session(self, agent_id: str) -> str | None:
+        """Der zuletzt benutzte Gesprächsfaden dieses Agenten.
+
+        Auffangweg für Aufträge, die den Faden nicht mitführen — das sind alle,
+        die über den stdio-MCP-Server entstehen (Claude Code, Codex): dort kennt
+        der Werkzeugserver die Sitzung des Chats nicht.
+
+        Der zuletzt benutzte Faden ist fast immer der richtige: der Mensch hat
+        gerade dort um die Delegation gebeten. Und selbst wenn nicht, ist ein
+        Faden, den jemand ansieht, allemal besser als ``webapp:default``, wo die
+        Rückmeldung garantiert niemanden erreicht.
+        """
+        try:
+            from app.models.chat_message import ChatMessage as _CM
+
+            return (await self.db.execute(
+                select(_CM.session_id)
+                .where(_CM.agent_id == agent_id, _CM.session_id.isnot(None))
+                .order_by(_CM.timestamp.desc())
+                .limit(1)
+            )).scalar_one_or_none()
+        except Exception:  # noqa: BLE001
+            logger.debug("Letzten Gespraechsfaden nicht ermittelbar", exc_info=True)
+            return None
+
     async def _notify_delegating_agent(self, task: Task, delegator_agent_id: str) -> None:
         """When a delegated task completes, notify the agent that created it.
 
@@ -1760,19 +1785,34 @@ class TaskRouter:
                     f"agent:{delegator_agent_id}:messages", message
                 )
 
-                # Also push to the delegating agent's chat queue so it
-                # picks up the result in the next chat interaction.
-                # Format must match what the agent runner expects: {id, text}
+                # Auch in die Chat-Warteschlange, damit der Lead die Fertigmeldung
+                # aufgreift und dem Menschen berichtet.
+                #
+                # ZWEI Fehler steckten hier bis v1.186.0:
+                #  * Der Schluessel hiess ``session_id``; der Agent liest aber
+                #    ``chat_session_id``. Die Fertigmeldung landete deshalb in
+                #    ``webapp:default`` — einem Faden, den niemand ansieht. Fuer den
+                #    Nutzer sah es aus, als komme nie eine Rueckmeldung.
+                #  * Der Text trug Emojis, obwohl sie in nutzersichtbarem Text
+                #    ausdruecklich nicht vorkommen duerfen.
                 callback_id = uuid.uuid4().hex[:12]
-                status_emoji = "✅" if status == "completed" else "❌"
+                origin_session = (
+                    (task.metadata_ or {}).get("chat_session_id")
+                    or await self._latest_chat_session(delegator_agent_id)
+                )
+                marker = "Erledigt" if status == "completed" else "Fehlgeschlagen"
                 chat_notification = json.dumps({
                     "id": callback_id,
                     "text": (
-                        f"{status_emoji} [Delegation Result] Task '{task.title}' "
-                        f"(#{task.id}) has {status}.\n"
-                        f"Result: {result_preview[:300]}"
+                        f"[Rueckmeldung: {marker}] Der Auftrag '{task.title}' "
+                        f"(#{task.id}) ist {'abgeschlossen' if status == 'completed' else 'gescheitert'}.\n"
+                        f"Ergebnis: {result_preview[:300]}\n\n"
+                        "Berichte dem Menschen kurz, was dabei herausgekommen ist. "
+                        "Wenn das Ergebnis die Aufgabe nicht erfuellt, sage das deutlich."
                     ),
-                    "session_id": "delegation-callback",
+                    # In DEN Faden, in dem die Delegation beauftragt wurde.
+                    "chat_session_id": origin_session,
+                    "source": "webapp",
                 })
                 await self.redis.client.lpush(
                     f"agent:{delegator_agent_id}:chat", chat_notification
@@ -1785,11 +1825,10 @@ class TaskRouter:
 
             # Send Telegram notification to the user for immediate visibility
             try:
-                status_emoji = "✅" if status == "completed" else "❌"
                 title = (task.title or "Task")[:60]
-                cost_info = f" (${task.cost_usd:.3f})" if task.cost_usd else ""
+                cost_info = f" ({task.cost_usd:.3f} USD)" if task.cost_usd else ""
                 telegram_text = (
-                    f"{status_emoji} Delegierter Task {status}: {title}{cost_info}"
+                    f"[{marker}] Delegierter Auftrag: {title}{cost_info}"
                 )
                 if self.redis.client and delegator_agent_id:
                     await self.redis.client.publish(

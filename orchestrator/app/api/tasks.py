@@ -147,7 +147,8 @@ async def create_task(
         model=data.model,
         parent_task_id=data.parent_task_id,
         created_by_agent=data.created_by_agent,
-        metadata=metadata or None,
+        metadata={**metadata, "chat_session_id": data.chat_session_id}
+        if data.chat_session_id else (metadata or None),
     )
     return TaskResponse.model_validate(task)
 
@@ -184,6 +185,8 @@ async def create_task_batch(
             model=task_data.model,
             parent_task_id=data.parent_task_id or task_data.parent_task_id,
             created_by_agent=data.created_by_agent or task_data.created_by_agent,
+            metadata=({"chat_session_id": task_data.chat_session_id}
+                      if task_data.chat_session_id else None),
         )
         created.append(TaskResponse.model_validate(task))
 

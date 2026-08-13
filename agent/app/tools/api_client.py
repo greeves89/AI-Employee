@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import time
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
@@ -16,6 +17,23 @@ from app import multimodal
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+#: In welchem Gespraech der Agent gerade steht. Der Chat-Verbraucher setzt sie zu
+#: Beginn jedes Zuges; die Werkzeuge, die Auftraege vergeben, haengen sie an.
+#:
+#: Warum das noetig ist: Wenn ein delegierter Auftrag fertig ist, meldet der
+#: Orchestrator das an den Auftraggeber zurueck. Ohne Faden landet diese Meldung in
+#: ``webapp:default`` — einem Gespraech, das niemand ansieht. Fuer den Nutzer sah es
+#: aus, als komme nie eine Rueckmeldung, obwohl die Arbeit laengst fertig war.
+current_chat_session: ContextVar[str | None] = ContextVar(
+    "current_chat_session", default=None
+)
+
+
+def _session_field() -> dict:
+    """``{"chat_session_id": ...}`` — oder nichts, ausserhalb eines Gespraechs."""
+    session = current_chat_session.get()
+    return {"chat_session_id": session} if session else {}
 
 
 class OrchestratorAPIClient:
@@ -60,6 +78,8 @@ class OrchestratorAPIClient:
             "priority": params.get("priority", 0),
             "agent_id": agent_id,
             "model": params.get("model"),
+            "created_by_agent": self.agent_id,
+            **_session_field(),
         }
         result = await self._request("POST", "/tasks/", json=body)
         if isinstance(result, str):
@@ -993,6 +1013,7 @@ class OrchestratorAPIClient:
                     "prompt": t.get("prompt", ""),
                     "priority": t.get("priority", 5),
                     "agent_id": t.get("agent_id"),
+                    **_session_field(),
                 }
                 for t in tasks[:20]
             ],

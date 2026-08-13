@@ -5,6 +5,47 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.186.0] - 2026-08-13
+
+### Behoben
+- **Nach einer Delegation kam keine Rückmeldung.** Kundenmeldung 06:22 Uhr: der Lead
+  meldet „Angestoßen", der Auftrag ist um 06:22 fertig — und im Chat passiert
+  **18 Minuten nichts**, bis der Mensch nachfragt („ist die aufgabe abgeschlossen?
+  ich sehe kein Re-Design!").
+  Der Rückmeldeweg existierte, lief aber ins Leere: die Meldung wurde mit dem
+  Schlüssel `session_id` verschickt, der Agent liest `chat_session_id`. Ohne Faden
+  landete die Antwort in `webapp:default` — einem Gespräch, das niemand ansieht.
+  Ein Auftrag führt jetzt seinen **Ursprungsfaden** mit (`chat_session_id` in den
+  Metadaten), und die Fertigmeldung geht dorthin zurück. Für Aufträge ohne Faden
+  (stdio-MCP: Claude Code, Codex) gibt es einen Auffangweg auf den zuletzt
+  benutzten Faden des Leads.
+- Die Meldung fordert den Lead jetzt ausdrücklich auf, dem Menschen zu berichten —
+  und ein unzureichendes Ergebnis als solches zu benennen.
+- **Emojis in nutzersichtbarem Text entfernt** (Chat-Rückmeldung und
+  Telegram-Meldung) — harte Vorgabe des Projekts, hier stand sie in Produktion.
+
+### Behoben (Diagnose-Blindheit)
+- **Anwendungs-Logs landeten nirgends.** `/shared/platform-errors.log` nimmt erst ab
+  WARNING an, und einen Ausgabe-Handler hatte der Wurzel-Logger gar nicht. Sichtbar
+  war nur, was mit `print` geschrieben wurde, plus das Zugriffsprotokoll von uvicorn.
+  Folge: bei genau diesem Fehler liess sich **nicht feststellen**, ob der
+  Rückmeldeweg überhaupt ausgelöst hatte — die `logger.info`-Zeile, die das
+  beantwortet hätte, existierte im Code und nirgends sonst.
+  Jetzt schreibt der Wurzel-Logger nach stdout, Stufe über `LOG_LEVEL` (Vorgabe
+  INFO), mit derselben Schwärzung wie die Datei.
+
+### Test
+- `orchestrator/tests/test_delegation_report_reaches_the_user.py`
+- `agent/tests/test_delegation_thread_is_carried.py` — inklusive der Gegenprobe:
+  ausserhalb eines Gesprächs (proaktiver Lauf) darf **kein** Faden angehängt werden.
+
+### Offen
+- 9 Fremdschlüssel-Fehler `skill_task_usages_task_id_fkey` in den Kundenlogs, aus
+  `record-usage`-Aufrufen auf bereits geräumte Aufträge. Eigener Fehler, nicht Teil
+  dieser Ursache — nachzuziehen.
+
+---
+
 ## [1.185.0] - 2026-08-12
 
 ### Neu

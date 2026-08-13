@@ -691,6 +691,16 @@ class ChatConsumer:
 
         # Route to the correct per-channel handler
         source_key = self._source_key(source, chat_session_id, telegram_ctx)
+
+        # Den laufenden Gespraechsfaden bekanntgeben, damit Auftraege, die in
+        # diesem Zug vergeben werden, ihn mitfuehren. Sonst meldet der
+        # Orchestrator die Fertigstellung spaeter in einen Faden zurueck, den
+        # niemand ansieht — fuer den Nutzer sah es aus, als komme nie eine
+        # Rueckmeldung, obwohl die Arbeit fertig war.
+        from app.tools.api_client import current_chat_session
+
+        current_chat_session.set(chat_session_id)
+
         handler = await self._get_or_create_handler(source_key, effective_model, log_publisher)
 
         # Handle special commands
