@@ -2816,7 +2816,7 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
             groups.push({ kind: "text", content: step.content, idx: i });
           }
         });
-        return groups.map((g) =>
+        return groups.map((g, gi) =>
           g.kind === "text" ? (
             <div key={`text-${g.idx}`}>
               <MarkdownContent content={g.content} />
@@ -2834,7 +2834,12 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
               // falsch wurde: alle Ergebnisse zurueck, der Agent verarbeitet sie,
               // und die Zeile sagte „4 Tools" statt „Arbeitet…". Es sah
               // eingeschlafen aus, obwohl gearbeitet wurde.
-              isStreaming={message.isStreaming}
+              //
+              // Nur die LETZTE Kette im Turn darf den nachrichtenweiten Streaming-
+              // Zustand erben — sonst zeigten laengst fertige, frueher im selben
+              // Turn abgeschlossene Ketten weiter „Arbeitet…" und klappten erst
+              // alle gemeinsam um, wenn der GESAMTE Turn endete.
+              isStreaming={message.isStreaming && gi === groups.length - 1}
             />
           )
         );

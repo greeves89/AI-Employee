@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.199.1] - 2026-08-13
+
+### Behoben
+- **„Eine Toolkette ist durch, aber der macht noch immer den Spinner mit
+  Arbeitet.“** Wenn ein Agent im selben Zug mehrere Werkzeugketten nacheinander
+  abarbeitet (etwa zwei Auftraege an zwei verschiedene Agenten delegieren),
+  hing der „Arbeitet…“-Zustand jeder Kette am GESAMTEN Nachrichtenturn statt an
+  der eigenen Kette. Eine laengst fertige Kette (alle Haekchen gruen) zeigte
+  trotzdem weiter den drehenden Kreis — und erst wenn der komplette Turn zu
+  Ende war, klappten ALLE Ketten gleichzeitig auf ihre Endanzeige um, statt
+  jede fuer sich, sobald sie selbst fertig ist.
+- Nur die zuletzt begonnene Kette im Turn erbt jetzt den laufenden Zustand;
+  jede fruehere Kette richtet sich nach dem Status ihrer eigenen Werkzeuge.
+
+---
+
 ## [1.199.0] - 2026-08-13
 
 ### Geändert
