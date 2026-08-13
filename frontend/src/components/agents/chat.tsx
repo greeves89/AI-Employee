@@ -428,6 +428,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // geht (z.B. weil die Faden-Abschottung es verwirft).
   const lastEventAtRef = useRef(0);
   const notBusyStreakRef = useRef(0);
+  // Wann endete der EIGENE Zug zuletzt. Die Zustandsabfrage laeuft alle vier
+  // Sekunden; unmittelbar danach steht dort noch „beschaeftigt", obwohl der Zug
+  // durch ist. Ohne diese Sperre blitzt „Agent arbeitet gerade an dieser
+  // Unterhaltung" nach jeder eigenen Antwort kurz auf.
+  const eigenerZugEndeteRef = useRef(0);
   // Ueber einen Ref, damit der Ereignis-Verteiler nicht bei jedem Rendern der
   // Elternseite neu gebaut (und die WS-Verbindung neu aufgesetzt) wird.
   const onTurnChangeRef = useRef(onTurnChange);
@@ -694,7 +699,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         const list = (a as unknown as { active_sessions?: string[] }).active_sessions;
         const busy = Array.isArray(list) && list.includes(`chat:${activeSessionId}`);
         if (cancelled) return;
-        setLiveElsewhere(busy && !isWaitingRef.current);
+        // „Arbeitet woanders dran" nur, wenn es nicht der eigene, gerade
+        // beendete Zug ist. Der Messwert hinkt dem Ende bis zu einer Runde
+        // hinterher — genau deshalb blitzte das Banner nach jeder Antwort auf.
+        const frischFertig = Date.now() - eigenerZugEndeteRef.current < 8000;
+        setLiveElsewhere(busy && !isWaitingRef.current && !frischFertig);
         if (prevBusy && !busy) setHistoryReloadKey((k) => k + 1);  // a turn just finished
         prevBusy = busy;
 
@@ -906,6 +915,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     // Der Zustand des Agenten hat sich soeben geaendert — die Elternseite soll
     // ihn JETZT nachladen statt beim naechsten Takt ihrer 15-Sekunden-Abfrage.
     if (type === "done" || type === "cancelled" || type === "error") {
+      eigenerZugEndeteRef.current = Date.now();
       onTurnChangeRef.current?.();
     }
 

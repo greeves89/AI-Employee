@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.193.2] - 2026-08-13
+
+### Behoben
+- **„Agent arbeitet gerade an dieser Unterhaltung…" blitzte nach jeder eigenen
+  Antwort kurz auf.** Der Hinweis hängt an `busy && !isWaiting`, und `busy`
+  stammt aus einer Abfrage im Vier-Sekunden-Takt — unmittelbar nach dem Zugende
+  steht dort noch „beschäftigt". Bis 1.193.0 blieb `isWaiting` hängen und
+  verdeckte das zufällig; erst das korrekte Abräumen machte den veralteten
+  Messwert sichtbar. Der Hinweis wird jetzt für acht Sekunden nach dem **eigenen**
+  Zug unterdrückt. Der echte Fall — man betritt ein Gespräch, in dem gerade
+  gearbeitet wird — erscheint unverändert sofort.
+
+---
+
 ## [1.193.1] - 2026-08-13
 
 ### Behoben

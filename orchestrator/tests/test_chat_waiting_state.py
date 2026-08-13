@@ -162,10 +162,8 @@ class TheActiveChatPillCatchesUpTests(unittest.TestCase):
 
     def test_the_end_of_a_turn_triggers_it_too(self):
         """Sonst bliebe die Anzeige nach dem Zug bis zu 15 Sekunden stehen."""
-        self.assertIn(
-            'if (type === "done" || type === "cancelled" || type === "error") {\n      onTurnChangeRef.current?.();',
-            CHAT,
-        )
+        block = _block('if (type === "done" || type === "cancelled" || type === "error") {', 200)
+        self.assertIn("onTurnChangeRef.current?.();", block)
 
     def test_the_burst_is_short_and_bounded(self):
         self.assertIn("[600, 1800, 4000].map((ms) => setTimeout(ladeAgent, ms))", self.PAGE)
@@ -178,6 +176,43 @@ class TheActiveChatPillCatchesUpTests(unittest.TestCase):
         """Direkt als Abhaengigkeit wuerde der Ereignis-Verteiler bei jedem
         Rendern der Elternseite neu gebaut — und mit ihm die WS-Verbindung."""
         self.assertIn("const onTurnChangeRef = useRef(onTurnChange);", CHAT)
+
+
+class NoFalseWorksElsewhereBannerTests(unittest.TestCase):
+    """Direkt nach der Korrektur oben gemeldet: „Er war fertig, ploetzlich poppte
+    diese Meldung auf, nach ein paar Sekunden war es dann weg."
+
+    Gemeint ist „Agent arbeitet gerade an dieser Unterhaltung...". Sie haengt an
+    ``busy && !isWaiting``, und ``busy`` stammt aus einer Abfrage im
+    Vier-Sekunden-Takt — unmittelbar nach dem Zugende steht dort noch
+    „beschaeftigt". Vorher blieb ``isWaiting`` haengen und verdeckte das
+    zufaellig; mit dem korrekten Abraeumen wurde der alte Messwert sichtbar.
+
+    Ein Fehler, den eine Korrektur nicht verursacht, sondern nur aufdeckt — die
+    Sperre gilt bewusst NUR fuer den eigenen, gerade beendeten Zug, damit der
+    echte Fall (man betritt ein Gespraech, in dem gerade gearbeitet wird)
+    weiterhin sofort angezeigt wird."""
+
+    def test_the_banner_is_suppressed_right_after_our_own_turn(self):
+        self.assertIn(
+            "setLiveElsewhere(busy && !isWaitingRef.current && !frischFertig);", CHAT
+        )
+
+    def test_the_end_of_our_turn_is_recorded(self):
+        self.assertIn("eigenerZugEndeteRef.current = Date.now();", CHAT)
+
+    def test_the_window_is_longer_than_the_poll_interval(self):
+        """Kuerzer als der Takt der Abfrage waere wirkungslos — genau ein
+        veralteter Messwert soll abgefangen werden."""
+        block = _block("const frischFertig =", 200)
+        self.assertRegex(block, r"< (\d{4,})")
+        fenster = int(re.search(r"< (\d{4,})", block).group(1))
+        self.assertGreater(fenster, 4000, "Abfragetakt liegt bei 4000ms")
+
+    def test_the_legitimate_case_still_works(self):
+        """Betritt man ein Gespraech, in dem gerade gearbeitet wird, gab es
+        keinen eigenen Zug — die Sperre greift dort nicht."""
+        self.assertIn("const eigenerZugEndeteRef = useRef(0);", CHAT)
 
 
 class TheTypeIsRealTests(unittest.TestCase):
