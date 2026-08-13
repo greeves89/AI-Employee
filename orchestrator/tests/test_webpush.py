@@ -147,7 +147,10 @@ class VapidTests(unittest.TestCase):
 
 
 class GoneTests(unittest.TestCase):
-    def test_only_404_and_410_mean_gone(self):
+    def test_403_404_410_mean_gone(self):
+        """Apples Push-Dienst meldet abgelaufene Anmeldungen oft als 403, nicht 410 —
+        ohne das bleibt die tote Anmeldung fuer immer in der Tabelle."""
+        self.assertTrue(webpush.is_gone(403))
         self.assertTrue(webpush.is_gone(404))
         self.assertTrue(webpush.is_gone(410))
         for status in (201, 429, 500, 503):
