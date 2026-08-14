@@ -381,13 +381,21 @@ async def request_approval(
     # requested collapse into one server-observed moment here — `risk_level`
     # already IS the policy verdict (computed client-side against the policies
     # `command_policies.py` served, then reported back in this same request).
+    #
+    # `reasoning` is agent-supplied free text and can carry secrets or real
+    # names (see PR #596 review) — `scrub_log()` only strips control chars for
+    # log-injection safety, it does not redact content. Rather than trust a
+    # regex-based redactor to catch every credential/PII shape, the Sentinel
+    # payload is kept to structured, non-sensitive fields only; a full-text
+    # audit trail of `reasoning` already exists in AuditLog above for anyone
+    # with DB access, which is a narrower trust boundary than this pub/sub
+    # channel.
     await _publish_sentinel_event(
         redis, agent_id, "approval_requested",
         {
             "approval_id": str(approval.id),
             "tool": approval_tool,
             "risk_level": body.risk_level,
-            "reasoning": scrub_log(reasoning),
         },
     )
 
@@ -750,10 +758,13 @@ async def deny_request(
 
     # Sentinel event (#591): approval result, see approve_request for why this
     # is emitted at the resolution endpoint rather than the polling one.
+    # `decision.reason` is human-supplied free text with the same secret/PII
+    # risk as `reasoning` above (PR #596 review) — deliberately left out of
+    # the Sentinel payload for the same reason; the full reason is still
+    # recorded in `approval.user_response` / AuditLog.
     await _publish_sentinel_event(
         redis, approval.agent_id, "approval_resolved",
-        {"approval_id": approval_id, "status": "denied", "risk_level": approval.risk_level,
-         "reason": scrub_log(decision.reason or "")},
+        {"approval_id": approval_id, "status": "denied", "risk_level": approval.risk_level},
     )
 
     logger.info(f"Approval {approval.id} denied by user {user.id}")

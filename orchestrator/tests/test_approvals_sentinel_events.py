@@ -123,7 +123,11 @@ class ApprovalsSentinelEventTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resolved[0]["data"]["status"], "approved")
         self.assertEqual(resolved[0]["data"]["source"], "orchestrator")
 
-    async def test_deny_publishes_one_resolved_event_with_reason(self):
+    async def test_deny_publishes_one_resolved_event_without_free_text_reason(self):
+        # PR #596 review: `decision.reason` is human-supplied free text that can
+        # carry secrets/PII and was only `scrub_log()`-ed (control chars only,
+        # not real redaction) before reaching the Sentinel pipeline. It must be
+        # excluded from the Sentinel payload entirely, not merely scrubbed.
         async with self.Session() as db:
             await self._request(db)
             approval_id = (await db.execute(
@@ -133,14 +137,23 @@ class ApprovalsSentinelEventTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(api, "_get_redis", return_value=self.redis):
                 await api.deny_request(
                     str(approval_id),
-                    decision=api.ApprovalDecision(decision="deny", reason="zu riskant"),
+                    decision=api.ApprovalDecision(decision="deny", reason="zu riskant, api_key=sk-abc123"),
                     user=_admin(), db=db,
                 )
 
         resolved = [e for e in self._sentinel_calls() if e["type"] == "approval_resolved"]
         self.assertEqual(len(resolved), 1)
         self.assertEqual(resolved[0]["data"]["status"], "denied")
-        self.assertEqual(resolved[0]["data"]["reason"], "zu riskant")
+        self.assertNotIn("reason", resolved[0]["data"])
+
+    async def test_request_approval_event_excludes_free_text_reasoning(self):
+        # Same rationale as above, for the approval_requested side.
+        async with self.Session() as db:
+            await self._request(db, reasoning="rm -rf /tmp/x, token=ghp_abcdefghijklmnopqrstuvwxyz0123456789")
+
+        events = [e for e in self._sentinel_calls() if e["type"] == "approval_requested"]
+        self.assertEqual(len(events), 1)
+        self.assertNotIn("reasoning", events[0]["data"])
 
     async def test_cancel_publishes_one_resolved_event(self):
         async with self.Session() as db:
