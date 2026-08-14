@@ -158,6 +158,13 @@ class Settings(BaseSettings):
     # unwired stubs (see #591), so enabling it today has no observable effect
     # beyond an idle Redis subscription.
     sentinel_enabled: bool = False
+    # When True, each agent container connects to Redis with its OWN least-privilege
+    # ACL user (derived deterministically from api_secret_key, see redis_service.py
+    # ensure_agent_acl_user) instead of the single shared admin credential every
+    # agent currently gets via redis_url_internal. Default off: this is new,
+    # unverified-against-a-live-Redis infrastructure — flip only after a real
+    # redis-server ACL smoke test (part of Sentinel epic #588, sub-issue #589).
+    redis_acl_enabled: bool = False
     registration_open: bool = True  # Allow new user registration
     # When True, new self-registered users (SSO or password) land in "pending approval"
     # (approved=False) and must be unlocked by an admin before they can use the app
