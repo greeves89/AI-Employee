@@ -1973,6 +1973,17 @@ clean Markdown; you don't need to commit.
     scheduler = SchedulerService(app.state.redis, docker_service=app.state.docker)
     scheduler_task = asyncio.create_task(scheduler.run())
 
+    # Start Sentinel service (Sentinel epic #588, skeleton per #590). Off by
+    # default via settings.sentinel_enabled — see sentinel_service.py docstring:
+    # _scan never triggers yet, so this has no observable effect even when on.
+    sentinel_task = None
+    if settings.sentinel_enabled:
+        from app.services.sentinel_service import SentinelService
+
+        sentinel = SentinelService(app.state.redis)
+        app.state.sentinel = sentinel
+        sentinel_task = asyncio.create_task(sentinel.run())
+
     # Start skill catalog crawler (weekly GitHub crawl)
     from app.services.skill_crawler import SkillCrawlerService
 
@@ -2050,6 +2061,9 @@ clean Markdown; you don't need to commit.
     mcp_oauth_refresh_task.cancel()
     claude_token_task.cancel()
     scheduler_task.cancel()
+    if sentinel_task:
+        sentinel.stop()
+        sentinel_task.cancel()
     skill_crawler_task.cancel()
     improvement_task.cancel()
     self_test_task.cancel()

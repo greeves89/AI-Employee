@@ -151,6 +151,13 @@ class Settings(BaseSettings):
     # Security
     encryption_key: str = ""
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing
+    # When True, SentinelService (orchestrator/app/services/sentinel_service.py,
+    # Sentinel epic #588 sub-issue #590) subscribes to agents:logs:all and reacts
+    # to events. Default off: as of #590 this is a skeleton only — _scan always
+    # returns None (no detection rules yet, see #592) and _stop_agent/_notify are
+    # unwired stubs (see #591), so enabling it today has no observable effect
+    # beyond an idle Redis subscription.
+    sentinel_enabled: bool = False
     # When True, each agent container connects to Redis with its OWN least-privilege
     # ACL user (derived deterministically from api_secret_key, see redis_service.py
     # ensure_agent_acl_user) instead of the single shared admin credential every
