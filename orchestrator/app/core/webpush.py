@@ -159,9 +159,10 @@ async def send(
 ) -> int:
     """Eine Meldung zustellen. Gibt den HTTP-Status zurueck.
 
-    404/410 heisst: diese Anmeldung ist erloschen (Browser deinstalliert, Rechte
-    entzogen). Der Aufrufer soll sie dann loeschen, sonst waechst die Tabelle mit
-    Karteileichen, die bei jeder Meldung erneut angefragt werden.
+    403/404/410 (siehe is_gone) heisst: diese Anmeldung ist erloschen (Browser
+    deinstalliert, Rechte entzogen). Der Aufrufer soll sie dann loeschen, sonst
+    waechst die Tabelle mit Karteileichen, die bei jeder Meldung erneut angefragt
+    werden.
     """
     body = encrypt_payload(payload, p256dh, auth)
     headers = {
@@ -177,5 +178,11 @@ async def send(
 
 
 def is_gone(status: int) -> bool:
-    """Anmeldung endgueltig weg — aufraeumen statt weiter anzufragen."""
-    return status in (404, 410)
+    """Anmeldung endgueltig weg — aufraeumen statt weiter anzufragen.
+
+    404/410 sind die im RFC 8030 vorgesehenen Codes dafuer. Apples Push-Dienst
+    liefert fuer abgelaufene/widerrufene Anmeldungen in der Praxis oft 403 statt
+    410 — ohne das haengt so eine Anmeldung fuer immer in der Tabelle und wird bei
+    jeder Meldung erneut (erfolglos) angefragt.
+    """
+    return status in (403, 404, 410)
