@@ -13,15 +13,20 @@ agent's own process can write, only something the orchestrator generates at the
 point it actually performs an action. `agents:logs:all` already satisfies that
 today; nothing here reads any per-agent-writable stream.
 
-This is the Grundgerüst only (Teil 2/4, #590 scope point 1). The three hook
+This is the Grundgerüst only (Teil 2/4, #590 scope points 1+3). The three hook
 points below exist so the wiring is in place end to end, but carry no
 production logic yet:
   - `_scan`       always returns None (no detection rules — that's #592,
                    the DLP #525/#564/#575 scan logic).
-  - `_stop_agent` logs only (the privileged credential schema + the real
-                   AgentManager.stop_agent() call land in #591).
+  - `_stop_agent` logs only. The Sentinel-exclusive credential itself now
+                   exists (`app.dependencies.require_sentinel`/`get_sentinel_token`,
+                   #590 scope point 3, held on `self._sentinel_token`) — what is
+                   still missing is the actual privileged call it gets presented
+                   to (#590 scope point 4: wiring this to a real
+                   `AgentManager.stop_agent()` invocation, `asyncio.gather`'d with
+                   `_notify`).
   - `_notify`     logs only (wiring to notify_user/send_telegram and the
-                   audit-log table land alongside #591/#592).
+                   audit-log table land alongside scope point 4/#592).
 Because `sentinel_enabled` defaults to False and `_scan` never triggers even
 when on, none of this has any observable effect until those follow-ups land.
 """
@@ -70,6 +75,14 @@ class SentinelService:
     def __init__(self, redis: RedisService):
         self.redis = redis
         self._running = False
+        # The Sentinel-exclusive credential (#590 scope point 3, dependencies.py
+        # require_sentinel/get_sentinel_token). Held here so _stop_agent can present
+        # it once it is wired to a real privileged call (#590 scope point 4) — not
+        # used yet, computing it eagerly just proves the derivation succeeds at
+        # startup (a misconfigured/missing api_secret_key would fail loudly here
+        # instead of silently at the first real stop attempt).
+        from app.dependencies import get_sentinel_token
+        self._sentinel_token = get_sentinel_token()
 
     async def run(self) -> None:
         """Main loop: (re)subscribe to agents:logs:all and react to each event.
@@ -159,13 +172,16 @@ class SentinelService:
     async def _stop_agent(self, agent_id: str, reason: str) -> None:
         """Hook point for the privileged stop path.
 
-        Not wired to AgentManager.stop_agent() yet: that call needs the new
-        Sentinel-exclusive credential schema from #591 (a third scheme, neither
-        the human JWT nor the agent HMAC token — see #590's "Bereits vorhandene
-        Bausteine"). Logs only until then.
+        The Sentinel-exclusive credential (`self._sentinel_token`, see __init__)
+        exists now, but the actual call site it authorises is still undecided —
+        AgentManager.stop_agent() can be reached either as a direct in-process call
+        (like scheduler_service.py already does today, no HTTP/credential involved)
+        or by presenting `self._sentinel_token` to a dedicated endpoint alongside
+        `require_auth` on `/api/v1/agents/{id}/stop`. That call-path decision plus
+        the audit-log write land together in #590 scope point 4. Logs only until then.
         """
         logger.warning(
-            "[Sentinel] stop_agent hook called for %s (reason=%s) — not yet wired, see #591",
+            "[Sentinel] stop_agent hook called for %s (reason=%s) — not yet wired, see #590 scope point 4",
             agent_id, reason,
         )
 

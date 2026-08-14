@@ -352,6 +352,86 @@ async def verify_agent_token(request: Request) -> dict:
     return {"agent_id": agent_id}
 
 
+# --- Sentinel Credential (exclusive to the in-process Sentinel supervisor, #590) ---
+
+
+_SENTINEL_TOKEN_DOMAIN = b"sentinel:internal-credential:v1"
+
+
+def get_sentinel_token() -> str:
+    """Derive the Sentinel-exclusive credential deterministically from api_secret_key.
+
+    Same domain-separated-HMAC pattern already used for make_agent_token() above,
+    the per-agent Redis ACL password (redis_service.py) and the MCP OAuth client
+    secret (mcp_oauth.py): no extra secret to generate, store in the DB, or rotate
+    independently of api_secret_key.
+
+    Unlike make_agent_token(), the domain string here is a *fixed constant*, not an
+    agent_id — this is intentionally one single, non-agent-scoped credential, because
+    it identifies the Sentinel *process* (there is exactly one, per #590), not any
+    individual agent.
+
+    Why this is safe to derive from the same master secret agent tokens also come
+    from: agent containers only ever receive their own per-agent AGENT_TOKEN (a
+    *different* HMAC domain, keyed by agent_id) — never api_secret_key itself
+    (verified: no API_SECRET_KEY/api_secret_key entry appears anywhere in the
+    environment dict AgentManager builds for a container). HMAC is a PRF: knowing
+    any number of (agent_id, make_agent_token(agent_id)) pairs does not let a
+    compromised agent recover api_secret_key or forge a value for a *different*
+    domain string such as this one. That is the concrete guarantee behind #590's
+    requirement that "das Credential verlässt den Orchestrator-Prozess nie und
+    gelangt nie in einen Agent-Container" — it is computed fresh on every check,
+    never persisted anywhere, and structurally unreachable from agent code.
+    """
+    return hmac.new(
+        settings.api_secret_key.encode(),
+        _SENTINEL_TOKEN_DOMAIN,
+        hashlib.sha256,
+    ).hexdigest()
+
+
+class SentinelPrincipal(SimpleNamespace):
+    """Authenticated Sentinel-process caller — see require_sentinel().
+
+    Kept attribute-compatible with AgentPrincipal/User (a `role` attribute) so
+    call sites that only branch on ``role``/``principal_type`` do not need a
+    third special case, while still being unambiguously distinguishable via
+    ``is_sentinel_principal()``.
+    """
+
+    principal_type = "sentinel"
+    role = "sentinel"
+
+
+def is_sentinel_principal(principal) -> bool:
+    """Return True when the authenticated caller is the Sentinel process."""
+    return getattr(principal, "principal_type", None) == "sentinel"
+
+
+async def require_sentinel(request: Request) -> SentinelPrincipal:
+    """FastAPI Depends() wrapper: third credential scheme, exclusive to the Sentinel process.
+
+    Neither ``require_auth``/``require_admin`` (human JWT — Sentinel is not a logged-in
+    user) nor ``verify_agent_token`` (per-agent HMAC — the very actor Sentinel may need
+    to act against, and therefore must never be able to impersonate it) fit here. See
+    #588's manipulation-proof analysis and #590 scope point 3.
+
+    Checks the Authorization header against ``get_sentinel_token()`` with a
+    constant-time comparison (``hmac.compare_digest``), same as ``verify_agent_token``,
+    to avoid a timing side-channel. Endpoints that accept this alongside
+    ``require_auth`` should use an explicit combinator (see ``require_auth_or_agent``
+    for the analogous pattern) rather than silently widening an existing
+    human-only dependency — left to the call site that actually wires Sentinel's
+    privileged action to a route (#590 scope point 4), so the accepted-caller set of
+    any given endpoint stays an explicit, reviewable decision.
+    """
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip()
+    if not token or not hmac.compare_digest(token, get_sentinel_token()):
+        raise HTTPException(status_code=403, detail="Sentinel credential required")
+    return SentinelPrincipal()
+
+
 async def require_auth_or_agent(
     request: Request,
     db: AsyncSession = Depends(get_db),
