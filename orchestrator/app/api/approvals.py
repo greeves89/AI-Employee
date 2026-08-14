@@ -27,6 +27,47 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
+# Sentinel epic #588, issue #591: feed this endpoint's already-server-side
+# decision points (a command was submitted for approval; a human approved,
+# denied or cancelled it) into the Sentinel's event pipeline (#590) as a
+# second, orchestrator-generated telemetry source alongside `agent:*:logs`.
+#
+# CAVEAT (found while wiring this up, not yet resolved — see the PR/issue
+# comment this points at): `agents:logs:all` is not exclusively orchestrator-
+# generated today. `agent/app/log_publisher.py` — code that runs INSIDE the
+# agent container — already publishes every tool-call/chat event straight to
+# this same channel, and #589's Redis-ACL design explicitly keeps it on the
+# agent-writable global channel list (it has to: it's the live activity feed
+# the admin UI streams from). So a compromised agent can already publish a
+# forged message on this channel today, `agent_id` field included. Marking
+# `source: "orchestrator"` below lets a future #592 scan rule tell the two
+# apart; it is NOT a security boundary by itself (nothing here is signed) —
+# only real per-channel Redis ACLs (excluding this one) would be.
+_SENTINEL_PIPELINE_CHANNEL = "agents:logs:all"
+
+
+async def _publish_sentinel_event(
+    redis: "RedisService | None", agent_id: str, event_type: str, data: dict
+) -> None:
+    """Emit one orchestrator-generated event for the Sentinel pipeline (#591).
+
+    Best-effort like `_publish_notification` — a missing/unavailable Redis
+    client must never break the approval flow itself.
+    """
+    if not redis or not redis.client:
+        return
+    try:
+        event = json.dumps({
+            "agent_id": agent_id,
+            "task_id": "",
+            "type": event_type,
+            "data": {**data, "source": "orchestrator"},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        await redis.client.publish(_SENTINEL_PIPELINE_CHANNEL, event)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[Sentinel] Failed to publish {event_type} event for {scrub_log(agent_id)}: {e}")
+
 
 def _get_redis() -> RedisService | None:
     from app.api.ws import _redis
@@ -336,6 +377,20 @@ async def request_approval(
     db.add(audit_entry)
     await db.commit()
 
+    # Sentinel event (#591): command submitted + policy verdict + approval
+    # requested collapse into one server-observed moment here — `risk_level`
+    # already IS the policy verdict (computed client-side against the policies
+    # `command_policies.py` served, then reported back in this same request).
+    await _publish_sentinel_event(
+        redis, agent_id, "approval_requested",
+        {
+            "approval_id": str(approval.id),
+            "tool": approval_tool,
+            "risk_level": body.risk_level,
+            "reasoning": scrub_log(reasoning),
+        },
+    )
+
     logger.info(
         f"Approval {approval.id} created for agent {scrub_log(agent_id)} - "
         f"{scrub_log(body.tool)} (risk: {scrub_log(body.risk_level)})"
@@ -633,6 +688,16 @@ async def approve_request(
             json.dumps({"status": "approved", "approval_id": str(approval.id)}),
         )
 
+    # Sentinel event (#591): approval result. Emitted here — the single moment
+    # the decision is actually written — rather than at the agent-facing
+    # `/check/{id}` poll endpoint the issue originally pointed at, which fires
+    # every ~2s while pending and would otherwise re-publish the same result
+    # on every poll after resolution.
+    await _publish_sentinel_event(
+        redis, approval.agent_id, "approval_resolved",
+        {"approval_id": approval_id, "status": "approved", "risk_level": approval.risk_level},
+    )
+
     logger.info(f"Approval {approval.id} approved by user {user.id}")
     return {
         "approval_id": approval_id,
@@ -683,6 +748,14 @@ async def deny_request(
             json.dumps({"status": "denied", "approval_id": str(approval.id), "reason": decision.reason}),
         )
 
+    # Sentinel event (#591): approval result, see approve_request for why this
+    # is emitted at the resolution endpoint rather than the polling one.
+    await _publish_sentinel_event(
+        redis, approval.agent_id, "approval_resolved",
+        {"approval_id": approval_id, "status": "denied", "risk_level": approval.risk_level,
+         "reason": scrub_log(decision.reason or "")},
+    )
+
     logger.info(f"Approval {approval.id} denied by user {user.id}")
     return {"approval_id": approval_id, "status": "denied", "reason": decision.reason, "message": "Command denied."}
 
@@ -706,5 +779,13 @@ async def cancel_approval_request(
     approval.resolved_at = datetime.now(timezone.utc)
     approval.user_response = "Cancelled by user"
     await db.commit()
+
+    # Sentinel event (#591): a cancel is also a resolution outcome — a Sentinel
+    # rule tracking "was this risky command ever actually approved?" needs to
+    # see it too, not just approve/deny.
+    await _publish_sentinel_event(
+        _get_redis(), approval.agent_id, "approval_resolved",
+        {"approval_id": approval_id, "status": "cancelled", "risk_level": approval.risk_level},
+    )
 
     return {"message": "Approval request cancelled"}
