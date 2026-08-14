@@ -841,6 +841,27 @@ class AgentManager:
         self.docker = docker
         self.redis = redis
 
+    async def _agent_redis_url(self, agent_id: str) -> str:
+        """REDIS_URL for one agent's container.
+
+        Behind settings.redis_acl_enabled (default off, see config.py /
+        Sentinel epic #588 sub-issue #589): provisions a least-privilege
+        per-agent Redis ACL user and returns credentials scoped to it,
+        instead of every agent sharing the one admin credential.
+
+        Fail-closed once the flag is explicitly on: if ACL provisioning
+        fails (Sentinel-HA not yet supported, Redis unreachable, ...), the
+        exception propagates and the caller's create/restart/update fails
+        loudly instead of silently handing the agent the shared admin
+        credential — a security flag that quietly degrades to "no security"
+        on error would defeat its own purpose. With the flag at its default
+        (False) this method never touches Redis, so this change has zero
+        effect until an operator explicitly opts in.
+        """
+        if not settings.redis_acl_enabled:
+            return settings.redis_url_internal
+        return await self.redis.ensure_agent_acl_user(agent_id)
+
     @staticmethod
     def _mode_for_ai_provider(provider_type: str | None, requested_mode: str = "custom_llm") -> str:
         """Map account provider to the harness that should run it."""
@@ -1308,7 +1329,7 @@ class AgentManager:
             "AGENT_NAME": name,
             "AGENT_ROLE": role or "",
             "AGENT_TOKEN": make_agent_token(agent_id),
-            "REDIS_URL": settings.redis_url_internal,
+            "REDIS_URL": await self._agent_redis_url(agent_id),
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
@@ -1598,7 +1619,7 @@ class AgentManager:
             "AGENT_NAME": agent.name,
             "AGENT_ROLE": role,
             "AGENT_TOKEN": make_agent_token(agent_id),
-            "REDIS_URL": settings.redis_url_internal,
+            "REDIS_URL": await self._agent_redis_url(agent_id),
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
@@ -1859,7 +1880,7 @@ class AgentManager:
             "AGENT_NAME": agent.name,
             "AGENT_ROLE": role,
             "AGENT_TOKEN": make_agent_token(agent_id),
-            "REDIS_URL": settings.redis_url_internal,
+            "REDIS_URL": await self._agent_redis_url(agent_id),
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
@@ -2040,6 +2061,8 @@ class AgentManager:
 
     async def remove_agent(self, agent_id: str, remove_data: bool = False) -> None:
         await self._publish_event(agent_id, "system", f"Agent being removed (delete data: {remove_data})")
+        if settings.redis_acl_enabled:
+            await self.redis.revoke_agent_acl_user(agent_id)
         agent = await self._get_agent(agent_id)
         if agent.container_id:
             try:
