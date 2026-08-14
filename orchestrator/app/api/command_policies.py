@@ -204,7 +204,20 @@ async def get_policies_for_agent(
     agent_auth: dict = Depends(verify_agent_token),
     db: AsyncSession = Depends(get_db),
 ):
-    """Agent-only endpoint returning active global + agent-specific policies."""
+    """Agent-only endpoint returning active global + agent-specific policies.
+
+    Deliberately NOT a Sentinel event source (#591 scope decision): this only
+    hands over the policy *set* on a ~10s cache refresh — it doesn't see which
+    command the agent is about to run or what verdict it gets, since that
+    matching happens client-side in `bash-approval-server.mjs`. The one place
+    a specific command + its risk verdict does reach the orchestrator is
+    `POST /api/v1/approvals/request` (medium/high risk only), which is where
+    `_publish_sentinel_event` is actually wired up (see `approvals.py`).
+    A per-command policy-verdict signal — including "low"/"allow" commands
+    that execute silently, and "blocked" ones that never leave the container —
+    would need a change to `bash-approval-server.mjs` itself, which is
+    explicitly out of scope for #591.
+    """
     if agent_auth["agent_id"] != agent_id:
         raise HTTPException(status_code=403, detail="Agent token does not match requested agent")
 
