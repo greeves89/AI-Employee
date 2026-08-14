@@ -45,20 +45,32 @@ def agent_acl_password(agent_id: str) -> str:
 # so any agent can currently publish to ANY other agent's agent:{id}:logs
 # channel and impersonate it.
 #
-# `agent:*:messages` stays broader than "own agent" on purpose: it is the
-# inter-agent inbox (message_consumer.py's send_message tool does
-# `LPUSH agent:{to_agent_id}:messages`), so every agent legitimately needs
-# write access to every OTHER agent's inbox, not just its own.
-_AGENT_ACL_KEY_PATTERNS = ["agent:{id}:*", "agent:*:messages"]
+# `meeting:*:response:{id}` is still "own key space" despite the wildcard:
+# only the room_id varies, {id} is always this agent's own id (see
+# message_consumer.py: `f"meeting:{room_id}:response:{self.agent_id}"`), so a
+# full read/write grant here does not expose another agent's data.
+_AGENT_ACL_KEY_PATTERNS = ["agent:{id}:*", "meeting:*:response:{id}"]
 _AGENT_ACL_CHANNEL_PATTERNS = [
     "agent:{id}:*",
     "agents:logs:all",
     "chat:completions",
     "agent:messages:persist",
+    # task_consumer.py publishes task lifecycle events on these two globals.
+    "task:started",
+    "task:completions",
 ]
 # Broad read/write/pubsub, explicitly minus admin/dangerous command categories
 # (FLUSHALL, FLUSHDB, CONFIG, SHUTDOWN, ACL, MONITOR, KEYS, CLIENT, DEBUG, ...).
 _AGENT_ACL_COMMAND_RULES = ["+@read", "+@write", "+@pubsub", "-@admin", "-@dangerous"]
+
+# The inter-agent inbox (message_consumer.py's send_message tool does
+# `LPUSH agent:{to_agent_id}:messages`) needs to stay reachable across ALL
+# agent ids, not just this agent's own — but granting the broad +@read/+@write
+# above on that wildcard would also let any agent LRANGE/LREM/LPOP another
+# agent's inbox. Redis 7 ACL selectors scope an independent command+key rule
+# alongside the user's root permissions, so this selector grants exactly one
+# command (LPUSH) on exactly this pattern, with no read/delete access.
+_CROSS_AGENT_INBOX_SELECTOR = "(~agent:*:messages +lpush)"
 
 
 def build_agent_acl_setuser_args(agent_id: str) -> list[str]:
@@ -73,6 +85,7 @@ def build_agent_acl_setuser_args(agent_id: str) -> list[str]:
     args += [f"~{p.format(id=agent_id)}" for p in _AGENT_ACL_KEY_PATTERNS]
     args += [f"&{p.format(id=agent_id)}" for p in _AGENT_ACL_CHANNEL_PATTERNS]
     args += _AGENT_ACL_COMMAND_RULES
+    args.append(_CROSS_AGENT_INBOX_SELECTOR)
     return args
 
 
@@ -163,7 +176,24 @@ class RedisService:
             logger.warning("Failed to delete Redis ACL user %s: %s", scrub_log(username), e)
 
     def _scoped_url(self, username: str, password: str) -> str:
-        """Rewrite self.redis_url's auth to the given ACL user, keep host/port/db."""
+        """Rewrite self.redis_url's auth to the given ACL user, keep host/port/db.
+
+        Raises in Sentinel-HA mode (see connect()): self.redis_url is a fixed
+        standalone address, but under REDIS_SENTINEL_URL the actual Redis
+        master is discovered dynamically and can move on failover, so baking
+        a scoped URL from self.redis_url's host/port would point an agent at
+        a stale or wrong node. Per-agent ACL over Sentinel needs its own
+        discovery-aware connection string, tracked as a follow-up on #589 —
+        until then, the caller (_agent_redis_url in agent_manager.py) lets
+        this propagate and fails closed: with redis_acl_enabled explicitly
+        on, a security flag that quietly degrades to the shared admin
+        credential on error would defeat its own purpose.
+        """
+        if os.environ.get("REDIS_SENTINEL_URL", "").strip():
+            raise NotImplementedError(
+                "Per-agent Redis ACL URLs are not yet supported in Sentinel-HA "
+                "mode — tracked as a follow-up on #589"
+            )
         from urllib.parse import urlsplit, urlunsplit
         parts = urlsplit(self.redis_url)
         netloc = f"{username}:{password}@{parts.hostname}"

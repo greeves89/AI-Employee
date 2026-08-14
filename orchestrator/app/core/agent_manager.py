@@ -847,22 +847,20 @@ class AgentManager:
         Behind settings.redis_acl_enabled (default off, see config.py /
         Sentinel epic #588 sub-issue #589): provisions a least-privilege
         per-agent Redis ACL user and returns credentials scoped to it,
-        instead of every agent sharing the one admin credential. Fails open
-        to the shared credential on any ACL error — an agent that can't
-        reach Redis at all is worse than one still using the old shared
-        credential, and the fail-open path is logged so it's visible rather
-        than silent.
+        instead of every agent sharing the one admin credential.
+
+        Fail-closed once the flag is explicitly on: if ACL provisioning
+        fails (Sentinel-HA not yet supported, Redis unreachable, ...), the
+        exception propagates and the caller's create/restart/update fails
+        loudly instead of silently handing the agent the shared admin
+        credential — a security flag that quietly degrades to "no security"
+        on error would defeat its own purpose. With the flag at its default
+        (False) this method never touches Redis, so this change has zero
+        effect until an operator explicitly opts in.
         """
         if not settings.redis_acl_enabled:
             return settings.redis_url_internal
-        try:
-            return await self.redis.ensure_agent_acl_user(agent_id)
-        except Exception as e:
-            logger.warning(
-                "Redis ACL provisioning failed for agent %s, falling back to shared credential: %s",
-                agent_id, e,
-            )
-            return settings.redis_url_internal
+        return await self.redis.ensure_agent_acl_user(agent_id)
 
     @staticmethod
     def _mode_for_ai_provider(provider_type: str | None, requested_mode: str = "custom_llm") -> str:

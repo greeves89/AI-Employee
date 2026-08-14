@@ -41,23 +41,38 @@ def test_agent_acl_password_domain_separated_from_agent_auth_token():
     assert agent_acl_password("abc123") != make_agent_token("abc123")
 
 
-def test_build_agent_acl_setuser_args_scopes_keys_to_own_agent_and_shared_inbox():
+def test_build_agent_acl_setuser_args_scopes_keys_to_own_agent_and_meeting_response():
     args = build_agent_acl_setuser_args("abc123")
     key_patterns = [a[1:] for a in args if a.startswith("~")]
     assert "agent:abc123:*" in key_patterns
-    # Cross-agent write access to the inbox is intentional (send_message tool
-    # does LPUSH agent:{to_agent_id}:messages) — must stay wildcard, not
-    # narrowed to the owning agent.
-    assert "agent:*:messages" in key_patterns
+    # meeting:*:response:{id} is still "own key space" despite the wildcard:
+    # only room_id varies, {id} is always this agent's own id.
+    assert "meeting:*:response:abc123" in key_patterns
+    # The broad agent:*:messages wildcard must be GONE from the general read/write
+    # key patterns (review finding: it let any agent LRANGE/LREM/LPOP another
+    # agent's inbox) — cross-agent write-only access now comes from the
+    # dedicated LPUSH-only selector, checked separately below.
+    assert "agent:*:messages" not in key_patterns
     # Must NOT get a blanket "any key" pattern.
     assert "*" not in key_patterns
+
+
+def test_build_agent_acl_setuser_args_grants_lpush_only_selector_for_cross_agent_inbox():
+    args = build_agent_acl_setuser_args("abc123")
+    assert "(~agent:*:messages +lpush)" in args
 
 
 def test_build_agent_acl_setuser_args_scopes_channels_to_own_agent_and_globals():
     args = build_agent_acl_setuser_args("abc123")
     channel_patterns = [a[1:] for a in args if a.startswith("&")]
     assert "agent:abc123:*" in channel_patterns
-    for global_channel in ("agents:logs:all", "chat:completions", "agent:messages:persist"):
+    for global_channel in (
+        "agents:logs:all",
+        "chat:completions",
+        "agent:messages:persist",
+        "task:started",
+        "task:completions",
+    ):
         assert global_channel in channel_patterns
     assert "*" not in channel_patterns
 
@@ -132,3 +147,17 @@ async def test_revoke_agent_acl_user_swallows_errors():
     svc.client = client
 
     await svc.revoke_agent_acl_user("abc123")  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_ensure_agent_acl_user_raises_under_sentinel_ha(monkeypatch):
+    # self.redis_url is a fixed standalone address; under REDIS_SENTINEL_URL the
+    # real master is discovered dynamically and can move on failover, so a scoped
+    # URL baked from self.redis_url would point an agent at a stale/wrong node.
+    # Must raise (fail-closed), not silently return a wrong URL.
+    monkeypatch.setenv("REDIS_SENTINEL_URL", "sentinel://ai-employee-sentinel:26379")
+    svc = RedisService("redis://:adminpw@ai-employee-redis:6379")
+    svc.client = _FakeAclClient()
+
+    with pytest.raises(NotImplementedError):
+        await svc.ensure_agent_acl_user("abc123")
