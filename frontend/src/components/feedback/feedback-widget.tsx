@@ -203,8 +203,10 @@ export function FeedbackWidget() {
           <button onClick={() => setMode("idle")}>Abbrechen (ESC)</button></div>
       )}
       {mode === "idle" && (
-        <button className="fbw-fab" onClick={() => setMode("picking")} title="Feedback geben">
-          <MessageSquarePlus size={18} /> Feedback</button>
+        <button className="fbw-fab" onClick={() => setMode("picking")}
+          title="Feedback geben" aria-label="Feedback geben">
+          <MessageSquarePlus size={20} />
+          <span className="fbw-fab-label">Feedback</span></button>
       )}
       {mode === "panel" && pin && (
         <div className="fbw-panel">

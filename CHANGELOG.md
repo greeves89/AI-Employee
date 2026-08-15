@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.208.1] - 2026-08-15
+
+### Geändert
+- **Der Feedback-Knopf ist jetzt rund wie der Concierge-Knopf daneben.** Zwei
+  Schaltflächen nebeneinander, von denen eine eine Pille mit Text und die andere
+  ein Kreis ist, lesen sich wie zwei verschiedene Baukästen. Gleiche Maße (44px),
+  gleiche Rundung, gleicher Abstand, gleiches Verhalten beim Zeigen (wachsen
+  statt aufhellen).
+- Die Beschriftung „Feedback" **entfällt nur optisch** und bleibt im Markup:
+  ein Knopf, der nur für Sehende beschriftet ist, ist für alle anderen ein
+  leerer Kreis.
+
+---
+
 ## [1.208.0] - 2026-08-15
 
 ### Behoben
