@@ -47,6 +47,10 @@ export function MyAiCredentials() {
   const [bezeichnung, setBezeichnung] = useState("");
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState("");
+  // Anmeldung im Browser: bei Claude wird ein Code zurueckgegeben, den der
+  // Nutzer einfuegt; bei Codex zeigt ChatGPT einen Geraetecode an und die
+  // ``auth.json`` entsteht lokal.
+  const [anmeldung, setAnmeldung] = useState<null | { harness: string; code?: string; uri?: string }>(null);
 
   const laden = useCallback(async () => {
     try {
@@ -74,6 +78,60 @@ export function MyAiCredentials() {
       await laden();
     } catch (e) {
       setFehler(e instanceof Error ? e.message : "Speichern fehlgeschlagen.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const anmeldenClaude = async () => {
+    setBusy(true); setFehler("");
+    try {
+      const { auth_url } = await api.startMyAnthropicLogin();
+      window.open(auth_url, "_blank");
+      setAnmeldung({ harness: "claude_code" });
+      setOffen("claude_code");
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : "Anmeldung nicht startbar.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const anmeldenCodex = async () => {
+    setBusy(true); setFehler("");
+    try {
+      const s = await api.startMyCodexLogin();
+      window.open(s.verification_uri, "_blank");
+      setAnmeldung({ harness: "codex", code: s.user_code, uri: s.verification_uri });
+      setOffen("codex");
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : "Anmeldung nicht startbar.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Was der Nutzer nach der Browser-Anmeldung einfuegt, ist bei Claude ein Code
+  // (oder die ganze Callback-Adresse) und bei Codex der Inhalt der auth.json.
+  const abschliessen = async (harness: string) => {
+    if (harness !== "claude_code") return speichern(harness);
+    setBusy(true); setFehler("");
+    try {
+      const roh = geheimnis.trim();
+      // Ganze Callback-Adresse, „code#state" oder blosser Code — alles erlaubt.
+      let code = roh, state = "";
+      try {
+        const u = new URL(roh);
+        code = u.searchParams.get("code") || roh;
+        state = u.searchParams.get("state") || "";
+      } catch {
+        if (roh.includes("#")) { [code, state] = roh.split("#"); }
+      }
+      await api.exchangeMyAnthropicLogin({ code, state, label: bezeichnung.trim() || null });
+      setOffen(null); setAnmeldung(null); setGeheimnis(""); setBezeichnung("");
+      await laden();
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : "Anmeldung fehlgeschlagen.");
     } finally {
       setBusy(false);
     }
@@ -157,17 +215,49 @@ export function MyAiCredentials() {
                   </>
                 )}
                 <button
-                  onClick={() => { setOffen(offen === h.id ? null : h.id); setFehler(""); }}
-                  className="rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-medium hover:bg-accent"
+                  onClick={() => (h.id === "claude_code" ? anmeldenClaude() : anmeldenCodex())}
+                  disabled={busy}
+                  className="rounded-lg bg-primary px-2.5 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                 >
-                  {verbunden ? "Ersetzen" : "Verbinden"}
+                  {verbunden ? "Neu anmelden" : `Mit ${h.name} anmelden`}
+                </button>
+                {/* Der Weg von Hand bleibt: wer sein Token schon hat (oder in
+                    einer Umgebung ohne Browser arbeitet), soll nicht durch die
+                    Anmeldung muessen. */}
+                <button
+                  onClick={() => { setAnmeldung(null); setOffen(offen === h.id ? null : h.id); setFehler(""); }}
+                  title="Zugang von Hand einfügen"
+                  className="rounded-lg border border-border px-2.5 py-1.5 text-[11px] text-muted-foreground hover:bg-accent"
+                >
+                  Manuell
                 </button>
               </div>
             </div>
 
             {offen === h.id && (
               <div className="mt-3 space-y-2 border-t border-border pt-3">
-                <p className="text-[11px] text-muted-foreground">{h.hilfe}</p>
+                {anmeldung?.harness === h.id ? (
+                  h.id === "claude_code" ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      Im Browser bei Claude anmelden, dann den angezeigten Code
+                      (oder die ganze Adresse aus der Adresszeile) hier einfügen.
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-muted-foreground">
+                        Im Browser bei ChatGPT anmelden. Gerätecode:
+                      </p>
+                      <code className="block rounded-lg bg-foreground/[0.06] px-2 py-1.5 text-center font-mono text-sm tracking-widest">
+                        {anmeldung.code}
+                      </code>
+                      <p className="text-[11px] text-muted-foreground">
+                        Danach den Inhalt deiner <code>auth.json</code> hier einfügen.
+                      </p>
+                    </div>
+                  )
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">{h.hilfe}</p>
+                )}
                 <textarea
                   value={geheimnis}
                   onChange={(e) => setGeheimnis(e.target.value)}
@@ -183,13 +273,13 @@ export function MyAiCredentials() {
                 />
                 <div className="flex justify-end gap-2">
                   <button
-                    onClick={() => { setOffen(null); setGeheimnis(""); setFehler(""); }}
+                    onClick={() => { setOffen(null); setAnmeldung(null); setGeheimnis(""); setFehler(""); }}
                     className="rounded-lg px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-accent"
                   >
                     Abbrechen
                   </button>
                   <button
-                    onClick={() => speichern(h.id)}
+                    onClick={() => abschliessen(h.id)}
                     disabled={busy}
                     className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                   >

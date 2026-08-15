@@ -4011,3 +4011,26 @@ export async function putMyAiCredential(body: {
 export async function deleteMyAiCredential(harness: string): Promise<unknown> {
   return fetchJSON(`${getBase()}/me/ai-credentials/${harness}`, { method: "DELETE" });
 }
+
+/* Anmeldung fuer den EIGENEN Zugang — gleicher Ablauf wie beim Administrator,
+   aber das Ergebnis landet in `user_ai_credentials` statt als plattformweite
+   Integration. Nur aus dieser Ablage liest der Agentenbau. */
+export async function startMyAnthropicLogin(): Promise<{ auth_url: string }> {
+  return fetchJSON(`${getBase()}/me/ai-credentials/anthropic/start`, { method: "POST" });
+}
+
+export async function exchangeMyAnthropicLogin(body: {
+  code: string; state: string; label: string | null;
+}): Promise<{ status: string; label: string; hint: string }> {
+  return fetchJSON(`${getBase()}/me/ai-credentials/anthropic/exchange`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function startMyCodexLogin(): Promise<{
+  session_id: string; verification_uri: string; user_code: string;
+  expires_at: string; status: string;
+}> {
+  return fetchJSON(`${getBase()}/me/ai-credentials/codex/start`, { method: "POST" });
+}

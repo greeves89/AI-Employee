@@ -171,3 +171,110 @@ async def mark_status(db: AsyncSession, user_id: str, harness: str, status: str)
     row.last_status = status
     row.last_used_at = datetime.now(timezone.utc)
     await db.commit()
+
+# ── Anmeldung wie beim Administrator, nur landet sie beim Nutzer ─────────────
+#
+# Bis 2026-08-15 konnte ein Nutzer seinen Zugang nur als Text einfuegen: bei
+# Claude ein Token aus ``claude setup-token``, bei Codex der Inhalt der
+# ``auth.json``. Der Administrator hatte laengst den bequemen Weg — Knopf,
+# Browser-Anmeldung, fertig. Zwei verschiedene Verfahren fuer dieselbe Sache,
+# und das umstaendlichere fuer den, der sich am wenigsten auskennt.
+#
+# Der Ablauf ist derselbe wie unter Einstellungen → Modelle. Der Unterschied
+# sitzt am Ende: das Ergebnis wird NICHT als plattformweite Integration
+# gespeichert, sondern als persoenlicher Zugang dieses Nutzers — genau die
+# Ablage, aus der ``agent_credentials`` liest.
+
+
+class OAuthExchange(BaseModel):
+    code: str = Field(description="Code von der Anthropic-Seite (oder die ganze Callback-URL)")
+    state: str = Field(default="", description="Falls im eingefuegten Text enthalten")
+    label: str | None = Field(default=None, max_length=120)
+
+
+@router.post("/anthropic/start")
+async def start_anthropic_login(user=Depends(require_auth)):
+    """Anmeldung starten — liefert die Adresse, die im Browser geoeffnet wird."""
+    from app.services.oauth_service import OAuthService
+    from app.services.redis_service import RedisService
+    from app.config import settings as _s
+
+    redis = RedisService(redis_url=_s.redis_url)
+    await redis.connect()
+    try:
+        auth_url = await OAuthService(redis).generate_auth_url("anthropic", user_id=user.id)
+    except (KeyError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"auth_url": auth_url}
+
+
+@router.post("/anthropic/exchange")
+async def exchange_anthropic_login(
+    body: OAuthExchange,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Den eingefuegten Code eintauschen und als EIGENEN Zugang hinterlegen.
+
+    Der Austausch selbst ist derselbe wie beim Administrator — er legt dabei
+    zusaetzlich die uebliche Integration an. Entscheidend ist der Schritt
+    danach: das Zugangstoken wandert in ``user_ai_credentials``, denn nur von
+    dort liest ``agent_credentials`` beim Bau eines Containers. Ohne diesen
+    Schritt haette der Nutzer sich erfolgreich angemeldet — und seine Agenten
+    liefen trotzdem ohne seinen Zugang.
+    """
+    from app.core.encryption import decrypt_token
+    from app.services.oauth_service import OAuthService
+    from app.services.redis_service import RedisService
+    from app.config import settings as _s
+
+    code = (body.code or "").split("#")[0].strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="Kein Code eingefuegt")
+
+    redis = RedisService(redis_url=_s.redis_url)
+    await redis.connect()
+    try:
+        integration = await OAuthService(redis).exchange_code("anthropic", code, body.state)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    token = decrypt_token(integration.access_token_encrypted)
+    row = (await db.execute(
+        select(UserAiCredential).where(
+            UserAiCredential.user_id == user.id,
+            UserAiCredential.harness == "claude_code",
+        )
+    )).scalar_one_or_none()
+    if row is None:
+        row = UserAiCredential(user_id=user.id, harness="claude_code")
+        db.add(row)
+    row.secret_encrypted = encrypt_token(token)
+    row.label = (body.label or "").strip() or integration.account_label or "Claude-Abo"
+    row.last_status = "ok"
+    await db.commit()
+    return {"status": "connected", "label": row.label,
+            "hint": "Wirkt, sobald deine Agenten neu erstellt werden."}
+
+
+@router.post("/codex/start")
+async def start_codex_login(user=Depends(require_auth)):
+    """Geraeteanmeldung bei ChatGPT starten — liefert Code und Adresse.
+
+    Den Abschluss macht der Nutzer wie bisher, indem er den Inhalt seiner
+    ``auth.json`` einfuegt (PUT oben). Anders als bei Anthropic gibt es hier
+    keinen Code zum Eintauschen: Codex legt die Datei lokal an.
+    """
+    from app.services.codex_device_auth_service import codex_device_auth_service
+
+    try:
+        session = await codex_device_auth_service.start()
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "session_id": session.id,
+        "verification_uri": session.verification_uri,
+        "user_code": session.code,
+        "expires_at": session.expires_at.isoformat(),
+        "status": session.status,
+    }

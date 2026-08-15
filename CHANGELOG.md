@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.214.0] - 2026-08-15
+
+### Hinzugefügt
+- **Eigenes Abo verbinden geht jetzt per Browser-Anmeldung** — dasselbe
+  Verfahren wie beim Administrator, für **Claude und Codex**. Bisher gab es zwei
+  Wege für dieselbe Sache: der Administrator klickte einen Knopf, der normale
+  Nutzer musste ein Token aus `claude setup-token` bzw. den Inhalt einer
+  `auth.json` von Hand einfügen. Das umständlichere Verfahren traf ausgerechnet
+  den, der sich am wenigsten auskennt.
+- Bei Claude öffnet sich die Anmeldeseite; der zurückgegebene Code wird eingefügt
+  — **die ganze Adresszeile funktioniert auch**, denn die meisten kopieren sie
+  statt des Codes darin. Bei Codex wird der Gerätecode angezeigt und ChatGPT
+  geöffnet.
+- **Der Weg von Hand bleibt** für alle, die ihr Token schon haben oder ohne
+  Browser arbeiten.
+
+### Behoben
+- **Der Austausch landet in der richtigen Ablage.** Die Administrator-Anmeldung
+  schreibt eine plattformweite Integration; der Agentenbau liest aber aus
+  `user_ai_credentials`. Ohne diesen Schritt hätte sich ein Nutzer erfolgreich
+  angemeldet — und seine Agenten liefen trotzdem ohne seinen Zugang. Der
+  OAuth-Austausch selbst wird wiederverwendet, nicht ein zweites Mal gebaut.
+
+---
+
 ## [1.213.0] - 2026-08-15
 
 ### Geändert

@@ -92,3 +92,65 @@ class ItTellsTheUserWhatHappensWithoutOneTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheLoginIsTheSameAsForAdminsTests(unittest.TestCase):
+    """Wunsch des Nutzers (15.08.2026): „Hier brauche ich bitte das gleiche
+    login wie in den admin settings… mit dem popup und dann dem Eintragen des
+    OAuth Tokens. Sowohl für Codex als auch für Claude."
+
+    Vorher gab es zwei Verfahren fuer dieselbe Sache: der Administrator klickte
+    einen Knopf und meldete sich im Browser an — der normale Nutzer musste ein
+    Token aus ``claude setup-token`` bzw. den Inhalt einer ``auth.json`` von Hand
+    einfuegen. Das umstaendlichere Verfahren traf ausgerechnet den, der sich am
+    wenigsten auskennt.
+
+    Der entscheidende Unterschied sitzt am ENDE: das Ergebnis darf nicht als
+    plattformweite Integration landen, sondern muss in ``user_ai_credentials`` —
+    nur von dort liest ``agent_credentials`` beim Bau eines Containers. Ohne
+    diesen Schritt haette sich der Nutzer erfolgreich angemeldet, und seine
+    Agenten liefen trotzdem ohne seinen Zugang.
+    """
+
+    API_ME = (ROOT / "orchestrator/app/api/my_ai_credentials.py").read_text()
+
+    def test_both_harnesses_can_be_started(self):
+        self.assertIn('@router.post("/anthropic/start")', self.API_ME)
+        self.assertIn('@router.post("/codex/start")', self.API_ME)
+
+    def test_the_exchange_lands_in_the_personal_store(self):
+        block = self.API_ME.split('@router.post("/anthropic/exchange")', 1)[1]
+        self.assertIn("UserAiCredential(user_id=user.id", block)
+        self.assertIn('harness="claude_code"', block)
+
+    def test_the_token_is_stored_encrypted(self):
+        block = self.API_ME.split('@router.post("/anthropic/exchange")', 1)[1]
+        self.assertIn("encrypt_token(token)", block)
+
+    def test_it_reuses_the_platform_exchange(self):
+        """Eine zweite Umsetzung des OAuth-Austauschs waere die naechste Stelle,
+        die auseinanderlaeuft."""
+        self.assertIn("OAuthService(redis).exchange_code", self.API_ME)
+
+    def test_the_frontend_offers_both_logins(self):
+        for fn in ("startMyAnthropicLogin", "exchangeMyAnthropicLogin", "startMyCodexLogin"):
+            with self.subTest(funktion=fn):
+                self.assertIn(f"export async function {fn}", CLIENT)
+
+    def test_the_browser_is_opened(self):
+        self.assertIn('window.open(auth_url, "_blank")', KOMPONENTE)
+        self.assertIn('window.open(s.verification_uri, "_blank")', KOMPONENTE)
+
+    def test_the_device_code_is_shown_for_codex(self):
+        """Ohne den Code kann sich niemand anmelden — er steht nur hier."""
+        self.assertIn("Gerätecode", KOMPONENTE)
+
+    def test_a_pasted_callback_url_is_accepted(self):
+        """Die meisten kopieren die ganze Adresszeile, nicht den Code darin."""
+        self.assertIn("new URL(roh)", KOMPONENTE)
+        self.assertIn('u.searchParams.get("code")', KOMPONENTE)
+
+    def test_the_manual_way_still_exists(self):
+        """Wer sein Token schon hat oder ohne Browser arbeitet, soll nicht durch
+        die Anmeldung muessen."""
+        self.assertIn("Manuell", KOMPONENTE)
