@@ -50,7 +50,9 @@ export function MyAiCredentials() {
   // Anmeldung im Browser: bei Claude wird ein Code zurueckgegeben, den der
   // Nutzer einfuegt; bei Codex zeigt ChatGPT einen Geraetecode an und die
   // ``auth.json`` entsteht lokal.
-  const [anmeldung, setAnmeldung] = useState<null | { harness: string; code?: string; uri?: string }>(null);
+  const [anmeldung, setAnmeldung] = useState<null | {
+    harness: string; code?: string; uri?: string; sitzung?: string; zustand?: string;
+  }>(null);
 
   const laden = useCallback(async () => {
     try {
@@ -102,8 +104,32 @@ export function MyAiCredentials() {
     try {
       const s = await api.startMyCodexLogin();
       window.open(s.verification_uri, "_blank");
-      setAnmeldung({ harness: "codex", code: s.user_code, uri: s.verification_uri });
+      setAnmeldung({
+        harness: "codex", code: s.user_code, uri: s.verification_uri,
+        sitzung: s.session_id, zustand: s.status,
+      });
       setOffen("codex");
+      // Der Nutzer bekommt NIE eine Datei zu sehen: Codex legt sie im Container
+      // an, der Dienst liest sie und raeumt sie weg. Ihn nach ihrem Inhalt zu
+      // fragen war unerfuellbar — die ChatGPT-Seite meldet „kann geschlossen
+      // werden", und danach gibt es nichts einzufuegen. Also fragen WIR nach.
+      const bis = Date.now() + 5 * 60 * 1000;
+      const takt = window.setInterval(async () => {
+        try {
+          const z = await api.getMyCodexLoginStatus(s.session_id);
+          setAnmeldung((a) => (a ? { ...a, zustand: z.status } : a));
+          if (z.status === "connected") {
+            window.clearInterval(takt);
+            setAnmeldung(null); setOffen(null);
+            await laden();
+          } else if (z.status !== "pending" || Date.now() > bis) {
+            window.clearInterval(takt);
+            setFehler(z.error || "Anmeldung nicht abgeschlossen.");
+          }
+        } catch {
+          window.clearInterval(takt);
+        }
+      }, 2500);
     } catch (e) {
       setFehler(e instanceof Error ? e.message : "Anmeldung nicht startbar.");
     } finally {
@@ -250,14 +276,18 @@ export function MyAiCredentials() {
                       <code className="block rounded-lg bg-foreground/[0.06] px-2 py-1.5 text-center font-mono text-sm tracking-widest">
                         {anmeldung.code}
                       </code>
-                      <p className="text-[11px] text-muted-foreground">
-                        Danach den Inhalt deiner <code>auth.json</code> hier einfügen.
+                      <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Warte auf die Bestätigung… Sobald die ChatGPT-Seite sagt,
+                        sie kann geschlossen werden, bist du fertig — hier ist
+                        nichts einzufügen.
                       </p>
                     </div>
                   )
                 ) : (
                   <p className="text-[11px] text-muted-foreground">{h.hilfe}</p>
                 )}
+                {!(anmeldung?.harness === "codex") && (<>
                 <textarea
                   value={geheimnis}
                   onChange={(e) => setGeheimnis(e.target.value)}
@@ -271,6 +301,7 @@ export function MyAiCredentials() {
                   placeholder="Bezeichnung (optional, z. B. privates Abo)"
                   className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-xs outline-none focus:border-ring"
                 />
+                </>)}
                 <div className="flex justify-end gap-2">
                   <button
                     onClick={() => { setOffen(null); setAnmeldung(null); setGeheimnis(""); setFehler(""); }}

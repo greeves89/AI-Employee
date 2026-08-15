@@ -35,6 +35,11 @@ class CodexDeviceAuthSession:
     status: str = "pending"
     error: str | None = None
     account_label: str | None = None
+    #: Fuer wen die Anmeldung laeuft. ``None`` = fuer die ganze Anlage (der
+    #: Administrator-Weg, wie bisher). Gesetzt = persoenlicher Zugang dieses
+    #: Nutzers; das Ergebnis landet dann in ``user_ai_credentials`` statt als
+    #: plattformweite Integration.
+    for_user_id: str | None = None
     process: asyncio.subprocess.Process | None = field(default=None, repr=False)
     task: asyncio.Task | None = field(default=None, repr=False)
 
@@ -46,7 +51,7 @@ class CodexDeviceAuthService:
         self._sessions: dict[str, CodexDeviceAuthSession] = {}
         self._lock = asyncio.Lock()
 
-    async def start(self) -> CodexDeviceAuthSession:
+    async def start(self, for_user_id: str | None = None) -> CodexDeviceAuthSession:
         if not shutil.which("codex"):
             raise RuntimeError("Codex CLI is not installed in the orchestrator container")
 
@@ -150,11 +155,38 @@ class CodexDeviceAuthService:
             with open(auth_path) as f:
                 auth_json = json.dumps(json.load(f))
 
-            async with async_session_factory() as db:
-                integration = await OAuthService(db, redis=None).store_auth_json("codex", auth_json)
-                session.account_label = integration.account_label
+            if session.for_user_id:
+                # Persoenlicher Zugang: nur dieser Nutzer, keine Anlage.
+                #
+                # Der Nutzer bekommt bei dieser Anmeldung NIE eine Datei zu
+                # sehen — Codex legt sie im Container an und raeumt sie gleich
+                # wieder weg. Ihn nach ihrem Inhalt zu fragen (so stand es bis
+                # 2026-08-15 in der Oberflaeche) war deshalb unerfuellbar: die
+                # ChatGPT-Seite meldet „kann geschlossen werden", und danach
+                # gibt es nichts einzufuegen.
+                from app.core.encryption import encrypt_token
+                from app.models.user_ai_credential import UserAiCredential
+                from sqlalchemy import select as _select
 
-            await CodexAuthService().sync_auth_json()
+                async with async_session_factory() as db:
+                    row = (await db.execute(_select(UserAiCredential).where(
+                        UserAiCredential.user_id == session.for_user_id,
+                        UserAiCredential.harness == "codex",
+                    ))).scalar_one_or_none()
+                    if row is None:
+                        row = UserAiCredential(user_id=session.for_user_id, harness="codex")
+                        db.add(row)
+                    row.secret_encrypted = encrypt_token(auth_json)
+                    row.label = row.label or "ChatGPT-Abo"
+                    row.last_status = "ok"
+                    await db.commit()
+                    session.account_label = row.label
+            else:
+                async with async_session_factory() as db:
+                    integration = await OAuthService(db, redis=None).store_auth_json("codex", auth_json)
+                    session.account_label = integration.account_label
+                # Nur der Anlagen-Zugang gehoert in die gemeinsame Datei.
+                await CodexAuthService().sync_auth_json()
             session.status = "connected"
         except asyncio.CancelledError:
             session.status = "cancelled"

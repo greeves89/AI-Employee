@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.215.0] - 2026-08-15
+
+### Behoben
+- **Die Codex-Anmeldung verlangte eine Datei, die es nicht gibt.** Nach der
+  Bestätigung im Browser meldet ChatGPT „Seite kann geschlossen werden" — und
+  danach stand die Oberfläche da und wollte den Inhalt einer `auth.json`. Diese
+  Datei bekommt der Nutzer **nie zu sehen**: Codex legt sie im Container an, der
+  Dienst liest sie und räumt das Verzeichnis wieder weg.
+- Die Anmeldung schließt sich jetzt **von selbst ab**, genau wie beim
+  Administrator: die Oberfläche fragt den Status ab, statt den Nutzer nach etwas
+  zu fragen, das er nicht hat. Angezeigt wird der Gerätecode und „Warte auf die
+  Bestätigung".
+- **Das Ergebnis landet beim richtigen Empfänger.** Der Anmeldedienst bekommt
+  jetzt mit, für wen er läuft: persönlicher Zugang statt Zugang der ganzen
+  Anlage. Ein privates Abo wird ausdrücklich **nicht** in die gemeinsame Datei
+  geschrieben — sonst benutzten es alle Agenten.
+- Der Zustand einer fremden Anmeldung ist nicht abfragbar.
+
+---
+
 ## [1.214.1] - 2026-08-15
 
 ### Behoben

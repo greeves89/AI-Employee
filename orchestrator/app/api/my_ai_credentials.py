@@ -278,7 +278,9 @@ async def start_codex_login(user=Depends(require_auth)):
     from app.services.codex_device_auth_service import codex_device_auth_service
 
     try:
-        session = await codex_device_auth_service.start()
+        # Fuer DIESEN Nutzer — der Dienst legt das Ergebnis dann in seinem
+        # persoenlichen Zugang ab statt als Zugang der ganzen Anlage.
+        session = await codex_device_auth_service.start(for_user_id=user.id)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {
@@ -287,4 +289,29 @@ async def start_codex_login(user=Depends(require_auth)):
         "user_code": session.code,
         "expires_at": session.expires_at.isoformat(),
         "status": session.status,
+    }
+
+@router.get("/codex/status/{session_id}")
+async def codex_login_status(session_id: str, user=Depends(require_auth)):
+    """Laeuft die Anmeldung noch, ist sie durch, oder ist sie gescheitert?
+
+    Der Nutzer bekommt bei dieser Anmeldung nie eine Datei zu sehen: Codex legt
+    sie im Container an, der Dienst liest sie und raeumt sie weg. Die Oberflaeche
+    fragt deshalb hier nach, statt den Nutzer nach etwas zu fragen, das er nicht
+    hat — genau daran scheiterte der erste Anlauf.
+    """
+    from app.services.codex_device_auth_service import codex_device_auth_service
+
+    session = await codex_device_auth_service.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Anmeldung nicht gefunden")
+    # Fremde Anmeldungen gehen niemanden etwas an — auch nicht ihr Zustand.
+    if session.for_user_id != user.id:
+        raise HTTPException(status_code=404, detail="Anmeldung nicht gefunden")
+    return {
+        "status": session.status,
+        "account_label": session.account_label,
+        "error": session.error,
+        "user_code": session.code if session.status == "pending" else None,
+        "verification_uri": session.verification_uri if session.status == "pending" else None,
     }

@@ -4034,3 +4034,10 @@ export async function startMyCodexLogin(): Promise<{
 }> {
   return fetchJSON(`${getBase()}/me/ai-credentials/codex/start`, { method: "POST" });
 }
+
+export async function getMyCodexLoginStatus(sessionId: string): Promise<{
+  status: string; account_label: string | null; error: string | null;
+  user_code: string | null; verification_uri: string | null;
+}> {
+  return fetchJSON(`${getBase()}/me/ai-credentials/codex/status/${sessionId}`);
+}

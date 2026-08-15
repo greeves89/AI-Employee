@@ -196,3 +196,53 @@ class TheOAuthServiceIsBuiltCorrectlyTests(unittest.TestCase):
                   "/me/ai-credentials/codex/start"):
             with self.subTest(pfad=p):
                 self.assertIn(p, pfade)
+
+
+class TheCodexLoginCompletesByItselfTests(unittest.TestCase):
+    """Nutzerbericht (15.08.2026): „ich habe von codex der anmeldung diesen code
+    da erhalten… dann stand bei codex seite kann geschlossen werden, dann war
+    diese zu. ich habe aber keine auth.json erhalten oder so."
+
+    Mein erster Anlauf war unerfuellbar: ich habe nach dem Inhalt einer Datei
+    gefragt, die der Nutzer nie zu sehen bekommt. Codex legt die ``auth.json``
+    IM CONTAINER an, der Dienst liest sie und raeumt das Verzeichnis wieder weg.
+    Der Administrator-Weg macht es laengst richtig — er fragt den Status ab.
+
+    Der Dienst bekommt jetzt mit, FUER WEN die Anmeldung laeuft, und legt das
+    Ergebnis entsprechend ab: persoenlicher Zugang statt Anlagen-Zugang.
+    """
+
+    DIENST = (ROOT / "orchestrator/app/services/codex_device_auth_service.py").read_text()
+    API_ME = (ROOT / "orchestrator/app/api/my_ai_credentials.py").read_text()
+
+    def test_the_session_knows_who_it_is_for(self):
+        self.assertIn("for_user_id: str | None = None", self.DIENST)
+
+    def test_a_personal_login_lands_in_the_personal_store(self):
+        block = self.DIENST.split("if session.for_user_id:", 1)[1][:1800]
+        self.assertIn("UserAiCredential(user_id=session.for_user_id", block)
+        self.assertIn('harness="codex"', block)
+        self.assertIn("encrypt_token(auth_json)", block)
+
+    def test_the_platform_path_is_unchanged(self):
+        """Der Administrator-Weg darf sich nicht mitaendern."""
+        self.assertIn('store_auth_json("codex", auth_json)', self.DIENST)
+
+    def test_the_shared_file_stays_platform_only(self):
+        """``sync_auth_json`` schreibt die gemeinsame Datei — ein persoenliches
+        Abo darf dort nicht landen, sonst benutzen ihn alle Agenten."""
+        block = self.DIENST.split("if session.for_user_id:", 1)[1]
+        vor_else = block.split("else:", 1)[0]
+        self.assertNotIn("sync_auth_json", vor_else)
+
+    def test_the_ui_asks_the_server_instead_of_the_user(self):
+        self.assertIn("getMyCodexLoginStatus", KOMPONENTE)
+        self.assertIn("Warte auf die Bestätigung", KOMPONENTE)
+
+    def test_the_ui_no_longer_asks_for_a_file_it_cannot_have(self):
+        self.assertNotIn("Danach den Inhalt deiner", KOMPONENTE)
+
+    def test_another_users_session_is_not_readable(self):
+        """Der Zustand einer fremden Anmeldung geht niemanden etwas an."""
+        block = self.API_ME.split('@router.get("/codex/status/{session_id}")', 1)[1]
+        self.assertIn("session.for_user_id != user.id", block)
