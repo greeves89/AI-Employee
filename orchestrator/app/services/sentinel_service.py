@@ -280,7 +280,9 @@ class SentinelService:
                     excerpt=muster[:200],
                 )
 
-            treffer = dlp.scan_matches(text)
+            # Bewusst NICHT `scan_matches`: das ist die Maskier-Schwelle. Ein
+            # Stopp braucht die engere — siehe find_high_confidence_secrets.
+            treffer = {"secret": dlp.find_high_confidence_secrets(text)}
             if treffer.get("secret"):
                 return SentinelVerdict(
                     True, "secret_in_output",

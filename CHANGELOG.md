@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.207.0] - 2026-08-15
+
+### Behoben
+- **Der Sentinel hielt einen Agenten wegen einer Vermutung an.** Drei Minuten
+  nach dem ersten Einschalten stoppte er den Hauptagenten — wegen einer
+  Zeichenkette, die mit „GH" anfing. Auslöser war die `KEY=VALUE`-Heuristik des
+  DLP-Filters („alles, was TOKEN/SECRET/PASSWORD heißt, gefolgt von vier
+  Zeichen").
+- **Maskieren und Anhalten brauchen verschiedene Schwellen.** Fürs Maskieren ist
+  diese Heuristik goldrichtig — im Zweifel schwärzen kostet nichts. Als Auslöser
+  für einen Stopp zerstört sie laufende Arbeit wegen einer Vermutung.
+- Der Sentinel prüft jetzt nur noch auf Geheimnisse, die am **Format** erkennbar
+  sind: `ghp_…`, `sk-…`, `AKIA…`, JWTs, PEM-Blöcke, Slack- und Telegram-Token.
+  `GH_TOKEN=nicht-gesetzt` oder `API_KEY=<dein-schlüssel>` in einer Anleitung
+  halten niemanden mehr an. Der Egress-Filter maskiert unverändert großzügig.
+
+---
+
 ## [1.206.2] - 2026-08-15
 
 ### Behoben

@@ -217,3 +217,52 @@ class TheNotificationTellsTheTruthTests(unittest.IsolatedAsyncioTestCase):
         src = inspect.getsource(SentinelService._stop_agent)
         block = src.split("if not gestoppt:", 1)[1]
         self.assertIn('priority="urgent"', block)
+
+
+class TheStopThresholdIsNarrowerThanTheMaskThresholdTests(unittest.IsolatedAsyncioTestCase):
+    """Am 15.08.2026 im Echtbetrieb aufgefallen: drei Minuten nach dem
+    Einschalten hielt der Sentinel den Hauptagenten an — wegen einer Zeichenkette,
+    die mit „GH" anfing. Ausloeser war die ``KEY=VALUE``-Heuristik des
+    DLP-Filters („alles, was TOKEN/SECRET/PASSWORD heisst, gefolgt von vier
+    Zeichen").
+
+    Fuer das MASKIEREN ist diese Heuristik goldrichtig — im Zweifel schwaerzen
+    kostet nichts. Als Ausloeser fuer einen STOPP ist sie falsch: sie zerstoert
+    laufende Arbeit wegen einer Vermutung. Maskieren und Anhalten sind
+    verschiedene Eingriffe und brauchen verschiedene Schwellen.
+    """
+
+    async def test_a_real_token_still_stops_the_agent(self):
+        for text in (
+            "ghp_abcdefghijklmnopqrstuvwxyz012345",
+            "sk-abcdefghijklmnopqrstuvwx",
+            "AKIAABCDEFGHIJKLMNOP",
+            "eyJhbGciOi.eyJzdWIiOi.SflKxwRJSM",
+        ):
+            with self.subTest(text=text):
+                v = await _service()._scan("a1", _ereignis(f"Ausgabe: {text}"))
+                self.assertIsNotNone(v, f"{text} muss ausloesen")
+                self.assertEqual(v.reason, "secret_in_output")
+
+    async def test_a_mere_variable_name_does_not(self):
+        """Genau die Faelle, die den Hauptagenten gekostet haben."""
+        for text in (
+            "GH_TOKEN=nicht-gesetzt",
+            "Setze API_KEY=<dein-schluessel> in die .env",
+            "DATABASE_URL=postgresql://user:pass@host/db",
+            "export GITHUB_TOKEN=$(cat ~/.config/gh/token)",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(
+                    await _service()._scan("a1", _ereignis(text)),
+                    f"{text} darf KEINEN Agenten anhalten",
+                )
+
+    async def test_the_mask_threshold_stays_broad(self):
+        """Der Egress-Filter soll weiterhin grosszuegig schwaerzen — die
+        Verengung gilt nur fuer den Stopp."""
+        from app.core import dlp
+
+        weit = dlp.scan_matches("GH_TOKEN=nicht-gesetzt")
+        self.assertTrue(weit.get("secret"), "Maskieren muss das weiterhin fangen")
+        self.assertEqual(dlp.find_high_confidence_secrets("GH_TOKEN=nicht-gesetzt"), [])
