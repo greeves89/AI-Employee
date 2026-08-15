@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.213.0] - 2026-08-15
+
+### Geändert
+- **Der Reiter „Modelle" zeigt normalen Nutzern jetzt etwas anderes.** Bisher sah
+  jeder dieselbe Seite: Provider-Konfiguration, ChatGPT-Login der Plattform, Max
+  Turns, Anzahl gleichzeitiger Agenten. Ein Member kann davon **nichts**
+  einstellen — er sah eine Bedienoberfläche, die auf keinen seiner Klicks
+  reagiert.
+- Stattdessen beantwortet sie jetzt die Frage, die er wirklich hat: **welche
+  Modelle stehen mir zur Verfügung.** Lesend, ohne einen einzigen Schalter, aus
+  den Konten, die sein Administrator freigegeben hat.
+- Ist nichts freigegeben — der häufigste Fall bei einem neuen Nutzer — steht dort
+  jetzt, **warum** und was zu tun ist: Administrator fragen, oder unter „Meine
+  KI-Zugänge" das eigene Abo verbinden.
+- **Der Speichern-Knopf erscheint nur, wo es etwas zu speichern gibt.** Auf
+  „Meine KI-Zugänge" wird beim Verbinden sofort gesichert; ein Knopf daneben
+  ließ den Nutzer glauben, er hätte etwas vergessen.
+
+---
+
 ## [1.212.0] - 2026-08-15
 
 ### Sicherheit

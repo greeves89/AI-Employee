@@ -75,3 +75,46 @@ class EmptyTabsAreHiddenTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheModelsTabHasItsOwnMemberViewTests(unittest.TestCase):
+    """„Wieso sollte ein normaler User das hier alles sehen?" — Provider-
+    Konfiguration, Plattform-Login bei ChatGPT, Max Turns, Anzahl gleichzeitiger
+    Agenten. Nichts davon kann ein Member einstellen; er sah eine
+    Bedienoberflaeche, die auf keinen seiner Klicks reagiert.
+
+    Seine Frage ist eine andere: WELCHE Modelle stehen mir zur Verfuegung. Genau
+    das zeigt die Member-Sicht — lesend, ohne einen einzigen Schalter.
+    """
+
+    KOMPONENTE = (ROOT / "frontend/src/components/settings/available-models.tsx").read_text()
+
+    def test_members_get_a_different_view(self):
+        self.assertIn('secTab === "modelle" && !isAdmin', VIEW)
+        self.assertIn("<AvailableModels />", VIEW)
+
+    def test_admins_keep_the_configuration(self):
+        self.assertIn('secTab === "modelle" && isAdmin', VIEW)
+
+    def test_the_member_view_has_no_controls(self):
+        """Kein Speichern, kein Umschalten — sonst ist es wieder eine
+        Bedienoberflaeche ohne Wirkung."""
+        for verboten in ("onClick", "<button", "<input", "<select"):
+            with self.subTest(element=verboten):
+                self.assertNotIn(verboten, self.KOMPONENTE)
+
+    def test_it_relies_on_the_server_filter(self):
+        """``/ai-accounts`` liefert einem Nicht-Administrator ohnehin nur
+        Freigegebenes (default-deny). Die Anzeige ist keine Sicherheitsgrenze —
+        das muss im Code stehen, sonst verlaesst sich spaeter jemand darauf."""
+        self.assertIn("keine Sicherheitsgrenze", self.KOMPONENTE)
+
+    def test_the_empty_case_says_what_to_do(self):
+        """Der haeufigste Fall bei einem neuen Nutzer: nichts freigegeben."""
+        self.assertIn("Noch kein Modell freigegeben", self.KOMPONENTE)
+        self.assertIn("Meine KI-Zugänge", self.KOMPONENTE)
+
+    def test_the_save_button_is_gone_where_nothing_is_saved(self):
+        """„Meine KI-Zugaenge" sichert sofort beim Verbinden. Ein Knopf, der
+        nichts tut, laesst den Nutzer glauben, er haette etwas vergessen."""
+        self.assertIn('isAdmin && secTab !== "meine"', VIEW)

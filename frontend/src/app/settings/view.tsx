@@ -20,6 +20,7 @@ import { TeamsCallingConfig } from "@/components/settings/teams-calling-config";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { MyAiCredentials } from "@/components/settings/my-ai-credentials";
+import { AvailableModels } from "@/components/settings/available-models";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Settings, ModelProvider, AIAccount } from "@/lib/types";
 
@@ -767,7 +768,24 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         </div>
 
         {/* ─── Tab: Modelle ─── */}
-        {secTab === "modelle" && (
+        {/* Fuer einen Member ist in diesem Reiter NICHTS einstellbar: Provider,
+            Plattform-Login, Max Turns, gleichzeitige Agenten — alles gehoert der
+            Anlage. Er bekommt deshalb die Frage beantwortet, die er wirklich
+            hat: welche Modelle stehen mir zur Verfuegung. */}
+        {secTab === "modelle" && !isAdmin && (
+          <div className="space-y-6">
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <Cpu className="h-4 w-4 text-muted-foreground/60" />
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  Verfügbare Modelle
+                </h2>
+              </div>
+              <AvailableModels />
+            </section>
+          </div>
+        )}
+        {secTab === "modelle" && isAdmin && (
         <div className="space-y-6">
         {/* ─── Section 1: Model Provider ─── */}
         <section>
@@ -2325,7 +2343,13 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         )}
 
         {/* ─── Save Button ─── */}
-        <div className="flex items-center gap-3 pt-2 pb-8">
+                {/* Der Knopf speichert die PLATTFORM-Einstellungen. Auf den
+            Reitern eines Nutzers gibt es nichts zu speichern — „Meine
+            KI-Zugaenge" sichert sofort beim Verbinden. Ein Knopf, der
+            nichts tut, laesst den Nutzer glauben, er haette etwas
+            vergessen. */}
+        {isAdmin && secTab !== "meine" && (
+<div className="flex items-center gap-3 pt-2 pb-8">
           <button
             onClick={handleSave}
             disabled={saving}
@@ -2354,6 +2378,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             </span>
           )}
         </div>
+        )}
         {/* ─── Claude OAuth Code Paste Modal ─── */}
         {claudeLoginOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
