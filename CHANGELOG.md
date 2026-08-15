@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.208.0] - 2026-08-15
+
+### Behoben
+- **Der Sentinel war blind für den gesamten Chat-Verkehr.** Er lauschte nur auf
+  `agents:logs:all` — der Gesprächsweg schreibt aber auf einen eigenen Kanal je
+  Agent (`agent:{id}:chat:response`). Ein Geheimnis in einer Chatantwort hätte er
+  nie gesehen. Betrifft **alle** Agenten-Modi; bei interaktiv genutzten
+  Custom-LLM-Agenten ist der Chat der Hauptweg, dort war die Lücke am größten.
+- Gelöst per Mustersuche (`agent:*:chat:response`) statt durch eine Änderung am
+  Veröffentlicher — so bleiben die bestehenden Lauscher unberührt.
+
+---
+
 ## [1.207.0] - 2026-08-15
 
 ### Behoben

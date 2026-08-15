@@ -266,3 +266,43 @@ class TheStopThresholdIsNarrowerThanTheMaskThresholdTests(unittest.IsolatedAsync
         weit = dlp.scan_matches("GH_TOKEN=nicht-gesetzt")
         self.assertTrue(weit.get("secret"), "Maskieren muss das weiterhin fangen")
         self.assertEqual(dlp.find_high_confidence_secrets("GH_TOKEN=nicht-gesetzt"), [])
+
+
+class TheSentinelAlsoWatchesTheChatTests(unittest.IsolatedAsyncioTestCase):
+    """Nachfrage des Nutzers (15.08.2026): „hast du auch die custom llm agenten
+    geprueft?" — die Pruefung deckte eine Luecke auf, die ALLE Modi betraf.
+
+    ``publish_chat`` schreibt nur auf ``agent:{id}:chat:response``, nicht auf
+    ``agents:logs:all``. Der Sentinel lauschte ausschliesslich auf letzteres und
+    war damit blind fuer den gesamten Gespraechsverkehr — bei einem interaktiv
+    genutzten Agenten der Hauptweg. Ein Geheimnis in einer Chatantwort haette er
+    nie gesehen.
+
+    Geloest per Mustersuche statt per Aenderung am Veroeffentlicher: so bleiben
+    die bestehenden Lauscher (``channel_gateway``) unberuehrt.
+    """
+
+    import inspect
+
+    SRC = inspect.getsource(SentinelService)
+
+    def test_it_subscribes_to_the_chat_pattern(self):
+        self.assertIn("psubscribe(_AGENT_CHAT_PATTERN)", self.SRC)
+
+    def test_it_accepts_pattern_messages(self):
+        """``psubscribe`` liefert ``pmessage``, nicht ``message`` — ohne diese
+        Zeile kaeme zwar alles an und wuerde stillschweigend verworfen."""
+        self.assertIn('message["type"] in ("message", "pmessage")', self.SRC)
+
+    def test_it_cleans_up_the_pattern_subscription(self):
+        self.assertIn("punsubscribe(_AGENT_CHAT_PATTERN)", self.SRC)
+
+    async def test_a_chat_event_is_scanned_like_any_other(self):
+        """Chat-Ereignisse tragen ``message_id`` statt ``task_id`` — die
+        Erkennung darf daran nicht haengen."""
+        v = await _service()._scan("a1", {
+            "agent_id": "a1", "message_id": "m-7", "type": "text",
+            "data": "Hier ist der Schluessel: ghp_abcdefghijklmnopqrstuvwxyz012345",
+        })
+        self.assertIsNotNone(v)
+        self.assertEqual(v.reason, "secret_in_output")

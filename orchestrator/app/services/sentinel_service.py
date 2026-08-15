@@ -41,6 +41,9 @@ from app.services.redis_service import RedisService
 logger = logging.getLogger(__name__)
 
 _AGENTS_LOGS_ALL_CHANNEL = "agents:logs:all"
+
+#: Der Gespraechsverkehr laeuft ueber einen eigenen Kanal je Agent.
+_AGENT_CHAT_PATTERN = "agent:*:chat:response"
 # Pubsub reconnect backoff after an unexpected error (Redis restart, network
 # blip). Short enough that a real incident isn't missed for long, long enough
 # not to hot-loop against a Redis that is still down.
@@ -141,16 +144,26 @@ class SentinelService:
             await asyncio.sleep(_RECONNECT_DELAY_SECONDS)
             return
         pubsub = await self.redis.subscribe(_AGENTS_LOGS_ALL_CHANNEL)
+        # Der Chat laeuft NICHT ueber agents:logs:all — `publish_chat` schreibt
+        # nur auf `agent:{id}:chat:response`. Ohne dieses Muster waere der
+        # Sentinel blind fuer den gesamten Gespraechsverkehr, und genau dort
+        # arbeitet ein interaktiv genutzter Agent hauptsaechlich: ein Geheimnis
+        # in einer Chatantwort haette er nie gesehen.
+        #
+        # Per Muster statt per Aenderung am Veroeffentlicher: so bleiben alle
+        # bestehenden Lauscher (channel_gateway) unberuehrt.
+        await pubsub.psubscribe(_AGENT_CHAT_PATTERN)
         try:
             while self._running:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 await self._herzschlag()
-                if message and message["type"] == "message":
+                if message and message["type"] in ("message", "pmessage"):
                     await self._handle_message(message["data"])
                 else:
                     await asyncio.sleep(0.01)
         finally:
             await pubsub.unsubscribe(_AGENTS_LOGS_ALL_CHANNEL)
+            await pubsub.punsubscribe(_AGENT_CHAT_PATTERN)
             await pubsub.aclose()
 
     async def _herzschlag(self) -> None:
