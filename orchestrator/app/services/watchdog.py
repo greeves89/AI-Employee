@@ -19,6 +19,38 @@ from app.models.task import Task, TaskStatus
 # during its fire time (container restart).
 _STALE_TASK_THRESHOLD = timedelta(minutes=30)
 _MISSED_SCHEDULE_GRACE = timedelta(minutes=5)
+# Der Sentinel erneuert sein Lebenszeichen alle 15 Sekunden (sentinel_service.py).
+# Zwei Minuten Toleranz heisst: acht verpasste Schlaege, bevor Alarm ausgeloest
+# wird — genug fuer eine Redis-Neuverbindung, zu wenig fuer einen echten
+# Stillstand, der unbemerkt bliebe.
+_SENTINEL_HEARTBEAT_THRESHOLD = timedelta(minutes=2)
+
+
+def is_sentinel_stale(
+    last_beat: str | float | None,
+    now: datetime,
+    threshold: timedelta = _SENTINEL_HEARTBEAT_THRESHOLD,
+) -> bool:
+    """Ist das Lebenszeichen des Sentinel zu alt?
+
+    Ein Waechter, der stehenbleibt, ist gefaehrlicher als gar keiner: die Anlage
+    sieht ueberwacht aus und ist es nicht. Deshalb ist ein FEHLENDES Lebenszeichen
+    kein Alarm — der Dienst ist dann schlicht ausgeschaltet, was ein bewusster
+    Zustand ist. Alarm gibt es nur, wenn er einmal gelebt hat und dann verstummt.
+
+    ``last_beat`` ist der Rohwert aus Redis (Unix-Zeit als Zeichenkette). Ein
+    unlesbarer Wert gilt als still — lieber ein Fehlalarm als ein blinder Fleck.
+    """
+    if last_beat is None or last_beat == "":
+        return False
+    try:
+        beat = float(last_beat)
+    except (TypeError, ValueError):
+        return True
+    if beat <= 0:
+        return True
+    alter = now.timestamp() - beat
+    return alter > threshold.total_seconds()
 
 
 def md_escape(s: str) -> str:

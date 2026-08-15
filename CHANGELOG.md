@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.206.0] - 2026-08-15
+
+### Hinzugefügt
+- **Wer bewacht den Wächter (#590 Punkt 6).** Ein Sentinel, der unbemerkt
+  stehenbleibt, ist gefährlicher als gar keiner: die Anlage sieht überwacht aus
+  und ist es nicht. Der Dienst legt jetzt alle 15 Sekunden ein Lebenszeichen ab —
+  **in der Warteschleife, nicht beim Ereignis**, denn ein Sentinel, der stundenlang
+  nichts sieht, ist gesund; einer, der hängt, nicht. Ohne diesen Unterschied sähen
+  beide gleich aus.
+- Der Wachhund im Zeitplaner prüft es bei jedem Takt und meldet **einmal**
+  dringend, wenn es älter als zwei Minuten ist — acht verpasste Schläge, genug für
+  eine Redis-Neuverbindung, zu wenig für unbemerkten Stillstand.
+- Ein **fehlendes** Lebenszeichen ist bewusst kein Alarm: dann ist der Dienst
+  ausgeschaltet, und das ist eine Entscheidung des Betreibers.
+
+---
+
 ## [1.205.0] - 2026-08-15
 
 ### Hinzugefügt

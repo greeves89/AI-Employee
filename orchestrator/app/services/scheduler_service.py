@@ -26,6 +26,7 @@ from app.services.redis_service import RedisService
 from app.services.watchdog import (
     as_utc,
     find_missed_schedules,
+    is_sentinel_stale,
     find_stale_tasks,
     mark_task_stale,
     md_escape,
@@ -80,6 +81,8 @@ class SchedulerService:
         # Per-schedule drift value at which we last alerted; prevents hourly spam
         # for a stuck schedule — only re-alerts when drift increases.
         self._watchdog_alerted: dict[str, int] = {}
+        # Einmal melden, wenn der Sentinel verstummt — nicht alle 30 Sekunden.
+        self._sentinel_alerted: bool = False
         # Per-schedule missed slot (next_run_at iso) already alerted; prevents
         # re-alerting the same missed window every 30s tick.
         self._missed_alerted: dict[str, str] = {}
@@ -102,6 +105,10 @@ class SchedulerService:
                     await self._tick_missed_schedule_watchdog()
                 except Exception as e:
                     logger.warning("[Scheduler] MissedScheduleWatchdog error: %s", e)
+                try:
+                    await self._tick_sentinel_liveness()
+                except Exception as e:
+                    logger.warning("[Scheduler] SentinelLiveness error: %s", e)
                 try:
                     await self._check_due_schedules()
                 except _TRANSIENT_DB_ERRORS as e:
@@ -1285,6 +1292,52 @@ class SchedulerService:
                         logger.warning("[Scheduler] StaleTaskWatchdog publish error: %s", e)
             await db.commit()
             logger.info("[Scheduler] StaleTaskWatchdog: marked %s task(s) stale", len(stale))
+
+    async def _tick_sentinel_liveness(self) -> None:
+        """Meldet, wenn der Sentinel verstummt ist (#590 Punkt 6).
+
+        Ein Waechter, der unbemerkt stehenbleibt, ist gefaehrlicher als gar
+        keiner: die Anlage sieht ueberwacht aus und ist es nicht. Deshalb
+        ueberwacht der Wachhund den Waechter.
+
+        Ein FEHLENDES Lebenszeichen ist kein Alarm — dann ist der Dienst schlicht
+        aus, und das ist ein bewusster Zustand. Gemeldet wird nur, wer einmal
+        gelebt hat und dann verstummt.
+        """
+        from app.models.notification import Notification
+        from app.services.sentinel_service import SENTINEL_HEARTBEAT_KEY
+
+        if not self.redis or not self.redis.client:
+            return
+        try:
+            schlag = await self.redis.client.get(SENTINEL_HEARTBEAT_KEY)
+        except Exception:  # noqa: BLE001 — Redis weg ist ein anderes Problem
+            return
+        if isinstance(schlag, bytes):
+            schlag = schlag.decode()
+
+        now = datetime.now(timezone.utc)
+        if not is_sentinel_stale(schlag, now):
+            self._sentinel_alerted = False
+            return
+        if self._sentinel_alerted:
+            return          # einmal melden, nicht alle 30 Sekunden
+        self._sentinel_alerted = True
+        logger.error("[Scheduler] Sentinel verstummt — letztes Lebenszeichen: %s", schlag)
+        async with resilient_session() as db:
+            db.add(Notification(
+                agent_id="system",
+                type="error",
+                title="Sentinel antwortet nicht mehr",
+                message=(
+                    "Die Verhaltensueberwachung hat sich seit ueber zwei Minuten "
+                    "nicht gemeldet. Sie laeuft also nicht mehr, waehrend die "
+                    "Oberflaeche sie als aktiv fuehrt — Agenten laufen derzeit "
+                    "unbeaufsichtigt. Orchestrator-Protokoll pruefen."
+                ),
+                priority="urgent",
+            ))
+            await db.commit()
 
     async def _tick_missed_schedule_watchdog(self) -> None:
         """Alert on enabled schedules whose fire window was missed (>5min late).

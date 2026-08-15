@@ -54,6 +54,14 @@ _MAX_SCAN_CHARS = 20_000
 #: Wie lange derselbe Vorfall desselben Agenten nicht erneut ausgeloest wird.
 _VORFALL_SPERRE_SEKUNDEN = 60.0
 
+#: Schluessel, unter dem der Sentinel sein Lebenszeichen ablegt.
+SENTINEL_HEARTBEAT_KEY = "sentinel:heartbeat"
+
+#: Wie oft das Lebenszeichen erneuert wird. Deutlich kleiner als die
+#: Schwelle im Wachhund, damit ein einzelner verpasster Schlag keinen
+#: Fehlalarm ausloest.
+_HERZSCHLAG_INTERVALL_SEKUNDEN = 15.0
+
 
 class SentinelVerdict:
     """Result of scanning one agent event.
@@ -89,6 +97,7 @@ class SentinelService:
         self._running = False
         # (agent_id, grund) -> Zeitpunkt des letzten Ausloesens, gegen Sturmfeuer.
         self._letzter_vorfall: dict[tuple[str, str], float] = {}
+        self._letzter_schlag: float = 0.0
         # The Sentinel-exclusive credential (#590 scope point 3, dependencies.py
         # require_sentinel/get_sentinel_token). Held here so _stop_agent can present
         # it once it is wired to a real privileged call (#590 scope point 4) — not
@@ -135,6 +144,7 @@ class SentinelService:
         try:
             while self._running:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                await self._herzschlag()
                 if message and message["type"] == "message":
                     await self._handle_message(message["data"])
                 else:
@@ -142,6 +152,31 @@ class SentinelService:
         finally:
             await pubsub.unsubscribe(_AGENTS_LOGS_ALL_CHANNEL)
             await pubsub.aclose()
+
+    async def _herzschlag(self) -> None:
+        """Ein Lebenszeichen nach Redis — hoechstens einmal pro Intervall.
+
+        Ein Waechter, der unbemerkt stehenbleibt, ist schlimmer als keiner: die
+        Anlage sieht dann ueberwacht aus und ist es nicht. Der Wachhund im
+        Zeitplaner liest diesen Zeitstempel und meldet sich, wenn er altert
+        (#590 Punkt 6).
+
+        Bewusst in der Warteschleife und nicht nur beim Ereignis: ein Sentinel,
+        der stundenlang nichts zu tun hat, ist gesund — einer, der haengt, nicht.
+        Beide sehen ohne diesen Schlag gleich aus.
+
+        Fehler beim Schreiben werden verschluckt: ein Waechter, der wegen seines
+        eigenen Lebenszeichens abstuerzt, waere absurd.
+        """
+        jetzt = time.time()
+        if jetzt - self._letzter_schlag < _HERZSCHLAG_INTERVALL_SEKUNDEN:
+            return
+        self._letzter_schlag = jetzt
+        try:
+            if self.redis.client:
+                await self.redis.client.set(SENTINEL_HEARTBEAT_KEY, str(jetzt))
+        except Exception:  # noqa: BLE001
+            logger.debug("[Sentinel] Herzschlag konnte nicht geschrieben werden", exc_info=True)
 
     async def _handle_message(self, raw: bytes | str) -> None:
         """Decode one raw pubsub payload and route it, tolerating malformed events."""
