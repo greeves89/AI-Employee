@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.212.0] - 2026-08-15
+
+### Sicherheit
+- **Ein Agent ohne Besitzer war für JEDEN Nutzer sichtbar.** Aufgefallen, als ein
+  frisch angelegter Testnutzer einen fremden Agenten in seiner Liste vorfand.
+  Im Code stand das als Absicht („+ unowned + shared") — aber besitzlos wird ein
+  Agent nicht durch eine Entscheidung, sondern durch ein **Versehen**: ein Skript
+  ohne `user_id`, ein gelöschter Nutzer, eine Migration. Genau so ist er
+  entstanden. Ein Versehen darf keine Freigabe auslösen.
+- Fürs Teilen gibt es weiterhin den ausdrücklichen Weg (`AgentAccess`, und für
+  Besprechungsräume `shared_for_rooms`) — der bleibt unverändert. Zwei
+  Freigabewege nebeneinander, einer davon still, waren die eigentliche Ursache.
+- Administratoren sehen besitzlose Agenten weiterhin (Admin-Konsole) und können
+  sie zuweisen. Wird ein Agent ohne Besitzer angelegt, steht das jetzt im
+  Protokoll, statt unbemerkt zu bleiben.
+
+### Geändert
+- **„Voice" und „System" sind für normale Nutzer ausgeblendet.** Ihre Inhalte
+  waren längst adminbeschränkt, die Reiter selbst nicht — wer klickte, sah eine
+  leere Seite und hielt es für einen Fehler. Ein Reiter ohne Inhalt ist
+  schlechter als kein Reiter. Wer per Adresszeile dort landet, wird
+  zurückgeholt. Kommt später etwas Nutzereigenes dazu (etwa eine zugewiesene
+  Stimme), gehört die Bedingung gelockert statt der Reiter leer gelassen.
+
+---
+
 ## [1.211.0] - 2026-08-15
 
 ### Hinzugefügt

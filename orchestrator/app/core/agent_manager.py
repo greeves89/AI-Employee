@@ -1357,6 +1357,17 @@ class AgentManager:
     async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str = "l3",
                            knowledge_md: str | None = None) -> Agent:
         agent_id = uuid.uuid4().hex[:8]
+        # Ein Agent ohne Besitzer ist ein Betriebsunfall, kein Betriebsmodus:
+        # er taucht in keiner persoenlichen Liste mehr auf (seit dem Schliessen
+        # des stillen Freigabewegs) und niemand fuehlt sich zustaendig. Das
+        # Anlegen wird deshalb nicht verhindert — interne Wege brauchen es —
+        # aber es steht im Protokoll, statt unbemerkt zu bleiben.
+        if not user_id:
+            logger.warning(
+                "Agent %r wird OHNE Besitzer angelegt — er erscheint in keiner "
+                "persoenlichen Uebersicht und muss von einem Administrator "
+                "zugewiesen werden.", name,
+            )
         container_name = f"ai-agent-{_container_slug(name)}-{agent_id}"
         volume_name = f"workspace-{agent_id}"
         session_volume = f"claude-session-{agent_id}"

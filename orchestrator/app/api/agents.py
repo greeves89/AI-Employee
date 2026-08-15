@@ -242,9 +242,25 @@ async def get_team_directory(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
         )
         accessible_ids = {row[0] for row in access_result.all()}
+        # „Ohne Besitzer" ist KEINE Freigabe.
+        #
+        # Bis 2026-08-15 galt hier ``a.user_id is None`` als „gehoert allen": ein
+        # Agent ohne Besitzer war fuer JEDEN Nutzer sichtbar. Aufgefallen, als ein
+        # frisch angelegter Testnutzer einen fremden Agenten in seiner Liste
+        # vorfand. Besitzlos wird ein Agent aber nicht durch eine Entscheidung,
+        # sondern durch ein Versehen: ein Skript ohne ``user_id``, ein geloeschter
+        # Nutzer, eine Migration. Ein Versehen darf keine Freigabe ausloesen.
+        #
+        # Fuers Teilen gibt es einen ausdruecklichen Weg (``AgentAccess``, und fuer
+        # Besprechungsraeume ``shared_for_rooms``). Zwei Freigabewege
+        # nebeneinander — einer davon still — sind genau die Doppel-Logik, die an
+        # anderer Stelle in dieser Anlage schon Schaden angerichtet hat.
+        #
+        # Administratoren sehen besitzlose Agenten weiterhin (Admin-Konsole,
+        # ``scope=all``) und koennen sie zuweisen.
         agents = [
             a for a in agents
-            if a.user_id is None or a.user_id == user.id or a.id in accessible_ids
+            if a.user_id == user.id or a.id in accessible_ids
         ]
     directory = []
     for agent in agents:
@@ -527,7 +543,7 @@ async def list_agents(
 
     agents = await manager.list_agents()
     # Personal view (default): everyone — INCLUDING admins — sees only their own
-    # agents (+ unowned + shared). The global "all agents" view is the Admin-Konsole,
+    # agents (+ explizit geteilte). The global "all agents" view is the Admin-Konsole,
     # which passes scope=all (admins only). room_pool=true additionally surfaces the
     # admin-curated agents (shared_for_rooms) to EVERY user — used by the Meeting-Room
     # agent picker so users don't each need to provision their own agents.
@@ -538,9 +554,11 @@ async def list_agents(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
         )
         accessible_ids = {row[0] for row in access_result.all()}
+        # Siehe oben: besitzlos ist keine Freigabe. Das Teilen fuer
+        # Besprechungsraeume bleibt — es ist eine bewusste Entscheidung.
         agents = [
             a for a in agents
-            if a.user_id is None or a.user_id == user.id or a.id in accessible_ids
+            if a.user_id == user.id or a.id in accessible_ids
             or (room_pool and getattr(a, "shared_for_rooms", False))
         ]
 

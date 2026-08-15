@@ -338,6 +338,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     }
   };
   const isAdmin = user?.role === "admin";
+  // Wer ohne Adminrechte auf „voice"/„system" landet (alte Verknuepfung,
+  // Adresszeile), bekaeme sonst genau die leere Seite zu sehen, die wir eben
+  // abgeschafft haben.
+  useEffect(() => {
+    if (!isAdmin && (secTab === "voice" || secTab === "system")) setSecTab("modelle");
+  }, [isAdmin, secTab]);
   // License state
   const [license, setLicense] = useState<import("@/lib/api").License | null>(null);
   const [licenseKeyInput, setLicenseKeyInput] = useState("");
@@ -728,8 +734,18 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             // obwohl die Agenten-Anlage ausdruecklich darauf verweist.
             { id: "meine" as const, label: "Meine KI-Zugänge", icon: KeyRound },
             { id: "integrationen" as const, label: "Integrationen", icon: Plug },
-            { id: "voice" as const, label: "Voice", icon: Mic },
-            { id: "system" as const, label: "System", icon: Shield },
+            // Voice und System enthalten AUSSCHLIESSLICH adminbeschraenkte
+            // Inhalte. Fuer einen normalen Nutzer waren sie bisher zwei leere
+            // Seiten — er klickte, sah nichts und hielt es fuer einen Fehler.
+            // Ein Reiter ohne Inhalt ist schlechter als kein Reiter.
+            //
+            // Kommt spaeter etwas Nutzereigenes dazu (etwa eine zugewiesene
+            // Stimme), gehoert die Bedingung hier gelockert — nicht der Reiter
+            // dauerhaft leer stehen gelassen.
+            ...(isAdmin ? [
+              { id: "voice" as const, label: "Voice", icon: Mic },
+              { id: "system" as const, label: "System", icon: Shield },
+            ] : []),
           ]).map((t) => {
             const Icon = t.icon;
             return (
