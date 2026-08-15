@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.214.1] - 2026-08-15
+
+### Behoben
+- **„Mit Claude anmelden" antwortete mit 500.** Der neue Endpunkt baute den
+  OAuth-Dienst von Hand und übergab ihm nur Redis — er erwartet aber
+  `(db, redis)`. Jetzt wird dieselbe Abhängigkeit benutzt wie in
+  `integrations.py`: kürzer, und auf diese Weise nicht falsch zu bauen.
+- Ein Test hält Konstruktor und Aufruf jetzt **wirklich** gegeneinander. Die
+  bisherigen Prüfungen lasen nur den Quelltext und konnten den Fehler deshalb
+  nicht sehen.
+
+---
+
 ## [1.214.0] - 2026-08-15
 
 ### Hinzugefügt

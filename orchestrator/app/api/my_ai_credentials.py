@@ -26,12 +26,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import agent_credentials as creds
 from app.core.encryption import encrypt_token
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import get_redis_service, require_auth
+from app.services.oauth_service import OAuthService
+from app.services.redis_service import RedisService
 from app.models.user_ai_credential import CREDENTIAL_HARNESSES, UserAiCredential
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/me/ai-credentials", tags=["me"])
+
+
+
+def _oauth_service(
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+) -> OAuthService:
+    """Dieselbe Konstruktion wie in ``integrations.py``.
+
+    Der erste Anlauf baute Redis von Hand und uebergab nur ihn — ``OAuthService``
+    erwartet aber ``(db, redis)``. Ergebnis war ein 500 beim Klick auf
+    „Mit Claude anmelden". Die vorhandene Abhaengigkeit zu benutzen ist nicht nur
+    kuerzer, sie kann auch nicht in dieser Weise falsch sein.
+    """
+    return OAuthService(db, redis)
 
 
 class CredentialUpsert(BaseModel):
@@ -193,16 +210,13 @@ class OAuthExchange(BaseModel):
 
 
 @router.post("/anthropic/start")
-async def start_anthropic_login(user=Depends(require_auth)):
+async def start_anthropic_login(
+    user=Depends(require_auth),
+    service: "OAuthService" = Depends(_oauth_service),
+):
     """Anmeldung starten — liefert die Adresse, die im Browser geoeffnet wird."""
-    from app.services.oauth_service import OAuthService
-    from app.services.redis_service import RedisService
-    from app.config import settings as _s
-
-    redis = RedisService(redis_url=_s.redis_url)
-    await redis.connect()
     try:
-        auth_url = await OAuthService(redis).generate_auth_url("anthropic", user_id=user.id)
+        auth_url = await service.generate_auth_url("anthropic", user_id=user.id)
     except (KeyError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"auth_url": auth_url}
@@ -213,6 +227,7 @@ async def exchange_anthropic_login(
     body: OAuthExchange,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
+    service: "OAuthService" = Depends(_oauth_service),
 ):
     """Den eingefuegten Code eintauschen und als EIGENEN Zugang hinterlegen.
 
@@ -224,18 +239,13 @@ async def exchange_anthropic_login(
     liefen trotzdem ohne seinen Zugang.
     """
     from app.core.encryption import decrypt_token
-    from app.services.oauth_service import OAuthService
-    from app.services.redis_service import RedisService
-    from app.config import settings as _s
 
     code = (body.code or "").split("#")[0].strip()
     if not code:
         raise HTTPException(status_code=400, detail="Kein Code eingefuegt")
 
-    redis = RedisService(redis_url=_s.redis_url)
-    await redis.connect()
     try:
-        integration = await OAuthService(redis).exchange_code("anthropic", code, body.state)
+        integration = await service.exchange_code("anthropic", code, body.state)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

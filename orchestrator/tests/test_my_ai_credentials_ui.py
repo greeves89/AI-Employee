@@ -130,7 +130,10 @@ class TheLoginIsTheSameAsForAdminsTests(unittest.TestCase):
     def test_it_reuses_the_platform_exchange(self):
         """Eine zweite Umsetzung des OAuth-Austauschs waere die naechste Stelle,
         die auseinanderlaeuft."""
-        self.assertIn("OAuthService(redis).exchange_code", self.API_ME)
+        # Seit der Umstellung auf die vorhandene Abhaengigkeit heisst der
+        # Aufruf ``service.exchange_code`` — gebaut wird der Dienst einmal in
+        # ``_oauth_service``, genau wie in integrations.py.
+        self.assertIn("service.exchange_code(", self.API_ME)
 
     def test_the_frontend_offers_both_logins(self):
         for fn in ("startMyAnthropicLogin", "exchangeMyAnthropicLogin", "startMyCodexLogin"):
@@ -154,3 +157,42 @@ class TheLoginIsTheSameAsForAdminsTests(unittest.TestCase):
         """Wer sein Token schon hat oder ohne Browser arbeitet, soll nicht durch
         die Anmeldung muessen."""
         self.assertIn("Manuell", KOMPONENTE)
+
+
+class TheOAuthServiceIsBuiltCorrectlyTests(unittest.TestCase):
+    """Der erste Anlauf baute Redis von Hand und uebergab nur ihn —
+    ``OAuthService`` erwartet aber ``(db, redis)``. Ergebnis: ein 500 beim Klick
+    auf „Mit Claude anmelden", und kein einziger Test hat es bemerkt, weil alle
+    nur den Quelltext gelesen haben.
+
+    Hier wird die Signatur wirklich gegen den Aufruf gehalten.
+    """
+
+    def test_the_dependency_matches_the_constructor(self):
+        import inspect
+
+        from app.api.my_ai_credentials import _oauth_service
+        from app.services.oauth_service import OAuthService
+
+        erwartet = [p for p in inspect.signature(OAuthService.__init__).parameters
+                    if p != "self"]
+        uebergeben = list(inspect.signature(_oauth_service).parameters)
+        self.assertEqual(erwartet, uebergeben,
+                         "Reihenfolge und Anzahl muessen zum Konstruktor passen")
+
+    def test_it_uses_the_same_construction_as_integrations(self):
+        """Zwei Bauweisen fuer denselben Dienst laufen frueher oder spaeter
+        auseinander — genau so ist der 500 entstanden."""
+        src = (ROOT / "orchestrator/app/api/my_ai_credentials.py").read_text()
+        self.assertIn("OAuthService(db, redis)", src)
+        self.assertIn("Depends(get_redis_service)", src)
+
+    def test_every_route_is_registered(self):
+        from app.api.my_ai_credentials import router
+
+        pfade = {r.path for r in router.routes}
+        for p in ("/me/ai-credentials/anthropic/start",
+                  "/me/ai-credentials/anthropic/exchange",
+                  "/me/ai-credentials/codex/start"):
+            with self.subTest(pfad=p):
+                self.assertIn(p, pfade)
