@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.209.0] - 2026-08-15
+
+### Behoben
+- **Azure-AI-Foundry-Projektendpunkte funktionieren jetzt.** Die Azure-Oberfläche
+  zeigt einen **Projekt**-Endpunkt zum Kopieren an
+  (`…/api/projects/<name>`) — genau den trägt jeder ein, er steht ja da. Daran
+  gehängt, antwortete Azure auf den klassischen Deployment-Pfad mit **400**: der
+  gehört an die Ressource, nicht ans Projekt. Der Projektpfad wird jetzt
+  abgeschnitten, statt den Nutzer raten zu lassen.
+- Am laufenden Dienst nachgemessen: Projektpfad 400, Ressourcen-Wurzel 200.
+  Klassische `*.openai.azure.com`-Endpunkte und die `…/openai/v1`-Oberfläche
+  bleiben unverändert.
+
+---
+
 ## [1.208.1] - 2026-08-15
 
 ### Geändert

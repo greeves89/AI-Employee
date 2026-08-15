@@ -179,7 +179,12 @@ class OpenAIProvider(BaseLLMProvider):
             # This surface serves deployments via /chat/completions — the
             # per-deployment /responses route is not exposed, so always
             # use chat completions (GPT-5 reasoning params handled below).
-            root = ep.split("/openai")[0].rstrip("/")
+            # Die Ressourcen-Wurzel gewinnen. Azure AI Foundry zeigt in der
+            # Oberflaeche einen PROJEKT-Endpunkt zum Kopieren an
+            # (…/api/projects/<name>), und genau den traegt jeder ein. Haengt man
+            # daran /openai/deployments/…, antwortet der Dienst mit 400. Der
+            # Deployment-Pfad gehoert an die Ressource, nicht ans Projekt.
+            root = ep.split("/api/projects")[0].split("/openai")[0].rstrip("/")
             url = f"{root}/openai/deployments/{self.model_name}/chat/completions?api-version={self._azure_version()}"
             return url, "chat"
 
