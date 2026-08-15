@@ -1021,6 +1021,33 @@ class AgentManager:
                     harness, "eigenem" if source == creds.SOURCE_PERSONAL else "Team-")
         return creds.env_for(harness, secret)
 
+    async def _warn_model_substituted(self, acc, gewuenscht: str, ersatz: str) -> None:
+        """Den Besitzer darauf hinweisen, dass sein Agent auf einem ANDEREN
+        Modell laeuft als ausgewaehlt.
+
+        Best effort: eine fehlgeschlagene Meldung darf das Anlegen eines
+        Agenten nicht verhindern — aber schweigen darf sie nicht.
+        """
+        try:
+            from app.models.notification import Notification
+
+            self.db.add(Notification(
+                agent_id="system",
+                type="warning",
+                title="Agent laeuft auf einem anderen Modell",
+                message=(
+                    f"Im Zugang '{acc.name}' ist das Modell '{gewuenscht}' nicht "
+                    f"hinterlegt. Der Agent laeuft stattdessen auf '{ersatz}'. "
+                    f"Trage '{gewuenscht}' im Zugang nach oder waehle ein "
+                    f"freigegebenes Modell."
+                )[:2000],
+                priority="high",
+                action_url="/admin",
+            ))
+            await self.db.commit()
+        except Exception:  # noqa: BLE001
+            logger.exception("[AI-Konto] Hinweis auf Modellwechsel fehlgeschlagen")
+
     async def _effective_llm_config(
         self, ai_account_id: int | None, inline_llm_config: dict | None,
         agent_model: str | None = None,
@@ -1048,7 +1075,30 @@ class AgentManager:
                         entry = m
                         break
                 if entry is None and models:
+                    # Der Agent verlangt ein Modell, das dieses Konto nicht
+                    # fuehrt. Bisher wurde stillschweigend der ERSTE Eintrag
+                    # genommen — der Agent lief dann auf einem anderen Modell,
+                    # ohne dass irgendwo etwas davon stand.
+                    #
+                    # Beim Nutzer am 2026-08-15 genau so passiert: ausgewaehlt
+                    # war gpt-5.6-sol, gelaufen ist gpt-5.3-codex. In einer
+                    # Anlage, in der der Administrator Modelle FREIGIBT, ist das
+                    # der gefaehrlichste Fehler ueberhaupt — man glaubt, das
+                    # freigegebene Modell zu benutzen.
+                    #
+                    # Der Rueckfall bleibt (ein laufender Agent soll nicht wegen
+                    # einer Konto-Aenderung stehenbleiben), aber er ist ab jetzt
+                    # laut: im Protokoll UND als Meldung an den Besitzer.
                     entry = models[0]
+                    if agent_model:
+                        ersatz = entry.get("name") if isinstance(entry, dict) else entry
+                        logger.warning(
+                            "[AI-Konto %s] Modell %r nicht im Konto — es laeuft %r",
+                            ai_account_id, agent_model, ersatz,
+                        )
+                        await self._warn_model_substituted(
+                            acc, agent_model, str(ersatz or "?")
+                        )
                 if isinstance(entry, dict):
                     mname = entry.get("name", "") or ""
                     prov = entry.get("provider_type") or acc.provider_type

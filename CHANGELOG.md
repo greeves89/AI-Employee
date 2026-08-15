@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.210.0] - 2026-08-15
+
+### Geändert
+- **Ein Agent bekommt sein Modell jetzt aus genau zwei Quellen** — einem vom
+  Administrator freigegebenen KI-Konto (Azure, AWS, Google, OpenAI) oder dem
+  eigenen Claude-/Codex-Abo des Nutzers. Beide Wege gab es schon; neu ist, dass
+  es keinen dritten mehr gibt.
+- **Zugangsdaten lassen sich nicht mehr direkt am Agenten eintippen** (außer als
+  Administrator, für Sonderfälle und zum Erproben eines neuen Anbieters). So ein
+  Zugang gehörte niemandem, tauchte in keiner Übersicht auf, ließ sich nicht
+  entziehen — und war beim nächsten Neuerstellen spurlos weg, weil er nur in den
+  Umgebungsvariablen des Containers stand. Genau das ist heute passiert.
+- Die Fehlermeldung nennt **beide** Wege statt nur zu sagen, was fehlt.
+
+### Behoben
+- **Kein stiller Modellwechsel mehr.** Führt das Konto das gewählte Modell nicht,
+  nahm der Code kommentarlos den ersten Eintrag: ausgewählt war `gpt-5.6-sol`,
+  gelaufen ist `gpt-5.3-codex` — ohne einen einzigen Hinweis. In einer Anlage, in
+  der der Administrator Modelle **freigibt**, ist das der gefährlichste Fehler
+  überhaupt, weil man glaubt, das freigegebene Modell zu benutzen.
+- Der Rückfall bleibt (ein laufender Agent soll nicht stehenbleiben, weil jemand
+  ein Modell aus dem Konto genommen hat), aber er ist jetzt **laut**: im Protokoll
+  und als Meldung an den Besitzer, mit dem Hinweis, wie er es richtigstellt.
+
+---
+
 ## [1.209.0] - 2026-08-15
 
 ### Behoben

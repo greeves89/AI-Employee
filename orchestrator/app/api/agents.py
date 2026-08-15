@@ -631,12 +631,38 @@ async def create_agent(
     try:
         account_provider_type = None
 
-        # Validate: custom_llm mode requires an inline llm_config OR an AI account
-        if data.mode == "custom_llm" and not data.llm_config and not data.ai_account_id:
-            raise HTTPException(
-                status_code=422,
-                detail="custom_llm mode requires either llm_config or ai_account_id",
-            )
+        # Ein Agent bekommt sein Modell aus GENAU ZWEI Quellen: einem vom
+        # Administrator freigegebenen KI-Konto, oder dem eigenen Abo des Nutzers
+        # (Claude/Codex, siehe /me/ai-credentials). Beides ist verwaltet,
+        # widerrufbar und ueberlebt das Neuerstellen eines Agenten.
+        #
+        # Der dritte Weg — Endpunkt und Schluessel direkt am Agenten eintippen —
+        # ist genau das, was eine einheitliche Nutzung verhindert: der Zugang
+        # gehoert dann niemandem, taucht in keiner Uebersicht auf, laesst sich
+        # nicht entziehen, und beim naechsten Neuerstellen ist er weg (die
+        # Zugangsdaten stehen nur in den Umgebungsvariablen des Containers).
+        # Genau das ist am 2026-08-15 passiert.
+        #
+        # Administratoren duerfen ihn weiterhin gehen — fuer Sonderfaelle und
+        # zum Erproben eines neuen Anbieters, bevor daraus ein Konto wird.
+        if data.mode == "custom_llm" and not data.ai_account_id:
+            from app.models.user import UserRole as _Rolle
+
+            _ist_admin = getattr(user, "role", None) == _Rolle.ADMIN
+            if not data.llm_config:
+                raise HTTPException(
+                    status_code=422,
+                    detail=("Kein Modell zugewiesen. Waehle ein freigegebenes "
+                            "KI-Konto — oder verbinde dein eigenes Claude-/"
+                            "Codex-Abo unter Einstellungen."),
+                )
+            if not _ist_admin:
+                raise HTTPException(
+                    status_code=403,
+                    detail=("Zugangsdaten koennen nicht direkt am Agenten "
+                            "hinterlegt werden. Waehle ein freigegebenes "
+                            "KI-Konto oder verbinde dein eigenes Abo."),
+                )
 
         # An AI account drives the harness: Anthropic -> Claude Code,
         # OpenAI -> Codex CLI, local/other APIs -> custom harness.
