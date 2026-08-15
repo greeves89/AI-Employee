@@ -33,6 +33,7 @@ when on, none of this has any observable effect until those follow-ups land.
 
 import asyncio
 import json
+import time
 import logging
 
 from app.services.redis_service import RedisService
@@ -44,6 +45,14 @@ _AGENTS_LOGS_ALL_CHANNEL = "agents:logs:all"
 # blip). Short enough that a real incident isn't missed for long, long enough
 # not to hot-loop against a Redis that is still down.
 _RECONNECT_DELAY_SECONDS = 2
+
+#: Groesse, ab der ein Ereignis fuer die Pruefung abgeschnitten wird. Ein
+#: einzelnes Dateilesen kann Megabyte gross sein; ungebremst wuerde es alle
+#: folgenden Ereignisse hinter sich aufstauen.
+_MAX_SCAN_CHARS = 20_000
+
+#: Wie lange derselbe Vorfall desselben Agenten nicht erneut ausgeloest wird.
+_VORFALL_SPERRE_SEKUNDEN = 60.0
 
 
 class SentinelVerdict:
@@ -72,9 +81,14 @@ class SentinelService:
     harmful action needs to be caught as it happens, not up to 30s later.
     """
 
-    def __init__(self, redis: RedisService):
+    def __init__(self, redis: RedisService, docker=None):
         self.redis = redis
+        # Ohne Docker-Dienst kann der Sentinel nichts stoppen. Optional, damit
+        # Tests ihn weglassen koennen; im Betrieb reicht main.py ihn durch.
+        self.docker = docker
         self._running = False
+        # (agent_id, grund) -> Zeitpunkt des letzten Ausloesens, gegen Sturmfeuer.
+        self._letzter_vorfall: dict[tuple[str, str], float] = {}
         # The Sentinel-exclusive credential (#590 scope point 3, dependencies.py
         # require_sentinel/get_sentinel_token). Held here so _stop_agent can present
         # it once it is wired to a real privileged call (#590 scope point 4) — not
@@ -155,43 +169,184 @@ class SentinelService:
         if verdict is None or not verdict.triggered:
             return
         reason = verdict.reason or "sentinel_triggered"
+        if self._bereits_gemeldet(agent_id, reason):
+            logger.info("[Sentinel] %s/%s erneut erkannt — Sperre laeuft noch", agent_id, reason)
+            return
         await asyncio.gather(
             self._stop_agent(agent_id, reason),
             self._notify(agent_id, reason, verdict.excerpt),
             return_exceptions=True,
         )
 
-    async def _scan(self, agent_id: str, event: dict) -> SentinelVerdict | None:
-        """Hook point for detection logic. Skeleton: no rules yet, never triggers.
+    def _text_of(self, event: dict) -> str:
+        """Den pruefbaren Text aus einem Ereignis holen — begrenzt.
 
-        Real implementation lands in #592 (DLP-style secret/PII/policy checks,
-        building on #525/#564/#575) — this signature is the contract #592 fills in.
+        ``data`` ist mal ein String, mal ein Verschachtelungsknaeuel (Werkzeug-
+        Eingaben, Ergebnisse). Ein Ereignis kann sehr gross werden; ohne Grenze
+        wuerde ein einzelnes Dateilesen den Sentinel minutenlang beschaeftigen und
+        damit alle folgenden Ereignisse verzoegern.
         """
-        return None
+        data = event.get("data")
+        if isinstance(data, str):
+            text = data
+        elif isinstance(data, dict):
+            try:
+                text = json.dumps(data, ensure_ascii=False)
+            except (TypeError, ValueError):
+                text = str(data)
+        else:
+            text = str(data or "")
+        return text[:_MAX_SCAN_CHARS]
+
+    async def _scan(self, agent_id: str, event: dict) -> SentinelVerdict | None:
+        """Die Erkennung (#592) — deterministisch, ohne zusaetzlichen Modellaufruf.
+
+        **Warum kein Reviewer-Modell hier:** dieser Pfad sieht JEDES Ereignis
+        JEDES Agenten. Ein Modellaufruf pro Ereignis waere im Betrieb weder
+        bezahlbar noch schnell genug, um eine schaedliche Handlung waehrend sie
+        geschieht zu erwischen — und genau das ist der Zweck (#588). Die teure
+        Inhaltspruefung („ist die Antwort korrekt") gehoert in die vorhandene
+        Egress-Pipeline, wo sie EINMAL pro ausgehender Nachricht laeuft.
+
+        Hier stehen deshalb die zwei Signale, die scharf, billig und
+        eindeutig sind — beide aus vorhandenen, bereits erprobten Bausteinen:
+
+        1. **Geheimnis in der Ausgabe** (``core.dlp``). Der Egress-Filter sieht
+           nur, was NACH DRAUSSEN geht; der Sentinel sieht auch Werkzeugaufrufe
+           und -ergebnisse. Ein Zugangsschluessel, der dort auftaucht, ist ein
+           Vorfall, unabhaengig davon, ob er je verschickt wird.
+        2. **Prompt-Injektion** (``security.agent_guard``). Fremde Inhalte, die
+           dem Agenten Anweisungen unterschieben wollen — das ist der Fall, den
+           ein Agent per Selbstpruefung nicht abfangen kann, weil die Injektion
+           genau diese Selbstpruefung mit angreift.
+
+        Fail-open ist Pflicht: ein Fehler in der Erkennung darf nie einen Agenten
+        anhalten. Im Zweifel laufen lassen und nichts melden.
+        """
+        try:
+            text = self._text_of(event)
+            if not text.strip():
+                return None
+
+            # Eigene Meldungen nicht pruefen — sonst haelt der Sentinel sich
+            # selbst fuer einen Vorfall und dreht sich im Kreis.
+            if event.get("type") == "system" and "[Sentinel]" in text:
+                return None
+
+            from app.core import dlp
+            from app.security.agent_guard import detect_injection
+
+            verdaechtig, muster = detect_injection(text)
+            if verdaechtig:
+                return SentinelVerdict(
+                    True, "prompt_injection",
+                    # Das Muster selbst, nicht der umgebende Text: der koennte
+                    # beliebige Inhalte enthalten.
+                    excerpt=muster[:200],
+                )
+
+            treffer = dlp.scan_matches(text)
+            if treffer.get("secret"):
+                return SentinelVerdict(
+                    True, "secret_in_output",
+                    # NIEMALS der Klartext. `mask_sample` laesst nur Anfang und
+                    # Ende stehen — genug zum Wiedererkennen, zu wenig zum
+                    # Benutzen. Ein Vorfallbericht, der das Geheimnis erneut
+                    # ausschreibt, ist selbst ein Leck.
+                    excerpt=", ".join(dlp.mask_sample(m) for m in treffer["secret"][:3]),
+                )
+            return None
+        except Exception:  # noqa: BLE001
+            logger.exception("[Sentinel] Fehler in der Erkennung — Ereignis wird durchgelassen")
+            return None
+
+    def _bereits_gemeldet(self, agent_id: str, reason: str) -> bool:
+        """Denselben Agenten nicht im Sekundentakt erneut anhalten.
+
+        Ein Agent, der ein Geheimnis ausgibt, tut das oft in mehreren Ereignissen
+        kurz hintereinander. Ohne diese Sperre entstuenden daraus ein Dutzend
+        Stopp-Versuche und ein Dutzend Meldungen fuer denselben Vorfall.
+        """
+        schluessel = (agent_id, reason)
+        jetzt = time.monotonic()
+        letzter = self._letzter_vorfall.get(schluessel, 0.0)
+        if jetzt - letzter < _VORFALL_SPERRE_SEKUNDEN:
+            return True
+        self._letzter_vorfall[schluessel] = jetzt
+        return False
 
     async def _stop_agent(self, agent_id: str, reason: str) -> None:
-        """Hook point for the privileged stop path.
+        """Den Agenten wirklich anhalten — in-process, wie der Zeitplaner es tut.
 
-        The Sentinel-exclusive credential (`self._sentinel_token`, see __init__)
-        exists now, but the actual call site it authorises is still undecided —
-        AgentManager.stop_agent() can be reached either as a direct in-process call
-        (like scheduler_service.py already does today, no HTTP/credential involved)
-        or by presenting `self._sentinel_token` to a dedicated endpoint alongside
-        `require_auth` on `/api/v1/agents/{id}/stop`. That call-path decision plus
-        the audit-log write land together in #590 scope point 4. Logs only until then.
+        **Warum kein HTTP mit dem Sentinel-Token:** der Dienst laeuft im selben
+        Prozess wie der Orchestrator. Ein Aufruf ueber das Netz an die eigene
+        Anwendung waere ein Umweg mit zwei zusaetzlichen Fehlerquellen (Netz,
+        Serialisierung) und einer Sperrgefahr, wenn der Ereignisstrom gerade den
+        einzigen Arbeiter belegt. ``scheduler_service`` haelt Agenten seit jeher
+        direkt an; derselbe Weg, dieselbe Erwartung. Das eigene Zugangsschema
+        bleibt trotzdem noetig — fuer den Fall, dass der Sentinel spaeter in einen
+        eigenen Prozess wandert (#588).
+
+        Faellt das Anhalten aus, wird das TROTZDEM vermerkt: ein
+        Sicherheitsvorfall ohne Spur ist schlimmer als einer ohne Reaktion.
         """
-        logger.warning(
-            "[Sentinel] stop_agent hook called for %s (reason=%s) — not yet wired, see #590 scope point 4",
-            agent_id, reason,
-        )
+        from app.db.session import async_session_factory
+        from app.models.audit_log import AuditEventType, AuditLog
+
+        gestoppt = False
+        fehler: str | None = None
+        try:
+            if self.docker is None:
+                raise RuntimeError("kein Docker-Dienst — Sentinel kann nicht stoppen")
+            from app.core.agent_manager import AgentManager
+
+            async with async_session_factory() as db:
+                await AgentManager(db, self.docker, self.redis).stop_agent(agent_id)
+            gestoppt = True
+            logger.warning("[Sentinel] Agent %s angehalten (Grund: %s)", agent_id, reason)
+        except Exception as e:  # noqa: BLE001 — der Vermerk unten ist wichtiger
+            fehler = str(e)[:300]
+            logger.error("[Sentinel] Agent %s konnte NICHT angehalten werden: %s", agent_id, fehler)
+
+        try:
+            async with async_session_factory() as db:
+                db.add(AuditLog(
+                    agent_id=agent_id,
+                    event_type=AuditEventType.AGENT_STOPPED.value,
+                    outcome="success" if gestoppt else "failure",
+                    meta={"by": "sentinel", "reason": reason, **({"error": fehler} if fehler else {})},
+                ))
+                await db.commit()
+        except Exception:  # noqa: BLE001
+            logger.exception("[Sentinel] Vermerk im Pruefprotokoll fehlgeschlagen")
 
     async def _notify(self, agent_id: str, reason: str, excerpt: str | None) -> None:
-        """Hook point for human escalation.
+        """Den Menschen erreichen — und zwar so, dass er es nicht uebersieht.
 
-        Not wired to notify_user/send_telegram or the audit-log table yet
-        (#591/#592). Logs only until then.
+        Der Auszug wird auf 500 Zeichen begrenzt und ungefiltert uebernommen: er
+        stammt aus einer Agentenausgabe und kann alles enthalten, was diese
+        enthaelt. Er landet in einer Benachrichtigung, die nur der Betreiber
+        sieht — nicht in einem Kanal nach draussen.
         """
-        logger.warning(
-            "[Sentinel] notify hook called for %s (reason=%s, excerpt=%r)",
-            agent_id, reason, excerpt,
-        )
+        from app.db.session import async_session_factory
+        from app.models.notification import Notification
+
+        try:
+            async with async_session_factory() as db:
+                db.add(Notification(
+                    agent_id=agent_id,
+                    type="error",
+                    title="Sentinel hat einen Agenten angehalten",
+                    message=(
+                        f"Grund: {reason}."
+                        + (f" Auszug: {excerpt[:500]}" if excerpt else "")
+                        + " Der Agent wurde angehalten und laeuft nicht weiter, "
+                          "bis du ihn wieder startest."
+                    )[:2000],
+                    priority="urgent",
+                    action_url=f"/agents/{agent_id}",
+                ))
+                await db.commit()
+            logger.warning("[Sentinel] Betreiber benachrichtigt (%s, %s)", agent_id, reason)
+        except Exception:  # noqa: BLE001 — eine Meldung darf den Stopp nie verhindern
+            logger.exception("[Sentinel] Benachrichtigung fehlgeschlagen")

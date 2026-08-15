@@ -3,7 +3,8 @@
 Pins the two things a future #591/#592 implementation must not break:
   - `_handle_event` dispatches `_stop_agent` + `_notify` in parallel, only when
     `_scan` returns a triggered verdict.
-  - the skeleton's own `_scan` never triggers (no detection rules yet), and
+  - a harmless event passes `_scan` untouched (die Regeln selbst: siehe
+    test_sentinel_detection.py), und
     malformed pubsub payloads are skipped instead of crashing the loop.
 No live Redis needed — a minimal fake stands in for RedisService.
 """
@@ -22,7 +23,10 @@ def _service() -> SentinelService:
 
 
 class TestSentinelServiceSkeleton(unittest.IsolatedAsyncioTestCase):
-    async def test_scan_never_triggers_by_default(self):
+    async def test_scan_ignores_a_harmless_event(self):
+        # Frueher hiess dieser Test "never triggers by default" — das galt, solange
+        # _scan ein Stummel war. Seit #592 gibt es Regeln; der Test prueft jetzt,
+        # dass ein unverfaengliches Ereignis weiterhin durchgeht.
         service = _service()
         verdict = await service._scan("agent-1", {"agent_id": "agent-1", "type": "created"})
         self.assertIsNone(verdict)

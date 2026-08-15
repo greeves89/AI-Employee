@@ -72,5 +72,35 @@ class TheInstructionsReachEveryAgentTests(unittest.TestCase):
         self.assertIn("write_file_in_container", src)
 
 
+class TheReleaseDisciplineIsInTheInstructionsTests(unittest.TestCase):
+    """Am 14.08.2026 liefen sechs Pull Requests mit ueber 1000 Zeilen in die
+    Hauptlinie — ohne Versionssprung, ohne CHANGELOG-Eintrag. Nicht aus
+    Nachlaessigkeit: in der Anleitung stand dazu schlicht nichts. Dieselbe
+    Mechanik wie bei den Kundennamen — was nicht dasteht, passiert nicht.
+    """
+
+    def test_it_demands_a_version_bump(self):
+        self.assertIn("`VERSION` erhoehen", DEFAULT_CLAUDE_MD)
+
+    def test_it_names_the_second_place_that_must_match(self):
+        """Version und Dockerfile-Label duerfen nie auseinanderlaufen."""
+        self.assertIn("ai-employee.version", DEFAULT_CLAUDE_MD)
+
+    def test_it_demands_a_changelog_entry(self):
+        self.assertIn("CHANGELOG.md", DEFAULT_CLAUDE_MD)
+
+    def test_the_entry_is_for_the_user_not_a_file_list(self):
+        """Ein CHANGELOG, das Dateinamen aufzaehlt, hilft keinem Betreiber."""
+        # Der Prompt ist umbrochen — Leerzeichen zusammenfassen, sonst prueft
+        # der Test die Zeilenlaenge statt der Aussage.
+        flach = " ".join(DEFAULT_CLAUDE_MD.split())
+        self.assertIn("was sich fuer den NUTZER aendert", flach)
+        self.assertIn("nicht, welche Dateien du angefasst hast", flach)
+
+    def test_it_resolves_the_doubt_case(self):
+        """Ohne Ausweg bei Unsicherheit wird die Regel im Zweifel uebersprungen."""
+        self.assertIn("nimm die kleinere", DEFAULT_CLAUDE_MD)
+
+
 if __name__ == "__main__":
     unittest.main()

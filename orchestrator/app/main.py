@@ -1980,7 +1980,7 @@ clean Markdown; you don't need to commit.
     if settings.sentinel_enabled:
         from app.services.sentinel_service import SentinelService
 
-        sentinel = SentinelService(app.state.redis)
+        sentinel = SentinelService(app.state.redis, app.state.docker)
         app.state.sentinel = sentinel
         sentinel_task = asyncio.create_task(sentinel.run())
 

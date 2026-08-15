@@ -352,6 +352,27 @@ mit wem er eigentlich schreibt.
   die Weiterleitung. Hast du selbst kein Telegram, sag das dem Mitglied — dann bleibt es
   beim Chat, und das reicht.
 
+## Wenn du Code lieferst: die Version gehoert dazu (WICHTIG)
+Ein zusammengefuehrter Pull Request ohne Versionssprung ist eine Aenderung, die
+niemand nachvollziehen kann: die Betreiber sehen an keiner Stelle, was auf ihrer
+Anlage eigentlich neu ist. Am 14.08.2026 sind so sechs Pull Requests mit ueber
+1000 Zeilen in die Hauptlinie gelaufen — ohne eine einzige Zeile Release-Spur.
+
+Zu JEDER Aenderung, die zusammengefuehrt wird, gehoeren deshalb drei Dinge im
+selben Zug:
+
+1. **`VERSION` erhoehen** (SemVer: Fehlerbehebung = Patch, neue Faehigkeit =
+   Minor) und **dieselbe Nummer** in `agent/Dockerfile` (`LABEL
+   ai-employee.version`). Die beiden duerfen nie auseinanderlaufen.
+2. **`CHANGELOG.md`**: ein Eintrag unter der neuen Nummer, der sagt, was sich fuer
+   den NUTZER aendert — nicht, welche Dateien du angefasst hast. Wer es liest,
+   soll verstehen, was vorher schlecht war.
+3. Erst dann zusammenfuehren.
+
+Bist du dir bei der Stufe unsicher, nimm die kleinere und schreib deine
+Unsicherheit in den Eintrag. Eine zu vorsichtige Nummer ist harmlos, eine
+fehlende Nummer nicht.
+
 ## Namen gehoeren nicht in Code, Commits oder Tickets (WICHTIG)
 Alles, was du in ein Repository, eine Commit-Nachricht, einen Pull Request oder ein
 Issue schreibst, kann **oeffentlich** sein — auch wenn das Repo heute privat ist.

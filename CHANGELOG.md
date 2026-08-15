@@ -5,6 +5,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.205.0] - 2026-08-15
+
+### Hinzugefügt
+- **Der Sentinel tut jetzt etwas** (Epic #588, Teile #590 Punkt 4 und #592).
+  Bisher war er ein Gerüst: die Erkennung gab immer „nichts gefunden" zurück,
+  Anhalten und Melden waren Attrappen, die nur protokollierten. Man konnte ihn
+  einschalten, und er tat nachweislich nichts.
+- **Erkennung — bewusst schmal und deterministisch, ohne Modellaufruf.** Dieser
+  Pfad sieht jedes Ereignis jedes Agenten; ein Modellaufruf pro Ereignis wäre
+  weder bezahlbar noch schnell genug für den Zweck, eine schädliche Handlung
+  *während* sie geschieht zu erwischen. Zwei Signale, beide aus vorhandenen
+  Bausteinen:
+  - **Geheimnis in der Ausgabe.** Der Egress-Filter sieht nur, was nach draußen
+    geht — der Sentinel sieht auch Werkzeugaufrufe und -ergebnisse. Ein
+    Zugangsschlüssel dort ist ein Vorfall, egal ob er je verschickt wird.
+  - **Prompt-Injektion.** Genau der Fall, den ein Agent per Selbstprüfung nicht
+    abfangen kann, weil die Injektion diese Selbstprüfung mit angreift.
+- **Anhalten und Melden sind verdrahtet.** Der Agent wird wirklich angehalten
+  (in-process, wie der Zeitplaner es tut), es entsteht ein Eintrag im
+  Prüfprotokoll und eine dringende Benachrichtigung mit Sprung zum Agenten.
+- **Der Auszug im Bericht enthält nie den Klartext eines Geheimnisses** — nur
+  Anfang und Ende. Ein Vorfallbericht, der das Geheimnis erneut ausschreibt, wäre
+  selbst ein Leck.
+- **Schutz gegen Sturmfeuer:** derselbe Vorfall desselben Agenten löst innerhalb
+  einer Minute nur einmal aus. Ohne das würden aus einem Leck ein Dutzend Stopps
+  und ein Dutzend Meldungen.
+- **Fail-open bleibt Pflicht:** ein Fehler in der Erkennung lässt das Ereignis
+  durch und hält niemanden an. Scheitert das Anhalten, entsteht der Protokoll-
+  Eintrag trotzdem — ein Vorfall ohne Spur ist schlimmer als einer ohne Reaktion.
+- **Beide Schalter bleiben aus.** Der Dienst kann jetzt Agenten anhalten; das ist
+  eine Entscheidung des Betreibers, nicht eine Nebenwirkung eines Updates.
+
+### Geändert
+- **Die Agenten-Anleitung verlangt jetzt Release-Disziplin.** Am 14.08. liefen
+  sechs Pull Requests mit über 1000 Zeilen in die Hauptlinie — ohne
+  Versionssprung, ohne CHANGELOG-Eintrag. Nicht aus Nachlässigkeit: in der
+  Anleitung stand dazu nichts. Jetzt steht dort, dass `VERSION`, das
+  Dockerfile-Label und ein Eintrag im CHANGELOG zu jeder Änderung gehören — und
+  dass der Eintrag beschreibt, was sich für den **Nutzer** ändert, nicht welche
+  Dateien angefasst wurden.
+
+---
+
 ## [1.204.0] - 2026-08-15
 
 ### Behoben
