@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.206.2] - 2026-08-15
+
+### Behoben
+- **Der Sentinel meldete „Agent wurde angehalten", auch wenn das Anhalten
+  fehlschlug.** Im Ende-zu-Ende-Lauf aufgefallen: der Betreiber hätte sich in
+  Sicherheit gewiegt, während der Agent weiterlief — die schlimmste Sorte
+  Falschmeldung. Ursache ist die Bauart: Stopp und Meldung laufen **absichtlich**
+  gleichzeitig, damit ein hängender Stopp den Alarm nicht verzögert. Die Meldung
+  kann den Ausgang also gar nicht kennen und behauptet ihn jetzt auch nicht mehr.
+- **Scheitert das Anhalten, kommt eine zweite, dringendere Meldung:** „Der Agent
+  läuft weiter, bitte von Hand stoppen." Erkannt-aber-nicht-gestoppt ist der
+  gefährlichere Fall und braucht mehr als eine Zeile im Prüfprotokoll.
+
+---
+
 ## [1.206.1] - 2026-08-15
 
 ### Behoben

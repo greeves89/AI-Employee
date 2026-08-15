@@ -170,3 +170,50 @@ class TheStopPathTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheNotificationTellsTheTruthTests(unittest.IsolatedAsyncioTestCase):
+    """Gefunden im Ende-zu-Ende-Lauf gegen den Pi (15.08.2026): der Stopp
+    scheiterte, und die Meldung sagte trotzdem „Der Agent wurde angehalten und
+    laeuft nicht weiter". Der Betreiber haette sich in Sicherheit gewiegt,
+    waehrend der Agent weiterlief — die schlimmste Sorte Falschmeldung.
+
+    Ursache ist die Bauart: Stopp und Meldung laufen mit ``asyncio.gather``
+    ABSICHTLICH gleichzeitig, damit ein haengender Stopp den Alarm nicht
+    verzoegert. Die Meldung kann den Ausgang also gar nicht kennen — sie darf ihn
+    dann auch nicht behaupten.
+    """
+
+    async def test_the_parallel_alert_does_not_claim_success(self):
+        s = _service()
+        erfasst = {}
+
+        async def _merk(agent_id, reason, excerpt):
+            erfasst["text"] = f"{reason} {excerpt}"
+
+        s._notify = _merk
+        await s._notify("a1", "secret_in_output", "sk***qr")
+        # Der Text der echten Meldung steht in der Quelle — geprueft wird, dass
+        # die Behauptung „wurde angehalten" dort nicht mehr vorkommt.
+        import inspect
+
+        src = inspect.getsource(SentinelService._notify)
+        self.assertNotIn("wurde angehalten", src)
+        self.assertIn("wird angehalten", src)
+
+    async def test_a_failed_stop_raises_a_second_louder_alarm(self):
+        """Erkannt, aber nicht gestoppt, ist der gefaehrlichere Fall — er braucht
+        eine eigene Meldung, nicht nur eine Zeile im Protokoll."""
+        import inspect
+
+        src = inspect.getsource(SentinelService._stop_agent)
+        self.assertIn("if not gestoppt:", src)
+        self.assertIn("NICHT anhalten", src)
+        self.assertIn("Der Agent laeuft weiter", src)
+
+    async def test_the_second_alarm_is_urgent(self):
+        import inspect
+
+        src = inspect.getsource(SentinelService._stop_agent)
+        block = src.split("if not gestoppt:", 1)[1]
+        self.assertIn('priority="urgent"', block)

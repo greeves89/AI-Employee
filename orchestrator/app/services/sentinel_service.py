@@ -355,6 +355,30 @@ class SentinelService:
         except Exception:  # noqa: BLE001
             logger.exception("[Sentinel] Vermerk im Pruefprotokoll fehlgeschlagen")
 
+        if not gestoppt:
+            # Der gefaehrlichere Fall: erkannt, aber nicht gestoppt. Ohne diese
+            # zweite Meldung stuende in der Oberflaeche nur „Vorfall erkannt",
+            # und der Betreiber wuerde annehmen, die Sache sei erledigt.
+            try:
+                from app.models.notification import Notification
+
+                async with async_session_factory() as db:
+                    db.add(Notification(
+                        agent_id=agent_id,
+                        type="error",
+                        title="Sentinel konnte den Agenten NICHT anhalten",
+                        message=(
+                            f"Vorfall: {reason}. Der Agent laeuft weiter. "
+                            f"Fehler beim Anhalten: {fehler or 'unbekannt'}. "
+                            "Bitte von Hand stoppen."
+                        )[:2000],
+                        priority="urgent",
+                        action_url=f"/agents/{agent_id}",
+                    ))
+                    await db.commit()
+            except Exception:  # noqa: BLE001
+                logger.exception("[Sentinel] Zweite Meldung fehlgeschlagen")
+
     async def _notify(self, agent_id: str, reason: str, excerpt: str | None) -> None:
         """Den Menschen erreichen — und zwar so, dass er es nicht uebersieht.
 
@@ -371,12 +395,13 @@ class SentinelService:
                 db.add(Notification(
                     agent_id=agent_id,
                     type="error",
-                    title="Sentinel hat einen Agenten angehalten",
+                    title="Sentinel: Vorfall erkannt",
                     message=(
                         f"Grund: {reason}."
                         + (f" Auszug: {excerpt[:500]}" if excerpt else "")
-                        + " Der Agent wurde angehalten und laeuft nicht weiter, "
-                          "bis du ihn wieder startest."
+                        + " Der Agent wird angehalten. Ob das gelungen ist, steht "
+                          "im Pruefprotokoll — scheitert es, kommt eine zweite, "
+                          "dringendere Meldung."
                     )[:2000],
                     priority="urgent",
                     action_url=f"/agents/{agent_id}",
