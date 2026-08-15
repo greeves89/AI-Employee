@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Shield } from "lucide-react";
+import { LogOut, Settings, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout, useAuthStore } from "@/lib/auth";
 import { UserAvatar } from "@/components/ui/user-avatar";
@@ -64,6 +64,17 @@ export function UserMenu() {
             </span>
           </div>
           <div className="py-1">
+            {/* Einstellungen gehoeren an den Nutzer, nicht in die Seitenleiste:
+                dort standen sie bis 2026-08-15 gar nicht, weshalb niemand die
+                Seite je gefunden hat — samt der Stelle, an der man sein eigenes
+                Claude-/Codex-Abo verbindet. */}
+            <button
+              onClick={() => { setIsOpen(false); router.push("/settings"); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Einstellungen
+            </button>
             <button
               onClick={handleLogout}
               className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-accent/50 transition-colors"

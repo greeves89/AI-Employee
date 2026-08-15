@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.211.0] - 2026-08-15
+
+### Hinzugefügt
+- **Eigenes Claude-/Codex-Abo lässt sich jetzt verbinden** — Nutzermenü →
+  Einstellungen → **Meine KI-Zugänge**. Verbinden, ersetzen, trennen; sichtbar
+  ist nur, *dass* etwas hinterlegt ist, wann es zuletzt benutzt wurde und ob es
+  funktioniert hat. Das Geheimnis gibt die Schnittstelle bewusst nie zurück.
+- **Einstellungen sind über das Nutzermenü erreichbar.** Die Seite existierte,
+  stand aber in keiner Menügruppe — sie war schlicht nicht auffindbar.
+
+### Behoben
+- **Der zweite der beiden Wege war in der Praxis nicht begehbar.** Die
+  Schnittstelle `/me/ai-credentials` gibt es seit v1.185.0 und wurde im gesamten
+  Frontend **kein einziges Mal** aufgerufen. Kein Nutzer konnte sein Abo
+  hinterlegen — während die Agenten-Anlage seit v1.210.0 ausdrücklich darauf
+  verweist („verbinde dein eigenes Abo unter Einstellungen"). Eine Fehlermeldung,
+  die auf etwas Nichtexistierendes zeigt, ist schlimmer als gar keine.
+- Ohne eigenen Zugang steht jetzt dort, was stattdessen greift: die Firmenlizenz,
+  oder — falls keine freigegeben ist — ein KI-Konto vom Administrator.
+
+---
+
 ## [1.210.0] - 2026-08-15
 
 ### Geändert

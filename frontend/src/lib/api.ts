@@ -3984,3 +3984,30 @@ export async function updateCustomPage(id: number, body: Partial<CustomPageInput
 export async function deleteCustomPage(id: number): Promise<{ deleted: number; menu_path: string }> {
   return fetchJSON(`${getBase()}/custom-pages/${id}`, { method: "DELETE" });
 }
+
+/* ── Meine KI-Zugaenge (eigenes Claude-/Codex-Abo) ────────────────────────
+   Die Schnittstelle gibt es seit v1.185.0; bis 2026-08-15 rief sie niemand auf,
+   weil die Oberflaeche dazu fehlte. Das Geheimnis kommt bewusst NIE zurueck —
+   man sieht nur, dass etwas hinterlegt ist. */
+export async function getMyAiCredentials(): Promise<{
+  credentials: {
+    harness: string; label: string | null; last_status: string | null;
+    last_used_at: string | null; created_at: string | null;
+  }[];
+  team_license_allowed: boolean;
+}> {
+  return fetchJSON(`${getBase()}/me/ai-credentials`);
+}
+
+export async function putMyAiCredential(body: {
+  harness: string; secret: string; label: string | null;
+}): Promise<unknown> {
+  return fetchJSON(`${getBase()}/me/ai-credentials`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteMyAiCredential(harness: string): Promise<unknown> {
+  return fetchJSON(`${getBase()}/me/ai-credentials/${harness}`, { method: "DELETE" });
+}

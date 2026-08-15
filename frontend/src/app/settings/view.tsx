@@ -7,8 +7,7 @@ import {
   CheckCircle2, AlertCircle, Shield, Bot, Gauge, Coins,
   UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
   ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles, Network,
-  Plug, Mic, AlertTriangle, Moon,
-} from "lucide-react";
+  Plug, Mic, AlertTriangle, Moon, KeyRound } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
 import { TemplateManager } from "@/components/settings/template-manager";
@@ -20,6 +19,7 @@ import { SamlConfig } from "@/components/settings/saml-config";
 import { TeamsCallingConfig } from "@/components/settings/teams-calling-config";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { MyAiCredentials } from "@/components/settings/my-ai-credentials";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Settings, ModelProvider, AIAccount } from "@/lib/types";
 
@@ -211,7 +211,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   // UI state
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [secTab, setSecTab] = useState<"modelle" | "integrationen" | "voice" | "system">("modelle");
+  const [secTab, setSecTab] = useState<"modelle" | "meine" | "integrationen" | "voice" | "system">("modelle");
   const user = useAuthStore((s) => s.user);
 
   const toggleMsgraphExt = async (enabled: boolean) => {
@@ -722,6 +722,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         <div className="flex gap-1 overflow-x-auto rounded-xl border border-border/50 bg-card/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {([
             { id: "modelle" as const, label: "Modelle", icon: Cpu },
+            // Der eigene Zugang gehoert dem Nutzer, nicht der Anlage — deshalb
+            // hier und nicht in der Admin-Konsole. Sichtbar fuer JEDEN, auch
+            // ohne Adminrechte: bis 2026-08-15 gab es dafuer gar keine Seite,
+            // obwohl die Agenten-Anlage ausdruecklich darauf verweist.
+            { id: "meine" as const, label: "Meine KI-Zugänge", icon: KeyRound },
             { id: "integrationen" as const, label: "Integrationen", icon: Plug },
             { id: "voice" as const, label: "Voice", icon: Mic },
             { id: "system" as const, label: "System", icon: Shield },
@@ -1148,6 +1153,20 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         )}
 
         {/* ─── Tab: Integrationen ─── */}
+        {secTab === "meine" && (
+          <div className="space-y-6">
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <KeyRound className="h-4 w-4 text-muted-foreground/60" />
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  Meine KI-Zugänge
+                </h2>
+              </div>
+              <MyAiCredentials />
+            </section>
+          </div>
+        )}
+
         {secTab === "integrationen" && (
         <div className="space-y-6">
         {/* ─── Section 4: Notifications ─── */}
