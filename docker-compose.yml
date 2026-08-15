@@ -115,6 +115,16 @@ services:
       # Set to true only if your MCP servers live on an internal/private network
       # (e.g. docker service names). Off by default as an SSRF guard.
       MCP_ALLOW_PRIVATE_URLS: ${MCP_ALLOW_PRIVATE_URLS:-}
+      # Sentinel (Epic #588): zentrale Verhaltensueberwachung mit Stopp-Befugnis.
+      # Standard aus — eingeschaltet kann der Dienst Agenten anhalten, und das ist
+      # eine Entscheidung des Betreibers. Ohne diese beiden Zeilen war der
+      # Schalter ueber die .env gar nicht erreichbar: die Compose-Datei reicht
+      # Variablen einzeln durch, was nicht dasteht, kommt nicht im Container an.
+      SENTINEL_ENABLED: ${SENTINEL_ENABLED:-false}
+      # Eigener, minimal berechtigter Redis-Zugang je Agent statt des geteilten
+      # Admin-Zugangs (#589). Standard aus — aendert, wie JEDER Agent sich
+      # verbindet.
+      REDIS_ACL_ENABLED: ${REDIS_ACL_ENABLED:-false}
       OAUTH_GOOGLE_SCOPES: ${OAUTH_GOOGLE_SCOPES:-}
       OAUTH_MICROSOFT_SCOPES: ${OAUTH_MICROSOFT_SCOPES:-}
       OAUTH_GITHUB_SCOPES: ${OAUTH_GITHUB_SCOPES:-}

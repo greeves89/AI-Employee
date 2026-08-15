@@ -124,3 +124,31 @@ class TheWatchdogIsWiredTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheFlagsAreActuallyReachableTests(unittest.TestCase):
+    """Ein Schalter, den die Compose-Datei nicht durchreicht, existiert fuer den
+    Betreiber nicht.
+
+    Genau das war der Fall: ``sentinel_enabled`` stand in ``config.py``, aber
+    nicht in ``docker-compose.yml``. Die Datei reicht Variablen EINZELN durch —
+    was dort fehlt, kommt nie im Container an. Beim Versuch, den Sentinel auf der
+    Anlage einzuschalten, blieb er stumm aus, ohne Fehlermeldung.
+    """
+
+    import pathlib
+
+    COMPOSE = (pathlib.Path(__file__).resolve().parents[2]
+               / "docker-compose.yml").read_text()
+
+    def test_the_sentinel_flag_is_passed_through(self):
+        self.assertIn("SENTINEL_ENABLED: ${SENTINEL_ENABLED:-false}", self.COMPOSE)
+
+    def test_the_redis_acl_flag_is_passed_through(self):
+        self.assertIn("REDIS_ACL_ENABLED: ${REDIS_ACL_ENABLED:-false}", self.COMPOSE)
+
+    def test_both_default_to_off(self):
+        """Ein Update darf niemals im Vorbeigehen anfangen, Agenten anzuhalten."""
+        for name in ("SENTINEL_ENABLED", "REDIS_ACL_ENABLED"):
+            with self.subTest(schalter=name):
+                self.assertIn(f"${{{name}:-false}}", self.COMPOSE)

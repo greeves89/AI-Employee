@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.206.1] - 2026-08-15
+
+### Behoben
+- **Der Sentinel liess sich gar nicht einschalten.** Der Schalter stand in der
+  Konfiguration, aber nicht in `docker-compose.yml` — die Datei reicht Variablen
+  **einzeln** durch, was dort fehlt, kommt nie im Container an. Wer ihn über die
+  `.env` aktivieren wollte, bekam einen stumm ausgeschalteten Dienst, ohne
+  Fehlermeldung. Gilt genauso für den Redis-ACL-Schalter. Beide sind jetzt
+  durchgereicht und stehen weiterhin standardmäßig auf `false`.
+
+---
+
 ## [1.206.0] - 2026-08-15
 
 ### Hinzugefügt
