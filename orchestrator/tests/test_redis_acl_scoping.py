@@ -77,6 +77,24 @@ def test_build_agent_acl_setuser_args_scopes_channels_to_own_agent_and_globals()
     assert "*" not in channel_patterns
 
 
+def test_build_agent_acl_setuser_args_allows_the_connection_basics():
+    """Ohne @connection fehlt PING — und darauf stuetzen sich Verbindungsaufbau
+    und Gesundheitspruefung von redis-py. Der Agent kam ohne diese Kategorie gar
+    nicht erst hoch; gefunden vom Rauchtest gegen ein echtes Redis 7.4
+    (test_redis_acl_live_smoke.py), unsichtbar fuer reine Modultests."""
+    args = build_agent_acl_setuser_args("a1")
+    assert "+@connection" in args
+
+
+def test_the_connection_grant_comes_before_the_denials():
+    """Reihenfolge ist hier Semantik: @connection enthaelt auch CLIENT LIST, das
+    erst durch die nachfolgenden -@admin/-@dangerous wieder entzogen wird. Stuende
+    es danach, waere CLIENT LIST offen."""
+    args = build_agent_acl_setuser_args("a1")
+    assert args.index("+@connection") < args.index("-@admin")
+    assert args.index("+@connection") < args.index("-@dangerous")
+
+
 def test_build_agent_acl_setuser_args_denies_admin_and_dangerous_categories():
     args = build_agent_acl_setuser_args("abc123")
     assert "-@admin" in args

@@ -59,9 +59,21 @@ _AGENT_ACL_CHANNEL_PATTERNS = [
     "task:started",
     "task:completions",
 ]
-# Broad read/write/pubsub, explicitly minus admin/dangerous command categories
-# (FLUSHALL, FLUSHDB, CONFIG, SHUTDOWN, ACL, MONITOR, KEYS, CLIENT, DEBUG, ...).
-_AGENT_ACL_COMMAND_RULES = ["+@read", "+@write", "+@pubsub", "-@admin", "-@dangerous"]
+# Broad read/write/pubsub plus the connection basics, explicitly minus
+# admin/dangerous command categories (FLUSHALL, FLUSHDB, CONFIG, SHUTDOWN, ACL,
+# MONITOR, KEYS, CLIENT LIST, DEBUG, ...).
+#
+# ``+@connection`` kam nach dem Rauchtest gegen ein echtes Redis 7.4 dazu (#589):
+# ohne sie fehlt ``PING``, und darauf stuetzen sich der Verbindungsaufbau und die
+# periodische Gesundheitspruefung von ``redis-py`` — der Agent kam gar nicht erst
+# hoch. Die Kategorie enthaelt auch ``CLIENT LIST``; das ist unbedenklich, weil
+# die beiden folgenden Verbote sie wieder entziehen (``client|list`` steht in
+# @admin UND @dangerous, ``ping`` in keinem von beiden — am lebenden Server
+# nachgeprueft). Die REIHENFOLGE ist deshalb wesentlich: erst erlauben, dann
+# entziehen.
+_AGENT_ACL_COMMAND_RULES = [
+    "+@read", "+@write", "+@pubsub", "+@connection", "-@admin", "-@dangerous",
+]
 
 # The inter-agent inbox (message_consumer.py's send_message tool does
 # `LPUSH agent:{to_agent_id}:messages`) needs to stay reachable across ALL

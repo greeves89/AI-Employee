@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.204.0] - 2026-08-15
+
+### Behoben
+- **Die Agenten-Redis-Zugänge hätten jeden Agenten ausgesperrt.** Der Rauchtest
+  gegen ein echtes Redis 7.4 zeigte: der eingeschränkte Zugang durfte kein
+  `PING` — und darauf stützen sich Verbindungsaufbau und periodische
+  Gesundheitsprüfung von `redis-py`. Mit eingeschaltetem Schalter wäre kein Agent
+  hochgekommen. `+@connection` ergänzt, **vor** den Verboten: die Kategorie
+  enthält auch `CLIENT LIST`, das die folgenden `-@admin`/`-@dangerous` wieder
+  entziehen. Am laufenden Server nachgeprüft.
+
+### Hinzugefügt
+- **Rauchtest der Agenten-ACL gegen ein echtes Redis** (`test_redis_acl_live_smoke.py`).
+  Prüft, was kein Modultest kann: ob ein laufender Server die Regeln annimmt und
+  ob sie bewirken, was draufsteht — eigener Schlüsselraum ja, fremde Schlüssel
+  nein, Postfach eines Kollegen befüllen ja, mitlesen oder leeren nein, keine
+  Adminbefehle. Überspringt sich ohne `REDIS_SMOKE_URL`, damit die normale Suite
+  ohne Redis grün bleibt.
+
+### Nachgetragen — Sentinel, Teil 1 bis 3 (Epic #588)
+Die folgende Arbeit wurde am 14.08. zusammengeführt, aber **ohne Versionssprung
+und ohne CHANGELOG-Eintrag**; hier nachgetragen:
+- **Teil 1 (#589):** eigener, minimal berechtigter Redis-Zugang je Agent statt
+  des einen geteilten Admin-Zugangs. Bisher kann jeder Agent auf dem Kanal jedes
+  anderen veröffentlichen und sich so als dieser ausgeben. Schalter aus.
+- **Teil 2 (#590):** Gerüst des Sentinel-Dienstes plus eigenes, domänengetrenntes
+  Zugangsschema (konstantzeitiger Vergleich). Erkennung, Stopp und Meldung sind
+  noch Attrappen — der Dienst tut heute nichts. Schalter aus.
+- **Teil 3 (#591):** die Freigabe-Vorgänge veröffentlichen ihre Ereignisse in die
+  Sentinel-Leitung.
+- Außerdem: Web-Push behandelt 403 als „endgültig weg", Mikrofon-Aufnahme für die
+  Desktop-Brücke, `numpy` in der Test-Umgebung der CI.
+
+---
+
 ## [1.203.0] - 2026-08-13
 
 ### Behoben
