@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.216.0] - 2026-08-16
+
+### Hinzugefügt
+- **Ein stiller Datenbank-Ausfall bleibt jetzt nicht mehr stumm.** Bislang
+  meldete der Scheduler eine kurz gestörte Datenbank nur als unauffällige
+  Protokollzeile und versuchte es beim nächsten Takt (30 Sekunden später) neu
+  — richtig so für einen kurzen Ruckler. Hielt der Ausfall aber mehrere
+  Minuten an, konnte in dieser Zeit **kein** Zeitplan feuern, ohne dass
+  jemand davon erfuhr — außer ein Zeitplan hatte zufällig sein eigenes,
+  separates Sicherheitsnetz. Genau das ist am 15.08. passiert: ein rund
+  30-minütiger Datenbank-Ausfall hat das Prüfen fälliger Zeitpläne über das
+  06:00-Uhr-Fenster hinweg lahmgelegt (siehe Issue #601).
+- Bleibt die Prüfung jetzt vier Takte in Folge (~2 Minuten) erfolglos, meldet
+  der Scheduler das einmalig als dringende Benachrichtigung und per Telegram
+  — unabhängig davon, ob für den betroffenen Zeitplan ein eigenes
+  Sicherheitsnetz eingerichtet wurde.
+
 ## [1.215.0] - 2026-08-15
 
 ### Behoben
