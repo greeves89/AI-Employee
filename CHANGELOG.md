@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.220.0] - 2026-08-16
+
+### Geändert
+- **Jede Agenten-Vorlage sagt jetzt, WOFÜR der Agent da ist** — und woran man
+  erkennt, dass er fertig ist. Bisher tat das **keine einzige** der 31
+  Vorlagen: sie listeten auf, was der Agent *kennt*, nicht was er *liefert*.
+  Neu in jeder Vorlage, ganz oben: `### Wofür du da bist` und
+  `**Fertig heißt:** …`.
+- **15 Vorlagen waren nur eine Technologieliste** — 190 bis 320 Zeichen eigener
+  Inhalt, sonst nichts (QA-Tester, Code-Prüfer, Recruiter, Übersetzer,
+  Produktverantwortlicher, Datenbank-Betreuer, Oberflächen-Gestalter,
+  Schnittstellen-Entwickler, Texter, Web-Sammler, Automatisierer,
+  SEO, Social Media, Rechtsunterstützung, Sicherheitsprüfer). Zum Vergleich:
+  die ausgearbeiteten hatten 1.500–2.400 Zeichen. Alle 15 neu geschrieben mit
+  Zweck, Abnahmekriterium, Arbeitsweise, Zusammenarbeit und Ablageort.
+- **26 von 31 Beschreibungen waren englisch** — in einer durchgehend deutschen
+  Oberfläche. Das ist der eine Satz, den ein Anwender beim Anlegen liest. Alle
+  auf Deutsch, und mit Ergebnis statt Tätigkeit formuliert.
+- Die vier deutschen Fach-Vorlagen (Buchhaltung, Lohn, Angebot, Disposition)
+  hatten keinen Ablageort — Ergebnisse landeten irgendwo im Container.
+
+### Behoben
+- Die Kategorien `productivity` und `finance` hatten im Frontend keine
+  Bezeichnung: drei Kacheln zeigten den rohen englischen Schlüssel. Zwei
+  Listen, die niemand gegeneinander gehalten hat — dasselbe Muster, das am
+  selben Tag einen Codex-Agenten komplett lahmgelegt hat. Ein Test hält sie
+  jetzt zusammen.
+
+### Hinweis
+- Der Inhalt der elf älteren, bereits ausgearbeiteten Vorlagen bleibt vorerst
+  englisch; nur ihr Zweck-Block ist deutsch. Der Text ist inhaltlich gut, eine
+  Übersetzung ist ein eigener Schritt.
+
+---
+
 ## [1.219.0] - 2026-08-16
 
 ### Behoben

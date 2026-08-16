@@ -96,6 +96,11 @@ const CATEGORY_LABELS: Record<string, string> = {
   sales: "Sales",
   management: "Management",
   security: "Security",
+  // Fehlten bis 2026-08-16: drei Kacheln zeigten den rohen englischen
+  // Schluessel, weil die Vorlage eine Kategorie benutzt, die hier nie
+  // nachgetragen wurde. Ein Test haelt beide Listen jetzt zusammen.
+  productivity: "Produktivität",
+  finance: "Finanzen",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -110,6 +115,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   sales: "bg-rose-500/10 text-rose-400",
   management: "bg-indigo-500/10 text-indigo-400",
   security: "bg-red-500/10 text-red-400",
+  productivity: "bg-teal-500/10 text-teal-400",
+  finance: "bg-lime-500/10 text-lime-400",
 };
 
 const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[]; noKey?: boolean }> = {
