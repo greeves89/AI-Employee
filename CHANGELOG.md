@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.220.1] - 2026-08-16
+
+### Behoben
+- **uvicorn im Embedding-Service auf 0.52.3 aktualisiert** (Patch-Release,
+  Dependabot). Kein sicherheitsrelevanter Fund, reine Fehlerkorrektur
+  upstream — CI (Tests, CodeQL, Trivy, Secret-Scan) vollständig grün.
+
 ## [1.220.0] - 2026-08-16
 
 ### Geändert
