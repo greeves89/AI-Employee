@@ -1454,7 +1454,20 @@ async def lifespan(app: FastAPI):
                     sel(AgentTemplate).where(AgentTemplate.name == tmpl_data["name"])
                 )
                 if not existing:
-                    tmpl = AgentTemplate(is_builtin=True, **tmpl_data)
+                    # Mitgelieferte Vorlagen sind sofort sichtbar. Ohne das
+                    # griff die Vorgabe des Modells (``is_published=False``)
+                    # und JEDER Nicht-Administrator sah beim Anlegen eines
+                    # Agenten „Noch keine Vorlagen angelegt" — obwohl 31
+                    # Vorlagen in der Datenbank standen (beobachtet 2026-08-16).
+                    # Der Entwurf-/Veroeffentlichen-Ablauf ist fuer die selbst
+                    # geschriebenen Vorlagen des Administrators gedacht, nicht
+                    # fuer die, die mit dem Produkt kommen.
+                    tmpl = AgentTemplate(
+                        is_builtin=True,
+                        is_published=True,
+                        published_at=datetime.now(timezone.utc),
+                        **tmpl_data,
+                    )
                     db.add(tmpl)
                 elif existing.is_builtin:
                     # Update builtin templates if source has changed
@@ -1470,6 +1483,23 @@ async def lifespan(app: FastAPI):
         logger.info(f"Seeded/synced {len(BUILTIN_TEMPLATES)} builtin agent templates")
     except Exception as e:
         logger.warning(f"Failed to seed templates: {e}")
+
+    # Bestehende Anlagen nachziehen: dort stehen die mitgelieferten Vorlagen auf
+    # „nicht veroeffentlicht" und sind fuer Nicht-Administratoren unsichtbar.
+    # Die Korrektur im Seeder oben erreicht sie nicht, weil sie schon existieren.
+    try:
+        from app.core.agent_templates import publish_builtin_templates_once
+        from app.db.session import async_session_factory as _sf_pub
+
+        async with _sf_pub() as db:
+            anzahl = await publish_builtin_templates_once(db)
+        if anzahl:
+            logger.info(
+                "%d mitgelieferte Vorlagen nachtraeglich veroeffentlicht — "
+                "sie waren fuer Nicht-Administratoren unsichtbar", anzahl,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to publish builtin templates: {e}")
 
     # Seed builtin skills (feierabend, morning_briefing, daily_log_check)
     try:

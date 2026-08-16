@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.219.0] - 2026-08-16
+
+### Behoben
+- **Die mitgelieferten Agenten-Vorlagen waren für normale Anwender unsichtbar.**
+  In der Datenbank lagen **31** Vorlagen — alle auf „nicht veröffentlicht". Die
+  Liste blendet Unveröffentlichtes für Nicht-Administratoren aus, also stand
+  beim Anlegen eines Agenten „Noch keine Vorlagen angelegt". Ein Administrator
+  sah alle 31 und hielt es für in Ordnung; jeder andere sah null. Damit war die
+  gesamte Vorlagen-Auswahl für normale Anwender tot.
+- Ursache: Der Seeder legt sie mit `AgentTemplate(is_builtin=True, **daten)` an
+  und setzte `is_published` nie — es griff die Vorgabe des Modells (`False`).
+  Der Entwurf-/Veröffentlichen-Ablauf ist für die vom Administrator **selbst
+  geschriebenen** Vorlagen gedacht; was mit dem Produkt kommt, ist fertig.
+- Neue Anlagen bekommen sie ab sofort veröffentlicht. Bestehende zieht ein
+  einmaliger Nachzug nach — bewusst **einmal**: „nicht veröffentlicht" bedeutet
+  auch „ein Administrator hat sie abgewählt", und beim Abwählen wird
+  `published_at` zurückgesetzt, die beiden Fälle sind danach nicht mehr zu
+  unterscheiden. Liefe das bei jedem Start, käme eine abgewählte Vorlage immer
+  wieder zurück.
+
+### Geändert
+- Die Sichtbarkeitsregel selbst bleibt unangetastet: Nicht-Administratoren sehen
+  weiterhin nur Veröffentlichtes, und aus einem Entwurf lässt sich weiterhin
+  kein Agent starten. Tests wachen über beides.
+- Der Nachzug läuft im Test gegen eine echte Datenbank, inklusive des Ablaufs
+  „Nachzug → Administrator wählt ab → Neustart".
+
+---
+
 ## [1.218.2] - 2026-08-16
 
 ### Behoben

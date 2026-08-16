@@ -1514,3 +1514,50 @@ BUILTIN_TEMPLATES = [
         ),
     },
 ]
+
+
+async def publish_builtin_templates_once(db) -> int:
+    """Mitgelieferte Vorlagen sichtbar machen — genau einmal pro Anlage.
+
+    Beobachtet am 2026-08-16: 31 mitgelieferte Vorlagen lagen in der Datenbank,
+    alle auf ``is_published = false``. Die Liste blendet fuer
+    Nicht-Administratoren alles Unveroeffentlichte aus — ein normaler Anwender
+    sah beim Anlegen eines Agenten also „Noch keine Vorlagen angelegt", ein
+    Administrator sah alle 31 und hielt es fuer in Ordnung.
+
+    Ursache war die Vorgabe des Modells (``is_published=False``), die griff, weil
+    der Seeder das Feld nie gesetzt hat. Fuer neue Anlagen ist das dort behoben;
+    bestehende brauchen diesen Nachzug.
+
+    **Warum nur einmal.** „Nicht veroeffentlicht" bedeutet auch „ein
+    Administrator hat sie bewusst abgewaehlt", und beim Abwaehlen wird
+    ``published_at`` auf ``None`` zurueckgesetzt — die beiden Faelle sind danach
+    nicht mehr auseinanderzuhalten. Liefe das bei jedem Start, kaeme eine
+    abgewaehlte Vorlage immer wieder zurueck. Also merkt sich die Anlage in
+    ``platform_settings``, dass es getan ist.
+
+    Gibt die Zahl der nachtraeglich veroeffentlichten Vorlagen zurueck; 0, wenn
+    nichts zu tun war oder der Nachzug schon gelaufen ist.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select, update
+
+    from app.models.agent_template import AgentTemplate
+    from app.models.platform_settings import PlatformSettings
+
+    marke = "builtin_templates_published_backfill"
+    if await db.scalar(select(PlatformSettings).where(PlatformSettings.key == marke)):
+        return 0
+
+    res = await db.execute(
+        update(AgentTemplate)
+        .where(AgentTemplate.is_builtin.is_(True), AgentTemplate.is_published.is_(False))
+        .values(is_published=True, published_at=datetime.now(timezone.utc))
+    )
+    anzahl = res.rowcount or 0
+    # Marke im selben Commit — sonst laeuft der Nachzug nie oder doppelt, wenn
+    # der Start dazwischen abbricht.
+    db.add(PlatformSettings(key=marke, value=str(anzahl)))
+    await db.commit()
+    return anzahl
