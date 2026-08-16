@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
   Plus,
   Loader2,
+  RefreshCw,
   Package,
   Settings,
   ShieldOff,
@@ -178,6 +179,11 @@ export function CreateAgentModal({
   const { simpleMode } = useSimpleMode();
   const [step, setStep] = useState<Step>("template");
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+  // Bis 2026-08-16 gab es diesen Zustand nicht: eine leere Liste hiess sowohl
+  // „wird noch geladen" als auch „ist fehlgeschlagen". Bei einem Fehler stand
+  // deshalb DAUERHAFT „Vorlagen werden geladen…" da — ohne Spinner, ohne
+  // Hinweis, ohne Weg zurueck.
+  const [vorlagenZustand, setVorlagenZustand] = useState<"laedt" | "da" | "fehler">("laedt");
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
@@ -221,6 +227,22 @@ export function CreateAgentModal({
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [selectedAccountKey, setSelectedAccountKey] = useState<string>("oauth:claude");
 
+  // Ausgelagert, damit der Knopf „Erneut versuchen" denselben Weg geht wie das
+  // Oeffnen des Fensters — sonst haette der Wiederholversuch seine eigene,
+  // ungetestete Zweitfassung.
+  const ladeVorlagen = useCallback(() => {
+    setVorlagenZustand("laedt");
+    api.getTemplates()
+      .then((data) => {
+        setTemplates(data.templates);
+        setVorlagenZustand("da");
+      })
+      .catch(() => {
+        setTemplates([]);
+        setVorlagenZustand("fehler");
+      });
+  }, []);
+
   // Load templates and permission packages on open
   useEffect(() => {
     if (open) {
@@ -254,9 +276,7 @@ export function CreateAgentModal({
       setLlmToolsEnabled(true);
       setShowApiKey(false);
 
-      api.getTemplates().then((data) => {
-        setTemplates(data.templates);
-      }).catch(() => setTemplates([]));
+      ladeVorlagen();
 
       setPermissionsMode("auto");
       api.getPermissionPackages().then((data) => {
@@ -269,7 +289,7 @@ export function CreateAgentModal({
         setDerivedPermissions({});
       });
     }
-  }, [open]);
+  }, [open, ladeVorlagen]);
 
   const selectTemplate = (template: AgentTemplate | null) => {
     setSelectedTemplate(template);
@@ -595,9 +615,58 @@ export function CreateAgentModal({
                       })}
                     </div>
 
-                    {templates.length === 0 && (
-                      <p className="text-xs text-muted-foreground/50 text-center py-6">
-                        Vorlagen werden geladen...
+                    {/* Solange geladen wird: Platzhalter in genau dem Raster der
+                        echten Kacheln. Der Nutzer sieht sofort, WAS kommt und
+                        wie viel — und der Inhalt springt beim Eintreffen nicht.
+                        „Leerer Agent" darueber ist schon anklickbar, wer keine
+                        Vorlage will, muss also gar nicht warten. */}
+                    {vorlagenZustand === "laedt" && (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" aria-hidden>
+                          {[0, 1, 2, 3].map((i) => (
+                            <div
+                              key={i}
+                              className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] p-4"
+                            >
+                              <div className="h-11 w-11 shrink-0 animate-pulse rounded-xl bg-foreground/[0.06]" />
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <div className="h-3 w-2/5 animate-pulse rounded bg-foreground/[0.06]" />
+                                <div className="h-2.5 w-4/5 animate-pulse rounded bg-foreground/[0.04]" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p
+                          className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground/60"
+                          role="status"
+                        >
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Vorlagen werden geladen…
+                        </p>
+                      </>
+                    )}
+
+                    {/* Fehlschlag sah bis 2026-08-16 exakt aus wie Laden — die
+                        Meldung blieb einfach fuer immer stehen. */}
+                    {vorlagenZustand === "fehler" && (
+                      <div className="rounded-xl border border-border bg-card/40 px-4 py-5 text-center">
+                        <p className="text-sm font-medium">Vorlagen nicht erreichbar</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Du kannst trotzdem oben mit „Leerer Agent" weitermachen.
+                        </p>
+                        <button
+                          onClick={ladeVorlagen}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs transition-colors hover:bg-foreground/[0.04]"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          Erneut versuchen
+                        </button>
+                      </div>
+                    )}
+
+                    {vorlagenZustand === "da" && templates.length === 0 && (
+                      <p className="py-6 text-center text-xs text-muted-foreground/50">
+                        Noch keine Vorlagen angelegt.
                       </p>
                     )}
                   </div>

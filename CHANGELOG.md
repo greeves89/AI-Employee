@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.218.2] - 2026-08-16
+
+### Behoben
+- **Kein Spinner beim Laden der Agenten-Vorlagen.** Über eine langsame Leitung
+  stand dort nur grauer Text „Vorlagen werden geladen…" — nicht erkennbar, ob
+  überhaupt noch etwas passiert. Jetzt: Platzhalter-Kacheln in genau dem Raster
+  der echten Vorlagen plus drehender Ladering. Der Inhalt springt beim
+  Eintreffen nicht mehr, und „Leerer Agent" ist die ganze Zeit anklickbar — wer
+  keine Vorlage will, muss gar nicht warten.
+- **Ein Fehlschlag sah exakt aus wie Laden — für immer.** Die leere Liste hieß
+  zugleich „lädt noch" und „ist fehlgeschlagen"; der `catch`-Zweig setzte
+  stillschweigend eine leere Liste, und die Meldung blieb stehen. Jetzt gibt es
+  drei unterscheidbare Zustände: lädt, da, nicht erreichbar — letzteres mit
+  Hinweis auf „Leerer Agent" und einem Knopf „Erneut versuchen".
+
+---
+
 ## [1.218.1] - 2026-08-16
 
 ### Behoben
