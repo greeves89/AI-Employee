@@ -456,6 +456,10 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
     ]
 
     desktop_mcp_active = False
+    # Welche Abschnitte bereits in der Datei stehen. Codex bricht beim ERSTEN
+    # doppelten Schluessel ab und laedt dann GAR KEINE Konfiguration — der Agent
+    # steht ohne jedes Werkzeug da und kann nur noch reden.
+    geschrieben: set[str] = set()
 
     # Stdio built-in servers
     for name, script in builtin_servers.items():
@@ -479,6 +483,7 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
                 f'AGENT_NAME = "{_toml_escape(agent_name)}"',
                 f'DEFAULT_MODEL = "{_toml_escape(default_model)}"',
             ]
+        geschrieben.add(name)
         lines += [
             f"[mcp_servers.{name}]",
             'command = "node"',
@@ -503,6 +508,27 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
                 if not _valid_http_url(srv_url):
                     logger.warning("Skipping MCP server %r with invalid URL: %r", srv_name, srv_url)
                     continue
+                if safe_name in geschrieben:
+                    # Genau hier ging es am 2026-08-16 kaputt: ``msgraph`` ist
+                    # seit dem 12.08. ein EINGEBAUTER Server und wird zusaetzlich
+                    # eingeschleust, sobald ein Agent die Microsoft-Integration
+                    # hat. Zwei Abschnitte gleichen Namens — und Codex verwarf
+                    # die komplette Datei. Der Agent hatte danach kein einziges
+                    # Werkzeug und antwortete auf jede Bitte nur mit „ich
+                    # kuemmere mich darum", weil er buchstaeblich nichts tun
+                    # konnte.
+                    #
+                    # Der eingebaute gewinnt: er ist in jedem Agenten vorhanden
+                    # und in beiden Laufzeiten derselbe (Paritaet). Ein
+                    # uebersprungener Doppelgaenger kostet nichts — eine
+                    # unlesbare Konfiguration kostet alles.
+                    logger.warning(
+                        "MCP-Server %r ist bereits eingebaut — der eingeschleuste "
+                        "wird uebersprungen (doppelter Abschnitt wuerde die ganze "
+                        "config.toml unbrauchbar machen)", srv_name,
+                    )
+                    continue
+                geschrieben.add(safe_name)
                 lines += [
                     f"[mcp_servers.{safe_name}]",
                     f'url = "{_toml_escape(srv_url)}"',

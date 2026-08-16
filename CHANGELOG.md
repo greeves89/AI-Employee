@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.218.1] - 2026-08-16
+
+### Behoben
+- **Codex-Agenten standen ohne ein einziges Werkzeug da.** Im Container:
+  `Error loading config.toml: duplicate key … [mcp_servers.msgraph]`. Codex
+  bricht beim ersten doppelten Schlüssel ab und lädt danach **gar keine**
+  Konfiguration — der Agent konnte nur noch reden. Genau das war die Ursache
+  des „er kündigt an und tut nichts" aus 1.218.0: er *wollte* arbeiten und
+  *konnte* nachweislich nicht. Ein Auftrag scheiterte wörtlich mit „Task failed
+  at startup due to a configuration error (duplicate key in config.toml)".
+- Ursache war die Überschneidung zweier Listen: `msgraph` ist seit dem 12.08.
+  ein **eingebauter** Server (Parität mit Claude Code) und wurde zusätzlich als
+  HTTP-Server **eingeschleust**, sobald ein Agent die Microsoft-Integration
+  zugewiesen bekam. Ein doppelter Name legte den ganzen Agenten lahm.
+- Jetzt gewinnt der eingebaute Server, der Doppelgänger wird übersprungen und
+  protokolliert. Die Prüfung lädt die fertige Datei als TOML — sie kann also
+  nicht mehr an zwei Listen scheitern, die niemand gegeneinander hält.
+
+- **Die persönliche Codex-Anmeldung lief ins Leere.** Gerätecode eingegeben,
+  ChatGPT meldete „Seite kann geschlossen werden" — und die Oberfläche stand
+  weiter auf „Warte auf die Bestätigung…". Ein einziges fallengelassenes
+  Argument: `start()` nahm `for_user_id` entgegen und übernahm es nicht in die
+  Sitzung.
+- Folge 1: Die Zustandsabfrage verglich `session.for_user_id != user.id` und
+  antwortete **404** — die Anzeige wartete endlos.
+- Folge 2 (schwerwiegender): Der Abschluss nahm den Anlagen-Zweig. Das private
+  ChatGPT-Konto des Nutzers wurde als Zugang der **ganzen Anlage** gespeichert
+  und per `sync_auth_json()` in die **gemeinsame Datei aller Codex-Agenten**
+  geschrieben.
+
+### Geändert
+- Beide Fehler haben jetzt Tests, die den Ablauf **ausführen** statt den
+  Quelltext zu durchsuchen. Die bisherige Prüfung fand den persönlichen Zweig
+  im Code — er war nur nie erreichbar. Beide neuen Prüfungen schlagen ohne die
+  Korrektur nachweislich fehl.
+
+---
+
 ## [1.218.0] - 2026-08-16
 
 ### Behoben

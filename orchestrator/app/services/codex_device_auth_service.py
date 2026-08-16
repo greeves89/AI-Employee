@@ -95,6 +95,15 @@ class CodexDeviceAuthService:
             codex_home=codex_home,
             expires_at=datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS),
             process=process,
+            # Ohne diese Zeile war die ganze persoenliche Anmeldung wirkungslos:
+            # ``for_user_id`` kam als Parameter an, wurde aber nie in die
+            # Sitzung uebernommen. Folge (beobachtet am 2026-08-16): die
+            # Zustandsabfrage antwortete 404 (fremde Sitzung), die Oberflaeche
+            # wartete ewig — und das Ergebnis landete im ``else``-Zweig als
+            # Zugang der GANZEN ANLAGE samt ``sync_auth_json()``, wodurch das
+            # private ChatGPT-Konto des Nutzers die gemeinsame Datei aller
+            # Codex-Agenten ueberschrieb.
+            for_user_id=for_user_id,
         )
         session.task = asyncio.create_task(self._wait_and_store(session))
         async with self._lock:
