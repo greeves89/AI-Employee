@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.220.2] - 2026-08-16
+
+### Behoben
+- **5 Frontend-Abhängigkeiten auf Minor-Releases aktualisiert** (Dependabot-
+  Sammel-PR): @xyflow/react, framer-motion, lucide-react, zustand,
+  @types/node. Keine Major-Bumps, keine Breaking Changes laut Upstream —
+  CI (Tests, CodeQL, Trivy, Secret-Scan, Node-Audit) vollständig grün.
+
 ## [1.220.1] - 2026-08-16
 
 ### Behoben
