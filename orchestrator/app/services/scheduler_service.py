@@ -693,6 +693,12 @@ class SchedulerService:
                     # sonst bleibt sie liegen und niemand merkt es.
                     if agent_duty.needs_handover(duty):
                         await duty_service.escalate_failure(db, self.redis, duty_agent, duty)
+                    elif duty["state"] == agent_duty.OVERLOADED:
+                        # Kein Handover noetig (der Agent lebt, er ist nur beschaeftigt) —
+                        # aber ohne Meldung verschwindet der uebersprungene Lauf spurlos (#605).
+                        await duty_service.escalate_overload(
+                            db, self.redis, duty_agent, duty, schedule.name,
+                        )
                     schedule.next_run_at = _calc_next_run(schedule, now)
                     logger.info(
                         "[Scheduler] %s uebersprungen — Agent %s: %s (%s)",

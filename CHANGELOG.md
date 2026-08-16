@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.217.0] - 2026-08-16
+
+### Hinzugefügt
+- **Ein wegen Überlast übersprungener Zeitplan verschwindet jetzt nicht mehr
+  spurlos.** War ein Agent zum Zeitpunkt eines fälligen Zeitplans überlastet
+  (Warteschlange voll), wurde der Lauf bisher nur intern protokolliert (auf
+  einer Stufe, die im Fehler-Log gar nicht auftaucht) und der nächste Termin
+  stillschweigend vorgerückt — weder Nutzer noch Agent erfuhren davon. Genau
+  das ist am 16.08. mit dem täglichen 06:00-Podcast-Zeitplan passiert (siehe
+  Issue #605): die anderen 06:00-Jobs desselben Agenten liefen normal, nur
+  dieser eine fiel unbemerkt aus.
+- Wird ein Zeitplan jetzt wegen Überlast übersprungen, bekommt der Besitzer
+  eine Benachrichtigung mit normaler Priorität (kein Vertreter-Handover
+  nötig — der Agent lebt, er ist nur beschäftigt). Gedrosselt auf eine
+  Meldung pro Agent und Stunde, damit ein kurzgetakteter Zeitplan bei
+  anhaltender Überlast nicht spammt.
+
+---
+
 ## [1.216.0] - 2026-08-16
 
 ### Hinzugefügt

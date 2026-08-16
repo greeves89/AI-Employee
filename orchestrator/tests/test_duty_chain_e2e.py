@@ -308,6 +308,62 @@ class SilenceEscalationTests(DutyChainBase):
             self.assertFalse(await duty_service.escalate_silence(db, self.redis, agent))
 
 
+class OverloadEscalationTests(DutyChainBase):
+    """#605: Ueberlast wurde bisher stillschweigend uebersprungen — kein Vertreter
+    noetig (der Agent lebt), aber ohne Meldung faellt ein taeglicher Job spurlos aus."""
+
+    async def test_notification_is_written(self):
+        async with self.Session() as db:
+            db.add(self._agent("voll", "Podcast-Agent"))
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "voll"))).scalar_one()
+            duty = {"state": duty_core.OVERLOADED, "reason": "7 Aufgaben warten in der Schlange"}
+            result = await duty_service.escalate_overload(
+                db, self.redis, agent, duty, "Taeglicher KI-News-Podcast",
+            )
+            await db.commit()
+
+            self.assertTrue(result)
+            note = (await db.execute(select(Notification))).scalars().one()
+            self.assertEqual(note.priority, "normal")
+            self.assertIn("Taeglicher KI-News-Podcast", note.message)
+            self.assertIn("7 Aufgaben warten", note.message)
+            self.assertEqual(note.meta["reason"], "duty_overload")
+
+    async def test_second_run_within_the_hour_is_throttled(self):
+        async with self.Session() as db:
+            db.add(self._agent("voll", "Podcast-Agent"))
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "voll"))).scalar_one()
+            duty = {"state": duty_core.OVERLOADED, "reason": "ueberlastet"}
+            first = await duty_service.escalate_overload(db, self.redis, agent, duty, "A")
+            second = await duty_service.escalate_overload(db, self.redis, agent, duty, "B")
+            await db.commit()
+
+            self.assertTrue(first)
+            self.assertFalse(second)
+            self.assertEqual(len((await db.execute(select(Notification))).scalars().all()), 1)
+
+    async def test_no_deputy_search_happens(self):
+        """Anders als bei escalate_failure: der Agent ist arbeitsfaehig, es gibt also
+        nichts zu uebergeben — nur die Meldung, sonst nichts."""
+        async with self.Session() as db:
+            db.add_all([
+                self._agent("voll", "Podcast-Agent"),
+                self._todo("voll", "Bleibt beim Agenten"),
+            ])
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "voll"))).scalar_one()
+            duty = {"state": duty_core.OVERLOADED, "reason": "ueberlastet"}
+            await duty_service.escalate_overload(db, self.redis, agent, duty, "A")
+            await db.commit()
+
+            still_there = (await db.execute(
+                select(AgentTodo).where(AgentTodo.agent_id == "voll")
+            )).scalars().all()
+            self.assertEqual(len(still_there), 1)
+
+
 class NoBypassTests(unittest.TestCase):
     def test_no_join_on_a_table_that_does_not_exist(self):
         """Der urspruengliche Fehler: JOIN auf `team_members`, Tabelle existiert nicht."""
