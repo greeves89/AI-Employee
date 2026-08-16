@@ -47,6 +47,15 @@ _TRANSIENT_DB_ERRORS = (OperationalError, DBAPIError, ConnectionError, TimeoutEr
 # Nacht verschwinden.
 _APPROVAL_TTL_HOURS = 24
 
+# Consecutive failed DueSchedules ticks (30s cadence) before escalating to the
+# user. 4 ticks (~2min) rather than 1: a single blip self-heals silently and is
+# not worth an alert. Confirmed need via issue #601 (2026-08-15): a ~30min
+# Postgres outage silently blocked every DueSchedules check during the 06:00
+# job window with no escalation at all — the only reason it was caught was an
+# unrelated 06:30 safety-net schedule set up separately for those two jobs.
+# Schedules without such a safety net would simply have stayed silent.
+_DUE_SCHEDULES_ALERT_THRESHOLD = 4
+
 # GC runs every 60 seconds
 _GC_INTERVAL_SECONDS = 60
 # "Dreaming": periodic adaptive user-profile refresh from accumulated memories
@@ -86,6 +95,10 @@ class SchedulerService:
         # Per-schedule missed slot (next_run_at iso) already alerted; prevents
         # re-alerting the same missed window every 30s tick.
         self._missed_alerted: dict[str, str] = {}
+        # Consecutive failed DueSchedules ticks + whether we've already told the
+        # user about the current outage (reset on the first successful tick).
+        self._due_schedules_fail_streak = 0
+        self._due_schedules_db_alerted = False
 
     async def run(self) -> None:
         """Main loop - checks every 30s. Runs schedules always, GC every 60s,
@@ -111,11 +124,31 @@ class SchedulerService:
                     logger.warning("[Scheduler] SentinelLiveness error: %s", e)
                 try:
                     await self._check_due_schedules()
+                    if self._due_schedules_fail_streak >= _DUE_SCHEDULES_ALERT_THRESHOLD:
+                        logger.info(
+                            "[Scheduler] DueSchedules DB recovered after %s failed tick(s)",
+                            self._due_schedules_fail_streak,
+                        )
+                    self._due_schedules_fail_streak = 0
+                    self._due_schedules_db_alerted = False
                 except _TRANSIENT_DB_ERRORS as e:
+                    self._due_schedules_fail_streak += 1
                     logger.warning(
                         "[Scheduler] DueSchedules DB unavailable (transient, "
-                        "retrying next tick): %s", e,
+                        "retrying next tick, %s consecutive): %s",
+                        self._due_schedules_fail_streak, e,
                     )
+                    if (
+                        self._due_schedules_fail_streak >= _DUE_SCHEDULES_ALERT_THRESHOLD
+                        and not self._due_schedules_db_alerted
+                    ):
+                        self._due_schedules_db_alerted = True
+                        try:
+                            await self._alert_due_schedules_down(self._due_schedules_fail_streak)
+                        except Exception as alert_err:
+                            logger.warning(
+                                "[Scheduler] DueSchedules alert error: %s", alert_err,
+                            )
                 # Tagesplan: jeder Block mit Uhrzeit MUSS einen Ausloeser haben.
                 try:
                     armed = await self._arm_plan_blocks()
@@ -1338,6 +1371,57 @@ class SchedulerService:
                 priority="urgent",
             ))
             await db.commit()
+
+    async def _alert_due_schedules_down(self, streak: int) -> None:
+        """Escalate once a DB outage has blocked schedule-checking for a while.
+
+        A single failed tick is a harmless blip and self-heals on its own —
+        see _TRANSIENT_DB_ERRORS above. But if the DB stays unreachable for
+        minutes, NO schedule can fire during that window (the 06:00 jobs
+        included), and until now nothing told the user unless a schedule
+        happened to have its own separate safety-net job. Root-caused via
+        issue #601 on 2026-08-15.
+        """
+        outage_min = round(streak * 30 / 60, 1)
+        logger.error(
+            "[Scheduler] DueSchedules DB unreachable for %s consecutive ticks "
+            "(~%s min) — schedules may be missed", streak, outage_min,
+        )
+        try:
+            from app.models.notification import Notification
+            async with resilient_session() as db:
+                db.add(Notification(
+                    agent_id="system",
+                    type="error",
+                    title="Zeitplaene koennen nicht geprueft werden",
+                    message=(
+                        f"Die Datenbank ist seit ~{outage_min} Minuten nicht "
+                        "erreichbar, waehrend der Scheduler faellige Zeitplaene "
+                        "pruefen wollte. Faellige Jobs feuern in diesem Fenster "
+                        "nicht von selbst nach — nur ein eigens eingerichteter "
+                        "Safety-Net-Zeitplan wuerde sie nachtraeglich abfangen."
+                    ),
+                    priority="urgent",
+                ))
+                await db.commit()
+        except _TRANSIENT_DB_ERRORS as e:
+            # DB still down — the Notification row can't be written either, but
+            # the Telegram publish below goes over Redis, not the DB, so it can
+            # still reach the user.
+            logger.warning("[Scheduler] DueSchedules alert Notification write failed (DB still down): %s", e)
+        if self.redis and self.redis.client:
+            import json as _json
+            payload = {
+                "text": (
+                    f"🔴 Scheduler: Datenbank seit ~{outage_min} Minuten nicht "
+                    "erreichbar — faellige Zeitplaene werden gerade nicht geprueft."
+                ),
+                "parse_mode": "Markdown",
+            }
+            try:
+                await self.redis.client.publish("telegram:notification", _json.dumps(payload))
+            except Exception as e:
+                logger.warning("[Scheduler] DueSchedules alert publish error: %s", e)
 
     async def _tick_missed_schedule_watchdog(self) -> None:
         """Alert on enabled schedules whose fire window was missed (>5min late).
