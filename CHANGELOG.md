@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.218.0] - 2026-08-16
+
+### Behoben
+- **„Ich mache das jetzt" — und dann passiert nichts.** Per Sprache erbeten:
+  „bau mir mal eine kleine Taschenrechner-App". Der Agent antwortete „Ich kümmere
+  mich sofort … ich plane jetzt die Entwicklung" — **ohne einen einzigen
+  Werkzeugaufruf**. Auf „und blödelst du" erneut „ich erstelle und deploye sie
+  jetzt" — wieder nichts. Erst auf „Hast du die App gebaut!!!???" sah er nach und
+  gab zu: „Nein, wurde noch nicht gebaut."
+- Im **Auftrags**-Pfad ist das seit v1.178.2 abgesichert. Der **Chat**-Pfad hatte
+  die Prüfung nie — und die Sprachfront läuft über den Chat.
+- Der Anstupser ist bewusst **enger** als beim Auftrag: im Chat ist Reden der
+  Normalfall („hallo", „erklär mir X"). Auslöser ist nicht die fehlende Arbeit,
+  sondern der **Widerspruch** zwischen Zusage und Untätigkeit — der ist
+  nachweisbar falsch, egal worum es geht.
+- Reines Nachschlagen zählt dabei **nicht** als Arbeit: drei Blicke in die eigene
+  Wissensdatei sehen nach Tätigkeit aus und sind keine. Genau so entstand der
+  Eindruck im gemeldeten Fall.
+- Der Anstupser nennt **beide** Wege — selbst machen oder an einen Kollegen
+  delegieren — und lässt ausdrücklich ein begründetes Nein zu. Ohne diesen Ausweg
+  erfindet ein Agent, der etwas nicht kann, Arbeit. Einmal je Nachricht.
+
+---
+
 ## [1.217.0] - 2026-08-16
 
 ### Hinzugefügt

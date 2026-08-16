@@ -7,6 +7,7 @@ import os
 import time
 
 from app import context_compressor, model_registry, multimodal
+from app import announcement_guard
 from app.loop_detector import LoopDetector
 from app.config import settings
 from app.log_publisher import LogPublisher
@@ -539,6 +540,8 @@ class LLMChatHandler:
 
         # Reset loop detector for this message
         self._loop_detector.reset()
+        # Ein Anstupser je Nachricht des Menschen — siehe unten.
+        ansporn_offen = True
 
         tools = await self._get_tools()
         full_text = ""
@@ -557,6 +560,7 @@ class LLMChatHandler:
                 has_tool_calls = False
                 turn_text = ""
                 turn_tool_calls: list[dict] = []
+                tools_dieser_zug: set[str] = set()
                 switched_model = False
 
                 async for event in provider.stream_completion(self._history, tools):
@@ -658,10 +662,36 @@ class LLMChatHandler:
                             )
                             max_turns = num_turns + _max_turns()
                             continue
+
+                    # „Ich mache das jetzt" — und dann nichts.
+                    #
+                    # Im Auftrags-Pfad ist das seit v1.178.2 abgesichert; der
+                    # Chat hatte die Pruefung nie, und die Sprachfront laeuft
+                    # ueber den Chat. Am 2026-08-16 sagte ein Agent per Sprache
+                    # zweimal zu, eine App JETZT zu bauen, und tat beide Male
+                    # nichts — erst auf „Hast du die App gebaut!!!???" sah er
+                    # nach und gab zu, dass nichts existiert.
+                    #
+                    # Bewusst enger als beim Auftrag: im Chat ist Reden der
+                    # Normalfall. Ausloeser ist nicht die fehlende Arbeit,
+                    # sondern der WIDERSPRUCH zwischen Zusage und Untaetigkeit.
+                    # Genau einmal je Zug — ein zweiter Anstupser waere
+                    # Bevormundung, wenn der Agent begruendet ablehnt.
+                    if ansporn_offen and announcement_guard.promises_but_does_nothing(
+                        turn_text, tools_dieser_zug
+                    ):
+                        ansporn_offen = False
+                        logger.info("[Chat] Zusage ohne Handlung — Anstupser")
+                        self._history.append(ChatMessage(
+                            role="user", content=announcement_guard.NUDGE,
+                        ))
+                        max_turns = num_turns + 4
+                        continue
                     break
 
                 # Loop detection: check for repetitive tool call patterns
                 for tc in turn_tool_calls:
+                    tools_dieser_zug.add(tc["name"])
                     self._loop_detector.record(tc["name"], tc["input"])
                 if self._loop_detector.is_looping():
                     loop_msg = (
