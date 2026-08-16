@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 HANDOVER_COOLDOWN_SECONDS = 12 * 3600
 # So lange gilt eine Rueckfrage als unbeantwortet, bevor sie eskaliert.
 UNANSWERED_AFTER = timedelta(hours=12)
+# Eine Ueberlast-Meldung pro Agent und Stunde reicht — ein taeglicher Cron-Zeitplan
+# ruehrt sich ohnehin erst am naechsten Tag wieder, aber ein kurzgetakteter (alle paar
+# Minuten) wuerde ohne Drossel bei anhaltender Ueberlast jedes Mal erneut melden.
+OVERLOAD_ALERT_COOLDOWN_SECONDS = 3600
 
 
 async def team_lead_for(db: AsyncSession, agent_id: str) -> str:
@@ -157,6 +161,41 @@ async def escalate_failure(db: AsyncSession, redis, agent: Agent, duty: dict) ->
               "todos_moved": moved},
     ))
     return {"handled": True, "deputy": deputy.id if deputy else "", "todos": moved}
+
+
+async def escalate_overload(db: AsyncSession, redis, agent: Agent, duty: dict,
+                             schedule_name: str) -> bool:
+    """Ueberlast-Skip melden: EINE Meldung pro Agent und Stunde, sonst still.
+
+    Der Agent lebt, er ist nur beschaeftigt — anders als bei ``escalate_failure`` gibt es
+    hier keinen Vertreter, der uebernehmen muesste. Ohne diese Meldung verschwindet ein
+    uebersprungener Zeitplan aber spurlos: ``next_run_at`` wandert im Scheduler still
+    weiter, es steht nur eine ``logger.info``-Zeile da, die im (nur WARNING/ERROR)
+    Fehler-Log gar nicht auftaucht. Ein einzelner ueberlasteter Tick reicht so, um einen
+    taeglichen Job (z.B. den 06:00-Podcast) komplett ausfallen zu lassen, ohne dass Nutzer
+    oder Agent je davon erfahren. Root-caused via #605.
+    """
+    key = f"duty:overload:{agent.id}"
+    try:
+        if not await redis.client.set(key, "1", nx=True, ex=OVERLOAD_ALERT_COOLDOWN_SECONDS):
+            return False
+    except Exception:  # noqa: BLE001
+        logger.debug("[Duty] Ueberlast-Drossel nicht verfuegbar", exc_info=True)
+
+    db.add(Notification(
+        agent_id=agent.id,
+        type="warning",
+        title=f"{agent.name} ist ueberlastet — Zeitplan uebersprungen"[:200],
+        message=(
+            f"'{schedule_name}' wurde nicht ausgefuehrt: {duty.get('reason')}. Der Zeitplan "
+            f"laeuft normal weiter, aber dieser Durchgang faellt aus."
+        )[:240],
+        priority="normal",
+        action_url=f"/agents/{agent.id}",
+        meta={"reason": "duty_overload", "schedule": schedule_name},
+    ))
+    logger.info("[Duty] Ueberlast-Meldung fuer %s (%s uebersprungen)", agent.id, schedule_name)
+    return True
 
 
 async def escalate_silence(db: AsyncSession, redis, agent: Agent) -> bool:

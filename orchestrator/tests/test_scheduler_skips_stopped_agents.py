@@ -59,6 +59,13 @@ class StoppedAgentTests(unittest.TestCase):
         jemand uebernehmen, sonst faellt es wieder niemandem auf."""
         self.assertIn("duty_service.escalate_failure", FIRE)
 
+    def test_overload_triggers_a_notification(self):
+        """#605: Ueberlast wurde bisher NUR geloggt (INFO, nicht mal im Fehler-Log
+        sichtbar) — ein taeglicher Job konnte so spurlos ausfallen. Jetzt muss auch
+        dieser Zweig eine Meldung absetzen, nicht nur der Handover-Zweig."""
+        self.assertIn("duty_service.escalate_overload", FIRE)
+        self.assertIn('duty["state"] == agent_duty.OVERLOADED', FIRE)
+
 
 if __name__ == "__main__":
     unittest.main()
