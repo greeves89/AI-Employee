@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.220.3] - 2026-08-17
+
+### Behoben
+- **Ueberlast- und Ausfall-Meldungen erreichen jetzt tatsaechlich Telegram**
+  (#610). Die Ursache lag tiefer als nur eine falsche Prioritaet: interne
+  Meldungen des Vertretungssystems (`duty_service`) werden direkt in die
+  Datenbank geschrieben und laufen nie ueber die API, die `priority="high"`
+  in einen Telegram-Versand uebersetzt — sie blieben deshalb selbst mit
+  "hoher" Prioritaet unsichtbar im Web-UI. Ein taeglicher Job wie der
+  Podcast-Zeitplan konnte so ausfallen, ohne dass der Betreiber je davon
+  erfuhr. Betroffen waren alle drei Eskalationsstufen (Ausfall, Ueberlast,
+  unbeantwortete Rueckfrage); alle drei melden sich jetzt explizit am
+  Telegram-Kanal. Die im selben Issue vorgeschlagene Wiederholung
+  ausgefallener Zeitplaene und die Entzerrung zweier taeglicher 06:00-Jobs
+  bleiben offen (naechster Schritt).
+
 ## [1.220.2] - 2026-08-16
 
 ### Behoben

@@ -9,6 +9,7 @@ Todo-Tabelle fuer die Uebergabe, ``Notification`` fuer die Meldung und ``teams``
 Lead. Kein zweites Aufgabensystem, keine zweite Meldeschiene.
 """
 
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -20,6 +21,7 @@ from app.core.log_redaction import scrub_log
 from app.models.agent import Agent
 from app.models.agent_todo import AgentTodo, TodoStatus
 from app.models.notification import Notification
+from app.services.watchdog import md_escape
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,33 @@ UNANSWERED_AFTER = timedelta(hours=12)
 # ruehrt sich ohnehin erst am naechsten Tag wieder, aber ein kurzgetakteter (alle paar
 # Minuten) wuerde ohne Drossel bei anhaltender Ueberlast jedes Mal erneut melden.
 OVERLOAD_ALERT_COOLDOWN_SECONDS = 3600
+
+
+async def _publish_telegram(redis, title: str, message: str) -> None:
+    """Push a high-priority escalation straight to the Telegram alert channel.
+
+    ``escalate_failure``/``escalate_overload``/``escalate_silence`` write their
+    ``Notification`` row directly via ``db.add`` — they never go through the
+    agent-facing ``POST /notifications/`` API, which is the ONLY place that turns
+    ``priority in ("high", "urgent")`` into a Telegram send (app/api/notifications.py).
+    A DB-only Notification with priority="high" therefore silently never reaches
+    Telegram; the operator only sees it if they happen to open the Web UI. Root-caused
+    via #610 (the #606/#605 overload fix looked complete because the Notification row
+    existed, but nothing ever published it). Same channel + fail-silent pattern as
+    ``task_router._alert_schedule_failure``.
+    """
+    try:
+        if not redis or not redis.client:
+            return
+        await redis.client.publish(
+            "telegram:notification",
+            json.dumps({
+                "text": f"⚠️ *{md_escape(title)}*\n{md_escape(message)}",
+                "parse_mode": "Markdown",
+            }),
+        )
+    except Exception:  # noqa: BLE001 — ein verpasster Alert darf die Eskalation nie zum Absturz bringen
+        logger.debug("[Duty] Telegram-Publish fehlgeschlagen", exc_info=True)
 
 
 async def team_lead_for(db: AsyncSession, agent_id: str) -> str:
@@ -160,6 +189,8 @@ async def escalate_failure(db: AsyncSession, redis, agent: Agent, duty: dict) ->
         meta={"reason": "duty_failure", "deputy": deputy.id if deputy else "",
               "todos_moved": moved},
     ))
+    if priority in ("high", "urgent"):
+        await _publish_telegram(redis, title, message)
     return {"handled": True, "deputy": deputy.id if deputy else "", "todos": moved}
 
 
@@ -182,18 +213,24 @@ async def escalate_overload(db: AsyncSession, redis, agent: Agent, duty: dict,
     except Exception:  # noqa: BLE001
         logger.debug("[Duty] Ueberlast-Drossel nicht verfuegbar", exc_info=True)
 
+    title = f"{agent.name} ist ueberlastet — Zeitplan uebersprungen"[:200]
+    message = (
+        f"'{schedule_name}' wurde nicht ausgefuehrt: {duty.get('reason')}. Der Zeitplan "
+        f"laeuft normal weiter, aber dieser Durchgang faellt aus."
+    )[:240]
     db.add(Notification(
         agent_id=agent.id,
         type="warning",
-        title=f"{agent.name} ist ueberlastet — Zeitplan uebersprungen"[:200],
-        message=(
-            f"'{schedule_name}' wurde nicht ausgefuehrt: {duty.get('reason')}. Der Zeitplan "
-            f"laeuft normal weiter, aber dieser Durchgang faellt aus."
-        )[:240],
-        priority="normal",
+        title=title,
+        message=message,
+        # War "normal" — landete damit nur im Web-UI-Notification-Center und nie in
+        # Telegram (siehe #610), fuer einen taeglichen Job wie den Podcast reicht das
+        # nicht. "high" passt zur ebenfalls hoch eingestuften escalate_failure.
+        priority="high",
         action_url=f"/agents/{agent.id}",
         meta={"reason": "duty_overload", "schedule": schedule_name},
     ))
+    await _publish_telegram(redis, title, message)
     logger.info("[Duty] Ueberlast-Meldung fuer %s (%s uebersprungen)", agent.id, schedule_name)
     return True
 
@@ -225,22 +262,25 @@ async def escalate_silence(db: AsyncSession, redis, agent: Agent) -> bool:
 
     lead = await team_lead_for(db, agent.id)
     stufe = "den Team-Lead" if lead else "die Administration"
+    title = f"{agent.name} wartet seit über 12 Stunden auf eine Antwort"
+    message = (
+        f"{len(unanswered)} Rückfragen von {agent.name} sind unbeantwortet. "
+        f"Deshalb geht es jetzt an {stufe}. Älteste Frage: "
+        f"„{(unanswered[0].title or '')[:80]}“."
+    )[:240]
     db.add(Notification(
         # Meldung haengt am Lead, wenn es einen gibt — sonst am Agenten selbst, damit sie
         # in der Admin-Ansicht auftaucht.
         agent_id=lead or agent.id,
         type="warning",
-        title=f"{agent.name} wartet seit über 12 Stunden auf eine Antwort",
-        message=(
-            f"{len(unanswered)} Rückfragen von {agent.name} sind unbeantwortet. "
-            f"Deshalb geht es jetzt an {stufe}. Älteste Frage: "
-            f"„{(unanswered[0].title or '')[:80]}“."
-        )[:240],
+        title=title,
+        message=message,
         priority="high",
         action_url=f"/agents/{agent.id}",
         meta={"reason": "duty_silence", "unanswered": len(unanswered),
               "escalated_to": lead or "admin"},
     ))
+    await _publish_telegram(redis, title, message)
     logger.info("[Duty] Eskalation fuer %s an %s (%d unbeantwortet)",
                 agent.id, lead or "admin", len(unanswered))
     return True

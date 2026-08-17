@@ -37,16 +37,20 @@ UTC = timezone.utc
 
 
 class _FakeRedisClient:
-    """Nur so viel Redis, wie die Drossel braucht: SET mit nx/ex."""
+    """Nur so viel Redis, wie Drossel + Telegram-Publish brauchen."""
 
     def __init__(self):
         self.keys: set[str] = set()
+        self.published: list[tuple[str, str]] = []
 
     async def set(self, key, value, nx=False, ex=None):  # noqa: ANN001
         if nx and key in self.keys:
             return False
         self.keys.add(key)
         return True
+
+    async def publish(self, channel, message):  # noqa: ANN001
+        self.published.append((channel, message))
 
 
 class _FakeRedis:
@@ -129,6 +133,28 @@ class HandoverTests(DutyChainBase):
             self.assertIn("Vertretung", notes[0].title)
             self.assertEqual(notes[0].meta["deputy"], "vertretung")
             self.assertEqual(notes[0].meta["todos_moved"], 1)
+            # #610: priority="high" allein reicht nicht — braucht den expliziten Publish,
+            # weil dieser Pfad nie durch die agent-facing Notifications-API laeuft.
+            self.assertEqual(len(self.redis.client.published), 1)
+            self.assertEqual(self.redis.client.published[0][0], "telegram:notification")
+
+    async def test_no_open_work_does_not_page_telegram(self):
+        """priority="normal" (Vertreter gefunden, aber nichts zu uebergeben) soll nicht
+        denselben Alarm ausloesen wie ein echter Ausfall mit Uebergabe — sonst verwaessert
+        jede Meldung die naechste."""
+        async with self.Session() as db:
+            db.add_all([
+                self._agent("dead", "Ausfaller", AgentState.STOPPED, deputy_agent_id="vertretung"),
+                self._agent("vertretung", "Vertretung"),
+            ])
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "dead"))).scalar_one()
+            await duty_service.escalate_failure(db, self.redis, agent, {"reason": "tot"})
+            await db.commit()
+
+            note = (await db.execute(select(Notification))).scalars().one()
+            self.assertEqual(note.priority, "normal")
+            self.assertEqual(self.redis.client.published, [])
 
     async def test_second_run_is_throttled(self):
         """Ein tagelang toter Agent darf nicht jeden Tick erneut uebergeben."""
@@ -325,10 +351,28 @@ class OverloadEscalationTests(DutyChainBase):
 
             self.assertTrue(result)
             note = (await db.execute(select(Notification))).scalars().one()
-            self.assertEqual(note.priority, "normal")
+            # War "normal" -> landete nur im Web-UI, nie in Telegram (#610).
+            self.assertEqual(note.priority, "high")
             self.assertIn("Taeglicher KI-News-Podcast", note.message)
             self.assertIn("7 Aufgaben warten", note.message)
             self.assertEqual(note.meta["reason"], "duty_overload")
+
+    async def test_reaches_telegram_not_just_the_web_ui(self):
+        """#610: die Notification allein reichte nicht — ohne expliziten Publish auf
+        den Telegram-Kanal erfuhr der Nutzer nie vom uebersprungenen Zeitplan."""
+        async with self.Session() as db:
+            db.add(self._agent("voll", "Podcast-Agent"))
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "voll"))).scalar_one()
+            duty = {"state": duty_core.OVERLOADED, "reason": "ueberlastet"}
+            await duty_service.escalate_overload(db, self.redis, agent, duty, "Podcast")
+            await db.commit()
+
+            self.assertEqual(len(self.redis.client.published), 1)
+            channel, payload = self.redis.client.published[0]
+            self.assertEqual(channel, "telegram:notification")
+            self.assertIn("Podcast-Agent", payload)
+            self.assertIn("Podcast", payload)
 
     async def test_second_run_within_the_hour_is_throttled(self):
         async with self.Session() as db:
