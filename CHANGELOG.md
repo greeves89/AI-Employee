@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.220.4] - 2026-08-17
+
+### Behoben
+- **Kurzzeitige Agenten-Ueberlast laesst taegliche Zeitplaene nicht mehr sofort
+  fuer den ganzen Tag ausfallen.** Wenn ein Agent beim Scheduler-Tick nur
+  ueberlastet ist, versucht der Zeitplan jetzt bis zu zweimal nach etwa
+  zwoelf Minuten erneut zu laufen. Erst beim dritten Ueberlast-Tick geht er
+  wieder auf den regulaeren naechsten Slot.
+
+---
+
 ## [1.220.3] - 2026-08-17
 
 ### Behoben
@@ -20,6 +31,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Telegram-Kanal. Die im selben Issue vorgeschlagene Wiederholung
   ausgefallener Zeitplaene und die Entzerrung zweier taeglicher 06:00-Jobs
   bleiben offen (naechster Schritt).
+
+---
 
 ## [1.220.2] - 2026-08-16
 

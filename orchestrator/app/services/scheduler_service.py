@@ -56,6 +56,12 @@ _APPROVAL_TTL_HOURS = 24
 # Schedules without such a safety net would simply have stayed silent.
 _DUE_SCHEDULES_ALERT_THRESHOLD = 4
 
+# OVERLOADED is usually a short-lived queue spike. Do not lose a daily cron slot
+# immediately, but also do not keep a schedule in a retry loop forever.
+_OVERLOAD_RETRY_MAX_ATTEMPTS = 2
+_OVERLOAD_RETRY_DELAY = timedelta(minutes=12)
+_OVERLOAD_RETRY_TTL_SECONDS = 6 * 3600
+
 # GC runs every 60 seconds
 _GC_INTERVAL_SECONDS = 60
 # "Dreaming": periodic adaptive user-profile refresh from accumulated memories
@@ -699,7 +705,11 @@ class SchedulerService:
                         await duty_service.escalate_overload(
                             db, self.redis, duty_agent, duty, schedule.name,
                         )
-                    schedule.next_run_at = _calc_next_run(schedule, now)
+                        schedule.next_run_at = await self._next_run_after_overload(
+                            schedule, now
+                        )
+                    else:
+                        schedule.next_run_at = _calc_next_run(schedule, now)
                     logger.info(
                         "[Scheduler] %s uebersprungen — Agent %s: %s (%s)",
                         schedule.name, schedule.agent_id, duty["state"], duty["reason"],
@@ -897,6 +907,24 @@ class SchedulerService:
             "[Scheduler] %s triggered task %s, next run at %s",
             schedule.name, task.id, schedule.next_run_at.isoformat(),
         )
+
+    async def _next_run_after_overload(self, schedule: Schedule, now: datetime) -> datetime:
+        """Retry briefly for transient overload before giving up on the slot."""
+        client = getattr(self.redis, "client", None)
+        if client is None:
+            return _calc_next_run(schedule, now)
+
+        key = f"schedule:overload-retry:{schedule.id}"
+        try:
+            attempt = int(await client.incr(key))
+            if attempt == 1:
+                await client.expire(key, _OVERLOAD_RETRY_TTL_SECONDS)
+            if attempt <= _OVERLOAD_RETRY_MAX_ATTEMPTS:
+                return now + _OVERLOAD_RETRY_DELAY
+            await client.delete(key)
+        except Exception:  # noqa: BLE001
+            logger.debug("[Scheduler] Ueberlast-Retry-Zaehler nicht verfuegbar", exc_info=True)
+        return _calc_next_run(schedule, now)
 
     async def _arm_plan_blocks(self) -> int:
         """Sicherstellen, dass jeder geplante Block mit Uhrzeit einen Ausloeser hat.
