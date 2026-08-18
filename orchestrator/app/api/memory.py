@@ -777,8 +777,21 @@ async def update_memory(
 
 
 @router.delete("/{memory_id}")
-async def delete_memory(memory_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Delete a memory entry."""
+async def delete_memory(
+    memory_id: int,
+    # Frueher stand hier `require_auth` — ein reines NUTZER-Login. Der Agent
+    # schickt sein Agenten-Token, also antwortete das Loeschen ihm immer mit
+    # 401. Das Werkzeug `memory_delete` gab es damit auf dem Papier, aber es
+    # hat nie funktioniert: ein Agent, der merkte, dass sein Wissen veraltet
+    # ist, konnte es nicht wegraeumen. Beim Nutzer am 18.08.2026 blieben so
+    # vier Notizen mit einem laengst geloeschten Kollegen stehen.
+    # `_assert_agent_access` unten kannte den Agenten-Fall die ganze Zeit —
+    # nur kam er nie dort an. Speichern (`/save`) und Auflisten
+    # (`/agents/{id}`) lassen den Agenten ebenfalls durch.
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a memory entry (UI or the agent cleaning up after itself)."""
     result = await db.execute(select(AgentMemory).where(AgentMemory.id == memory_id))
     memory = result.scalar_one_or_none()
     if not memory:

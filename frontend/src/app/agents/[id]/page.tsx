@@ -25,6 +25,7 @@ import {
   getFileColor, formatModified, formatModifiedFull,
   formatFileSize as formatFileSizeShared,
 } from "@/components/files/file-preview";
+import { useOrdnerAbwurf } from "@/components/files/use-ordner-abwurf";
 import { FileUploader } from "@/components/files/file-uploader";
 import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
@@ -2726,6 +2727,17 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
     loadDir("/workspace").finally(() => setLoading(false));
   }, [agentId]);
 
+  // Ziehen und Fallenlassen aus dem Betriebssystem — dieselbe Mechanik wie im
+  // agentenuebergreifenden Baum unter /files.
+  const { dropZiel, dropLaeuft, beiDragOver, beiDragLeave, beiDrop } = useOrdnerAbwurf({
+    aufloesen: (ziel) => ({ agentId, pfad: ziel }),
+    melden: toast,
+    nachAbwurf: async (ziel) => {
+      setExpanded((prev) => new Set(prev).add(ziel));
+      await loadDir(ziel);
+    },
+  });
+
   const toggleDir = async (path: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -2810,16 +2822,24 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
       const isDir = entry.type === "directory";
       const isExpanded = expanded.has(entry.path);
       const isSelected = selectedFile?.path === entry.path;
+      // Eine Datei ist kein Ziel — wer auf sie zielt, meint ihren Ordner.
+      const abwurfZiel = isDir ? entry.path : path;
+      const istAbwurfZiel = dropZiel === abwurfZiel;
+      const laedtHierher = dropLaeuft === abwurfZiel;
 
       return (
         <div key={entry.path}>
           <div
             className={cn(
               "flex items-center gap-2 py-1 px-3 hover:bg-foreground/[0.04] transition-colors cursor-pointer group",
-              isSelected && "bg-primary/10 border-r-2 border-primary"
+              isSelected && "bg-primary/10 border-r-2 border-primary",
+              istAbwurfZiel && "bg-primary/15 ring-1 ring-inset ring-primary/50"
             )}
             style={{ paddingLeft: `${depth * 18 + 12}px` }}
             onClick={() => isDir ? toggleDir(entry.path) : setSelectedFile(entry)}
+            onDragOver={(e) => beiDragOver(e, abwurfZiel)}
+            onDragLeave={beiDragLeave}
+            onDrop={(e) => beiDrop(e, abwurfZiel)}
           >
             {isDir ? (
               <ChevronRight className={cn(
@@ -2876,7 +2896,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
                 <Trash2 className="h-2.5 w-2.5" />
               </button>
             )}
-            {isDir && isExpanded && !treeData[entry.path] && (
+            {((isDir && isExpanded && !treeData[entry.path]) || laedtHierher) && (
               <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40 shrink-0" />
             )}
           </div>
@@ -2978,7 +2998,18 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
         </div>
 
         {/* Tree content */}
-        <div className="flex-1 overflow-y-auto py-1 font-mono">
+        {/* Der Rahmen selbst nimmt Dateien ebenfalls an: wer in den leeren Raum
+            unter dem Baum faellt, meint den Wurzelordner. Ohne das waere der
+            grosse leere Bereich die einzige Flaeche, auf der nichts passiert. */}
+        <div
+          className={cn(
+            "flex-1 overflow-y-auto py-1 font-mono transition-colors",
+            dropZiel === "/workspace" && "bg-primary/5 ring-1 ring-inset ring-primary/30"
+          )}
+          onDragOver={(e) => beiDragOver(e, "/workspace")}
+          onDragLeave={beiDragLeave}
+          onDrop={(e) => beiDrop(e, "/workspace")}
+        >
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

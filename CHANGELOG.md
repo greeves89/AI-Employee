@@ -5,6 +5,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.228.0] - 2026-08-18
+
+### Behoben
+- **Ein Agent konnte sein eigenes veraltetes Wissen nicht löschen.** Gemeldet mit
+  Bildschirmfoto: der Agent merkte, dass sein gespeicherter Team-Zettel einen
+  Kollegen nennt, den es nicht mehr gibt, wollte die vier Notizen wegräumen — und
+  bekam vier Mal `401 Invalid or expired token`. Im Log der Anlage stand es
+  genauso.
+- Ursache: der Löschweg hing an einer reinen **Nutzer**-Anmeldung. Speichern und
+  Auflisten ließen den Agenten längst durch, nur Löschen nicht. Das Werkzeug
+  `memory_delete` stand damit in allen vier Laufzeiten im Katalog und hat nie
+  funktioniert.
+- Der Besitz-Schild kannte den Agenten-Fall die ganze Zeit, wurde aber nie
+  erreicht. Die Mandantentrennung bleibt unverändert: ein Agent kommt nur an
+  seine eigenen Notizen, fremde werden weiterhin mit 403 abgewiesen.
+
+### Geändert
+- **Agenten sehen ihre Kollegenliste jetzt von selbst nach, statt sie zu
+  erinnern.** Rückmeldung: „wieso hat der das erst nach ansprache gesichtet...
+  wieso KOMMT DER NICHT ALLEIN AUF DEN GEDANKEN MAL ZU SCHAUEN".
+- Die Regel gab es, sie hing aber am Gefragtwerden („wenn dich jemand nach deinem
+  Team fragt"). Jetzt hängt sie am Handeln: vor dem Delegieren, vor dem
+  Anschreiben, vor dem Nennen eines Kollegen und bevor etwas über das Team ins
+  Gedächtnis geschrieben wird.
+- Neu ist auch, was zu tun ist, wenn jemand fehlt: es sagen und neu planen,
+  statt Arbeit für einen Namen einzustellen, den es nicht mehr gibt — und die
+  falsche Notiz löschen, damit man ihr morgen nicht wieder glaubt.
+- Nachgesehen auf der Anlage: an die tote Kennung ging **kein einziger** Auftrag.
+  Die vorhandene Sicherung beim Zustellen konnte also gar nicht greifen — der
+  Agent hat nie falsch delegiert, sondern falsch geglaubt.
+
+### Neu
+- **Dateien lassen sich auf einen Ordner im Dateibaum ziehen.** Sie landen direkt
+  dort, der Ordner klappt auf und liest sich neu ein. Wer knapp danebentrifft und
+  auf einer Datei landet, meint deren Ordner — das gilt jetzt auch so. Der leere
+  Bereich unter dem Baum nimmt Dateien für den Wurzelordner an.
+- Gilt für beide Dateibäume (Arbeitsbereich eines Agenten und die
+  agentenübergreifende Ansicht); beide benutzen dieselbe Mechanik, damit sie
+  nicht auseinanderlaufen.
+- Ganze Ordner kann die Schnittstelle nicht — das wird jetzt gesagt, statt mit
+  einer leeren Datei fehlzuschlagen.
+
+---
+
 ## [1.227.0] - 2026-08-18
 
 ### Sicherheit
