@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.238.0] - 2026-08-18
+
+### Sicherheit
+- **Eigene KI-Abos sind jetzt standardmässig gesperrt — und einzeln freigebbar.**
+  Korrektur an v1.227.0: dort war der Schalter global mit Vorgabe **an** gebaut.
+  Gefordert war das Gegenteil.
+- Wörtlich aus dem Kundentermin: „Für uns als Unternehmen möchte ich **nicht**,
+  dass Mitarbeiter ihre privaten Accounts hier hinterlegen und dann mit
+  Firmendaten arbeiten. Das muss man quasi global als Admin einstellen können."
+  Und: „dass man dann **für User manuell freischalten** kann … aber dass man das
+  **generell unterbinden** kann."
+- Zwei Ebenen: globaler Schalter (Vorgabe **aus**) plus Einzelfreigabe je Nutzer,
+  die ein Administrator über die Nutzerverwaltung setzt. Steht der globale
+  Schalter an, gilt es für alle — dann muss niemand einzeln angehakt werden.
+- Meine ursprüngliche Begründung („eine bestehende Anlage darf nach einem Update
+  nicht ohne Zugang dastehen") trug hier nicht: private Abos waren vorher gar
+  nicht möglich, es konnte nichts wegbrechen. Für eine Sicherheitszusage ist
+  „standardmässig offen" die falsche Richtung.
+- Der Schalter greift weiterhin an der Stelle, wo Zugänge aufgelöst werden, nicht
+  nur in der Oberfläche — ein bereits hinterlegter privater Zugang hört damit
+  wirklich auf zu wirken.
+
+---
+
 ## [1.237.1] - 2026-08-18
 
 ### Behoben

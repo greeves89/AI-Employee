@@ -49,7 +49,21 @@ class EnvForTests(unittest.TestCase):
 class ResolveOrderTests(unittest.IsolatedAsyncioTestCase):
     """Eigener Zugang → Teamlizenz → nichts."""
 
-    async def _resolve(self, *, personal, team, team_allowed, mode="claude_code"):
+    async def _resolve(self, *, personal, team, team_allowed, mode="claude_code",
+                       eigene_erlaubt=True):
+        """``eigene_erlaubt`` bildet die Freigabe nach.
+
+        Seit der Korrektur vom 18.08.2026 sind eigene Abos standardmaessig
+        GESPERRT (Kundenvorgabe). Diese Tests pruefen die Rangfolge „eigener
+        Zugang schlaegt Teamlizenz" — dafuer muss die Freigabe vorliegen, sonst
+        prueften sie nur noch die Sperre.
+        """
+        from unittest.mock import patch as _patch
+        with _patch.object(creds.settings, "allow_personal_credentials", eigene_erlaubt):
+            return await self._resolve_inner(
+                personal=personal, team=team, team_allowed=team_allowed, mode=mode)
+
+    async def _resolve_inner(self, *, personal, team, team_allowed, mode="claude_code"):
         orig_personal = creds.personal_credential
         orig_team = creds.team_secret
         orig_allowed = creds.team_license_allowed

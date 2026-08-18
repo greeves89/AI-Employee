@@ -20,6 +20,7 @@ Zwei Dinge muessen stimmen, sonst ist der Schalter Fassade:
 
 import inspect
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.api import my_ai_credentials as api
@@ -31,10 +32,37 @@ class TheSwitchExistsTests(unittest.TestCase):
         self.assertIn(personal := "personal_credentials_allowed", dir(creds))
         self.assertIsInstance(getattr(creds, personal)(), bool)
 
-    def test_it_defaults_to_allowed(self):
-        """Eine bestehende Anlage darf nach einem Update nicht ploetzlich ohne
-        Zugang dastehen — dieselbe Begruendung wie bei der Teamlizenz."""
-        self.assertTrue(creds.personal_credentials_allowed())
+    def test_it_defaults_to_forbidden(self):
+        """KORRIGIERT: die erste Fassung hatte die Vorgabe auf AN, mit der
+        Begruendung „eine bestehende Anlage darf nicht ohne Zugang dastehen".
+        Das traegt hier nicht — private Abos waren vorher gar nicht moeglich,
+        es kann nichts wegbrechen.
+
+        Woertlich vom Kunden: „dass man das generell unterbinden kann, weil das
+        ist sonst natuerlich ein kleines Sicherheitsrisiko."
+        """
+        self.assertFalse(creds.personal_credentials_allowed())
+
+    def test_a_released_user_may_do_it_even_when_globally_off(self):
+        """Die zweite Ebene: „dass man dann fuer User manuell freischalten
+        kann … der darf gerne sein privates Modell einbinden"."""
+        freigegeben = SimpleNamespace(allow_personal_credentials=True)
+        self.assertTrue(creds.personal_credentials_allowed(freigegeben))
+
+    def test_an_ordinary_user_may_not(self):
+        gewoehnlich = SimpleNamespace(allow_personal_credentials=False)
+        self.assertFalse(creds.personal_credentials_allowed(gewoehnlich))
+
+    def test_the_global_switch_opens_it_for_everyone(self):
+        """Wer es fuer die ganze Anlage aufmachen will, soll nicht jeden Nutzer
+        einzeln anhaken muessen."""
+        with patch.object(creds.settings, "allow_personal_credentials", True):
+            self.assertTrue(creds.personal_credentials_allowed(SimpleNamespace(
+                allow_personal_credentials=False)))
+
+    def test_an_admin_can_release_a_single_user(self):
+        from app.api.auth import UserUpdateRequest
+        self.assertIn("allow_personal_credentials", UserUpdateRequest.model_fields)
 
     def test_it_is_a_saved_setting_not_only_an_env_var(self):
         """Sonst muesste man den Container anfassen, um es umzustellen — der
@@ -49,7 +77,7 @@ class ItWorksWhereItMattersTests(unittest.TestCase):
     SRC = inspect.getsource(creds.resolve)
 
     def test_the_personal_branch_is_gated(self):
-        self.assertIn("if personal_credentials_allowed():", self.SRC)
+        self.assertIn("if personal_credentials_allowed(besitzer):", self.SRC)
 
     def test_a_blocked_lookup_is_logged(self):
         """Sonst sucht jemand stundenlang, warum sein Zugang nicht greift."""
@@ -73,12 +101,12 @@ class TheApiRefusesToStoreSomethingUselessTests(unittest.TestCase):
         with patch.object(creds, "personal_credentials_allowed", return_value=False):
             from fastapi import HTTPException
             with self.assertRaises(HTTPException) as ctx:
-                api._eigene_zugaenge_erlaubt()
+                api._eigene_zugaenge_erlaubt(None)
             self.assertEqual(ctx.exception.status_code, 403)
 
     def test_it_passes_when_allowed(self):
         with patch.object(creds, "personal_credentials_allowed", return_value=True):
-            api._eigene_zugaenge_erlaubt()   # darf nicht werfen
+            api._eigene_zugaenge_erlaubt(None)   # darf nicht werfen
 
     def test_every_creating_endpoint_is_guarded(self):
         quelle = inspect.getsource(api)
@@ -86,7 +114,7 @@ class TheApiRefusesToStoreSomethingUselessTests(unittest.TestCase):
                      "exchange_anthropic_login", "start_codex_login"):
             with self.subTest(endpunkt=name):
                 block = quelle.split(f"async def {name}(", 1)[1][:900]
-                self.assertIn("_eigene_zugaenge_erlaubt()", block)
+                self.assertIn("_eigene_zugaenge_erlaubt(user)", block)
 
 
 class ReadingAndDeletingStayOpenTests(unittest.TestCase):

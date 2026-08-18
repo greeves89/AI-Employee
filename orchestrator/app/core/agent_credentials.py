@@ -78,17 +78,31 @@ async def personal_credential(db: AsyncSession, user_id: str | None,
         return None
 
 
-def personal_credentials_allowed() -> bool:
-    """Darf ein Mitarbeiter sein EIGENES Abo einbinden?
+def personal_credentials_allowed(user=None) -> bool:
+    """Darf DIESER Mitarbeiter sein EIGENES Abo einbinden?
 
-    Vom Kunden am 18.08.2026 als Bedingung genannt: zentral steuerbar, sonst
-    Sicherheitsrisiko. Der persoenliche Weg entstand am selben Tag — ohne diesen
-    Schalter waere er ueberall fuer jeden offen.
+    Woertlich vom Kunden am 18.08.2026:
 
-    Vorgabe **an**, aus demselben Grund wie bei der Teamlizenz: eine bestehende
-    Anlage darf nach einem Update nicht ploetzlich ohne Zugang dastehen.
+        „Fuer uns als Unternehmen moechte ich NICHT, dass Mitarbeiter ihre
+        privaten Accounts hier hinterlegen und dann mit Firmendaten arbeiten.
+        Das muss man quasi global als Admin einstellen koennen." … „Und dass
+        man dann fuer User manuell freischalten kann … aber dass man das
+        generell unterbinden kann."
+
+    Also zwei Ebenen: ein globaler Schalter mit Vorgabe **AUS**, und die
+    Freigabe einzelner Nutzer.
+
+    Die erste Fassung (v1.227.0) hatte die Vorgabe auf AN, mit der Begruendung,
+    eine bestehende Anlage duerfe nach einem Update nicht ohne Zugang
+    dastehen. Das traegt hier NICHT: private Abos waren vorher gar nicht
+    moeglich, es kann also nichts wegbrechen. Fuer eine Sicherheitszusage ist
+    „standardmaessig offen" die falsche Richtung.
+
+    ``user=None`` fragt nur den globalen Schalter ab.
     """
-    return bool(getattr(settings, "allow_personal_credentials", True))
+    if bool(getattr(settings, "allow_personal_credentials", False)):
+        return True
+    return bool(getattr(user, "allow_personal_credentials", False))
 
 
 def team_license_allowed() -> bool:
@@ -115,7 +129,19 @@ async def resolve(db: AsyncSession, *, owner_id: str | None, mode: str | None,
     # Der Schalter wirkt HIER und nicht nur in der Oberflaeche: sonst waere das
     # Abschalten kosmetisch — bereits hinterlegte Zugaenge liefen weiter, und
     # genau die sollen ja aufhoeren zu wirken.
-    if personal_credentials_allowed():
+    # Steht der globale Schalter auf AN, gilt es fuer alle — dann braucht es
+    # die Einzelfreigabe gar nicht nachzuschlagen. Der Blick in die Datenbank
+    # ist zusaetzlich abgesichert: manche Aufrufer reichen einen schlanken
+    # Sitzungs-Ersatz herein, und daran darf die Zugangsaufloesung nicht
+    # scheitern.
+    besitzer = None
+    if not personal_credentials_allowed() and owner_id:
+        try:
+            from app.models.user import User as _User
+            besitzer = await db.get(_User, owner_id)
+        except Exception:  # noqa: BLE001
+            besitzer = None
+    if personal_credentials_allowed(besitzer):
         own = await personal_credential(db, owner_id, harness)
         if own:
             return SOURCE_PERSONAL, harness, own

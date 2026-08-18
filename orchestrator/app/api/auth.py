@@ -100,6 +100,9 @@ class UserUpdateRequest(BaseModel):
     role: str | None = None
     is_active: bool | None = None
     approved: bool | None = None
+    #: Einzelfreigabe fuer ein eigenes Claude-/Codex-Abo. Kundenvorgabe vom
+    #: 18.08.2026: generell unterbinden, einzelne Nutzer manuell freischalten.
+    allow_personal_credentials: bool | None = None
 
 
 # --- Helpers ---
@@ -681,6 +684,8 @@ async def update_user(user_id: str, body: UserUpdateRequest, request: Request, d
 
     if body.name is not None:
         target.name = body.name
+    if body.allow_personal_credentials is not None:
+        target.allow_personal_credentials = body.allow_personal_credentials
     if body.role is not None:
         new_role = UserRole(body.role)
         if target.role == UserRole.ADMIN and new_role != UserRole.ADMIN:

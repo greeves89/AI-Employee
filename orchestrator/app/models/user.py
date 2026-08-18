@@ -43,6 +43,13 @@ class User(Base, TimestampMixin):
         Integer, ForeignKey("custom_roles.id", ondelete="SET NULL"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    #: Einzelfreigabe fuer ein EIGENES Claude-/Codex-Abo. Greift nur, wenn der
+    #: globale Schalter aus ist — genau die zweite Ebene, die der Kunde am
+    #: 18.08.2026 verlangt hat: „generell unterbinden … fuer User manuell
+    #: freischalten".
+    allow_personal_credentials: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     # Admin-approval gate (OpenWebUI-style). True = approved/usable. New self-registered
     # users (SSO or password) get False when `require_user_approval` is on → they wait
     # for an admin to approve. Distinct from is_active (deactivation). Default True so

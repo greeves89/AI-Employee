@@ -703,6 +703,34 @@ async def _init_db_from_models() -> None:
     except Exception as e:
         logger.warning(f"Could not ensure second_brains MCP columns: {e}")
 
+    # Git-Abgleich je Vault (optional — ein Vault laeuft auch ganz ohne).
+    try:
+        async with engine.begin() as conn:
+            for spalte in (
+                "git_url text",
+                "git_branch varchar(200)",
+                "git_token_encrypted text",
+                "git_last_sync_at timestamptz",
+                "git_last_status varchar(255)",
+            ):
+                await conn.execute(_sql_text(
+                    f"ALTER TABLE second_brains ADD COLUMN IF NOT EXISTS {spalte}"
+                ))
+        logger.info("second_brains git columns ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure second_brains git columns: {e}")
+
+    # Einzelfreigabe fuer eigene KI-Abos (Kundenvorgabe 18.08.2026).
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(_sql_text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                "allow_personal_credentials boolean NOT NULL DEFAULT false"
+            ))
+        logger.info("users.allow_personal_credentials ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure second_brains git columns: {e}")
+
     # Agent clone origin: distributed copies of a "trained" source agent track it
     # via agents.source_agent_id. Ensure idempotently (create_all never ALTERs).
     try:

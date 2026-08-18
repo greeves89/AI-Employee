@@ -141,7 +141,10 @@ class Settings(BaseSettings):
     #: Vorgabe **an**, wie bei ``allow_team_license``: eine bestehende Anlage
     #: darf nach einem Update nicht ploetzlich ohne Zugang dastehen. Wer es
     #: zumacht, tut das bewusst.
-    allow_personal_credentials: bool = True
+    #: Duerfen Mitarbeiter ihr EIGENES Claude-/Codex-Abo einbinden?
+    #: Vorgabe AUS — ausdrueckliche Kundenvorgabe (18.08.2026): generell
+    #: unterbinden koennen, einzelne Nutzer manuell freischalten.
+    allow_personal_credentials: bool = False
     # Host metrics JSON written by the host power collector (bind-mounted read-only).
     kiosk_metrics_path: str = "/kiosk-metrics/metrics.json"
     secondbrain_container_base: str = "/mnt/brains"

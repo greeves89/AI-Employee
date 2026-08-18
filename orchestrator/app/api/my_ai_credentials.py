@@ -70,7 +70,7 @@ def _to_response(row: UserAiCredential) -> dict:
     }
 
 
-def _eigene_zugaenge_erlaubt() -> None:
+def _eigene_zugaenge_erlaubt(user=None) -> None:
     """Sperrt alles, was einen persoenlichen Zugang ANLEGT.
 
     Der Kunde hat am 18.08.2026 zur Bedingung gemacht, dass das zentral
@@ -86,7 +86,7 @@ def _eigene_zugaenge_erlaubt() -> None:
     """
     from app.core.agent_credentials import personal_credentials_allowed
 
-    if not personal_credentials_allowed():
+    if not personal_credentials_allowed(user):
         raise HTTPException(
             status_code=403,
             detail=("Eigene KI-Zugaenge sind in dieser Anlage nicht freigegeben. "
@@ -112,7 +112,7 @@ async def list_my_credentials(user=Depends(require_auth), db: AsyncSession = Dep
         "team_license_allowed": creds.team_license_allowed(),
         # Damit die Oberflaeche den Bereich ausblenden kann, statt Knoepfe
         # anzubieten, die anschliessend mit 403 abgewiesen werden.
-        "personal_allowed": creds.personal_credentials_allowed(),
+        "personal_allowed": creds.personal_credentials_allowed(user),
     }
 
 
@@ -128,7 +128,7 @@ async def upsert_my_credential(
     geht als Umgebungsvariable in den Container und wird beim Start gelesen. Das
     steht auch in der Antwort, damit niemand auf eine sofortige Wirkung wartet.
     """
-    _eigene_zugaenge_erlaubt()
+    _eigene_zugaenge_erlaubt(user)
     harness = (body.harness or "").strip()
     if harness not in CREDENTIAL_HARNESSES:
         raise HTTPException(status_code=400,
@@ -243,7 +243,7 @@ async def start_anthropic_login(
     service: "OAuthService" = Depends(_oauth_service),
 ):
     """Anmeldung starten — liefert die Adresse, die im Browser geoeffnet wird."""
-    _eigene_zugaenge_erlaubt()
+    _eigene_zugaenge_erlaubt(user)
     try:
         auth_url = await service.generate_auth_url("anthropic", user_id=user.id)
     except (KeyError, ValueError) as e:
@@ -267,7 +267,7 @@ async def exchange_anthropic_login(
     Schritt haette der Nutzer sich erfolgreich angemeldet — und seine Agenten
     liefen trotzdem ohne seinen Zugang.
     """
-    _eigene_zugaenge_erlaubt()
+    _eigene_zugaenge_erlaubt(user)
     from app.core.encryption import decrypt_token
 
     code = (body.code or "").split("#")[0].strip()
@@ -305,7 +305,7 @@ async def start_codex_login(user=Depends(require_auth)):
     ``auth.json`` einfuegt (PUT oben). Anders als bei Anthropic gibt es hier
     keinen Code zum Eintauschen: Codex legt die Datei lokal an.
     """
-    _eigene_zugaenge_erlaubt()
+    _eigene_zugaenge_erlaubt(user)
     from app.services.codex_device_auth_service import codex_device_auth_service
 
     try:
