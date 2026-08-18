@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.238.3] - 2026-08-18
+
+### Behoben
+- **Der Bridge-Download führte auf eine 404-Seite.** Der Link zeigte auf
+  `https://github.com//releases/download/…` — doppelter Schrägstrich, kein
+  Repository. Ursache war das Zusammenspiel zweier für sich harmloser Zeilen:
+  `docker-compose.yml` reicht `GITHUB_REPO` als `${GITHUB_REPO:-}` weiter,
+  setzt die Variable also auf **leer**, wenn der Host sie nicht kennt — und
+  `os.getenv(name, default)` greift nur, wenn eine Variable **gar nicht**
+  existiert. Eine leere Variable schlägt den Standard.
+  Der Download hatte seit Mai funktioniert; die compose-Zeile kam erst am
+  13.08. dazu, und zwar für die **Feedback-Issue-Spiegelung** — ein ganz
+  anderes Feature, das zufällig denselben Variablennamen braucht.
+  Beide Seiten sind jetzt abgesichert: der Code fällt auch bei leerem Wert auf
+  das echte Repository zurück, und compose reicht einen sinnvollen Standard
+  weiter statt einer leeren Zeichenkette.
+
+---
+
 ## [1.238.2] - 2026-08-18
 
 ### Behoben

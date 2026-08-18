@@ -134,7 +134,9 @@ services:
       # Feedback-Widget: MD+PNG-Ablage (Volume unten) + optionale Issue-Spiegelung
       FEEDBACK_DIR: /data/feedback
       FEEDBACK_ISSUE_ENABLED: ${FEEDBACK_ISSUE_ENABLED:-false}
-      GITHUB_REPO: ${GITHUB_REPO:-}
+      # Sinnvoller Standard statt leer — sonst zeigt der Bridge-Download auf
+      # `github.com//releases/...` (siehe api/downloads.py).
+      GITHUB_REPO: ${GITHUB_REPO:-greeves89/AI-Employee}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       CLAUDE_CODE_OAUTH_REFRESH_TOKEN: ${CLAUDE_CODE_OAUTH_REFRESH_TOKEN:-}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-claude-sonnet-4-6}
