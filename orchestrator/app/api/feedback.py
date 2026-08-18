@@ -218,6 +218,15 @@ async def _one_re_question(db: AsyncSession, redis, messages: list[dict], contex
     if not cfg.get("backend"):
         raise RuntimeError("kein LLM-Zugang konfiguriert (weder Anthropic-Key noch Bedrock-Account)")
 
+    # FEEDBACK_MODEL uebersteuert das Reflection-Modell nur fuer diese Rueckfrage.
+    # Auf Bedrock braucht es eine volle Bedrock-Id — sonst bleibt cfg["model"],
+    # das _load_config bereits auf ein Bedrock-taugliches Modell gemappt hat.
+    fb_model = settings.feedback_model.strip()
+    if fb_model and (
+        cfg["backend"] != "bedrock" or "anthropic." in fb_model or "amazon." in fb_model
+    ):
+        cfg["model"] = fb_model
+
     ctx = (
         f"Element: {context.get('element_label') or '—'} · Seite: {context.get('page') or '—'} · "
         f"Bewertung: {SENTIMENT_LABELS.get(context.get('sentiment') or '', '—')} · "

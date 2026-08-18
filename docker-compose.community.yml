@@ -79,6 +79,7 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-claude-sonnet-4-6}
+      FEEDBACK_MODEL: ${FEEDBACK_MODEL:-}
       MAX_TURNS: ${MAX_TURNS:-100}
       MAX_AGENTS: ${MAX_AGENTS:-10}
       # Security (REQUIRED — must be unique per installation!)
