@@ -484,6 +484,28 @@ class BrowserController:
         self._pw = None
 
     # ── Lebenszyklus ─────────────────────────────────────────────────────────
+    def _prepare_profile_dir(self) -> None:
+        """Profil-Verzeichnis anlegen — NUR fuer den angemeldeten Nutzer lesbar.
+
+        Dort liegen nach der Einmal-Anmeldung die Sitzungs-Cookies und
+        Anmeldedaten des Browsers. Mit der Vorgabe von ``makedirs`` (0755 nach
+        umask) koennte jeder andere lokale Account sie mitlesen — genau der
+        Diebstahl, gegen den die Chrome/Edge-136-Haertung gebaut wurde, nur eine
+        Ebene tiefer. Damit waere die Begruendung des ganzen Entwurfs ("kein
+        Cookie-Import aus dem privaten Profil") hinfaellig.
+
+        ``mode=`` allein genuegt nicht: es wird von der umask beschnitten, und
+        bei ``exist_ok=True`` behaelt ein bereits vorhandenes Verzeichnis seine
+        alten, moeglicherweise weiten Rechte. Deshalb zusaetzlich ``chmod``.
+        """
+        os.makedirs(self.profile_dir, mode=0o700, exist_ok=True)
+        try:
+            os.chmod(self.profile_dir, 0o700)
+        except OSError:
+            # Windows kennt keine POSIX-Rechte; dort erbt das Verzeichnis die
+            # ACL des Benutzerprofils und ist ohnehin nicht fuer andere lesbar.
+            pass
+
     def _run(self) -> None:
         try:
             from playwright.sync_api import sync_playwright
@@ -496,7 +518,7 @@ class BrowserController:
             self._started.set()
             return
 
-        os.makedirs(self.profile_dir, exist_ok=True)
+        self._prepare_profile_dir()
         try:
             self._pw = sync_playwright().start()
             # Reihenfolge mit Absicht: erst der im Haus freigegebene Browser,

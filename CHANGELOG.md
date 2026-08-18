@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.237.1] - 2026-08-18
+
+### Behoben
+- **Das Browser-Profil der Bridge wurde weltlesbar angelegt** (0755 nach umask).
+  Dort liegen nach der Einmal-Anmeldung die Sitzungs-Cookies und Anmeldedaten —
+  jeder andere lokale Account auf demselben Rechner hätte sie mitlesen können.
+  Das ist genau der Diebstahl, gegen den die Chrome/Edge-136-Härtung gebaut
+  wurde, nur eine Ebene tiefer, und hätte die Begründung des Entwurfs („kein
+  Cookie-Import aus dem privaten Profil") ausgehebelt. Das Verzeichnis wird
+  jetzt mit `0700` angelegt **und** nachträglich verengt — `mode=` allein
+  genügt nicht, weil die umask es beschneidet und ein bereits vorhandenes
+  Verzeichnis seine alten Rechte behalten hätte. Gefunden von der
+  Sicherheitsprüfung des vorherigen Commits.
+
+---
+
 ## [1.237.0] - 2026-08-18
 
 ### Behoben
