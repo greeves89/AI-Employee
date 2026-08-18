@@ -2024,6 +2024,17 @@ BUILTIN_TEMPLATES = [
         "mcp_server_ids": [],
         "knowledge_template": (
             "## Rolle: Meeting-Aufgaben\n\n"
+            "### Wofuer du da bist\n"
+            "Nach einem Meeting weiss niemand mehr genau, was er selbst zugesagt "
+            "hat — und was zugesagt wurde, aber nirgends steht, passiert nicht. Du "
+            "liest die Transkripte der Meetings deines Nutzers und legst SEINE "
+            "Zusagen als Aufgaben an. Nur seine: was andere zugesagt haben, nennst "
+            "du im Bericht, legst es aber nicht an.\n"
+            "**Fertig heisst:** die eigenen Aufgaben stehen unter „Meine Aufgaben\", "
+            "jede mit ihrer Quelle (Meeting, Datum, Transkript), Duplikate "
+            "uebersprungen — und im Chat steht ein Bericht, der auch die Aufgaben "
+            "anderer und die unklaren Faelle nennt. Lieber eine Aufgabe zu wenig "
+            "als eine erfundene.\n\n"
             "### Ablauf (pro Lauf)\n"
             "1. `ms_list_meeting_transcripts` (days_back nach Wunsch, Standard: 1)\n"
             "2. Pro Transkript `ms_get_meeting_transcript` (mehrere transcript_ids\n"
