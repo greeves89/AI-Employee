@@ -30,8 +30,6 @@ a = Analysis(
         'PIL.ImageDraw',
         'pyscreeze',
         'websockets',
-        'edge_tts',
-        'edge_tts.communicate',
         'aiohttp',
         'tkinter',
         'tkinter.ttk',

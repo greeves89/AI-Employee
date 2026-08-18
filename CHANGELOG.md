@@ -5,6 +5,67 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.239.0] - 2026-08-18
+
+### Sicherheit
+- **TLS-Verifikation der Bridge ist jetzt AN — mit Zertifikats-Pinning wie bei
+  SSH.** Bisher lief jede Verbindung (Login samt Passwort, Token, alle Befehle)
+  mit `CERT_NONE` und war gegen Mitleser ungeschützt. Jetzt: öffentliche
+  Zertifikate über die System-CA; selbstsignierte werden beim Erstkontakt
+  gepinnt und danach im Handshake verlangt, BEVOR ein Byte Nutzdaten fließt
+  (`cadata` + `VERIFY_X509_PARTIAL_CHAIN`, deckt auch Firmen-CA-Blätter ab).
+  Ein geändertes Zertifikat ist ein harter Fehler mit beiden Fingerabdrücken;
+  neu vertraut wird nur bei ausdrücklicher Neu-Anmeldung. Notausgang für
+  Sonderfälle: `"tls": {"mode": "insecure"}` von Hand in der Config — nie
+  Voreinstellung. Gilt für Tray-HTTP, Bridge-WebSocket UND Voice-WebSocket,
+  auf macOS und Windows.
+- **`~/.ai_employee_bridge.json` (enthält das JWT) ist jetzt 0600.** Vorher
+  konnte jeder andere lokale Account das Token lesen; der nächste
+  Speichervorgang repariert auch Bestandsdateien.
+
+### Hinzugefügt
+- **`shell_run` existiert jetzt wirklich — fail-closed über die Ordnerliste.**
+  Die Fähigkeit `shell` stand seit jeher in Server-Gruppen und
+  Berechtigungs-Dialog („auf diese Ordner beschränkt"), implementiert war
+  NICHTS. Jetzt: ohne freigegebenen Ordner gesperrt (auch bei aktivierter
+  Fähigkeit), Arbeitsverzeichnis muss in einem freigegebenen Ordner liegen
+  (realpath gegen `..`/Symlink-Ausbruch), Timeout max. 300 s. Der
+  Dialog-Text sagt jetzt ehrlich „Startordner“ statt „beschränkt auf“. Neues
+  MCP-Werkzeug `computer_shell` für Claude-Code-Agenten; Codex konnte die
+  Aktion schon über das generische Werkzeug.
+- **Interaction Bar spricht DIREKT mit dem Voice Layer des Agenten.** Vorher:
+  Datei aufnehmen → am Stück senden → Antworttext lokal per Edge-TTS vorlesen.
+  Jetzt: Mikrofon streamt live als 16-kHz-PCM in die Realtime-Session
+  (Nova Sonic), Antwort-Audio (24-kHz-PCM) spielt beim Eintreffen über einen
+  Streaming-Player. Edge-TTS samt Abhängigkeit entfernt.
+- **Agenten-Auswahl statt ID-Feld in der Interaction Bar** — Dropdown mit den
+  eigenen Agenten (Namen), zuletzt genutzter vorausgewählt.
+- **Interaction Bar jetzt auch unter Windows** (vorher stiller Abbruch):
+  gleiche Fähigkeit, customtkinter-Fenster, Audio-Wiedergabe über
+  winmm/MCI ohne Zusatzfenster.
+
+### Behoben
+- **Endgültige Server-Ablehnung (1008) beendet die Verbindungsschleife.**
+  Vorher wählte die Bridge eine tote Session alle 5 s ewig neu an und das
+  Tray-Symbol blieb auf „verbunden“ — eine abgelaufene Session war von einer
+  gesunden Verbindung nicht unterscheidbar. Unter Windows kommt zusätzlich
+  eine Benachrichtigung mit dem Grund.
+- **Interaction Bar erschien nicht beim Klick** (macOS): die Hintergrund-App
+  wurde nie aktiviert; das Fenster tauchte erst auf, wenn irgendein anderer
+  Dialog die App aktivierte.
+- **Mehrzeiliger Text war untippbar:** ein roher Zeilenumbruch im
+  AppleScript-Literal ist ein Syntaxfehler; der stille Rückfall tippte
+  layout-falsch weiter. Umbrüche werden jetzt als Return-Taste gesendet.
+- **Zwei Tray-Dialoge gleichzeitig crashten die App** (Windows): zwei
+  tkinter-Mainloops in parallelen Threads. Solange ein Dialog offen ist,
+  öffnet kein zweiter.
+- `get_clipboard` meldete bei fehlgeschlagenem Lesen einen leeren Text statt
+  eines Fehlers; `ax_tree`-Fehler steckten als Baum verkleidet im Ergebnis;
+  der Agent-Browser wird beim Beenden der App mitgeschlossen (verwaiste
+  Profil-Sperre); Tipp-Mitschnitt-Puffer ist jetzt threadsicher.
+
+---
+
 ## [1.238.5] - 2026-08-18
 
 ### Behoben (Sicherheit)

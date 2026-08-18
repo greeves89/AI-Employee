@@ -54,6 +54,9 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "computer_key", "computer_list_sessions", "computer_list_windows",
         "computer_move", "computer_open_app",
         "computer_screenshot", "computer_scroll", "computer_set_clipboard",
+        # Shell auf dem Rechner des Nutzers — Faehigkeit `shell` (default aus)
+        # UND Ordner-Freigabe in der Bridge noetig (bridge.py:shell_run).
+        "computer_shell",
         "computer_type", "computer_use_session", "computer_wait_for_element"
     ],
     "email": [

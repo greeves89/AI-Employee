@@ -30,10 +30,6 @@ from typing import Any
 
 import websockets
 
-_ssl_ctx = ssl.create_default_context()
-_ssl_ctx.check_hostname = False
-_ssl_ctx.verify_mode = ssl.CERT_NONE
-
 def _setup_logging() -> logging.Logger:
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -71,6 +67,207 @@ except ImportError:
 
 IS_MAC = platform.system() == "Darwin"
 IS_WIN = platform.system() == "Windows"
+
+
+# ── TLS-Vertrauen (eine Wahrheit fuer Tray-HTTP UND Bridge-WebSocket) ─────────
+#
+# Vorher stand hier (und in tray_app.py noch einmal) ein globaler SSL-Kontext
+# mit ``verify_mode = CERT_NONE`` — JEDE Verbindung, Login samt Passwort und
+# Token eingeschlossen, war gegen einen Mitleser in der Mitte ungeschuetzt.
+# Der Grund war verstaendlich (Kundenserver mit selbstsigniertem Zertifikat),
+# die Loesung nicht: Verifikation abschalten schuetzt niemanden.
+#
+# So laeuft es jetzt, wie bei SSH:
+#   1. Oeffentlich gueltiges Zertifikat  → normale System-Verifikation.
+#   2. Selbstsigniertes Zertifikat       → beim ERSTEN Kontakt wird es
+#      gespeichert („gepinnt") und der Fingerabdruck laut protokolliert.
+#      Ab dann akzeptiert die Bridge NUR noch genau dieses Zertifikat —
+#      geprueft im TLS-Handshake selbst, BEVOR Passwort oder Token die
+#      Leitung beruehren (cadata + VERIFY_X509_PARTIAL_CHAIN, deshalb
+#      funktioniert auch ein von einer Firmen-CA ausgestelltes Blatt).
+#   3. Aendert sich das Zertifikat       → harter Abbruch mit beiden
+#      Fingerabdruecken. Neu vertraut wird nur bei einer ausdruecklichen
+#      Neu-Anmeldung (Einstellungen → Anmelden), nie stillschweigend.
+#
+# Der Pin liegt in ~/.ai_employee_bridge.json unter "tls" und gilt pro Host.
+# Fuer Notfaelle gibt es {"tls": {"mode": "insecure"}} — bewusst nur von Hand
+# eintragbar und mit lauter Warnung, nie Voreinstellung.
+
+
+class TlsTrustError(RuntimeError):
+    """Das Server-Zertifikat ist nicht (mehr) vertrauenswuerdig."""
+
+
+def _config_read() -> dict:
+    try:
+        with open(BRIDGE_CONFIG_PATH, encoding="utf-8") as fh:
+            cfg = json.load(fh)
+        return cfg if isinstance(cfg, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _config_write(cfg: dict) -> None:
+    tmp = BRIDGE_CONFIG_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(cfg, fh, indent=2)
+    os.replace(tmp, BRIDGE_CONFIG_PATH)
+    try:
+        os.chmod(BRIDGE_CONFIG_PATH, 0o600)
+    except OSError:
+        pass
+
+
+def _host_port(url: str) -> tuple[str, int]:
+    parsed = urllib.parse.urlparse(url if "//" in url else f"//{url}")
+    host = parsed.hostname or ""
+    port = parsed.port or (80 if parsed.scheme in ("http", "ws") else 443)
+    return host, port
+
+
+def _fingerprint(der: bytes) -> str:
+    import hashlib
+    return hashlib.sha256(der).hexdigest()
+
+
+def format_fingerprint(fp: str) -> str:
+    """``ab12…`` → ``AB:12:…`` — so, wie Browser und openssl ihn anzeigen."""
+    fp = fp.replace(":", "").lower()
+    return ":".join(fp[i:i + 2] for i in range(0, len(fp), 2)).upper()
+
+
+def _probe_server_cert(host: str, port: int, timeout: float = 10.0) -> tuple[str, str]:
+    """Das Zertifikat des Servers holen, OHNE ihm etwas zu schicken.
+
+    Der Handshake ohne Verifikation dient nur dem Lesen des Zertifikats —
+    ueber diese Verbindung geht danach kein Byte, insbesondere kein Token.
+    """
+    import socket
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    with socket.create_connection((host, port), timeout=timeout) as sock:
+        with ctx.wrap_socket(sock, server_hostname=host) as tls:
+            der = tls.getpeercert(binary_form=True)
+    if not der:
+        raise TlsTrustError(f"{host}:{port} hat kein Zertifikat praesentiert.")
+    return ssl.DER_cert_to_PEM_cert(der), _fingerprint(der)
+
+
+def _pinned_context(pem: str) -> ssl.SSLContext:
+    """Kontext, der GENAU das gepinnte Zertifikat akzeptiert — im Handshake.
+
+    ``VERIFY_X509_PARTIAL_CHAIN`` macht das gepinnte Blatt selbst zum
+    Vertrauensanker; ohne das Flag wuerde ein von einer internen CA
+    ausgestelltes (nicht selbstsigniertes) Zertifikat an der fehlenden
+    Kette scheitern. ``check_hostname`` ist aus, weil der Pin die Identitaet
+    IST — ein selbstsigniertes Zertifikat traegt oft weder Host noch IP.
+    """
+    ctx = ssl.create_default_context(cadata=pem)
+    ctx.check_hostname = False
+    ctx.verify_flags |= ssl.VERIFY_X509_PARTIAL_CHAIN
+    return ctx
+
+
+def _system_handshake_ok(host: str, port: int, timeout: float = 10.0) -> bool:
+    """Besteht der Server die normale System-Verifikation (oeffentliche CA)?"""
+    import socket
+    ctx = ssl.create_default_context()
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host):
+                return True
+    except ssl.SSLCertVerificationError:
+        return False
+
+
+def ssl_context_for(url: str, allow_pin_new: bool = True) -> ssl.SSLContext | None:
+    """Der richtige SSL-Kontext fuer diese Adresse — oder ein klarer Fehler.
+
+    ``allow_pin_new`` steuert NUR den Erstkontakt (noch kein Pin fuer den
+    Host): normale Verbindungen duerfen pinnen (TOFU, wie SSH), stille
+    Hintergrundaufrufe koennen es abschalten. Ein GEAENDERTES Zertifikat
+    wird hier nie akzeptiert — dafuer gibt es ``repin_server``, das an eine
+    ausdrueckliche Nutzeraktion gebunden ist.
+    """
+    if not url.lower().startswith(("https://", "wss://")):
+        return None
+
+    host, port = _host_port(url)
+    cfg = _config_read()
+    tls_cfg = cfg.get("tls") if isinstance(cfg.get("tls"), dict) else {}
+
+    if tls_cfg.get("mode") == "insecure":
+        log.warning(
+            "TLS-Verifikation ist per Konfiguration ABGESCHALTET (tls.mode=insecure). "
+            "Jede Verbindung ist gegen Mitleser ungeschuetzt."
+        )
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+
+    if tls_cfg.get("mode") == "pinned" and tls_cfg.get("host") == host:
+        pem = str(tls_cfg.get("cert_pem") or "")
+        pinned_fp = str(tls_cfg.get("fingerprint") or "")
+        try:
+            _, current_fp = _probe_server_cert(host, port)
+        except TlsTrustError:
+            raise
+        except OSError as e:
+            raise TlsTrustError(f"{host}:{port} nicht erreichbar: {e}") from e
+        if current_fp != pinned_fp:
+            raise TlsTrustError(
+                f"Das Zertifikat von {host} hat sich GEAENDERT.\n"
+                f"  Gepinnt: {format_fingerprint(pinned_fp)}\n"
+                f"  Aktuell: {format_fingerprint(current_fp)}\n"
+                "Wenn der Server wirklich ein neues Zertifikat bekommen hat: in der "
+                "Bridge unter Einstellungen neu anmelden — dabei wird neu vertraut. "
+                "Wenn nicht, spricht hier gerade jemand anderes fuer den Server."
+            )
+        return _pinned_context(pem)
+
+    if _system_handshake_ok(host, port):
+        return ssl.create_default_context()
+
+    if not allow_pin_new:
+        raise TlsTrustError(
+            f"{host} verwendet ein selbstsigniertes Zertifikat und ist noch nicht "
+            "gepinnt. Bitte einmal ueber Einstellungen → Anmelden verbinden."
+        )
+    pem, fp = _probe_server_cert(host, port)
+    cfg = _config_read()
+    cfg["tls"] = {"mode": "pinned", "host": host, "fingerprint": fp, "cert_pem": pem}
+    _config_write(cfg)
+    log.warning(
+        "Selbstsigniertes Zertifikat von %s beim Erstkontakt gepinnt — "
+        "SHA-256 %s. Ab jetzt wird NUR dieses Zertifikat akzeptiert.",
+        host, format_fingerprint(fp),
+    )
+    return _pinned_context(pem)
+
+
+def repin_server(url: str) -> str:
+    """Dem aktuellen Zertifikat des Servers NEU vertrauen — Nutzeraktion noetig.
+
+    Wird ausschliesslich aus der ausdruecklichen Neu-Anmeldung heraus
+    aufgerufen (Einstellungen → Anmelden). Gibt den neuen Fingerabdruck
+    zurueck, damit die Oberflaeche ihn anzeigen kann.
+    """
+    host, port = _host_port(url)
+    if _system_handshake_ok(host, port):
+        cfg = _config_read()
+        if isinstance(cfg.get("tls"), dict) and cfg["tls"].get("mode") == "pinned":
+            del cfg["tls"]
+            _config_write(cfg)
+        return ""
+    pem, fp = _probe_server_cert(host, port)
+    cfg = _config_read()
+    cfg["tls"] = {"mode": "pinned", "host": host, "fingerprint": fp, "cert_pem": pem}
+    _config_write(cfg)
+    log.warning("Zertifikat von %s auf Nutzerwunsch neu gepinnt — SHA-256 %s.",
+                host, format_fingerprint(fp))
+    return fp
 
 
 def _check_deps() -> list[str]:
@@ -256,13 +453,19 @@ class InputRecorder:
         self._emit = emit          # called with one event dict per captured step
         self._listeners: list = []
         self._text_buffer: list[str] = []
+        # Maus- und Tastatur-Listener laufen auf ZWEI verschiedenen
+        # pynput-Threads: ein Klick (flush) und ein Tastendruck (append)
+        # koennen denselben Puffer gleichzeitig anfassen — dann verliert
+        # der Mitschnitt Zeichen oder mischt zwei Eingaben.
+        self._buffer_lock = threading.Lock()
         self.active = False
 
     def _flush_text(self) -> None:
-        if not self._text_buffer:
-            return
-        text = "".join(self._text_buffer)
-        self._text_buffer.clear()
+        with self._buffer_lock:
+            if not self._text_buffer:
+                return
+            text = "".join(self._text_buffer)
+            self._text_buffer.clear()
         if text.strip():
             self._push("type", {"text": text})
 
@@ -293,14 +496,17 @@ class InputRecorder:
             self._push("key", {"keys": [str(key).split(".")[-1]]})
             return
         if key == keyboard.Key.backspace:
-            if self._text_buffer:
-                self._text_buffer.pop()
+            with self._buffer_lock:
+                if self._text_buffer:
+                    self._text_buffer.pop()
             return
         char = getattr(key, "char", None)
         if char is not None:
-            self._text_buffer.append(char)
+            with self._buffer_lock:
+                self._text_buffer.append(char)
         elif key == keyboard.Key.space:
-            self._text_buffer.append(" ")
+            with self._buffer_lock:
+                self._text_buffer.append(" ")
 
     def start(self) -> dict:
         if self.active:
@@ -317,7 +523,8 @@ class InputRecorder:
             "INPUT CAPTURE STARTED — every click and keystroke on this machine is being "
             "recorded until you stop it. Do not type passwords while this runs."
         )
-        self._text_buffer.clear()
+        with self._buffer_lock:
+            self._text_buffer.clear()
         m = mouse.Listener(on_click=self._on_click)
         k = keyboard.Listener(on_press=self._on_key)
         m.start()
@@ -420,6 +627,27 @@ def _applescript_string_literal(value: str) -> str:
     string literal. Without this, an app name containing '"' can break out of
     the literal and inject arbitrary AppleScript (e.g. `do shell script ...`)."""
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _keystroke_script(text: str) -> str:
+    """AppleScript, das ``text`` tippt — Zeilenumbrueche als Return-Taste.
+
+    Ein rohes ``\\n`` INNERHALB eines AppleScript-Literals ist ein Syntaxfehler:
+    mehrzeiliger Text (jede E-Mail, jedes Formular mit Textfeld) liess
+    ``osascript`` scheitern, und der stille Rueckfall auf pyautogui tippte dann
+    layout-falsch weiter (`-` wird `ß`). Deshalb wird der Text an den
+    Umbruechen zerlegt und dazwischen ``keystroke return`` gesendet.
+    """
+    lines: list[str] = []
+    parts = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    for i, part in enumerate(parts):
+        if part:
+            lines.append(f'keystroke "{_applescript_string_literal(part)}"')
+        if i < len(parts) - 1:
+            lines.append("keystroke return")
+    if not lines:
+        return ""
+    return 'tell application "System Events"\n' + "\n".join(lines) + "\nend tell"
 
 
 # ── Bedienungshilfen-Baum (macOS AXUIElement / Windows UI Automation) ─────────
@@ -531,6 +759,7 @@ BASE_ACTIONS = [
     "get_clipboard", "set_clipboard",
     "start_input_capture", "stop_input_capture",
     "start_voice_capture", "stop_voice_capture",
+    "shell_run",
     "browser_navigate", "browser_snapshot", "browser_click", "browser_fill",
     "browser_wait", "browser_capture", "browser_tabs", "browser_close",
 ]
@@ -656,6 +885,11 @@ class BrowserController:
         if self._thread is None:
             self._thread = threading.Thread(target=self._run, name="bridge-browser", daemon=True)
             self._thread.start()
+            # Beim Beenden der App den Browser mitnehmen — sonst haelt ein
+            # verwaister Chrome/Edge die Profil-Sperrdatei, und der naechste
+            # Start scheitert mit "Kein Browser startbar".
+            import atexit
+            atexit.register(self.close)
         # Der Rueckgabewert von wait() ist die einzige Auskunft darueber, ob der
         # Start ueberhaupt fertig wurde. Wurde er ignoriert, war `_start_error`
         # noch leer, der Auftrag ging an einen halb gestarteten Browser und der
@@ -785,6 +1019,87 @@ class BrowserController:
                 {"index": i, "url": p.url, "title": p.title()} for i, p in enumerate(pages)
             ]}
         return self._call(job)
+
+
+def allowed_shell_dirs() -> list[str]:
+    """Die in der Tray-App freigegebenen Ordner — frisch von der Platte.
+
+    Absichtlich bei JEDEM Aufruf gelesen: aendert der Nutzer die Liste im
+    Berechtigungs-Dialog, gilt sie sofort, ohne Neustart der Bridge. Nur
+    real existierende Ordner zaehlen; ``realpath`` loest Symlinks auf, damit
+    der spaetere Praefix-Vergleich nicht ueber einen Link ausgetrickst wird.
+    """
+    dirs: list[str] = []
+    for raw in _config_read().get("allowed_paths") or []:
+        p = os.path.realpath(os.path.expanduser(str(raw)))
+        if os.path.isdir(p):
+            dirs.append(p)
+    return dirs
+
+
+def shell_run(command: str, cwd: str | None = None, timeout: int = 120) -> dict:
+    """Einen Shell-Befehl ausfuehren — NUR wenn Ordner freigegeben sind.
+
+    Diese Aktion stand seit jeher in der Server-Gruppenliste (`shell`) und im
+    Berechtigungs-Dialog ("Shell-Befehle sind auf diese Ordner beschraenkt"),
+    war in der Bridge aber NIE implementiert: Dialog und Ordnerliste
+    versprachen eine Durchsetzung, hinter der gar keine Funktion lag.
+
+    Durchgesetzt wird, was durchsetzbar ist — ehrlich benannt:
+    * Ohne freigegebene Ordner ist die Aktion GESPERRT (fail-closed), selbst
+      wenn die Faehigkeit `shell` serverseitig eingeschaltet ist.
+    * Das Arbeitsverzeichnis muss in einem freigegebenen Ordner liegen.
+    * Was der Befehl selbst tut, kann eine cwd-Schranke nicht einsperren —
+      deshalb heisst die Ordnerliste im Dialog jetzt "Startordner", nicht
+      mehr "beschraenkt auf".
+    """
+    import subprocess
+
+    if not str(command or "").strip():
+        return {"ok": False, "error": "Kein Befehl angegeben."}
+
+    dirs = allowed_shell_dirs()
+    if not dirs:
+        return {"ok": False, "error": (
+            "Shell-Befehle sind gesperrt: In der Bridge ist kein Ordner "
+            "freigegeben. Der Nutzer kann unter Berechtigungen → Ordner-Zugriff "
+            "einen Startordner hinzufuegen."
+        )}
+
+    if cwd:
+        workdir = os.path.realpath(os.path.expanduser(str(cwd)))
+        if not any(workdir == d or workdir.startswith(d + os.sep) for d in dirs):
+            return {"ok": False, "error": (
+                f"Ordner nicht freigegeben: {cwd}. "
+                f"Freigegeben: {', '.join(dirs)}"
+            )}
+        if not os.path.isdir(workdir):
+            return {"ok": False, "error": f"Ordner existiert nicht: {cwd}"}
+    else:
+        workdir = dirs[0]
+
+    timeout = max(1, min(int(timeout or 120), 300))
+    try:
+        result = subprocess.run(
+            command, shell=True, cwd=workdir,
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "cwd": workdir,
+                "error": f"Befehl nach {timeout}s abgebrochen (Timeout)."}
+    except OSError as e:
+        return {"ok": False, "cwd": workdir, "error": str(e)}
+
+    return {
+        "ok": result.returncode == 0,
+        "returncode": result.returncode,
+        "cwd": workdir,
+        # Begrenzt, damit ein `cat` einer Riesendatei nicht die WebSocket-
+        # Nachricht sprengt — abgeschnitten wird vorn, das Ende ist bei
+        # Fehlern das Interessante.
+        "stdout": result.stdout[-20000:],
+        "stderr": result.stderr[-20000:],
+    }
 
 
 def list_windows() -> dict:
@@ -1105,8 +1420,7 @@ class InputController:
         if sys.platform == "darwin" and text:
             import subprocess
             r = subprocess.run(
-                ["osascript", "-e",
-                 f'tell application "System Events" to keystroke "{_applescript_string_literal(text)}"'],
+                ["osascript", "-e", _keystroke_script(text)],
                 capture_output=True, text=True,
             )
             if r.returncode == 0:
@@ -1199,7 +1513,13 @@ class CommandDispatcher:
             elif action == "ax_tree":
                 app = params.get("app")
                 depth = params.get("max_depth", 6)
-                return {"ax_tree": get_ax_tree(app, depth)}
+                tree = get_ax_tree(app, depth)
+                if isinstance(tree, dict) and set(tree.keys()) == {"error"}:
+                    # Fehler oben melden wie ueberall sonst — vorher steckte er
+                    # als {"ax_tree": {"error": ...}} im Ergebnis und sah fuer
+                    # jeden Aufrufer wie ein (leerer) Baum aus.
+                    return {"ok": False, "error": tree["error"]}
+                return {"ax_tree": tree}
 
             elif action in ("click", "mouse_click"):
                 self._ctrl.click(
@@ -1254,6 +1574,16 @@ class CommandDispatcher:
                 if result.returncode != 0:
                     return {"ok": False, "app": app, "error": result.stderr.strip() or f'"{app}" not found'}
                 return {"ok": True, "app": app}
+
+            elif action == "shell_run":
+                # Freigabe-Kette: Server prueft die Faehigkeit `shell` (default
+                # aus), die Bridge prueft die Ordnerliste (fail-closed) — beide
+                # muessen ja sagen.
+                return shell_run(
+                    str(params.get("command") or ""),
+                    params.get("cwd"),
+                    int(params.get("timeout") or 120),
+                )
 
             elif action == "list_windows":
                 return list_windows()
@@ -1355,13 +1685,27 @@ class CommandDispatcher:
                 return {"ok": False, "app": app, "error": "close_app not supported on this platform"}
 
             elif action in ("get_clipboard", "clipboard_read"):
+                # Rueckgabewert pruefen: schlug pbpaste/PowerShell fehl, kam
+                # vorher ein leerer Text zurueck — "Zwischenablage ist leer"
+                # und "Lesen fehlgeschlagen" sind aber zwei verschiedene
+                # Antworten, und der Agent baut auf der falschen auf.
                 if IS_MAC:
                     import subprocess
                     result = subprocess.run(["pbpaste"], capture_output=True, text=True)
+                    if result.returncode != 0:
+                        return {"ok": False,
+                                "error": result.stderr.strip() or "pbpaste fehlgeschlagen"}
                     return {"text": result.stdout}
                 elif IS_WIN:
                     import subprocess
-                    result = subprocess.run(["powershell", "-command", "Get-Clipboard"], capture_output=True, text=True)
+                    result = subprocess.run(
+                        ["powershell", "-NoProfile", "-NonInteractive",
+                         "-Command", "Get-Clipboard"],
+                        capture_output=True, text=True,
+                    )
+                    if result.returncode != 0:
+                        return {"ok": False,
+                                "error": result.stderr.strip() or "Get-Clipboard fehlgeschlagen"}
                     return {"text": result.stdout.strip()}
                 return {"error": "Clipboard read not supported on this platform"}
 
@@ -1537,7 +1881,14 @@ class Bridge:
         # Merge any configured proxy headers in first, then set Authorization so
         # our bearer token can never be shadowed by a stray extra header.
         headers = {**self.extra_headers, "Authorization": f"Bearer {self.token}"}
-        ssl_context = _ssl_ctx if url.startswith("wss://") else None
+        # Verifizierter Kontext (System-CA oder gepinntes Zertifikat) — der
+        # Token verlaesst die Maschine erst NACH bestandenem Handshake.
+        try:
+            ssl_context = ssl_context_for(url)
+        except TlsTrustError as e:
+            log.error(str(e))
+            self._emit_state("rejected", str(e))
+            return
         # Log without the query string so no credential (now or in future) leaks
         # into the client log file.
         log.info(f"Connecting to {self.ws_url}/ws/computer-use/bridge")
@@ -1598,16 +1949,18 @@ class Bridge:
             except websockets.ConnectionClosed as e:
                 # 1008 = the server REJECTED us (session expired/unknown, wrong
                 # user, another bridge already attached). Retrying that forever
-                # can never succeed, and silently doing so is what made an
-                # expired session look like a hanging connection / firewall
-                # problem. Report it so the UI can tell the user what to do.
+                # can never succeed — genau das tat die Schleife aber: sie
+                # meldete "rejected" und waehlte trotzdem alle 5s neu, das
+                # Tray-Symbol blieb auf "verbunden" stehen. Eine endgueltige
+                # Ablehnung beendet die Schleife jetzt wirklich; neu verbinden
+                # heisst ab hier: der Mensch klickt Verbinden/Anmelden.
                 reason = (getattr(e, "reason", "") or str(e)).strip()
                 if getattr(getattr(e, "rcvd", None), "code", None) == 1008:
                     log.error(f"Rejected by server: {reason}")
                     self._emit_state("rejected", reason)
-                else:
-                    log.warning(f"Connection closed: {e}. Reconnecting in 5s...")
-                    self._emit_state("reconnecting", reason)
+                    return
+                log.warning(f"Connection closed: {e}. Reconnecting in 5s...")
+                self._emit_state("reconnecting", reason)
                 await asyncio.sleep(5)
             except Exception as e:
                 log.error(f"Error: {e}. Reconnecting in 5s...")

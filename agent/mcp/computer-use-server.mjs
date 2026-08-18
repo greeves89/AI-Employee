@@ -395,6 +395,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: "object", properties: {} },
     },
     {
+      name: "computer_shell",
+      description:
+        "Run a shell command on the user's machine. Only works if the user has " +
+        "enabled the 'shell' capability AND allowed at least one folder in the " +
+        "bridge (Berechtigungen > Ordner-Zugriff); the working directory must " +
+        "be inside an allowed folder.",
+      inputSchema: {
+        type: "object",
+        required: ["command"],
+        properties: {
+          command: { type: "string", description: "Shell command to run." },
+          cwd: {
+            type: "string",
+            description: "Working directory (must be inside an allowed folder). Default: first allowed folder.",
+          },
+          timeout: {
+            type: "integer",
+            description: "Seconds before the command is aborted (default 120, max 300).",
+            default: 120,
+          },
+        },
+      },
+    },
+    {
       name: "computer_list_sessions",
       description: "List all active computer-use bridge sessions. Shows which are connected.",
       inputSchema: { type: "object", properties: {} },
@@ -651,6 +675,23 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           content: [{ type: "text", text: result.ok ? "Browser closed (profile kept)." : `Error: ${result.error}` }],
           isError: !result.ok,
         };
+
+      case "computer_shell": {
+        result = await sendCommand("shell_run", {
+          command: args.command,
+          cwd: args?.cwd,
+          timeout: args?.timeout ?? 120,
+        }, (args?.timeout ?? 120) + 30);
+        if (result.error && result.ok === undefined) {
+          return { content: [{ type: "text", text: `Error: ${result.error}` }], isError: true };
+        }
+        const parts = [];
+        parts.push(result.ok ? `Exit 0 (cwd: ${result.cwd})` : `Exit ${result.returncode ?? "?"} (cwd: ${result.cwd ?? "?"})`);
+        if (result.stdout) parts.push(`stdout:\n${result.stdout}`);
+        if (result.stderr) parts.push(`stderr:\n${result.stderr}`);
+        if (result.error) parts.push(`error: ${result.error}`);
+        return { content: [{ type: "text", text: parts.join("\n\n") }], isError: !result.ok };
+      }
 
       case "computer_list_sessions": {
         const data = await apiCall("/computer-use/sessions");

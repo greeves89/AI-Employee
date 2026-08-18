@@ -22,7 +22,6 @@ import os
 import platform
 import sys
 import threading
-import ssl
 import asyncio
 import base64
 import subprocess
@@ -31,16 +30,55 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
-
-_ssl_ctx = ssl.create_default_context()
-_ssl_ctx.check_hostname = False
-_ssl_ctx.verify_mode = ssl.CERT_NONE
 from pathlib import Path
 
 IS_MAC = platform.system() == "Darwin"
 IS_WIN = platform.system() == "Windows"
 
 CONFIG_FILE = Path.home() / ".ai_employee_bridge.json"
+
+_bridge_mod = None
+
+
+def _bridge_module():
+    """Das bridge-Modul laden — im PyInstaller-Bundle liegt es neben der App.
+
+    Dieselbe Suche stand vorher nur im Verbindungs-Thread. Sie steht jetzt
+    hier, weil auch die TLS-Schicht (ssl_context_for, repin_server) daraus
+    kommt: EINE Wahrheit darueber, welchem Server-Zertifikat vertraut wird,
+    fuer die HTTP-Aufrufe der Tray-App UND den WebSocket der Bridge.
+    """
+    global _bridge_mod
+    if _bridge_mod is None:
+        if getattr(sys, "frozen", False):
+            bundle_contents = Path(sys.executable).parent.parent
+            for candidate in ["Frameworks", "Resources", "MacOS"]:
+                d = bundle_contents / candidate
+                if (d / "bridge.py").exists():
+                    bridge_dir = d
+                    break
+            else:
+                bridge_dir = Path(sys.executable).parent
+        else:
+            bridge_dir = Path(__file__).parent
+        if str(bridge_dir) not in sys.path:
+            sys.path.insert(0, str(bridge_dir))
+        import bridge as bridge_module
+        _bridge_mod = bridge_module
+    return _bridge_mod
+
+
+def _tls_context(base_url: str, allow_pin_new: bool = True):
+    """Verifizierter SSL-Kontext fuer diese Adresse (System-CA oder Pin).
+
+    Vorher stand hier ein globaler Kontext mit ``CERT_NONE`` — Login samt
+    Passwort und Token waren gegen einen Mitleser ungeschuetzt. Die
+    Vertrauens-Logik (TOFU-Pinning wie bei SSH) lebt in bridge.py; hier wird
+    sie nur benutzt. Wirft ``bridge.TlsTrustError`` bei geaendertem Zertifikat.
+    """
+    if not str(base_url or "").lower().startswith(("https://", "wss://")):
+        return None
+    return _bridge_module().ssl_context_for(base_url, allow_pin_new=allow_pin_new)
 
 try:
     from _version import BRIDGE_VERSION
@@ -82,7 +120,7 @@ CAPABILITY_META = [
     {"id": "browser",       "label": "Browser-Steuerung",     "desc": "Eigenes Browser-Profil bedienen (Seiten lesen, Formulare)", "risk": "hoch"},
     {"id": "input_capture", "label": "Eingaben mitschneiden", "desc": "Deine Klicks und Tasten aufzeichnen (Replay)", "risk": "hoch"},
     {"id": "voice_capture", "label": "Mikrofon",              "desc": "Mikrofon mithören (nur zwischen Start und Stopp)", "risk": "hoch"},
-    {"id": "shell",         "label": "Shell-Befehle",         "desc": "Terminal-Befehle ausführen",              "risk": "hoch"},
+    {"id": "shell",         "label": "Shell-Befehle",         "desc": "Terminal-Befehle in freigegebenen Ordnern (siehe Ordner-Zugriff)", "risk": "hoch"},
 ]
 
 DEFAULT_CAPABILITIES = {c["id"] for c in CAPABILITY_META if c["id"] in
@@ -119,6 +157,16 @@ def save_config(cfg: dict) -> str | None:
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = CONFIG_FILE.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        try:
+            # In der Datei steht das JWT des Nutzers — mit der umask-Vorgabe
+            # (0644) konnte jeder andere lokale Account es lesen und sich
+            # damit als dieser Nutzer ausgeben. Erst die Rechte setzen, DANN
+            # an den endgueltigen Namen — so gibt es kein Fenster, in dem der
+            # Token weltlesbar liegt. Windows kennt keine POSIX-Rechte; dort
+            # schuetzt die ACL des Benutzerprofils.
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
         tmp.replace(CONFIG_FILE)
         return None
     except Exception as e:  # noqa: BLE001 — surfaced to the user, never fatal
@@ -184,7 +232,7 @@ def _api(method, base_url, path, token, body=None):
                                  headers={"Content-Type": "application/json",
                                           "Authorization": f"Bearer {token}",
                                           "User-Agent": f"AI-Employee-Bridge/{BRIDGE_VERSION}"})
-    with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as r:
+    with urllib.request.urlopen(req, timeout=10, context=_tls_context(base_url)) as r:
         return json.loads(r.read())
 
 
@@ -194,7 +242,20 @@ def api_login(base_url, email, password):
     req = urllib.request.Request(url, data=data,
                                  headers={"Content-Type": "application/json",
                                           "User-Agent": f"AI-Employee-Bridge/{BRIDGE_VERSION}"})
-    with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as r:
+    bridge = _bridge_module()
+    try:
+        ctx = _tls_context(base_url)
+    except bridge.TlsTrustError:
+        # Die Anmeldung ist die EINE Stelle, an der einem geaenderten
+        # Zertifikat neu vertraut werden darf: der Mensch sitzt davor und
+        # hat gerade ausdruecklich "Anmelden" geklickt. Der neue
+        # Fingerabdruck wird gepinnt und laut protokolliert. Ueberall
+        # sonst bleibt ein geaendertes Zertifikat ein harter Fehler.
+        fp = bridge.repin_server(base_url)
+        app_log.warning("Server-Zertifikat bei Neu-Anmeldung neu gepinnt: %s",
+                        bridge.format_fingerprint(fp) if fp else "System-CA")
+        ctx = _tls_context(base_url)
+    with urllib.request.urlopen(req, timeout=10, context=ctx) as r:
         return json.loads(r.read())["access_token"]
 
 
@@ -375,21 +436,9 @@ def _run_bridge_thread(url, token, session_id):
     import asyncio
     try:
         app_log.info("Bridge thread starting session=%s url=%s", session_id, url)
-        if getattr(sys, "frozen", False):
-            bundle_contents = Path(sys.executable).parent.parent
-            for candidate in ["Frameworks", "Resources", "MacOS"]:
-                d = bundle_contents / candidate
-                if (d / "bridge.py").exists():
-                    bridge_dir = d
-                    break
-            else:
-                bridge_dir = Path(sys.executable).parent
-        else:
-            bridge_dir = Path(__file__).parent
-        if str(bridge_dir) not in sys.path:
-            sys.path.insert(0, str(bridge_dir))
-        import bridge as bridge_module
+        bridge_module = _bridge_module()
         _status = "connecting"
+        rejected_notified = [False]
 
         def _on_state(state: str, detail: str = "") -> None:
             # bridge.run() never returns while the connection is up, so the tray
@@ -406,6 +455,16 @@ def _run_bridge_thread(url, token, session_id):
                     _status = "error: neu anmelden"
                 else:
                     _status = f"error: {detail or 'vom Server abgewiesen'}"
+                # Endgueltige Ablehnung: die Bridge beendet ihre Schleife jetzt
+                # wirklich (kein stilles Weiterwaehlen mehr). Unter Windows dem
+                # Nutzer aktiv Bescheid geben — das Tray-Symbol allein sagt nur
+                # "grau", nicht warum.
+                if not IS_MAC and not rejected_notified[0]:
+                    rejected_notified[0] = True
+                    _notify("Verbindung vom Server abgelehnt: "
+                            f"{detail or 'Session abgelaufen'}.\n\n"
+                            "Bitte im Tray-Menü neu verbinden oder in den "
+                            "Einstellungen neu anmelden.")
             else:
                 _status = "connecting"
 
@@ -905,7 +964,11 @@ def show_permissions_dialog(cfg: dict) -> None:
     folder_card_w, folder_card_h = W - 2 * PAD, 124
     _card(cv, folder_card_x, folder_card_y, folder_card_w, folder_card_h)
     _label(cv, "Ordner-Zugriff", folder_card_x + 20, folder_card_y + folder_card_h - 32, 180, 18, size=13, bold=True)
-    _label(cv, "Shell-Befehle sind auf diese Ordner beschraenkt.",
+    # Ehrlich benennen, was durchgesetzt wird: ohne Eintrag sind Shell-Befehle
+    # GESPERRT (fail-closed in bridge.py:shell_run), mit Eintrag muss das
+    # Arbeitsverzeichnis darin liegen. "Beschraenkt auf" stand hier vorher —
+    # eine Zusage, hinter der gar keine Implementierung lag.
+    _label(cv, "Startordner fuer Shell-Befehle. Ohne Eintrag sind Shell-Befehle gesperrt.",
            folder_card_x + 150, folder_card_y + folder_card_h - 30, folder_card_w - 170, 16, size=11, muted=True)
 
     paths = list(cfg.get("allowed_paths", []))
@@ -1062,14 +1125,39 @@ def _voice_ws_url(base_url: str, agent_id: str, token: str) -> str:
     return f"{ws_base}/api/v1/ws/agents/{agent_id}/voice?{q}"
 
 
+_MCI_ALIAS = "aiemp_voice"
+
+
+def _play_media_file(path: str):
+    """Eine Audiodatei abspielen — ohne sichtbares Fenster, auf BEIDEN Systemen.
+
+    macOS: ``afplay``. Windows: MCI aus winmm (Bordmittel, spielt auch MP3) —
+    ``os.startfile`` wuerde bei jeder Antwort den Standard-Player aufreissen.
+    Vorher war hier ``afplay`` fest verdrahtet: die gesamte Sprachausgabe der
+    Interaction Bar existierte nur auf dem Mac.
+    """
+    if IS_MAC:
+        return subprocess.Popen(["afplay", path])
+    if IS_WIN:
+        try:
+            import ctypes
+            winmm = ctypes.windll.winmm
+            winmm.mciSendStringW(f"close {_MCI_ALIAS}", None, 0, None)
+            winmm.mciSendStringW(
+                f'open "{path}" type mpegvideo alias {_MCI_ALIAS}', None, 0, None)
+            winmm.mciSendStringW(f"play {_MCI_ALIAS}", None, 0, None)
+        except Exception:  # noqa: BLE001 — kein Ton ist kein Absturzgrund
+            pass
+    return None
+
+
 def _play_audio_b64(b64: str, suffix: str = ".mp3") -> None:
     try:
         raw = base64.b64decode(b64)
         fd, path = tempfile.mkstemp(prefix="aiemp-voice-", suffix=suffix)
         with os.fdopen(fd, "wb") as f:
             f.write(raw)
-        proc = subprocess.Popen(["afplay", path])
-        _voice_state["player"] = proc
+        _voice_state["player"] = _play_media_file(path)
     except Exception:
         pass
 
@@ -1081,32 +1169,13 @@ def _stop_voice_playback() -> None:
             proc.terminate()
         except Exception:
             pass
-    _voice_state["player"] = None
-
-
-def _speak_edge_tts(text: str, voice: str = "de-DE-KatjaNeural") -> None:
-    text = " ".join((text or "").split())
-    if not text:
-        return
-
-    def _thread():
+    if IS_WIN:
         try:
-            _stop_voice_playback()
-            fd, path = tempfile.mkstemp(prefix="aiemp-edge-tts-", suffix=".mp3")
-            os.close(fd)
-
-            async def _save():
-                import edge_tts
-                communicate = edge_tts.Communicate(text[:1200], voice)
-                await communicate.save(path)
-
-            asyncio.run(_save())
-            proc = subprocess.Popen(["afplay", path])
-            _voice_state["player"] = proc
-        except Exception as e:
-            app_log.error("Edge TTS failed: %s", e)
-
-    threading.Thread(target=_thread, daemon=True).start()
+            import ctypes
+            ctypes.windll.winmm.mciSendStringW(f"close {_MCI_ALIAS}", None, 0, None)
+        except Exception:  # noqa: BLE001
+            pass
+    _voice_state["player"] = None
 
 
 def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
@@ -1114,7 +1183,9 @@ def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
         import websockets
 
         url = _voice_ws_url(cfg["url"], agent_id, cfg["token"])
-        async with websockets.connect(url, ping_interval=20) as ws:
+        async with websockets.connect(
+            url, ping_interval=20, ssl=_tls_context(cfg["url"]),
+        ) as ws:
             _voice_state["ws"] = ws
             _voice_state["loop"] = asyncio.get_running_loop()
             on_event("ready", "Bereit")
@@ -1137,6 +1208,20 @@ def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
                     if _voice_state.get("local_edge_tts"):
                         continue
                     mime = str(data.get("mime") or "audio/mpeg")
+                    if "pcm" in mime:
+                        # Realtime-Front (Nova Sonic): rohes PCM, sofort in den
+                        # Streaming-Player — DAS ist die direkte Interaktion
+                        # mit dem Voice Layer, kein lokales Nach-Vorlesen.
+                        player = _voice_state.get("pcm_player")
+                        if player is None:
+                            player = _PcmPlayer()
+                            _voice_state["pcm_player"] = player
+                        try:
+                            player.feed(base64.b64decode(str(data.get("b64") or "")),
+                                        int(data.get("rate") or 24000))
+                        except Exception:  # noqa: BLE001
+                            pass
+                        continue
                     suffix = ".mp3" if "mpeg" in mime or "mp3" in mime else ".audio"
                     _play_audio_b64(str(data.get("b64") or ""), suffix=suffix)
                 elif typ == "done":
@@ -1152,24 +1237,6 @@ def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
 
     _voice_state["thread"] = threading.Thread(target=_thread, daemon=True)
     _voice_state["thread"].start()
-
-
-def _voice_send_audio_file(path: str, language: str = "de") -> None:
-    ws = _voice_state.get("ws")
-    loop = _voice_state.get("loop")
-    if not ws or not loop:
-        return
-    try:
-        raw = Path(path).read_bytes()
-        b64 = base64.b64encode(raw).decode()
-    except Exception:
-        return
-
-    async def _send():
-        await ws.send(json.dumps({"type": "audio_chunk", "data": {"b64": b64}}))
-        await ws.send(json.dumps({"type": "commit", "data": {"language": language}}))
-
-    asyncio.run_coroutine_threadsafe(_send(), loop)
 
 
 def _voice_send_interrupt() -> None:
@@ -1189,24 +1256,22 @@ def _voice_send_interrupt() -> None:
 
 
 def show_interaction_bar(cfg: dict) -> None:
-    if not _appkit_available():
-        return
+    """Sprach-Bedienleiste — auf macOS UND Windows.
+
+    Die Bar gab es zunaechst nur mit AppKit; unter Windows brach der Aufruf
+    still ab (``return``) — dieselbe Faehigkeit fehlte auf der Haelfte der
+    Flotte. Jetzt verzweigt der Einstieg nach Plattform, der Voice-WebSocket
+    darunter ist ohnehin plattformneutral.
+    """
     if not cfg.get("url") or not cfg.get("token"):
         show_setup_dialog(cfg)
         return
+    if not _appkit_available():
+        return _show_interaction_bar_ctk(cfg)
 
     _appkit_handlers_init()
     from AppKit import NSColor, NSMakeRect, NSObject, NSPanel, NSWindowStyleMaskBorderless
     from AppKit import NSBackingStoreBuffered, NSButton, NSView, NSVisualEffectView
-    from AVFoundation import (
-        AVAudioQualityMedium,
-        AVAudioRecorder,
-        AVEncoderAudioQualityKey,
-        AVFormatIDKey,
-        AVNumberOfChannelsKey,
-        AVSampleRateKey,
-        NSURL,
-    )
 
     def color(r, g, b, a=1.0):
         return NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, a)
@@ -1255,54 +1320,82 @@ def show_interaction_bar(cfg: dict) -> None:
     backdrop.layer().setBorderColor_(color(1, 1, 1, 0.16).CGColor())
     cv.addSubview_(backdrop)
 
+    # Agenten zum AUSWAEHLEN, nicht zum Abtippen: niemand kennt seine
+    # Agenten-IDs auswendig — das leere Pflichtfeld war der Grund, warum die
+    # Bar fuer den Nutzer schlicht "nicht funktionierte" ("Agent ID fehlt").
     agents = []
+    agents_error = ""
     try:
         agents = api_list_agents(cfg["url"], cfg["token"])
-    except Exception:
-        agents = []
-    first_agent = cfg.get("voice_agent_id") or (str(agents[0].get("id")) if agents else "")
+    except Exception as e:  # noqa: BLE001 — abgelaufener Token, Server weg, ...
+        agents_error = str(e).strip() or e.__class__.__name__
+    agent_ids = [str(a.get("id") or "") for a in agents]
+    agent_titles = []
+    for a in agents:
+        title = str(a.get("name") or "").strip() or str(a.get("id") or "")[:8]
+        # NSPopUpButton verschluckt doppelte Titel stillschweigend — dann
+        # zeigte die Liste 3 von 4 Agenten und keiner wuesste warum.
+        if title in agent_titles:
+            title = f"{title} ({str(a.get('id') or '')[:6]})"
+        agent_titles.append(title)
 
     pill(cv, 16, 16, W - 32, H - 32, color(0.04, 0.05, 0.07, 0.40), color(1, 1, 1, 0.10), radius=22)
     _label(cv, "AI Employee", 32, 50, 110, 18, size=12, bold=True, color=color(1, 1, 1, 0.92))
     _label(cv, "Voice Layer", 32, 29, 110, 16, size=11, color=color(1, 1, 1, 0.52))
-    agent_f = _input(cv, 154, 31, 112, "Agent ID", value=first_agent)
-    status = _label(cv, "Bereit", 286, 51, 270, 16, size=11, color=color(0.63, 0.70, 0.80, 1))
-    transcript = _label(cv, "Drücke Speech und sprich.", 286, 28, 300, 18, size=12, color=color(1, 1, 1, 0.86))
+
+    from AppKit import NSPopUpButton
+    agent_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+        NSMakeRect(148, 29, 150, 26), False)
+    for title in agent_titles:
+        agent_popup.menu().addItemWithTitle_action_keyEquivalent_(title, None, "")
+    stored_agent = str(cfg.get("voice_agent_id") or "")
+    if stored_agent in agent_ids:
+        agent_popup.selectItemAtIndex_(agent_ids.index(stored_agent))
+    cv.addSubview_(agent_popup)
+
+    status_text = "Bereit"
+    if agents_error:
+        status_text = f"Agenten nicht ladbar: {agents_error}"[:60]
+    elif not agents:
+        status_text = "Keine Agenten gefunden — Anmeldung pruefen"
+    status = _label(cv, status_text, 312, 51, 250, 16, size=11, color=color(0.63, 0.70, 0.80, 1))
+    transcript = _label(cv, "Drücke Speech und sprich.", 312, 28, 274, 18, size=12, color=color(1, 1, 1, 0.86))
     response = _label(cv, "", 0, 0, 1, 1, size=1, muted=True)
     connect_btn = flat_button(cv, "Connect", W - 304, 27, 82, 32, color(1, 1, 1, 0.14), color(1, 1, 1, 0.90))
     record_btn = flat_button(cv, "Speech", W - 214, 22, 112, 42, color(0.06, 0.46, 0.98, 1), color(1, 1, 1, 1), radius=21)
     close_btn = flat_button(cv, "×", W - 86, 28, 32, 32, color(1, 1, 1, 0.12), color(1, 1, 1, 0.72))
 
-    state = {"recorder": None, "path": "", "connected": False}
-    _voice_state["local_edge_tts"] = True
+    # DIREKT mit dem Voice Layer des Agenten sprechen: Mikrofon streamt live
+    # in die Sitzung, die Antwort kommt als Audio-Strom zurueck. KEIN lokales
+    # Edge-TTS mehr — das las nur den Antworttext nach und war der Grund,
+    # warum sich die Bar wie Diktiergeraet + Vorleser anfuehlte statt wie ein
+    # Gespraech.
+    state = {"mic": _MicStreamer(), "connected": False}
+    _voice_state["local_edge_tts"] = False
 
     class VoiceHandler(NSObject):
         def connect_(self, _sender):
-            agent_id = agent_f.stringValue().strip()
+            idx = agent_popup.indexOfSelectedItem()
+            agent_id = agent_ids[idx] if 0 <= idx < len(agent_ids) else ""
             if not agent_id:
-                status.setStringValue_("Agent ID fehlt")
+                status.setStringValue_("Kein Agent auswählbar — in der Web-UI einen anlegen")
                 return
             cfg["voice_agent_id"] = agent_id
             save_config(cfg)
             status.setStringValue_("Verbinde Voice...")
 
             def on_event(kind, text):
-                def _apply():
-                    if kind in {"ready", "speaking", "processing", "error"}:
-                        status.setStringValue_(text[:120])
-                    elif kind == "response":
-                        response.setStringValue_(text[:220])
                 try:
-                    status.performSelectorOnMainThread_withObject_waitUntilDone_(
-                        "setStringValue:", text[:120], False)
-                    if kind == "response":
+                    if kind in {"ready", "speaking", "processing", "error"}:
+                        status.performSelectorOnMainThread_withObject_waitUntilDone_(
+                            "setStringValue:", text[:120], False)
+                    elif kind == "response":
                         response.performSelectorOnMainThread_withObject_waitUntilDone_(
                             "setStringValue:", text[:220], False)
                         transcript.performSelectorOnMainThread_withObject_waitUntilDone_(
-                            "setStringValue:", "Antwort wird gesprochen", False)
-                        _speak_edge_tts(text, cfg.get("edge_tts_voice", "de-DE-KatjaNeural"))
-                except Exception:
-                    _apply()
+                            "setStringValue:", text[:220], False)
+                except Exception:  # noqa: BLE001
+                    pass
 
             _start_voice_ws(cfg, agent_id, on_event)
             state["connected"] = True
@@ -1310,36 +1403,23 @@ def show_interaction_bar(cfg: dict) -> None:
         def record_(self, sender):
             if not state["connected"]:
                 self.connect_(sender)
-            if state["recorder"] is None:
+            if not state["mic"].active:
                 _voice_send_interrupt()
-                path = str(Path(tempfile.gettempdir()) / "aiemp-voice.m4a")
-                settings = {
-                    AVFormatIDKey: 1633772320,  # kAudioFormatMPEG4AAC
-                    AVSampleRateKey: 16000.0,
-                    AVNumberOfChannelsKey: 1,
-                    AVEncoderAudioQualityKey: AVAudioQualityMedium,
-                }
-                url = NSURL.fileURLWithPath_(path)
-                result = AVAudioRecorder.alloc().initWithURL_settings_error_(url, settings, None)
-                rec = result[0] if isinstance(result, tuple) else result
-                if not rec:
-                    status.setStringValue_("Mikrofon konnte nicht gestartet werden")
+                err = state["mic"].start(_voice_send_chunk)
+                if err:
+                    status.setStringValue_(err[:120])
                     return
-                rec.record()
-                state["recorder"] = rec
-                state["path"] = path
                 sender.setTitle_("Stop")
-                status.setStringValue_("Höre zu...")
+                status.setStringValue_("Live — sprich einfach")
                 transcript.setStringValue_("Ich höre.")
             else:
-                state["recorder"].stop()
-                state["recorder"] = None
+                state["mic"].stop()
+                _voice_send_commit("de")
                 sender.setTitle_("Speech")
-                status.setStringValue_("Sende an Agent...")
-                transcript.setStringValue_("Transkribiere...")
-                _voice_send_audio_file(state["path"], language="de")
+                status.setStringValue_("Mikrofon aus")
 
         def close_(self, _sender):
+            state["mic"].stop()
             try:
                 ws = _voice_state.get("ws")
                 loop = _voice_state.get("loop")
@@ -1347,6 +1427,9 @@ def show_interaction_bar(cfg: dict) -> None:
                     asyncio.run_coroutine_threadsafe(ws.close(), loop)
             except Exception:
                 pass
+            player = _voice_state.get("pcm_player")
+            if player:
+                player.stop()
             _stop_voice_playback()
             panel.close()
 
@@ -1356,7 +1439,297 @@ def show_interaction_bar(cfg: dict) -> None:
     connect_btn.setTarget_(handler); connect_btn.setAction_("connect:")
     record_btn.setTarget_(handler); record_btn.setAction_("record:")
     close_btn.setTarget_(handler); close_btn.setAction_("close:")
+    # Die Tray-App ist eine Hintergrund-App (LSUIElement) — ohne Aktivierung
+    # zeichnet macOS das Fenster schlicht nicht. Genau deshalb "passierte
+    # nichts" beim Klick auf Interaction Bar, und die Bar tauchte erst auf,
+    # sobald irgendein modaler Dialog (Einstellungen) die App aktivierte.
+    from AppKit import NSApp
+    NSApp.activateIgnoringOtherApps_(True)
+    panel.orderFrontRegardless()
     panel.makeKeyAndOrderFront_(None)
+
+
+class _MicStreamer:
+    """Mikrofon LIVE in die Sprachsitzung streamen — 16 kHz/16-bit/mono PCM.
+
+    Genau das Format, das die Realtime-Front (Nova Sonic) erwartet
+    (``push_audio_chunk``). Vorher nahm die Bar eine komplette Datei auf und
+    schickte sie am Stueck — das ist STT-Batchbetrieb, keine Interaktion mit
+    dem Voice Layer. Jetzt fliesst jeder 100-ms-Block sofort raus; die
+    Sprachengine macht ihre eigene Satzerkennung und kann unterbrechen.
+    """
+
+    def __init__(self) -> None:
+        self._stream = None
+
+    @property
+    def active(self) -> bool:
+        return self._stream is not None
+
+    def start(self, send_chunk) -> str:
+        """``send_chunk(bytes)`` bekommt rohe PCM16-Bloecke. '' = ok, sonst Fehlertext."""
+        if self._stream is not None:
+            return ""
+        try:
+            import sounddevice as sd
+        except ImportError:
+            return "sounddevice fehlt — Mikrofon nicht nutzbar"
+
+        def _cb(indata, _frames, _time, _status):
+            try:
+                send_chunk(bytes(indata))
+            except Exception:  # noqa: BLE001 — Verbindung weg; Stopp kommt von aussen
+                pass
+
+        try:
+            stream = sd.InputStream(
+                samplerate=16000, channels=1, dtype="int16",
+                blocksize=1600,  # 100 ms
+                callback=_cb,
+            )
+            stream.start()
+        except Exception as e:  # noqa: BLE001 — kein Mikro / belegt / Freigabe fehlt
+            return f"Mikrofon liess sich nicht oeffnen: {e}"
+        self._stream = stream
+        return ""
+
+    def stop(self) -> None:
+        if self._stream is None:
+            return
+        try:
+            self._stream.stop()
+            self._stream.close()
+        except Exception:  # noqa: BLE001
+            pass
+        self._stream = None
+
+
+class _PcmPlayer:
+    """Antwort-Audio der Sprachsitzung abspielen, WAEHREND es eintrifft.
+
+    Die Realtime-Front streamt rohes PCM (24 kHz) in kleinen Bloecken. Ein
+    eigener Abspiel-Thread zieht sie aus einer Queue — der WebSocket-Thread
+    darf nicht blockieren, sonst stauen sich Pings und Folge-Ereignisse
+    hinter der Soundkarte.
+    """
+
+    def __init__(self) -> None:
+        import queue as _q
+        self._queue: "_q.Queue[tuple[bytes, int] | None]" = _q.Queue(maxsize=256)
+        self._thread: threading.Thread | None = None
+
+    def feed(self, pcm: bytes, rate: int) -> None:
+        if self._thread is None or not self._thread.is_alive():
+            self._thread = threading.Thread(target=self._run, daemon=True)
+            self._thread.start()
+        try:
+            self._queue.put_nowait((pcm, rate))
+        except Exception:  # noqa: BLE001 — voller Puffer: lieber knappsen als haengen
+            pass
+
+    def _run(self) -> None:
+        try:
+            import numpy as np
+            import sounddevice as sd
+        except ImportError:
+            return
+        stream = None
+        current_rate = 0
+        while True:
+            item = self._queue.get()
+            if item is None:
+                break
+            pcm, rate = item
+            try:
+                if stream is None or rate != current_rate:
+                    if stream is not None:
+                        stream.stop(); stream.close()
+                    stream = sd.OutputStream(samplerate=rate, channels=1, dtype="int16")
+                    stream.start()
+                    current_rate = rate
+                stream.write(np.frombuffer(pcm, dtype=np.int16).reshape(-1, 1))
+            except Exception:  # noqa: BLE001 — Audiogeraet weg: leise aufgeben
+                break
+        if stream is not None:
+            try:
+                stream.stop(); stream.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def stop(self) -> None:
+        if self._thread is None:
+            return
+        try:
+            while not self._queue.empty():
+                self._queue.get_nowait()
+        except Exception:  # noqa: BLE001
+            pass
+        self._queue.put(None)
+        self._thread = None
+
+
+def _voice_send_chunk(pcm: bytes) -> None:
+    """Einen Mikrofon-Block in die laufende Sprachsitzung schicken."""
+    ws = _voice_state.get("ws")
+    loop = _voice_state.get("loop")
+    if not ws or not loop:
+        return
+    payload = json.dumps({"type": "audio_chunk",
+                          "data": {"b64": base64.b64encode(pcm).decode("ascii")}})
+
+    async def _send():
+        await ws.send(payload)
+
+    try:
+        asyncio.run_coroutine_threadsafe(_send(), loop)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _voice_send_commit(language: str = "de") -> None:
+    """Satzende signalisieren — die klassische Pipeline braucht es, die
+    Realtime-Front ignoriert es (sie erkennt Sprechpausen selbst)."""
+    ws = _voice_state.get("ws")
+    loop = _voice_state.get("loop")
+    if not ws or not loop:
+        return
+
+    async def _send():
+        await ws.send(json.dumps({"type": "commit", "data": {"language": language}}))
+
+    try:
+        asyncio.run_coroutine_threadsafe(_send(), loop)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _show_interaction_bar_ctk(cfg: dict) -> None:
+    """Die Interaction Bar fuer Windows — gleiche Faehigkeit wie auf dem Mac:
+    Agent aus der Liste waehlen, Speech druecken, sprechen, Antwort hoeren."""
+    if not _ctk_available():
+        _notify("Interaction Bar benötigt customtkinter (fehlt in dieser Installation).")
+        return
+    ctk = _ctk_setup()
+
+    agents = []
+    agents_error = ""
+    try:
+        agents = api_list_agents(cfg["url"], cfg["token"])
+    except Exception as e:  # noqa: BLE001
+        agents_error = str(e).strip() or e.__class__.__name__
+    agent_ids = [str(a.get("id") or "") for a in agents]
+    titles = []
+    for a in agents:
+        t = str(a.get("name") or "").strip() or str(a.get("id") or "")[:8]
+        if t in titles:
+            t = f"{t} ({str(a.get('id') or '')[:6]})"
+        titles.append(t)
+
+    root = ctk.CTk()
+    root.title("AI Employee — Voice")
+    root.geometry("640x220")
+    root.resizable(False, False)
+    root.attributes("-topmost", True)
+
+    ctk.CTkLabel(root, text="AI Employee Voice", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=20, pady=(16, 0))
+
+    row = ctk.CTkFrame(root, fg_color="transparent")
+    row.pack(fill="x", padx=20, pady=(10, 0))
+    ctk.CTkLabel(row, text="Agent", text_color="gray60", font=ctk.CTkFont(size=11)).pack(side="left")
+    stored = str(cfg.get("voice_agent_id") or "")
+    start_title = titles[agent_ids.index(stored)] if stored in agent_ids else (titles[0] if titles else "—")
+    agent_box = ctk.CTkComboBox(row, values=titles or ["—"], width=260, state="readonly")
+    agent_box.set(start_title)
+    agent_box.pack(side="left", padx=(10, 0))
+
+    status_lbl = ctk.CTkLabel(root, text=(
+        f"Agenten nicht ladbar: {agents_error}" if agents_error else
+        ("Keine Agenten gefunden — Anmeldung prüfen" if not titles else "Bereit")
+    ), text_color="gray60", font=ctk.CTkFont(size=11))
+    status_lbl.pack(anchor="w", padx=20, pady=(8, 0))
+    transcript_lbl = ctk.CTkLabel(root, text="Drücke Speech und sprich.", font=ctk.CTkFont(size=12))
+    transcript_lbl.pack(anchor="w", padx=20)
+
+    # UI-Updates kommen vom WebSocket-Thread — tkinter darf nur der eigene
+    # Thread anfassen, deshalb Queue + Polling statt Direktzugriff.
+    import queue as _queue
+    events: "_queue.Queue[tuple[str, str]]" = _queue.Queue()
+
+    def on_event(kind, text):
+        events.put((kind, text))
+
+    def _poll():
+        try:
+            while True:
+                kind, text = events.get_nowait()
+                if kind in {"ready", "speaking", "processing", "error"}:
+                    status_lbl.configure(text=text[:120])
+                elif kind == "response":
+                    transcript_lbl.configure(text=text[:200])
+        except _queue.Empty:
+            pass
+        root.after(200, _poll)
+
+    # Direkt mit dem Voice Layer sprechen — wie auf dem Mac: live streamen,
+    # Antwort-Audio kommt vom Server, kein lokales Nach-Vorlesen.
+    state = {"mic": _MicStreamer(), "connected": False}
+    _voice_state["local_edge_tts"] = False
+
+    def _selected_agent() -> str:
+        title = agent_box.get()
+        return agent_ids[titles.index(title)] if title in titles else ""
+
+    def on_speech():
+        agent_id = _selected_agent()
+        if not agent_id:
+            status_lbl.configure(text="Kein Agent auswählbar — in der Web-UI einen anlegen")
+            return
+        if not state["connected"]:
+            cfg["voice_agent_id"] = agent_id
+            save_config(cfg)
+            status_lbl.configure(text="Verbinde Voice...")
+            _start_voice_ws(cfg, agent_id, on_event)
+            state["connected"] = True
+        if not state["mic"].active:
+            _voice_send_interrupt()
+            err = state["mic"].start(_voice_send_chunk)
+            if err:
+                status_lbl.configure(text=err[:120])
+                return
+            speech_btn.configure(text="Stop")
+            status_lbl.configure(text="Live — sprich einfach")
+            transcript_lbl.configure(text="Ich höre.")
+        else:
+            state["mic"].stop()
+            _voice_send_commit("de")
+            speech_btn.configure(text="Speech")
+            status_lbl.configure(text="Mikrofon aus")
+
+    def on_close():
+        state["mic"].stop()
+        try:
+            ws = _voice_state.get("ws")
+            loop = _voice_state.get("loop")
+            if ws and loop:
+                asyncio.run_coroutine_threadsafe(ws.close(), loop)
+        except Exception:  # noqa: BLE001
+            pass
+        player = _voice_state.get("pcm_player")
+        if player:
+            player.stop()
+        _stop_voice_playback()
+        root.destroy()
+
+    btns = ctk.CTkFrame(root, fg_color="transparent")
+    btns.pack(fill="x", padx=20, pady=14)
+    speech_btn = ctk.CTkButton(btns, text="Speech", width=140, command=on_speech)
+    speech_btn.pack(side="left")
+    ctk.CTkButton(btns, text="Schließen", width=100, fg_color="transparent", border_width=1,
+                  text_color="gray60", border_color="#444", command=on_close).pack(side="right")
+
+    root.protocol("WM_DELETE_WINDOW", on_close)
+    root.after(200, _poll)
+    root.mainloop()
 
 
 # ── Windows/Linux dialogs (customtkinter — dark, modern) ──────────────────────
@@ -1491,7 +1864,8 @@ def _show_permissions_tkinter(cfg):
 
     ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=10)
 
-    ctk.CTkLabel(root, text="ORDNER-ZUGRIFF", font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").pack(anchor="w", padx=24, pady=(0,4))
+    ctk.CTkLabel(root, text="ORDNER-ZUGRIFF — Startordner für Shell-Befehle (ohne Eintrag: gesperrt)",
+                 font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").pack(anchor="w", padx=24, pady=(0,4))
 
     path_box = ctk.CTkTextbox(root, height=72, font=ctk.CTkFont(family="Courier", size=11))
     path_box.pack(fill="x", padx=24)
@@ -1896,7 +2270,26 @@ def run_tray(cfg: dict) -> None:
         threading.Thread(target=_connect, daemon=True).start()
 
     def on_disconnect(icon, item): stop_bridge()
-    def on_permissions(icon, item): threading.Thread(target=lambda: show_permissions_dialog(cfg), daemon=True).start()
+
+    # Jeder Dialog laeuft in einem eigenen Thread mit eigenem tkinter-Mainloop.
+    # Zwei Klicks im Tray-Menue = zwei Mainloops gleichzeitig — tkinter ist
+    # nicht threadsicher, das endet in eingefrorenen Fenstern oder einem
+    # stillen Absturz des Tray-Prozesses. Deshalb: solange ein Dialog offen
+    # ist, oeffnet kein zweiter.
+    dialog_gate = threading.Lock()
+
+    def _one_dialog(fn):
+        def _run():
+            if not dialog_gate.acquire(blocking=False):
+                return
+            try:
+                fn()
+            finally:
+                dialog_gate.release()
+        threading.Thread(target=_run, daemon=True).start()
+
+    def on_permissions(icon, item): _one_dialog(lambda: show_permissions_dialog(cfg))
+    def on_interaction(icon, item): _one_dialog(lambda: show_interaction_bar(cfg))
     def on_settings(icon, item):
         def _s():
             u = show_setup_dialog(cfg)
@@ -1908,8 +2301,8 @@ def run_tray(cfg: dict) -> None:
                 # Silently swallowing this is what made the settings "reset"
                 # after every restart — the user has to know they didn't stick.
                 _notify(err + "\n\nDie Einstellungen gelten nur bis zum Beenden der App.")
-        threading.Thread(target=_s, daemon=True).start()
-    def on_status(icon, item): threading.Thread(target=lambda: show_status_window(cfg), daemon=True).start()
+        _one_dialog(_s)
+    def on_status(icon, item): _one_dialog(lambda: show_status_window(cfg))
     def on_open(icon, item):
         if cfg.get("url"): webbrowser.open(cfg["url"])
     def on_quit(icon, item): stop_bridge(); icon.stop()
@@ -1922,6 +2315,7 @@ def run_tray(cfg: dict) -> None:
         pystray.MenuItem("Trennen", on_disconnect),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Berechtigungen…", on_permissions),
+        pystray.MenuItem("Interaction Bar", on_interaction),
         pystray.MenuItem("Einstellungen…", on_settings),
         pystray.MenuItem("Status", on_status),
         pystray.Menu.SEPARATOR,
