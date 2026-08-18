@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.222.3] - 2026-08-18
+
+### Geändert
+- **Feedback und Concierge sind in den Sidebar-Kopf gezogen – unten rechts
+  schwebt nichts mehr.** Die beiden schwebenden Knöpfe lagen über Eingabe-
+  feldern und Bedienelementen der Seiten. Beide Einstiege sitzen jetzt als
+  Paar oben neben dem Logo: der Concierge (nur Administratoren) als
+  Lucide-Icon im selben Stil wie der Feedback-Knopf daneben. Die Panels
+  selbst öffnen unverändert unten rechts – sie sind flüchtig und überdecken
+  nichts dauerhaft. Der Test zur FAB-Paar-Geometrie
+  (`test_feedback_button_matches_concierge.py`) ist mit seiner Prämisse
+  entfallen und durch `test_feedback_and_concierge_sit_in_the_sidebar.py`
+  ersetzt.
+
+---
+
 ## [1.222.2] - 2026-08-18
 
 ### Behoben

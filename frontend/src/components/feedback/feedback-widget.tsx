@@ -1,8 +1,11 @@
 "use client";
 // In-App-Feedback-Widget ("Feedback-Gedöns") — global in der App-Shell gemountet,
-// rendert auf jeder Route. Flow: schwebender Button → Element anpinnen (Pick-Mode)
-// → Viewport-Screenshot mit rotem Rahmen → Sentiment + Kategorie + Freitext →
-// genau EINE Requirements-Rückfrage vom LLM → Speichern (MD + PNG + DB-Eintrag).
+// rendert auf jeder Route. Gestartet über den Feedback-Knopf im Sidebar-Kopf
+// (Event "feedback-widget:open") — der frühere schwebende Knopf unten rechts
+// ist raus, weil er Eingabefelder überdeckt hat. Flow: Element anpinnen
+// (Pick-Mode) → Viewport-Screenshot mit rotem Rahmen → Sentiment + Kategorie +
+// Freitext → genau EINE Requirements-Rückfrage vom LLM → Speichern (MD + PNG +
+// DB-Eintrag).
 // Attribution passiert serverseitig über die Session — hier wird der Name nur angezeigt.
 
 import { useEffect, useRef, useState } from "react";
@@ -120,7 +123,7 @@ export function FeedbackWidget() {
   const [shotBusy, setShotBusy] = useState(false);
   const hi = useRef<HTMLDivElement>(null);
 
-  // Sidebar-Eintrag „Feedback senden" startet denselben Flow.
+  // Einziger Einstieg: der Feedback-Knopf im Sidebar-Kopf.
   useEffect(() => {
     const open = () => setMode(m => (m === "idle" ? "picking" : m));
     window.addEventListener("feedback-widget:open", open);
@@ -201,12 +204,6 @@ export function FeedbackWidget() {
       {mode === "picking" && (
         <div className="fbw-hint"><Crosshair size={15} /> Klick das Element an, zu dem du Feedback geben willst
           <button onClick={() => setMode("idle")}>Abbrechen (ESC)</button></div>
-      )}
-      {mode === "idle" && (
-        <button className="fbw-fab" onClick={() => setMode("picking")}
-          title="Feedback geben" aria-label="Feedback geben">
-          <MessageSquarePlus size={20} />
-          <span className="fbw-fab-label">Feedback</span></button>
       )}
       {mode === "panel" && pin && (
         <div className="fbw-panel">

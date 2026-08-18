@@ -15,6 +15,7 @@ import {
   ScrollText,
   Workflow,
   Bot,
+  LifeBuoy,
   MessageSquarePlus,
   ShieldCheck,
   BookOpen,
@@ -318,6 +319,21 @@ export function Sidebar() {
                 <span className="text-[10px] text-muted-foreground">Online</span>
               </div>
             </div>
+            {/* Concierge und Feedback wohnen hier oben als Paar — die frueheren
+                schwebenden Knoepfe unten rechts haben Eingabefelder ueberdeckt. */}
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  closeMobile();
+                  window.dispatchEvent(new CustomEvent("concierge-widget:open"));
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-all"
+                title="Concierge"
+                aria-label="Concierge öffnen"
+              >
+                <LifeBuoy className="h-4 w-4" />
+              </button>
+            )}
             <button
               onClick={() => {
                 // Startet den Widget-Flow (Element anpinnen) statt des alten Modals.
@@ -326,6 +342,7 @@ export function Sidebar() {
               }}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-all"
               title="Feedback senden"
+              aria-label="Feedback geben"
             >
               <MessageSquarePlus className="h-4 w-4" />
             </button>
