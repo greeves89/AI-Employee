@@ -461,6 +461,7 @@ export default function FilesPage() {
             <div className="flex-1 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
               {selectedFile ? (
                 <FilePreview
+                  agentId={selectedFile.agentId}
                   key={`${selectedFile.agentId}:${selectedFile.path}`}
                   fileUrl={api.getFileDownloadUrl(selectedFile.agentId, selectedFile.path)}
                   filePath={selectedFile.path}

@@ -991,6 +991,17 @@ export async function uploadFiles(
   return res.json();
 }
 
+export async function saveFileContent(
+  agentId: string,
+  path: string,
+  content: string,
+): Promise<{ path: string; bytes: number }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/files/content`, {
+    method: "PUT",
+    body: JSON.stringify({ path, content }),
+  });
+}
+
 export async function deleteFile(agentId: string, path: string): Promise<void> {
   const res = await fetch(
     `${getBase()}/agents/${agentId}/files?path=${encodeURIComponent(path)}`,

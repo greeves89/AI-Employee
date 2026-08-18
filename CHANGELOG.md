@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.231.0] - 2026-08-18
+
+### Neu
+- **Textdateien im Arbeitsbereich lassen sich direkt bearbeiten.** Aus dem
+  Kundentermin: `.env`-Dateien ließen sich ansehen, aber nicht ändern — wer eine
+  Zeile korrigieren wollte, musste herunterladen, lokal bearbeiten und wieder
+  hochladen. Die Ansicht war rein lesend, es gab keinen Schreibweg.
+- „Bearbeiten" in der Dateivorschau, Textfeld an Stelle der Anzeige, Speichern
+  oder Abbrechen. Bei HTML wird bewusst die Quelle bearbeitet, nicht die
+  gerenderte Fassung. Ein Wechsel der Datei verwirft den Entwurf; schlägt das
+  Speichern fehl, bleibt der Text stehen und der Fehler wird angezeigt.
+- Gilt in beiden Dateibäumen (Arbeitsbereich eines Agenten und die
+  agentenübergreifende Ansicht).
+
+### Sicherheit
+- Der Schreibweg prüft an derselben Stelle wie Lesen und Hochladen: Pfade müssen
+  im Arbeitsbereich bleiben (`..` wird **nach** dem Normalisieren geprüft),
+  Symlinks und Verzeichnisse werden abgelehnt, gesperrte Dateiendungen bleiben
+  gesperrt — sonst wäre die Sperre beim Hochladen über den Umweg „Bearbeiten"
+  zu umgehen. Obergrenze 1 MB. Der Endpunkt prüft Anmeldung und Eigentümer.
+
+---
+
 ## [1.230.0] - 2026-08-18
 
 ### Geändert

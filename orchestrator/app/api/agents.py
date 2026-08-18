@@ -1809,6 +1809,44 @@ async def download_file(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+class DateiInhalt(BaseModel):
+    """Rumpf zum Speichern einer bearbeiteten Datei."""
+    path: str
+    content: str
+
+
+@router.put("/{agent_id}/files/content")
+async def save_file_content(
+    agent_id: str,
+    body: DateiInhalt,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    file_mgr: FileManager = Depends(_get_file_manager),
+):
+    """Eine Textdatei im Arbeitsbereich ueberschreiben.
+
+    Bis hierher war die Dateiansicht rein lesend: eine ``.env`` liess sich
+    oeffnen, aber nicht aendern. Wer eine Zeile korrigieren wollte, musste
+    herunterladen, lokal bearbeiten und wieder hochladen — beim Kunden am
+    18.08.2026 als Aergernis genannt.
+
+    Die Absicherung des Pfades liegt in ``FileManager.write_file``, also an
+    derselben Stelle wie beim Lesen und Hochladen.
+    """
+    await _check_owner(agent_id, user, db)
+    agent = await manager._get_agent(agent_id)
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="Agent has no container")
+    try:
+        geschrieben = file_mgr.write_file(agent.container_id, body.path, body.content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"path": body.path, "bytes": geschrieben}
+
+
 @router.delete("/{agent_id}/files")
 async def delete_file(
     agent_id: str,

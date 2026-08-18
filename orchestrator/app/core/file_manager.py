@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 # Upload limits
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB per file
 MAX_UPLOAD_TOTAL_BYTES = 200 * 1024 * 1024  # 200 MB total per upload batch
+#: Obergrenze fuers Bearbeiten im Browser. Wer eine 5-MB-Datei im Textfeld
+#: aendert, hat sich vertan — und der ganze Inhalt geht durch den Speicher.
+MAX_EDIT_SIZE_BYTES = 1 * 1024 * 1024  # 1 MB
 
 # Blocked file extensions (dangerous executables / scripts that could escape container)
 BLOCKED_EXTENSIONS = {
@@ -117,6 +120,47 @@ class FileManager:
             raise ValueError("Cannot read symlinks for security reasons")
 
         return self.docker.get_file_from_container(container_id, validated)
+
+    def write_file(self, container_id: str, file_path: str, content: str) -> int:
+        """Eine Textdatei im Arbeitsbereich ueberschreiben.
+
+        Vom Kunden am 18.08.2026 gewuenscht: ``.env``-Dateien liessen sich
+        ansehen, aber nicht aendern — wer eine Zeile korrigieren wollte, musste
+        herunterladen, bearbeiten und wieder hochladen.
+
+        Bewusst hier und nicht in der Schnittstelle: ``_validate_path`` ist die
+        EINE Stelle, die den Arbeitsbereich absichert (Nullbytes, absolute
+        Pfade, ``..`` NACH dem Normalisieren). Ein zweiter Schreibweg mit
+        eigener Pruefung waere genau die Luecke, die man spaeter sucht.
+        """
+        validated = _validate_path(file_path)
+        _validate_filename(os.path.basename(validated))
+
+        roh = content.encode("utf-8")
+        if len(roh) > MAX_EDIT_SIZE_BYTES:
+            raise ValueError(
+                f"Datei zu gross zum Bearbeiten "
+                f"({len(roh)} > {MAX_EDIT_SIZE_BYTES} Bytes)"
+            )
+
+        # Symlinks und Verzeichnisse ausschliessen — ueber einen Symlink liesse
+        # sich sonst ausserhalb des Arbeitsbereichs schreiben, obwohl der Pfad
+        # selbst sauber aussieht. Lesen prueft dasselbe.
+        ziel = shlex.quote(validated)
+        _, art = self.docker.exec_in_container(
+            container_id,
+            ["bash", "-c", f"if [ -L {ziel} ]; then echo SYMLINK; "
+                           f"elif [ -d {ziel} ]; then echo DIR; else echo OK; fi"],
+        )
+        art = (art or "").strip()
+        if art == "SYMLINK":
+            raise ValueError("Symlinks werden aus Sicherheitsgruenden nicht beschrieben")
+        if art == "DIR":
+            raise ValueError("Das ist ein Verzeichnis, keine Datei")
+
+        self.docker.write_file_in_container(container_id, validated, content)
+        logger.info("[Dateien] %s geschrieben (%d Bytes)", scrub_log(validated), len(roh))
+        return len(roh)
 
     async def upload_files(
         self, container_id: str, target_path: str, files: list[tuple[str, bytes]]

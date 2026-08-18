@@ -3069,6 +3069,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
       <div className="flex-1 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
         {selectedFile ? (
           <FilePreview
+            agentId={agentId}
             key={selectedFile.path}
             fileUrl={api.getFileDownloadUrl(agentId, selectedFile.path)}
             filePath={selectedFile.path}

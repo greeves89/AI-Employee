@@ -4,9 +4,10 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import {
   Download, Loader2, File, FileText, Code,
-  Image as ImageIcon, Eye, FileCode,
+  Image as ImageIcon, Eye, FileCode, Pencil, Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import * as api from "@/lib/api";
 import { FehlerGrenze } from "@/components/ui/fehler-grenze";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -105,6 +106,8 @@ export function formatModifiedFull(timestamp: number): string {
 interface FilePreviewProps {
   fileUrl: string;
   filePath: string;
+  /** Ohne Agenten kein Speicherweg — dann bleibt die Ansicht rein lesend. */
+  agentId?: string;
   fileSize?: number;
   fileModified?: number;
   onDownload?: () => void;
@@ -131,6 +134,7 @@ export function FilePreview(props: FilePreviewProps) {
 function FilePreviewInner({
   fileUrl,
   filePath,
+  agentId,
   fileSize,
   fileModified,
   onDownload,
@@ -143,6 +147,12 @@ function FilePreviewInner({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [htmlTab, setHtmlTab] = useState<HtmlTab>("rendered");
+  //: Bearbeiten direkt in der Ansicht. Bis 1.230.0 war sie rein lesend — wer
+  //: eine Zeile in einer `.env` korrigieren wollte, musste herunterladen,
+  //: aendern und wieder hochladen.
+  const [entwurf, setEntwurf] = useState<string | null>(null);
+  const [speichert, setSpeichert] = useState(false);
+  const [speicherFehler, setSpeicherFehler] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +162,8 @@ function FilePreviewInner({
     setArrayBuffer(null);
     setBlobUrl(null);
     setHtmlTab("rendered");
+    setEntwurf(null);
+    setSpeicherFehler(null);
 
     const load = async () => {
       try {
@@ -187,6 +199,26 @@ function FilePreviewInner({
       if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
   }, [fileUrl, ext]);
+
+  //: Bearbeitbar ist, was als Text geladen wurde — und nur, wenn ein Agent
+  //: bekannt ist, an den gespeichert werden kann.
+  const bearbeitbar = Boolean(agentId) && !loading && !error && textContent !== null;
+  const imBearbeiten = entwurf !== null;
+
+  const speichern = async () => {
+    if (entwurf === null || !agentId) return;
+    setSpeichert(true);
+    setSpeicherFehler(null);
+    try {
+      await api.saveFileContent(agentId, filePath, entwurf);
+      setTextContent(entwurf);
+      setEntwurf(null);
+    } catch (e) {
+      setSpeicherFehler(e instanceof Error ? e.message : "Speichern fehlgeschlagen");
+    } finally {
+      setSpeichert(false);
+    }
+  };
 
   // ── Header ──
   const header = (
@@ -238,7 +270,37 @@ function FilePreviewInner({
         </div>
       )}
 
-      {onDownload && (
+      {bearbeitbar && !imBearbeiten && (
+        <button
+          onClick={() => setEntwurf(textContent ?? "")}
+          className="ml-auto flex h-6 items-center gap-1.5 rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
+        >
+          <Pencil className="h-3 w-3" />
+          Bearbeiten
+        </button>
+      )}
+
+      {imBearbeiten && (
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={() => { setEntwurf(null); setSpeicherFehler(null); }}
+            disabled={speichert}
+            className="flex h-6 items-center rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors disabled:opacity-50"
+          >
+            Abbrechen
+          </button>
+          <button
+            onClick={speichern}
+            disabled={speichert || entwurf === textContent}
+            className="flex h-6 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40"
+          >
+            {speichert ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            {speichert ? "Speichert…" : "Speichern"}
+          </button>
+        </div>
+      )}
+
+      {onDownload && !imBearbeiten && (
         <button
           onClick={onDownload}
           className="ml-auto flex h-6 items-center gap-1.5 rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
@@ -320,10 +382,32 @@ function FilePreviewInner({
     </pre>
   ) : null;
 
+  //: Im Bearbeiten-Modus tritt das Textfeld an die Stelle der Anzeige — auch
+  //: bei HTML, wo sonst die gerenderte Fassung zu sehen waere. Man bearbeitet
+  //: die Quelle, nicht das Bild davon.
+  const bearbeitungsFlaeche = (
+    <div className="flex h-full flex-col">
+      {speicherFehler && (
+        <div className="shrink-0 border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-[11px] text-red-400">
+          {speicherFehler}
+        </div>
+      )}
+      <textarea
+        value={entwurf ?? ""}
+        onChange={(e) => setEntwurf(e.target.value)}
+        spellCheck={false}
+        autoComplete="off"
+        className="flex-1 resize-none bg-transparent p-4 font-mono text-[12px] leading-relaxed outline-none"
+      />
+    </div>
+  );
+
   return (
     <>
       {header}
-      <div className="flex-1 overflow-auto">{content}</div>
+      <div className="flex-1 overflow-auto">
+        {imBearbeiten ? bearbeitungsFlaeche : content}
+      </div>
     </>
   );
 }
