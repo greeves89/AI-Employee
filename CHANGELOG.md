@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.230.0] - 2026-08-18
+
+### Geändert
+- **Zeitpläne sind nach Agent gruppiert und starten eingeklappt.** Vorher eine
+  flache Liste über alle Agenten hinweg — bei sieben Agenten mit je mehreren
+  Plänen war nicht mehr zu sehen, wessen Plan wann läuft.
+- Jede Gruppe zeigt schon zugeklappt, wie viele Pläne sie hat, wie viele davon
+  aktiv sind und wann der nächste läuft. Innerhalb einer Gruppe steht oben, was
+  als Nächstes dran ist. Dazu „Alle aufklappen" / „Alle zuklappen".
+- Pläne ohne festen Agenten (die über die Lastverteilung laufen) bekommen eine
+  eigene Gruppe, statt aus der Liste zu fallen.
+
+---
+
 ## [1.229.0] - 2026-08-18
 
 ### Behoben
