@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.233.0] - 2026-08-18
+
+### Behoben
+- **Ein Chat verlor seinen Verlauf, sobald der Agent neu startete.** Gemeldet mit
+  Bildschirmfoto: der Agent sprach in einer Unterhaltung über ein ganz anderes
+  Projekt und stieß vier Reviews bei drei Kollegen an. Die Frage war, ob er zwei
+  Chats vermischt.
+- **Tut er nicht.** Auf der Anlage nachgesehen: alle Nachrichten des Wortwechsels
+  lagen in einer Sitzung, die Anzeige stimmte, kein gemeinsamer Sitzungsschlüssel.
+- Die echte Lücke: in der Custom-LLM-Laufzeit lebt der Verlauf **ausschließlich
+  im Arbeitsspeicher** und wurde nie aus der Datenbank zurückgeholt — anders als
+  bei den CLI-Laufzeiten, die ihre Sitzung wiederfinden. Nach Neustart, Update
+  oder Container-Tausch stand der Agent in einem Chat mit Dutzenden gespeicherten
+  Nachrichten vor einem leeren Blatt und reimte sich aus semantisch gesuchten
+  Erinnerungen zusammen, worum es geht. Er schrieb selbst „am wahrscheinlichsten"
+  — und handelte trotzdem.
+- Der Verlauf dieser Unterhaltung wird jetzt beim ersten Zug zurückgeholt
+  (begrenzt, nur echte Wortmeldungen, ohne Oberflächen-Kacheln). Schlägt das
+  fehl, redet der Agent wie bisher ohne Vorgeschichte weiter.
+- Die Erinnerungen bleiben unverändert — sie tragen Wissen über Unterhaltungen
+  hinweg. Sie sind nur nicht mehr die einzige Quelle.
+
+### Sicherheit
+- `/chat/history` hing an einem reinen **Nutzer**-Login, der Agent kam an seinen
+  eigenen Verlauf nicht heran (derselbe Fehlertyp wie beim Löschen eigener
+  Erinnerungen am selben Tag). Der Agent darf jetzt seinen **eigenen** Verlauf
+  lesen; fremde Agenten werden weiterhin mit 403 abgewiesen.
+
+---
+
 ## [1.232.0] - 2026-08-18
 
 ### Neu

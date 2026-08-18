@@ -19,6 +19,12 @@ from app.tools.mcp_client import MCPHTTPClient
 
 logger = logging.getLogger(__name__)
 
+#: Wie viele frueherer Zuege beim Neustart zurueckgeholt werden. Bewusst
+#: begrenzt: der Verlauf wandert in den Kontext, und die Kompaktierung greift
+#: erst danach. Reicht fuer „worum geht es hier eigentlich", ohne das Fenster
+#: schon beim ersten Zug zu fuellen.
+VERLAUF_NACHLADEN_MAX = 40
+
 # Tool-loop cap per chat message. Honors the admin-configured
 # "Max Turns per Task" setting (settings.max_turns); the constant is
 # only a fallback if that is somehow unset. A real agent stops on its
@@ -465,6 +471,50 @@ class LLMChatHandler:
             )
         return self._provider
 
+    async def _verlauf_nachladen(self) -> list[ChatMessage]:
+        """Die letzten Zuege dieser Unterhaltung aus dem Orchestrator holen.
+
+        Best effort: geht es schief, redet der Agent ohne Vorgeschichte weiter —
+        das ist der Zustand von vorher und darf den Zug nicht kippen.
+        """
+        from app.tools.api_client import current_chat_session
+
+        session_id = current_chat_session.get(None)
+        if not session_id:
+            return []
+        try:
+            from app.tools.api_client import OrchestratorAPIClient
+            client = OrchestratorAPIClient()
+            try:
+                antwort = await client._request(
+                    "GET",
+                    f"/agents/{client.agent_id}/chat/history",
+                    params={"session_id": session_id, "limit": VERLAUF_NACHLADEN_MAX},
+                )
+            finally:
+                await client._client.aclose()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Kontext] Verlauf nicht nachladbar: %s", e)
+            return []
+
+        if not isinstance(antwort, dict):
+            logger.warning("[Kontext] Verlauf nicht nachladbar: %s", str(antwort)[:200])
+            return []
+
+        zuege: list[ChatMessage] = []
+        for eintrag in antwort.get("messages") or []:
+            rolle = eintrag.get("role")
+            inhalt = (eintrag.get("content") or "").strip()
+            # Nur echte Wortmeldungen. `system`-Zeilen sind Kacheln und
+            # Statusmeldungen der Oberflaeche — sie standen dem Modell nie zur
+            # Verfuegung und wuerden es jetzt nur verwirren.
+            if rolle in ("user", "assistant") and inhalt:
+                zuege.append(ChatMessage(role=rolle, content=inhalt))
+
+        if zuege:
+            logger.info("[Kontext] %d fruehere Zuege dieser Unterhaltung geladen", len(zuege))
+        return zuege
+
     async def handle_message(
         self,
         message_id: str,
@@ -530,6 +580,23 @@ class LLMChatHandler:
             if marketplace:
                 system_prompt = system_prompt + "\n" + marketplace
             self._history.append(ChatMessage(role="system", content=system_prompt))
+
+            # Den bisherigen Verlauf DIESER Unterhaltung zurueckholen.
+            #
+            # Bei dieser Laufzeit lebt der Verlauf ausschliesslich im
+            # Arbeitsspeicher — anders als bei den CLI-Laufzeiten, die ihre
+            # Sitzung ueber `--resume` wiederfinden. Nach jedem Neustart,
+            # Update oder Container-Tausch stand der Agent in einem Chat mit 70
+            # gespeicherten Nachrichten vor einem leeren Blatt und musste sich
+            # aus semantisch gesuchten Erinnerungen zusammenreimen, worum es
+            # geht. Beim Kunden am 18.08.2026 riet er daraufhin das falsche
+            # Projekt und schickte vier Kollegen darauf los.
+            #
+            # Die Erinnerungen bleiben — sie tragen Wissen ueber Unterhaltungen
+            # hinweg. Sie sind nur nicht mehr die einzige Quelle.
+            geladen = await self._verlauf_nachladen()
+            if geladen:
+                self._history.extend(geladen)
 
         # Add user message to history (image-aware)
         self._history.append(multimodal.user_message(text, images))

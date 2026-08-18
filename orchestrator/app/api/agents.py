@@ -69,6 +69,26 @@ async def _check_owner(agent_id: str, user, db: AsyncSession) -> None:
     await require_agent_access(agent_id, user, db)
 
 
+async def _check_owner_or_self(agent_id: str, user, db: AsyncSession) -> None:
+    """Wie ``_check_owner`` — laesst zusaetzlich den Agenten SELBST durch.
+
+    ``require_agent_access`` vergleicht ``agent.user_id`` mit ``user.id``. Bei
+    einem Agenten-Token ist ``user.id`` die Agentenkennung, also schlaegt der
+    Vergleich immer fehl: der Agent kam an seine eigenen Daten nicht heran.
+    Genau daran scheiterte am 18.08.2026 schon das Loeschen eigener
+    Erinnerungen (401), und aus demselben Grund konnte ein Agent seinen eigenen
+    Gespraechsverlauf nicht nachladen.
+
+    Fremde Agenten bleiben draussen — die Kennung muss uebereinstimmen.
+    """
+    from app.dependencies import is_agent_principal
+    if is_agent_principal(user):
+        if user.id != agent_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        return
+    await _check_owner(agent_id, user, db)
+
+
 @router.get("/permissions")
 async def get_permission_packages(user=Depends(require_auth)):
     """List available permission packages for agent creation.
@@ -2228,11 +2248,13 @@ async def get_chat_history(
     session_id: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     before_id: int | None = Query(None),
-    user=Depends(require_auth),
+    # Auch der Agent selbst: er holt sich hierueber seinen Gespraechsverlauf
+    # zurueck, wenn sein Prozess neu gestartet ist. Siehe _check_owner_or_self.
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Get chat history for an agent, optionally filtered by session."""
-    await _check_owner(agent_id, user, db)
+    await _check_owner_or_self(agent_id, user, db)
     query = select(ChatMessage).where(ChatMessage.agent_id == agent_id)
     if session_id is not None:
         query = query.where(ChatMessage.session_id == session_id)
