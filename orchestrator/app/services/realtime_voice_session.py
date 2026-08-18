@@ -46,6 +46,41 @@ logger = logging.getLogger(__name__)
 # The slow ask_agent tool spins up a full agent turn in the container — only for
 # real work that needs the agent's brain/tools.
 
+MCP_SEARCH_TOOLS_TOOL = {
+    "toolSpec": {
+        "name": "mcp_search_tools",
+        "description": (
+            "Durchsuche ALLE Werkzeuge der angebundenen Dienste nach einem Stichwort. "
+            "Benutze das, wenn du glaubst, ein Dienst koenne etwas, du das Werkzeug aber "
+            "nicht direkt hast. Danach mit mcp_call_tool aufrufen. Sage NIE, du haettest "
+            "keinen Zugriff, ohne vorher hier gesucht zu haben."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Stichwort, z.B. 'Projekte'"}},
+            "required": ["query"],
+        })},
+    }
+}
+
+MCP_CALL_TOOL_TOOL = {
+    "toolSpec": {
+        "name": "mcp_call_tool",
+        "description": (
+            "Rufe ein Werkzeug eines angebundenen Dienstes beim Namen auf — auch eines, "
+            "das du nicht direkt in deiner Liste hast. Den Namen liefert mcp_search_tools."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Werkzeugname aus mcp_search_tools"},
+                "arguments": {"type": "string", "description": "Argumente als JSON-Objekt"},
+            },
+            "required": ["name"],
+        })},
+    }
+}
+
 GET_AGENT_STATUS_TOOL = {
     "toolSpec": {
         "name": "get_agent_status",
@@ -1437,6 +1472,13 @@ class RealtimeVoiceSession:
     _needs_briefing: bool = False  # kein Auftrag → das gehoert in den ERSTEN Satz
     _agent_config: dict | None = None  # fuer Zeitzone und Co. waehrend des Gespraechs
     _tool_calls: dict = field(default_factory=dict)  # tool_use_id → (Name, Argumente)
+    #: Werkzeugname → (MCP-Ziel, Originalname). Wird beim Verbinden gefuellt;
+    #: hier vorbelegt, damit die Zustellung auch dann nicht wirft, wenn das
+    #: Laden der Server fehlgeschlagen ist.
+    _mcp_plan: dict = field(default_factory=dict)
+    #: Name, Dienst und Beschreibung ALLER Werkzeuge — auch der nicht
+    #: deklarierten. Grundlage fuer `mcp_search_tools`.
+    _mcp_katalog: list = field(default_factory=list)
     _memory_context: str = ""  # facts this agent stored earlier (name, preferences, decisions)
     # Tasks I delegated in THIS call — so "wie ist der Stand" reflects MY tasks
     # (the ones shown live on the right), not the agent's unrelated global lane.
@@ -1563,6 +1605,40 @@ class RealtimeVoiceSession:
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, MANAGE_SCHEDULES_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
             SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, DESKTOP_TOOL, RENAME_CONVERSATION_TOOL,
         ]
+
+        # Die MCP-Server, die AN DIESEM AGENTEN haengen, werden zu echten
+        # Werkzeugen der Sprachfront.
+        #
+        # Bis hierher stand die Werkzeugliste vollstaendig von Hand im Quelltext.
+        # Wer einen MCP-Server anband, sah ihn im Chat — die Stimme nicht. Sie
+        # reichte den Auftrag per `ask_agent` weiter, und der Nutzer musste ihr am
+        # Ende selbst sagen, welches Werkzeug es gibt (gemeldet am 18.08.2026 mit
+        # einem Server, der 32 Werkzeuge meldete).
+        #
+        # Die Auswahl kommt aus derselben Stelle wie die des Containers, samt
+        # Gruppenrechten — siehe core/agent_mcp_servers.py.
+        try:
+            from app.core.agent_mcp_servers import (
+                WERKZEUG_BUDGET, servers_for_agent, voice_toolspecs,
+            )
+            from app.db.session import async_session_factory
+            async with async_session_factory() as _db:
+                _server = await servers_for_agent(_db, self.agent_id, cfg)
+                # Budget: das Gesamtpaket muss unter die Grenze der Engine passen.
+                # Die eingebauten Werkzeuge stehen schon fest, dazu die beiden
+                # Nachschlage-Werkzeuge unten.
+                _platz = WERKZEUG_BUDGET - len(_tools) - 2
+                _fremde, self._mcp_plan, self._mcp_katalog = voice_toolspecs(_server, _platz)
+            if self._mcp_plan:
+                _tools = _tools + _fremde + [MCP_SEARCH_TOOLS_TOOL, MCP_CALL_TOOL_TOOL]
+                logger.info(
+                    "[Sprache] %d MCP-Werkzeuge aus %d Server(n) fuer Agent %s: %d direkt, "
+                    "%d ueber Nachschlagen",
+                    len(self._mcp_plan), len(_server), self.agent_id,
+                    len(_fremde), len(self._mcp_plan) - len(_fremde),
+                )
+        except Exception as e:  # noqa: BLE001 — ohne Fremdwerkzeuge reden statt gar nicht
+            logger.warning("[Sprache] MCP-Werkzeuge nicht ladbar: %s", e)
         # Einrichtungsstand: wer anruft, soll nicht 'wie kann ich helfen?' hoeren,
         # wenn der Agent noch gar nicht weiss, wofuer er da ist.
         from app.core.onboarding import onboarding_note
@@ -1576,9 +1652,26 @@ class RealtimeVoiceSession:
         # Abend „ich plane dir den heutigen Tag", waehrend der Agent laengst morgen plant.
         from app.core import plan_rhythm as _rhythm
         _rhythm_note = _rhythm.rhythm_note(agent, spoken=True)
+        # Die angebundenen MCP-Werkzeuge ausdruecklich benennen. Ohne diesen Satz
+        # reichte die Stimme selbst DANN noch an den Agenten weiter, wenn sie das
+        # Werkzeug hatte — sie kannte es, hielt es aber nicht fuer ihres.
+        _mcp_note = ""
+        if self._mcp_plan:
+            _dienste = sorted({ziel.name for ziel, _ in self._mcp_plan.values()})
+            _mcp_note = (
+                "\n\nANGEBUNDENE DIENSTE: Du hast Werkzeuge aus "
+                + ", ".join(_dienste)
+                + ". Die gehoeren DIR — benutze sie SELBST und direkt. Gib so etwas "
+                "NIEMALS an den Agenten weiter und behaupte nie, du haettest keinen "
+                "Zugriff darauf. Ihre Beschreibung beginnt mit dem Dienstnamen in "
+                "eckigen Klammern. Hast du ein passendes Werkzeug nicht direkt in "
+                "deiner Liste, suche es mit mcp_search_tools und rufe es mit "
+                "mcp_call_tool auf.\n"
+            )
+
         sys_prompt = (
             _system_prompt(agent_name, agent_role, language)
-            + _ob_note + _rhythm_note + self._memory_context
+            + _ob_note + _rhythm_note + _mcp_note + self._memory_context
         )
         engine = creds.get("engine") or "nova_sonic"
 
@@ -2092,6 +2185,50 @@ class RealtimeVoiceSession:
             "name": name,
             "input": _short_args(args),
         }})
+
+        # ── Werkzeuge der angebundenen MCP-Server: direkt dorthin, nicht ueber
+        #    den Agenten. Genau das war die Beschwerde — die Stimme reichte alles
+        #    weiter, statt das Werkzeug zu benutzen, das der Nutzer angebunden hat.
+        if name == "mcp_search_tools":
+            from app.core.agent_mcp_servers import suche_im_katalog
+            await self._respond(tool_use_id, suche_im_katalog(
+                self._mcp_katalog, str(args.get("query") or "")))
+            return
+
+        if name == "mcp_call_tool":
+            gesucht = str(args.get("name") or "").strip()
+            roh_args = args.get("arguments")
+            if isinstance(roh_args, str):
+                try:
+                    roh_args = json.loads(roh_args) if roh_args.strip() else {}
+                except (json.JSONDecodeError, TypeError):
+                    roh_args = {}
+            if not isinstance(roh_args, dict):
+                roh_args = {}
+            if gesucht not in self._mcp_plan:
+                # Wortlaut fuer das Modell: es soll suchen statt zu behaupten,
+                # es gaebe das Werkzeug nicht.
+                await self._respond(tool_use_id, (
+                    f"Es gibt kein Werkzeug namens {gesucht}. "
+                    "Suche zuerst mit mcp_search_tools nach dem richtigen Namen."
+                ))
+                return
+            name, args = gesucht, roh_args
+
+        if name in self._mcp_plan:
+            server, original = self._mcp_plan[name]
+            try:
+                from app.core.agent_mcp_servers import call_agent_tool
+                antwort = await call_agent_tool(server, original, args)
+            except Exception as e:  # noqa: BLE001
+                # Der Wortlaut geht an das Modell — es soll dem Nutzer SAGEN
+                # koennen, was schiefging, statt still auf `ask_agent`
+                # auszuweichen und so zu tun, als gaebe es das Werkzeug nicht.
+                logger.warning("[Sprache] MCP-Werkzeug %s auf %s fehlgeschlagen: %s",
+                               original, server.name, e)
+                antwort = f"Der Dienst {server.name} hat nicht geantwortet: {e}"
+            await self._respond(tool_use_id, antwort)
+            return
 
         # ── Fast tools: read orchestrator data directly (ms, no agent round-trip) ──
         if name == "get_agent_status":

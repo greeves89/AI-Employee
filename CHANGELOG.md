@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.232.0] - 2026-08-18
+
+### Neu
+- **Die Sprachfront benutzt die MCP-Dienste des Agenten jetzt selbst.** Gemeldet:
+  ein Dienst mit 32 Werkzeugen war unter Einstellungen → Integrationen angehakt,
+  aber die Stimme zählte auf Nachfrage nur ihre eingebauten auf und reichte jeden
+  Auftrag an den Agenten weiter — bis der Nutzer ihr selbst sagte, welches
+  Werkzeug es gibt.
+- Ursache: ihre Werkzeugliste stand vollständig von Hand im Quelltext (47
+  Konstanten) und holte nirgends ein `tools/list`. Sie **konnte** von den
+  angebundenen Diensten nichts wissen.
+- Jetzt werden die Werkzeuge der angehakten Dienste zu echten Werkzeugen der
+  Sprachfront und direkt dort aufgerufen. Die Auswahl kommt aus derselben Stelle
+  wie die des Agenten-Containers, Gruppenrechte inklusive — zwei Auswahlen
+  nebeneinander wären die Lücke, durch die ein gesperrter Dienst doch erreichbar
+  wird.
+- **Nichts wird still weggelassen.** Die Engine verträgt nur eine begrenzte Zahl
+  Werkzeuge; was ins Budget passt, wird direkt deklariert, alles Weitere bleibt
+  über `mcp_search_tools` und `mcp_call_tool` erreichbar.
+- Antwortet ein Dienst nicht, sagt die Stimme das — statt still auf den Agenten
+  auszuweichen und so zu tun, als gäbe es das Werkzeug nicht.
+- Vergeben zwei Dienste denselben Werkzeugnamen, bekommt der zweite den
+  Dienstnamen davor; beide bleiben erreichbar und der Aufruf landet beim
+  richtigen.
+
+---
+
 ## [1.231.0] - 2026-08-18
 
 ### Neu
