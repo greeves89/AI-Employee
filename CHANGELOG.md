@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.229.0] - 2026-08-18
+
+### Behoben
+- **Eine Datei riss die ganze Agentenseite mit.** Gemeldet mit Bildschirmfoto:
+  statt der Vorschau nur noch „This page couldn't load", der Agent weg, an dem
+  gerade gearbeitet wurde.
+- Zwei Ursachen, die zusammenkamen. Erstens holte der PDF-Betrachter seinen
+  Arbeiter von einem fremden CDN — ein Browser darf einen Worker aber nicht von
+  einem fremden Ursprung starten. Schlägt das fehl, wirft pdf.js beim ersten
+  Zugriff (`this.messageHandler` ist dann leer).
+- Zweitens gab es im **gesamten** Frontend keine einzige Fehlergrenze. Also
+  kippte ein Fehler in der Vorschau den kompletten Seitenbaum statt nur das
+  eine Feld.
+- Beides behoben: Arbeiter, Zeichensatztabellen und Schriften kommen jetzt vom
+  eigenen Ursprung und werden beim Bauen mitgeliefert. Die Vorschau sitzt in
+  einer Fehlergrenze — geht sie kaputt, läuft der Rest der Seite weiter und man
+  kann die Datei stattdessen herunterladen.
+- Der CDN-Bezug war auch inhaltlich falsch: die Anlage läuft selbst gehostet
+  (auch abgeschottet ohne Weg nach draußen), und jedes geöffnete PDF hätte einem
+  Fremdanbieter verraten, dass es geöffnet wurde.
+
+- **Ein Agent ließ sich nicht mehr starten (500).** Im selben Bericht, aus der
+  Browserkonsole. Die gemerkte Container-Kennung war veraltet; beim Neuaufbau
+  kam „the container name is already in use" zurück, weil zwischen Abräumen und
+  Anlegen ein zweiter Weg denselben Agenten aufgebaut hatte.
+- Der fertige Container ist genau der, der gebaut werden sollte — er wird jetzt
+  **übernommen** statt mit einem Fehler quittiert. Ihn zu löschen wäre falsch:
+  er kann bereits arbeiten. Andere Docker-Fehler (voller Datenträger, fehlendes
+  Abbild) kommen unverändert durch und werden nicht als „schon da" verschluckt.
+- Beide Wege, die einen Container neu aufbauen, benutzen dieselbe Stelle.
+
+---
+
 ## [1.228.0] - 2026-08-18
 
 ### Behoben

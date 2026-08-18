@@ -110,3 +110,6 @@ CLAUDE.md
 
 # Electron-Build-Artefakte der Desktop-Bridge (1.6 GB, rein generiert)
 desktop/release/
+
+# pdf.js-Beiwerk wird beim Build aus node_modules kopiert (generiert)
+frontend/public/pdfjs/

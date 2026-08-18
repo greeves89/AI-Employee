@@ -7,6 +7,7 @@ import {
   Image as ImageIcon, Eye, FileCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FehlerGrenze } from "@/components/ui/fehler-grenze";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -111,7 +112,23 @@ interface FilePreviewProps {
 
 type HtmlTab = "rendered" | "source";
 
-export function FilePreview({
+/**
+ * Oeffentliche Huelle mit Fehlergrenze.
+ *
+ * Am 18.08.2026 riss eine einzelne Datei die ganze Agentenseite mit. Die Grenze
+ * sitzt hier und nicht in den aufrufenden Seiten, damit sie niemand vergessen
+ * kann — es gibt zwei Dateibaeume, und genau solche Doppelungen sind an dem Tag
+ * schon zweimal auseinandergelaufen.
+ */
+export function FilePreview(props: FilePreviewProps) {
+  return (
+    <FehlerGrenze schluessel={props.filePath} bereich="Diese Datei">
+      <FilePreviewInner {...props} />
+    </FehlerGrenze>
+  );
+}
+
+function FilePreviewInner({
   fileUrl,
   filePath,
   fileSize,

@@ -1767,18 +1767,21 @@ class AgentManager:
         mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         def _create_agent_container():
-            return self.docker.create_container(
-                image=settings.agent_image,
-                name=container_name,
-                environment=env_vars,
-                volume_name=volume_name,
-                session_volume_name=session_volume,
-                shared_volume_name="ai-employee-shared",
-                network=settings.agent_network,
-                memory_limit=settings.agent_memory_limit,
-                cpu_quota=settings.agent_cpu_quota,
-                needs_sudo=needs_sudo,
-                bind_mounts=bind_mounts,
+            return self._create_or_adopt(
+                container_name,
+                lambda: self.docker.create_container(
+                    image=settings.agent_image,
+                    name=container_name,
+                    environment=env_vars,
+                    volume_name=volume_name,
+                    session_volume_name=session_volume,
+                    shared_volume_name="ai-employee-shared",
+                    network=settings.agent_network,
+                    memory_limit=settings.agent_memory_limit,
+                    cpu_quota=settings.agent_cpu_quota,
+                    needs_sudo=needs_sudo,
+                    bind_mounts=bind_mounts,
+                ),
             )
         if mode == "codex_cli":
             # Serialize Codex recreation: only ONE codex container comes up at a time
@@ -1845,6 +1848,32 @@ class AgentManager:
         await self.db.commit()
         await self._publish_event(agent_id, "system", "Agent stopped")
         return agent
+
+    def _create_or_adopt(self, container_name: str, anlegen):
+        """Container anlegen — oder den uebernehmen, der schon da ist.
+
+        Der Containername ist fest je Agent. Legen zwei Wege gleichzeitig an
+        (ein Start-Klick und, sagen wir, ein Reparaturlauf), raeumt der eine ab,
+        waehrend der andere schon baut. Der Verlierer bekam bis 1.228.0
+        „Conflict. The container name ... is already in use" — und der Nutzer
+        eine nackte 500 mit „This page couldn't load", gemeldet am 18.08.2026.
+
+        Der fertige Container ist genau der, den wir bauen wollten. Ihn zu
+        loeschen waere falsch: er koennte bereits arbeiten. Also uebernehmen.
+        """
+        try:
+            return anlegen()
+        except APIError as e:
+            if "already in use" not in str(e):
+                raise
+            logger.warning(
+                "Container %s war schon da — uebernommen statt neu gebaut",
+                scrub_log(container_name),
+            )
+            vorhandener = self.docker.client.containers.get(container_name)
+            if vorhandener.status != "running":
+                vorhandener.start()
+            return vorhandener
 
     async def start_agent(self, agent_id: str) -> Agent:
         await self._publish_event(agent_id, "system", "Agent starting...")
@@ -2043,18 +2072,24 @@ class AgentManager:
         mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         def _create_agent_container():
-            return self.docker.create_container(
-                image=settings.agent_image,
-                name=container_name,
-                environment=env_vars,
-                volume_name=volume_name,
-                session_volume_name=session_volume,
-                shared_volume_name="ai-employee-shared",
-                network=settings.agent_network,
-                memory_limit=settings.agent_memory_limit,
-                cpu_quota=settings.agent_cpu_quota,
-                needs_sudo=needs_sudo,
-                bind_mounts=bind_mounts,
+            # Gleiche Uebernahme wie in `restart_agent`: der Name ist fest, also
+            # kann ein zweiter Weg denselben Container in der Zwischenzeit
+            # aufgebaut haben. Siehe dort fuer den Hergang.
+            return self._create_or_adopt(
+                container_name,
+                lambda: self.docker.create_container(
+                    image=settings.agent_image,
+                    name=container_name,
+                    environment=env_vars,
+                    volume_name=volume_name,
+                    session_volume_name=session_volume,
+                    shared_volume_name="ai-employee-shared",
+                    network=settings.agent_network,
+                    memory_limit=settings.agent_memory_limit,
+                    cpu_quota=settings.agent_cpu_quota,
+                    needs_sudo=needs_sudo,
+                    bind_mounts=bind_mounts,
+                ),
             )
         if mode == "codex_cli":
             # Serialize Codex recreation: only ONE codex container comes up at a time
