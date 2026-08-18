@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.242.0] - 2026-08-18
+
+### Hinzugefügt
+- **Per Sprache zuschauen und daraus ein Skill bauen.** Der Nutzer sagt „schau
+  mal zu, was ich mache", macht die Aufgabe einmal selbst vor (Klicks,
+  Tastatureingaben werden mit Screenshots aufgezeichnet) — dabei kann
+  weitergesprochen werden — und sagt am Ende „fertig". Die Sprachfront beendet
+  die Aufzeichnung und baut aus den Schritten und Bildern automatisch ein
+  Skill (als Entwurf, aktiv erst nach Freigabe). Neues Voice-Werkzeug
+  `learn_skill` (action=start/finish). Nutzt denselben Aufzeichnungs- und
+  Skill-Bau-Weg wie die HTTP-Oberfläche (`replay_skill_service`) — kein
+  zweiter, abweichender Pfad. Setzt die Bridge-Berechtigung „Eingaben
+  mitschneiden" voraus. Schließt die Lücke, dass der Replay-Modus bisher nur
+  über die Web-UI, nicht per Voice erreichbar war (Harness-Parität).
+
+---
+
 ## [1.241.0] - 2026-08-18
 
 ### Hinzugefügt

@@ -867,6 +867,35 @@ CONTROL_UI_TOOL = {
     }
 }
 
+LEARN_SKILL_TOOL = {
+    "toolSpec": {
+        "name": "learn_skill",
+        "description": (
+            "ZUSCHAUEN und daraus ein Skill bauen: Der Nutzer macht eine Aufgabe EINMAL "
+            "selbst an seinem Rechner vor (klicken, tippen), und daraus wird ein "
+            "wiederverwendbares Skill. Genau dafür, wenn der Nutzer sagt 'schau mal zu, was "
+            "ich mache', 'lern das von mir', 'ich zeig dir das einmal' o.ä.\n"
+            "action='start' — ab jetzt zeichnet die Bridge die Klicks, Tastatureingaben und "
+            "Screenshots des Nutzers auf. Der Nutzer arbeitet dann normal; ihr könnt "
+            "weiter reden. Setzt die Bridge-Berechtigung 'Eingaben mitschneiden' voraus.\n"
+            "action='finish' — wenn der Nutzer 'fertig' (oder 'das war's', 'stopp') sagt: "
+            "Aufzeichnung beenden, die Schritte und Bilder analysieren und ein Skill-Entwurf "
+            "bauen. Das Skill wird als ENTWURF gespeichert und erst nach Freigabe aktiv.\n"
+            "goal (optional): eine kurze Beschreibung, WAS die Aufgabe erreichen soll — das "
+            "hilft beim Benennen und Beschreiben des Skills. Sag kurz, was du tust "
+            "('alles klar, ich schaue zu' / 'ich baue jetzt das Skill')."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "description": "start | finish"},
+                "goal": {"type": "string", "description": "Kurz: was die Aufgabe erreichen soll."},
+            },
+            "required": ["action"],
+        })},
+    }
+}
+
 RENAME_CONVERSATION_TOOL = {
     "toolSpec": {
         "name": "rename_conversation",
@@ -1603,7 +1632,8 @@ class RealtimeVoiceSession:
             COMPLETE_ONBOARDING_TOOL,
             SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, MANAGE_SCHEDULES_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
-            SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, DESKTOP_TOOL, RENAME_CONVERSATION_TOOL,
+            SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, DESKTOP_TOOL, LEARN_SKILL_TOOL,
+            RENAME_CONVERSATION_TOOL,
         ]
 
         # Die MCP-Server, die AN DIESEM AGENTEN haengen, werden zu echten
@@ -2310,6 +2340,12 @@ class RealtimeVoiceSession:
                 str(args.get("query") or ""),
             ))
             return
+        if name == "learn_skill":
+            await self._respond(tool_use_id, await self._learn_skill(
+                str(args.get("action") or "").strip().lower(),
+                str(args.get("goal") or ""),
+            ))
+            return
         if name == "rename_conversation":
             await self._respond(tool_use_id, await self._rename_conversation(str(args.get("title") or "")))
             return
@@ -2993,6 +3029,93 @@ class RealtimeVoiceSession:
             for i, r in enumerate(results, 1)
         ]
         return f"Web-Ergebnisse zu „{query}“:\n" + "\n".join(lines)
+
+    async def _learn_skill(self, action: str, goal: str = "") -> str:
+        """Dem Nutzer bei einer Aufgabe zuschauen und daraus ein Skill bauen.
+
+        Der komplette Weg existierte serverseitig schon (Replay-Mitschnitt der
+        menschlichen Klicks/Tasten + `replay_skill_service`), war aber nur ueber
+        die HTTP-Oberflaeche erreichbar — die Stimme kannte ihn nicht. Genau die
+        Luecke, die der Nutzer beschrieben hat: „schau zu, was ich mache … sag
+        ich fertig, bau ein Skill … und das per Voice".
+
+        Nutzt dieselben Bausteine wie der HTTP-Endpunkt (`_send_bridge_action`,
+        die `recording*`-Felder der Sitzung, `create_skill_from_recording`) —
+        kein zweiter, abweichender Aufzeichnungsweg.
+        """
+        from app.api.computer_use import (
+            _find_user_session, _send_bridge_action, _action_allowed,
+            DEFAULT_ALLOWED_CAPABILITIES,
+        )
+
+        if not self.user_id or self.user_id == "unknown":
+            return "Ich kann die Bridge gerade niemandem zuordnen."
+        found = await _find_user_session(str(self.user_id))
+        if not found:
+            return ("Es läuft keine Desktop-Bridge. Der Nutzer muss die Bridge-App auf "
+                    "seinem Rechner starten — dann kann ich zuschauen. Sag ihm das.")
+        _session_id, sess = found
+        if not sess.get("bridge_connected"):
+            return ("Die Bridge besteht, ist aber gerade nicht verbunden. Der Nutzer soll "
+                    "die Bridge-App starten. Sag ihm genau das.")
+
+        act = (action or "").strip().lower()
+
+        if act in ("start", "watch", "zuschauen", "beobachten", "lernen", ""):
+            allowed = sess.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)
+            if not _action_allowed("start_input_capture", allowed):
+                return ("Dafür fehlt die Berechtigung: Der Nutzer muss in der Bridge unter "
+                        "Berechtigungen 'Eingaben mitschneiden' aktivieren. Sag ihm das genau, "
+                        "dann geht es sofort.")
+            try:
+                result = await _send_bridge_action(sess, "start_input_capture")
+            except Exception:  # noqa: BLE001 — Bridge weg/Timeout
+                return "Die Bridge hat den Mitschnitt nicht gestartet. Ist die App noch verbunden?"
+            if not result.get("ok"):
+                return f"Der Mitschnitt ließ sich nicht starten: {result.get('error') or 'unbekannt'}"
+            sess["recording"] = True
+            sess["recording_steps"] = []
+            sess["capture_human"] = True
+            self._learn_goal = goal
+            return ("Ich schaue jetzt zu. Mach die Aufgabe einmal ganz normal vor — klicken, "
+                    "tippen, alles wie sonst. Wir können dabei reden. Sag 'fertig', wenn du "
+                    "durch bist, dann baue ich ein Skill daraus.")
+
+        if act in ("finish", "fertig", "stop", "stopp", "done", "ende", "das wars"):
+            if not sess.get("recording"):
+                return ("Ich zeichne gerade nichts auf. Sag 'schau zu, was ich mache', dann "
+                        "starte ich den Mitschnitt.")
+            try:
+                await _send_bridge_action(sess, "stop_input_capture")
+            except Exception:  # noqa: BLE001 — Bridge stoppt bei Trennung selbst
+                pass
+            sess["recording"] = False
+            sess["capture_human"] = False
+            steps = sess.get("recording_steps", [])
+            if not steps:
+                return ("Ich habe keine Schritte mitbekommen. Meist liegt das an der fehlenden "
+                        "Berechtigung 'Eingaben mitschneiden' — bitte pruefen und nochmal.")
+            from app.services.replay_skill_service import (
+                create_skill_from_recording, ReplaySkillError,
+            )
+            from app.db.session import async_session_factory
+            try:
+                async with async_session_factory() as db:
+                    skill = await create_skill_from_recording(
+                        db, steps, created_by=str(self.user_id),
+                        goal_hint=goal or getattr(self, "_learn_goal", ""),
+                    )
+            except ReplaySkillError as e:
+                return f"Aus dem Mitschnitt ließ sich kein Skill bauen: {e}"
+            except Exception:  # noqa: BLE001
+                logger.warning("learn_skill authoring failed agent=%s", self.agent_id, exc_info=True)
+                return "Beim Bauen des Skills ist etwas schiefgegangen. Ich habe die Aufzeichnung aber."
+            return (f"Fertig — aus {len(steps)} Schritten habe ich das Skill '{skill.name}' "
+                    "gebaut. Es liegt als Entwurf im Skill-Bereich; aktiv wird es erst, wenn "
+                    "du es dort freigibst.")
+
+        return ("Ich kenne nur 'schau zu' (starten) und 'fertig' (Skill bauen) — "
+                f"'{action}' sagt mir nichts.")
 
     async def _desktop(self, action: str, target: str = "", text: str = "",
                        x=None, y=None) -> str:
