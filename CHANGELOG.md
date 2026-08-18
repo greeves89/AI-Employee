@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.222.3] - 2026-08-18
+
+### Behoben
+- **Nach einer fertigen Aufgabe kam im Sprachmodus keine Meldung.** Aufgabe per
+  Sprache erteilt, Fokus-Modus an („ich melde mich, wenn etwas fertig ist"),
+  Aufgabe lief durch und stand in der Oberfläche auf ERLEDIGT — gesprochen
+  wurde nichts.
+- Die Meldung wartet auf eine Sprechpause, weil sie sonst an den laufenden Satz
+  angehängt und nie ausgesprochen wird. Sie brach aber nach 25 Sekunden ab und
+  spielte sich **trotzdem** ein — also genau in die laufende Ausgabe, die sie
+  vermeiden sollte.
+- Das ist kein Randfall: der Zeitstempel „spricht gerade" wird bei **jedem**
+  Audioschnipsel erneuert. Redet das Modell durchgehend, wird es nie still. Im
+  Protokoll der gemeldeten Sitzung reihte sich die Sprachausgabe von 11:49:26
+  bis 11:50:04 fast lückenlos aneinander — 38 Sekunden am Stück.
+- Jetzt wird bis zu drei Minuten auf eine echte Pause gewartet, statt die
+  Meldung zu verheizen. Erst danach wird sie notfalls doch eingespielt — lieber
+  riskieren, dass sie verschluckt wird, als eine fertige Aufgabe gar nicht zu
+  melden.
+
+### Geändert
+- Jeder Ausgang steht jetzt im Protokoll: eingespielt mit Pause, eingespielt
+  ohne Pause (Warnung), verworfen weil die Sitzung endete. Vorher schwieg die
+  Funktion und meldete nur Fehler auf Debug-Ebene — deshalb war der Ausfall
+  nicht nachvollziehbar.
+
+---
+
 ## [1.222.2] - 2026-08-18
 
 ### Behoben

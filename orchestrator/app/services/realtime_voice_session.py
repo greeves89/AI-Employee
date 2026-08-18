@@ -1755,6 +1755,11 @@ class RealtimeVoiceSession:
                    "\nGib das jetzt knapp wieder, in einem oder zwei Saetzen.")
         await self._inject_when_quiet(msg)
 
+    #: Wie lange eine Zwischenmeldung hoechstens auf eine Sprechpause wartet,
+    #: nachdem die kurze Frist erfolglos war. Grosszuegig, weil eine
+    #: Fertigmeldung nicht auf die Sekunde dringend ist — aber ankommen muss.
+    NACHREICH_FRIST = 180.0
+
     async def _inject_when_quiet(self, msg: str, *, timeout: float = 25.0) -> bool:
         """Die EINE Stelle fuer Meldungen, die VON SELBST kommen.
 
@@ -1769,20 +1774,61 @@ class RealtimeVoiceSession:
         Stillstands-Wachhund. Begrenzt, damit nie etwas haengen bleibt.
         """
         deadline = time.monotonic() + timeout
+        ruhig = False
         while not self._closed and self._nova:
             quiet = time.monotonic() - getattr(self, "_last_spoken", 0.0)
             if quiet > 1.2 and not self._drop_audio:
+                ruhig = True
                 break
             if time.monotonic() > deadline:
                 break
             await asyncio.sleep(0.3)
         if self._closed or not self._nova:
+            logger.info("Zwischenmeldung verworfen, Sitzung beendet agent=%s: %.60s",
+                        self.agent_id, msg)
             return False
+        if not ruhig:
+            # ``_last_spoken`` wird bei JEDEM Audioschnipsel neu gesetzt. Redet das
+            # Modell durchgehend — beobachtet am 18.08.2026: 38 Sekunden am Stueck —
+            # wird es nie still, und frueher wurde nach 25 Sekunden trotzdem
+            # eingespielt. Genau das haengt die Meldung an den laufenden Satz: sie
+            # steht im Text und wird nie gesprochen. Der Nutzer bekommt also nichts
+            # mit, obwohl die Aufgabe fertig ist.
+            #
+            # Also weiter warten statt sie zu verheizen. Eine Fertigmeldung ist nicht
+            # auf die Sekunde dringend — sie muss aber ankommen.
+            logger.info(
+                "Zwischenmeldung wartet: Modell spricht seit %.0fs durchgehend agent=%s",
+                timeout, self.agent_id,
+            )
+            lange_frist = time.monotonic() + self.NACHREICH_FRIST
+            while not self._closed and self._nova and time.monotonic() < lange_frist:
+                quiet = time.monotonic() - getattr(self, "_last_spoken", 0.0)
+                if quiet > 1.2 and not self._drop_audio:
+                    ruhig = True
+                    break
+                await asyncio.sleep(0.5)
+            if self._closed or not self._nova:
+                logger.warning("Zwischenmeldung verworfen, Sitzung endete waehrend "
+                               "des Wartens agent=%s: %.60s", self.agent_id, msg)
+                return False
+        if not ruhig:
+            # Letzter Ausweg nach der langen Frist: lieber einspielen und
+            # riskieren, dass es verschluckt wird, als gar nichts zu melden.
+            # Laut, damit es nicht wieder unbemerkt bleibt.
+            logger.warning(
+                "Zwischenmeldung nach %.0fs immer noch keine Sprechpause — wird in "
+                "die laufende Ausgabe eingespielt und kann verschluckt werden "
+                "agent=%s: %.60s", self.NACHREICH_FRIST, self.agent_id, msg,
+            )
         try:
             await self._nova.inject_user_text(self._engine_safe(msg))
+            logger.info("Zwischenmeldung eingespielt (Sprechpause=%s) agent=%s",
+                        "ja" if ruhig else "nein", self.agent_id)
             return True
         except Exception:  # noqa: BLE001 — eine Zwischenmeldung reisst nie das Gespraech
-            logger.debug("inject failed agent=%s", self.agent_id, exc_info=True)
+            logger.warning("Zwischenmeldung fehlgeschlagen agent=%s", self.agent_id,
+                           exc_info=True)
             return False
 
     async def _notify_files_bg(self, paths: list[str]) -> None:
