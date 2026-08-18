@@ -72,12 +72,18 @@ class DispatchLockGuardTests(unittest.TestCase):
     def test_lock_held_dispatcher_retries_next_tick_without_reading_status(self):
         """When acquire_dispatch_lock returns None (another dispatch for this
         agent is already in flight), we must NOT proceed to read queue depth /
-        agent status at all — just back off and let the next tick decide."""
+        agent status at all — just back off and let the next tick decide.
+
+        The backoff itself briefly retries (schedule:retry:lock:...) instead of
+        unconditionally jumping to _calc_next_run — a lock collision resolves
+        in seconds, so losing the whole schedule slot over it was itself a bug
+        (see test_scheduler_busy_lock_retry.py)."""
         pre_dispatch = FIRE.split(_DISPATCH_CALL, 1)[0]
         lock_rejected_branch = pre_dispatch.split("lock_token is None:", 1)[1].split(
             "queue_depth = await self.redis.get_queue_depth", 1
         )[0]
-        self.assertIn("schedule.next_run_at = _calc_next_run(schedule, now)", lock_rejected_branch)
+        self.assertIn("self._retry_or_advance(", lock_rejected_branch)
+        self.assertIn('reason="lock"', lock_rejected_branch)
         self.assertIn("return", lock_rejected_branch)
 
 

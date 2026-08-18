@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.221.1] - 2026-08-18
+
+### Behoben
+- **Eine einzelne Kollision genau im Cron-Takt kostete einer täglichen Aufgabe
+  den ganzen Tag.** Betroffen war jede geplante Aufgabe (u. a. der tägliche
+  Rhythmus „Abendplanung"/„Morgencheck"): war der Agent im exakten Moment des
+  Zeitplans kurz beschäftigt, außerhalb seiner Dienstzeit oder ein
+  Dispatch-Lock gerade belegt, sprang `next_run_at` sofort auf den nächsten
+  Tag — keine zweite Chance. Nur der Überlast-Fall hatte seit v1.220.4 einen
+  kurzen Wiederholungsversuch. Jetzt bekommen auch „außerhalb der
+  Dienstzeit", „gerade beschäftigt" und „Dispatch-Lock belegt" bis zu zwei
+  bzw. drei kurze Wiederholungsversuche, bevor der Slot für heute aufgegeben
+  wird — Lock-Kollisionen (Sekunden) mit deutlich kürzerem Abstand als
+  Dienstzeit-/Beschäftigt-Kollisionen (Minuten).
+- **Ein altes, zweites Namensschema für Tagesplanungs-Zeitpläne
+  (`[Plan] Morgencheck: …`/`[Plan] Abendplanung: …`, mit Datum im Titel)
+  wurde vom Aufräum-Abgleich nicht erkannt** und feuerte für einen gestoppten
+  Agenten seit Wochen alle 30 Sekunden ergebnislos. Der Abgleich erkennt jetzt
+  beide alten Namensschemata, ohne echte, gleichnamig beginnende
+  Plan-Blöcke (`[Plan] <eigener Titel>`) mit zu löschen.
+
+---
+
 ## [1.221.0] - 2026-08-18
 
 ### Behoben

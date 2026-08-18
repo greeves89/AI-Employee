@@ -1,7 +1,20 @@
+"""A schedule skipped because its agent is OFF_DUTY (alive, but outside its
+configured working hours) used to lose the whole day — next_run_at jumped
+straight to _calc_next_run(now), same anti-pattern the overload fix already
+solved for a different skip reason (#605/v1.220.4). This generalizes that fix
+to the OFF_DUTY branch, reusing the same _retry_or_advance helper.
+
+Note: a genuinely DOWN/BLOCKED agent takes a different code path entirely
+(needs_handover → escalate_failure) that never advances next_run_at at all —
+it retries every tick with no cap, so it does not lose a day either way. The
+branch this test covers is the "else" — anything not handover-worthy and not
+overloaded, which today is only OFF_DUTY.
+"""
+
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from app.models.agent import Agent, AgentState
 from app.models.schedule import Schedule
@@ -50,17 +63,18 @@ class _FakeRedis:
         self.client = _FakeRedisClient()
 
     async def get_queue_depth(self, _agent_id):
-        return 5
+        return 0
 
 
-class SchedulerOverloadRetryTests(unittest.IsolatedAsyncioTestCase):
+class SchedulerOffDutyRetryTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.now = datetime(2026, 8, 17, 6, 0, tzinfo=timezone.utc)
+        # 03:00 UTC — outside the 09:00-17:00 working hours configured below.
+        self.now = datetime(2026, 8, 18, 3, 0, tzinfo=timezone.utc)
         self.agent = Agent(
-            id="agent-overloaded",
+            id="agent-off-duty",
             name="Agent",
             state=AgentState.RUNNING,
-            config={},
+            config={"working_hours": {"start": "09:00", "end": "17:00", "timezone": "UTC"}},
         )
         self.redis = _FakeRedis()
         self.svc = SchedulerService(redis=self.redis)
@@ -68,10 +82,10 @@ class SchedulerOverloadRetryTests(unittest.IsolatedAsyncioTestCase):
 
     def _schedule(self):
         return Schedule(
-            id="daily-overload",
-            name="Daily job",
-            prompt="Run",
-            cron_expression="0 6 * * *",
+            id="rhythmus-morning",
+            name="[Rhythmus] Morgencheck",
+            prompt="placeholder",
+            cron_expression="0 7 * * *",
             timezone="UTC",
             interval_seconds=24 * 3600,
             agent_id=self.agent.id,
@@ -80,28 +94,20 @@ class SchedulerOverloadRetryTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def _execute_once(self, schedule):
-        with patch("app.services.duty_service.escalate_overload", new=AsyncMock()):
-            await self.svc._execute_schedule(
-                _FakeDb(self.agent),
-                SimpleNamespace(),
-                schedule,
-                self.now,
-            )
+        await self.svc._execute_schedule(
+            _FakeDb(self.agent), SimpleNamespace(), schedule, self.now,
+        )
 
-    async def test_first_and_second_overload_tick_retry_shortly(self):
+    async def test_first_and_second_off_duty_tick_retry_shortly(self):
         schedule = self._schedule()
 
         await self._execute_once(schedule)
         self.assertEqual(schedule.next_run_at, self.now + timedelta(minutes=12))
-        self.assertEqual(
-            self.redis.client.expirations["schedule:retry:overload:daily-overload"],
-            6 * 3600,
-        )
 
         await self._execute_once(schedule)
         self.assertEqual(schedule.next_run_at, self.now + timedelta(minutes=12))
 
-    async def test_third_consecutive_overload_tick_returns_to_regular_slot(self):
+    async def test_third_consecutive_off_duty_tick_gives_up_for_today(self):
         schedule = self._schedule()
         regular_next = _calc_next_run(schedule, self.now)
 
@@ -110,10 +116,15 @@ class SchedulerOverloadRetryTests(unittest.IsolatedAsyncioTestCase):
         await self._execute_once(schedule)
 
         self.assertEqual(schedule.next_run_at, regular_next)
-        self.assertIn(
-            "schedule:retry:overload:daily-overload",
-            self.redis.client.deleted,
-        )
+        self.assertIn("schedule:retry:off_duty:rhythmus-morning", self.redis.client.deleted)
+
+    async def test_off_duty_and_overload_use_separate_retry_budgets(self):
+        """Different skip reasons on the same schedule id must not share a
+        retry counter — each gets its own Redis key."""
+        schedule = self._schedule()
+        await self._execute_once(schedule)
+        self.assertIn("schedule:retry:off_duty:rhythmus-morning", self.redis.client.values)
+        self.assertNotIn("schedule:retry:overload:rhythmus-morning", self.redis.client.values)
 
 
 if __name__ == "__main__":

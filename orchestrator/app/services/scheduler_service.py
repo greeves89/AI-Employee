@@ -62,6 +62,16 @@ _OVERLOAD_RETRY_MAX_ATTEMPTS = 2
 _OVERLOAD_RETRY_DELAY = timedelta(minutes=12)
 _OVERLOAD_RETRY_TTL_SECONDS = 6 * 3600
 
+# Same idea for the other transient skips (off-duty hours, momentarily busy
+# with another task): one collision at the exact cron tick used to cost the
+# whole day, since next_run_at jumped straight to _calc_next_run(now) — see
+# _retry_or_advance. A dispatch-lock collision resolves in seconds, not minutes,
+# so it gets its own, much shorter delay tuned to the 30s tick interval.
+_TRANSIENT_RETRY_MAX_ATTEMPTS = 2
+_TRANSIENT_RETRY_DELAY = timedelta(minutes=12)
+_LOCK_RETRY_MAX_ATTEMPTS = 3
+_LOCK_RETRY_DELAY = timedelta(seconds=30)
+
 # GC runs every 60 seconds
 _GC_INTERVAL_SECONDS = 60
 # "Dreaming": periodic adaptive user-profile refresh from accumulated memories
@@ -709,7 +719,15 @@ class SchedulerService:
                             schedule, now
                         )
                     else:
-                        schedule.next_run_at = _calc_next_run(schedule, now)
+                        # Weder Handover-wuerdig (DOWN/BLOCKED) noch ueberlastet —
+                        # das ist heute nur OFF_DUTY (ausserhalb der Dienstzeit).
+                        # Knapp daneben liegende Dienstzeiten oder eine kurz falsch
+                        # gesetzte Uhrzeit kosten sonst sofort den ganzen Tag, statt
+                        # es gleich nochmal zu versuchen.
+                        schedule.next_run_at = await self._retry_or_advance(
+                            schedule, now, reason="off_duty",
+                            max_attempts=_TRANSIENT_RETRY_MAX_ATTEMPTS, delay=_TRANSIENT_RETRY_DELAY,
+                        )
                     logger.info(
                         "[Scheduler] %s uebersprungen — Agent %s: %s (%s)",
                         schedule.name, schedule.agent_id, duty["state"], duty["reason"],
@@ -730,7 +748,10 @@ class SchedulerService:
                 current_task and not current_task.startswith("chat:")
             )
             if is_busy_with_task:
-                schedule.next_run_at = _calc_next_run(schedule, now)
+                schedule.next_run_at = await self._retry_or_advance(
+                    schedule, now, reason="busy",
+                    max_attempts=_TRANSIENT_RETRY_MAX_ATTEMPTS, delay=_TRANSIENT_RETRY_DELAY,
+                )
                 logger.info(
                     "[Scheduler] Proactive %s skipped - agent busy (queue=%s, task=%r)",
                     schedule.name, queue_depth, current_task,
@@ -846,8 +867,13 @@ class SchedulerService:
         if schedule.agent_id:
             lock_token = await self.redis.acquire_dispatch_lock(schedule.agent_id)
             if lock_token is None:
-                # Another dispatch for this agent is in flight right now.
-                schedule.next_run_at = _calc_next_run(schedule, now)
+                # Another dispatch for this agent is in flight right now — resolves
+                # in seconds, so retry on roughly the next tick instead of losing
+                # the whole day over a momentary collision.
+                schedule.next_run_at = await self._retry_or_advance(
+                    schedule, now, reason="lock",
+                    max_attempts=_LOCK_RETRY_MAX_ATTEMPTS, delay=_LOCK_RETRY_DELAY,
+                )
                 logger.info(
                     "[Scheduler] %s skipped - dispatch lock held for agent %s",
                     schedule.name, schedule.agent_id,
@@ -861,7 +887,10 @@ class SchedulerService:
             )
             if is_busy_with_task:
                 await self.redis.release_dispatch_lock(schedule.agent_id, lock_token)
-                schedule.next_run_at = _calc_next_run(schedule, now)
+                schedule.next_run_at = await self._retry_or_advance(
+                    schedule, now, reason="busy",
+                    max_attempts=_TRANSIENT_RETRY_MAX_ATTEMPTS, delay=_TRANSIENT_RETRY_DELAY,
+                )
                 logger.info(
                     "[Scheduler] %s skipped - agent busy (queue=%s, task=%r)",
                     schedule.name, queue_depth, current_task,
@@ -910,20 +939,40 @@ class SchedulerService:
 
     async def _next_run_after_overload(self, schedule: Schedule, now: datetime) -> datetime:
         """Retry briefly for transient overload before giving up on the slot."""
+        return await self._retry_or_advance(
+            schedule, now, reason="overload",
+            max_attempts=_OVERLOAD_RETRY_MAX_ATTEMPTS, delay=_OVERLOAD_RETRY_DELAY,
+        )
+
+    async def _retry_or_advance(
+        self, schedule: Schedule, now: datetime, *, reason: str,
+        max_attempts: int, delay: timedelta,
+    ) -> datetime:
+        """Retry briefly for a transient skip before giving up on today's slot.
+
+        Generalizes the overload-retry fix (#605/v1.220.4) to every other
+        transient reason a due schedule gets skipped for (agent briefly down,
+        momentarily busy, a dispatch lock held for a few seconds). Before this,
+        a single collision at the exact cron tick jumped straight to
+        _calc_next_run(now) — for a once-a-day schedule that meant losing the
+        whole day for a blip that may have cleared a minute later. One Redis
+        counter per (reason, schedule) so different reasons don't share a
+        retry budget.
+        """
         client = getattr(self.redis, "client", None)
         if client is None:
             return _calc_next_run(schedule, now)
 
-        key = f"schedule:overload-retry:{schedule.id}"
+        key = f"schedule:retry:{reason}:{schedule.id}"
         try:
             attempt = int(await client.incr(key))
             if attempt == 1:
                 await client.expire(key, _OVERLOAD_RETRY_TTL_SECONDS)
-            if attempt <= _OVERLOAD_RETRY_MAX_ATTEMPTS:
-                return now + _OVERLOAD_RETRY_DELAY
+            if attempt <= max_attempts:
+                return now + delay
             await client.delete(key)
         except Exception:  # noqa: BLE001
-            logger.debug("[Scheduler] Ueberlast-Retry-Zaehler nicht verfuegbar", exc_info=True)
+            logger.debug("[Scheduler] Retry-Zaehler (%s) nicht verfuegbar", reason, exc_info=True)
         return _calc_next_run(schedule, now)
 
     async def _arm_plan_blocks(self) -> int:
@@ -1080,6 +1129,8 @@ class SchedulerService:
         Nutzer die Dienstzeit geaendert hat. Ausgeschaltet lassen kann er sie: ein
         ``enabled=False`` wird respektiert und nicht wieder angeknipst.
         """
+        from sqlalchemy import or_
+
         from app.core import plan_rhythm
         from app.models.agent import Agent as _Agent
 
@@ -1109,10 +1160,20 @@ class SchedulerService:
             # Alt-Bestand: „Tagesplanung am Morgen" legte frueher einen EIGENEN
             # Zeitplan an. Der Morgencheck macht dasselbe — zwei Planungslaeufe an
             # einem Morgen sind einer zu viel, also raeumt der Abgleich ihn weg.
+            # Zwei Namensschemata aus der Vor-Rhythmus-Zeit: das juengere endet auf
+            # „— Tagesplanung", ein aelteres nutzte „[Plan] Morgencheck:"/
+            # „[Plan] Abendplanung:" (mit Datum im Titel, deshalb Praefix-Vergleich
+            # bis zum Doppelpunkt statt exaktem Namen) — beide blieben bislang
+            # unentdeckt liegen und feuerten fuer einen gestoppten Agenten seither
+            # alle 30 Sekunden ins Leere.
             legacy = (await db.execute(
                 select(Schedule).where(
                     Schedule.agent_id.in_(agent_ids),
-                    Schedule.name.like("%— Tagesplanung"),
+                    or_(
+                        Schedule.name.like("%— Tagesplanung"),
+                        Schedule.name.like("[Plan] Morgencheck:%"),
+                        Schedule.name.like("[Plan] Abendplanung:%"),
+                    ),
                 )
             )).scalars().all()
             for old in legacy:
