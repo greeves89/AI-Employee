@@ -274,6 +274,8 @@ export interface Settings {
   msgraph_read_only: boolean;
   // Security / Login
   sso_only_login?: boolean;
+  /** Duerfen Mitarbeiter ihr eigenes Claude-/ChatGPT-Abo einbinden? */
+  allow_personal_credentials?: boolean;
   require_user_approval?: boolean;
   revoke_msgraph_on_logout?: boolean;
   // Meeting → MS Planner + "Dreaming"-Memory

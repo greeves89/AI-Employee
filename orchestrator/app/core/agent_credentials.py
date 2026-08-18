@@ -78,6 +78,19 @@ async def personal_credential(db: AsyncSession, user_id: str | None,
         return None
 
 
+def personal_credentials_allowed() -> bool:
+    """Darf ein Mitarbeiter sein EIGENES Abo einbinden?
+
+    Vom Kunden am 18.08.2026 als Bedingung genannt: zentral steuerbar, sonst
+    Sicherheitsrisiko. Der persoenliche Weg entstand am selben Tag — ohne diesen
+    Schalter waere er ueberall fuer jeden offen.
+
+    Vorgabe **an**, aus demselben Grund wie bei der Teamlizenz: eine bestehende
+    Anlage darf nach einem Update nicht ploetzlich ohne Zugang dastehen.
+    """
+    return bool(getattr(settings, "allow_personal_credentials", True))
+
+
 def team_license_allowed() -> bool:
     """Darf die Teamlizenz benutzt werden?
 
@@ -99,9 +112,15 @@ async def resolve(db: AsyncSession, *, owner_id: str | None, mode: str | None,
     if harness is None:
         return SOURCE_NONE, None, None
 
-    own = await personal_credential(db, owner_id, harness)
-    if own:
-        return SOURCE_PERSONAL, harness, own
+    # Der Schalter wirkt HIER und nicht nur in der Oberflaeche: sonst waere das
+    # Abschalten kosmetisch — bereits hinterlegte Zugaenge liefen weiter, und
+    # genau die sollen ja aufhoeren zu wirken.
+    if personal_credentials_allowed():
+        own = await personal_credential(db, owner_id, harness)
+        if own:
+            return SOURCE_PERSONAL, harness, own
+    else:
+        logger.info("[Zugang] %s: eigene Zugaenge sind gesperrt", harness)
 
     if not team_license_allowed():
         logger.info("[Zugang] %s: kein eigener Zugang, Teamlizenz ist gesperrt", harness)

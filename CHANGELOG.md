@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.227.0] - 2026-08-18
+
+### Sicherheit
+- **Eigene KI-Abos der Mitarbeiter sind jetzt zentral steuerbar.** Aus dem
+  Kundentermin vom selben Tag: es fehle die „globale Freigabe, damit Mitarbeiter
+  eigene Abo-Accounts einbinden dürfen — Sicherheitsrisiko sonst, muss zentral
+  steuerbar sein."
+- Der persönliche Weg („Meine KI-Zugänge") entstand am selben Tag **ohne** diesen
+  Schalter: jeder eingeloggte Nutzer konnte sein privates Abo einbinden, ein
+  Administrator konnte es weder sehen noch unterbinden. Genau das Risiko, das
+  vorbeugend benannt worden war.
+- Neuer Schalter unter Einstellungen. Vorgabe **an**, wie bei der Teamlizenz —
+  eine bestehende Anlage darf nach einem Update nicht plötzlich ohne Zugang
+  dastehen.
+
+### Geändert
+- Der Schalter wirkt an **zwei** Stellen, sonst wäre er Fassade: im Zugangs-Pfad
+  (`agent_credentials.resolve`), damit bereits hinterlegte Zugänge aufhören zu
+  wirken — und in der Schnittstelle, damit niemand etwas anlegt, das
+  anschließend wirkungslos ist. Eine Anmeldung, die scheinbar klappt und dann
+  nichts bewirkt, ist schlimmer als eine klare Absage.
+- **Lesen und Löschen bleiben immer erlaubt:** wer seinen Zugang loswerden will,
+  darf daran nicht gehindert werden, nur weil die Funktion inzwischen zu ist.
+- Die Übersicht meldet den Zustand mit, damit die Oberfläche den Bereich
+  ausblendet statt Knöpfe anzubieten, die mit 403 abgewiesen werden.
+
+---
+
 ## [1.226.1] - 2026-08-18
 
 ### Behoben

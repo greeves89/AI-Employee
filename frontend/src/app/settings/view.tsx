@@ -250,6 +250,20 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setSsoOnlySaving(false);
     }
   };
+  // Eigene KI-Abos zentral erlauben oder sperren. Vom Kunden am 18.08.2026 zur
+  // Bedingung gemacht: „muss zentral steuerbar sein, sonst Sicherheitsrisiko".
+  const [eigeneZugaengeSpeichert, setEigeneZugaengeSpeichert] = useState(false);
+  const toggleEigeneZugaenge = async (enabled: boolean) => {
+    setEigeneZugaengeSpeichert(true);
+    try {
+      await api.updateSettings({ allow_personal_credentials: enabled });
+      setSettings(await api.getSettings());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte die Freigabe nicht ändern");
+    } finally {
+      setEigeneZugaengeSpeichert(false);
+    }
+  };
   const [dreamingSaving, setDreamingSaving] = useState(false);
   const toggleDreaming = async (enabled: boolean) => {
     setDreamingSaving(true);
@@ -2229,6 +2243,43 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
                 Sicherheit / Login
               </h2>
+            </div>
+
+            <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden mb-4">
+              {/* Eigene KI-Abos der Mitarbeiter */}
+              <div className="p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-[12px] font-medium">
+                      <Shield className="h-3.5 w-3.5 text-blue-400" />
+                      Eigene KI-Zugänge der Mitarbeiter erlauben
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                      Mitarbeiter dürfen ihr privates Claude- oder ChatGPT-Abo einbinden
+                      und damit Agenten betreiben. Aus: bereits hinterlegte Zugänge
+                      wirken nicht mehr, die Agenten fallen auf die Firmen-Konten zurück.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleEigeneZugaenge(!settings?.allow_personal_credentials)}
+                    disabled={eigeneZugaengeSpeichert}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                      settings?.allow_personal_credentials ? "bg-emerald-500" : "bg-foreground/[0.1]",
+                      eigeneZugaengeSpeichert && "opacity-40 cursor-not-allowed",
+                    )}
+                  >
+                    {eigeneZugaengeSpeichert ? (
+                      <Loader2 className="mx-auto h-3 w-3 animate-spin text-white" />
+                    ) : (
+                      <span className={cn(
+                        "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                        settings?.allow_personal_credentials ? "translate-x-6" : "translate-x-1",
+                      )} />
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">

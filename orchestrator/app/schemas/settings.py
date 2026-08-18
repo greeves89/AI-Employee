@@ -17,6 +17,7 @@ class SettingsUpdate(BaseModel):
     registration_open: bool | None = None
     # Anzeigewaehrung: nur die Darstellung, nie die gespeicherten Betraege.
     allow_team_license: bool | None = None
+    allow_personal_credentials: bool | None = None
     display_currency: str | None = None
     usd_eur_rate: float | None = None
     sso_only_login: bool | None = None
@@ -150,6 +151,7 @@ class SettingsResponse(BaseModel):
     max_agents: int
     registration_open: bool
     allow_team_license: bool = True
+    allow_personal_credentials: bool = True
     display_currency: str = "EUR"
     usd_eur_rate: float = 0.92
     sso_only_login: bool = False

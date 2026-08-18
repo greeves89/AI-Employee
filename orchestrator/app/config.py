@@ -127,6 +127,18 @@ class Settings(BaseSettings):
     # Update ohne Zugang da. Aus heisst: jeder bringt sein eigenes Abo mit, und
     # ein Agent ohne eigenen Zugang sagt das auch, statt still zu scheitern.
     allow_team_license: bool = True
+    #: Duerfen Mitarbeiter ihr EIGENES Claude-/ChatGPT-Abo einbinden?
+    #:
+    #: Vom Kunden im Termin am 18.08.2026 ausdruecklich als Bedingung genannt:
+    #: „muss zentral steuerbar sein, sonst Sicherheitsrisiko". Der persoenliche
+    #: Weg wurde am selben Tag gebaut — ohne diesen Schalter waere er in jeder
+    #: Anlage fuer jeden offen, ohne dass ein Administrator es sieht oder
+    #: unterbinden kann.
+    #:
+    #: Vorgabe **an**, wie bei ``allow_team_license``: eine bestehende Anlage
+    #: darf nach einem Update nicht ploetzlich ohne Zugang dastehen. Wer es
+    #: zumacht, tut das bewusst.
+    allow_personal_credentials: bool = True
     # Host metrics JSON written by the host power collector (bind-mounted read-only).
     kiosk_metrics_path: str = "/kiosk-metrics/metrics.json"
     secondbrain_container_base: str = "/mnt/brains"
