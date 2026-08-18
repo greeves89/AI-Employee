@@ -589,6 +589,9 @@ def _appkit_handlers_init():
 
                 cfg["allowed_apps"] = _lines(st.get("apps_tv"))
                 cfg["allowed_domains"] = _lines(st.get("dom_tv"))
+                hc = st.get("headless_chk")
+                if hc is not None:
+                    cfg["browser_headless"] = bool(hc.state())
                 save_config(cfg)
                 if cfg.get("token") and cfg.get("session") and cfg.get("url") and is_running():
                     st["status_lbl"].setStringValue_("Übertrage an Server…")
@@ -884,7 +887,10 @@ def show_permissions_dialog(cfg: dict) -> None:
     # Eintraege — mit zehn waere die unterste Zeile aus dem Fenster gelaufen.
     CAP_ROW_H = 49
     SCOPE_CARD_H = 132
-    caps_h = CAP_ROW_H * len(CAPABILITY_META) + 30
+    # +38: eine Extra-Zeile oben in der Faehigkeiten-Karte fuer den
+    # Browser-Hintergrund-Schalter.
+    HEADLESS_ROW_H = 38
+    caps_h = CAP_ROW_H * len(CAPABILITY_META) + 30 + HEADLESS_ROW_H
     W = 600
     H = 340 + caps_h + SCOPE_CARD_H
     panel = _make_panel("AI Employee Berechtigungen", W, H)
@@ -928,6 +934,16 @@ def show_permissions_dialog(cfg: dict) -> None:
         cap_checks[cap["id"]] = chk
         _label(cv, cap["desc"], caps_x + 40, y+5, 340, 16, size=11, muted=True)
         _risk_badge(cv, cap["risk"], caps_x + caps_w - 20, y+22)
+
+    # Browser im Hintergrund (headless) — wie der ego-lite-Browser: der Agent
+    # steuert die Seite ueber den DOM, ohne dass ein Fenster den Vordergrund
+    # kapert. Opt-in; greift beim naechsten Browser-Start.
+    y -= HEADLESS_ROW_H
+    headless_chk = _checkbox(cv, "Browser unsichtbar im Hintergrund betreiben",
+                             caps_x + 20, y + 14, caps_w - 40,
+                             bool(cfg.get("browser_headless", False)))
+    _label(cv, "Ohne sichtbares Fenster (nur mit Browser-Steuerung sinnvoll).",
+           caps_x + 40, y - 1, caps_w - 60, 14, size=10, muted=True)
 
     # Freigabelisten — anders als die Ordnerliste darunter werden diese beiden
     # serverseitig durchgesetzt (computer_use.py:_scope_violation). Leer heisst
@@ -992,7 +1008,7 @@ def show_permissions_dialog(cfg: dict) -> None:
     save_btn   = _button(cv, "Speichern", W-PAD-120, 20, 120, key="\r")
 
     _perms_state.update(dict(cap_checks=cap_checks, paths=paths, tv=tv,
-                             apps_tv=apps_tv, dom_tv=dom_tv,
+                             apps_tv=apps_tv, dom_tv=dom_tv, headless_chk=headless_chk,
                              status_lbl=status_lbl, cfg=cfg))
 
     h = _perms_state["_handler"]
@@ -2119,6 +2135,12 @@ def _show_permissions_tkinter(cfg):
 
     ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=10)
 
+    # Browser im Hintergrund (headless) — wie ego lite: steuert die Seite über
+    # den DOM, ohne sichtbares Fenster. Opt-in, greift beim nächsten Start.
+    headless_var = ctk.BooleanVar(value=bool(cfg.get("browser_headless", False)))
+    ctk.CTkCheckBox(root, text="Browser unsichtbar im Hintergrund betreiben (nur mit Browser-Steuerung)",
+                    variable=headless_var).pack(anchor="w", padx=24, pady=(0, 8))
+
     ctk.CTkLabel(root, text="ORDNER-ZUGRIFF — Startordner für Shell-Befehle (ohne Eintrag: gesperrt)",
                  font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").pack(anchor="w", padx=24, pady=(0,4))
 
@@ -2184,6 +2206,7 @@ def _show_permissions_tkinter(cfg):
         cfg["allowed_paths"] = paths
         cfg["allowed_apps"] = _lines(apps_box)
         cfg["allowed_domains"] = _lines(domains_box)
+        cfg["browser_headless"] = bool(headless_var.get())
         save_config(cfg)
         if is_running():
             status_lbl.configure(text="Übertrage an Server…")

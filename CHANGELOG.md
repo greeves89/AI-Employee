@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.241.0] - 2026-08-18
+
+### Hinzugefügt
+- **Browser im Hintergrund betreiben (wie ego lite).** Die Browser-Steuerung
+  startet jetzt optional headless — ohne sichtbares Fenster, der Agent bedient
+  die Seite über den DOM (Navigieren, Klicken per Element/Text, Formulare),
+  ohne den Vordergrund des Nutzers zu kapern. Neuer Schalter „Browser
+  unsichtbar im Hintergrund betreiben" im Berechtigungs-Dialog (macOS +
+  Windows), opt-in. **Standard bleibt sichtbar** — eine eingeloggte Sitzung
+  unsichtbar laufen zu lassen soll eine bewusste Entscheidung sein, gerade auf
+  einem Klinik-Arbeitsplatz. Greift beim nächsten Browser-Start; das eigene,
+  private Profil (kein Cookie-Zugriff aufs Nutzerprofil) bleibt unverändert.
+
+---
+
 ## [1.240.3] - 2026-08-18
 
 ### Behoben

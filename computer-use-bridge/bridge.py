@@ -880,6 +880,14 @@ class BrowserController:
             return
 
         self._prepare_profile_dir()
+        # „Im Hintergrund" wie der ego-lite-Browser: headless startet den
+        # Browser OHNE sichtbares Fenster — der Agent steuert ihn ueber den
+        # DOM/CDP, ohne dass ein Fenster den Vordergrund des Nutzers kapert.
+        # Opt-in ueber ~/.ai_employee_bridge.json ("browser_headless": true),
+        # gesetzt vom Berechtigungs-Dialog. Standard bleibt SICHTBAR: eine
+        # eingeloggte Sitzung unsichtbar laufen zu lassen, soll eine bewusste
+        # Entscheidung sein, kein Automatismus.
+        headless = bool(_config_read().get("browser_headless", False))
         try:
             self._pw = sync_playwright().start()
             # Reihenfolge mit Absicht: erst der im Haus freigegebene Browser,
@@ -888,7 +896,7 @@ class BrowserController:
             last_err: Exception | None = None
             for channel in ("msedge", "chrome", None):
                 try:
-                    kwargs = {"user_data_dir": self.profile_dir, "headless": False}
+                    kwargs = {"user_data_dir": self.profile_dir, "headless": headless}
                     if channel:
                         kwargs["channel"] = channel
                     self._ctx = self._pw.chromium.launch_persistent_context(**kwargs)
@@ -899,6 +907,8 @@ class BrowserController:
                 self._start_error = f"Kein Browser startbar: {last_err}"
                 self._started.set()
                 return
+            log.info("Agent-Browser gestartet (%s).",
+                     "unsichtbar/headless" if headless else "sichtbares Fenster")
         except Exception as e:  # noqa: BLE001
             self._start_error = f"Browser-Start fehlgeschlagen: {e}"
             self._started.set()
