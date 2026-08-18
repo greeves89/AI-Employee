@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.225.0] - 2026-08-18
+
+### Neu
+- **Die Sprachfront weiß jetzt, welche API-Zugänge ein Agent hat.** Auf „hast du
+  Zugang zu diesem Key?" antwortete sie bisher „keine Umgebungsvariablen
+  gefunden" und zählte stattdessen ihre eigenen Einstellungen auf. Sie hatte
+  darauf schlicht keinen Blick: die zugewiesenen Schlüssel legt der Orchestrator
+  als Umgebungsvariablen in den **Agenten**-Container, die Sprachfront läuft
+  woanders.
+- Neues Werkzeug `list_agent_secrets`: nennt Name und Variablennamen der
+  zugewiesenen, aktiven Zugänge. Ist keiner zugewiesen, sagt es auch, wo man das
+  ändert — statt nur „nichts gefunden".
+
+### Sicherheit
+- **Die Werte bleiben draußen.** Der gesprochene Verlauf wird als Nachricht
+  gespeichert und geht Wort für Wort an einen fremden Dienst; ein Schlüssel, der
+  dort einmal landet, müsste gedreht werden. Das Werkzeug entschlüsselt nichts
+  und liest die verschlüsselte Spalte nicht einmal an — Tests wachen über beides.
+- Für einen echten API-Aufruf delegiert die Sprachfront per `ask_agent` an den
+  Agenten, der die Variable ohnehin hat. Die Werkzeugbeschreibung sagt das
+  ausdrücklich und verbietet, den Nutzer nach einem Schlüssel zu fragen.
+- Abgeschaltete Zugänge werden nicht gemeldet — sie landen auch nicht im
+  Container, und sie zu nennen wäre ein falsches Versprechen.
+
+---
+
 ## [1.224.0] - 2026-08-18
 
 ### Behoben

@@ -85,6 +85,23 @@ GET_AGENT_SETTINGS_TOOL = {
     }
 }
 
+LIST_AGENT_SECRETS_TOOL = {
+    "toolSpec": {
+        "name": "list_agent_secrets",
+        "description": (
+            "Which API keys and access credentials the agent HAS — by NAME only. "
+            "Use it when asked 'do you have access to X', 'do you have a key for Y', "
+            "'which credentials do you have'.\n\n"
+            "You never see the values, and you never need them: the keys already sit "
+            "in the agent's environment as variables. To actually CALL such an API, "
+            "delegate with ask_agent — the agent reads the variable itself and makes "
+            "the call. Never ask the user to read a key out loud, and never repeat "
+            "one you were told."
+        ),
+        "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
+    }
+}
+
 GET_AGENT_ACTIVITY_TOOL = {
     "toolSpec": {
         "name": "get_agent_activity",
@@ -1473,6 +1490,7 @@ class RealtimeVoiceSession:
         # engine converts it to OpenAI function format internally.
         _tools = [
             GET_AGENT_STATUS_TOOL, LIST_AGENT_TASKS_TOOL, GET_AGENT_SETTINGS_TOOL,
+            LIST_AGENT_SECRETS_TOOL,
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
             SEARCH_BRAIN_TOOL, READ_BRAIN_TOOL, BRAIN_LINKS_TOOL,
             SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
@@ -2015,6 +2033,9 @@ class RealtimeVoiceSession:
             return
         if name == "get_agent_settings":
             await self._respond(tool_use_id, await self._fast_settings())
+            return
+        if name == "list_agent_secrets":
+            await self._respond(tool_use_id, await self._fast_secrets())
             return
         if name == "get_agent_activity":
             await self._respond(tool_use_id, await self._fast_activity())
@@ -4753,6 +4774,52 @@ class RealtimeVoiceSession:
                 f"Provider: {cfg.get('model_provider', 'Standard')}; "
                 f"Autonomie: {(a.autonomy_level or 'l3').upper()}; Budget: {budget}."
             )
+
+    async def _fast_secrets(self) -> str:
+        """Welche Zugaenge der Agent hat — NUR die Namen.
+
+        Gemeldet am 18.08.2026: auf „hast du Zugang zu diesem Project-Planner-Key?"
+        antwortete die Sprachfront „keine speziellen Umgebungsvariablen gefunden"
+        und zaehlte stattdessen ihre eigenen Einstellungen auf. Sie hatte schlicht
+        keinen Blick darauf: die Schluessel werden vom ``agent_manager`` als
+        Umgebungsvariablen in den AGENTEN-Container gelegt, und die Sprachfront
+        laeuft im Orchestrator.
+
+        **Warum hier keine Werte stehen.** Der gesprochene Verlauf wird als
+        Nachricht gespeichert und geht Wort fuer Wort an einen fremden Dienst
+        (Bedrock). Ein Schluessel, der einmal dort landet, ist nicht mehr
+        einzufangen. Die Sprachfront braucht ihn auch nicht: der Agent hat die
+        Variable bereits und ruft die Schnittstelle selbst auf — das ist der Weg
+        ueber ``ask_agent``.
+        """
+        from sqlalchemy import select
+
+        from app.db.session import async_session_factory
+        from app.models.agent_secret import AgentSecret, AgentSecretAssignment
+
+        async with async_session_factory() as db:
+            zuordnungen = (await db.execute(
+                select(AgentSecretAssignment.secret_id)
+                .where(AgentSecretAssignment.agent_id == self.agent_id)
+            )).scalars().all()
+            if not zuordnungen:
+                return ("Diesem Agenten ist kein Zugang zugewiesen. Zuweisen kann man "
+                        "sie unter Einstellungen, Zugaenge.")
+            rows = (await db.execute(
+                select(AgentSecret).where(
+                    AgentSecret.id.in_(zuordnungen), AgentSecret.is_active.is_(True))
+            )).scalars().all()
+        if not rows:
+            return "Zugaenge sind zwar zugewiesen, aber keiner davon ist aktiv."
+        namen = ", ".join(
+            f"{r.name} (Variable {r.key_name})" for r in rows
+        )
+        return (
+            f"Der Agent hat {len(rows)} Zugang/Zugaenge: {namen}. "
+            "Die Werte stehen ihm als Umgebungsvariablen zur Verfuegung — ich sehe "
+            "sie nicht und brauche sie nicht. Fuer einen Aufruf gib die Aufgabe per "
+            "ask_agent an den Agenten weiter; er liest die Variable selbst."
+        )
 
     # ── teardown ────────────────────────────────────────────────────
 
