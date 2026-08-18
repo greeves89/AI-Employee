@@ -24,6 +24,7 @@ from app.core.sso_providers import (
     get_sso_provider,
 )
 from app.core.permissions import role_for_new_user
+from app.core.sso_group_roles import record_observed_groups, resolve_target
 from app.models.user import User, UserRole
 from app.services.redis_service import RedisService
 
@@ -170,6 +171,14 @@ class SSOService:
             email_verified=email_verified,
         )
 
+        # Gruppen des Nutzers lesen und die Rolle danach ausrichten — bei jedem
+        # Login neu, nicht nur beim ersten (wechselt jemand in Entra die Abteilung,
+        # zieht die Berechtigung hier nach). Nur Microsoft: Google-Gruppen brauchen
+        # Workspace-Admin-SDK-Rechte, die nichts mit diesem Login zu tun haben.
+        if provider_name == "microsoft" and access_token:
+            groups = await self._fetch_microsoft_groups(access_token)
+            await self.apply_group_role(user, provider_name, groups)
+
         # Unified login: when the provider also returned Graph tokens (login now
         # requests the full Graph scopes + offline_access), persist them so MS
         # Graph is usable right after login — no separate "connect M365" step.
@@ -233,49 +242,131 @@ class SSOService:
 
             return resp.json()
 
-    async def apply_group_role(self, user: User, groups: list[str], group_role_map: dict) -> bool:
-        """Rolle aus den Gruppen des Identitaetsanbieters setzen. Gibt zurueck, ob
-        sich etwas geaendert hat.
+    async def apply_group_role(self, user: User, provider: str, groups: list[str]) -> bool:
+        """Rolle (oder CustomRole) aus den Gruppen des Identitaetsanbieters setzen.
 
-        Drei bewusste Entscheidungen:
+        Gibt zurueck, ob sich etwas geaendert hat. Zuerst wird IMMER festgehalten,
+        welche Gruppen gesehen wurden (``record_observed_groups``) — unabhaengig
+        davon, ob eine Zuordnung dafuer existiert. Das ist die Grundlage, auf der die
+        Verwaltung Gruppen zum Anklicken statt zum Abtippen anbietet.
+
+        Drei bewusste Entscheidungen, unveraendert aus dem SAML-only Vorgaenger:
 
         * **Kein Treffer aendert nichts.** Eine leere oder unpassende Zuordnung darf
           niemandem Rechte wegnehmen, die ein Mensch von Hand vergeben hat.
-        * **Die hoechste Rolle gewinnt** (siehe ``saml_config.role_for_groups``) —
-          sonst haengt das Ergebnis davon ab, wie das Verzeichnis die Gruppen sortiert.
-        * **Der allererste Nutzer behaelt Administrator.** Ihn ueber eine
-          Gruppenzuordnung herabzustufen wuerde die Plattform aussperren.
+        * **Die hoechst priorisierte Zuordnung gewinnt** (siehe
+          ``sso_group_roles.resolve_target``).
+        * **Der letzte Administrator bleibt Administrator.** Ihn ueber eine
+          Gruppenzuordnung herabzustufen wuerde die Plattform aussperren — egal ob
+          das neue Ziel eine feste Rolle oder eine CustomRole ist.
         """
-        from app.core.saml_config import role_for_groups
+        await record_observed_groups(self.db, provider, groups or [])
 
-        role_name = role_for_groups(groups or [], group_role_map or {})
-        if not role_name:
+        target = await resolve_target(self.db, provider, groups or [])
+        if target is None:
+            await self.db.commit()  # die Beobachtung soll trotzdem stehen bleiben
             return False
+        kind, value = target
 
-        target = {"admin": UserRole.ADMIN, "manager": UserRole.MANAGER,
-                  "member": UserRole.MEMBER}.get(role_name)
-        if target is None or user.role == target:
-            return False
-
-        if user.role == UserRole.ADMIN and target != UserRole.ADMIN:
-            from sqlalchemy import func
-            admin_count = await self.db.scalar(
-                select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
-            )
-            if (admin_count or 0) <= 1:
+        if kind == "custom_role":
+            try:
+                new_custom_role_id = int(value)
+            except (TypeError, ValueError):
+                logger.warning("SSO-Gruppenzuordnung zeigt auf eine ungueltige CustomRole-ID: %s", value)
+                await self.db.commit()
+                return False
+            from app.models.custom_role import CustomRole
+            if not await self.db.get(CustomRole, new_custom_role_id):
+                # Die Zuordnung zeigt auf eine inzwischen geloeschte CustomRole. Faellt
+                # sonst still auf die Mitglied-Vorgaben zurueck (get_effective_permissions
+                # tut das ohnehin) — hier wird es wenigstens sichtbar geloggt, statt dass
+                # ein Administrator raetselt, warum jemand ploetzlich weniger darf.
                 logger.warning(
-                    "Gruppenzuordnung wuerde den letzten Administrator herabstufen — uebersprungen"
+                    "SSO-Gruppenzuordnung zeigt auf eine geloeschte CustomRole (%s) — uebersprungen",
+                    new_custom_role_id,
                 )
+                await self.db.commit()
+                return False
+            new_role = UserRole.MEMBER  # Basis-Rolle; die CustomRole traegt die eigentlichen Rechte
+            unchanged = user.role == new_role and user.custom_role_id == new_custom_role_id
+        else:
+            new_role = {"admin": UserRole.ADMIN, "manager": UserRole.MANAGER,
+                        "member": UserRole.MEMBER}.get(value)
+            new_custom_role_id = None
+            if new_role is None:
+                await self.db.commit()
+                return False
+            unchanged = user.role == new_role and user.custom_role_id is None
+
+        if unchanged:
+            await self.db.commit()
+            return False
+
+        if user.role == UserRole.ADMIN and new_role != UserRole.ADMIN:
+            # FOR UPDATE sperrt die aktiven Administrator-Zeilen: zwei gleichzeitige
+            # Logins, die durch dieselbe IdP-Gruppenaenderung beide den letzten
+            # verbliebenen Administrator herabstufen wollen, duerfen sich nicht beide
+            # auf denselben (dann veralteten) Zaehlerstand verlassen — der zweite
+            # muss auf den ersten warten und sieht danach die aktuelle Zahl. Ohne die
+            # Sperre koennten zwei parallele Anmeldungen beide durchkommen und die
+            # Plattform waere ohne jeden Administrator (TOCTOU).
+            #
+            # Nur AKTIVE Administratoren zaehlen: ein deaktiviertes Admin-Konto (z.B.
+            # beim Offboarding abgeschaltet, aber nie auf eine andere Rolle gesetzt)
+            # kann sich nicht mehr anmelden und faengt niemanden auf — es als Schutz
+            # mitzuzaehlen waere ein Lockout, der sich als Schutz tarnt.
+            active_admin_ids = (await self.db.execute(
+                select(User.id)
+                .where(User.role == UserRole.ADMIN, User.is_active.is_(True))
+                .with_for_update()
+            )).scalars().all()
+            if len(active_admin_ids) <= 1:
+                logger.warning(
+                    "Gruppenzuordnung wuerde den letzten aktiven Administrator herabstufen — uebersprungen"
+                )
+                await self.db.commit()
                 return False
 
         previous = user.role
-        user.role = target
+        user.role = new_role
+        user.custom_role_id = new_custom_role_id
         await self.db.commit()
         logger.info(
-            "Rolle aus IdP-Gruppen gesetzt: %s %s -> %s",
-            scrub_log(user.email), previous.value, target.value,
+            "Rolle aus IdP-Gruppen gesetzt: %s %s -> %s%s",
+            scrub_log(user.email), previous.value, new_role.value,
+            f" (CustomRole {new_custom_role_id})" if new_custom_role_id else "",
         )
         return True
+
+    async def _fetch_microsoft_groups(self, access_token: str) -> list[str]:
+        """Die eigenen Gruppen des angemeldeten Nutzers via Microsoft Graph.
+
+        ``User.Read`` — das ohnehin schon angeforderte Pflicht-Scope des
+        Microsoft-Logins (siehe ``MICROSOFT_REQUIRED_SCOPES``) — ist laut
+        Microsofts eigener Referenz die geringste noetige Berechtigung fuer
+        ``GET /me/memberOf``. Es braucht also KEINE zusaetzliche, admin-
+        genehmigungspflichtige Berechtigung (``GroupMember.Read.All`` o.ae.) — genau
+        das war bisher der Grund, Gruppen NICHT anzufragen.
+
+        Schlaegt der Aufruf fehl, bleibt die Rolle einfach unveraendert. Ein
+        SSO-Login darf nicht daran scheitern, dass Graph gerade nicht antwortet.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://graph.microsoft.com/v1.0/me/memberOf?$select=displayName",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                if resp.status_code != 200:
+                    logger.warning(
+                        "Microsoft-Gruppen konnten nicht gelesen werden: %s", resp.status_code
+                    )
+                    return []
+                data = resp.json()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Microsoft-Gruppen konnten nicht gelesen werden: %s", e)
+            return []
+        return [g["displayName"] for g in data.get("value", []) if g.get("displayName")]
 
     async def _find_or_create_user(
         self,

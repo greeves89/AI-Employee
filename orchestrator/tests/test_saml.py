@@ -13,10 +13,9 @@ Gruppenzuordnung jemandem still Rechte wegnimmt.
 
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 from app.core import saml_config
+from app.models.custom_role import CustomRole
 
 REPO = Path(__file__).resolve().parents[2]
 ORCH = REPO / "orchestrator"
@@ -115,77 +114,167 @@ class GroupTests(unittest.TestCase):
         self.assertEqual(saml_config.extract_groups({}, {}), [])
 
 
-class RoleMappingTests(unittest.TestCase):
-    MAP = {"IT-Admins": "admin", "Teamleitung": "manager", "Alle": "member"}
-
-    def test_highest_role_wins(self):
-        """Wer in mehreren Gruppen steht, darf nicht davon abhaengen, wie das
-        Verzeichnis sie sortiert."""
-        self.assertEqual(saml_config.role_for_groups(["Alle", "IT-Admins"], self.MAP), "admin")
-        self.assertEqual(saml_config.role_for_groups(["IT-Admins", "Alle"], self.MAP), "admin")
-
-    def test_case_insensitive(self):
-        self.assertEqual(saml_config.role_for_groups(["it-admins"], self.MAP), "admin")
-
-    def test_no_match_changes_nothing(self):
-        self.assertIsNone(saml_config.role_for_groups(["Fremde"], self.MAP))
-
-    def test_empty_map_changes_nothing(self):
-        """Sonst wuerde eine leere Zuordnung jedem die Rechte nehmen."""
-        self.assertIsNone(saml_config.role_for_groups(["IT-Admins"], {}))
-
-    def test_unknown_role_name_is_ignored(self):
-        self.assertIsNone(saml_config.role_for_groups(["X"], {"X": "gottkaiser"}))
-
-    def test_broken_json_is_no_mapping_not_a_crash(self):
-        self.assertEqual(saml_config.parse_group_role_map("{kaputt"), {})
-        self.assertEqual(saml_config.parse_group_role_map(""), {})
-        self.assertEqual(saml_config.parse_group_role_map('["liste"]'), {})
+# Die Gruppen-zu-Rolle-Zuordnung selbst (frueher hier als RoleMappingTests) ist nach
+# app/core/sso_group_roles.py gewandert — gemeinsam mit dem Microsoft-OIDC-Login,
+# siehe tests/test_sso_group_roles.py. Diese Datei prueft nur noch die SAML-eigene
+# Extraktion (``extract_groups``) und den Zuordnungs-Riegel drumherum.
 
 
 class ApplyGroupRoleTests(unittest.IsolatedAsyncioTestCase):
-    """Die Rollenaenderung selbst — hier kann man echten Schaden anrichten."""
+    """Die Rollenaenderung selbst — hier kann man echten Schaden anrichten.
 
-    def _service(self, admin_count=2):
+    Die Zuordnung liegt seit der Vereinheitlichung mit Microsoft-OIDC nicht mehr in
+    einem uebergebenen dict, sondern in ``sso_group_role_mappings`` — deshalb echtes
+    SQLite statt eines Mock-``db``: ein Mock haette genau die Query weggetestet, die
+    hier den Unterschied macht (siehe test_sso_group_roles.py fuer die Aufloesung
+    selbst, hier geht es um die Rollenaenderung + den Admin-Schutz drumherum).
+    """
+
+    async def asyncSetUp(self):
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from app.models.base import Base
+        from app.models.sso_group_mapping import SsoGroupRoleMapping
+        from app.models.sso_observed_group import SsoObservedGroup
+        from app.models.user import User
+
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            await conn.run_sync(
+                lambda c: Base.metadata.create_all(
+                    c, tables=[User.__table__, SsoGroupRoleMapping.__table__, SsoObservedGroup.__table__,
+                               CustomRole.__table__]
+                )
+            )
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+        self.db = self.Session()
+
+    async def asyncTearDown(self):
+        await self.db.close()
+        await self.engine.dispose()
+
+    def _service(self):
         from app.services.sso_service import SSOService
 
         svc = SSOService.__new__(SSOService)
-        svc.db = SimpleNamespace(commit=AsyncMock(), scalar=AsyncMock(return_value=admin_count))
+        svc.db = self.db
         return svc
 
-    async def _user(self, role):
-        from app.models.user import UserRole
-        return SimpleNamespace(email="a@b.de", role=role)
+    async def _user(self, role, *, other_admins=0):
+        """Der Nutzer, dessen Rolle sich aendern soll, plus optional weitere
+        Administratoren — so entscheidet der echte COUNT(*), nicht ein Mock-Wert."""
+        from app.models.user import User, UserRole
+
+        for i in range(other_admins):
+            self.db.add(User(id=f"other-{i}", email=f"other{i}@b.de", name="x",
+                              role=UserRole.ADMIN, approved=True))
+        user = User(id="u1", email="a@b.de", name="a", role=role, approved=True)
+        self.db.add(user)
+        await self.db.commit()
+        return user
+
+    async def _mapping(self, group_name, role):
+        from app.models.sso_group_mapping import SsoGroupRoleMapping
+        self.db.add(SsoGroupRoleMapping(
+            provider="saml", group_name=group_name, target_kind="role", target_value=role,
+        ))
+        await self.db.commit()
 
     async def test_promotes_to_admin(self):
         from app.models.user import UserRole
+        await self._mapping("IT", "admin")
         user = await self._user(UserRole.MEMBER)
-        changed = await self._service().apply_group_role(user, ["IT"], {"IT": "admin"})
+        changed = await self._service().apply_group_role(user, "saml", ["IT"])
         self.assertTrue(changed)
         self.assertEqual(user.role, UserRole.ADMIN)
 
     async def test_no_match_leaves_the_role_alone(self):
         from app.models.user import UserRole
+        await self._mapping("IT", "admin")
         user = await self._user(UserRole.MANAGER)
-        self.assertFalse(await self._service().apply_group_role(user, ["Fremde"], {"IT": "admin"}))
+        self.assertFalse(await self._service().apply_group_role(user, "saml", ["Fremde"]))
         self.assertEqual(user.role, UserRole.MANAGER)
 
     async def test_last_admin_is_not_demoted(self):
         """Sonst sperrt eine Gruppenzuordnung die Plattform aus."""
         from app.models.user import UserRole
-        user = await self._user(UserRole.ADMIN)
-        changed = await self._service(admin_count=1).apply_group_role(
-            user, ["Alle"], {"Alle": "member"})
+        await self._mapping("Alle", "member")
+        user = await self._user(UserRole.ADMIN, other_admins=0)
+        changed = await self._service().apply_group_role(user, "saml", ["Alle"])
         self.assertFalse(changed)
         self.assertEqual(user.role, UserRole.ADMIN)
 
     async def test_demotion_works_when_other_admins_remain(self):
         from app.models.user import UserRole
-        user = await self._user(UserRole.ADMIN)
-        changed = await self._service(admin_count=3).apply_group_role(
-            user, ["Alle"], {"Alle": "member"})
+        await self._mapping("Alle", "member")
+        user = await self._user(UserRole.ADMIN, other_admins=2)
+        changed = await self._service().apply_group_role(user, "saml", ["Alle"])
         self.assertTrue(changed)
         self.assertEqual(user.role, UserRole.MEMBER)
+
+    async def _custom_role(self, role_id=7):
+        self.db.add(CustomRole(id=role_id, name="Vertrieb-Rolle", permissions={}))
+        await self.db.commit()
+
+    async def test_custom_role_target_sets_member_floor_plus_custom_role_id(self):
+        from app.models.sso_group_mapping import SsoGroupRoleMapping
+        from app.models.user import UserRole
+
+        await self._custom_role()
+        self.db.add(SsoGroupRoleMapping(
+            provider="saml", group_name="Vertrieb", target_kind="custom_role", target_value="7",
+        ))
+        await self.db.commit()
+        user = await self._user(UserRole.MEMBER)
+        changed = await self._service().apply_group_role(user, "saml", ["Vertrieb"])
+        self.assertTrue(changed)
+        self.assertEqual(user.role, UserRole.MEMBER)
+        self.assertEqual(user.custom_role_id, 7)
+
+    async def test_custom_role_target_also_respects_last_admin_guard(self):
+        from app.models.sso_group_mapping import SsoGroupRoleMapping
+        from app.models.user import UserRole
+
+        await self._custom_role()
+        self.db.add(SsoGroupRoleMapping(
+            provider="saml", group_name="Vertrieb", target_kind="custom_role", target_value="7",
+        ))
+        await self.db.commit()
+        user = await self._user(UserRole.ADMIN, other_admins=0)
+        changed = await self._service().apply_group_role(user, "saml", ["Vertrieb"])
+        self.assertFalse(changed)
+        self.assertEqual(user.role, UserRole.ADMIN)
+        self.assertIsNone(user.custom_role_id)
+
+    async def test_dangling_custom_role_reference_is_skipped_not_applied(self):
+        """Zeigt die Zuordnung auf eine geloeschte CustomRole (Admin hat die Rolle
+        entfernt, aber die Zuordnung stehen lassen), darf das NICHT still
+        durchrutschen — siehe Security-Review 2026-08-13."""
+        from app.models.sso_group_mapping import SsoGroupRoleMapping
+        from app.models.user import UserRole
+
+        self.db.add(SsoGroupRoleMapping(
+            provider="saml", group_name="Vertrieb", target_kind="custom_role", target_value="999",
+        ))
+        await self.db.commit()
+        user = await self._user(UserRole.MEMBER)
+        changed = await self._service().apply_group_role(user, "saml", ["Vertrieb"])
+        self.assertFalse(changed)
+        self.assertIsNone(user.custom_role_id)
+
+    async def test_deactivated_admins_do_not_count_as_protection(self):
+        """Ein abgeschaltetes Admin-Konto kann sich nicht mehr anmelden und faengt
+        niemanden auf — es mitzuzaehlen waere ein Lockout, der wie ein Schutz
+        aussieht. Siehe Security-Review 2026-08-13."""
+        from app.models.user import User, UserRole
+
+        await self._mapping("Alle", "member")
+        self.db.add(User(id="inactive-admin", email="ia@b.de", name="x",
+                          role=UserRole.ADMIN, approved=True, is_active=False))
+        user = await self._user(UserRole.ADMIN, other_admins=0)
+        changed = await self._service().apply_group_role(user, "saml", ["Alle"])
+        self.assertFalse(changed, "der inaktive Admin darf nicht als zweiter Admin zaehlen")
+        self.assertEqual(user.role, UserRole.ADMIN)
 
 
 class NoSecondLoginPathTests(unittest.TestCase):
@@ -328,7 +417,7 @@ class SettingsPathTests(unittest.TestCase):
     """Vier Stellen, sonst meldet die Oberflaeche „Gespeichert." und nichts passiert."""
 
     FIELDS = ("saml_idp_entity_id", "saml_idp_sso_url", "saml_idp_x509_cert",
-              "saml_group_attribute", "saml_group_role_map")
+              "saml_group_attribute")
 
     def test_allowed_keys(self):
         src = (ORCH / "app/services/settings_service.py").read_text()
@@ -374,9 +463,31 @@ class AdminUiTests(unittest.TestCase):
         self.assertIn("auth/sso/saml/metadata", src)
         self.assertIn("Schritt 1", src)
 
-    def test_broken_role_map_is_caught_before_saving(self):
+    def test_group_role_mapping_points_to_the_dedicated_admin_panel(self):
+        """Die freie JSON-Textbox ist weg (siehe SsoGroupsPanelTests) — die
+        SAML-Einrichtungsseite muss dorthin verweisen, statt eine tote Referenz
+        auf eine Eingabe zu hinterlassen, die es nicht mehr gibt."""
         src = (REPO / "frontend/src/components/settings/saml-config.tsx").read_text()
-        self.assertIn("JSON.parse(roleMap)", src)
+        self.assertNotIn("saml_group_role_map", src)
+        self.assertIn("SSO-Gruppen", src)
+
+
+class SsoGroupsPanelTests(unittest.TestCase):
+    """Die JSON-Textbox ist durch eine strukturierte Verwaltung ersetzt — beobachtete
+    Gruppen zum Anklicken, Ziel waehlbar zwischen fester Rolle und CustomRole."""
+
+    SRC = (REPO / "frontend/src/components/admin/sso-groups-panel.tsx").read_text()
+
+    def test_offers_both_target_kinds(self):
+        self.assertIn('"role"', self.SRC)
+        self.assertIn('"custom_role"', self.SRC)
+
+    def test_shows_observed_groups_to_click_instead_of_type(self):
+        self.assertIn("unmappedObserved", self.SRC)
+
+    def test_wired_into_the_admin_console(self):
+        src = (REPO / "frontend/src/app/admin/page.tsx").read_text()
+        self.assertIn("SsoGroupsPanel", src)
 
 
 class PackagingTests(unittest.TestCase):

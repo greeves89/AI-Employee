@@ -1,13 +1,14 @@
 from fastapi import APIRouter
 
 from app.config import settings as app_config
-from app.api import custom_pages, evals, concierge, tickets, teams_calling, activity, admin, day_plan, onboarding as onboarding_api, agent_apps, agents, ai_accounts, analytics, approval_rules, approvals, apps_overview, audit, auth, brain, brain_mcp, brains, command_policies, computer_use, dlp, docker_apps, workflows, downloads, event_triggers, features, feedback, health, integrations, kiosk, knowledge, knowledge_feeds, license as license_api, meeting_rooms, meetings, memory, reflection, mcp_agent, mcp_exchange, mcp_msgraph, mcp_msgraph_external, mcp_servers, my_ai_credentials, notifications, oauth_as, presence, ratings, roles, schedules, secrets, skill_marketplace, skills_catalog, tasks, teams, telegram_actions, templates, todos, url_allowlist, user_profiles, version, vertical_packs, webhooks, ws, settings
+from app.api import custom_pages, sso_group_mappings, evals, concierge, tickets, teams_calling, activity, admin, day_plan, onboarding as onboarding_api, agent_apps, agents, ai_accounts, analytics, approval_rules, approvals, apps_overview, audit, auth, brain, brain_mcp, brains, command_policies, computer_use, dlp, docker_apps, workflows, downloads, event_triggers, features, feedback, health, integrations, kiosk, knowledge, knowledge_feeds, license as license_api, meeting_rooms, meetings, memory, reflection, mcp_agent, mcp_exchange, mcp_msgraph, mcp_msgraph_external, mcp_servers, my_ai_credentials, notifications, oauth_as, presence, ratings, roles, schedules, secrets, skill_marketplace, skills_catalog, tasks, teams, telegram_actions, templates, todos, url_allowlist, user_profiles, version, vertical_packs, webhooks, ws, settings
 
 api_router = APIRouter()
 api_router.include_router(activity.router)
 api_router.include_router(admin.router)
 api_router.include_router(roles.router)
 api_router.include_router(custom_pages.router)
+api_router.include_router(sso_group_mappings.router)
 api_router.include_router(analytics.router)
 api_router.include_router(downloads.router)
 api_router.include_router(approvals.router)

@@ -300,7 +300,6 @@ export interface Settings {
   saml_idp_x509_cert?: string;
   saml_sp_entity_id?: string;
   saml_group_attribute?: string;
-  saml_group_role_map?: string;
   saml_configured?: boolean;
 }
 

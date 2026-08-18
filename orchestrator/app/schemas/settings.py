@@ -107,7 +107,6 @@ class SettingsUpdate(BaseModel):
     saml_idp_x509_cert: str | None = None
     saml_sp_entity_id: str | None = None
     saml_group_attribute: str | None = None
-    saml_group_role_map: str | None = None
     # Ticketsystem
     ticket_base_url: str | None = None
     ticket_api_token: str | None = None
@@ -209,5 +208,4 @@ class SettingsResponse(BaseModel):
     saml_idp_x509_cert: str = ""
     saml_sp_entity_id: str = ""
     saml_group_attribute: str = ""
-    saml_group_role_map: str = ""
     saml_configured: bool = False

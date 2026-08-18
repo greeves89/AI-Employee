@@ -163,7 +163,6 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "saml_idp_x509_cert",
     "saml_sp_entity_id",
     "saml_group_attribute",        # aus welchem Attribut die Gruppen kommen
-    "saml_group_role_map",         # JSON {"Gruppe": "admin"|"manager"|"member"}
     # Web Push (VAPID): EINMAL erzeugt, danach unveraendert. Ein Wechsel entwertet
     # saemtliche bestehenden Browser-Anmeldungen — Meldungen blieben dann still aus.
     "webpush_vapid_private_key",

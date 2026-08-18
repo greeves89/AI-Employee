@@ -454,8 +454,7 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
         return RedirectResponse(url=f"{frontend_url}/login?error={e}")
 
     groups = saml_config.extract_groups(attributes, cfg)
-    await sso_service.apply_group_role(user, groups,
-                                       saml_config.parse_group_role_map(cfg.get(saml_config.GROUP_ROLE_MAP, "")))
+    await sso_service.apply_group_role(user, saml_config.PROVIDER_NAME, groups)
 
     relay = form.get("RelayState") or ""
     return finish_sso_login(user, relay, saml_config.PROVIDER_NAME, frontend_url)

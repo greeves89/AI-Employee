@@ -1142,6 +1142,40 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure custom_pages table: {e}")
 
+    # IdP-Gruppen auf Rollen (SAML + Microsoft-OIDC, vereinheitlicht) + die dabei
+    # gesehenen Gruppennamen. Zwei Tabellen, weil es zwei verschiedene Dinge sind —
+    # eine Zuordnung aendert sich selten und ist eine bewusste Admin-Entscheidung,
+    # eine Beobachtung entsteht bei jedem Login von selbst.
+    try:
+        from app.db.session import engine as _eng_sso
+        from sqlalchemy import text as _txt_sso
+        async with _eng_sso.begin() as conn:
+            await conn.execute(_txt_sso(
+                "CREATE TABLE IF NOT EXISTS sso_group_role_mappings ("
+                "id serial PRIMARY KEY, provider varchar(20) NOT NULL,"
+                "group_name varchar(200) NOT NULL, target_kind varchar(20) NOT NULL,"
+                "target_value varchar(40) NOT NULL, priority integer NOT NULL DEFAULT 0,"
+                "created_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_sso(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_sso_group_role_provider_group "
+                "ON sso_group_role_mappings (provider, group_name)"
+            ))
+            await conn.execute(_txt_sso(
+                "CREATE TABLE IF NOT EXISTS sso_observed_groups ("
+                "id serial PRIMARY KEY, provider varchar(20) NOT NULL,"
+                "group_name varchar(200) NOT NULL,"
+                "first_seen_at timestamptz NOT NULL DEFAULT now(),"
+                "last_seen_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_sso(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_sso_observed_provider_group "
+                "ON sso_observed_groups (provider, group_name)"
+            ))
+        logger.info("sso_group_role_mappings + sso_observed_groups tables ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure sso_group_role_mappings tables: {e}")
+
     # Eigener Claude-/Codex-Zugang je Nutzer. Getrennte Zugaenge = getrennte
     # Token-Familien: die Rotation des einen kann die des anderen nicht mehr
     # umbringen (der Grund, weshalb Codex-Recreates bis heute serialisiert werden).

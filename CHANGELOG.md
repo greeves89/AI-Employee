@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.223.0] - 2026-08-18
+
+### Neu
+- **SSO-Gruppen werden jetzt auch beim Microsoft/Entra-ID-Login gelesen und auf
+  Rollen abgebildet.** Bisher galt das nur für SAML — der normale Entra-OIDC-Login
+  (der übliche Weg) ignorierte Gruppen komplett; jeder neue Nutzer landete als
+  "unassigned" und musste von Hand freigeschaltet werden. Jetzt: `GET
+  /me/memberOf` (mit dem ohnehin vorhandenen `User.Read`-Scope, keine
+  zusätzliche Admin-Freigabe in Entra nötig) liefert die Gruppen, eine neue
+  Zuordnungstabelle entscheidet die Rolle — bei jedem Login neu, nicht nur beim
+  ersten, sodass ein Abteilungswechsel im IdP automatisch nachzieht.
+- **Zuordnungsziel kann jetzt auch eine eigene Rolle (CustomRole) sein**, nicht
+  nur admin/manager/member — eine Entra-Gruppe kann direkt auf die volle,
+  granulare Rechtekonfiguration (Templates, Modelle, Agent-Limit, ...) zeigen.
+- **Neue Verwaltungsseite (Admin → Nutzer & Rollen → SSO-Gruppen)** löst die
+  alte freie JSON-Textbox ab: tatsächlich beim Login gesehene Gruppennamen
+  werden zum Anklicken angeboten statt blind abgetippt werden zu müssen.
+- SAML und Microsoft-OIDC teilen sich jetzt dieselbe Zuordnungslogik
+  (`app/core/sso_group_roles.py`) statt zweier unabhängiger Wege.
+
+### Sicherheit
+- Der "letzter Administrator wird nicht herabgestuft"-Schutz war unter
+  gleichzeitigen Logins nicht race-sicher (TOCTOU) und zählte deaktivierte
+  Admin-Konten fälschlich als Schutz mit — beides beim internen Security-Review
+  vor dem Merge gefunden und mit einer Zeilensperre (`FOR UPDATE`) plus
+  `is_active`-Filter behoben, bevor der Code live ging.
+- Beobachtete Gruppennamen (`sso_observed_groups`) sind jetzt pro Anbieter
+  gedeckelt und werden nicht mehr komplett bei jedem Login geladen — beides
+  ebenfalls vor dem Merge gefunden, nicht danach.
+
+---
+
 ## [1.222.4] - 2026-08-18
 
 ### Geändert

@@ -58,6 +58,7 @@ import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { MountPermissionsModal } from "@/components/admin/mount-permissions-modal";
 import { RolesPanel } from "@/components/admin/roles-panel";
 import { PagesPanel } from "@/components/admin/pages-panel";
+import { SsoGroupsPanel } from "@/components/admin/sso-groups-panel";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 import { formatMoney } from "@/lib/money";
@@ -65,7 +66,7 @@ import { formatMoney } from "@/lib/money";
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
   | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit" | "dlp"
-  | "pages";
+  | "pages" | "sso-groups";
 
 // Tabs whose content is a full embedded page component (rendered without
 // their own <Header>). They don't depend on the admin page's own data load.
@@ -74,7 +75,7 @@ const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secre
 // Das Menüband ist zweistufig: oben die Themengruppe, darunter deren Unterreiter.
 // So bleiben alle Bereiche sichtbar, ohne dass 13 Reiter in einer Zeile scrollen.
 const TAB_GROUPS: { id: string; label: string; icon: typeof Users; tabs: Tab[] }[] = [
-  { id: "people", label: "Nutzer & Rollen", icon: Users, tabs: ["users", "roles"] },
+  { id: "people", label: "Nutzer & Rollen", icon: Users, tabs: ["users", "roles", "sso-groups"] },
   { id: "agents", label: "Agenten", icon: Cpu, tabs: ["agents", "assignments"] },
   { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains"] },
   { id: "security", label: "Sicherheit", icon: Shield, tabs: ["secrets", "dlp", "audit"] },
@@ -405,6 +406,7 @@ export default function AdminPage() {
     { id: "audit", label: "Audit Log", icon: ScrollText },
     { id: "dlp", label: "DLP-Filter", icon: Shield },
     { id: "pages", label: "Seiten & Links", icon: AppWindow },
+    { id: "sso-groups", label: "SSO-Gruppen", icon: KeyRound },
   ];
 
   const tabById = new Map(tabs.map((t) => [t.id, t]));
@@ -1035,6 +1037,8 @@ export default function AdminPage() {
             )}
 
             {tab === "pages" && <PagesPanel />}
+
+            {tab === "sso-groups" && <SsoGroupsPanel />}
 
             {tab === "budget" && (
               <BudgetTab

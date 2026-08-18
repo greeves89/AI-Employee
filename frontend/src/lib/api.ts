@@ -4048,3 +4048,59 @@ export async function getMyCodexLoginStatus(sessionId: string): Promise<{
 }> {
   return fetchJSON(`${getBase()}/me/ai-credentials/codex/status/${sessionId}`);
 }
+
+// --- SSO-Gruppen auf Rollen abbilden (Entra/Azure AD, SAML) -------------------
+// Ersetzt die freie JSON-Textbox: Zuordnungen leben serverseitig in einer Tabelle,
+// die Verwaltung zeigt tatsaechlich gesehene Gruppennamen zum Anklicken an.
+
+export type SsoProvider = "microsoft" | "saml";
+export type SsoTargetKind = "role" | "custom_role";
+
+export interface SsoGroupRoleMapping {
+  id: number;
+  provider: SsoProvider;
+  group_name: string;
+  target_kind: SsoTargetKind;
+  target_value: string;
+  custom_role_name: string | null;
+  priority: number;
+}
+
+export interface SsoObservedGroup {
+  group_name: string;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  mapped: boolean;
+}
+
+export async function listSsoGroupMappings(provider?: SsoProvider): Promise<{
+  mappings: SsoGroupRoleMapping[];
+  providers: SsoProvider[];
+  target_kinds: SsoTargetKind[];
+  roles: string[];
+}> {
+  const qs = provider ? `?provider=${provider}` : "";
+  return fetchJSON(`${getBase()}/sso-group-mappings/${qs}`);
+}
+
+export async function listSsoObservedGroups(provider: SsoProvider): Promise<{ groups: SsoObservedGroup[] }> {
+  return fetchJSON(`${getBase()}/sso-group-mappings/observed?provider=${provider}`);
+}
+
+export async function createSsoGroupMapping(body: {
+  provider: SsoProvider; group_name: string; target_kind: SsoTargetKind;
+  target_value: string; priority?: number;
+}): Promise<SsoGroupRoleMapping> {
+  return fetchJSON(`${getBase()}/sso-group-mappings/`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateSsoGroupMapping(
+  id: number,
+  body: Partial<{ target_kind: SsoTargetKind; target_value: string; priority: number }>,
+): Promise<SsoGroupRoleMapping> {
+  return fetchJSON(`${getBase()}/sso-group-mappings/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function deleteSsoGroupMapping(id: number): Promise<{ deleted: number }> {
+  return fetchJSON(`${getBase()}/sso-group-mappings/${id}`, { method: "DELETE" });
+}

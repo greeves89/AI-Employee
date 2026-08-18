@@ -59,7 +59,6 @@ const FIELDS = [
 export function SamlConfig() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [cert, setCert] = useState("");
-  const [roleMap, setRoleMap] = useState("");
   const [configured, setConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -74,7 +73,6 @@ export function SamlConfig() {
         for (const f of FIELDS) next[f.key] = bag[f.key] ?? "";
         setValues(next);
         setCert(s.saml_idp_x509_cert ?? "");
-        setRoleMap(s.saml_group_role_map ?? "");
         setConfigured(Boolean(s.saml_configured));
       })
       .catch(() => {})
@@ -82,28 +80,11 @@ export function SamlConfig() {
   }, []);
 
   const save = async () => {
-    // Kaputtes JSON hier abfangen und nicht erst beim Anmelden: eine unlesbare
-    // Zuordnung wird serverseitig ignoriert, und dann wundert sich jemand, warum
-    // niemand Administrator wird.
-    if (roleMap.trim()) {
-      try {
-        const parsed = JSON.parse(roleMap);
-        if (typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-      } catch {
-        toast.error(
-          "Gruppen-Zuordnung ungültig",
-          'Erwartet wird ein JSON-Objekt, z. B. {"IT-Admins": "admin", "Alle": "member"}'
-        );
-        return;
-      }
-    }
-
     setSaving(true);
     try {
       await api.updateSettings({
         ...values,
         saml_idp_x509_cert: cert.trim(),
-        saml_group_role_map: roleMap.trim(),
       });
       const fresh = await api.getSettings();
       setConfigured(Boolean(fresh.saml_configured));
@@ -197,21 +178,11 @@ export function SamlConfig() {
           </p>
         </div>
 
-        <div>
-          <label className="text-[11px] font-medium">Gruppen auf Rollen abbilden (optional)</label>
-          <textarea
-            value={roleMap}
-            onChange={(e) => setRoleMap(e.target.value)}
-            rows={3}
-            spellCheck={false}
-            placeholder={'{"IT-Admins": "admin", "Teamleitung": "manager"}'}
-            className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 font-mono text-[11px] outline-none focus:border-primary/50"
-          />
-          <p className="mt-1 text-[10px] text-muted-foreground/50">
-            Trifft mehr als eine Gruppe zu, gilt die höchste Rolle. Ohne Treffer bleibt
-            die Rolle unverändert — eine leere Zuordnung nimmt also niemandem etwas weg.
-          </p>
-        </div>
+        <p className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2 text-[11px] text-muted-foreground">
+          Welche Gruppe welche Rolle bekommt, wird jetzt unter{" "}
+          <span className="font-medium text-foreground">Admin → Nutzer & Rollen → SSO-Gruppen</span>{" "}
+          eingerichtet — dort auch für Microsoft-SSO, nicht nur SAML.
+        </p>
 
         <button
           onClick={save}

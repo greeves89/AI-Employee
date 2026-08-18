@@ -131,7 +131,7 @@ async def _saml_response_fields(svc: SettingsService, admin: bool) -> dict:
     values = {k: (await svc.get(k)) or "" for k in (
         saml_config.DISPLAY_NAME_SETTING, saml_config.IDP_ENTITY_ID,
         saml_config.IDP_SSO_URL, saml_config.IDP_SLO_URL, saml_config.IDP_CERT,
-        saml_config.SP_ENTITY_ID, saml_config.GROUP_ATTRIBUTE, saml_config.GROUP_ROLE_MAP,
+        saml_config.SP_ENTITY_ID, saml_config.GROUP_ATTRIBUTE,
     )}
     out = {k: (v if admin else "") for k, v in values.items()}
     out["saml_configured"] = saml_config.is_configured(values)
@@ -298,7 +298,7 @@ async def update_settings(
         # SAML 2.0 — derselbe Weg, sonst laesst es sich nicht einrichten.
         "saml_display_name", "saml_idp_entity_id", "saml_idp_sso_url",
         "saml_idp_slo_url", "saml_idp_x509_cert", "saml_sp_entity_id",
-        "saml_group_attribute", "saml_group_role_map",
+        "saml_group_attribute",
         # Ticketsystem — derselbe Weg, sonst laesst es sich nicht einrichten.
         "ticket_base_url", "ticket_profile", "ticket_api_token",
         # Teams-Anrufe — derselbe Weg, sonst laesst es sich nicht einrichten.
