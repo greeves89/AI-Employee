@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Brain, Plus, Trash2, Pencil, Check, X, Loader2, Power, FolderOpen, Plug, Copy, KeyRound } from "lucide-react";
+import { Brain, Plus, Trash2, Pencil, Check, X, Loader2, Power, FolderOpen, Plug, Copy, KeyRound, Download, Upload, AlertTriangle } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -180,6 +180,10 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
   const [slugTouched, setSlugTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
+  //: Ziel-Vault fuers Einspielen — null = Dialog zu.
+  const [importZiel, setImportZiel] = useState<SecondBrain | null>(null);
+  const [importErsetzen, setImportErsetzen] = useState(false);
+  const [importLaeuft, setImportLaeuft] = useState(false);
   const [browsing, setBrowsing] = useState<SecondBrain | null>(null);
   const [mcpBrain, setMcpBrain] = useState<SecondBrain | null>(null);
 
@@ -242,6 +246,56 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
       setSaving(false);
     }
   };
+
+  // Der Browser laedt selbst herunter; die Anmeldung reist im Cookie mit.
+
+  const exportieren = (b: SecondBrain) => {
+
+    window.open(api.getBrainExportUrl(b.id), "_blank");
+
+  };
+
+
+  const importieren = async (datei: File) => {
+
+    if (!importZiel) return;
+
+    setImportLaeuft(true);
+
+    try {
+
+      const r = await api.importBrainZip(importZiel.id, datei, importErsetzen);
+
+      // Die Zahlen SAGEN, nicht nur „fertig": bei einem krummen Archiv
+
+      // waere sonst nicht zu sehen, dass Dateien uebersprungen wurden.
+
+      const teile = [`${r.written} Dateien eingespielt`];
+
+      if (r.deleted) teile.push(`${r.deleted} entfernt`);
+
+      if (r.skipped_total) teile.push(`${r.skipped_total} übersprungen`);
+
+      showToast("success", `${teile.join(" · ")} — Index neu aufgebaut`);
+
+      setImportZiel(null);
+
+      setImportErsetzen(false);
+
+      load();
+
+    } catch (e) {
+
+      showToast("error", `Import fehlgeschlagen: ${e instanceof Error ? e.message : "unbekannt"}`);
+
+    } finally {
+
+      setImportLaeuft(false);
+
+    }
+
+  };
+
 
   const toggleActive = async (b: SecondBrain) => {
     try {
@@ -397,6 +451,14 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                   className="rounded-lg p-2 text-muted-foreground hover:text-primary hover:bg-foreground/[0.06]">
                   <FolderOpen className="h-4 w-4" />
                 </button>
+                <button onClick={() => exportieren(b)} title="Als ZIP herunterladen"
+                  className="rounded-lg p-2 text-muted-foreground hover:text-primary hover:bg-foreground/[0.06]">
+                  <Download className="h-4 w-4" />
+                </button>
+                <button onClick={() => setImportZiel(b)} title="Vault aus ZIP einspielen"
+                  className="rounded-lg p-2 text-muted-foreground hover:text-primary hover:bg-foreground/[0.06]">
+                  <Upload className="h-4 w-4" />
+                </button>
                 <button onClick={() => setMcpBrain(b)} title={b.mcp_enabled ? "MCP aktiv — verwalten" : "Via MCP erreichbar machen"}
                   className={cn("rounded-lg p-2 hover:bg-foreground/[0.06]", b.mcp_enabled ? "text-emerald-400" : "text-muted-foreground hover:text-primary")}>
                   <Plug className="h-4 w-4" />
@@ -419,6 +481,66 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
       </div>
       {browsing && <BrainBrowser brain={browsing} onClose={() => setBrowsing(null)} />}
       {mcpBrain && <BrainMcpModal brain={mcpBrain} onClose={() => setMcpBrain(null)} onChanged={load} />}
+      {importZiel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-foreground/[0.08] bg-card p-5 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Vault einspielen</h3>
+                <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                  ZIP mit der Ordnerstruktur — z. B. ein exportierter Obsidian-Vault.
+                  Ziel: <span className="font-mono">{importZiel.name}</span>
+                </p>
+              </div>
+              <button onClick={() => setImportZiel(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <label className="mt-4 flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={importErsetzen}
+                onChange={(e) => setImportErsetzen(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-primary"
+              />
+              <span>
+                Vorhandenes ersetzen
+                <span className="block text-[11px] text-muted-foreground/60">
+                  Aus: ergänzt und überschreibt, löscht nichts. An: der Vault wird zum
+                  Abbild des Archivs — was nicht drin ist, wird gelöscht.
+                </span>
+              </span>
+            </label>
+
+            {importErsetzen && (
+              <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-2.5 text-[11px] text-amber-300/90">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                Dateien, die nicht im Archiv stehen, werden unwiderruflich entfernt.
+              </p>
+            )}
+
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              disabled={importLaeuft}
+              onChange={(e) => {
+                const datei = e.target.files?.[0];
+                if (datei) importieren(datei);
+              }}
+              className="mt-4 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] p-2 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground"
+            />
+
+            <p className="mt-3 text-[11px] text-muted-foreground/50">
+              {importLaeuft
+                ? "Wird eingespielt und neu indiziert…"
+                : "Nach dem Einspielen werden die Einbettungen neu aufgebaut, damit die Notizen auffindbar sind."}
+            </p>
+            {importLaeuft && <Loader2 className="mt-2 h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
+        </div>
+      )}
+
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
     </div>
   );

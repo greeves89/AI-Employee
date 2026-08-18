@@ -1822,6 +1822,36 @@ export async function deleteSecondBrain(id: number): Promise<{ ok: boolean; id: 
 }
 
 // MCP exposure: generate/rotate the Bearer token (plaintext returned ONCE), or disable.
+/** Vault als ZIP herunterladen — Ordnerstruktur bleibt erhalten. */
+export function getBrainExportUrl(brainId: number): string {
+  return `${getBase()}/brains/${brainId}/export`;
+}
+
+/**
+ * Vault aus einem ZIP einspielen.
+ *
+ * `replace=false` fuegt zusammen (loescht nichts), `replace=true` macht den
+ * Vault zum Abbild des Archivs. Der Server zieht danach die Einbettungen nach —
+ * ohne das waeren die Notizen semantisch unauffindbar.
+ */
+export async function importBrainZip(
+  brainId: number,
+  file: File,
+  replace = false,
+): Promise<{
+  ok: boolean; written: number; deleted: number; bytes: number;
+  skipped: string[]; skipped_total: number; index: Record<string, unknown>;
+}> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(
+    `${getBase()}/brains/${brainId}/import?replace=${replace}`,
+    { method: "POST", body: fd, credentials: "include" },
+  );
+  if (!res.ok) throw new Error((await res.text()).slice(0, 300));
+  return res.json();
+}
+
 export async function generateBrainMcpToken(
   id: number,
 ): Promise<{ mcp_enabled: boolean; mcp_path: string; token: string }> {
