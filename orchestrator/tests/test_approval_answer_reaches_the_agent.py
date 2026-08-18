@@ -169,10 +169,14 @@ class TheUiCanActuallyAnswerTests(unittest.TestCase):
     API = (ROOT / "frontend/src/lib/api.ts").read_text()
     MCP = (ROOT / "agent/mcp/notification-server.mjs").read_text()
 
-    def test_the_modal_renders_options_as_buttons(self):
-        block = self.MODAL.split("request.options.map(", 1)[1][:400]
+    #: Seit v1.222.x zeichnet EINE Komponente die Rueckfrage — vorher gab es
+    #: drei Fassungen, und beim Anklickbarmachen wurde eine vergessen.
+    PROMPT = (ROOT / "frontend/src/components/agents/approval-prompt.tsx").read_text()
+
+    def test_the_options_are_buttons(self):
+        block = self.PROMPT.split("optionen.map(", 1)[1][:600]
         self.assertIn("<button", block)
-        self.assertIn("handleAnswer(opt)", block)
+        self.assertIn("antworten(opt)", block)
 
     def test_the_list_renders_them_as_buttons_too(self):
         """Zwei Ansichten derselben Frage, von denen nur eine antworten kann,
@@ -182,7 +186,10 @@ class TheUiCanActuallyAnswerTests(unittest.TestCase):
         self.assertIn("handleAnswerInline(", block)
 
     def test_there_is_a_field_for_an_answer_nobody_offered(self):
-        self.assertIn("Oder eigene Antwort", self.MODAL)
+        self.assertIn("Oder eigene Antwort", self.PROMPT)
+
+    def test_the_modal_uses_that_one_component(self):
+        self.assertIn("<ApprovalPrompt", self.MODAL)
 
     def test_the_answer_is_sent_to_the_server(self):
         block = self.API.split("export async function approveCommand", 1)[1][:400]

@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.222.2] - 2026-08-18
+
+### Behoben
+- **Im Chat kam eine Rückfrage des Agenten praktisch nicht an.** Ein Agent
+  zeigte per `present_view` drei Bilder zur Auswahl — im Chat erschien nur ein
+  Balken „Freigabe erforderlich" mit dem Werkzeugnamen (bei einer Rückfrage
+  leer) und zwei festen Knöpfen. Weder die Frage noch die Antwortmöglichkeiten
+  noch die Ansicht wurden gezeigt, und „Freigeben" schickte dem Agenten eine
+  leere Bestätigung, aus der er nicht ablesen konnte, was gemeint war.
+- Ursache: die Rückfrage-Anzeige gab es **dreimal** — Freigabe-Fenster,
+  Sprachcockpit und Chat. Als die Antwortmöglichkeiten in 1.221.0 anklickbar
+  wurden, bekamen zwei davon die Änderung; die dritte wurde übersehen.
+
+### Geändert
+- Die drei Fassungen sind zu **einer** zusammengelegt
+  (`components/agents/approval-prompt.tsx`): Frage, Ansicht, Optionen, freie
+  Antwort und Ablehnen — überall gleich. Drei Fassungen derselben Sache laufen
+  immer auseinander; es ist nur eine Frage, welche zuerst vergessen wird.
+- Der Chat deklarierte die Nutzlast nur zur Hälfte (`tool`, `reasoning`) und
+  zeichnete sie deshalb auch nur zur Hälfte — Frage, Optionen und Ansicht
+  standen in der Antwort der Schnittstelle längst drin.
+- Der Chat rief die Schnittstelle mit rohem `fetch` und ohne Antwort auf; er
+  geht jetzt denselben Weg wie alle anderen. Ein Test prüft, dass alle drei
+  Flächen dieselbe Komponente benutzen.
+
+---
+
 ## [1.222.1] - 2026-08-18
 
 ### Geändert

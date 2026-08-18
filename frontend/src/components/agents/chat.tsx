@@ -19,6 +19,7 @@ import { MarkdownContent } from "@/components/ui/markdown-content";
 import { cn, formatBytes } from "@/lib/utils";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import * as api from "@/lib/api";
+import { ApprovalPrompt, type ApprovalPromptData } from "@/components/agents/approval-prompt";
 import { useAuthStore } from "@/lib/auth";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
@@ -467,14 +468,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const [totalTurns, setTotalTurns] = useState(0);
 
   // L3 approval polling
-  interface PendingApproval {
-    approval_id: string;
-    tool: string;
-    reasoning: string;
-    risk_level: string;
-    agent_id: string;
-  }
+  // Frage, Optionen und Ansicht standen in der Antwort der Schnittstelle
+  // laengst drin — hier waren sie nur nicht deklariert und wurden deshalb nie
+  // gezeichnet. Der Chat zeigte bis 2026-08-18 den Werkzeugnamen (bei einer
+  // Rueckfrage leer) und zwei feste Knoepfe.
+  type PendingApproval = ApprovalPromptData & { risk_level: string };
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -2284,38 +2284,31 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         <div className="mx-4 mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-amber-300">Freigabe erforderlich</p>
-              <p className="mt-0.5 text-xs text-amber-400/80">{pendingApproval.tool}</p>
-              {pendingApproval.reasoning && (
-                <p className="mt-1 text-xs text-muted-foreground">{pendingApproval.reasoning}</p>
-              )}
-            </div>
-            <div className="flex gap-2 shrink-0">
-              <button
-                onClick={async () => {
-                  await fetch(`${getApiUrl()}/api/v1/approvals/${pendingApproval.approval_id}/approve`, {
-                    method: "POST", credentials: "include"
-                  });
-                  setPendingApproval(null);
-                }}
-                className="rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/30"
-              >
-                Freigeben
-              </button>
-              <button
-                onClick={async () => {
-                  await fetch(`${getApiUrl()}/api/v1/approvals/${pendingApproval.approval_id}/deny`, {
-                    method: "POST", credentials: "include",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ decision: "deny", reason: "Vom Nutzer abgelehnt" })
-                  });
-                  setPendingApproval(null);
-                }}
-                className="rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/30"
-              >
-                Ablehnen
-              </button>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-amber-300">Der Agent braucht deine Antwort</p>
+              <div className="mt-1">
+                <ApprovalPrompt
+                  request={pendingApproval}
+                  busy={approvalBusy}
+                  onAnswer={async (antwort) => {
+                    setApprovalBusy(true);
+                    try {
+                      await api.approveCommand(pendingApproval.approval_id, antwort);
+                      setPendingApproval(null);
+                    } catch { /* bleibt stehen, damit man es erneut versuchen kann */ }
+                    finally { setApprovalBusy(false); }
+                  }}
+                  onDeny={async () => {
+                    setApprovalBusy(true);
+                    try {
+                      await api.denyCommand(pendingApproval.approval_id, "Vom Nutzer abgelehnt");
+                      setPendingApproval(null);
+                    } catch { /* siehe oben */ }
+                    finally { setApprovalBusy(false); }
+                  }}
+                  compact
+                />
+              </div>
             </div>
           </div>
         </div>

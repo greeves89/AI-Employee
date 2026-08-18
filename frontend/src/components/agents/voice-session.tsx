@@ -8,7 +8,7 @@ import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
 import * as api from "@/lib/api";
 import type { ApprovalRequest } from "@/lib/types";
-import { AGENT_VIEWS, AgentView } from "@/components/agents/agent-views";
+import { ApprovalPrompt } from "@/components/agents/approval-prompt";
 import { sendMeetingTranscriptToChat, getChatHistory, uploadFiles } from "@/lib/api";
 
 // The knowledge-graph overlay (WebGL) is client-only and heavy → load on demand.
@@ -1254,66 +1254,17 @@ export function VoiceSessionModal({
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-amber-300">Der Agent braucht deine Freigabe</p>
-                  <p className="mt-1 text-sm text-foreground/90 break-words">
-                    {pendingApproval.question
-                      || pendingApproval.reasoning
-                      || pendingApproval.tool
-                      || "Freigabe erforderlich"}
-                  </p>
-                  {pendingApproval.context && (
-                    <p className="mt-1 text-xs text-muted-foreground break-words">{pendingApproval.context}</p>
-                  )}
-                  {pendingApproval.tool && pendingApproval.question && (
-                    <p className="mt-1 text-[11px] text-amber-400/70 font-mono">{pendingApproval.tool}</p>
-                  )}
-                  {/* Die Ansicht des Agenten, wenn er eine mitgeschickt hat.
-                      Genau hier zahlt sie sich am meisten aus: „das dritte, mit
-                      dem groesseren Schriftzug" ist gesprochen muehsam und als
-                      Klick eine Sekunde. */}
-                  {pendingApproval.view && AGENT_VIEWS[pendingApproval.view.name] && (
-                    <div className="mt-3">
-                      <AgentView
-                        name={pendingApproval.view.name}
-                        agentId={agentId}
-                        data={pendingApproval.view.data || {}}
-                        antworten={(antwort) => decideApproval(true, antwort)}
-                        beschaeftigt={approvalBusy}
-                      />
-                    </div>
-                  )}
-
-                  {/* Alle Antwortmoeglichkeiten, nicht nur zwei.
-                      Bis 2026-08-18 standen hier fest ``options[0]`` und
-                      ``options[1]`` — bei einer Frage mit vier Antworten gingen
-                      zwei verloren, und der Nutzer konnte die richtige gar nicht
-                      geben. Im Sprachmodus faellt das besonders ins Gewicht:
-                      dort ist dieses Feld die einzige Stelle zum Antworten. */}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {(pendingApproval.options && pendingApproval.options.length > 0
-                      ? pendingApproval.options
-                      : ["Freigeben", "Ablehnen"]
-                    ).map((opt, i) => (
-                      <button
-                        key={opt}
-                        onClick={() => decideApproval(true, opt)}
-                        disabled={approvalBusy}
-                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
-                          i === 0
-                            ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
-                            : "bg-foreground/[0.06] text-foreground/80 hover:bg-foreground/[0.1]"
-                        }`}
-                      >
-                        {approvalBusy && i === 0 && <Loader2 className="h-4 w-4 animate-spin" />}
-                        {opt}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => decideApproval(false)}
-                      disabled={approvalBusy}
-                      className="rounded-lg bg-red-500/15 px-3 py-1.5 text-sm font-medium text-red-400 hover:bg-red-500/25 disabled:opacity-50 transition-colors"
-                    >
-                      Ablehnen
-                    </button>
+                  {/* Frage, Optionen, Ansicht und Freitext kommen aus der
+                      gemeinsamen Komponente — bis 2026-08-18 stand das hier
+                      als eigene Fassung und ging beim Erweitern verloren. */}
+                  <div className="mt-2">
+                    <ApprovalPrompt
+                      request={{ ...pendingApproval, agent_id: agentId }}
+                      busy={approvalBusy}
+                      onAnswer={(antwort) => decideApproval(true, antwort)}
+                      onDeny={() => decideApproval(false)}
+                      compact
+                    />
                   </div>
                 </div>
               </div>

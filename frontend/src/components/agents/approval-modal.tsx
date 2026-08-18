@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ApprovalRequest } from "@/lib/types";
-import { AGENT_VIEWS, AgentView } from "@/components/agents/agent-views";
+import { ApprovalPrompt } from "@/components/agents/approval-prompt";
 
 interface ApprovalModalProps {
   request: ApprovalRequest | null;
@@ -216,120 +216,12 @@ export function ApprovalModal({
                     </div>
 
                     {isQuestion ? (
-                      <>
-                        {/* Question */}
-                        <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                            Question
-                          </label>
-                          <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm">
-                            {request.question}
-                          </div>
-                        </div>
-
-                        {/* Ansicht des Agenten, falls er eine mitgeschickt hat.
-                            Die Wortoptionen darunter bleiben stehen: sie sind
-                            dieselbe Frage fuer alle, die die Ansicht nicht
-                            sehen oder lieber tippen. */}
-                        {request.view && AGENT_VIEWS[request.view.name] && (
-                          <div>
-                            <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                              Auswahl
-                            </label>
-                            <AgentView
-                              name={request.view.name}
-                              agentId={request.agent_id}
-                              data={request.view.data || {}}
-                              antworten={handleAnswer}
-                              beschaeftigt={isSubmitting}
-                            />
-                          </div>
-                        )}
-
-                        {/* Antwortmoeglichkeiten.
-                            Bis 2026-08-18 standen sie hier als <span> — reiner
-                            Text. Der Agent bot vier Antworten an, anklicken
-                            liess sich keine, und „Approve" schickte ihm nur
-                            „Approved by <mail>". Wer wirklich antworten wollte,
-                            musste ABLEHNEN und die Antwort ins Begruendungsfeld
-                            tippen. Ueber Telegram ging das Waehlen die ganze
-                            Zeit. */}
-                        {request.options && request.options.length > 0 && (
-                          <div>
-                            <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                              Antwort wählen
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                              {request.options.map((opt) => (
-                                <button
-                                  key={opt}
-                                  onClick={() => handleAnswer(opt)}
-                                  disabled={isSubmitting}
-                                  className={cn(
-                                    "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-all",
-                                    "disabled:opacity-50 disabled:cursor-not-allowed",
-                                    gewaehlt === opt
-                                      ? "border-primary bg-primary/10 text-foreground"
-                                      : "border-foreground/[0.06] bg-foreground/[0.04] hover:border-primary/40 hover:bg-primary/[0.06]"
-                                  )}
-                                >
-                                  {isSubmitting && gewaehlt === opt && (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  )}
-                                  {opt}
-                                </button>
-                              ))}
-                            </div>
-                            <p className="mt-1.5 text-[11px] text-muted-foreground/50">
-                              Ein Klick beantwortet die Frage und schickt die
-                              Antwort an den Agenten.
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Eigene Antwort. Oft passt keine der angebotenen
-                            Optionen — im gemeldeten Fall lautete eine davon
-                            „Ein anderer Dienst (bitte im Chat nennen)", was den
-                            Nutzer aus diesem Fenster hinausgeschickt haette. */}
-                        <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                            Oder eigene Antwort
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              value={eigeneAntwort}
-                              onChange={(e) => setEigeneAntwort(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && eigeneAntwort.trim()) {
-                                  handleAnswer(eigeneAntwort.trim());
-                                }
-                              }}
-                              placeholder="Antwort an den Agenten…"
-                              disabled={isSubmitting}
-                              className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2 text-sm outline-none transition-all placeholder:text-muted-foreground/25 focus:border-primary/50 focus:ring-1 focus:ring-primary/20 disabled:opacity-50"
-                            />
-                            <button
-                              onClick={() => handleAnswer(eigeneAntwort.trim())}
-                              disabled={isSubmitting || !eigeneAntwort.trim()}
-                              className="shrink-0 rounded-lg border border-foreground/[0.08] px-3.5 py-2 text-sm transition-all hover:border-primary/40 hover:bg-primary/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              Senden
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Context */}
-                        {request.context && (
-                          <div>
-                            <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                              Context
-                            </label>
-                            <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm">
-                              {request.context}
-                            </div>
-                          </div>
-                        )}
-                      </>
+                      <ApprovalPrompt
+                        request={request}
+                        busy={isSubmitting}
+                        onAnswer={(antwort) => handleAnswer(antwort ?? "")}
+                        onDeny={() => setShowDenyForm(true)}
+                      />
                     ) : (
                       <>
                         {/* Tool */}

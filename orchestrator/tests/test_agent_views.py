@@ -185,43 +185,74 @@ class EveryRuntimeHasItTests(unittest.TestCase):
 
 class TheUiDrawsItTests(unittest.TestCase):
     REGISTRY = (ROOT / "frontend/src/components/agents/agent-views.tsx").read_text()
-    MODAL = (ROOT / "frontend/src/components/agents/approval-modal.tsx").read_text()
-    VOICE = (ROOT / "frontend/src/components/agents/voice-session.tsx").read_text()
+    PROMPT = (ROOT / "frontend/src/components/agents/approval-prompt.tsx").read_text()
 
     def test_the_registry_matches_the_server_whitelist(self):
         """Zwei Listen, die auseinanderlaufen, sind in diesem Projekt schon
-        zweimal teuer geworden."""
+        mehrfach teuer geworden."""
         import re
         namen = set(re.findall(r"^  (\w+): \w+,$", self.REGISTRY.split(
             "export const AGENT_VIEWS", 1)[1].split("};", 1)[0], re.MULTILINE))
         self.assertEqual(namen, api.ERLAUBTE_ANSICHTEN)
 
-    def test_chat_renders_it(self):
-        self.assertIn("<AgentView", self.MODAL)
-
-    def test_voice_renders_it(self):
-        """Im Sprachmodus zahlt sie sich am meisten aus: zeigen statt
-        beschreiben."""
-        self.assertIn("<AgentView", self.VOICE)
-
-    def test_voice_no_longer_swallows_options(self):
-        """Bis 2026-08-18 standen dort fest ``options[0]`` und ``options[1]`` —
-        bei vier Antworten gingen zwei verloren, und im Sprachmodus ist dieses
-        Feld die einzige Stelle zum Antworten."""
-        self.assertNotIn("pendingApproval.options?.[1]", self.VOICE)
-        block = self.VOICE.split("pendingApproval.options", 1)[1][:400]
-        self.assertIn(".map(", block)
+    def test_the_shared_prompt_draws_the_view(self):
+        self.assertIn("<AgentView", self.PROMPT)
 
     def test_the_view_never_replaces_the_words(self):
-        """Auch im Browser bleiben die Wortoptionen stehen — wer lieber tippt
-        oder die Ansicht nicht laden kann, muss antworten koennen."""
-        nach_ansicht = self.MODAL.split("<AgentView", 1)[1]
-        self.assertIn("request.options.map(", nach_ansicht)
+        """Wer lieber tippt oder die Bilder nicht laden kann, muss antworten
+        koennen."""
+        nach_ansicht = self.PROMPT.split("<AgentView", 1)[1]
+        self.assertIn("optionen.map(", nach_ansicht)
+        self.assertIn("Oder eigene Antwort", nach_ansicht)
 
     def test_a_missing_image_says_so(self):
         """Ein leeres Feld sieht aus wie ein Fehler und der Nutzer antwortet gar
         nicht — waehrend der Agent wartet."""
         self.assertIn("nicht gefunden", self.REGISTRY)
+
+
+class AllThreeSurfacesShareOneComponentTests(unittest.TestCase):
+    """Die Rueckfrage gab es DREIMAL: Freigabe-Fenster, Sprachcockpit, Chat.
+
+    Als die Antwortmoeglichkeiten anklickbar wurden (v1.221.0), bekamen zwei
+    davon die Aenderung — die dritte nicht. Der Chat zeigte weiter nur
+    „Freigeben"/„Ablehnen", ohne Frage, ohne Optionen, ohne Ansicht: ein Agent,
+    der dort vier Antworten anbot, bekam eine leere Bestaetigung zurueck.
+    Beobachtet am 18.08.2026 beim ersten Versuch mit ``present_view``.
+
+    Drei Fassungen derselben Sache laufen immer auseinander — es ist nur eine
+    Frage, welche zuerst vergessen wird.
+    """
+
+    FLAECHEN = {
+        "Freigabe-Fenster": "frontend/src/components/agents/approval-modal.tsx",
+        "Sprachcockpit": "frontend/src/components/agents/voice-session.tsx",
+        "Chat": "frontend/src/components/agents/chat.tsx",
+    }
+
+    def test_each_surface_uses_the_shared_prompt(self):
+        for name, pfad in self.FLAECHEN.items():
+            with self.subTest(flaeche=name):
+                self.assertIn("<ApprovalPrompt", (ROOT / pfad).read_text())
+
+    def test_no_surface_draws_its_own_buttons(self):
+        """Eigene Knoepfe daneben waeren die naechste Fassung, die vergessen
+        wird."""
+        for name, pfad in self.FLAECHEN.items():
+            with self.subTest(flaeche=name):
+                self.assertNotIn("pendingApproval.options?.[1]", (ROOT / pfad).read_text())
+
+    def test_the_chat_no_longer_posts_its_own_raw_request(self):
+        """Der Chat rief die Schnittstelle mit rohem ``fetch`` und ohne Antwort
+        auf — der Agent erfuhr dadurch nie, was gewaehlt wurde."""
+        chat = (ROOT / self.FLAECHEN["Chat"]).read_text()
+        self.assertNotIn("/approve`, {", chat)
+
+    def test_the_chat_declares_the_full_payload(self):
+        """Frage, Optionen und Ansicht standen in der Antwort laengst drin —
+        der Chat hatte sie nur nicht deklariert und zeichnete sie deshalb nie."""
+        chat = (ROOT / self.FLAECHEN["Chat"]).read_text()
+        self.assertIn("ApprovalPromptData", chat)
 
 
 if __name__ == "__main__":
