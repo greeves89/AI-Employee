@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.226.1] - 2026-08-18
+
+### Behoben
+- **Ein Schluckauf der Sprach-Engine beendete das Gespräch.** „Model has timed
+  out in processing the request. Try your request again." — und das
+  Live-Gespräch stand. Der Browser zeigte den Fehler und blieb stehen; neu
+  starten musste man von Hand.
+- Dabei gibt es das Neuverbinden längst: reißt der Stream ab, verbindet die
+  Oberfläche still neu und setzt **dasselbe** Gespräch fort. Nur ein Fehler der
+  Engine lief in einen anderen Zweig, obwohl es dasselbe ist — „Try your request
+  again" steht sogar in der Meldung.
+- Vorübergehende Fehler (Zeitüberschreitung, Drosselung, 5xx, Verbindungsabbruch)
+  gehen jetzt denselben Weg: neu verbinden, Gespräch fortsetzen, Sitzungskennung
+  behalten. Die Obergrenze für Neuversuche bleibt.
+
+### Sicherheit
+- Bewusst eine **Positivliste** statt einer Faustregel: was nicht darauf steht,
+  wird dem Nutzer gezeigt. Ein falscher Zugangsschlüssel würde sonst achtmal
+  hintereinander scheitern, ohne dass jemand erfährt, warum — und am Ende stünde
+  dieselbe Meldung, nur acht Versuche später.
+
+---
+
 ## [1.226.0] - 2026-08-18
 
 ### Neu

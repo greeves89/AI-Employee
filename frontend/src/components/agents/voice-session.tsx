@@ -821,6 +821,17 @@ export function VoiceSessionModal({
         }
         break;
       case "error":
+        // Ein voruebergehender Fehler der Sprach-Engine („Model has timed out")
+        // ist dasselbe wie ein abgerissener Stream — und wurde bis 2026-08-18
+        // anders behandelt: Fehler anzeigen, Ende, von Hand neu starten. Jetzt
+        // derselbe Weg wie bei "done": neu verbinden und das Gespraech
+        // fortsetzen. Die Obergrenze fuer Neuversuche bleibt, damit ein echter
+        // Dauerfehler nicht still im Kreis laeuft, sondern sichtbar wird.
+        if (data.retryable && reconnectsRef.current < MAX_VOICE_RECONNECTS) {
+          setState("connecting");
+          try { wsRef.current?.close(); } catch { /* schliesst gleich selbst */ }
+          break;
+        }
         setError(String(data.message || "Fehler"));
         setState("error");
         break;

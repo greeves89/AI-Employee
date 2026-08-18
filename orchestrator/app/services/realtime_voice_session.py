@@ -1372,6 +1372,29 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
     )
 
 
+#: Fehlermeldungen der Sprach-Engines, die von selbst wieder weggehen. Bewusst
+#: eine Positivliste: was hier nicht steht, wird dem Nutzer gezeigt statt still
+#: im Kreis neu verbunden. Ein falscher Zugangsschluessel wuerde sonst achtmal
+#: hintereinander scheitern, ohne dass jemand erfaehrt, warum.
+_VORUEBERGEHEND = (
+    "timed out",           # „Model has timed out in processing the request"
+    "timeout",
+    "throttl",             # Drosselung durch AWS
+    "too many requests",
+    "service unavailable",
+    "internal server error",
+    "connection reset",
+    "stream has completed",
+    "stream_has_completed",   # AWS_ERROR_HTTP_STREAM_HAS_COMPLETED
+    "temporarily",
+)
+
+
+def _ist_voruebergehend(meldung: str) -> bool:
+    text = (meldung or "").lower()
+    return any(m in text for m in _VORUEBERGEHEND)
+
+
 @dataclass
 class RealtimeVoiceSession:
     agent_id: str
@@ -1996,7 +2019,18 @@ class RealtimeVoiceSession:
                 len(getattr(self, "_shown_files", ())),
                 len(self._planned), data.get("message", ""),
             )
-            await self._emit({"type": "error", "data": {"message": data.get("message", "Realtime-Fehler")}})
+            # Vorübergehend oder endgültig? Der Browser bleibt bei einem Fehler
+            # stehen und zeigt ihn an — richtig bei fehlenden Zugangsdaten,
+            # falsch bei „Model has timed out in processing the request"
+            # (gemeldet am 18.08.2026). Das ist dasselbe wie ein abgerissener
+            # Stream und gehört genauso behandelt: neu verbinden, Gespräch
+            # fortsetzen. Ohne die Unterscheidung müsste der Nutzer bei jedem
+            # Schluckauf von Hand neu starten.
+            meldung = str(data.get("message", "Realtime-Fehler"))
+            await self._emit({"type": "error", "data": {
+                "message": meldung,
+                "retryable": _ist_voruebergehend(meldung),
+            }})
         elif kind == "done":
             await self._emit({"type": "done", "data": {}})
             await self._emit(None)  # end the outbound stream
