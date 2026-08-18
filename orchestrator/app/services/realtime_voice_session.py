@@ -85,6 +85,41 @@ GET_AGENT_SETTINGS_TOOL = {
     }
 }
 
+ESCALATE_IF_UNSURE_TOOL = {
+    "toolSpec": {
+        "name": "escalate_if_unsure",
+        "description": (
+            "Say how confident you are (0-100) BEFORE acting on something you are "
+            "not sure about. The SERVER decides whether that is enough — the rule "
+            "belongs to the operator, not to you: judging your own 40 percent would "
+            "be as unreliable as the answer itself.\n\n"
+            "Above the threshold this returns at once and costs nothing — nobody is "
+            "disturbed. Below it, the decision goes to a human and this WAITS for "
+            "their answer.\n\n"
+            "Use it whenever you would otherwise GUESS: an instruction that can be "
+            "read two ways, a name you are not sure you heard right, missing "
+            "information you cannot look up. On the phone this matters more than in "
+            "writing — a wrong name or date sounds just as confident as a right one, "
+            "and nobody can scroll back to check.\n\n"
+            "Not for things that are merely risky but clear — that is request_approval."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "confidence": {"type": "number",
+                               "description": "0-100, how sure you are"},
+                "question": {"type": "string",
+                             "description": "What you would ask the human"},
+                "context": {"type": "string",
+                            "description": "What you are unsure about, in one or two sentences"},
+                "options": {"type": "array", "items": {"type": "string"},
+                            "description": "The choices, if there are any"},
+            },
+            "required": ["confidence", "question"],
+        })},
+    }
+}
+
 LIST_AGENT_SECRETS_TOOL = {
     "toolSpec": {
         "name": "list_agent_secrets",
@@ -1490,7 +1525,7 @@ class RealtimeVoiceSession:
         # engine converts it to OpenAI function format internally.
         _tools = [
             GET_AGENT_STATUS_TOOL, LIST_AGENT_TASKS_TOOL, GET_AGENT_SETTINGS_TOOL,
-            LIST_AGENT_SECRETS_TOOL,
+            LIST_AGENT_SECRETS_TOOL, ESCALATE_IF_UNSURE_TOOL,
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
             SEARCH_BRAIN_TOOL, READ_BRAIN_TOOL, BRAIN_LINKS_TOOL,
             SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
@@ -2036,6 +2071,9 @@ class RealtimeVoiceSession:
             return
         if name == "list_agent_secrets":
             await self._respond(tool_use_id, await self._fast_secrets())
+            return
+        if name == "escalate_if_unsure":
+            await self._respond(tool_use_id, await self._eskalieren(args))
             return
         if name == "get_agent_activity":
             await self._respond(tool_use_id, await self._fast_activity())
@@ -4774,6 +4812,88 @@ class RealtimeVoiceSession:
                 f"Provider: {cfg.get('model_provider', 'Standard')}; "
                 f"Autonomie: {(a.autonomy_level or 'l3').upper()}; Budget: {budget}."
             )
+
+    async def _eskalieren(self, args: dict) -> str:
+        """Bei Unsicherheit an einen Menschen abgeben, statt zu raten.
+
+        Bis 2026-08-18 hatte die Sprachfront dieses Werkzeug NICHT — als einzige
+        der vier Laufzeiten. Sie hat also geraten, wo der Agent gefragt haette.
+        Am Telefon wiegt das schwerer als im Geschriebenen: ein falscher Name
+        klingt genauso sicher wie ein richtiger, und niemand kann zurueckblaettern.
+
+        Bewusst ueber ``confidence_gate`` — dieselbe Funktion, die der Agent
+        aufruft. Die Schwelle gehoert dem Betreiber und steht pro Agent in der
+        Konfiguration; sie hier noch einmal zu entscheiden hiesse, zwei Regeln zu
+        haben, von denen eine irgendwann die falsche ist.
+        """
+        from app.api.approvals import ConfidenceCheck, confidence_gate
+        from app.db.session import async_session_factory
+
+        try:
+            async with async_session_factory() as db:
+                ergebnis = await confidence_gate(
+                    ConfidenceCheck(
+                        confidence=args.get("confidence", 0),
+                        question=str(args.get("question") or "").strip(),
+                        context=str(args.get("context") or "").strip() or None,
+                        options=args.get("options") or None,
+                        target_channel="all",
+                    ),
+                    agent_auth={"agent_id": self.agent_id},
+                    db=db,
+                )
+        except Exception as e:  # noqa: BLE001
+            # Eine gescheiterte Rueckfrage darf nicht zum Weitermachen einladen —
+            # sonst raet das Modell trotzdem, nur mit Rueckendeckung.
+            logger.warning("Konfidenz-Gate fehlgeschlagen agent=%s: %s", self.agent_id, e)
+            return ("Die Rueckfrage konnte nicht gestellt werden. Rate NICHT — sag dem "
+                    "Nutzer, dass du unsicher bist, und frag ihn direkt.")
+
+        if not ergebnis.get("escalated"):
+            return str(ergebnis.get("message") or "Deine Sicherheit reicht — mach weiter.")
+
+        # Die Frage steht jetzt als Freigabe im Cockpit (mit den Optionen als
+        # Knoepfen). Die Antwort kommt ueber denselben Weg zurueck wie jede
+        # Freigabe; sobald sie da ist, meldet sie sich in einer Sprechpause.
+        freigabe_id = str(ergebnis.get("approval_id") or "")
+        if freigabe_id:
+            asyncio.create_task(self._auf_entscheidung_warten(freigabe_id))
+        return (
+            "Deine Sicherheit reicht nicht — ich habe die Frage an den Nutzer gegeben. "
+            "Sag ihm JETZT in einem Satz, dass du kurz nachfragst und worum es geht, "
+            "und ARBEITE NICHT WEITER an dieser Sache, bis die Antwort da ist."
+        )
+
+    async def _auf_entscheidung_warten(self, approval_id: str) -> None:
+        """Die Antwort abholen und dem Modell zutragen — in einer Sprechpause."""
+        from sqlalchemy import select
+
+        from app.db.session import async_session_factory
+        from app.models.command_approval import ApprovalStatus, CommandApproval
+
+        frist = time.monotonic() + 900
+        while not self._closed and time.monotonic() < frist:
+            await asyncio.sleep(3)
+            try:
+                async with async_session_factory() as db:
+                    zeile = (await db.execute(
+                        select(CommandApproval).where(CommandApproval.id == int(approval_id))
+                    )).scalar_one_or_none()
+            except Exception:  # noqa: BLE001
+                continue
+            if not zeile or zeile.status == ApprovalStatus.PENDING:
+                continue
+            antwort = (zeile.user_response or "").strip()
+            if zeile.status == ApprovalStatus.APPROVED:
+                note = (f"HINWEIS (Antwort auf meine Rueckfrage, KEIN neuer Auftrag): "
+                        f"Der Nutzer hat geantwortet: {antwort or 'einverstanden'}. "
+                        "Richte dich danach und mach weiter.")
+            else:
+                note = ("HINWEIS (Antwort auf meine Rueckfrage): Der Nutzer hat abgelehnt"
+                        + (f" — {antwort}" if antwort else "")
+                        + ". Mach NICHT weiter, frag nach, wie er es stattdessen will.")
+            await self._inject_when_quiet(note)
+            return
 
     async def _fast_secrets(self) -> str:
         """Welche Zugaenge der Agent hat — NUR die Namen.

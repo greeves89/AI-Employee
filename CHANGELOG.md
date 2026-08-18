@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.226.0] - 2026-08-18
+
+### Neu
+- **Die Sprachfront kann jetzt eskalieren statt zu raten** (`escalate_if_unsure`).
+  Sie war die einzige der vier Laufzeiten ohne das Konfidenz-Gate — sie hat also
+  geraten, wo der Agent gefragt hätte. Am Telefon wiegt das schwerer als im
+  Geschriebenen: ein falscher Name klingt genauso sicher wie ein richtiger, und
+  niemand kann zurückblättern.
+- Sie ruft dabei **dieselbe** Serverfunktion auf wie der Agent. Die Schwelle
+  gehört dem Betreiber und steht pro Agent in der Konfiguration; zwei Schwellen
+  wären zwei Regeln, von denen eine irgendwann die falsche ist.
+- Die Rückfrage erscheint im Cockpit mit den Antwortmöglichkeiten als Knöpfe;
+  die Antwort wird dem Modell in einer Sprechpause zugetragen. Eine Ablehnung
+  liest sich nicht als Erlaubnis, und solange keine Antwort da ist, arbeitet der
+  Agent an der Sache nicht weiter.
+
+### Geändert
+- **Vorgabe: Sprachinteraktion läuft über MCP-Dienste.** Grundlage dafür ist eine
+  Einordnung aller 79 Agenten-Werkzeuge (`core/voice_tool_parity.py`): 57 haben
+  den Orchestrator als Gegenstelle und gehören der Sprachfront direkt, 23 laufen
+  im Agenten-Container und werden delegiert. `bash` und `write_file` in der
+  Sprachfront zu spiegeln hieße, eine zweite Ausführung danebenzustellen.
+- Ein Test lässt **kein Werkzeug uneingeordnet** und führt die verbleibende
+  Lücke als Zahl, die nur fallen darf. Vorher war die Differenz unsichtbar: beide
+  Seiten funktionierten für sich, gemessen waren es 42 gegen 79.
+- Offen bleiben 38 Einträge, angeführt von `notify_user` und `send_telegram` —
+  die Sprachfront kann den Nutzer noch nicht benachrichtigen.
+
+---
+
 ## [1.225.0] - 2026-08-18
 
 ### Neu
