@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.240.1] - 2026-08-18
+
+### Behoben (Build/Signierung)
+- **macOS-Notarisierung schlug fehl: „signature of the binary is invalid".**
+  Der Build signierte die App mit `codesign --deep` — das signiert von außen
+  nach innen und lässt die eingebetteten Python-Binaries (Framework, dylibs,
+  `.so`) ungültig bzw. ohne Hardened Runtime zurück, was Apples Notardienst
+  ablehnt. Jetzt wird **jede eingebettete Mach-O-Datei einzeln von innen nach
+  außen** signiert, jeweils mit `--options runtime` und sicherem Zeitstempel
+  (`--timestamp`); das Bundle zuletzt mit den Entitlements. Damit wird die App
+  signiert **und** notarisiert ausgeliefert — kein Rechtsklick→Öffnen mehr beim
+  ersten Start, und die TCC-Freigaben bleiben über Updates stabil.
+
+---
+
 ## [1.240.0] - 2026-08-18
 
 ### Geändert
