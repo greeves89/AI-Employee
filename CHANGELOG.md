@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.236.0] - 2026-08-18
+
+### Neu
+- **Import und Export sind jetzt bedienbar.** In der Second-Brain-Liste zwei neue
+  Knoepfe je Vault: herunterladen (ZIP) und einspielen. Der Einspiel-Dialog fragt,
+  ob zusammengefuehrt oder ersetzt werden soll, und warnt beim Ersetzen
+  ausdruecklich, dass nicht enthaltene Dateien verschwinden.
+- Nach dem Einspielen nennt die Meldung Zahlen statt nur "fertig": wie viele
+  Dateien geschrieben, entfernt und uebersprungen wurden — bei einem krummen
+  Archiv waere sonst nicht zu sehen, dass etwas fehlt.
+- Gegengeprueft mit einem echten Obsidian-artigen Vault (verschachtelte Ordner,
+  `.obsidian`, Wikilinks, Frontmatter, Umlaute): Rundlauf Export in Import ohne
+  Verlust.
+
+---
+
 ## [1.235.0] - 2026-08-18
 
 ### Neu
