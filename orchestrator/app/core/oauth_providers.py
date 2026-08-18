@@ -110,9 +110,9 @@ PROVIDERS: dict[str, OAuthProviderConfig] = {
             "Contacts.ReadWrite",
             "People.Read",
             # Teams meeting transcripts (transcript-to-tasks feature). Delegated;
-            # OnlineMeetingTranscript.Read.All needs admin consent — requested from
-            # the tenant admin (SKBS: Christian) before rollout. After the consent
-            # every user must re-login once so the refresh token covers the scopes.
+            # OnlineMeetingTranscript.Read.All needs admin consent from the tenant
+            # admin before rollout. After the consent every user must re-login once
+            # so the refresh token covers the scopes.
             "OnlineMeetings.Read",
             "OnlineMeetingTranscript.Read.All",
         ],

@@ -28,11 +28,11 @@ def _run(coro):
 _VTT = (
     "WEBVTT\n\n"
     "00:00:03.180 --> 00:00:07.140\n"
-    "<v Daniel Alisch>Erster Satz.</v>\n\n"
+    "<v Sprecher A>Erster Satz.</v>\n\n"
     "00:00:08.340 --> 00:00:26.260\n"
-    "<v Daniel Alisch>Zweiter Satz,\ngleicher Sprecher.</v>\n\n"
+    "<v Sprecher A>Zweiter Satz,\ngleicher Sprecher.</v>\n\n"
     "00:00:27.540 --> 00:00:45.860\n"
-    "<v Yannik Gassmann>Antwort.</v>\n"
+    "<v Sprecher B>Antwort.</v>\n"
 )
 
 
@@ -47,7 +47,7 @@ class _GraphFake:
         self.calls.append({"method": method, "path": path, "kwargs": kwargs})
         if path == "/me/calendarView":
             return {"value": [
-                {"id": "EV1", "subject": "SKBS Daily", "isOnlineMeeting": True,
+                {"id": "EV1", "subject": "Team Daily", "isOnlineMeeting": True,
                  "onlineMeetingUrl": "https://teams.microsoft.com/l/meetup-join/abc",
                  "start": {"dateTime": "2026-08-13T07:30:00.0000000"}},
                 {"id": "EV2", "subject": "Ohne Teams", "isOnlineMeeting": False,
@@ -87,7 +87,7 @@ class ListTranscriptsTests(unittest.TestCase):
         self.assertIn("OM1", out)
         self.assertIn("TR1", out)
         self.assertIn("TR2", out)  # stop/restart -> several fragments, all listed
-        self.assertIn("SKBS Daily", out)
+        self.assertIn("Team Daily", out)
         paths = [c["path"] for c in fake.calls]
         self.assertEqual(paths[0], "/me/calendarView")
         self.assertIn("/me/onlineMeetings", paths)
@@ -129,8 +129,8 @@ class GetTranscriptTests(unittest.TestCase):
             "ms_get_meeting_transcript",
             {"online_meeting_id": "OM1", "transcript_id": "TR1"}, "tok",
         ))
-        self.assertIn("Daniel Alisch: Erster Satz. Zweiter Satz, gleicher Sprecher.", out)
-        self.assertIn("Yannik Gassmann: Antwort.", out)
+        self.assertIn("Sprecher A: Erster Satz. Zweiter Satz, gleicher Sprecher.", out)
+        self.assertIn("Sprecher B: Antwort.", out)
         self.assertNotIn("-->", out)
         self.assertIn("$format=text/vtt", self.calls[0]["path"])
         self.assertIn("/me/onlineMeetings/OM1/transcripts/TR1/content", self.calls[0]["path"])
@@ -156,8 +156,8 @@ class VttCondenserTests(unittest.TestCase):
         out = _vtt_to_dialog(_VTT)
         self.assertEqual(
             out,
-            "Daniel Alisch: Erster Satz. Zweiter Satz, gleicher Sprecher.\n"
-            "Yannik Gassmann: Antwort.",
+            "Sprecher A: Erster Satz. Zweiter Satz, gleicher Sprecher.\n"
+            "Sprecher B: Antwort.",
         )
 
     def test_tagless_vtt_falls_back_to_plain_lines(self):
