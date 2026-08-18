@@ -206,7 +206,8 @@ def _re_system_prompt() -> str:
 
 async def _one_re_question(db: AsyncSession, redis, messages: list[dict], context: dict) -> str:
     """Genau EINE schaerfende Requirements-Rueckfrage ueber den vorhandenen
-    config-getriebenen LLM-Pfad (ReflectionService: Anthropic-Key oder Bedrock).
+    config-getriebenen LLM-Pfad (ReflectionService: Anthropic-Key, Bedrock-
+    oder Azure-OpenAI-/OpenAI-Account).
 
     Raises RuntimeError, wenn kein LLM-Zugang konfiguriert ist oder der Aufruf
     scheitert — der Aufrufer uebersetzt das in eine saubere HTTP-Antwort.
@@ -216,11 +217,14 @@ async def _one_re_question(db: AsyncSession, redis, messages: list[dict], contex
     svc = ReflectionService(redis)
     cfg = await svc._load_config(db)
     if not cfg.get("backend"):
-        raise RuntimeError("kein LLM-Zugang konfiguriert (weder Anthropic-Key noch Bedrock-Account)")
+        raise RuntimeError(
+            "kein LLM-Zugang konfiguriert (kein Anthropic-Key, Bedrock- oder OpenAI-Account)"
+        )
 
     # FEEDBACK_MODEL uebersteuert das Reflection-Modell nur fuer diese Rueckfrage.
     # Auf Bedrock braucht es eine volle Bedrock-Id — sonst bleibt cfg["model"],
     # das _load_config bereits auf ein Bedrock-taugliches Modell gemappt hat.
+    # Auf Azure OpenAI ist es der Deployment-Name (z.B. ein guenstiges Mini-Deployment).
     fb_model = settings.feedback_model.strip()
     if fb_model and (
         cfg["backend"] != "bedrock" or "anthropic." in fb_model or "amazon." in fb_model
@@ -238,11 +242,7 @@ async def _one_re_question(db: AsyncSession, redis, messages: list[dict], contex
     )
     prompt = f"{_re_system_prompt()}\n\nKONTEXT: {ctx}\n\nGESPRÄCH:\n{turns}\n\nDeine Antwort:"
 
-    data = (
-        await svc._call_bedrock(cfg, prompt)
-        if cfg["backend"] == "bedrock"
-        else await svc._call_anthropic(cfg, prompt)
-    )
+    data = await svc._call_llm(cfg, prompt)
     text = ((data or {}).get("content") or [{}])[0].get("text") or ""
     text = text.strip()
     if not text:

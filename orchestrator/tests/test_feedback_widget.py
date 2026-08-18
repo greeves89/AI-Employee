@@ -311,6 +311,7 @@ def _llm_stub(monkeypatch, backend: str, geladen: str) -> dict:
     monkeypatch.setattr(rs.ReflectionService, "_load_config", load_config)
     monkeypatch.setattr(rs.ReflectionService, "_call_anthropic", call)
     monkeypatch.setattr(rs.ReflectionService, "_call_bedrock", call)
+    monkeypatch.setattr(rs.ReflectionService, "_call_openai_compat", call)
     return aufruf
 
 
@@ -347,3 +348,13 @@ async def test_bedrock_akzeptiert_volle_bedrock_id(monkeypatch):
     aufruf = _llm_stub(monkeypatch, "bedrock", "eu.amazon.nova-lite-v1:0")
     await fb._one_re_question(None, None, _TURN, {})
     assert aufruf["model"] == "eu.anthropic.irgendwas-v1:0"
+
+
+@pytest.mark.asyncio
+async def test_azure_uebernimmt_deployment_namen(monkeypatch):
+    # Auf Azure OpenAI ist FEEDBACK_MODEL der Deployment-Name — der Override
+    # greift ohne Id-Format-Pruefung (die gilt nur fuer Bedrock).
+    monkeypatch.setattr(settings, "feedback_model", "mini-deploy")
+    aufruf = _llm_stub(monkeypatch, "openai", "teures-default-deploy")
+    await fb._one_re_question(None, None, _TURN, {})
+    assert aufruf["model"] == "mini-deploy"
