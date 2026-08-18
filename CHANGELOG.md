@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.222.1] - 2026-08-18
+
+### Geändert
+- **Die Activity-Ansicht (`/activity`) gruppiert Agenten jetzt nach Team,
+  initial eingeklappt.** Bisher stand jeder Agent als eigene Zeile
+  untereinander — bei vielen Agenten musste man an ihnen vorbeiscrollen, um
+  den Kalender eines bestimmten Teams zu finden. Jede Team-Gruppe lässt sich
+  einzeln aufklappen; Agenten ohne Team landen in einer eigenen
+  „Ohne Team"-Gruppe.
+
+---
+
 ## [1.221.1] - 2026-08-18
 
 ### Behoben
