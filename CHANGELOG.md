@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.234.0] - 2026-08-18
+
+### Neu
+- **Master-Regeln: Verhaltensvorgaben für alle Agenten aller Nutzer.** Aus einer
+  Kundenanfrage: eine globale Vorgabe, was Agenten dürfen und was nicht — „ich
+  will aber nicht bei jedem agenten das einzeln vorgeben".
+- Neuer Reiter unter **Sicherheit**. Der Text landet in der Anleitung jedes
+  Agenten und im Sprachmodus, steht über jedem Auftrag und ist für normale
+  Nutzer nicht abwählbar.
+- Die Regeln stehen bewusst **ganz oben** in der Anleitung: die Agenten-Laufzeit
+  kürzt eine zu lange Anleitung von hinten — angehängt wären ausgerechnet sie
+  als Erstes weg.
+- Alle vier Laufzeiten bekommen sie: Claude Code über `CLAUDE.md`, Codex über
+  `AGENT.md`, Custom-LLM liest dieselbe Datei, und die Sprachfront hat einen
+  eigenen Anschluss. Ein Test prüft, dass keine Stelle vergessen wird — genau das
+  ist am selben Tag zweimal passiert.
+- **Globale Befehlssperren sind endlich einstellbar.** Das Datenmodell konnte sie
+  seit jeher (`scope: global`), es gab nur nirgends eine Oberfläche dafür. Jetzt
+  auf derselben Seite: zwei Ebenen desselben Gedankens.
+
+### Hinweis
+- Master-Regeln sind eine **Anweisung, keine Sperre** — das steht auch so auf der
+  Seite. Sprachmodelle halten sich meistens, aber nicht immer daran. Was
+  technisch unmöglich sein muss, gehört in die Befehlssperren.
+- Wirksam wird der Regeltext bei einem Agenten erst, wenn er aktualisiert wurde.
+
+---
+
 ## [1.233.0] - 2026-08-18
 
 ### Behoben

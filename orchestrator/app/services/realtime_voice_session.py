@@ -1669,8 +1669,22 @@ class RealtimeVoiceSession:
                 "mcp_call_tool auf.\n"
             )
 
+        # Master-Regeln des Betreibers. Die Agenten-Laufzeiten bekommen sie ueber
+        # ihre Anleitungsdatei; die Sprachfront baut ihren Prompt selbst und
+        # muss sie ausdruecklich holen — sonst gaelte das Gesetz fuer alle
+        # ausser der Stimme. Ganz vorne, damit sie ueber allem steht.
+        _master = ""
+        try:
+            from app.core import master_rules as _mr
+            from app.db.session import async_session_factory
+            async with async_session_factory() as _db:
+                _master = await _mr.load(_db)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Sprache] Master-Regeln nicht ladbar: %s", e)
+
         sys_prompt = (
-            _system_prompt(agent_name, agent_role, language)
+            _master
+            + _system_prompt(agent_name, agent_role, language)
             + _ob_note + _rhythm_note + _mcp_note + self._memory_context
         )
         engine = creds.get("engine") or "nova_sonic"

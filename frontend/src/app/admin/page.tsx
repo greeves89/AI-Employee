@@ -6,7 +6,7 @@ import {
   Users,
   Cpu,
   Container,
-  Shield,
+  Shield, ShieldAlert,
   ShieldCheck,
   ShieldX,
   Trash2,
@@ -49,6 +49,7 @@ import { SecretsView } from "@/app/secrets/view";
 import { HealthView } from "@/app/health/view";
 import { AuditView } from "@/app/audit/view";
 import { DlpView } from "@/app/admin/dlp-view";
+import { MasterRulesView } from "@/app/admin/master-rules-view";
 import { cn, timeAgo, formatCost } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
@@ -66,6 +67,7 @@ import { formatMoney } from "@/lib/money";
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
   | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit" | "dlp"
+  | "master-rules"
   | "pages" | "sso-groups";
 
 // Tabs whose content is a full embedded page component (rendered without
@@ -78,7 +80,7 @@ const TAB_GROUPS: { id: string; label: string; icon: typeof Users; tabs: Tab[] }
   { id: "people", label: "Nutzer & Rollen", icon: Users, tabs: ["users", "roles", "sso-groups"] },
   { id: "agents", label: "Agenten", icon: Cpu, tabs: ["agents", "assignments"] },
   { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains"] },
-  { id: "security", label: "Sicherheit", icon: Shield, tabs: ["secrets", "dlp", "audit"] },
+  { id: "security", label: "Sicherheit", icon: Shield, tabs: ["master-rules", "secrets", "dlp", "audit"] },
   { id: "ops", label: "Betrieb", icon: HeartPulse, tabs: ["health", "budget", "feedback"] },
   { id: "system", label: "System", icon: SettingsIcon, tabs: ["settings", "pages"] },
 ];
@@ -405,6 +407,7 @@ export default function AdminPage() {
     { id: "health", label: "Health", icon: HeartPulse },
     { id: "audit", label: "Audit Log", icon: ScrollText },
     { id: "dlp", label: "DLP-Filter", icon: Shield },
+    { id: "master-rules", label: "Master-Regeln", icon: ShieldAlert },
     { id: "pages", label: "Seiten & Links", icon: AppWindow },
     { id: "sso-groups", label: "SSO-Gruppen", icon: KeyRound },
   ];
@@ -494,6 +497,7 @@ export default function AdminPage() {
             {tab === "health" && <HealthView embedded />}
             {tab === "audit" && <AuditView embedded />}
             {tab === "dlp" && <DlpView embedded />}
+            {tab === "master-rules" && <MasterRulesView />}
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center py-20">

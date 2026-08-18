@@ -62,6 +62,10 @@ ALLOWED_KEYS = SECRET_KEYS | {
     # Einstellungen, nicht nur die Waehrung.
     "allow_team_license",
     "allow_personal_credentials",
+    # Master-Regeln: Verhaltensvorgaben fuer ALLE Agenten aller Nutzer.
+    # Bewusst KEIN Geheimnis — sie sollen im Klartext nachlesbar sein.
+    "master_rules",
+    "master_rules_enabled",
     "display_currency",
     "usd_eur_rate",
     "aws_region",

@@ -837,7 +837,8 @@ def _identity_line(name: str, role: str) -> str:
 
 def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
                       workspace_size_gb: float | None = None,
-                      agent_name: str = "", agent_role: str = "") -> str:
+                      agent_name: str = "", agent_role: str = "",
+                      master_rules: str = "") -> str:
     """Render the agent CLAUDE.md from its template — the SINGLE place that fills
     its placeholders (identity, workspace soft-quota, host-mounts section). Used by
     the create / update / restart paths, so the substitution lives in exactly one spot.
@@ -846,7 +847,12 @@ def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
     honour an individual agent's quota override (``config["workspace_size_gb"]``).
     """
     size = settings.agent_workspace_size_gb if workspace_size_gb is None else workspace_size_gb
-    return (
+    # Die Master-Regeln stehen GANZ OBEN, nicht am Ende: die Agenten-Laufzeit
+    # kuerzt eine zu lange Anleitung von hinten (siehe
+    # runner_hooks.get_identity_context). Angehaengt waeren ausgerechnet die
+    # Regeln, die immer gelten sollen, bei einem gespraechigen Agenten als
+    # Erstes weg.
+    return master_rules + (
         DEFAULT_CLAUDE_MD
         .replace("$AGENT_IDENTITY", _identity_line(agent_name, agent_role))
         .replace("$AGENT_WORKSPACE_SIZE_GB", str(size))
@@ -1510,7 +1516,9 @@ class AgentManager:
 
         # Initialize workspace files
         agent_mounts = []
-        claude_md = _render_claude_md(agent_mounts, agent_name=name, agent_role=role or "")
+        from app.core import master_rules as _mr
+        claude_md = _render_claude_md(agent_mounts, agent_name=name, agent_role=role or "",
+                                      master_rules=await _mr.load(self.db))
         # Same instruction text for EVERY harness — only the file name differs, because
         # each CLI reads its own (see instructions_paths). Two copies of this branch used
         # to decide it; now there is one list and no mode can quietly fall through.
@@ -1809,8 +1817,10 @@ class AgentManager:
         # Claude Code, AGENT.md for Custom LLM — model-agnostic naming).
         try:
             agent_mounts = config.get("mounts", [])
+            from app.core import master_rules as _mr
             fresh_claude_md = _render_claude_md(
-                agent_mounts, catalog, agent_name=agent.name, agent_role=role or ""
+                agent_mounts, catalog, agent_name=agent.name, agent_role=role or "",
+                master_rules=await _mr.load(self.db),
             )
             mode = agent.mode or config.get("mode", "claude_code")
             for target_file in instructions_paths(mode):
@@ -1935,9 +1945,11 @@ class AgentManager:
             from app.core.mounts import get_effective_catalog
             catalog = await get_effective_catalog(self.db)
             mode = agent.mode or (agent.config or {}).get("mode", "claude_code")
+            from app.core import master_rules as _mr
             rendered = _render_claude_md(
                 (agent.config or {}).get("mounts", []), catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
+                master_rules=await _mr.load(self.db),
             )
             for path in instructions_paths(mode):
                 self.docker.write_file_in_container(agent.container_id, path, rendered)
@@ -2115,9 +2127,11 @@ class AgentManager:
         _instructions_files = instructions_paths(mode)
         try:
             _agent_mounts = (agent.config or {}).get("mounts", [])
+            from app.core import master_rules as _mr
             _rendered = _render_claude_md(
                 _agent_mounts, catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
+                master_rules=await _mr.load(self.db),
             )
             for _path in _instructions_files:
                 self.docker.write_file_in_container(container.id, _path, _rendered)

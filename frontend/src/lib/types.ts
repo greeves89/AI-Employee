@@ -276,6 +276,9 @@ export interface Settings {
   sso_only_login?: boolean;
   /** Duerfen Mitarbeiter ihr eigenes Claude-/ChatGPT-Abo einbinden? */
   allow_personal_credentials?: boolean;
+  /** Master-Regeln: Verhaltensvorgaben fuer ALLE Agenten aller Nutzer. */
+  master_rules?: string;
+  master_rules_enabled?: boolean;
   require_user_approval?: boolean;
   revoke_msgraph_on_logout?: boolean;
   // Meeting → MS Planner + "Dreaming"-Memory
