@@ -141,9 +141,23 @@ jobs:
       - name: Create .dmg
         working-directory: computer-use-bridge
         run: |
+          set -euo pipefail
           # Create a temp folder with the .app
           mkdir -p dmg_stage
-          cp -r "dist/AI-Employee Bridge.app" dmg_stage/
+          # `cp -r` zerstoert die Code-Signatur: BSD-cp mangelt die
+          # Symlink-Struktur von Python.framework (Versions/Current), womit die
+          # gesiegelte Framework-Signatur ungueltig wird — Apples Notardienst
+          # meldete daraufhin "signature of the binary is invalid", obwohl
+          # `codesign --verify` VOR dem Kopieren noch bestand. `ditto` ist
+          # Apples Werkzeug fuer genau das: es kopiert signierte Bundles samt
+          # Symlinks und Signatur unveraendert.
+          ditto "dist/AI-Employee Bridge.app" "dmg_stage/AI-Employee Bridge.app"
+
+          # Beweis, dass die Signatur den Kopiervorgang UEBERLEBT hat — sonst
+          # scheitert erst Apple Minuten spaeter, und niemand sieht warum.
+          if [ "${{ steps.apple_signing.outputs.available }}" = "true" ]; then
+            codesign --verify --deep --strict --verbose=2 "dmg_stage/AI-Employee Bridge.app"
+          fi
 
           # Create a symlink to /Applications for drag-install UX
           ln -s /Applications dmg_stage/Applications

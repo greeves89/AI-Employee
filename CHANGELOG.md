@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.240.2] - 2026-08-18
+
+### Behoben (Build/Signierung)
+- **Notarisierung weiterhin „invalid" trotz korrekter Signatur — Ursache: der
+  DMG-Staging-Schritt.** `cp -r` zerstörte die Code-Signatur beim Kopieren der
+  fertig signierten App: BSD-`cp` mangelt die Symlink-Struktur von
+  `Python.framework`, wodurch die gesiegelte Signatur ungültig wird —
+  `codesign --verify` bestand VOR dem Kopieren noch. Ersetzt durch `ditto`
+  (Apples Werkzeug für signierte Bundles) plus eine erneute Verify-Prüfung
+  NACH dem Kopieren, damit ein Signaturbruch sofort im Build auffällt statt
+  erst Minuten später bei Apple.
+
+---
+
 ## [1.240.1] - 2026-08-18
 
 ### Behoben (Build/Signierung)
