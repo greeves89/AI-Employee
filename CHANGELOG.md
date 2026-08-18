@@ -28,6 +28,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.222.0] - 2026-08-18
+
+### Neu
+- **Agenten können Ansichten einblenden statt nur Wortlisten** — `present_view`,
+  in allen drei Laufzeiten. Der Agent zeigt etwas, hält an und bekommt die Wahl
+  des Nutzers zurück. Erste Ansicht: `image_choice` — mehrere Bilder
+  nebeneinander, ein Klick wählt. Der häufigste Fall: ein Marketing-Agent
+  erzeugt Varianten und will wissen, welche.
+- Gebaut als **Erweiterung der Rückfrage**, nicht als zweiter Weg daneben:
+  dieselbe Zeile, dasselbe Anhalten des Agenten, derselbe Rückweg über
+  `user_response`. Dadurch funktioniert eine Ansicht ohne weiteres Zutun in der
+  Ablage, auf Telegram und auf dem Telefon — dort als Wortoptionen.
+- Sichtbar **im Chat und im Sprachmodus**. Im Sprachcockpit zahlt sie sich am
+  meisten aus: „das dritte, mit dem größeren Schriftzug" ist gesprochen mühsam
+  und als Klick eine Sekunde.
+
+### Sicherheit
+- Der Agent liefert **kein Markup**, sondern einen Namen aus einer Liste. Ein
+  Modell, das HTML in die Oberfläche schreiben darf, ist ein Einfallstor mit
+  Zwischenschritt — zumal sein Rohstoff (Webseiten, Dateien, Mails) von außen
+  kommt. Server und Frontend führen dieselbe Liste, ein Test hält sie zusammen.
+- Unbekannte Namen und übergroße Nutzlasten werden verworfen, **die Rückfrage
+  bleibt bestehen** — sonst stünde der Agent still und der Nutzer sähe nichts.
+- Bilder werden als **Pfad** übergeben, nie als Inhalt: die Nutzlast liegt in
+  derselben Zeile wie die Freigabe und geht über denselben Redis-Kanal.
+
+### Behoben
+- **Im Sprachmodus gingen Antwortmöglichkeiten verloren.** Dort standen fest
+  `options[0]` und `options[1]` — bei einer Frage mit vier Antworten kamen zwei
+  gar nicht an, und der Nutzer konnte die richtige nicht geben. Im Sprachmodus
+  wiegt das besonders schwer: dieses Feld ist dort die einzige Stelle zum
+  Antworten. Jetzt werden alle Optionen gezeigt, und die Wahl wird
+  weitergereicht statt nur „genehmigt".
+
+---
+
 ## [1.221.0] - 2026-08-18
 
 ### Behoben

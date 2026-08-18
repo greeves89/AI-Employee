@@ -1242,6 +1242,61 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "present_view",
+            "description": (
+                "Ask the user something with a PICTURE instead of a list of words, "
+                "and WAIT for the answer. Blocks exactly like request_approval and "
+                "returns what the user chose.\n\n"
+                "Use it when the answer is easier to point at than to describe — "
+                "choosing between images you generated is the clear case. If plain "
+                "words do the job, use request_approval; a view for a yes/no "
+                "question is just slower.\n\n"
+                "The view itself lives in the web UI; you pick one by name and hand "
+                "it data. Views available today:\n"
+                "  image_choice — several images side by side, the user picks one. "
+                "Data: {\"images\": [{\"path\": \"/workspace/...\", \"label\": \"...\"}]}. "
+                "Give FILE PATHS in your workspace, never image content.\n\n"
+                "Always pass `options` as well: they are the same question in plain "
+                "words. Telegram, the phone app and voice-only use them — a view "
+                "that only works in one place leaves those users stuck."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "view": {
+                        "type": "string",
+                        "description": "Which view to show",
+                        "enum": ["image_choice"],
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "The view's payload — see the description for the shape it expects",
+                    },
+                    "question": {
+                        "type": "string",
+                        "description": "The question, in words. Shown above the view and used wherever the view cannot be drawn.",
+                    },
+                    "options": {
+                        "type": "array",
+                        "description": (
+                            "The same choices in plain words — the fallback for "
+                            "Telegram, phone and voice. Keep them in the same order "
+                            "as the view's items."
+                        ),
+                        "items": {"type": "string"},
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Additional context for the user",
+                    },
+                },
+                "required": ["view", "data", "question"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "escalate_if_unsure",
             "description": (
                 "Report how confident you are (0-100) BEFORE acting on an uncertain "

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ApprovalRequest } from "@/lib/types";
+import { AGENT_VIEWS, AgentView } from "@/components/agents/agent-views";
 
 interface ApprovalModalProps {
   request: ApprovalRequest | null;
@@ -225,6 +226,25 @@ export function ApprovalModal({
                             {request.question}
                           </div>
                         </div>
+
+                        {/* Ansicht des Agenten, falls er eine mitgeschickt hat.
+                            Die Wortoptionen darunter bleiben stehen: sie sind
+                            dieselbe Frage fuer alle, die die Ansicht nicht
+                            sehen oder lieber tippen. */}
+                        {request.view && AGENT_VIEWS[request.view.name] && (
+                          <div>
+                            <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
+                              Auswahl
+                            </label>
+                            <AgentView
+                              name={request.view.name}
+                              agentId={request.agent_id}
+                              data={request.view.data || {}}
+                              antworten={handleAnswer}
+                              beschaeftigt={isSubmitting}
+                            />
+                          </div>
+                        )}
 
                         {/* Antwortmoeglichkeiten.
                             Bis 2026-08-18 standen sie hier als <span> — reiner

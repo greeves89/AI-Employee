@@ -8,6 +8,7 @@ import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
 import * as api from "@/lib/api";
 import type { ApprovalRequest } from "@/lib/types";
+import { AGENT_VIEWS, AgentView } from "@/components/agents/agent-views";
 import { sendMeetingTranscriptToChat, getChatHistory, uploadFiles } from "@/lib/api";
 
 // The knowledge-graph overlay (WebGL) is client-only and heavy → load on demand.
@@ -390,11 +391,13 @@ export function VoiceSessionModal({
     return () => { stop = true; clearInterval(iv); };
   }, [state, agentId]);
 
-  const decideApproval = useCallback(async (approve: boolean) => {
+  // ``antwort`` ist die gewaehlte Option oder die Wahl aus einer Ansicht. Ohne
+  // sie erfuhr der Agent nur „genehmigt" und nicht, WAS gewaehlt wurde.
+  const decideApproval = useCallback(async (approve: boolean, antwort?: string) => {
     if (!pendingApproval || approvalBusy) return;
     setApprovalBusy(true);
     try {
-      if (approve) await api.approveCommand(pendingApproval.approval_id);
+      if (approve) await api.approveCommand(pendingApproval.approval_id, antwort);
       else await api.denyCommand(pendingApproval.approval_id, "Im Sprachchat abgelehnt");
       setPendingApproval(null);
     } catch { /* bleibt stehen, damit der Nutzer es erneut versuchen kann */ }
@@ -1263,21 +1266,53 @@ export function VoiceSessionModal({
                   {pendingApproval.tool && pendingApproval.question && (
                     <p className="mt-1 text-[11px] text-amber-400/70 font-mono">{pendingApproval.tool}</p>
                   )}
+                  {/* Die Ansicht des Agenten, wenn er eine mitgeschickt hat.
+                      Genau hier zahlt sie sich am meisten aus: „das dritte, mit
+                      dem groesseren Schriftzug" ist gesprochen muehsam und als
+                      Klick eine Sekunde. */}
+                  {pendingApproval.view && AGENT_VIEWS[pendingApproval.view.name] && (
+                    <div className="mt-3">
+                      <AgentView
+                        name={pendingApproval.view.name}
+                        agentId={agentId}
+                        data={pendingApproval.view.data || {}}
+                        antworten={(antwort) => decideApproval(true, antwort)}
+                        beschaeftigt={approvalBusy}
+                      />
+                    </div>
+                  )}
+
+                  {/* Alle Antwortmoeglichkeiten, nicht nur zwei.
+                      Bis 2026-08-18 standen hier fest ``options[0]`` und
+                      ``options[1]`` — bei einer Frage mit vier Antworten gingen
+                      zwei verloren, und der Nutzer konnte die richtige gar nicht
+                      geben. Im Sprachmodus faellt das besonders ins Gewicht:
+                      dort ist dieses Feld die einzige Stelle zum Antworten. */}
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      onClick={() => decideApproval(true)}
-                      disabled={approvalBusy}
-                      className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-50 transition-colors"
-                    >
-                      {approvalBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                      {pendingApproval.options?.[0] || "Freigeben"}
-                    </button>
+                    {(pendingApproval.options && pendingApproval.options.length > 0
+                      ? pendingApproval.options
+                      : ["Freigeben", "Ablehnen"]
+                    ).map((opt, i) => (
+                      <button
+                        key={opt}
+                        onClick={() => decideApproval(true, opt)}
+                        disabled={approvalBusy}
+                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+                          i === 0
+                            ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
+                            : "bg-foreground/[0.06] text-foreground/80 hover:bg-foreground/[0.1]"
+                        }`}
+                      >
+                        {approvalBusy && i === 0 && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {opt}
+                      </button>
+                    ))}
                     <button
                       onClick={() => decideApproval(false)}
                       disabled={approvalBusy}
                       className="rounded-lg bg-red-500/15 px-3 py-1.5 text-sm font-medium text-red-400 hover:bg-red-500/25 disabled:opacity-50 transition-colors"
                     >
-                      {pendingApproval.options?.[1] || "Ablehnen"}
+                      Ablehnen
                     </button>
                   </div>
                 </div>

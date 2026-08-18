@@ -46,6 +46,10 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     # Nachfragen darf nie an einer Freigabe scheitern: ein Agent, der die
     # Rueckfrage nicht stellen kann, raet stattdessen (#389).
     "escalate_if_unsure",
+    # Eine Ansicht IST eine Rueckfrage, nur mit Bild statt Wortliste — sie darf
+    # aus demselben Grund nicht an einer Freigabe haengen. Sie fuehrt zudem
+    # nichts aus: sie zeigt etwas und wartet auf die Wahl des Nutzers.
+    "present_view",
     "rate_task",
     "memory_save", "memory_search", "memory_list", "memory_delete",
     "read_file", "list_files", "glob", "grep", "view_image",

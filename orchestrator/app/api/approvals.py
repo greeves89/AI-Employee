@@ -94,6 +94,18 @@ class ApprovalRequest(BaseModel):
     # Wofuer die Freigabe steht: gewoehnliche Rueckfrage, Eskalation wegen
     # Unsicherheit (#389), erschoepfte Selbstheilung (#390), Reflexionsvorschlag.
     kind: str | None = None
+    # Eine Ansicht statt einer Liste von Textoptionen: {"name": ..., "data": {...}}.
+    #
+    # Der Name zeigt auf eine Komponente, die IM FRONTEND liegt — der Agent
+    # liefert bewusst kein Markup. Ein Modell, das HTML in die Oberflaeche
+    # schreiben darf, ist ein Einfallstor mit Zwischenschritt.
+    #
+    # Bewusst hier und nicht als eigener Endpunkt: eine Ansicht ist eine
+    # Rueckfrage, die anders aussieht. Sie braucht dasselbe Anhalten des Agenten,
+    # denselben Rueckweg (``user_response``), dieselbe Ablage und dieselbe
+    # Zustellung nach Telegram und iOS. Ein zweiter Weg daneben muesste das alles
+    # noch einmal koennen — und wuerde beim ersten Kanal auseinanderlaufen.
+    view: dict | None = None
 
 
 class ConfidenceCheck(BaseModel):
@@ -132,6 +144,39 @@ class ApprovalAnswer(BaseModel):
 # HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
+#: Was eine Ansicht sein darf. Der Name zeigt auf eine Komponente im Frontend;
+#: was hier nicht steht, gibt es nicht. Bewusst eine Liste und keine Pruefung auf
+#: „sieht harmlos aus": ein Name, den die Oberflaeche nicht kennt, wuerde dort zu
+#: einer leeren Flaeche — der Agent haette angehalten und niemand koennte
+#: antworten.
+ERLAUBTE_ANSICHTEN = {
+    # Der kleinste Beweis: aus mehreren Bildern eines waehlen. Deckt den
+    # haeufigsten Fall ab (Marketing-Agent erzeugt Varianten) und braucht keine
+    # Bearbeitung im Browser.
+    "image_choice",
+}
+
+#: Obergrenze fuer die Nutzlast einer Ansicht. Sie liegt in ``meta`` derselben
+#: Zeile wie die Freigabe und geht ueber denselben Redis-Kanal — ein Agent, der
+#: dort ein eingebettetes Bild ablegt, wuerde beides sprengen. Bilder gehoeren
+#: als Pfad hinein, nicht als Inhalt.
+ANSICHT_MAX_ZEICHEN = 8000
+
+
+def _saubere_ansicht(roh: dict) -> dict | None:
+    """Nimmt nur, was die Oberflaeche auch zeichnen kann."""
+    name = (roh or {}).get("name")
+    if name not in ERLAUBTE_ANSICHTEN:
+        logger.warning("Unbekannte Ansicht %r angefordert — wird ignoriert, die "
+                       "Rueckfrage laeuft ueber die Textoptionen", scrub_log(str(name)))
+        return None
+    daten = (roh or {}).get("data") or {}
+    if len(json.dumps(daten, default=str)) > ANSICHT_MAX_ZEICHEN:
+        logger.warning("Ansicht %r zu gross — wird ignoriert", scrub_log(str(name)))
+        return None
+    return {"name": name, "data": daten}
+
+
 def _approval_to_dict(a: CommandApproval) -> dict:
     meta = a.meta or {}
     return {
@@ -144,6 +189,7 @@ def _approval_to_dict(a: CommandApproval) -> dict:
         "input": meta.get("input") or {},
         "question": meta.get("question"),
         "options": meta.get("options"),
+        "view": meta.get("view"),
         "context": meta.get("context"),
         "target_channel": meta.get("target_channel"),
         "meta": meta,
@@ -266,6 +312,8 @@ async def request_approval(
         meta["kind"] = body.kind
     if body.task_id:
         meta["task_id"] = body.task_id
+    if body.view:
+        meta["view"] = _saubere_ansicht(body.view)
 
     # Persist to DB
     approval = CommandApproval(

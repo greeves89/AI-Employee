@@ -766,6 +766,16 @@ class OrchestratorAPIClient:
             "risk_level": "medium",
             "target_channel": params.get("target_channel", "all"),
         }
+        return await self._fragen_und_warten(body, params)
+
+    async def _fragen_und_warten(self, body: dict, params: dict) -> str:
+        """Frage stellen und anhalten, bis der Nutzer entschieden hat.
+
+        Herausgeloest, damit ``present_view`` denselben Weg geht: dieselbe
+        Warteschleife, dieselbe Zeitgrenze, dieselbe Rueckmeldung. Eine Ansicht
+        ist eine Rueckfrage, die anders aussieht — sie darf keine zweite
+        Mechanik daneben bekommen, sonst laufen die beiden auseinander.
+        """
         result = await self._request("POST", "/approvals/request", json=body)
         if isinstance(result, str):
             return result
@@ -790,13 +800,13 @@ class OrchestratorAPIClient:
             choice = check.get("user_response") or ""
             if status == "approved":
                 return (
-                    f"APPROVED by the user."
+                    "APPROVED by the user."
                     + (f" Chosen option: {choice}." if choice else "")
                     + " You may now proceed accordingly."
                 )
             if status == "denied":
                 return (
-                    f"DENIED by the user."
+                    "DENIED by the user."
                     + (f" {choice}" if choice else "")
                     + " Do NOT perform the action. Stop and inform the user."
                 )
@@ -806,6 +816,38 @@ class OrchestratorAPIClient:
             f"Do NOT proceed with the action. Stop now and tell the user you are waiting "
             f"for their approval; they can still decide later under Approvals."
         )
+
+    async def present_view(self, params: dict) -> str:
+        """Eine Ansicht zeigen statt einer Liste von Woertern — und warten.
+
+        Geht bewusst denselben Weg wie ``request_approval``: derselbe Endpunkt,
+        dasselbe Anhalten, derselbe Rueckweg ueber ``user_response``. Der
+        Unterschied ist ein Feld mehr im Rumpf.
+
+        ``options`` sind kein Beiwerk: Telegram, die Telefon-App und der reine
+        Sprachbetrieb koennen keine Ansicht zeichnen. Ohne sie waere der Nutzer
+        dort mit einer Frage allein, die er nicht beantworten kann — und der
+        Agent stuende bis zur Zeitgrenze.
+        """
+        optionen = params.get("options") or []
+        if not optionen:
+            # Aus den Bildbeschriftungen ableiten, statt den Nutzer auf anderen
+            # Kanaelen im Regen stehen zu lassen.
+            bilder = (params.get("data") or {}).get("images") or []
+            optionen = [
+                str(b.get("label") or f"Bild {i + 1}")
+                for i, b in enumerate(bilder)
+                if isinstance(b, dict)
+            ]
+        body = {
+            "question": params.get("question", ""),
+            "options": optionen or ["Ja", "Nein"],
+            "context": params.get("context", ""),
+            "risk_level": "low",
+            "target_channel": "all",
+            "view": {"name": params.get("view"), "data": params.get("data") or {}},
+        }
+        return await self._fragen_und_warten(body, params)
 
     async def escalate_if_unsure(self, params: dict) -> str:
         """Konfidenz melden — der Server entscheidet, ob sie reicht (#389).

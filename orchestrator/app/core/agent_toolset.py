@@ -70,8 +70,8 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "send_teams_message", "update_calendar_event", "update_planner_task"
     ],
     "notification": [
-        "escalate_if_unsure", "notify_user", "present_file", "request_approval",
-        "send_telegram"
+        "escalate_if_unsure", "notify_user", "present_file", "present_view",
+        "request_approval", "send_telegram"
     ],
     "orchestrator": [
         "app_logs", "complete_onboarding", "complete_todo", "create_schedule",
@@ -141,6 +141,7 @@ DEFINITION_TOOLS = [
     "plan_day",
     "present_file",
     "present_image",
+    "present_view",
     "rate_task",
     "read_file",
     "rebuild_app",

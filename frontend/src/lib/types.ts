@@ -589,6 +589,9 @@ export interface ApprovalRequest {
   denied_by?: string;
   denied_at?: string;
   deny_reason?: string;
+  /** Eine Ansicht statt reiner Wortoptionen. Der Name zeigt auf eine
+   *  Komponente in `agent-views.tsx`; unbekannte Namen filtert der Server. */
+  view?: { name: string; data: Record<string, unknown> } | null;
 }
 
 // Docker Apps
