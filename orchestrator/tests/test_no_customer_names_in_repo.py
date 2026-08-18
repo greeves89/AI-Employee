@@ -26,6 +26,7 @@ oeffentlich gepusht wurde, bleibt in der git-Historie und in fremden Klonen.
 """
 
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -52,8 +53,30 @@ TEXTENDUNGEN = {
 }
 
 
-def _dateien():
-    for p in ROOT.rglob("*"):
+def _kandidaten():
+    """Die Dateien, die tatsaechlich oeffentlich werden.
+
+    Bis 2026-08-18 lief die Pruefung ueber das ganze Arbeitsverzeichnis. Damit
+    schlug sie auch bei rein oertlichen Notizen an, die nie in git landen — ein
+    ``todo.md`` mit dem Kundennamen im Wurzelverzeichnis genuegte, und die
+    Pruefung war dauerhaft rot. Ein dauerhaft roter Test wird ignoriert, und
+    dann faengt er den echten Fall nicht mehr.
+
+    ``git ls-files`` liefert den Index: alles Eingecheckte UND alles bereits
+    Vorgemerkte. Vormerken ist genau der Moment, in dem gewarnt werden muss —
+    davor ist es eine private Notiz, danach ist es zu spaet.
+    """
+    try:
+        roh = subprocess.run(
+            ["git", "ls-files", "-z"], cwd=ROOT,
+            capture_output=True, check=True, text=True, timeout=30,
+        ).stdout
+        pfade = [ROOT / n for n in roh.split("\0") if n]
+    except (OSError, subprocess.SubprocessError):
+        # Kein git zur Hand (z. B. im Docker-Bauzusammenhang) — dann lieber
+        # alles pruefen als nichts.
+        pfade = list(ROOT.rglob("*"))
+    for p in pfade:
         if not p.is_file() or p.suffix.lower() not in TEXTENDUNGEN:
             continue
         if UEBERSPRINGEN & set(p.parts):
@@ -61,6 +84,10 @@ def _dateien():
         if str(p.relative_to(ROOT)) in AUSNAHMEN:
             continue
         yield p
+
+
+def _dateien():
+    yield from _kandidaten()
 
 
 class NoCustomerNamesTests(unittest.TestCase):

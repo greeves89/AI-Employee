@@ -300,9 +300,23 @@ export default function ApprovalsPage() {
     }
   };
 
-  const handleApprove = async (approvalId: string) => {
-    await approveCommand(approvalId);
+  const handleApprove = async (approvalId: string, answer?: string) => {
+    await approveCommand(approvalId, answer);
     await loadApprovals();
+  };
+
+  // Direkt aus der Liste antworten, ohne das Fenster zu oeffnen. Nutzt denselben
+  // Weg wie das Fenster — eine zweite Mechanik daneben waere die naechste
+  // Baustelle.
+  const handleAnswerInline = async (approvalId: string, answer: string) => {
+    setBusyApprovalId(approvalId);
+    try {
+      await handleApprove(approvalId, answer);
+    } catch (error) {
+      console.error("Failed to answer:", error);
+    } finally {
+      setBusyApprovalId(null);
+    }
   };
 
   // Reflection entries are resolved inline (Übernehmen/Verwerfen), no modal.
@@ -802,15 +816,23 @@ export default function ApprovalsPage() {
                             {/* Question */}
                             <p className="text-sm mb-2">{approval.question}</p>
                             {/* Options */}
+                            {/* Anklickbar, genau wie im Detailfenster — sonst
+                                haetten wir zwei Ansichten derselben Frage, von
+                                denen nur eine antworten kann. */}
                             {approval.options && approval.options.length > 0 && (
                               <div className="flex flex-wrap gap-2 mb-2">
                                 {approval.options.map((opt) => (
-                                  <span
+                                  <button
                                     key={opt}
-                                    className="inline-flex items-center rounded-lg bg-foreground/[0.04] border border-foreground/[0.06] px-2.5 py-1 text-xs text-muted-foreground"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAnswerInline(approval.approval_id, opt);
+                                    }}
+                                    disabled={isBusy}
+                                    className="inline-flex items-center rounded-lg border border-foreground/[0.06] bg-foreground/[0.04] px-2.5 py-1 text-xs transition-all hover:border-primary/40 hover:bg-primary/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     {opt}
-                                  </span>
+                                  </button>
                                 ))}
                               </div>
                             )}

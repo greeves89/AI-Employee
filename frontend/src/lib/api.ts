@@ -2613,9 +2613,16 @@ export async function getPendingApprovals(): Promise<{ approvals: ApprovalReques
   return fetchJSON(`${getBase()}/approvals/pending`);
 }
 
-export async function approveCommand(approvalId: string): Promise<{ approval_id: string; status: string }> {
+// `answer` ist die gewaehlte Antwortmoeglichkeit (oder freier Text), wenn der
+// Agent eine Rueckfrage mit Optionen gestellt hat. Ohne sie verhaelt sich der
+// Aufruf wie bisher — der Server nimmt dann „Approved by <mail>".
+export async function approveCommand(
+  approvalId: string,
+  answer?: string,
+): Promise<{ approval_id: string; status: string }> {
   return fetchJSON(`${getBase()}/approvals/${approvalId}/approve`, {
     method: "POST",
+    body: JSON.stringify({ answer: answer || null }),
   });
 }
 

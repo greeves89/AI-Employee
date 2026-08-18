@@ -346,12 +346,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       if (decision) {
         const approved = decision.status === "approved";
+        // Die Antwort des Nutzers wurde bisher NUR bei Ablehnung weitergegeben.
+        // Bei einer Rueckfrage mit Antwortmoeglichkeiten ist sie aber der ganze
+        // Punkt: „genehmigt" beantwortet die Frage nicht, welche Option gemeint
+        // war. Der Custom-LLM-Weg liest `user_response` seit jeher als die
+        // Wahl — hier fehlte es, und damit war die Faehigkeit nicht in allen
+        // Laufzeiten gleich.
+        const antwort = (decision.user_response || "").trim();
+        const istNurBestaetigung = /^Approved by /.test(antwort);
+        const gewaehlt = antwort && !istNurBestaetigung
+          ? ` Antwort des Nutzers: "${antwort}" — richte dich danach.`
+          : "";
         return {
           content: [{
             type: "text",
             text: approved
-              ? `User APPROVED the action (approval_id: ${approvalId}). You may proceed.`
-              : `User DENIED the action (approval_id: ${approvalId}). Reason: "${decision.user_response || "No reason given"}". Do NOT proceed.`,
+              ? `User APPROVED the action (approval_id: ${approvalId}). You may proceed.${gewaehlt}`
+              : `User DENIED the action (approval_id: ${approvalId}). Reason: "${antwort || "No reason given"}". Do NOT proceed.`,
           }],
         };
       } else {

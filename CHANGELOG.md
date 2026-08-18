@@ -5,6 +5,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.221.0] - 2026-08-18
+
+### Behoben
+- **Die Antwortmöglichkeiten einer Agenten-Rückfrage waren nicht anklickbar.**
+  Ein Agent fragte nach und bot vier Antworten an — sie standen als reiner Text
+  da. Zur Auswahl standen nur „Approve" und „Deny", und `approve` schrieb in
+  `user_response` grundsätzlich `Approved by <mail>`. Der Agent erfuhr also
+  nie, **welche** der vier Antworten gemeint war, und fragte im nächsten Zug
+  erneut. Wer wirklich antworten wollte, musste **ablehnen** und die Antwort
+  ins Begründungsfeld tippen — bei einer harmlosen Verständnisfrage.
+- **Über Telegram ging das Wählen die ganze Zeit** (die Wahl landet dort in
+  `user_response`), und der Custom-LLM-Weg liest dieses Feld seit jeher als die
+  Wahl. Nur die Weboberfläche und der MCP-Weg hatten es nie bekommen — eine
+  Lücke in der Parität der Laufzeiten, keine fehlende Funktion.
+- Jetzt: Optionen als Knöpfe, im Detailfenster **und** in der Liste. Dazu ein
+  Feld „Oder eigene Antwort", weil oft keine der angebotenen passt — im
+  gemeldeten Fall lautete eine Option „bitte im Chat nennen", was den Nutzer
+  aus dem Fenster hinausgeschickt hätte.
+- Die Korrektur benutzt bewusst dieselben Felder wie der Telegram-Weg
+  (`user_response`, Redis-Schlüssel `reason`) — die Agentenseite braucht keine
+  Änderung.
+- Der MCP-Weg gibt die Antwort jetzt auch bei Zustimmung an den Agenten weiter,
+  nicht mehr nur bei Ablehnung.
+
+### Geändert
+- Die Wache gegen Kundennamen im öffentlichen Repo prüfte das ganze
+  Arbeitsverzeichnis statt das, was tatsächlich veröffentlicht wird. Eine rein
+  örtliche Notiz genügte, und die Prüfung war dauerhaft rot — ein dauerhaft
+  roter Test wird ignoriert und fängt den echten Fall dann nicht mehr. Sie
+  prüft jetzt den git-Index: alles Eingecheckte **und** alles Vorgemerkte.
+  Vormerken ist genau der Moment, in dem gewarnt werden muss.
+
+---
+
 ## [1.220.5] - 2026-08-18
 
 ### Geändert

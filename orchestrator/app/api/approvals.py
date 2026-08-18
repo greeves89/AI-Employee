@@ -112,6 +112,22 @@ class ApprovalDecision(BaseModel):
     reason: str | None = None
 
 
+class ApprovalAnswer(BaseModel):
+    """Die Antwort auf eine Rueckfrage — die gewaehlte Option oder freier Text.
+
+    Fragt ein Agent per ``request_approval`` mit Antwortmoeglichkeiten nach, dann
+    ist „genehmigt" keine Antwort: er will wissen, WELCHE. Ueber Telegram ging
+    das schon immer (die Wahl landet in ``user_response``), in der Weboberflaeche
+    nicht — dort standen die Optionen nur als Text da, und wer wirklich antworten
+    wollte, musste ABLEHNEN und die Antwort ins Begruendungsfeld tippen.
+
+    Optional, damit die bisherigen Aufrufer ohne Rumpf unveraendert
+    weiterfunktionieren.
+    """
+
+    answer: str | None = None
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -645,6 +661,7 @@ async def list_all_approvals(
 @router.post("/{approval_id}/approve")
 async def approve_request(
     approval_id: str,
+    body: ApprovalAnswer | None = None,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
@@ -673,7 +690,12 @@ async def approve_request(
 
     approval.status = ApprovalStatus.APPROVED
     approval.resolved_at = datetime.now(timezone.utc)
-    approval.user_response = f"Approved by {user.email}"
+    # Hat der Nutzer eine Option gewaehlt oder etwas geschrieben, ist DAS die
+    # Antwort. Vorher stand hier immer „Approved by <mail>" — bei einer
+    # Rueckfrage mit vier Antwortmoeglichkeiten erfuhr der Agent also nie,
+    # welche gemeint war, und fragte im naechsten Zug erneut.
+    antwort = (body.answer or "").strip() if body else ""
+    approval.user_response = antwort or f"Approved by {user.email}"
 
     audit_entry = AuditLog(
         agent_id=approval.agent_id,
@@ -693,7 +715,11 @@ async def approve_request(
     if redis and redis.client:
         await redis.client.publish(
             f"approval:{approval.id}",
-            json.dumps({"status": "approved", "approval_id": str(approval.id)}),
+            # ``reason`` ist derselbe Schluessel, den der Telegram-Weg seit jeher
+            # mit der gewaehlten Option fuellt — die Agentenseite braucht dadurch
+            # keine Aenderung.
+            json.dumps({"status": "approved", "approval_id": str(approval.id),
+                        **({"reason": antwort} if antwort else {})}),
         )
 
     # Sentinel event (#591): approval result. Emitted here — the single moment
