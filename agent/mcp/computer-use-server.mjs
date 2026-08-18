@@ -397,10 +397,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "computer_shell",
       description:
-        "Run a shell command on the user's machine. Only works if the user has " +
-        "enabled the 'shell' capability AND allowed at least one folder in the " +
-        "bridge (Berechtigungen > Ordner-Zugriff); the working directory must " +
-        "be inside an allowed folder.",
+        "Run a shell command ON THE USER'S OWN MACHINE (their Mac/PC) via the bridge — " +
+        "NOT in your container. This is how you READ and LIST the user's real local " +
+        "files and folders: when they ask 'do you see my folder X', 'what's in folder Y', " +
+        "'read that file on my machine', use this (e.g. `ls -la`, `find . -name ...`, " +
+        "`cat file.txt`) instead of a screenshot or opening Finder. It runs inside the " +
+        "folders the user allowed in the bridge (Berechtigungen > Ordner-Zugriff), so a " +
+        "path they mentioned is very likely reachable — just try it. Only works if the " +
+        "user enabled the 'shell' capability AND allowed at least one folder; the working " +
+        "directory must be inside an allowed folder (default: the first allowed folder). " +
+        "If it comes back 'gesperrt', tell the user to enable 'Shell-Befehle' and add the " +
+        "folder in the bridge.",
       inputSchema: {
         type: "object",
         required: ["command"],

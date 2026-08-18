@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.243.0] - 2026-08-18
+
+### Geändert (UI/UX — Redesign, Iteration 1)
+- **Moderne Buttons statt grauer System-Knöpfe.** Neuer gefüllter Pill-Button
+  (Primäraktion in Akzentblau, Sekundär dezent) — der Hauptgrund, warum die App
+  „alt" wirkte. Angewendet im Hauptfenster und Status-Fenster.
+- **Hauptfenster**: Höhe an den Inhalt angepasst (560 → 480) — die große leere
+  Fläche unten ist weg.
+- **Status-Fenster**: Überlauf behoben — mit allen Fähigkeiten + Ordnerpfad lief
+  die unterste Zeile aus der Karte; Karte höher, lange Pfade in der Mitte
+  gekürzt.
+- **Voice-Bar**: Text lief unter die Buttons — Bar verbreitert (760 → 880) und
+  Textbreite begrenzt, keine Überlappung mehr.
+
+### Verbessert
+- **Agenten finden lokale Dateien jetzt über die Shell.** Die Beschreibung von
+  `computer_shell` sagt jetzt klar, dass der Befehl AUF dem Rechner des Nutzers
+  in den freigegebenen Ordnern läuft — bei „siehst du meinen Ordner X" nutzt der
+  Agent `ls`/`find`/`cat` statt Screenshot/Finder, und weist bei fehlender
+  Freigabe auf „Shell-Befehle" + Ordner-Zugriff hin. (Behebt, dass ein Agent
+  einen freigegebenen Ordner nicht fand, obwohl er ihn über die Shell hätte
+  lesen können.)
+
+---
+
 ## [1.242.0] - 2026-08-18
 
 ### Hinzugefügt

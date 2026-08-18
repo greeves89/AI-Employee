@@ -719,6 +719,44 @@ def _button(cv, title, x, y, w=120, h=28, key="", style=1):
     return b
 
 
+# Die Akzentfarbe der App — genau das Blau des Speech-Buttons, von dem wir aus
+# den Screenshots WISSEN, dass es sauber rendert. Ein Ton fuer alle
+# Primaeraktionen, damit die Oberflaeche eine erkennbare Farbe hat statt lauter
+# grauer System-Knoepfe (der Hauptgrund, warum die App „alt" wirkte).
+_ACCENT_RGB = (0.06, 0.46, 0.98)
+
+
+def _pill_button(cv, title, x, y, w, h=36, primary=False, danger=False):
+    """Moderner, gefuellter Button mit runden Ecken — kein grauer Bezel.
+
+    Baut auf demselben Muster wie der Speech-Button der Interaction Bar
+    (borderless + eigene Layer-Fuellung), das nachweislich rendert. ``primary``
+    fuellt in Akzentblau mit weisser Schrift; sonst dezent gefuellt mit feiner
+    Kante. So entsteht eine klare Hierarchie: EINE Hauptaktion je Flaeche.
+    """
+    from AppKit import NSButton, NSColor, NSFont, NSMakeRect
+    b = NSButton.alloc().initWithFrame_(NSMakeRect(x, y, w, h))
+    b.setTitle_(title)
+    b.setBordered_(False)
+    b.setWantsLayer_(True)
+    b.layer().setCornerRadius_(10)
+    if primary or danger:
+        r, g, bl = (0.90, 0.29, 0.26) if danger else _ACCENT_RGB
+        b.layer().setBackgroundColor_(
+            NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, bl, 1.0).CGColor())
+        b.setContentTintColor_(NSColor.whiteColor())
+    else:
+        b.layer().setBackgroundColor_(
+            NSColor.colorWithSRGBRed_green_blue_alpha_(1, 1, 1, 0.09).CGColor())
+        b.layer().setBorderWidth_(1)
+        b.layer().setBorderColor_(
+            NSColor.colorWithSRGBRed_green_blue_alpha_(1, 1, 1, 0.16).CGColor())
+        b.setContentTintColor_(NSColor.labelColor())
+    b.setFont_(NSFont.systemFontOfSize_(13))
+    cv.addSubview_(b)
+    return b
+
+
 def _checkbox(cv, title, x, y, w, checked=False):
     from AppKit import NSButton, NSButtonTypeSwitch
     b = NSButton.alloc().initWithFrame_(((x, y), (w, 20)))
@@ -1032,11 +1070,22 @@ def show_status_window(cfg: dict) -> None:
     from AppKit import NSApp, NSColor, NSMakeRect, NSVisualEffectView
 
     W = 620
-    H = 470
+    # Hoeher (470 -> 560): mit allen Faehigkeiten + Ordnerpfad lief die unterste
+    # Zeile aus der Karte heraus (im Screenshot abgeschnitten).
+    H = 560
     PAD = 34
     COL = 126
     VAL_X = PAD + COL + 14
     VAL_W = W - VAL_X - PAD
+
+    def _short_path(p: str, keep: int = 46) -> str:
+        """Lange Pfade in der Mitte kuerzen, damit sie in die Zeile passen
+        statt am Kartenrand abgeschnitten zu werden."""
+        p = str(p)
+        if len(p) <= keep:
+            return p
+        head = keep // 2 - 2
+        return p[:head] + "…" + p[-(keep - head - 1):]
 
     server_state = {}
     server_error = ""
@@ -1095,7 +1144,7 @@ def show_status_window(cfg: dict) -> None:
     )
 
     card_x, card_y = PAD, 76
-    card_w, card_h = W - 2 * PAD, 290
+    card_w, card_h = W - 2 * PAD, 380
     _card(cv, card_x, card_y, card_w, card_h)
 
     _badge(cv, f"● {state_text}", card_x + 22, card_y + card_h - 42, badge_color)
@@ -1117,9 +1166,10 @@ def show_status_window(cfg: dict) -> None:
     if paths:
         y -= 4
         _separator(cv, card_x + 20, y, card_w - 40)
-        row("Ordner", "\n".join(paths), h=min(70, 18 * len(paths) + 18))
+        row("Ordner", "\n".join(_short_path(p) for p in paths),
+            h=min(90, 18 * len(paths) + 20))
 
-    close_btn = _button(cv, "Schliessen", W - PAD - 110, 22, 110, key="\r")
+    close_btn = _pill_button(cv, "Schliessen", W - PAD - 120, 20, 120, primary=True)
 
     h = _status_state["_handler"]
     close_btn.setTarget_(h)
@@ -1171,7 +1221,8 @@ def show_main_window(cfg: dict) -> None:
             _main_state.clear()
 
     _appkit_handlers_init()
-    W, H = 680, 560
+    # Hoehe an den Inhalt angepasst: 560 liess unten eine grosse leere Flaeche.
+    W, H = 680, 480
     PAD = 32
     panel = _make_panel("AI Employee Bridge", W, H)
     cv = panel.contentView()
@@ -1210,21 +1261,20 @@ def show_main_window(cfg: dict) -> None:
     caps_lbl = _row("Erlaubt", ", ".join(cap_map.get(c, c) for c in caps) or "Keine",
                     conn_y + conn_h - 140)
 
-    connect_btn = _button(cv, "Verbinden", card_x + 20, conn_y + 16, 130)
-    disconnect_btn = _button(cv, "Trennen", card_x + 160, conn_y + 16, 110)
+    connect_btn = _pill_button(cv, "Verbinden", card_x + 20, conn_y + 18, 150, primary=True)
+    disconnect_btn = _pill_button(cv, "Trennen", card_x + 182, conn_y + 18, 120)
 
     # ── Karte: Arbeiten ──────────────────────────────────────────────────
     act_y, act_h = conn_y - 96, 82
     _card(cv, card_x, act_y, card_w, act_h)
     _label(cv, "Arbeiten", card_x + 22, act_y + act_h - 30, 200, 18, size=13, bold=True)
-    voice_btn = _button(cv, "Voice starten", card_x + 20, act_y + 14, 140)
-    perms_btn = _button(cv, "Berechtigungen…", card_x + 170, act_y + 14, 150)
-    settings_btn = _button(cv, "Einstellungen…", card_x + 330, act_y + 14, 140)
-    web_btn = _button(cv, "Web-UI öffnen", card_x + 480, act_y + 14, 130)
+    voice_btn = _pill_button(cv, "Voice starten", card_x + 20, act_y + 16, 150, primary=True)
+    perms_btn = _pill_button(cv, "Berechtigungen…", card_x + 182, act_y + 16, 150)
+    settings_btn = _pill_button(cv, "Einstellungen…", card_x + 344, act_y + 16, 140)
+    web_btn = _pill_button(cv, "Web-UI öffnen", card_x + 496, act_y + 16, 110)
 
-    hint = _label(cv, "Die Bridge läuft im Hintergrund weiter, wenn du dieses Fenster schließt.",
-                  PAD, 24, W - 2 * PAD, 16, size=11, muted=True)
-    del hint
+    _label(cv, "Die Bridge läuft im Hintergrund weiter, wenn du dieses Fenster schließt.",
+           PAD, 22, W - 2 * PAD, 16, size=11, muted=True)
 
     class _MainHandler(NSObject):
         def doconnect_(self, _s):
@@ -1570,7 +1620,8 @@ def show_interaction_bar(cfg: dict) -> None:
         parent.addSubview_(btn)
         return btn
 
-    W, H = 760, 86
+    # Breiter (760 -> 880): der Statustext lief vorher unter die Buttons.
+    W, H = 880, 86
     panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, W, H), NSWindowStyleMaskBorderless, NSBackingStoreBuffered, False)
     panel.setReleasedWhenClosed_(False)
@@ -1629,8 +1680,10 @@ def show_interaction_bar(cfg: dict) -> None:
         status_text = f"Agenten nicht ladbar: {agents_error}"[:60]
     elif not agents:
         status_text = "Keine Agenten gefunden — Anmeldung pruefen"
-    status = _label(cv, status_text, 312, 51, 250, 16, size=11, color=color(0.63, 0.70, 0.80, 1))
-    transcript = _label(cv, "Drücke Speech und sprich.", 312, 28, 274, 18, size=12, color=color(1, 1, 1, 0.86))
+    # Breite so, dass der Text VOR dem Connect-Button endet (W-304=576) —
+    # 312..556, danach 20px Luft bis zum Button. Keine Ueberlappung mehr.
+    status = _label(cv, status_text, 312, 51, 244, 16, size=11, color=color(0.63, 0.70, 0.80, 1))
+    transcript = _label(cv, "Drücke Speech und sprich.", 312, 28, 244, 18, size=12, color=color(1, 1, 1, 0.86))
     response = _label(cv, "", 0, 0, 1, 1, size=1, muted=True)
     connect_btn = flat_button(cv, "Connect", W - 304, 27, 82, 32, color(1, 1, 1, 0.14), color(1, 1, 1, 0.90))
     record_btn = flat_button(cv, "Speech", W - 214, 22, 112, 42, color(0.06, 0.46, 0.98, 1), color(1, 1, 1, 1), radius=21)
