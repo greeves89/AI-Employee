@@ -15,6 +15,8 @@ import type { AgentTeam } from "@/lib/api";
 interface ApiConnection {
   from: string;
   to: string;
+  from_name: string;
+  to_name: string;
   count: number;
   last_at: string;
 }
@@ -134,9 +136,12 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
   const [convoLoading, setConvoLoading] = useState(false);
   const [convoError, setConvoError] = useState<string | null>(null);
 
-  const openConversation = async (agentA: string, agentB: string) => {
-    const nameA = agents.find((a) => a.id === agentA)?.name || agentA;
-    const nameB = agents.find((a) => a.id === agentB)?.name || agentB;
+  const openConversation = async (agentA: string, agentB: string, nameAHint?: string, nameBHint?: string) => {
+    // Prefer a name the caller already resolved (e.g. from the server-side
+    // from_name/to_name on a connection, which knows about deleted agents
+    // too) — the live agents list only has agents that still exist.
+    const nameA = nameAHint || agents.find((a) => a.id === agentA)?.name || agentA;
+    const nameB = nameBHint || agents.find((a) => a.id === agentB)?.name || agentB;
     setConvoAgents({ a: agentA, b: agentB, aName: nameA, bName: nameB });
     setConvoOpen(true);
     setConvoLoading(true);
@@ -784,21 +789,23 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {connections.map((conn, i) => {
-            const agentA = agents.find((a) => a.id === conn.from);
-            const agentB = agents.find((a) => a.id === conn.to);
+            // The server already resolves both names — including a clear
+            // label for agents that were deleted since — so this no longer
+            // needs (or should use) a live lookup that only finds agents
+            // that still exist.
             return (
               <motion.button
                 key={`conv-${i}`}
-                onClick={() => openConversation(conn.from, conn.to)}
+                onClick={() => openConversation(conn.from, conn.to, conn.from_name, conn.to_name)}
                 className="flex items-center gap-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2.5 text-left hover:bg-foreground/[0.05] hover:border-indigo-500/20 transition-all group"
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
               >
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                  <span className="text-[11px] font-semibold text-indigo-400 truncate">{agentA?.name || conn.from}</span>
+                  <span className="text-[11px] font-semibold text-indigo-400 truncate">{conn.from_name}</span>
                   <ArrowRight className="h-3 w-3 text-muted-foreground/30 shrink-0 group-hover:text-indigo-400/50 transition-colors" />
-                  <span className="text-[11px] font-semibold text-violet-400 truncate">{agentB?.name || conn.to}</span>
+                  <span className="text-[11px] font-semibold text-violet-400 truncate">{conn.to_name}</span>
                 </div>
                 <span className="inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-indigo-500/10 border border-indigo-500/20 px-1.5 text-[10px] font-bold text-indigo-400 shrink-0">
                   {conn.count}

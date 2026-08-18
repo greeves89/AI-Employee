@@ -339,7 +339,11 @@ async def _list_my_team(agent: Agent, db: AsyncSession) -> list[dict]:
                 "role": role_by_id.get(mid),
                 "is_lead": mid == t.lead_agent_id,
             }
-            for mid in (t.member_agent_ids or [])
+            # Mitglieder, die es nicht mehr gibt, werden NICHT als Kollege
+            # aufgelistet — sonst haelt der Lead sie fuer erreichbar und
+            # delegiert Arbeit, die nie jemand annimmt. Gleicher Fix wie in
+            # teams.py:list_my_teams.
+            for mid in (t.member_agent_ids or []) if mid in name_by_id
         ]
         out.append({
             "team_id": t.id,

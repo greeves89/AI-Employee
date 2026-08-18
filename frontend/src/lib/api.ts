@@ -130,7 +130,7 @@ export async function updateAutonomyMatrix(
 }
 
 export async function getAgentMessages(minutes: number = 60): Promise<{
-  connections: { from: string; to: string; count: number; last_at: string }[];
+  connections: { from: string; to: string; from_name: string; to_name: string; count: number; last_at: string }[];
   messages: { from: string; to: string; text: string; from_name: string; timestamp: string }[];
   total: number;
 }> {

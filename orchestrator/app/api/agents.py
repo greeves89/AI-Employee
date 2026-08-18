@@ -318,6 +318,20 @@ async def get_agent_messages(
     result = await db.execute(query)
     messages = result.scalars().all()
 
+    # Both sides of a connection need a name even when one agent was deleted
+    # since — the network view otherwise falls back to the raw ID, which reads
+    # as "Unknown" to a user scrolling through it. Resolve once against the
+    # agents actually still on record; anything missing gets a label that says
+    # what happened instead of leaking a UUID.
+    referenced_ids = {aid for msg in messages for aid in (msg.from_agent_id, msg.to_agent_id)}
+    name_by_id: dict[str, str] = {}
+    if referenced_ids:
+        agents_res = await db.execute(select(Agent).where(Agent.id.in_(referenced_ids)))
+        name_by_id = {a.id: a.name for a in agents_res.scalars().all()}
+
+    def _display_name(agent_id: str) -> str:
+        return name_by_id.get(agent_id, "Gelöschter Agent")
+
     connections: dict[str, dict] = {}
     recent_bubbles: list[dict] = []
 
@@ -328,6 +342,8 @@ async def get_agent_messages(
             connections[key] = {
                 "from": pair[0],
                 "to": pair[1],
+                "from_name": _display_name(pair[0]),
+                "to_name": _display_name(pair[1]),
                 "count": 0,
                 "last_at": msg.timestamp.isoformat(),
             }

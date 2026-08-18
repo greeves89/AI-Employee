@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
+import * as Dialog from "@radix-ui/react-dialog";
 import Link from "next/link";
 import {
   Cpu, MemoryStick, HardDrive, MessageSquare, History,
@@ -24,6 +25,7 @@ import {
   getFileColor, formatModified, formatModifiedFull,
   formatFileSize as formatFileSizeShared,
 } from "@/components/files/file-preview";
+import { FileUploader } from "@/components/files/file-uploader";
 import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
 import { AutonomyMatrix } from "@/components/agents/autonomy-matrix";
@@ -2699,13 +2701,16 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
   const confirm = useConfirm();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [treeData, setTreeData] = useState<Record<string, FileEntry[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["/workspace"]));
   const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState<FileSortMode>("name");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Ziel-Ordner fuers Upload-Modal — null = geschlossen. Wird entweder vom
+  // Toolbar-Button (Ziel /workspace) oder vom Ordner-Symbol im Baum gesetzt,
+  // damit die Datei direkt im gerade betrachteten Projektordner landet statt
+  // immer im Transfer-Wurzelordner.
+  const [uploadTarget, setUploadTarget] = useState<string | null>(null);
 
   const loadDir = async (path: string) => {
     try {
@@ -2743,20 +2748,6 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
     const paths = Array.from(new Set(["/workspace"].concat(Array.from(expanded))));
     await Promise.all(paths.map(loadDir));
     setLoading(false);
-  };
-
-  const handleUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setUploading(true);
-    try {
-      await api.uploadFiles(agentId, "/workspace", files);
-      await refreshAll();
-    } catch (e) {
-      toast.error("Upload failed", e instanceof Error ? e.message : undefined);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
   };
 
   const handleDownload = (path: string) => {
@@ -2867,6 +2858,15 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
                 <Download className="h-2.5 w-2.5" />
               </button>
             )}
+            {isDir && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setUploadTarget(entry.path); }}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                title={`Hierher hochladen (${entry.path})`}
+              >
+                <Upload className="h-2.5 w-2.5" />
+              </button>
+            )}
             {entry.path !== "/workspace" && (
               <button
                 onClick={(e) => { e.stopPropagation(); handleDelete(entry.path, entry.name); }}
@@ -2948,19 +2948,12 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             >
               <RefreshCw className="h-3 w-3" />
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => handleUpload(e.target.files)}
-            />
             <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="flex h-7 items-center gap-1 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors shrink-0"
+              onClick={() => setUploadTarget("/workspace")}
+              className="flex h-7 items-center gap-1 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
+              title="Ziel im nächsten Schritt wählbar"
             >
-              {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+              <Upload className="h-3 w-3" />
               Upload
             </button>
           </div>
@@ -3056,6 +3049,37 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
           <FilePreviewEmpty />
         )}
       </div>
+
+      {/* Upload-Modal — fragt/zeigt das Ziel, statt immer nach /workspace zu laden */}
+      {uploadTarget && (
+        <Dialog.Root open onOpenChange={(o) => !o && setUploadTarget(null)}>
+          <Dialog.Portal>
+            <Dialog.Overlay asChild>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
+            </Dialog.Overlay>
+            <Dialog.Content asChild>
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+                <Dialog.Title className="sr-only">Dateien hochladen</Dialog.Title>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                  transition={{ duration: 0.18 }}
+                  className="pointer-events-auto w-full max-w-md"
+                >
+                  <FileUploader
+                    agentId={agentId}
+                    targetPath={uploadTarget}
+                    onUploadComplete={refreshAll}
+                    onClose={() => setUploadTarget(null)}
+                  />
+                </motion.div>
+              </div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+      )}
     </div>
   );
 }

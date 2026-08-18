@@ -408,11 +408,12 @@ async def get_room(room_id: str, user=Depends(require_auth), db: AsyncSession = 
         raise HTTPException(status_code=404, detail="Room not found")
     await _authorize_room(room, user, db)
 
-    # Resolve agent names
+    # Resolve agent names. A raw ID as fallback reads as "Unknown" to a user
+    # scrolling the room — a deleted agent gets a label that says so instead.
     agent_names = {}
     for aid in room.agent_ids:
         agent = await db.scalar(select(Agent).where(Agent.id == aid))
-        agent_names[aid] = agent.name if agent else aid
+        agent_names[aid] = agent.name if agent else "Gelöschter Agent"
 
     return {
         "id": room.id,
