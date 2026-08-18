@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.238.1] - 2026-08-18
+
+### Behoben
+- **Login und Nutzerverwaltung waren nach dem letzten Update teils nicht mehr
+  erreichbar (`UndefinedColumnError` auf `users.allow_personal_credentials`).**
+  Die Datenbank-Migration zur neuen Spalte aus v1.238.0 hatte gefehlt — das
+  Modell kannte die Spalte, die Datenbank nicht. Jede Anfrage, die einen
+  Nutzer laed, schlug deshalb fehl. Rein nachholende, additive Migration
+  (IF NOT EXISTS), kein Verhaltensunterschied fuer bereits funktionierende
+  Installationen.
+
 ## [1.238.0] - 2026-08-18
 
 ### Sicherheit
