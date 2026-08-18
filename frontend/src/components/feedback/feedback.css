@@ -1,31 +1,7 @@
 /* Feedback-Widget ("Feedback-Gedöns") — Farben über die Theme-Variablen aus
-   globals.css, damit Light- und Dark-Mode ohne Extra-Regeln stimmen. */
-/* Rund wie der Concierge-Knopf daneben (concierge-widget.tsx: h-11 w-11,
-   rounded-full, bottom-5 right-5). Zwei Schaltflaechen nebeneinander, von denen
-   eine eine Pille mit Text und die andere ein Kreis ist, sehen aus wie zwei
-   verschiedene Bausaetze.
-
-   Die Masse sind bewusst dieselben ZAHLEN und nicht "ungefaehr gleich":
-   44px Kantenlaenge (h-11/w-11), 20px Abstand nach unten (bottom-5). Rechts
-   sitzt er 76px = 20 + 44 + 12, also genau eine Knopfbreite plus Luecke neben
-   dem Concierge — sonst ueberdecken sich beide. */
-.fbw-fab { position: fixed; right: 76px; bottom: 20px; z-index: 900;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 44px; height: 44px; padding: 0;
-  background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border: none;
-  border-radius: 9999px;
-  font: inherit; cursor: pointer; box-shadow: 0 6px 20px hsl(var(--primary) / .25);
-  transition: transform .15s ease; }
-/* Der Concierge waechst beim Zeigen (hover:scale-105) statt aufzuhellen —
-   dasselbe Verhalten, damit sie sich als Paar lesen. */
-.fbw-fab:hover { transform: scale(1.05); }
-/* Die Beschriftung entfaellt im Kreis. Sie bleibt aber im Markup stehen und
-   wird nur optisch entfernt, damit Screenreader und die Tastaturbedienung
-   weiterhin "Feedback" vorfinden — ein Knopf, der nur fuer Sehende beschriftet
-   ist, ist fuer alle anderen ein leerer Kreis. */
-.fbw-fab .fbw-fab-label {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+   globals.css, damit Light- und Dark-Mode ohne Extra-Regeln stimmen.
+   Kein schwebender Knopf mehr: geöffnet wird über den Feedback-Knopf im
+   Sidebar-Kopf, der frühere FAB unten rechts hat Eingabefelder überdeckt. */
 .fbw-hi { position: fixed; z-index: 940; pointer-events: none; border: 2px solid hsl(var(--primary)); background: hsl(var(--primary) / .10); border-radius: 4px; transition: all .04s linear; }
 .fbw-hint { position: fixed; z-index: 950; top: 16px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px;
   background: hsl(var(--card)); color: hsl(var(--card-foreground)); border: 1px solid hsl(var(--border)); padding: 10px 16px; border-radius: 10px;

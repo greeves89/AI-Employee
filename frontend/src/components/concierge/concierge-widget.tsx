@@ -31,6 +31,9 @@ import { formatMoney } from "@/lib/money";
  *
  * Nur für Administratoren — und die Aktionsliste wird serverseitig geprüft, nicht hier:
  * ein Widget, das nur die sicheren Knöpfe zeigt, ist keine Absicherung.
+ *
+ * Geöffnet über den Concierge-Knopf im Sidebar-Kopf (Event "concierge-widget:open") —
+ * der frühere schwebende Knopf unten rechts ist raus, weil er Eingabefelder überdeckt hat.
  */
 const VERDICT: Record<string, { label: string; className: string; Icon: React.ElementType }> = {
   "alles ruhig": {
@@ -81,6 +84,13 @@ export function ConciergeWidget() {
     if (open) load();
   }, [open, load]);
 
+  // Einziger Einstieg: der Concierge-Knopf im Sidebar-Kopf.
+  useEffect(() => {
+    const openPanel = () => setOpen(true);
+    window.addEventListener("concierge-widget:open", openPanel);
+    return () => window.removeEventListener("concierge-widget:open", openPanel);
+  }, []);
+
   if (!isAdmin) return null;
 
   const verdict = VERDICT[data?.verdict ?? ""] ?? VERDICT["alles ruhig"];
@@ -117,16 +127,6 @@ export function ConciergeWidget() {
 
   return (
     <>
-      {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          title="Concierge"
-          className="fixed bottom-5 right-5 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25 transition-transform hover:scale-105"
-        >
-          <LifeBuoy className="h-5 w-5" />
-        </button>
-      )}
-
       {open && (
         <div className="fixed bottom-5 right-5 z-40 flex max-h-[70dvh] w-[min(23rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-foreground/[0.08] bg-card/95 shadow-2xl backdrop-blur-md">
           <div className="flex items-center justify-between border-b border-foreground/[0.06] px-4 py-3">
