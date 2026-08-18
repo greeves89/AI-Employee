@@ -132,6 +132,14 @@ class TheAdminCanSetThemTests(unittest.TestCase):
         block = self.SEITE.split('label: "Sicherheit"', 1)[1][:160]
         self.assertIn("master-rules", block)
 
+    def test_the_tab_actually_renders_something(self):
+        """Ein registrierter Reiter allein zeigt NICHTS: der Inhaltsblock haengt
+        an ``EMBEDDED_TABS``. Genau das fehlte beim ersten Anlauf — Build und
+        Typpruefung sahen es nicht, die Seite blieb leer."""
+        zeile = next(z for z in self.SEITE.splitlines() if "EMBEDDED_TABS: Tab[]" in z)
+        self.assertIn("master-rules", zeile)
+        self.assertIn('{tab === "master-rules" && <MasterRulesView', self.SEITE)
+
     def test_the_global_command_policies_are_editable_there(self):
         """Das Datenmodell konnte globale Sperren laengst — es gab nur nirgends
         eine Stelle, sie einzustellen."""

@@ -72,7 +72,7 @@ type Tab =
 
 // Tabs whose content is a full embedded page component (rendered without
 // their own <Header>). They don't depend on the admin page's own data load.
-const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp"];
+const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules"];
 
 // Das Menüband ist zweistufig: oben die Themengruppe, darunter deren Unterreiter.
 // So bleiben alle Bereiche sichtbar, ohne dass 13 Reiter in einer Zeile scrollen.

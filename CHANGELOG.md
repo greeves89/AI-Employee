@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.234.1] - 2026-08-18
+
+### Behoben
+- **Die Seite „Master-Regeln" blieb leer.** Der Reiter war da, der Inhalt nicht:
+  der Inhaltsblock hängt an einer eigenen Liste eingebetteter Reiter, und dort
+  fehlte der neue Eintrag. Weder Typprüfung noch Build konnten das sehen — der
+  Test prüft es jetzt.
+
+---
+
 ## [1.234.0] - 2026-08-18
 
 ### Neu
