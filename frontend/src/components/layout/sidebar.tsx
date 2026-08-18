@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useTheme } from "@/components/theme-provider";
 import {
   Activity,
   LayoutDashboard,
@@ -17,8 +15,6 @@ import {
   ScrollText,
   Workflow,
   Bot,
-  Sun,
-  Moon,
   MessageSquarePlus,
   ShieldCheck,
   BookOpen,
@@ -30,17 +26,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Bell,
-  Star,
   BarChart3,
-  Info,
   HelpCircle,
-  X,
 } from "lucide-react";
-import { motion } from "framer-motion";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { NotificationBell } from "./notification-bell";
 import { UpdateBanner } from "./update-banner";
 import { UserMenu } from "./user-menu";
 import { useAuthStore } from "@/lib/auth";
@@ -192,7 +180,6 @@ const navGroups: NavGroup[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { theme, toggleTheme } = useTheme();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
   const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebarCollapsed();
@@ -208,27 +195,8 @@ export function Sidebar() {
   }, []);
   const effectiveCollapsed = isDesktop && collapsed;
   const closeMobile = () => setMobileOpen(false);
-  const [aboutOpen, setAboutOpen] = useState(false);
-  const [aboutVersion, setAboutVersion] = useState<string | null>(null);
-  const [aboutChangelog, setAboutChangelog] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<RolePermissions | null>(null);
   const [customPages, setCustomPages] = useState<CustomPage[]>([]);
-  // GitHub-star nudge: highlight the Star link at most once per calendar day.
-  const [starNudge, setStarNudge] = useState(false);
-
-  useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    try {
-      if (localStorage.getItem("star-nudge-day") !== today) {
-        localStorage.setItem("star-nudge-day", today);
-        setStarNudge(true);
-        const t = setTimeout(() => setStarNudge(false), 10000);
-        return () => clearTimeout(t);
-      }
-    } catch {
-      /* localStorage unavailable — skip the nudge */
-    }
-  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -252,19 +220,6 @@ export function Sidebar() {
       .then((d) => setCustomPages(d.pages))
       .catch(() => setCustomPages([]));
   }, [user?.id, user?.custom_role_id, user?.role]);
-
-  useEffect(() => {
-    if (!aboutOpen || aboutVersion) return;
-    const base = process.env.NEXT_PUBLIC_API_URL || "";
-    fetch(`${base}/api/v1/version/`)
-      .then((r) => r.json())
-      .then((d) => setAboutVersion(d.current ?? d.version ?? null))
-      .catch(() => {});
-    fetch(`${base}/api/v1/version/changelog`)
-      .then((r) => r.json())
-      .then((d) => setAboutChangelog(d.content ?? null))
-      .catch(() => {});
-  }, [aboutOpen, aboutVersion]);
 
   // Track which groups are open (all open by default)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
@@ -489,35 +444,6 @@ export function Sidebar() {
       )}>
         {effectiveCollapsed ? (
           <>
-            <NotificationBell variant="sidebar" collapsed />
-            <button
-              onClick={toggleTheme}
-              title={theme === "dark" ? "Light Mode" : "Dark Mode"}
-              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-            <a
-              href="https://github.com/greeves89/AI-Employee"
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Star on GitHub"
-              className={cn(
-                "flex items-center justify-center h-9 w-9 rounded-xl transition-all hover:bg-yellow-500/10 hover:text-yellow-400",
-                starNudge
-                  ? "bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/30 animate-pulse"
-                  : "text-muted-foreground"
-              )}
-            >
-              <Star className="h-4 w-4" />
-            </a>
-            <button
-              onClick={() => setAboutOpen(true)}
-              title="Über AI Employee"
-              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all"
-            >
-              <Info className="h-4 w-4" />
-            </button>
             {isAdmin && (
               <Link
                 href="/admin"
@@ -532,45 +458,10 @@ export function Sidebar() {
                 <Shield className="h-4 w-4" />
               </Link>
             )}
+            <UserMenu collapsed />
           </>
         ) : (
-          <>
-            <NotificationBell variant="sidebar" />
-            <button
-              onClick={toggleTheme}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              <span className="text-[13px] font-medium">
-                {theme === "dark" ? "Light Mode" : "Dark Mode"}
-              </span>
-            </button>
-            <a
-              href="https://github.com/greeves89/AI-Employee"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "flex w-full items-center gap-3 rounded-xl px-3 py-2 transition-all duration-150 hover:bg-yellow-500/10 hover:text-yellow-400",
-                starNudge
-                  ? "bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/30 animate-pulse"
-                  : "text-muted-foreground"
-              )}
-            >
-              <Star className="h-4 w-4" />
-              <span className="text-[13px] font-medium">Star on GitHub</span>
-            </a>
-            <button
-              onClick={() => setAboutOpen(true)}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
-            >
-              <Info className="h-4 w-4" />
-              <span className="text-[13px] font-medium">Über AI Employee</span>
-              {aboutVersion && (
-                <span className="ml-auto text-[11px] font-mono text-muted-foreground/50">v{aboutVersion}</span>
-              )}
-            </button>
-            <UserMenu />
-          </>
+          <UserMenu />
         )}
       </div>
 
@@ -588,62 +479,6 @@ export function Sidebar() {
           <ChevronLeft className="h-3 w-3" />
         )}
       </button>
-
-      {/* About Modal — portal to document.body to escape motion.aside transform context */}
-      {aboutOpen && typeof document !== "undefined" && createPortal(
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
-            onClick={() => setAboutOpen(false)}
-          />
-          <div className="fixed z-[101] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.2 }}
-            className="w-[90vw] max-w-2xl max-h-[80vh] flex flex-col rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl"
-          >
-                <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-foreground/[0.06] shrink-0">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
-                    <Bot className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-base font-semibold">AI Employee</p>
-                    {aboutVersion && <p className="text-[12px] text-muted-foreground font-mono">v{aboutVersion}</p>}
-                  </div>
-                  <button
-                    onClick={() => setAboutOpen(false)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-all"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto px-6 py-4">
-                  {aboutChangelog ? (
-                    <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] [&_h1]:hidden [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06] [&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[11px] [&_code]:font-mono [&_code]:text-amber-600 dark:[&_code]:text-amber-300 [&_code]:before:content-[''] [&_code]:after:content-['']">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{aboutChangelog}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-24 text-muted-foreground text-sm">
-                      Lade Changelog...
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center justify-between px-6 py-3 border-t border-foreground/[0.06] shrink-0">
-                  <span className="text-[11px] text-muted-foreground/50">Made with ♥ by greeves89</span>
-                  <a href="https://github.com/greeves89/AI-Employee" target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-yellow-400 transition-colors">
-                    <Star className="h-3 w-3" />GitHub
-                  </a>
-                </div>
-          </motion.div>
-          </div>
-        </>,
-        document.body
-      )}
     </aside>
   );
 }

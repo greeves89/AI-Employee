@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.220.5] - 2026-08-18
+
+### Geändert
+- **Notifications, Dark Mode, Star on GitHub und Über AI Employee stehen jetzt
+  im Nutzer-Untermenü statt als vier eigene Zeilen über dem Nutzereintrag in
+  der Seitenleiste.** Ein Klick auf den eigenen Namen/Avatar öffnet jetzt ein
+  einziges Menü mit allen vier Punkten plus Konto-Info, Einstellungen und
+  Sign Out. Gilt für die ein- und ausgeklappte Seitenleiste.
+
+---
+
 ## [1.220.4] - 2026-08-17
 
 ### Behoben
