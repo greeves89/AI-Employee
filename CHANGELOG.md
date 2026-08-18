@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.235.0] - 2026-08-18
+
+### Neu
+- **Second Brains: Import und Export als ZIP.** Ein ganzer Vault lässt sich
+  herunterladen und wieder einspielen — Ordnerstruktur inklusive, direkt in
+  Obsidian zu öffnen.
+- Zwei Betriebsarten beim Import: **zusammenführen** (Vorgabe, ergänzt und
+  überschreibt, löscht nichts) oder **ersetzen** (der Vault wird zum Abbild des
+  Archivs).
+- **Die Einbettungen werden danach nachgezogen.** Ohne diesen Schritt lägen die
+  Notizen zwar auf der Platte, wären aber semantisch unauffindbar — für die
+  Agenten praktisch unsichtbar. Der Indexlauf ist inkrementell und entfernt auch
+  die Einträge gelöschter Dateien, passt also zu beiden Betriebsarten. Schlägt er
+  fehl, bleibt der Import trotzdem erhalten und es wird darauf hingewiesen.
+
+### Sicherheit
+- Ein hochgeladenes Archiv ist Fremdeingabe: jeder Eintrag geht durch denselben
+  Pfad-Riegel wie der Dateibrowser (kein zweiter, eigener Weg). Aufsteigende
+  Pfade (`../`) werden abgewiesen, absolute Pfade in den Vault hinein
+  normalisiert, Symlinks und Sonderdateien übersprungen, gesperrte Dateiendungen
+  bleiben gesperrt.
+- Zip-Bomben werden **vor** dem Entpacken abgewiesen (geprüft wird die entpackte
+  Größe, nicht die des Archivs). Grenzen: 200 MB Archiv, 1 GB entpackt, 50.000
+  Einträge.
+- Eine einzelne krumme Datei stoppt den Import nicht — sie wird übersprungen und
+  im Bericht genannt.
+
+### Hinweis
+- **Obsidian Sync selbst lässt sich nicht anbinden**: geschlossener,
+  Ende-zu-Ende-verschlüsselter Bezahldienst ohne öffentliche Schnittstelle. Der
+  Weg führt über die Ordnerstruktur — ein Vault ist nur Markdown in Ordnern.
+  Echtes Mitlaufen über Git ist der nächste Schritt.
+
+---
+
 ## [1.234.1] - 2026-08-18
 
 ### Behoben
