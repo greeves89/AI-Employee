@@ -99,6 +99,15 @@ def split_at(messages: list[ChatMessage], message_id: str) -> tuple[list, list]:
     return messages, []
 
 
+async def _reasoning_of(db: AsyncSession, agent_id: str, session_id: str) -> str | None:
+    """Gewählte Denktiefe eines Gesprächs — ``None``, wenn nie eine gesetzt wurde."""
+    return (await db.execute(
+        select(ChatSession.reasoning_level).where(
+            ChatSession.agent_id == agent_id, ChatSession.session_id == session_id
+        )
+    )).scalar_one_or_none()
+
+
 async def ensure_title(db: AsyncSession, agent_id: str, session_id: str) -> str | None:
     """Einem Gespräch einen Titel geben, falls es noch keinen hat.
 
@@ -169,6 +178,8 @@ async def fork(db: AsyncSession, agent_id: str, session_id: str,
     db.add(ChatSession(
         agent_id=agent_id, session_id=target,
         title=f"Abzweig: {source_title}"[:TITLE_MAX] if source_title else "Abzweig",
+        # Wer im Original gruendlich denken liess, will das im Abzweig nicht neu waehlen.
+        reasoning_level=await _reasoning_of(db, agent_id, session_id),
     ))
     await db.flush()
     logger.info("[Chat] %s ab %s nach %s verzweigt (%d Nachrichten)",
@@ -315,6 +326,8 @@ async def summarize_to_new_session(db: AsyncSession, agent_id: str,
     db.add(ChatSession(
         agent_id=agent_id, session_id=target,
         title=f"Fortsetzung: {source_title}"[:TITLE_MAX] if source_title else "Fortsetzung",
+        # Die Fortsetzung ist dasselbe Gespraech in kurz — gleiche Denktiefe.
+        reasoning_level=await _reasoning_of(db, agent_id, session_id),
     ))
     await db.flush()
     logger.info("[Chat] %s als Stand nach %s uebernommen", scrub_log(session_id), scrub_log(target))

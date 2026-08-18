@@ -794,8 +794,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             # Per-message reasoning level, chosen by the USER in the chat (like the
             # thinking selector in ChatGPT/Claude Code). Whitelisted here so an
             # arbitrary string can never reach a CLI flag or request body.
+            from app.models.chat_session import REASONING_LEVELS
             reasoning = str(msg.get("reasoning") or "").strip().lower()
-            if reasoning not in ("off", "low", "medium", "high"):
+            if reasoning not in REASONING_LEVELS:
                 reasoning = ""
             chat_payload = json.dumps({
                 "id": message_id,

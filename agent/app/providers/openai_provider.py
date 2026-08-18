@@ -104,6 +104,16 @@ class OpenAIProvider(BaseLLMProvider):
             return True
         return m.startswith(("o1", "o3", "o4"))
 
+    def _effective_reasoning_effort(self) -> str:
+        """"xhigh" only exists on the Codex family (Responses API); plain GPT-5,
+        the o-series and arbitrary OpenAI-compatible endpoints 400 on it — for
+        those the user's "max" clamps to the strongest level they accept."""
+        if self.reasoning_effort == "xhigh" and not (
+            self._is_responses_model() and "codex" in self.model_name.lower()
+        ):
+            return "high"
+        return self.reasoning_effort
+
     @staticmethod
     def _parse_function_arguments(arguments_json: str, final_arguments: str | None = None) -> dict:
         """Parse streamed function-call arguments.
@@ -406,7 +416,7 @@ class OpenAIProvider(BaseLLMProvider):
         if self.temperature is not None and not self._is_responses_model():
             body["temperature"] = self.temperature
         if self.reasoning_effort and self._supports_reasoning_effort():
-            body["reasoning"] = {"effort": self.reasoning_effort}
+            body["reasoning"] = {"effort": self._effective_reasoning_effort()}
 
         # Tools in Responses API format
         if tools:
@@ -675,7 +685,7 @@ class OpenAIProvider(BaseLLMProvider):
                 body["temperature"] = self.temperature
 
         if self.reasoning_effort and self._supports_reasoning_effort():
-            body["reasoning_effort"] = self.reasoning_effort
+            body["reasoning_effort"] = self._effective_reasoning_effort()
 
         if tools:
             body["tools"] = tools
