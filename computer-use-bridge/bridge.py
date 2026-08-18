@@ -97,6 +97,50 @@ class ScreenRecordingPermissionError(RuntimeError):
     """Die Bildschirmaufnahme ist nicht freigegeben — ein Screenshot waere wertlos."""
 
 
+_input_permission_prompted = False
+
+
+class InputPermissionError(RuntimeError):
+    """Die Bedienungshilfen sind nicht freigegeben — Tippen und Klicken tun NICHTS.
+
+    Ohne diese Freigabe schlaegt der Weg ueber System Events mit Fehler 1002 fehl
+    ("osascript ist nicht berechtigt, Tastatureingaben zu senden"), und der
+    Rueckfall auf pyautogui tut still gar nichts. Bis hierher meldete die Bridge
+    in dem Fall trotzdem Erfolg — der Agent sagte "Erledigt", im Browser stand
+    nichts, und niemand konnte sich erklaeren warum. Ein Fehlschlag, der sich als
+    Erfolg ausgibt, ist schlimmer als ein Fehler.
+    """
+
+
+def input_permission_granted(fragen: bool = False) -> bool | None:
+    """Duerfen wir Tasten und Klicks senden? ``None`` = nicht feststellbar.
+
+    Nur macOS kennt diese Huerde (Bedienungshilfen). Unter Windows gibt es keine
+    vergleichbare Freigabe — dort sendet die Bridge Eingaben ohne Nachfrage.
+
+    ``fragen=True`` zeigt den macOS-Dialog. Das ist der Unterschied zwischen
+    ``AXIsProcessTrusted`` (still pruefen) und
+    ``AXIsProcessTrustedWithOptions(prompt)`` (fragen). Bis hierher wurde nur
+    geprueft — die App wusste, dass sie nicht darf, und sagte es nur. Wer die
+    Freigabe nie erteilt hatte oder sie zurueckgesetzt hat, bekam nie wieder
+    eine Gelegenheit dazu.
+    """
+    if not IS_MAC:
+        return True
+    try:
+        import ApplicationServices as AS  # type: ignore
+        if not fragen:
+            return bool(AS.AXIsProcessTrusted())
+        try:
+            return bool(AS.AXIsProcessTrustedWithOptions(
+                {AS.kAXTrustedCheckOptionPrompt: True}
+            ))
+        except Exception:  # noqa: BLE001 — ohne Dialog wenigstens die Auskunft
+            return bool(AS.AXIsProcessTrusted())
+    except Exception:  # noqa: BLE001 — lieber weitermachen als blockieren
+        return None
+
+
 def _capture_macos_inprocess():
     """Bildschirmaufnahme IM EIGENEN PROZESS via Quartz — oder None.
 
@@ -126,11 +170,31 @@ def _capture_macos_inprocess():
     try:
         from Quartz import CGPreflightScreenCaptureAccess  # type: ignore
         if not CGPreflightScreenCaptureAccess():
-            raise ScreenRecordingPermissionError(
-                "Der Bridge fehlt die Freigabe zur Bildschirmaufnahme. Systemeinstellungen "
-                "→ Datenschutz & Sicherheit → Bildschirmaufnahme: AI-Employee Bridge "
-                "aktivieren, danach die App komplett beenden und neu starten."
-            )
+            # FRAGEN, nicht nur pruefen. Vorher stand hier ausschliesslich der
+            # stille Preflight — die App stellte fest, dass sie nicht darf, und
+            # sagte es nur. Den macOS-Dialog loest allein
+            # CGRequestScreenCaptureAccess aus. Ohne ihn gibt es fuer den Nutzer
+            # KEINEN Weg, die Freigabe zu erteilen, ausser die App von Hand in
+            # die Liste zu ziehen — und nach einem Zuruecksetzen der Freigaben
+            # (oder bei einer Neuinstallation) fragt nie wieder jemand.
+            try:
+                from Quartz import CGRequestScreenCaptureAccess  # type: ignore
+                if CGRequestScreenCaptureAccess():
+                    log.info("Bildschirmaufnahme soeben freigegeben.")
+                else:
+                    raise ScreenRecordingPermissionError(
+                        "Der Bridge fehlt die Freigabe zur Bildschirmaufnahme. macOS hat "
+                        "gefragt — bitte erlauben. Erscheint kein Dialog: Systemeinstellungen "
+                        "→ Datenschutz & Sicherheit → Bildschirmaufnahme, dort "
+                        "AI-Employee Bridge hinzufügen. Danach die App komplett beenden "
+                        "und neu starten."
+                    )
+            except ImportError:
+                raise ScreenRecordingPermissionError(
+                    "Der Bridge fehlt die Freigabe zur Bildschirmaufnahme. Systemeinstellungen "
+                    "→ Datenschutz & Sicherheit → Bildschirmaufnahme: AI-Employee Bridge "
+                    "aktivieren, danach die App komplett beenden und neu starten."
+                )
     except ImportError:
         pass
     try:
@@ -592,7 +656,15 @@ class BrowserController:
         if self._thread is None:
             self._thread = threading.Thread(target=self._run, name="bridge-browser", daemon=True)
             self._thread.start()
-        self._started.wait(timeout=90)
+        # Der Rueckgabewert von wait() ist die einzige Auskunft darueber, ob der
+        # Start ueberhaupt fertig wurde. Wurde er ignoriert, war `_start_error`
+        # noch leer, der Auftrag ging an einen halb gestarteten Browser und der
+        # Nutzer bekam eine Minute spaeter das irrefuehrende "Browser antwortet
+        # nicht" statt "Browser startet noch".
+        if not self._started.wait(timeout=90):
+            return ("Der Browser braucht ungewöhnlich lange zum Starten (über 90s) — "
+                    "eventuell prüft ein Virenscanner ihn gerade. Bitte gleich nochmal "
+                    "versuchen.")
         return self._start_error
 
     def _call(self, job, timeout: float = 60.0) -> dict:
@@ -611,13 +683,29 @@ class BrowserController:
         return value if kind == "ok" else {"ok": False, "error": value}
 
     def close(self) -> dict:
-        if self._thread is not None:
-            self._queue.put((None, []))
-            self._thread.join(timeout=10)
-            self._thread = None
-            self._started.clear()
-            self._ctx = None
-            self._pw = None
+        """Browser beenden — und ehrlich melden, ob es geklappt hat.
+
+        Vorher wurde hier bedingungslos ``{"ok": True}`` gemeldet und der Zustand
+        zurueckgesetzt, auch wenn der Thread nach zehn Sekunden noch lief. Der
+        alte Browser hielt dann weiter die Sperrdatei auf dem Profilverzeichnis,
+        und der naechste ``browser_navigate`` scheiterte mit "Kein Browser
+        startbar" — nach einem ``close``, das Erfolg gemeldet hatte.
+        """
+        if self._thread is None:
+            return {"ok": True}
+        self._queue.put((None, []))
+        self._thread.join(timeout=10)
+        if self._thread.is_alive():
+            # Zustand NICHT zuruecksetzen: der Thread haelt Kontext und Profil
+            # weiter. Ein neuer Start gegen dasselbe Profil wuerde scheitern.
+            return {"ok": False, "error": (
+                "Der Browser liess sich nicht beenden (läuft noch). Bitte das "
+                "Browserfenster von Hand schliessen."
+            )}
+        self._thread = None
+        self._started.clear()
+        self._ctx = None
+        self._pw = None
         return {"ok": True}
 
     # ── Aktionen ─────────────────────────────────────────────────────────────
@@ -970,7 +1058,35 @@ class InputController:
         pyautogui.PAUSE = 0.05
         self._pyautogui = pyautogui
 
+    def _require_input_permission(self) -> None:
+        """Vor JEDER gesendeten Eingabe — sonst meldet die Bridge Erfolg fuer
+        etwas, das nie passiert ist.
+
+        macOS verwirft synthetische Klicks, Tasten und Scrolls von Prozessen ohne
+        Bedienungshilfen-Freigabe LAUTLOS: pyautogui wirft nichts, der Dispatcher
+        gibt ``{"ok": True}`` zurueck, der Agent haelt die Aktion fuer erledigt
+        und baut darauf auf. Genau das war beim Nutzer zu sehen — "Erledigt",
+        aber im Browser stand nichts.
+
+        Nur bei einem ausdruecklichen Nein abbrechen: ``None`` heisst "nicht
+        feststellbar" (etwa fehlendes pyobjc), und dann ist Weitermachen
+        besser als eine Blockade.
+        """
+        global _input_permission_prompted
+        if input_permission_granted() is False:
+            if not _input_permission_prompted:
+                _input_permission_prompted = True
+                input_permission_granted(fragen=True)   # einmalig den Dialog zeigen
+            raise InputPermissionError(
+                "Der Bridge fehlt die Freigabe für Bedienungshilfen — Klicks und "
+                "Tastatureingaben bleiben wirkungslos. macOS wurde gefragt; bitte "
+                "erlauben. Erscheint kein Dialog: Systemeinstellungen → Datenschutz "
+                "& Sicherheit → Bedienungshilfen, dort AI-Employee Bridge über „+“ "
+                "hinzufügen. Danach die App komplett beenden und neu starten."
+            )
+
     def click(self, x: int, y: int, button: str = "left", double: bool = False) -> None:
+        self._require_input_permission()
         if double:
             self._pyautogui.doubleClick(x, y, button=button)
         else:
@@ -985,6 +1101,7 @@ class InputController:
         Auf macOS tippt System Events zeichenbasiert und damit unabhaengig vom
         Layout; nur dort, wo es das nicht gibt, bleibt der alte Weg.
         """
+        self._require_input_permission()
         if sys.platform == "darwin" and text:
             import subprocess
             r = subprocess.run(
@@ -994,22 +1111,41 @@ class InputController:
             )
             if r.returncode == 0:
                 return
-            log.warning("keystroke via System Events failed, falling back: %s", r.stderr.strip())
+            stderr = r.stderr.strip()
+            # Fehler 1002 heisst: die Bedienungshilfen fehlen. Der Rueckfall auf
+            # pyautogui wuerde dann ebenfalls nichts tun — nur eben lautlos und
+            # mit Erfolgsmeldung. Deshalb hier abbrechen statt so zu tun.
+            if "1002" in stderr or "nicht berechtigt" in stderr or "not allowed" in stderr.lower():
+                # Beim ersten Fehlschlag den macOS-Dialog anstossen — sonst hat der
+                # Nutzer keinen Weg, die Freigabe je zu erteilen.
+                input_permission_granted(fragen=True)
+                raise InputPermissionError(
+                    "Der Bridge fehlt die Freigabe für Bedienungshilfen — Tippen und "
+                    "Klicken bleiben wirkungslos. macOS wurde gefragt; bitte erlauben. "
+                    "Erscheint kein Dialog: Systemeinstellungen → Datenschutz & "
+                    "Sicherheit → Bedienungshilfen, dort AI-Employee Bridge hinzufügen. "
+                    "Danach die App komplett beenden und neu starten."
+                )
+            log.warning("keystroke via System Events failed, falling back: %s", stderr)
         self._pyautogui.typewrite(text, interval=interval)
 
     def key_press(self, keys: list[str]) -> None:
+        self._require_input_permission()
         if len(keys) == 1:
             self._pyautogui.press(keys[0])
         else:
             self._pyautogui.hotkey(*keys)
 
     def scroll(self, x: int, y: int, amount: int) -> None:
+        self._require_input_permission()
         self._pyautogui.scroll(amount, x=x, y=y)
 
     def move(self, x: int, y: int) -> None:
+        self._require_input_permission()
         self._pyautogui.moveTo(x, y)
 
     def drag(self, x1: int, y1: int, x2: int, y2: int, duration: float = 0.3) -> None:
+        self._require_input_permission()
         self._pyautogui.dragTo(x2, y2, duration=duration, startX=x1, startY=y1)
 
 
@@ -1237,7 +1373,20 @@ class CommandDispatcher:
                     return {"ok": True}
                 elif IS_WIN:
                     import subprocess
-                    subprocess.run(["powershell", "-command", f"Set-Clipboard '{text}'"], check=True)
+                    # Der Text geht ueber stdin, NICHT in die Befehlszeile.
+                    #
+                    # Vorher stand hier f"Set-Clipboard '{text}'" — der Text kommt
+                    # aus dem Netz, und ein einzelner Apostroph darin beendet das
+                    # PowerShell-Literal: aus  x'; Start-Process calc; '  wurde ein
+                    # zweiter, frei waehlbarer Befehl mit den Rechten des
+                    # angemeldeten Nutzers. Der macOS-Zweig direkt darueber macht
+                    # es seit jeher richtig (pbcopy ueber stdin); nur der
+                    # Windows-Zweig interpolierte.
+                    subprocess.run(
+                        ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                         "$in = [Console]::In.ReadToEnd(); Set-Clipboard -Value $in"],
+                        input=text, text=True, check=True,
+                    )
                     return {"ok": True}
                 return {"error": "Clipboard write not supported on this platform"}
 

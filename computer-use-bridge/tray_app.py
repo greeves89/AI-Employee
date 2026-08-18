@@ -470,7 +470,7 @@ def _appkit_handlers_init():
                 def _do():
                     try:
                         caps = cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
-                        token, sid = login_and_prepare(url, email, pw, caps, requested_session)
+                        token, sid = login_and_prepare(url, email, pw, caps, requested_session, cfg)
                         st["result_box"][0] = {
                             "url": url, "token": token, "session": sid,
                             # Adresse merken, damit das Feld beim naechsten Mal
@@ -1437,7 +1437,7 @@ def _show_setup_tkinter(cfg):
         caps = cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES))
         def _do():
             try:
-                token, sid = login_and_prepare(url, email, pw, caps, requested_session)
+                token, sid = login_and_prepare(url, email, pw, caps, requested_session, cfg)
                 result.update({"url":url,"token":token,"session":sid,"email":email,
                                "auto_connect":bool(auto_var.get()),
                                "allowed_capabilities":caps,"allowed_paths":cfg.get("allowed_paths",[])})
@@ -1445,7 +1445,7 @@ def _show_setup_tkinter(cfg):
             except urllib.error.HTTPError:
                 root.after(0, lambda: status_lbl.configure(text="⚠  Falsche E-Mail oder Passwort.", text_color="#ef4444"))
             except Exception as e:
-                root.after(0, lambda: status_lbl.configure(text=f"⚠  {e}", text_color="#ef4444"))
+                root.after(0, lambda e=e: status_lbl.configure(text=f"⚠  {e}", text_color="#ef4444"))
         threading.Thread(target=_do, daemon=True).start()
 
     ctk.CTkButton(btn_frame, text="Abbrechen", fg_color="transparent", border_width=1,
@@ -1563,7 +1563,7 @@ def _show_permissions_tkinter(cfg):
                     api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg["allowed_capabilities"], cfg)
                     root.after(0, lambda: status_lbl.configure(text="✓ Gespeichert", text_color="#22c55e"))
                 except Exception as e:
-                    root.after(0, lambda: status_lbl.configure(text=f"Lokal gespeichert ({e})", text_color="#f59e0b"))
+                    root.after(0, lambda e=e: status_lbl.configure(text=f"Lokal gespeichert ({e})", text_color="#f59e0b"))
                 root.after(800, root.destroy)
             threading.Thread(target=_p, daemon=True).start()
         else:
@@ -1662,11 +1662,11 @@ def _show_setup_plain_tkinter(cfg):
         sv.set("Verbinde…"); root.update()
         def _do():
             try:
-                t, s = login_and_prepare(url, em, pw, cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)), requested_session)
+                t, s = login_and_prepare(url, em, pw, cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)), requested_session, cfg)
                 result.update({"url":url,"token":t,"session":s,"email":em,"auto_connect":auto_v.get(),"allowed_capabilities":cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)),"allowed_paths":cfg.get("allowed_paths",[])})
                 root.after(0, root.destroy)
             except Exception as e:
-                root.after(0, lambda: sv.set(f"Fehler: {e}"))
+                root.after(0, lambda e=e: sv.set(f"Fehler: {e}"))
         threading.Thread(target=_do, daemon=True).start()
     bf = ttk.Frame(f); bf.grid(row=5, column=0, columnspan=2, sticky="e", pady=8)
     ttk.Button(bf, text="Abbrechen", command=root.destroy).pack(side="right", padx=4)
@@ -1818,8 +1818,15 @@ def run_macos(cfg: dict) -> None:
         def on_settings(self, _):
             updated = show_setup_dialog(self.cfg)
             if updated:
-                self.cfg = updated
-                save_config(updated)
+                # ZUSAMMENFUEHREN, nicht ersetzen. Der Dialog liefert nur die
+                # Felder, die er selbst kennt — `self.cfg = updated` warf alles
+                # andere weg: Freigabelisten fuer Anwendungen und Adressen, die
+                # gewaehlte Sprach-Agenten-Kennung, die Stimme. Wer nur die
+                # Server-Adresse aendern wollte, verlor damit seine
+                # Einschraenkungen. Der Windows-Zweig macht es seit jeher
+                # richtig (`cfg.update(u)`).
+                self.cfg.update(updated)
+                save_config(self.cfg)
                 if self.cfg.get("auto_connect"):
                     threading.Thread(target=self._connect, daemon=True).start()
                 else:

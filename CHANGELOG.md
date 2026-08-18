@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.238.5] - 2026-08-18
+
+### Behoben (Sicherheit)
+- **Befehls-Einschleusung in der Zwischenablage unter Windows.** Der Text kam
+  aus dem Netz und wurde direkt in einen PowerShell-Befehl gesetzt
+  (`Set-Clipboard '{text}'`). Ein Apostroph darin beendete das Literal — der
+  Rest lief als eigener Befehl mit den Rechten des angemeldeten Nutzers. Der
+  Text geht jetzt über die Standardeingabe, wie der macOS-Zweig es seit jeher
+  richtig macht.
+
+### Behoben
+- **Klicken, Tasten, Scrollen und Ziehen meldeten Erfolg, ohne etwas zu tun.**
+  Ohne Bedienungshilfen-Freigabe verwirft macOS synthetische Eingaben lautlos —
+  die Bridge meldete trotzdem „erledigt", der Agent baute darauf auf. Jetzt
+  prüft ein gemeinsamer Riegel vor jeder Eingabe.
+- **Die Bridge fragte nie nach Freigaben.** Sie rief nur die stillen Prüfungen
+  (`CGPreflightScreenCaptureAccess`, `AXIsProcessTrusted`) auf, nie die
+  fragenden Varianten. Wer die Freigabe nie erteilt oder zurückgesetzt hatte,
+  bekam **nie wieder** einen Dialog und musste die App von Hand eintragen.
+- **Jede Neuanmeldung löschte die Freigabelisten** für Anwendungen und
+  Adressen serverseitig — die drei Anmeldedialoge reichten die Konfiguration
+  nicht durch, wodurch „alles freigeben" gesendet wurde.
+- **Auf macOS gingen beim Speichern der Einstellungen Freigaben verloren:**
+  die Konfiguration wurde ersetzt statt zusammengeführt (Windows machte es
+  richtig).
+- **`browser_close` meldete Erfolg, auch wenn der Browser noch lief** — der
+  nächste Start scheiterte dann an der Sperrdatei des Profils.
+- **Drei Fehlermeldungen in den Windows-Dialogen verschwanden spurlos**
+  (`NameError` durch späte Auswertung in `lambda`): Bei falscher Server-Adresse
+  blieb „Verbinde…" für immer stehen, ohne Hinweis.
+- Ein hängender Browser-Start meldet jetzt „startet noch" statt nach einer
+  Minute „antwortet nicht".
+
+---
+
 ## [1.238.4] - 2026-08-18
 
 ### Behoben
