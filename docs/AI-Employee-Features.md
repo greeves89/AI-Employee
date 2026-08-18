@@ -83,7 +83,11 @@ Der Unterschied zu einem Assistenten: Ein Assistent antwortet. Ein Mitarbeiter *
 - „Schau auf meinen Bildschirm — warum meckert das Programm?"
 - Altsysteme ohne Schnittstelle bedienen lassen (genau dort, wo sonst jede Automatisierung endet).
 
-**Ehrlicher Stand:** Öffnen und Ansehen läuft. **Navigieren und Formulare ausfüllen ist noch nicht verlässlich** — der Agent greift zu oft zu anderen Mitteln, statt die Bridge zu nutzen. Offener Punkt aus dem Kundenfeedback, kein fertiges Versprechen.
+**Was das Tool zusätzlich kann:** Fenster auflisten und gezielt nach vorn holen · **einen eigenen Browser bedienen** — Seiten strukturiert lesen, Formulare ausfüllen, Tabs wechseln · Freigabelisten pro Sitzung: **welche** Anwendungen und **welche** Adressen der Agent überhaupt anfassen darf.
+
+**Ehrlicher Stand:** Die Ursache für das frühere „Navigieren und Formulare ausfüllen ist nicht verlässlich" ist gefunden und behoben: Sieben Befehle — darunter **Klicken**, Scrollen und die Element-Suche — waren serverseitig nie freigegeben und wurden mit einem Fehler abgewiesen, bevor sie den Rechner erreichten. Für Claude-Code-Agenten war Klicken damit schlicht gesperrt (über Codex lief es), deshalb wich der Agent auf andere Mittel aus. Ein Test hält beide Seiten jetzt zusammen.
+
+Der Browser läuft in einem **eigenen Profil**, nicht im privaten des Nutzers: Seit Chrome/Edge 136 lässt sich das Standardprofil nicht mehr fernsteuern (Härtung gegen Cookie-Diebstahl). Der Mensch meldet sich einmal an, danach bleibt die Anmeldung erhalten — und man sieht jederzeit, mit welchen Konten der Agent unterwegs ist.
 
 ---
 

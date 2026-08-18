@@ -285,6 +285,116 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "computer_list_windows",
+      description:
+        "List the windows currently open on the user's machine (app + window title). " +
+        "Use this before computer_focus_window when you need to work in a specific app — " +
+        "a screenshot shows pixels, the AX tree shows only one app at a time.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "computer_focus_window",
+      description:
+        "Bring an app (optionally a specific window) to the front. Typing and clicking " +
+        "always go to the FOREGROUND window — without this, input lands in whatever app " +
+        "was last used instead of the one you mean.",
+      inputSchema: {
+        type: "object",
+        required: ["app"],
+        properties: {
+          app: { type: "string", description: "App name, e.g. 'Excel'." },
+          title: { type: "string", description: "Optional: part of the window title." },
+        },
+      },
+    },
+    {
+      name: "browser_navigate",
+      description:
+        "Open a URL in the agent's OWN browser profile on the user's machine. This is a " +
+        "real, logged-in browser you control properly (DOM, forms, tabs) — unlike " +
+        "computer_open_url, which just hands the URL to the default browser and leaves " +
+        "you blind. Requires the 'browser' capability; the allowed domains are enforced " +
+        "server-side. The user signs in once in this profile; the session persists.",
+      inputSchema: {
+        type: "object",
+        required: ["url"],
+        properties: { url: { type: "string", description: "http(s) URL." } },
+      },
+    },
+    {
+      name: "browser_snapshot",
+      description:
+        "Structured accessibility snapshot of the current page — the reliable way to see " +
+        "what is on a page. Prefer this over a screenshot when you need to act on elements.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          max_chars: { type: "number", description: "Truncate the snapshot (default 20000)." },
+        },
+      },
+    },
+    {
+      name: "browser_click",
+      description: "Click an element in the agent's browser, by CSS selector or by visible text.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          selector: { type: "string", description: "CSS selector." },
+          text: { type: "string", description: "Visible text (used when no selector given)." },
+        },
+      },
+    },
+    {
+      name: "browser_fill",
+      description: "Fill a form field in the agent's browser (clears it first).",
+      inputSchema: {
+        type: "object",
+        required: ["selector", "value"],
+        properties: {
+          selector: { type: "string", description: "CSS selector of the field." },
+          value: { type: "string", description: "Value to enter." },
+        },
+      },
+    },
+    {
+      name: "browser_wait",
+      description:
+        "Wait for an element to become visible, or (without a selector) for the page to " +
+        "go quiet. Use after a click that triggers loading, instead of guessing a sleep.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          selector: { type: "string", description: "CSS selector to wait for (optional)." },
+          timeout_ms: { type: "number", description: "Max wait in ms (default 15000)." },
+        },
+      },
+    },
+    {
+      name: "browser_capture",
+      description: "Screenshot of the current page in the agent's browser.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          full_page: { type: "boolean", description: "Capture the whole page, not just the viewport." },
+        },
+      },
+    },
+    {
+      name: "browser_tabs",
+      description: "List the open tabs, or switch to one by index.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          index: { type: "number", description: "Tab to switch to. Omit to just list." },
+        },
+      },
+    },
+    {
+      name: "browser_close",
+      description: "Close the agent's browser. The profile (and its logins) is kept.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
       name: "computer_list_sessions",
       description: "List all active computer-use bridge sessions. Shows which are connected.",
       inputSchema: { type: "object", properties: {} },
@@ -415,6 +525,132 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           };
         }
         return { content: [{ type: "text", text: `Timed out waiting for "${args?.query}"` }], isError: true };
+
+      case "computer_list_windows": {
+        result = await sendCommand("list_windows", {}, 20);
+        if (result.error) {
+          return { content: [{ type: "text", text: `Error: ${result.error}` }], isError: true };
+        }
+        const wins = result.windows || [];
+        if (wins.length === 0) {
+          return { content: [{ type: "text", text: "No windows found." }] };
+        }
+        return {
+          content: [{
+            type: "text",
+            text: wins.map((w) => `${w.app} — ${w.title}`).join("\n"),
+          }],
+        };
+      }
+
+      case "computer_focus_window":
+        result = await sendCommand("focus_window", {
+          app: args?.app ?? "",
+          title: args?.title ?? "",
+        }, 20);
+        return {
+          content: [{
+            type: "text",
+            text: result.ok
+              ? `Focused: ${result.app}${result.title ? ` — ${result.title}` : ""}`
+              : `Error: ${result.error}`,
+          }],
+          isError: !result.ok,
+        };
+
+      // ── Browser im eigenen Profil ──────────────────────────────────────────
+      case "browser_navigate":
+        result = await sendCommand("browser_navigate", { url: args?.url ?? "" }, 45);
+        return {
+          content: [{
+            type: "text",
+            text: result.ok ? `Opened: ${result.title || ""} (${result.url})` : `Error: ${result.error}`,
+          }],
+          isError: !result.ok,
+        };
+
+      case "browser_snapshot":
+        result = await sendCommand("browser_snapshot", {
+          max_chars: args?.max_chars ?? 20000,
+        }, 45);
+        if (!result.ok) {
+          return { content: [{ type: "text", text: `Error: ${result.error}` }], isError: true };
+        }
+        return {
+          content: [{
+            type: "text",
+            text: `${result.title || ""} (${result.url})\n\n${result.snapshot}` +
+                  (result.truncated ? "\n\n[truncated — raise max_chars if you need more]" : ""),
+          }],
+        };
+
+      case "browser_click":
+        result = await sendCommand("browser_click", {
+          selector: args?.selector ?? "",
+          text: args?.text ?? "",
+        }, 40);
+        return {
+          content: [{ type: "text", text: result.ok ? `Clicked: ${result.clicked}` : `Error: ${result.error}` }],
+          isError: !result.ok,
+        };
+
+      case "browser_fill":
+        result = await sendCommand("browser_fill", {
+          selector: args?.selector ?? "",
+          value: args?.value ?? "",
+        }, 40);
+        return {
+          content: [{ type: "text", text: result.ok ? `Filled: ${result.filled}` : `Error: ${result.error}` }],
+          isError: !result.ok,
+        };
+
+      case "browser_wait":
+        result = await sendCommand("browser_wait", {
+          selector: args?.selector ?? "",
+          timeout_ms: args?.timeout_ms ?? 15000,
+        }, ((args?.timeout_ms ?? 15000) / 1000) + 20);
+        return {
+          content: [{ type: "text", text: result.ok ? `Ready: ${result.url}` : `Error: ${result.error}` }],
+          isError: !result.ok,
+        };
+
+      case "browser_capture":
+        result = await sendCommand("browser_capture", {
+          full_page: args?.full_page ?? false,
+        }, 45);
+        if (!result.ok) {
+          return { content: [{ type: "text", text: `Error: ${result.error}` }], isError: true };
+        }
+        return {
+          content: [
+            { type: "text", text: `Page: ${result.url}` },
+            { type: "image", data: result.screenshot_b64, mimeType: "image/png" },
+          ],
+        };
+
+      case "browser_tabs": {
+        const params = args?.index === undefined ? {} : { index: args.index };
+        result = await sendCommand("browser_tabs", params, 30);
+        if (!result.ok) {
+          return { content: [{ type: "text", text: `Error: ${result.error}` }], isError: true };
+        }
+        if (result.tabs) {
+          return {
+            content: [{
+              type: "text",
+              text: result.tabs.map((t) => `[${t.index}] ${t.title} — ${t.url}`).join("\n") || "No tabs.",
+            }],
+          };
+        }
+        return { content: [{ type: "text", text: `Switched to tab ${result.active}: ${result.url}` }] };
+      }
+
+      case "browser_close":
+        result = await sendCommand("browser_close", {}, 30);
+        return {
+          content: [{ type: "text", text: result.ok ? "Browser closed (profile kept)." : `Error: ${result.error}` }],
+          isError: !result.ok,
+        };
 
       case "computer_list_sessions": {
         const data = await apiCall("/computer-use/sessions");

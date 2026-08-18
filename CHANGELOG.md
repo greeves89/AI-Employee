@@ -5,6 +5,51 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.237.0] - 2026-08-18
+
+### Behoben
+- **Der Agent durfte auf dem Rechner des Nutzers gar nicht klicken.** Sieben
+  Befehle, die der Claude-Code-Weg sendet — `click`, `move`, `scroll`,
+  `find_element`, `wait_for_element`, `get_clipboard`, `set_clipboard` —
+  standen nicht in der serverseitigen Freigabeliste. Die Prüfung ist
+  fail-closed, also wurden sie mit **403 abgewiesen, bevor sie den Rechner
+  erreichten**. Über Codex liefen dieselben Fähigkeiten (dort heißen sie
+  `mouse_click` …), deshalb fiel es nie auf. Das ist die tatsächliche Ursache
+  hinter „Navigieren und Formulare ausfüllen ist nicht verlässlich" — nicht das
+  Modell, das „zu anderen Mitteln greift", sondern die API. Ein Test liest die
+  Namen jetzt aus beiden Quellen und hält sie zusammen.
+- **`open_app` war unter Windows kaputt** — der Code rief unbedingt `open -a`
+  auf, ein reiner macOS-Befehl. Windows nutzt jetzt denselben Weg wie bei
+  `open_url` (Shell-API ohne Kommandozeilen-Interpretation).
+- **Zwei Berechtigungsgruppen waren unerreichbar:** `input_capture` und
+  `voice_capture` existierten serverseitig, standen aber nicht in der Liste der
+  Tray-App — niemand konnte sie einschalten. Ein Test vergleicht beide Seiten.
+
+### Hinzugefügt
+- **Browser-Steuerung in der Bridge** (Gruppe `browser`, standardmäßig **aus**):
+  Seiten strukturiert lesen, Formulare ausfüllen, klicken, warten, Tabs
+  wechseln, Bildschirmfoto — im **eigenen Browser-Profil** des Agenten.
+  Genutzt wird der installierte Edge bzw. Chrome, kein mitgelieferter Browser.
+  Hintergrund: Seit Chrome/Edge 136 lässt sich das Standardprofil nicht mehr
+  fernsteuern (Härtung gegen Cookie-Diebstahl), ein eigenes Profil ist der
+  vorgesehene Weg. Der Mensch meldet sich einmal an, danach bleibt die
+  Anmeldung erhalten. Cookies aus dem privaten Profil zu kopieren wäre genau
+  das, wogegen die Härtung gebaut wurde — das tun wir bewusst nicht.
+- **Fenster-Steuerung:** `list_windows` und `focus_window`. Tippen und Klicken
+  gehen immer an das Fenster im Vordergrund; ohne diesen Schritt landete
+  Eingabe in der zuletzt benutzten Anwendung statt in der gemeinten.
+- **Freigabelisten pro Sitzung:** **welche** Anwendungen und **welche**
+  Adressen der Agent anfassen darf — durchgesetzt **serverseitig**, nicht nur
+  in der Oberfläche. Leer heißt „nicht einschränken". Beim Adressvergleich
+  zählt der Host, nicht die Zeichenkette: `example.com` erlaubt
+  `a.example.com`, aber nicht `example.com.fremde-domain.tld`.
+  (Das vorhandene Feld `allowed_paths` bleibt davon unberührt — es wird bis
+  heute nur lokal gespeichert und nirgends durchgesetzt.)
+- Alle neuen Fähigkeiten in **allen Laufzeiten**: MCP (Claude Code), Codex und
+  Custom-LLM.
+
+---
+
 ## [1.236.0] - 2026-08-18
 
 ### Neu

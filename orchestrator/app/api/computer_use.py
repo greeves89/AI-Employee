@@ -89,17 +89,41 @@ async def _refresh_screenshot_cache(session_id: str) -> str | None:
 # ── Capability groups ─────────────────────────────────────────────────────────
 
 # Map capability-group name → list of allowed action strings
+#
+# WICHTIG — die Kurznamen sind keine Kosmetik: Der MCP-Server
+# (agent/mcp/computer-use-server.mjs) sendet `click`/`move`/`scroll`/
+# `get_clipboard`/`set_clipboard`, der Codex-Weg (agent/app/tools/definitions.py)
+# die langen `mouse_*`/`clipboard_*`. Die Bridge akzeptiert beide Schreibweisen
+# seit jeher (`action in ("click", "mouse_click")`), NUR diese Liste kannte die
+# kurzen nicht — und `_action_allowed` ist fail-closed. Ergebnis: fuer jeden
+# Claude-Code-Agenten war Klicken, Scrollen und Element-Suchen mit 403 gesperrt,
+# waehrend dieselben Faehigkeiten ueber Codex liefen. Das ist die Ursache hinter
+# "Navigieren und Formulare ausfuellen ist noch nicht verlaesslich" in
+# docs/AI-Employee-Features.md — nicht das Modell, sondern die API.
+# test_bridge_action_names_are_allowed.py haelt beide Seiten ab jetzt zusammen.
 CAPABILITY_GROUPS: dict[str, list[str]] = {
     "screenshots": ["screenshot", "get_mouse_position"],
-    "mouse": ["mouse_move", "mouse_click", "mouse_scroll", "drag"],
+    "mouse": ["mouse_move", "move", "mouse_click", "click", "mouse_scroll", "scroll", "drag"],
     "keyboard": ["key", "type", "hotkey"],
-    "accessibility": ["ax_tree"],
-    "apps": ["open_app", "close_app", "open_url"],
-    "clipboard": ["clipboard_read", "clipboard_write"],
+    # Elemente FINDEN statt auf Koordinaten zu raten — der Kern verlaesslicher
+    # Bedienung. Beides war implementiert (Bridge + MCP-Werkzeug), aber hier nie
+    # eingetragen und damit unerreichbar.
+    "accessibility": ["ax_tree", "find_element", "wait_for_element"],
+    "apps": ["open_app", "close_app", "open_url", "list_windows", "focus_window"],
+    "clipboard": ["clipboard_read", "get_clipboard", "clipboard_write", "set_clipboard"],
     "shell": ["shell_run"],
     # Replay-Modus: observe the human's own clicks/keystrokes. Off by default
     # like shell — while active it sees everything typed on that machine.
     "input_capture": ["start_input_capture", "stop_input_capture"],
+    # Voice-on-Desktop: das Mikrofon des Menschen. Wie input_capture nur zwischen
+    # ausdruecklichem Start und Stopp — und aus demselben Grund default aus.
+    "voice_capture": ["start_voice_capture", "stop_voice_capture"],
+    # Browser im eigenen Profil (Phase 2). Default aus: er arbeitet in einer
+    # angemeldeten Sitzung, das ist naeher an `shell` als an `screenshots`.
+    "browser": [
+        "browser_navigate", "browser_snapshot", "browser_click", "browser_fill",
+        "browser_wait", "browser_capture", "browser_tabs", "browser_close",
+    ],
 }
 
 # Groups enabled for all new sessions unless the user changes them.
@@ -129,6 +153,104 @@ def _action_allowed(action: str, allowed: set[str]) -> bool:
     return group in allowed
 
 
+# ── Scope-Listen: WELCHE Anwendung, WELCHE Adresse ────────────────────────────
+#
+# Die Capability-Gruppe sagt nur, OB der Agent Anwendungen bedienen darf. Sie
+# sagt nicht, WELCHE. Genau das ist die Zusage an den Nutzer: "nur die, die ich
+# freigebe".
+#
+# Durchgesetzt wird das HIER, serverseitig — nicht in der Tray-App. Die kennt
+# zwar seit jeher ein Feld `allowed_paths`, zeigt es im Berechtigungs-Dialog an
+# und speichert es lokal, aber es erreicht weder Bridge noch Server: eine
+# Freigabe-Einstellung ohne jede Wirkung. Eine Oberflaeche, die Schutz zusagt
+# und nichts durchsetzt, ist schlechter als gar keine — sie erzeugt Vertrauen,
+# das nicht gedeckt ist.
+#
+# ``None`` heisst ausdruecklich "nicht eingeschraenkt" (bisheriges Verhalten,
+# Bestandssitzungen brechen nicht). Eine LEERE Liste heisst "nichts erlaubt".
+
+# Welcher Parameter traegt bei welcher Aktion den zu pruefenden Namen.
+_APP_SCOPED_ACTIONS: dict[str, tuple[str, ...]] = {
+    "open_app": ("app", "name"),
+    "close_app": ("app", "name"),
+    "focus_window": ("app", "name"),
+}
+_URL_SCOPED_ACTIONS: dict[str, tuple[str, ...]] = {
+    "open_url": ("url",),
+    "browser_navigate": ("url",),
+}
+
+
+def _app_in_scope(app: str, allowed_apps: list[str] | None) -> bool:
+    """Darf diese Anwendung bedient werden?
+
+    Vergleich ohne Gross-/Kleinschreibung und ohne ``.app``/``.exe``-Endung —
+    der Nutzer traegt "Excel" ein, das Modell schickt je nach Plattform
+    "Excel.app" oder "EXCEL.EXE".
+    """
+    if allowed_apps is None:
+        return True
+
+    def norm(value: str) -> str:
+        value = (value or "").strip().lower()
+        for suffix in (".app", ".exe"):
+            if value.endswith(suffix):
+                value = value[: -len(suffix)]
+        return value
+
+    return norm(app) in {norm(a) for a in allowed_apps}
+
+
+def _url_in_scope(url: str, allowed_domains: list[str] | None) -> bool:
+    """Darf diese Adresse angesteuert werden?
+
+    Verglichen wird der HOST, nicht die Zeichenkette: ``example.com`` erlaubt
+    ``a.example.com``, aber ausdruecklich NICHT ``example.com.angreifer.tld``
+    und auch nicht ``boeseexample.com``.
+    """
+    if allowed_domains is None:
+        return True
+    from urllib.parse import urlparse
+
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    if not host:
+        return False
+    for entry in allowed_domains:
+        want = (entry or "").strip().lower().lstrip(".")
+        if not want:
+            continue
+        if host == want or host.endswith("." + want):
+            return True
+    return False
+
+
+def _scope_violation(action: str, params: dict, session: dict) -> str | None:
+    """Fehlertext, wenn die Aktion ausserhalb der Freigabeliste liegt — sonst None."""
+    for keys, allowed, kind in (
+        (_APP_SCOPED_ACTIONS.get(action), session.get("allowed_apps"), "app"),
+        (_URL_SCOPED_ACTIONS.get(action), session.get("allowed_domains"), "url"),
+    ):
+        if not keys:
+            continue
+        value = ""
+        for key in keys:
+            if params.get(key):
+                value = str(params[key])
+                break
+        if not value:
+            continue
+        if kind == "app" and not _app_in_scope(value, allowed):
+            return (f"Anwendung '{value}' ist für diese Sitzung nicht freigegeben. "
+                    f"Freigegeben: {', '.join(allowed or []) or '(keine)'}")
+        if kind == "url" and not _url_in_scope(value, allowed):
+            return (f"Adresse '{value}' ist für diese Sitzung nicht freigegeben. "
+                    f"Freigegeben: {', '.join(allowed or []) or '(keine)'}")
+    return None
+
+
 def init_computer_use(redis: RedisService) -> None:
     global _redis
     _redis = redis
@@ -154,6 +276,7 @@ _SESSION_TTL_SECS = 7 * 24 * 3600
 # Fields that make sense to restore; everything else is per-process runtime.
 _PERSISTED_FIELDS = (
     "user_id", "created_at", "agent_id", "allowed_capabilities",
+    "allowed_apps", "allowed_domains",
     "action_count", "last_activity_at", "platform", "bridge_version",
 )
 
@@ -216,6 +339,10 @@ async def _restore_session(session_id: str) -> dict | None:
         "pending_results": {},
         "allowed_capabilities": set(stored.get("allowed_capabilities")
                                     or DEFAULT_ALLOWED_CAPABILITIES),
+        # None = nicht eingeschraenkt. Bewusst KEIN `or []` — eine leere Liste
+        # ist eine Aussage ("nichts erlaubt") und darf nicht zu "alles" kippen.
+        "allowed_apps": stored.get("allowed_apps"),
+        "allowed_domains": stored.get("allowed_domains"),
         "last_disconnected_at": None,
         "bridge_last_seen_at": None,
         "agent_id": stored.get("agent_id"),
@@ -352,6 +479,10 @@ async def create_session(user=Depends(require_auth), reuse: bool = True):
         "audit_log": [],
         "pending_results": {},
         "allowed_capabilities": allowed,
+        # None = keine Einschraenkung (bisheriges Verhalten). Der Nutzer engt
+        # das im Berechtigungs-Dialog auf einzelne Anwendungen/Adressen ein.
+        "allowed_apps": None,
+        "allowed_domains": None,
         "last_disconnected_at": None,
         "bridge_last_seen_at": None,
         "bridge_host": None,
@@ -425,6 +556,16 @@ async def delete_session(session_id: str, user=Depends(require_auth)):
 
 class CapabilityUpdate(BaseModel):
     allowed_capabilities: list[str]
+    # None = Feld nicht mitgeschickt → bestehende Einstellung bleibt. So kann
+    # die Tray-App weiterhin nur die Gruppen patchen, ohne die Freigabelisten
+    # versehentlich auf "alles" zurueckzusetzen.
+    allowed_apps: list[str] | None = None
+    allowed_domains: list[str] | None = None
+    # Ausdrueckliches Aufheben einer Einschraenkung — sonst gaebe es keinen Weg
+    # zurueck von "nur diese drei" nach "alle", weil None schon "unveraendert"
+    # bedeutet.
+    clear_app_scope: bool = False
+    clear_domain_scope: bool = False
 
 
 @router.patch("/sessions/{session_id}/capabilities")
@@ -443,10 +584,22 @@ async def update_capabilities(
         raise HTTPException(status_code=422, detail=f"Unknown capability groups: {sorted(unknown)}")
 
     session["allowed_capabilities"] = set(req.allowed_capabilities)
+    if req.clear_app_scope:
+        session["allowed_apps"] = None
+    elif req.allowed_apps is not None:
+        session["allowed_apps"] = list(req.allowed_apps)
+    if req.clear_domain_scope:
+        session["allowed_domains"] = None
+    elif req.allowed_domains is not None:
+        session["allowed_domains"] = list(req.allowed_domains)
+
     logger.info(f"Session {scrub_log(session_id)}: capabilities updated to {scrub_log(sorted(req.allowed_capabilities))}")
+    await _persist_session(session_id)
     return {
         "session_id": session_id,
         "allowed_capabilities": sorted(session["allowed_capabilities"]),
+        "allowed_apps": session.get("allowed_apps"),
+        "allowed_domains": session.get("allowed_domains"),
     }
 
 
@@ -573,6 +726,11 @@ async def dispatch_bridge_command(
             status_code=403,
             detail=f"Action '{req.action}' is not permitted (capability group '{group}' is disabled for this session).",
         )
+
+    # Die Gruppe erlaubt die ART der Aktion, die Freigabeliste das ZIEL.
+    violation = _scope_violation(req.action, req.params or {}, session)
+    if violation:
+        raise HTTPException(status_code=403, detail=violation)
 
     if not session["bridge_connected"] or not session["bridge_ws"]:
         raise HTTPException(status_code=503, detail="Bridge not connected")

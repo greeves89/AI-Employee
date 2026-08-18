@@ -511,7 +511,12 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                             "Action to perform. Special: 'list_sessions'. Desktop actions: "
                             "'screenshot', 'mouse_click', 'mouse_move', 'mouse_scroll', "
                             "'type', 'key', 'hotkey', 'open_app', 'close_app', "
-                            "'clipboard_read', 'clipboard_write', 'shell_run', 'ax_tree'."
+                            "'clipboard_read', 'clipboard_write', 'shell_run', 'ax_tree', "
+                            "'find_element', 'wait_for_element', 'list_windows', "
+                            "'focus_window'. Browser in the agent's OWN profile (needs the "
+                            "'browser' capability): 'browser_navigate', 'browser_snapshot', "
+                            "'browser_click', 'browser_fill', 'browser_wait', "
+                            "'browser_capture', 'browser_tabs', 'browser_close'."
                         ),
                     },
                     "session_id": {
@@ -523,7 +528,13 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                         "description": (
                             "Action parameters. Examples: screenshot {scale: 0.5}; "
                             "mouse_click {x: 100, y: 200, button: 'left'}; type {text: 'https://example.com'}; "
-                            "key {key: 'enter'}; hotkey {keys: ['ctrl', 'l']}; open_app {name: 'Edge'}."
+                            "key {key: 'enter'}; hotkey {keys: ['ctrl', 'l']}; open_app {name: 'Edge'}; "
+                            "find_element {query: 'Save', role: 'AXButton'}; "
+                            "focus_window {app: 'Excel'}; browser_navigate {url: 'https://…'}; "
+                            "browser_fill {selector: '#user', value: 'abc'}; "
+                            "browser_click {text: 'Anmelden'}. Prefer find_element over "
+                            "guessing coordinates, and browser_* over open_url when you "
+                            "actually need to READ or FILL a page."
                         ),
                     },
                     "timeout": {

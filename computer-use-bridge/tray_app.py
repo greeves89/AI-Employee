@@ -67,13 +67,21 @@ app_log = _setup_app_logging()
 
 # ── Capability metadata ────────────────────────────────────────────────────────
 
+# ACHTUNG: Diese Liste muss zu CAPABILITY_GROUPS in
+# orchestrator/app/api/computer_use.py passen. Eine Gruppe, die hier fehlt, kann
+# der Nutzer nicht einschalten — genau so waren `input_capture` und
+# `voice_capture` serverseitig vorhanden, aber ueber die Oberflaeche nie
+# erreichbar.
 CAPABILITY_META = [
     {"id": "screenshots",   "label": "Screenshots",           "desc": "Bildschirminhalt lesen",                  "risk": "gering"},
-    {"id": "accessibility", "label": "Accessibility Tree",    "desc": "UI-Elemente lesen (Titel, Rollen, Pos.)", "risk": "gering"},
+    {"id": "accessibility", "label": "Accessibility Tree",    "desc": "UI-Elemente lesen und finden",            "risk": "gering"},
     {"id": "mouse",         "label": "Maus-Steuerung",        "desc": "Cursor bewegen, klicken, scrollen",       "risk": "mittel"},
     {"id": "keyboard",      "label": "Tastatur-Eingabe",      "desc": "Text schreiben und Shortcuts senden",     "risk": "mittel"},
-    {"id": "apps",          "label": "Apps öffnen / schließen","desc": "Anwendungen starten und beenden",        "risk": "mittel"},
+    {"id": "apps",          "label": "Apps öffnen / schließen","desc": "Anwendungen starten, beenden, fokussieren", "risk": "mittel"},
     {"id": "clipboard",     "label": "Zwischenablage",        "desc": "Zwischenablage lesen und schreiben",     "risk": "mittel"},
+    {"id": "browser",       "label": "Browser-Steuerung",     "desc": "Eigenes Browser-Profil bedienen (Seiten lesen, Formulare)", "risk": "hoch"},
+    {"id": "input_capture", "label": "Eingaben mitschneiden", "desc": "Deine Klicks und Tasten aufzeichnen (Replay)", "risk": "hoch"},
+    {"id": "voice_capture", "label": "Mikrofon",              "desc": "Mikrofon mithören (nur zwischen Start und Stopp)", "risk": "hoch"},
     {"id": "shell",         "label": "Shell-Befehle",         "desc": "Terminal-Befehle ausführen",              "risk": "hoch"},
 ]
 
@@ -190,20 +198,43 @@ def api_login(base_url, email, password):
         return json.loads(r.read())["access_token"]
 
 
-def api_create_session(base_url, token, caps):
+def _scope_payload(cfg: dict | None) -> dict:
+    """Freigabelisten fuer den Server — und zwar so, dass "keine Einschraenkung"
+    auch wirklich ankommt.
+
+    Eine leere Liste heisst serverseitig "nichts erlaubt", NICHT "alles". Wer im
+    Dialog nichts eintraegt, meint aber "nicht einschraenken" — deshalb wird in
+    dem Fall ausdruecklich `clear_*_scope` geschickt statt einer leeren Liste.
+    """
+    cfg = cfg or {}
+    apps = [a for a in (cfg.get("allowed_apps") or []) if str(a).strip()]
+    domains = [d for d in (cfg.get("allowed_domains") or []) if str(d).strip()]
+    payload: dict = {}
+    if apps:
+        payload["allowed_apps"] = apps
+    else:
+        payload["clear_app_scope"] = True
+    if domains:
+        payload["allowed_domains"] = domains
+    else:
+        payload["clear_domain_scope"] = True
+    return payload
+
+
+def api_create_session(base_url, token, caps, cfg=None):
     body = _api("POST", base_url, "/api/v1/computer-use/sessions", token, {})
     sid = body["session_id"]
     try:
         _api("PATCH", base_url, f"/api/v1/computer-use/sessions/{sid}/capabilities",
-             token, {"allowed_capabilities": caps})
+             token, {"allowed_capabilities": caps, **_scope_payload(cfg)})
     except Exception:
         pass
     return sid, caps
 
 
-def api_update_capabilities(base_url, token, session_id, caps):
+def api_update_capabilities(base_url, token, session_id, caps, cfg=None):
     _api("PATCH", base_url, f"/api/v1/computer-use/sessions/{session_id}/capabilities",
-         token, {"allowed_capabilities": caps})
+         token, {"allowed_capabilities": caps, **_scope_payload(cfg)})
 
 
 def api_session_exists(base_url, token, session_id) -> bool:
@@ -269,13 +300,13 @@ def ensure_session(cfg: dict) -> str:
         pass
     if sid and api_session_exists(url, token, sid):
         try:
-            api_update_capabilities(url, token, sid, caps)
+            api_update_capabilities(url, token, sid, caps, cfg)
         except Exception:
             pass
         return ENSURE_OK
     # Session gone — try to create a fresh one
     try:
-        new_sid, _ = api_create_session(url, token, caps)
+        new_sid, _ = api_create_session(url, token, caps, cfg)
         cfg["session"] = new_sid
         save_config(cfg)
         return ENSURE_OK
@@ -290,16 +321,16 @@ def ensure_session(cfg: dict) -> str:
         return ENSURE_ERROR
 
 
-def login_and_prepare(base_url, email, password, caps, requested_session_id=None):
+def login_and_prepare(base_url, email, password, caps, requested_session_id=None, cfg=None):
     token = api_login(base_url, email, password)
     if requested_session_id and api_session_exists(base_url, token, requested_session_id):
         session_id = requested_session_id
         try:
-            api_update_capabilities(base_url, token, session_id, caps)
+            api_update_capabilities(base_url, token, session_id, caps, cfg)
         except Exception:
             pass
     else:
-        session_id, _ = api_create_session(base_url, token, caps)
+        session_id, _ = api_create_session(base_url, token, caps, cfg)
     return token, session_id
 
 
@@ -487,12 +518,20 @@ def _appkit_handlers_init():
                 cfg = st["cfg"]
                 cfg["allowed_capabilities"] = new_caps
                 cfg["allowed_paths"] = st["paths"]
+
+                def _lines(view):
+                    if view is None:
+                        return []
+                    return [ln.strip() for ln in str(view.string()).splitlines() if ln.strip()]
+
+                cfg["allowed_apps"] = _lines(st.get("apps_tv"))
+                cfg["allowed_domains"] = _lines(st.get("dom_tv"))
                 save_config(cfg)
                 if cfg.get("token") and cfg.get("session") and cfg.get("url") and is_running():
                     st["status_lbl"].setStringValue_("Übertrage an Server…")
                     def _push():
                         try:
-                            api_update_capabilities(cfg["url"], cfg["token"], cfg["session"], new_caps)
+                            api_update_capabilities(cfg["url"], cfg["token"], cfg["session"], new_caps, cfg)
                             st["status_lbl"].performSelectorOnMainThread_withObject_waitUntilDone_(
                                 "setStringValue:", "✓ Gespeichert", True)
                         except Exception as e:
@@ -773,7 +812,14 @@ def show_permissions_dialog(cfg: dict) -> None:
     _appkit_handlers_init()
     from AppKit import (NSApp, NSScrollView, NSTextView, NSMakeRect, NSFont, NSVisualEffectView)
 
-    W, H = 600, 720
+    # Hoehe folgt der Anzahl der Faehigkeiten (49 px je Zeile) plus dem Block
+    # fuer die Freigabelisten. Vorher stand hier eine feste 720 fuer sieben
+    # Eintraege — mit zehn waere die unterste Zeile aus dem Fenster gelaufen.
+    CAP_ROW_H = 49
+    SCOPE_CARD_H = 132
+    caps_h = CAP_ROW_H * len(CAPABILITY_META) + 30
+    W = 600
+    H = 340 + caps_h + SCOPE_CARD_H
     panel = _make_panel("AI Employee Berechtigungen", W, H)
     cv = panel.contentView()
     PAD = 32
@@ -801,16 +847,51 @@ def show_permissions_dialog(cfg: dict) -> None:
 
     cap_checks = {}
     current_caps = set(cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)))
-    caps_x, caps_y, caps_w, caps_h = PAD, 238, W - 2 * PAD, 380
+    # Von unten aufgebaut: Knoepfe (20) · Status (52) · Ordner-Karte (92+124)
+    # · Freigabe-Karte · Faehigkeiten-Karte.
+    scope_card_x, scope_card_y = PAD, 232
+    scope_card_w = W - 2 * PAD
+    caps_x, caps_y, caps_w = PAD, scope_card_y + SCOPE_CARD_H + 14, W - 2 * PAD
     _card(cv, caps_x, caps_y, caps_w, caps_h)
     y = caps_y + caps_h - 18
     for cap in CAPABILITY_META:
-        y -= 49
+        y -= CAP_ROW_H
         chk = _checkbox(cv, cap["label"], caps_x + 20, y+22, 250, cap["id"] in current_caps)
         chk.setFont_(NSFont.boldSystemFontOfSize_(13))
         cap_checks[cap["id"]] = chk
         _label(cv, cap["desc"], caps_x + 40, y+5, 340, 16, size=11, muted=True)
         _risk_badge(cv, cap["risk"], caps_x + caps_w - 20, y+22)
+
+    # Freigabelisten — anders als die Ordnerliste darunter werden diese beiden
+    # serverseitig durchgesetzt (computer_use.py:_scope_violation). Leer heisst
+    # ausdruecklich "nicht einschraenken".
+    _card(cv, scope_card_x, scope_card_y, scope_card_w, SCOPE_CARD_H)
+    _label(cv, "Freigaben", scope_card_x + 20, scope_card_y + SCOPE_CARD_H - 30, 140, 18, size=13, bold=True)
+    _label(cv, "Leer = keine Einschraenkung. Eine Zeile je Eintrag.",
+           scope_card_x + 110, scope_card_y + SCOPE_CARD_H - 28, scope_card_w - 130, 16, size=11, muted=True)
+
+    _field_w = (scope_card_w - 60) // 2
+    _label(cv, "Anwendungen", scope_card_x + 20, scope_card_y + SCOPE_CARD_H - 54, _field_w, 14, size=10, muted=True)
+    apps_scroll = NSScrollView.alloc().initWithFrame_(
+        NSMakeRect(scope_card_x + 20, scope_card_y + 16, _field_w, 56))
+    apps_scroll.setHasVerticalScroller_(True)
+    apps_scroll.setBorderType_(2)
+    apps_tv = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, _field_w - 4, 56))
+    apps_tv.setFont_(NSFont.userFixedPitchFontOfSize_(11))
+    apps_tv.setString_("\n".join(cfg.get("allowed_apps") or []))
+    apps_scroll.setDocumentView_(apps_tv)
+    cv.addSubview_(apps_scroll)
+
+    _label(cv, "Adressen", scope_card_x + 40 + _field_w, scope_card_y + SCOPE_CARD_H - 54, _field_w, 14, size=10, muted=True)
+    dom_scroll = NSScrollView.alloc().initWithFrame_(
+        NSMakeRect(scope_card_x + 40 + _field_w, scope_card_y + 16, _field_w, 56))
+    dom_scroll.setHasVerticalScroller_(True)
+    dom_scroll.setBorderType_(2)
+    dom_tv = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, _field_w - 4, 56))
+    dom_tv.setFont_(NSFont.userFixedPitchFontOfSize_(11))
+    dom_tv.setString_("\n".join(cfg.get("allowed_domains") or []))
+    dom_scroll.setDocumentView_(dom_tv)
+    cv.addSubview_(dom_scroll)
 
     folder_card_x, folder_card_y = PAD, 92
     folder_card_w, folder_card_h = W - 2 * PAD, 124
@@ -840,6 +921,7 @@ def show_permissions_dialog(cfg: dict) -> None:
     save_btn   = _button(cv, "Speichern", W-PAD-120, 20, 120, key="\r")
 
     _perms_state.update(dict(cap_checks=cap_checks, paths=paths, tv=tv,
+                             apps_tv=apps_tv, dom_tv=dom_tv,
                              status_lbl=status_lbl, cfg=cfg))
 
     h = _perms_state["_handler"]
@@ -1431,6 +1513,23 @@ def _show_permissions_tkinter(cfg):
 
     ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=10)
 
+    # Freigabelisten: WELCHE Anwendung, WELCHE Adresse. Leer = nicht
+    # eingeschraenkt. Anders als die Ordnerliste darueber werden diese beiden
+    # serverseitig durchgesetzt, nicht nur angezeigt.
+    ctk.CTkLabel(root, text="ERLAUBTE ANWENDUNGEN (leer = alle)",
+                 font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").pack(anchor="w", padx=24, pady=(0, 4))
+    apps_box = ctk.CTkTextbox(root, height=52, font=ctk.CTkFont(family="Courier", size=11))
+    apps_box.pack(fill="x", padx=24)
+    apps_box.insert("1.0", "\n".join(cfg.get("allowed_apps") or []))
+
+    ctk.CTkLabel(root, text="ERLAUBTE ADRESSEN (leer = alle) — z. B. intranet.example",
+                 font=ctk.CTkFont(size=10, weight="bold"), text_color="gray50").pack(anchor="w", padx=24, pady=(10, 4))
+    domains_box = ctk.CTkTextbox(root, height=52, font=ctk.CTkFont(family="Courier", size=11))
+    domains_box.pack(fill="x", padx=24)
+    domains_box.insert("1.0", "\n".join(cfg.get("allowed_domains") or []))
+
+    ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=10)
+
     status_lbl = ctk.CTkLabel(root, text="", text_color="gray50", font=ctk.CTkFont(size=11))
     status_lbl.pack(anchor="w", padx=24)
 
@@ -1439,15 +1538,20 @@ def _show_permissions_tkinter(cfg):
 
     def on_cancel(): root.destroy()
 
+    def _lines(box) -> list[str]:
+        return [ln.strip() for ln in box.get("1.0", "end").splitlines() if ln.strip()]
+
     def on_save():
         cfg["allowed_capabilities"] = [cid for cid, v in cap_vars.items() if v.get()]
         cfg["allowed_paths"] = paths
+        cfg["allowed_apps"] = _lines(apps_box)
+        cfg["allowed_domains"] = _lines(domains_box)
         save_config(cfg)
         if is_running():
             status_lbl.configure(text="Übertrage an Server…")
             def _p():
                 try:
-                    api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg["allowed_capabilities"])
+                    api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg["allowed_capabilities"], cfg)
                     root.after(0, lambda: status_lbl.configure(text="✓ Gespeichert", text_color="#22c55e"))
                 except Exception as e:
                     root.after(0, lambda: status_lbl.configure(text=f"Lokal gespeichert ({e})", text_color="#f59e0b"))
@@ -1576,7 +1680,7 @@ def _show_permissions_plain_tkinter(cfg):
     def save():
         cfg["allowed_capabilities"] = [k for k,v in cap_vars.items() if v.get()]; save_config(cfg)
         if is_running():
-            threading.Thread(target=lambda: api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg["allowed_capabilities"]), daemon=True).start()
+            threading.Thread(target=lambda: api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg["allowed_capabilities"], cfg), daemon=True).start()
         root.destroy()
     ttk.Button(f, text="Speichern", command=save).pack(anchor="e", pady=8)
     root.mainloop()
@@ -1767,7 +1871,8 @@ def run_tray(cfg: dict) -> None:
                 return
             try:
                 api_update_capabilities(cfg["url"], cfg["token"], cfg["session"],
-                                        cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)))
+                                        cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)),
+                                        cfg)
             except Exception:  # noqa: BLE001 — capabilities are best-effort
                 pass
             start_bridge(cfg)
@@ -1810,7 +1915,7 @@ def run_tray(cfg: dict) -> None:
     ))
     threading.Thread(target=refresh, args=(icon,), daemon=True).start()
     if cfg.get("auto_connect") and cfg.get("token") and cfg.get("session"):
-        try: api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)))
+        try: api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)), cfg)
         except: pass
         threading.Thread(target=lambda: start_bridge(cfg), daemon=True).start()
     icon.run()

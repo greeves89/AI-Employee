@@ -23,3 +23,8 @@ pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"
 # kann die Bridge unter Windows nur klicken, wohin jemand zeigt, aber keine
 # Elemente FINDEN; die Bedienung innerhalb einer Anwendung waere ein Blindflug.
 uiautomation>=2.0.18; sys_platform == "win32"
+# Browser-Steuerung im EIGENEN Profil (Capability-Gruppe `browser`, default aus).
+# Bewusst OHNE `playwright install`: genutzt wird das im Haus freigegebene Edge
+# bzw. Chrome ueber `channel=`, nicht ein mitgeliefertes Chromium — das haelt die
+# Tray-App klein und den Browser unter der Kontrolle der IT.
+playwright>=1.47.0

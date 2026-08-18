@@ -449,6 +449,330 @@ def _win_ui_tree(app_name: str | None = None, max_depth: int = 6) -> dict:
         return {"error": str(e)}
 
 
+BROWSER_PROFILE_DIR = os.path.join(
+    os.path.expanduser("~"), ".ai-employee", "browser-profile"
+)
+
+
+class BrowserController:
+    """Der Browser, den der Agent bedienen darf — im EIGENEN Profil.
+
+    Warum ein eigenes Profil und nicht das des Nutzers: Seit Chrome/Edge 136
+    wird ``--remote-debugging-port`` auf dem STANDARD-Profil ignoriert (Haertung
+    gegen Cookie-/Passwort-Diebstahl). Fernsteuerung geht nur noch mit einem
+    eigenen ``user_data_dir``. Das ist kein Umweg, sondern der vorgesehene Weg —
+    und er hat einen zweiten Vorteil: man sieht jederzeit, mit welchen Konten
+    der Agent unterwegs ist. Cookies aus dem echten Profil zu kopieren waere
+    genau das, wogegen die Haertung gebaut wurde; das tun wir bewusst nicht.
+    Der Mensch meldet sich einmal an, danach bleibt die Anmeldung im Profil.
+
+    Warum ein eigener Thread: ``dispatch`` laeuft ueber
+    ``run_in_executor(None, ...)`` auf WECHSELNDEN Threads des Standard-Pools.
+    Playwrights Sync-API ist aber an den Thread gebunden, der sie erzeugt hat —
+    ein Klick vom falschen Thread wirft "greenlet" -Fehler. Deshalb besitzt der
+    Browser hier einen festen Thread, und alle Befehle laufen als Auftraege
+    durch eine Queue.
+    """
+
+    def __init__(self, profile_dir: str = BROWSER_PROFILE_DIR):
+        self.profile_dir = profile_dir
+        self._queue: "queue.Queue[tuple]" = queue.Queue()
+        self._thread: threading.Thread | None = None
+        self._started = threading.Event()
+        self._start_error: str = ""
+        self._ctx = None
+        self._pw = None
+
+    # ── Lebenszyklus ─────────────────────────────────────────────────────────
+    def _run(self) -> None:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self._start_error = (
+                "Playwright fehlt in der Bridge. Einmalig 'pip install playwright' "
+                "ausfuehren; der Browser selbst wird nicht mitgeliefert, es wird das "
+                "installierte Edge/Chrome genutzt."
+            )
+            self._started.set()
+            return
+
+        os.makedirs(self.profile_dir, exist_ok=True)
+        try:
+            self._pw = sync_playwright().start()
+            # Reihenfolge mit Absicht: erst der im Haus freigegebene Browser,
+            # dann Chrome, erst zuletzt das mitgelieferte Chromium. Ein Klinik-
+            # Arbeitsplatz soll den Browser fahren, den die IT freigegeben hat.
+            last_err: Exception | None = None
+            for channel in ("msedge", "chrome", None):
+                try:
+                    kwargs = {"user_data_dir": self.profile_dir, "headless": False}
+                    if channel:
+                        kwargs["channel"] = channel
+                    self._ctx = self._pw.chromium.launch_persistent_context(**kwargs)
+                    break
+                except Exception as e:  # noqa: BLE001 — naechsten Kanal versuchen
+                    last_err = e
+            if self._ctx is None:
+                self._start_error = f"Kein Browser startbar: {last_err}"
+                self._started.set()
+                return
+        except Exception as e:  # noqa: BLE001
+            self._start_error = f"Browser-Start fehlgeschlagen: {e}"
+            self._started.set()
+            return
+
+        self._started.set()
+        while True:
+            job, box = self._queue.get()
+            if job is None:          # Beenden
+                break
+            try:
+                box.append(("ok", job(self._page())))
+            except Exception as e:   # noqa: BLE001 — Fehler gehoert zum Agenten, nicht ins Log-Nirwana
+                box.append(("err", str(e)))
+        try:
+            if self._ctx:
+                self._ctx.close()
+            if self._pw:
+                self._pw.stop()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _page(self):
+        """Die aktive Seite — eine leere wird bei Bedarf angelegt."""
+        if not self._ctx.pages:
+            return self._ctx.new_page()
+        return self._ctx.pages[-1]
+
+    def _ensure_started(self) -> str:
+        if self._thread is None:
+            self._thread = threading.Thread(target=self._run, name="bridge-browser", daemon=True)
+            self._thread.start()
+        self._started.wait(timeout=90)
+        return self._start_error
+
+    def _call(self, job, timeout: float = 60.0) -> dict:
+        err = self._ensure_started()
+        if err:
+            return {"ok": False, "error": err}
+        box: list = []
+        self._queue.put((job, box))
+        waited = 0.0
+        while not box and waited < timeout:
+            time.sleep(0.05)
+            waited += 0.05
+        if not box:
+            return {"ok": False, "error": f"Browser antwortet nicht (>{int(timeout)}s)"}
+        kind, value = box[0]
+        return value if kind == "ok" else {"ok": False, "error": value}
+
+    def close(self) -> dict:
+        if self._thread is not None:
+            self._queue.put((None, []))
+            self._thread.join(timeout=10)
+            self._thread = None
+            self._started.clear()
+            self._ctx = None
+            self._pw = None
+        return {"ok": True}
+
+    # ── Aktionen ─────────────────────────────────────────────────────────────
+    # Die Adress-Freigabe wird SERVERSEITIG geprueft (computer_use.py), bevor der
+    # Befehl hier ankommt — hier steht keine zweite, abweichende Wahrheit.
+
+    def navigate(self, url: str, timeout_ms: int = 30000) -> dict:
+        def job(page):
+            page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+            return {"ok": True, "url": page.url, "title": page.title()}
+        return self._call(job)
+
+    def snapshot(self, max_chars: int = 20000) -> dict:
+        """Struktur statt Pixel: der Bedienungshilfen-Baum der Seite.
+
+        ``page.accessibility`` gab es frueher, ist in aktuellen Playwright-
+        Fassungen aber entfernt (1.62 kennt es nicht mehr). Der heutige Weg ist
+        ``locator.aria_snapshot()``; der alte bleibt als Rueckfall stehen, damit
+        eine aeltere Installation nicht bricht.
+        """
+        def job(page):
+            text = ""
+            body = page.locator("body")
+            if hasattr(body, "aria_snapshot"):
+                text = body.aria_snapshot()
+            elif hasattr(page, "accessibility"):
+                text = json.dumps(page.accessibility.snapshot() or {}, ensure_ascii=False)
+            else:
+                return {"ok": False, "error": (
+                    "Diese Playwright-Fassung kann keinen Seitenbaum liefern — "
+                    "bitte 'pip install -U playwright' ausfuehren."
+                )}
+            truncated = len(text) > max_chars
+            return {"ok": True, "url": page.url, "title": page.title(),
+                    "snapshot": text[:max_chars], "truncated": truncated}
+        return self._call(job)
+
+    def click(self, selector: str = "", text: str = "") -> dict:
+        def job(page):
+            target = page.get_by_text(text, exact=False).first if text and not selector \
+                else page.locator(selector).first
+            target.click(timeout=15000)
+            return {"ok": True, "clicked": selector or text, "url": page.url}
+        return self._call(job)
+
+    def fill(self, selector: str, value: str) -> dict:
+        def job(page):
+            page.locator(selector).first.fill(value, timeout=15000)
+            return {"ok": True, "filled": selector}
+        return self._call(job)
+
+    def wait(self, selector: str = "", timeout_ms: int = 15000) -> dict:
+        def job(page):
+            if selector:
+                page.locator(selector).first.wait_for(state="visible", timeout=timeout_ms)
+            else:
+                page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            return {"ok": True, "url": page.url}
+        return self._call(job, timeout=timeout_ms / 1000 + 15)
+
+    def capture(self, full_page: bool = False) -> dict:
+        def job(page):
+            png = page.screenshot(full_page=full_page)
+            return {"ok": True, "url": page.url,
+                    "screenshot_b64": base64.b64encode(png).decode()}
+        return self._call(job)
+
+    def tabs(self, index: int | None = None) -> dict:
+        def job(page):
+            pages = self._ctx.pages
+            if index is not None:
+                if not 0 <= index < len(pages):
+                    return {"ok": False, "error": f"Kein Tab mit Nummer {index}"}
+                pages[index].bring_to_front()
+                return {"ok": True, "active": index, "url": pages[index].url}
+            return {"ok": True, "tabs": [
+                {"index": i, "url": p.url, "title": p.title()} for i, p in enumerate(pages)
+            ]}
+        return self._call(job)
+
+
+def list_windows() -> dict:
+    """Welche Fenster stehen gerade offen? (Titel + zugehoerige Anwendung)
+
+    Ohne das muss der Agent raten, was gerade vorn ist: Ein Screenshot zeigt ihm
+    Pixel, der AX-Baum immer nur EINE Anwendung. Fuer "arbeite in Excel weiter"
+    braucht er erst die Liste, dann `focus_window`.
+    """
+    if IS_MAC:
+        # System Events kennt jedes Fenster jeder sichtbaren Anwendung. Ein
+        # Fehler pro Anwendung darf die ganze Liste nicht kippen, deshalb die
+        # `try`-Klammer INNERHALB der Schleife.
+        script = (
+            'set out to ""\n'
+            'tell application "System Events"\n'
+            '  repeat with p in (every process whose visible is true)\n'
+            '    try\n'
+            '      repeat with w in (every window of p)\n'
+            '        set out to out & (name of p) & "\\t" & (name of w) & "\\n"\n'
+            '      end repeat\n'
+            '    end try\n'
+            '  end repeat\n'
+            'end tell\n'
+            'return out'
+        )
+        import subprocess
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            if "-1743" in stderr or "not allowed" in stderr.lower():
+                stderr = ("Bedienungshilfen-Freigabe fehlt. Systemeinstellungen > "
+                          "Datenschutz & Sicherheit > Bedienungshilfen.")
+            return {"error": stderr or "Fensterliste nicht lesbar"}
+        windows = []
+        for line in result.stdout.splitlines():
+            if "\t" not in line:
+                continue
+            app, _, title = line.partition("\t")
+            if app.strip():
+                windows.append({"app": app.strip(), "title": title.strip()})
+        return {"windows": windows, "count": len(windows)}
+
+    if IS_WIN:
+        try:
+            import uiautomation as auto  # type: ignore
+        except ImportError:
+            return {"error": ("Windows-Bedienungshilfen fehlen. Einmalig "
+                              "'pip install uiautomation' ausfuehren.")}
+        windows = []
+        try:
+            for ctrl in auto.GetRootControl().GetChildren():
+                try:
+                    title = (ctrl.Name or "").strip()
+                    if not title:
+                        continue
+                    app = ""
+                    try:
+                        app = (ctrl.ClassName or "").strip()
+                    except Exception:
+                        pass
+                    windows.append({"app": app or title, "title": title})
+                except Exception:
+                    continue
+        except Exception as e:  # noqa: BLE001
+            return {"error": f"Fensterliste nicht lesbar: {e}"}
+        return {"windows": windows, "count": len(windows)}
+
+    return {"error": "list_windows auf dieser Plattform nicht unterstuetzt"}
+
+
+def focus_window(app: str, title: str = "") -> dict:
+    """Eine Anwendung (optional ein bestimmtes Fenster) nach vorn holen.
+
+    Tippen und Klicken gehen immer an das Fenster im Vordergrund — ohne diesen
+    Schritt landet die Eingabe in der zuletzt benutzten Anwendung, nicht in der
+    gemeinten.
+    """
+    if not app.strip():
+        return {"ok": False, "error": "app ist erforderlich"}
+    import subprocess
+    if IS_MAC:
+        safe_app = _applescript_string_literal(app)
+        script = f'tell application "{safe_app}" to activate'
+        if title.strip():
+            safe_title = _applescript_string_literal(title)
+            script += (
+                '\ntell application "System Events" to tell process '
+                f'"{safe_app}" to perform action "AXRaise" of '
+                f'(first window whose name contains "{safe_title}")'
+            )
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            if "-1743" in stderr:
+                stderr = (f'Automatisierungs-Freigabe fuer "{app}" fehlt. '
+                          "Systemeinstellungen > Datenschutz & Sicherheit > Automation.")
+            return {"ok": False, "app": app, "error": stderr or "Fenster nicht aktivierbar"}
+        return {"ok": True, "app": app, "title": title}
+
+    if IS_WIN:
+        try:
+            import uiautomation as auto  # type: ignore
+        except ImportError:
+            return {"ok": False, "error": ("Windows-Bedienungshilfen fehlen. Einmalig "
+                                           "'pip install uiautomation' ausfuehren.")}
+        try:
+            needle = (title or app).lower()
+            for ctrl in auto.GetRootControl().GetChildren():
+                name = (ctrl.Name or "")
+                if needle in name.lower():
+                    ctrl.SetActive()
+                    return {"ok": True, "app": app, "title": name}
+            return {"ok": False, "app": app, "error": f'Kein Fenster gefunden zu "{needle}"'}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "app": app, "error": str(e)}
+
+    return {"ok": False, "error": "focus_window auf dieser Plattform nicht unterstuetzt"}
+
+
 def ax_tree_available() -> bool:
     """Kann DIESE Maschine einen Bedienungshilfen-Baum liefern?
 
@@ -654,6 +978,9 @@ class CommandDispatcher:
         self.input_recorder: InputRecorder | None = None
         # Set by the WS client so microphone chunks can be pushed upstream.
         self.voice_capture: VoiceCapture | None = None
+        # Erst beim ersten browser_*-Befehl wirklich gestartet — wer die
+        # Browser-Steuerung nie freigibt, bekommt auch kein Browserfenster.
+        self._browser = BrowserController()
 
     def dispatch(self, command: dict) -> dict:
         action = command.get("action", "")
@@ -730,10 +1057,68 @@ class CommandDispatcher:
             elif action == "open_app":
                 app = params.get("app") or params["name"]
                 import subprocess
+                if IS_WIN:
+                    # `open -a` gibt es unter Windows nicht — bis hierher war
+                    # open_app dort schlicht kaputt (FileNotFoundError). Wie bei
+                    # open_url geht os.startfile direkt an die Shell-API, ohne
+                    # dass cmd.exe die Argumente noch einmal interpretiert.
+                    try:
+                        os.startfile(app)  # noqa: S606 — Windows-only, keine Shell dazwischen
+                    except OSError as e:
+                        return {"ok": False, "app": app, "error": str(e)}
+                    return {"ok": True, "app": app}
+                if not IS_MAC:
+                    return {"ok": False, "app": app,
+                            "error": "open_app auf dieser Plattform nicht unterstuetzt"}
                 result = subprocess.run(["open", "-a", app], capture_output=True, text=True)
                 if result.returncode != 0:
                     return {"ok": False, "app": app, "error": result.stderr.strip() or f'"{app}" not found'}
                 return {"ok": True, "app": app}
+
+            elif action == "list_windows":
+                return list_windows()
+
+            elif action == "focus_window":
+                return focus_window(
+                    str(params.get("app") or params.get("name") or ""),
+                    str(params.get("title") or ""),
+                )
+
+            # ── Browser im eigenen Profil ────────────────────────────────────
+            # Die Adress-Freigabe prueft der Server, bevor der Befehl hier
+            # ankommt (computer_use.py:_scope_violation) — hier steht bewusst
+            # keine zweite, moeglicherweise abweichende Wahrheit.
+            elif action == "browser_navigate":
+                return self._browser.navigate(str(params.get("url") or ""))
+
+            elif action == "browser_snapshot":
+                return self._browser.snapshot(int(params.get("max_chars") or 20000))
+
+            elif action == "browser_click":
+                return self._browser.click(
+                    str(params.get("selector") or ""), str(params.get("text") or "")
+                )
+
+            elif action == "browser_fill":
+                return self._browser.fill(
+                    str(params.get("selector") or ""), str(params.get("value") or "")
+                )
+
+            elif action == "browser_wait":
+                return self._browser.wait(
+                    str(params.get("selector") or ""),
+                    int(params.get("timeout_ms") or 15000),
+                )
+
+            elif action == "browser_capture":
+                return self._browser.capture(bool(params.get("full_page")))
+
+            elif action == "browser_tabs":
+                idx = params.get("index")
+                return self._browser.tabs(int(idx) if idx is not None else None)
+
+            elif action == "browser_close":
+                return self._browser.close()
 
             elif action == "open_url":
                 # Eigener Zweig, weil `open -a <url>` NICHT funktioniert: -a erwartet eine

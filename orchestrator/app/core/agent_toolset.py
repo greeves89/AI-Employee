@@ -44,9 +44,15 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "brain_related", "brain_search", "brain_update"
     ],
     "computer-use": [
+        # Browser im eigenen Profil der Bridge — der verlaessliche Weg fuer
+        # Seiten LESEN und Formulare AUSFUELLEN, im Gegensatz zum blinden
+        # computer_open_url.
+        "browser_capture", "browser_click", "browser_close", "browser_fill",
+        "browser_navigate", "browser_snapshot", "browser_tabs", "browser_wait",
         "computer_ax_tree", "computer_click", "computer_close_app", "computer_drag",
-        "computer_find_element", "computer_get_clipboard", "computer_key",
-        "computer_list_sessions", "computer_move", "computer_open_app",
+        "computer_find_element", "computer_focus_window", "computer_get_clipboard",
+        "computer_key", "computer_list_sessions", "computer_list_windows",
+        "computer_move", "computer_open_app",
         "computer_screenshot", "computer_scroll", "computer_set_clipboard",
         "computer_type", "computer_use_session", "computer_wait_for_element"
     ],
