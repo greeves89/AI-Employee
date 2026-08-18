@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.240.3] - 2026-08-18
+
+### Behoben
+- **Klicks landeten auf Retina-Displays systematisch daneben.** Der Screenshot
+  wird auf 1280 px Breite herunterskaliert (damit das Modell keine Koordinaten
+  >1280 halluziniert), aber der Klick ging mit denselben Koordinaten an
+  pyautogui, das in logischen Punkten (z. B. 1440) arbeitet — also lag jeder
+  Klick um den Faktor logisch/1280 daneben. Live beim Sprachbefehl „öffne
+  YouTube" gesehen: Chrome ließ sich öffnen, aber Klicks trafen nicht, der
+  Agent musste auf Cmd+L/URL ausweichen. Der Dispatcher merkt sich jetzt den
+  Maßstab des letzten Screenshots und rechnet jede Klick-, Scroll-, Bewegungs-
+  und Ziehkoordinate aus dem Bildraum in den Klickraum zurück; `find_element`
+  liefert seine Treffer im selben Bildraum, damit beide Klickquellen konsistent
+  sind. Ohne vorherigen Screenshot bleibt es beim alten 1:1-Verhalten.
+
+---
+
 ## [1.240.2] - 2026-08-18
 
 ### Behoben (Build/Signierung)

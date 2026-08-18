@@ -412,8 +412,37 @@ def _capture_macos_inprocess():
         return None
 
 
-def take_screenshot(scale: float = 1.0) -> str:
-    """Capture screen, return as base64 PNG. Downscale for Retina displays."""
+def _logical_screen_size() -> tuple[int, int]:
+    """Bildschirmgroesse in LOGISCHEN Punkten — der Raum, in dem geklickt wird.
+
+    pyautogui setzt Klicks in logischen Punkten (auf Retina also z.B. 1440,
+    nicht 2880 physische Pixel). Genau in diesem Raum muss eine Klickkoordinate
+    am Ende liegen.
+    """
+    try:
+        import pyautogui
+        w, h = pyautogui.size()
+        return int(w), int(h)
+    except Exception:  # noqa: BLE001 — ohne Auskunft lieber 1:1 als falsch skalieren
+        return 0, 0
+
+
+def capture_screenshot(scale: float = 1.0) -> tuple[str, dict]:
+    """Screenshot als base64-PNG PLUS der Maszstab Bild→Bildschirm.
+
+    Der Kern des Retina-Klickproblems: Das Bild wird auf 1280px Breite
+    herunterskaliert (damit das Modell keine Koordinaten >1280 halluziniert),
+    aber ein Klick geht an pyautogui, das in LOGISCHEN Punkten (z.B. 1440)
+    arbeitet. Das Modell sieht also ein 1280er Bild, nennt eine Koordinate
+    darin — und der Klick landet systematisch um den Faktor logisch/1280
+    daneben. Beim Nutzer sichtbar: „Klicks landen nicht, wo ich sie hinsetze",
+    der Agent musste auf Cmd+L/URL ausweichen.
+
+    Deshalb liefert diese Funktion den Umrechnungsfaktor gleich mit. Der
+    Dispatcher merkt ihn sich und rechnet jede Klick-/Bewegungs-/Scroll-
+    Koordinate aus dem BILDRAUM zurueck in den KLICKRAUM. ``scale_*`` ist
+    logisch/Bild: bei einem 1280er Bild und 1440 logischer Breite also 1.125.
+    """
     from PIL import Image
 
     img = _capture_macos_inprocess() if sys.platform == "darwin" else None
@@ -430,7 +459,24 @@ def take_screenshot(scale: float = 1.0) -> str:
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
-    return base64.b64encode(buf.getvalue()).decode()
+    b64 = base64.b64encode(buf.getvalue()).decode()
+
+    logical_w, logical_h = _logical_screen_size()
+    # Ohne verlaessliche Bildschirmgroesse NICHT skalieren (1.0) — ein falscher
+    # Faktor waere schlimmer als gar keiner.
+    scale_x = (logical_w / img.width) if (logical_w and img.width) else 1.0
+    scale_y = (logical_h / img.height) if (logical_h and img.height) else 1.0
+    meta = {
+        "image_w": img.width, "image_h": img.height,
+        "logical_w": logical_w, "logical_h": logical_h,
+        "scale_x": scale_x, "scale_y": scale_y,
+    }
+    return b64, meta
+
+
+def take_screenshot(scale: float = 1.0) -> str:
+    """Nur das Bild (base64-PNG) — fuer Aufrufer ohne Koordinatenbedarf."""
+    return capture_screenshot(scale)[0]
 
 
 class InputRecorder:
@@ -1475,6 +1521,47 @@ class CommandDispatcher:
         # Erst beim ersten browser_*-Befehl wirklich gestartet — wer die
         # Browser-Steuerung nie freigibt, bekommt auch kein Browserfenster.
         self._browser = BrowserController()
+        # Maszstab Bildraum→Klickraum vom letzten Screenshot. (1.0, 1.0) heisst
+        # „noch kein Screenshot" bzw. „kein Retina-Versatz" — dann werden
+        # Koordinaten unveraendert durchgereicht (altes Verhalten). Sobald ein
+        # Screenshot lief, klickt der Agent im Raum, den er auch SIEHT.
+        self._coord_scale: tuple[float, float] = (1.0, 1.0)
+
+    def _to_click_space(self, x, y) -> tuple[int, int]:
+        """Eine Koordinate aus dem Bildraum (was das Modell sieht) in den
+        logischen Klickraum (was pyautogui erwartet) umrechnen."""
+        sx, sy = self._coord_scale
+        return round(float(x) * sx), round(float(y) * sy)
+
+    def _to_image_space(self, x, y) -> tuple[int, int]:
+        """Rueckrichtung: eine logische Koordinate (z.B. aus dem
+        Bedienungshilfen-Baum) in den Bildraum bringen, damit sie im SELBEN
+        Raum liegt wie alles, was das Modell sonst klickt."""
+        sx, sy = self._coord_scale
+        return round(float(x) / sx) if sx else int(x), round(float(y) / sy) if sy else int(y)
+
+    def _element_to_image_space(self, element: dict | None) -> dict | None:
+        """Einen Element-Treffer (center + bbox in logischen Punkten) in den
+        Bildraum umrechnen — damit sein Klickpunkt zum selben Raum gehoert wie
+        das, was das Modell im Screenshot sieht. Bei Maszstab 1.0 unveraendert.
+
+        Ohne das waere `find_element` die eine Klickquelle, die NICHT skaliert
+        wird — der Klick liefe durch `_to_click_space` ein zweites Mal und
+        landete daneben. Beide Quellen sprechen jetzt Bildraum.
+        """
+        if not element or self._coord_scale == (1.0, 1.0):
+            return element
+        out = dict(element)
+        center = out.get("center")
+        if isinstance(center, dict) and "x" in center and "y" in center:
+            ix, iy = self._to_image_space(center["x"], center["y"])
+            out["center"] = {"x": ix, "y": iy}
+        bbox = out.get("bbox")
+        if isinstance(bbox, dict) and all(k in bbox for k in ("x", "y", "w", "h")):
+            bx, by = self._to_image_space(bbox["x"], bbox["y"])
+            bw, bh = self._to_image_space(bbox["w"], bbox["h"])
+            out["bbox"] = {"x": bx, "y": by, "w": bw, "h": bh}
+        return out
 
     def dispatch(self, command: dict) -> dict:
         action = command.get("action", "")
@@ -1506,7 +1593,12 @@ class CommandDispatcher:
                 # ein Bild, auf dem nur der Schreibtisch zu sehen ist.
                 scale = params.get("scale", 1.0)
                 try:
-                    return {"screenshot_b64": take_screenshot(scale)}
+                    b64, meta = capture_screenshot(scale)
+                    # Den Maszstab merken: die NAECHSTEN Klicks liegen im Raum
+                    # dieses Bildes und muessen zurueckgerechnet werden.
+                    self._coord_scale = (meta["scale_x"], meta["scale_y"])
+                    return {"screenshot_b64": b64,
+                            "image_size": {"w": meta["image_w"], "h": meta["image_h"]}}
                 except ScreenRecordingPermissionError as e:
                     return {"ok": False, "error": str(e)}
 
@@ -1522,8 +1614,9 @@ class CommandDispatcher:
                 return {"ax_tree": tree}
 
             elif action in ("click", "mouse_click"):
+                cx, cy = self._to_click_space(params["x"], params["y"])
                 self._ctrl.click(
-                    params["x"], params["y"],
+                    cx, cy,
                     button=params.get("button", "left"),
                     double=params.get("double", False)
                 )
@@ -1542,16 +1635,19 @@ class CommandDispatcher:
                 return {"ok": True}
 
             elif action in ("scroll", "mouse_scroll"):
-                self._ctrl.scroll(params["x"], params["y"], params.get("amount", 3))
+                sx, sy = self._to_click_space(params["x"], params["y"])
+                self._ctrl.scroll(sx, sy, params.get("amount", 3))
                 return {"ok": True}
 
             elif action in ("move", "mouse_move"):
-                self._ctrl.move(params["x"], params["y"])
+                mx, my = self._to_click_space(params["x"], params["y"])
+                self._ctrl.move(mx, my)
                 return {"ok": True}
 
             elif action == "drag":
-                self._ctrl.drag(params["x1"], params["y1"], params["x2"], params["y2"],
-                               params.get("duration", 0.3))
+                x1, y1 = self._to_click_space(params["x1"], params["y1"])
+                x2, y2 = self._to_click_space(params["x2"], params["y2"])
+                self._ctrl.drag(x1, y1, x2, y2, params.get("duration", 0.3))
                 return {"ok": True}
 
             elif action == "open_app":
@@ -1742,7 +1838,8 @@ class CommandDispatcher:
                 if isinstance(tree, dict) and tree.get("error"):
                     return {"found": False, "error": tree["error"], "query": query}
                 result = search_tree(tree, query, role)
-                return result or {"found": False, "query": query, "role": role}
+                return self._element_to_image_space(result) or {
+                    "found": False, "query": query, "role": role}
 
             elif action == "wait_for_element":
                 query = params.get("query", "")
@@ -1761,7 +1858,7 @@ class CommandDispatcher:
                         return {"found": False, "error": tree["error"], "query": query}
                     found = search_tree(tree, query, role)
                     if found:
-                        return found
+                        return self._element_to_image_space(found)
                     time.sleep(interval)
 
                 return {"found": False, "timeout": True, "query": query, "error": last_error}
