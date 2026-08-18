@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.223.1] - 2026-08-18
+
+### Behoben
+- **Beim Hochladen ließ sich der Zielordner nicht auswählen.** Das Fenster
+  zeigte fest „to /workspace"; wer woanders hin wollte, musste hochladen und
+  danach von Hand verschieben. Jetzt ein Feld für den Zielordner, vorbelegt mit
+  dem bisherigen Pfad, dazu die gängigen Ordner auf einen Klick.
+- Die Auswahl zieht dieselbe Grenze wie der Server (`/workspace`) und sagt es
+  **vor** dem Hochladen statt hinterher als Fehler. `/shared` wird bewusst nicht
+  angeboten — der Server weist es ab, ein Vorschlag dorthin würde also sicher
+  fehlschlagen.
+
+### Geändert
+- Sprachmodus: die Anweisung „keine Aufzählungen" führte dazu, dass der Agent
+  zur Aufzählung ansetzte und mitten im Satz aufhörte — ein Doppelpunkt ins
+  Leere. Jetzt: mehrere Punkte gehören in Fließtext, und was angekündigt wird,
+  wird auch gesagt.
+
+---
+
 ## [1.223.0] - 2026-08-18
 
 ### Neu

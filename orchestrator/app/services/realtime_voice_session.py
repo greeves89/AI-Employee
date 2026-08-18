@@ -1312,7 +1312,11 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "DATEIEN ZEIGEN: Soll der Nutzer eine Datei sehen/bekommen, delegiere per ask_agent mit der "
         "klaren Anweisung, die Datei mit present_file zu präsentieren — dann erscheint sie klickbar "
         "im UI. Beantworte auch mehrteilige Fragen VOLLSTÄNDIG (jeden Teil).\n"
-        "Halte gesprochene Antworten kurz — keine Aufzählungen, kein Code, sprich wie ein Mensch."
+        "Halte gesprochene Antworten kurz und sprich wie ein Mensch: kein Code, keine "
+        "Stichpunkt-Liste zum Vorlesen. Mehrere Punkte gehören in FLIESSTEXT "
+        "('dafür gibt es drei Gründe: erstens …, zweitens …'). Wenn du etwas "
+        "ankündigst, sag es auch — ein Satz, der mit einem Doppelpunkt endet und "
+        "dann aufhört, ist schlimmer als gar keine Antwort."
     )
 
 
