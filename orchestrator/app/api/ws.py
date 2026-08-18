@@ -882,6 +882,11 @@ async def ws_agent_voice(
     websocket: WebSocket, agent_id: str,
     token: str | None = Query(None), ticket: str | None = Query(None),
     chat_session: str | None = Query(None),  # resume/continue an existing chat session by voice
+    # Hat der Nutzer AUSDRUECKLICH ein neues Gespraech gestartet? Dann darf die
+    # Sitzung das letzte NICHT nachladen. Ohne diese Unterscheidung begruesste
+    # ein frisch gestarteter Sprachchat mit „wir waren gerade dabei…" und
+    # arbeitete am alten Thema weiter (gemeldet am 18.08.2026).
+    fresh: bool = Query(False),
 ):
     """Live voice session with an agent.
 
@@ -976,6 +981,8 @@ async def ws_agent_voice(
         _rt_kwargs = {"agent_id": agent_id, "user_id": user_id, "redis": _redis}
         if chat_session:  # continue an existing chat session by voice
             _rt_kwargs["session_id"] = chat_session
+        if fresh:
+            _rt_kwargs["neues_gespraech"] = True
         session = RealtimeVoiceSession(**_rt_kwargs)
     else:
         session = VoiceSession(agent_id=agent_id, user_id=user_id, redis=_redis)

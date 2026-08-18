@@ -543,7 +543,12 @@ export function VoiceSessionModal({
           }
         }
         if (cancelled || closingRef.current) return;
-        const url = `${getWsUrl()}/api/v1/ws/agents/${agentId}/voice?ticket=${ticket}&chat_session=${encodeURIComponent(voiceSessionRef.current)}`;
+        // ``fresh`` sagt dem Server: der Nutzer hat ausdruecklich ein NEUES
+        // Gespraech gestartet, also bitte NICHT das letzte nachladen. Ohne das
+        // begruesste ein frischer Sprachchat mit „wir waren gerade dabei…".
+        // Bei einem Wiederverbinden bleibt es aus — dort ist das Nachladen richtig.
+        const frisch = !resumeSessionId && reconnectsRef.current === 0;
+        const url = `${getWsUrl()}/api/v1/ws/agents/${agentId}/voice?ticket=${ticket}&chat_session=${encodeURIComponent(voiceSessionRef.current)}${frisch ? "&fresh=1" : ""}`;
         const ws = new WebSocket(url);
         wsRef.current = ws;
         ws.onopen = () => setError(null);

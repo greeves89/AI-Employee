@@ -1353,6 +1353,12 @@ class RealtimeVoiceSession:
     _cm_assistant: str = ""     # last assistant turn text
     _resume_summary: str = ""  # prior conversation context when continuing a session
     _resumed_from_earlier_call: bool = False  # summary came from an EARLIER call, not this session
+    #: Der Nutzer hat ausdruecklich ein NEUES Gespraech gestartet. Dann wird das
+    #: letzte Gespraech nicht nachgeladen — sonst begruesst ein frischer
+    #: Sprachchat mit „wir waren gerade dabei…" und macht am alten Thema weiter.
+    #: Die Nachlade-Logik selbst bleibt: nach einem Verbindungsabbruch oder beim
+    #: zweiten Anruf ist sie genau richtig.
+    neues_gespraech: bool = False
     _needs_briefing: bool = False  # kein Auftrag → das gehoert in den ERSTEN Satz
     _agent_config: dict | None = None  # fuer Zeitzone und Co. waehrend des Gespraechs
     _tool_calls: dict = field(default_factory=dict)  # tool_use_id → (Name, Argumente)
@@ -1410,7 +1416,7 @@ class RealtimeVoiceSession:
                        ChatMessage.role.in_(("user", "assistant")))
                 .order_by(ChatMessage.id.desc()).limit(12)
             )).scalars().all()
-            if not rows:
+            if not rows and not self.neues_gespraech:
                 last_session = (await db.execute(
                     select(ChatMessage.session_id)
                     .where(ChatMessage.agent_id == self.agent_id,

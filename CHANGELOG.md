@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.224.0] - 2026-08-18
+
+### Behoben
+- **Ein neu gestarteter Sprachchat machte am alten Thema weiter.** Er begrüßte
+  mit „Willkommen zurück — wir waren gerade dabei …" und arbeitete das vorige
+  Gespräch fort.
+- Das war Absicht, nur zu weit gefasst: ist eine Sprachsitzung leer, lädt der
+  Server das letzte Gespräch des Agenten nach — „ein Kollege, den man zweimal
+  anruft, erinnert sich an das erste Telefonat". Für einen Verbindungsabbruch
+  und für den zweiten Anruf ist das genau richtig; für ein **ausdrücklich neu
+  gestartetes** Gespräch nicht.
+- Es fehlte die Unterscheidung: hat der Nutzer neu angefangen, oder ist die
+  Sitzung nur leer? Beides sah gleich aus. Der Browser sagt es jetzt (`fresh`),
+  und nur dann wird nichts nachgeladen. Das Nachladen selbst bleibt — es wird
+  nicht abgeschafft, sondern eingegrenzt.
+
+---
+
 ## [1.223.1] - 2026-08-18
 
 ### Behoben
