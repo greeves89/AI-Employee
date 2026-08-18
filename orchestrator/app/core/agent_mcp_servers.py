@@ -121,7 +121,8 @@ def _kopfzeilen(server: McpServer) -> dict[str, str]:
 
 
 def voice_toolspecs(
-    servers: list[McpServer], budget: int | None = None
+    servers: list[McpServer], budget: int | None = None,
+    reservierte_namen: set[str] | None = None,
 ) -> tuple[list[dict], dict[str, tuple[MCPZiel, str]], list[dict]]:
     """Die Werkzeuge der Server als Nova-Sonic-Werkzeuge, plus Zustellplan.
 
@@ -143,7 +144,15 @@ def voice_toolspecs(
     werkzeuge: list[dict] = []
     plan: dict[str, tuple[MCPZiel, str]] = {}
     katalog: list[dict] = []
-    vergeben: set[str] = set()
+    # Vorbelegt mit den Namen, die die Sprachfront SELBST schon vergibt.
+    #
+    # Diese Menge war frueher leer und kannte nur MCP-Werkzeuge untereinander.
+    # Heisst ein Werkzeug eines angebundenen Dienstes genauso wie ein
+    # eingebautes (real aufgetreten: `list_todos`), gingen BEIDE in denselben
+    # Aufruf — und Bedrock lehnt doppelte Werkzeugnamen mit
+    # `ValidationException: Input is invalid` ab. Nicht das eine Werkzeug fiel
+    # aus, sondern die ganze Sprachsitzung kam nicht zustande.
+    vergeben: set[str] = set(reservierte_namen or ())
     platz = WERKZEUG_BUDGET if budget is None else max(0, budget)
 
     for server in servers:

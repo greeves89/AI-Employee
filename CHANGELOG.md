@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.238.4] - 2026-08-18
+
+### Behoben
+- **Die Sprachfront startete gar nicht mehr** — jede Sitzung brach sofort mit
+  `ValidationException: Input is invalid` ab. Ursache war kein Limit und keine
+  kaputte Aufnahme: **Bedrock lehnt doppelte Werkzeugnamen ab.** Ein
+  angebundener Dienst brachte ein `list_todos` mit, das die Sprachfront als
+  eingebautes Werkzeug bereits selbst vergibt — beide gingen in denselben
+  Sitzungsstart. Die Deduplizierung kannte bis dahin nur die MCP-Werkzeuge
+  untereinander, nie die eingebauten Namen. Folge: nicht ein Werkzeug fiel aus,
+  sondern die komplette Sitzung kam nicht zustande. Der Dienst-Name wird jetzt
+  wie bei einer Kollision zwischen zwei Diensten vorangestellt, das Werkzeug
+  bleibt also erreichbar.
+- **Die Bridge meldete ihre neuen Fähigkeiten nicht.** Fenster- und
+  Browser-Steuerung liefen, wurden beim Verbinden aber nie angekündigt — die
+  Ankündigung war eine zweite, handgetippte Liste. Sie kommt jetzt aus einer
+  einzigen Quelle, ein Test hält sie mit dem Dispatcher zusammen.
+- **Die Bridge merkt sich die E-Mail-Adresse.** Sie wurde nie gespeichert und
+  musste bei jeder Anmeldung neu getippt werden. Das Passwort wird weiterhin
+  nirgends abgelegt.
+
+---
+
 ## [1.238.3] - 2026-08-18
 
 ### Behoben

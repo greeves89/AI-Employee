@@ -1628,7 +1628,20 @@ class RealtimeVoiceSession:
                 # Die eingebauten Werkzeuge stehen schon fest, dazu die beiden
                 # Nachschlage-Werkzeuge unten.
                 _platz = WERKZEUG_BUDGET - len(_tools) - 2
-                _fremde, self._mcp_plan, self._mcp_katalog = voice_toolspecs(_server, _platz)
+                # Die Namen, die hier oben schon vergeben sind, muessen mit —
+                # sonst kann ein angebundener Dienst einen davon ein zweites Mal
+                # belegen, und Bedrock weist den GESAMTEN Sitzungsstart ab
+                # (`ValidationException: Input is invalid`). Genau so ist die
+                # Sprachfront am 18.08. ausgefallen, nachdem ein Dienst ein
+                # eigenes `list_todos` mitbrachte.
+                _belegt = {
+                    str(((t or {}).get("toolSpec") or {}).get("name") or "")
+                    for t in _tools
+                }
+                _belegt.discard("")
+                _fremde, self._mcp_plan, self._mcp_katalog = voice_toolspecs(
+                    _server, _platz, _belegt
+                )
             if self._mcp_plan:
                 _tools = _tools + _fremde + [MCP_SEARCH_TOOLS_TOOL, MCP_CALL_TOOL_TOOL]
                 logger.info(

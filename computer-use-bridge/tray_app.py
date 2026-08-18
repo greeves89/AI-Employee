@@ -473,6 +473,10 @@ def _appkit_handlers_init():
                         token, sid = login_and_prepare(url, email, pw, caps, requested_session)
                         st["result_box"][0] = {
                             "url": url, "token": token, "session": sid,
+                            # Adresse merken, damit das Feld beim naechsten Mal
+                            # vorbelegt ist. Das Passwort NICHT — es wird
+                            # nirgends gespeichert.
+                            "email": email,
                             "auto_connect": bool(st["auto_chk"].state()),
                             "allowed_capabilities": caps,
                             "allowed_paths": cfg.get("allowed_paths", []),
@@ -779,7 +783,11 @@ def show_setup_dialog(cfg: dict) -> dict | None:
     url_f  = _input(cv, inner_x, card_y + card_h - 82, input_w, "wss://agents.example.com/ws/computer-use/bridge?session_id=...", value=cfg.get("url",""))
 
     _label(cv, "E-Mail", inner_x, card_y + card_h - 124, input_w, 16, size=11, bold=True, muted=True)
-    em_f   = _input(cv, inner_x, card_y + card_h - 156, input_w, "name@example.com")
+    # Vorbelegt aus der Konfiguration — die Adresse aendert sich praktisch nie,
+    # sie bei jeder Anmeldung neu zu tippen ist reine Schikane. Das Passwort
+    # bleibt bewusst leer und wird NICHT gespeichert.
+    em_f   = _input(cv, inner_x, card_y + card_h - 156, input_w, "name@example.com",
+                    value=cfg.get("email", ""))
 
     _label(cv, "Passwort", inner_x, card_y + card_h - 198, input_w, 16, size=11, bold=True, muted=True)
     pw_f   = _input(cv, inner_x, card_y + card_h - 230, input_w, "Passwort", secure=True)
@@ -1400,7 +1408,7 @@ def _show_setup_tkinter(cfg):
         return e
 
     url_f = field("BRIDGE URL ODER SERVER", "wss://agents.example.com/ws/computer-use/bridge?session_id=...", value=cfg.get("url",""))
-    em_f  = field("E-MAIL",    "name@example.com")
+    em_f  = field("E-MAIL",    "name@example.com", value=cfg.get("email", ""))
     pw_f  = field("PASSWORT",  "••••••••", secure=True)
 
     ctk.CTkFrame(root, height=1, fg_color="#333").pack(fill="x", padx=24, pady=12)
@@ -1430,7 +1438,8 @@ def _show_setup_tkinter(cfg):
         def _do():
             try:
                 token, sid = login_and_prepare(url, email, pw, caps, requested_session)
-                result.update({"url":url,"token":token,"session":sid,"auto_connect":bool(auto_var.get()),
+                result.update({"url":url,"token":token,"session":sid,"email":email,
+                               "auto_connect":bool(auto_var.get()),
                                "allowed_capabilities":caps,"allowed_paths":cfg.get("allowed_paths",[])})
                 root.after(0, root.destroy)
             except urllib.error.HTTPError:
@@ -1640,7 +1649,7 @@ def _show_setup_plain_tkinter(cfg):
     ttk.Label(f, text="Bridge URL / Server:").grid(row=0, column=0, sticky="w", pady=3)
     url_v = tk.StringVar(value=cfg.get("url","")); ttk.Entry(f, textvariable=url_v, width=36).grid(row=0, column=1)
     ttk.Label(f, text="E-Mail:").grid(row=1, column=0, sticky="w", pady=3)
-    em_v = tk.StringVar(); ttk.Entry(f, textvariable=em_v, width=36).grid(row=1, column=1)
+    em_v = tk.StringVar(value=cfg.get("email","")); ttk.Entry(f, textvariable=em_v, width=36).grid(row=1, column=1)
     ttk.Label(f, text="Passwort:").grid(row=2, column=0, sticky="w", pady=3)
     pw_v = tk.StringVar(); ttk.Entry(f, textvariable=pw_v, show="*", width=36).grid(row=2, column=1)
     auto_v = tk.BooleanVar(value=cfg.get("auto_connect",True))
@@ -1654,7 +1663,7 @@ def _show_setup_plain_tkinter(cfg):
         def _do():
             try:
                 t, s = login_and_prepare(url, em, pw, cfg.get("allowed_capabilities", sorted(DEFAULT_CAPABILITIES)), requested_session)
-                result.update({"url":url,"token":t,"session":s,"auto_connect":auto_v.get(),"allowed_capabilities":cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)),"allowed_paths":cfg.get("allowed_paths",[])})
+                result.update({"url":url,"token":t,"session":s,"email":em,"auto_connect":auto_v.get(),"allowed_capabilities":cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)),"allowed_paths":cfg.get("allowed_paths",[])})
                 root.after(0, root.destroy)
             except Exception as e:
                 root.after(0, lambda: sv.set(f"Fehler: {e}"))

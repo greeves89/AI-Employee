@@ -453,6 +453,28 @@ BROWSER_PROFILE_DIR = os.path.join(
     os.path.expanduser("~"), ".ai-employee", "browser-profile"
 )
 
+# Was diese Bridge kann — EINE Liste, die beim Verbinden gemeldet wird.
+#
+# Sie stand frueher als zweite, fest getippte Aufzaehlung mitten im Verbindungs-
+# aufbau. Beim Ergaenzen neuer Aktionen wurde sie prompt vergessen: Fenster- und
+# Browser-Steuerung liefen zwar, wurden dem Server aber nie gemeldet — die
+# Oberflaeche und alles, was "was kann dieser Rechner" fragt, sah sie nicht.
+# `test_bridge_announces_what_it_can_do.py` haelt sie mit dem Dispatcher
+# zusammen, damit das nicht noch einmal auseinanderlaeuft.
+BASE_ACTIONS = [
+    "screenshot", "click", "type", "key", "hotkey", "scroll", "move", "drag",
+    "open_app", "open_url", "close_app", "list_windows", "focus_window",
+    "get_clipboard", "set_clipboard",
+    "start_input_capture", "stop_input_capture",
+    "start_voice_capture", "stop_voice_capture",
+    "browser_navigate", "browser_snapshot", "browser_click", "browser_fill",
+    "browser_wait", "browser_capture", "browser_tabs", "browser_close",
+]
+
+# Nur wenn der Bedienungshilfen-Baum ueberhaupt verfuegbar ist — ohne ihn waere
+# eine Elementsuche eine Zusage, die die Bridge nicht halten kann.
+AX_ACTIONS = ["ax_tree", "find_element", "wait_for_element"]
+
 
 class BrowserController:
     """Der Browser, den der Agent bedienen darf — im EIGENEN Profil.
@@ -1393,12 +1415,8 @@ class Bridge:
                     # Bedienungshilfen-Baum gibt es auf macOS immer, auf Windows nur
                     # mit installiertem `uiautomation` — ein Agent, der sich auf eine
                     # falsche Zusage verlaesst, verspricht dem Nutzer etwas.
-                    "capabilities": ["screenshot", "click", "type", "key", "scroll", "move", "drag",
-                                     "open_app", "open_url", "close_app", "get_clipboard",
-                                     "set_clipboard", "start_input_capture", "stop_input_capture",
-                                     "start_voice_capture", "stop_voice_capture"]
-                                    + (["ax_tree", "find_element", "wait_for_element"]
-                                       if ax_tree_available() else []),
+                    "capabilities": BASE_ACTIONS
+                                    + (AX_ACTIONS if ax_tree_available() else []),
                     "ax_tree_available": ax_tree_available(),
                 }
                 await ws.send(json.dumps(caps))
