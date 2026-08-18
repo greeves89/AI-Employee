@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.240.0] - 2026-08-18
+
+### Geändert
+- **Die Bridge ist jetzt eine App mit Hauptfenster, kein Tray-Anhängsel.**
+  Beim Start öffnet sich ein Hauptfenster mit Live-Verbindungsstatus, Server-,
+  Session- und Freigabe-Übersicht, Verbinden/Trennen und Schnellzugriff auf
+  Voice, Berechtigungen, Einstellungen und Web-UI. macOS: natives Fenster im
+  Stil der bestehenden Karten-Dialoge, alle 3 s live aktualisiert; Windows:
+  Hauptfenster mit Tabs (Übersicht/Voice), Doppelklick aufs Tray-Symbol
+  öffnet es. Das Tray bleibt für den Hintergrundbetrieb — Fenster schließen
+  beendet die Verbindung nicht. Verbinden/Anmelden laufen über dieselben
+  Callbacks wie die Tray-Menüpunkte (eine Verbindungslogik, keine zweite).
+
+---
+
 ## [1.239.0] - 2026-08-18
 
 ### Sicherheit

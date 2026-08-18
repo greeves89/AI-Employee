@@ -1114,6 +1114,261 @@ def show_status_window(cfg: dict) -> None:
     panel.close()
 
 
+# ── Hauptfenster (die Bridge ist eine App, kein Tray-Anhaengsel) ──────────────
+#
+# Bis v1.239.0 bestand die Oberflaeche aus einem Tray-Menue und vier einzelnen
+# Modal-Dialogen — zum Einrichten ok, zum ARBEITEN nicht: kein Ort, an dem man
+# Status, Freigaben und Voice zusammen sieht. Das Hauptfenster ist dieser Ort;
+# das Tray bleibt fuer den Hintergrundbetrieb.
+
+_main_state: dict = {}
+
+
+def _main_status_parts() -> tuple[str, str]:
+    """(Text, Farbname) fuer den Verbindungs-Badge — EINE Ableitung fuer beide
+    Plattformen, damit Hauptfenster und Tray nie zweierlei behaupten."""
+    if is_running() and _status == "connected":
+        return "Verbunden", "green"
+    if is_running() or _status == "connecting":
+        return "Verbinde…", "amber"
+    if _status.startswith("error:"):
+        return _status.replace("error: ", ""), "red"
+    return "Nicht verbunden", "gray"
+
+
+def show_main_window(cfg: dict) -> None:
+    """Das macOS-Hauptfenster — nicht-modal, einmalig, live aktualisiert."""
+    if not _appkit_available():
+        return _show_main_window_ctk(cfg)
+
+    from AppKit import NSApp, NSMakeRect, NSObject, NSVisualEffectView
+
+    existing = _main_state.get("panel")
+    if existing is not None:
+        try:
+            NSApp.activateIgnoringOtherApps_(True)
+            existing.orderFrontRegardless()
+            existing.makeKeyAndOrderFront_(None)
+            _main_window_refresh(cfg)
+            return
+        except Exception:  # noqa: BLE001 — Fenster kaputt: neu bauen
+            _main_state.clear()
+
+    _appkit_handlers_init()
+    W, H = 680, 560
+    PAD = 32
+    panel = _make_panel("AI Employee Bridge", W, H)
+    cv = panel.contentView()
+    try:
+        panel.setTitlebarAppearsTransparent_(True)
+    except Exception:  # noqa: BLE001
+        pass
+
+    backdrop = NSVisualEffectView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
+    backdrop.setBlendingMode_(0)
+    backdrop.setMaterial_(3)
+    backdrop.setState_(1)
+    cv.addSubview_positioned_relativeTo_(backdrop, -1, None)
+
+    _header(cv, "AI Employee Bridge",
+            "Dein Rechner, sicher verbunden mit deinen Agenten.",
+            "cpu", PAD, H - 96, W - 2 * PAD)
+
+    # ── Karte: Verbindung ────────────────────────────────────────────────
+    card_x, card_w = PAD, W - 2 * PAD
+    conn_y, conn_h = H - 330, 210
+    _card(cv, card_x, conn_y, card_w, conn_h)
+    _label(cv, "Verbindung", card_x + 22, conn_y + conn_h - 34, 200, 18, size=13, bold=True)
+    text, farbe = _main_status_parts()
+    badge = _badge(cv, f"● {text}", card_x + card_w - 240, conn_y + conn_h - 34, farbe)
+
+    def _row(lbl, val, y):
+        _label(cv, lbl, card_x + 24, y, 90, 16, size=12, muted=True)
+        return _label(cv, val, card_x + 124, y, card_w - 150, 16, size=12)
+
+    server_lbl = _row("Server", cfg.get("url") or "—", conn_y + conn_h - 68)
+    session_lbl = _row("Session", (cfg.get("session") or "—")[:20], conn_y + conn_h - 92)
+    _row("Version", f"Bridge v{BRIDGE_VERSION}", conn_y + conn_h - 116)
+    cap_map = {c["id"]: c["label"] for c in CAPABILITY_META}
+    caps = cfg.get("allowed_capabilities", [])
+    caps_lbl = _row("Erlaubt", ", ".join(cap_map.get(c, c) for c in caps) or "Keine",
+                    conn_y + conn_h - 140)
+
+    connect_btn = _button(cv, "Verbinden", card_x + 20, conn_y + 16, 130)
+    disconnect_btn = _button(cv, "Trennen", card_x + 160, conn_y + 16, 110)
+
+    # ── Karte: Arbeiten ──────────────────────────────────────────────────
+    act_y, act_h = conn_y - 96, 82
+    _card(cv, card_x, act_y, card_w, act_h)
+    _label(cv, "Arbeiten", card_x + 22, act_y + act_h - 30, 200, 18, size=13, bold=True)
+    voice_btn = _button(cv, "Voice starten", card_x + 20, act_y + 14, 140)
+    perms_btn = _button(cv, "Berechtigungen…", card_x + 170, act_y + 14, 150)
+    settings_btn = _button(cv, "Einstellungen…", card_x + 330, act_y + 14, 140)
+    web_btn = _button(cv, "Web-UI öffnen", card_x + 480, act_y + 14, 130)
+
+    hint = _label(cv, "Die Bridge läuft im Hintergrund weiter, wenn du dieses Fenster schließt.",
+                  PAD, 24, W - 2 * PAD, 16, size=11, muted=True)
+    del hint
+
+    class _MainHandler(NSObject):
+        def doconnect_(self, _s):
+            cb = _main_state.get("connect")
+            if cb:
+                cb()
+
+        def dodisconnect_(self, _s):
+            stop_bridge()
+            _main_window_refresh(cfg)
+
+        def dovoice_(self, _s):
+            show_interaction_bar(cfg)
+
+        def doperms_(self, _s):
+            show_permissions_dialog(cfg)
+            cfg.update(load_config())
+            _main_window_refresh(cfg)
+
+        def dosettings_(self, _s):
+            cb = _main_state.get("settings")
+            if cb:
+                cb()
+
+        def doweb_(self, _s):
+            if cfg.get("url"):
+                webbrowser.open(cfg["url"])
+
+    handler = _MainHandler.alloc().init()
+    for btn, action in ((connect_btn, "doconnect:"), (disconnect_btn, "dodisconnect:"),
+                        (voice_btn, "dovoice:"), (perms_btn, "doperms:"),
+                        (settings_btn, "dosettings:"), (web_btn, "doweb:")):
+        btn.setTarget_(handler)
+        btn.setAction_(action)
+
+    _main_state.update({
+        "panel": panel, "handler": handler, "badge": badge,
+        "server_lbl": server_lbl, "session_lbl": session_lbl, "caps_lbl": caps_lbl,
+        "cap_map": cap_map,
+    })
+
+    NSApp.activateIgnoringOtherApps_(True)
+    panel.orderFrontRegardless()
+    panel.makeKeyAndOrderFront_(None)
+
+
+def _main_window_refresh(cfg: dict) -> None:
+    """Badge und Zeilen des Hauptfensters an den echten Zustand angleichen.
+    Wird vom rumps-Timer alle 3 s aufgerufen — nur wenn das Fenster offen ist."""
+    panel = _main_state.get("panel")
+    if panel is None:
+        return
+    try:
+        if not panel.isVisible():
+            return
+        from AppKit import NSColor
+        text, farbe = _main_status_parts()
+        colors = {"green": (0.13, 0.76, 0.37, 1), "amber": (1.0, 0.62, 0.04, 1),
+                  "red": (1.0, 0.27, 0.23, 1), "gray": (0.55, 0.55, 0.58, 1)}
+        r, g, b, a = colors.get(farbe, colors["gray"])
+        badge = _main_state.get("badge")
+        badge.setStringValue_(f"● {text}")
+        badge.setTextColor_(NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, a))
+        _main_state["server_lbl"].setStringValue_(cfg.get("url") or "—")
+        _main_state["session_lbl"].setStringValue_((cfg.get("session") or "—")[:20])
+        cap_map = _main_state.get("cap_map") or {}
+        caps = cfg.get("allowed_capabilities", [])
+        _main_state["caps_lbl"].setStringValue_(
+            ", ".join(cap_map.get(c, c) for c in caps) or "Keine")
+    except Exception:  # noqa: BLE001 — ein kaputtes Fenster darf das Tray nicht mitreissen
+        _main_state.clear()
+
+
+def _show_main_window_ctk(cfg: dict) -> None:
+    """Das Windows-Hauptfenster — Tabs statt verstreuter Dialoge."""
+    if not _ctk_available():
+        return _show_status_plain_tkinter(cfg)
+    ctk = _ctk_setup()
+
+    root = ctk.CTk()
+    root.title("AI Employee Bridge")
+    root.geometry("760x560")
+    root.minsize(680, 500)
+
+    head = ctk.CTkFrame(root, fg_color="transparent")
+    head.pack(fill="x", padx=24, pady=(20, 0))
+    ctk.CTkLabel(head, text="AI Employee Bridge",
+                 font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
+    status_badge = ctk.CTkLabel(head, text="●", font=ctk.CTkFont(size=13))
+    status_badge.pack(side="right")
+
+    tabs = ctk.CTkTabview(root, corner_radius=12)
+    tabs.pack(fill="both", expand=True, padx=20, pady=14)
+    tab_ueber = tabs.add("Übersicht")
+    tab_voice = tabs.add("Voice")
+
+    # ── Übersicht ────────────────────────────────────────────────────────
+    grid = ctk.CTkFrame(tab_ueber, fg_color="#1e1e2e", corner_radius=10)
+    grid.pack(fill="x", padx=8, pady=8)
+
+    rows = {}
+    for i, (lbl, val) in enumerate((
+        ("Server", cfg.get("url") or "—"),
+        ("Session", (cfg.get("session") or "—")[:20]),
+        ("Version", f"Bridge v{BRIDGE_VERSION}"),
+        ("Erlaubt", ""),
+    )):
+        ctk.CTkLabel(grid, text=lbl, text_color="gray50", width=90, anchor="w",
+                     font=ctk.CTkFont(size=12)).grid(row=i, column=0, sticky="w", padx=(16, 6), pady=6)
+        rows[lbl] = ctk.CTkLabel(grid, text=val, anchor="w", font=ctk.CTkFont(size=12))
+        rows[lbl].grid(row=i, column=1, sticky="w", pady=6)
+
+    btns = ctk.CTkFrame(tab_ueber, fg_color="transparent")
+    btns.pack(fill="x", padx=8, pady=(6, 0))
+
+    def _do_connect():
+        cb = _main_state.get("connect")
+        if cb:
+            cb()
+
+    ctk.CTkButton(btns, text="Verbinden", width=130, command=_do_connect).pack(side="left")
+    ctk.CTkButton(btns, text="Trennen", width=110, fg_color="#333", hover_color="#444",
+                  command=stop_bridge).pack(side="left", padx=8)
+    ctk.CTkButton(btns, text="Berechtigungen…", width=150,
+                  command=lambda: show_permissions_dialog(cfg)).pack(side="left", padx=8)
+
+    def _do_settings():
+        cb = _main_state.get("settings")
+        if cb:
+            cb()
+
+    ctk.CTkButton(btns, text="Einstellungen…", width=140, command=_do_settings).pack(side="left")
+    ctk.CTkButton(btns, text="Web-UI", width=90, fg_color="transparent", border_width=1,
+                  border_color="#444", text_color="gray70",
+                  command=lambda: cfg.get("url") and webbrowser.open(cfg["url"])).pack(side="left", padx=8)
+
+    ctk.CTkLabel(tab_ueber, text="Die Bridge läuft im Hintergrund weiter, wenn du dieses Fenster schließt.",
+                 text_color="gray50", font=ctk.CTkFont(size=11)).pack(anchor="w", padx=8, pady=(14, 0))
+
+    # ── Voice ────────────────────────────────────────────────────────────
+    ctk.CTkLabel(tab_voice, text="Direkt mit dem Voice Layer deines Agenten sprechen.",
+                 text_color="gray60", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=8, pady=(8, 2))
+    ctk.CTkButton(tab_voice, text="Voice-Leiste öffnen", width=170,
+                  command=lambda: show_interaction_bar(cfg)).pack(anchor="w", padx=8, pady=8)
+
+    def _tick():
+        text, farbe = _main_status_parts()
+        colors = {"green": "#22c55e", "amber": "#f59e0b", "red": "#ef4444", "gray": "#6b7280"}
+        status_badge.configure(text=f"● {text}", text_color=colors.get(farbe, "#6b7280"))
+        rows["Server"].configure(text=cfg.get("url") or "—")
+        rows["Session"].configure(text=(cfg.get("session") or "—")[:20])
+        cap_map = {c["id"]: c["label"] for c in CAPABILITY_META}
+        rows["Erlaubt"].configure(
+            text=", ".join(cap_map.get(c, c) for c in cfg.get("allowed_capabilities", [])) or "Keine")
+        root.after(2000, _tick)
+
+    _tick()
+    root.mainloop()
+
+
 # ── Interaction Bar / Voice Mode ─────────────────────────────────────────────
 
 _voice_state: dict = {}
@@ -2107,9 +2362,22 @@ def run_macos(cfg: dict) -> None:
             self.cfg = load_config()
             self._needs_login = False
             self._connecting = False
+            # Das Hauptfenster braucht Verbinden/Anmelden aus dem Tray-Kontext —
+            # ueber diese Callbacks, damit es EINE Verbindungslogik gibt.
+            _main_state["connect"] = lambda: threading.Thread(
+                target=self._connect, daemon=True).start()
+            _main_state["settings"] = lambda: self.on_settings(None)
+            # Die Bridge ist eine App, kein Tray-Anhaengsel: beim Start zeigt
+            # sie ihr Fenster. Nicht hier im __init__ (der Run-Loop laeuft noch
+            # nicht) — der Timer unten holt es beim ersten Tick nach.
+            self._main_shown = False
             self._update_icon()
             if self.cfg.get("auto_connect") and self.cfg.get("token") and self.cfg.get("session"):
                 threading.Thread(target=self._connect, daemon=True).start()
+
+        @rumps.clicked("Öffnen")
+        def on_open_main(self, _):
+            show_main_window(self.cfg)
 
         def _update_icon(self):
             if is_running():
@@ -2134,6 +2402,7 @@ def run_macos(cfg: dict) -> None:
             except Exception:
                 pass
             for title, enabled in {
+                "Öffnen": True,
                 "Verbinden": not connected,
                 "Trennen": connected or connecting,
                 "Berechtigungen…": True,
@@ -2222,6 +2491,10 @@ def run_macos(cfg: dict) -> None:
         @rumps.timer(3)
         def refresh(self, _):
             self._update_icon()
+            if not self._main_shown:
+                self._main_shown = True
+                show_main_window(self.cfg)
+            _main_window_refresh(self.cfg)
             if self._needs_login:
                 self._needs_login = False
                 self.on_settings(None)
@@ -2288,20 +2561,28 @@ def run_tray(cfg: dict) -> None:
                 dialog_gate.release()
         threading.Thread(target=_run, daemon=True).start()
 
+    def _settings_inline():
+        u = show_setup_dialog(cfg)
+        if not u:
+            return
+        cfg.update(u)
+        err = save_config(cfg)
+        if err:
+            # Silently swallowing this is what made the settings "reset"
+            # after every restart — the user has to know they didn't stick.
+            _notify(err + "\n\nDie Einstellungen gelten nur bis zum Beenden der App.")
+
+    # Das Hauptfenster ruft Verbinden/Anmelden ueber diese Callbacks auf —
+    # dieselbe Logik wie die Tray-Menuepunkte, keine zweite Implementierung.
+    # `_settings_inline` laeuft dabei IM Thread des Hauptfensters (tkinter
+    # vertraegt keine zwei Mainloops in parallelen Threads).
+    _main_state["connect"] = lambda: on_connect(None, None)
+    _main_state["settings"] = _settings_inline
+
+    def on_open_main(icon, item): _one_dialog(lambda: show_main_window(cfg))
     def on_permissions(icon, item): _one_dialog(lambda: show_permissions_dialog(cfg))
     def on_interaction(icon, item): _one_dialog(lambda: show_interaction_bar(cfg))
-    def on_settings(icon, item):
-        def _s():
-            u = show_setup_dialog(cfg)
-            if not u:
-                return
-            cfg.update(u)
-            err = save_config(cfg)
-            if err:
-                # Silently swallowing this is what made the settings "reset"
-                # after every restart — the user has to know they didn't stick.
-                _notify(err + "\n\nDie Einstellungen gelten nur bis zum Beenden der App.")
-        _one_dialog(_s)
+    def on_settings(icon, item): _one_dialog(_settings_inline)
     def on_status(icon, item): _one_dialog(lambda: show_status_window(cfg))
     def on_open(icon, item):
         if cfg.get("url"): webbrowser.open(cfg["url"])
@@ -2311,6 +2592,9 @@ def run_tray(cfg: dict) -> None:
         while True: icon.icon = make_icon(is_running()); time.sleep(3)
 
     icon = pystray.Icon("AI-Employee Bridge", make_icon(False), menu=pystray.Menu(
+        # default=True: Doppelklick aufs Tray-Symbol oeffnet das Hauptfenster.
+        pystray.MenuItem("Öffnen", on_open_main, default=True),
+        pystray.Menu.SEPARATOR,
         pystray.MenuItem("Verbinden", on_connect),
         pystray.MenuItem("Trennen", on_disconnect),
         pystray.Menu.SEPARATOR,
@@ -2328,6 +2612,9 @@ def run_tray(cfg: dict) -> None:
         try: api_update_capabilities(cfg["url"],cfg["token"],cfg["session"],cfg.get("allowed_capabilities",sorted(DEFAULT_CAPABILITIES)), cfg)
         except: pass
         threading.Thread(target=lambda: start_bridge(cfg), daemon=True).start()
+    # Die Bridge ist eine App, kein Tray-Anhaengsel: beim Start zeigt sie ihr
+    # Fenster — genau wie auf dem Mac.
+    on_open_main(None, None)
     icon.run()
 
 
