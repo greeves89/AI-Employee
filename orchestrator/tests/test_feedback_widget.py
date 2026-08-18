@@ -288,3 +288,73 @@ def test_kein_modellname_im_feedback_code():
     src = Path(fb.__file__).read_text(encoding="utf-8")
     for verboten in ("claude-", "anthropic.claude", "nova-", "gpt-"):
         assert verboten not in src, f"Modellname {verboten!r} hartcodiert"
+
+
+# Modell-Aufloesung der RE-Rueckfrage: FEEDBACK_MODEL (env) > reflection_model
+# (Settings/DB) > Default. Auf Bedrock zaehlt der Override nur mit voller
+# Bedrock-Id — sonst bliebe eine ungueltige Id an der API haengen.
+
+
+def _llm_stub(monkeypatch, backend: str, geladen: str) -> dict:
+    """ReflectionService ohne Netz/DB; zeichnet auf, welches Modell rausgeht."""
+    from app.services import reflection_service as rs
+
+    aufruf = {}
+
+    async def load_config(self, db):
+        return {"backend": backend, "model": geladen, "api_key": "k", "bedrock": {}}
+
+    async def call(self, cfg, prompt):
+        aufruf["model"] = cfg["model"]
+        return {"content": [{"text": "Auf welchem Geraet?"}]}
+
+    monkeypatch.setattr(rs.ReflectionService, "_load_config", load_config)
+    monkeypatch.setattr(rs.ReflectionService, "_call_anthropic", call)
+    monkeypatch.setattr(rs.ReflectionService, "_call_bedrock", call)
+    monkeypatch.setattr(rs.ReflectionService, "_call_openai_compat", call)
+    return aufruf
+
+
+_TURN = [{"role": "user", "text": "Der Button ist zu klein."}]
+
+
+@pytest.mark.asyncio
+async def test_feedback_model_env_uebersteuert(monkeypatch):
+    monkeypatch.setattr(settings, "feedback_model", "modell-aus-env")
+    aufruf = _llm_stub(monkeypatch, "anthropic", "modell-aus-db")
+    await fb._one_re_question(None, None, _TURN, {})
+    assert aufruf["model"] == "modell-aus-env"
+
+
+@pytest.mark.asyncio
+async def test_ohne_env_gilt_reflection_model(monkeypatch):
+    monkeypatch.setattr(settings, "feedback_model", "")
+    aufruf = _llm_stub(monkeypatch, "anthropic", "modell-aus-db")
+    await fb._one_re_question(None, None, _TURN, {})
+    assert aufruf["model"] == "modell-aus-db"
+
+
+@pytest.mark.asyncio
+async def test_bedrock_ignoriert_nicht_bedrock_id(monkeypatch):
+    monkeypatch.setattr(settings, "feedback_model", "kurzname-ohne-prefix")
+    aufruf = _llm_stub(monkeypatch, "bedrock", "eu.amazon.nova-lite-v1:0")
+    await fb._one_re_question(None, None, _TURN, {})
+    assert aufruf["model"] == "eu.amazon.nova-lite-v1:0"
+
+
+@pytest.mark.asyncio
+async def test_bedrock_akzeptiert_volle_bedrock_id(monkeypatch):
+    monkeypatch.setattr(settings, "feedback_model", "eu.anthropic.irgendwas-v1:0")
+    aufruf = _llm_stub(monkeypatch, "bedrock", "eu.amazon.nova-lite-v1:0")
+    await fb._one_re_question(None, None, _TURN, {})
+    assert aufruf["model"] == "eu.anthropic.irgendwas-v1:0"
+
+
+@pytest.mark.asyncio
+async def test_azure_uebernimmt_deployment_namen(monkeypatch):
+    # Auf Azure OpenAI ist FEEDBACK_MODEL der Deployment-Name — der Override
+    # greift ohne Id-Format-Pruefung (die gilt nur fuer Bedrock).
+    monkeypatch.setattr(settings, "feedback_model", "mini-deploy")
+    aufruf = _llm_stub(monkeypatch, "openai", "teures-default-deploy")
+    await fb._one_re_question(None, None, _TURN, {})
+    assert aufruf["model"] == "mini-deploy"

@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     claude_code_oauth_token: str = ""
     claude_code_oauth_refresh_token: str = ""
     default_model: str = "claude-sonnet-4-6"
+    # LLM nur fuer die Feedback-Widget-Rueckfrage. Leer = reflection_model
+    # (Settings/DB) bzw. dessen Default. Auf Bedrock volle Id (us.anthropic....).
+    feedback_model: str = ""
     max_turns: int = 100
     # How many DIFFERENT chat sessions one agent processes concurrently. 1 = serial
     # (proven default). >1 lets independent sessions/tasks run in parallel in one
