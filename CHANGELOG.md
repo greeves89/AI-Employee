@@ -29,6 +29,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.237.2] - 2026-08-18
+
+### Behoben
+- **Der Bridge-Build lieferte mehrere Fähigkeiten gar nicht aus.** Der
+  Workflow installierte eine von Hand gepflegte Paketliste, die von
+  `requirements.txt` abgewichen war. Im fertigen Programm fehlten dadurch:
+  - **`uiautomation` unter Windows** — die Bridge konnte dort **keine Elemente
+    finden**, nur blind auf Koordinaten klicken. Ausgerechnet in der
+    PyInstaller-Spec stand das Modul längst; installiert wurde es nie.
+  - `pynput` — Replay-Modus (Eingaben mitschneiden) tot.
+  - `sounddevice`/`numpy` — Mikrofon tot.
+  - `pyobjc-framework-Quartz` unter macOS — Bildschirmfoto im eigenen Prozess
+    tot, Rückfall auf einen Fremdprozess, der bei **jedem** Foto neu nach der
+    Freigabe fragt (genau das, was der Weg im eigenen Prozess vermeiden soll).
+
+  Auffallen konnte das nicht: Die Bridge fängt fehlende Importe ab und gibt
+  eine freundliche Meldung zurück — die Fähigkeit war nicht kaputt, sie war
+  still nicht da. Beide Builds installieren jetzt aus `requirements.txt`, ein
+  Test lehnt eine zweite handgepflegte Liste ab.
+- **Playwright wird jetzt wirklich mitgeliefert.** Der Node-Treiber gehört zu
+  den Daten, nicht zu den Modulen — ein Eintrag unter `hiddenimports` hätte
+  ihn nicht eingepackt und die neue Browser-Steuerung wäre im gebauten
+  Programm tot geblieben. Beide Specs nutzen dafür `collect_all`.
+- `customtkinter` und `pyobjc-framework-AVFoundation` standen nur in der
+  CI-Liste und fehlten in `requirements.txt` — die Drift ging in beide
+  Richtungen.
+
+---
+
 ## [1.237.1] - 2026-08-18
 
 ### Behoben

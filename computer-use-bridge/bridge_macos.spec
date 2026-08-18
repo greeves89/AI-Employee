@@ -2,17 +2,29 @@
 # PyInstaller spec for macOS .app bundle
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_all
+
 block_cipher = None
 bridge_version = Path('../VERSION').read_text().strip()
+
+# Playwright bringt einen Node-Treiber als DATEN mit, nicht nur Python-Module —
+# `hiddenimports` allein wuerde ihn nicht einpacken, und die Browser-Steuerung
+# waere im ausgelieferten Programm tot. Faellt die Abhaengigkeit (noch) nicht
+# vorhanden aus, bleibt der Build trotzdem gruen: die Bridge meldet dann zur
+# Laufzeit sauber, dass Playwright fehlt.
+try:
+    pw_datas, pw_binaries, pw_hidden = collect_all('playwright')
+except Exception:
+    pw_datas, pw_binaries, pw_hidden = [], [], []
 
 a = Analysis(
     ['tray_app.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=pw_binaries,
     datas=[
         ('bridge.py', '.'),   # bundle bridge.py next to executable
         ('_version.py', '.'),
-    ],
+    ] + pw_datas,
     hiddenimports=[
         'rumps',
         'pyautogui',
@@ -29,7 +41,14 @@ a = Analysis(
         'AppKit',
         'Quartz',
         'tkinter',
-    ],
+        # Fehlten bisher — Replay-Modus und Mikrofon waren im ausgelieferten
+        # Programm still tot, weil der Import abgefangen wird.
+        'pynput',
+        'pynput.mouse',
+        'pynput.keyboard',
+        'sounddevice',
+        'numpy',
+    ] + pw_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

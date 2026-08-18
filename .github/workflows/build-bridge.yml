@@ -27,14 +27,19 @@ jobs:
         with:
           python-version: "3.11"
 
+      # AUS requirements.txt, nicht aus einer zweiten Liste hier. Die
+      # handgepflegte Liste war auseinandergelaufen: pynput (Replay),
+      # sounddevice/numpy (Mikrofon) und Quartz (Bildschirmfoto im eigenen
+      # Prozess) fehlten im Build. Weil bridge.py fehlende Importe abfaengt und
+      # eine freundliche Meldung zurueckgibt, fiel das nie auf — die Faehigkeit
+      # war im ausgelieferten Programm einfach still tot.
+      # Die Plattform-Marker in requirements.txt sortieren selbst aus, was hier
+      # gebraucht wird.
       - name: Install dependencies
         working-directory: computer-use-bridge
         run: |
-          pip install pyinstaller rumps pystray \
-            pyautogui Pillow websockets edge-tts \
-            pyobjc-framework-AVFoundation \
-            pyobjc-framework-ApplicationServices \
-            pyobjc-framework-Cocoa
+          pip install pyinstaller
+          pip install -r requirements.txt
 
       - name: Set bridge artifact version
         id: bridge_version
@@ -174,10 +179,16 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Wie beim macOS-Build: requirements.txt ist die einzige Wahrheit. Hier
+      # fehlte zusaetzlich `uiautomation` — ohne das kann die Bridge unter
+      # Windows nur klicken, wohin jemand zeigt, aber KEINE Elemente finden.
+      # Das ausgelieferte Programm war damit im Blindflug, genau das, was der
+      # Kommentar an der Abhaengigkeit zu verhindern versucht.
       - name: Install dependencies
         working-directory: computer-use-bridge
         run: |
-          pip install pyinstaller pystray pyautogui Pillow websockets edge-tts customtkinter
+          pip install pyinstaller
+          pip install -r requirements.txt
 
       - name: Set bridge version
         shell: pwsh
