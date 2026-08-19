@@ -118,6 +118,9 @@ class NovaSonicSession:
         # AWS_ERROR_HTTP_STREAM_HAS_COMPLETED from an internal task whose exception
         # is never retrieved — so all sends short-circuit once this is True.
         self._input_dead = False
+        #: (Art, Bytes) des zuletzt gesendeten Nicht-Audio-Ereignisses — die
+        #: Brotkrume fuer „Invalid input request", siehe _send_event.
+        self.letztes_ereignis: tuple[str, int] | None = None
         # Serializes multi-event sequences (contentStart→content→contentEnd) so
         # concurrently-fired tool results / text injections can't interleave on the
         # wire. Single-event audio sends stay lock-free (own persistent content block).
@@ -160,6 +163,16 @@ class NovaSonicSession:
             BidirectionalInputPayloadPart as Payload,
         )
         data = json.dumps({"event": event}).encode("utf-8")
+        # Brotkrume fuer den Fehlerfall. Bedrock antwortet auf ein unbrauchbares
+        # Ereignis mit „Invalid input request, please fix your input and try
+        # again." — ohne zu sagen, WELCHES. Zweimal am 19.08.2026 aufgetreten,
+        # und im Log stand nur die Meldung. Hier merken wir uns die Art und
+        # Groesse des zuletzt gesendeten Ereignisses (Audio ausgenommen, das
+        # waere jede Zehntelsekunde eine Zeile), damit die naechste Meldung
+        # sagen kann, worauf sie folgte.
+        art = next(iter(event.keys()), "?")
+        if art != "audioInput":
+            self.letztes_ereignis = (art, len(data))
         await self._stream.input_stream.send(InChunk(value=Payload(bytes_=data)))
 
     async def open(self) -> None:
@@ -308,7 +321,10 @@ class NovaSonicSession:
         except Exception as e:  # noqa: BLE001
             # Always log (even if already closing) so the real Bedrock error is never
             # invisible — this is how "unexpected error during processing" surfaces.
-            logger.warning("NovaSonic receive loop error (closed=%s): %r", self._closed, e, exc_info=True)
+            logger.warning(
+                "NovaSonic receive loop error (closed=%s, zuletzt gesendet=%s): %r",
+                self._closed, self.letztes_ereignis, e, exc_info=True,
+            )
             if not self._closed:
                 await self._safe_emit("error", {"message": str(e)})
         finally:

@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.252.0] - 2026-08-19
+
+### Neu
+- **„Neu verbinden" statt nur „Auflegen".** Bei einem Sprachfehler blieb bisher
+  nur das Auflegen — auch dann, wenn ein zweiter Anlauf gereicht hätte. Jetzt
+  steht ein Knopf unter der Meldung, und darunter der Hinweis, dass das Gespräch
+  fortgesetzt und nicht neu begonnen wird.
+- Der Wiederaufbau ist derselbe wie beim automatischen: er lädt das bisherige
+  Gespräch nach, der Agent redet weiter statt neu zu begrüßen.
+- Bewusst **kein** automatischer Neuversuch bei Eingabefehlern der Engine
+  (`Invalid input request`): eine Eingabeprüfung zu wiederholen bringt denselben
+  Fehler und verdeckt die eigentliche Ursache. Zeitüberschreitungen und
+  Drosselungen bauen weiterhin von selbst neu auf.
+
+### Geändert
+- **Lautstärke- und Mikrofonregler sind jetzt beschriftet.** Vorher standen zwei
+  gleich aussehende graue Regler untereinander, unterschieden nur durch ein
+  kleines Symbol. Jetzt in einem gemeinsamen Feld mit Namen, farbigen Symbolen
+  und einem Satz, was die aktuelle Mikrofon-Einstellung bewirkt.
+
+### Behoben
+- **Diagnose für „Invalid input request".** Der Fehler trat zweimal auf, und im
+  Log stand nur die Meldung — nicht, worauf sie folgte. Das zuletzt gesendete
+  Ereignis (Art und Grösse, Audio ausgenommen) wird jetzt mitgeschrieben und in
+  der Fehlermeldung genannt. Die Ursache selbst ist damit noch nicht gefunden,
+  aber beim nächsten Mal nachvollziehbar.
+
+---
+
 ## [1.251.0] - 2026-08-19
 
 ### Neu

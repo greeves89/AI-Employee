@@ -360,6 +360,12 @@ export function VoiceSessionModal({
   // AWS-CRT race → the server emits "done"). We keep a stable chat_session id and
   // silently reconnect, resuming the conversation, instead of dead-ending.
   const reconnectsRef = useRef(0);
+  //: Haendischer Neuaufbau. Der automatische greift nur bei Fehlern, die
+  //: wir als voruebergehend kennen — bei allen anderen stand der Nutzer
+  //: bisher vor „Auflegen" als einziger Wahl. Der Aufbau selbst ist
+  //: derselbe: er laedt das bisherige Gespraech nach (`frisch=false`),
+  //: der Agent redet also weiter, statt neu zu begruessen.
+  const neuVerbindenRef = useRef<(() => void) | null>(null);
   const closingRef = useRef(false);
   const wsReconnectTimer = useRef<number | undefined>(undefined);
   const voiceSessionRef = useRef<string>("");
@@ -545,6 +551,17 @@ export function VoiceSessionModal({
       reconnectsRef.current += 1;
       setState("connecting");
       wsReconnectTimer.current = window.setTimeout(() => { void connectWs(); }, 600);
+    };
+
+    neuVerbindenRef.current = () => {
+      if (closingRef.current) return;
+      // Zaehler zuruecksetzen: der Nutzer hat sich bewusst entschieden, das
+      // ist kein weiterer Versuch einer kaputten Sitzung.
+      reconnectsRef.current = 1;   // >0, damit der Server das Gespraech nachlaedt
+      setError(null);
+      setState("connecting");
+      try { wsRef.current?.close(); } catch { /* schliesst gleich selbst */ }
+      void connectWs();
     };
 
     const connectWs = async () => {
@@ -1448,41 +1465,50 @@ export function VoiceSessionModal({
                   </CtrlButton>
                 </div>
 
-                {/* Playback volume — GainNode-based so it also works on iOS Safari */}
-                <div className="flex w-36 items-center gap-2 opacity-60 transition-opacity hover:opacity-100">
-                  <Volume2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={volume}
-                    onChange={(e) => changeVolume(Number(e.target.value))}
-                    aria-label="Lautstärke"
-                    className="h-0.5 flex-1 cursor-pointer accent-emerald-500"
-                  />
-                </div>
+                {/* Zwei Regler untereinander sahen identisch aus — grau, gleich
+                    lang, nur ein winziges Symbol als Unterschied. Jetzt mit
+                    Beschriftung, damit man sieht, woran man dreht. */}
+                <div className="w-56 space-y-1.5 rounded-lg border border-border/60 bg-foreground/[0.02] px-3 py-2">
+                  {/* Playback volume — GainNode-based so it also works on iOS Safari */}
+                  <div className="flex items-center gap-2">
+                    <Volume2 className="h-3.5 w-3.5 shrink-0 text-emerald-400/80" />
+                    <span className="w-20 shrink-0 text-[10px] text-muted-foreground/70">Lautstärke</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={volume}
+                      onChange={(e) => changeVolume(Number(e.target.value))}
+                      aria-label="Lautstärke"
+                      className="h-1 flex-1 cursor-pointer accent-emerald-500"
+                    />
+                  </div>
 
-                {/* Mikrofon-Empfindlichkeit — wirkt SOFORT, mitten im Gespräch.
-                    Kein Neuaufbau der Sitzung: das Rauschtor sitzt in unserer
-                    Tonkette, nicht in der Engine. */}
-                <div className="flex w-36 items-center gap-2 opacity-60 transition-opacity hover:opacity-100">
-                  <Mic className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={empfindlichkeit}
-                    onChange={(e) => setEmpfindlichkeit(Number(e.target.value))}
-                    aria-label="Mikrofon-Empfindlichkeit"
-                    title={
-                      empfindlichkeit === 0
-                        ? "Rauschtor aus — jedes Geräusch geht durch"
-                        : `Erst ab diesem Pegel hört der Agent zu (${empfindlichkeit})`
-                    }
-                    className="h-0.5 flex-1 cursor-pointer accent-sky-500"
-                  />
+                  {/* Mikrofon-Empfindlichkeit — wirkt SOFORT, mitten im Gespräch.
+                      Kein Neuaufbau der Sitzung: das Rauschtor sitzt in unserer
+                      Tonkette, nicht in der Engine. */}
+                  <div className="flex items-center gap-2">
+                    <Mic className="h-3.5 w-3.5 shrink-0 text-sky-400/80" />
+                    <span className="w-20 shrink-0 text-[10px] text-muted-foreground/70">Mikrofon</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={empfindlichkeit}
+                      onChange={(e) => setEmpfindlichkeit(Number(e.target.value))}
+                      aria-label="Mikrofon-Empfindlichkeit"
+                      className="h-1 flex-1 cursor-pointer accent-sky-500"
+                    />
+                  </div>
+                  <p className="pl-[22px] text-[10px] leading-tight text-muted-foreground/50">
+                    {empfindlichkeit === 0
+                      ? "Nimmt jedes Geräusch auf"
+                      : empfindlichkeit >= 70
+                        ? "Hört erst bei deutlichem Sprechen zu"
+                        : "Ignoriert leise Hintergrundgeräusche"}
+                  </p>
                 </div>
 
                 {/* THE STAGE — whatever the agent is showing right now, big */}
@@ -1550,7 +1576,24 @@ export function VoiceSessionModal({
                 {uploadMsg && (
                   <div className="text-center text-xs text-emerald-400/90">{uploadMsg}</div>
                 )}
-                {error && <div className="text-center text-xs text-red-400">{error}</div>}
+                {error && (
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="text-center text-xs text-red-400">{error}</div>
+                    {/* Bis hierher blieb bei einem Fehler nur „Auflegen". Der
+                        Wiederaufbau laedt das bisherige Gespräch nach — der
+                        Agent redet weiter, statt neu zu begrüßen. */}
+                    <button
+                      onClick={() => neuVerbindenRef.current?.()}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20"
+                    >
+                      <Radio className="h-3 w-3" />
+                      Neu verbinden
+                    </button>
+                    <span className="text-[10px] text-muted-foreground/50">
+                      Das Gespräch wird fortgesetzt, nicht neu begonnen.
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* RIGHT — tasks, live activity, web results */}

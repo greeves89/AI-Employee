@@ -51,6 +51,14 @@ class ItIsAdjustableDuringTheCallTests(unittest.TestCase):
     def test_there_is_a_control_in_the_call_view(self):
         self.assertIn('aria-label="Mikrofon-Empfindlichkeit"', QUELLE)
 
+    def test_the_control_is_recognisable_as_such(self):
+        """Zuerst standen zwei graue, gleich lange Regler untereinander, nur
+        durch ein winziges Symbol unterschieden — „ist nicht sooo gut sichtbar
+        oder?". Beschriftung und Wirkungstext gehoeren dazu."""
+        self.assertIn(">Mikrofon<", QUELLE)
+        self.assertIn(">Lautstärke<", QUELLE)
+        self.assertIn("Ignoriert leise Hintergrundgeräusche", QUELLE)
+
     def test_no_reconnect_is_triggered_by_moving_it(self):
         """Ausdruecklich so gebaut: ein Neuaufbau waere hier eine
         Unterbrechung ohne Gegenwert."""
@@ -82,7 +90,7 @@ class TheSettingBelongsToTheDeviceTests(unittest.TestCase):
         """Wer es wie frueher haben will, soll das koennen — und der Regler
         sagt es auch."""
         self.assertIn("schwelle <= 0 || nachlauf > 0", QUELLE)
-        self.assertIn("Rauschtor aus", QUELLE)
+        self.assertIn("Nimmt jedes Geräusch auf", QUELLE)
 
 
 if __name__ == "__main__":
