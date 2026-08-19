@@ -309,6 +309,16 @@ Match how much context you load to the SIZE of the request. Do NOT run the full 
     ONE line what you were missing and which decision you made. If a decision is genuinely
     required before you can continue, call `request_approval` — that one reaches the human and
     waits. Plain text does not.
+  - **Which way to go: ask how REVERSIBLE the action is.** This is the line, not how unsure
+    you feel — you are a poor judge of your own certainty, and on 2026-08-18 you wrote
+    "most likely" and then sent three colleagues to work on the wrong project anyway.
+    - **Easy to undo** (reading, a local file, a draft, a scratch branch): pick the sensible
+      default and keep going. Say in one line what you assumed.
+    - **Hard to undo** (delegating work to a colleague, sending a message or mail, creating a
+      calendar entry, publishing, deleting, anything that leaves this machine): if WHAT you
+      are acting on is not named in this conversation and you did not just look it up, call
+      `request_approval` FIRST. One question costs a minute; three colleagues on the wrong
+      project cost an afternoon.
 
 ## Environment
 - Workspace: `/workspace/` (persistent across tasks) — **YOURS ALONE. No other agent can see it.**
@@ -789,6 +799,55 @@ def agent_timezone(config: dict | None) -> str:
     return timezone_name(config)
 
 
+def _laufzeit_hinweis(mode: str | None) -> str:
+    """Der eine Absatz, der sich je Laufzeit WIRKLICH unterscheidet.
+
+    Der uebrige Anleitungstext ist bewusst fuer alle gleich — Paritaet entsteht
+    dadurch, dass es EINE Quelle gibt. Unterschiedlich ist nur, wie die jeweilige
+    Laufzeit ihre Schleife fuehrt, und dazu sagt jeder Anbieter etwas anderes:
+
+    * **Claude Code** — Anthropic empfiehlt fuer lange Laeufe ausdruecklich
+      Selbstpruefung auf Takt: „Establish a method for checking your own work as
+      you build; run it every [interval]". Dazu: zu kleinteilige Anweisungen
+      SENKEN die Qualitaet („too prescriptive … reduce output quality"), also
+      Ziel und Grenzen nennen, nicht jeden Schritt.
+    * **Codex / OpenAI** — der Agents-SDK bricht bei ``max_turns`` mit einer
+      Ausnahme ab und empfiehlt, das aufzufangen und den Nutzer um Eingrenzung
+      zu bitten („I couldn't finish within the turn limit. Please narrow the
+      request."). Das ist eine Haltung, keine Einstellung — deshalb steht sie
+      hier im Text.
+    * **Custom-LLM** — unser eigener Harness. Er sagt dem Agenten aktiv, wie
+      viel Budget bleibt, und bittet am Ende um einen Abschluss. Damit die
+      Systemmeldungen nicht aus dem Nichts kommen, sind sie hier angekuendigt.
+    """
+    if mode == "codex_cli":
+        return (
+            "\n## Wenn die Aufgabe zu gross ist\n"
+            "Merkst du, dass du sie in diesem Lauf nicht fertig bekommst, brich nicht "
+            "einfach ab. Bring zuerst das Wichtigste zu Ende, sag dann klar, was fertig "
+            "ist und was offen bleibt, und schlage vor, wie man die Aufgabe teilt. Eine "
+            "halbe Aufgabe mit klarem Schnitt ist brauchbar; eine mittendrin abgebrochene "
+            "nicht.\n"
+        )
+    if mode == "custom_llm":
+        return (
+            "\n## Arbeitsbudget\n"
+            "Du bekommst gegen Ende eine Systemmeldung, wie viele Schritte dir noch "
+            "bleiben. Nimm sie ernst: bring dann das Wichtigste zu Ende und fasse "
+            "zusammen, statt eine neue Baustelle aufzumachen. Ist das Budget auf, wirst du "
+            "um einen Abschluss gebeten — dort gehoert hin, was fertig ist, was offen ist "
+            "und was der naechste Schritt waere.\n"
+        )
+    # claude_code und alles ohne bekannten Modus
+    return (
+        "\n## Bei langen Arbeiten: pruefe dich selbst auf Takt\n"
+        "Baust du laenger an einer Sache, leg dir zu Beginn fest, WIE du dein Ergebnis "
+        "pruefst (Test, Aufruf, Gegenlesen) — und fuehre diese Pruefung regelmaessig aus, "
+        "nicht erst am Ende. Ein frischer Blick von aussen (ein Subagent ohne deinen "
+        "bisherigen Verlauf) findet mehr als deine eigene Nachkontrolle.\n"
+    )
+
+
 def instructions_paths(mode: str | None) -> list[str]:
     """Wohin die Agenten-Anleitung geschrieben wird — EINE Quelle für alle Pfade.
 
@@ -838,7 +897,7 @@ def _identity_line(name: str, role: str) -> str:
 def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
                       workspace_size_gb: float | None = None,
                       agent_name: str = "", agent_role: str = "",
-                      master_rules: str = "") -> str:
+                      master_rules: str = "", mode: str | None = None) -> str:
     """Render the agent CLAUDE.md from its template — the SINGLE place that fills
     its placeholders (identity, workspace soft-quota, host-mounts section). Used by
     the create / update / restart paths, so the substitution lives in exactly one spot.
@@ -852,7 +911,7 @@ def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
     # runner_hooks.get_identity_context). Angehaengt waeren ausgerechnet die
     # Regeln, die immer gelten sollen, bei einem gespraechigen Agenten als
     # Erstes weg.
-    return master_rules + (
+    return master_rules + _laufzeit_hinweis(mode) + (
         DEFAULT_CLAUDE_MD
         .replace("$AGENT_IDENTITY", _identity_line(agent_name, agent_role))
         .replace("$AGENT_WORKSPACE_SIZE_GB", str(size))
@@ -1518,7 +1577,7 @@ class AgentManager:
         agent_mounts = []
         from app.core import master_rules as _mr
         claude_md = _render_claude_md(agent_mounts, agent_name=name, agent_role=role or "",
-                                      master_rules=await _mr.load(self.db))
+                                      master_rules=await _mr.load(self.db), mode=mode)
         # Same instruction text for EVERY harness — only the file name differs, because
         # each CLI reads its own (see instructions_paths). Two copies of this branch used
         # to decide it; now there is one list and no mode can quietly fall through.
@@ -1818,11 +1877,11 @@ class AgentManager:
         try:
             agent_mounts = config.get("mounts", [])
             from app.core import master_rules as _mr
+            mode = agent.mode or config.get("mode", "claude_code")
             fresh_claude_md = _render_claude_md(
                 agent_mounts, catalog, agent_name=agent.name, agent_role=role or "",
-                master_rules=await _mr.load(self.db),
+                master_rules=await _mr.load(self.db), mode=mode,
             )
-            mode = agent.mode or config.get("mode", "claude_code")
             for target_file in instructions_paths(mode):
                 self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
             await self.migrate_knowledge_file(container.id, agent_id)
@@ -1949,7 +2008,7 @@ class AgentManager:
             rendered = _render_claude_md(
                 (agent.config or {}).get("mounts", []), catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
-                master_rules=await _mr.load(self.db),
+                master_rules=await _mr.load(self.db), mode=mode,
             )
             for path in instructions_paths(mode):
                 self.docker.write_file_in_container(agent.container_id, path, rendered)
@@ -2131,7 +2190,7 @@ class AgentManager:
             _rendered = _render_claude_md(
                 _agent_mounts, catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
-                master_rules=await _mr.load(self.db),
+                master_rules=await _mr.load(self.db), mode=mode,
             )
             for _path in _instructions_files:
                 self.docker.write_file_in_container(container.id, _path, _rendered)

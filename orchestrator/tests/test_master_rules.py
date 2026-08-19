@@ -89,13 +89,19 @@ class EveryRuntimeGetsThemTests(unittest.TestCase):
         """Damit sind Claude Code (CLAUDE.md), Codex (AGENT.md) und Custom-LLM
         (liest die Datei ueber get_identity_context) abgedeckt."""
         self.assertIn("master_rules: str = \"\"", self.MANAGER)
-        self.assertIn("return master_rules + (", self.MANAGER)
+        # Seit dem laufzeitspezifischen Zusatz folgt darauf noch ein kurzer
+        # Absatz je Harness — die Regeln bleiben aber der ERSTE Summand.
+        self.assertIn("return master_rules + ", self.MANAGER)
 
     def test_they_stand_at_the_very_top(self):
         """Die Agenten-Laufzeit kuerzt eine zu lange Anleitung von HINTEN.
         Angehaengt waeren ausgerechnet die Regeln als Erstes weg."""
         rumpf = self.MANAGER.split("def _render_claude_md", 1)[1][:1200]
-        self.assertIn("return master_rules + (", rumpf)
+        rueckgabe = rumpf.split("return ", 1)[1]
+        self.assertTrue(
+            rueckgabe.startswith("master_rules"),
+            "die Master-Regeln stehen nicht mehr als Erstes in der Anleitung",
+        )
 
     def test_no_render_path_forgets_them(self):
         """Es gibt VIER Stellen, die die Anleitung schreiben (anlegen,

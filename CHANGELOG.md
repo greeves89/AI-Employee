@@ -5,6 +5,46 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.253.0] - 2026-08-19
+
+### Geändert
+- **Agenten kennen ihr Arbeitsbudget und enden würdig, statt abgeschnitten zu
+  werden.** Anlass: „die agents machen nicht mehr sauber mit". Die eigenen
+  Selbstbewertungen der Anlage zeigen das Muster — Note 5 bei 1–10 Schritten,
+  Note 3 bei 27–75. Je länger ein Lauf ohne Korrektur, desto schlechter das
+  Ergebnis.
+- Naheliegend wäre, die maximale Schrittzahl zu senken. Beide Anbieter raten
+  davon ab: Anthropic unterscheidet einen Deckel, „the model is not aware of",
+  von einem Budget, mit dem es sich einteilt und „gracefully" endet; OpenAI fängt
+  das Limit ab und bittet um Eingrenzung. Ein kleinerer Deckel schneidet früher
+  ab, statt besser zu werden.
+- Der Custom-LLM-Harness sagt dem Agenten jetzt gegen Ende, wie viele Schritte
+  ihm bleiben. Ist das Budget auf, endete die Schleife bisher **still** — jetzt
+  folgt ein letzter Schritt ohne Werkzeuge, in dem der Agent zusammenfasst, was
+  fertig ist, was offen bleibt und was der nächste Schritt wäre.
+- **Rückfragen hängen nicht mehr am Bauchgefühl, sondern an der
+  Umkehrbarkeit.** Anthropics Kriterium wörtlich übernommen: leicht rückgängig
+  zu machen → weitermachen mit einer vernünftigen Annahme; schwer rückgängig
+  (an Kollegen delegieren, Nachricht senden, Termin anlegen, veröffentlichen,
+  löschen) → vorher fragen, wenn der Bezug nicht in diesem Gespräch genannt oder
+  frisch nachgeschlagen wurde.
+- Der Agent ist ein schlechter Richter über seine eigene Sicherheit: am Vortag
+  schrieb er „am wahrscheinlichsten" und schickte trotzdem drei Kollegen auf das
+  falsche Projekt.
+
+### Neu
+- **Jede Laufzeit bekommt den Rat ihres eigenen Anbieters.** Der übrige
+  Anleitungstext bleibt bewusst für alle gleich; unterschiedlich ist nur, wie die
+  Laufzeit ihre Schleife führt:
+  - **Claude Code** — Selbstprüfung auf Takt statt erst am Ende (Anthropic
+    empfiehlt genau das für lange Läufe)
+  - **Codex/OpenAI** — bei zu grosser Aufgabe sauber schneiden und vorschlagen,
+    wie man sie teilt, statt mittendrin abzubrechen
+  - **Custom-LLM** — die Budget-Meldungen unseres Harness sind angekündigt,
+    damit sie nicht aus dem Nichts kommen
+
+---
+
 ## [1.252.1] - 2026-08-19
 
 ### Behoben

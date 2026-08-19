@@ -37,6 +37,20 @@ def _max_turns() -> int:
     return settings.max_turns if settings.max_turns and settings.max_turns > 0 else DEFAULT_MAX_TURNS
 
 
+#: Ab welchem Anteil des Zugbudgets der Agent erfaehrt, wie viel ihm bleibt.
+#:
+#: Anthropic unterscheidet ausdruecklich zwischen einem Deckel, „the model is
+#: not aware of", und einem Budget, mit dem es „paces itself and finishes
+#: gracefully instead of being cut off". Bis hierher hatten wir nur den Deckel:
+#: die Schleife endete bei ``max_turns`` STILL — kein Wort, keine
+#: Zusammenfassung, der Nutzer sah nur abgebrochene Arbeit.
+BUDGET_WARNUNG_AB = 0.7
+
+#: Wie oft daran erinnert wird. Jeden Zug waere Laerm; einmal reicht nicht,
+#: wenn danach noch zwanzig Zuege kommen.
+BUDGET_WARNUNG_ALLE = 10
+
+
 # --- Lazy tool loading -------------------------------------------------------
 # OpenAI/Azure cap function tools at 128 PER REQUEST. Instead of sending the whole
 # catalog (18 built-in + 41 orchestrator API + every MCP tool), we send only a small
@@ -471,6 +485,37 @@ class LLMChatHandler:
             )
         return self._provider
 
+    async def _abschluss_erbitten(self, message_id: str, provider, zuege: int) -> str:
+        """Einen letzten Zug OHNE Werkzeuge: was ist fertig, was bleibt offen.
+
+        Ohne Werkzeuge, weil der Agent sonst weiterarbeitet statt abzuschliessen
+        — und genau das Budget ist ja gerade der Grund, warum er aufhoeren soll.
+
+        Best effort: schlaegt der Abschluss fehl, bleibt es beim bisherigen
+        Text. Ein Fehler HIER darf die geleistete Arbeit nicht auch noch
+        verschlucken.
+        """
+        self._history.append(ChatMessage(
+            role="system",
+            content=(
+                f"Dein Arbeitsbudget fuer diese Aufgabe ist aufgebraucht ({zuege} Schritte). "
+                "Schliesse jetzt ab, ohne weitere Werkzeuge zu benutzen. Sage in wenigen "
+                "Saetzen: was ist FERTIG, was ist OFFEN, und was waere der naechste Schritt. "
+                "Wenn die Aufgabe zu gross war, sag das und schlage vor, wie man sie teilt."
+            ),
+        ))
+        try:
+            text = ""
+            async for event in provider.stream_completion(self._history, []):
+                if event.type == "text_delta":
+                    text += event.text
+                    await self.log_publisher.publish_chat(message_id, "text", {"text": event.text})
+            return text.strip()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Chat] Abschluss nach Budgetende fehlgeschlagen: %s", e)
+            return ("\n\n[System: Das Arbeitsbudget war aufgebraucht, bevor die Aufgabe "
+                    "fertig wurde. Bitte grenze sie enger ein oder teile sie auf.]")
+
     async def _verlauf_nachladen(self) -> list[ChatMessage]:
         """Die letzten Zuege dieser Unterhaltung aus dem Orchestrator holen.
 
@@ -623,8 +668,28 @@ class LLMChatHandler:
         total_cache_write_tokens = 0
 
         try:
+            letzte_warnung = 0
             while num_turns < max_turns:
                 num_turns += 1
+
+                # Budget-Bewusstsein: dem Agenten SAGEN, wie viel ihm bleibt,
+                # statt ihn irgendwann abzuschneiden. Ein Modell, das sein
+                # Budget kennt, teilt sich ein und liefert einen brauchbaren
+                # Zwischenstand; eines, das es nicht kennt, wird mitten im Satz
+                # gekappt.
+                rest = max_turns - num_turns
+                if (num_turns >= max_turns * BUDGET_WARNUNG_AB
+                        and num_turns - letzte_warnung >= BUDGET_WARNUNG_ALLE):
+                    letzte_warnung = num_turns
+                    self._history.append(ChatMessage(
+                        role="system",
+                        content=(
+                            f"Hinweis zum Arbeitsbudget: dir bleiben noch etwa {rest} Schritte "
+                            "fuer diese Aufgabe. Teile sie dir ein. Wenn es knapp wird, bring "
+                            "zuerst das Wichtigste zu Ende und fasse dann zusammen, was erledigt "
+                            "ist und was offen bleibt — statt mitten in der Arbeit zu enden."
+                        ),
+                    ))
                 # Re-fetch each turn so tools activated via search_tools on the
                 # previous turn become callable now (lazy loading).
                 tools = await self._get_tools()
@@ -858,6 +923,22 @@ class LLMChatHandler:
                         )
                         # New input extends the work budget for this message.
                         max_turns = num_turns + _max_turns()
+
+            else:
+                # Das Zugbudget ist aufgebraucht, ohne dass der Agent fertig
+                # wurde. Bis hierher endete die Schleife hier STILL — der
+                # Nutzer bekam abgebrochene Arbeit ohne Hinweis und ohne zu
+                # wissen, was erledigt ist.
+                #
+                # OpenAI empfiehlt fuer genau diesen Fall einen Behandler, der
+                # den Lauf sauber beendet („I couldn't finish within the turn
+                # limit. Please narrow the request."). Statt eines festen
+                # Satzes lassen wir den Agenten selbst zusammenfassen — er
+                # weiss als Einziger, was er geschafft hat.
+                logger.info("[Chat] Zugbudget (%d) erschoepft — Abschluss wird erbeten", max_turns)
+                abschluss = await self._abschluss_erbitten(message_id, provider, num_turns)
+                if abschluss:
+                    full_text += "\n\n" + abschluss
 
         except Exception as e:
             # Vom Nutzer abgebrochen: kein Fehler, sondern das gewuenschte Ergebnis.
