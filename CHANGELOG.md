@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.252.1] - 2026-08-19
+
+### Behoben
+- **Das Reglerfeld im Sprachmodus war zu schmal.** Der Griff des
+  Lautstärkereglers stand rechts über den Rahmen hinaus. Das Feld nutzt jetzt die
+  verfügbare Breite (bis zu einer sinnvollen Obergrenze), und die Regler dürfen
+  unter ihre Inhaltsbreite schrumpfen — genau das fehlte und liess den Griff
+  herausragen.
+
+---
+
 ## [1.252.0] - 2026-08-19
 
 ### Neu

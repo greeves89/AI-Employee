@@ -1468,7 +1468,7 @@ export function VoiceSessionModal({
                 {/* Zwei Regler untereinander sahen identisch aus — grau, gleich
                     lang, nur ein winziges Symbol als Unterschied. Jetzt mit
                     Beschriftung, damit man sieht, woran man dreht. */}
-                <div className="w-56 space-y-1.5 rounded-lg border border-border/60 bg-foreground/[0.02] px-3 py-2">
+                <div className="w-full max-w-sm space-y-1.5 rounded-lg border border-border/60 bg-foreground/[0.02] px-3 py-2">
                   {/* Playback volume — GainNode-based so it also works on iOS Safari */}
                   <div className="flex items-center gap-2">
                     <Volume2 className="h-3.5 w-3.5 shrink-0 text-emerald-400/80" />
@@ -1481,7 +1481,7 @@ export function VoiceSessionModal({
                       value={volume}
                       onChange={(e) => changeVolume(Number(e.target.value))}
                       aria-label="Lautstärke"
-                      className="h-1 flex-1 cursor-pointer accent-emerald-500"
+                      className="h-1 min-w-0 flex-1 cursor-pointer accent-emerald-500"
                     />
                   </div>
 
@@ -1499,7 +1499,7 @@ export function VoiceSessionModal({
                       value={empfindlichkeit}
                       onChange={(e) => setEmpfindlichkeit(Number(e.target.value))}
                       aria-label="Mikrofon-Empfindlichkeit"
-                      className="h-1 flex-1 cursor-pointer accent-sky-500"
+                      className="h-1 min-w-0 flex-1 cursor-pointer accent-sky-500"
                     />
                   </div>
                   <p className="pl-[22px] text-[10px] leading-tight text-muted-foreground/50">
