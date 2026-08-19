@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.245.0] - 2026-08-19
+
+### Geändert (Speech-Ansicht)
+- **Gesprächsverlauf in der Speech-Ansicht sichtbar.** Bisher zeigte die
+  Speech-Ansicht nur einen Startknopf, aber nicht den bisherigen Verlauf des
+  ausgewählten Gesprächs. Der Verlauf (dieselbe Quelle wie der Text-Chat) wird
+  jetzt oben angezeigt und blendet nach unten aus; darüber liegt das Button-Dock
+  mit „Gespräch beginnen" (neu) bzw. „Gespräch weiterführen" (ausgewähltes
+  Gespräch) / „Gespräch öffnen" (aktive Sitzung) sowie Status, Aufklappen und
+  Beenden.
+- **Gesprächstitel wird angezeigt und folgt dem Modell.** Der Titel des
+  ausgewählten Gesprächs steht jetzt über dem Verlauf; die Gesprächsliste in der
+  Speech-Ansicht aktualisiert sich bei aktiver Sitzung periodisch, sodass ein per
+  `rename_conversation` vom Modell gesetzter Name dort erscheint.
+
+---
+
 ## [1.244.0] - 2026-08-19
 
 ### Behoben
