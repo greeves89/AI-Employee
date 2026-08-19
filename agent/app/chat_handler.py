@@ -342,12 +342,22 @@ class ChatHandler:
                     else:
                         # Use accumulated text, fallback to result field
                         final_text = full_text or event.get("result", "")
+                        # Token-Nutzung aus dem Claude-CLI-Result (steht im
+                        # `usage`-Block) — bisher NICHT ausgelesen, deshalb zeigte
+                        # die Chat-Meta-Zeile bei Claude-Code-Agenten nur
+                        # Dauer/Turns, keine Tokens. Claude meldet den Prompt-Cache
+                        # getrennt; ein eigenes reasoning_tokens gibt es nicht.
+                        _usage = event.get("usage") or {}
                         result_data = {
                             "status": "completed",
                             "text": final_text,
                             "cost_usd": event.get("cost_usd", 0),
                             "duration_ms": event.get("duration_ms", 0),
                             "num_turns": event.get("num_turns", 0),
+                            "input_tokens": _usage.get("input_tokens") or 0,
+                            "output_tokens": _usage.get("output_tokens") or 0,
+                            "cache_write_tokens": _usage.get("cache_creation_input_tokens") or 0,
+                            "cached_tokens": _usage.get("cache_read_input_tokens") or 0,
                             "tool_calls": accumulated_tool_calls or None,
                         }
                         # If we got text from result but didn't stream it yet, send it now
