@@ -173,6 +173,16 @@ function linkify(text: string) {
   });
 }
 
+//: Wie lange das Rauschtor nach dem letzten lauten Frame offen bleibt
+//: (Frames a ~85 ms). Ohne Nachlauf verschluckt es leise Endsilben.
+const NACHLAUF_FRAMES = 8;
+
+//: Reglerwert (0-100) in eine Pegelschwelle. 0 = Tor immer offen (wie frueher),
+//: 100 = nur deutliches Sprechen kommt durch.
+function schwelleAusRegler(wert: number): number {
+  return (wert / 100) * 0.06;
+}
+
 export function VoiceSessionModal({
   agentId,
   agentName,
@@ -483,6 +493,28 @@ export function VoiceSessionModal({
   // Realtime (Nova Sonic) audio graph
   const inCtxRef = useRef<AudioContext | null>(null);
   const procRef = useRef<ScriptProcessorNode | null>(null);
+  //: Empfindlichkeit des Mikrofons. In einem Ref, damit der Regler MITTEN
+  //: IM GESPRAECH wirkt — die Tonschleife liest ihn bei jedem Frame neu.
+  //: Kein Neuaufbau der Sitzung noetig: das Rauschtor ist unser Code in der
+  //: Tonkette, nicht ein Parameter der Engine.
+  const empfindlichkeitRef = useRef({ schwelle: 0.02, minFrames: 2 });
+  const [empfindlichkeit, setEmpfindlichkeit] = useState(40);
+
+  // Das Mikrofon und der Raum gehoeren zum GERAET, nicht zum Agenten —
+  // deshalb liegt der Wert lokal und nicht am Agenten in der Datenbank.
+  useEffect(() => {
+    const gespeichert = Number(localStorage.getItem('voice-empfindlichkeit'));
+    if (Number.isFinite(gespeichert) && gespeichert > 0) setEmpfindlichkeit(gespeichert);
+  }, []);
+
+  useEffect(() => {
+    empfindlichkeitRef.current = {
+      schwelle: schwelleAusRegler(empfindlichkeit),
+      // Empfindlicher eingestellt heisst auch: schneller unterbrechen duerfen.
+      minFrames: empfindlichkeit >= 60 ? 3 : 2,
+    };
+    localStorage.setItem('voice-empfindlichkeit', String(empfindlichkeit));
+  }, [empfindlichkeit]);
   const srcNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const outCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -988,19 +1020,38 @@ export function VoiceSessionModal({
       procRef.current = proc;
       let vadHigh = 0;
       let framesSent = 0;
+      //: Nachlauf des Rauschtors in Frames. Ohne ihn wuerden Wortenden
+      //: abgeschnitten — leise Endsilben liegen unter der Schwelle.
+      let nachlauf = 0;
       proc.onaudioprocess = (e) => {
         if (wsRef.current?.readyState !== WebSocket.OPEN) return;
         const input = e.inputBuffer.getChannelData(0);
+
+        // ── Rauschtor ──────────────────────────────────────────────────────
+        // Bis hierher ging JEDER Frame raus, egal wie leise. Die Engine bekam
+        // also jedes Umgebungsgeraeusch zu hoeren und entschied selbst, darauf
+        // zu reagieren — gemeldet als „speech reagiert zu schnell auf Toene".
+        //
+        // Wir senden bewusst STILLE statt gar nichts: der Tonstrom muss
+        // lueckenlos bleiben, sonst geraet die Sprecherwechsel-Erkennung der
+        // Engine aus dem Takt. Sie hoert dann Ruhe statt Rascheln.
+        let summe = 0;
+        for (let i = 0; i < input.length; i++) summe += input[i] * input[i];
+        const pegel = Math.sqrt(summe / input.length);
+        const { schwelle, minFrames } = empfindlichkeitRef.current;
+        if (pegel >= schwelle) {
+          nachlauf = NACHLAUF_FRAMES;
+        } else if (nachlauf > 0) {
+          nachlauf--;
+        }
+        const durchlassen = schwelle <= 0 || nachlauf > 0;
         // Barge-in: if the agent is speaking and the user starts talking, stop the
         // agent's (buffered) audio immediately so the user can cut in. Echo from the
         // speakers is largely removed by echoCancellation; require a few consecutive
         // loud frames to avoid false triggers.
         if (liveSourcesRef.current.length > 0) {
-          let sum = 0;
-          for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
-          const rms = Math.sqrt(sum / input.length);
-          vadHigh = rms > 0.025 ? vadHigh + 1 : 0;
-          if (vadHigh >= 2) {
+          vadHigh = pegel > schwelle ? vadHigh + 1 : 0;
+          if (vadHigh >= minFrames) {
             beginBargeIn();
             setState("listening");
             vadHigh = 0;
@@ -1008,6 +1059,7 @@ export function VoiceSessionModal({
         }
         framesSent++;
         const ds = downsample(input, ctx.sampleRate, 16000);
+        if (!durchlassen) ds.fill(0);
         const b64 = bufToBase64(floatTo16LE(ds));
         wsRef.current.send(JSON.stringify({ type: "audio_chunk", data: { b64 } }));
       };
@@ -1408,6 +1460,28 @@ export function VoiceSessionModal({
                     onChange={(e) => changeVolume(Number(e.target.value))}
                     aria-label="Lautstärke"
                     className="h-0.5 flex-1 cursor-pointer accent-emerald-500"
+                  />
+                </div>
+
+                {/* Mikrofon-Empfindlichkeit — wirkt SOFORT, mitten im Gespräch.
+                    Kein Neuaufbau der Sitzung: das Rauschtor sitzt in unserer
+                    Tonkette, nicht in der Engine. */}
+                <div className="flex w-36 items-center gap-2 opacity-60 transition-opacity hover:opacity-100">
+                  <Mic className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={empfindlichkeit}
+                    onChange={(e) => setEmpfindlichkeit(Number(e.target.value))}
+                    aria-label="Mikrofon-Empfindlichkeit"
+                    title={
+                      empfindlichkeit === 0
+                        ? "Rauschtor aus — jedes Geräusch geht durch"
+                        : `Erst ab diesem Pegel hört der Agent zu (${empfindlichkeit})`
+                    }
+                    className="h-0.5 flex-1 cursor-pointer accent-sky-500"
                   />
                 </div>
 

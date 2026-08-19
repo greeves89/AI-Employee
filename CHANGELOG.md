@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.251.0] - 2026-08-19
+
+### Neu
+- **Mikrofon-Empfindlichkeit im Sprachmodus, einstellbar mitten im Gespräch.**
+  Gemeldet: „speech reagiert zu schnell auf Töne" — man konnte es nicht
+  einstellen.
+- Ursache: die Tonschleife schickte **jeden** Frame an die Engine, egal wie
+  leise. Die Sprecherwechsel-Erkennung sitzt bei Nova Sonic im Modell; sie bekam
+  also jedes Umgebungsgeräusch zu hören und entschied selbst, darauf zu
+  reagieren. Die beiden Schwellen standen zudem fest im Quelltext.
+- Neuer Regler in der Gesprächsansicht. Er wirkt **sofort, ohne Neuaufbau der
+  Sitzung** — das Rauschtor ist unser Code in der Tonkette, kein Parameter der
+  Engine. Ein Neuaufbau wäre hier eine Unterbrechung ohne Gegenwert.
+- Unterhalb der Schwelle wird **Stille gesendet statt gar nichts**: der Tonstrom
+  muss lückenlos bleiben, sonst gerät die Erkennung der Engine aus dem Takt.
+- Ein Nachlauf verhindert, dass leise Endsilben abgeschnitten werden. Auf 0
+  gestellt ist das Tor aus und alles verhält sich wie vorher.
+- Das Unterbrechen (Barge-in) folgt derselben Einstellung — sonst hätte der
+  Regler nur das Zuhören beeinflusst.
+- Der Wert liegt **lokal am Gerät**, nicht am Agenten: Mikrofon und Raum gehören
+  zum Arbeitsplatz, derselbe Agent braucht anderswo einen anderen Wert.
+
+---
+
 ## [1.250.2] - 2026-08-19
 
 ### Geändert
