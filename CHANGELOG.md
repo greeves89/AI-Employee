@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.246.0] - 2026-08-19
+
+### Neu
+- **Die gewählte Denktiefe sprang bei jedem Chat-Wechsel auf „Auto" zurück.** Der
+  Selector im Chat lebte nur im Oberflächen-Zustand – Seite neu geladen, Gespräch
+  gewechselt oder Chat aus der Übersicht geöffnet, und die Wahl war weg. Jetzt
+  merkt sich **jedes Gespräch seine eigene Denktiefe** (gespeichert wie Titel und
+  Pin), der Knopf zeigt das aktive Level auch nach einem Neuladen. Ein neuer Chat
+  übernimmt die zuletzt gewählte Stufe; „Standard" wählen stellt bewusst auf Auto
+  zurück. Abzweig und Fortsetzung erben die Stufe des Ursprungsgesprächs.
+- **Neue Stufe „Maximal nachdenken".** Bei GPT-/Codex-Modellen wird sie als
+  `xhigh` durchgereicht; Modelle, die das nicht kennen (o-Serie, Fremd-Endpunkte,
+  Claude), erhalten sicher die höchste Stufe, die sie akzeptieren – statt eines
+  API-Fehlers bei jeder Nachricht.
+
+### Behoben
+- Ein frisch gewähltes Level wurde ohne weiteren Tastendruck **veraltet
+  mitgesendet** – die Sende-Funktion sah den neuen Wert nicht (fehlende
+  React-Abhängigkeit). Die Wahl gilt jetzt sofort für die nächste Nachricht.
+- Die Level-Whitelist im Sende-Pfad war ein eigenes, hartkodiertes Tuple und
+  konnte von der Oberfläche abweichen. Beide Prüfstellen (Senden + Speichern)
+  nutzen jetzt dieselbe Konstante.
+
+---
+
 ## [1.245.0] - 2026-08-19
 
 ### Geändert (Speech-Ansicht)
@@ -2033,7 +2058,6 @@ und ohne CHANGELOG-Eintrag**; hier nachgetragen:
 
 ---
 
-<<<<<<< HEAD
 ## [1.192.0] - 2026-08-13
 
 ### Neu
@@ -2051,7 +2075,9 @@ und ohne CHANGELOG-Eintrag**; hier nachgetragen:
   Request. Optional wird jedes Feedback best-effort als GitHub-Issue
   gespiegelt (`FEEDBACK_ISSUE_ENABLED`, Default aus) — ein Issue-Fehler
   verliert nie Feedback. Der alte Feedback-Modal-Dialog ist damit ersetzt.
-=======
+
+---
+
 ## [1.191.2] - 2026-08-13
 
 ### Behoben
@@ -2061,7 +2087,6 @@ und ohne CHANGELOG-Eintrag**; hier nachgetragen:
 
 ---
 
->>>>>>> a1c8fc1 (fix(chat): Kachel-Streifen ueberdeckt das Eingabefeld nicht mehr)
 ## [1.191.1] - 2026-08-13
 
 ### Behoben

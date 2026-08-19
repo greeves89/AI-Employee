@@ -535,9 +535,10 @@ class LLMChatHandler:
         provider = self._get_provider()
         # The provider is cached across turns, so a per-message choice has to be
         # written onto it each turn (and an explicit "off" has to clear the
-        # container default, not fall through to it).
+        # container default, not fall through to it). "max" becomes "xhigh"; the
+        # provider clamps it to "high" for models that don't know xhigh.
         if reasoning:
-            provider.reasoning_effort = "" if reasoning == "off" else reasoning
+            provider.reasoning_effort = {"off": "", "max": "xhigh"}.get(reasoning, reasoning)
         else:
             provider.reasoning_effort = settings.llm_reasoning_effort
 
