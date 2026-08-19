@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.244.0] - 2026-08-19
+
+### Neu
+- **Transkript-zu-Aufgaben (Meeting-Aufgaben-Agent).** Liest pro User die
+  Teams-Transkripte der eigenen Meetings über Microsoft Graph (delegiert,
+  nicht App-only), extrahiert die Aufgaben des angemeldeten Users und legt
+  sie als To-dos unter „Meine Aufgaben" an — bewusst keinem Plan zugeordnet,
+  der User sortiert selbst (Human in the loop).
+- Zwei neue delegierte Graph-Berechtigungen als **optional** wählbar:
+  `OnlineMeetings.Read` und `OnlineMeetingTranscript.Read.All`
+  (Admin-Consent erforderlich). Ohne diese Freigabe ändert sich nichts am
+  bestehenden Verhalten.
+- Sicherheitsmodell: der Agent kann nur Transkripte lesen, die der eigene
+  User in Teams selbst öffnen könnte (fremde Meetings sind serverseitig
+  unerreichbar), Aufgaben anderer Personen werden nie angelegt, und
+  Duplikatschutz läuft über die transcript_id. Details siehe
+  `docs/transkript-zu-aufgaben.md`.
+
+---
+
 ## [1.234.0] - 2026-08-18
 
 ### Neu
