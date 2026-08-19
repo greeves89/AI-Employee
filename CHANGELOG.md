@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.255.0] - 2026-08-19
+
+### Behoben
+- **Ein delegierter Auftrag lief unter dem Modell des Auftraggebers, nicht des
+  Zielagenten.** Jedes Delegier-Werkzeug hängte `model: DEFAULT_MODEL` an — das
+  Modell dessen, der delegiert. Ein Kollege arbeitete damit unter einem Modell,
+  das er sich nie ausgesucht hat.
+- Zweite, unsichtbare Folge: der **Model-Router des Zielagenten kam nie zum
+  Zug**. Der Orchestrator fragt ihn ausdrücklich nur, wenn *kein* Modell mitkam.
+  Bei Delegation war er damit strukturell wirkungslos — unabhängig davon, ob er
+  eingeschaltet war.
+- Jetzt wird bei `create_task`, `create_task_batch`, `delegate_and_wait` und
+  `create_schedule` **kein Modell mehr mitgeschickt**. Der Orchestrator fällt
+  damit auf genau das zurück, was dokumentiert ist: „we leave it None so the
+  agent falls back to its own default". Ein ausdrücklich gewähltes Modell (etwa
+  beim Trigger) geht unverändert durch.
+- Der Custom-LLM-Weg machte es ohnehin schon richtig — die Lücke bestand nur im
+  MCP-Weg, also bei Claude Code und Codex. Wieder eine Paritätslücke zwischen den
+  Laufzeiten.
+
+---
+
 ## [1.254.0] - 2026-08-19
 
 ### Behoben

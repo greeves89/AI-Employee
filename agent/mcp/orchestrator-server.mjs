@@ -9,7 +9,8 @@
  *   ORCHESTRATOR_URL - Base URL of the orchestrator (default: http://orchestrator:8000)
  *   AGENT_ID         - ID of the agent using this server
  *   AGENT_NAME       - Display name of the agent
- *   DEFAULT_MODEL    - Default model for new tasks (default: claude-sonnet-4-5-20250929)
+ *   DEFAULT_MODEL    - (nicht mehr benutzt) Das Modell eines Auftrags bestimmt der
+ *                      ZIELAGENT, nicht der Auftraggeber — siehe unten.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -38,7 +39,22 @@ function truncatePreservingWords(text, limit) {
   const at = cut > 0 ? cut : limit;
   return `${text.slice(0, at).trimEnd()} […]`;
 }
+// Bewusst NICHT mehr an neue Auftraege gehaengt.
+//
+// Bis 1.254.x schickte jedes Delegier-Werkzeug `model: DEFAULT_MODEL` mit — das
+// Modell des AUFTRAGGEBERS. Ein Kollege arbeitete damit unter einem Modell, das
+// er sich nie ausgesucht hat, und der Model-Router des Zielagenten kam gar nicht
+// erst zum Zug (der Orchestrator fragt ihn nur, wenn KEIN Modell mitkam).
+//
+// Vorgabe des Nutzers am 19.08.2026: „wenn delegiert SOLL das eingestellte
+// Modell des Agent verwendet werden". Ohne Modell im Auftrag faellt der
+// Orchestrator genau darauf zurueck ("we leave it None so the agent falls back
+// to its own default"). Der Custom-LLM-Weg machte es ohnehin schon so.
+//
+// Die Variable bleibt fuer Diagnosezwecke stehen; wer sie wieder anhaengt,
+// nimmt dem Zielagenten seine Modellwahl.
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "claude-sonnet-4-6";
+void DEFAULT_MODEL;
 
 async function apiCall(path, options = {}) {
   const url = `${API}${path}`;
@@ -980,7 +996,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         prompt: args.prompt,
         priority: args.priority || 5,
         agent_id: targetAgent,
-        model: DEFAULT_MODEL,
       };
       // Track delegation: if creating task for another agent, record who delegated
       if (targetAgent !== AGENT_ID) {
@@ -1007,7 +1022,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         prompt: t.prompt,
         priority: t.priority || 5,
         agent_id: t.agent_id || null,
-        model: DEFAULT_MODEL,
       }));
       const batch = await apiCall("/tasks/batch", {
         method: "POST",
@@ -1080,7 +1094,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         prompt: t.prompt,
         priority: t.priority || 5,
         agent_id: t.agent_id || null,
-        model: DEFAULT_MODEL,
       }));
       const result = await apiCall("/tasks/batch", {
         method: "POST",
@@ -1458,7 +1471,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         name: args.name,
         prompt: args.prompt,
         agent_id: AGENT_ID,
-        model: DEFAULT_MODEL,
       };
       if (args.run_in_seconds) {
         body.run_in_seconds = args.run_in_seconds;  // one-shot; backend sets interval 0 + disables after firing
