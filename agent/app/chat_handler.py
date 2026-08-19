@@ -83,7 +83,9 @@ class ChatHandler:
 
     # Claude has no reasoning-effort flag; thinking depth is driven by the
     # MAX_THINKING_TOKENS budget. Mapped from the user's per-message choice.
-    _THINKING_BUDGET = {"low": "4000", "medium": "10000", "high": "31999"}
+    # "max" aliases "high": 31999 is Claude Code's ultrathink ceiling, and without
+    # an entry "max" would silently fall back to the container default (< high).
+    _THINKING_BUDGET = {"low": "4000", "medium": "10000", "high": "31999", "max": "31999"}
 
     async def handle_message(
         self, message_id: str, text: str, model: str | None = None,

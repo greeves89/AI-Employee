@@ -197,7 +197,9 @@ class CodexAgentRunner:
         # CLI override (not the config TOML) so it applies to THIS turn only.
         _reasoning = getattr(self, "_reasoning", "")
         if _reasoning:
-            effort = "minimal" if _reasoning == "off" else _reasoning
+            # Codex calls the extremes differently: no thinking is "minimal",
+            # the top level is "xhigh".
+            effort = {"off": "minimal", "max": "xhigh"}.get(_reasoning, _reasoning)
             common += ["-c", f'model_reasoning_effort="{effort}"']
         if resume:
             cmd = ["codex", "exec", "resume"] + common + ["--last", "-"]

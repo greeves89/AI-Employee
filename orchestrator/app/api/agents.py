@@ -2216,18 +2216,20 @@ async def get_chat_sessions(
     if not valid_sessions:
         valid_sessions = list(sessions)
 
-    # Merge in per-session metadata (custom title + pin). A session without a
-    # row keeps its derived preview and is unpinned — nothing breaks pre-feature.
+    # Merge in per-session metadata (custom title + pin + reasoning level). A
+    # session without a row keeps its derived preview, is unpinned and thinks at
+    # the harness default — nothing breaks pre-feature.
     from app.models.chat_session import ChatSession
     meta_rows = (await db.execute(
-        select(ChatSession.session_id, ChatSession.title, ChatSession.pinned)
+        select(ChatSession.session_id, ChatSession.title, ChatSession.pinned,
+               ChatSession.reasoning_level)
         .where(ChatSession.agent_id == agent_id)
     )).all()
-    meta = {m.session_id: (m.title, m.pinned) for m in meta_rows}
+    meta = {m.session_id: (m.title, m.pinned, m.reasoning_level) for m in meta_rows}
 
     out = []
     for s in valid_sessions:
-        title, pinned = meta.get(s.session_id, (None, False))
+        title, pinned, reasoning_level = meta.get(s.session_id, (None, False, None))
         out.append({
             "id": s.session_id,
             "started_at": s.started_at.isoformat() if s.started_at else None,
@@ -2236,6 +2238,7 @@ async def get_chat_sessions(
             "preview": previews.get(s.session_id, ""),
             "title": title,
             "pinned": bool(pinned),
+            "reasoning": reasoning_level or "",
         })
     # Pinned first, then keep the existing recency order (query already desc).
     out.sort(key=lambda x: 0 if x["pinned"] else 1)
@@ -2379,6 +2382,7 @@ async def delete_all_chat_sessions(
 class ChatSessionUpdate(BaseModel):
     title: str | None = None   # non-empty → set custom title; "" / null → clear to derived preview
     pinned: bool | None = None
+    reasoning: str | None = None  # one of REASONING_LEVELS; "" → back to Auto; null → untouched
 
 
 class ForkRequest(BaseModel):
@@ -2579,7 +2583,9 @@ async def update_chat_session(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Rename and/or pin a chat session. Upserts the metadata row lazily."""
+    """Rename, pin and/or set the reasoning level of a chat session.
+
+    Upserts the metadata row lazily."""
     await _check_owner(agent_id, user, db)
     from app.models.chat_session import ChatSession
     row = (await db.execute(
@@ -2596,11 +2602,18 @@ async def update_chat_session(
         row.title = cleaned or None
     if body.pinned is not None:
         row.pinned = body.pinned
+    if body.reasoning is not None:
+        from app.models.chat_session import REASONING_LEVELS
+        lvl = body.reasoning.strip().lower()
+        if lvl and lvl not in REASONING_LEVELS:
+            raise HTTPException(status_code=422, detail="Unbekanntes Reasoning-Level")
+        row.reasoning_level = lvl or None
     await db.commit()
     return {
         "id": session_id,
         "title": row.title,
         "pinned": bool(row.pinned),
+        "reasoning": row.reasoning_level or "",
     }
 
 

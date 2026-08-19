@@ -1246,6 +1246,7 @@ async def lifespan(app: FastAPI):
                 "session_id varchar NOT NULL, "
                 "title text, "
                 "pinned boolean NOT NULL DEFAULT false, "
+                "reasoning_level varchar, "
                 "created_at timestamptz NOT NULL DEFAULT now(), "
                 "updated_at timestamptz NOT NULL DEFAULT now())"
             ))
@@ -1258,6 +1259,10 @@ async def lifespan(app: FastAPI):
             ))
             await conn.execute(_txt_cs(
                 "CREATE INDEX IF NOT EXISTS ix_chat_sessions_session_id ON chat_sessions (session_id)"
+            ))
+            # v1.234.0: per-chat reasoning level (NULL = Auto / harness default)
+            await conn.execute(_txt_cs(
+                "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS reasoning_level varchar"
             ))
         logger.info("chat_sessions table ensured")
     except Exception as e:

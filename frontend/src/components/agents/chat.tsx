@@ -27,9 +27,10 @@ import { useSimpleMode } from "@/hooks/use-simple-mode";
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
 /** How hard the agent should think before answering. "" keeps whatever the
- *  agent's harness is configured with; the rest is an explicit per-message
- *  override. `short` is what's shown next to the icon once a level is picked. */
-type ReasoningLevel = "" | "off" | "low" | "medium" | "high";
+ *  agent's harness is configured with; the rest is an explicit override that is
+ *  persisted per chat session. `short` is what's shown next to the icon once a
+ *  level is picked. */
+type ReasoningLevel = "" | "off" | "low" | "medium" | "high" | "max";
 
 const REASONING_OPTIONS: { value: ReasoningLevel; label: string; short: string }[] = [
   { value: "", label: "Standard", short: "" },
@@ -37,7 +38,13 @@ const REASONING_OPTIONS: { value: ReasoningLevel; label: string; short: string }
   { value: "low", label: "Kurz nachdenken", short: "kurz" },
   { value: "medium", label: "Mittel", short: "mittel" },
   { value: "high", label: "Gründlich nachdenken", short: "gründlich" },
+  { value: "max", label: "Maximal nachdenken", short: "max" },
 ];
+
+/** Stored levels come from the DB — anything unknown falls back to Auto so the
+ *  button never renders "undefined". */
+const asReasoningLevel = (v: unknown): ReasoningLevel =>
+  REASONING_OPTIONS.some((o) => o.value === v) ? (v as ReasoningLevel) : "";
 
 interface TextStep {
   type: "text";
@@ -121,6 +128,7 @@ interface SessionTab {
   preview: string;
   title?: string | null;   // custom rename; falls back to preview
   pinned?: boolean;
+  reasoning?: ReasoningLevel;  // persisted thinking depth; "" → Auto
   isNew?: boolean;
   last_message_at?: string | null;
   message_count?: number;
@@ -405,11 +413,21 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const [cardDetail, setCardDetail] = useState<TaskCard | null>(null);
   const [cardDetailFull, setCardDetailFull] = useState<Record<string, unknown> | null>(null);
   const [input, setInput] = useState("");
-  // Per-message reasoning depth, picked by the user (like the thinking selector
-  // in ChatGPT/Claude Code). "" = leave the agent's harness at its default.
+  // Reasoning depth, picked by the user (like the thinking selector in
+  // ChatGPT/Claude Code). "" = leave the agent's harness at its default.
+  // Persisted per chat session (chat_sessions.reasoning_level) and hydrated on
+  // mount/session switch, so it no longer resets to "Auto" on every remount.
   const [reasoning, setReasoning] = useState<ReasoningLevel>("");
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const reasoningRef = useRef<HTMLDivElement | null>(null);
+  // Mirror for WS closures (same pattern as activeSessionIdRef below).
+  const reasoningLevelRef = useRef<ReasoningLevel>("");
+  useEffect(() => {
+    reasoningLevelRef.current = reasoning;
+  }, [reasoning]);
+  // True once the user picked a level in THIS mount — the async session load on
+  // mount must not clobber a fresh pick with the stored value.
+  const reasoningTouchedRef = useRef(false);
   // Close the popover on an outside click — it sits above the input, so leaving
   // it open would cover the conversation.
   useEffect(() => {
@@ -512,6 +530,20 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
 
+  // Pick a thinking depth: applies from the next message on AND is remembered
+  // for this chat. Fire-and-forget — a failed write only loses the preference,
+  // the message itself always carries the level.
+  const pickReasoning = useCallback((level: ReasoningLevel) => {
+    setReasoning(level);
+    setReasoningOpen(false);
+    reasoningTouchedRef.current = true;
+    const sid = activeSessionIdRef.current || currentWsSessionId.current;
+    if (sid) {
+      setSessions((prev) => prev.map((s) => (s.id === sid ? { ...s, reasoning: level } : s)));
+      api.updateChatSession(agentId, sid, { reasoning: level }).catch(() => {});
+    }
+  }, [agentId]);
+
   useEffect(() => {
     isWaitingRef.current = isWaiting;
   }, [isWaiting]);
@@ -534,6 +566,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             preview: s.preview || "",
             title: s.title ?? null,
             pinned: !!s.pinned,
+            reasoning: asReasoningLevel(s.reasoning),
             last_message_at: s.last_message_at,
             message_count: s.message_count,
           }));
@@ -542,7 +575,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           // If no initialSessionId → user wants a new chat, don't auto-select
           if (initialSessionId) {
             const found = tabs.find((t) => t.id === initialSessionId);
-            setActiveSessionId(found ? found.id : tabs[0].id);
+            const selected = found ?? tabs[0];
+            setActiveSessionId(selected.id);
+            // Restore the chat's stored thinking depth — unless the user already
+            // picked one in the short window before this fetch resolved.
+            if (!reasoningTouchedRef.current) {
+              setReasoning(selected.reasoning ?? "");
+            }
           }
           // If no initialSessionId, leave activeSessionId null → new chat
         }
@@ -569,6 +608,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           preview: s.preview || "",
           title: s.title ?? null,
           pinned: !!s.pinned,
+          reasoning: asReasoningLevel(s.reasoning),
           last_message_at: s.last_message_at,
           message_count: s.message_count,
         }))
@@ -901,10 +941,18 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             if (!activeSessionIdRef.current) {
               setActiveSessionId(sid);
             }
+            // A brand-new session inherits the currently selected thinking depth
+            // ("kein Reset auf Auto") — persist it so it survives reloads. The
+            // backend sends this event only for new sessions; the write is
+            // idempotent, so a stray duplicate event is harmless.
+            const inherited = reasoningLevelRef.current;
+            if (inherited) {
+              api.updateChatSession(agentId, sid, { reasoning: inherited }).catch(() => {});
+            }
             // Only add to session tabs if truly new (not already in list)
             setSessions((prev) => {
               if (prev.some((s) => s.id === sid)) return prev;
-              return [{ id: sid, label: `Chat ${prev.length + 1}`, preview: "", isNew: true }, ...prev];
+              return [{ id: sid, label: `Chat ${prev.length + 1}`, preview: "", reasoning: inherited, isNew: true }, ...prev];
             });
           }
           return;
@@ -1354,7 +1402,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           : s
       )
     );
-  }, [input, pendingImages, pendingFiles, activeSessionId, agentId]);
+  }, [input, pendingImages, pendingFiles, activeSessionId, agentId, reasoning]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -1488,6 +1536,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const switchSession = (sessionId: string) => {
     if (sessionId === activeSessionId) return;
     setActiveSessionId(sessionId);
+    // Each chat keeps its own thinking depth — adopt the target's stored level.
+    // A target not in the list yet (fresh fork/continuation, the closure predates
+    // the refresh) inherited the CURRENT level server-side — keep it, don't clear.
+    const target = sessions.find((s) => s.id === sessionId);
+    if (target) setReasoning(target.reasoning ?? "");
     // No need to notify backend - session_id is sent with every message
   };
 
@@ -1500,6 +1553,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         const remaining = sessions.filter((s) => s.id !== sessionId);
         if (remaining.length > 0) {
           setActiveSessionId(remaining[0].id);
+          setReasoning(remaining[0].reasoning ?? "");
         } else {
           setActiveSessionId(null);
           setMessages([]);
@@ -2470,7 +2524,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   {REASONING_OPTIONS.map((opt) => (
                     <button
                       key={opt.value || "default"}
-                      onClick={() => { setReasoning(opt.value); setReasoningOpen(false); }}
+                      onClick={() => pickReasoning(opt.value)}
                       className={cn(
                         "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-foreground/[0.06]",
                         reasoning === opt.value ? "text-violet-300" : "text-foreground/80",

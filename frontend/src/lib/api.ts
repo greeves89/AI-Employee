@@ -1060,6 +1060,7 @@ export interface ChatSession {
   preview: string;
   title?: string | null;   // custom rename; falls back to preview when null
   pinned?: boolean;
+  reasoning?: string | null;  // persisted thinking depth; "" → Auto (harness default)
 }
 
 export async function getChatSessions(
@@ -1068,12 +1069,13 @@ export async function getChatSessions(
   return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions`);
 }
 
-// Rename and/or pin a chat session (metadata is created lazily server-side).
+// Rename, pin and/or set the thinking depth of a chat session (metadata is
+// created lazily server-side).
 export async function updateChatSession(
   agentId: string,
   sessionId: string,
-  patch: { title?: string | null; pinned?: boolean },
-): Promise<{ id: string; title: string | null; pinned: boolean }> {
+  patch: { title?: string | null; pinned?: boolean; reasoning?: string },
+): Promise<{ id: string; title: string | null; pinned: boolean; reasoning?: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions/${sessionId}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
