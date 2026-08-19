@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.250.2] - 2026-08-19
+
+### Geändert
+- **Reasoning-Menü mit ChatGPT-naher Benennung.** Die Denktiefe-Stufen heißen
+  jetzt Auto / Minimal / Low / Medium / High / Extra High statt der deutschen
+  Prosa-Labels. Die internen Werte (off/low/medium/high/max) bleiben unverändert;
+  „Extra High" wird serverseitig zu `xhigh` bzw. auf `high` geclampt.
+
+---
+
 ## [1.250.0] - 2026-08-19
 
 ### Hinzugefügt

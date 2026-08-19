@@ -32,13 +32,16 @@ import { useSimpleMode } from "@/hooks/use-simple-mode";
  *  level is picked. */
 type ReasoningLevel = "" | "off" | "low" | "medium" | "high" | "max";
 
+// ChatGPT-nahe Bezeichnungen (Wunsch Christian): Low / Medium / High / Extra
+// High statt deutscher Prosa. Der Wert bleibt intern gleich (off/low/medium/
+// high/max); "max" wird serverseitig zu "xhigh" bzw. auf "high" geclampt.
 const REASONING_OPTIONS: { value: ReasoningLevel; label: string; short: string }[] = [
-  { value: "", label: "Standard", short: "" },
-  { value: "off", label: "Nicht nachdenken", short: "aus" },
-  { value: "low", label: "Kurz nachdenken", short: "kurz" },
-  { value: "medium", label: "Mittel", short: "mittel" },
-  { value: "high", label: "Gründlich nachdenken", short: "gründlich" },
-  { value: "max", label: "Maximal nachdenken", short: "max" },
+  { value: "", label: "Auto", short: "auto" },
+  { value: "off", label: "Minimal", short: "min" },
+  { value: "low", label: "Low", short: "low" },
+  { value: "medium", label: "Medium", short: "med" },
+  { value: "high", label: "High", short: "high" },
+  { value: "max", label: "Extra High", short: "xhigh" },
 ];
 
 /** Stored levels come from the DB — anything unknown falls back to Auto so the
