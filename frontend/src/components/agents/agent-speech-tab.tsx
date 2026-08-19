@@ -149,10 +149,10 @@ export function AgentSpeechTab({ agentId, agentName }: { agentId: string; agentN
                 return (
                   <div
                     ref={scrollRef}
-                    className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-24 pt-4"
+                    className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-28 pt-4"
                     style={{
-                      maskImage: "linear-gradient(to bottom, black 60%, transparent 97%)",
-                      WebkitMaskImage: "linear-gradient(to bottom, black 60%, transparent 97%)",
+                      maskImage: "linear-gradient(to bottom, black 0%, black 52%, transparent 90%)",
+                      WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 52%, transparent 90%)",
                     }}
                   >
                     {shown.map((m) => (
@@ -180,7 +180,7 @@ export function AgentSpeechTab({ agentId, agentName }: { agentId: string; agentN
             })()}
 
             {/* Button-Dock — sitzt unten, fadet über dem auslaufenden Verlauf ein. */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 bg-gradient-to-t from-card via-card/95 to-transparent px-6 pb-5 pt-10">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 bg-gradient-to-t from-card from-40% via-card/90 to-transparent px-6 pb-6 pt-16">
               {voiceSession.activeSession && (
                 <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-3 py-1 text-xs text-fuchsia-300">
                   {voiceSession.snapshot?.mode === "nova_sonic" && <Radio className="h-3 w-3" />}

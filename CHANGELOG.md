@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.246.0] - 2026-08-19
+
+### Geändert
+- **Gespräche werden vom Modell zuverlässiger benannt.** Die Anweisung zum
+  automatischen Umbenennen war weich formuliert („sobald klar ist, worum es
+  geht"), sodass viele Sprachgespräche beim Standardnamen blieben. Sie ist jetzt
+  verbindlich: spätestens nach der ersten inhaltlichen Nutzeräußerung wird genau
+  einmal ein kurzer thematischer Titel gesetzt; der Standardname bleibt nicht
+  stehen.
+- **Speech-Ansicht: Feinschliff an Verlauf-Ausblendung und Button-Dock** —
+  weicherer, höher ansetzender Fade und ruhigeres Dock, damit der Übergang vom
+  Verlauf zum „Gespräch weiterführen"-Button gleichmäßiger wirkt.
+
+---
+
 ## [1.245.0] - 2026-08-19
 
 ### Geändert (Speech-Ansicht)
