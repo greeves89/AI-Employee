@@ -560,14 +560,51 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_move_email",
-        "description": "Move an email to a well-known folder (inbox, archive, deleteditems, junkemail, drafts, sentitems).",
+        "description": "Move an email into a folder. The destination is either a well-known folder (inbox, archive, deleteditems, junkemail, drafts, sentitems) OR a custom folder ID from ms_list_mail_folders (e.g. a 'Jira' subfolder).",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "email_id": {"type": "string", "description": "The message ID (from ms_list_emails)."},
-                "folder": {"type": "string", "description": "Destination: inbox, archive, deleteditems, junkemail, drafts, sentitems."},
+                "folder": {"type": "string", "description": "Destination: a well-known name (inbox, archive, …) or a folder ID from ms_list_mail_folders."},
             },
             "required": ["email_id", "folder"],
+        },
+    },
+    {
+        "name": "ms_list_mail_folders",
+        "description": "List the mailbox folders — including custom folders (e.g. 'Jira') and one level of subfolders — with their IDs and unread counts. Use a returned folder id as the destination for ms_move_email, as the parent for ms_create_mail_folder, or as the target for ms_create_mail_rule.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "ms_create_mail_folder",
+        "description": "Create a new mail folder. Omit parent_id for a top-level folder, or pass a parent_id (from ms_list_mail_folders) to create a subfolder (e.g. a 'Jira' folder under the inbox). Returns the new folder's id.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Display name of the new folder."},
+                "parent_id": {"type": "string", "description": "Optional parent folder ID (or well-known name like 'inbox'). Omit for top level."},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "ms_list_mail_rules",
+        "description": "List the inbox rules (message rules) that automatically file/handle incoming mail, with their conditions and actions.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "ms_create_mail_rule",
+        "description": "Create an inbox rule that automatically files INCOMING mail. Example: move every mail whose subject contains 'Jira' into the Jira folder. Give at least one condition (subject_contains and/or from_contains) and a target move_to_folder_id (from ms_list_mail_folders). This only affects mail arriving AFTER the rule is created — existing mail is moved with ms_move_email.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Name of the rule."},
+                "subject_contains": {"type": "string", "description": "Optional: match when the subject contains this text."},
+                "from_contains": {"type": "string", "description": "Optional: match when the sender name/address contains this text."},
+                "move_to_folder_id": {"type": "string", "description": "Target folder ID (from ms_list_mail_folders) to move matching mail into."},
+                "mark_as_read": {"type": "boolean", "description": "Optionally also mark matching mail as read. Default: false."},
+            },
+            "required": ["name", "move_to_folder_id"],
         },
     },
     {
@@ -823,6 +860,9 @@ WRITE_TOOLS = {
     "ms_create_contact",
     "ms_update_contact",
     "ms_delete_contact",
+    # Mail folders + inbox rules write (Mail.ReadWrite — kein neuer Scope)
+    "ms_create_mail_folder",
+    "ms_create_mail_rule",
 }
 
 # Required args per tool (from each tool's inputSchema) — checked centrally in the
@@ -1826,10 +1866,116 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
         return f"E-Mail weitergeleitet an {args['to']}."
 
     elif name == "ms_move_email":
-        dest = _folder(args["folder"])
+        # Ziel ist entweder ein Standardordner-Name ODER eine Custom-Ordner-ID
+        # aus ms_list_mail_folders. Vorher konnte NUR in die feste Menge
+        # verschoben werden (ein eigener Ordner wie "Jira" fiel still auf
+        # "inbox" zurück) — genau das liess die Jira-Sortier-Aufgabe scheitern.
+        raw = str(args["folder"]).strip()
+        dest = _folder(raw) if raw.lower() in _ALLOWED_FOLDERS else raw
+        # destinationId geht in den JSON-Body (kein Pfad) — keine Injection.
         await _graph("POST", f"/me/messages/{_gid(args['email_id'])}/move", token,
                     content=json.dumps({"destinationId": dest}))
         return f"E-Mail nach '{dest}' verschoben."
+
+    elif name == "ms_list_mail_folders":
+        # Oberste Ebene + eine Ebene Unterordner (dort liegt z.B. ein
+        # 'Jira'-Ordner unter dem Posteingang).
+        data = await _graph(
+            "GET", "/me/mailFolders", token,
+            params={"$top": 100,
+                    "$select": "id,displayName,unreadItemCount,totalItemCount,childFolderCount",
+                    "$expand": "childFolders($select=id,displayName,unreadItemCount,totalItemCount)"},
+        )
+        lines: list[str] = []
+
+        def _fmt(f: dict, indent: str = "") -> None:
+            lines.append(
+                f"{indent}• {f.get('displayName')} "
+                f"(ungelesen {f.get('unreadItemCount', 0)}/{f.get('totalItemCount', 0)})\n"
+                f"{indent}  id: {f.get('id')}"
+            )
+            for c in f.get("childFolders") or []:
+                _fmt(c, indent + "  ")
+
+        for f in data.get("value", []):
+            _fmt(f)
+        return "\n".join(lines) if lines else "Keine Mail-Ordner gefunden."
+
+    elif name == "ms_create_mail_folder":
+        folder_name = str(args["name"]).strip()
+        if not folder_name:
+            return "Error: name darf nicht leer sein."
+        body = {"displayName": folder_name}
+        parent = str(args.get("parent_id") or "").strip()
+        if parent:
+            # Well-known-Name (inbox) ODER eine Ordner-ID — beides zulaessig.
+            p = _folder(parent) if parent.lower() in _ALLOWED_FOLDERS else parent
+            path = f"/me/mailFolders/{_gid(p)}/childFolders"
+        else:
+            path = "/me/mailFolders"
+        created = await _graph("POST", path, token, content=json.dumps(body))
+        return (f"Ordner '{folder_name}' angelegt. id: {created.get('id')}"
+                if created.get("id") else f"Ordner '{folder_name}' angelegt.")
+
+    elif name == "ms_list_mail_rules":
+        data = await _graph("GET", "/me/mailFolders/inbox/messageRules", token)
+        rules = data.get("value", [])
+        if not rules:
+            return "Keine Posteingangsregeln vorhanden."
+        out: list[str] = []
+        for r in rules:
+            cond = r.get("conditions") or {}
+            act = r.get("actions") or {}
+            teile = []
+            if cond.get("subjectContains"):
+                teile.append("Betreff enthält " + ", ".join(cond["subjectContains"]))
+            if cond.get("senderContains"):
+                teile.append("Absender enthält " + ", ".join(cond["senderContains"]))
+            aktion = []
+            if act.get("moveToFolder"):
+                aktion.append("verschiebe in Ordner")
+            if act.get("markAsRead"):
+                aktion.append("als gelesen markieren")
+            status = "aktiv" if r.get("isEnabled") else "inaktiv"
+            out.append(f"• {r.get('displayName')} [{status}]: "
+                       f"{'; '.join(teile) or 'keine Bedingung'} → {', '.join(aktion) or 'keine Aktion'}")
+        return "\n".join(out)
+
+    elif name == "ms_create_mail_rule":
+        subject = str(args.get("subject_contains") or "").strip()
+        sender = str(args.get("from_contains") or "").strip()
+        if not subject and not sender:
+            return ("Error: mindestens eine Bedingung nötig — subject_contains "
+                    "und/oder from_contains.")
+        conditions: dict = {}
+        if subject:
+            conditions["subjectContains"] = [subject]
+        if sender:
+            conditions["senderContains"] = [sender]
+        actions: dict = {
+            "moveToFolder": str(args["move_to_folder_id"]).strip(),
+            "stopProcessingRules": True,
+        }
+        mark = args.get("mark_as_read")
+        if mark if isinstance(mark, bool) else str(mark).lower() in ("true", "1", "yes"):
+            actions["markAsRead"] = True
+        # sequence muss eindeutig sein — hinter die bestehenden Regeln setzen.
+        try:
+            existing = (await _graph("GET", "/me/mailFolders/inbox/messageRules", token)).get("value", [])
+        except GraphError:
+            existing = []
+        body = {
+            "displayName": str(args["name"]).strip() or "Regel",
+            "sequence": len(existing) + 1,
+            "isEnabled": True,
+            "conditions": conditions,
+            "actions": actions,
+        }
+        created = await _graph("POST", "/me/mailFolders/inbox/messageRules", token,
+                              content=json.dumps(body))
+        return (f"Regel '{body['displayName']}' angelegt (gilt für neu eintreffende Mails). "
+                f"id: {created.get('id')}" if created.get("id")
+                else f"Regel '{body['displayName']}' angelegt.")
 
     elif name == "ms_mark_email_read":
         read = args.get("read", True)

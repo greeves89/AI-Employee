@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.247.0] - 2026-08-19
+
+### Hinzugefügt (M365-Mail)
+- **Mail-Ordner und Posteingangsregeln nativ über MS Graph.** Bisher konnte ein
+  Agent Mail nur in feste Standardordner (inbox/sent/…) verschieben — ein
+  eigener Ordner fiel still auf „inbox" zurück; Ordner auflisten/anlegen oder
+  Regeln erstellen war nur umständlich über die Desktop-Bridge möglich. Neu:
+  - `ms_list_mail_folders` (read-only) — listet alle Ordner inkl. eigener
+    Unterordner mit ID und Ungelesen-Zähler.
+  - `ms_create_mail_folder` (write) — legt einen Ordner an, optional als
+    Unterordner.
+  - `ms_create_mail_rule` / `ms_list_mail_rules` — Posteingangsregeln, die
+    eintreffende Mail automatisch einsortieren (Bedingung Betreff/Absender →
+    in Ordner verschieben, optional als gelesen markieren).
+  - `ms_move_email` akzeptiert jetzt zusätzlich eine Ordner-ID (aus
+    `ms_list_mail_folders`) als Ziel, nicht nur die festen Standardordner.
+
+  Alles read/write-korrekt gegatet und mit dem bereits vorhandenen
+  `Mail.ReadWrite`-Scope — keine neue Zustimmung nötig.
+
+---
+
 ## [1.246.0] - 2026-08-19
 
 ### Geändert
