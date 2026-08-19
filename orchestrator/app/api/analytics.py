@@ -624,8 +624,14 @@ async def agent_development(
     poorly_rated = len(rework_entry["poor"]) if rework_entry else 0
 
     # Ein Wort statt einer Zahlenwueste — dieselbe Lesart wie bei den Skills.
+    # Ohne Mindestmenge JE HAELFTE ist der Vergleich Rauschen: beim Nutzer am
+    # 19.08.2026 stand „Tendenz: schlechter" auf 212 jungen gegen VIER alte
+    # Aufgaben — die alle gescheitert waren und deshalb gar nicht erst
+    # nachgearbeitet werden konnten. Die Fehlerquote war von 100 % auf 7,1 %
+    # gefallen, das Urteil lautete trotzdem „schlechter".
+    MINDESTENS_JE_HAELFTE = 10
     trend = "zu wenig Daten"
-    if total >= 10:
+    if total >= 10 and recent_total >= MINDESTENS_JE_HAELFTE and older_total >= MINDESTENS_JE_HAELFTE:
         besser = _rate(recent_failed, recent_total) < _rate(older_failed, older_total)
         if avg_recent is not None and avg_older is not None:
             besser = besser or avg_recent > avg_older

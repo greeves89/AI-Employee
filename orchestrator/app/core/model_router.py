@@ -61,5 +61,15 @@ def route_model(prompt: str, rules: dict[str, str] | None = None) -> str | None:
     """Return the model the router picks for this prompt, or None if the
     resolved tier has no rule configured (caller keeps its own default)."""
     tier = classify_prompt(prompt)
-    table = {**DEFAULT_ROUTER_RULES, **(rules or {})}
-    return table.get(tier)
+    # Leere Regeln zaehlen als NICHT konfiguriert, nicht als „Modell namens ''".
+    #
+    # Die Oberflaeche zeigte die Vorgaben bis 1.253.x nur als Platzhalter; wer
+    # den Router einschaltete, speicherte drei leere Strings. ``dict.get`` gab
+    # die brav zurueck, und der Aufrufer schrieb sie als Modellnamen in den
+    # Auftrag — auf der Anlage 146 Auftraege mit leerem Modell. Aufgefallen ist
+    # es nie, weil der Agent am Ende auf seine Vorgabe zurueckfiel: der Router
+    # war eingeschaltet und wirkungslos.
+    bereinigt = {k: v for k, v in (rules or {}).items() if (v or "").strip()}
+    table = {**DEFAULT_ROUTER_RULES, **bereinigt}
+    gewaehlt = (table.get(tier) or "").strip()
+    return gewaehlt or None

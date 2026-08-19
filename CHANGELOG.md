@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.254.0] - 2026-08-19
+
+### Behoben
+- **Der Model-Router war eingeschaltet und wirkungslos.** Auf die Frage „funktioniert
+  eigentlich der model router?" nachgesehen: er war bei genau einem Agenten aktiv, und
+  seine Regeln waren drei leere Zeichenketten.
+- Ursache war die Oberfläche: die Vorgaben standen nur als **Platzhalter** in den
+  Feldern. Wer den Router einschaltete, sah Modellnamen und durfte annehmen, sie seien
+  gesetzt — gespeichert wurde der leere String.
+- `route_model` gab diese leeren Regeln zurück, obwohl der eigene Docstring „or None if
+  the resolved tier has no rule configured" verspricht. Folge: **146 Aufträge mit leerem
+  Modellnamen** in sieben Tagen. Aufgefallen ist es nie, weil der Agent am Ende auf seine
+  Vorgabe zurückfiel — der Router entschied, und die Entscheidung war jedes Mal nichts.
+- Leere Regeln zählen jetzt als „nicht konfiguriert" und fallen auf die eingebauten
+  Vorgaben zurück.
+
+- **„Tendenz: schlechter" stand auf vier Aufgaben.** In der Entwicklungs-Karte wurden
+  212 junge gegen **vier** alte Aufgaben verglichen — die alle gescheitert waren und
+  deshalb gar nicht erst nachgearbeitet werden konnten. Die Fehlerquote war von 100 % auf
+  7,1 % gefallen, das Urteil lautete trotzdem „schlechter".
+- Der Vergleich verlangt jetzt eine Mindestmenge **je Hälfte**; sonst steht dort „zu
+  wenig Daten" statt eines Urteils.
+
+### Geändert
+- **Der Model-Router wird per Auswahlliste gepflegt statt per Freitext.** Angeboten
+  werden nur vom Administrator freigegebene Modelle — dieselbe Quelle wie beim Anlegen
+  eines Agenten. Die Vorgaben sind echte Werte, keine Platzhalter mehr, und eine Auswahl
+  wird sofort gespeichert.
+- Ein bereits hinterlegtes, inzwischen gesperrtes Modell bleibt sichtbar und als „nicht
+  freigegeben" markiert, statt die Auswahl stumm auf etwas anderes springen zu lassen.
+
+---
+
 ## [1.253.0] - 2026-08-19
 
 ### Geändert

@@ -1258,11 +1258,33 @@ function AgentSettings({
   // Model-Router: opt-in content-based model routing (OpenWebUI-style)
   const existingRouterCfg = (agent.config as { model_router?: api.ModelRouterConfig } | null)?.model_router;
   const [routerEnabled, setRouterEnabled] = useState<boolean>(Boolean(existingRouterCfg?.enabled));
+  // Die Vorgaben standen bis 1.253.x nur als PLATZHALTER in den Feldern. Wer den
+  // Router einschaltete, sah Modellnamen und durfte annehmen, sie seien gesetzt —
+  // gespeichert wurde aber der leere String. Auf der Anlage lagen deshalb 146
+  // Auftraege mit LEEREM Modellnamen; der Router entschied, und die Entscheidung
+  // war jedes Mal "". Jetzt sind es echte Werte in einer Auswahlliste.
+  const ROUTER_VORGABEN = {
+    simple: "claude-haiku-4-5-20251001",
+    standard: "claude-sonnet-5",
+    complex: "claude-opus-5",
+  } as const;
   const [routerRules, setRouterRules] = useState({
-    simple: existingRouterCfg?.rules?.simple ?? "",
-    standard: existingRouterCfg?.rules?.standard ?? "",
-    complex: existingRouterCfg?.rules?.complex ?? "",
+    simple: existingRouterCfg?.rules?.simple || ROUTER_VORGABEN.simple,
+    standard: existingRouterCfg?.rules?.standard || ROUTER_VORGABEN.standard,
+    complex: existingRouterCfg?.rules?.complex || ROUTER_VORGABEN.complex,
   });
+  //: Nur freigegebene Modelle — dieselbe Quelle wie beim Anlegen eines Agenten,
+  //: damit hier nichts waehlbar ist, was der Administrator gesperrt hat.
+  const [routerModelle, setRouterModelle] = useState<api.ModelCatalogProvider[]>([]);
+  useEffect(() => {
+    if (!routerEnabled || routerModelle.length) return;
+    api.getModelCatalog()
+      .then((k) => {
+        const modus = k.modes.find((m) => m.mode === agent.mode) ?? k.modes[0];
+        setRouterModelle(modus?.providers ?? []);
+      })
+      .catch(() => setRouterModelle([]));
+  }, [routerEnabled, routerModelle.length, agent.mode]);
   const [routerSaving, setRouterSaving] = useState(false);
   const saveModelRouter = async (next: { enabled: boolean; rules: typeof routerRules }) => {
     setRouterSaving(true);
@@ -1649,14 +1671,34 @@ function AgentSettings({
             {(["simple", "standard", "complex"] as const).map((tier) => (
               <div key={tier}>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1 capitalize">{tier}</label>
-                <input
-                  type="text"
+                <select
                   value={routerRules[tier]}
-                  placeholder={tier === "simple" ? "claude-haiku-4-5-20251001" : tier === "standard" ? "claude-sonnet-5" : "claude-opus-5"}
-                  onChange={(e) => setRouterRules((prev) => ({ ...prev, [tier]: e.target.value }))}
-                  onBlur={() => saveModelRouter({ enabled: routerEnabled, rules: routerRules })}
+                  onChange={(e) => {
+                    const naechste = { ...routerRules, [tier]: e.target.value };
+                    setRouterRules(naechste);
+                    // Direkt speichern: ein `select` hat kein sinnvolles
+                    // "Feld verlassen", und ein stillschweigend nicht
+                    // gespeicherter Wert war hier schon einmal das Problem.
+                    saveModelRouter({ enabled: routerEnabled, rules: naechste });
+                  }}
                   className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-xs outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
-                />
+                >
+                  {/* Der gespeicherte Wert muss waehlbar bleiben, auch wenn ein
+                      Administrator das Modell inzwischen gesperrt hat — sonst
+                      springt die Auswahl beim Oeffnen stumm auf etwas anderes. */}
+                  {routerModelle.every((pr) => pr.models.every((m) => m.value !== routerRules[tier])) && (
+                    <option value={routerRules[tier]}>{routerRules[tier]} (nicht freigegeben)</option>
+                  )}
+                  {routerModelle.map((pr) => (
+                    <optgroup key={pr.provider} label={pr.provider}>
+                      {pr.models.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}{m.tier ? ` — ${m.tier}` : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
             ))}
           </div>
