@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.243.1] - 2026-08-19
+
+### Behoben
+- **DB-Verbindungs-Timeouts unter schreibintensiver Hintergrundlast.** Der
+  Connection-Pool war unbegrenzt (`max_overflow=-1`), wodurch Lastspitzen sehr
+  viele neue Verbindungen gleichzeitig aufbauen konnten; auf ressourcen-
+  begrenzten Hosts lief der Aufbau neuer Verbindungen dann in ein Timeout, was
+  Hintergrund-Jobs und einzelne Requests scheitern ließ. Der Pool ist jetzt
+  begrenzt (`pool_size=10`, `max_overflow=20`), sodass Spitzen kurz in der
+  Pool-Queue warten statt die Datenbank mit Verbindungsaufbauten zu überlasten;
+  Verbindungen werden seltener recycelt (5 → 15 min), was die Anzahl neu
+  aufzubauender Verbindungen weiter senkt.
+- **Verschluckte Fehlermeldung im nächtlichen Reflection-Job.** Der Fehler wurde
+  mit `%s` geloggt; bei einem `TimeoutError` (leerer `str()`) stand nur
+  „Reflection error: " ohne Ursache im Log. Jetzt mit Typ (`%r`) und Traceback,
+  damit solche Fälle diagnostizierbar sind.
+
+---
+
 ## [1.243.0] - 2026-08-18
 
 ### Geändert (UI/UX — Redesign, Iteration 1)
@@ -21,29 +40,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Verbessert
 - **Agenten finden lokale Dateien jetzt über die Shell.** Die Beschreibung von
-  `computer_shell` sagt jetzt klar, dass der Befehl AUF dem Rechner des Nutzers
-  in den freigegebenen Ordnern läuft — bei „siehst du meinen Ordner X" nutzt der
-  Agent `ls`/`find`/`cat` statt Screenshot/Finder, und weist bei fehlender
-  Freigabe auf „Shell-Befehle" + Ordner-Zugriff hin. (Behebt, dass ein Agent
-  einen freigegebenen Ordner nicht fand, obwohl er ihn über die Shell hätte
-  lesen können.)
+  `computer_shell` stellt jetzt klar, dass der Befehl auf dem Rechner des
+  Nutzers in den freigegebenen Ordnern läuft — bei Fragen nach lokalen
+  Dateien/Ordnern nutzt der Agent `ls`/`find`/`cat` statt Screenshot/Finder und
+  weist bei fehlender Freigabe auf die Fähigkeit „Shell-Befehle" und den
+  Ordner-Zugriff hin.
 
 ---
 
 ## [1.242.0] - 2026-08-18
 
 ### Hinzugefügt
-- **Per Sprache zuschauen und daraus ein Skill bauen.** Der Nutzer sagt „schau
-  mal zu, was ich mache", macht die Aufgabe einmal selbst vor (Klicks,
-  Tastatureingaben werden mit Screenshots aufgezeichnet) — dabei kann
-  weitergesprochen werden — und sagt am Ende „fertig". Die Sprachfront beendet
-  die Aufzeichnung und baut aus den Schritten und Bildern automatisch ein
-  Skill (als Entwurf, aktiv erst nach Freigabe). Neues Voice-Werkzeug
-  `learn_skill` (action=start/finish). Nutzt denselben Aufzeichnungs- und
-  Skill-Bau-Weg wie die HTTP-Oberfläche (`replay_skill_service`) — kein
-  zweiter, abweichender Pfad. Setzt die Bridge-Berechtigung „Eingaben
-  mitschneiden" voraus. Schließt die Lücke, dass der Replay-Modus bisher nur
-  über die Web-UI, nicht per Voice erreichbar war (Harness-Parität).
+- **Per Sprache eine Demonstration aufzeichnen und daraus ein Skill bauen.**
+  Neues Voice-Werkzeug `learn_skill` (action=start/finish): Bei `start` zeichnet
+  die Bridge Klicks, Tastatureingaben und Screenshots des Nutzers auf, bei
+  `finish` wird die Aufzeichnung beendet und aus den Schritten und Bildern
+  automatisch ein Skill erzeugt (als Entwurf, aktiv erst nach Freigabe). Nutzt
+  denselben Aufzeichnungs- und Skill-Bau-Weg wie die HTTP-Oberfläche
+  (`replay_skill_service`) — kein zweiter, abweichender Pfad. Setzt die
+  Bridge-Berechtigung „Eingaben mitschneiden" voraus. Schließt die Lücke, dass
+  der Replay-Modus bisher nur über die Web-UI, nicht per Voice erreichbar war
+  (Harness-Parität).
 
 ---
 
@@ -56,9 +73,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   ohne den Vordergrund des Nutzers zu kapern. Neuer Schalter „Browser
   unsichtbar im Hintergrund betreiben" im Berechtigungs-Dialog (macOS +
   Windows), opt-in. **Standard bleibt sichtbar** — eine eingeloggte Sitzung
-  unsichtbar laufen zu lassen soll eine bewusste Entscheidung sein, gerade auf
-  einem Klinik-Arbeitsplatz. Greift beim nächsten Browser-Start; das eigene,
-  private Profil (kein Cookie-Zugriff aufs Nutzerprofil) bleibt unverändert.
+  unsichtbar laufen zu lassen soll eine bewusste Entscheidung sein. Greift beim
+  nächsten Browser-Start; das eigene, private Profil (kein Cookie-Zugriff aufs
+  Nutzerprofil) bleibt unverändert.
 
 ---
 
@@ -69,9 +86,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   wird auf 1280 px Breite herunterskaliert (damit das Modell keine Koordinaten
   >1280 halluziniert), aber der Klick ging mit denselben Koordinaten an
   pyautogui, das in logischen Punkten (z. B. 1440) arbeitet — also lag jeder
-  Klick um den Faktor logisch/1280 daneben. Live beim Sprachbefehl „öffne
-  YouTube" gesehen: Chrome ließ sich öffnen, aber Klicks trafen nicht, der
-  Agent musste auf Cmd+L/URL ausweichen. Der Dispatcher merkt sich jetzt den
+  Klick um den Faktor logisch/1280 daneben. Der Dispatcher merkt sich jetzt den
   Maßstab des letzten Screenshots und rechnet jede Klick-, Scroll-, Bewegungs-
   und Ziehkoordinate aus dem Bildraum in den Klickraum zurück; `find_element`
   liefert seine Treffer im selben Bildraum, damit beide Klickquellen konsistent

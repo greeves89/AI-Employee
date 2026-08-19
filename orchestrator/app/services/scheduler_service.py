@@ -297,7 +297,11 @@ class SchedulerService:
                         if result:
                             logger.info("[Scheduler] Reflection: %s", result)
                     except Exception as e:
-                        logger.warning("[Scheduler] Reflection error: %s", e)
+                        # %r + exc_info: ein TimeoutError hat einen LEEREN str(),
+                        # sodass "Reflection error: " ohne jede Ursache im Log
+                        # stand — genau das verschleierte die naechtlichen
+                        # DB-Timeouts. Typname und Traceback muessen mit rein.
+                        logger.warning("[Scheduler] Reflection error: %r", e, exc_info=True)
 
                     # Wochensynthese (#384) haengt am SELBEN Takt — ein eigener
                     # Scheduler waere ein zweites Uhrwerk fuer dieselbe Frage.
