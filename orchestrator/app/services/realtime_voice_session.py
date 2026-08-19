@@ -1007,11 +1007,14 @@ GET_DELEGATED_TASKS_TOOL = {
     "toolSpec": {
         "name": "get_delegated_tasks",
         "description": (
-            "List the tasks YOU delegated in THIS voice conversation, each with its short id, "
-            "instruction and status (running / done). Use it to report the current state of your "
-            "delegated tasks to the user, or to find the right id before a specific refine_task "
-            "(when several tasks run and the user means one particular one). Instant, no agent "
-            "round-trip."
+            "List delegated tasks with their short id, instruction and status. Shows BOTH the "
+            "tasks you delegated in THIS voice conversation (running / done, still steerable via "
+            "refine_task) AND the tasks recently run for this agent in EARLIER conversations, "
+            "with their result. Use it to report the current state, to find the right id before a "
+            "refine_task, and — importantly — when the user asks about a task from a PREVIOUS "
+            "session ('did you do the thing I asked earlier', 'what came of the mail task'): the "
+            "result of an earlier delegation shows up here even though this session did not start "
+            "it. Instant, no agent round-trip."
         ),
         "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
     }
@@ -2730,27 +2733,87 @@ class RealtimeVoiceSession:
         (``_planned``). Vorher fehlten die eingeplanten hier — der Agent antwortete
         auf „guck mal in die Aufgabe rein" mit „habe noch keine delegiert", waehrend
         genau diese Aufgabe lief.
+
+        Zeigt ZUSAETZLICH die zuletzt fuer diesen Agenten gelaufenen Aufgaben aus
+        FRUEHEREN Sprachsitzungen. Ohne das sah eine NEUE Sitzung nur ihren eigenen
+        (leeren) In-Memory-Zustand: eine per Sprache delegierte Aufgabe lief durch,
+        ihr Ergebnis (auch ein „das geht mit meinen Tools nicht, bitte Ruecksprache")
+        blieb dem Nutzer aber verborgen, weil das die Sitzung war, die sie angestossen
+        hatte — genau die ist beim naechsten Mal weg.
         """
-        if not self._delegations and not self._planned:
-            return "Ich habe in diesem Gespräch noch keine Aufgabe delegiert."
-        running = [d for d in self._delegations if not d["done"]]
-        done = len(self._delegations) - len(running)
-        total_running = len(running) + len(self._planned)
-        lines = [f"Meine Aufgaben ({total_running} laufen, {done} fertig):"]
-        for d in self._delegations:
-            if d["done"]:
-                extra = f" — {d['result']}" if d.get("result") else ""
-                lines.append(f"[id {d['id']}] FERTIG: {d['instruction']}{extra}")
-            else:
-                extra = f" (gerade: {d['last']})" if d.get("last") else ""
-                lines.append(f"[id {d['id']}] LÄUFT: {d['instruction']}{extra}")
-        for tid, title in self._planned.items():
-            status, last = await self._planned_task_state(tid)
-            extra = f" (gerade: {last})" if last else ""
-            state = f"EINGEPLANT/{status}" if status else "EINGEPLANT"
-            lines.append(f"[id {tid}] {state}, läuft im Hintergrund: {title}{extra}")
-        lines.append("Für eine Korrektur an einer davon: refine_task (id optional = letzte laufende).")
+        lines: list[str] = []
+        if self._delegations or self._planned:
+            running = [d for d in self._delegations if not d["done"]]
+            done = len(self._delegations) - len(running)
+            total_running = len(running) + len(self._planned)
+            lines.append(f"In diesem Gespräch ({total_running} laufen, {done} fertig):")
+            for d in self._delegations:
+                if d["done"]:
+                    extra = f" — {d['result']}" if d.get("result") else ""
+                    lines.append(f"[id {d['id']}] FERTIG: {d['instruction']}{extra}")
+                else:
+                    extra = f" (gerade: {d['last']})" if d.get("last") else ""
+                    lines.append(f"[id {d['id']}] LÄUFT: {d['instruction']}{extra}")
+            for tid, title in self._planned.items():
+                status, last = await self._planned_task_state(tid)
+                extra = f" (gerade: {last})" if last else ""
+                state = f"EINGEPLANT/{status}" if status else "EINGEPLANT"
+                lines.append(f"[id {tid}] {state}, läuft im Hintergrund: {title}{extra}")
+            lines.append("Für eine Korrektur an einer davon: refine_task (id optional = letzte laufende).")
+
+        vorher = await self._recent_agent_tasks()
+        if vorher:
+            lines.append("Aus früheren Gesprächen (zuletzt für dich erledigt):")
+            lines.extend(vorher)
+
+        if not lines:
+            return ("Ich habe in diesem Gespräch noch keine Aufgabe delegiert, und aus "
+                    "früheren finde ich auch keine offene oder kürzlich erledigte.")
         return " ".join(lines)
+
+    async def _recent_agent_tasks(self, limit: int = 5) -> list[str]:
+        """Zuletzt fuer DIESEN Agenten gelaufene, vom Nutzer angestossene Aufgaben.
+
+        Sitzungsuebergreifend aus der Datenbank — damit eine neue Sprachsitzung
+        weiss, was frueher delegiert wurde und wie es ausging. Automatische
+        Laeufe (Zeitplan/Proaktiv, Titel in ``[...]``) werden ausgeblendet: die
+        hat der Nutzer nicht delegiert, sie wuerden die Antwort nur zumuellen.
+        """
+        agent_id = getattr(self, "agent_id", None)
+        if not agent_id:
+            return []
+        try:
+            from datetime import datetime, timedelta, timezone
+            from app.db.session import resilient_session
+            from app.models.task import Task
+            from sqlalchemy import select
+            seit = datetime.now(timezone.utc) - timedelta(days=2)
+            async with resilient_session() as db:
+                rows = (await db.execute(
+                    select(Task)
+                    .where(Task.agent_id == agent_id)
+                    .where(Task.created_at >= seit)
+                    .where(~Task.title.like("[%"))   # keine [Scheduled]/[Proactive]/…
+                    .order_by(Task.created_at.desc())
+                    .limit(limit)
+                )).scalars().all()
+        except Exception:  # noqa: BLE001 — Aufgabenliste darf den Sprach-Turn nicht kippen
+            logger.warning("recent_agent_tasks lookup failed agent=%s", agent_id, exc_info=True)
+            return []
+
+        out: list[str] = []
+        for t in rows:
+            status = str(getattr(t.status, "value", t.status) or "").lower()
+            zustand = {"completed": "FERTIG", "running": "LÄUFT",
+                       "failed": "FEHLGESCHLAGEN"}.get(status, status.upper() or "?")
+            titel = (t.title or t.prompt or "Aufgabe")[:70]
+            # Bei fertigen Aufgaben das Ergebnis kurz mitgeben — DAS ist die
+            # Rueckmeldung, die der Nutzer sonst nie zu hoeren bekam.
+            ergebnis = ""
+            if status == "completed" and (t.result or "").strip():
+                ergebnis = " — " + " ".join((t.result or "").split())[:200]
+            out.append(f"[id {t.id}] {zustand}: {titel}{ergebnis}")
+        return out
 
     async def _delegate_and_report(
         self,

@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.244.0] - 2026-08-19
+
+### Behoben
+- **`get_delegated_tasks` (Voice) war auf die aktuelle Sitzung beschränkt.** Das
+  Werkzeug las nur den In-Memory-Zustand der laufenden Sprachsitzung; eine neue
+  Sitzung startete leer und konnte weder eine zuvor delegierte Aufgabe noch
+  deren Ergebnis anzeigen — die Rückmeldung einer abgeschlossenen Delegation
+  ging so verloren. Es fragt jetzt zusätzlich die zuletzt für diesen Agenten
+  gelaufenen, vom Nutzer angestoßenen Aufgaben aus der Datenbank ab (sitzungs-
+  übergreifend, inkl. Ergebnis). Automatische Läufe (Zeitplan/Proaktiv, Titel in
+  eckigen Klammern) sind ausgeblendet; die Abfrage ist auf den Agenten der
+  Sitzung beschränkt (Mandantentrennung).
+
+---
+
 ## [1.243.1] - 2026-08-19
 
 ### Behoben
