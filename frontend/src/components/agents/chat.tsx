@@ -87,7 +87,7 @@ interface ChatMessage {
   toolCalls?: { tool: string; input: string }[];
   /** Verweist auf eine Auftrags-Kachel; die Zeile wird dann als Kachel gezeichnet. */
   taskCardId?: string;
-  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; presented_files?: ChatFile[] };
+  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; presented_files?: ChatFile[] };
   images?: ChatImage[];
   files?: ChatFile[];
 }
@@ -1203,6 +1203,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             num_turns: Number(data.num_turns || 0),
             input_tokens: Number(data.input_tokens || 0),
             output_tokens: Number(data.output_tokens || 0),
+            reasoning_tokens: Number(data.reasoning_tokens || 0),
+            cached_tokens: Number(data.cached_tokens || 0),
+            cache_write_tokens: Number(data.cache_write_tokens || 0),
           };
           // Mark all running tool calls as done
           const steps = (msgs[assistantIdx].steps || []).map((s) =>
@@ -3265,11 +3268,16 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
 
 /* ─── Meta Bar ──────────────────────────────────────────────────────── */
 
-function MetaBar({ meta }: { meta: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number } }) {
+function MetaBar({ meta }: { meta: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number } }) {
   const parts: string[] = [];
   if (meta.duration_ms) parts.push(`${(meta.duration_ms / 1000).toFixed(1)}s`);
   if (meta.cost_usd) parts.push(formatMoney(meta.cost_usd));
   if (meta.num_turns) parts.push(`${meta.num_turns} turns`);
+  // Feinaufschlüsselung — macht sichtbar, ob die Reasoning-Stufe den Verbrauch
+  // verändert (der eigentliche Wunsch): „Denk"-Tokens + Cache-Treffer.
+  if (meta.reasoning_tokens) parts.push(`${meta.reasoning_tokens} reasoning`);
+  if (meta.cached_tokens) parts.push(`${meta.cached_tokens} cached`);
+  if (meta.cache_write_tokens) parts.push(`${meta.cache_write_tokens} cache-write`);
   if (meta.input_tokens || meta.output_tokens)
     parts.push(`${meta.input_tokens ?? 0} ↑ / ${meta.output_tokens ?? 0} ↓ tok`);
   if (parts.length === 0) return null;

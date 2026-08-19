@@ -1039,6 +1039,9 @@ export interface ChatHistoryMessage {
     num_turns?: number;
     input_tokens?: number;
     output_tokens?: number;
+    reasoning_tokens?: number;
+    cached_tokens?: number;
+    cache_write_tokens?: number;
     presented_images?: { media_type: string; data: string }[];
     presented_files?: {
       path: string;

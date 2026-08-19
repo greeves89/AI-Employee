@@ -243,6 +243,9 @@ class OpenAIProvider(BaseLLMProvider):
 
         input_tokens = 0
         output_tokens = 0
+        cached_tokens = 0
+        cache_write_tokens = 0
+        reasoning_tokens = 0
         # Track function calls: item_id -> {name, arguments_json, call_id}
         pending_calls: dict[str, dict] = {}
 
@@ -314,6 +317,12 @@ class OpenAIProvider(BaseLLMProvider):
                         usage = resp.get("usage", {})
                         input_tokens = usage.get("input_tokens", 0)
                         output_tokens = usage.get("output_tokens", 0)
+                        # Feinaufschlüsselung (Responses-API): cache/reasoning.
+                        in_det = usage.get("input_tokens_details") or {}
+                        out_det = usage.get("output_tokens_details") or {}
+                        cached_tokens = int(in_det.get("cached_tokens") or 0)
+                        cache_write_tokens = int(in_det.get("cache_write_tokens") or 0)
+                        reasoning_tokens = int(out_det.get("reasoning_tokens") or 0)
 
                         # Emit any remaining pending calls
                         for item_id, tc in pending_calls.items():
@@ -336,7 +345,9 @@ class OpenAIProvider(BaseLLMProvider):
             yield LLMEvent(type="error", text=f"Unexpected error: {_diag(e)}")
             return
 
-        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
+        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens,
+                       cached_tokens=cached_tokens, cache_write_tokens=cache_write_tokens,
+                       reasoning_tokens=reasoning_tokens)
 
     def _build_responses_body(
         self, messages: list[ChatMessage], tools: list[dict] | None
@@ -455,6 +466,16 @@ class OpenAIProvider(BaseLLMProvider):
         """Execute a single chat completions stream request. Retries once on tokens param mismatch."""
         input_tokens = 0
         output_tokens = 0
+        cached_tokens = 0
+        reasoning_tokens = 0
+        cache_write_tokens = 0  # Chat-Completions meldet keinen Cache-Write
+
+        def _detail(usage: dict) -> None:
+            nonlocal cached_tokens, reasoning_tokens
+            in_det = usage.get("prompt_tokens_details") or {}
+            out_det = usage.get("completion_tokens_details") or {}
+            cached_tokens = int(in_det.get("cached_tokens") or 0) or cached_tokens
+            reasoning_tokens = int(out_det.get("reasoning_tokens") or 0) or reasoning_tokens
         pending_tool_calls: dict[int, dict] = {}
         _start = time.monotonic()
 
@@ -514,7 +535,9 @@ class OpenAIProvider(BaseLLMProvider):
                                 if usage:
                                     input_tokens = usage.get("prompt_tokens", input_tokens)
                                     output_tokens = usage.get("completion_tokens", output_tokens)
-                        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
+                                    _detail(usage)
+                        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens,
+                                       cached_tokens=cached_tokens, reasoning_tokens=reasoning_tokens)
                         return
                     yield LLMEvent(type="error", text=f"API error {response.status_code}: {error_text}")
                     return
@@ -540,6 +563,7 @@ class OpenAIProvider(BaseLLMProvider):
                     if usage:
                         input_tokens = usage.get("prompt_tokens", input_tokens)
                         output_tokens = usage.get("completion_tokens", output_tokens)
+                        _detail(usage)
 
                     for _ev in self._parse_chat_chunk(chunk, pending_tool_calls):
                         yield _ev
@@ -554,7 +578,8 @@ class OpenAIProvider(BaseLLMProvider):
             yield LLMEvent(type="error", text=f"Unexpected error: {_diag(e)}")
             return
 
-        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
+        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens,
+                       cached_tokens=cached_tokens, reasoning_tokens=reasoning_tokens)
 
     def _parse_chat_chunk(
         self, chunk: dict, pending_tool_calls: dict[int, dict]

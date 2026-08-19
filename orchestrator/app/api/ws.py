@@ -483,6 +483,15 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     "num_turns": edata.get("num_turns"),
                     "input_tokens": edata.get("input_tokens"),
                     "output_tokens": edata.get("output_tokens"),
+                    # Feinaufschlüsselung für die Token-Anzeige im Chat — nur setzen,
+                    # wenn der Harness/Provider sie gemeldet hat (>0), sonst weglassen,
+                    # damit die UI keine leeren Nullwerte zeigt.
+                    **({"reasoning_tokens": edata["reasoning_tokens"]}
+                       if edata.get("reasoning_tokens") else {}),
+                    **({"cached_tokens": edata["cached_tokens"]}
+                       if edata.get("cached_tokens") else {}),
+                    **({"cache_write_tokens": edata["cache_write_tokens"]}
+                       if edata.get("cache_write_tokens") else {}),
                 }
                 if resp.get("images"):
                     meta["presented_images"] = resp["images"]

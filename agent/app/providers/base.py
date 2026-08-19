@@ -109,6 +109,11 @@ class LLMEvent:
     # Usage stats (only on "done" events)
     input_tokens: int = 0
     output_tokens: int = 0
+    # Feinaufschlüsselung, sofern der Provider sie meldet (für die Token-Anzeige
+    # im Chat — u.a. um zu sehen, ob eine Reasoning-Stufe den Verbrauch ändert).
+    reasoning_tokens: int = 0       # Teil der Ausgabe, den das Modell „nachgedacht" hat
+    cached_tokens: int = 0          # Eingabe, die aus dem Prompt-Cache gelesen wurde
+    cache_write_tokens: int = 0     # Eingabe, die neu in den Cache geschrieben wurde
 
 
 @dataclass

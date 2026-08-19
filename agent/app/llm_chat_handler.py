@@ -618,6 +618,9 @@ class LLMChatHandler:
         max_turns = _max_turns()
         total_input_tokens = 0
         total_output_tokens = 0
+        total_reasoning_tokens = 0
+        total_cached_tokens = 0
+        total_cache_write_tokens = 0
 
         try:
             while num_turns < max_turns:
@@ -668,6 +671,9 @@ class LLMChatHandler:
                         # turn's tokens for the message's total cost.
                         total_input_tokens += event.input_tokens or 0
                         total_output_tokens += event.output_tokens or 0
+                        total_reasoning_tokens += getattr(event, "reasoning_tokens", 0) or 0
+                        total_cached_tokens += getattr(event, "cached_tokens", 0) or 0
+                        total_cache_write_tokens += getattr(event, "cache_write_tokens", 0) or 0
 
                     elif event.type == "error":
                         if self._stopping:
@@ -879,6 +885,9 @@ class LLMChatHandler:
             ),
             "input_tokens": total_input_tokens,
             "output_tokens": total_output_tokens,
+            "reasoning_tokens": total_reasoning_tokens,
+            "cached_tokens": total_cached_tokens,
+            "cache_write_tokens": total_cache_write_tokens,
             "tool_calls": accumulated_tool_calls or None,
         }
 

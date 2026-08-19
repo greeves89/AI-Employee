@@ -205,6 +205,8 @@ class AnthropicProvider(BaseLLMProvider):
 
         input_tokens = 0
         output_tokens = 0
+        cached_tokens = 0
+        cache_write_tokens = 0
         current_tool_id = ""
         current_tool_name = ""
         current_tool_json = ""
@@ -236,6 +238,11 @@ class AnthropicProvider(BaseLLMProvider):
                     if event_type == "message_start":
                         usage = event.get("message", {}).get("usage", {})
                         input_tokens = usage.get("input_tokens", 0)
+                        # Claude meldet den Prompt-Cache getrennt: neu geschrieben
+                        # vs. gelesen. (Kein separates reasoning_tokens — das
+                        # „Denken" zählt bei Claude zu output_tokens.)
+                        cache_write_tokens = int(usage.get("cache_creation_input_tokens") or 0)
+                        cached_tokens = int(usage.get("cache_read_input_tokens") or 0)
 
                     elif event_type == "content_block_start":
                         block = event.get("content_block", {})
@@ -284,4 +291,5 @@ class AnthropicProvider(BaseLLMProvider):
             yield LLMEvent(type="error", text=f"Unexpected error: {_diag(e)}")
             return
 
-        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
+        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens,
+                       cached_tokens=cached_tokens, cache_write_tokens=cache_write_tokens)

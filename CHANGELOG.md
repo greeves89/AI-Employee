@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.250.0] - 2026-08-19
+
+### Hinzugefügt
+- **Token-Verbrauch pro Nachricht im Chat sichtbar — inkl. Feinaufschlüsselung.**
+  Die Meta-Zeile unter einer Antwort zeigt jetzt neben Dauer/Kosten/Ein-/Ausgabe-
+  Tokens zusätzlich `reasoning`-Tokens (das „Nachdenken"), `cached`-Tokens
+  (Prompt-Cache-Treffer) und `cache-write`-Tokens, sofern der Provider sie
+  meldet. Damit lässt sich direkt ablesen, ob eine höhere Reasoning-Stufe den
+  Verbrauch verändert. Erfasst über **alle Harnesse**: Custom LLM / OpenAI
+  (Responses- und Chat-Completions-API), Claude (Anthropic-Cache-Tokens),
+  Codex und GPT. Felder werden nur angezeigt, wenn sie tatsächlich gemeldet
+  wurden (keine leeren Nullwerte). Kein Schema-Change — die Werte reisen im
+  vorhandenen Nachrichten-Meta.
+
+---
+
 ## [1.249.0] - 2026-08-19
 
 ### Hinzugefügt (M365)

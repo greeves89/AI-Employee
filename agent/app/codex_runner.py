@@ -276,6 +276,11 @@ class CodexAgentRunner:
                     result_data.update({
                         "input_tokens": usage.get("input_tokens"),
                         "output_tokens": usage.get("output_tokens"),
+                        # Feinaufschlüsselung, sofern Codex sie meldet (GPT-Modelle):
+                        # gecachte Eingabe + „nachgedachte" Ausgabe.
+                        "cached_tokens": usage.get("cached_input_tokens") or 0,
+                        "reasoning_tokens": usage.get("reasoning_output_tokens") or 0,
+                        "cache_write_tokens": 0,
                     })
 
             returncode = await self._process.wait()
