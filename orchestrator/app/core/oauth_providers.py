@@ -40,6 +40,10 @@ MICROSOFT_OPTIONAL_SCOPES = [
     "Chat.ReadWrite", "Chat.ReadBasic", "ChannelMessage.Read.All",
     "ChannelMessage.Send", "Team.ReadBasic.All", "Tasks.ReadWrite",
     "Contacts.ReadWrite", "People.Read",
+    # Teams-Transkripte (Transkript-zu-Aufgaben). Ein Scope wirkt nur, wenn er
+    # HIER steht UND in PROVIDERS["microsoft"].scopes — microsoft_scopes()
+    # schneidet alles andere aus der echten Auth-URL heraus.
+    "OnlineMeetings.Read", "OnlineMeetingTranscript.Read.All",
 ]
 
 
@@ -109,6 +113,12 @@ PROVIDERS: dict[str, OAuthProviderConfig] = {
             "Tasks.ReadWrite",
             "Contacts.ReadWrite",
             "People.Read",
+            # Teams meeting transcripts (transcript-to-tasks feature). Delegated;
+            # OnlineMeetingTranscript.Read.All needs admin consent from the tenant
+            # admin before rollout. After the consent every user must re-login once
+            # so the refresh token covers the scopes.
+            "OnlineMeetings.Read",
+            "OnlineMeetingTranscript.Read.All",
         ],
         # No forced prompt by default (#571): tenants with end-user consent disabled
         # can never satisfy a forced "prompt=consent" dialog, even after an admin

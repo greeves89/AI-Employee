@@ -351,6 +351,31 @@ MSGRAPH_TOOLS = [
         },
     },
     {
+        "name": "ms_list_meeting_transcripts",
+        "description": "List Teams meetings from the user's own calendar that have transcripts available. Scans past days, resolves each Teams meeting to its transcript IDs. Fetch content with ms_get_meeting_transcript.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "days_back": {"type": "number", "description": "How many past days to scan (1-30). Default: 1."},
+                "limit": {"type": "number", "description": "Max calendar events to inspect. Default: 20."},
+            },
+        },
+    },
+    {
+        "name": "ms_get_meeting_transcript",
+        "description": "Fetch a Teams meeting transcript as speaker-attributed dialog text (condensed from WebVTT). IDs come from ms_list_meeting_transcripts.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "online_meeting_id": {"type": "string", "description": "Online meeting ID (from ms_list_meeting_transcripts)."},
+                "transcript_id": {"type": "string", "description": "Transcript ID (from ms_list_meeting_transcripts)."},
+                "raw": {"type": "boolean", "description": "Return raw WebVTT instead of condensed dialog. Default: false."},
+                "max_chars": {"type": "number", "description": "Truncate output beyond this many characters. Default: 20000."},
+            },
+            "required": ["online_meeting_id", "transcript_id"],
+        },
+    },
+    {
         "name": "ms_find_meeting_times",
         "description": "Suggest meeting times when the given attendees are free (Microsoft findMeetingTimes). Returns candidate slots with a confidence score.",
         "inputSchema": {
@@ -997,6 +1022,38 @@ def _fmt_size(b: int) -> str:
     return f"{b // (1024 ** 2)}MB"
 
 
+_VTT_VOICE_RE = re.compile(r"<v\s+([^>]*)>(.*?)</v>", re.DOTALL)
+_VTT_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _vtt_to_dialog(vtt: str) -> str:
+    """Condense a WebVTT transcript into speaker-attributed dialog lines.
+
+    Keeps chronological order, merges consecutive cues of the same speaker and
+    drops timestamps/cue ids — several times fewer tokens than raw VTT, which is
+    what the LLM actually needs for action-item extraction."""
+    merged: list[tuple[str, str]] = []
+    for m in _VTT_VOICE_RE.finditer(vtt):
+        speaker = m.group(1).strip()
+        text = _VTT_TAG_RE.sub("", m.group(2)).replace("\r", " ").replace("\n", " ").strip()
+        if not text:
+            continue
+        if merged and merged[-1][0] == speaker:
+            merged[-1] = (speaker, merged[-1][1] + " " + text)
+        else:
+            merged.append((speaker, text))
+    if merged:
+        return "\n".join(f"{s}: {t}" for s, t in merged)
+    # Transcript without <v> voice tags — strip the VTT scaffolding instead.
+    plain = []
+    for ln in vtt.splitlines():
+        s = ln.strip()
+        if not s or s == "WEBVTT" or "-->" in s or s.isdigit():
+            continue
+        plain.append(_VTT_TAG_RE.sub("", s))
+    return "\n".join(plain)
+
+
 def _strip_html(s) -> str:
     return re.sub(r"<[^>]+>", "", s or "").replace("&nbsp;", " ").strip()
 
@@ -1589,6 +1646,76 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
         data = await _graph("POST", "/me/onlineMeetings", token, content=json.dumps(payload))
         join = data.get("joinWebUrl") or data.get("joinUrl") or ""
         return f"Teams-Meeting '{args['subject']}' erstellt.\nJoin-Link: {join}"
+
+    elif name == "ms_list_meeting_transcripts":
+        from datetime import datetime, timedelta, timezone
+        days = max(1, min(int(args.get("days_back", 1) or 1), 30))
+        limit = min(int(args.get("limit", 20) or 20), 50)
+        now = datetime.now(timezone.utc)
+        params = {
+            "startDateTime": (now - timedelta(days=days)).isoformat(),
+            "endDateTime": now.isoformat(),
+            "$top": limit,
+            "$select": "id,subject,start,end,isOnlineMeeting,onlineMeetingUrl",
+            "$orderby": "start/dateTime desc",
+        }
+        data = await _graph("GET", "/me/calendarView", token, params=params)
+        events = [e for e in data.get("value", []) if e.get("isOnlineMeeting") and e.get("onlineMeetingUrl")]
+        if not events:
+            return f"No Teams meetings found in the last {days} day(s)."
+        lines = []
+        for e in events:
+            start = e.get("start", {}).get("dateTime", "")[:16]
+            subject = e.get("subject") or "Teams-Meeting"
+            # Resolve calendar event -> onlineMeeting via the join URL. Single quotes
+            # must be doubled inside an OData string literal.
+            join_url = (e.get("onlineMeetingUrl") or "").replace("'", "''")
+            try:
+                om = await _graph(
+                    "GET", "/me/onlineMeetings", token,
+                    params={"$filter": f"JoinWebUrl eq '{join_url}'"},
+                )
+            except GraphError:
+                continue
+            meetings = om.get("value", [])
+            if not meetings:
+                continue
+            om_id = meetings[0].get("id")
+            try:
+                tr = await _graph("GET", f"/me/onlineMeetings/{_gid(om_id)}/transcripts", token)
+            except GraphError as exc:
+                if exc.status_code in (401, 403, 404):
+                    continue  # no transcript access for this meeting (tenant policy / not organizer)
+                raise
+            transcripts = tr.get("value", [])
+            if not transcripts:
+                lines.append(f"• {subject} ({start}) — kein Transkript")
+                continue
+            # A meeting can have several fragments (transcription stopped/restarted).
+            for t in transcripts:
+                lines.append(
+                    f"• {subject} ({start})\n"
+                    f"  online_meeting_id: {om_id}\n  transcript_id: {t.get('id')}"
+                )
+        if not lines:
+            return (
+                f"No transcripts found in the last {days} day(s). Note: depending on "
+                "tenant policy, transcripts may only be readable for meetings the user organized."
+            )
+        return "\n".join(lines)
+
+    elif name == "ms_get_meeting_transcript":
+        om_id = _gid(args["online_meeting_id"])
+        t_id = _gid(args["transcript_id"])
+        resp = await _graph_bytes(
+            "GET", f"/me/onlineMeetings/{om_id}/transcripts/{t_id}/content?$format=text/vtt", token
+        )
+        vtt = resp.text or ""
+        text = vtt if args.get("raw") else _vtt_to_dialog(vtt)
+        max_chars = max(1000, min(int(args.get("max_chars", 20000) or 20000), 100000))
+        if len(text) > max_chars:
+            text = text[:max_chars] + f"\n… [truncated at {max_chars} chars]"
+        return text or "Transcript is empty."
 
     elif name == "ms_find_meeting_times":
         dur = int(args.get("duration_minutes", 30))

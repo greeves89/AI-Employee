@@ -82,11 +82,26 @@ class NoTemplateIsJustAKeywordListTests(unittest.TestCase):
                 )
 
     def test_every_template_names_where_its_output_goes(self):
-        """Ohne Ablageort landen Ergebnisse irgendwo im Container und der Nutzer
-        findet sie nicht."""
+        """Ohne Ablageort landen Ergebnisse irgendwo und der Nutzer findet sie
+        nicht.
+
+        Geprueft wird die ABSICHT — „der Nutzer weiss, wo das Ergebnis liegt" —
+        nicht ein bestimmter Pfad. Die meisten Vorlagen legen im Arbeitsbereich
+        ab; manche schreiben bewusst nach draussen (Aufgabenliste, Kalender,
+        Wissensdatenbank). Als der erste solche Fall dazukam, verlangte dieser
+        Test noch einen `/workspace/`-Pfad und haette die Vorlage gezwungen,
+        einen Ablageort zu erfinden, den sie gar nicht benutzt.
+        """
+        # Ein Ziel ausserhalb zaehlt, wenn es beim Namen genannt ist.
+        AUSSERHALB = ("meine aufgaben", "ms_create_task", "kalender",
+                      "write_knowledge", "wissensdatenbank", "second brain")
         for t in BUILTIN_TEMPLATES:
             with self.subTest(vorlage=t["name"]):
-                self.assertIn("/workspace/", _eigener_teil(t))
+                eigen = _eigener_teil(t)
+                self.assertTrue(
+                    "/workspace/" in eigen or any(z in eigen.lower() for z in AUSSERHALB),
+                    "kein Ablageort genannt — weder im Arbeitsbereich noch draussen",
+                )
 
 
 class WhatTheUserReadsIsGermanTests(unittest.TestCase):
