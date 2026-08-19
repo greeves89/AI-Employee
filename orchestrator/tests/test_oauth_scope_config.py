@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from app.core.oauth_providers import get_provider, get_provider_scopes
+from app.core.oauth_providers import get_provider, get_provider_scopes, microsoft_scopes
 
 
 def _mock_settings(**kwargs):
@@ -17,6 +17,16 @@ def test_default_scopes_when_unset():
     with patch("app.config.settings", _mock_settings(oauth_google_scopes="")):
         scopes = get_provider_scopes(provider)
     assert scopes == list(provider.scopes)
+
+
+def test_microsoft_scopes_fordern_transkript_scopes_an():
+    # Regression PR #581: die Scopes standen in PROVIDERS["microsoft"].scopes,
+    # aber nicht in MICROSOFT_OPTIONAL_SCOPES — microsoft_scopes() filterte sie
+    # heraus und der echte Consent-Dialog hat sie nie angefordert (Tools -> 403).
+    with patch("app.config.settings", _mock_settings(oauth_microsoft_scopes="")):
+        scopes = microsoft_scopes()
+    assert "OnlineMeetings.Read" in scopes
+    assert "OnlineMeetingTranscript.Read.All" in scopes
 
 
 def test_override_replaces_defaults():

@@ -40,6 +40,10 @@ MICROSOFT_OPTIONAL_SCOPES = [
     "Chat.ReadWrite", "Chat.ReadBasic", "ChannelMessage.Read.All",
     "ChannelMessage.Send", "Team.ReadBasic.All", "Tasks.ReadWrite",
     "Contacts.ReadWrite", "People.Read",
+    # Teams-Transkripte (Transkript-zu-Aufgaben). Ein Scope wirkt nur, wenn er
+    # HIER steht UND in PROVIDERS["microsoft"].scopes — microsoft_scopes()
+    # schneidet alles andere aus der echten Auth-URL heraus.
+    "OnlineMeetings.Read", "OnlineMeetingTranscript.Read.All",
 ]
 
 
