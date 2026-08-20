@@ -47,9 +47,15 @@ class ChatHandler:
         self.pending_drain = None
 
     async def _run_turn_with_retries(
-        self, message_id: str, text: str, model: str
+        self, message_id: str, text: str, model: str, fresh_text: str | None = None
     ) -> dict:
-        """One Claude CLI turn (resumes via self.session_id) + session/auth retries."""
+        """One Claude CLI turn (resumes via self.session_id) + session/auth retries.
+
+        ``fresh_text`` ist dieselbe Nachricht, aufbereitet als erste einer neuen
+        Sitzung. Muss der Verlauf hier weggeworfen werden, laeuft die Wiederholung
+        damit — sonst verweist der Folgezug-Prompt auf einen Verlauf, den es nicht
+        mehr gibt, und Regeln wie Skills-Block fehlen der neuen Sitzung dauerhaft.
+        """
         # Vor dem Lauf merken, WELCHER Token benutzt wurde — nur so laesst sich
         # spaeter feststellen, ob die Plattform inzwischen einen neuen hinterlegt
         # hat, statt blind eine Weile zu warten.
@@ -78,7 +84,7 @@ class ChatHandler:
                                 "Nachricht gleich erneut. Frueheres aus diesem Chat "
                                 "kenne ich dann nicht mehr aus dem Verlauf."},
                 )
-                result = await self._execute_cli(message_id, text, model)
+                result = await self._execute_cli(message_id, fresh_text or text, model)
 
         # If --resume failed, reset session and retry without it
         if (
@@ -92,7 +98,7 @@ class ChatHandler:
                 message_id, "system",
                 {"message": "Session expired, starting fresh conversation..."},
             )
-            result = await self._execute_cli(message_id, text, model)
+            result = await self._execute_cli(message_id, fresh_text or text, model)
 
         # Zugangsfehler: auf den ERNEUERTEN Token warten und wiederholen.
         #
@@ -156,7 +162,11 @@ class ChatHandler:
         async def _run_turn(t: str, _is_resume: bool) -> dict:
             # session_id (set on the first turn) makes _execute_cli use --resume,
             # so a folded message continues the SAME conversation.
-            return await self._run_turn_with_retries(message_id, t, model)
+            #
+            # Die Neusitzungs-Fassung passt nur zum ERSTEN Zug: ein gefalteter
+            # Zug (_is_resume) traegt eine andere, blanke Nachricht.
+            fresh = None if _is_resume else getattr(self, "fresh_session_text", None)
+            return await self._run_turn_with_retries(message_id, t, model, fresh_text=fresh)
 
         try:
             result = await run_turns_with_steering(

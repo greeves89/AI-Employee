@@ -85,16 +85,76 @@ class ApprovalRulesRepetitionTests(unittest.TestCase):
 
     def test_unchanged_rules_are_not_repeated_on_every_turn(self):
         consumer = self._consumer()
-        self._prepare(consumer, self._Handler(None), "=== REGELN ===")
-        out = self._prepare(consumer, self._Handler("sess-1"), "=== REGELN ===")
+        handler = self._Handler(None)
+        self._prepare(consumer, handler, "=== REGELN ===")
+        handler.session_id = "sess-1"
+        out = self._prepare(consumer, handler, "=== REGELN ===")
         self.assertNotIn("=== REGELN ===", out)
 
     def test_changed_rules_reach_the_agent_again(self):
         """Sonst arbeitet er mit einer Freigabe weiter, die der Nutzer zurueckgezogen hat."""
         consumer = self._consumer()
-        self._prepare(consumer, self._Handler(None), "=== ALT ===")
-        out = self._prepare(consumer, self._Handler("sess-1"), "=== NEU ===")
+        handler = self._Handler(None)
+        self._prepare(consumer, handler, "=== ALT ===")
+        handler.session_id = "sess-1"
+        out = self._prepare(consumer, handler, "=== NEU ===")
         self.assertIn("=== NEU ===", out)
+
+    def test_a_second_chat_does_not_swallow_the_change_for_the_first(self):
+        """EIN Consumer bedient viele Sitzungen (Webapp, Telegram, je Chat).
+
+        Lag der Merker am Consumer, holte die zuletzt gestartete Sitzung die neuen
+        Regeln ab — und alle anderen bekamen sie nie zu sehen, weil der Merker
+        schon auf dem neuen Wert stand.
+        """
+        consumer = self._consumer()
+        chat_a = self._Handler(None)
+        chat_b = self._Handler(None)
+
+        self._prepare(consumer, chat_a, "=== ALT ===")
+        chat_a.session_id = "sess-a"
+        self._prepare(consumer, chat_b, "=== NEU ===")   # B startet mit den neuen Regeln
+        chat_b.session_id = "sess-b"
+
+        out = self._prepare(consumer, chat_a, "=== NEU ===")
+        self.assertIn("=== NEU ===", out,
+                      "Sitzung A hat die Aenderung nie erfahren")
+
+    def test_a_channel_without_a_handler_yet_does_not_crash(self):
+        """Beim allerersten Zug eines Kanals gibt es noch keinen Handler."""
+        consumer = self._consumer()
+        out = self._prepare(consumer, None, "=== REGELN ===")
+        self.assertIn("=== REGELN ===", out)
+
+
+class FreshSessionPromptTests(unittest.TestCase):
+    """Wird der Verlauf weggeworfen, muss der Prompt dazu passen."""
+
+    def _consumer(self):
+        from app.chat_consumer import ChatConsumer
+        return ChatConsumer.__new__(ChatConsumer)
+
+    def _fresh(self, consumer, telegram_ctx=None):
+        with patch("app.runner_hooks.get_approval_rules_prefix", lambda: "=== REGELN ==="), \
+             patch("app.runner_hooks.get_skills_context", lambda: "=== SKILLS ==="), \
+             patch("app.runner_hooks.get_marketplace_skill_suggestions", lambda t: ""):
+            return consumer._fresh_session_text("hallo", telegram_ctx, "telegram")
+
+    def test_it_carries_everything_a_first_message_carries(self):
+        consumer = self._consumer()
+        out = self._fresh(consumer, {"chat_id": "4711", "first_name": "Grevvy", "message_id": 9})
+        self.assertIn("ORCHESTRATOR TELEGRAM API", out)
+        self.assertIn("send-document-upload", out)
+        self.assertIn("=== REGELN ===", out)
+        self.assertIn("=== SKILLS ===", out)
+        self.assertIn("hallo", out)
+
+    def test_it_does_not_point_at_a_history_that_no_longer_exists(self):
+        """Der Folgezug-Prompt sagt „steht am Anfang DIESER Sitzung im Verlauf" —
+        in einer frisch zurueckgesetzten Sitzung ist der Verlauf leer."""
+        consumer = self._consumer()
+        out = self._fresh(consumer, {"chat_id": "4711", "first_name": "Grevvy", "message_id": 9})
+        self.assertNotIn("DIESER Sitzung im Verlauf", out)
 
 
 class ContextLengthRecoveryTests(unittest.IsolatedAsyncioTestCase):
@@ -207,6 +267,71 @@ class ContextLengthRecoveryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(calls), 1)
         self.assertEqual(result["status"], "error")
+
+    async def test_the_retry_runs_the_prompt_built_for_a_fresh_session(self):
+        """Der zweite Versuch ist die ERSTE Nachricht einer neuen Sitzung.
+
+        Wiederholte man den bereits gebauten Folgezug-Prompt, verwiese er auf einen
+        Verlauf, den es nicht mehr gibt — und Regeln wie Skills-Block fehlten der
+        neuen Sitzung fuer den Rest ihres Lebens.
+        """
+        handler = self._handler()
+        texts = []
+
+        async def fake_execute(message_id, text, model):
+            texts.append(text)
+            if len(texts) == 1:
+                return {"status": "error", "error": "prompt is too long"}
+            return {"status": "success", "response": "ok"}
+
+        handler._execute_cli = fake_execute
+
+        with patch("app.config.get_oauth_token", lambda: "tok"):
+            result = await handler._run_turn_with_retries(
+                "m1", "FOLGEZUG", "sonnet", fresh_text="NEUSITZUNG",
+            )
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(texts, ["FOLGEZUG", "NEUSITZUNG"])
+        self.assertIsNone(handler.session_id)
+
+    async def test_the_lost_session_branch_also_gets_the_fresh_prompt(self):
+        """„no conversation found" wirft denselben Verlauf weg — gleicher Bedarf."""
+        handler = self._handler()
+        texts = []
+
+        async def fake_execute(message_id, text, model):
+            texts.append(text)
+            if len(texts) == 1:
+                return {"status": "error", "error": "No conversation found with session ID"}
+            return {"status": "success", "response": "ok"}
+
+        handler._execute_cli = fake_execute
+
+        with patch("app.config.get_oauth_token", lambda: "tok"):
+            await handler._run_turn_with_retries(
+                "m1", "FOLGEZUG", "sonnet", fresh_text="NEUSITZUNG",
+            )
+
+        self.assertEqual(texts, ["FOLGEZUG", "NEUSITZUNG"])
+
+    async def test_without_a_fresh_version_the_original_is_still_retried(self):
+        """Kanaele ohne aufbereiteten Prompt duerfen nicht schlechter dastehen als bisher."""
+        handler = self._handler()
+        texts = []
+
+        async def fake_execute(message_id, text, model):
+            texts.append(text)
+            if len(texts) == 1:
+                return {"status": "error", "error": "prompt is too long"}
+            return {"status": "success", "response": "ok"}
+
+        handler._execute_cli = fake_execute
+
+        with patch("app.config.get_oauth_token", lambda: "tok"):
+            await handler._run_turn_with_retries("m1", "FOLGEZUG", "sonnet")
+
+        self.assertEqual(texts, ["FOLGEZUG", "FOLGEZUG"])
 
     async def test_an_auth_error_still_gets_its_retry(self):
         """Der bestehende Zugangs-Zweig darf durch die neue Pruefung nicht ausfallen."""
