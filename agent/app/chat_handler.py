@@ -14,6 +14,25 @@ from app.runner_hooks import feed_prompt_via_stdin
 
 logger = logging.getLogger(__name__)
 
+# Wortlaute, mit denen die CLI bzw. die API einen zu langen Verlauf meldet. Die
+# Formulierung wechselt je nach Modell und Fassung, deshalb mehrere Varianten.
+_CONTEXT_LENGTH_MARKERS = (
+    "prompt too long",
+    "prompt is too long",
+    "context length",
+    "context_length_exceeded",
+    "context window",
+    "maximum context",
+    "too many tokens",
+    "exceed context limit",
+)
+
+
+def _is_context_length_error(error: str) -> bool:
+    """Ist das ein „der Verlauf ist zu lang"-Fehler?"""
+    text = (error or "").lower()
+    return any(marker in text for marker in _CONTEXT_LENGTH_MARKERS)
+
 
 class ChatHandler:
     """Handles interactive chat sessions using Claude Code CLI with --resume."""
@@ -36,7 +55,30 @@ class ChatHandler:
         # hat, statt blind eine Weile zu warten.
         from app.config import get_oauth_token
         token_before = get_oauth_token()
+        # Ob dieser Zug auf einem Verlauf aufsetzt, entscheidet spaeter, ob ein
+        # Laengenfehler durch einen Neustart der Sitzung ueberhaupt heilbar ist.
+        was_resumed = self.session_id is not None
         result = await self._execute_cli(message_id, text, model)
+
+        # Der Verlauf ist zu lang geworden. Ohne diesen Zweig bleibt die zu grosse
+        # Historie in der --resume-Sitzung stehen und JEDE weitere Nachricht
+        # scheitert identisch — der Chat ist tot, bis jemand von Hand zuruecksetzt.
+        if result.get("status") == "error" and _is_context_length_error(
+            result.get("error", "")
+        ):
+            logger.warning(
+                f"Context length exceeded in session {self.session_id}, resetting session"
+            )
+            self.session_id = None
+            if was_resumed:
+                await self.log_publisher.publish_chat(
+                    message_id, "system",
+                    {"message": "Der Gespraechsverlauf war zu lang geworden — ich "
+                                "beginne eine neue Sitzung und beantworte die "
+                                "Nachricht gleich erneut. Frueheres aus diesem Chat "
+                                "kenne ich dann nicht mehr aus dem Verlauf."},
+                )
+                result = await self._execute_cli(message_id, text, model)
 
         # If --resume failed, reset session and retry without it
         if (
@@ -64,12 +106,19 @@ class ChatHandler:
         # ins Leere, und der Nutzer bekam den Fehler rot in den Chat. Jetzt wird
         # gewartet, bis sich der Token wirklich geaendert hat.
         error_text = result.get("error", "").lower()
-        if result.get("status") == "error" and any(
-            phrase in error_text
-            for phrase in [
-                "does not have access", "invalid_grant", "unauthorized",
-                "401", "token", "oauth", "authentication", "revoked",
-            ]
+        # „prompt is too long: 215000 tokens > 200000" enthaelt „token" und sah
+        # deshalb wie ein Zugangsfehler aus — der Lauf wartete auf einen neuen
+        # Token, den es nie brauchte. Laengenfehler sind hier schon behandelt.
+        if (
+            result.get("status") == "error"
+            and not _is_context_length_error(error_text)
+            and any(
+                phrase in error_text
+                for phrase in [
+                    "does not have access", "invalid_grant", "unauthorized",
+                    "401", "token", "oauth", "authentication", "revoked",
+                ]
+            )
         ):
             logger.warning(f"Auth error detected, waiting for token refresh: {error_text[:100]}")
             await self.log_publisher.publish_chat(

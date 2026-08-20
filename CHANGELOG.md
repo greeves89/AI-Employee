@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.255.1] - 2026-08-20
+
+### Behoben
+- **Ein Telegram-Chat konnte sich dauerhaft festfahren.** Ab einem gewissen
+  Punkt scheiterte jede Nachricht mit „prompt too long" — und die nächste
+  genauso, weil der zu lange Verlauf in der Sitzung stehen blieb. Nur ein
+  Zurücksetzen von Hand half. Jetzt erkennt der Chat diesen Fehler, beginnt eine
+  neue Sitzung und beantwortet die Nachricht sofort erneut. Der Nutzer erfährt
+  dabei, dass der Verlauf zu lang war und was das für ihn bedeutet, statt still
+  ein Gedächtnis zu verlieren.
+- **Der Chat wuchs schneller, als er musste.** Jede einzelne Nachricht schleppte
+  die rund neunzig Zeilen lange Telegram-API-Referenz und die Autonomie-Regeln
+  erneut mit, obwohl beides ab dem zweiten Zug längst im Verlauf steht. Ab jetzt
+  gibt es beides zum Sitzungsbeginn vollständig, danach nur noch einen kurzen
+  Verweis darauf — rund 1.950 Token weniger pro Folgenachricht, über einen
+  langen Chat etwa ein halbes Kontextfenster.
+- Die Autonomie-Regeln erreichen den Agenten weiterhin sofort, **wenn der Nutzer
+  sie ändert** — nur unveränderte Regeln werden nicht mehr wiederholt.
+- Ein Längenfehler nennt „tokens" und lief deshalb bisher in die
+  Zugangs-Wiederholung: der Chat wartete auf einen neuen Token, den es nie
+  brauchte. Beides ist jetzt sauber getrennt.
+
 ## [1.255.0] - 2026-08-19
 
 ### Behoben

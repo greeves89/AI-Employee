@@ -122,6 +122,24 @@ AFTER the user gives feedback: if you used a marketplace skill, call skill_rate
 
 """
 
+    # Die vollstaendige API-Referenz wiegt rund neunzig Zeilen. Sie JEDER Nachricht
+    # anzuhaengen liess den ohnehin wachsenden --resume-Verlauf schneller an die
+    # Laengengrenze stossen, obwohl der Agent sie ab dem zweiten Zug laengst im
+    # Verlauf hat. Neue Sitzung: alles. Folgezug: ein kurzer Verweis darauf.
+    if not is_new_session:
+        return f"""{header}{voice_hint}
+
+{startup_block}{text}
+
+---
+TELEGRAM CONTEXT:
+Antworte einfach als Text — er geht automatisch an den Nutzer. Die vollstaendige
+Orchestrator-Telegram-API (Dateien, Fotos, Sprache, Reaktionen, Tastaturen) steht
+am Anfang DIESER Sitzung im Verlauf: dort die genauen curl-Aufrufe nachlesen statt
+raten. api.telegram.org rufst du nie direkt auf, den Bot-Token hast du nicht.
+Basis-URL: {api_base}
+Auth-Header: {auth}"""
+
     return f"""{header}{voice_hint}
 
 {startup_block}{text}
@@ -537,8 +555,18 @@ class ChatConsumer:
 
     def _prepare_text(self, text: str, telegram_ctx: dict | None, source: str, handler: object) -> str:
         from app.runner_hooks import get_approval_rules_prefix
-        rules_prefix = get_approval_rules_prefix()
         is_new = self._is_new_session(handler)
+        # Die Autonomie-Regeln standen bisher vor JEDER Nachricht — obwohl sie sich
+        # zwischen zwei Nachrichten fast nie aendern und im Verlauf laengst stehen.
+        # Jetzt: zum Sitzungsbeginn, und danach nur, wenn der Nutzer sie wirklich
+        # geaendert hat (sonst wuesste der Agent von der Aenderung nichts).
+        rules_prefix = get_approval_rules_prefix()
+        if is_new:
+            self._last_rules_prefix = rules_prefix
+        elif rules_prefix == getattr(self, "_last_rules_prefix", None):
+            rules_prefix = ""
+        else:
+            self._last_rules_prefix = rules_prefix
         # custom_llm builds its own skills/marketplace context into the system
         # prompt on the first message (see LLMChatHandler). The CLI-based chat
         # handlers (claude_code / codex_cli) had NO such injection at all — the
