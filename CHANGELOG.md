@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.263.1] - 2026-08-21
+
+### Behoben
+- **Der Hinweis „Veraltete Oberfläche — neu laden" konnte nie erscheinen.** Er
+  vergleicht die im Bundle eingebackene Version mit der des Backends; wird das
+  Frontend-Image ohne `APP_VERSION` gebaut, steht dort „dev" und der Abgleich
+  fällt still aus. Folge: nach einem Deploy blieb die geöffnete Seite auf dem
+  alten Stand, ohne dass irgendetwas darauf hinwies. Ein Produktions-Bundle
+  ohne Version meldet sich jetzt in der Konsole statt stumm zu bleiben.
+- **Der Abgleich lief nur alle 30 Minuten.** Wer die Seite lange offen hält,
+  erfuhr von einem Deploy entsprechend spät. Beim Zurückkommen auf den Tab wird
+  jetzt sofort nachgefragt.
+
+---
+
 ## [1.263.0] - 2026-08-21
 
 ### Behoben
