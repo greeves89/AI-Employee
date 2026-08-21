@@ -30,6 +30,7 @@ import base64
 import json
 import logging
 import os
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -43,6 +44,44 @@ OUTPUT_SAMPLE_RATE = 24000
 # Event callback: (event_type, payload) -> awaitable.
 # event_type ∈ {"audio", "text", "tool_use", "usage", "error", "done"}
 EventCallback = Callable[[str, dict], Awaitable[None]]
+
+
+def _sprechbar(s: Any) -> str:
+    r"""Text, der VORGELESEN wird — ohne alles, was man nicht sprechen kann.
+
+    Zwei Dinge, die im Sprachkanal nichts verloren haben:
+
+    1. **Zeilenumbrueche.** ``send_tool_result`` verpackt den Text zusaetzlich
+       mit ``json.dumps``; ein echter Umbruch wird dabei wieder zu den zwei
+       SICHTBAREN Zeichen ``\`` und ``n``. Nova reicht die Zeichenkette
+       woertlich ans Modell, das den Backslash nicht sprechen kann — im
+       Transkript stand dann „n n1. InsideAI" (gemeldet am 21.08.2026).
+       ``_clean_text`` wandelt literale Escapes zwar in echte Umbrueche
+       zurueck, aber die naechste Kodierung machte das sofort wieder zunichte.
+       Fuer gesprochenen Text traegt ein Umbruch ohnehin keine Bedeutung: ein
+       Absatz wird zur Sprechpause, eine Zeile zum Leerzeichen.
+    2. **Markdown.** ``**InsideAI**`` wurde als „InsideAI Sternchen Sternchen"
+       vorgelesen — im selben Bildschirmfoto zu sehen.
+
+    Bewusst NICHT in ``_clean_text`` eingebaut: das saeubert alles, was in die
+    Engine geht (auch Eingespieltes, wo echte Umbrueche unbeschadet ankommen).
+    Hier geht es nur um den Weg, der zusaetzlich kodiert wird.
+    """
+    t = _clean_text(s)
+    # Absatz = Sprechpause, einfacher Umbruch = Leerzeichen.
+    # Steht davor schon ein Satzzeichen (haeufig ein Doppelpunkt vor einer
+    # Aufzaehlung), waere ein zusaetzlicher Punkt zu hoeren: „Ergebnisse:. Eins".
+    t = re.sub(r"(?<=[.!?:;])[ \t]*\n[ \t]*\n\s*", " ", t)
+    t = re.sub(r"[ \t]*\n[ \t]*\n\s*", ". ", t)
+    t = re.sub(r"[ \t]*[\n\r\t][ \t]*", " ", t)
+    # Markdown-Auszeichnung: der Inhalt bleibt, die Zeichen fliegen raus.
+    t = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", t)      # [Text](Ziel) -> Text
+    t = re.sub(r"(\*\*|__|`+|~~)", "", t)                # fett/kursiv/code
+    t = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", t)          # Ueberschriften
+    # Doppelte Satzzeichen aus dem Absatz-Ersatz und Mehrfach-Leerzeichen.
+    t = re.sub(r"\.\s*\.(\s|$)", ". ", t)
+    t = re.sub(r"[ ]{2,}", " ", t)
+    return t.strip()
 
 
 def _clean_text(s: Any) -> str:
@@ -285,7 +324,10 @@ class NovaSonicSession:
             # Nova Sonic requires the tool result content as a JSON string, not prose.
             await self._send_event({"toolResult": {
                 "promptName": self._prompt_name, "contentName": content_name,
-                "content": json.dumps({"result": _clean_text(result)}),
+                # `_sprechbar` statt `_clean_text`: der Text geht hier durch eine
+                # ZWEITE Kodierung, die echte Umbrueche wieder sichtbar machen
+                # wuerde. Siehe dort.
+                "content": json.dumps({"result": _sprechbar(result)}),
             }})
             await self._send_event({"contentEnd": {
                 "promptName": self._prompt_name, "contentName": content_name,

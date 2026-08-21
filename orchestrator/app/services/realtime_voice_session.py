@@ -1228,6 +1228,25 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
     role = f" Deine Rolle: {agent_role}." if agent_role else ""
     return (
         _now_context() +
+        # Ganz vorne, weil es die haeufigste sichtbare Panne ist. Gemeldet am
+        # 21.08.2026 mit zwei Bildschirmfotos: im Transkript stand woertlich
+        # „Punkte zur Performance: n n-   Echtzeit-Faehigkeit**:" — das Modell
+        # hatte „\n\n- **Echtzeit-Faehigkeit**:" formatiert, und die
+        # Sprachsynthese liest die Markup-Zeichen mit. Im zweiten Fall endete
+        # ein Satz mit Doppelpunkt und die angekuendigte Liste kam gar nicht.
+        # Beides ist dieselbe Ursache: fuers Auge formatiert, obwohl es fuers
+        # Ohr ist. Nachtraeglich reparieren laesst sich das nicht — gesprochen
+        # ist gesprochen.
+        "DU WIRST VORGELESEN, NICHT GELESEN. Schreibe reinen Fliesstext. KEINE "
+        "Sternchen, keine Bindestrich-Listen, keine Nummerierung am Zeilenanfang, "
+        "keine Überschriften, keine Zeilenumbrüche, keine Backticks. Diese "
+        "Zeichen werden LAUT MITGESPROCHEN und klingen wie Kauderwelsch — aus "
+        "„**Punkt**:“ wird ein gestammeltes „Sternchen Punkt Sternchen“. "
+        "Mehrere Punkte verbindest du mit Worten: „erstens … zweitens … und "
+        "drittens …“ oder „zum einen … zum anderen …“. Kündigst du etwas mit "
+        "einem Doppelpunkt an, MUSS im selben Atemzug der Inhalt folgen — ein "
+        "Satz, der mit „:“ endet und dann aufhört, ist schlimmer als keine "
+        "Antwort.\n"
         "NICHT LAUT DENKEN: Sprich NIEMALS deinen Denkprozess aus. Kein „Okay, der Nutzer "
         "fragt…“, kein „Ich muss prüfen…“, kein „Lass mich…“, keine Begründung, WARUM du "
         "etwas tust, keine Werkzeugnamen. Denke still, antworte direkt. Fragt er nach der "

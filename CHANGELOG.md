@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.255.1] - 2026-08-20
+## [1.257.1] - 2026-08-21
 
 ### Behoben
 - **Ein Telegram-Chat konnte sich dauerhaft festfahren.** Ab einem gewissen
@@ -26,6 +26,58 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Ein Längenfehler nennt „tokens" und lief deshalb bisher in die
   Zugangs-Wiederholung: der Chat wartete auf einen neuen Token, den es nie
   brauchte. Beides ist jetzt sauber getrennt.
+
+---
+
+## [1.257.0] - 2026-08-21
+
+### Behoben
+- **Die Stimme las Markdown mit vor** — „Punkte zur Performance: n n- Echtzeit-Fähigkeit\*\*:"
+  — und liess angekündigte Aufzählungen manchmal ganz weg („Hier sind die
+  Hauptoptionen und was du beachten solltest:" … und dann nichts).
+- **Es war kein Escape-Fehler in unserem Code.** Zwei Vermutungen wurden geprüft
+  und verworfen: die Textsäuberung entfernt keine Backslashes, und weder
+  Erinnerungen noch Gesprächsverlauf enthalten literale `\n`-Folgen. Der
+  gespeicherte Text enthält weder Backslash noch Zeilenumbruch — das „n" steht
+  schon so in dem, was die Engine zurückgibt.
+- Es ist eine Formatierungsgewohnheit des Modells: fürs Auge geschrieben, obwohl
+  es fürs Ohr ist. Die Anweisung dagegen steht jetzt als **erste Regel** im
+  Sprach-Systemprompt, nennt die verbotenen Zeichen beim Namen, sagt warum
+  („werden LAUT MITGESPROCHEN") und bietet den Ersatz an („erstens … zweitens …").
+- Der abgebrochene Doppelpunkt ist dieselbe Ursache und ausdrücklich mit geregelt.
+
+### Hinweis
+- Bei einem Sprache-zu-Sprache-Modell gibt es dagegen **keinen mechanischen
+  Hebel** — gesprochen ist gesprochen, die Audioausgabe lässt sich nicht
+  nachträglich säubern. Das Transkript bleibt deshalb bewusst ungeschönt: es
+  soll zeigen, was wirklich gesagt wurde, statt den Fehler unsichtbar zu machen.
+
+---
+
+## [1.256.0] - 2026-08-21
+
+### Behoben
+- **Im Sprachmodus wurde mitten im Satz ein „n" vorgelesen.** Gemeldet mit
+  Bildschirmfoto: „Hier sind ein paar Treffer zu Inside AI auf YouTube: **n n1.**
+  InsideAI\*\* – …". Zwei Fehler in einem Satz — ein zerbrochener Zeilenumbruch
+  und übrig gebliebenes Markdown.
+- Der Hergang ist lehrreich, weil die Reparatur schon einmal da war: eine
+  Säuberung wandelt literale `\n`-Folgen in echte Umbrüche zurück (ihr Kommentar
+  beschreibt genau dieses Symptom) — aber das Werkzeug-Ergebnis wird danach ein
+  **zweites Mal** kodiert, und dabei wird aus dem echten Umbruch wieder das
+  sichtbare Zeichenpaar. Die Sprach-Engine reicht es wörtlich ans Modell, das den
+  Backslash nicht sprechen kann; übrig bleibt das „n".
+- Für gesprochenen Text trägt ein Umbruch ohnehin keine Bedeutung: ein Absatz
+  wird jetzt zur Sprechpause, eine Zeile zum Leerzeichen. Steht davor schon ein
+  Satzzeichen, kommt kein zweiter Punkt dazu.
+- **Markdown wird nicht mehr mitgesprochen** — Sternchen, Backticks,
+  Überschriften-Rauten verschwinden, der Text bleibt. Aus `[Doku](…)` wird
+  „Doku", nicht die Adresse.
+- Der Eingriff bleibt auf den Weg beschränkt, der tatsächlich doppelt kodiert:
+  eingespielte Zwischenmeldungen gehen direkt an die Engine, dort gab es das
+  Problem nie.
+
+---
 
 ## [1.255.0] - 2026-08-19
 
