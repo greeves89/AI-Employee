@@ -103,6 +103,7 @@ class TheRunnerRefusesToCallItDoneTests(unittest.TestCase):
 
         event = {
             "type": "tool_result",
+            "is_error": True,
             "content": "/bin/bash: fork: retry: Resource temporarily unavailable",
         }
         self.assertTrue(AgentRunner._fork_evidence_from_event(event))
@@ -114,6 +115,7 @@ class TheRunnerRefusesToCallItDoneTests(unittest.TestCase):
             "type": "user",
             "message": {"content": [{
                 "type": "tool_result",
+                "is_error": True,
                 "content": [{"type": "text", "text": "error: cannot fork() for remote-https"}],
             }]},
         }
@@ -137,6 +139,45 @@ class TheRunnerRefusesToCallItDoneTests(unittest.TestCase):
 
         event = {"type": "tool_result", "content": "42 files changed"}
         self.assertFalse(AgentRunner._fork_evidence_from_event(event))
+
+    def test_reading_a_logfile_full_of_the_error_is_not_evidence(self):
+        """Der haeufigste Fehlalarm: fremde Fehler LESEN heisst nicht, sie zu HABEN.
+
+        Wer ``/shared/platform-errors.log`` oder Container-Protokolle abruft,
+        bekommt genau diese Zeilen als Werkzeug-Ergebnis zurueck — erfolgreich.
+        Wuerde das zaehlen, koennte niemand mehr Issue #628 untersuchen, ohne
+        den eigenen Lauf als gescheitert zu melden.
+        """
+        from app.agent_runner import AgentRunner
+
+        event = {
+            "type": "user",
+            "message": {"content": [{
+                "type": "tool_result",
+                "content": [{"type": "text", "text": (
+                    "2026-08-21 08:00 ERROR agent-2ad91565 "
+                    "/bin/bash: fork: retry: Resource temporarily unavailable\n"
+                    "2026-08-21 08:01 ERROR runtime: failed to create new OS thread"
+                )}],
+            }]},
+        }
+        self.assertFalse(AgentRunner._fork_evidence_from_event(event))
+
+    def test_a_failed_tool_still_counts(self):
+        """Die Gegenprobe: dasselbe Ergebnis, aber als Fehler gemeldet."""
+        from app.agent_runner import AgentRunner
+
+        event = {
+            "type": "user",
+            "message": {"content": [{
+                "type": "tool_result",
+                "is_error": True,
+                "content": [{"type": "text", "text": (
+                    "/bin/bash: fork: retry: Resource temporarily unavailable"
+                )}],
+            }]},
+        }
+        self.assertTrue(AgentRunner._fork_evidence_from_event(event))
 
 
 class TheConfiguredParallelismIsCappedTests(unittest.TestCase):

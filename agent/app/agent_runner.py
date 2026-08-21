@@ -379,19 +379,30 @@ class AgentRunner:
 
     @staticmethod
     def _fork_evidence_from_event(event: dict) -> list[str]:
-        """Belegzeilen fuer erschoepftes pids-Budget aus Werkzeug-Ergebnissen.
+        """Belegzeilen fuer erschoepftes pids-Budget aus GESCHEITERTEN Werkzeugen.
 
-        Bewusst NUR ``tool_result`` — dort steht, was ein Werkzeug wirklich
-        gemeldet hat. Der Fliesstext des Modells bleibt aussen vor: ein Agent,
-        der ueber genau diesen Fehler schreibt, wuerde sich sonst selbst
-        abschiessen.
+        Zwei Einschraenkungen, beide gegen Fehlalarm:
+
+        Nur ``tool_result`` — der Fliesstext des Modells bleibt aussen vor, sonst
+        schiesst sich ein Agent ab, der ueber genau diesen Fehler schreibt.
+
+        Und nur ein Ergebnis mit ``is_error``. Ein erfolgreiches Werkzeug ist
+        gelaufen, egal was in seiner Ausgabe steht — und was drinsteht, ist oft
+        genau diese Meldung: wer ``/shared/platform-errors.log`` liest oder
+        Container-Protokolle abruft, bekommt fremde ``fork: retry``-Zeilen
+        zurueck. Ohne diese Bedingung wuerde ausgerechnet die Untersuchung von
+        #628 sich selbst als gescheitert markieren.
         """
         blocks: list = []
-        if event.get("type") == "tool_result":
+        if event.get("type") == "tool_result" and event.get("is_error"):
             blocks.append(event.get("content"))
         elif event.get("type") == "user":
             for block in event.get("message", {}).get("content", []) or []:
-                if isinstance(block, dict) and block.get("type") == "tool_result":
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_result"
+                    and block.get("is_error")
+                ):
                     blocks.append(block.get("content"))
 
         found: list[str] = []
