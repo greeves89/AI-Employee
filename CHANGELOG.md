@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.262.0] - 2026-08-21
+
+### Neu
+- **Gespräch und Aufgaben lassen sich wegklappen — die Anzeige in der Mitte wird
+  gross.** In der Sprachansicht liegt der Screenshot des Nutzer-Bildschirms
+  zwischen zwei Spalten und war auf 28rem Breite festgenagelt; erkennen liess
+  sich darauf wenig. Beide Seitenspalten haben jetzt einen Knopf zum Einklappen,
+  übrig bleibt eine schmale Leiste mit Beschriftung und Zähler. Die Mitte nimmt
+  den frei gewordenen Platz, die Bühne löst dabei ihre Breiten- und
+  Höhenbegrenzung. Die Einstellung wird gemerkt.
+
+---
+
 ## [1.261.0] - 2026-08-21
 
 ### Behoben

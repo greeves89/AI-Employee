@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle, LayoutGrid, CalendarClock } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle, LayoutGrid, CalendarClock, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
@@ -1203,6 +1203,35 @@ export function VoiceSessionModal({
   // Groesse des Overlays: der Nutzer zieht sie sich zurecht, wir merken sie uns.
   // Vorher war das Fenster fest (max-w-6xl) — bei langen Zusammenfassungen scrollte
   // man in einer schmalen Spalte, obwohl der Bildschirm leer daneben lag.
+  // Die beiden Seitenspalten lassen sich wegklappen, damit die Buehne in der Mitte
+  // gross wird. Der Nutzer stellt sich das einmal ein — also merken wir es uns.
+  const SPALTEN_KEY = "voice-spalten-eingeklappt";
+  const [gesprAus, setGesprAus] = useState(false);
+  const [aufgabenAus, setAufgabenAus] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SPALTEN_KEY);
+      if (!raw) return;
+      const g = JSON.parse(raw) as { gespraech?: boolean; aufgaben?: boolean };
+      setGesprAus(!!g.gespraech);
+      setAufgabenAus(!!g.aufgaben);
+    } catch {
+      /* Kein gemerkter Stand ist kein Fehler — dann eben beide offen. */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        SPALTEN_KEY,
+        JSON.stringify({ gespraech: gesprAus, aufgaben: aufgabenAus }),
+      );
+    } catch {
+      /* Privater Modus o.ae. — dann gilt die Einstellung nur fuer dieses Gespraech. */
+    }
+  }, [gesprAus, aufgabenAus]);
+
   const SIZE_KEY = "voice-overlay-size";
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [maximized, setMaximized] = useState(false);
@@ -1260,6 +1289,21 @@ export function VoiceSessionModal({
     : sized
     ? "h-full min-h-0"
     : "max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh]";
+  // Eingeklappte Spalten schrumpfen auf eine schmale Leiste; was sie freigeben,
+  // bekommt die Mitte — dort liegen die Screenshots, und genau die sollen gross
+  // werden. Eine Leiste ist 2.75rem breit, das reicht fuer Knopf und Beschriftung.
+  // ACHTUNG: die Klassen muessen WOERTLICH im Quelltext stehen. Tailwind liest
+  // die Dateien als Text — ein zur Laufzeit zusammengebauter Klassenname
+  // existiert im fertigen CSS schlicht nicht, die Spalten blieben dann gleich.
+  const spalten =
+    gesprAus && aufgabenAus
+      ? "lg:grid-cols-[2.75rem_minmax(280px,3fr)_2.75rem]"
+      : gesprAus
+      ? "lg:grid-cols-[2.75rem_minmax(280px,2fr)_1fr]"
+      : aufgabenAus
+      ? "lg:grid-cols-[1fr_minmax(280px,2fr)_2.75rem]"
+      : "lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr]";
+  const buehneWeit = gesprAus || aufgabenAus;
   return (
     <div
       className={embedded
@@ -1361,8 +1405,16 @@ export function VoiceSessionModal({
           {isRealtime ? (
             /* ── Jarvis: 3-pane realtime cockpit (Gespräch | Präsenz | Aufgaben) ── */
             <>
-            <div className={`mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr] lg:items-stretch${sized ? " min-h-0 flex-1" : ""}`}>
+            <div className={`mt-4 grid grid-cols-1 gap-4 ${spalten} lg:items-stretch${sized ? " min-h-0 flex-1" : ""}`}>
               {/* LEFT — conversation transcript, doubles as the file drop zone */}
+              {gesprAus ? (
+                <Klappleiste
+                  titel="Gespräch"
+                  seite="links"
+                  anzahl={turns.length}
+                  onOeffnen={() => setGesprAus(false)}
+                />
+              ) : (
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
@@ -1400,6 +1452,14 @@ export function VoiceSessionModal({
                     {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
                     Datei
                   </button>
+                  <button
+                    onClick={() => setGesprAus(true)}
+                    title="Gespräch einklappen — die Anzeige in der Mitte wird größer"
+                    aria-label="Gespräch einklappen"
+                    className="ml-1 rounded-md p-1 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
+                  >
+                    <PanelLeftClose className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 <div ref={transcriptRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
                   {turns.length === 0 ? (
@@ -1429,6 +1489,7 @@ export function VoiceSessionModal({
                   )}
                 </div>
               </div>
+              )}
 
               {/* CENTER — presence, quiet call controls, and the stage below */}
               <div className="order-1 flex min-w-0 flex-col items-center gap-3.5 py-2 lg:order-2">
@@ -1513,7 +1574,12 @@ export function VoiceSessionModal({
 
                 {/* THE STAGE — whatever the agent is showing right now, big */}
                 {stageItem && (
-                  <div className="relative w-full max-w-md rounded-xl border border-border bg-foreground/[0.02] p-3">
+                  /* Die Buehne war auf 28rem festgenagelt — dann bringt eine
+                     eingeklappte Spalte nichts, der Screenshot bleibt klein und
+                     daneben ist Luft. Ist Platz da, nimmt sie ihn. */
+                  <div className={`relative w-full rounded-xl border border-border bg-foreground/[0.02] p-3 ${
+                    buehneWeit ? "max-w-full" : "max-w-md"
+                  }`}>
                     {/* Ohne das bleibt ein Screenshot bis zum Sitzungsende stehen und
                         verdeckt alles, was danach kommt. */}
                     <button
@@ -1530,7 +1596,9 @@ export function VoiceSessionModal({
                         <img
                           src={`data:${stageItem.media_type || "image/png"};base64,${stageItem.b64}`}
                           alt={stageItem.caption || "Anzeige"}
-                          className="max-h-72 w-full rounded-lg bg-white/5 object-contain"
+                          className={`w-full rounded-lg bg-white/5 object-contain ${
+                            buehneWeit ? "max-h-[62vh]" : "max-h-72"
+                          }`}
                         />
                         {stageItem.caption && (
                           <p className="mt-2 text-center text-xs text-muted-foreground/70">{stageItem.caption}</p>
@@ -1597,9 +1665,25 @@ export function VoiceSessionModal({
               </div>
 
               {/* RIGHT — tasks, live activity, web results */}
+              {aufgabenAus ? (
+                <Klappleiste
+                  titel="Aufgaben"
+                  seite="rechts"
+                  anzahl={tasks.length}
+                  onOeffnen={() => setAufgabenAus(false)}
+                />
+              ) : (
               <div className={`order-3 flex ${paneHeight} min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02]`}>
-                <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
-                  Aufgaben &amp; Aktivität
+                <div className="flex items-center justify-between border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                  <span>Aufgaben &amp; Aktivität</span>
+                  <button
+                    onClick={() => setAufgabenAus(true)}
+                    title="Aufgaben einklappen — die Anzeige in der Mitte wird größer"
+                    aria-label="Aufgaben einklappen"
+                    className="rounded-md p-1 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
+                  >
+                    <PanelRightClose className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
                   {/* Werkzeug-Spur: sichtbar machen, dass und WOMIT er gearbeitet hat. */}
@@ -1888,6 +1972,7 @@ export function VoiceSessionModal({
                   )}
                 </div>
               </div>
+              )}
             </div>
             {webModal && (
               <WebModal url={webModal.url} caption={webModal.caption} onClose={() => setWebModal(null)} />
@@ -2108,6 +2193,46 @@ export function VoiceSessionModal({
 }
 
 /** Round, icon-only call control. Quiet by default so the orb + stage carry the view. */
+/** Rest einer eingeklappten Seitenspalte: schmale Leiste zum Wiederaufklappen.
+ *  Die Beschriftung steht senkrecht, damit man auf 2.75rem noch lesen kann,
+ *  worum es geht — ein blosser Pfeil laesst raten. */
+function Klappleiste({
+  titel,
+  seite,
+  anzahl,
+  onOeffnen,
+}: {
+  titel: string;
+  seite: "links" | "rechts";
+  anzahl?: number;
+  onOeffnen: () => void;
+}) {
+  const Symbol = seite === "links" ? PanelLeftOpen : PanelRightOpen;
+  return (
+    <button
+      onClick={onOeffnen}
+      title={`${titel} wieder einblenden`}
+      aria-label={`${titel} wieder einblenden`}
+      aria-expanded={false}
+      className={`flex min-w-0 flex-row items-center justify-center gap-2 rounded-xl border border-border bg-foreground/[0.02] py-2 text-muted-foreground/70 hover:bg-foreground/[0.05] hover:text-foreground lg:flex-col lg:gap-3 lg:py-3 ${
+        seite === "links" ? "order-2 lg:order-1" : "order-3"
+      }`}
+    >
+      <Symbol className="h-4 w-4 shrink-0" />
+      {/* Quer geschrieben passt die Beschriftung auch in die schmale Leiste;
+          auf dem Telefon ist die Leiste breit, dort bleibt sie waagerecht. */}
+      <span className="whitespace-nowrap text-[10px] uppercase tracking-wider lg:[writing-mode:vertical-rl]">
+        {titel}
+      </span>
+      {!!anzahl && (
+        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+          {anzahl}
+        </span>
+      )}
+    </button>
+  );
+}
+
 function CtrlButton({
   onClick, title, tone = "neutral", children,
 }: {
