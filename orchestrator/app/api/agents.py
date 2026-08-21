@@ -1867,6 +1867,56 @@ async def save_file_content(
     return {"path": body.path, "bytes": geschrieben}
 
 
+@router.get("/{agent_id}/files/download-folder")
+async def download_folder(
+    agent_id: str,
+    path: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    file_mgr: FileManager = Depends(_get_file_manager),
+):
+    """Einen ganzen Ordner aus dem Arbeitsbereich als ZIP herunterladen.
+
+    Gewuenscht am 21.08.2026 an zwei Stellen: in der App-Uebersicht (das
+    Verzeichnis einer App mitnehmen) und im Dateibaum (irgendeinen Ordner).
+    Beide benutzen diesen Endpunkt — zwei Wege mit eigener Logik waeren die
+    naechste Stelle, die auseinanderlaeuft.
+    """
+    from fastapi.responses import Response
+
+    from app.core.file_manager import ExportZuGross
+
+    await _check_owner(agent_id, user, db)
+    agent = await manager._get_agent(agent_id)
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="Agent has no container")
+    try:
+        daten, anzahl = await asyncio.to_thread(
+            file_mgr.export_folder_zip, agent.container_id, path
+        )
+    except ExportZuGross as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001 — ein fehlender Ordner ist kein Serverfehler
+        logger.warning("[Dateien] Export fehlgeschlagen agent=%s: %s",
+                       scrub_log(agent_id), scrub_log(e))
+        raise HTTPException(status_code=404, detail="Ordner nicht gefunden oder nicht lesbar")
+
+    name = (path.rstrip("/").split("/")[-1] or "workspace") + ".zip"
+    return Response(
+        content=daten,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            # Damit die Oberflaeche sagen kann, WIE VIEL drin ist — ein leeres
+            # ZIP sieht sonst aus wie ein erfolgreicher Export.
+            "X-Export-Files": str(anzahl),
+        },
+    )
+
+
 @router.delete("/{agent_id}/files")
 async def delete_file(
     agent_id: str,

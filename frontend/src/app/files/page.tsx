@@ -263,6 +263,15 @@ export default function FilesPage() {
                 <Download className="h-2.5 w-2.5" />
               </button>
             )}
+            {isDir && (
+              <button
+                onClick={(e) => { e.stopPropagation(); window.open(api.getFolderDownloadUrl(agentId, entry.path), "_blank"); }}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                title="Ordner als ZIP herunterladen (ohne node_modules, .git …)"
+              >
+                <Download className="h-2.5 w-2.5" />
+              </button>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); handleDelete(agentId, entry); }}
               className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all shrink-0"

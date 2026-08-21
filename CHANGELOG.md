@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.258.0] - 2026-08-21
+
+### Neu
+- **Ordner lassen sich als ZIP herunterladen** — an beiden Stellen, an denen es
+  gewünscht war: als **Export**-Knopf auf jeder App-Karte (nimmt das
+  Verzeichnis dieser App mit) und als Download-Symbol an jedem Ordner im
+  Dateibaum (in beiden Dateibäumen).
+- Entpackt entsteht wieder ein Ordner, keine Dateiwolke im Download-Verzeichnis.
+- **`node_modules`, `.git`, `__pycache__`, `.venv` und Ähnliches bleiben
+  draußen.** In einem Projektordner machen die leicht das Tausendfache des
+  eigentlichen Codes aus, und alles darin ist aus dem Rest wiederherstellbar.
+  Der Knopf sagt das auch dazu. Ist ein Ordner trotzdem zu groß, kommt eine
+  lesbare Meldung statt eines Zeitablaufs.
+- Der Pfad wird gepackt, ohne im Container ein `zip` vorauszusetzen — ein
+  Export, der je nach Abbild funktioniert oder nicht, ist keiner.
+- Beide Oberflächen benutzen **denselben Endpunkt** mit denselben Wachen wie die
+  übrigen Dateiwege (Anmeldung, Eigentümer, Pfad-Riegel).
+
+### Behoben
+- **Laufende Apps ohne bekannten Pfad.** Wurde eine App gestartet, ohne dass ihre
+  compose-Datei beim Durchsuchen gefunden wurde, stand kein Pfad an ihr — damit
+  ließ sich das Verzeichnis weder anzeigen noch exportieren. Docker trägt den
+  Arbeitspfad als Label mit; genau der wird jetzt als Rückfallebene benutzt.
+
+---
+
 ## [1.257.0] - 2026-08-21
 
 ### Behoben

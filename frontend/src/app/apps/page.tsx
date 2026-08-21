@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   AppWindow, Play, Square, Loader2, Cpu, RefreshCw, ScrollText, Trash2, X, Flag,
-  CheckCircle2, Hammer, Share2, Users, Globe, UserPlus, Link2, Copy, Check,
+  CheckCircle2, Hammer, Share2, Download, Users, Globe, UserPlus, Link2, Copy, Check,
   AlertTriangle, ShieldCheck, Box, User,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
@@ -194,6 +194,15 @@ export default function AppsPage() {
                         title="App für andere freigeben"
                         className="flex items-center gap-1.5 rounded-lg bg-violet-500/10 px-3 py-1.5 text-sm font-medium text-violet-300 hover:bg-violet-500/20 transition-colors">
                         <Share2 className="h-4 w-4" /> Freigeben
+                      </button>
+                    )}
+                    {app.path && (
+                      <button
+                        onClick={() => window.open(
+                          api.getFolderDownloadUrl(app.agent_id, `/workspace/${app.path}`), "_blank")}
+                        title="Das Verzeichnis dieser App als ZIP herunterladen — ohne node_modules, .git und andere wiederherstellbare Ordner"
+                        className="flex items-center gap-1.5 rounded-lg bg-sky-500/10 px-3 py-1.5 text-sm font-medium text-sky-400 hover:bg-sky-500/20 transition-colors">
+                        <Download className="h-4 w-4" /> Export
                       </button>
                     )}
                     {app.path && !readOnly && (
