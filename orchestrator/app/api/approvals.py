@@ -32,18 +32,14 @@ router = APIRouter(prefix="/approvals", tags=["approvals"])
 # denied or cancelled it) into the Sentinel's event pipeline (#590) as a
 # second, orchestrator-generated telemetry source alongside `agent:*:logs`.
 #
-# CAVEAT (found while wiring this up, not yet resolved — see the PR/issue
-# comment this points at): `agents:logs:all` is not exclusively orchestrator-
-# generated today. `agent/app/log_publisher.py` — code that runs INSIDE the
-# agent container — already publishes every tool-call/chat event straight to
-# this same channel, and #589's Redis-ACL design explicitly keeps it on the
-# agent-writable global channel list (it has to: it's the live activity feed
-# the admin UI streams from). So a compromised agent can already publish a
-# forged message on this channel today, `agent_id` field included. Marking
-# `source: "orchestrator"` below lets a future #592 scan rule tell the two
-# apart; it is NOT a security boundary by itself (nothing here is signed) —
-# only real per-channel Redis ACLs (excluding this one) would be.
-_SENTINEL_PIPELINE_CHANNEL = "agents:logs:all"
+# Der oben beschriebene Vorbehalt ist mit #590 aufgeloest: frueher ging dieses
+# Ereignis auf `agents:logs:all`, den global beschreibbaren Kanal. Der Sentinel
+# liest den nicht mehr — er hoert je Agent auf `agent:{id}:logs` und leitet die
+# Zuordnung aus dem Kanalnamen ab statt aus dem Feld `agent_id`. Deshalb muss
+# auch dieses Ereignis in den Namensraum des betroffenen Agenten, sonst erreicht
+# es den Sentinel nicht mehr.
+def _sentinel_pipeline_channel(agent_id: str) -> str:
+    return f"agent:{agent_id}:logs"
 
 
 async def _publish_sentinel_event(
@@ -54,7 +50,7 @@ async def _publish_sentinel_event(
     Best-effort like `_publish_notification` — a missing/unavailable Redis
     client must never break the approval flow itself.
     """
-    if not redis or not redis.client:
+    if not redis or not redis.client or not agent_id:
         return
     try:
         event = json.dumps({
@@ -64,7 +60,7 @@ async def _publish_sentinel_event(
             "data": {**data, "source": "orchestrator"},
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-        await redis.client.publish(_SENTINEL_PIPELINE_CHANNEL, event)
+        await redis.client.publish(_sentinel_pipeline_channel(agent_id), event)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[Sentinel] Failed to publish {event_type} event for {scrub_log(agent_id)}: {e}")
 

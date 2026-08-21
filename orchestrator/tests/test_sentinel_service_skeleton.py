@@ -36,7 +36,7 @@ class TestSentinelServiceSkeleton(unittest.IsolatedAsyncioTestCase):
         service._stop_agent = AsyncMock()
         service._notify = AsyncMock()
 
-        await service._handle_event({"agent_id": "agent-1", "type": "created"})
+        await service._handle_event("agent-1", {"type": "created"})
 
         service._stop_agent.assert_not_awaited()
         service._notify.assert_not_awaited()
@@ -49,16 +49,16 @@ class TestSentinelServiceSkeleton(unittest.IsolatedAsyncioTestCase):
         service._stop_agent = AsyncMock()
         service._notify = AsyncMock()
 
-        await service._handle_event({"agent_id": "agent-1", "type": "tool_call"})
+        await service._handle_event("agent-1", {"type": "tool_call"})
 
         service._stop_agent.assert_awaited_once_with("agent-1", "test_rule")
         service._notify.assert_awaited_once_with("agent-1", "test_rule", "leaked secret")
 
-    async def test_handle_event_ignores_events_without_agent_id(self):
+    async def test_handle_event_ignores_an_empty_agent_id(self):
         service = _service()
         service._scan = AsyncMock()
 
-        await service._handle_event({"type": "created"})
+        await service._handle_event("", {"type": "created"})
 
         service._scan.assert_not_called()
 
@@ -66,7 +66,7 @@ class TestSentinelServiceSkeleton(unittest.IsolatedAsyncioTestCase):
         service = _service()
         service._handle_event = AsyncMock()
 
-        await service._handle_message(b"not-json{{{")
+        await service._handle_message(b"not-json{{{", b"agent:agent-1:logs")
 
         service._handle_event.assert_not_awaited()
 
@@ -74,15 +74,27 @@ class TestSentinelServiceSkeleton(unittest.IsolatedAsyncioTestCase):
         service = _service()
         service._handle_event = AsyncMock()
 
-        await service._handle_message(b'{"agent_id": "agent-1", "type": "created"}')
+        await service._handle_message(
+            b'{"agent_id": "agent-1", "type": "created"}', b"agent:agent-1:logs")
 
-        service._handle_event.assert_awaited_once_with({"agent_id": "agent-1", "type": "created"})
+        service._handle_event.assert_awaited_once_with(
+            "agent-1", {"agent_id": "agent-1", "type": "created"})
 
     async def test_handle_message_ignores_non_dict_payload(self):
         service = _service()
         service._handle_event = AsyncMock()
 
-        await service._handle_message(b"[1, 2, 3]")
+        await service._handle_message(b"[1, 2, 3]", b"agent:agent-1:logs")
+
+        service._handle_event.assert_not_awaited()
+
+    async def test_handle_message_without_a_channel_is_dropped(self):
+        """#590: ohne belegbare Herkunft wird nichts geprueft — sonst waere die
+        Zuordnung wieder geraten."""
+        service = _service()
+        service._handle_event = AsyncMock()
+
+        await service._handle_message(b'{"agent_id": "agent-1"}', None)
 
         service._handle_event.assert_not_awaited()
 
