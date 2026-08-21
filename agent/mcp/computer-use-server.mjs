@@ -91,7 +91,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       name: "computer_screenshot",
       description:
         "Capture a screenshot of the user's desktop. Returns a base64-encoded PNG. " +
-        "Use this to see the current state of the screen before clicking or typing.",
+        "Use this to see the current state of the screen before clicking or typing. " +
+        "The reply states the image size in points and, when the user has more than " +
+        "one monitor, which displays exist — click coordinates must lie inside the " +
+        "stated size, with (0,0) at the top left. Pass `display` to look at another " +
+        "monitor.",
       inputSchema: {
         type: "object",
         properties: {
@@ -99,6 +103,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "number",
             description: "Scale factor (default 1.0). Use 0.5 for Retina displays to reduce size.",
             default: 1.0,
+          },
+          display: {
+            type: "number",
+            description:
+              "Which monitor to capture (1 = primary). Omit for the primary one. " +
+              "The reply lists the available displays.",
           },
         },
       },
@@ -451,12 +461,38 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     let result;
 
     switch (name) {
-      case "computer_screenshot":
-        result = await sendCommand("screenshot", { scale: args?.scale ?? 1.0 }, 30);
+      case "computer_screenshot": {
+        const screenshotParams = { scale: args?.scale ?? 1.0 };
+        // Nur mitschicken, wenn wirklich gewaehlt — eine aeltere Bridge kennt
+        // den Parameter nicht.
+        if (args?.display) screenshotParams.display = Number(args.display);
+        result = await sendCommand("screenshot", screenshotParams, 30);
         if (result.screenshot_b64) {
+          // Groesse und Bildschirme MITSAGEN. Die Bridge rechnet beides seit
+          // jeher aus, und niemand hat es je weitergereicht — das Modell nannte
+          // Klickkoordinaten, ohne zu wissen, wie gross das Bild ist, und wusste
+          // nichts von einem zweiten Monitor (gemeldet am 21.08.2026).
+          const groesse = result.image_size || {};
+          const teile = ["Screenshot captured."];
+          if (groesse.w && groesse.h) {
+            teile.push(
+              `Image is ${groesse.w}x${groesse.h} points — click coordinates must be ` +
+              `inside that, (0,0) is top left.`,
+            );
+          }
+          const monitore = result.displays || [];
+          if (monitore.length > 1) {
+            const liste = monitore
+              .map((d) => `${d.number}${d.primary ? " (primary)" : ""}: ${d.width}x${d.height}`)
+              .join(", ");
+            teile.push(
+              `The user has ${monitore.length} displays (${liste}); this is number ` +
+              `${result.display}. Pass display=N to look at another one.`,
+            );
+          }
           return {
             content: [
-              { type: "text", text: "Screenshot captured." },
+              { type: "text", text: teile.join(" ") },
               { type: "image", data: result.screenshot_b64, mimeType: "image/png" },
             ],
           };
@@ -465,6 +501,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           content: [{ type: "text", text: `Error: screenshot did not return image data: ${JSON.stringify(result)}` }],
           isError: true,
         };
+      }
 
       case "computer_ax_tree":
         result = await sendCommand("ax_tree", {

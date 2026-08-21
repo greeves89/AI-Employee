@@ -338,7 +338,7 @@ def input_permission_granted(fragen: bool = False) -> bool | None:
         return None
 
 
-def _capture_macos_inprocess():
+def _capture_macos_inprocess(display_id=None):
     """Bildschirmaufnahme IM EIGENEN PROZESS via Quartz — oder None.
 
     `pyautogui.screenshot()` startet auf macOS bei JEDEM Aufruf das Programm
@@ -395,7 +395,8 @@ def _capture_macos_inprocess():
     except ImportError:
         pass
     try:
-        cg = CGDisplayCreateImage(CGMainDisplayID())
+        # Ohne Angabe der Hauptbildschirm — mit Angabe genau der gewuenschte.
+        cg = CGDisplayCreateImage(display_id if display_id is not None else CGMainDisplayID())
         if cg is None:
             return None
         w, h = CGImageGetWidth(cg), CGImageGetHeight(cg)
@@ -410,6 +411,53 @@ def _capture_macos_inprocess():
     except Exception as e:  # noqa: BLE001
         log.warning("Quartz screenshot failed, falling back to pyautogui: %s", e)
         return None
+
+
+def list_displays() -> list[dict]:
+    """Alle angeschlossenen Bildschirme mit Nummer, Lage und Groesse.
+
+    Bis 1.259.x nahm die Bridge ausschliesslich den HAUPTbildschirm auf
+    (``CGMainDisplayID``). Wer zwei Monitore hat, konnte dem Agenten den
+    zweiten nicht zeigen — und ihn auch nicht darauf schicken. Gemeldet am
+    21.08.2026: „bei Screenshot AUCH ALLE ANDEREN Bildschirme … das ich dem
+    Agenten sagen kann geh bitte auf Bildschirm 1 oder 2".
+
+    Nummer 1 ist immer der Hauptbildschirm — das ist die Zaehlweise, die ein
+    Mensch am Telefon benutzt.
+    """
+    if sys.platform != "darwin":
+        w, h = _logical_screen_size()
+        return [{"number": 1, "primary": True, "width": w, "height": h, "x": 0, "y": 0}]
+    try:
+        from Quartz import (  # type: ignore
+            CGDisplayBounds, CGGetActiveDisplayList, CGMainDisplayID,
+        )
+    except Exception:  # noqa: BLE001
+        w, h = _logical_screen_size()
+        return [{"number": 1, "primary": True, "width": w, "height": h, "x": 0, "y": 0}]
+
+    try:
+        fehler, kennungen, _anzahl = CGGetActiveDisplayList(16, None, None)
+        if fehler or not kennungen:
+            raise RuntimeError("keine Bildschirme gemeldet")
+        haupt = CGMainDisplayID()
+        # Der Hauptbildschirm zuerst — er ist Nummer 1.
+        sortiert = sorted(kennungen, key=lambda d: (d != haupt, d))
+        aus = []
+        for i, kennung in enumerate(sortiert, start=1):
+            b = CGDisplayBounds(kennung)
+            aus.append({
+                "number": i,
+                "id": int(kennung),
+                "primary": bool(kennung == haupt),
+                "x": int(b.origin.x), "y": int(b.origin.y),
+                "width": int(b.size.width), "height": int(b.size.height),
+            })
+        return aus
+    except Exception as e:  # noqa: BLE001 — lieber ein Bildschirm als gar keiner
+        log.warning("Bildschirmliste nicht ermittelbar: %s", e)
+        w, h = _logical_screen_size()
+        return [{"number": 1, "primary": True, "width": w, "height": h, "x": 0, "y": 0}]
 
 
 def _logical_screen_size() -> tuple[int, int]:
@@ -427,7 +475,7 @@ def _logical_screen_size() -> tuple[int, int]:
         return 0, 0
 
 
-def capture_screenshot(scale: float = 1.0) -> tuple[str, dict]:
+def capture_screenshot(scale: float = 1.0, display: int | None = None) -> tuple[str, dict]:
     """Screenshot als base64-PNG PLUS der Maszstab Bild→Bildschirm.
 
     Der Kern des Retina-Klickproblems: Das Bild wird auf 1280px Breite
@@ -445,7 +493,20 @@ def capture_screenshot(scale: float = 1.0) -> tuple[str, dict]:
     """
     from PIL import Image
 
-    img = _capture_macos_inprocess() if sys.platform == "darwin" else None
+    bildschirme = list_displays()
+    gewaehlt = None
+    if display:
+        gewaehlt = next((b for b in bildschirme if b["number"] == int(display)), None)
+        if gewaehlt is None:
+            raise ValueError(
+                f"Bildschirm {display} gibt es nicht — verfuegbar sind "
+                f"1 bis {len(bildschirme)}."
+            )
+
+    img = (
+        _capture_macos_inprocess(gewaehlt.get("id") if gewaehlt else None)
+        if sys.platform == "darwin" else None
+    )
     if img is None:
         import pyautogui
         img = pyautogui.screenshot()
@@ -461,7 +522,11 @@ def capture_screenshot(scale: float = 1.0) -> tuple[str, dict]:
     img.save(buf, format="PNG", optimize=True)
     b64 = base64.b64encode(buf.getvalue()).decode()
 
-    logical_w, logical_h = _logical_screen_size()
+    if gewaehlt:
+        # Bei einem Nebenbildschirm gilt SEINE Groesse, nicht die des Haupts.
+        logical_w, logical_h = gewaehlt["width"], gewaehlt["height"]
+    else:
+        logical_w, logical_h = _logical_screen_size()
     # Ohne verlaessliche Bildschirmgroesse NICHT skalieren (1.0) — ein falscher
     # Faktor waere schlimmer als gar keiner.
     scale_x = (logical_w / img.width) if (logical_w and img.width) else 1.0
@@ -470,6 +535,8 @@ def capture_screenshot(scale: float = 1.0) -> tuple[str, dict]:
         "image_w": img.width, "image_h": img.height,
         "logical_w": logical_w, "logical_h": logical_h,
         "scale_x": scale_x, "scale_y": scale_y,
+        "display": (gewaehlt or next((b for b in bildschirme if b["primary"]), bildschirme[0]))["number"],
+        "displays": bildschirme,
     }
     return b64, meta
 
@@ -800,7 +867,7 @@ BROWSER_PROFILE_DIR = os.path.join(
 # `test_bridge_announces_what_it_can_do.py` haelt sie mit dem Dispatcher
 # zusammen, damit das nicht noch einmal auseinanderlaeuft.
 BASE_ACTIONS = [
-    "screenshot", "click", "type", "key", "hotkey", "scroll", "move", "drag",
+    "screenshot", "list_displays", "click", "type", "key", "hotkey", "scroll", "move", "drag",
     "open_app", "open_url", "close_app", "list_windows", "focus_window",
     "get_clipboard", "set_clipboard",
     "start_input_capture", "stop_input_capture",
@@ -1536,19 +1603,47 @@ class CommandDispatcher:
         # Koordinaten unveraendert durchgereicht (altes Verhalten). Sobald ein
         # Screenshot lief, klickt der Agent im Raum, den er auch SIEHT.
         self._coord_scale: tuple[float, float] = (1.0, 1.0)
+        #: Ursprung des zuletzt aufgenommenen Bildschirms im gemeinsamen
+        #: Klickraum. Bei mehreren Monitoren liegt der zweite NICHT bei 0/0 —
+        #: ohne diesen Versatz landet jeder Klick auf dem zweiten Monitor auf
+        #: dem ersten.
+        self._coord_offset: tuple[int, int] = (0, 0)
 
-    def _to_click_space(self, x, y) -> tuple[int, int]:
+    def _display_offset(self, display) -> tuple[int, int] | None:
+        """Ursprung eines AUSDRUECKLICH genannten Bildschirms.
+
+        Ohne das haengt der Versatz allein am zuletzt aufgenommenen Screenshot.
+        Sagt der Nutzer „klick auf Bildschirm zwei", ohne dass unmittelbar davor
+        ein Screenshot GENAU DIESES Bildschirms lief, klickt der Agent sonst mit
+        dem Versatz des falschen Monitors — beim Nutzer am 21.08.2026 sichtbar:
+        „das ging tatsaechlich voll daneben".
+        """
+        if not display:
+            return None
+        try:
+            nummer = int(display)
+        except (TypeError, ValueError):
+            return None
+        for b in list_displays():
+            if b.get("number") == nummer:
+                return int(b.get("x", 0)), int(b.get("y", 0))
+        return None
+
+    def _to_click_space(self, x, y, display=None) -> tuple[int, int]:
         """Eine Koordinate aus dem Bildraum (was das Modell sieht) in den
         logischen Klickraum (was pyautogui erwartet) umrechnen."""
         sx, sy = self._coord_scale
-        return round(float(x) * sx), round(float(y) * sy)
+        ox, oy = self._display_offset(display) or self._coord_offset
+        return round(float(x) * sx) + ox, round(float(y) * sy) + oy
 
     def _to_image_space(self, x, y) -> tuple[int, int]:
         """Rueckrichtung: eine logische Koordinate (z.B. aus dem
         Bedienungshilfen-Baum) in den Bildraum bringen, damit sie im SELBEN
         Raum liegt wie alles, was das Modell sonst klickt."""
         sx, sy = self._coord_scale
-        return round(float(x) / sx) if sx else int(x), round(float(y) / sy) if sy else int(y)
+        ox, oy = self._coord_offset
+        x, y = float(x) - ox, float(y) - oy
+        return round(x / sx) if sx else int(x), round(y / sy) if sy else int(y)
 
     def _element_to_image_space(self, element: dict | None) -> dict | None:
         """Einen Element-Treffer (center + bbox in logischen Punkten) in den
@@ -1602,15 +1697,38 @@ class CommandDispatcher:
                 # Fehlende Freigabe ist KEIN Screenshot — lieber ein klarer Fehler als
                 # ein Bild, auf dem nur der Schreibtisch zu sehen ist.
                 scale = params.get("scale", 1.0)
+                # `display` waehlt den Bildschirm (1 = Hauptbildschirm). Ohne
+                # Angabe bleibt es beim Hauptbildschirm — so verhaelt sich jeder
+                # bestehende Aufrufer wie bisher.
+                display = params.get("display")
                 try:
-                    b64, meta = capture_screenshot(scale)
+                    b64, meta = capture_screenshot(scale, display)
                     # Den Maszstab merken: die NAECHSTEN Klicks liegen im Raum
                     # dieses Bildes und muessen zurueckgerechnet werden.
                     self._coord_scale = (meta["scale_x"], meta["scale_y"])
-                    return {"screenshot_b64": b64,
-                            "image_size": {"w": meta["image_w"], "h": meta["image_h"]}}
+                    # Bei einem Nebenbildschirm liegt der Ursprung NICHT bei 0/0:
+                    # pyautogui klickt ueber alle Bildschirme hinweg in einem
+                    # gemeinsamen Raum. Ohne diesen Versatz landet jeder Klick auf
+                    # dem zweiten Monitor auf dem ersten.
+                    gewaehlt = next(
+                        (b for b in meta["displays"] if b["number"] == meta["display"]), None
+                    )
+                    self._coord_offset = (
+                        (gewaehlt.get("x", 0), gewaehlt.get("y", 0)) if gewaehlt else (0, 0)
+                    )
+                    return {
+                        "screenshot_b64": b64,
+                        "image_size": {"w": meta["image_w"], "h": meta["image_h"]},
+                        "display": meta["display"],
+                        "displays": meta["displays"],
+                    }
+                except ValueError as e:
+                    return {"ok": False, "error": str(e)}
                 except ScreenRecordingPermissionError as e:
                     return {"ok": False, "error": str(e)}
+
+            elif action == "list_displays":
+                return {"displays": list_displays()}
 
             elif action == "ax_tree":
                 app = params.get("app")
@@ -1624,7 +1742,7 @@ class CommandDispatcher:
                 return {"ax_tree": tree}
 
             elif action in ("click", "mouse_click"):
-                cx, cy = self._to_click_space(params["x"], params["y"])
+                cx, cy = self._to_click_space(params["x"], params["y"], params.get("display"))
                 self._ctrl.click(
                     cx, cy,
                     button=params.get("button", "left"),
@@ -1645,18 +1763,18 @@ class CommandDispatcher:
                 return {"ok": True}
 
             elif action in ("scroll", "mouse_scroll"):
-                sx, sy = self._to_click_space(params["x"], params["y"])
+                sx, sy = self._to_click_space(params["x"], params["y"], params.get("display"))
                 self._ctrl.scroll(sx, sy, params.get("amount", 3))
                 return {"ok": True}
 
             elif action in ("move", "mouse_move"):
-                mx, my = self._to_click_space(params["x"], params["y"])
+                mx, my = self._to_click_space(params["x"], params["y"], params.get("display"))
                 self._ctrl.move(mx, my)
                 return {"ok": True}
 
             elif action == "drag":
-                x1, y1 = self._to_click_space(params["x1"], params["y1"])
-                x2, y2 = self._to_click_space(params["x2"], params["y2"])
+                x1, y1 = self._to_click_space(params["x1"], params["y1"], params.get("display"))
+                x2, y2 = self._to_click_space(params["x2"], params["y2"], params.get("display"))
                 self._ctrl.drag(x1, y1, x2, y2, params.get("duration", 0.3))
                 return {"ok": True}
 

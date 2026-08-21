@@ -804,14 +804,24 @@ DESKTOP_TOOL = {
             "seinem Netz erreichbar sind (Intranet, Ticketsystem, interne Tools).\n"
             "action='open' — öffnet eine URL oder ein Programm bei ihm. target = URL "
             "(https://…) oder Programmname ('Notepad', 'Safari').\n"
-            "action='screenshot' — sieht nach, was gerade auf seinem Bildschirm ist. "
+            "action='screenshot' — sieht nach, was gerade auf seinem Bildschirm ist; "
+            "mit display=2 den zweiten Monitor. "
             "Nutze das, bevor du klickst oder tippst, und wenn er fragt 'was siehst du'.\n"
-            "action='click' — klickt bei x/y. action='type' — tippt text.\n"
+            "action='click' — klickt bei x/y; bei mehreren Monitoren display "
+            "mitgeben. KOORDINATEN NIEMALS RATEN: nimm ausschliesslich Werte, die "
+            "dir gerade `find` geliefert hat oder die du in EINEM Screenshot "
+            "abgelesen hast, den du unmittelbar davor gemacht hast. Erfundene "
+            "Zahlen klicken irgendwohin — beim Nutzer am 21.08.2026 landete ein "
+            "geratener Klick in einem fremden Fenster. Im Zweifel erst `find`. "
+            "action='type' — tippt text.\n"
             "action='find' — SUCHT ein Element (Knopf, Feld, Eintrag) ueber den "
             "Bedienungshilfen-Baum und liefert seine Koordinaten; target = Beschriftung "
             "oder Rolle. action='wait' — wartet, bis so ein Element erscheint. "
             "action='key' — Tastenkombination, text z. B. 'cmd+f' oder 'enter'. "
             "action='scroll' — scrollt (text = Anzahl, negativ = nach unten).\n"
+            "MEHRERE BILDSCHIRME: erst `screenshot` MIT display=N, dann `click` mit "
+            "demselben display=N. Die Koordinaten gelten immer fuer den Bildschirm, "
+            "den du gerade angesehen hast.\n"
             "SO BEDIENST DU EINE APP: oeffnen → `find` auf das Element → `click` → "
             "`type`/`key` → wieder nachsehen (`screenshot` oder `find`). Sage NIEMALS, "
             "du koennest 'nur oeffnen, aber nicht navigieren' — das stimmt nicht.\n"
@@ -827,6 +837,11 @@ DESKTOP_TOOL = {
                 "text": {"type": "string", "description": "Text (type), Tastenkombination wie 'cmd+f' (key) oder Scroll-Anzahl."},
                 "x": {"type": "number", "description": "X-Koordinate (bei action='click')."},
                 "y": {"type": "number", "description": "Y-Koordinate (bei action='click')."},
+                "display": {"type": "number", "description": (
+                    "Welchen Bildschirm aufnehmen (bei action='screenshot'). "
+                    "1 = Hauptbildschirm. Weglassen = Hauptbildschirm. Nach einem "
+                    "Screenshot steht in der Antwort, wie viele es gibt."
+                )},
             },
             "required": ["action"],
         })},
@@ -1221,6 +1236,41 @@ def _short_args(args: dict, limit: int = 160) -> str:
         parts.append(f"{k}: {text}")
     joined = ", ".join(parts)
     return joined[:limit] + ("…" if len(joined) > limit else "")
+
+
+def _bildschirm_hinweis(result: dict) -> str:
+    """Was das Modell ueber Bildgroesse und Bildschirme wissen muss.
+
+    Die Bridge rechnet ``image_size`` und die Bildschirmliste seit jeher aus —
+    und niemand hat sie je weitergereicht. Das Modell nannte deshalb
+    Klickkoordinaten, ohne zu wissen, wie gross das Bild ueberhaupt ist, und
+    wusste nichts von einem zweiten Monitor. Beides am 21.08.2026 gemeldet:
+    „der voice und auch agent wissen WIE GROSS das Bild ist, damit der besser
+    klicken kann" und „geh bitte auf bildschirm 1 oder 2".
+
+    Gibt "" zurueck, wenn die Bridge nichts mitgeliefert hat — aeltere Bridges
+    tun das nicht, und ein erfundener Hinweis waere schlimmer als keiner.
+    """
+    teile = []
+    groesse = result.get("image_size") or {}
+    if groesse.get("w") and groesse.get("h"):
+        teile.append(
+            f" Das Bild ist {groesse['w']} mal {groesse['h']} Punkte gross — "
+            "Klickkoordinaten muessen INNERHALB dieser Groesse liegen, (0,0) ist oben links."
+        )
+    bildschirme = result.get("displays") or []
+    if len(bildschirme) > 1:
+        aktuell = result.get("display")
+        liste = ", ".join(
+            f"{b['number']}{' (Haupt)' if b.get('primary') else ''}: {b.get('width')}x{b.get('height')}"
+            for b in bildschirme
+        )
+        teile.append(
+            f" Der Nutzer hat {len(bildschirme)} Bildschirme ({liste}); du siehst gerade "
+            f"Nummer {aktuell}. Sagt er „geh auf Bildschirm 2\", mach einen neuen Screenshot "
+            "mit display=2."
+        )
+    return "".join(teile)
 
 
 def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
@@ -2009,8 +2059,22 @@ class RealtimeVoiceSession:
         if self._closed or not self._nova:
             return
         if not answer or answer.startswith("[Fehler"):
-            msg = ("Die Auswertung des Screenshots kam nicht zurueck. Sag das kurz und frage, "
-                   "was er sieht — erfinde nichts.")
+            # Den GRUND weitersagen, nicht nur „kam nicht zurueck".
+            #
+            # Am 21.08.2026 hiess der Grund „You've hit your limit · resets
+            # 3:10pm" — das Kontingent des Agenten war aufgebraucht. Die Stimme
+            # sagte stattdessen „die Auswertung kam nicht zurueck" und fragte den
+            # Nutzer, was ER sieht. Der suchte darauf eine halbe Stunde den
+            # Fehler bei den Bildern, obwohl die Antwort im Klartext vorlag.
+            grund = answer[8:].rstrip("]").strip() if answer.startswith("[Fehler") else ""
+            msg = (
+                f"Die Auswertung ist fehlgeschlagen. Der Grund im Wortlaut: {grund}. "
+                "Sag ihm diesen Grund kurz und in eigenen Worten — erfinde nichts "
+                "dazu und frage nicht, was er sieht."
+                if grund else
+                "Die Auswertung des Screenshots kam nicht zurueck — ohne Begruendung. "
+                "Sag das kurz und frage, was er sieht — erfinde nichts."
+            )
         else:
             msg = ("Auswertung des Screenshots ist da: " + answer +
                    "\nGib das jetzt knapp wieder, in einem oder zwei Saetzen.")
@@ -2355,7 +2419,7 @@ class RealtimeVoiceSession:
                 str(args.get("action") or "").strip().lower(),
                 str(args.get("target") or ""),
                 str(args.get("text") or ""),
-                args.get("x"), args.get("y"),
+                args.get("x"), args.get("y"), args.get("display"),
             ))
             return
 
@@ -3203,7 +3267,7 @@ class RealtimeVoiceSession:
                 f"'{action}' sagt mir nichts.")
 
     async def _desktop(self, action: str, target: str = "", text: str = "",
-                       x=None, y=None) -> str:
+                       x=None, y=None, display=None) -> str:
         """Rechner des Nutzers über die Desktop-Bridge bedienen.
 
         Geht bewusst durch `dispatch_bridge_command` — dieselbe Funktion, die auch der
@@ -3251,11 +3315,19 @@ class RealtimeVoiceSession:
                 act, params = "open_app", {"name": tgt}
         elif action == "screenshot":
             act, params = "screenshot", {"scale": 0.5}
+            # Bildschirmwahl nur mitgeben, wenn wirklich eine kam — eine
+            # aeltere Bridge kennt den Parameter nicht.
+            if display:
+                params["display"] = int(display)
         elif action == "click":
             if x is None or y is None:
                 return "Für einen Klick brauche ich x und y — vorher einen Screenshot machen."
             try:
                 act, params = "mouse_click", {"x": int(x), "y": int(y)}
+                # Bei mehreren Monitoren muss der Klick wissen, WELCHER gemeint
+                # ist — sonst gilt der Versatz des zuletzt aufgenommenen.
+                if display:
+                    params["display"] = int(display)
             except (TypeError, ValueError):
                 # Ohne das flog die ValueError am try/except unten vorbei, _respond wurde
                 # nie aufgerufen und der Sprach-Turn blieb stehen, bis Nova selbst abbrach.
@@ -3337,9 +3409,16 @@ class RealtimeVoiceSession:
             b64 = result.get("screenshot_b64") or ""
             if not b64:
                 return "Der Screenshot kam leer zurück — ich sehe seinen Bildschirm gerade nicht."
+            # Zwei Screenshots nebeneinander sind ohne Nummer nicht zu
+            # unterscheiden — beide hiessen bis eben „Bildschirm des Nutzers".
+            nr = result.get("display")
+            groesse = result.get("image_size") or {}
+            beschriftung = f"Bildschirm {nr}" if nr else "Bildschirm des Nutzers"
+            if groesse.get("w") and groesse.get("h"):
+                beschriftung += f" — {groesse['w']} x {groesse['h']}"
             await self._emit({"type": "media", "data": {
                 "kind": "image", "media_type": "image/png", "b64": b64,
-                "caption": "Bildschirm des Nutzers", "auto_open": True,
+                "caption": beschriftung, "auto_open": True,
             }})
             # Nova Sonic hat keinen Bildkanal. Aber ICH haenge an einem echten Agenten,
             # und DER sieht Bilder — mit dem Zugang, der fuer ihn ohnehin eingerichtet
@@ -3352,7 +3431,8 @@ class RealtimeVoiceSession:
             asyncio.create_task(self._analyse_screenshot_bg(b64, text.strip(), plat))
             return ("Screenshot gemacht und dem Nutzer angezeigt. Sag ihm in EINEM kurzen "
                     "Satz, dass du gerade draufschaust — und beschreibe NICHTS, du kennst "
-                    "den Inhalt noch nicht. Die Auswertung kommt gleich von selbst.")
+                    "den Inhalt noch nicht. Die Auswertung kommt gleich von selbst."
+                    + _bildschirm_hinweis(result))
         if act in ("open_app", "open_url"):
             return f"'{target.strip()}' wurde geöffnet — die Bridge meldet Erfolg."
         return "Erledigt."
@@ -4908,36 +4988,72 @@ class RealtimeVoiceSession:
             return "An meine Zeitpläne komme ich gerade nicht ran."
 
     async def _cancel_task(self) -> str:
-        """Stop ongoing work by voice: signal the agent to stop the current chat turn
-        and cancel any still-queued scheduled tasks (running ones can't be pulled)."""
-        stopped = False
+        """Laufende und wartende Arbeit dieses Agenten wirklich stoppen — und
+        danach NACHSEHEN, ob es geklappt hat.
+
+        Die alte Fassung meldete Erfolg, sobald ein Redis-``publish`` ohne
+        Fehler zurueckkam. Ein publish gelingt aber auch, wenn niemand zuhoert.
+        Dazu kannte sie nur ``self._planned``, also Aufgaben, die IN DIESER
+        Sitzung eingeplant wurden — bei einem fortgesetzten Gespraech ist das
+        leer. Ergebnis am 21.08.2026: der Nutzer sagte dreimal „abbrechen",
+        bekam dreimal „ist gestoppt", und die Aufgabe lief Stunden spaeter
+        immer noch.
+
+        Jetzt: alle offenen Aufgaben des Agenten aus der Datenbank holen,
+        abbrechen, und anschliessend erneut nachsehen. Gesagt wird, was
+        tatsaechlich der Fall ist.
+        """
+        from app.core.load_balancer import LoadBalancer
+        from app.core.task_router import TaskRouter
+        from app.db.session import async_session_factory
+        from app.models.task import Task, TaskStatus
+        from sqlalchemy import select
+
+        OFFEN = (TaskStatus.QUEUED, TaskStatus.PENDING, TaskStatus.RUNNING)
+
+        # Laufende Chat-Zuege stoppen (das hat immer funktioniert).
         try:
             if self.redis.client:
                 await self.redis.client.publish(f"agent:{self.agent_id}:chat:cancel", "stop")
-                stopped = True
         except Exception:  # noqa: BLE001
-            pass
-        cancelled = 0
-        if self._planned:
-            from app.db.session import async_session_factory
-            from app.core.task_router import TaskRouter
-            from app.core.load_balancer import LoadBalancer
-            for tid in list(self._planned.keys()):
-                try:
-                    async with async_session_factory() as db:
-                        await TaskRouter(db, self.redis, LoadBalancer(self.redis)).cancel_task(tid)
-                    self._planned.pop(tid, None)
-                    cancelled += 1
-                except Exception:  # noqa: BLE001 — running/already done → can't cancel
-                    pass
-        if stopped or cancelled:
-            parts = []
-            if stopped:
-                parts.append("die laufende Aufgabe gestoppt")
-            if cancelled:
-                parts.append(f"{cancelled} eingeplante Aufgabe(n) abgebrochen")
-            return "Ich habe " + " und ".join(parts) + "."
-        return "Es lief gerade nichts, was ich abbrechen könnte."
+            logger.warning("[Sprache] Chat-Abbruch nicht zustellbar", exc_info=True)
+
+        async def _offene() -> list:
+            async with async_session_factory() as db:
+                r = await db.execute(
+                    select(Task.id, Task.title).where(
+                        Task.agent_id == self.agent_id, Task.status.in_(OFFEN)
+                    )
+                )
+                return list(r)
+
+        vorher = await _offene()
+        if not vorher:
+            return "Es lief gerade nichts, was ich abbrechen könnte."
+
+        for tid, _titel in vorher:
+            try:
+                async with async_session_factory() as db:
+                    await TaskRouter(db, self.redis, LoadBalancer(self.redis)).cancel_task(tid)
+                self._planned.pop(tid, None)
+            except Exception as e:  # noqa: BLE001 — gerade fertig geworden o.ae.
+                logger.info("[Sprache] %s nicht abbrechbar: %s", tid, e)
+
+        # Der Runner braucht einen Moment, um den Abbruch zu quittieren.
+        await asyncio.sleep(1.5)
+        uebrig = await _offene()
+
+        geschafft = len(vorher) - len(uebrig)
+        if not uebrig:
+            return (f"Ich habe {geschafft} Aufgabe(n) gestoppt. Es läuft nichts mehr."
+                    if geschafft else "Es läuft nichts mehr.")
+        # NICHT behaupten, alles sei gestoppt — genau das war der Fehler.
+        namen = ", ".join((t or "ohne Titel")[:40] for _i, t in uebrig[:3])
+        return (
+            f"Ich habe {geschafft} Aufgabe(n) gestoppt, aber {len(uebrig)} läuft/laufen noch: "
+            f"{namen}. Die reagiert gerade nicht auf den Abbruch — sag mir Bescheid, "
+            "wenn ich es gleich noch einmal versuchen soll."
+        )
 
     async def _voice_help(self) -> str:
         """Spoken capability overview."""
