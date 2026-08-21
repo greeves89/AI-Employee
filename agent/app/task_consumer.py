@@ -7,6 +7,12 @@ import redis.asyncio as aioredis
 
 from app.config import settings
 from app.log_publisher import LogPublisher
+from app.pids_budget import (
+    DEFAULT_COST_PER_RUN,
+    DEFAULT_RESERVE,
+    max_concurrent_runs,
+    read_pids_limits,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +20,36 @@ logger = logging.getLogger(__name__)
 def _max_parallel_tasks() -> int:
     """How many tasks ONE agent runs at the same time. Default 1 = serial (unchanged
     behaviour). Set MAX_PARALLEL_TASKS>1 to let independent tasks run concurrently —
-    each in its own runner subprocess. Mirrors MAX_PARALLEL_CHATS on the chat side."""
+    each in its own runner subprocess. Mirrors MAX_PARALLEL_CHATS on the chat side.
+
+    Der Wunsch aus ``MAX_PARALLEL_TASKS`` ist eine Obergrenze, keine Zusage: was
+    nicht ins pids-Budget des Containers passt, wird gedeckelt. Sonst startet der
+    Agent mehr Laeufe, als der Kernel Prozesse hergibt — und ab da scheitert jedes
+    ``gh``/``git``/``pytest`` still (Issue #628)."""
     try:
-        return max(1, int(os.getenv("MAX_PARALLEL_TASKS", "1")))
+        wanted = max(1, int(os.getenv("MAX_PARALLEL_TASKS", "1")))
     except (TypeError, ValueError):
-        return 1
+        wanted = 1
+
+    budget = max_concurrent_runs(
+        reserve=_env_int("PIDS_RESERVE", DEFAULT_RESERVE),
+        cost_per_run=_env_int("PIDS_COST_PER_RUN", DEFAULT_COST_PER_RUN),
+    )
+    if wanted > budget:
+        logger.warning(
+            "MAX_PARALLEL_TASKS=%d passt nicht ins pids-Budget des Containers — "
+            "gedeckelt auf %d (siehe Issue #628)",
+            wanted, budget,
+        )
+        return budget
+    return wanted
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
 
 
 class TaskConsumer:
@@ -71,8 +102,13 @@ class TaskConsumer:
         # Report as ready
         await self._log_publisher.publish_status("idle")
         await self._log_publisher.publish("", "system", {"message": f"Agent {self.agent_id} ready"})
-        if max_parallel > 1:
-            logger.info("Task parallelism enabled: up to %d tasks concurrently", max_parallel)
+        current, limit = read_pids_limits()
+        logger.info(
+            "Task parallelism: %d concurrent (pids %s/%s)",
+            max_parallel,
+            current if current is not None else "?",
+            limit if limit is not None else "?",
+        )
 
         # Der Abbruch-Zuhoerer laeuft neben der Warteschlange — sonst koennte er
         # erst dran kommen, wenn gerade keine Aufgabe verarbeitet wird, also
