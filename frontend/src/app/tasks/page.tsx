@@ -269,7 +269,12 @@ function SingleTasksView() {
             const cfg = statusConfig[task.status] ?? statusConfig.pending;
             const Icon = cfg.icon;
             const canDelete = task.status !== "running";
-            const canCancel = task.status === "queued" || task.status === "pending";
+            // Laufende Aufgaben waren hier nie abbrechbar — passend dazu wies
+            // der Server sie ab. Genau daran scheiterte das Stoppen: der Nutzer
+            // hatte KEINEN Weg, eine laufende Aufgabe anzuhalten, und die
+            // Sprachfront meldete trotzdem Erfolg (21.08.2026).
+            const laeuft = task.status === "running";
+            const canCancel = laeuft || task.status === "queued" || task.status === "pending";
             return (
               <Link key={task.id} href={`/tasks/${task.id}`}>
               <motion.div
@@ -322,11 +327,20 @@ function SingleTasksView() {
                     {canCancel && (
                       <button
                         onClick={(e) => handleCancel(e, task.id)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-[11px] font-medium text-amber-400 hover:bg-amber-500/20 transition-colors opacity-0 group-hover:opacity-100"
-                        title="Cancel task"
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors",
+                          laeuft
+                            // Bei einer laufenden Aufgabe NICHT erst beim Überfahren
+                            // zeigen: wer sie stoppen will, sucht den Knopf sofort.
+                            ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20"
+                            : "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20 opacity-0 group-hover:opacity-100",
+                        )}
+                        title={laeuft
+                          ? "Laufende Aufgabe stoppen — der Agent bricht seine Arbeit ab"
+                          : "Wartende Aufgabe aus der Warteschlange nehmen"}
                       >
                         <Ban className="h-3 w-3" />
-                        Cancel
+                        {laeuft ? "Stoppen" : "Abbrechen"}
                       </button>
                     )}
                     {canDelete && (

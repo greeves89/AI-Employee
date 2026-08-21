@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.259.0] - 2026-08-21
+## [1.265.0] - 2026-08-21
 
 ### Sicherheit
 - **Ein Agent konnte einen anderen Agenten anhalten lassen.** Die Aufsicht
@@ -35,6 +35,126 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   unsichtbar — dagegen hilft nur Beobachtung ausserhalb des Agenten. Das ist
   bewusst nicht Teil dieser Änderung.
 - Ohne Wirkung, solange die Aufsicht ausgeschaltet ist (Standard).
+
+---
+
+## [1.263.1] - 2026-08-21
+
+### Behoben
+- **Der Hinweis „Veraltete Oberfläche — neu laden" konnte nie erscheinen.** Er
+  vergleicht die im Bundle eingebackene Version mit der des Backends; wird das
+  Frontend-Image ohne `APP_VERSION` gebaut, steht dort „dev" und der Abgleich
+  fällt still aus. Folge: nach einem Deploy blieb die geöffnete Seite auf dem
+  alten Stand, ohne dass irgendetwas darauf hinwies. Ein Produktions-Bundle
+  ohne Version meldet sich jetzt in der Konsole statt stumm zu bleiben.
+- **Der Abgleich lief nur alle 30 Minuten.** Wer die Seite lange offen hält,
+  erfuhr von einem Deploy entsprechend spät. Beim Zurückkommen auf den Tab wird
+  jetzt sofort nachgefragt.
+
+---
+
+## [1.263.0] - 2026-08-21
+
+### Behoben
+- **Mehrere Bilder lagen übereinander statt nebeneinander.** Die Bühne der
+  Sprachansicht holte sich genau EIN Element — das neueste. Jedes weitere Bild
+  lag zwar vor, aber unsichtbar darunter: wer beide Bildschirme aufnahm, sah
+  trotzdem nur einen, ohne jede Meldung. Jetzt stehen bis zu vier Anzeigen
+  nebeneinander, jede einzeln schliessbar, und die Bühne macht dafür von selbst
+  auf. Sind mehr da, wird das gesagt statt stillschweigend abgeschnitten.
+- **Screenshots hiessen alle gleich.** Beide Bildschirme trugen die Beschriftung
+  „Bildschirm des Nutzers" — nebeneinander nicht auseinanderzuhalten. Jetzt
+  stehen Nummer und Bildgrösse darunter.
+
+---
+
+## [1.262.0] - 2026-08-21
+
+### Neu
+- **Gespräch und Aufgaben lassen sich wegklappen — die Anzeige in der Mitte wird
+  gross.** In der Sprachansicht liegt der Screenshot des Nutzer-Bildschirms
+  zwischen zwei Spalten und war auf 28rem Breite festgenagelt; erkennen liess
+  sich darauf wenig. Beide Seitenspalten haben jetzt einen Knopf zum Einklappen,
+  übrig bleibt eine schmale Leiste mit Beschriftung und Zähler. Die Mitte nimmt
+  den frei gewordenen Platz, die Bühne löst dabei ihre Breiten- und
+  Höhenbegrenzung. Die Einstellung wird gemerkt.
+
+---
+
+## [1.261.0] - 2026-08-21
+
+### Behoben
+- **Klicks auf dem zweiten Monitor landeten auf dem ersten.** Die Bildschirm-
+  Auswahl galt bisher nur für die Aufnahme; ein Klick benutzte den Versatz des
+  zuletzt aufgenommenen Bildschirms. Wer also nach dem Screenshot von Nummer 2
+  klickte, traf richtig — dazwischen ein Blick auf Nummer 1, und derselbe Klick
+  ging daneben. `click`, `move`, `scroll` und `drag` nehmen die Bildschirmnummer
+  jetzt selbst entgegen und rechnen mit deren Ursprung.
+- **Geratene Koordinaten.** Das Modell setzte Klicks auf Beispielwerte (x=123,
+  y=456), ohne vorher hingesehen zu haben. Die Werkzeugbeschreibung sagt jetzt
+  ausdrücklich: Koordinaten nur aus `find` oder aus einem unmittelbar davor
+  gemachten Screenshot — niemals raten.
+- **„Die Auswertung kam nicht zurück" verschwieg den Grund.** Die Bildauswertung
+  scheiterte in Wahrheit an einem erschöpften Modell-Kontingent; die Sprachfront
+  warf diese Begründung weg und liess den Nutzer beim Bild suchen. Der Grund wird
+  jetzt im Wortlaut weitergereicht und vorgelesen.
+
+---
+
+## [1.260.0] - 2026-08-21
+
+### Neu
+- **Screenshots von jedem Bildschirm, nicht nur vom ersten.** Die Bridge nahm
+  ausschliesslich den Hauptbildschirm auf — ein zweiter Monitor war unerreichbar.
+  Jetzt lässt sich sagen „geh auf Bildschirm 2"; Nummer 1 ist immer der
+  Hauptbildschirm, also die Zählweise, die man am Telefon benutzt.
+- **Der Agent weiss jetzt, wie gross das Bild ist.** Die Bridge rechnete
+  `image_size` seit jeher aus und gab es zurück — im Orchestrator und im Agenten
+  kam es **nirgends** vor. Das Modell nannte Klickkoordinaten, ohne die Bildgrösse
+  zu kennen. Jede Antwort auf einen Screenshot nennt sie jetzt, samt „(0,0) ist
+  oben links" und, bei mehreren Monitoren, welche es gibt.
+- In **allen drei Laufzeiten** — Sprachfront, MCP (Claude Code/Codex) und
+  Custom-LLM. Die Bildschirmliste erscheint nur, wenn es wirklich mehrere gibt;
+  bei einem Monitor wäre sie nur Rauschen im Kontext.
+
+### Behoben
+- **Klicks auf dem zweiten Monitor landeten auf dem ersten.** Ein Nebenbildschirm
+  beginnt nicht bei 0/0 — geklickt wird aber über alle Monitore hinweg in einem
+  gemeinsamen Raum. Der Ursprung des aufgenommenen Bildschirms wird jetzt
+  mitgeführt und auf jede Klick-, Bewegungs- und Scroll-Koordinate gerechnet;
+  der Rückweg zieht ihn wieder ab, damit beide Richtungen Umkehrungen bleiben.
+
+---
+
+## [1.259.0] - 2026-08-21
+
+### Behoben
+- **„Abbrechen" brach nichts ab — und meldete trotzdem Erfolg.** Gemeldet mit
+  vollständigem Gesprächsprotokoll: dreimal „abbrechen", dreimal „Beide Aufgaben
+  wurden gestoppt" — und die Aufgabe lief Stunden später immer noch.
+- Vier Schichten desselben Problems, alle nachgewiesen:
+  1. Die Sprachfront meldete Erfolg, sobald ein Redis-`publish` ohne Fehler
+     zurückkam. Ein publish gelingt aber auch, wenn **niemand zuhört**.
+  2. Sie kannte nur die Aufgaben aus **dieser** Sitzung. Das Gespräch war
+     fortgesetzt, die Menge also leer.
+  3. Der Abbruch wies **laufende** Aufgaben grundsätzlich mit einem Fehler ab —
+     es gab keinen Weg, eine laufende Aufgabe zu stoppen.
+  4. Der Kanal `task:cancel` wurde seit jeher besendet und hatte **keinen
+     einzigen Zuhörer**.
+- Der Agent hört jetzt auf diesem Kanal und bricht die benannte Aufgabe wirklich
+  ab. Der Zuhörer läuft neben der Warteschlange — in derselben Schleife käme er
+  erst dran, wenn gerade nichts verarbeitet wird, also genau dann nicht, wenn man
+  ihn braucht.
+- Die Sprachfront holt jetzt **alle** offenen Aufgaben des Agenten, bricht sie ab
+  und **sieht danach noch einmal nach**. Überlebt etwas, sagt sie das — mit Namen
+  — statt Erfolg zu behaupten.
+
+### Neu
+- **Manueller Stopp für laufende Aufgaben.** In der Aufgabenliste hat eine
+  laufende Aufgabe jetzt einen roten „Stoppen"-Knopf, der **ohne Überfahren**
+  sichtbar ist — wer etwas anhalten will, sucht den Knopf sofort. Wartende
+  Aufgaben behalten ihr dezentes „Abbrechen": eine wartende nimmt man aus der
+  Schlange, eine laufende unterbricht man.
 
 ---
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle, LayoutGrid, CalendarClock } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle, LayoutGrid, CalendarClock, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
@@ -1199,10 +1199,44 @@ export function VoiceSessionModal({
   // and fill it; as a modal we keep the compact viewport-fraction heights.
   // The newest visual the agent pushed — it gets the big stage under the orb.
   // Files stay in the right-hand activity pane (they're downloads, not visuals).
-  const stageItem = media.find((m) => m.kind === "image" || m.kind === "web");
+  // Frueher: `media.find(...)` — nur das NEUESTE Bild war zu sehen, jedes
+  // weitere legte sich unsichtbar darunter. Wer zwei Bildschirme aufnimmt, sah
+  // nur einen. Jetzt stehen sie nebeneinander; mehr als vier waeren auf einer
+  // Buehne allerdings nur noch Briefmarken, also gilt dort Schluss.
+  const alleAnzeigen = media.filter((m) => m.kind === "image" || m.kind === "web");
+  const stageItems = alleAnzeigen.slice(0, 4);
   // Groesse des Overlays: der Nutzer zieht sie sich zurecht, wir merken sie uns.
   // Vorher war das Fenster fest (max-w-6xl) — bei langen Zusammenfassungen scrollte
   // man in einer schmalen Spalte, obwohl der Bildschirm leer daneben lag.
+  // Die beiden Seitenspalten lassen sich wegklappen, damit die Buehne in der Mitte
+  // gross wird. Der Nutzer stellt sich das einmal ein — also merken wir es uns.
+  const SPALTEN_KEY = "voice-spalten-eingeklappt";
+  const [gesprAus, setGesprAus] = useState(false);
+  const [aufgabenAus, setAufgabenAus] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SPALTEN_KEY);
+      if (!raw) return;
+      const g = JSON.parse(raw) as { gespraech?: boolean; aufgaben?: boolean };
+      setGesprAus(!!g.gespraech);
+      setAufgabenAus(!!g.aufgaben);
+    } catch {
+      /* Kein gemerkter Stand ist kein Fehler — dann eben beide offen. */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        SPALTEN_KEY,
+        JSON.stringify({ gespraech: gesprAus, aufgaben: aufgabenAus }),
+      );
+    } catch {
+      /* Privater Modus o.ae. — dann gilt die Einstellung nur fuer dieses Gespraech. */
+    }
+  }, [gesprAus, aufgabenAus]);
+
   const SIZE_KEY = "voice-overlay-size";
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [maximized, setMaximized] = useState(false);
@@ -1260,6 +1294,30 @@ export function VoiceSessionModal({
     : sized
     ? "h-full min-h-0"
     : "max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh]";
+  // Eingeklappte Spalten schrumpfen auf eine schmale Leiste; was sie freigeben,
+  // bekommt die Mitte — dort liegen die Screenshots, und genau die sollen gross
+  // werden. Eine Leiste ist 2.75rem breit, das reicht fuer Knopf und Beschriftung.
+  // ACHTUNG: die Klassen muessen WOERTLICH im Quelltext stehen. Tailwind liest
+  // die Dateien als Text — ein zur Laufzeit zusammengebauter Klassenname
+  // existiert im fertigen CSS schlicht nicht, die Spalten blieben dann gleich.
+  const spalten =
+    gesprAus && aufgabenAus
+      ? "lg:grid-cols-[2.75rem_minmax(280px,3fr)_2.75rem]"
+      : gesprAus
+      ? "lg:grid-cols-[2.75rem_minmax(280px,2fr)_1fr]"
+      : aufgabenAus
+      ? "lg:grid-cols-[1fr_minmax(280px,2fr)_2.75rem]"
+      : "lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr]";
+  // Mehrere Anzeigen brauchen Breite, sonst stehen sie als Streifen untereinander.
+  // Dafuer muss der Nutzer nicht erst eine Spalte einklappen.
+  const buehneWeit = gesprAus || aufgabenAus || stageItems.length > 1;
+  // Tailwind liest die Datei als Text — die Klassen muessen woertlich dastehen.
+  const buehnenRaster =
+    stageItems.length >= 3
+      ? "grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+      : stageItems.length === 2
+      ? "grid gap-3 grid-cols-1 md:grid-cols-2"
+      : "grid gap-3 grid-cols-1";
   return (
     <div
       className={embedded
@@ -1361,8 +1419,16 @@ export function VoiceSessionModal({
           {isRealtime ? (
             /* ── Jarvis: 3-pane realtime cockpit (Gespräch | Präsenz | Aufgaben) ── */
             <>
-            <div className={`mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr] lg:items-stretch${sized ? " min-h-0 flex-1" : ""}`}>
+            <div className={`mt-4 grid grid-cols-1 gap-4 ${spalten} lg:items-stretch${sized ? " min-h-0 flex-1" : ""}`}>
               {/* LEFT — conversation transcript, doubles as the file drop zone */}
+              {gesprAus ? (
+                <Klappleiste
+                  titel="Gespräch"
+                  seite="links"
+                  anzahl={turns.length}
+                  onOeffnen={() => setGesprAus(false)}
+                />
+              ) : (
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
@@ -1400,6 +1466,14 @@ export function VoiceSessionModal({
                     {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
                     Datei
                   </button>
+                  <button
+                    onClick={() => setGesprAus(true)}
+                    title="Gespräch einklappen — die Anzeige in der Mitte wird größer"
+                    aria-label="Gespräch einklappen"
+                    className="ml-1 rounded-md p-1 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
+                  >
+                    <PanelLeftClose className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 <div ref={transcriptRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
                   {turns.length === 0 ? (
@@ -1429,6 +1503,7 @@ export function VoiceSessionModal({
                   )}
                 </div>
               </div>
+              )}
 
               {/* CENTER — presence, quiet call controls, and the stage below */}
               <div className="order-1 flex min-w-0 flex-col items-center gap-3.5 py-2 lg:order-2">
@@ -1512,65 +1587,33 @@ export function VoiceSessionModal({
                 </div>
 
                 {/* THE STAGE — whatever the agent is showing right now, big */}
-                {stageItem && (
-                  <div className="relative w-full max-w-md rounded-xl border border-border bg-foreground/[0.02] p-3">
-                    {/* Ohne das bleibt ein Screenshot bis zum Sitzungsende stehen und
-                        verdeckt alles, was danach kommt. */}
-                    <button
-                      onClick={() => setMedia((prev) => prev.filter((m) => m !== stageItem))}
-                      title="Ausblenden"
-                      aria-label="Anzeige ausblenden"
-                      className="absolute right-2 top-2 z-10 rounded-md bg-background/70 p-1 text-muted-foreground backdrop-blur hover:bg-background hover:text-foreground"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                    {stageItem.kind === "image" && stageItem.b64 ? (
-                      <>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`data:${stageItem.media_type || "image/png"};base64,${stageItem.b64}`}
-                          alt={stageItem.caption || "Anzeige"}
-                          className="max-h-72 w-full rounded-lg bg-white/5 object-contain"
-                        />
-                        {stageItem.caption && (
-                          <p className="mt-2 text-center text-xs text-muted-foreground/70">{stageItem.caption}</p>
-                        )}
-                      </>
-                    ) : stageItem.url ? (
-                      <div className="space-y-2">
-                        <div className="flex items-start gap-2">
-                          <Globe className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
-                          <div className="min-w-0">
-                            {stageItem.caption && <p className="text-sm text-foreground/90">{stageItem.caption}</p>}
-                            <p className="truncate text-[11px] text-muted-foreground/60">{stageItem.url}</p>
-                          </div>
-                        </div>
-                        {blockedUrls.has(stageItem.url) && (
-                          <p className="text-[11px] text-amber-400/90">
-                            Dein Browser hat den Tab blockiert — hier klicken zum Öffnen.
-                          </p>
-                        )}
-                        <div className="flex flex-wrap gap-1.5">
-                          {stageItem.embeddable && (
-                            <button
-                              onClick={() => setWebModal({ url: stageItem.url!, caption: stageItem.caption })}
-                              className="rounded-md bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300 hover:bg-sky-500/20"
-                            >
-                              Im Fenster öffnen
-                            </button>
-                          )}
-                          <a
-                            href={stageItem.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-[11px] font-medium hover:bg-foreground/[0.10]"
-                          >
-                            <ExternalLink className="h-3 w-3" /> Neuer Tab
-                          </a>
-                        </div>
-                      </div>
-                    ) : null}
+                {stageItems.length > 0 && (
+                  /* Die Buehne war auf 28rem festgenagelt UND zeigte nur ein
+                     Bild. Jetzt nimmt sie den Platz, den sie hat, und stellt
+                     mehrere Anzeigen nebeneinander — zwei Bildschirme sind so
+                     endlich gleichzeitig zu sehen. */
+                  <div className={`w-full ${buehnenRaster} ${buehneWeit ? "max-w-full" : "max-w-md"}`}>
+                    {stageItems.map((item, bi) => (
+                      <Buehnenkarte
+                        key={`${item.filename || item.url || "anzeige"}-${bi}`}
+                        item={item}
+                        gross={stageItems.length === 1}
+                        weit={buehneWeit}
+                        blockiert={!!item.url && blockedUrls.has(item.url)}
+                        onAusblenden={() => setMedia((prev) => prev.filter((m) => m !== item))}
+                        onImFenster={(url, caption) => setWebModal({ url, caption })}
+                      />
+                    ))}
                   </div>
+                )}
+                {alleAnzeigen.length > stageItems.length && (
+                  /* Stillschweigend abschneiden waere gelogen — es sieht dann so
+                     aus, als haette der Agent nur vier Bilder geliefert. */
+                  <p className="text-center text-[11px] text-muted-foreground/50">
+                    {alleAnzeigen.length - stageItems.length} ältere Anzeige
+                    {alleAnzeigen.length - stageItems.length === 1 ? "" : "n"} ausgeblendet —
+                    schliesse eine, um sie zu sehen.
+                  </p>
                 )}
 
                 {uploadMsg && (
@@ -1597,9 +1640,25 @@ export function VoiceSessionModal({
               </div>
 
               {/* RIGHT — tasks, live activity, web results */}
+              {aufgabenAus ? (
+                <Klappleiste
+                  titel="Aufgaben"
+                  seite="rechts"
+                  anzahl={tasks.length}
+                  onOeffnen={() => setAufgabenAus(false)}
+                />
+              ) : (
               <div className={`order-3 flex ${paneHeight} min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02]`}>
-                <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
-                  Aufgaben &amp; Aktivität
+                <div className="flex items-center justify-between border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                  <span>Aufgaben &amp; Aktivität</span>
+                  <button
+                    onClick={() => setAufgabenAus(true)}
+                    title="Aufgaben einklappen — die Anzeige in der Mitte wird größer"
+                    aria-label="Aufgaben einklappen"
+                    className="rounded-md p-1 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
+                  >
+                    <PanelRightClose className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
                   {/* Werkzeug-Spur: sichtbar machen, dass und WOMIT er gearbeitet hat. */}
@@ -1888,6 +1947,7 @@ export function VoiceSessionModal({
                   )}
                 </div>
               </div>
+              )}
             </div>
             {webModal && (
               <WebModal url={webModal.url} caption={webModal.caption} onClose={() => setWebModal(null)} />
@@ -2108,6 +2168,139 @@ export function VoiceSessionModal({
 }
 
 /** Round, icon-only call control. Quiet by default so the orb + stage carry the view. */
+type Anzeige = {
+  kind: string;
+  media_type?: string;
+  b64?: string;
+  filename?: string;
+  caption?: string;
+  url?: string;
+  embeddable?: boolean;
+};
+
+/** Eine Anzeige auf der Buehne — Screenshot oder Web-Karte.
+ *  Ausgelagert, weil jetzt mehrere davon nebeneinander stehen: vorher lag der
+ *  Aufbau ein einziges Mal inline im Grundriss und liess sich nicht wiederholen. */
+function Buehnenkarte({
+  item,
+  gross,
+  weit,
+  blockiert,
+  onAusblenden,
+  onImFenster,
+}: {
+  item: Anzeige;
+  gross: boolean;
+  weit: boolean;
+  blockiert: boolean;
+  onAusblenden: () => void;
+  onImFenster: (url: string, caption?: string) => void;
+}) {
+  // Allein darf ein Bild die ganze Hoehe nehmen; zu mehreren muss es sich
+  // bescheiden, sonst scrollt man von einem Screenshot zum naechsten.
+  const hoehe = gross ? (weit ? "max-h-[62vh]" : "max-h-72") : "max-h-[34vh]";
+  return (
+    <div className="relative min-w-0 rounded-xl border border-border bg-foreground/[0.02] p-3">
+      {/* Ohne das bleibt ein Screenshot bis zum Sitzungsende stehen und
+          verdeckt alles, was danach kommt. */}
+      <button
+        onClick={onAusblenden}
+        title="Ausblenden"
+        aria-label="Anzeige ausblenden"
+        className="absolute right-2 top-2 z-10 rounded-md bg-background/70 p-1 text-muted-foreground backdrop-blur hover:bg-background hover:text-foreground"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+      {item.kind === "image" && item.b64 ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`data:${item.media_type || "image/png"};base64,${item.b64}`}
+            alt={item.caption || "Anzeige"}
+            className={`w-full rounded-lg bg-white/5 object-contain ${hoehe}`}
+          />
+          {item.caption && (
+            <p className="mt-2 text-center text-xs text-muted-foreground/70">{item.caption}</p>
+          )}
+        </>
+      ) : item.url ? (
+        <div className="space-y-2">
+          <div className="flex items-start gap-2">
+            <Globe className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
+            <div className="min-w-0">
+              {item.caption && <p className="text-sm text-foreground/90">{item.caption}</p>}
+              <p className="truncate text-[11px] text-muted-foreground/60">{item.url}</p>
+            </div>
+          </div>
+          {blockiert && (
+            <p className="text-[11px] text-amber-400/90">
+              Dein Browser hat den Tab blockiert — hier klicken zum Öffnen.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-1.5">
+            {item.embeddable && (
+              <button
+                onClick={() => onImFenster(item.url!, item.caption)}
+                className="rounded-md bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300 hover:bg-sky-500/20"
+              >
+                Im Fenster öffnen
+              </button>
+            )}
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-[11px] font-medium hover:bg-foreground/[0.10]"
+            >
+              <ExternalLink className="h-3 w-3" /> Neuer Tab
+            </a>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Rest einer eingeklappten Seitenspalte: schmale Leiste zum Wiederaufklappen.
+ *  Die Beschriftung steht senkrecht, damit man auf 2.75rem noch lesen kann,
+ *  worum es geht — ein blosser Pfeil laesst raten. */
+function Klappleiste({
+  titel,
+  seite,
+  anzahl,
+  onOeffnen,
+}: {
+  titel: string;
+  seite: "links" | "rechts";
+  anzahl?: number;
+  onOeffnen: () => void;
+}) {
+  const Symbol = seite === "links" ? PanelLeftOpen : PanelRightOpen;
+  return (
+    <button
+      onClick={onOeffnen}
+      title={`${titel} wieder einblenden`}
+      aria-label={`${titel} wieder einblenden`}
+      aria-expanded={false}
+      className={`flex min-w-0 flex-row items-center justify-center gap-2 rounded-xl border border-border bg-foreground/[0.02] py-2 text-muted-foreground/70 hover:bg-foreground/[0.05] hover:text-foreground lg:flex-col lg:gap-3 lg:py-3 ${
+        seite === "links" ? "order-2 lg:order-1" : "order-3"
+      }`}
+    >
+      <Symbol className="h-4 w-4 shrink-0" />
+      {/* Quer geschrieben passt die Beschriftung auch in die schmale Leiste;
+          auf dem Telefon ist die Leiste breit, dort bleibt sie waagerecht. */}
+      <span className="whitespace-nowrap text-[10px] uppercase tracking-wider lg:[writing-mode:vertical-rl]">
+        {titel}
+      </span>
+      {!!anzahl && (
+        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+          {anzahl}
+        </span>
+      )}
+    </button>
+  );
+}
+
 function CtrlButton({
   onClick, title, tone = "neutral", children,
 }: {

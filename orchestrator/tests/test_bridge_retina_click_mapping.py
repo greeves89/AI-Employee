@@ -53,6 +53,10 @@ class RetinaClickMappingTests(unittest.TestCase):
         self.d.voice_capture = None
         self.d._browser = None
         self.d._coord_scale = (1.0, 1.0)
+        # Seit 1.259.x merkt sich der Dispatcher zusaetzlich den Ursprung des
+        # aufgenommenen Bildschirms: bei mehreren Monitoren beginnt der zweite
+        # nicht bei 0/0. Ohne Versatz ist es der Hauptbildschirm.
+        self.d._coord_offset = (0, 0)
 
     def _click(self, x, y):
         return self.d.dispatch({"action": "click", "params": {"x": x, "y": y}})
@@ -109,3 +113,40 @@ class RetinaClickMappingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SecondScreenOffsetTests(unittest.TestCase):
+    """Bei mehreren Monitoren beginnt der zweite NICHT bei 0/0.
+
+    pyautogui klickt ueber alle Bildschirme hinweg in EINEM gemeinsamen Raum.
+    Ohne den Versatz landet jeder Klick auf dem zweiten Monitor auf dem ersten —
+    genau daneben, und zwar systematisch.
+    """
+
+    def setUp(self):
+        self.d = bridge.CommandDispatcher.__new__(bridge.CommandDispatcher)
+        self.ctrl = _RecordingController()
+        self.d._ctrl = self.ctrl
+        self.d.input_recorder = None
+        self.d.voice_capture = None
+        self.d._browser = None
+        self.d._coord_scale = (1.0, 1.0)
+        # Zweiter Monitor, rechts neben dem ersten.
+        self.d._coord_offset = (1920, 0)
+
+    def test_a_click_lands_on_the_second_screen(self):
+        self.d.dispatch({"action": "click", "params": {"x": 100, "y": 50}})
+        self.assertEqual(self.ctrl.calls[-1], ("click", 2020, 50))
+
+    def test_the_way_back_removes_it_again(self):
+        """Beide Richtungen muessen Umkehrungen voneinander bleiben — sonst
+        klickt `find_element` daneben."""
+        zurueck = self.d._to_image_space(2020, 50)
+        self.assertEqual(zurueck, (100, 50))
+
+    def test_scale_and_offset_work_together(self):
+        """Ein Retina-Nebenmonitor hat beides: einen Maszstab UND einen
+        Versatz."""
+        self.d._coord_scale = (2.0, 2.0)
+        self.d.dispatch({"action": "click", "params": {"x": 100, "y": 50}})
+        self.assertEqual(self.ctrl.calls[-1], ("click", 1920 + 200, 100))

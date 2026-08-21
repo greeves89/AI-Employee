@@ -308,7 +308,13 @@ class VoiceAgentScopingTests(unittest.IsolatedAsyncioTestCase):
         ):
             await v._analyse_screenshot_bg("abc", "", "")
         said = v._nova.inject_user_text.await_args[0][0]
-        self.assertIn("nicht zurueck", said)
+        # Seit dem 21.08.2026 wird der GRUND mitgesagt, nicht nur „kam nicht
+        # zurueck": damals lautete er „You've hit your limit · resets 3:10pm",
+        # und der Nutzer suchte eine halbe Stunde bei den Bildern, weil die
+        # Stimme ihn verschwieg. Geprueft wird weiterhin die Haltung — Fehler
+        # eingestehen statt etwas zu erfinden.
+        self.assertIn("fehlgeschlagen", said)
+        self.assertIn("Timeout", said)
         self.assertIn("erfinde nichts", said.lower())
 
 
