@@ -192,11 +192,23 @@ async def list_apps(
             share_scope = shared[proj]
         if not agent:
             continue
+        # Der Pfad kommt normalerweise aus dem Compose-Scan oben. Wurde die
+        # App aber gestartet, ohne dass ihre compose-Datei gefunden wurde,
+        # stand hier bisher `None` — und ohne Pfad laesst sich das Verzeichnis
+        # weder anzeigen noch exportieren. Docker traegt den Arbeitspfad als
+        # Label mit; das ist genau die Angabe, die uns fehlt.
+        arbeitspfad = str(c.labels.get("com.docker.compose.project.working_dir") or "")
+        rel_aus_label = (
+            arbeitspfad.replace("/workspace/", "").replace("/workspace", "").strip("/")
+            if arbeitspfad.startswith("/workspace") else ""
+        ) or None
         entry = apps.setdefault(proj, {
             "project": proj, "agent_id": agent.id, "agent_name": agent.name,
-            "name": proj, "path": None, "status": "stopped",
+            "name": proj, "path": rel_aus_label, "status": "stopped",
             "containers": [], "url": None, "shared_with_me": share_scope,
         })
+        if not entry.get("path") and rel_aus_label:
+            entry["path"] = rel_aus_label
         entry["containers"].append({
             "name": c.name, "status": c.status,
             "service": c.labels.get("com.docker.compose.service", ""),

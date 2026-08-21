@@ -991,6 +991,16 @@ export async function uploadFiles(
   return res.json();
 }
 
+/**
+ * Einen ganzen Ordner aus dem Arbeitsbereich als ZIP herunterladen.
+ *
+ * Der Browser laedt selbst; die Anmeldung reist im Cookie mit. Genutzt von der
+ * App-Uebersicht (Verzeichnis einer App) und vom Dateibaum (beliebiger Ordner).
+ */
+export function getFolderDownloadUrl(agentId: string, path: string): string {
+  return `${getBase()}/agents/${agentId}/files/download-folder?path=${encodeURIComponent(path)}`;
+}
+
 export async function saveFileContent(
   agentId: string,
   path: string,
