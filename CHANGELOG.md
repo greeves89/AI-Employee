@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.259.0] - 2026-08-21
+## [1.260.0] - 2026-08-21
 
 ### Behoben
 - **Eine Aufgabe, der die Prozesse ausgehen, gilt nicht mehr als erledigt.**
@@ -26,6 +26,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 Damit ist der erste Teil von #628 erledigt. Das Anheben der Obergrenze selbst
 und ein gemeinsamer Satz Hintergrunddienste stehen noch aus.
+
+---
+
+## [1.259.0] - 2026-08-21
+
+### Behoben
+- **„Abbrechen" brach nichts ab — und meldete trotzdem Erfolg.** Gemeldet mit
+  vollständigem Gesprächsprotokoll: dreimal „abbrechen", dreimal „Beide Aufgaben
+  wurden gestoppt" — und die Aufgabe lief Stunden später immer noch.
+- Vier Schichten desselben Problems, alle nachgewiesen:
+  1. Die Sprachfront meldete Erfolg, sobald ein Redis-`publish` ohne Fehler
+     zurückkam. Ein publish gelingt aber auch, wenn **niemand zuhört**.
+  2. Sie kannte nur die Aufgaben aus **dieser** Sitzung. Das Gespräch war
+     fortgesetzt, die Menge also leer.
+  3. Der Abbruch wies **laufende** Aufgaben grundsätzlich mit einem Fehler ab —
+     es gab keinen Weg, eine laufende Aufgabe zu stoppen.
+  4. Der Kanal `task:cancel` wurde seit jeher besendet und hatte **keinen
+     einzigen Zuhörer**.
+- Der Agent hört jetzt auf diesem Kanal und bricht die benannte Aufgabe wirklich
+  ab. Der Zuhörer läuft neben der Warteschlange — in derselben Schleife käme er
+  erst dran, wenn gerade nichts verarbeitet wird, also genau dann nicht, wenn man
+  ihn braucht.
+- Die Sprachfront holt jetzt **alle** offenen Aufgaben des Agenten, bricht sie ab
+  und **sieht danach noch einmal nach**. Überlebt etwas, sagt sie das — mit Namen
+  — statt Erfolg zu behaupten.
+
+### Neu
+- **Manueller Stopp für laufende Aufgaben.** In der Aufgabenliste hat eine
+  laufende Aufgabe jetzt einen roten „Stoppen"-Knopf, der **ohne Überfahren**
+  sichtbar ist — wer etwas anhalten will, sucht den Knopf sofort. Wartende
+  Aufgaben behalten ihr dezentes „Abbrechen": eine wartende nimmt man aus der
+  Schlange, eine laufende unterbricht man.
 
 ---
 

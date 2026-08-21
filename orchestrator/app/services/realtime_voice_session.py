@@ -4908,36 +4908,72 @@ class RealtimeVoiceSession:
             return "An meine Zeitpläne komme ich gerade nicht ran."
 
     async def _cancel_task(self) -> str:
-        """Stop ongoing work by voice: signal the agent to stop the current chat turn
-        and cancel any still-queued scheduled tasks (running ones can't be pulled)."""
-        stopped = False
+        """Laufende und wartende Arbeit dieses Agenten wirklich stoppen — und
+        danach NACHSEHEN, ob es geklappt hat.
+
+        Die alte Fassung meldete Erfolg, sobald ein Redis-``publish`` ohne
+        Fehler zurueckkam. Ein publish gelingt aber auch, wenn niemand zuhoert.
+        Dazu kannte sie nur ``self._planned``, also Aufgaben, die IN DIESER
+        Sitzung eingeplant wurden — bei einem fortgesetzten Gespraech ist das
+        leer. Ergebnis am 21.08.2026: der Nutzer sagte dreimal „abbrechen",
+        bekam dreimal „ist gestoppt", und die Aufgabe lief Stunden spaeter
+        immer noch.
+
+        Jetzt: alle offenen Aufgaben des Agenten aus der Datenbank holen,
+        abbrechen, und anschliessend erneut nachsehen. Gesagt wird, was
+        tatsaechlich der Fall ist.
+        """
+        from app.core.load_balancer import LoadBalancer
+        from app.core.task_router import TaskRouter
+        from app.db.session import async_session_factory
+        from app.models.task import Task, TaskStatus
+        from sqlalchemy import select
+
+        OFFEN = (TaskStatus.QUEUED, TaskStatus.PENDING, TaskStatus.RUNNING)
+
+        # Laufende Chat-Zuege stoppen (das hat immer funktioniert).
         try:
             if self.redis.client:
                 await self.redis.client.publish(f"agent:{self.agent_id}:chat:cancel", "stop")
-                stopped = True
         except Exception:  # noqa: BLE001
-            pass
-        cancelled = 0
-        if self._planned:
-            from app.db.session import async_session_factory
-            from app.core.task_router import TaskRouter
-            from app.core.load_balancer import LoadBalancer
-            for tid in list(self._planned.keys()):
-                try:
-                    async with async_session_factory() as db:
-                        await TaskRouter(db, self.redis, LoadBalancer(self.redis)).cancel_task(tid)
-                    self._planned.pop(tid, None)
-                    cancelled += 1
-                except Exception:  # noqa: BLE001 — running/already done → can't cancel
-                    pass
-        if stopped or cancelled:
-            parts = []
-            if stopped:
-                parts.append("die laufende Aufgabe gestoppt")
-            if cancelled:
-                parts.append(f"{cancelled} eingeplante Aufgabe(n) abgebrochen")
-            return "Ich habe " + " und ".join(parts) + "."
-        return "Es lief gerade nichts, was ich abbrechen könnte."
+            logger.warning("[Sprache] Chat-Abbruch nicht zustellbar", exc_info=True)
+
+        async def _offene() -> list:
+            async with async_session_factory() as db:
+                r = await db.execute(
+                    select(Task.id, Task.title).where(
+                        Task.agent_id == self.agent_id, Task.status.in_(OFFEN)
+                    )
+                )
+                return list(r)
+
+        vorher = await _offene()
+        if not vorher:
+            return "Es lief gerade nichts, was ich abbrechen könnte."
+
+        for tid, _titel in vorher:
+            try:
+                async with async_session_factory() as db:
+                    await TaskRouter(db, self.redis, LoadBalancer(self.redis)).cancel_task(tid)
+                self._planned.pop(tid, None)
+            except Exception as e:  # noqa: BLE001 — gerade fertig geworden o.ae.
+                logger.info("[Sprache] %s nicht abbrechbar: %s", tid, e)
+
+        # Der Runner braucht einen Moment, um den Abbruch zu quittieren.
+        await asyncio.sleep(1.5)
+        uebrig = await _offene()
+
+        geschafft = len(vorher) - len(uebrig)
+        if not uebrig:
+            return (f"Ich habe {geschafft} Aufgabe(n) gestoppt. Es läuft nichts mehr."
+                    if geschafft else "Es läuft nichts mehr.")
+        # NICHT behaupten, alles sei gestoppt — genau das war der Fehler.
+        namen = ", ".join((t or "ohne Titel")[:40] for _i, t in uebrig[:3])
+        return (
+            f"Ich habe {geschafft} Aufgabe(n) gestoppt, aber {len(uebrig)} läuft/laufen noch: "
+            f"{namen}. Die reagiert gerade nicht auf den Abbruch — sag mir Bescheid, "
+            "wenn ich es gleich noch einmal versuchen soll."
+        )
 
     async def _voice_help(self) -> str:
         """Spoken capability overview."""
