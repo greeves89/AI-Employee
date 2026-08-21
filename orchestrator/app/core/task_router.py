@@ -506,13 +506,35 @@ class TaskRouter:
         return True
 
     async def cancel_task(self, task_id: str) -> Task | None:
-        """Cancel a queued/pending task."""
+        """Eine Aufgabe abbrechen — wartend ODER laufend.
+
+        Bis 1.258.x wurde eine LAUFENDE Aufgabe mit einem Fehler abgelehnt.
+        Damit gab es keinen Weg, sie zu stoppen: die Sprachfront meldete
+        trotzdem Erfolg, und der Nutzer sah die Aufgabe weiterlaufen — am
+        21.08.2026 dreimal hintereinander.
+
+        Fuer laufende Aufgaben wird jetzt der Kanal ``task:cancel`` benutzt.
+        Den gab es schon; er hatte nur nie einen Zuhoerer (siehe
+        ``TaskConsumer._cancel_listener``).
+        """
         result = await self.db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
         if not task:
             return None
-        if task.status not in (TaskStatus.QUEUED, TaskStatus.PENDING):
+        if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
             raise ValueError(f"Cannot cancel a task with status '{task.status.value}'")
+        if task.status == TaskStatus.RUNNING and task.agent_id:
+            # Den Agenten bitten, den laufenden Vorgang abzubrechen. Der Eintrag
+            # wird trotzdem sofort als abgebrochen gefuehrt: er SOLL nicht mehr
+            # als laufend gelten, und der Runner bestaetigt es gleich selbst.
+            try:
+                if self.redis.client:
+                    await self.redis.client.publish(
+                        f"agent:{task.agent_id}:task:cancel", task_id
+                    )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Abbruchsignal fuer %s nicht zustellbar: %s",
+                               scrub_log(task_id), scrub_log(e))
         if task.agent_id:
             await self._remove_from_queue(task.agent_id, task_id)
         task.status = TaskStatus.CANCELLED

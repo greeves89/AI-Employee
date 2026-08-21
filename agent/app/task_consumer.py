@@ -43,6 +43,12 @@ class TaskConsumer:
         # der Orchestrator hielt die uebrigen deshalb faelschlich fuer verschollen
         # und raeumte sie mitten in der Arbeit ab.
         self._active_task_ids: set[str] = set()
+        #: Aufgabe -> ihr Runner. Ohne diese Zuordnung liess sich eine EINZELNE
+        #: laufende Aufgabe nicht stoppen: `stop()` kannte nur „alle Runner".
+        #: Genau daran scheiterte das Abbrechen per Sprache — der Nutzer sagte
+        #: dreimal „abbrechen", bekam dreimal „ist gestoppt", und die Aufgabe
+        #: lief weiter (gemeldet am 21.08.2026).
+        self._runner_by_task: dict[str, object] = {}
 
     def _make_runner(self):
         """Fresh runner instance per task — independent subprocess, no shared state."""
@@ -67,6 +73,13 @@ class TaskConsumer:
         await self._log_publisher.publish("", "system", {"message": f"Agent {self.agent_id} ready"})
         if max_parallel > 1:
             logger.info("Task parallelism enabled: up to %d tasks concurrently", max_parallel)
+
+        # Der Abbruch-Zuhoerer laeuft neben der Warteschlange — sonst koennte er
+        # erst dran kommen, wenn gerade keine Aufgabe verarbeitet wird, also
+        # genau dann nicht, wenn man ihn braucht.
+        abbruch = asyncio.create_task(self._cancel_listener())
+        self._inflight.add(abbruch)
+        abbruch.add_done_callback(self._inflight.discard)
 
         while self.running:
             # Only pull a new task once a slot is free → at most N tasks in flight,
@@ -105,6 +118,8 @@ class TaskConsumer:
         task_id = task.get("id")
         runner = self._make_runner()
         self._active_runners.add(runner)
+        if task_id:
+            self._runner_by_task[task_id] = runner
         # Any task working → agent shows "working"; when the last finishes we go idle.
         try:
             if task_id:
@@ -166,6 +181,8 @@ class TaskConsumer:
                 pass  # best effort
         finally:
             self._active_runners.discard(runner)
+            if task_id:
+                self._runner_by_task.pop(task_id, None)
             self._active_task_ids.discard(task_id)
             # Only flip to idle when no other task is still running.
             try:
@@ -180,6 +197,56 @@ class TaskConsumer:
             except Exception:  # noqa: BLE001
                 pass
             self._sem.release()
+
+    async def _cancel_listener(self) -> None:
+        """Auf „stopp diese Aufgabe" hoeren.
+
+        Der Kanal ``agent:{id}:task:cancel`` wurde vom Orchestrator seit jeher
+        BESENDET — nur hat ihm nie jemand zugehoert. Ein Abbruch erreichte
+        deshalb ausschliesslich Chat-Zuege (ueber ``chat:cancel``), waehrend
+        eingeplante Aufgaben unbeirrt weiterliefen. Der Nutzer sagte am
+        21.08.2026 dreimal „abbrechen", bekam dreimal „ist gestoppt" — und sah
+        die Aufgabe weiterlaufen.
+
+        Nutzlast ist die Aufgabenkennung; ``all`` stoppt alles Laufende.
+        """
+        kanal = f"agent:{self.agent_id}:task:cancel"
+        verbindung = aioredis.from_url(settings.redis_url, decode_responses=True)
+        pubsub = verbindung.pubsub()
+        await pubsub.subscribe(kanal)
+        logger.info("Auf Aufgaben-Abbrueche horchend: %s", kanal)
+        try:
+            while self.running:
+                nachricht = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if not nachricht or nachricht.get("type") != "message":
+                    await asyncio.sleep(0.05)
+                    continue
+                wen = str(nachricht.get("data") or "").strip()
+                ziele = (
+                    list(self._runner_by_task.items()) if wen in ("", "all")
+                    else [(wen, self._runner_by_task.get(wen))]
+                )
+                for tid, runner in ziele:
+                    if not runner:
+                        logger.info("Abbruch fuer %s: laeuft hier nicht (mehr)", tid)
+                        continue
+                    try:
+                        if getattr(runner, "is_running", False):
+                            await runner.interrupt()
+                            logger.info("Aufgabe %s auf Zuruf gestoppt", tid)
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("Aufgabe %s liess sich nicht stoppen: %s", tid, e)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — der Zuhoerer darf den Agenten nie mitreissen
+            logger.warning("Abbruch-Zuhoerer beendet", exc_info=True)
+        finally:
+            try:
+                await pubsub.unsubscribe(kanal)
+                await pubsub.aclose()
+                await verbindung.aclose()
+            except Exception:  # noqa: BLE001
+                pass
 
     async def stop(self) -> None:
         self.running = False
