@@ -35,6 +35,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   unsichtbar — dagegen hilft nur Beobachtung ausserhalb des Agenten. Das ist
   bewusst nicht Teil dieser Änderung.
 - Ohne Wirkung, solange die Aufsicht ausgeschaltet ist (Standard).
+## [1.264.0] - 2026-08-21
+
+### Behoben
+- **Eine Aufgabe, der die Prozesse ausgehen, gilt nicht mehr als erledigt.**
+  Der Container hat eine harte Obergrenze an gleichzeitigen Prozessen. War sie
+  erreicht, ließ sich kein Werkzeug mehr starten — `git`, `gh`, Tests, alles
+  scheiterte still. Der Lauf merkte davon nichts und meldete Erfolg. So kamen
+  Aufträge als „erledigt" zurück, zu denen es weder einen Pull Request noch
+  eine Datei gab; das sah nach einem Modell- oder Prompt-Problem aus und war
+  keines. Solche Läufe scheitern jetzt sichtbar, mit dem gemessenen
+  Prozessstand und der Zeile, an der es riss.
+
+### Geändert
+- **Wie viele Aufträge ein Agent gleichzeitig annimmt, richtet sich jetzt nach
+  dem, was der Container hergibt** — vorher war es eine geratene Zahl. Wer mehr
+  einstellt, als hineinpasst, bekommt die passende Zahl und einen Hinweis im
+  Protokoll; überzählige Aufträge warten in der Schlange, statt den Container
+  zu erdrosseln. Feinjustierung über `PIDS_RESERVE` und `PIDS_COST_PER_RUN`.
+
+Damit ist der erste Teil von #628 erledigt. Das Anheben der Obergrenze selbst
+und ein gemeinsamer Satz Hintergrunddienste stehen noch aus.
 
 ---
 
