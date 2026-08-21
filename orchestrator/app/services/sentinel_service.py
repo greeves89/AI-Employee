@@ -31,7 +31,10 @@ sendet, bleibt unsichtbar — dagegen hilft nur orchestrator-seitige Beobachtung
 Die drei Haken sind inzwischen ausgefuehrt, nicht mehr leer — wer hier etwas
 aendert, aendert scharfe Wirkung:
   - `_scan`       erkennt Geheimnisse in der Ausgabe und Prompt-Injektion (#592).
-  - `_stop_agent` haelt den Container wirklich an (#590 Punkt 4).
+  - `_stop_agent` haelt den Container wirklich an (#590 Punkt 4) — aber NUR,
+                  wenn `settings.redis_acl_enabled` an ist. Ohne aktive ACL ist
+                  die Kanalnamen-Zuordnung (siehe oben) keine echte Grenze, dann
+                  meldet dieser Haken den Fund nur noch, statt zuzuschlagen.
   - `_notify`     schreibt Benachrichtigung und Pruefspur in die Datenbank.
 Einziger Schalter davor ist `sentinel_enabled` (Standard: aus).
 """
@@ -41,6 +44,7 @@ import json
 import time
 import logging
 
+from app.config import settings
 from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
@@ -385,31 +389,55 @@ class SentinelService:
 
         Faellt das Anhalten aus, wird das TROTZDEM vermerkt: ein
         Sicherheitsvorfall ohne Spur ist schlimmer als einer ohne Reaktion.
+
+        **Vertrauensgrenze vor Wirkung (#590 Review-Auflage):** die Herleitung
+        der Zuordnung aus dem Kanalnamen ist nur dann eine echte Grenze, wenn
+        die Redis-ACL aktiv ist — sonst teilen sich alle Agent-Container
+        weiterhin ein gemeinsames `requirepass` und koennten den Kanal eines
+        anderen Agenten beschreiben (siehe Modul-Kopf). Ohne aktive ACL bliebe
+        `_stop_agent` also exakt die Waffe, die #590 schliessen sollte, nur
+        unter neuem Namen. Deshalb haelt dieser Pfad nur an, wenn
+        `settings.redis_acl_enabled` an ist; ohne sie wird der Fund trotzdem
+        vermerkt und gemeldet (wie beim Fehlschlag unten), nur eben nicht
+        durchgesetzt. Erkennen darf der Sentinel immer — anhalten nur, wenn
+        der Zuordnung tatsaechlich zu trauen ist.
         """
         from app.db.session import async_session_factory
         from app.models.audit_log import AuditEventType, AuditLog
 
         gestoppt = False
+        uebersprungen = not settings.redis_acl_enabled
         fehler: str | None = None
-        try:
-            if self.docker is None:
-                raise RuntimeError("kein Docker-Dienst — Sentinel kann nicht stoppen")
-            from app.core.agent_manager import AgentManager
+        if uebersprungen:
+            fehler = (
+                "Redis-ACL ist nicht aktiv (redis_acl_enabled=False) — die "
+                "Kanalnamen-Zuordnung ist ohne sie keine echte Vertrauensgrenze, "
+                "daher kein automatisches Anhalten."
+            )
+            logger.warning(
+                "[Sentinel] Anhalten von %s uebersprungen (Grund: %s) — Redis-ACL aus",
+                agent_id, reason,
+            )
+        else:
+            try:
+                if self.docker is None:
+                    raise RuntimeError("kein Docker-Dienst — Sentinel kann nicht stoppen")
+                from app.core.agent_manager import AgentManager
 
-            async with async_session_factory() as db:
-                await AgentManager(db, self.docker, self.redis).stop_agent(agent_id)
-            gestoppt = True
-            logger.warning("[Sentinel] Agent %s angehalten (Grund: %s)", agent_id, reason)
-        except Exception as e:  # noqa: BLE001 — der Vermerk unten ist wichtiger
-            fehler = str(e)[:300]
-            logger.error("[Sentinel] Agent %s konnte NICHT angehalten werden: %s", agent_id, fehler)
+                async with async_session_factory() as db:
+                    await AgentManager(db, self.docker, self.redis).stop_agent(agent_id)
+                gestoppt = True
+                logger.warning("[Sentinel] Agent %s angehalten (Grund: %s)", agent_id, reason)
+            except Exception as e:  # noqa: BLE001 — der Vermerk unten ist wichtiger
+                fehler = str(e)[:300]
+                logger.error("[Sentinel] Agent %s konnte NICHT angehalten werden: %s", agent_id, fehler)
 
         try:
             async with async_session_factory() as db:
                 db.add(AuditLog(
                     agent_id=agent_id,
                     event_type=AuditEventType.AGENT_STOPPED.value,
-                    outcome="success" if gestoppt else "failure",
+                    outcome="success" if gestoppt else ("skipped" if uebersprungen else "failure"),
                     meta={"by": "sentinel", "reason": reason, **({"error": fehler} if fehler else {})},
                 ))
                 await db.commit()
@@ -423,14 +451,20 @@ class SentinelService:
             try:
                 from app.models.notification import Notification
 
+                titel = (
+                    "Sentinel hat einen Vorfall erkannt, aber nicht angehalten"
+                    if uebersprungen else
+                    "Sentinel konnte den Agenten NICHT anhalten"
+                )
                 async with async_session_factory() as db:
                     db.add(Notification(
                         agent_id=agent_id,
                         type="error",
-                        title="Sentinel konnte den Agenten NICHT anhalten",
+                        title=titel,
                         message=(
                             f"Vorfall: {reason}. Der Agent laeuft weiter. "
-                            f"Fehler beim Anhalten: {fehler or 'unbekannt'}. "
+                            f"{'Grund: ' if uebersprungen else 'Fehler beim Anhalten: '}"
+                            f"{fehler or 'unbekannt'}. "
                             "Bitte von Hand stoppen."
                         )[:2000],
                         priority="urgent",

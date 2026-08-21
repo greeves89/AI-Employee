@@ -184,10 +184,17 @@ class TheStopPathTests(unittest.IsolatedAsyncioTestCase):
     async def test_without_a_docker_service_it_records_the_failure(self):
         """Ein Sicherheitsvorfall ohne Spur ist schlimmer als einer ohne
         Reaktion — der Vermerk muss auch dann entstehen, wenn das Anhalten
-        scheitert."""
+        scheitert.
+
+        Die ACL wird hier ausdruecklich als aktiv angenommen, damit dieser
+        Test wirklich den Fehlschlag beim Anhalten prueft (docker=None) und
+        nicht das neue Ueberspringen mangels Vertrauensgrenze — dafuer gibt es
+        ``TheAclGateTests`` unten."""
         s = SentinelService(redis=AsyncMock(), docker=None)
-        with patch("app.services.sentinel_service.logger") as log:
-            await s._stop_agent("a1", "secret_in_output")
+        with patch("app.services.sentinel_service.settings") as st:
+            st.redis_acl_enabled = True
+            with patch("app.services.sentinel_service.logger") as log:
+                await s._stop_agent("a1", "secret_in_output")
         self.assertTrue(log.error.called)
 
     async def test_it_never_raises(self):
@@ -196,6 +203,41 @@ class TheStopPathTests(unittest.IsolatedAsyncioTestCase):
         s = SentinelService(redis=AsyncMock(), docker=None)
         await s._stop_agent("a1", "grund")     # darf nicht werfen
         await s._notify("a1", "grund", "x")    # ebenso
+
+
+class TheAclGateTests(unittest.IsolatedAsyncioTestCase):
+    """#590 Review-Auflage: die Kanalnamen-Zuordnung ist nur mit aktiver
+    Redis-ACL eine echte Vertrauensgrenze (siehe Modul-Kopf). Ohne sie darf
+    ``_stop_agent`` NICHT wirklich anhalten — sonst waere er exakt die Waffe,
+    die #590 schliessen sollte, nur unter neuem Namen."""
+
+    async def test_acl_off_skips_the_real_stop(self):
+        s = SentinelService(redis=AsyncMock(), docker=AsyncMock())
+        with patch("app.services.sentinel_service.settings") as st:
+            st.redis_acl_enabled = False
+            with patch("app.core.agent_manager.AgentManager") as manager_cls:
+                await s._stop_agent("a1", "secret_in_output")
+        manager_cls.assert_not_called()
+
+    async def test_acl_off_still_notifies_and_records_the_finding(self):
+        """Erkennen bleibt moeglich, nur das Anhalten faellt aus — der
+        Betreiber muss trotzdem erfahren, dass etwas gefunden wurde."""
+        import inspect
+
+        src = inspect.getsource(SentinelService._stop_agent)
+        self.assertIn("uebersprungen", src)
+        self.assertIn("outcome=", src)
+
+    async def test_acl_on_actually_attempts_the_stop(self):
+        s = SentinelService(redis=AsyncMock(), docker=object())
+        with patch("app.services.sentinel_service.settings") as st:
+            st.redis_acl_enabled = True
+            with patch("app.core.agent_manager.AgentManager") as manager_cls:
+                instance = manager_cls.return_value
+                instance.stop_agent = AsyncMock()
+                await s._stop_agent("a1", "secret_in_output")
+        manager_cls.assert_called_once()
+        instance.stop_agent.assert_awaited_once_with("a1")
 
 
 if __name__ == "__main__":
