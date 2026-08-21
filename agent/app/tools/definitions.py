@@ -526,7 +526,10 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     "params": {
                         "type": "object",
                         "description": (
-                            "Action parameters. Examples: screenshot {scale: 0.5}; "
+                            "Action parameters. Examples: screenshot {scale: 0.5} "
+                            "or screenshot {scale: 0.5, display: 2} for a second monitor "
+                            "(the reply states the image size and which displays exist — "
+                            "click coordinates must lie inside that size); "
                             "mouse_click {x: 100, y: 200, button: 'left'}; type {text: 'https://example.com'}; "
                             "key {key: 'enter'}; hotkey {keys: ['ctrl', 'l']}; open_app {name: 'Edge'}; "
                             "find_element {query: 'Save', role: 'AXButton'}; "

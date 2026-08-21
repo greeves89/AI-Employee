@@ -35,8 +35,10 @@ class InProcessCaptureTests(unittest.TestCase):
         # Die eigentliche Aufnahme liegt seit dem Retina-Klick-Fix in
         # capture_screenshot; take_screenshot ist nur noch ein duenner Wrapper.
         code = _fn("capture_screenshot")
-        self.assertIn("_capture_macos_inprocess()", code)
-        quartz_at = code.index("_capture_macos_inprocess()")
+        # Seit der Mehrbildschirm-Unterstuetzung bekommt die Aufnahme die
+        # Bildschirmkennung mit — der Aufruf hat also ein Argument.
+        self.assertIn("_capture_macos_inprocess(", code)
+        quartz_at = code.index("_capture_macos_inprocess(")
         pyautogui_at = code.index("import pyautogui")
         self.assertLess(quartz_at, pyautogui_at,
                         "pyautogui darf nur der Rueckfall sein, nicht der erste Weg")
