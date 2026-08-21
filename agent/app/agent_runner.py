@@ -7,6 +7,7 @@ from typing import AsyncIterator
 
 from app.config import get_oauth_token, settings
 from app.log_publisher import LogPublisher
+from app.pids_budget import exhaustion_message, find_fork_exhaustion
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
     compose_prompt_bundle,
@@ -128,6 +129,9 @@ class AgentRunner:
         result_data: dict = {"status": "completed"}
         got_result = False
         stderr_lines: list[str] = []
+        # Belegzeilen fuer ein erschoepftes pids-Budget. Sie entstehen dort, wo ein
+        # Werkzeug startet — in stderr des CLI und in den Ergebnissen der Werkzeuge.
+        fork_evidence: list[str] = []
         text_output: list[str] = []
         presented_files: list[dict] = []
         seen_file_paths: set[str] = set()
@@ -143,6 +147,9 @@ class AgentRunner:
                 decoded = line.decode("utf-8", errors="replace").strip()
                 if decoded:
                     stderr_lines.append(decoded)
+                    hit = find_fork_exhaustion(decoded)
+                    if hit:
+                        fork_evidence.append(hit)
                     logger.warning(f"[Claude CLI stderr] {decoded}")
 
         try:
@@ -163,6 +170,8 @@ class AgentRunner:
 
             async for event in self._stream_output(self._process):
                 await self._process_event(task_id, event)
+
+                fork_evidence.extend(self._fork_evidence_from_event(event))
 
                 for payload in self._present_file_payloads_from_event(event):
                     path = str(payload.get("path") or "")
@@ -213,6 +222,20 @@ class AgentRunner:
                 await self.log_publisher.publish(
                     task_id, "error", {"message": result_data["error"]}
                 )
+
+            # Ein Lauf, dem der Container die Prozesse ausgehen laesst, liefert
+            # trotzdem ein "result"-Ereignis — nur ohne die Arbeit. Genau so kamen
+            # Aufgaben als erledigt zurueck, zu denen es weder PR noch Datei gab
+            # (#628). Lieber ehrlich gescheitert als still leergelaufen.
+            if fork_evidence and result_data.get("status") == "completed":
+                reason = exhaustion_message(fork_evidence[0])
+                logger.error("Task %s: %s", task_id, reason)
+                result_data = {
+                    "status": "error",
+                    "error": reason,
+                    "result": result_data.get("result", ""),
+                }
+                await self.log_publisher.publish(task_id, "error", {"message": reason})
 
         except asyncio.CancelledError:
             await self.interrupt()
@@ -353,6 +376,31 @@ class AgentRunner:
                 return None
             return payload if isinstance(payload, dict) else None
         return None
+
+    @staticmethod
+    def _fork_evidence_from_event(event: dict) -> list[str]:
+        """Belegzeilen fuer erschoepftes pids-Budget aus Werkzeug-Ergebnissen.
+
+        Bewusst NUR ``tool_result`` — dort steht, was ein Werkzeug wirklich
+        gemeldet hat. Der Fliesstext des Modells bleibt aussen vor: ein Agent,
+        der ueber genau diesen Fehler schreibt, wuerde sich sonst selbst
+        abschiessen.
+        """
+        blocks: list = []
+        if event.get("type") == "tool_result":
+            blocks.append(event.get("content"))
+        elif event.get("type") == "user":
+            for block in event.get("message", {}).get("content", []) or []:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    blocks.append(block.get("content"))
+
+        found: list[str] = []
+        for content in blocks:
+            for text in AgentRunner._first_text_blocks(content):
+                hit = find_fork_exhaustion(text)
+                if hit:
+                    found.append(hit)
+        return found
 
     def _present_file_payloads_from_event(self, event: dict) -> list[dict]:
         """Find present_file marker payloads in Claude task-stream events.
