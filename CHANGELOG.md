@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.257.0] - 2026-08-21
+
+### Behoben
+- **Die Stimme las Markdown mit vor** — „Punkte zur Performance: n n- Echtzeit-Fähigkeit\*\*:"
+  — und liess angekündigte Aufzählungen manchmal ganz weg („Hier sind die
+  Hauptoptionen und was du beachten solltest:" … und dann nichts).
+- **Es war kein Escape-Fehler in unserem Code.** Zwei Vermutungen wurden geprüft
+  und verworfen: die Textsäuberung entfernt keine Backslashes, und weder
+  Erinnerungen noch Gesprächsverlauf enthalten literale `\n`-Folgen. Der
+  gespeicherte Text enthält weder Backslash noch Zeilenumbruch — das „n" steht
+  schon so in dem, was die Engine zurückgibt.
+- Es ist eine Formatierungsgewohnheit des Modells: fürs Auge geschrieben, obwohl
+  es fürs Ohr ist. Die Anweisung dagegen steht jetzt als **erste Regel** im
+  Sprach-Systemprompt, nennt die verbotenen Zeichen beim Namen, sagt warum
+  („werden LAUT MITGESPROCHEN") und bietet den Ersatz an („erstens … zweitens …").
+- Der abgebrochene Doppelpunkt ist dieselbe Ursache und ausdrücklich mit geregelt.
+
+### Hinweis
+- Bei einem Sprache-zu-Sprache-Modell gibt es dagegen **keinen mechanischen
+  Hebel** — gesprochen ist gesprochen, die Audioausgabe lässt sich nicht
+  nachträglich säubern. Das Transkript bleibt deshalb bewusst ungeschönt: es
+  soll zeigen, was wirklich gesagt wurde, statt den Fehler unsichtbar zu machen.
+
+---
+
 ## [1.256.0] - 2026-08-21
 
 ### Behoben
