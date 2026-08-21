@@ -804,7 +804,8 @@ DESKTOP_TOOL = {
             "seinem Netz erreichbar sind (Intranet, Ticketsystem, interne Tools).\n"
             "action='open' — öffnet eine URL oder ein Programm bei ihm. target = URL "
             "(https://…) oder Programmname ('Notepad', 'Safari').\n"
-            "action='screenshot' — sieht nach, was gerade auf seinem Bildschirm ist. "
+            "action='screenshot' — sieht nach, was gerade auf seinem Bildschirm ist; "
+            "mit display=2 den zweiten Monitor. "
             "Nutze das, bevor du klickst oder tippst, und wenn er fragt 'was siehst du'.\n"
             "action='click' — klickt bei x/y. action='type' — tippt text.\n"
             "action='find' — SUCHT ein Element (Knopf, Feld, Eintrag) ueber den "
@@ -827,6 +828,11 @@ DESKTOP_TOOL = {
                 "text": {"type": "string", "description": "Text (type), Tastenkombination wie 'cmd+f' (key) oder Scroll-Anzahl."},
                 "x": {"type": "number", "description": "X-Koordinate (bei action='click')."},
                 "y": {"type": "number", "description": "Y-Koordinate (bei action='click')."},
+                "display": {"type": "number", "description": (
+                    "Welchen Bildschirm aufnehmen (bei action='screenshot'). "
+                    "1 = Hauptbildschirm. Weglassen = Hauptbildschirm. Nach einem "
+                    "Screenshot steht in der Antwort, wie viele es gibt."
+                )},
             },
             "required": ["action"],
         })},
@@ -1221,6 +1227,41 @@ def _short_args(args: dict, limit: int = 160) -> str:
         parts.append(f"{k}: {text}")
     joined = ", ".join(parts)
     return joined[:limit] + ("…" if len(joined) > limit else "")
+
+
+def _bildschirm_hinweis(result: dict) -> str:
+    """Was das Modell ueber Bildgroesse und Bildschirme wissen muss.
+
+    Die Bridge rechnet ``image_size`` und die Bildschirmliste seit jeher aus —
+    und niemand hat sie je weitergereicht. Das Modell nannte deshalb
+    Klickkoordinaten, ohne zu wissen, wie gross das Bild ueberhaupt ist, und
+    wusste nichts von einem zweiten Monitor. Beides am 21.08.2026 gemeldet:
+    „der voice und auch agent wissen WIE GROSS das Bild ist, damit der besser
+    klicken kann" und „geh bitte auf bildschirm 1 oder 2".
+
+    Gibt "" zurueck, wenn die Bridge nichts mitgeliefert hat — aeltere Bridges
+    tun das nicht, und ein erfundener Hinweis waere schlimmer als keiner.
+    """
+    teile = []
+    groesse = result.get("image_size") or {}
+    if groesse.get("w") and groesse.get("h"):
+        teile.append(
+            f" Das Bild ist {groesse['w']} mal {groesse['h']} Punkte gross — "
+            "Klickkoordinaten muessen INNERHALB dieser Groesse liegen, (0,0) ist oben links."
+        )
+    bildschirme = result.get("displays") or []
+    if len(bildschirme) > 1:
+        aktuell = result.get("display")
+        liste = ", ".join(
+            f"{b['number']}{' (Haupt)' if b.get('primary') else ''}: {b.get('width')}x{b.get('height')}"
+            for b in bildschirme
+        )
+        teile.append(
+            f" Der Nutzer hat {len(bildschirme)} Bildschirme ({liste}); du siehst gerade "
+            f"Nummer {aktuell}. Sagt er „geh auf Bildschirm 2\", mach einen neuen Screenshot "
+            "mit display=2."
+        )
+    return "".join(teile)
 
 
 def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
@@ -2355,7 +2396,7 @@ class RealtimeVoiceSession:
                 str(args.get("action") or "").strip().lower(),
                 str(args.get("target") or ""),
                 str(args.get("text") or ""),
-                args.get("x"), args.get("y"),
+                args.get("x"), args.get("y"), args.get("display"),
             ))
             return
 
@@ -3203,7 +3244,7 @@ class RealtimeVoiceSession:
                 f"'{action}' sagt mir nichts.")
 
     async def _desktop(self, action: str, target: str = "", text: str = "",
-                       x=None, y=None) -> str:
+                       x=None, y=None, display=None) -> str:
         """Rechner des Nutzers über die Desktop-Bridge bedienen.
 
         Geht bewusst durch `dispatch_bridge_command` — dieselbe Funktion, die auch der
@@ -3251,6 +3292,10 @@ class RealtimeVoiceSession:
                 act, params = "open_app", {"name": tgt}
         elif action == "screenshot":
             act, params = "screenshot", {"scale": 0.5}
+            # Bildschirmwahl nur mitgeben, wenn wirklich eine kam — eine
+            # aeltere Bridge kennt den Parameter nicht.
+            if display:
+                params["display"] = int(display)
         elif action == "click":
             if x is None or y is None:
                 return "Für einen Klick brauche ich x und y — vorher einen Screenshot machen."
@@ -3352,7 +3397,8 @@ class RealtimeVoiceSession:
             asyncio.create_task(self._analyse_screenshot_bg(b64, text.strip(), plat))
             return ("Screenshot gemacht und dem Nutzer angezeigt. Sag ihm in EINEM kurzen "
                     "Satz, dass du gerade draufschaust — und beschreibe NICHTS, du kennst "
-                    "den Inhalt noch nicht. Die Auswertung kommt gleich von selbst.")
+                    "den Inhalt noch nicht. Die Auswertung kommt gleich von selbst."
+                    + _bildschirm_hinweis(result))
         if act in ("open_app", "open_url"):
             return f"'{target.strip()}' wurde geöffnet — die Bridge meldet Erfolg."
         return "Erledigt."

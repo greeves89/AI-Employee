@@ -280,10 +280,32 @@ class OrchestratorAPIClient:
         payload = result.get("result", result)
         if action == "screenshot" and isinstance(payload, dict):
             if payload.get("screenshot_b64"):
+                # Groesse und Bildschirme MITSAGEN. Die Bridge rechnet beides
+                # seit jeher aus; hier ging es bisher verloren, und das Modell
+                # nannte Klickkoordinaten, ohne zu wissen, wie gross das Bild
+                # ist — und wusste nichts von einem zweiten Monitor
+                # (gemeldet am 21.08.2026).
+                hinweis = ["Screenshot captured from the user's desktop."]
+                groesse = payload.get("image_size") or {}
+                if groesse.get("w") and groesse.get("h"):
+                    hinweis.append(
+                        f"Image is {groesse['w']}x{groesse['h']} points — click "
+                        "coordinates must be inside that, (0,0) is top left."
+                    )
+                monitore = payload.get("displays") or []
+                if len(monitore) > 1:
+                    liste = ", ".join(
+                        f"{d.get('number')}{' (primary)' if d.get('primary') else ''}: "
+                        f"{d.get('width')}x{d.get('height')}" for d in monitore
+                    )
+                    hinweis.append(
+                        f"The user has {len(monitore)} displays ({liste}); this is number "
+                        f"{payload.get('display')}. Pass params.display=N for another one."
+                    )
                 return multimodal.IMAGE_SENTINEL + json.dumps({
                     "media_type": "image/png",
                     "data": payload["screenshot_b64"],
-                    "note": "Screenshot captured from the user's desktop.",
+                    "note": " ".join(hinweis),
                 })
             return "Error: screenshot did not return image data"
         return json.dumps(payload, ensure_ascii=False)

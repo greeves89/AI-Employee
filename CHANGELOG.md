@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.260.0] - 2026-08-21
+
+### Neu
+- **Screenshots von jedem Bildschirm, nicht nur vom ersten.** Die Bridge nahm
+  ausschliesslich den Hauptbildschirm auf — ein zweiter Monitor war unerreichbar.
+  Jetzt lässt sich sagen „geh auf Bildschirm 2"; Nummer 1 ist immer der
+  Hauptbildschirm, also die Zählweise, die man am Telefon benutzt.
+- **Der Agent weiss jetzt, wie gross das Bild ist.** Die Bridge rechnete
+  `image_size` seit jeher aus und gab es zurück — im Orchestrator und im Agenten
+  kam es **nirgends** vor. Das Modell nannte Klickkoordinaten, ohne die Bildgrösse
+  zu kennen. Jede Antwort auf einen Screenshot nennt sie jetzt, samt „(0,0) ist
+  oben links" und, bei mehreren Monitoren, welche es gibt.
+- In **allen drei Laufzeiten** — Sprachfront, MCP (Claude Code/Codex) und
+  Custom-LLM. Die Bildschirmliste erscheint nur, wenn es wirklich mehrere gibt;
+  bei einem Monitor wäre sie nur Rauschen im Kontext.
+
+### Behoben
+- **Klicks auf dem zweiten Monitor landeten auf dem ersten.** Ein Nebenbildschirm
+  beginnt nicht bei 0/0 — geklickt wird aber über alle Monitore hinweg in einem
+  gemeinsamen Raum. Der Ursprung des aufgenommenen Bildschirms wird jetzt
+  mitgeführt und auf jede Klick-, Bewegungs- und Scroll-Koordinate gerechnet;
+  der Rückweg zieht ihn wieder ab, damit beide Richtungen Umkehrungen bleiben.
+
+---
+
 ## [1.259.0] - 2026-08-21
 
 ### Behoben
