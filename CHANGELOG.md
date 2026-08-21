@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.256.0] - 2026-08-21
+
+### Behoben
+- **Im Sprachmodus wurde mitten im Satz ein „n" vorgelesen.** Gemeldet mit
+  Bildschirmfoto: „Hier sind ein paar Treffer zu Inside AI auf YouTube: **n n1.**
+  InsideAI\*\* – …". Zwei Fehler in einem Satz — ein zerbrochener Zeilenumbruch
+  und übrig gebliebenes Markdown.
+- Der Hergang ist lehrreich, weil die Reparatur schon einmal da war: eine
+  Säuberung wandelt literale `\n`-Folgen in echte Umbrüche zurück (ihr Kommentar
+  beschreibt genau dieses Symptom) — aber das Werkzeug-Ergebnis wird danach ein
+  **zweites Mal** kodiert, und dabei wird aus dem echten Umbruch wieder das
+  sichtbare Zeichenpaar. Die Sprach-Engine reicht es wörtlich ans Modell, das den
+  Backslash nicht sprechen kann; übrig bleibt das „n".
+- Für gesprochenen Text trägt ein Umbruch ohnehin keine Bedeutung: ein Absatz
+  wird jetzt zur Sprechpause, eine Zeile zum Leerzeichen. Steht davor schon ein
+  Satzzeichen, kommt kein zweiter Punkt dazu.
+- **Markdown wird nicht mehr mitgesprochen** — Sternchen, Backticks,
+  Überschriften-Rauten verschwinden, der Text bleibt. Aus `[Doku](…)` wird
+  „Doku", nicht die Adresse.
+- Der Eingriff bleibt auf den Weg beschränkt, der tatsächlich doppelt kodiert:
+  eingespielte Zwischenmeldungen gehen direkt an die Engine, dort gab es das
+  Problem nie.
+
+---
+
 ## [1.255.0] - 2026-08-19
 
 ### Behoben
