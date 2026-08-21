@@ -1609,11 +1609,31 @@ class CommandDispatcher:
         #: dem ersten.
         self._coord_offset: tuple[int, int] = (0, 0)
 
-    def _to_click_space(self, x, y) -> tuple[int, int]:
+    def _display_offset(self, display) -> tuple[int, int] | None:
+        """Ursprung eines AUSDRUECKLICH genannten Bildschirms.
+
+        Ohne das haengt der Versatz allein am zuletzt aufgenommenen Screenshot.
+        Sagt der Nutzer „klick auf Bildschirm zwei", ohne dass unmittelbar davor
+        ein Screenshot GENAU DIESES Bildschirms lief, klickt der Agent sonst mit
+        dem Versatz des falschen Monitors — beim Nutzer am 21.08.2026 sichtbar:
+        „das ging tatsaechlich voll daneben".
+        """
+        if not display:
+            return None
+        try:
+            nummer = int(display)
+        except (TypeError, ValueError):
+            return None
+        for b in list_displays():
+            if b.get("number") == nummer:
+                return int(b.get("x", 0)), int(b.get("y", 0))
+        return None
+
+    def _to_click_space(self, x, y, display=None) -> tuple[int, int]:
         """Eine Koordinate aus dem Bildraum (was das Modell sieht) in den
         logischen Klickraum (was pyautogui erwartet) umrechnen."""
         sx, sy = self._coord_scale
-        ox, oy = self._coord_offset
+        ox, oy = self._display_offset(display) or self._coord_offset
         return round(float(x) * sx) + ox, round(float(y) * sy) + oy
 
     def _to_image_space(self, x, y) -> tuple[int, int]:
@@ -1722,7 +1742,7 @@ class CommandDispatcher:
                 return {"ax_tree": tree}
 
             elif action in ("click", "mouse_click"):
-                cx, cy = self._to_click_space(params["x"], params["y"])
+                cx, cy = self._to_click_space(params["x"], params["y"], params.get("display"))
                 self._ctrl.click(
                     cx, cy,
                     button=params.get("button", "left"),
@@ -1743,18 +1763,18 @@ class CommandDispatcher:
                 return {"ok": True}
 
             elif action in ("scroll", "mouse_scroll"):
-                sx, sy = self._to_click_space(params["x"], params["y"])
+                sx, sy = self._to_click_space(params["x"], params["y"], params.get("display"))
                 self._ctrl.scroll(sx, sy, params.get("amount", 3))
                 return {"ok": True}
 
             elif action in ("move", "mouse_move"):
-                mx, my = self._to_click_space(params["x"], params["y"])
+                mx, my = self._to_click_space(params["x"], params["y"], params.get("display"))
                 self._ctrl.move(mx, my)
                 return {"ok": True}
 
             elif action == "drag":
-                x1, y1 = self._to_click_space(params["x1"], params["y1"])
-                x2, y2 = self._to_click_space(params["x2"], params["y2"])
+                x1, y1 = self._to_click_space(params["x1"], params["y1"], params.get("display"))
+                x2, y2 = self._to_click_space(params["x2"], params["y2"], params.get("display"))
                 self._ctrl.drag(x1, y1, x2, y2, params.get("duration", 0.3))
                 return {"ok": True}
 

@@ -807,12 +807,21 @@ DESKTOP_TOOL = {
             "action='screenshot' — sieht nach, was gerade auf seinem Bildschirm ist; "
             "mit display=2 den zweiten Monitor. "
             "Nutze das, bevor du klickst oder tippst, und wenn er fragt 'was siehst du'.\n"
-            "action='click' — klickt bei x/y. action='type' — tippt text.\n"
+            "action='click' — klickt bei x/y; bei mehreren Monitoren display "
+            "mitgeben. KOORDINATEN NIEMALS RATEN: nimm ausschliesslich Werte, die "
+            "dir gerade `find` geliefert hat oder die du in EINEM Screenshot "
+            "abgelesen hast, den du unmittelbar davor gemacht hast. Erfundene "
+            "Zahlen klicken irgendwohin — beim Nutzer am 21.08.2026 landete ein "
+            "geratener Klick in einem fremden Fenster. Im Zweifel erst `find`. "
+            "action='type' — tippt text.\n"
             "action='find' — SUCHT ein Element (Knopf, Feld, Eintrag) ueber den "
             "Bedienungshilfen-Baum und liefert seine Koordinaten; target = Beschriftung "
             "oder Rolle. action='wait' — wartet, bis so ein Element erscheint. "
             "action='key' — Tastenkombination, text z. B. 'cmd+f' oder 'enter'. "
             "action='scroll' — scrollt (text = Anzahl, negativ = nach unten).\n"
+            "MEHRERE BILDSCHIRME: erst `screenshot` MIT display=N, dann `click` mit "
+            "demselben display=N. Die Koordinaten gelten immer fuer den Bildschirm, "
+            "den du gerade angesehen hast.\n"
             "SO BEDIENST DU EINE APP: oeffnen → `find` auf das Element → `click` → "
             "`type`/`key` → wieder nachsehen (`screenshot` oder `find`). Sage NIEMALS, "
             "du koennest 'nur oeffnen, aber nicht navigieren' — das stimmt nicht.\n"
@@ -2050,8 +2059,22 @@ class RealtimeVoiceSession:
         if self._closed or not self._nova:
             return
         if not answer or answer.startswith("[Fehler"):
-            msg = ("Die Auswertung des Screenshots kam nicht zurueck. Sag das kurz und frage, "
-                   "was er sieht — erfinde nichts.")
+            # Den GRUND weitersagen, nicht nur „kam nicht zurueck".
+            #
+            # Am 21.08.2026 hiess der Grund „You've hit your limit · resets
+            # 3:10pm" — das Kontingent des Agenten war aufgebraucht. Die Stimme
+            # sagte stattdessen „die Auswertung kam nicht zurueck" und fragte den
+            # Nutzer, was ER sieht. Der suchte darauf eine halbe Stunde den
+            # Fehler bei den Bildern, obwohl die Antwort im Klartext vorlag.
+            grund = answer[8:].rstrip("]").strip() if answer.startswith("[Fehler") else ""
+            msg = (
+                f"Die Auswertung ist fehlgeschlagen. Der Grund im Wortlaut: {grund}. "
+                "Sag ihm diesen Grund kurz und in eigenen Worten — erfinde nichts "
+                "dazu und frage nicht, was er sieht."
+                if grund else
+                "Die Auswertung des Screenshots kam nicht zurueck — ohne Begruendung. "
+                "Sag das kurz und frage, was er sieht — erfinde nichts."
+            )
         else:
             msg = ("Auswertung des Screenshots ist da: " + answer +
                    "\nGib das jetzt knapp wieder, in einem oder zwei Saetzen.")
@@ -3301,6 +3324,10 @@ class RealtimeVoiceSession:
                 return "Für einen Klick brauche ich x und y — vorher einen Screenshot machen."
             try:
                 act, params = "mouse_click", {"x": int(x), "y": int(y)}
+                # Bei mehreren Monitoren muss der Klick wissen, WELCHER gemeint
+                # ist — sonst gilt der Versatz des zuletzt aufgenommenen.
+                if display:
+                    params["display"] = int(display)
             except (TypeError, ValueError):
                 # Ohne das flog die ValueError am try/except unten vorbei, _respond wurde
                 # nie aufgerufen und der Sprach-Turn blieb stehen, bis Nova selbst abbrach.

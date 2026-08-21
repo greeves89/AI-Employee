@@ -63,8 +63,10 @@ class ClicksLandOnTheRightScreenTests(unittest.TestCase):
         self.assertIn("self._coord_offset", block)
 
     def test_the_offset_is_added_when_clicking(self):
-        block = BRIDGE.split("def _to_click_space", 1)[1][:400]
-        self.assertIn("ox, oy = self._coord_offset", block)
+        block = BRIDGE.split("def _to_click_space", 1)[1][:500]
+        # Seit dem Klick-Fix schlaegt ein ausdruecklich genannter Bildschirm den
+        # zuletzt aufgenommenen — der Versatz kommt weiter aus einem der beiden.
+        self.assertIn("self._display_offset(display) or self._coord_offset", block)
         self.assertIn("+ ox", block)
 
     def test_and_subtracted_on_the_way_back(self):
@@ -113,7 +115,9 @@ class EveryRuntimeIsToldTheSizeTests(unittest.TestCase):
 
 class TheScreenCanBeChosenEverywhereTests(unittest.TestCase):
     def test_the_voice_tool_takes_a_display(self):
-        block = VOICE.split("DESKTOP_TOOL = {", 1)[1][:2600]
+        # Die Beschreibung ist mit dem Klick-Fix laenger geworden; das
+        # Eigenschaftsfeld liegt entsprechend weiter hinten.
+        block = VOICE.split("DESKTOP_TOOL = {", 1)[1][:5000]
         self.assertIn('"display"', block)
 
     def test_the_voice_path_forwards_it(self):

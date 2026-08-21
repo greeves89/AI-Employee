@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.261.0] - 2026-08-21
+
+### Behoben
+- **Klicks auf dem zweiten Monitor landeten auf dem ersten.** Die Bildschirm-
+  Auswahl galt bisher nur für die Aufnahme; ein Klick benutzte den Versatz des
+  zuletzt aufgenommenen Bildschirms. Wer also nach dem Screenshot von Nummer 2
+  klickte, traf richtig — dazwischen ein Blick auf Nummer 1, und derselbe Klick
+  ging daneben. `click`, `move`, `scroll` und `drag` nehmen die Bildschirmnummer
+  jetzt selbst entgegen und rechnen mit deren Ursprung.
+- **Geratene Koordinaten.** Das Modell setzte Klicks auf Beispielwerte (x=123,
+  y=456), ohne vorher hingesehen zu haben. Die Werkzeugbeschreibung sagt jetzt
+  ausdrücklich: Koordinaten nur aus `find` oder aus einem unmittelbar davor
+  gemachten Screenshot — niemals raten.
+- **„Die Auswertung kam nicht zurück" verschwieg den Grund.** Die Bildauswertung
+  scheiterte in Wahrheit an einem erschöpften Modell-Kontingent; die Sprachfront
+  warf diese Begründung weg und liess den Nutzer beim Bild suchen. Der Grund wird
+  jetzt im Wortlaut weitergereicht und vorgelesen.
+
+---
+
 ## [1.260.0] - 2026-08-21
 
 ### Neu
