@@ -69,7 +69,10 @@ class DieMitteBekommtDenPlatzWirklichTests(unittest.TestCase):
         self.assertGreater(stelle, 0)
 
     def test_und_ihren_hoehendeckel(self):
-        self.assertIn('buehneWeit ? "max-h-[62vh]" : "max-h-72"', _SRC)
+        # Seit mehrere Anzeigen nebeneinander passen, entscheidet die Karte:
+        # allein darf sie hoch werden, zu mehreren muss sie sich bescheiden.
+        self.assertIn('const hoehe = gross ? (weit ? "max-h-[62vh]" : "max-h-72") : "max-h-[34vh]"',
+                      _SRC)
 
     def test_breit_gilt_sobald_eine_seite_zu_ist(self):
         zeile = re.search(r"const buehneWeit = .*", _SRC).group(0)

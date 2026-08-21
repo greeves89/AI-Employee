@@ -1199,7 +1199,12 @@ export function VoiceSessionModal({
   // and fill it; as a modal we keep the compact viewport-fraction heights.
   // The newest visual the agent pushed — it gets the big stage under the orb.
   // Files stay in the right-hand activity pane (they're downloads, not visuals).
-  const stageItem = media.find((m) => m.kind === "image" || m.kind === "web");
+  // Frueher: `media.find(...)` — nur das NEUESTE Bild war zu sehen, jedes
+  // weitere legte sich unsichtbar darunter. Wer zwei Bildschirme aufnimmt, sah
+  // nur einen. Jetzt stehen sie nebeneinander; mehr als vier waeren auf einer
+  // Buehne allerdings nur noch Briefmarken, also gilt dort Schluss.
+  const alleAnzeigen = media.filter((m) => m.kind === "image" || m.kind === "web");
+  const stageItems = alleAnzeigen.slice(0, 4);
   // Groesse des Overlays: der Nutzer zieht sie sich zurecht, wir merken sie uns.
   // Vorher war das Fenster fest (max-w-6xl) — bei langen Zusammenfassungen scrollte
   // man in einer schmalen Spalte, obwohl der Bildschirm leer daneben lag.
@@ -1303,7 +1308,16 @@ export function VoiceSessionModal({
       : aufgabenAus
       ? "lg:grid-cols-[1fr_minmax(280px,2fr)_2.75rem]"
       : "lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr]";
-  const buehneWeit = gesprAus || aufgabenAus;
+  // Mehrere Anzeigen brauchen Breite, sonst stehen sie als Streifen untereinander.
+  // Dafuer muss der Nutzer nicht erst eine Spalte einklappen.
+  const buehneWeit = gesprAus || aufgabenAus || stageItems.length > 1;
+  // Tailwind liest die Datei als Text — die Klassen muessen woertlich dastehen.
+  const buehnenRaster =
+    stageItems.length >= 3
+      ? "grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+      : stageItems.length === 2
+      ? "grid gap-3 grid-cols-1 md:grid-cols-2"
+      : "grid gap-3 grid-cols-1";
   return (
     <div
       className={embedded
@@ -1573,72 +1587,33 @@ export function VoiceSessionModal({
                 </div>
 
                 {/* THE STAGE — whatever the agent is showing right now, big */}
-                {stageItem && (
-                  /* Die Buehne war auf 28rem festgenagelt — dann bringt eine
-                     eingeklappte Spalte nichts, der Screenshot bleibt klein und
-                     daneben ist Luft. Ist Platz da, nimmt sie ihn. */
-                  <div className={`relative w-full rounded-xl border border-border bg-foreground/[0.02] p-3 ${
-                    buehneWeit ? "max-w-full" : "max-w-md"
-                  }`}>
-                    {/* Ohne das bleibt ein Screenshot bis zum Sitzungsende stehen und
-                        verdeckt alles, was danach kommt. */}
-                    <button
-                      onClick={() => setMedia((prev) => prev.filter((m) => m !== stageItem))}
-                      title="Ausblenden"
-                      aria-label="Anzeige ausblenden"
-                      className="absolute right-2 top-2 z-10 rounded-md bg-background/70 p-1 text-muted-foreground backdrop-blur hover:bg-background hover:text-foreground"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                    {stageItem.kind === "image" && stageItem.b64 ? (
-                      <>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`data:${stageItem.media_type || "image/png"};base64,${stageItem.b64}`}
-                          alt={stageItem.caption || "Anzeige"}
-                          className={`w-full rounded-lg bg-white/5 object-contain ${
-                            buehneWeit ? "max-h-[62vh]" : "max-h-72"
-                          }`}
-                        />
-                        {stageItem.caption && (
-                          <p className="mt-2 text-center text-xs text-muted-foreground/70">{stageItem.caption}</p>
-                        )}
-                      </>
-                    ) : stageItem.url ? (
-                      <div className="space-y-2">
-                        <div className="flex items-start gap-2">
-                          <Globe className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
-                          <div className="min-w-0">
-                            {stageItem.caption && <p className="text-sm text-foreground/90">{stageItem.caption}</p>}
-                            <p className="truncate text-[11px] text-muted-foreground/60">{stageItem.url}</p>
-                          </div>
-                        </div>
-                        {blockedUrls.has(stageItem.url) && (
-                          <p className="text-[11px] text-amber-400/90">
-                            Dein Browser hat den Tab blockiert — hier klicken zum Öffnen.
-                          </p>
-                        )}
-                        <div className="flex flex-wrap gap-1.5">
-                          {stageItem.embeddable && (
-                            <button
-                              onClick={() => setWebModal({ url: stageItem.url!, caption: stageItem.caption })}
-                              className="rounded-md bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300 hover:bg-sky-500/20"
-                            >
-                              Im Fenster öffnen
-                            </button>
-                          )}
-                          <a
-                            href={stageItem.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-[11px] font-medium hover:bg-foreground/[0.10]"
-                          >
-                            <ExternalLink className="h-3 w-3" /> Neuer Tab
-                          </a>
-                        </div>
-                      </div>
-                    ) : null}
+                {stageItems.length > 0 && (
+                  /* Die Buehne war auf 28rem festgenagelt UND zeigte nur ein
+                     Bild. Jetzt nimmt sie den Platz, den sie hat, und stellt
+                     mehrere Anzeigen nebeneinander — zwei Bildschirme sind so
+                     endlich gleichzeitig zu sehen. */
+                  <div className={`w-full ${buehnenRaster} ${buehneWeit ? "max-w-full" : "max-w-md"}`}>
+                    {stageItems.map((item, bi) => (
+                      <Buehnenkarte
+                        key={`${item.filename || item.url || "anzeige"}-${bi}`}
+                        item={item}
+                        gross={stageItems.length === 1}
+                        weit={buehneWeit}
+                        blockiert={!!item.url && blockedUrls.has(item.url)}
+                        onAusblenden={() => setMedia((prev) => prev.filter((m) => m !== item))}
+                        onImFenster={(url, caption) => setWebModal({ url, caption })}
+                      />
+                    ))}
                   </div>
+                )}
+                {alleAnzeigen.length > stageItems.length && (
+                  /* Stillschweigend abschneiden waere gelogen — es sieht dann so
+                     aus, als haette der Agent nur vier Bilder geliefert. */
+                  <p className="text-center text-[11px] text-muted-foreground/50">
+                    {alleAnzeigen.length - stageItems.length} ältere Anzeige
+                    {alleAnzeigen.length - stageItems.length === 1 ? "" : "n"} ausgeblendet —
+                    schliesse eine, um sie zu sehen.
+                  </p>
                 )}
 
                 {uploadMsg && (
@@ -2193,6 +2168,99 @@ export function VoiceSessionModal({
 }
 
 /** Round, icon-only call control. Quiet by default so the orb + stage carry the view. */
+type Anzeige = {
+  kind: string;
+  media_type?: string;
+  b64?: string;
+  filename?: string;
+  caption?: string;
+  url?: string;
+  embeddable?: boolean;
+};
+
+/** Eine Anzeige auf der Buehne — Screenshot oder Web-Karte.
+ *  Ausgelagert, weil jetzt mehrere davon nebeneinander stehen: vorher lag der
+ *  Aufbau ein einziges Mal inline im Grundriss und liess sich nicht wiederholen. */
+function Buehnenkarte({
+  item,
+  gross,
+  weit,
+  blockiert,
+  onAusblenden,
+  onImFenster,
+}: {
+  item: Anzeige;
+  gross: boolean;
+  weit: boolean;
+  blockiert: boolean;
+  onAusblenden: () => void;
+  onImFenster: (url: string, caption?: string) => void;
+}) {
+  // Allein darf ein Bild die ganze Hoehe nehmen; zu mehreren muss es sich
+  // bescheiden, sonst scrollt man von einem Screenshot zum naechsten.
+  const hoehe = gross ? (weit ? "max-h-[62vh]" : "max-h-72") : "max-h-[34vh]";
+  return (
+    <div className="relative min-w-0 rounded-xl border border-border bg-foreground/[0.02] p-3">
+      {/* Ohne das bleibt ein Screenshot bis zum Sitzungsende stehen und
+          verdeckt alles, was danach kommt. */}
+      <button
+        onClick={onAusblenden}
+        title="Ausblenden"
+        aria-label="Anzeige ausblenden"
+        className="absolute right-2 top-2 z-10 rounded-md bg-background/70 p-1 text-muted-foreground backdrop-blur hover:bg-background hover:text-foreground"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+      {item.kind === "image" && item.b64 ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`data:${item.media_type || "image/png"};base64,${item.b64}`}
+            alt={item.caption || "Anzeige"}
+            className={`w-full rounded-lg bg-white/5 object-contain ${hoehe}`}
+          />
+          {item.caption && (
+            <p className="mt-2 text-center text-xs text-muted-foreground/70">{item.caption}</p>
+          )}
+        </>
+      ) : item.url ? (
+        <div className="space-y-2">
+          <div className="flex items-start gap-2">
+            <Globe className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
+            <div className="min-w-0">
+              {item.caption && <p className="text-sm text-foreground/90">{item.caption}</p>}
+              <p className="truncate text-[11px] text-muted-foreground/60">{item.url}</p>
+            </div>
+          </div>
+          {blockiert && (
+            <p className="text-[11px] text-amber-400/90">
+              Dein Browser hat den Tab blockiert — hier klicken zum Öffnen.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-1.5">
+            {item.embeddable && (
+              <button
+                onClick={() => onImFenster(item.url!, item.caption)}
+                className="rounded-md bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300 hover:bg-sky-500/20"
+              >
+                Im Fenster öffnen
+              </button>
+            )}
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-[11px] font-medium hover:bg-foreground/[0.10]"
+            >
+              <ExternalLink className="h-3 w-3" /> Neuer Tab
+            </a>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** Rest einer eingeklappten Seitenspalte: schmale Leiste zum Wiederaufklappen.
  *  Die Beschriftung steht senkrecht, damit man auf 2.75rem noch lesen kann,
  *  worum es geht — ein blosser Pfeil laesst raten. */

@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.263.0] - 2026-08-21
+
+### Behoben
+- **Mehrere Bilder lagen übereinander statt nebeneinander.** Die Bühne der
+  Sprachansicht holte sich genau EIN Element — das neueste. Jedes weitere Bild
+  lag zwar vor, aber unsichtbar darunter: wer beide Bildschirme aufnahm, sah
+  trotzdem nur einen, ohne jede Meldung. Jetzt stehen bis zu vier Anzeigen
+  nebeneinander, jede einzeln schliessbar, und die Bühne macht dafür von selbst
+  auf. Sind mehr da, wird das gesagt statt stillschweigend abgeschnitten.
+- **Screenshots hiessen alle gleich.** Beide Bildschirme trugen die Beschriftung
+  „Bildschirm des Nutzers" — nebeneinander nicht auseinanderzuhalten. Jetzt
+  stehen Nummer und Bildgrösse darunter.
+
+---
+
 ## [1.262.0] - 2026-08-21
 
 ### Neu

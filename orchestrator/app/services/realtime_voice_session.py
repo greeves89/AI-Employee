@@ -3409,9 +3409,16 @@ class RealtimeVoiceSession:
             b64 = result.get("screenshot_b64") or ""
             if not b64:
                 return "Der Screenshot kam leer zurück — ich sehe seinen Bildschirm gerade nicht."
+            # Zwei Screenshots nebeneinander sind ohne Nummer nicht zu
+            # unterscheiden — beide hiessen bis eben „Bildschirm des Nutzers".
+            nr = result.get("display")
+            groesse = result.get("image_size") or {}
+            beschriftung = f"Bildschirm {nr}" if nr else "Bildschirm des Nutzers"
+            if groesse.get("w") and groesse.get("h"):
+                beschriftung += f" — {groesse['w']} x {groesse['h']}"
             await self._emit({"type": "media", "data": {
                 "kind": "image", "media_type": "image/png", "b64": b64,
-                "caption": "Bildschirm des Nutzers", "auto_open": True,
+                "caption": beschriftung, "auto_open": True,
             }})
             # Nova Sonic hat keinen Bildkanal. Aber ICH haenge an einem echten Agenten,
             # und DER sieht Bilder — mit dem Zugang, der fuer ihn ohnehin eingerichtet
