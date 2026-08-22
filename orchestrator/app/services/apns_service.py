@@ -67,6 +67,11 @@ class APNsService:
         }
         if data:
             payload.update(data)
+            # Freigabe-Pushes bekommen eine Kategorie, damit iOS die
+            # Genehmigen/Ablehnen-Knoepfe direkt auf der Mitteilung anzeigen
+            # kann (App 1.2.3+ registriert die Kategorie "APPROVAL").
+            if data.get("type") == "approval":
+                payload["aps"]["category"] = "APPROVAL"
         headers = {
             "authorization": f"bearer {cls._provider_token()}",
             "apns-topic": settings.apns_bundle_id,
