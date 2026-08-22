@@ -2266,10 +2266,28 @@ class RealtimeVoiceSession:
             # fortsetzen. Ohne die Unterscheidung müsste der Nutzer bei jedem
             # Schluckauf von Hand neu starten.
             meldung = str(data.get("message", "Realtime-Fehler"))
-            await self._emit({"type": "error", "data": {
-                "message": meldung,
-                "retryable": _ist_voruebergehend(meldung),
-            }})
+            if "content filter" in meldung.lower():
+                # AWS blockt hier fast immer den beim Aufbau injizierten
+                # Gespraechsverlauf (_greet mit _resume_summary) — deterministisch,
+                # bei jedem Verbindungsaufbau derselben Sitzung wieder. Ein
+                # Reconnect ist zwecklos; was hilft, ist ein frisches Gespraech
+                # ohne den beanstandeten Verlauf. Das muss die Meldung sagen,
+                # sonst startet der Nutzer achtmal dasselbe neu.
+                await self._emit({"type": "error", "data": {
+                    "message": (
+                        "Der Modell-Anbieter blockiert Inhalte dieses Gespraechs "
+                        "(Content-Filter) — das betrifft den geladenen Verlauf, "
+                        "nicht deine Frage. Starte ein neues Gespraech, dann "
+                        "laeuft die Sprachsteuerung wieder."
+                    ),
+                    "retryable": False,
+                    "reason": "content_filter",
+                }})
+            else:
+                await self._emit({"type": "error", "data": {
+                    "message": meldung,
+                    "retryable": _ist_voruebergehend(meldung),
+                }})
         elif kind == "done":
             await self._emit({"type": "done", "data": {}})
             await self._emit(None)  # end the outbound stream
