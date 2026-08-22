@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.264.1] - 2026-08-22
+
+### Behoben
+- **Sprachsitzungen mit Nova Sonic starten wieder.** Das AWS-SDK für den
+  Sprachkanal (`aws-sdk-bedrock-runtime`) hat in Version 0.10 seine Klassen
+  umbenannt und verbietet den bisherigen Aufbauweg — auf einer Anlage mit
+  neuem Container-Image brach damit JEDE Sprachsitzung sofort ab
+  („cannot import name 'Config'"). Der Sprachkanal kann jetzt mit beiden
+  SDK-Generationen umgehen; die Microsoft-Realtime-Anbindung (Azure) war
+  nicht betroffen und bleibt unverändert. Ein neuer Test fährt den echten
+  Aufbauweg gegen die tatsächlich installierte SDK-Version, damit die
+  nächste Umbenennung auffällt, bevor sie eine Anlage trifft.
+
+---
+
 ## [1.264.0] - 2026-08-21
 
 ### Behoben

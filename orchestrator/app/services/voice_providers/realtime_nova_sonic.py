@@ -167,8 +167,23 @@ class NovaSonicSession:
 
     # ── stream setup ────────────────────────────────────────────────
 
-    def _config(self):
-        from aws_sdk_bedrock_runtime.config import Config
+    async def _config(self):
+        # aws-sdk-bedrock-runtime 0.10 renamed Config -> AsyncBedrockRuntimeConfig
+        # and BedrockRuntimeClient -> AsyncBedrockRuntimeClient, kept the field
+        # names and the auth/models modules intact, but forbids constructing the
+        # config directly — it must come from `await ...Config.resolve(...)`.
+        # Deployments carry either SDK generation depending on when their image
+        # was built, so both paths must work; a missing SDK still fails loudly.
+        try:
+            from aws_sdk_bedrock_runtime.config import Config
+
+            legacy_sdk = True
+        except ImportError:
+            from aws_sdk_bedrock_runtime.config import (
+                AsyncBedrockRuntimeConfig as Config,
+            )
+
+            legacy_sdk = False
         from aws_sdk_bedrock_runtime.auth import HTTPAuthSchemeResolver
         from smithy_aws_core.auth.sigv4 import SigV4AuthScheme
         from smithy_aws_core.identity import AWSCredentialsIdentity
@@ -184,13 +199,16 @@ class NovaSonicSession:
                     session_token=token,
                 )
 
-        return Config(
-            endpoint_uri=f"https://bedrock-runtime.{self.region}.amazonaws.com",
-            region=self.region,
-            aws_credentials_identity_resolver=_StaticCreds(),
-            auth_scheme_resolver=HTTPAuthSchemeResolver(),
-            auth_schemes={"aws.auth#sigv4": SigV4AuthScheme(service="bedrock")},
-        )
+        kwargs = {
+            "endpoint_uri": f"https://bedrock-runtime.{self.region}.amazonaws.com",
+            "region": self.region,
+            "aws_credentials_identity_resolver": _StaticCreds(),
+            "auth_scheme_resolver": HTTPAuthSchemeResolver(),
+            "auth_schemes": {"aws.auth#sigv4": SigV4AuthScheme(service="bedrock")},
+        }
+        if legacy_sdk:
+            return Config(**kwargs)
+        return await Config.resolve(**kwargs)
 
     async def _send_event(self, event: dict) -> None:
         # Never write to a stream the server has already completed — awscrt would
@@ -216,12 +234,17 @@ class NovaSonicSession:
 
     async def open(self) -> None:
         """Open the bidirectional stream and prime it with prompt + system + tools."""
-        from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient
+        try:
+            from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient
+        except ImportError:  # SDK >= 0.10, see _config
+            from aws_sdk_bedrock_runtime.client import (
+                AsyncBedrockRuntimeClient as BedrockRuntimeClient,
+            )
         from aws_sdk_bedrock_runtime.models import (
             InvokeModelWithBidirectionalStreamOperationInput as OpInput,
         )
 
-        self._client = BedrockRuntimeClient(config=self._config())
+        self._client = BedrockRuntimeClient(config=await self._config())
         self._stream = await self._client.invoke_model_with_bidirectional_stream(
             OpInput(model_id=self.model_id)
         )
