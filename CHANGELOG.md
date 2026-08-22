@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.264.2] - 2026-08-22
+
+### Behoben
+- **Sprachsteuerung: Ein Content-Filter-Block sagt jetzt, was hilft.** Blockt
+  der Modell-Anbieter (AWS) den beim Verbindungsaufbau geladenen
+  Gespraechsverlauf, kam bisher nur die rohe Fehlermeldung samt RequestId an —
+  und jeder Neuversuch lief in denselben Block. Die Meldung erklaert jetzt,
+  dass der geladene Verlauf betroffen ist (nicht die eigene Frage) und ein
+  neues Gespraech die Sprachsteuerung wieder freigibt; sie ist ausdruecklich
+  als nicht-wiederholbar markiert, damit Clients nicht im Kreis neu verbinden.
+
+---
+
 ## [1.264.1] - 2026-08-22
 
 ### Behoben
