@@ -35,6 +35,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   unsichtbar — dagegen hilft nur Beobachtung ausserhalb des Agenten. Das ist
   bewusst nicht Teil dieser Änderung.
 - Ohne Wirkung, solange die Aufsicht ausgeschaltet ist (Standard).
+---
+
+## [1.264.2] - 2026-08-22
+
+### Behoben
+- **Sprachsteuerung: Ein Content-Filter-Block sagt jetzt, was hilft.** Blockt
+  der Modell-Anbieter (AWS) den beim Verbindungsaufbau geladenen
+  Gespraechsverlauf, kam bisher nur die rohe Fehlermeldung samt RequestId an —
+  und jeder Neuversuch lief in denselben Block. Die Meldung erklaert jetzt,
+  dass der geladene Verlauf betroffen ist (nicht die eigene Frage) und ein
+  neues Gespraech die Sprachsteuerung wieder freigibt; sie ist ausdruecklich
+  als nicht-wiederholbar markiert, damit Clients nicht im Kreis neu verbinden.
+
+---
+
+## [1.264.1] - 2026-08-22
+
+### Behoben
+- **Sprachsitzungen mit Nova Sonic starten wieder.** Das AWS-SDK für den
+  Sprachkanal (`aws-sdk-bedrock-runtime`) hat in Version 0.10 seine Klassen
+  umbenannt und verbietet den bisherigen Aufbauweg — auf einer Anlage mit
+  neuem Container-Image brach damit JEDE Sprachsitzung sofort ab
+  („cannot import name 'Config'"). Der Sprachkanal kann jetzt mit beiden
+  SDK-Generationen umgehen; die Microsoft-Realtime-Anbindung (Azure) war
+  nicht betroffen und bleibt unverändert. Ein neuer Test fährt den echten
+  Aufbauweg gegen die tatsächlich installierte SDK-Version, damit die
+  nächste Umbenennung auffällt, bevor sie eine Anlage trifft.
+
+---
+
 ## [1.264.0] - 2026-08-21
 
 ### Behoben

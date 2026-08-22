@@ -95,3 +95,55 @@ class TheBrowserActuallyReconnectsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ContentFilterBlockTests(unittest.IsolatedAsyncioTestCase):
+    """AWS blockt den beim Aufbau injizierten Gespraechsverlauf deterministisch —
+    ein Reconnect aendert daran nichts. Der Nutzer braucht die Ansage, dass ein
+    NEUES Gespraech hilft (Vorfall 2026-08-22, JujaBot-Telegram-Verlauf)."""
+
+    BLOCK = ("RequestId=953b6884 : Error(s):\n"
+             "Error 1 : This request has been blocked by our content filters.")
+
+    def test_block_ist_nicht_voruebergehend(self):
+        self.assertFalse(_ist_voruebergehend(self.BLOCK))
+
+    async def test_block_wird_uebersetzt_mit_handlungshinweis(self):
+        from app.services.realtime_voice_session import RealtimeVoiceSession
+
+        session = object.__new__(RealtimeVoiceSession)
+        session.agent_id = "a1"
+        session.session_id = "s1"
+        session._planned = []
+        emitted = []
+
+        async def fake_emit(evt):
+            emitted.append(evt)
+
+        session._emit = fake_emit
+        await session._on_nova_event("error", {"message": self.BLOCK})
+
+        self.assertEqual(len(emitted), 1)
+        data = emitted[0]["data"]
+        self.assertFalse(data["retryable"])
+        self.assertEqual(data["reason"], "content_filter")
+        self.assertIn("neues Gespraech", data["message"])
+
+    async def test_andere_fehler_bleiben_unveraendert(self):
+        from app.services.realtime_voice_session import RealtimeVoiceSession
+
+        session = object.__new__(RealtimeVoiceSession)
+        session.agent_id = "a1"
+        session.session_id = "s1"
+        session._planned = []
+        emitted = []
+
+        async def fake_emit(evt):
+            emitted.append(evt)
+
+        session._emit = fake_emit
+        await session._on_nova_event("error", {"message": "Model has timed out in processing the request"})
+
+        data = emitted[0]["data"]
+        self.assertTrue(data["retryable"])
+        self.assertNotIn("reason", data)
