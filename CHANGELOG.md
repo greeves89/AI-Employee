@@ -25,6 +25,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.264.3] - 2026-08-22
+
+### Hinzugefuegt
+- **Freigabe-Pushes tragen jetzt eine Aktions-Kategorie.** Die iOS-App (ab
+  1.2.3) zeigt damit Genehmigen/Ablehnen direkt auf der Push-Mitteilung an —
+  eine Freigabe laesst sich vom Sperrbildschirm beantworten, ohne die App zu
+  oeffnen (Geraet muss entsperrt werden, bewusste Sicherheitsentscheidung).
+
+---
+
 ## [1.264.2] - 2026-08-22
 
 ### Behoben
