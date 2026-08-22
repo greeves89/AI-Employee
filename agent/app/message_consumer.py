@@ -19,6 +19,7 @@ import redis.asyncio as aioredis
 from app.config import get_oauth_token, settings
 from app.log_publisher import LogPublisher
 from app.proc_watchdog import ProcessIdleTimeout, communicate_with_idle_timeout
+from app.run_budget import get_run_budget
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +330,12 @@ class MessageConsumer:
                     prompt = meeting_prefix + prompt
 
                     try:
-                        response = await self._execute_cli(prompt)
+                        # Prozessweites Budget (Issue #628 Phase 2): dieser
+                        # Consumer laeuft ungedeckelt neben Aufgaben und Chat
+                        # im selben Prozess — ohne den gemeinsamen Platz
+                        # koennte er das Container-Budget alleine sprengen.
+                        async with get_run_budget().slot_for_task():
+                            response = await self._execute_cli(prompt)
                     except Exception as e:
                         logger.error(f"[Meeting] CLI execution failed: {e}")
                         response = f"[{self.agent_id} encountered an error: {e}]"
@@ -427,8 +433,10 @@ class MessageConsumer:
                         f"Projekt-Room, tag_type: 'permanent')."
                     )
 
-                # Execute via CLI
-                response = await self._execute_cli(prompt)
+                # Execute via CLI — geteilter Platz aus dem prozessweiten
+                # RunBudget (Issue #628 Phase 2), derselbe Topf wie Aufgaben.
+                async with get_run_budget().slot_for_task():
+                    response = await self._execute_cli(prompt)
 
                 if response and not response.startswith("[Error]") and not response.startswith("[Timeout"):
                     if is_reply:

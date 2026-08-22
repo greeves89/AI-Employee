@@ -10,6 +10,7 @@ import redis.asyncio as aioredis
 
 from app.config import settings
 from app.log_publisher import LogPublisher
+from app.run_budget import get_run_budget
 
 logger = logging.getLogger(__name__)
 
@@ -755,56 +756,61 @@ class ChatConsumer:
         # „hat sich nicht mehr gemeldet" abgebrochen — noch bevor der Agent ueberhaupt
         # etwas tun konnte.
         log_publisher.last_activity_at = time.monotonic()
-        turn = asyncio.ensure_future(
-            handler.handle_message(
-                message_id=message_id,
-                text=text,
-                model=model,
-                reasoning=reasoning,
-                **handle_kwargs,
-            )
-        )
-        try:
-            while True:
-                try:
-                    await asyncio.wait_for(asyncio.shield(turn), timeout=15)
-                    break
-                except asyncio.TimeoutError:
-                    quiet = time.monotonic() - getattr(
-                        log_publisher, "last_activity_at", time.monotonic()
-                    )
-                    if quiet >= idle_limit:
-                        turn.cancel()
-                        raise
-                    continue
-            # Persist Claude session ID so we can --resume after restart
-            await self._persist_session(source_key, handler, effective_model)
-        except asyncio.TimeoutError:
-            logger.error(
-                "Chat turn %s aborted — no activity for %ss (agent appears stuck)",
-                message_id, idle_limit,
+        # Der Platz muss VOR dem Erzeugen des Turns genommen werden — sonst
+        # startet der eigentliche CLI-Prozess (im ersten `await` innerhalb
+        # von `handle_message`) schon, bevor das prozessweite RunBudget
+        # (Issue #628 Phase 2) ueberhaupt gefragt wurde.
+        async with get_run_budget().slot_for_chat():
+            turn = asyncio.ensure_future(
+                handler.handle_message(
+                    message_id=message_id,
+                    text=text,
+                    model=model,
+                    reasoning=reasoning,
+                    **handle_kwargs,
+                )
             )
             try:
-                if hasattr(handler, "stop_current"):
-                    await handler.stop_current()
-            except Exception:  # noqa: BLE001
-                pass
-            await log_publisher.publish_chat(
-                message_id, "error",
-                {"message": "Der Agent hat sich zwischendurch nicht mehr gemeldet und "
-                            "wurde abgebrochen. Bitte erneut versuchen."},
-            )
-            await log_publisher.publish_chat(message_id, "done", {"status": "timeout"})
-        finally:
-            self._active_source_keys.discard(source_key)
-            if not self._active_source_keys:
-                await log_publisher.publish_status("idle")
-            else:
-                # Other sessions still running → keep the busy set accurate.
-                busy = self._busy_chat_sessions()
-                await log_publisher.publish_status(
-                    "working", busy[0] if busy else "", active_sessions=busy,
+                while True:
+                    try:
+                        await asyncio.wait_for(asyncio.shield(turn), timeout=15)
+                        break
+                    except asyncio.TimeoutError:
+                        quiet = time.monotonic() - getattr(
+                            log_publisher, "last_activity_at", time.monotonic()
+                        )
+                        if quiet >= idle_limit:
+                            turn.cancel()
+                            raise
+                        continue
+                # Persist Claude session ID so we can --resume after restart
+                await self._persist_session(source_key, handler, effective_model)
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Chat turn %s aborted — no activity for %ss (agent appears stuck)",
+                    message_id, idle_limit,
                 )
+                try:
+                    if hasattr(handler, "stop_current"):
+                        await handler.stop_current()
+                except Exception:  # noqa: BLE001
+                    pass
+                await log_publisher.publish_chat(
+                    message_id, "error",
+                    {"message": "Der Agent hat sich zwischendurch nicht mehr gemeldet und "
+                                "wurde abgebrochen. Bitte erneut versuchen."},
+                )
+                await log_publisher.publish_chat(message_id, "done", {"status": "timeout"})
+            finally:
+                self._active_source_keys.discard(source_key)
+                if not self._active_source_keys:
+                    await log_publisher.publish_status("idle")
+                else:
+                    # Other sessions still running → keep the busy set accurate.
+                    busy = self._busy_chat_sessions()
+                    await log_publisher.publish_status(
+                        "working", busy[0] if busy else "", active_sessions=busy,
+                    )
 
     async def stop(self) -> None:
         self.running = False

@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.268.0] - 2026-08-22
+
+### Hinzugefuegt
+- **Ein gemeinsamer Nebenlaeufigkeitsdeckel statt drei getrennter.** Aufgaben,
+  Chat und Agent-zu-Agent-Nachrichten liefen im selben Container-Prozess
+  jeweils gegen ihre EIGENE Obergrenze — in Summe konnten so mehr Laeufe
+  gleichzeitig starten, als der Container an Prozessen (`pids.max`) hergibt,
+  weil jeder Pool fuer sich genommen "korrekt" gedeckelt war. Jetzt teilen
+  sich alle drei EIN prozessweites Budget; ein Platz bleibt dabei exklusiv
+  fuer Chat reserviert, damit ein Gespraech nicht beliebig lange hinter
+  laufenden Aufgaben warten muss, wenn der gemeinsame Topf leer ist.
+
+---
+
 ## [1.264.3] - 2026-08-22
 
 ### Hinzugefuegt
@@ -12,8 +26,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   1.2.3) zeigt damit Genehmigen/Ablehnen direkt auf der Push-Mitteilung an —
   eine Freigabe laesst sich vom Sperrbildschirm beantworten, ohne die App zu
   oeffnen (Geraet muss entsperrt werden, bewusste Sicherheitsentscheidung).
-
----
 
 ## [1.264.2] - 2026-08-22
 
