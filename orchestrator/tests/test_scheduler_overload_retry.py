@@ -29,6 +29,7 @@ class _FakeRedisClient:
         self.values: dict[str, int] = {}
         self.expirations: dict[str, int] = {}
         self.deleted: list[str] = []
+        self.published: list[tuple[str, str]] = []
 
     async def incr(self, key):
         self.values[key] = self.values.get(key, 0) + 1
@@ -38,10 +39,26 @@ class _FakeRedisClient:
         self.expirations[key] = seconds
         return True
 
-    async def delete(self, key):
-        self.deleted.append(key)
-        self.values.pop(key, None)
-        self.expirations.pop(key, None)
+    async def set(self, key, value, ex=None, nx=False):
+        if nx and key in self.values:
+            return None
+        self.values[key] = value
+        if ex is not None:
+            self.expirations[key] = ex
+        return True
+
+    async def get(self, key):
+        return self.values.get(key)
+
+    async def delete(self, *keys):
+        for key in keys:
+            self.deleted.append(key)
+            self.values.pop(key, None)
+            self.expirations.pop(key, None)
+        return len(keys)
+
+    async def publish(self, channel, message):
+        self.published.append((channel, message))
         return 1
 
 
@@ -77,6 +94,9 @@ class SchedulerOverloadRetryTests(unittest.IsolatedAsyncioTestCase):
             agent_id=self.agent.id,
             next_run_at=self.now,
             enabled=True,
+            total_runs=0,
+            success_count=0,
+            fail_count=0,
         )
 
     async def _execute_once(self, schedule):

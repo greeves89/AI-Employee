@@ -71,6 +71,12 @@ _TRANSIENT_RETRY_MAX_ATTEMPTS = 2
 _TRANSIENT_RETRY_DELAY = timedelta(minutes=12)
 _LOCK_RETRY_MAX_ATTEMPTS = 3
 _LOCK_RETRY_DELAY = timedelta(seconds=30)
+_RETRY_REASONS = ("overload", "off_duty", "busy", "lock")
+
+# Eine Meldung pro Zeitplan und Stunde. Ein Zeitplan, der oefter als stuendlich
+# laeuft, verwirft bei einer laengeren Stoerung sonst die ganze Nacht lang alle
+# ~25 Minuten einen Slot und meldet jeden einzeln.
+_DROPPED_SLOT_ALERT_COOLDOWN_SECONDS = 3600
 
 # GC runs every 60 seconds
 _GC_INTERVAL_SECONDS = 60
@@ -930,6 +936,7 @@ class SchedulerService:
         # feuerte im 30-Sekunden-Takt weiter.
         schedule.last_run_at = now
         schedule.total_runs += 1
+        await self._clear_retry_budgets(schedule)
         if not schedule.cron_expression and schedule.interval_seconds == 0:
             schedule.enabled = False
             schedule.next_run_at = now
@@ -968,16 +975,111 @@ class SchedulerService:
             return _calc_next_run(schedule, now)
 
         key = f"schedule:retry:{reason}:{schedule.id}"
+        slot_key = f"{key}:slot"
+        slot = as_utc(schedule.next_run_at)
         try:
             attempt = int(await client.incr(key))
             if attempt == 1:
                 await client.expire(key, _OVERLOAD_RETRY_TTL_SECONDS)
-            if attempt <= max_attempts:
-                return now + delay
-            await client.delete(key)
         except Exception:  # noqa: BLE001
             logger.debug("[Scheduler] Retry-Zaehler (%s) nicht verfuegbar", reason, exc_info=True)
+            return _calc_next_run(schedule, now)
+
+        # Den urspruenglichen Soll-Slot merken, sonst meldet das Aufgeben spaeter
+        # die letzte Wiederholung statt der Uhrzeit, die im Zeitplan steht. Eigenes
+        # try: eine Stoerung hier darf keine Wiederholung in ein Aufgeben verwandeln.
+        try:
+            await client.set(
+                slot_key, slot.isoformat(), ex=_OVERLOAD_RETRY_TTL_SECONDS, nx=True,
+            )
+            if attempt > max_attempts:
+                stored = await client.get(slot_key)
+                if stored:
+                    slot = as_utc(datetime.fromisoformat(stored))
+                await client.delete(key, slot_key)
+        except Exception:  # noqa: BLE001
+            logger.debug("[Scheduler] Soll-Slot (%s) nicht verfuegbar", reason, exc_info=True)
+
+        if attempt <= max_attempts:
+            return now + delay
+        await self._report_dropped_slot(schedule, slot, reason=reason, attempts=max_attempts)
         return _calc_next_run(schedule, now)
+
+    async def _clear_retry_budgets(self, schedule: Schedule) -> None:
+        """Wiederholungs-Budgets nach einem geglueckten Lauf zuruecksetzen.
+
+        Die Zaehler leben 6 Stunden. Ohne Ruecksetzen erbt der naechste Slot
+        eines stuendlichen Zeitplans das schon aufgebrauchte Budget des
+        vorherigen — er wird beim ersten Huerdchen sofort verworfen, und die
+        Meldung nennt den alten, laengst gelaufenen Soll-Slot.
+        """
+        client = getattr(self.redis, "client", None)
+        if client is None:
+            return
+        keys = [f"schedule:retry:{r}:{schedule.id}" for r in _RETRY_REASONS]
+        try:
+            await client.delete(*keys, *(f"{k}:slot" for k in keys))
+        except Exception:  # noqa: BLE001
+            logger.debug("[Scheduler] Retry-Budgets nicht ruecksetzbar", exc_info=True)
+
+    async def _report_dropped_slot(
+        self, schedule: Schedule, slot: datetime, *, reason: str, attempts: int,
+    ) -> None:
+        """Einen endgueltig verworfenen Lauf zaehlen und melden (#631).
+
+        Bis hierher war das Aufgeben die einzige Zustandsaenderung im Scheduler,
+        die weder gezaehlt noch gemeldet wurde: der Skip-Zweig kehrt vor
+        ``total_runs += 1`` zurueck, und ``_retry_or_advance`` setzt
+        ``next_run_at`` in die Zukunft. Damit sah der Fehler-Waechter
+        ``drift == 0``, der Verpasst-Waechter fand nichts (er sucht
+        ``next_run_at`` in der Vergangenheit), und ``success_rate`` blieb 1.0 —
+        ein Tageszeitplan konnte tagelang ausfallen und meldete perfekte Quote.
+        ``last_run_at`` bleibt bewusst unberuehrt: es hat kein Lauf
+        stattgefunden.
+        """
+        import json as _json
+
+        # Einmal-Laeufe (Plan-Bloecke) verlieren nichts: sie behalten ihren
+        # einen Auftrag und versuchen es in 60 Sekunden wieder. Nur wer eine
+        # feste Wiederkehr hat, verliert wirklich den Termin von heute.
+        if not schedule.cron_expression and not schedule.interval_seconds:
+            return
+
+        schedule.total_runs += 1
+        schedule.fail_count += 1
+
+        logger.warning(
+            "[Scheduler] %s: Slot %s nach %s Versuchen (%s) verworfen",
+            schedule.name, slot.isoformat(), attempts, reason,
+        )
+
+        client = getattr(self.redis, "client", None)
+        if client is None:
+            return
+        try:
+            fresh = await client.set(
+                f"schedule:dropped:{schedule.id}", "1",
+                nx=True, ex=_DROPPED_SLOT_ALERT_COOLDOWN_SECONDS,
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("[Scheduler] Meldungs-Drossel nicht verfuegbar", exc_info=True)
+            fresh = True
+        if not fresh:
+            return
+
+        payload = {
+            "text": (
+                f"⚠️ Zeitplan *{md_escape(schedule.name)}*: Lauf um "
+                f"{slot.isoformat()} entfaellt ersatzlos "
+                f"(Grund: {md_escape(reason)}, nach {attempts} Versuchen). "
+                f"Naechster regulaerer Termin unveraendert."
+            ),
+            "parse_mode": "Markdown",
+        }
+        try:
+            await client.publish("telegram:notification", _json.dumps(payload))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Scheduler] DroppedSlot publish error: %s", e)
 
     async def _arm_plan_blocks(self) -> int:
         """Sicherstellen, dass jeder geplante Block mit Uhrzeit einen Ausloeser hat.
@@ -1022,7 +1124,11 @@ class SchedulerService:
             missed = (await db.execute(
                 select(AgentPlanItem, Schedule)
                 .join(Schedule, Schedule.id == AgentPlanItem.schedule_id)
-                .where(AgentPlanItem.status == "planned", Schedule.total_runs > 0)
+                # last_run_at statt total_runs: ein verworfener Slot (#631) zaehlt
+                # als fehlgeschlagener Lauf mit, hat aber nichts ausgefuehrt — ueber
+                # total_runs wuerde der Block als erledigt abgehakt und per
+                # Titel-Suche an einen fremden Task gehaengt.
+                .where(AgentPlanItem.status == "planned", Schedule.last_run_at.is_not(None))
             )).all()
             for item, sched in missed:
                 task = (await db.execute(
