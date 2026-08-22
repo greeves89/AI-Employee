@@ -124,9 +124,14 @@ class StatusFeedbackTests(unittest.TestCase):
 
     def test_blocks_that_already_fired_are_caught_up(self):
         """Bloecke, deren Zeitplan vor dieser Rueckmeldung gefeuert hat, stuenden sonst
-        fuer immer auf „geplant" — obwohl die Arbeit gelaufen ist."""
+        fuer immer auf „geplant" — obwohl die Arbeit gelaufen ist.
+
+        „Gefeuert" heisst last_run_at, nicht total_runs: seit #631 zaehlt auch ein
+        verworfener Slot als Lauf mit, hat aber nichts ausgefuehrt — er darf den
+        Block nicht abhaken."""
         block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
-        self.assertIn("Schedule.total_runs > 0", block)
+        self.assertIn("Schedule.last_run_at.is_not(None)", block)
+        self.assertNotIn("Schedule.total_runs > 0", block)
         self.assertIn('AgentPlanItem.status == "planned"', block)
 
     def test_missed_blocks_are_caught_up_staggered(self):

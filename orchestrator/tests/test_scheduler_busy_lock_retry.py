@@ -38,6 +38,7 @@ class _FakeRedisClient:
     def __init__(self):
         self.values: dict[str, int] = {}
         self.deleted: list[str] = []
+        self.published: list[tuple[str, str]] = []
 
     async def incr(self, key):
         self.values[key] = self.values.get(key, 0) + 1
@@ -46,9 +47,23 @@ class _FakeRedisClient:
     async def expire(self, key, seconds):
         return True
 
-    async def delete(self, key):
-        self.deleted.append(key)
-        self.values.pop(key, None)
+    async def set(self, key, value, ex=None, nx=False):
+        if nx and key in self.values:
+            return None
+        self.values[key] = value
+        return True
+
+    async def get(self, key):
+        return self.values.get(key)
+
+    async def delete(self, *keys):
+        for key in keys:
+            self.deleted.append(key)
+            self.values.pop(key, None)
+        return len(keys)
+
+    async def publish(self, channel, message):
+        self.published.append((channel, message))
         return 1
 
 
@@ -102,6 +117,7 @@ class ProactiveBusyRetryTests(_BaseCase):
             id="proactive-1", name="[Proactive] Agent", prompt="placeholder",
             cron_expression="0 9 * * *", timezone="UTC", interval_seconds=3600,
             agent_id=self.agent.id, next_run_at=self.now, enabled=True,
+            total_runs=0, success_count=0, fail_count=0,
         )
 
     async def test_busy_retries_shortly_then_gives_up(self):
@@ -134,6 +150,7 @@ class DispatchLockRetryTests(_BaseCase):
             id="plain-1", name="Custom job", prompt="do the thing",
             cron_expression="0 9 * * *", timezone="UTC", interval_seconds=3600,
             agent_id=self.agent.id, next_run_at=self.now, enabled=True,
+            total_runs=0, success_count=0, fail_count=0,
         )
 
     async def test_lock_held_retries_on_next_tick_then_gives_up(self):
@@ -168,6 +185,7 @@ class FinalBusyCheckRetryTests(_BaseCase):
             id="plain-2", name="Custom job", prompt="do the thing",
             cron_expression="0 9 * * *", timezone="UTC", interval_seconds=3600,
             agent_id=self.agent.id, next_run_at=self.now, enabled=True,
+            total_runs=0, success_count=0, fail_count=0,
         )
 
     async def test_busy_at_final_check_retries_then_gives_up(self):
