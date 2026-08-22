@@ -2,33 +2,41 @@
 
 Event-driven counterpart to watchdog.py's poll-driven checks: instead of
 scanning the DB on a timer like SchedulerService.run() does, SentinelService
-subscribes to the orchestrator's own `agents:logs:all` Redis channel — the
-same channel StreamManager.stream_all_logs() already streams to the admin UI,
-populated by AgentManager._publish_event() (orchestrator/app/core/agent_manager.py)
-as it executes/passes through each agent lifecycle event.
+consumes the per-agent event streams `agent:*:logs` and `agent:*:chat:response`.
 
-That channel choice is load-bearing, not incidental: per #588's manipulation-proof
-analysis, a telemetry source the Sentinel acts on must never be something an
-agent's own process can write, only something the orchestrator generates at the
-point it actually performs an action. `agents:logs:all` already satisfies that
-today; nothing here reads any per-agent-writable stream.
+Die Zuordnung eines Ereignisses zu einem Agenten stammt AUSSCHLIESSLICH aus dem
+KANALNAMEN, den der Orchestrator selbst aufloest — nie aus dem Feld `agent_id`
+in der Nutzlast. Das ist der Kern der Vertrauensgrenze (#590) und der Grund fuer
+die Kanalwahl:
 
-This is the Grundgerüst only (Teil 2/4, #590 scope points 1+3). The three hook
-points below exist so the wiring is in place end to end, but carry no
-production logic yet:
-  - `_scan`       always returns None (no detection rules — that's #592,
-                   the DLP #525/#564/#575 scan logic).
-  - `_stop_agent` logs only. The Sentinel-exclusive credential itself now
-                   exists (`app.dependencies.require_sentinel`/`get_sentinel_token`,
-                   #590 scope point 3, held on `self._sentinel_token`) — what is
-                   still missing is the actual privileged call it gets presented
-                   to (#590 scope point 4: wiring this to a real
-                   `AgentManager.stop_agent()` invocation, `asyncio.gather`'d with
-                   `_notify`).
-  - `_notify`     logs only (wiring to notify_user/send_telegram and the
-                   audit-log table land alongside scope point 4/#592).
-Because `sentinel_enabled` defaults to False and `_scan` never triggers even
-when on, none of this has any observable effect until those follow-ups land.
+* `agents:logs:all` wird hier NICHT mehr gelesen. Dieser globale Kanal ist per
+  ACL absichtlich fuer jeden Agenten beschreibbar (`redis_service.py`) — er
+  speist die Live-Ansicht der Oberflaeche. Wer darauf hoert und dem mitgelieferten
+  `agent_id` glaubt, laesst Agent A ein Ereignis im Namen von Agent B erfinden
+  und B daraufhin anhalten: eine Waffe von Agent gegen Agent.
+* `agent:{id}:*` liegt dagegen im Namensraum GENAU EINES Agenten. Mit aktiver
+  ACL kann kein Agent in den Namensraum eines anderen schreiben; die Zuordnung
+  ueber den Kanalnamen ist damit eine echte Grenze statt einer Selbstauskunft.
+
+Sichtbarkeit geht dabei nicht verloren: `log_publisher.publish()` schreibt
+dieselbe Nutzlast auf beide Kanaele, und die orchestrator-seitigen Melder
+(`agent_manager._publish_event`, `task_router`, `ws.py`) schreiben ohnehin auf
+den Kanal je Agent.
+
+Eine ehrliche Grenze der Phase 1: sie schliesst die FAELSCHUNG der Zuordnung.
+Ein kompromittierter Agent, der einfach aufhoert zu senden oder bereinigten Text
+sendet, bleibt unsichtbar — dagegen hilft nur orchestrator-seitige Beobachtung
+(Docker-Logs). Das ist bewusst nicht Teil dieser Aenderung.
+
+Die drei Haken sind inzwischen ausgefuehrt, nicht mehr leer — wer hier etwas
+aendert, aendert scharfe Wirkung:
+  - `_scan`       erkennt Geheimnisse in der Ausgabe und Prompt-Injektion (#592).
+  - `_stop_agent` haelt den Container wirklich an (#590 Punkt 4) — aber NUR,
+                  wenn `settings.redis_acl_enabled` an ist. Ohne aktive ACL ist
+                  die Kanalnamen-Zuordnung (siehe oben) keine echte Grenze, dann
+                  meldet dieser Haken den Fund nur noch, statt zuzuschlagen.
+  - `_notify`     schreibt Benachrichtigung und Pruefspur in die Datenbank.
+Einziger Schalter davor ist `sentinel_enabled` (Standard: aus).
 """
 
 import asyncio
@@ -36,14 +44,19 @@ import json
 import time
 import logging
 
+from app.config import settings
 from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
 
-_AGENTS_LOGS_ALL_CHANNEL = "agents:logs:all"
+#: Die Werkzeug- und Lebenszyklus-Ereignisse je Agent.
+_AGENT_LOG_PATTERN = "agent:*:logs"
 
 #: Der Gespraechsverkehr laeuft ueber einen eigenen Kanal je Agent.
 _AGENT_CHAT_PATTERN = "agent:*:chat:response"
+
+#: Beide Muster liegen im Namensraum genau eines Agenten — siehe Modul-Kopf.
+_AGENT_PATTERNS = (_AGENT_LOG_PATTERN, _AGENT_CHAT_PATTERN)
 # Pubsub reconnect backoff after an unexpected error (Redis restart, network
 # blip). Short enough that a real incident isn't missed for long, long enough
 # not to hot-loop against a Redis that is still down.
@@ -64,6 +77,27 @@ SENTINEL_HEARTBEAT_KEY = "sentinel:heartbeat"
 #: Schwelle im Wachhund, damit ein einzelner verpasster Schlag keinen
 #: Fehlalarm ausloest.
 _HERZSCHLAG_INTERVALL_SEKUNDEN = 15.0
+
+
+def agent_id_aus_kanal(kanal: bytes | str) -> str | None:
+    """Die Agenten-Zuordnung aus dem Kanalnamen lesen — nie aus der Nutzlast.
+
+    Der Kanalname kommt von Redis selbst und beschreibt, WO eine Nachricht
+    ankam. Das Feld `agent_id` in der Nutzlast beschreibt dagegen nur, was der
+    Absender ueber sich BEHAUPTET. Genau in dieser Verwechslung lag die Luecke
+    (#590): sie machte aus einer Selbstauskunft eine Berechtigung, einen
+    fremden Agenten anhalten zu lassen.
+
+    Gibt `None` zurueck, wenn der Kanal nicht in den Namensraum eines Agenten
+    gehoert — dann wird das Ereignis verworfen statt geraten.
+    """
+    if isinstance(kanal, bytes):
+        kanal = kanal.decode("utf-8", "replace")
+    teile = kanal.split(":")
+    # "agent:{id}:logs" bzw. "agent:{id}:chat:response"
+    if len(teile) < 3 or teile[0] != "agent":
+        return None
+    return teile[1] or None
 
 
 class SentinelVerdict:
@@ -111,7 +145,7 @@ class SentinelService:
         self._sentinel_token = get_sentinel_token()
 
     async def run(self) -> None:
-        """Main loop: (re)subscribe to agents:logs:all and react to each event.
+        """Main loop: (re)subscribe to the per-agent streams and react to each event.
 
         Never lets a pubsub error kill the loop — same resilience contract as
         StreamManager.stream_all_logs(): log, back off, reconnect. A Sentinel
@@ -143,27 +177,25 @@ class SentinelService:
         if not self.redis.client:
             await asyncio.sleep(_RECONNECT_DELAY_SECONDS)
             return
-        pubsub = await self.redis.subscribe(_AGENTS_LOGS_ALL_CHANNEL)
-        # Der Chat laeuft NICHT ueber agents:logs:all — `publish_chat` schreibt
-        # nur auf `agent:{id}:chat:response`. Ohne dieses Muster waere der
-        # Sentinel blind fuer den gesamten Gespraechsverkehr, und genau dort
-        # arbeitet ein interaktiv genutzter Agent hauptsaechlich: ein Geheimnis
-        # in einer Chatantwort haette er nie gesehen.
+        # Beide Stroeme per Muster, beide je Agent. Der Chat laeuft ueber einen
+        # eigenen Kanal (`publish_chat`) — ohne ihn waere der Sentinel blind fuer
+        # den gesamten Gespraechsverkehr, und genau dort arbeitet ein interaktiv
+        # genutzter Agent hauptsaechlich.
         #
         # Per Muster statt per Aenderung am Veroeffentlicher: so bleiben alle
-        # bestehenden Lauscher (channel_gateway) unberuehrt.
-        await pubsub.psubscribe(_AGENT_CHAT_PATTERN)
+        # bestehenden Lauscher (channel_gateway, StreamManager) unberuehrt.
+        pubsub = self.redis.client.pubsub()
+        await pubsub.psubscribe(*_AGENT_PATTERNS)
         try:
             while self._running:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 await self._herzschlag()
                 if message and message["type"] in ("message", "pmessage"):
-                    await self._handle_message(message["data"])
+                    await self._handle_message(message["data"], message.get("channel"))
                 else:
                     await asyncio.sleep(0.01)
         finally:
-            await pubsub.unsubscribe(_AGENTS_LOGS_ALL_CHANNEL)
-            await pubsub.punsubscribe(_AGENT_CHAT_PATTERN)
+            await pubsub.punsubscribe(*_AGENT_PATTERNS)
             await pubsub.aclose()
 
     async def _herzschlag(self) -> None:
@@ -191,8 +223,18 @@ class SentinelService:
         except Exception:  # noqa: BLE001
             logger.debug("[Sentinel] Herzschlag konnte nicht geschrieben werden", exc_info=True)
 
-    async def _handle_message(self, raw: bytes | str) -> None:
-        """Decode one raw pubsub payload and route it, tolerating malformed events."""
+    async def _handle_message(self, raw: bytes | str, kanal: bytes | str | None = None) -> None:
+        """Decode one raw pubsub payload and route it, tolerating malformed events.
+
+        `kanal` ist der Kanal, auf dem die Nachricht ankam — die einzige
+        vertrauenswuerdige Quelle fuer die Agenten-Zuordnung (siehe Modul-Kopf).
+        """
+        agent_id = agent_id_aus_kanal(kanal) if kanal is not None else None
+        if not agent_id:
+            # Ohne belegbare Herkunft wird nichts geprueft: ein Stopp gegen einen
+            # geratenen Agenten waere schlimmer als ein verpasstes Ereignis.
+            logger.debug("[Sentinel] Ereignis ohne zuordenbaren Kanal verworfen")
+            return
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8")
         try:
@@ -202,15 +244,18 @@ class SentinelService:
             return
         if not isinstance(event, dict):
             return
-        await self._handle_event(event)
+        await self._handle_event(agent_id, event)
 
-    async def _handle_event(self, event: dict) -> None:
+    async def _handle_event(self, agent_id: str, event: dict) -> None:
         """Scan one decoded event; on a trigger, stop the agent and notify in parallel.
+
+        `agent_id` kommt vom Aufrufer aus dem Kanalnamen. Ein etwaiges Feld
+        `agent_id` in `event` wird bewusst NICHT gelesen — es ist die
+        Selbstauskunft des Absenders und war der Kern der Luecke (#590).
 
         `asyncio.gather` (not sequential awaits) per #590 scope point 4: a
         blocking stop_agent() call must never delay the human-facing alert.
         """
-        agent_id = event.get("agent_id")
         if not agent_id:
             return
         verdict = await self._scan(agent_id, event)
@@ -276,10 +321,15 @@ class SentinelService:
             if not text.strip():
                 return None
 
-            # Eigene Meldungen nicht pruefen — sonst haelt der Sentinel sich
-            # selbst fuer einen Vorfall und dreht sich im Kreis.
-            if event.get("type") == "system" and "[Sentinel]" in text:
-                return None
+            # Frueher stand hier eine Ausnahme fuer eigene Meldungen: Ereignisse
+            # mit `type == "system"` und "[Sentinel]" im Text wurden uebersprungen.
+            # Beides steht dem Agenten frei — die Ausnahme war damit ein
+            # Freifahrtschein: Text mit "[Sentinel]" versehen, Typ auf "system"
+            # setzen, und die Pruefung fiel aus. Entfernt, weil sie nichts
+            # schuetzte: der Sentinel meldet ueber die Datenbank (`_notify`),
+            # nicht ueber Redis, und kein Melder im Orchestrator schreibt
+            # "[Sentinel]" in eine Ereignis-Nutzlast. Es gab also nie eine
+            # eigene Meldung, die hier haette zurueckkommen koennen.
 
             from app.core import dlp
             from app.security.agent_guard import detect_injection
@@ -339,31 +389,55 @@ class SentinelService:
 
         Faellt das Anhalten aus, wird das TROTZDEM vermerkt: ein
         Sicherheitsvorfall ohne Spur ist schlimmer als einer ohne Reaktion.
+
+        **Vertrauensgrenze vor Wirkung (#590 Review-Auflage):** die Herleitung
+        der Zuordnung aus dem Kanalnamen ist nur dann eine echte Grenze, wenn
+        die Redis-ACL aktiv ist — sonst teilen sich alle Agent-Container
+        weiterhin ein gemeinsames `requirepass` und koennten den Kanal eines
+        anderen Agenten beschreiben (siehe Modul-Kopf). Ohne aktive ACL bliebe
+        `_stop_agent` also exakt die Waffe, die #590 schliessen sollte, nur
+        unter neuem Namen. Deshalb haelt dieser Pfad nur an, wenn
+        `settings.redis_acl_enabled` an ist; ohne sie wird der Fund trotzdem
+        vermerkt und gemeldet (wie beim Fehlschlag unten), nur eben nicht
+        durchgesetzt. Erkennen darf der Sentinel immer — anhalten nur, wenn
+        der Zuordnung tatsaechlich zu trauen ist.
         """
         from app.db.session import async_session_factory
         from app.models.audit_log import AuditEventType, AuditLog
 
         gestoppt = False
+        uebersprungen = not settings.redis_acl_enabled
         fehler: str | None = None
-        try:
-            if self.docker is None:
-                raise RuntimeError("kein Docker-Dienst — Sentinel kann nicht stoppen")
-            from app.core.agent_manager import AgentManager
+        if uebersprungen:
+            fehler = (
+                "Redis-ACL ist nicht aktiv (redis_acl_enabled=False) — die "
+                "Kanalnamen-Zuordnung ist ohne sie keine echte Vertrauensgrenze, "
+                "daher kein automatisches Anhalten."
+            )
+            logger.warning(
+                "[Sentinel] Anhalten von %s uebersprungen (Grund: %s) — Redis-ACL aus",
+                agent_id, reason,
+            )
+        else:
+            try:
+                if self.docker is None:
+                    raise RuntimeError("kein Docker-Dienst — Sentinel kann nicht stoppen")
+                from app.core.agent_manager import AgentManager
 
-            async with async_session_factory() as db:
-                await AgentManager(db, self.docker, self.redis).stop_agent(agent_id)
-            gestoppt = True
-            logger.warning("[Sentinel] Agent %s angehalten (Grund: %s)", agent_id, reason)
-        except Exception as e:  # noqa: BLE001 — der Vermerk unten ist wichtiger
-            fehler = str(e)[:300]
-            logger.error("[Sentinel] Agent %s konnte NICHT angehalten werden: %s", agent_id, fehler)
+                async with async_session_factory() as db:
+                    await AgentManager(db, self.docker, self.redis).stop_agent(agent_id)
+                gestoppt = True
+                logger.warning("[Sentinel] Agent %s angehalten (Grund: %s)", agent_id, reason)
+            except Exception as e:  # noqa: BLE001 — der Vermerk unten ist wichtiger
+                fehler = str(e)[:300]
+                logger.error("[Sentinel] Agent %s konnte NICHT angehalten werden: %s", agent_id, fehler)
 
         try:
             async with async_session_factory() as db:
                 db.add(AuditLog(
                     agent_id=agent_id,
                     event_type=AuditEventType.AGENT_STOPPED.value,
-                    outcome="success" if gestoppt else "failure",
+                    outcome="success" if gestoppt else ("skipped" if uebersprungen else "failure"),
                     meta={"by": "sentinel", "reason": reason, **({"error": fehler} if fehler else {})},
                 ))
                 await db.commit()
@@ -377,14 +451,20 @@ class SentinelService:
             try:
                 from app.models.notification import Notification
 
+                titel = (
+                    "Sentinel hat einen Vorfall erkannt, aber nicht angehalten"
+                    if uebersprungen else
+                    "Sentinel konnte den Agenten NICHT anhalten"
+                )
                 async with async_session_factory() as db:
                     db.add(Notification(
                         agent_id=agent_id,
                         type="error",
-                        title="Sentinel konnte den Agenten NICHT anhalten",
+                        title=titel,
                         message=(
                             f"Vorfall: {reason}. Der Agent laeuft weiter. "
-                            f"Fehler beim Anhalten: {fehler or 'unbekannt'}. "
+                            f"{'Grund: ' if uebersprungen else 'Fehler beim Anhalten: '}"
+                            f"{fehler or 'unbekannt'}. "
                             "Bitte von Hand stoppen."
                         )[:2000],
                         priority="urgent",

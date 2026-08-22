@@ -11,8 +11,10 @@ orchestrator, not just self-reported by the agent. This pins that:
     at the actual resolution, not on every `/check/{id}` poll.
   - every published event is marked `source: "orchestrator"` so a future
     #592 scan rule can tell it apart from the agent-self-reported traffic
-    that already shares this same `agents:logs:all` channel via
-    `agent/app/log_publisher.py`.
+    that shares the same per-agent channel via `agent/app/log_publisher.py`.
+  - since #590 the event goes to `agent:{id}:logs`, not to the globally
+    writable `agents:logs:all` — the Sentinel derives attribution from the
+    channel name, so an event outside the agent's namespace never arrives.
 No live Redis needed — a minimal fake stands in for RedisService, same
 pattern as test_approval_flood.py.
 """
@@ -70,7 +72,7 @@ class ApprovalsSentinelEventTests(unittest.IsolatedAsyncioTestCase):
         out = []
         for call in self.redis.client.publish.await_args_list:
             channel, payload = call.args
-            if channel == api._SENTINEL_PIPELINE_CHANNEL:
+            if channel == api._sentinel_pipeline_channel("a1"):
                 out.append(json.loads(payload))
         return out
 
@@ -168,6 +170,17 @@ class ApprovalsSentinelEventTests(unittest.IsolatedAsyncioTestCase):
         resolved = [e for e in self._sentinel_calls() if e["type"] == "approval_resolved"]
         self.assertEqual(len(resolved), 1)
         self.assertEqual(resolved[0]["data"]["status"], "cancelled")
+
+    async def test_event_goes_to_the_agents_own_namespace_not_the_global_channel(self):
+        # #590: `agents:logs:all` is writable by every agent, so the Sentinel
+        # stopped reading it. An orchestrator event published there would be
+        # both unattributable and silently dropped.
+        async with self.Session() as db:
+            await self._request(db)
+
+        channels = [c.args[0] for c in self.redis.client.publish.await_args_list]
+        self.assertIn("agent:a1:logs", channels)
+        self.assertNotIn("agents:logs:all", channels)
 
     async def test_no_redis_client_does_not_raise(self):
         # Best-effort like _publish_notification: a dead/absent Redis must

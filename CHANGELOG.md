@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.265.0] - 2026-08-21
+
+### Sicherheit
+- **Ein Agent konnte einen anderen Agenten anhalten lassen.** Die Aufsicht
+  (Sentinel) hörte bisher auf einen gemeinsamen Kanal, auf den jeder Agent
+  schreiben darf, und glaubte dabei dem Absender, welcher Agent er sei. Wer das
+  wusste, konnte im Namen eines Kollegen einen Vorfall erfinden — und diesen
+  Kollegen dadurch stoppen lassen. Ab jetzt liest die Aufsicht ausschliesslich
+  den Kanal des jeweiligen Agenten und leitet die Zuordnung aus dem Kanalnamen
+  ab. Der Name kommt von der Infrastruktur, nicht vom Absender; eine
+  Selbstauskunft reicht nicht mehr aus.
+- **Eine Ausnahme liess sich als Freifahrtschein benutzen.** Meldungen der
+  Aufsicht selbst wurden von der Prüfung ausgenommen, erkennbar an Typ und einem
+  Textmerkmal — beides konnte ein Agent frei setzen und so jede Prüfung
+  umgehen. Die Ausnahme ist entfernt. Sie schützte ohnehin nichts: die Aufsicht
+  meldet über die Datenbank, nicht über diesen Kanal.
+- **Die scharfe Wirkung hing an der falschen Bedingung.** Die Kanalnamen-Zuordnung
+  ist nur dann eine echte Grenze, wenn die Redis-ACL aktiv ist — im
+  Auslieferungszustand ist sie das nicht, dann teilen sich alle Agenten
+  weiterhin ein gemeinsames Passwort und könnten den Kanal eines anderen
+  Agenten beschreiben. Das Anhalten eines Agenten löst die Aufsicht deshalb
+  nur noch aus, wenn die Redis-ACL eingeschaltet ist; ohne sie meldet sie den
+  Fund weiterhin (Benachrichtigung + Prüfspur), hält aber nicht mehr an. Erkennen
+  darf die Aufsicht auch ohne ACL, anhalten nur mit einer Zuordnung, der man
+  tatsächlich trauen kann.
+- **Ehrliche Grenze:** Das schliesst das *Fälschen* der Zuordnung. Ein Agent,
+  der schlicht aufhört zu senden oder bereinigten Text sendet, bleibt weiterhin
+  unsichtbar — dagegen hilft nur Beobachtung ausserhalb des Agenten. Das ist
+  bewusst nicht Teil dieser Änderung.
+- Ohne Wirkung, solange die Aufsicht ausgeschaltet ist (Standard).
+---
+
 ## [1.264.2] - 2026-08-22
 
 ### Behoben
