@@ -761,6 +761,13 @@ class ChatConsumer:
         # von `handle_message`) schon, bevor das prozessweite RunBudget
         # (Issue #628 Phase 2) ueberhaupt gefragt wurde.
         async with get_run_budget().slot_for_chat():
+            # Uhr NACH dem Warten auf den Platz neu stellen. Das Warten kann unter
+            # Last laenger dauern als `idle_limit` (600s bzw. 1800s); ohne dieses
+            # zweite Zuruecksetzen zaehlt die Wartezeit als Stillstand und der
+            # gerade erst gestartete Turn wird schon bei der ersten 15-Sekunden-
+            # Pruefung abgebrochen — derselbe Fehler, den der Kommentar oben
+            # bereits einmal beseitigt hat, nur mit dem Platz-Warten als Ursache.
+            log_publisher.last_activity_at = time.monotonic()
             turn = asyncio.ensure_future(
                 handler.handle_message(
                     message_id=message_id,
