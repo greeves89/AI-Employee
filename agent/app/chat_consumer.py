@@ -122,6 +122,24 @@ AFTER the user gives feedback: if you used a marketplace skill, call skill_rate
 
 """
 
+    # Die vollstaendige API-Referenz wiegt rund neunzig Zeilen. Sie JEDER Nachricht
+    # anzuhaengen liess den ohnehin wachsenden --resume-Verlauf schneller an die
+    # Laengengrenze stossen, obwohl der Agent sie ab dem zweiten Zug laengst im
+    # Verlauf hat. Neue Sitzung: alles. Folgezug: ein kurzer Verweis darauf.
+    if not is_new_session:
+        return f"""{header}{voice_hint}
+
+{startup_block}{text}
+
+---
+TELEGRAM CONTEXT:
+Antworte einfach als Text — er geht automatisch an den Nutzer. Die vollstaendige
+Orchestrator-Telegram-API (Dateien, Fotos, Sprache, Reaktionen, Tastaturen) steht
+am Anfang DIESER Sitzung im Verlauf: dort die genauen curl-Aufrufe nachlesen statt
+raten. api.telegram.org rufst du nie direkt auf, den Bot-Token hast du nicht.
+Basis-URL: {api_base}
+Auth-Header: {auth}"""
+
     return f"""{header}{voice_hint}
 
 {startup_block}{text}
@@ -535,22 +553,61 @@ class ChatConsumer:
             return handler.session_id is None
         return True
 
-    def _prepare_text(self, text: str, telegram_ctx: dict | None, source: str, handler: object) -> str:
-        from app.runner_hooks import get_approval_rules_prefix
-        rules_prefix = get_approval_rules_prefix()
-        is_new = self._is_new_session(handler)
+    def _skills_prefix(self, text: str) -> str:
         # custom_llm builds its own skills/marketplace context into the system
         # prompt on the first message (see LLMChatHandler). The CLI-based chat
         # handlers (claude_code / codex_cli) had NO such injection at all — the
         # agent only saw a soft "use skill_search" hint and regularly skipped it
         # (#468). Inject the same context CLI tasks already get, once per session.
-        skills_prefix = ""
-        if is_new and settings.agent_mode != "custom_llm":
-            from app.runner_hooks import get_marketplace_skill_suggestions, get_skills_context
-            skills_prefix = get_skills_context() + get_marketplace_skill_suggestions(text[:200])
+        if settings.agent_mode == "custom_llm":
+            return ""
+        from app.runner_hooks import get_marketplace_skill_suggestions, get_skills_context
+        return get_skills_context() + get_marketplace_skill_suggestions(text[:200])
+
+    def _wrap(self, text: str, telegram_ctx: dict | None, source: str, is_new: bool) -> str:
         if telegram_ctx:
-            return rules_prefix + skills_prefix + _build_telegram_prompt(text, telegram_ctx, is_new_session=is_new)
-        return rules_prefix + skills_prefix + _build_channel_prompt(text, source, is_new)
+            return _build_telegram_prompt(text, telegram_ctx, is_new_session=is_new)
+        return _build_channel_prompt(text, source, is_new)
+
+    def _prepare_text(self, text: str, telegram_ctx: dict | None, source: str, handler: object) -> str:
+        from app.runner_hooks import get_approval_rules_prefix
+        is_new = self._is_new_session(handler)
+        # Die Autonomie-Regeln standen bisher vor JEDER Nachricht — obwohl sie sich
+        # zwischen zwei Nachrichten fast nie aendern und im Verlauf laengst stehen.
+        # Jetzt: zum Sitzungsbeginn, und danach nur, wenn der Nutzer sie wirklich
+        # geaendert hat (sonst wuesste der Agent von der Aenderung nichts).
+        #
+        # Der Merker gehoert an den HANDLER, nicht an den Consumer: ein Consumer
+        # bedient mehrere Sitzungen gleichzeitig (self._handlers, je source_key).
+        # Lag er am Consumer, genuegte eine zweite Sitzung, die die neuen Regeln
+        # abholt, damit die erste sie nie zu sehen bekam — sie haette mit einer
+        # zurueckgezogenen Freigabe weitergearbeitet.
+        rules_prefix = get_approval_rules_prefix()
+        if is_new or rules_prefix != getattr(handler, "_last_rules_prefix", None):
+            # Ohne Handler (erste Nachricht eines Kanals) gibt es nichts zu merken —
+            # is_new ist dann ohnehin wahr, die Regeln gehen also raus.
+            if handler is not None:
+                handler._last_rules_prefix = rules_prefix
+        else:
+            rules_prefix = ""
+        skills_prefix = self._skills_prefix(text) if is_new else ""
+        return rules_prefix + skills_prefix + self._wrap(text, telegram_ctx, source, is_new)
+
+    def _fresh_session_text(self, text: str, telegram_ctx: dict | None, source: str) -> str:
+        """Dieselbe Nachricht, aber als ERSTE einer neuen Sitzung aufbereitet.
+
+        Wird gebraucht, wenn ein Zug am zu langen Verlauf scheitert: der Handler
+        wirft die Sitzung weg und wiederholt. Ohne diese Fassung liefe er mit dem
+        Folgezug-Prompt weiter — der die Regeln, den Skills-Block und die volle
+        Telegram-Referenz weglaesst und auf einen Verlauf verweist, den die neue
+        Sitzung gar nicht hat.
+        """
+        from app.runner_hooks import get_approval_rules_prefix
+        return (
+            get_approval_rules_prefix()
+            + self._skills_prefix(text)
+            + self._wrap(text, telegram_ctx, source, True)
+        )
 
     def _save_images(self, message_id: str, images: list[dict]) -> list[str]:
         """Decode base64 images to workspace files (for the CLI handler).
@@ -708,7 +765,12 @@ class ChatConsumer:
             await self._reset_handler(source_key)
             return
 
+        raw_text = text
         text = self._prepare_text(text, telegram_ctx, source, handler)
+        # Fallschirm fuer den Laengenfehler: dieselbe Nachricht, aufbereitet als
+        # erste einer neuen Sitzung. Der Handler greift nur danach, wenn er den
+        # Verlauf tatsaechlich wegwerfen musste.
+        fresh_text = self._fresh_session_text(raw_text, telegram_ctx, source)
 
         # Images: the custom-LLM handler sees them natively. The Claude Code CLI
         # handler can't take inline images, so save them to the workspace and
@@ -720,11 +782,15 @@ class ChatConsumer:
             else:
                 saved = self._save_images(message_id, images)
                 if saved:
-                    text += (
+                    suffix = (
                         "\n\n[Attached image(s) saved to the workspace — "
                         "use the Read tool to view them:]\n"
                         + "\n".join(saved)
                     )
+                    text += suffix
+                    fresh_text += suffix
+        if hasattr(handler, "session_id"):
+            handler.fresh_session_text = fresh_text
 
         # Mark as working while processing chat. Report the SESSION id (not the
         # per-message id) so the UI can link the busy pill/rail to the actual

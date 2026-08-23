@@ -17,6 +17,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Soll-Zeitpunkt, Grund); Wiederholungs-Budgets werden nach einem geglueckten
   Lauf zurueckgesetzt, und Plan-Bloecke haken sich nur noch ueber last_run_at
   ab, nicht ueber total_runs.
+- **Telegram-Chat faehrt sich bei zu langem Verlauf nicht mehr fest (#613, PR #620).**
+  Der Laengenfehler wird erkannt, die Sitzung neu begonnen und die Nachricht
+  sofort erneut beantwortet (mit Hinweis an den Nutzer). Ausserdem schleppt
+  nicht mehr jede Nachricht die volle Telegram-API-Referenz und die
+  Autonomie-Regeln mit (~1.950 Token weniger pro Folgenachricht); geaenderte
+  Autonomie-Regeln erreichen den Agenten weiterhin sofort, und ein
+  Laengenfehler laeuft nicht mehr faelschlich in die Token-Warteschleife.
 
 ## [1.265.9] - 2026-08-23
 
