@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.265.5] - 2026-08-23
+
+### Geaendert
+- **Landingpage-Mockups sehen jetzt nach iPhone aus:** duenner dunkler Rahmen
+  wie beim Geraet, dazu ein schmaler schwarzer Glasrand zwischen Screen-Inhalt
+  und Rahmen (statt des breiten Bezels aus 1.265.4).
+
 ## [1.265.4] - 2026-08-23
 
 ### Geaendert
