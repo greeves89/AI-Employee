@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [Unreleased-1.266.0]
+
+### Behoben
+- **Ein Zeitplan, der seinen Termin verliert, meldet sich jetzt (#631, PR #633).**
+  Wurde ein faelliger Lauf uebersprungen (Agent ausser Dienst, beschaeftigt,
+  ueberlastet, Dispatch-Sperre), versuchte der Scheduler es eine Weile erneut
+  und gab den Termin danach stillschweigend auf — Zaehler und Waechter waren
+  fuer diesen Fall blind (success_rate blieb 1.0). Ein verworfener Termin wird
+  jetzt als fehlgeschlagener Lauf gezaehlt und einmalig gemeldet (Name,
+  Soll-Zeitpunkt, Grund); Wiederholungs-Budgets werden nach einem geglueckten
+  Lauf zurueckgesetzt, und Plan-Bloecke haken sich nur noch ueber last_run_at
+  ab, nicht ueber total_runs.
+
 ## [1.265.9] - 2026-08-23
 
 ### Hinzugefuegt
