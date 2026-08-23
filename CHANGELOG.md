@@ -40,6 +40,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   wird gemeldet statt gestoppt). Ohne Wirkung, solange der Sentinel aus ist
   (Standard).
 
+### Hinzugefuegt
+- **Ein gemeinsamer Nebenlaeufigkeitsdeckel statt drei getrennter (#628 Phase 2, PR #634).**
+  Aufgaben, Chat und Agent-zu-Agent-Nachrichten teilen sich jetzt EIN
+  prozessweites Budget (`agent/app/run_budget.py`) statt dreier Einzelgrenzen,
+  deren Summe das Container-Prozesslimit sprengen konnte; ein Platz bleibt
+  exklusiv fuer Chat reserviert, damit Gespraeche nicht hinter langlaufenden
+  Aufgaben verhungern.
+
 ## [1.265.9] - 2026-08-23
 
 ### Hinzugefuegt
@@ -176,8 +184,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   1.2.3) zeigt damit Genehmigen/Ablehnen direkt auf der Push-Mitteilung an —
   eine Freigabe laesst sich vom Sperrbildschirm beantworten, ohne die App zu
   oeffnen (Geraet muss entsperrt werden, bewusste Sicherheitsentscheidung).
-
----
 
 ## [1.264.2] - 2026-08-22
 

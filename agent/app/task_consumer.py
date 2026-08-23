@@ -13,6 +13,7 @@ from app.pids_budget import (
     max_concurrent_runs,
     read_pids_limits,
 )
+from app.run_budget import get_run_budget
 
 logger = logging.getLogger(__name__)
 
@@ -174,12 +175,17 @@ class TaskConsumer:
             })
 
             is_lightweight = task.get("lightweight", False)
-            result_data = await runner.execute_task(
-                task_id=task_id,
-                prompt=task["prompt"],
-                model=task.get("model"),
-                lightweight=is_lightweight,
-            )
+            # Der lokale Semaphore oben deckelt nur DIESEN Pool; erst der
+            # prozessweite RunBudget-Platz (Issue #628 Phase 2) verhindert,
+            # dass Aufgaben + Chat + Nachrichten gemeinsam ueber das
+            # Container-Budget hinaus laufen.
+            async with get_run_budget().slot_for_task():
+                result_data = await runner.execute_task(
+                    task_id=task_id,
+                    prompt=task["prompt"],
+                    model=task.get("model"),
+                    lightweight=is_lightweight,
+                )
 
             status = result_data.get("status", "unknown")
             cost = result_data.get("cost_usd", 0)
