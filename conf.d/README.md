@@ -91,11 +91,24 @@ Only `.gitkeep`, `site/.gitkeep` and this `README.md` are tracked. Your
 
 ## Example — iOS-App-Landingpage als Startseite → `conf.d/site/landing-root.caddy`
 
-Jede Installation liefert die Landingpage der iOS-Begleit-App unter `/app/`
-aus (statisch aus `docs/ios-app`, Mount `/srv/ios-app`). Soll sie auf DIESER
-Installation auch die Startseite `/` sein (statt der Weiterleitung der
-Web-Oberflaeche auf `/dashboard`), reicht dieses Snippet — `handle /` trifft
-nur den exakten Root-Pfad, alle anderen Routen bleiben wie sie sind:
+Die Landingpage der iOS-Begleit-App liegt als Datei unter `docs/ios-app/` im
+Repo, wird aber standardmaessig NICHT ausgeliefert. Soll sie auf DIESER
+Installation die Startseite `/` sein (statt der Weiterleitung der
+Web-Oberflaeche auf `/dashboard`), sind zwei deployment-spezifische Schritte
+noetig — beide ungetrackt, sie ueberleben jedes `git pull`:
+
+1. Mount in `docker-compose.override.yml` ergaenzen (danach
+   `docker compose up -d caddy`):
+
+```yaml
+services:
+  caddy:
+    volumes:
+      - ./docs/ios-app:/srv/ios-app:ro
+```
+
+2. Dieses Snippet als `conf.d/site/landing-root.caddy` ablegen — `handle /`
+   trifft nur den exakten Root-Pfad, alle anderen Routen bleiben wie sie sind:
 
 ```caddy
 # Startseite = Landingpage der iOS-App; Web-Oberflaeche weiter unter /login.

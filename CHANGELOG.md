@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.265.1] - 2026-08-23
+
+### Geaendert
+- **Die Landingpage der iOS-App wird NICHT mehr standardmaessig ausgeliefert.**
+  Route und Mount aus 1.265.0 sind aus `Caddyfile` und `docker-compose.yml`
+  wieder entfernt — Installationen zeigen unveraendert die Web-Oberflaeche.
+  Die Seite liegt nur noch als Datei unter `docs/ios-app/`; wer sie auf einer
+  Installation zeigen will, verdrahtet sie deployment-spezifisch ueber
+  `docker-compose.override.yml` (Mount) und ein `conf.d/site/`-Snippet
+  (Anleitung in `conf.d/README.md`).
+
 ## [1.265.0] - 2026-08-23
 
 ### Hinzugefuegt
