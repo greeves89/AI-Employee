@@ -110,10 +110,12 @@ class SchedulerWakesStoppedAgentTests(unittest.IsolatedAsyncioTestCase):
     async def test_wake_failure_escalates_and_reschedules_instead_of_hanging(self):
         schedule = self._schedule()
         with patch("app.core.agent_wakeup.ensure_agent_running", AsyncMock(return_value=False)), \
-             patch("app.services.duty_service.escalate_failure", AsyncMock()) as failure:
+             patch("app.services.duty_service.escalate_failure", AsyncMock()) as failure, \
+             patch("app.services.duty_service.escalate_skipped_run", AsyncMock()) as trace:
             await self._execute_once(schedule)
 
         failure.assert_awaited_once()
+        trace.assert_awaited_once()  # die Spur aus PR #643 entsteht genau hier
         # Vorher blieb next_run_at in der Vergangenheit stehen (Dauerschleife);
         # jetzt wird wie bei off_duty kurz nachgesetzt.
         self.assertGreater(schedule.next_run_at, self.now)

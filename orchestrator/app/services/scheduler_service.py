@@ -728,10 +728,21 @@ class SchedulerService:
                     # Ausfall/Blockade: die Arbeit muss jemand anders uebernehmen,
                     # sonst bleibt sie liegen und niemand merkt es.
                     if agent_duty.needs_handover(duty):
-                        await duty_service.escalate_failure(db, self.redis, duty_agent, duty)
+                        await duty_service.escalate_failure(
+                            db, self.redis, duty_agent, duty, lost_run=schedule.name,
+                        )
+                        # Der Ausfall kostet genau hier einen faelligen Lauf. Ohne
+                        # Eintrag verschwindet er spurlos — kein Task, keine Liste,
+                        # kein Zaehler (#632).
+                        await duty_service.escalate_skipped_run(
+                            db, self.redis, duty_agent, duty,
+                            schedule_id=schedule.id, schedule_name=schedule.name,
+                            slot=as_utc(schedule.next_run_at or now),
+                        )
                         # Ohne Verschieben bliebe next_run_at in der Vergangenheit:
-                        # jeder Tick meldet denselben Ausfall neu (#632). Kurz
-                        # nachsetzen, dann regulaer weiterruecken — wie off_duty.
+                        # jeder Tick meldet denselben Ausfall neu. Kurz nachsetzen
+                        # (der Agent laesst sich vielleicht gleich wecken), dann
+                        # regulaer weiterruecken — wie off_duty.
                         schedule.next_run_at = await self._retry_or_advance(
                             schedule, now, reason="down",
                             max_attempts=_TRANSIENT_RETRY_MAX_ATTEMPTS, delay=_TRANSIENT_RETRY_DELAY,

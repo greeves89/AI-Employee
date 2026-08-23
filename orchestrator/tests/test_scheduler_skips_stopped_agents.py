@@ -66,6 +66,20 @@ class StoppedAgentTests(unittest.TestCase):
         self.assertIn("duty_service.escalate_overload", FIRE)
         self.assertIn('duty["state"] == agent_duty.OVERLOADED', FIRE)
 
+    def test_a_lost_run_leaves_a_trace(self):
+        """#632: der DOWN-Zweig kehrte zurueck, BEVOR ein Task entstand — der Lauf
+        hinterliess weder 'failed' noch 'pending', war also nirgends auffindbar.
+        Der Ausfall-Eintrag muss deshalb im Handover-Zweig selbst haengen."""
+        handover = FIRE.split("agent_duty.needs_handover(duty)", 1)[1].split("elif", 1)[0]
+        self.assertIn("duty_service.escalate_skipped_run", handover)
+        self.assertIn("schedule_id=schedule.id", handover)
+        self.assertIn("slot=as_utc(schedule.next_run_at", handover)
+
+    def test_the_failure_message_names_what_was_lost(self):
+        """#632: 'es geht also nichts verloren' war falsch, sobald ein faelliger Lauf
+        dran war — der Zeitplanname muss mitgehen."""
+        self.assertIn("lost_run=schedule.name", FIRE)
+
 
 if __name__ == "__main__":
     unittest.main()
