@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.265.2] - 2026-08-23
+
+### Geaendert
+- **Landingpage ohne Zugaenge zur Web-Oberflaeche.** „Anmelden" im Menue,
+  „Web-Oberflaeche oeffnen" im Hero und der Anmelde-Knopf im Beta-Abschnitt
+  sind entfernt — die Seite nennt keinerlei Einstieg in die Plattform mehr.
+
 ## [1.265.1] - 2026-08-23
 
 ### Geaendert
