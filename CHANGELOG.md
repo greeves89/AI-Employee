@@ -31,6 +31,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   auch fuer die Warnung nach einem abgestuerzten Job; stille Zustellfehler
   landen im Protokoll, und ein Form-Test haelt alle Melde-Wege gleich.
 
+### Sicherheit
+- **Sentinel: Agenten-Zuordnung kommt aus dem Kanalnamen, nicht aus der
+  Selbstauskunft (#590, PR #627).** Ein Agent konnte bisher im Namen eines
+  anderen einen Vorfall erfinden und ihn stoppen lassen; die Aufsicht liest
+  jetzt nur noch die Kanaele je Agent, die Freifahrtschein-Ausnahme ist
+  entfernt, und das harte Anhalten greift nur bei aktiver Redis-ACL (ohne ACL
+  wird gemeldet statt gestoppt). Ohne Wirkung, solange der Sentinel aus ist
+  (Standard).
+
 ## [1.265.9] - 2026-08-23
 
 ### Hinzugefuegt
