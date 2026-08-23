@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.265.4] - 2026-08-23
+
+### Geaendert
+- **Landingpage: Geraete-Mockups mit echtem Bezel.** Die App-Screens sitzen
+  jetzt mit sichtbarem Rand im Rahmen statt randlos; letzter
+  Umlaut-Nachzuegler (Team-Zugehoerigkeit) korrigiert.
+
 ## [1.265.3] - 2026-08-23
 
 ### Geaendert
