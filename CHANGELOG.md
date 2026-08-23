@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.266.6] - 2026-08-24
+
+### Geaendert
+- **Landingpage auf Stand der Technik gebracht.** Scroll-Fortschrittsleiste
+  (CSS scroll-driven), Maus-Spotlight und Gradient-Hover auf allen Karten,
+  Bento-Raster mit breiten Schwerpunkt-Kacheln, Integrations-Marquee (M365 bis
+  Redis), animierte Terminal-Demo eines echten Agenten-Laufs (tippt sich,
+  respektiert prefers-reduced-motion), Akzent-Schimmer im Hero, Feinkorn-
+  Textur, gestaffelte Reveals. Alles vanilla und self-contained — keine
+  externen Bibliotheken, keine externen Requests.
+
 ## [1.266.5] - 2026-08-24
 
 ### Geaendert

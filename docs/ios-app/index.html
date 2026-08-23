@@ -283,6 +283,64 @@
   .cookiebar a{color:var(--text)}
   .cookiebar .btn{padding:10px 20px;font-size:14px}
 
+  /* Scroll-Fortschritt (CSS scroll-driven, mit Fallback: unsichtbar) */
+  .progress{position:fixed;top:0;left:0;height:2px;width:100%;z-index:70;background:linear-gradient(90deg,var(--blue),var(--cyan),var(--violet));transform-origin:0 50%;transform:scaleX(0)}
+  @supports (animation-timeline: scroll()) {
+    .progress{animation:pagegrow linear both;animation-timeline:scroll(root)}
+    @keyframes pagegrow{to{transform:scaleX(1)}}
+  }
+
+  /* Feinkorn ueber allem — nimmt den Flaechen die Sterilitaet */
+  body::after{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.05;mix-blend-mode:overlay;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  header,section,footer,.cookiebar,.modal{position:relative;z-index:2}
+
+  /* Karten: Gradient-Rand + Maus-Spotlight + Hover-Lift */
+  .tile,.card{position:relative;overflow:hidden;transition:transform .25s ease,border-color .25s ease}
+  .tile:hover,.card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--acc,var(--blue)) 35%,transparent)}
+  .tile::before,.card::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .3s ease;background:radial-gradient(280px circle at var(--mx,50%) var(--my,50%),color-mix(in srgb,var(--acc,var(--blue)) 14%,transparent),transparent 70%)}
+  .tile:hover::before,.card:hover::before{opacity:1}
+
+  /* Bento: zwei Kacheln duerfen breit */
+  .tiles{grid-auto-flow:dense}
+  @media (min-width:901px){.tile.wide{grid-column:span 2}}
+
+  /* Gestaffeltes Aufdecken im Raster */
+  .tiles .reveal:nth-child(3n+2){transition-delay:.07s}
+  .tiles .reveal:nth-child(3n){transition-delay:.14s}
+
+  /* Akzent-Schimmer in der Hero-Zeile */
+  .hero h1 .a{background:linear-gradient(100deg,var(--blue),var(--cyan) 40%,var(--violet) 70%,var(--blue));background-size:220% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+  @media (prefers-reduced-motion:no-preference){.hero h1 .a{animation:shimmer 9s linear infinite}@keyframes shimmer{to{background-position:220% 0}}}
+
+  /* Integrations-Marquee */
+  .marquee{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--bg2);overflow:hidden;padding:20px 0;position:relative}
+  .marquee::before,.marquee::after{content:"";position:absolute;top:0;bottom:0;width:140px;z-index:3;pointer-events:none}
+  .marquee::before{left:0;background:linear-gradient(90deg,var(--bg2),transparent)}
+  .marquee::after{right:0;background:linear-gradient(270deg,var(--bg2),transparent)}
+  .marquee .track{display:flex;gap:12px;width:max-content}
+  @media (prefers-reduced-motion:no-preference){.marquee .track{animation:mq 36s linear infinite}@keyframes mq{to{transform:translateX(-50%)}}}
+  .marquee span{font-family:var(--mono);font-size:12.5px;letter-spacing:.04em;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:8px 16px;white-space:nowrap;background:rgba(255,255,255,.03)}
+
+  /* Terminal-Demo */
+  .demo{padding:96px 0;border-top:1px solid var(--line)}
+  .demo .wrap{display:grid;grid-template-columns:1fr 1.1fr;gap:56px;align-items:center}
+  .demo .copy{display:grid;gap:18px}
+  .demo ul{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:10px;color:var(--muted)}
+  .demo li{padding-left:22px;position:relative}
+  .demo li::before{content:"";position:absolute;left:0;top:.62em;width:10px;height:2px;background:var(--green)}
+  .term{border-radius:16px;background:#0a0e18;border:1px solid rgba(255,255,255,.1);box-shadow:0 40px 90px rgba(0,0,0,.55),0 10px 60px rgba(52,211,153,.12);overflow:hidden}
+  .term .bar{display:flex;align-items:center;gap:6px;padding:10px 14px;background:#101624;border-bottom:1px solid rgba(255,255,255,.07)}
+  .term .bar i{width:10px;height:10px;border-radius:50%;background:#2c3346;display:inline-block}
+  .term .bar i:nth-child(1){background:#ff5f57}.term .bar i:nth-child(2){background:#febc2e}.term .bar i:nth-child(3){background:#28c840}
+  .term .bar span{margin-left:10px;font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+  .term pre{margin:0;padding:22px 24px;font-family:var(--mono);font-size:13.5px;line-height:1.9;color:#c8d3e8;min-height:300px;white-space:pre-wrap}
+  .term .p{color:var(--dim)}
+  .term .ok{color:var(--green)}
+  .term .hl{color:var(--cyan)}
+  .term .caret{display:inline-block;width:8px;height:15px;background:var(--green);vertical-align:-2px}
+  @media (prefers-reduced-motion:no-preference){.term .caret{animation:blink 1s steps(1) infinite}@keyframes blink{50%{opacity:0}}}
+  @media (max-width:900px){.demo .wrap{grid-template-columns:1fr}}
+
   /* Enthüllen beim Scrollen */
   .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
   .reveal.in{opacity:1;transform:none}
@@ -300,6 +358,8 @@
   }
   @media (max-width:560px){.strip .wrap,.roles .grid,.tiles,.cta .steps{grid-template-columns:1fr}}
 </style>
+
+<div class="progress" aria-hidden="true"></div>
 
 </head>
 <body>
@@ -344,6 +404,8 @@
   </div>
 </section>
 
+<div class="marquee" aria-hidden="true"><div class="track"><span>Microsoft 365</span><span>Outlook / Exchange</span><span>Microsoft Graph</span><span>Teams</span><span>Slack</span><span>Telegram</span><span>WhatsApp</span><span>Claude Code</span><span>Codex CLI</span><span>Azure OpenAI</span><span>AWS Bedrock</span><span>Google Vertex</span><span>Model Context Protocol</span><span>Matrix42</span><span>OpenWebUI</span><span>Docker</span><span>PostgreSQL</span><span>Redis</span><span>Microsoft 365</span><span>Outlook / Exchange</span><span>Microsoft Graph</span><span>Teams</span><span>Slack</span><span>Telegram</span><span>WhatsApp</span><span>Claude Code</span><span>Codex CLI</span><span>Azure OpenAI</span><span>AWS Bedrock</span><span>Google Vertex</span><span>Model Context Protocol</span><span>Matrix42</span><span>OpenWebUI</span><span>Docker</span><span>PostgreSQL</span><span>Redis</span></div></div>
+
 <section class="platform" id="plattform">
   <div class="wrap">
     <div class="head reveal">
@@ -379,13 +441,33 @@
       <div class="tile reveal"><h3>Echtzeit-Sprache</h3><p>Speech-to-Speech je Agent über AWS Nova Sonic oder Azure Realtime — reinreden erlaubt.</p></div>
       <div class="tile reveal"><h3>Second Brains</h3><p>Geteilte Wissens-Vaults mit Rechten, semantischer Suche, Backlinks und 3D-Graph.</p></div>
       <div class="tile reveal"><h3>Echtes Gedächtnis</h3><p>Agent-Memories mit automatischer Verlinkung, Wochensynthese und nächtlicher Reflexion.</p></div>
-      <div class="tile reveal"><h3>Vertrauen &amp; Kontrolle</h3><p>Autonomie-Matrix, Freigaben, DLP-Ausgangsfilter, abspielbare Decision-Traces, Budgets, Audit-Log.</p></div>
-      <div class="tile reveal"><h3>Automatisierung</h3><p>Workflows, Trigger (Webhook, Ereignis, Cron), Zeitpläne mit Wächtern und Selbstheilung gescheiterter Läufe.</p></div>
+      <div class="tile wide reveal"><h3>Vertrauen &amp; Kontrolle</h3><p>Autonomie-Matrix, Freigaben, DLP-Ausgangsfilter, abspielbare Decision-Traces, Budgets, Audit-Log.</p></div>
+      <div class="tile wide reveal"><h3>Automatisierung</h3><p>Workflows, Trigger (Webhook, Ereignis, Cron), Zeitpläne mit Wächtern und Selbstheilung gescheiterter Läufe.</p></div>
       <div class="tile reveal"><h3>Teamarbeit</h3><p>Agenten-Teams mit Lead und Delegation, Meeting-Räume mit echtem Arbeitsergebnis, Vertretungskette bei Ausfall.</p></div>
       <div class="tile reveal"><h3>Skills</h3><p>Marktplatz mit eigenen Quellen, Aufzeichnung-zu-Skill (Replay) und Golden-Tests als Update-Gatter.</p></div>
       <div class="tile reveal"><h3>PC &amp; Browser</h3><p>Computer-Use-Bridge für den eigenen Rechner plus Browser-Steuerung — aus allen Laufzeiten.</p></div>
       <div class="tile reveal"><h3>Modelle &amp; Konten</h3><p>Auto-Discovery neuer Modelle, Freischaltung pro Modell, eigene Claude-/ChatGPT-Abos pro Nutzer.</p></div>
       <div class="tile reveal"><h3>Ticketsysteme</h3><p>Matrix42 und generische Anbindung — Agenten arbeiten Tickets direkt ab.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="demo">
+  <div class="wrap">
+    <div class="copy reveal">
+      <span class="eyebrow">So arbeitet ein Agent</span>
+      <h2>Anweisen. <span class="a" style="--acc:var(--green);color:var(--green)">Zurücklehnen.</span> Abnehmen.</h2>
+      <p class="lede">Ein Auftrag in Alltagssprache — der Agent plant, arbeitet mit echten Werkzeugen und meldet sich, wenn er eine Entscheidung braucht.</p>
+      <ul>
+        <li>Jeder Schritt nachvollziehbar in der Task-Timeline</li>
+        <li>Riskantes wartet auf deine Freigabe — per Web, Push oder Telegram</li>
+        <li>Kosten pro Lauf sichtbar, Budgets deckeln automatisch</li>
+      </ul>
+    </div>
+    <div class="term reveal" aria-label="Beispielhafter Arbeitslauf eines Agenten">
+      <div class="bar"><i></i><i></i><i></i><span>agent — Morgenlage</span></div>
+      <pre id="termdemo"><span class="p">$</span> <span class="hl">Mach mir die Morgenlage und beantworte die Mails.</span>
+</pre>
     </div>
   </div>
 </section>
@@ -632,6 +714,69 @@
       entries.forEach(function(en){if(en.isIntersecting){en.target.classList.add('in');io.unobserve(en.target)}})
     },{rootMargin:'0px 0px -10% 0px',threshold:.1});
     els.forEach(function(e){io.observe(e)});
+  })();
+  (function(){
+    // Maus-Spotlight auf Karten und Kacheln (ein Listener, Delegation)
+    if (matchMedia('(pointer:fine)').matches) {
+      document.addEventListener('pointermove', function(e){
+        var el = e.target.closest ? e.target.closest('.tile,.card') : null;
+        if (!el) return;
+        var r = el.getBoundingClientRect();
+        el.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+        el.style.setProperty('--my', (e.clientY - r.top) + 'px');
+      }, {passive:true});
+    }
+  })();
+  (function(){
+    // Terminal-Demo: Zeilen tippen sich, wenn sichtbar; reduced motion = alles sofort
+    var pre=document.getElementById('termdemo');
+    if(!pre) return;
+    var lines=[
+      ['p','▸ Postfach gelesen — 14 neue Mails, 3 brauchen Antwort'],
+      ['p','▸ Antworten entworfen, Ton wie in früheren Mails'],
+      ['ok','▸ 2 gesendet · 1 wartet auf deine Freigabe (Angebot > 5.000 EUR)'],
+      ['p','▸ Kalender geprüft — Konflikt am Donnerstag verschoben'],
+      ['p','▸ Ticket #4711 in Matrix42 aktualisiert'],
+      ['p','▸ Zusammenfassung an den Teams-Kanal gesendet'],
+      ['ok','OK — fertig in 2m 14s · Kosten $0.04 · Trace gespeichert']
+    ];
+    var reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+    if(reduced){
+      pre.innerHTML += lines.map(function(l){return '<span class="'+l[0]+'">'+esc(l[1])+'</span>'}).join('\n')+'\n';
+      return;
+    }
+    var started=false;
+    function run(){
+      if(started) return; started=true;
+      var li=0;
+      var caret=document.createElement('span'); caret.className='caret';
+      pre.appendChild(caret);
+      function nextLine(){
+        if(li>=lines.length){
+          setTimeout(function(){
+            pre.innerHTML='<span class="p">$</span> <span class="hl">Mach mir die Morgenlage und beantworte die Mails.</span>\n';
+            pre.appendChild(caret); li=0; setTimeout(nextLine,900);
+          },6000);
+          return;
+        }
+        var span=document.createElement('span'); span.className=lines[li][0];
+        pre.insertBefore(span,caret);
+        var text=lines[li][1], ci=0;
+        (function type(){
+          if(ci<=text.length){
+            span.textContent=text.slice(0,ci); ci+=2;
+            setTimeout(type,18);
+          } else {
+            pre.insertBefore(document.createTextNode('\n'),caret);
+            li++; setTimeout(nextLine,320);
+          }
+        })();
+      }
+      setTimeout(nextLine,600);
+    }
+    var io=new IntersectionObserver(function(es){es.forEach(function(en){if(en.isIntersecting){run();io.disconnect()}})},{threshold:.4});
+    io.observe(pre);
   })();
   (function(){
     var bar=document.getElementById('cookiebar'), ok=document.getElementById('cookieOk');
