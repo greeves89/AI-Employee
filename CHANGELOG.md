@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.265.8] - 2026-08-23
+
+### Geaendert
+- **Landingpage: Impressum vervollstaendigt.** Die Platzhalter fuer
+  Betreiber-Angaben und Kontakt sind durch die echten Angaben ersetzt —
+  damit sind Impressumspflicht und Datenschutzerklaerung vollstaendig.
+
 ## [1.265.7] - 2026-08-23
 
 ### Geaendert
