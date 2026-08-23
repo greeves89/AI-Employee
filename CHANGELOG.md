@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.265.6] - 2026-08-23
+
+### Behoben
+- **Landingpage: „Alles klar" schliesst die Hinweis-Leiste jetzt wirklich.**
+  Das `display:flex` der Leiste hatte das `hidden`-Attribut ueberstimmt — der
+  Klick wurde gespeichert, die Leiste blieb aber sichtbar.
+
 ## [1.265.5] - 2026-08-23
 
 ### Geaendert
