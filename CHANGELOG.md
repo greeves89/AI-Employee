@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.266.7] - 2026-08-24
+
+### Behoben
+- **Landingpage: Dashboard-Screenshot im Browser-Mockup nicht mehr gequetscht.**
+  Das height-Attribut des Bildes gewann gegen das CSS (nur width gesetzt) —
+  jetzt `height:auto` am Mockup-Bild plus generelles Sicherheitsnetz
+  `img{max-width:100%;height:auto}`.
+
 ## [1.266.6] - 2026-08-24
 
 ### Geaendert
