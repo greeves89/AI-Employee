@@ -12,10 +12,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Vorarbeit dafuer, dass ein Container sie einmal gemeinsam bereitstellt statt
   sie fuer jeden Lauf neu zu starten (#638, Phase 3 zu #628).
 
-  Heute startet jeder Lauf elf eigene MCP-Prozesse; gemessen sind das 81
-  Threads **pro Lauf**, bei einer Obergrenze von 512 fuer den ganzen Container.
-  Deshalb koennen bislang nur vier Laeufe gleichzeitig arbeiten — laufen mehr,
-  scheitern `gh`, `git` und `pytest` still an fehlenden Prozessen.
+  Heute startet jeder Lauf elf eigene MCP-Prozesse. Ueberschlaegt man sie mit
+  rund sieben Threads je Prozess, sind das etwa 80 Threads **pro Lauf**, bei
+  einer Obergrenze von 512 fuer den ganzen Container. Das erklaert, warum nur
+  eine Handvoll Laeufe gleichzeitig arbeiten kann — laufen mehr, scheitern
+  `gh`, `git` und `pytest` still an fehlenden Prozessen.
 
   Dieser Schritt aendert daran noch nichts Sichtbares: **ohne die neue
   Umgebungsvariable `MCP_HTTP_PORT` verhaelt sich alles exakt wie bisher.**
@@ -27,6 +28,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Kindprozess ab, legt das System eine rund 14 MB grosse `core.<pid>`-Datei im
   Arbeitsverzeichnis ab. Ohne passenden Eintrag in `.gitignore` nahm ein
   `git add -A` sie kommentarlos mit.
+- **Die Versionsnummer kann nicht mehr unbemerkt auseinanderlaufen.** Sie steht
+  an zwei Stellen — in `VERSION` und als Kennzeichen im Agent-Abbild. Die beiden
+  waren zuletzt verschieden, wodurch ein laufendes Abbild eine Version anzeigte,
+  die es gar nicht war. Ein Test vergleicht sie jetzt bei jedem Lauf.
 
 ---
 
