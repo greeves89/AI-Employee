@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.265.9] - 2026-08-23
+
+### Hinzugefuegt
+- **Eigenstaendige Rechtsseiten fuer die App-Store-Pruefung.** `docs/ios-app/`
+  enthaelt jetzt `datenschutz.html` und `impressum.html` als direkt verlinkbare
+  Seiten (Apple verlangt eine Datenschutz-URL); die Datenschutzerklaerung
+  deckt zusaetzlich die App selbst ab (keine Datenerhebung durch den Anbieter,
+  Anmeldedaten nur zur eigenen Instanz, Push-Token, Mikrofon).
+
 ## [1.265.8] - 2026-08-23
 
 ### Geaendert
