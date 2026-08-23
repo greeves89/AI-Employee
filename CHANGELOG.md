@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.264.5] - 2026-08-23
+
+### Behoben
+- **Agenten-Image-Version ist wieder eindeutig.** Das Release stand bereits auf 1.264.4, aber das Agent-Docker-Label weiterhin auf 1.264.0. Betreiber erkennen dadurch laufende Images nicht verlaesslich als aktuell; `VERSION`, Changelog und Image-Label laufen wieder zusammen.
+
+---
+
 ## [1.264.4] - 2026-08-23
 
 ### Behoben
