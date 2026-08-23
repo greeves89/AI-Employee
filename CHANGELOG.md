@@ -47,6 +47,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   deren Summe das Container-Prozesslimit sprengen konnte; ein Platz bleibt
   exklusiv fuer Chat reserviert, damit Gespraeche nicht hinter langlaufenden
   Aufgaben verhungern.
+- **MCP-Server koennen HTTP sprechen — Schritt 1 (#638, PR #639).** Gemeinsamer
+  Transport-Bootstrap `agent/mcp/_transport.mjs` (stdio wie bisher; mit
+  `MCP_HTTP_PORT` bedient EIN Prozess mehrere Sitzungen unter `/mcp/<name>`,
+  nur Loopback, 8-MB-Body-Deckel) plus Pilot `read-logs`. Ohne gesetzten Port
+  aendert sich nichts.
 
 ## [1.265.9] - 2026-08-23
 
