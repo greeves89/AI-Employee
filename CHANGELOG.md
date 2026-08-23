@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.269.1] - 2026-08-23
+
+### Behoben
+- **Meldungen von Agenten ohne eigenen Telegram-Bot kamen nie an.** Hat ein
+  Agent keinen eigenen Bot hinterlegt, sollte der globale Bot einspringen.
+  Dieser Ersatzweg schickte seine Nachricht aber an eine Adresse, die niemand
+  abhoert — und ohne das Textfeld, das der Empfaenger tatsaechlich vorliest.
+  Beides zusammen hiess: die Meldung verschwand spurlos, auch bei hoher
+  Dringlichkeit. In der Weboberflaeche war sie zu sehen, nach aussen kam
+  nichts. Wer sich darauf verlassen hat, benachrichtigt zu werden, wurde es
+  nicht.
+- **Auch die Warnung nach einem abgestuerzten Auftrag kam nicht an.** Sie ging
+  an die richtige Adresse, aber ebenfalls ohne Textfeld — nach einem Neustart
+  blieb also unbemerkt, dass ein Auftrag den Neustart nicht ueberlebt hatte.
+- **Schlaegt eine Zustellung fehl, steht das jetzt im Protokoll.** Bisher
+  wurden diese Fehler stillschweigend verschluckt; der Aufruf sah von aussen
+  erfolgreich aus. Ein Zustellweg, der still scheitert, ist schlimmer als
+  einer, der gar nicht existiert — man verlaesst sich darauf.
+
+### Hinzugefuegt
+- **Ein Test haelt kuenftig alle Melde-Wege auf derselben Form.** Er prueft
+  jeden Absender darauf, dass er dieselbe Adresse benutzt und ein Textfeld
+  mitgibt. Genau diese Fehlerklasse ist jetzt zum zweiten Mal aufgetreten und
+  war beide Male nur durch Lesen des Quelltextes zu finden, weil sie im
+  Betrieb keinerlei Spur hinterlaesst.
+
+---
+
 ## [1.264.3] - 2026-08-22
 
 ### Hinzugefuegt
