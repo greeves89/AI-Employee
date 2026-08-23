@@ -585,7 +585,8 @@ class LLMChatHandler:
         if reasoning:
             provider.reasoning_effort = {"off": "", "max": "xhigh"}.get(reasoning, reasoning)
         else:
-            provider.reasoning_effort = settings.llm_reasoning_effort
+            from app.config import llm_default_reasoning_effort
+            provider.reasoning_effort = llm_default_reasoning_effort()
 
         # Build system message if this is the first message
         if not self._history:

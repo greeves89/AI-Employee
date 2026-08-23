@@ -7,7 +7,7 @@ import time
 
 from app import context_compressor, model_registry, multimodal
 from app.loop_detector import LoopDetector
-from app.config import settings
+from app.config import llm_default_reasoning_effort, settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
 from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
@@ -310,7 +310,7 @@ class LLMRunner:
                 max_tokens=settings.llm_max_tokens,
                 temperature=settings.llm_temperature,
                 thinking_mode=settings.llm_thinking_mode,
-                reasoning_effort=settings.llm_reasoning_effort,
+                reasoning_effort=llm_default_reasoning_effort(),
                 api_version=settings.llm_api_version,
             )
         return self._provider

@@ -1375,6 +1375,55 @@ async def update_agent_idle_stop(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+@router.patch("/{agent_id}/default-reasoning")
+async def update_agent_default_reasoning(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Standard-Denktiefe des Agenten setzen (Kundenwunsch: nicht mehr pro Chat
+    von Hand, sondern einmal am Agenten — gilt fuer Aufgaben, Zeitplaene,
+    delegierte Auftraege, Agent-zu-Agent-Nachrichten und Chats ohne gewaehlte
+    Stufe; eine im Chat gewaehlte Stufe gewinnt weiterhin).
+
+    Body: {"default_reasoning": "off"|"low"|"medium"|"high"|"max"|""|null}
+    ""/null → Auto (die Laufzeit entscheidet, wie bisher).
+
+    Wirkung: der Wert faehrt als DEFAULT_REASONING in den Container und
+    greift daher ab dem naechsten Neuerstellen/Update des Agenten vollstaendig.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.models.chat_session import REASONING_LEVELS
+
+    raw = body.get("default_reasoning")
+    level = (str(raw).strip().lower() if raw is not None else "")
+    if level and level not in REASONING_LEVELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"default_reasoning muss leer sein oder eines von: {', '.join(REASONING_LEVELS)}",
+        )
+    try:
+        agent = await manager._get_agent(agent_id)
+        cfg = dict(agent.config or {})
+        if not level:
+            cfg.pop("default_reasoning", None)
+        else:
+            cfg["default_reasoning"] = level
+        agent.config = cfg
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+        return {
+            "agent_id": agent_id,
+            "default_reasoning": level or "",
+            "applies_after": "recreate",
+        }
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 @router.patch("/{agent_id}/always-on")
 async def update_agent_always_on(
     agent_id: str,

@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     llm_tools_enabled: bool = True
     llm_thinking_mode: str = "auto"  # "off", "auto", "on"
     llm_reasoning_effort: str = ""  # "" (API default), "low", "medium", "high" — OpenAI reasoning models only
+    # Standard-Denktiefe des AGENTEN (Env DEFAULT_REASONING, vom Besitzer in den
+    # Agenten-Einstellungen gesetzt): "off", "low", "medium", "high", "max" oder ""
+    # (= Auto). Gilt ueberall dort, wo am einzelnen Lauf KEINE Stufe haengt —
+    # Aufgaben, Zeitplaene, delegierte Auftraege, Agent-zu-Agent-Nachrichten und
+    # Chats ohne gewaehlte Stufe. Eine im Chat gewaehlte Stufe gewinnt immer.
+    default_reasoning: str = ""
     llm_api_version: str = ""  # Azure OpenAI api-version (e.g. 2024-10-21)
     # Ausweichmodelle bei Rate-Limit/Zeitueberschreitung/Ueberlastung (#200),
     # kommagetrennt und in dieser Reihenfolge. Leer = kein Ausweichen, dann
@@ -117,3 +123,24 @@ def get_oauth_token() -> str:
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         pass
     return settings.claude_code_oauth_token
+
+
+# Denk-Budget je Stufe fuer Claude (MAX_THINKING_TOKENS) — Chat UND Aufgaben
+# nutzen dieselbe Tabelle. "max" ist bewusst ein Alias fuer "high": 31999 ist
+# die Ultrathink-Obergrenze von Claude Code.
+CLAUDE_THINKING_BUDGET = {"low": "4000", "medium": "10000", "high": "31999", "max": "31999"}
+
+
+def llm_default_reasoning_effort() -> str:
+    """Reasoning-Effort fuer den LLM-Provider, wenn am Lauf keine Stufe haengt.
+
+    Die Standard-Denktiefe des Agenten (default_reasoning, Chat-Stufennamen)
+    gewinnt vor dem Provider-Feinknopf llm_reasoning_effort — sie ist die
+    Einstellung, die der Besitzer sichtbar am Agenten gesetzt hat. Namen werden
+    uebersetzt: "off" -> "" (API-Standard ohne Denken), "max" -> "xhigh".
+    """
+    level = (settings.default_reasoning or "").strip().lower()
+    if level:
+        return {"off": "", "max": "xhigh"}.get(level, level)
+    return settings.llm_reasoning_effort
+

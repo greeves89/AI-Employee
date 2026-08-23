@@ -165,6 +165,16 @@ export async function getDelegations(minutes: number = 1440): Promise<{
   return fetchJSON(`${getBase()}/agents/team/delegations?minutes=${minutes}`);
 }
 
+export async function updateAgentDefaultReasoning(
+  agentId: string,
+  level: string,
+): Promise<{ agent_id: string; default_reasoning: string; applies_after: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/default-reasoning`, {
+    method: "PATCH",
+    body: JSON.stringify({ default_reasoning: level }),
+  });
+}
+
 export async function updateAgentModel(
   agentId: string,
   modelProvider: string,

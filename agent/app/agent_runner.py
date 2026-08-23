@@ -115,6 +115,15 @@ class AgentRunner:
         ]
 
         env = os.environ.copy()
+        # Standard-Denktiefe des Agenten: Aufgaben haben keine Stufen-Wahl am Lauf,
+        # also zaehlt hier die Einstellung aus den Agenten-Einstellungen. "off"
+        # raeumt ein etwaiges Container-Budget weg statt darauf zurueckzufallen.
+        from app.config import CLAUDE_THINKING_BUDGET
+        _level = (settings.default_reasoning or "").strip().lower()
+        if _level == "off":
+            env.pop("MAX_THINKING_TOKENS", None)
+        elif _level in CLAUDE_THINKING_BUDGET:
+            env["MAX_THINKING_TOKENS"] = CLAUDE_THINKING_BUDGET[_level]
         if settings.anthropic_api_key:
             env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
         else:

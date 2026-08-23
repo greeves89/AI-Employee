@@ -140,7 +140,7 @@ class ChatHandler:
     # MAX_THINKING_TOKENS budget. Mapped from the user's per-message choice.
     # "max" aliases "high": 31999 is Claude Code's ultrathink ceiling, and without
     # an entry "max" would silently fall back to the container default (< high).
-    _THINKING_BUDGET = {"low": "4000", "medium": "10000", "high": "31999", "max": "31999"}
+    from app.config import CLAUDE_THINKING_BUDGET as _THINKING_BUDGET
 
     async def handle_message(
         self, message_id: str, text: str, model: str | None = None,
@@ -156,7 +156,9 @@ class ChatHandler:
         model = model or settings.default_model
         # Held on the instance for this turn (incl. steering follow-ups) instead of
         # threaded through _run_turn_with_retries' three call sites.
-        self._reasoning = reasoning or ""
+        # Stufe am Lauf gewinnt; sonst gilt die Standard-Denktiefe des Agenten.
+        from app.config import settings as _settings
+        self._reasoning = reasoning or _settings.default_reasoning or ""
         self.is_running = True
 
         async def _run_turn(t: str, _is_resume: bool) -> dict:

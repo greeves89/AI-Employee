@@ -5,7 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [Unreleased-1.266.0]
+## [1.266.0] - 2026-08-24
+
+### Hinzugefuegt
+- **Standard-Denktiefe pro Agent (Kundenwunsch).** In den Agenten-Einstellungen
+  (Web und iOS-App, direkt bei Modell/AI-Account) laesst sich je Agent eine
+  Standard-Denktiefe festlegen (Auto/Minimal/Low/Medium/High/Extra High,
+  `PATCH /agents/{id}/default-reasoning`). Sie gilt ueberall dort, wo am
+  einzelnen Lauf keine Stufe haengt — Aufgaben, Zeitplaene, delegierte
+  Auftraege, Agent-zu-Agent-Nachrichten und Chats ohne gewaehlte Stufe — und
+  zwar in ALLEN Laufzeiten (Claude Code via Denk-Budget, Codex via
+  model_reasoning_effort, Custom-LLM via reasoning_effort). Eine im Chat
+  gewaehlte Stufe gewinnt weiterhin; vollstaendig wirksam ab dem naechsten
+  Neuerstellen des Agenten.
 
 ### Behoben
 - **Ein Zeitplan, der seinen Termin verliert, meldet sich jetzt (#631, PR #633).**

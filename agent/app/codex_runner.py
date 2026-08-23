@@ -195,7 +195,9 @@ class CodexAgentRunner:
         ]
         # Per-message reasoning level chosen by the user in the chat. Passed as a
         # CLI override (not the config TOML) so it applies to THIS turn only.
-        _reasoning = getattr(self, "_reasoning", "")
+        # Stufe am Lauf gewinnt; sonst die Standard-Denktiefe des Agenten —
+        # _run_codex bedient Chat UND Aufgaben, damit gilt sie fuer beide.
+        _reasoning = getattr(self, "_reasoning", "") or settings.default_reasoning
         if _reasoning:
             # Codex calls the extremes differently: no thinking is "minimal",
             # the top level is "xhigh".

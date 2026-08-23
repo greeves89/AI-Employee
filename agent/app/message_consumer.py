@@ -16,7 +16,7 @@ import logging
 
 import redis.asyncio as aioredis
 
-from app.config import get_oauth_token, settings
+from app.config import get_oauth_token, llm_default_reasoning_effort, settings
 from app.log_publisher import LogPublisher
 from app.proc_watchdog import ProcessIdleTimeout, communicate_with_idle_timeout
 from app.run_budget import get_run_budget
@@ -112,7 +112,7 @@ class MessageConsumer:
                 model_name=(model if (model and model != "default") else settings.llm_model_name),
                 max_tokens=settings.llm_max_tokens,
                 temperature=settings.llm_temperature,
-                reasoning_effort=settings.llm_reasoning_effort,
+                reasoning_effort=llm_default_reasoning_effort(),
                 api_version=settings.llm_api_version,
             )
             system = settings.llm_system_prompt or (

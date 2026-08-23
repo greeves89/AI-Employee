@@ -1413,6 +1413,12 @@ function AgentSettings({
 
   // Claude Code model selection state
   const [agentModel, setAgentModel] = useState(agent.model);
+  // Standard-Denktiefe des Agenten (config.default_reasoning) — gilt fuer
+  // Aufgaben, Zeitplaene, Delegationen und Chats ohne gewaehlte Stufe.
+  const [defaultReasoning, setDefaultReasoning] = useState<string>(
+    String((agent.config as Record<string, unknown> | null)?.default_reasoning ?? "")
+  );
+  const [reasoningSaving, setReasoningSaving] = useState(false);
   const [agentProvider, setAgentProvider] = useState<string>(agent.model_provider || "anthropic");
   const [modelSaving, setModelSaving] = useState(false);
   // Provider/model catalog from the backend (single source of truth). Falls
@@ -1853,6 +1859,58 @@ function AgentSettings({
           </div>
         </div>
       )}
+
+      {/* Standard-Denktiefe — Kundenwunsch: einmal am Agenten statt pro Chat.
+          Gilt fuer Aufgaben, Zeitplaene, delegierte Auftraege und Chats ohne
+          gewaehlte Stufe; die Stufe im Chat gewinnt weiterhin. */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+        <div className="flex items-center gap-2 border-b border-foreground/[0.06] px-5 py-3">
+          <Brain className="h-4 w-4 text-blue-400" />
+          <span className="text-sm font-medium">Standard-Denktiefe</span>
+          {reasoningSaving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="flex gap-1.5">
+            {([
+              { value: "", label: "Auto" },
+              { value: "off", label: "Minimal" },
+              { value: "low", label: "Low" },
+              { value: "medium", label: "Medium" },
+              { value: "high", label: "High" },
+              { value: "max", label: "Extra High" },
+            ] as { value: string; label: string }[]).map((o) => (
+              <button
+                key={o.value || "auto"}
+                onClick={async () => {
+                  const prev = defaultReasoning;
+                  setDefaultReasoning(o.value);
+                  setReasoningSaving(true);
+                  try {
+                    await api.updateAgentDefaultReasoning(agentId, o.value);
+                    setMessage({ type: "success", text: o.value ? "Standard-Denktiefe gespeichert — gilt vollstaendig ab dem naechsten Neuerstellen des Agenten." : "Standard-Denktiefe auf Auto zurueckgesetzt." });
+                  } catch {
+                    setDefaultReasoning(prev);
+                    setMessage({ type: "error", text: "Standard-Denktiefe konnte nicht gespeichert werden." });
+                  } finally {
+                    setReasoningSaving(false);
+                  }
+                }}
+                className={cn(
+                  "flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all text-center",
+                  defaultReasoning === o.value
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground/50">
+            Gilt fuer Aufgaben, Zeitplaene, delegierte Auftraege, Agent-zu-Agent-Nachrichten und Chats ohne gewaehlte Stufe. Eine im Chat gewaehlte Denktiefe gewinnt weiterhin. Vollstaendig wirksam ab dem naechsten Neuerstellen/Update des Agenten.
+          </p>
+        </div>
+      </div>
 
       {/* LLM Configuration (custom_llm only) */}
       {agent.mode === "custom_llm" && (

@@ -1784,6 +1784,9 @@ class AgentManager:
             "REDIS_URL": await self._agent_redis_url(agent_id),
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
+            # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
+            # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
+            "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
             "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
             "MAX_TURNS": str(settings.max_turns),
             # Per-agent parallelism (config['parallel_sessions']) overrides the
@@ -2078,6 +2081,9 @@ class AgentManager:
             "REDIS_URL": await self._agent_redis_url(agent_id),
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
+            # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
+            # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
+            "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
             "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
             "MAX_TURNS": str(settings.max_turns),
             # Per-agent parallelism (config['parallel_sessions']) overrides the
