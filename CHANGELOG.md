@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.265.3] - 2026-08-23
+
+### Geaendert
+- **Landingpage rechtssicher und rund.** Impressum und Datenschutzerklaerung
+  (als Overlay, im Footer verlinkt; Betreiber-Angaben als auszufuellende
+  Platzhalter), Hinweis-Leiste unten (kein Tracking, nur lokale Bestaetigung),
+  Schriften lokal eingebettet statt von Google Fonts geladen (kein externer
+  Request), echte Umlaute im gesamten Text, Engines-Angabe korrigiert (Claude
+  Code, Codex UND Custom-LLM) und drei fehlende Funktionen ergaenzt
+  (Aufgaben & Zeitplaene, Task-Timeline, Integrationen).
+
 ## [1.265.2] - 2026-08-23
 
 ### Geaendert
