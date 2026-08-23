@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.265.7] - 2026-08-23
+
+### Geaendert
+- **Landingpage: Siri-Kachel nennt jetzt die echten Kommandos** („Schreibe
+  <Agent> in AI Employee Hub", Aufgabe anlegen) statt einer Phrase, die die
+  App nicht registriert.
+
 ## [1.265.6] - 2026-08-23
 
 ### Behoben
