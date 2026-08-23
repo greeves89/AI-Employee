@@ -635,6 +635,13 @@ class TelegramAgentBot:
             if media_type in ("voice", "audio"):
                 await redis.setex(f"agent:{target_agent_id}:voicereply:{message_id}", 3600, "1")
             await redis.aclose()
+            # Einen gestoppten Agenten WECKEN — der Text-Pfad tat das laengst, der
+            # Medien-Pfad nicht: eine Sprachnachricht an einen schlafenden Agenten
+            # lag damit in einer Warteschlange, die niemand mehr las (#645).
+            # Queue-first, Wecken danach: scheitert das Wecken, wartet die
+            # Nachricht im Redis-Verzeichnis auf den naechsten Start, statt
+            # verloren zu gehen.
+            await self._ensure_agent_running(update, target_agent_id)
             await update.effective_chat.send_action("typing")
         except Exception as e:
             await update.message.reply_text(f"Fehler beim Senden: {e}")

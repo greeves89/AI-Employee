@@ -647,6 +647,14 @@ class ChatConsumer:
         self.redis = aioredis.from_url(settings.redis_url, decode_responses=False)
         log_publisher = LogPublisher(self.redis, self.agent_id)
 
+        # Absturzsicherung (#645): brpop NIMMT die Nachricht aus der Queue —
+        # stirbt der Container mitten in der Verarbeitung (OOM, Neustart-Schleife
+        # beim Aufwecken), war sie weg. Genau so verschwand eine Telegram-
+        # Sprachnachricht an einen schlafenden Agenten. Deshalb liegt jede
+        # Nachricht waehrend der Verarbeitung zusaetzlich in einer Inflight-Liste
+        # und wird beim naechsten Start zurueck in die Queue gelegt.
+        await self._requeue_inflight()
+
         # Start cancel listener in background
         self._cancel_listener_task = asyncio.create_task(self._listen_for_cancel())
 
@@ -658,6 +666,32 @@ class ChatConsumer:
         else:
             await self._run_serial(log_publisher)
 
+    @property
+    def inflight_key(self) -> str:
+        return f"{self.queue_name}:inflight"
+
+    async def _requeue_inflight(self) -> None:
+        """Beim Start: Nachrichten des letzten Absturzes zurueck in die Queue.
+
+        rpush ans RECHTE Ende — dort liest brpop als naechstes, die verlorene
+        Nachricht kommt also VOR neu eingegangenen dran (alte Reihenfolge).
+        """
+        moved = 0
+        try:
+            while True:
+                # lpop, nicht rpop: links liegt die zuletzt gezogene (juengste)
+                # Nachricht — sie muss beim Zuruecklegen ZUERST an die Queue,
+                # damit die aelteste am rechten Ende landet, wo brpop liest.
+                raw = await self.redis.lpop(self.inflight_key)
+                if raw is None:
+                    break
+                await self.redis.rpush(self.queue_name, raw)
+                moved += 1
+        except Exception:  # noqa: BLE001
+            logger.warning("Inflight-Requeue fehlgeschlagen", exc_info=True)
+        if moved:
+            logger.info("Chat consumer: %s unverarbeitete Nachricht(en) aus dem letzten Lauf zurueckgelegt", moved)
+
     async def _run_serial(self, log_publisher: LogPublisher) -> None:
         """Proven serial path: exactly one chat turn at a time (default)."""
         while self.running:
@@ -666,7 +700,11 @@ class ChatConsumer:
                 if result is None:
                     continue
                 _, msg_json = result
-                await self._process_one(json.loads(msg_json), log_publisher)
+                await self.redis.lpush(self.inflight_key, msg_json)
+                try:
+                    await self._process_one(json.loads(msg_json), log_publisher)
+                finally:
+                    await self.redis.lrem(self.inflight_key, 1, msg_json)
             except aioredis.TimeoutError:
                 continue
             except aioredis.ConnectionError:
@@ -686,6 +724,7 @@ class ChatConsumer:
                 if result is None:
                     continue
                 _, msg_json = result
+                await self.redis.lpush(self.inflight_key, msg_json)
                 msg = json.loads(msg_json)
                 sk = self._source_key(
                     msg.get("source", "telegram" if msg.get("telegram") else "webapp"),
@@ -699,7 +738,7 @@ class ChatConsumer:
                     self._lane_tasks[sk] = asyncio.create_task(
                         self._lane_worker(sk, lane, log_publisher)
                     )
-                await lane.put(msg)
+                await lane.put((msg, msg_json))
             except aioredis.TimeoutError:
                 continue
             except aioredis.ConnectionError:
@@ -713,12 +752,17 @@ class ChatConsumer:
         lifetime (an idle lane just blocks cheaply on an empty queue) — no
         concurrent cleanup, so no lost-message race with the dispatcher."""
         while self.running:
-            msg = await lane.get()
+            msg, msg_json = await lane.get()
             async with self._sem:
                 try:
                     await self._process_one(msg, log_publisher)
                 except Exception as e:  # noqa: BLE001
                     await self._report_loop_error(e)
+                finally:
+                    try:
+                        await self.redis.lrem(self.inflight_key, 1, msg_json)
+                    except Exception:  # noqa: BLE001
+                        pass
 
     async def _report_loop_error(self, e: Exception) -> None:
         if self.redis:

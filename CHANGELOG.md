@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.266.3] - 2026-08-24
+
+### Behoben
+- **Telegram-Sprachnachrichten an einen schlafenden Agenten gehen nicht mehr
+  verloren (#645).** Zwei Luecken: (1) Der Medien-Pfad (Sprache, Fotos,
+  Dokumente) weckte einen gestoppten Agenten nicht — nur Textnachrichten taten
+  das. Die Nachricht lag damit in einer Warteschlange, die niemand mehr las.
+  Jetzt gilt queue-first + wecken, wie beim Text. (2) Stirbt der Container
+  mitten in der Verarbeitung (OOM, Neustart-Schleife beim Aufwecken), nahm
+  brpop die Nachricht mit ins Grab. Jede Chat-Nachricht liegt jetzt waehrend
+  der Verarbeitung in einer Inflight-Liste und wird beim naechsten Start in
+  alter Reihenfolge zurueckgelegt.
+
 ## [1.266.2] - 2026-08-24
 
 ### Behoben
