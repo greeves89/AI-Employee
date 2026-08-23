@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.267.0] - 2026-08-24
+
+### Hinzugefuegt
+- **Kontaktformular auf der Landingpage.** Neuer oeffentlicher Endpunkt
+  `POST /api/v1/contact` stellt Name, E-Mail und Nachricht per SMTP an den
+  Betreiber zu (Reply-To = Absender). Opt-in per Konfiguration
+  (`CONTACT_SMTP_USER`/`CONTACT_SMTP_PASSWORD`/`CONTACT_TO` in der .env der
+  Installation — ohne sie antwortet der Endpunkt mit 503, Zugangsdaten liegen
+  nie im Repo). Schutz: Honeypot-Feld, 5 Nachrichten pro IP und Stunde,
+  feste Empfaengeradresse. Die Datenschutzerklaerung (Seite und Overlay)
+  beschreibt die Verarbeitung inkl. Brevo als Auftragsverarbeiter.
+
 ## [1.266.7] - 2026-08-24
 
 ### Behoben

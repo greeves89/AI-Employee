@@ -166,6 +166,16 @@ class Settings(BaseSettings):
     # Runs as a compose service on the internal network.
     stt_service_url: str = "http://stt-service:8003"
 
+    # Kontaktformular der Landingpage (Opt-in: ohne User/Passwort antwortet
+    # der Endpunkt mit 503). Zugangsdaten NIE ins Repo — nur in die .env der
+    # Installation. Absender muss beim SMTP-Anbieter verifiziert sein.
+    contact_smtp_host: str = "smtp-relay.brevo.com"
+    contact_smtp_port: int = 587
+    contact_smtp_user: str = ""
+    contact_smtp_password: str = ""
+    contact_to: str = ""
+    contact_from: str = ""
+
     # Security
     encryption_key: str = ""
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing

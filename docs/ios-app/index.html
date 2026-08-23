@@ -261,6 +261,23 @@
   .cta .steps div{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px}
   .cta .steps b{display:block;font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.12em;margin-bottom:8px}
 
+  /* Kontaktformular */
+  .contact{width:min(640px,100%);margin:26px auto 0;display:grid;gap:14px;text-align:left}
+  .contact label{display:grid;gap:6px;font-size:13px;color:var(--muted)}
+  .contact .frow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .contact input,.contact textarea{width:100%;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);padding:12px 14px;font-family:var(--body);font-size:15px;outline:none;transition:border-color .2s ease}
+  .contact input:focus,.contact textarea:focus{border-color:color-mix(in srgb,var(--blue) 60%,transparent)}
+  .contact textarea{resize:vertical;min-height:110px}
+  .contact .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  .contact .factions{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .contact .formnote{font-size:12.5px;color:var(--dim)}
+  .contact .formnote a{color:var(--muted)}
+  #formstatus{font-size:14px;color:var(--muted)}
+  #formstatus.ok{color:var(--green)}
+  #formstatus.err{color:#f87171}
+  .contact.sent{text-align:center}
+  @media (max-width:560px){.contact .frow{grid-template-columns:1fr}}
+
   footer{border-top:1px solid var(--line);padding:32px 0;color:var(--dim);font-size:14px}
   footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
   footer .legal a{color:var(--muted);text-decoration:none}
@@ -648,13 +665,25 @@
   <div class="wrap">
     <span class="eyebrow">Beta</span>
     <h2>So kommst du rein</h2>
-    <p class="lede">Die App läuft aktuell über TestFlight. Du brauchst ein Konto auf deiner AI-Employee-Plattform — der Rest sind drei Schritte.</p>
+    <p class="lede">Die App läuft aktuell über TestFlight, die Plattform bekommst du als eigene Installation. Schreib kurz, worum es geht — du bekommst Zugang, Demo oder Antwort direkt vom Betreiber.</p>
     <div class="steps reveal">
       <div><b>Schritt 1</b>TestFlight aus dem App Store laden und die Einladung deines Admins öffnen.</div>
       <div><b>Schritt 2</b>AI Employee Hub installieren und starten.</div>
       <div><b>Schritt 3</b>Plattform-Adresse eintragen, mit deinem Konto anmelden — fertig.</div>
     </div>
-    <a class="btn primary" href="#top">Einladung vom Admin anfordern</a>
+    <form id="contactform" class="contact reveal" novalidate>
+      <div class="frow">
+        <label>Name<input type="text" name="name" autocomplete="name" maxlength="120" required placeholder="Wie heisst du?"></label>
+        <label>E-Mail<input type="email" name="email" autocomplete="email" maxlength="254" required placeholder="du@firma.de"></label>
+      </div>
+      <label>Nachricht<textarea name="message" rows="4" maxlength="5000" required placeholder="Worum geht es? Zugang zur Beta, eine Frage, ein Projekt ..."></textarea></label>
+      <label class="hp" aria-hidden="true">Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+      <div class="factions">
+        <button class="btn primary" type="submit" id="contactsubmit">Nachricht senden</button>
+        <span id="formstatus" role="status"></span>
+      </div>
+      <p class="formnote">Deine Angaben gehen per Mail an den Betreiber und werden nur zur Beantwortung deiner Anfrage genutzt — Details in der <a href="#datenschutz">Datenschutzerklärung</a>.</p>
+    </form>
   </div>
 </section>
 
@@ -697,6 +726,8 @@
     <p>Diese Seite setzt keine Cookies und nutzt keine Analyse- oder Tracking-Dienste. Im lokalen Speicher deines Browsers (localStorage) wird ausschließlich vermerkt, dass du den Hinweis am Seitenende bestätigt hast. Dieser Eintrag verlässt deinen Browser nicht und kann jederzeit über die Browser-Einstellungen gelöscht werden.</p>
     <h3>Schriften</h3>
     <p>Alle Schriften sind lokal in die Seite eingebettet. Beim Aufruf wird keine Verbindung zu Google Fonts oder anderen Schriftanbietern aufgebaut.</p>
+    <h3>Kontaktformular</h3>
+    <p>Wenn du das Kontaktformular nutzt, werden Name, E-Mail-Adresse und deine Nachricht per E-Mail an den Betreiber uebermittelt und ausschliesslich zur Bearbeitung deiner Anfrage verwendet (Art. 6 Abs. 1 lit. b DSGVO). Der Versand erfolgt ueber den Dienst Brevo (Sendinblue GmbH, Koepenicker Str. 126, 10179 Berlin) als Auftragsverarbeiter. Die Angaben werden nicht weitergegeben und nach Abschluss der Anfrage geloescht, soweit keine gesetzlichen Aufbewahrungspflichten bestehen.</p>
     <h3>Deine Rechte</h3>
     <p>Du hast nach der DSGVO das Recht auf Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18), Datenübertragbarkeit (Art. 20) und Widerspruch (Art. 21). Wende dich dazu an die im Impressum genannte Kontaktadresse. Außerdem besteht ein Beschwerderecht bei einer Datenschutz-Aufsichtsbehörde (Art. 77 DSGVO).</p>
   </div>
@@ -778,6 +809,45 @@
     }
     var io=new IntersectionObserver(function(es){es.forEach(function(en){if(en.isIntersecting){run();io.disconnect()}})},{threshold:.4});
     io.observe(pre);
+  })();
+  (function(){
+    var form=document.getElementById('contactform');
+    if(!form) return;
+    var status=document.getElementById('formstatus');
+    var btn=document.getElementById('contactsubmit');
+    form.addEventListener('submit', async function(ev){
+      ev.preventDefault();
+      status.className='';
+      var data={
+        name: form.elements.name.value.trim(),
+        email: form.elements.email.value.trim(),
+        message: form.elements.message.value.trim(),
+        website: form.elements.website.value
+      };
+      if(!data.name || !data.email || data.message.length<10){
+        status.textContent='Bitte Name, E-Mail und mindestens zwei Saetze Nachricht angeben.';
+        status.className='err';
+        return;
+      }
+      btn.disabled=true;
+      status.textContent='Wird gesendet ...';
+      try{
+        var r=await fetch('/api/v1/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+        if(r.ok){
+          form.classList.add('sent');
+          form.innerHTML='<h3 style="font-family:var(--display);font-size:22px;margin:0">Danke — deine Nachricht ist raus.</h3><p style="color:var(--muted);margin:10px 0 0">Du bekommst Antwort an '+data.email.replace(/</g,'&lt;')+'.</p>';
+        } else {
+          var d=await r.json().catch(function(){return {}});
+          status.textContent=(d && d.detail) ? d.detail : 'Senden fehlgeschlagen — bitte spaeter erneut versuchen.';
+          status.className='err';
+          btn.disabled=false;
+        }
+      }catch(e){
+        status.textContent='Keine Verbindung — bitte spaeter erneut versuchen.';
+        status.className='err';
+        btn.disabled=false;
+      }
+    });
   })();
   (function(){
     var bar=document.getElementById('cookiebar'), ok=document.getElementById('cookieOk');
