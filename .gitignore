@@ -113,3 +113,8 @@ desktop/release/
 
 # pdf.js-Beiwerk wird beim Build aus node_modules kopiert (generiert)
 frontend/public/pdfjs/
+
+# Core-Dumps abgestuerzter Kindprozesse (je ~14 MB, landen im Arbeitsverzeichnis
+# des Prozesses). Ohne dieses Muster nimmt ein `git add -A` sie versehentlich mit.
+core
+core.*

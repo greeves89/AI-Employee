@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.269.0] - 2026-08-23
+
+### Hinzugefuegt
+- **Die eingebauten MCP-Server koennen jetzt auch ueber HTTP laufen** — die
+  Vorarbeit dafuer, dass ein Container sie einmal gemeinsam bereitstellt statt
+  sie fuer jeden Lauf neu zu starten (#638, Phase 3 zu #628).
+
+  Heute startet jeder Lauf elf eigene MCP-Prozesse; gemessen sind das 81
+  Threads **pro Lauf**, bei einer Obergrenze von 512 fuer den ganzen Container.
+  Deshalb koennen bislang nur vier Laeufe gleichzeitig arbeiten — laufen mehr,
+  scheitern `gh`, `git` und `pytest` still an fehlenden Prozessen.
+
+  Dieser Schritt aendert daran noch nichts Sichtbares: **ohne die neue
+  Umgebungsvariable `MCP_HTTP_PORT` verhaelt sich alles exakt wie bisher.**
+  Umgestellt ist bisher nur `read-logs` als Pilot; die uebrigen zehn Server
+  folgen einzeln, `computer-use` bewusst zuletzt.
+
+### Behoben
+- **Core-Dumps landen nicht mehr versehentlich im Repository.** Stuerzt ein
+  Kindprozess ab, legt das System eine rund 14 MB grosse `core.<pid>`-Datei im
+  Arbeitsverzeichnis ab. Ohne passenden Eintrag in `.gitignore` nahm ein
+  `git add -A` sie kommentarlos mit.
+
+---
+
 ## [1.264.3] - 2026-08-22
 
 ### Hinzugefuegt
