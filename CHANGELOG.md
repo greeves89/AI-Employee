@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.266.4] - 2026-08-24
+
+### Geaendert
+- **Landingpage zeigt jetzt die Plattform dahinter.** Neue Sektion „Die
+  Plattform dahinter" mit zwei Schwerpunkt-Karten (Microsoft 365 direkt:
+  Outlook/Exchange, Graph, Teams inkl. Stimme im Termin; MCP: 12 eingebaute
+  Server mit 75+ Werkzeugen, externe MCP-Server mit OAuth, Second Brain als
+  MCP-Server, eigene Docker-Apps) und zwoelf Feature-Kacheln (drei Laufzeiten,
+  alle Kanaele, Echtzeit-Sprache, Second Brains, Gedaechtnis, Vertrauen &
+  Kontrolle, Automatisierung, Teamarbeit, Skills, PC & Browser, Modelle,
+  Ticketsysteme). Hero und Kennzahlenleiste entsprechend geschaerft.
+
 ## [1.266.3] - 2026-08-24
 
 ### Behoben
