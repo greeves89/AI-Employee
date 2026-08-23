@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.264.4] - 2026-08-23
+
+### Behoben
+- **Ein gestoppter Agent wird fuer faellige Zeitplaene und Kalender-Bloecke
+  geweckt.** Agenten schlafen nach Nutzer-Inaktivitaet ein (UserLifecycle,
+  Standard 30 Minuten). Stand danach ein Zeitplan an, galt der Agent als
+  ausgefallen: kein Lauf, keine Verschiebung, keine brauchbare Meldung — und
+  jeder 30-Sekunden-Takt meldete denselben Ausfall neu. Der taegliche
+  Podcast fehlte so an rund jedem dritten Tag (#632). Jetzt startet der
+  Scheduler den Agenten zuerst (derselbe Weg wie bei Nachrichten zwischen
+  Agenten) und fuehrt den Lauf aus; gelingt das Wecken nicht, wird eskaliert
+  und der Lauf kurz nachgesetzt statt fuer immer zu haengen.
+- **Kein Schlafenlegen kurz vor einem Termin.** Das Auto-Stoppen laesst
+  Agenten wach, wenn binnen der Ruhefrist ein aktiver Zeitplan ansteht —
+  spart den Kaltstart genau zur Feuerzeit.
+
+---
+
 ## [1.264.3] - 2026-08-22
 
 ### Hinzugefuegt
