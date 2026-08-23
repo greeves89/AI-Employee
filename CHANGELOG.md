@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.266.5] - 2026-08-24
+
+### Geaendert
+- **Landingpage erzaehlt jetzt Plattform zuerst.** Hero mit Browser-Mockup des
+  echten Dashboards („Dein KI-Team. Auf deiner Infrastruktur."), Kennzahlen-
+  leiste mit Laufzeiten/M365+MCP/Kanaelen/Self-Hosted, Plattform-Sektion direkt
+  danach; die iOS-App folgt als eigener Bereich („Und alles davon in deiner
+  Tasche") mit allen bisherigen App-Sektionen. Navigation entsprechend
+  vereinfacht (Plattform · iOS-App · Rollen · Beta).
+
 ## [1.266.4] - 2026-08-24
 
 ### Geaendert
