@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.267.1] - 2026-08-24
+
+### Behoben
+- **Echte Umlaute in allen nutzersichtbaren Texten des Kontaktformulars.**
+  Formular-Validierung, Fehlermeldungen des Endpunkts, Mailtext und
+  Datenschutz-Absatz nutzten teilweise ae/oe/ue-Ersatzschreibweise.
+
 ## [1.267.0] - 2026-08-24
 
 ### Hinzugefuegt

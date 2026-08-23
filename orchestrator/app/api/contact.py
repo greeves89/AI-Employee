@@ -53,7 +53,7 @@ def _send_mail(body: ContactRequest) -> None:
     # Antworten gehen direkt an die Person, die angefragt hat.
     msg["Reply-To"] = body.email
     msg.set_content(
-        f"Neue Anfrage ueber das Kontaktformular der Landingpage:\n\n"
+        f"Neue Anfrage über das Kontaktformular der Landingpage:\n\n"
         f"Name:    {body.name}\n"
         f"E-Mail:  {body.email}\n\n"
         f"Nachricht:\n{body.message}\n"
@@ -72,7 +72,7 @@ async def submit_contact(body: ContactRequest, request: Request):
         return {"status": "ok"}
 
     if not _EMAIL_RE.match(body.email.strip()):
-        raise HTTPException(status_code=422, detail="Bitte eine gueltige E-Mail-Adresse angeben.")
+        raise HTTPException(status_code=422, detail="Bitte eine gültige E-Mail-Adresse angeben.")
 
     if not (settings.contact_smtp_user and settings.contact_smtp_password and settings.contact_to):
         raise HTTPException(status_code=503, detail="Kontaktformular ist auf dieser Installation nicht eingerichtet.")
@@ -88,7 +88,7 @@ async def submit_contact(body: ContactRequest, request: Request):
             if count == 1:
                 await client.expire(key, 3600)
             if count > _MAX_PER_HOUR:
-                raise HTTPException(status_code=429, detail="Zu viele Anfragen — bitte spaeter erneut versuchen.")
+                raise HTTPException(status_code=429, detail="Zu viele Anfragen — bitte später erneut versuchen.")
         except HTTPException:
             raise
         except Exception:  # noqa: BLE001
@@ -99,7 +99,7 @@ async def submit_contact(body: ContactRequest, request: Request):
     except Exception as e:  # noqa: BLE001
         # Kein Stacktrace an den Client, aber eine Spur im Log.
         logger.warning("[Contact] Mailversand fehlgeschlagen: %s", e)
-        raise HTTPException(status_code=502, detail="Nachricht konnte gerade nicht zugestellt werden — bitte spaeter erneut versuchen.")
+        raise HTTPException(status_code=502, detail="Nachricht konnte gerade nicht zugestellt werden — bitte später erneut versuchen.")
 
     logger.info("[Contact] Anfrage zugestellt (Absender-Domain: %s)", body.email.split("@")[-1])
     return {"status": "sent"}

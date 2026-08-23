@@ -727,7 +727,7 @@
     <h3>Schriften</h3>
     <p>Alle Schriften sind lokal in die Seite eingebettet. Beim Aufruf wird keine Verbindung zu Google Fonts oder anderen Schriftanbietern aufgebaut.</p>
     <h3>Kontaktformular</h3>
-    <p>Wenn du das Kontaktformular nutzt, werden Name, E-Mail-Adresse und deine Nachricht per E-Mail an den Betreiber uebermittelt und ausschliesslich zur Bearbeitung deiner Anfrage verwendet (Art. 6 Abs. 1 lit. b DSGVO). Der Versand erfolgt ueber den Dienst Brevo (Sendinblue GmbH, Koepenicker Str. 126, 10179 Berlin) als Auftragsverarbeiter. Die Angaben werden nicht weitergegeben und nach Abschluss der Anfrage geloescht, soweit keine gesetzlichen Aufbewahrungspflichten bestehen.</p>
+    <p>Wenn du das Kontaktformular nutzt, werden Name, E-Mail-Adresse und deine Nachricht per E-Mail an den Betreiber übermittelt und ausschließlich zur Bearbeitung deiner Anfrage verwendet (Art. 6 Abs. 1 lit. b DSGVO). Der Versand erfolgt über den Dienst Brevo (Sendinblue GmbH, Köpenicker Str. 126, 10179 Berlin) als Auftragsverarbeiter. Die Angaben werden nicht weitergegeben und nach Abschluss der Anfrage gelöscht, soweit keine gesetzlichen Aufbewahrungspflichten bestehen.</p>
     <h3>Deine Rechte</h3>
     <p>Du hast nach der DSGVO das Recht auf Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18), Datenübertragbarkeit (Art. 20) und Widerspruch (Art. 21). Wende dich dazu an die im Impressum genannte Kontaktadresse. Außerdem besteht ein Beschwerderecht bei einer Datenschutz-Aufsichtsbehörde (Art. 77 DSGVO).</p>
   </div>
@@ -825,7 +825,7 @@
         website: form.elements.website.value
       };
       if(!data.name || !data.email || data.message.length<10){
-        status.textContent='Bitte Name, E-Mail und mindestens zwei Saetze Nachricht angeben.';
+        status.textContent='Bitte Name, E-Mail und mindestens zwei Sätze Nachricht angeben.';
         status.className='err';
         return;
       }
@@ -838,12 +838,12 @@
           form.innerHTML='<h3 style="font-family:var(--display);font-size:22px;margin:0">Danke — deine Nachricht ist raus.</h3><p style="color:var(--muted);margin:10px 0 0">Du bekommst Antwort an '+data.email.replace(/</g,'&lt;')+'.</p>';
         } else {
           var d=await r.json().catch(function(){return {}});
-          status.textContent=(d && d.detail) ? d.detail : 'Senden fehlgeschlagen — bitte spaeter erneut versuchen.';
+          status.textContent=(d && d.detail) ? d.detail : 'Senden fehlgeschlagen — bitte später erneut versuchen.';
           status.className='err';
           btn.disabled=false;
         }
       }catch(e){
-        status.textContent='Keine Verbindung — bitte spaeter erneut versuchen.';
+        status.textContent='Keine Verbindung — bitte später erneut versuchen.';
         status.className='err';
         btn.disabled=false;
       }
