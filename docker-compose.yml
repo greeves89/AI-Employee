@@ -301,6 +301,8 @@ services:
       # imported by Caddyfile). Mounting the directory (not a single file) also avoids
       # the inode-replacement reload trap documented in the Caddyfile.
       - ./conf.d:/etc/caddy/conf.d:ro
+      # Landingpage der iOS-Begleit-App (statisch), ausgeliefert unter /app/
+      - ./docs/ios-app:/srv/ios-app:ro
     depends_on:
       - orchestrator
       - frontend

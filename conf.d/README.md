@@ -88,3 +88,19 @@ docker exec ai-employee-caddy caddy reload --config /etc/caddy/Caddyfile
 Only `.gitkeep`, `site/.gitkeep` and this `README.md` are tracked. Your
 `*.caddy` files (in both `conf.d/` and `conf.d/site/`) are ignored (see the repo
 `.gitignore`).
+
+## Example — iOS-App-Landingpage als Startseite → `conf.d/site/landing-root.caddy`
+
+Jede Installation liefert die Landingpage der iOS-Begleit-App unter `/app/`
+aus (statisch aus `docs/ios-app`, Mount `/srv/ios-app`). Soll sie auf DIESER
+Installation auch die Startseite `/` sein (statt der Weiterleitung der
+Web-Oberflaeche auf `/dashboard`), reicht dieses Snippet — `handle /` trifft
+nur den exakten Root-Pfad, alle anderen Routen bleiben wie sie sind:
+
+```caddy
+# Startseite = Landingpage der iOS-App; Web-Oberflaeche weiter unter /login.
+handle / {
+	root * /srv/ios-app
+	file_server
+}
+```

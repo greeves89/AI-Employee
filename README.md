@@ -190,6 +190,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 - **Health dashboard** — Self-test suite validates Redis, Postgres, Docker, embedding service, and each agent on demand.
 - **Backup scripts** — Scheduled `pg_dump` + volume tar + SHA256 manifest. Systemd timer examples included.
 - **Traefik / Caddy** — Reverse-proxy configs with automatic TLS via Let's Encrypt.
+- **iOS companion app landing page** — Every installation serves a static page for the iOS app at `/app/` (`docs/ios-app/`); make it the start page with a one-block `conf.d/site/` snippet (see `conf.d/README.md`).
 - **High-availability** — Optional `docker-compose.ha.yml` for multi-node setups.
 
 ## Architecture

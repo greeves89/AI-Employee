@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.265.0] - 2026-08-23
+
+### Hinzugefuegt
+- **Landingpage der iOS-Begleit-App wird von jeder Installation ausgeliefert.**
+  Unter `/app/` liefert Caddy eine statische Seite (`docs/ios-app/index.html`),
+  die die App vorstellt: Agenten, Chat, Sprache, Wissen in 3D, Mein PC, Analyse,
+  Rollen und der Einstieg ueber TestFlight. Die Seite ist eigenstaendig (Bilder
+  eingebettet) und verlinkt auf `/login` der jeweiligen Installation. Soll sie
+  auf einer Installation die Startseite sein, reicht ein Snippet in
+  `conf.d/site/` (Beispiel in `conf.d/README.md`); die Web-Oberflaeche bleibt
+  sonst unveraendert. Nach dem Update `docker compose up -d caddy`, damit der
+  neue Mount greift.
+
 ## [1.264.5] - 2026-08-23
 
 ### Behoben

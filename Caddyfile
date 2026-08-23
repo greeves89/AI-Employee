@@ -67,6 +67,19 @@ import conf.d/*.caddy
 		reverse_proxy ai-employee-orchestrator:8000
 	}
 
+	# Landingpage der iOS-Begleit-App (statisch, Quelle docs/ios-app, als
+	# /srv/ios-app in den Container gemountet). Exakt /app leitet auf /app/ um,
+	# damit relative Links in der Seite stimmen. Soll die Seite auf einer
+	# Installation die STARTSEITE sein, reicht ein Snippet in conf.d/site/
+	# (Beispiel in conf.d/README.md) — die tracked Datei bleibt unveraendert.
+	handle /app {
+		redir /app/ 301
+	}
+	handle_path /app/* {
+		root * /srv/ios-app
+		file_server
+	}
+
 	# API + health endpoints → orchestrator
 	handle /api/* {
 		reverse_proxy ai-employee-orchestrator:8000
