@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.266.2] - 2026-08-24
+
+### Behoben
+- **Ein Tagesplan-Block mit vergangener Startzeit feuert nicht mehr sofort (#642).**
+  Beim Neuschreiben des Plans bekam JEDER Block mit Uhrzeit einen aktivierten
+  Einmal-Zeitplan — auch wenn die Uhrzeit laengst vorbei war. Erledigte, erneut
+  eingereichte Bloecke wurden so noch einmal beauftragt ("Arbeite ihn JETZT ab"
+  auf einen ERLEDIGT-Titel), und ein um 14:00 nachgetragener 13:30-Block feuerte
+  sofort. Jetzt gilt mit 5 Minuten Karenz: Vergangenheit loest nichts aus — der
+  Block bleibt als Notiz sichtbar, der naechste proaktive Lauf greift ihn auf,
+  falls noch offen. Dasselbe beim Verschieben eines Blocks auf eine vergangene
+  Uhrzeit (Ausloeser wird deaktiviert statt sofort zu feuern).
+
 ## [1.266.1] - 2026-08-24
 
 ### Behoben

@@ -11,7 +11,7 @@ Damit die zwei Wege nicht auseinanderlaufen, liegen die Regeln hier:
   * Prioritaet und Herkunft werden auf gueltige Werte gezwungen.
 """
 
-from datetime import date as date_cls, datetime, timezone
+from datetime import date as date_cls, datetime, timedelta, timezone
 
 import uuid
 
@@ -74,11 +74,30 @@ async def sync_block_schedule(db: AsyncSession, row: AgentPlanItem) -> None:
         await db.execute(delete(Schedule).where(Schedule.id == schedule.id))
         row.schedule_id = None
         return
+    if _start_is_past(row.planned_start):
+        # Auf eine vergangene Uhrzeit verschoben: derselbe Grundsatz wie beim
+        # Neuschreiben des Plans (#642) — Vergangenheit feuert nicht.
+        schedule.enabled = False
+        schedule.next_run_at = row.planned_start
+        return
     schedule.enabled = True
     schedule.name = f"[Plan] {row.title[:60]}"
     schedule.prompt = block_prompt(row)
     schedule.priority = 0 if row.priority == "high" else 1
     schedule.next_run_at = row.planned_start
+
+
+# Eine vergangene Startzeit darf NIE ein sofortiges Feuern ausloesen (#642):
+# ein nachgetragener oder erneut eingereichter Block von 13:30 um 14:00 ist eine
+# Notiz fuer den naechsten proaktiven Lauf, kein "Arbeite ihn JETZT ab". Kleine
+# Karenz, damit "gerade eben" (Uhr-Drift, langsames Schreiben) noch zaehlt.
+_PAST_START_GRACE = timedelta(minutes=5)
+
+
+def _start_is_past(start: datetime, now: datetime | None = None) -> bool:
+    now = now or datetime.now(timezone.utc)
+    aware = start if start.tzinfo else start.replace(tzinfo=timezone.utc)
+    return aware < now - _PAST_START_GRACE
 
 
 def _parse_start(raw) -> datetime | None:
@@ -153,6 +172,13 @@ async def replace_plan(
     # die der naechste proaktive Lauf aufgreift.
     for row in created:
         if not row.planned_start:
+            continue
+        if _start_is_past(row.planned_start):
+            # Erledigte Bloecke, die der Agent erneut einreicht, und nachgetragene
+            # Bloecke mit vergangener Uhrzeit bekamen hier einen sofort faelligen
+            # Einmal-Zeitplan — der Scheduler feuerte "JETZT abarbeiten" auf
+            # laengst Gelaufenes (#642). Ohne Ausloeser bleibt der Block sichtbar
+            # und der naechste proaktive Lauf greift ihn auf, falls noch offen.
             continue
         schedule_id = uuid.uuid4().hex[:8]
         db.add(Schedule(
