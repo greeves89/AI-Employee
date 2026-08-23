@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.265.0] - 2026-08-21
+## [1.265.0] - 2026-08-23
 
 ### Sicherheit
 - **Ein Agent konnte einen anderen Agenten anhalten lassen.** Die Aufsicht
@@ -35,6 +35,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   unsichtbar — dagegen hilft nur Beobachtung ausserhalb des Agenten. Das ist
   bewusst nicht Teil dieser Änderung.
 - Ohne Wirkung, solange die Aufsicht ausgeschaltet ist (Standard).
+
+---
+
+## [1.264.5] - 2026-08-23
+
+### Behoben
+- **Ein Zeitplan, der wegen eines gestoppten Agenten ausfaellt, ist jetzt
+  auffindbar.** War der Agent zur faelligen Uhrzeit nicht ansprechbar, brach der
+  Zeitplan ab, *bevor* ueberhaupt ein Auftrag entstand: der Lauf hinterliess
+  weder einen fehlgeschlagenen noch einen offenen Eintrag — in keiner Liste, fuer
+  niemanden. Aus Sicht des Betreibers hatte er nie stattgefunden, und das
+  fehlende Ergebnis war der einzige Hinweis. Ein taeglicher Job konnte so an
+  einem Drittel der Tage ausfallen, ohne dass es jemandem auffiel. Ein
+  ausgefallener Lauf wird jetzt als fehlgeschlagener Auftrag verbucht — mit
+  Zeitplan, Soll-Uhrzeit und Grund — und genau einmal pro verpasstem Termin,
+  nicht einmal pro Pruefung.
+- **Die Ausfallmeldung sagt nicht mehr das Gegenteil dessen, was passiert ist.**
+  Hatte der Agent gerade keine offene Aufgabe, meldete das System woertlich „es
+  geht also nichts verloren" — obwohl der faellige Lauf genau in diesem Moment
+  verloren ging. Die Meldung nennt jetzt den betroffenen Zeitplan und ist hoch
+  genug eingestuft, um auch per Telegram anzukommen.
+- **Der Ausfall eines taeglichen Jobs wird nicht mehr verschluckt.** Die
+  Ausfallmeldung hing an einer Sperre, die pro Agent zwoelf Stunden lang alles
+  Weitere unterdrueckte: hatte derselbe Agent aus irgendeinem anderen Grund schon
+  gemeldet, blieb der verpasste Lauf still. Sie zaehlt jetzt pro Zeitplan.
+
+---
+
+## [1.264.4] - 2026-08-23
+
+### Behoben
+- **Ein gestoppter Agent wird fuer faellige Zeitplaene und Kalender-Bloecke
+  geweckt.** Agenten schlafen nach Nutzer-Inaktivitaet ein (UserLifecycle,
+  Standard 30 Minuten). Stand danach ein Zeitplan an, galt der Agent als
+  ausgefallen: kein Lauf, keine Verschiebung, keine brauchbare Meldung — und
+  jeder 30-Sekunden-Takt meldete denselben Ausfall neu. Der taegliche
+  Podcast fehlte so an rund jedem dritten Tag (#632). Jetzt startet der
+  Scheduler den Agenten zuerst (derselbe Weg wie bei Nachrichten zwischen
+  Agenten) und fuehrt den Lauf aus; gelingt das Wecken nicht, wird eskaliert
+  und der Lauf kurz nachgesetzt statt fuer immer zu haengen.
+- **Kein Schlafenlegen kurz vor einem Termin.** Das Auto-Stoppen laesst
+  Agenten wach, wenn binnen der Ruhefrist ein aktiver Zeitplan ansteht —
+  spart den Kaltstart genau zur Feuerzeit.
+
 ---
 
 ## [1.264.3] - 2026-08-22
