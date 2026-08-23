@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.267.2] - 2026-08-24
+
+### Behoben
+- **Die Namens-Wache schlug bei eingebetteten Bildern falschen Alarm — und
+  hielt damit die gesamte Auslieferung an.** Die Pruefung, die Kunden- und
+  Personennamen aus dem oeffentlichen Repo fernhaelt, verglich jede Zeile als
+  reinen Text. In einer Seite steckt ein Foto als 140 KB grosse Base64-Zeile;
+  in so viel Zeichensalat taucht ein vierstelliger Name irgendwann zufaellig
+  auf. Folge: der Testlauf auf `main` war rot, und alle vier offenen Pull
+  Requests standen auf "instabil" — obwohl an keiner Stelle ein Name stand und
+  an keinem der vier Pull Requests etwas fehlte.
+  Eingebettete Binaerdaten werden jetzt vor dem Abgleich entfernt. Der Text
+  rund um so ein Bild wird weiter geprueft, und ein Name im Fliesstext faellt
+  unveraendert auf — beides ist mit eigenen Tests festgehalten, damit die
+  Wache nicht im Stillen blind wird.
+
+---
+
 ## [1.267.1] - 2026-08-24
 
 ### Behoben
