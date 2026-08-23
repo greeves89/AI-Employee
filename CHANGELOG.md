@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.270.0] - 2026-08-23
+
+### Behoben
+- **Ein Zeitplan, der wegen eines gestoppten Agenten ausfaellt, ist jetzt
+  auffindbar.** War der Agent zur faelligen Uhrzeit nicht ansprechbar, brach der
+  Zeitplan ab, *bevor* ueberhaupt ein Auftrag entstand: der Lauf hinterliess
+  weder einen fehlgeschlagenen noch einen offenen Eintrag — in keiner Liste, fuer
+  niemanden. Aus Sicht des Betreibers hatte er nie stattgefunden, und das
+  fehlende Ergebnis war der einzige Hinweis. Ein taeglicher Job konnte so an
+  einem Drittel der Tage ausfallen, ohne dass es jemandem auffiel. Ein
+  ausgefallener Lauf wird jetzt als fehlgeschlagener Auftrag verbucht — mit
+  Zeitplan, Soll-Uhrzeit und Grund — und genau einmal pro verpasstem Termin,
+  nicht einmal pro Pruefung.
+- **Die Ausfallmeldung sagt nicht mehr das Gegenteil dessen, was passiert ist.**
+  Hatte der Agent gerade keine offene Aufgabe, meldete das System woertlich „es
+  geht also nichts verloren" — obwohl der faellige Lauf genau in diesem Moment
+  verloren ging. Die Meldung nennt jetzt den betroffenen Zeitplan und ist hoch
+  genug eingestuft, um auch per Telegram anzukommen.
+- **Der Ausfall eines taeglichen Jobs wird nicht mehr verschluckt.** Die
+  Ausfallmeldung hing an einer Sperre, die pro Agent zwoelf Stunden lang alles
+  Weitere unterdrueckte: hatte derselbe Agent aus irgendeinem anderen Grund schon
+  gemeldet, blieb der verpasste Lauf still. Sie zaehlt jetzt pro Zeitplan.
+
+---
+
 ## [1.264.3] - 2026-08-22
 
 ### Hinzugefuegt

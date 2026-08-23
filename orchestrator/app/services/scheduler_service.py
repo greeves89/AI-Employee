@@ -712,7 +712,17 @@ class SchedulerService:
                     # Ausfall/Blockade: die Arbeit muss jemand anders uebernehmen,
                     # sonst bleibt sie liegen und niemand merkt es.
                     if agent_duty.needs_handover(duty):
-                        await duty_service.escalate_failure(db, self.redis, duty_agent, duty)
+                        await duty_service.escalate_failure(
+                            db, self.redis, duty_agent, duty, lost_run=schedule.name,
+                        )
+                        # Der Ausfall kostet genau hier einen faelligen Lauf. Ohne
+                        # Eintrag verschwindet er spurlos — kein Task, keine Liste,
+                        # kein Zaehler (#632).
+                        await duty_service.escalate_skipped_run(
+                            db, self.redis, duty_agent, duty,
+                            schedule_id=schedule.id, schedule_name=schedule.name,
+                            slot=as_utc(schedule.next_run_at or now),
+                        )
                     elif duty["state"] == agent_duty.OVERLOADED:
                         # Kein Handover noetig (der Agent lebt, er ist nur beschaeftigt) —
                         # aber ohne Meldung verschwindet der uebersprungene Lauf spurlos (#605).

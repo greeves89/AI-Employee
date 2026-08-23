@@ -23,6 +23,7 @@ from app.core import agent_duty as duty_core
 from app.models.agent import Agent, AgentState
 from app.models.agent_todo import AgentTodo, TodoStatus
 from app.models.notification import Notification
+from app.models.task import Task, TaskStatus
 from app.models.team import Team
 from app.services import duty_service
 
@@ -406,6 +407,129 @@ class OverloadEscalationTests(DutyChainBase):
                 select(AgentTodo).where(AgentTodo.agent_id == "voll")
             )).scalars().all()
             self.assertEqual(len(still_there), 1)
+
+
+class SkippedRunTests(DutyChainBase):
+    """#632: ein wegen Ausfall uebersprungener Zeitplan-Lauf muss auffindbar bleiben.
+
+    Der DOWN-Zweig des Schedulers kehrte zurueck, bevor ein Task entstand — der Lauf
+    hinterliess nichts, in keiner Liste. Ein taeglicher Job fiel so an einem Drittel der
+    Tage aus, ohne dass es irgendwo auftauchte.
+    """
+
+    SLOT = datetime(2026, 8, 21, 5, 0, tzinfo=UTC)
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Task.metadata.create_all, tables=[Task.__table__])
+
+    async def _skip(self, db, agent, *, slot=None, schedule_id="s1"):
+        return await duty_service.escalate_skipped_run(
+            db, self.redis, agent, {"state": duty_core.DOWN, "reason": "Agent ist stopped"},
+            schedule_id=schedule_id, schedule_name="Taeglicher Podcast",
+            slot=slot or self.SLOT,
+        )
+
+    async def test_the_lost_run_becomes_a_findable_task(self):
+        async with self.Session() as db:
+            db.add(self._agent("tot", "Podcast-Agent", AgentState.STOPPED))
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "tot"))).scalar_one()
+            self.assertTrue(await self._skip(db, agent))
+            await db.commit()
+
+            task = (await db.execute(select(Task))).scalars().one()
+            self.assertEqual(task.status, TaskStatus.FAILED)
+            self.assertEqual(task.agent_id, "tot")
+            self.assertIn("Taeglicher Podcast", task.title)
+            self.assertEqual(task.metadata_["reason"], "schedule_skipped")
+            self.assertEqual(task.metadata_["schedule_id"], "s1")
+            self.assertEqual(task.metadata_["duty_state"], duty_core.DOWN)
+            self.assertTrue(task.error)
+
+    async def test_the_same_slot_is_booked_only_once(self):
+        """Der Zweig rueckt next_run_at nicht vor und wird jeden Tick erneut erreicht —
+        ohne Merker entstuenden hunderte Eintraege fuer denselben verpassten Lauf."""
+        async with self.Session() as db:
+            db.add(self._agent("tot", "Podcast-Agent", AgentState.STOPPED))
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "tot"))).scalar_one()
+            for _ in range(5):
+                await self._skip(db, agent)
+            await db.commit()
+            self.assertEqual(len((await db.execute(select(Task))).scalars().all()), 1)
+
+    async def test_the_next_days_slot_is_booked_again(self):
+        """Gedrosselt wird pro Slot, nicht pro Zeitplan — sonst faellt der zweite
+        Ausfalltag wieder unter den Tisch."""
+        async with self.Session() as db:
+            db.add(self._agent("tot", "Podcast-Agent", AgentState.STOPPED))
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "tot"))).scalar_one()
+            await self._skip(db, agent)
+            await self._skip(db, agent, slot=self.SLOT + timedelta(days=1))
+            await db.commit()
+            self.assertEqual(len((await db.execute(select(Task))).scalars().all()), 2)
+
+    async def test_the_operator_is_paged(self):
+        """#610: die Notification allein erreicht Telegram nie."""
+        async with self.Session() as db:
+            db.add(self._agent("tot", "Podcast-Agent", AgentState.STOPPED))
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "tot"))).scalar_one()
+            await self._skip(db, agent)
+            await db.commit()
+
+            note = (await db.execute(select(Notification))).scalars().one()
+            self.assertEqual(note.priority, "high")
+            self.assertIn("Taeglicher Podcast", note.title)
+            self.assertEqual(note.meta["reason"], "duty_skipped_run")
+            self.assertEqual(len(self.redis.client.published), 1)
+            self.assertEqual(self.redis.client.published[0][0], "telegram:notification")
+
+    async def test_the_alert_does_not_use_the_agent_wide_handover_throttle(self):
+        """Kern von Punkt 3: die 12h-Drossel zaehlt pro AGENT. Hat derselbe Agent aus
+        einem anderen Grund schon gemeldet, verschluckt sie den Ausfall des taeglichen
+        Jobs komplett — der eigene Merker haengt deshalb am Zeitplan."""
+        async with self.Session() as db:
+            db.add(self._agent("tot", "Podcast-Agent", AgentState.STOPPED))
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "tot"))).scalar_one()
+            await duty_service.escalate_failure(db, self.redis, agent, {"reason": "tot"})
+            await self._skip(db, agent)
+            await db.commit()
+
+            self.assertEqual(len((await db.execute(select(Task))).scalars().all()), 1)
+            reasons = {n.meta.get("reason")
+                       for n in (await db.execute(select(Notification))).scalars().all()}
+            self.assertIn("duty_skipped_run", reasons)
+
+
+class LostRunWordingTests(DutyChainBase):
+    """#632 Punkt 2: 'es geht also nichts verloren' war die falsche Aussage genau dann,
+    wenn gerade ein faelliger Lauf verloren ging."""
+
+    async def test_a_lost_run_is_named_and_pages(self):
+        async with self.Session() as db:
+            db.add_all([
+                self._agent("tot", "Podcast-Agent", AgentState.STOPPED,
+                            deputy_agent_id="vertretung"),
+                self._agent("vertretung", "Vertretung"),
+            ])
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "tot"))).scalar_one()
+            await duty_service.escalate_failure(
+                db, self.redis, agent, {"reason": "Container gestoppt"},
+                lost_run="Taeglicher Podcast",
+            )
+            await db.commit()
+
+            note = (await db.execute(select(Notification))).scalars().one()
+            self.assertIn("Taeglicher Podcast", note.title)
+            self.assertNotIn("nichts verloren", note.message)
+            self.assertEqual(note.priority, "high")
+            self.assertEqual(len(self.redis.client.published), 1)
 
 
 class NoBypassTests(unittest.TestCase):
