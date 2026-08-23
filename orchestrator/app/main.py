@@ -2029,17 +2029,21 @@ clean Markdown; you don't need to commit.
             for job in crashed:
                 logger.warning(f"[Startup] Job {job.id} ({job.kind}) crashed across restart — no heartbeat")
                 try:
+                    from app.services.watchdog import md_escape
                     await app.state.redis.publish(
                         "telegram:notification",
                         json.dumps({
-                            "type": "error",
-                            "title": "Job nach Neustart abgestürzt",
-                            "message": f"Job '{job.kind}' ({job.id}) hat den Container-Neustart nicht überlebt (kein Heartbeat).",
+                            "text": (
+                                "❌ *Job nach Neustart abgestürzt*\n\n"
+                                f"Job '{md_escape(str(job.kind))}' (`{md_escape(str(job.id))}`) hat den "
+                                "Container-Neustart nicht überlebt (kein Heartbeat)."
+                            ),
+                            "parse_mode": "Markdown",
                             "priority": "high",
                         }),
                     )
                 except Exception:
-                    pass
+                    logger.warning("[Startup] Crashed-job Telegram alert failed", exc_info=True)
     except Exception as e:
         logger.warning(f"Job-state recovery failed: {e}")
 

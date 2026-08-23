@@ -24,6 +24,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Autonomie-Regeln mit (~1.950 Token weniger pro Folgenachricht); geaenderte
   Autonomie-Regeln erreichen den Agenten weiterhin sofort, und ein
   Laengenfehler laeuft nicht mehr faelschlich in die Token-Warteschleife.
+- **Meldungen von Agenten ohne eigenen Telegram-Bot kommen wieder an (#637, PR #641).**
+  Der Ersatzweg ueber den globalen Bot schickte auf einen Kanal ohne Abhoerer
+  und ohne das text-Feld, das der Bot vorliest — die Meldung verschwand
+  spurlos. Jetzt: richtiger Kanal (telegram:notification), richtiges Format,
+  auch fuer die Warnung nach einem abgestuerzten Job; stille Zustellfehler
+  landen im Protokoll, und ein Form-Test haelt alle Melde-Wege gleich.
 
 ## [1.265.9] - 2026-08-23
 
