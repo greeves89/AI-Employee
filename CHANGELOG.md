@@ -8,11 +8,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ## [1.266.1] - 2026-08-24
 
 ### Behoben
-- **Der Container-Teil der Standard-Denktiefe fehlte im 1.266.0-Commit.** Das in
-  1.266.0 eingefuehrte `.gitignore`-Muster `core` (gegen Core-Dumps) ignorierte
-  auch `orchestrator/app/core/` und verschluckte so die Env-Verdrahtung
-  (`DEFAULT_REASONING`) im Agent-Manager. Muster auf Wurzel + `core.[PID]`
-  praezisiert, Verdrahtung nachgereicht.
+- **`.gitignore`-Muster `core` praezisiert (Wurzel + `core.[PID]`).** Das in
+  1.266.0 uebernommene Muster gegen Core-Dumps deckte auch das Verzeichnis
+  `orchestrator/app/core/` ab — getrackte Dateien blieben unberuehrt, aber
+  jede NEUE Datei dort waere von `git add` still verschluckt worden.
 
 ## [1.266.0] - 2026-08-24
 
