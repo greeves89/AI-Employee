@@ -702,6 +702,22 @@ class SchedulerService:
                 select(Agent).where(Agent.id == schedule.agent_id)
             )).scalar_one_or_none()
             if duty_agent is not None:
+                # Ein gestoppter Agent (Idle-/UserLifecycle-Stop) ist kein
+                # Ausfall, solange er sich wecken laesst: faellige Zeitplaene
+                # und Kalender-Bloecke STARTEN ihn — vorher galt er als DOWN,
+                # der Lauf verschwand spurlos und der Tick versuchte es alle
+                # 30 s erneut (#632).
+                if schedule.enabled and agent_duty._state_str(duty_agent) not in agent_duty._LIVE_STATES:
+                    from app.core.agent_wakeup import ensure_agent_running
+                    if await ensure_agent_running(schedule.agent_id, self.docker, self.redis):
+                        try:
+                            await db.refresh(duty_agent)
+                        except Exception:  # noqa: BLE001 — Fake-DBs in Tests koennen kein refresh
+                            duty_agent.state = "running"
+                        logger.info(
+                            "[Scheduler] %s — Agent %s war gestoppt und wurde fuer den faelligen Lauf geweckt",
+                            schedule.name, schedule.agent_id,
+                        )
                 queue_depth = await self.redis.get_queue_depth(schedule.agent_id)
                 stale = await self._stale_task_count(db, schedule.agent_id, now)
                 duty = agent_duty.assess(
@@ -713,6 +729,13 @@ class SchedulerService:
                     # sonst bleibt sie liegen und niemand merkt es.
                     if agent_duty.needs_handover(duty):
                         await duty_service.escalate_failure(db, self.redis, duty_agent, duty)
+                        # Ohne Verschieben bliebe next_run_at in der Vergangenheit:
+                        # jeder Tick meldet denselben Ausfall neu (#632). Kurz
+                        # nachsetzen, dann regulaer weiterruecken — wie off_duty.
+                        schedule.next_run_at = await self._retry_or_advance(
+                            schedule, now, reason="down",
+                            max_attempts=_TRANSIENT_RETRY_MAX_ATTEMPTS, delay=_TRANSIENT_RETRY_DELAY,
+                        )
                     elif duty["state"] == agent_duty.OVERLOADED:
                         # Kein Handover noetig (der Agent lebt, er ist nur beschaeftigt) —
                         # aber ohne Meldung verschwindet der uebersprungene Lauf spurlos (#605).
