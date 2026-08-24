@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.268.2] - 2026-08-24
+
+### Behoben
+- **Landingpage: Impressum und Datenschutz sind wieder erreichbar, solange die
+  Hinweis-Leiste offen ist.** Die fixe Leiste verdeckte genau die Footer-Zeile
+  mit den Rechtslinks. Jetzt stehen beide Links auch in der Leiste selbst, und
+  der Footer bekommt Luft nach unten, bis der Hinweis bestaetigt wurde.
+
 ## [1.268.1] - 2026-08-24
 
 ### Behoben

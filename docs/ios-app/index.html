@@ -296,6 +296,9 @@
 
   /* Hinweis-Leiste unten */
   .cookiebar[hidden]{display:none}
+  /* Solange die Leiste offen ist, bekommt der Footer Luft — sonst verdeckt
+     die fixe Ebene genau die Zeile mit Impressum und Datenschutz. */
+  body.cookiebar-open footer{padding-bottom:130px}
   .cookiebar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;gap:18px;align-items:center;justify-content:center;flex-wrap:wrap;padding:16px 22px;background:rgba(10,14,24,.96);border-top:1px solid var(--line);backdrop-filter:blur(10px)}
   .cookiebar p{color:var(--muted);font-size:14px;max-width:52em}
   .cookiebar a{color:var(--text)}
@@ -734,7 +737,7 @@
 </section>
 
 <div class="cookiebar" id="cookiebar" hidden>
-  <p>Diese Seite kommt ohne Tracking und ohne Cookies aus. Gespeichert wird nur lokal in deinem Browser, dass du diesen Hinweis gesehen hast. Details in der <a href="#datenschutz">Datenschutzerklärung</a>.</p>
+  <p>Diese Seite kommt ohne Tracking und ohne Cookies aus. Gespeichert wird nur lokal in deinem Browser, dass du diesen Hinweis gesehen hast. Details in der <a href="#datenschutz">Datenschutzerklärung</a> · <a href="#impressum">Impressum</a>.</p>
   <button type="button" id="cookieOk" class="btn primary">Alles klar</button>
 </div>
 
@@ -854,10 +857,11 @@
     var KEY='hinweisBestaetigt';
     var seen=false;
     try{seen=localStorage.getItem(KEY)==='ja'}catch(e){}
-    if(!seen){bar.hidden=false}
+    if(!seen){bar.hidden=false;document.body.classList.add('cookiebar-open')}
     ok.addEventListener('click',function(){
       try{localStorage.setItem(KEY,'ja')}catch(e){}
       bar.hidden=true;
+      document.body.classList.remove('cookiebar-open');
     });
   })();
 </script>
