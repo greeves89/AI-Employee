@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.268.5] - 2026-08-24
+
+### Behoben
+- **Die Desktop-Bridge schickt das Anmeldetoken nicht mehr in der Adresse der
+  Sprachverbindung.** Beim Oeffnen der Voice-Leiste haengte die Bridge das
+  langlebige Zugangstoken als Parameter an die WebSocket-Adresse. Solche
+  Parameter werden unterwegs mitgeschrieben — in Proxy- und Zugriffsprotokollen,
+  im Verlauf, im Referer — und das Token gilt danach unveraendert weiter. Die
+  Bridge holt jetzt, wie die Weboberflaeche schon laenger, ein Einmal-Ticket
+  (30 Sekunden gueltig, genau eine Verwendung). Scheitert das Ticket, scheitert
+  die Verbindung sichtbar, statt still auf den alten Weg zurueckzufallen.
+  Damit verschwindet auch die wiederkehrende Warnung "legacy token= param" aus
+  dem Plattformprotokoll — sie hatte genau diese eine Ursache. An der Bedienung
+  aendert sich nichts.
+
+  *Hinweis: Eine Bridge ab dieser Version braucht einen Server, der
+  Einmal-Tickets kennt.*
+
 ## [1.268.3] - 2026-08-24
 
 ### Geaendert
