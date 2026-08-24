@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.269.1] - 2026-08-24
+
+### Behoben
+- **Der Zaehler fuer die Alt-Anmeldungs-Warnung waechst nicht mehr unbegrenzt.** Meldet
+  sich ein Client noch mit dem alten Verfahren an (Zugangsschluessel in der Adresse statt
+  Einmal-Ticket), merkt sich der Dienst das kurz, um dieselbe Warnung nicht im
+  Minutentakt zu wiederholen. Diese Merkliste wurde nie geleert: sie wuchs mit jeder
+  Neuanmeldung und jeder Schluesselerneuerung weiter — nicht mit der Zahl der
+  Verbindungen. Auf einem Server, der wochenlang durchlaeuft, sammelte sich das
+  unbegrenzt an. Jetzt werden abgelaufene Eintraege beim Schreiben mit aufgeraeumt, und
+  die Liste hat zusaetzlich eine feste Obergrenze. Die Warnung selbst und ihr Abstand von
+  zehn Minuten bleiben unveraendert.
+
+  Einordnung: der Verbrauch je Eintrag war klein, ein akutes Problem war das nicht. Es
+  war eine Menge ohne Obergrenze, deren Groesse jemand von aussen bestimmt.
+
+  Versionsnummer: 1.268.4 bis 1.269.0 sind uebersprungen, weil offene Aenderungen diese
+  Nummern bereits halten.
+
 ## [1.268.3] - 2026-08-24
 
 ### Geaendert
