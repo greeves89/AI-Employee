@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.268.4] - 2026-08-24
+
+### Behoben
+- **Eine App laesst sich wieder neu bauen, nachdem ein Rebuild einmal
+  abgebrochen ist** (#644). Bisher konnte der Betreiber in einen Zustand
+  geraten, aus dem er von allein nicht mehr herauskam: jeder weitere
+  "Neu bauen" endete mit einem Fehler ueber einen belegten Containernamen,
+  obwohl das Abbild sauber gebaut wurde. Ursache war ein Rest aus dem
+  abgebrochenen Versuch, den niemand mehr aufraeumte. Der wird jetzt vor dem
+  Neubau entfernt, und ein Namenskonflikt loest genau einen zweiten Anlauf
+  aus. Ein echter Baufehler wird weiterhin sofort gemeldet und nicht
+  wiederholt.
+- **Zwei gleichzeitige Starts oder Neubauten derselben App ueberholen sich
+  nicht mehr.** Genau dieses Ueberholen hat die liegengebliebenen Reste
+  ueberhaupt erst erzeugt. Verschiedene Apps laufen weiterhin parallel.
+
 ## [1.268.3] - 2026-08-24
 
 ### Geaendert
