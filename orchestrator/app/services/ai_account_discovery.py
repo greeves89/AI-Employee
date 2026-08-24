@@ -85,6 +85,15 @@ def build_discovery_candidates(
             "params": {"key": key} if key else {},
         }]
 
+    # Azure-AI-Foundry-PROJEKT-URLs (…/api/projects/<name>) fuehren die
+    # deployten Modelle unter /deployments — live gegen eine echte Ressource
+    # verifiziert (2026-08-24): /v1/models gibt es dort nicht.
+    project_deployments = {
+        "url": f"{base}/deployments",
+        "headers": {"api-key": key, "Authorization": f"Bearer {key}"},
+        "params": {"api-version": "2025-05-01"},
+    }
+
     if provider_type == "foundry":
         # Kundenbefund (#todo 2026-08-18): deployte Foundry-Modelle tauchten nie
         # auf, weil es fuer "foundry" schlicht keinen Suchpfad gab. Foundry
@@ -106,6 +115,7 @@ def build_discovery_candidates(
                 "headers": {"api-key": key},
                 "params": {"api-version": "2024-05-01-preview"},
             },
+            project_deployments,
         ]
 
     if provider_type in _OPENAI_COMPATIBLE:
@@ -128,6 +138,10 @@ def build_discovery_candidates(
                 "headers": {"api-key": key},
                 "params": {"api-version": "2023-03-15-preview"},
             })
+            if "/api/projects/" in base:
+                # Als azure-openai angelegte Foundry-PROJEKT-URL (kommt in der
+                # Praxis vor — der Kunde traegt die Projekt-Adresse ein).
+                candidates.append(project_deployments)
         return candidates
 
     return []
@@ -161,6 +175,27 @@ def parse_models(payload: dict, provider_type: str) -> list[dict]:
                 continue
             seen.add(raw)
             out.append({"id": raw, "label": (m.get("displayName") or raw)})
+        return out
+
+    if isinstance(payload.get("value"), list) and not payload.get("data"):
+        # Foundry-Projekt-Deployments: aufgerufen wird der DEPLOYMENT-Name.
+        # Embedding-/Sonder-Deployments ohne Chat-Faehigkeit bleiben draussen —
+        # sie waeren in der Agenten-Modellauswahl nur Fallen.
+        for m in payload["value"]:
+            if not isinstance(m, dict):
+                continue
+            if m.get("type") and m.get("type") != "ModelDeployment":
+                continue
+            caps = m.get("capabilities") or {}
+            if caps and str(caps.get("chat_completion", "")).lower() != "true":
+                continue
+            name = (m.get("name") or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            model_name = (m.get("modelName") or "").strip()
+            label = f"{model_name} ({name})" if model_name and model_name != name else name
+            out.append({"id": name, "label": label})
         return out
 
     items = payload.get("data") or []

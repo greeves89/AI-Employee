@@ -145,6 +145,7 @@ def test_foundry_probes_anthropic_openai_and_catalog_paths():
         "https://res.services.ai.azure.com/anthropic/v1/models",
         "https://res.services.ai.azure.com/openai/v1/models",
         "https://res.services.ai.azure.com/models",
+        "https://res.services.ai.azure.com/deployments",
     ]
     # beide Auth-Stile, weil Foundry je nach Flaeche anders prueft
     assert cands[0]["headers"]["x-api-key"] == "k1"
@@ -212,3 +213,30 @@ async def test_discover_unreachable_only_when_every_candidate_is():
 
     out = await discover_models("foundry", "https://res.services.ai.azure.com", "k", fetch)
     assert out["status"] == AI_ACCOUNT_UNREACHABLE
+
+
+# ---- Foundry-PROJEKT-URLs (live verifiziert 2026-08-24) ---------------------
+
+def test_azure_project_url_gets_the_deployments_candidate():
+    cands = build_discovery_candidates(
+        "azure-openai", "https://res.services.ai.azure.com/api/projects/demo", "k")
+    dep = [c for c in cands if c["url"].endswith("/api/projects/demo/deployments")]
+    assert dep, [c["url"] for c in cands]
+    assert dep[0]["params"]["api-version"] == "2025-05-01"
+
+
+def test_foundry_always_probes_project_deployments():
+    cands = build_discovery_candidates("foundry", "https://res.services.ai.azure.com", "k")
+    assert any(c["url"].endswith("/deployments") for c in cands)
+
+
+def test_parse_project_deployments_uses_deployment_name_and_skips_embeddings():
+    payload = {"value": [
+        {"name": "gpt-4o-deployment", "type": "ModelDeployment", "modelName": "gpt-4o",
+         "capabilities": {"chat_completion": "true"}},
+        {"name": "text-embedding-ada-002-deployment", "type": "ModelDeployment",
+         "modelName": "text-embedding-ada-002", "capabilities": {"embeddings": "true"}},
+        {"name": "irgendwas", "type": "ConnectionDeployment"},
+    ]}
+    out = parse_models(payload, "azure-openai")
+    assert out == [{"id": "gpt-4o-deployment", "label": "gpt-4o (gpt-4o-deployment)"}]

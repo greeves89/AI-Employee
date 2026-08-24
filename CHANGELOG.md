@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.268.1] - 2026-08-24
+
+### Behoben
+- **Foundry-Discovery findet jetzt auch Projekt-Ressourcen** — live gegen eine
+  echte Azure-AI-Foundry-Projekt-URL verifiziert: dort liegen die deployten
+  Modelle unter `/deployments?api-version=2025-05-01` (ein `/v1/models` gibt
+  es nicht). Neuer Kandidat fuer Foundry und fuer als azure-openai angelegte
+  Projekt-URLs; der Parser liest das Deployments-Format, nimmt den
+  DEPLOYMENT-Namen als Modell-Id und laesst Embedding-Deployments draussen.
+
 ## [1.268.0] - 2026-08-24
 
 ### Hinzugefuegt
