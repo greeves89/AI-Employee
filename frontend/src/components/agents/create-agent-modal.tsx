@@ -164,7 +164,7 @@ function harnessForAccountProvider(provider: string): string {
 }
 
 function firstModelName(account?: AIAccount): string {
-  const first = account?.models?.[0];
+  const first = account?.models?.find((m) => m.enabled !== false) ?? account?.models?.[0];
   if (!first) return "";
   if (typeof first === "string") return first;
   return first.name;
@@ -1014,10 +1014,12 @@ export function CreateAgentModal({
                             onChange={(e) => setAiAccountModel(e.target.value)}
                             className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                           >
-                            {(aiAccounts.find((a) => a.id === aiAccountId)?.models ?? []).map((m) => {
-                              const name = typeof m === "string" ? m : m.name;
-                              return <option key={name} value={name}>{name}</option>;
-                            })}
+                            {(aiAccounts.find((a) => a.id === aiAccountId)?.models ?? [])
+                              .filter((m) => typeof m === "string" || m.enabled !== false)
+                              .map((m) => {
+                                const name = typeof m === "string" ? m : m.name;
+                                return <option key={name} value={name}>{name}</option>;
+                              })}
                           </select>
                         </div>
                       )}

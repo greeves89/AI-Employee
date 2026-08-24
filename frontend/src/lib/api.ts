@@ -271,9 +271,11 @@ export interface AdminModelCatalog {
   last_discovery?: {
     anthropic_found: number;
     openai_found: number;
+    foundry_found?: number;
     new_extras: number;
     anthropic_queried: boolean;
     openai_queried: boolean;
+    foundry_queried?: boolean;
   };
 }
 // Full catalog incl. disabled models + source flags (admin only).

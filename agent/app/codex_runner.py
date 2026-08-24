@@ -359,12 +359,35 @@ class CodexChatHandler:
         self._runner = CodexAgentRunner(self.log_publisher)
 
         async def _run_turn(t: str, is_resume: bool) -> dict:
+            from app.chat_handler import _is_context_length_error
+
             res = await self._runner._run_codex(message_id, t, model, stream="chat", resume=is_resume)
             # If `resume --last` isn't supported / no session was saved, don't lose the
             # folded message — fall back to a fresh turn.
             if is_resume and res.get("status") == "error":
-                logger.warning("Codex resume failed, retrying fresh: %s", str(res.get("error"))[:120])
+                # Zu langer Verlauf: dieselbe Selbstheilung wie im Claude-Pfad —
+                # Sitzung verwerfen, Nutzer informieren, frisch wiederholen (#623).
+                if _is_context_length_error(res.get("error", "")):
+                    await self.log_publisher.publish_chat(
+                        message_id, "system",
+                        {"message": "Der Gespraechsverlauf war zu lang geworden — ich "
+                                    "beginne eine neue Sitzung und beantworte die "
+                                    "Nachricht gleich erneut. Frueheres aus diesem Chat "
+                                    "kenne ich dann nicht mehr aus dem Verlauf."},
+                    )
+                else:
+                    logger.warning("Codex resume failed, retrying fresh: %s", str(res.get("error"))[:120])
                 res = await self._runner._run_codex(message_id, t, model, stream="chat", resume=False)
+            # Frische Sitzung und trotzdem zu gross: die EINZELNE Nachricht sprengt
+            # das Fenster — wiederholen ist zwecklos, erklaeren hilft (#623).
+            if res.get("status") == "error" and _is_context_length_error(res.get("error", "")):
+                res = {
+                    "status": "error",
+                    "error": ("Diese einzelne Nachricht ist zu gross fuer das "
+                              "Kontextfenster des Modells. Bitte kuerzer fassen — "
+                              "oder grosse Inhalte als Datei in den Workspace legen "
+                              "und in der Nachricht darauf verweisen."),
+                }
             return res
 
         try:

@@ -1952,7 +1952,7 @@ function AgentSettings({
                       const id = e.target.value ? Number(e.target.value) : null;
                       setAiAcctSel(id);
                       const acc = aiAccounts.find((a) => a.id === id);
-                      setAiAcctModel(acc?.models?.[0]?.name ?? "");
+                      setAiAcctModel(acc?.models?.find((m) => m.enabled !== false)?.name ?? "");
                     }}
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-violet-500/50"
                   >
@@ -1970,9 +1970,11 @@ function AgentSettings({
                     disabled={aiAcctSel === null}
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-violet-500/50 disabled:opacity-40"
                   >
-                    {(aiAccounts.find((a) => a.id === aiAcctSel)?.models ?? []).map((m) => (
-                      <option key={m.name} value={m.name}>{m.name}</option>
-                    ))}
+                    {(aiAccounts.find((a) => a.id === aiAcctSel)?.models ?? [])
+                      .filter((m) => m.enabled !== false)
+                      .map((m) => (
+                        <option key={m.name} value={m.name}>{m.name}</option>
+                      ))}
                   </select>
                 </div>
               </div>

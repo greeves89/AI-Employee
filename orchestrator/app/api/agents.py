@@ -730,11 +730,17 @@ async def create_agent(
             if not account.models:
                 raise HTTPException(status_code=422, detail="AI account has no models configured")
             account_provider_type = account.provider_type
-            _model_names = [m.get("name") if isinstance(m, dict) else m for m in account.models]
+            from app.api.ai_accounts import enabled_model_names
+            _model_names = enabled_model_names(account.models)
+            if not _model_names:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Dieser AI-Account hat keine freigegebenen Modelle — der Administrator muss zuerst Modelle freischalten.",
+                )
             if data.model and data.model not in _model_names:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Model '{data.model}' is not offered by this AI account",
+                    detail=f"Modell '{data.model}' ist auf diesem AI-Account nicht freigegeben.",
                 )
 
         # Role-based permission checks (skip for setup-mode anonymous user)
@@ -1289,12 +1295,18 @@ async def update_agent_ai_account(
         raise HTTPException(status_code=422, detail="AI account is inactive")
     if not account.models:
         raise HTTPException(status_code=422, detail="AI account has no models configured")
-    _model_names = [m.get("name") if isinstance(m, dict) else m for m in account.models]
+    from app.api.ai_accounts import enabled_model_names
+    _model_names = enabled_model_names(account.models)
+    if not _model_names:
+        raise HTTPException(
+            status_code=422,
+            detail="Dieser AI-Account hat keine freigegebenen Modelle — der Administrator muss zuerst Modelle freischalten.",
+        )
     chosen_model = body.model or _model_names[0]
     if chosen_model not in _model_names:
         raise HTTPException(
             status_code=422,
-            detail=f"Model '{chosen_model}' is not offered by this AI account",
+            detail=f"Modell '{chosen_model}' ist auf diesem AI-Account nicht freigegeben.",
         )
     try:
         agent = await manager._get_agent(agent_id)
