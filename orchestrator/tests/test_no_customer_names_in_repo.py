@@ -52,6 +52,23 @@ TEXTENDUNGEN = {
     ".css", ".html", ".sh", ".toml", ".cfg", ".ini", ".txt", ".sql",
 }
 
+#: Ein eingebettetes Bild ist keine Prosa. Eine `data:...;base64,`-Nutzlast traegt
+#: beliebige Bytes, und in genug Bytes steht irgendwann jede kurze Zeichenfolge.
+#: Am 2026-08-24 enthielt ein eingebettetes Bild von 137 KB in einer einzigen Zeile
+#: zwei Vierbuchstaben-Treffer rein zufaellig. Damit war diese Pruefung auf der
+#: Hauptlinie dauerhaft rot — genau der Zustand, vor dem `_kandidaten()` oben warnt:
+#: eine Wache, die immer schlaegt, wird abgeschaltet und faengt den echten Fall nicht
+#: mehr.
+#:
+#: Herausgeschnitten wird nur die Nutzlast, nicht die Zeile. Steht der Name
+#: daneben — im Dateinamen, im Alternativtext, im Kommentar dahinter — wird er
+#: weiterhin gefunden.
+BASE64_NUTZLAST = re.compile(r"data:[^;,\s]*;base64,[A-Za-z0-9+/=]*")
+
+
+def _ohne_base64(zeile: str) -> str:
+    return BASE64_NUTZLAST.sub("data:<bild>;base64,", zeile)
+
 
 def _kandidaten():
     """Die Dateien, die tatsaechlich oeffentlich werden.
@@ -100,6 +117,7 @@ class NoCustomerNamesTests(unittest.TestCase):
             except (UnicodeDecodeError, OSError):
                 continue
             for nr, zeile in enumerate(text.splitlines(), 1):
+                zeile = _ohne_base64(zeile)
                 if muster.search(zeile):
                     funde.append(f"{p.relative_to(ROOT)}:{nr}: {zeile.strip()[:90]}")
         self.assertEqual(
@@ -126,6 +144,31 @@ class TheGuardActuallyWorksTests(unittest.TestCase):
         self.assertTrue(muster.search("Fehler trat bei SKBS auf"))
         self.assertTrue(muster.search("mail.klinikum-bs.de"))
         self.assertFalse(muster.search("Fehler trat bei einem Kunden auf"))
+
+    def test_it_ignores_a_name_that_falls_out_of_an_embedded_image(self):
+        """Zufall in Bilddaten ist kein Befund.
+
+        Der Name wird hier aus ``VERBOTEN`` zusammengesetzt statt hingeschrieben —
+        so waechst die Zahl der Klartextstellen im Repo nicht mit jedem neuen Test.
+        """
+        muster = re.compile("|".join(VERBOTEN), re.IGNORECASE)
+        name = VERBOTEN[0]
+        zeile = f'<img src="data:image/png;base64,AAAA{name}BBBB">'
+        self.assertTrue(muster.search(zeile), "Vorbedingung: ungeschnitten faellt es auf")
+        self.assertFalse(muster.search(_ohne_base64(zeile)))
+
+    def test_it_still_notices_a_name_NEXT_TO_an_embedded_image(self):
+        """Die Gegenprobe zum Ausschneiden — sonst waere eine Zeile mit Bild blind.
+
+        Herausgeschnitten wird die Nutzlast, nicht die Zeile. Ein Name im
+        Alternativtext davor oder im Kommentar dahinter muss weiter auffallen.
+        """
+        muster = re.compile("|".join(VERBOTEN), re.IGNORECASE)
+        name = VERBOTEN[0]
+        davor = f'<img alt="{name}" src="data:image/png;base64,AAAABBBB">'
+        dahinter = f'<img src="data:image/png;base64,AAAABBBB"> <!-- {name} -->'
+        self.assertTrue(muster.search(_ohne_base64(davor)))
+        self.assertTrue(muster.search(_ohne_base64(dahinter)))
 
 
 if __name__ == "__main__":

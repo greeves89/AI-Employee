@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.269.6] - 2026-08-25
+
+### Behoben
+- **Die Namenspruefung schlaegt nicht mehr bei eingebetteten Bildern an.** Ein
+  Bild, das als `data:...;base64,` direkt in einer Seite steht, traegt beliebige
+  Bytes — und in genug Bytes steht irgendwann jede kurze Zeichenfolge. Bei einem
+  Bild von 137 KB passierte das zweimal. Die Pruefung war damit auf der
+  Hauptlinie dauerhaft rot und meldete Rot fuer jede offene Aenderung, ohne dass
+  irgendwo ein Name stand. Genau davor warnt die Pruefung in ihrer eigenen
+  Beschreibung: eine Wache, die immer schlaegt, wird abgeschaltet — und faengt
+  dann den echten Fall nicht mehr.
+  Herausgeschnitten wird nur die Bilddatenmenge, nicht die Zeile: ein Name im
+  Alternativtext oder im Kommentar daneben faellt weiterhin auf.
+
 ## [1.268.3] - 2026-08-24
 
 ### Geaendert
