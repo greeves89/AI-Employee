@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.269.0] - 2026-08-24
+
+### Behoben
+- **Ein eigener Codex-Zugang stirbt nicht mehr nach der ersten Token-Erneuerung.**
+  Der ChatGPT-Refresh-Token ist einmalig: die Codex-CLI tauscht ihn bei jeder
+  Erneuerung gegen einen neuen. Dieser neue Token lebte bisher nur im Container.
+  Beim naechsten Start spielte die Plattform die alte, bereits verbrauchte Fassung
+  aus der Datenbank wieder ein — der Anbieter lehnte sie ab
+  (`refresh_token_reused`), und der Agent war ab da bei JEDEM Start tot, ohne dass
+  ein Neustart half. Betroffene sahen nur, dass ihr Agent nichts mehr lieferte.
+  Erneuert die CLI jetzt den Zugang, meldet der Agent die neue Fassung zurueck und
+  der naechste Start beginnt mit einem gueltigen Token.
+  **Einmalig noetig:** ein Zugang, der bereits mit `refresh_token_reused`
+  abgelehnt wird, ist beim Anbieter verbraucht und laesst sich durch nichts
+  wiederbeleben — er muss einmal neu angemeldet werden (Einstellungen → eigener
+  KI-Zugang → Codex). Danach haelt er von allein.
+
+### Sicherheit
+- Der Rueckweg schreibt ausschliesslich den **eigenen** Zugang des Besitzers und
+  nur, wenn dort schon einer hinterlegt war. Wer schreibt, entscheidet der
+  Agenten-Token, nicht die Nutzlast. Der gemeinsame Zugang der Anlage bleibt
+  unantastbar; ein fremdes Konto und eine aeltere Fassung werden abgelehnt — ein
+  einzelner Agent kann so weder die Anlage noch den Zugang eines anderen kippen.
+
 ## [1.268.3] - 2026-08-24
 
 ### Geaendert
