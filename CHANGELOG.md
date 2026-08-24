@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.268.5] - 2026-08-24
+## [1.269.2] - 2026-08-24
 
 ### Behoben
 - **Wissensspeicher: gleiche Titel bei verschiedenen Besitzern moeglich** — bisher
@@ -20,6 +20,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Besitzer zu achten. Wer einen Titel verwendete, den ein anderer Nutzer schon
   hatte, ueberschrieb dessen Inhalt still und ohne Fehlermeldung. Alle Titelsuchen
   sind jetzt auf den Besitzer eingeschraenkt; ein Test am Quelltext haelt das fest.
+- **Ein einziger Wissenseintrag reisst nicht mehr den ganzen Nachtlauf mit** —
+  scheiterte im naechtlichen Reflexionslauf das Speichern EINES Eintrags, brach
+  der komplette Lauf ab und alle folgenden Erkenntnisse der Nacht gingen verloren.
+  Der Lauf ueberspringt den betroffenen Eintrag jetzt, protokolliert ihn und macht
+  weiter; die Anzahl steht als `kb_skipped` im Ergebnis. Der manuelle Freigabeweg
+  meldet Fehler weiterhin unveraendert zurueck — wer auf "freigeben" klickt, soll
+  sehen, wenn es nicht geklappt hat.
 
 ---
 
