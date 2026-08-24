@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.268.4] - 2026-08-24
+
+### Behoben
+- **Die naechtliche Reflexion faellt nicht mehr aus, weil zwei Mandanten
+  denselben Titel gut finden.** Ein Wissenstitel galt anlagenweit als einmalig —
+  noch aus der Zeit, bevor es getrennte Mandanten gab. War ein Titel irgendwo
+  vergeben, konnte ihn niemand sonst mehr verwenden. Da Reflexionen
+  naturgemaess allgemeine Titel erzeugen ("Klare Aufgabendefinition"), war das
+  nicht die Ausnahme, sondern der Normalfall — und es traf umso haerter, je
+  mehr Mandanten auf der Anlage arbeiten. Titel sind ab jetzt **je Mandant**
+  eindeutig; anlagenweite Eintraege ohne Besitzer bleiben untereinander
+  eindeutig wie bisher.
+- **Ein einzelner Eintrag reisst nicht mehr die ganze Nacht mit.** Scheiterte
+  ein Wissenseintrag, ging die gesamte restliche Reflexion desselben Laufs
+  verloren — auch das, was vorher schon erarbeitet war. Jetzt wird der eine
+  Eintrag uebersprungen, der Lauf laeuft weiter, und der naechtliche Bericht
+  nennt die Zahl der uebersprungenen Eintraege.
+- Nebenbei liess sich bisher am Erfolg eines Schreibversuchs ablesen, ob ein
+  Titel bei einem fremden Mandanten bereits existiert. Auch das entfaellt.
+
+---
+
 ## [1.268.3] - 2026-08-24
 
 ### Geaendert
