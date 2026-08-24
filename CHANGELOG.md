@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.268.4] - 2026-08-24
+## [1.269.4] - 2026-08-24
 
 ### Behoben
 - **Eine App laesst sich wieder neu bauen, nachdem ein Rebuild einmal
