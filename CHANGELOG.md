@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.268.5] - 2026-08-24
+
+### Behoben
+- **Wissensspeicher: gleiche Titel bei verschiedenen Besitzern moeglich** — bisher
+  musste ein Titel im GESAMTEN System einmalig sein, obwohl jeder Nutzer seinen
+  eigenen Wissensspeicher hat. Sobald ein zweiter Nutzer einen naheliegenden Titel
+  wie "Klare Aufgabendefinition" erzeugte, brach der Speichervorgang mit einem
+  Datenbankfehler ab — und riss den kompletten Reflexionslauf mit sich, nicht nur
+  den einen Eintrag. Titel sind jetzt je Besitzer eindeutig; systemweite Eintraege
+  ohne Besitzer bleiben wie bisher global eindeutig.
+- **Fremde Wissenseintraege wurden ueberschrieben** — beim Speichern ueber die
+  Brain-Schnittstelle wurde ein Eintrag GLEICHEN TITELS gesucht, ohne auf den
+  Besitzer zu achten. Wer einen Titel verwendete, den ein anderer Nutzer schon
+  hatte, ueberschrieb dessen Inhalt still und ohne Fehlermeldung. Alle Titelsuchen
+  sind jetzt auf den Besitzer eingeschraenkt; ein Test am Quelltext haelt das fest.
+
+---
+
 ## [1.268.3] - 2026-08-24
 
 ### Geaendert

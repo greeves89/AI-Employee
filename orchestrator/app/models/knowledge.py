@@ -18,7 +18,9 @@ class KnowledgeEntry(Base):
     __tablename__ = "knowledge_entries"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    title: Mapped[str] = mapped_column(String, unique=True, index=True)
+    # Eindeutig ist der Titel je Besitzer, nicht global — die Bedingung liegt als
+    # zwei partielle Indizes in Migration b7c1e93a5f20 (global: user_id IS NULL).
+    title: Mapped[str] = mapped_column(String, index=True)
     content: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[list] = mapped_column(JSON, default=list)  # ["project", "decision", ...]
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)  # agent_id or "user"
