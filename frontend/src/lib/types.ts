@@ -46,6 +46,7 @@ export interface AIModel {
   name: string;                       // model / Azure deployment name
   provider_type: AIAccountProviderType; // which API the model speaks
   api_endpoint: string;               // the endpoint/surface for this model
+  enabled?: boolean;                  // Freigabe fuer Agenten (fehlt = freigegeben)
 }
 
 export interface AIAccount {

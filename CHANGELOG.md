@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.268.0] - 2026-08-24
+
+### Hinzugefuegt
+- **Foundry-Modelle werden endlich gefunden (Kundenbefund).** Fuer den
+  Provider "foundry" gab es keinerlei Discovery-Pfad — deployte Modelle einer
+  Azure-AI-Foundry-Ressource tauchten nie auf. Jetzt probiert die Discovery
+  je Provider mehrere Kandidaten-Pfade (Foundry: native Anthropic-Route,
+  OpenAI-v1-Flaeche, Modell-Katalog; Azure OpenAI zusaetzlich den
+  Deployments-Katalog) und nimmt die erste Antwort; scheitern alle, wird der
+  aussagekraeftigste Fehler gemeldet (Auth vor 404). Der Modell-Katalog
+  fragt Foundry ueber Ressource + Key aus den Provider-Einstellungen ab.
+- **Modell-Freigabe je AI-Account (Kundenwunsch).** Der Administrator kann
+  einzelne Modelle eines AI-Accounts sperren/freigeben (Schalter je Modell in
+  der AI-Accounts-Seite). Agent-Erstellung und Umverbinden zeigen nur
+  freigegebene Modelle und erzwingen das serverseitig; Bestandsdaten ohne
+  Flag gelten als freigegeben.
+
 ## [1.267.3] - 2026-08-24
 
 ### Behoben

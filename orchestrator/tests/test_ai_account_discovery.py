@@ -130,3 +130,85 @@ async def test_discover_protocol_error_on_500():
 
     result = await discover_models("openai", "https://api.openai.com", "sk", fetch)
     assert result["status"] == AI_ACCOUNT_PROTOCOL_ERROR
+
+
+# ---- Foundry + Azure-Deployments (Kundenbefund 2026-08-18) -----------------
+# "foundry" hatte schlicht keinen Suchpfad — deployte Modelle tauchten nie auf.
+
+from app.services.ai_account_discovery import build_discovery_candidates  # noqa: E402
+
+
+def test_foundry_probes_anthropic_openai_and_catalog_paths():
+    cands = build_discovery_candidates("foundry", "https://res.services.ai.azure.com", "k1")
+    urls = [c["url"] for c in cands]
+    assert urls == [
+        "https://res.services.ai.azure.com/anthropic/v1/models",
+        "https://res.services.ai.azure.com/openai/v1/models",
+        "https://res.services.ai.azure.com/models",
+    ]
+    # beide Auth-Stile, weil Foundry je nach Flaeche anders prueft
+    assert cands[0]["headers"]["x-api-key"] == "k1"
+    assert cands[0]["headers"]["api-key"] == "k1"
+
+
+def test_foundry_resource_name_becomes_full_url():
+    """Operatoren tragen (wie in den Provider-Einstellungen) oft nur den
+    Ressourcennamen ein."""
+    cands = build_discovery_candidates("foundry", "meine-ressource", "k")
+    assert cands[0]["url"].startswith("https://meine-ressource.services.ai.azure.com/")
+
+
+def test_foundry_without_endpoint_is_unsupported():
+    assert build_discovery_candidates("foundry", "", "k") == []
+
+
+def test_azure_openai_falls_back_to_deployment_catalog():
+    cands = build_discovery_candidates("azure-openai", "https://res.openai.azure.com", "k")
+    urls = [c["url"] for c in cands]
+    assert urls[0].endswith("/v1/models")
+    assert "https://res.openai.azure.com/openai/v1/models" in urls
+    assert any(u.endswith("/openai/deployments") for u in urls)
+    dep = [c for c in cands if c["url"].endswith("/openai/deployments")][0]
+    assert dep["headers"]["api-key"] == "k"
+    assert dep["params"]["api-version"]
+
+
+@pytest.mark.asyncio
+async def test_discover_takes_the_first_candidate_that_answers_200():
+    calls = []
+
+    async def fetch(url, headers, params):
+        calls.append(url)
+        if url.endswith("/openai/v1/models"):
+            return 200, {"data": [{"id": "gpt-5.6-sol"}]}
+        return 404, {}
+
+    out = await discover_models("foundry", "https://res.services.ai.azure.com", "k", fetch)
+    assert out["status"] == AI_ACCOUNT_OK
+    assert out["models"] == [{"id": "gpt-5.6-sol", "label": "gpt-5.6-sol"}]
+    # der Anthropic-Pfad wurde davor probiert, der Katalog danach nicht mehr
+    assert calls[0].endswith("/anthropic/v1/models")
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_discover_reports_auth_failure_over_missing_paths():
+    """404 auf einem Pfad, den es bei dieser Deployment-Art nicht gibt, ist
+    Rauschen — die Auth-Ablehnung ist die Information."""
+
+    async def fetch(url, headers, params):
+        if url.endswith("/openai/v1/models"):
+            return 401, {}
+        return 404, {}
+
+    out = await discover_models("foundry", "https://res.services.ai.azure.com", "k", fetch)
+    assert out["status"] == AI_ACCOUNT_AUTH_FAILED
+
+
+@pytest.mark.asyncio
+async def test_discover_unreachable_only_when_every_candidate_is():
+    async def fetch(url, headers, params):
+        raise ConnectionError("down")
+
+    out = await discover_models("foundry", "https://res.services.ai.azure.com", "k", fetch)
+    assert out["status"] == AI_ACCOUNT_UNREACHABLE

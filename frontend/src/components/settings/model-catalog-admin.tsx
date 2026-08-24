@@ -43,14 +43,15 @@ export function ModelCatalogAdmin() {
         const parts: string[] = [];
         parts.push(`Anthropic: ${d.anthropic_queried ? `${d.anthropic_found} erkannt` : "kein API-Key"}`);
         parts.push(`OpenAI: ${d.openai_queried ? `${d.openai_found} erkannt` : "kein API-Key"}`);
-        // Say out loud what this can NOT find: only the public Anthropic/OpenAI
-        // model APIs are queried. Azure-Foundry/Bedrock/Vertex deployments have
-        // no such listing, so they never appear here — without this line it
-        // looks like a bug when a connected Foundry resource shows no models.
+        parts.push(`Foundry: ${d.foundry_queried ? `${d.foundry_found ?? 0} erkannt` : "keine Ressource/Key hinterlegt"}`);
+        // Say out loud what this can NOT find: Bedrock/Vertex deployments have
+        // no listing we can query — without this line it looks like a bug when
+        // a connected resource shows no models. Foundry IS queried since
+        // v1.268.0, via the resource + key from the provider settings.
         setNote(
           `${parts.join(" · ")} — ${d.new_extras} neue Modelle. Neue Modelle sind zunächst deaktiviert. ` +
-          `Hinweis: Erkannt werden nur Anthropic/OpenAI direkt — eigene Azure-Foundry-, Bedrock- oder ` +
-          `Vertex-Deployments trägst du unter AI-Accounts ein.`
+          `Hinweis: Foundry wird über Ressource + Key aus den Provider-Einstellungen abgefragt; ` +
+          `Bedrock- oder Vertex-Deployments trägst du weiterhin unter AI-Accounts ein.`
         );
       }
     } catch (e) {
