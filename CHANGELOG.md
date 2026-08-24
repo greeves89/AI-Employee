@@ -20,6 +20,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   rund um so ein Bild wird weiter geprueft, und ein Name im Fliesstext faellt
   unveraendert auf — beides ist mit eigenen Tests festgehalten, damit die
   Wache nicht im Stillen blind wird.
+- **Die Fundmeldung zeigt wieder, was gefunden wurde.** Meldete die Wache eine
+  Zeile mit eingebettetem Bild, bestand die auf 90 Zeichen gekuerzte Ausgabe
+  nur aus Bilddaten — der Name, um den es ging, fiel hinten heraus. Wer die
+  Meldung las, sah Datei und Zeile, aber nicht den Anlass. Gemeldet wird jetzt
+  die geschnittene Zeile.
 
 ## [1.268.3] - 2026-08-24
 

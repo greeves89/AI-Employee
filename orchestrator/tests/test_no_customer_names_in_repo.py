@@ -62,8 +62,19 @@ BASE64_NUTZLAST = re.compile(r"data:[^;,\s\"']*;base64,[A-Za-z0-9+/=]+")
 
 
 def _ohne_binaerdaten(zeile: str) -> str:
-    """Nur die Nutzlast faellt weg — der Text drumherum wird weiter geprueft."""
+    """Nur die Nutzlast faellt weg — der Text drumherum wird weiter geprueft.
+
+    Das Ergebnis geht auch in die Fundmeldung. Eine Zeile mit eingebettetem
+    Bild ist schnell 137 KB lang; ungeschnitten besteht die auf 90 Zeichen
+    gekuerzte Meldung nur aus Bilddaten, und der Name, um den es geht, faellt
+    hinten heraus. Wer die Meldung liest, muss sehen, was getroffen hat.
+    """
     return BASE64_NUTZLAST.sub("", zeile)
+
+
+def _fundmeldung(pfad, nr: int, zeile: str) -> str:
+    """Eine Zeile der Fundliste — geschnitten, damit der Name sichtbar bleibt."""
+    return f"{pfad}:{nr}: {_ohne_binaerdaten(zeile).strip()[:90]}"
 
 
 def _kandidaten():
@@ -114,7 +125,7 @@ class NoCustomerNamesTests(unittest.TestCase):
                 continue
             for nr, zeile in enumerate(text.splitlines(), 1):
                 if muster.search(_ohne_binaerdaten(zeile)):
-                    funde.append(f"{p.relative_to(ROOT)}:{nr}: {zeile.strip()[:90]}")
+                    funde.append(_fundmeldung(p.relative_to(ROOT), nr, zeile))
         self.assertEqual(
             funde, [],
             "Kunden-/Personennamen im oeffentlichen Repo. Bitte durch 'beim Kunden' "
@@ -155,11 +166,33 @@ class Base64NutzlastTests(unittest.TestCase):
 
     def test_zufallstreffer_im_bild_zaehlt_nicht(self):
         zeile = f'<img src="data:image/jpeg;base64,QUJD{self.name}RUZH==">'
+        self.assertTrue(
+            self.muster.search(zeile),
+            "Vorbedingung: ungeschnitten muss diese Zeile auffallen — sonst "
+            "prueft der Test nicht das Ausschneiden, sondern gar nichts.",
+        )
         self.assertFalse(self.muster.search(_ohne_binaerdaten(zeile)))
 
     def test_nur_die_nutzlast_faellt_weg(self):
-        zeile = f'<img alt="{self.name}" src="data:image/png;base64,QUJDRA==">'
-        self.assertTrue(self.muster.search(_ohne_binaerdaten(zeile)))
+        davor = f'<img alt="{self.name}" src="data:image/png;base64,QUJDRA==">'
+        dahinter = f'<img src="data:image/png;base64,QUJDRA=="> <!-- {self.name} -->'
+        self.assertTrue(self.muster.search(_ohne_binaerdaten(davor)))
+        self.assertTrue(self.muster.search(_ohne_binaerdaten(dahinter)))
+
+    def test_die_fundmeldung_zeigt_den_namen_statt_der_bilddaten(self):
+        """Sonst wird aus einem lauten Fehler ein unlesbarer.
+
+        Der Name steht hier hinter der Nutzlast — genau die Stelle, die die
+        Kuerzung auf 90 Zeichen verschluckt. Stuende er davor, waere er auch
+        ungeschnitten sichtbar und der Test bewiese nichts.
+        """
+        fuellung = "QUJDRA==" * 200
+        zeile = f'<img src="data:image/png;base64,{fuellung}"> <!-- {self.name} -->'
+        self.assertNotIn(
+            self.name.lower(), zeile.strip()[:90].lower(),
+            "Vorbedingung: ungeschnitten muss der Name aus der Meldung fallen.",
+        )
+        self.assertIn(self.name.lower(), _fundmeldung("bild.html", 556, zeile).lower())
 
     def test_echter_fund_im_fliesstext_bleibt_ein_fund(self):
         zeile = f"Fehler trat bei {self.name.upper()} auf"
