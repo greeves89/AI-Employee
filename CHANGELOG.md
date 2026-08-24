@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.267.2] - 2026-08-24
+
+### Hinzugefuegt
+- **Skill „writing-agent-ready-issues" (PR #648).** Neuer Quellordner
+  `marketplace-skills/` fuer SKILL.md-basierte Marktplatz-Skills; der Skill
+  fasst zusammen, wie ein Product Owner Backlog-Items agent-tauglich
+  aufbereitet (Triage-Zustaende, Definition of Ready, Epic-Schnitt, Templates).
+
+### Geaendert
+- **Landingpage: iPhone-Rahmen liegt jetzt additiv um das Bild** statt es an
+  den Raendern zu beschneiden (object-fit:cover entfernt — das Bild traegt
+  die Groesse, der Rahmen kommt aussen dazu).
+- Abhaengigkeiten: uvicorn 0.52.4 (PR #650), npm-Minor-Gruppe im Frontend
+  (PR #651). sentence-transformers 6.0 (PR #649) bleibt offen, bis der
+  Embedding-Pfad gegen die Major-Version getestet ist.
+
 ## [1.267.1] - 2026-08-24
 
 ### Behoben
