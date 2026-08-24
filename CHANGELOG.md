@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.268.3] - 2026-08-24
+
+### Geaendert
+- **Landingpage: Rechtslinks fuehren auf die eigenstaendigen Seiten** (/impressum,
+  /datenschutz) statt Overlays aufzupoppen — Formular-Hinweis, Hinweis-Leiste
+  und Footer. Die Overlays bleiben als Fallback der Einzeldatei erhalten;
+  ihr Schliessen springt nicht mehr zum Seitenanfang.
+
 ## [1.268.2] - 2026-08-24
 
 ### Behoben
