@@ -25,6 +25,8 @@ _CONTEXT_LENGTH_MARKERS = (
     "maximum context",
     "too many tokens",
     "exceed context limit",
+    "exceeds the context",
+    "maximum context length",
 )
 
 
@@ -76,6 +78,17 @@ class ChatHandler:
                 f"Context length exceeded in session {self.session_id}, resetting session"
             )
             self.session_id = None
+            if not was_resumed:
+                # Die Sitzung war schon frisch: ein zweiter Versuch scheitert
+                # identisch. Statt des rohen CLI-Fehlers bekommt der Nutzer
+                # eine Erklaerung, was er tun kann (#623).
+                result = {
+                    "status": "error",
+                    "error": ("Diese einzelne Nachricht ist zu gross fuer das "
+                              "Kontextfenster des Modells. Bitte kuerzer fassen — "
+                              "oder grosse Inhalte als Datei in den Workspace legen "
+                              "und in der Nachricht darauf verweisen."),
+                }
             if was_resumed:
                 await self.log_publisher.publish_chat(
                     message_id, "system",

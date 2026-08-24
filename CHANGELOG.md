@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.267.3] - 2026-08-24
+
+### Behoben
+- **Chat-Selbstheilung bei zu langem Verlauf jetzt in ALLEN Laufzeiten (#623).**
+  Codex verwirft bei einem Kontextlaengen-Fehler die Sitzung, informiert den
+  Nutzer und beantwortet die Nachricht frisch (wie der Claude-Pfad seit #613);
+  Custom-LLM komprimiert den Verlauf im Notfall sofort, statt dass jede weitere
+  Nachricht identisch scheitert. Und eine EINZELNE zu grosse Nachricht bekommt
+  ueberall eine verstaendliche Erklaerung (kuerzer fassen oder als Datei in den
+  Workspace) statt des rohen CLI-Fehlers. Die Fehlererkennung deckt jetzt auch
+  die OpenAI-Formulierungen ab (maximum context length, exceeds the context).
+
 ## [1.267.2] - 2026-08-24
 
 ### Hinzugefuegt
