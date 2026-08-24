@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.269.3] - 2026-08-24
+
+### Behoben
+- **Skill-Suche und "meine Skills" liessen die `id` weg** (#667). `skill_search` und
+  `skill_get_my_skills` rendern ihre Ergebnisse jetzt mit der numerischen `id` des
+  Skills. Ohne sie konnte ein Agent einen Skill zwar finden, aber weder installieren
+  noch bewerten noch seine Nutzung protokollieren — `skill_rate`, `skill_install`,
+  `skill_record_usage`, `skill_update` und `skill_get` verlangen alle diese ID als
+  Pflichtparameter. Der Server lieferte die ID schon immer korrekt aus; nur die
+  beiden Text-Formatierer im MCP-Server warfen sie beim Rendern weg.
+
 ## [1.268.3] - 2026-08-24
 
 ### Geaendert
