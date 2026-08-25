@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.268.4] - 2026-08-25
+## [1.269.6] - 2026-08-25
 
 ### Behoben
 - **Release-Spur fuer die neue Lizenzsteuerung nachgetragen.** Der Betreiber
