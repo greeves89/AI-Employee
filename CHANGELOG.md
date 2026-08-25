@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.268.4] - 2026-08-25
+
+### Behoben
+- **Release-Spur fuer die neue Lizenzsteuerung nachgetragen.** Der Betreiber
+  sieht wieder eindeutig, welche Version die lizenzweiten Agentenlimits und den
+  optionalen Lizenz-Heartbeat enthaelt.
+
 ## [1.268.3] - 2026-08-24
 
 ### Geaendert
