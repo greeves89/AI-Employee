@@ -5,6 +5,82 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.268.4] - 2026-08-24
+
+### Behoben
+- **Die Namens-Wache schlug bei eingebetteten Bildern falschen Alarm — und
+  hielt damit die gesamte Auslieferung an.** Die Pruefung, die Kunden- und
+  Personennamen aus dem oeffentlichen Repo fernhaelt, verglich jede Zeile als
+  reinen Text. In einer Seite steckt ein Foto als 140 KB grosse Base64-Zeile;
+  in so viel Zeichensalat taucht ein vierstelliger Name irgendwann zufaellig
+  auf. Folge: der Testlauf auf `main` war rot, und alle vier offenen Pull
+  Requests standen auf "instabil" — obwohl an keiner Stelle ein Name stand und
+  an keinem der vier Pull Requests etwas fehlte.
+  Eingebettete Binaerdaten werden jetzt vor dem Abgleich entfernt. Der Text
+  rund um so ein Bild wird weiter geprueft, und ein Name im Fliesstext faellt
+  unveraendert auf — beides ist mit eigenen Tests festgehalten, damit die
+  Wache nicht im Stillen blind wird.
+- **Die Fundmeldung zeigt wieder, was gefunden wurde.** Meldete die Wache eine
+  Zeile mit eingebettetem Bild, bestand die auf 90 Zeichen gekuerzte Ausgabe
+  nur aus Bilddaten — der Name, um den es ging, fiel hinten heraus. Wer die
+  Meldung las, sah Datei und Zeile, aber nicht den Anlass. Gemeldet wird jetzt
+  die geschnittene Zeile.
+
+## [1.268.3] - 2026-08-24
+
+### Geaendert
+- **Landingpage: Rechtslinks fuehren auf die eigenstaendigen Seiten** (/impressum,
+  /datenschutz) statt Overlays aufzupoppen — Formular-Hinweis, Hinweis-Leiste
+  und Footer. Die Overlays bleiben als Fallback der Einzeldatei erhalten;
+  ihr Schliessen springt nicht mehr zum Seitenanfang.
+
+## [1.268.2] - 2026-08-24
+
+### Behoben
+- **Landingpage: Impressum und Datenschutz sind wieder erreichbar, solange die
+  Hinweis-Leiste offen ist.** Die fixe Leiste verdeckte genau die Footer-Zeile
+  mit den Rechtslinks. Jetzt stehen beide Links auch in der Leiste selbst, und
+  der Footer bekommt Luft nach unten, bis der Hinweis bestaetigt wurde.
+
+## [1.268.1] - 2026-08-24
+
+### Behoben
+- **Foundry-Discovery findet jetzt auch Projekt-Ressourcen** — live gegen eine
+  echte Azure-AI-Foundry-Projekt-URL verifiziert: dort liegen die deployten
+  Modelle unter `/deployments?api-version=2025-05-01` (ein `/v1/models` gibt
+  es nicht). Neuer Kandidat fuer Foundry und fuer als azure-openai angelegte
+  Projekt-URLs; der Parser liest das Deployments-Format, nimmt den
+  DEPLOYMENT-Namen als Modell-Id und laesst Embedding-Deployments draussen.
+
+## [1.268.0] - 2026-08-24
+
+### Hinzugefuegt
+- **Foundry-Modelle werden endlich gefunden (Kundenbefund).** Fuer den
+  Provider "foundry" gab es keinerlei Discovery-Pfad — deployte Modelle einer
+  Azure-AI-Foundry-Ressource tauchten nie auf. Jetzt probiert die Discovery
+  je Provider mehrere Kandidaten-Pfade (Foundry: native Anthropic-Route,
+  OpenAI-v1-Flaeche, Modell-Katalog; Azure OpenAI zusaetzlich den
+  Deployments-Katalog) und nimmt die erste Antwort; scheitern alle, wird der
+  aussagekraeftigste Fehler gemeldet (Auth vor 404). Der Modell-Katalog
+  fragt Foundry ueber Ressource + Key aus den Provider-Einstellungen ab.
+- **Modell-Freigabe je AI-Account (Kundenwunsch).** Der Administrator kann
+  einzelne Modelle eines AI-Accounts sperren/freigeben (Schalter je Modell in
+  der AI-Accounts-Seite). Agent-Erstellung und Umverbinden zeigen nur
+  freigegebene Modelle und erzwingen das serverseitig; Bestandsdaten ohne
+  Flag gelten als freigegeben.
+
+## [1.267.3] - 2026-08-24
+
+### Behoben
+- **Chat-Selbstheilung bei zu langem Verlauf jetzt in ALLEN Laufzeiten (#623).**
+  Codex verwirft bei einem Kontextlaengen-Fehler die Sitzung, informiert den
+  Nutzer und beantwortet die Nachricht frisch (wie der Claude-Pfad seit #613);
+  Custom-LLM komprimiert den Verlauf im Notfall sofort, statt dass jede weitere
+  Nachricht identisch scheitert. Und eine EINZELNE zu grosse Nachricht bekommt
+  ueberall eine verstaendliche Erklaerung (kuerzer fassen oder als Datei in den
+  Workspace) statt des rohen CLI-Fehlers. Die Fehlererkennung deckt jetzt auch
+  die OpenAI-Formulierungen ab (maximum context length, exceeds the context).
+
 ## [1.267.2] - 2026-08-24
 
 ### Hinzugefuegt

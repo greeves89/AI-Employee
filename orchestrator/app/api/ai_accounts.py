@@ -38,6 +38,10 @@ class AIModelEntry(BaseModel):
     name: str
     provider_type: ProviderType
     api_endpoint: str = ""
+    # Freigabe je Modell (Kundenwunsch 2026-08-18): nur freigegebene Modelle
+    # sind bei der Agenten-Erstellung waehlbar. Fehlt das Feld (Bestand), gilt
+    # freigegeben — nichts bricht nach dem Update.
+    enabled: bool = True
 
 
 def _normalize_models(raw: list, default_provider: str, default_endpoint: str | None) -> list[dict]:
@@ -52,7 +56,24 @@ def _normalize_models(raw: list, default_provider: str, default_endpoint: str | 
                 "name": m["name"],
                 "provider_type": m.get("provider_type") or default_provider,
                 "api_endpoint": m.get("api_endpoint") or default_endpoint or "",
+                "enabled": m.get("enabled", True) is not False,
             })
+    return out
+
+
+def enabled_model_names(models: list) -> list[str]:
+    """Die fuer Agenten FREIGEGEBENEN Modellnamen eines AI-Accounts.
+
+    ``enabled`` fehlt bei Bestandsdaten — das heisst freigegeben, sonst stuende
+    jede bestehende Anlage nach dem Update ohne waehlbare Modelle da. Nur ein
+    ausdrueckliches ``false`` sperrt das Modell fuer die Agenten-Erstellung.
+    """
+    out: list[str] = []
+    for m in models or []:
+        if isinstance(m, str):
+            out.append(m)
+        elif isinstance(m, dict) and m.get("name") and m.get("enabled", True) is not False:
+            out.append(m["name"])
     return out
 
 

@@ -256,6 +256,30 @@ class LLMChatHandler:
         """
         return context_compressor.estimate_tokens(self._history) + self._overhead_tokens
 
+
+    async def _heal_after_context_overflow(self, message_id: str, error_text: str) -> None:
+        """Fallnetz zu #623: Kontextueberlauf heilt sich fuer den NAECHSTEN Zug.
+
+        Der praeventive Kompaktierer (siehe _needs_compaction) verhindert das
+        normalerweise — schlaegt trotzdem ein Zug mit Kontextlaengen-Fehler auf,
+        wird der Verlauf sofort komprimiert und der Nutzer informiert, statt
+        dass jede weitere Nachricht identisch scheitert (Symptom #613).
+        """
+        from app.chat_handler import _is_context_length_error
+        if not _is_context_length_error(error_text):
+            return
+        try:
+            await self._compact_history(message_id)
+            await self.log_publisher.publish_chat(
+                message_id, "system",
+                {"message": "Der Gespraechsverlauf war zu lang geworden — ich habe "
+                            "ihn komprimiert. Bitte schicke deine Nachricht noch "
+                            "einmal; Details aus fruehen Nachrichten kenne ich nur "
+                            "noch zusammengefasst."},
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("Notkompaktierung nach Kontextueberlauf fehlgeschlagen", exc_info=True)
+
     def _needs_compaction(self) -> bool:
         """Check if the conversation needs compaction."""
         if len(self._history) < 6:
@@ -763,6 +787,7 @@ class LLMChatHandler:
                         )
                         self.is_running = False
                         result = {"status": "error", "error": event.text}
+                        await self._heal_after_context_overflow(message_id, event.text)
                         await self.log_publisher.publish_chat(message_id, "done", result)
                         return result
 
@@ -952,6 +977,7 @@ class LLMChatHandler:
             )
             self.is_running = False
             result = {"status": "error", "error": str(e)}
+            await self._heal_after_context_overflow(message_id, str(e))
             await self.log_publisher.publish_chat(message_id, "done", result)
             return result
 

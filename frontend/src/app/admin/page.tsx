@@ -57,6 +57,7 @@ import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { MountPermissionsModal } from "@/components/admin/mount-permissions-modal";
+import { FeedbackDetailModal } from "@/components/admin/feedback-detail-modal";
 import { RolesPanel } from "@/components/admin/roles-panel";
 import { PagesPanel } from "@/components/admin/pages-panel";
 import { SsoGroupsPanel } from "@/components/admin/sso-groups-panel";
@@ -1542,6 +1543,7 @@ function FeedbackTab({
   const [expandedNotes, setExpandedNotes] = useState<number | null>(null);
   const [noteText, setNoteText] = useState("");
   const [githubConnected, setGithubConnected] = useState<boolean | null>(null);
+  const [detailFeedback, setDetailFeedback] = useState<Feedback | null>(null);
 
   useEffect(() => {
     api.getIntegrations().then((data) => {
@@ -1656,9 +1658,12 @@ function FeedbackTab({
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 min-w-0">
+                <div
+                  className="flex-1 min-w-0 cursor-pointer"
+                  onClick={() => setDetailFeedback(f)}
+                >
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="text-sm font-medium truncate">{f.title}</h4>
+                    <h4 className="text-sm font-medium truncate hover:underline">{f.title}</h4>
                     <span className={cn(
                       "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
                       statusCfg.color
@@ -1825,6 +1830,10 @@ function FeedbackTab({
           <p className="text-sm">Noch kein Feedback erhalten</p>
           <p className="text-xs text-muted-foreground/50 mt-1">Feedback wird hier angezeigt, sobald User welches senden.</p>
         </div>
+      )}
+
+      {detailFeedback && (
+        <FeedbackDetailModal feedback={detailFeedback} onClose={() => setDetailFeedback(null)} />
       )}
     </div>
   );

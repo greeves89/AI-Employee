@@ -730,11 +730,17 @@ async def create_agent(
             if not account.models:
                 raise HTTPException(status_code=422, detail="AI account has no models configured")
             account_provider_type = account.provider_type
-            _model_names = [m.get("name") if isinstance(m, dict) else m for m in account.models]
+            from app.api.ai_accounts import enabled_model_names
+            _model_names = enabled_model_names(account.models)
+            if not _model_names:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Dieser AI-Account hat keine freigegebenen Modelle — der Administrator muss zuerst Modelle freischalten.",
+                )
             if data.model and data.model not in _model_names:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Model '{data.model}' is not offered by this AI account",
+                    detail=f"Modell '{data.model}' ist auf diesem AI-Account nicht freigegeben.",
                 )
 
         # Role-based permission checks (skip for setup-mode anonymous user)
@@ -747,8 +753,29 @@ async def create_agent(
             from sqlalchemy import select, func
             from app.models.agent import Agent as _Agent
 
+            # 0) License-wide agent limit — separate from the per-user/role cap
+            # below. This is how many AI-Mitarbeiter the customer's license
+            # covers in total, across all users on this instance.
+            from app.core.license import get_current_license
+            lic = get_current_license()
+            if lic.instance_limit and lic.instance_limit > 0:
+                total_count = (await db.execute(select(func.count(_Agent.id)))).scalar() or 0
+                if total_count >= lic.instance_limit:
+                    raise HTTPException(
+                        status_code=402,
+                        detail={
+                            "error": "agent_limit_reached",
+                            "message": (
+                                f"Lizenz-Limit erreicht ({lic.instance_limit} AI-Mitarbeiter). "
+                                "Bitte einen bestehenden AI-Mitarbeiter löschen oder die Lizenz upgraden."
+                            ),
+                            "current_tier": lic.tier,
+                            "agent_limit": lic.instance_limit,
+                        },
+                    )
+
             perms = await get_effective_permissions(user, db)
-            # 1) Max agents
+            # 1) Max agents (per user/role — independent of the license-wide cap above)
             max_agents = perms.get("max_agents")
             if max_agents is not None:
                 count = (await db.execute(
@@ -1289,12 +1316,18 @@ async def update_agent_ai_account(
         raise HTTPException(status_code=422, detail="AI account is inactive")
     if not account.models:
         raise HTTPException(status_code=422, detail="AI account has no models configured")
-    _model_names = [m.get("name") if isinstance(m, dict) else m for m in account.models]
+    from app.api.ai_accounts import enabled_model_names
+    _model_names = enabled_model_names(account.models)
+    if not _model_names:
+        raise HTTPException(
+            status_code=422,
+            detail="Dieser AI-Account hat keine freigegebenen Modelle — der Administrator muss zuerst Modelle freischalten.",
+        )
     chosen_model = body.model or _model_names[0]
     if chosen_model not in _model_names:
         raise HTTPException(
             status_code=422,
-            detail=f"Model '{chosen_model}' is not offered by this AI account",
+            detail=f"Modell '{chosen_model}' ist auf diesem AI-Account nicht freigegeben.",
         )
     try:
         agent = await manager._get_agent(agent_id)
