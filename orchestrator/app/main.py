@@ -2128,6 +2128,14 @@ clean Markdown; you don't need to commit.
     disk_monitor_task = asyncio.create_task(disk_monitor.run())
     app.state.disk_monitor = disk_monitor
 
+    # Start license heartbeat (call2home — opt-in, no-op unless license_server_url is set)
+    from app.services.license_heartbeat_service import LicenseHeartbeatService
+    from app.db.session import async_session_factory as _sf_lic_hb
+
+    license_heartbeat = LicenseHeartbeatService(_sf_lic_hb)
+    license_heartbeat_task = asyncio.create_task(license_heartbeat.run())
+    app.state.license_heartbeat = license_heartbeat
+
     # Start embedding backfill (for semantic memory search)
     from app.services.embedding_backfill import run_backfill_loop
     from app.db.session import async_session_factory as _sf_emb
@@ -2172,6 +2180,8 @@ clean Markdown; you don't need to commit.
     user_lifecycle_task.cancel()
     disk_monitor.stop()
     disk_monitor_task.cancel()
+    license_heartbeat.stop()
+    license_heartbeat_task.cancel()
     embedding_backfill_task.cancel()
     if telegram_task:
         telegram_task.cancel()
