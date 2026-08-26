@@ -2226,8 +2226,14 @@ class RealtimeVoiceSession:
             if (data.get("role") or "").upper() == "USER":
                 self._drop_audio = False
         elif kind == "interrupted":
-            # Nova Sonic detected a barge-in itself → skip the rest of this turn.
-            self._drop_audio = True
+            # Nova Sonic detected a barge-in itself (the "just speak to interrupt"
+            # UX) — must do the SAME full stop as the explicit interrupt() button:
+            # dropping future audio alone leaves whatever was already queued (both
+            # server-side _out_queue and the client's local buffer) playing on,
+            # so the bot keeps talking for a few seconds after the user starts
+            # speaking (reported 2026-08-26). interrupt() also purges the queue
+            # and tells the client to flush — do the whole thing, not just step 1.
+            await self.interrupt()
         elif kind == "text":
             role = (data.get("role") or "").upper()
             text = data.get("text", "")
@@ -2709,13 +2715,15 @@ class RealtimeVoiceSession:
                     "caption": str(edata.get("caption") or ""),
                 }})
         elif kind == "file":
+            filename = str(edata.get("filename") or "Datei")
+            media_type = str(edata.get("media_type") or "")
+            caption = str(edata.get("caption") or "")
+            path = str(edata.get("path") or "")
             await self._emit({"type": "media", "data": {
-                "kind": "file",
-                "filename": str(edata.get("filename") or "Datei"),
-                "media_type": str(edata.get("media_type") or ""),
-                "caption": str(edata.get("caption") or ""),
-                "path": str(edata.get("path") or ""),  # for the download link
+                "kind": "file", "filename": filename, "media_type": media_type,
+                "caption": caption, "path": path,  # for the download link
             }})
+            await self._persist_media(filename, media_type, path, caption)
 
     def _collect_transfer_files(self) -> list[dict]:
         """List files currently in /workspace/transfer (top + one subdir level)."""
@@ -2788,6 +2796,7 @@ class RealtimeVoiceSession:
                 "caption": "",
                 "path": path,
             }})
+            await self._persist_media(name, media_type, path)
             if len(self._shown_files) >= 24:  # hard cap per call
                 break
 
@@ -3677,6 +3686,69 @@ class RealtimeVoiceSession:
         except Exception:  # noqa: BLE001
             logger.debug("voice persist turn failed agent=%s", self.agent_id, exc_info=True)
 
+    async def _persist_media(self, filename: str, media_type: str, path: str, caption: str = "") -> None:
+        """Attach a file the agent presented mid-call to the persisted chat session,
+        the same one ``_persist_turn`` writes to — so it survives after the call
+        (reported 2026-08-26: files shown during the call vanished with the dock,
+        weren't in the real chat, and had no way to open them there).
+
+        Reuses the ``meta.presented_files`` shape the normal (non-voice) chat
+        pipeline already writes (see api/ws.py) so the SAME iOS/web file-card
+        rendering picks it up — no separate voice-only display path.
+        """
+        if not path or not filename:
+            return
+        from app.db.session import async_session_factory
+        from app.models.chat_message import ChatMessage
+        from app.models.chat_session import ChatSession
+        from sqlalchemy import select
+        file_entry = {"path": path, "filename": filename, "media_type": media_type, "caption": caption}
+        try:
+            async with async_session_factory() as db:
+                titled = (await db.execute(
+                    select(ChatSession).where(
+                        ChatSession.agent_id == self.agent_id,
+                        ChatSession.session_id == self.session_id,
+                    )
+                )).scalar_one_or_none()
+                if titled is None:
+                    db.add(ChatSession(
+                        agent_id=self.agent_id, session_id=self.session_id,
+                        title="Sprach-Gespräch",
+                    ))
+                    await db.commit()
+                # An assistant turn is already being coalesced (_persist_turn) →
+                # attach the file to THAT message instead of creating a bare one,
+                # so it lands next to the sentence that announced it.
+                row = None
+                if self._persist_role == "assistant" and self._persist_mid:
+                    row = (await db.execute(
+                        select(ChatMessage).where(
+                            ChatMessage.agent_id == self.agent_id,
+                            ChatMessage.session_id == self.session_id,
+                            ChatMessage.message_id == self._persist_mid,
+                            ChatMessage.role == "assistant",
+                        )
+                    )).scalar_one_or_none()
+                if row is not None:
+                    meta = dict(row.meta or {})
+                    existing = list(meta.get("presented_files") or [])
+                    if not any(f.get("path") == path for f in existing):
+                        existing.append(file_entry)
+                    meta["presented_files"] = existing
+                    row.meta = meta
+                else:
+                    mid = uuid.uuid4().hex[:12]
+                    self._persist_role = "assistant"
+                    self._persist_mid = mid
+                    db.add(ChatMessage(
+                        agent_id=self.agent_id, session_id=self.session_id, message_id=mid,
+                        role="assistant", content="", meta={"source": "voice", "presented_files": [file_entry]},
+                    ))
+                await db.commit()
+        except Exception:  # noqa: BLE001
+            logger.debug("voice persist media failed agent=%s", self.agent_id, exc_info=True)
+
     async def _search_knowledge(self, query: str, limit: int = 5) -> str:
         """Vector-search the agent's own memory/knowledge (the same store the
         memory_search MCP tool uses) — direct, no agent round-trip."""
@@ -4328,6 +4400,7 @@ class RealtimeVoiceSession:
             "kind": "file", "filename": filename, "media_type": mime,
             "caption": rel_disp, "path": full,
         }})
+        await self._persist_media(filename, mime, full, rel_disp)
         return (
             f"Ich habe „{rel_disp}“ als Karte zum Öffnen/Herunterladen bereitgestellt. Sag dem "
             "Nutzer kurz in der ICH-Form, dass die Datei rechts bereitliegt."

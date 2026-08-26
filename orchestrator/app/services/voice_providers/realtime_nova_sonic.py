@@ -321,8 +321,13 @@ class NovaSonicSession:
                 "interactive": True, "role": "USER",
                 "textInputConfiguration": {"mediaType": "text/plain"},
             }})
+            # `_sprechbar` statt `_clean_text`: dieser Text wird genau wie ein
+            # Tool-Ergebnis vorgelesen (siehe send_tool_result) — dieselbe
+            # zusaetzliche Kodierung, derselbe "n1./n2."-Bug (erneut gemeldet
+            # am 26.08.2026), nur an dieser zweiten Stelle war der Fix vom
+            # 21.08. noch nicht nachgezogen.
             await self._send_event({"textInput": {
-                "promptName": self._prompt_name, "contentName": content_name, "content": _clean_text(text),
+                "promptName": self._prompt_name, "contentName": content_name, "content": _sprechbar(text),
             }})
             await self._send_event({"contentEnd": {
                 "promptName": self._prompt_name, "contentName": content_name,
