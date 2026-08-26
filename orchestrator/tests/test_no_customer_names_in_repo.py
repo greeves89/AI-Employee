@@ -52,6 +52,30 @@ TEXTENDUNGEN = {
     ".css", ".html", ".sh", ".toml", ".cfg", ".ini", ".txt", ".sql",
 }
 
+#: Eingebettete Binaerdaten (``data:...;base64,...``) sind keine lesbare
+#: Sprache. In einem 140 KB grossen Bild trifft ein vierstelliger Name mit
+#: hoher Wahrscheinlichkeit zufaellig zu — am 2026-08-24 stand genau deshalb
+#: die Pruefung auf ``main`` rot und blockierte alle vier offenen Pull
+#: Requests, ohne dass irgendwo ein Name stand. Ein dauerhaft roter Test wird
+#: ignoriert, und dann faengt er den echten Fall nicht mehr.
+BASE64_NUTZLAST = re.compile(r"data:[^;,\s\"']*;base64,[A-Za-z0-9+/=]+")
+
+
+def _ohne_binaerdaten(zeile: str) -> str:
+    """Nur die Nutzlast faellt weg — der Text drumherum wird weiter geprueft.
+
+    Das Ergebnis geht auch in die Fundmeldung. Eine Zeile mit eingebettetem
+    Bild ist schnell 137 KB lang; ungeschnitten besteht die auf 90 Zeichen
+    gekuerzte Meldung nur aus Bilddaten, und der Name, um den es geht, faellt
+    hinten heraus. Wer die Meldung liest, muss sehen, was getroffen hat.
+    """
+    return BASE64_NUTZLAST.sub("", zeile)
+
+
+def _fundmeldung(pfad, nr: int, zeile: str) -> str:
+    """Eine Zeile der Fundliste — geschnitten, damit der Name sichtbar bleibt."""
+    return f"{pfad}:{nr}: {_ohne_binaerdaten(zeile).strip()[:90]}"
+
 
 def _kandidaten():
     """Die Dateien, die tatsaechlich oeffentlich werden.
@@ -100,8 +124,8 @@ class NoCustomerNamesTests(unittest.TestCase):
             except (UnicodeDecodeError, OSError):
                 continue
             for nr, zeile in enumerate(text.splitlines(), 1):
-                if muster.search(zeile):
-                    funde.append(f"{p.relative_to(ROOT)}:{nr}: {zeile.strip()[:90]}")
+                if muster.search(_ohne_binaerdaten(zeile)):
+                    funde.append(_fundmeldung(p.relative_to(ROOT), nr, zeile))
         self.assertEqual(
             funde, [],
             "Kunden-/Personennamen im oeffentlichen Repo. Bitte durch 'beim Kunden' "
@@ -126,6 +150,57 @@ class TheGuardActuallyWorksTests(unittest.TestCase):
         self.assertTrue(muster.search("Fehler trat bei SKBS auf"))
         self.assertTrue(muster.search("mail.klinikum-bs.de"))
         self.assertFalse(muster.search("Fehler trat bei einem Kunden auf"))
+
+
+class Base64NutzlastTests(unittest.TestCase):
+    """Bilddaten sind kein Text — und der Text daneben bleibt trotzdem geprueft.
+
+    Die Namen werden hier absichtlich aus ``VERBOTEN`` gelesen statt
+    hingeschrieben: so kommt durch diese Tests keine weitere Fundstelle ins
+    Repo, und beim naechsten Kunden wachsen sie von allein mit.
+    """
+
+    def setUp(self):
+        self.muster = re.compile("|".join(VERBOTEN), re.IGNORECASE)
+        self.name = VERBOTEN[0]
+
+    def test_zufallstreffer_im_bild_zaehlt_nicht(self):
+        zeile = f'<img src="data:image/jpeg;base64,QUJD{self.name}RUZH==">'
+        self.assertTrue(
+            self.muster.search(zeile),
+            "Vorbedingung: ungeschnitten muss diese Zeile auffallen — sonst "
+            "prueft der Test nicht das Ausschneiden, sondern gar nichts.",
+        )
+        self.assertFalse(self.muster.search(_ohne_binaerdaten(zeile)))
+
+    def test_nur_die_nutzlast_faellt_weg(self):
+        davor = f'<img alt="{self.name}" src="data:image/png;base64,QUJDRA==">'
+        dahinter = f'<img src="data:image/png;base64,QUJDRA=="> <!-- {self.name} -->'
+        self.assertTrue(self.muster.search(_ohne_binaerdaten(davor)))
+        self.assertTrue(self.muster.search(_ohne_binaerdaten(dahinter)))
+
+    def test_die_fundmeldung_zeigt_den_namen_statt_der_bilddaten(self):
+        """Sonst wird aus einem lauten Fehler ein unlesbarer.
+
+        Der Name steht hier hinter der Nutzlast — genau die Stelle, die die
+        Kuerzung auf 90 Zeichen verschluckt. Stuende er davor, waere er auch
+        ungeschnitten sichtbar und der Test bewiese nichts.
+        """
+        fuellung = "QUJDRA==" * 200
+        zeile = f'<img src="data:image/png;base64,{fuellung}"> <!-- {self.name} -->'
+        self.assertNotIn(
+            self.name.lower(), zeile.strip()[:90].lower(),
+            "Vorbedingung: ungeschnitten muss der Name aus der Meldung fallen.",
+        )
+        self.assertIn(self.name.lower(), _fundmeldung("bild.html", 556, zeile).lower())
+
+    def test_echter_fund_im_fliesstext_bleibt_ein_fund(self):
+        zeile = f"Fehler trat bei {self.name.upper()} auf"
+        self.assertTrue(self.muster.search(_ohne_binaerdaten(zeile)))
+
+    def test_bildverweis_ohne_nutzlast_bleibt_unangetastet(self):
+        zeile = f'<img src="/bilder/{self.name}.png">'
+        self.assertEqual(_ohne_binaerdaten(zeile), zeile)
 
 
 if __name__ == "__main__":

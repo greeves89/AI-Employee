@@ -2055,6 +2055,11 @@ export function feedbackImageUrl(fid: string): string {
   return `${getBase()}/feedback/image/${encodeURIComponent(fid)}`;
 }
 
+// Volltext (Markdown) eines Widget-Feedbacks (admin-only).
+export async function getFeedbackItem(fid: string): Promise<{ id: string; md: string }> {
+  return fetchJSON(`${getBase()}/feedback/item/${encodeURIComponent(fid)}`);
+}
+
 // Agent Assignments (Admin)
 export async function assignAgentToUser(userId: string, templateId: number, name?: string, budgetUsd?: number): Promise<{ status: string; agent_id: string; agent_name: string; user_name: string; template_name: string }> {
   return fetchJSON(`${getBase()}/admin/assign-agent`, {

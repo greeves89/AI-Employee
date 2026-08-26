@@ -20,6 +20,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - **Zwei gleichzeitige Starts oder Neubauten derselben App ueberholen sich
   nicht mehr.** Genau dieses Ueberholen hat die liegengebliebenen Reste
   ueberhaupt erst erzeugt. Verschiedene Apps laufen weiterhin parallel.
+## [1.268.4] - 2026-08-24
+
+### Behoben
+- **Die Namens-Wache schlug bei eingebetteten Bildern falschen Alarm — und
+  hielt damit die gesamte Auslieferung an.** Die Pruefung, die Kunden- und
+  Personennamen aus dem oeffentlichen Repo fernhaelt, verglich jede Zeile als
+  reinen Text. In einer Seite steckt ein Foto als 140 KB grosse Base64-Zeile;
+  in so viel Zeichensalat taucht ein vierstelliger Name irgendwann zufaellig
+  auf. Folge: der Testlauf auf `main` war rot, und alle vier offenen Pull
+  Requests standen auf "instabil" — obwohl an keiner Stelle ein Name stand und
+  an keinem der vier Pull Requests etwas fehlte.
+  Eingebettete Binaerdaten werden jetzt vor dem Abgleich entfernt. Der Text
+  rund um so ein Bild wird weiter geprueft, und ein Name im Fliesstext faellt
+  unveraendert auf — beides ist mit eigenen Tests festgehalten, damit die
+  Wache nicht im Stillen blind wird.
+- **Die Fundmeldung zeigt wieder, was gefunden wurde.** Meldete die Wache eine
+  Zeile mit eingebettetem Bild, bestand die auf 90 Zeichen gekuerzte Ausgabe
+  nur aus Bilddaten — der Name, um den es ging, fiel hinten heraus. Wer die
+  Meldung las, sah Datei und Zeile, aber nicht den Anlass. Gemeldet wird jetzt
+  die geschnittene Zeile.
 
 ## [1.268.3] - 2026-08-24
 
