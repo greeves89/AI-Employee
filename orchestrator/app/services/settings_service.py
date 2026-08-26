@@ -85,6 +85,10 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "oauth_apple_key_id",
     # License
     "license_key",
+    # call2home — opt-in usage/renewal heartbeat, see services/license_heartbeat_service.py.
+    # Empty license_server_url = disabled, nothing is ever sent.
+    "license_server_url",
+    "license_instance_id",
     # Lifecycle configuration
     "agent_idle_timeout_minutes",
     # Expose MS Graph MCP server to external LLM clients (OpenWebUI)
