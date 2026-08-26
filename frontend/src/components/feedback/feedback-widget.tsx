@@ -101,7 +101,8 @@ async function captureViewport(el: Element): Promise<string | null> {
       cacheBust: true,
     });
     return await drawHighlight(dataUrl, rect, dpr);
-  } catch {
+  } catch (e) {
+    console.error("Feedback-Screenshot fehlgeschlagen:", e);
     return null;
   }
 }
