@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.275.1] - 2026-08-27
+
+### Behoben
+- **Der Modal-Fix aus 1.275.0 hat live nicht funktioniert — Klick daneben schloss die Modal weiterhin nicht.** Falsche Ursache angenommen: nicht Radix' eingebaute Aussenklick-Erkennung war das Problem, sondern dass Radix' `Dialog.Content` selbst per Inline-Style `pointer-events: auto` erzwingt und damit die `pointer-events-none`-Tailwind-Klasse auf dem umschliessenden Wrapper-Element unwirksam macht — der Wrapper deckt dadurch den GESAMTEN Viewport ab und faengt jeden Klick ab, bevor er das dahinterliegende Overlay je erreicht. Live mit `elementFromPoint`/`getComputedStyle` bestaetigt. Der Klick-Handler sitzt jetzt auf dem Content-Wrapper selbst (`target === currentTarget` unterscheidet Klick-auf-Hintergrund von Klick-auf-Karte), nicht mehr auf dem nie erreichten Overlay.
+
 ## [1.275.0] - 2026-08-27
 
 ### Behoben

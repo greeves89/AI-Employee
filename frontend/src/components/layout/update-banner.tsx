@@ -225,16 +225,20 @@ export function UpdateBanner() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
-              onClick={() => setModalOpen(false)}
             />
           </Dialog.Overlay>
           <Dialog.Content asChild>
+            {/* Radix zwingt hier pointer-events:auto per Inline-Style (ueberschreibt
+                die pointer-events-none-Klasse) — dieser Wrapper faengt deshalb JEDEN
+                Klick im Viewport ab, auch den auf den "Hintergrund". target===currentTarget
+                unterscheidet Klick-auf-Hintergrund von Klick-auf-Karte (Bubbling). */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: "spring", duration: 0.4, bounce: 0.15 }}
               className="fixed inset-0 z-50 ml-[130px] flex items-center justify-center pointer-events-none"
+              onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false); }}
             >
               <div className="w-[560px] max-h-[80vh] rounded-2xl border border-foreground/[0.06] bg-card shadow-2xl shadow-black/40 flex flex-col pointer-events-auto">
               {/* Header */}
