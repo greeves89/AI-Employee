@@ -215,7 +215,7 @@ def ssl_context_for(url: str, allow_pin_new: bool = True) -> ssl.SSLContext | No
     ``allow_pin_new`` steuert NUR den Erstkontakt (noch kein Pin fuer den
     Host): normale Verbindungen duerfen pinnen (TOFU, wie SSH), stille
     Hintergrundaufrufe koennen es abschalten. Pinning ist die Vertrauensbasis
-    NUR fuer selbstsignierte Server (SKBS, lokale Boxen) — dort wird ein
+    NUR fuer selbstsignierte Server (eine Kundenanlage, lokale Boxen) — dort wird ein
     GEAENDERTES Zertifikat nie automatisch akzeptiert, das braucht immer
     ``repin_server`` per ausdruecklicher Nutzeraktion.
 
@@ -916,6 +916,11 @@ BASE_ACTIONS = [
     "shell_run",
     "browser_navigate", "browser_snapshot", "browser_click", "browser_fill",
     "browser_wait", "browser_capture", "browser_tabs", "browser_close",
+    # ego lite: lokale JS-Automation gegen die ECHTE, eingeloggte Browsersitzung
+    # des Nutzers (siehe EgoBrowser-Abschnitt unten). Wie `browser_*` immer
+    # angekuendigt, auch ohne installiertes ego lite — der Fehler kommt dann
+    # erst beim Aufruf, mit klarer Meldung statt stiller Zusage.
+    "ego_run",
 ]
 
 # Nur wenn der Bedienungshilfen-Baum ueberhaupt verfuegbar ist — ohne ihn waere
@@ -1183,6 +1188,83 @@ class BrowserController:
                 {"index": i, "url": p.url, "title": p.title()} for i, p in enumerate(pages)
             ]}
         return self._call(job)
+
+
+def _ego_browser_binary() -> str | None:
+    """Pfad zum lokalen ``ego-browser``-CLI — oder ``None``, wenn ego lite auf
+    diesem Rechner nicht installiert bzw. nicht eingerichtet ist.
+
+    Das CLI wird beim Onboarding der ego-lite-App unter ``~/.local/bin/ego-browser``
+    registriert (siehe ``~/.claude/skills/ego-browser/references/install.md``).
+    Als Tray-/LaunchAgent-Prozess gestartet hat die Bridge dieses Verzeichnis oft
+    NICHT im PATH — deshalb zusaetzlich der feste Pfad, nicht nur ``shutil.which``.
+    """
+    import shutil
+    found = shutil.which("ego-browser")
+    if found:
+        return found
+    candidate = os.path.join(os.path.expanduser("~"), ".local", "bin", "ego-browser")
+    if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+        return candidate
+    return None
+
+
+def ego_browser_available() -> bool:
+    return _ego_browser_binary() is not None
+
+
+def ego_run(script: str, timeout: int = 120) -> dict:
+    """Ein JS-Snippet an die lokale ego-lite-Automation schicken.
+
+    ego lite arbeitet BEWUSST in der echten, eingeloggten Sitzung des Nutzers —
+    Task Spaces erben den Login-Status, anders als ``BrowserController`` oben,
+    der bewusst ein eigenes, isoliertes Profil haelt (siehe dessen Docstring).
+    Das ist hier der ganze Zweck: der Agent soll ohne erneute Anmeldung an
+    bereits eingeloggten Konten arbeiten koennen. Die Kehrseite steht
+    serverseitig in ``computer_use.py``: die Faehigkeitsgruppe ``ego_browser``
+    ist wie ``shell`` standardmaessig AUS, der Nutzer schaltet sie bewusst frei
+    — und anders als ``browser_navigate`` gibt es HIER keine feingranulare
+    Adress-Freigabe: ein JS-Skript ist kein einzelnes Ziel, das sich vorab
+    pruefen liesse. Die Capability-Gruppe ist die einzige Schranke.
+
+    Ausfuehrung ueber ``ego-browser nodejs`` (dasselbe CLI, das die
+    ``ego-browser``-Skill lokal fuer Claude Code nutzt) — das Skript geht per
+    stdin rein, die komplette ``cliLog()``-Ausgabe kommt per stdout zurueck.
+    """
+    import subprocess
+    binary = _ego_browser_binary()
+    if not binary:
+        return {"ok": False, "error": (
+            "ego lite ist auf diesem Rechner nicht gefunden (weder auf dem PATH "
+            "noch unter ~/.local/bin/ego-browser). Installation: https://lite.ego.app/"
+        )}
+    if not script.strip():
+        return {"ok": False, "error": "Kein Skript uebergeben."}
+    try:
+        result = subprocess.run(
+            [binary, "nodejs"],
+            input=script,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"ego-browser antwortet nicht (>{timeout}s)"}
+    except OSError as e:
+        return {"ok": False, "error": f"ego-browser liess sich nicht starten: {e}"}
+    if result.returncode != 0:
+        return {"ok": False, "error": (
+            result.stderr.strip() or result.stdout.strip()
+            or f"ego-browser beendete sich mit Code {result.returncode}"
+        )}
+    # cliLog() schreibt nachweislich auf stderr, nicht stdout (leer bei jedem
+    # lokalen Test) — vermutlich reserviert das CLI stdout fuer ein eigenes
+    # Protokoll. stdout wird trotzdem mitgenommen, falls eine kuenftige
+    # Fassung dort etwas ausgibt.
+    output = result.stderr
+    if result.stdout:
+        output = (output + "\n" + result.stdout) if output else result.stdout
+    return {"ok": True, "output": output}
 
 
 def allowed_shell_dirs() -> list[str]:
@@ -1895,6 +1977,13 @@ class CommandDispatcher:
             elif action == "browser_close":
                 return self._browser.close()
 
+            # ── ego lite (echte, eingeloggte Sitzung) ────────────────────────
+            elif action == "ego_run":
+                return ego_run(
+                    str(params.get("script") or ""),
+                    int(params.get("timeout") or 120),
+                )
+
             elif action == "open_url":
                 # Eigener Zweig, weil `open -a <url>` NICHT funktioniert: -a erwartet eine
                 # Anwendung. Eine Adresse geht ohne -a an den Standardbrowser. Genau daran
@@ -2184,6 +2273,7 @@ class Bridge:
                     "capabilities": BASE_ACTIONS
                                     + (AX_ACTIONS if ax_tree_available() else []),
                     "ax_tree_available": ax_tree_available(),
+                    "ego_browser_available": ego_browser_available(),
                 }
                 await ws.send(json.dumps(caps))
                 log.info(f"Connected. Waiting for commands... (platform: {platform.system()})")

@@ -516,7 +516,15 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                             "'focus_window'. Browser in the agent's OWN profile (needs the "
                             "'browser' capability): 'browser_navigate', 'browser_snapshot', "
                             "'browser_click', 'browser_fill', 'browser_wait', "
-                            "'browser_capture', 'browser_tabs', 'browser_close'."
+                            "'browser_capture', 'browser_tabs', 'browser_close'. "
+                            "ego lite — the user's REAL, already-logged-in browser session "
+                            "(needs the 'ego_browser' capability, off by default; use this "
+                            "instead of browser_* when the task needs an account the user is "
+                            "already signed into and re-authenticating in a fresh profile "
+                            "would be unnecessary friction): 'ego_run' (params: {script: "
+                            "'<JS body, same helpers as the ego-browser skill heredoc — "
+                            "useOrCreateTaskSpace/openOrReuseTab/snapshotText/click/js/cdp>', "
+                            "timeout: 120}; returns whatever the script passed to cliLog())."
                         ),
                     },
                     "session_id": {

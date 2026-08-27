@@ -77,8 +77,8 @@ class EvalIsolationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("ev-anna", await self._runs(_user("anna")))
 
     async def test_ownerless_agents_are_hidden_from_regular_users(self):
-        """Umgekehrt seit 2026-08-27 (gemeldet bei einem Mehr-Abteilungen-Kunden,
-        SKBS): ein Agent ohne zugewiesenen Besitzer ist NICHT mehr automatisch
+        """Umgekehrt seit 2026-08-27 (gemeldet bei einem Mehr-Abteilungen-Kunden):
+        ein Agent ohne zugewiesenen Besitzer ist NICHT mehr automatisch
         "fuer alle" — sonst sieht jede neue Abteilung jede andere, bis jemand
         die Zuweisung nachtraegt. Admins sehen ihn weiterhin (naechster Test),
         so kann er zugewiesen werden."""

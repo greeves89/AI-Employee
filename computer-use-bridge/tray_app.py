@@ -118,6 +118,7 @@ CAPABILITY_META = [
     {"id": "apps",          "label": "Apps öffnen / schließen","desc": "Anwendungen starten, beenden, fokussieren", "risk": "mittel"},
     {"id": "clipboard",     "label": "Zwischenablage",        "desc": "Zwischenablage lesen und schreiben",     "risk": "mittel"},
     {"id": "browser",       "label": "Browser-Steuerung",     "desc": "Eigenes Browser-Profil bedienen (Seiten lesen, Formulare)", "risk": "hoch"},
+    {"id": "ego_browser",   "label": "ego lite",              "desc": "Deine ECHTE, eingeloggte Browsersitzung bedienen (ego-lite-App noetig)", "risk": "hoch"},
     {"id": "input_capture", "label": "Eingaben mitschneiden", "desc": "Deine Klicks und Tasten aufzeichnen (Replay)", "risk": "hoch"},
     {"id": "voice_capture", "label": "Mikrofon",              "desc": "Mikrofon mithören (nur zwischen Start und Stopp)", "risk": "hoch"},
     {"id": "shell",         "label": "Shell-Befehle",         "desc": "Terminal-Befehle in freigegebenen Ordnern (siehe Ordner-Zugriff)", "risk": "hoch"},

@@ -70,7 +70,7 @@ class Agent(Base, TimestampMixin):
     # test_member_sees_only_own_things.py) — an unowned agent is usually a
     # mistake (deleted user, script without user_id), not a decision, and
     # leaked tasks/costs/notifications across departments on a multi-tenant
-    # customer install (SKBS). Admin-only toggle, mirrors shared_for_rooms.
+    # multi-department customer install. Admin-only toggle, mirrors shared_for_rooms.
     is_platform_agent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # SHA-256 hex of the plaintext webhook token. Set by
     # /agents/{id}/webhook/rotate; plaintext is shown once and never stored.

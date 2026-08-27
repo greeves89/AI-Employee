@@ -68,7 +68,7 @@ async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
 
     Ownerless agents (user_id IS NULL) are NOT auto-included here (changed
     2026-08-27) — they used to count as "platform agents" visible to
-    everyone, which on a multi-department customer install (SKBS) meant
+    everyone, which on a multi-department customer install meant
     every user saw every other department's tasks/costs the moment an
     agent was created without an assigned owner (usually by accident, not
     decision). ``is_platform_agent`` is the explicit, admin-set flag for a

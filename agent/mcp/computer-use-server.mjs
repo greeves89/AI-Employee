@@ -405,6 +405,38 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: "object", properties: {} },
     },
     {
+      name: "ego_run",
+      description:
+        "Run a JS automation script against ego lite, a Chromium-based browser on the " +
+        "user's machine that works in their REAL, already-logged-in browser session " +
+        "(unlike browser_navigate/browser_*, which use an isolated separate profile the " +
+        "user has to sign into again). Use this when the task needs an account the user " +
+        "is already logged into in their everyday browser (mail, internal tools, etc.) " +
+        "and re-authenticating in a fresh profile would be unnecessary friction. The " +
+        "script runs via the local `ego-browser nodejs` CLI with helpers like " +
+        "useOrCreateTaskSpace, openOrReuseTab, snapshotText, click, fillInput, js, cdp — " +
+        "write it exactly as you would inside an `ego-browser nodejs <<'EOF' ... EOF` " +
+        "heredoc. Only the text passed to cliLog(...) calls is returned. Requires the " +
+        "'ego_browser' capability (off by default) AND ego lite installed on the user's " +
+        "machine.",
+      inputSchema: {
+        type: "object",
+        required: ["script"],
+        properties: {
+          script: {
+            type: "string",
+            description:
+              "The Node.js script body (same helpers/conventions as the ego-browser skill's heredoc).",
+          },
+          timeout: {
+            type: "integer",
+            description: "Seconds before the script is aborted (default 120).",
+            default: 120,
+          },
+        },
+      },
+    },
+    {
       name: "computer_shell",
       description:
         "Run a shell command ON THE USER'S OWN MACHINE (their Mac/PC) via the bridge — " +
@@ -719,6 +751,18 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           content: [{ type: "text", text: result.ok ? "Browser closed (profile kept)." : `Error: ${result.error}` }],
           isError: !result.ok,
         };
+
+      case "ego_run": {
+        const timeout = args?.timeout ?? 120;
+        result = await sendCommand("ego_run", {
+          script: args?.script ?? "",
+          timeout,
+        }, timeout + 30);
+        return {
+          content: [{ type: "text", text: result.ok ? (result.output || "(no output)") : `Error: ${result.error}` }],
+          isError: !result.ok,
+        };
+      }
 
       case "computer_shell": {
         result = await sendCommand("shell_run", {

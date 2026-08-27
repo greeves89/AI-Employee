@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.269.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Agenten koennen jetzt ego lite bedienen — die echte, eingeloggte
+  Browsersitzung des Nutzers, nicht nur ein isoliertes Profil.** Bisher
+  konnte die Desktop-Bridge einen Browser nur im eigenen, separaten Profil
+  steuern (`browser_navigate` & Co.) — bewusst getrennt vom echten Profil des
+  Nutzers, damit kein Login-Diebstahl moeglich ist. Fuer Aufgaben, bei denen
+  der Nutzer bereits angemeldet ist (Mail, interne Tools), war das jedes Mal
+  eine erneute Anmeldung. Neue Faehigkeitsgruppe `ego_browser` (wie `shell`
+  standardmaessig AUS, bewusstes Freischalten durch den Nutzer): eine neue
+  Aktion `ego_run` schickt ein JS-Snippet an das lokale `ego-browser`-CLI
+  (Voraussetzung: die ego-lite-App ist auf dem Rechner installiert) und
+  liefert die Ausgabe zurueck — dieselben Helfer (Task Spaces, Klicken,
+  Formulare fuellen, Seiteninhalt lesen), die auch die `ego-browser`-Skill
+  fuer Claude Code lokal nutzt. Ueber alle drei Laufzeiten hinweg verdrahtet
+  (MCP-Server fuer Claude Code, `computer_use`-Werkzeug fuer Codex/Custom-LLM)
+  und im Berechtigungs-Dialog der Bridge sichtbar.
+
 ## [1.268.4] - 2026-08-24
 
 ### Behoben

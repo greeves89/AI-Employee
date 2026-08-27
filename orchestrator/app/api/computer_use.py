@@ -124,6 +124,14 @@ CAPABILITY_GROUPS: dict[str, list[str]] = {
         "browser_navigate", "browser_snapshot", "browser_click", "browser_fill",
         "browser_wait", "browser_capture", "browser_tabs", "browser_close",
     ],
+    # ego lite: JS-Automation gegen die ECHTE, eingeloggte Browsersitzung des
+    # Nutzers (Task Spaces erben den Login-Status) — bewusst das Gegenteil von
+    # `browser` oben, das ein isoliertes eigenes Profil haelt. Deshalb wie
+    # `shell` standardmaessig AUS: sonst bekaeme der Agent stillschweigend
+    # Zugriff auf bereits angemeldete Konten. Keine URL-Feinsteuerung wie bei
+    # `browser_navigate` moeglich — `ego_run` schickt ein JS-Skript, kein
+    # einzelnes Ziel, das sich vorab pruefen liesse.
+    "ego_browser": ["ego_run"],
 }
 
 # Groups enabled for all new sessions unless the user changes them.

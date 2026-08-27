@@ -28,7 +28,7 @@ MANAGER = (ROOT / "orchestrator/app/core/agent_manager.py").read_text()
 # 2026-08-27: the SAME "unowned = shared" mistake this file was written to guard
 # against had quietly drifted back in — not in agents.py, but in five OTHER
 # endpoints that never got the memo (found on a multi-department customer
-# install, SKBS, where it leaked one department's tasks/costs/notifications
+# install, where it leaked one department's tasks/costs/notifications
 # to another). Their code comments even cited agents.py as the precedent
 # ("dieselbe Regel wie in der Agentenliste") — a precedent that had already
 # stopped being true. Guarding all five here, same file, same reasoning,
