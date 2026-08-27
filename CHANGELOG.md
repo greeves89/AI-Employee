@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.271.0] - 2026-08-27
+
+### Behoben
+- **Die Sprachfront kannte nur 8 handverdrahtete Bridge-Aktionen — jede neue
+  Faehigkeit (zuletzt `ego_run`) fehlte ihr automatisch, bis sie hier von
+  Hand nachgetragen wurde.** Live gemeldet: "1:1 die gleichen Tools wie der
+  Agent" — der Agent selbst erreicht ueber die MCP-Server der Bridge JEDE
+  Aktion, die Sprachfront kannte nur `open/screenshot/find/click/type/key/
+  wait/scroll` (jetzt neu: `ego`). Die tiefere Ursache: ein drittes, unabhaengig
+  gepflegtes Werkzeug-Schema (`DESKTOP_TOOL`) neben dem MCP-Server und den
+  Codex/Custom-LLM-Definitionen — genau das Muster, vor dem die Harness-
+  Paritaet-Regel warnt. Neu: eine Rohdurchreiche — jeder ECHTE Bridge-
+  Aktionsname (`shell_run`, `browser_navigate`, `ego_run`, `get_clipboard`, …)
+  geht mit einem `params`-Objekt direkt an dieselbe `dispatch_bridge_command`-
+  Funktion, dieselbe Faehigkeits-/Besitzpruefung wie ueberall sonst. Neue
+  Bridge-Aktionen erreichen die Sprachfront damit automatisch — keine
+  manuelle Nachpflege mehr noetig.
+
 ## [1.270.1] - 2026-08-27
 
 ### Behoben

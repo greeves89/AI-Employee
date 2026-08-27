@@ -819,6 +819,18 @@ DESKTOP_TOOL = {
             "oder Rolle. action='wait' — wartet, bis so ein Element erscheint. "
             "action='key' — Tastenkombination, text z. B. 'cmd+f' oder 'enter'. "
             "action='scroll' — scrollt (text = Anzahl, negativ = nach unten).\n"
+            "action='ego' — SEIN ECHTER, EINGELOGGTER BROWSER (ego lite), NICHT der obige "
+            "screenshot/click/find-Weg. Nutze das SOFORT und DIREKT, wenn eine Aufgabe einen "
+            "Account braucht, in dem der Nutzer schon angemeldet ist (Mail, Reisekosten-Portal, "
+            "internes Tool, irgendein 'mach das im Browser fertig') — nicht erst open+find+click "
+            "versuchen. text = ein JS-Skript, das gegen ego lite laeuft (dieselben Helfer wie in "
+            "einem `ego-browser nodejs`-Skript: useOrCreateTaskSpace, openOrReuseTab, "
+            "snapshotText, click, fillInput, js, cdp — nur cliLog(...)-Ausgaben kommen zurueck). "
+            "Startet ego lite SELBST, falls es nicht laeuft — KEIN vorheriges action='open' "
+            "noetig, das ist ein unnoetiger Umweg. Beispiel: text = "
+            "\"const t = await useOrCreateTaskSpace('reisekosten'); "
+            "await openOrReuseTab('https://intranet.example/reisekosten'); "
+            "cliLog(await snapshotText());\"\n"
             "MEHRERE BILDSCHIRME: erst `screenshot` MIT display=N, dann `click` mit "
             "demselben display=N. Die Koordinaten gelten immer fuer den Bildschirm, "
             "den du gerade angesehen hast.\n"
@@ -827,20 +839,41 @@ DESKTOP_TOOL = {
             "du koennest 'nur oeffnen, aber nicht navigieren' — das stimmt nicht.\n"
             "Läuft keine Bridge, sag ihm genau das (Bridge-App starten), weiche NICHT auf "
             "etwas anderes aus. Beschreibe NIEMALS einen Bildschirm, dessen Screenshot "
-            "fehlgeschlagen ist."
+            "fehlgeschlagen ist.\n"
+            "JEDE ANDERE FAEHIGKEIT DER BRIDGE: Die obigen Kurzformen (open/screenshot/find/"
+            "click/type/key/wait/scroll/ego) sind nur die haeufigsten — die Bridge kann mehr "
+            "(z. B. shell_run, browser_navigate/-click/-fill/-snapshot fuer ein isoliertes "
+            "Browser-Profil, get_clipboard/set_clipboard, list_windows, focus_window, "
+            "close_app, drag). Fuer JEDE davon: setze action auf den ECHTEN Aktionsnamen der "
+            "Bridge (genau wie der Agent ihn nennt) und uebergib die Parameter in `params` als "
+            "Objekt — z. B. action='shell_run', params={command:'ls'}, oder "
+            "action='browser_navigate', params={url:'https://…'}. Das erreicht ALLES, was der "
+            "Agent (Computer-Use) auch kann — nichts davon ist dir verwehrt.\n"
+            "Faehigkeiten, die serverseitig nicht freigeschaltet sind (z. B. shell, "
+            "ego_browser — beide standardmaessig aus), meldet die Bridge als klaren Fehler; "
+            "sag dem Nutzer dann genau das statt es zu verschweigen."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
             "properties": {
-                "action": {"type": "string", "description": "open | screenshot | find | click | type | key | wait | scroll"},
+                "action": {"type": "string", "description": (
+                    "open | screenshot | find | click | type | key | wait | scroll | ego — "
+                    "oder JEDER echte Bridge-Aktionsname (siehe Beschreibung) fuer alles "
+                    "andere, zusammen mit `params`."
+                )},
                 "target": {"type": "string", "description": "URL/Programmname (open) oder Beschriftung des gesuchten Elements (find/wait)."},
-                "text": {"type": "string", "description": "Text (type), Tastenkombination wie 'cmd+f' (key) oder Scroll-Anzahl."},
+                "text": {"type": "string", "description": "Text (type), Tastenkombination wie 'cmd+f' (key), Scroll-Anzahl, oder das JS-Skript (ego)."},
                 "x": {"type": "number", "description": "X-Koordinate (bei action='click')."},
                 "y": {"type": "number", "description": "Y-Koordinate (bei action='click')."},
                 "display": {"type": "number", "description": (
                     "Welchen Bildschirm aufnehmen (bei action='screenshot'). "
                     "1 = Hauptbildschirm. Weglassen = Hauptbildschirm. Nach einem "
                     "Screenshot steht in der Antwort, wie viele es gibt."
+                )},
+                "params": {"type": "object", "description": (
+                    "Nur fuer einen echten Bridge-Aktionsnamen in `action` (nicht fuer die "
+                    "Kurzformen oben) — die Parameter dieser Aktion als Objekt, z. B. "
+                    "{command:'ls'} fuer shell_run oder {url:'https://…'} fuer browser_navigate."
                 )},
             },
             "required": ["action"],
@@ -2444,6 +2477,7 @@ class RealtimeVoiceSession:
                 str(args.get("target") or ""),
                 str(args.get("text") or ""),
                 args.get("x"), args.get("y"), args.get("display"),
+                args.get("params") if isinstance(args.get("params"), dict) else None,
             ))
             return
 
@@ -3293,8 +3327,14 @@ class RealtimeVoiceSession:
         return ("Ich kenne nur 'schau zu' (starten) und 'fertig' (Skill bauen) — "
                 f"'{action}' sagt mir nichts.")
 
+    #: Kurzformen, die _desktop() selbst in eine Bridge-Aktion uebersetzt — jede
+    #: andere Aktion geht als Rohdurchreiche direkt durch (siehe _desktop unten).
+    _DESKTOP_SHORTHANDS = frozenset({
+        "open", "screenshot", "click", "type", "find", "wait", "key", "scroll", "ego",
+    })
+
     async def _desktop(self, action: str, target: str = "", text: str = "",
-                       x=None, y=None, display=None) -> str:
+                       x=None, y=None, display=None, raw_params: dict | None = None) -> str:
         """Rechner des Nutzers über die Desktop-Bridge bedienen.
 
         Geht bewusst durch `dispatch_bridge_command` — dieselbe Funktion, die auch der
@@ -3385,8 +3425,22 @@ class RealtimeVoiceSession:
             except ValueError:
                 pass
             act, params = "scroll", {"clicks": amount}
+        elif action == "ego":
+            if not text.strip():
+                return "Mir fehlt das Skript für ego lite."
+            act, params = "ego_run", {"script": text}
+        elif action:
+            # Rohdurchreiche: JEDER echte Bridge-Aktionsname, den diese Kurzformen nicht
+            # abdecken (shell_run, browser_*, get_clipboard, list_windows, ...) — sonst
+            # bliebe die Sprachfront bei jeder neuen Bridge-Faehigkeit wieder zurueck,
+            # bis hier von Hand eine weitere Kurzform ergaenzt wird. Genau DAS ist am
+            # 27.08.2026 mit ego_run passiert (Nutzer-Meldung: "1:1 die gleichen Tools
+            # wie der Agent"). Serverseitige Faehigkeitspruefung/Freigabeliste gelten
+            # unveraendert — eine gesperrte Aktion kommt als Fehlertext zurueck, nicht
+            # als stiller Erfolg.
+            act, params = action, dict(raw_params or {})
         else:
-            return f"Die Aktion '{action}' kenne ich nicht."
+            return "Mir fehlt die Aktion."
 
         try:
             out = await dispatch_bridge_command(
@@ -3462,6 +3516,17 @@ class RealtimeVoiceSession:
                     + _bildschirm_hinweis(result))
         if act in ("open_app", "open_url"):
             return f"'{target.strip()}' wurde geöffnet — die Bridge meldet Erfolg."
+        if act == "ego_run":
+            out = str(result.get("output") or "").strip()
+            return out if out else "Erledigt — das Skript hat nichts über cliLog() zurückgegeben."
+        if action not in self._DESKTOP_SHORTHANDS:
+            # Rohdurchreiche-Ergebnis: kein bekanntes Sonderfeld, also den ganzen
+            # (kompakten) Ergebnis-Rumpf zurueckgeben statt eines nichtssagenden
+            # "Erledigt" — sonst kann die Stimme nicht vorlesen, WAS z. B.
+            # shell_run oder browser_snapshot tatsaechlich geliefert haben.
+            if isinstance(result, dict) and result:
+                kompakt = {k: v for k, v in result.items() if k != "screenshot_b64"}
+                return json.dumps(kompakt, ensure_ascii=False)[:2000]
         return "Erledigt."
 
     async def _control_ui(self, action: str, target: str, query: str = "") -> str:
