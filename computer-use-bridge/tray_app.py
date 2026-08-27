@@ -357,13 +357,18 @@ def ensure_session(cfg: dict) -> str:
             cfg["session"] = ""
             save_config(cfg)
             return ENSURE_NEEDS_LOGIN
-    except Exception:
-        pass
+        app_log.warning("pick_waiting_session HTTP %s: %s", e.code, e.reason)
+    except Exception as e:  # noqa: BLE001 — every prior version of this catch
+        # swallowed the real reason entirely (TLS error, timeout, DNS, JSON
+        # decode) and left "server nicht erreichbar" with zero trace to
+        # diagnose from — reported 2026-08-27, log showed nothing at all
+        # across a full app restart + reconnect attempt.
+        app_log.warning("pick_waiting_session failed: %s: %s", type(e).__name__, e)
     if sid and api_session_exists(url, token, sid):
         try:
             api_update_capabilities(url, token, sid, caps, cfg)
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001
+            app_log.warning("api_update_capabilities failed (non-fatal): %s: %s", type(e).__name__, e)
         return ENSURE_OK
     # Session gone — try to create a fresh one
     try:
@@ -377,8 +382,10 @@ def ensure_session(cfg: dict) -> str:
             cfg["session"] = ""
             save_config(cfg)
             return ENSURE_NEEDS_LOGIN
+        app_log.warning("api_create_session HTTP %s: %s", e.code, e.reason)
         return ENSURE_ERROR
-    except Exception:
+    except Exception as e:  # noqa: BLE001 — see note above
+        app_log.warning("api_create_session failed: %s: %s", type(e).__name__, e)
         return ENSURE_ERROR
 
 
