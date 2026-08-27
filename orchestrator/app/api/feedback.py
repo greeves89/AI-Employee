@@ -455,6 +455,20 @@ async def list_feedback(
     }
 
 
+_CSV_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value: str | None) -> str:
+    """Entschaerft CSV-/Formel-Injection: jedes Feld kommt aus Nutzer-Feedback
+    (Titel, Notizen, ...) — ein Wert wie ``=cmd|'/c calc'!A1`` wuerde in Excel/
+    Sheets beim Oeffnen als Formel ausgefuehrt. Ein fuehrendes Anfuehrungszeichen
+    zwingt jede gaengige Tabellenkalkulation, die Zelle als reinen Text zu lesen."""
+    text = value or ""
+    if text and text[0] in _CSV_FORMULA_TRIGGERS:
+        return "'" + text
+    return text
+
+
 @router.get("/export")
 async def export_feedback(
     status: str | None = Query(None),
@@ -480,9 +494,9 @@ async def export_feedback(
         category = f.category.value if isinstance(f.category, FeedbackCategory) else f.category
         fstatus = f.status.value if isinstance(f.status, FeedbackStatus) else f.status
         writer.writerow([
-            f.id, f.user_name or "", f.title or "", category or "", fstatus or "",
-            f.sentiment or "", f.page or "", f.element_label or "",
-            f.github_issue_url or "", f.admin_notes or "",
+            f.id, _csv_safe(f.user_name), _csv_safe(f.title), category or "", fstatus or "",
+            f.sentiment or "", _csv_safe(f.page), _csv_safe(f.element_label),
+            _csv_safe(f.github_issue_url), _csv_safe(f.admin_notes),
             f.created_at.isoformat() if f.created_at else "",
         ])
 

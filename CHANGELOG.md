@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.274.1] - 2026-08-27
+
+### Behoben
+- **CSV-/Formel-Injection im Feedback-Export.** Titel, Name und Admin-Notizen kommen aus Nutzer-Feedback und landeten roh in der exportierten CSV — ein Wert wie `=HYPERLINK(...)` haette beim Oeffnen in Excel/Sheets als Formel laufen koennen. Felder, die mit `=`/`+`/`-`/`@`/Tab/CR beginnen, bekommen jetzt ein fuehrendes Anfuehrungszeichen, das jede gaengige Tabellenkalkulation zwingt, sie als reinen Text zu lesen.
+
 ## [1.274.0] - 2026-08-27
 
 ### Hinzugefuegt

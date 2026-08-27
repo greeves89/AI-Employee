@@ -108,6 +108,24 @@ async def test_a_missing_widget_file_on_disk_is_skipped_not_a_crash(db, feedback
 
 
 @pytest.mark.asyncio
+async def test_a_formula_looking_title_is_neutralised_not_executed(db, feedback_dir):
+    """CSV-/Formel-Injection: Titel/Notizen kommen aus Nutzer-Feedback. Ein Wert
+    wie '=cmd|...'!A1 wuerde in Excel/Sheets beim Oeffnen als Formel laufen."""
+    db.add(Feedback(
+        user_id="u-1", user_name="=HYPERLINK(\"http://evil.test\")", title="=1+1",
+        category="bug", admin_notes="+SUM(A1:A9)",
+    ))
+    await db.commit()
+    resp = await fb.export_feedback(status=None, user=_admin(), db=db)
+    zf = await _zip_from(resp)
+    rows = list(csv.reader(io.StringIO(zf.read("feedback.csv").decode("utf-8"))))
+    _id, user_name, title, *_rest, admin_notes, _created = rows[1]
+    assert user_name.startswith("'=")
+    assert title.startswith("'=")
+    assert admin_notes.startswith("'+")
+
+
+@pytest.mark.asyncio
 async def test_status_filter_only_exports_matching_items(db, feedback_dir):
     db.add(Feedback(user_id="u-1", user_name="A", title="offen", category="bug", status="pending"))
     db.add(Feedback(user_id="u-1", user_name="B", title="erledigt", category="bug", status="closed"))
