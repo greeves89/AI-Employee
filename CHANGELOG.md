@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.270.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Gespeicherte Meetings — vorher gab es dafuer gar keine Persistenz.** Der
+  Meeting-Recorder in der iOS-App hielt das Transkript nur im Arbeitsspeicher;
+  verlassen der Ansicht oder "Verwerfen" loeschte alles, kein Verlauf, kein
+  Umbenennen, keine Teilnehmerliste. Neue userbased CRUD-Flaeche `/meetings`
+  (`POST` speichern, `GET` Liste + Einzelabruf, `PATCH` umbenennen/Teilnehmer
+  bearbeiten, `DELETE`) — strikt auf den anfragenden Nutzer beschraenkt wie
+  jeder andere neue Endpunkt. Sprecher-Erkennung ist bewusst NICHT enthalten
+  (V1): die Pi-STT (`faster-whisper small`, CPU) ist fuer echte Diarisierung
+  zu ressourcenknapp; Teilnehmer werden manuell eingetragen.
+
 ## [1.269.0] - 2026-08-27
 
 ### Hinzugefuegt
