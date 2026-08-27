@@ -1268,7 +1268,26 @@ def ego_run(script: str, timeout: int = 120) -> dict:
     output = result.stderr
     if result.stdout:
         output = (output + "\n" + result.stdout) if output else result.stdout
+    _ego_bring_to_front()
     return {"ok": True, "output": output}
+
+
+def _ego_bring_to_front() -> None:
+    """ego lite ins Vordergrund holen — live beim Nutzer gefunden: startet die
+    ``ego-browser``-CLI die App selbst (siehe ``_ego_browser_binary``-Docstring
+    oben), laeuft sie im HINTERGRUND als ``--startup-ego-browser-service``, ganz
+    ohne sichtbares Fenster im Vordergrund. Automatisierung lief korrekt (echte
+    Tabs, echte Suchergebnisse), der Nutzer sah davon aber nichts und hielt es
+    fuer kaputt. Best-effort: ein fehlgeschlagener Vordergrund-Wechsel darf das
+    eigentliche Ergebnis nicht kaputt machen, deshalb wird hier nichts geworfen.
+    """
+    if not IS_MAC:
+        return
+    import subprocess
+    try:
+        subprocess.run(["open", "-a", "ego lite"], capture_output=True, timeout=5)
+    except Exception:  # noqa: BLE001 — rein kosmetisch, nie den Aufruf sprengen
+        pass
 
 
 # ── Diskrete ego-Aktionen (wie browser_*, aber gegen die echte Sitzung) ───────

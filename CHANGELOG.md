@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.272.1] - 2026-08-27
+
+### Behoben
+- **ego lite arbeitete unsichtbar im Hintergrund — die Automatisierung lief korrekt, der Nutzer sah nur nichts davon und hielt sie fuer kaputt.** Startet die `ego-browser`-CLI ego lite selbst (kein laufender Prozess vorhanden), laeuft es als Hintergrunddienst (`--startup-ego-browser-service`) ohne Fenster im Vordergrund. Live verifiziert: die Suche hatte tatsaechlich stattgefunden (echter Tab, echte Ergebnisse), nur unsichtbar. Die Bridge holt ego lite nach jedem erfolgreichen Aufruf jetzt automatisch in den Vordergrund.
+- **"Browser starten" + danach suchen oeffnete zwei verschiedene Fenster.** Sagte der Nutzer "starte den Browser und such nach X" als einen Satz, rief die Sprachfront `open` (Standardbrowser) UND separat `ego` (ego lite) auf — zwei unabhaengige Fenster, der Nutzer sah nur das leere erste. Beschreibung praezisiert: jede Interaktion im Satz macht die GANZE Aufgabe zu einem einzigen `ego`-Aufruf.
+
 ## [1.272.0] - 2026-08-27
 
 ### Hinzugefuegt
