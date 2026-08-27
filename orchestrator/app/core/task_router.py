@@ -23,6 +23,9 @@ from app.services.skill_auto_injector import auto_inject_skills
 # notification that points at the task — otherwise clicking a "Task fertig"
 # notification 404s because the task was already GC'd. 7 days.
 TASK_EVICT_GRACE_SECONDS = int(7 * 24 * 3600)
+# Escalated run lineages a schedule can rack up before it auto-disables
+# instead of paging the human again — see _escalate_exhausted_task.
+_SCHEDULE_AUTO_PAUSE_THRESHOLD = 3
 
 # Model used for self-reflection rating + improvement suggestions
 _REFLECTION_MODEL = "claude-haiku-4-5-20251001"
@@ -809,12 +812,77 @@ class TaskRouter:
 
         summary = self_healing.escalation_summary(history, task.error)
         permanent = self_healing.classify_error(task.error) == self_healing.PERMANENT
+
+        # A recurring schedule with no circuit breaker escalated the SAME
+        # broken run hourly, forever — 27 stuck approvals for one dead
+        # schedule (reported 2026-08-27). Count escalated LINEAGES (not raw
+        # attempts — those are already deduped, see _update_schedule_stats)
+        # and auto-pause the schedule once it's clearly not self-recovering,
+        # instead of paging the human every hour about the exact same thing.
+        schedule_paused_note = ""
+        schedule_id = (task.metadata_ or {}).get("schedule_id")
+        existing_approval: CommandApproval | None = None
+        if schedule_id:
+            from app.models.schedule import Schedule
+            sched = (await self.db.execute(
+                select(Schedule).where(Schedule.id == schedule_id)
+            )).scalar_one_or_none()
+            if sched:
+                sched.consecutive_failures += 1
+                if sched.consecutive_failures >= _SCHEDULE_AUTO_PAUSE_THRESHOLD and sched.enabled:
+                    sched.enabled = False
+                    schedule_paused_note = (
+                        f"\n\nDer Zeitplan „{sched.name}“ wurde nach "
+                        f"{sched.consecutive_failures} aufeinanderfolgenden gescheiterten "
+                        "Läufen automatisch pausiert, damit das nicht stündlich weiter "
+                        "eskaliert. Unter Zeitpläne wieder aktivieren, sobald die Ursache "
+                        "behoben ist."
+                    )
+                await self.db.commit()
+
+            # One open escalation PER SCHEDULE, not one per hourly run — the
+            # user's second complaint about the same flood: "wieso sollte ich
+            # da Approve oder Deny klicken... das sind ja 27 fuer dasselbe."
+            # Update the existing pending one in place instead of piling on.
+            pending = (await self.db.execute(
+                select(CommandApproval).where(
+                    CommandApproval.command == "task_failed",
+                    CommandApproval.status == ApprovalStatus.PENDING,
+                )
+            )).scalars().all()
+            existing_approval = next(
+                (a for a in pending if (a.meta or {}).get("schedule_id") == schedule_id), None
+            )
+
         try:
+            if existing_approval:
+                existing_approval.description = f"{task.title}\n\n{summary}{schedule_paused_note}"
+                existing_approval.task_id = task.id
+                meta = dict(existing_approval.meta or {})
+                meta.update({
+                    "task_id": task.id,
+                    "attempts": len(history),
+                    "history": history[-5:],
+                    "question": f'„{task.title}“ ist endgültig gescheitert. Übernehmen?',
+                    "recurrences": int(meta.get("recurrences") or 1) + 1,
+                })
+                if schedule_paused_note:
+                    meta["schedule_paused"] = True
+                existing_approval.meta = meta
+                existing_approval.created_at = datetime.now(timezone.utc)
+                await self.db.commit()
+                logger.info(
+                    "[Selbstheilung] %s: bestehende Eskalation fuer Zeitplan %s aktualisiert "
+                    "(kein neues Approval) statt erneut zu eskalieren",
+                    scrub_log(task.id), scrub_log(schedule_id),
+                )
+                return
+
             approval = CommandApproval(
                 agent_id=agent_id or "system",
                 task_id=task.id,
                 command="task_failed",
-                description=f"{task.title}\n\n{summary}",
+                description=f"{task.title}\n\n{summary}{schedule_paused_note}",
                 risk_level="high",
                 status=ApprovalStatus.PENDING,
                 meta={
@@ -825,6 +893,8 @@ class TaskRouter:
                     "history": history[-5:],
                     "question": f'„{task.title}“ ist endgültig gescheitert. Übernehmen?',
                     "options": ["Ich übernehme", "Verwerfen"],
+                    **({"schedule_id": schedule_id} if schedule_id else {}),
+                    **({"schedule_paused": True} if schedule_paused_note else {}),
                 },
             )
             self.db.add(approval)
@@ -834,8 +904,8 @@ class TaskRouter:
             notif = Notification(
                 agent_id=agent_id or "system",
                 type="error",
-                title="Aufgabe braucht dich",
-                message=f"{task.title}: {summary}"[:240],
+                title="Zeitplan pausiert" if schedule_paused_note else "Aufgabe braucht dich",
+                message=(f"{task.title}: {summary}{schedule_paused_note}")[:240],
                 priority="high",
                 action_url="/approvals",
                 meta={
@@ -843,6 +913,7 @@ class TaskRouter:
                     "task_id": task.id,
                     "approval_id": approval.id,
                     "attempts": len(history),
+                    **({"schedule_paused": True} if schedule_paused_note else {}),
                 },
             )
             self.db.add(notif)
@@ -1062,6 +1133,7 @@ class TaskRouter:
 
         if result_data.get("status") == "completed":
             schedule.success_count += 1
+            schedule.consecutive_failures = 0
         else:
             schedule.fail_count += 1
             await self._alert_schedule_failure(schedule, result_data)
