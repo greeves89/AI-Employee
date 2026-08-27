@@ -186,9 +186,22 @@ def ssl_context_for(url: str, allow_pin_new: bool = True) -> ssl.SSLContext | No
 
     ``allow_pin_new`` steuert NUR den Erstkontakt (noch kein Pin fuer den
     Host): normale Verbindungen duerfen pinnen (TOFU, wie SSH), stille
-    Hintergrundaufrufe koennen es abschalten. Ein GEAENDERTES Zertifikat
-    wird hier nie akzeptiert — dafuer gibt es ``repin_server``, das an eine
-    ausdrueckliche Nutzeraktion gebunden ist.
+    Hintergrundaufrufe koennen es abschalten. Pinning ist die Vertrauensbasis
+    NUR fuer selbstsignierte Server (SKBS, lokale Boxen) — dort wird ein
+    GEAENDERTES Zertifikat nie automatisch akzeptiert, das braucht immer
+    ``repin_server`` per ausdruecklicher Nutzeraktion.
+
+    Ein Host, der schon die normale System-CA-Pruefung besteht (oeffentliche
+    CA, gueltige Kette), wird IMMER darueber vertraut — auch wenn von
+    frueher noch ein Pin fuer denselben Host existiert. Grund: hinter einem
+    CDN/Tunnel (z. B. Cloudflare) kann sich das ausgelieferte Blatt-Zertifikat
+    aendern, obwohl es weiterhin eine gueltige, CA-signierte Kette ist — das
+    ist keine Kompromittierung, das ist normaler CDN-Betrieb. Ein starrer Pin
+    hat das faelschlich als "Zertifikat geaendert" behandelt und die Bridge
+    dauerhaft mit einem irrefuehrenden "server nicht erreichbar" blockiert
+    (gemeldet 2026-08-27, betraf agents.future-app.de). Das Sicherheitsniveau
+    sinkt dadurch nicht: eine gueltige CA-Kette ist bereits der Vertrauens-
+    anker, den TLS ueberall sonst auch verwendet.
     """
     if not url.lower().startswith(("https://", "wss://")):
         return None
@@ -206,6 +219,9 @@ def ssl_context_for(url: str, allow_pin_new: bool = True) -> ssl.SSLContext | No
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
         return ctx
+
+    if _system_handshake_ok(host, port):
+        return ssl.create_default_context()
 
     if tls_cfg.get("mode") == "pinned" and tls_cfg.get("host") == host:
         pem = str(tls_cfg.get("cert_pem") or "")
@@ -226,9 +242,6 @@ def ssl_context_for(url: str, allow_pin_new: bool = True) -> ssl.SSLContext | No
                 "Wenn nicht, spricht hier gerade jemand anderes fuer den Server."
             )
         return _pinned_context(pem)
-
-    if _system_handshake_ok(host, port):
-        return ssl.create_default_context()
 
     if not allow_pin_new:
         raise TlsTrustError(
