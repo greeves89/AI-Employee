@@ -1,4 +1,4 @@
-"""'Eigene KI-Zugaenge erlauben' liess sich nicht deaktivieren — Befund SKBS.
+"""'Eigene KI-Zugaenge erlauben' liess sich nicht deaktivieren — Befund beim Kunden.
 
 `allow_personal_credentials` fehlte in `_FIELD_MAP` (app/api/settings.py):
 die PATCH-Schleife ueberspringt jedes Feld, das dort nicht steht, lautlos —

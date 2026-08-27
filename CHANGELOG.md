@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.274.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Feedback als ZIP exportieren** (Admin -> Feedback) — eine CSV-Uebersicht ueber alle Eintraege plus, je Widget-Feedback, dessen Markdown-Datei und Screenshot. Neuer Endpoint `GET /feedback/export` (optionaler `status`-Filter, admin-only).
+
 ## [1.273.0] - 2026-08-27
 
 ### Hinzugefuegt

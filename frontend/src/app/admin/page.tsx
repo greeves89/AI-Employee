@@ -40,6 +40,7 @@ import {
   Brain,
   AppWindow,
   Search,
+  Download,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 
@@ -1548,6 +1549,18 @@ function FeedbackTab({
   const [noteText, setNoteText] = useState("");
   const [githubConnected, setGithubConnected] = useState<boolean | null>(null);
   const [detailFeedback, setDetailFeedback] = useState<Feedback | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await api.exportFeedback();
+    } catch (e) {
+      toast.error("Export fehlgeschlagen", e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     api.getIntegrations().then((data) => {
@@ -1639,6 +1652,18 @@ function FeedbackTab({
 
   return (
     <div className="space-y-3">
+      {items.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            Als ZIP exportieren
+          </button>
+        </div>
+      )}
       {items.map((f, i) => {
         const CatIcon = CATEGORY_ICONS[f.category] || MessageSquare;
         const catColor = CATEGORY_COLORS[f.category] || "text-zinc-400";

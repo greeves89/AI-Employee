@@ -1,4 +1,4 @@
-import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, FeedbackStatus, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -2137,6 +2137,22 @@ export async function createGithubIssueFromFeedback(
   return fetchJSON(`${getBase()}/feedback/${feedbackId}/github-issue`, {
     method: "POST",
   });
+}
+
+export async function exportFeedback(status?: FeedbackStatus): Promise<void> {
+  const base = getBase();
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  const res = await fetch(`${base}/feedback/export${q}`, { credentials: "include" });
+  if (!res.ok) throw new Error(`Export fehlgeschlagen: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "feedback-export.zip";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // --- Health & Performance ---
