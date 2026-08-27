@@ -1100,6 +1100,10 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS "
                 "consecutive_failures integer NOT NULL DEFAULT 0"
             ))
+            await conn.execute(_txt(
+                "ALTER TABLE agents ADD COLUMN IF NOT EXISTS "
+                "is_platform_agent boolean NOT NULL DEFAULT false"
+            ))
             # Web-Push-Anmeldungen der Browser — das Gegenstueck zu device_tokens (iOS).
             # Der Endpunkt ist eindeutig, damit ein erneut angemeldeter Browser den
             # bestehenden Eintrag auffrischt statt Meldungen doppelt zu bekommen.

@@ -64,7 +64,16 @@ def _agent_delegated_this(user, task) -> bool:
 
 
 async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
-    """Return agent IDs owned by user, or None if admin (sees all)."""
+    """Return agent IDs owned by user, or None if admin (sees all).
+
+    Ownerless agents (user_id IS NULL) are NOT auto-included here (changed
+    2026-08-27) — they used to count as "platform agents" visible to
+    everyone, which on a multi-department customer install (SKBS) meant
+    every user saw every other department's tasks/costs the moment an
+    agent was created without an assigned owner (usually by accident, not
+    decision). ``is_platform_agent`` is the explicit, admin-set flag for a
+    DELIBERATELY shared agent — that one still counts as visible to all.
+    """
     from app.models.user import UserRole
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         return None
@@ -74,7 +83,7 @@ async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
     from app.models.agent_access import AgentAccess
     owned = await db.execute(
         select(Agent.id).where(
-            (Agent.user_id == user.id) | (Agent.user_id.is_(None))
+            (Agent.user_id == user.id) | (Agent.is_platform_agent.is_(True))
         )
     )
     shared = await db.execute(

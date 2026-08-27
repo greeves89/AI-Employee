@@ -110,6 +110,7 @@ class AgentResponse(BaseModel):
     webhook_enabled: bool = False
     webhook_token: str | None = None
     shared_for_rooms: bool = False  # admin-curated: offered in every user's Meeting-Room picker
+    is_platform_agent: bool = False  # admin-curated: visible to every user, not just ownerless-by-accident
     total_cost_usd: float = 0.0
     user_id: str | None = None
     created_at: datetime
