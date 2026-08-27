@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.274.2] - 2026-08-27
+
+### Behoben
+- **CSV-/Formel-Injection-Fix aus 1.274.1 war unvollstaendig** — `sentiment` (frei befuellbar ueber das Feedback-Widget) wurde beim Absichern der Export-Spalten uebersehen. Jetzt geht jede exportierte Freitextspalte durch dieselbe Absicherung; ein neuer Test deckt alle betroffenen Spalten gemeinsam ab, nicht nur eine Stichprobe.
+
 ## [1.274.1] - 2026-08-27
 
 ### Behoben

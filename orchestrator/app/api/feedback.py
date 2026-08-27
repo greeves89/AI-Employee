@@ -495,7 +495,7 @@ async def export_feedback(
         fstatus = f.status.value if isinstance(f.status, FeedbackStatus) else f.status
         writer.writerow([
             f.id, _csv_safe(f.user_name), _csv_safe(f.title), category or "", fstatus or "",
-            f.sentiment or "", _csv_safe(f.page), _csv_safe(f.element_label),
+            _csv_safe(f.sentiment), _csv_safe(f.page), _csv_safe(f.element_label),
             _csv_safe(f.github_issue_url), _csv_safe(f.admin_notes),
             f.created_at.isoformat() if f.created_at else "",
         ])
