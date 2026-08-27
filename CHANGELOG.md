@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.271.1] - 2026-08-27
+
+### Behoben
+- **`ego` wurde zu eng auf Login-Aufgaben beschraenkt — die Sprachfront nutzte "einfach oeffnen" (Standardbrowser) + Bedienungshilfen-Suche fuer Websites, was fuer Web-Inhalte nicht zuverlaessig funktioniert.** Live gemeldet: "Google oeffnen" + "auf YouTube nach Pokemon Karten suchen" liefen ueber `open_url` + `find_element` + `type` (Standardbrowser, kein DOM-Zugriff) und scheiterten; erst nach expliziter Nutzer-Nachfrage griff `ego` — und funktionierte sofort korrekt (echte Seiten-Snapshots, echtes Navigieren zur Video-URL). Beschreibung praezisiert: `ego` ist jetzt der Standardweg fuer JEDE Aufgabe mit Browser-Inhalten (nicht nur Login), `open`+`find`+`click` ausdruecklich nur noch fuer native Apps. Zusaetzlich: die Sprachfront behauptete vorab faelschlich, `ego` sei "nicht aktiviert" (obwohl in der Bridge laengst freigegeben) — Beschreibung untersagt jetzt ausdruecklich, das ohne echten Fehlertext zu vermuten.
+
 ## [1.271.0] - 2026-08-27
 
 ### Behoben
