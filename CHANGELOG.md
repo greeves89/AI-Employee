@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.270.1] - 2026-08-27
+
+### Behoben
+- **`ego_run` wurde vom Agenten uebersehen — er versuchte erst `open_app`.**
+  Live im Sprachmodus getestet: auf "oeffne ego lite" probierte der Agent
+  zunaechst verschiedene App-Namen ueber `open_app`, bevor er (nur zufaellig)
+  auf `ego_run` kam. Ursache: die Werkzeug-Beschreibung sagte nicht, dass
+  `ego_run` ego lite bei Bedarf SELBST startet (verifiziert: ein Aufruf mit
+  komplett geschlossener App startet sie automatisch im Hintergrund) —
+  `open_app` davor ist ueberfluessig. Beschreibung in beiden Werkzeug-Quellen
+  (MCP-Server, Codex/Custom-LLM) praezisiert.
+
 ## [1.270.0] - 2026-08-27
 
 ### Hinzugefuegt

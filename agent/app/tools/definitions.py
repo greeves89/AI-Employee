@@ -524,7 +524,11 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                             "would be unnecessary friction): 'ego_run' (params: {script: "
                             "'<JS body, same helpers as the ego-browser skill heredoc — "
                             "useOrCreateTaskSpace/openOrReuseTab/snapshotText/click/js/cdp>', "
-                            "timeout: 120}; returns whatever the script passed to cliLog())."
+                            "timeout: 120}; returns whatever the script passed to cliLog()). "
+                            "Call 'ego_run' DIRECTLY for anything involving ego lite — it "
+                            "launches ego lite itself if not already running "
+                            "(useOrCreateTaskSpace(...) is enough). Do NOT call open_app for "
+                            "ego lite first, that is an unnecessary extra step."
                         ),
                     },
                     "session_id": {

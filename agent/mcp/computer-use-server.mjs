@@ -418,7 +418,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         "write it exactly as you would inside an `ego-browser nodejs <<'EOF' ... EOF` " +
         "heredoc. Only the text passed to cliLog(...) calls is returned. Requires the " +
         "'ego_browser' capability (off by default) AND ego lite installed on the user's " +
-        "machine.",
+        "machine. IMPORTANT: call this DIRECTLY for anything involving ego lite — it " +
+        "launches ego lite itself if it isn't already running (a `useOrCreateTaskSpace(...)` " +
+        "call is enough). Never call open_app/computer_open_app for ego lite first; that is " +
+        "an unnecessary extra step and not how the user should have to ask for it.",
       inputSchema: {
         type: "object",
         required: ["script"],
