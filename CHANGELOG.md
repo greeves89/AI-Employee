@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.272.2] - 2026-08-27
+
+### Behoben
+- **"Öffne YouTube und such nach X" öffnete nur die Startseite, keine Ergebnisse.** Die `ego`-Beschreibung hatte als einziges Beispiel "öffnen + lesen", kein Suchbeispiel — die Sprachfront rief `openOrReuseTab` auf die Startseite auf und hielt die Aufgabe fuer erledigt, sobald ein Tab offen war. Neues, live verifiziertes Beispiel: bei einer Suche direkt die Ergebnis-URL ansteuern (`?search_query=`/`?q=`) statt eine leere Startseite zu oeffnen und dort stehen zu bleiben. Beschreibung nennt jetzt auch den vollen Helfer-Umfang von ego lite (Task Spaces, Drag, Upload, CDP, Netzwerk-Warten, …), nicht nur eine Kurzliste — dieselbe Rohzugriff-Breite, die Claude Code selbst über die ego-browser-Skill hat.
+
 ## [1.272.1] - 2026-08-27
 
 ### Behoben
