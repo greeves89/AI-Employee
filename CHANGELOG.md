@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.275.2] - 2026-08-27
+
+### Behoben
+- **Feedback-Detail-Modal zeigte den Volltext technisch-roh** (sichtbare `---`-Frontmatter-Zeilen, `**fett**`, `# Ueberschrift`) statt formatiert. Rendert den Markdown-Volltext jetzt ueber die bestehende `MarkdownContent`-Komponente (dieselbe wie im Agent-Chat); YAML-Frontmatter und die eingebettete Screenshot-Referenz werden rausgeschnitten, weil beides in der Modal schon als eigene Badges/Sektion angezeigt wird.
+
 ## [1.275.1] - 2026-08-27
 
 ### Behoben

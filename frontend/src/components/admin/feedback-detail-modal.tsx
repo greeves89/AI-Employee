@@ -8,6 +8,19 @@ import { Github } from "@/components/icons/github";
 import * as api from "@/lib/api";
 import type { Feedback } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { MarkdownContent } from "@/components/ui/markdown-content";
+
+/** Die MD-Datei ist die Source of Truth (siehe orchestrator/app/api/feedback.py
+ *  build_md), aber ihr YAML-Frontmatter und die eingebettete Screenshot-/Issue-
+ *  Referenz stehen hier in der Modal schon als eigene Badges/Sektionen — roh
+ *  mitgerendert sah das nur "technisch" aus (sichtbare "---"/"id:"-Zeilen).
+ *  Beides rausschneiden, den Rest als echtes Markdown darstellen. */
+function stripFrontmatterAndDuplicates(md: string): string {
+  return md
+    .replace(/^---\n[\s\S]*?\n---\n/, "")
+    .replace(/^!\[Screenshot\]\([^)]*\)\n?/m, "")
+    .trim();
+}
 
 const CATEGORY_ICONS: Record<string, typeof Bug> = {
   bug: Bug,
@@ -143,7 +156,7 @@ export function FeedbackDetailModal({ feedback: f, onClose }: Props) {
                   ) : error ? (
                     <p className="text-sm text-red-400">Volltext konnte nicht geladen werden: {error}</p>
                   ) : (
-                    <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans text-foreground/90">{fullText}</pre>
+                    <MarkdownContent content={stripFrontmatterAndDuplicates(fullText || "")} />
                   )
                 ) : f.description ? (
                   <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">{f.description}</p>
