@@ -30,6 +30,31 @@ from typing import Any
 
 import websockets
 
+try:
+    import certifi
+except ImportError:  # pragma: no cover — kept optional, see _default_ssl_context
+    certifi = None  # type: ignore[assignment]
+
+
+def _default_ssl_context() -> ssl.SSLContext:
+    """``ssl.create_default_context()``, but pointed at certifi's CA bundle.
+
+    A PyInstaller-frozen build has no OpenSSL default cert directory to fall
+    back on the way a normal Python install does — ``load_default_certs()``
+    then finds nothing, and even a perfectly valid, CA-signed certificate
+    fails verification. This is why _system_handshake_ok kept returning
+    False for a real Cloudflare cert in the packaged app while the exact
+    same call succeeded from a plain `python3` shell (reported + diagnosed
+    2026-08-27) — the frozen build was silently falling through to strict
+    TLS pinning for a normal, publicly-trusted host, not just self-signed
+    ones. requirements.txt/spec files now bundle certifi's cacert.pem so
+    this file is always present in a shipped build.
+    """
+    if certifi is not None:
+        return ssl.create_default_context(cafile=certifi.where())
+    return ssl.create_default_context()
+
+
 def _setup_logging() -> logging.Logger:
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -172,12 +197,15 @@ def _pinned_context(pem: str) -> ssl.SSLContext:
 def _system_handshake_ok(host: str, port: int, timeout: float = 10.0) -> bool:
     """Besteht der Server die normale System-Verifikation (oeffentliche CA)?"""
     import socket
-    ctx = ssl.create_default_context()
+    ctx = _default_ssl_context()
     try:
         with socket.create_connection((host, port), timeout=timeout) as sock:
             with ctx.wrap_socket(sock, server_hostname=host):
                 return True
-    except ssl.SSLCertVerificationError:
+    except (ssl.SSLError, OSError):
+        # Not just SSLCertVerificationError: a plain network failure here
+        # (offline, DNS hiccup, timeout) must also fall through to the
+        # pinned/self-signed path below, not crash ssl_context_for outright.
         return False
 
 
@@ -221,7 +249,7 @@ def ssl_context_for(url: str, allow_pin_new: bool = True) -> ssl.SSLContext | No
         return ctx
 
     if _system_handshake_ok(host, port):
-        return ssl.create_default_context()
+        return _default_ssl_context()
 
     if tls_cfg.get("mode") == "pinned" and tls_cfg.get("host") == host:
         pem = str(tls_cfg.get("cert_pem") or "")
