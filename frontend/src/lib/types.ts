@@ -115,6 +115,7 @@ export interface Agent {
   webhook_enabled?: boolean;
   webhook_token?: string | null;
   shared_for_rooms?: boolean;
+  is_platform_agent?: boolean;
   total_cost_usd: number;
   user_id: string | null;
   created_at: string;

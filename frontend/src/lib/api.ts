@@ -59,6 +59,16 @@ export async function setRoomSharing(
   });
 }
 
+export async function setPlatformAgent(
+  agentId: string,
+  isPlatformAgent: boolean,
+): Promise<{ id: string; is_platform_agent: boolean }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/platform-agent`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_platform_agent: isPlatformAgent }),
+  });
+}
+
 export async function getAgent(id: string): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/${id}`);
 }
