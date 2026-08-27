@@ -51,7 +51,8 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "browser_navigate", "browser_snapshot", "browser_tabs", "browser_wait",
         # ego lite: echte, eingeloggte Sitzung des Nutzers (Faehigkeit
         # `ego_browser`, default aus) — Gegenstueck zum isolierten `browser_*`.
-        "ego_run",
+        "ego_run", "ego_navigate", "ego_snapshot", "ego_click", "ego_fill",
+        "ego_wait", "ego_capture", "ego_tabs", "ego_close",
         "computer_ax_tree", "computer_click", "computer_close_app", "computer_drag",
         "computer_find_element", "computer_focus_window", "computer_get_clipboard",
         "computer_key", "computer_list_sessions", "computer_list_windows",

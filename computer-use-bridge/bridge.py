@@ -921,6 +921,10 @@ BASE_ACTIONS = [
     # angekuendigt, auch ohne installiertes ego lite — der Fehler kommt dann
     # erst beim Aufruf, mit klarer Meldung statt stiller Zusage.
     "ego_run",
+    # Diskrete Gegenstuecke zu browser_* — dieselbe echte Sitzung, aber ohne
+    # dass ein Modell selbst JS schreiben muss.
+    "ego_navigate", "ego_snapshot", "ego_click", "ego_fill", "ego_wait",
+    "ego_capture", "ego_tabs", "ego_close",
 ]
 
 # Nur wenn der Bedienungshilfen-Baum ueberhaupt verfuegbar ist — ohne ihn waere
@@ -1265,6 +1269,159 @@ def ego_run(script: str, timeout: int = 120) -> dict:
     if result.stdout:
         output = (output + "\n" + result.stdout) if output else result.stdout
     return {"ok": True, "output": output}
+
+
+# ── Diskrete ego-Aktionen (wie browser_*, aber gegen die echte Sitzung) ───────
+#
+# ego_run oben bleibt fuer freie/zusammengesetzte Skripte. Diese Aktionen sind
+# die gaengigsten Einzelschritte als eigene, typisierte Aktion — wie
+# browser_navigate/-click/-fill/... — damit ein Modell (auch die Sprachfront)
+# sie ohne eigenes JS aufrufen kann. Jede baut EIN kleines Skript, das sein
+# Ergebnis als JSON-Zeile ueber cliLog() zurueckgibt, und parst das hier.
+#
+# Alle teilen sich denselben Task-Space-Namen ("bridge"), damit navigate →
+# click → fill → snapshot in AUFEINANDERFOLGENDEN aufrufen dieselbe Sitzung
+# und denselben Tab weiterbenutzen (jeder Aufruf ist ein eigener Prozess -
+# ohne denselben Namen wuerde jede Aktion einen neuen Tab aufmachen).
+_EGO_TASK_SPACE = "bridge"
+
+
+def _ego_script_json(script: str, timeout: int = 60) -> dict:
+    """Wie ego_run, erwartet aber die letzte cliLog()-Zeile als EIN JSON-Objekt."""
+    result = ego_run(script, timeout)
+    if not result.get("ok"):
+        return result
+    lines = [ln for ln in (result.get("output") or "").splitlines() if ln.strip()]
+    if not lines:
+        return {"ok": False, "error": "ego lite hat keine Ausgabe geliefert."}
+    try:
+        return json.loads(lines[-1])
+    except ValueError:
+        return {"ok": False, "error": f"Unerwartete Ausgabe von ego lite: {lines[-1][:300]}"}
+
+
+def ego_navigate(url: str, timeout_ms: int = 30000) -> dict:
+    secs = max(1, timeout_ms // 1000)
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        f"await openOrReuseTab({json.dumps(url)}, {{wait:true, timeout:{secs}}});"
+        "const info = await pageInfo();"
+        "cliLog(JSON.stringify({ok:true, url:info.url, title:info.title}));"
+    )
+    return _ego_script_json(script, timeout=secs + 20)
+
+
+def ego_snapshot(max_chars: int = 20000) -> dict:
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        "const text = await snapshotText();"
+        "const info = await pageInfo();"
+        f"const max = {int(max_chars)};"
+        "cliLog(JSON.stringify({ok:true, url:info.url, title:info.title, "
+        "snapshot: text.slice(0, max), truncated: text.length > max}));"
+    )
+    return _ego_script_json(script, timeout=45)
+
+
+def ego_click(selector: str = "", text: str = "") -> dict:
+    """``click()`` in ego lite nimmt EIN Ziel (CSS/xpath=/@N/loc=) — anders als
+    Playwright kennt es kein separates "nach sichtbarem Text suchen". Ohne
+    Selektor wird der Text deshalb selbst in ein XPath gegossen."""
+    target = selector.strip()
+    if not target and text.strip():
+        escaped = text.strip().replace('"', '\\"')
+        target = f'xpath=//*[contains(normalize-space(.), "{escaped}")]'
+    if not target:
+        return {"ok": False, "error": "Kein Ziel angegeben (selector oder text)."}
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        f"await click({json.dumps(target)}, {{label:'click'}});"
+        "const info = await pageInfo();"
+        f"cliLog(JSON.stringify({{ok:true, clicked:{json.dumps(target)}, url:info.url}}));"
+    )
+    return _ego_script_json(script, timeout=30)
+
+
+def ego_fill(selector: str, value: str) -> dict:
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        f"await fillInput({json.dumps(selector)}, {json.dumps(value)});"
+        f"cliLog(JSON.stringify({{ok:true, filled:{json.dumps(selector)}}}));"
+    )
+    return _ego_script_json(script, timeout=30)
+
+
+def ego_wait(selector: str = "", timeout_ms: int = 15000) -> dict:
+    if not selector.strip():
+        return {"ok": False, "error": "Kein Element zum Warten angegeben."}
+    secs = max(1, timeout_ms // 1000)
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        f"await waitForElement({json.dumps(selector)}, {{timeout:{secs}}});"
+        "const info = await pageInfo();"
+        "cliLog(JSON.stringify({ok:true, url:info.url}));"
+    )
+    return _ego_script_json(script, timeout=secs + 20)
+
+
+def ego_capture() -> dict:
+    """``captureScreenshot()`` liefert live verifiziert einen Dateipfad auf
+    DIESER Maschine zurueck, kein Base64 — die Bridge liest die Datei selbst
+    und raeumt sie danach auf (dieselbe Verantwortung wie ueberall sonst, wo
+    die Bridge Screenshots als Base64 zurueckgibt)."""
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        "const path = await captureScreenshot();"
+        "const info = await pageInfo();"
+        "cliLog(JSON.stringify({ok:true, path, url:info.url}));"
+    )
+    result = _ego_script_json(script, timeout=30)
+    if not result.get("ok"):
+        return result
+    path = result.get("path") or ""
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError as e:
+        return {"ok": False, "error": f"Screenshot-Datei nicht lesbar: {e}"}
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return {"ok": True, "url": result.get("url"), "screenshot_b64": base64.b64encode(data).decode()}
+
+
+def ego_tabs(index: int | None = None) -> dict:
+    if index is None:
+        script = (
+            f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+            "const tabs = await listTabs();"
+            "cliLog(JSON.stringify({ok:true, tabs: tabs.map((tb,i)=>"
+            "({index:i, url:tb.url, title:tb.title}))}));"
+        )
+        return _ego_script_json(script, timeout=20)
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        "const tabs = await listTabs();"
+        f"const idx = {int(index)};"
+        "if (idx < 0 || idx >= tabs.length) {"
+        "cliLog(JSON.stringify({ok:false, error:'Kein Tab mit dieser Nummer'}));"
+        "} else {"
+        "await switchTab(tabs[idx].targetId);"
+        "cliLog(JSON.stringify({ok:true, active: idx, url: tabs[idx].url}));"
+        "}"
+    )
+    return _ego_script_json(script, timeout=20)
+
+
+def ego_close() -> dict:
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        "await closeTab();"
+        "cliLog(JSON.stringify({ok:true}));"
+    )
+    return _ego_script_json(script, timeout=20)
 
 
 def allowed_shell_dirs() -> list[str]:
@@ -1983,6 +2140,41 @@ class CommandDispatcher:
                     str(params.get("script") or ""),
                     int(params.get("timeout") or 120),
                 )
+
+            elif action == "ego_navigate":
+                return ego_navigate(
+                    str(params.get("url") or ""),
+                    int(params.get("timeout_ms") or 30000),
+                )
+
+            elif action == "ego_snapshot":
+                return ego_snapshot(int(params.get("max_chars") or 20000))
+
+            elif action == "ego_click":
+                return ego_click(
+                    str(params.get("selector") or ""), str(params.get("text") or "")
+                )
+
+            elif action == "ego_fill":
+                return ego_fill(
+                    str(params.get("selector") or ""), str(params.get("value") or "")
+                )
+
+            elif action == "ego_wait":
+                return ego_wait(
+                    str(params.get("selector") or ""),
+                    int(params.get("timeout_ms") or 15000),
+                )
+
+            elif action == "ego_capture":
+                return ego_capture()
+
+            elif action == "ego_tabs":
+                idx = params.get("index")
+                return ego_tabs(int(idx) if idx is not None else None)
+
+            elif action == "ego_close":
+                return ego_close()
 
             elif action == "open_url":
                 # Eigener Zweig, weil `open -a <url>` NICHT funktioniert: -a erwartet eine

@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.272.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Diskrete ego-lite-Aktionen** — `ego_navigate`/`ego_snapshot`/`ego_click`/`ego_fill`/`ego_wait`/`ego_capture`/`ego_tabs`/`ego_close`, das Gegenstueck zu `browser_*` fuer die echte, eingeloggte Sitzung — kein eigenes JS-Skript mehr noetig fuer die gaengigsten Schritte (`ego_run` bleibt fuer alles Komplexere). Alle acht live gegen ein echtes ego lite verifiziert, bevor sie in die Bridge kamen. Ueber Bridge, MCP-Server, Codex/Custom-LLM-Katalog UND die Sprachfront-Rohdurchreiche erreichbar — keine Extra-Arbeit fuer letztere noetig, das war genau der Sinn der Rohdurchreiche aus 1.271.0.
+- **M365-Mail-Suche fuer die Sprachfront** — `m365_mail_recent` kannte bisher nur "letzte N Mails"; live gemeldet, dass eine Themensuche ("Deutsche Bahn", "Reisekosten") dadurch leerlief. Neu: `search`/`sender`/`subject` werden jetzt an den bestehenden Graph-Suchparameter durchgereicht (der Agent hatte das laengst).
+- **Personensuche + Teams-Nachrichten fuer die Sprachfront** — `m365_search_people` (dieselbe Verzeichnissuche, die der Agent schon hat) und `m365_teams_message` (schreibt in einen bestehenden 1:1-Chat, gefunden ueber die Mitgliedernamen; kein Chat gefunden wird ehrlich gesagt statt geraten). Vorher hatte die Sprachfront fuer Teams ueberhaupt kein Werkzeug.
+
+### Behoben
+- **Kalender "morgen" zeigte ueberwiegend den Rest von heute.** `days_ahead` war ein rollierendes Fenster ab dem exakten Aufrufzeitpunkt, kein Kalendertag — `days_ahead=1` erreicht Mitternacht erst kurz vor Tagesende. Neuer Parameter `date` (`today`/`tomorrow`/ISO-Datum) auf dem gemeinsamen Graph-Werkzeug `ms_list_calendar_events` liefert jetzt echte Mitternacht-zu-Mitternacht-Grenzen; die Sprachfront nutzt ihn ueber ein neues `when`-Feld.
+- **Buchstabierte E-Mail-Adressen wurden mehrfach falsch verstanden und trotzdem verwendet** (live: `alisch@mindsquare.de` wurde nacheinander zu drei falschen Adressen). Die Sprachfront liest eine buchstabierte Adresse jetzt Buchstabe fuer Buchstabe zurueck, bevor sie sie in einer Mail verwendet.
+- **`ego` galt nur fuer Login-Aufgaben** — "Google oeffnen"/"YouTube durchsuchen" liefen ueber den unzuverlaessigen Bedienungshilfen-Weg statt ueber `ego`. Jetzt der Standardweg fuer jede Aufgabe mit Browser-Inhalten, inkl. eines konkreten Beispiels fuer interne Tools (Perk/Concur/SAP), die die Sprachfront vorher faelschlich als "kein Zugriff" abgewiesen hat.
+
 ## [1.271.1] - 2026-08-27
 
 ### Behoben
