@@ -308,6 +308,10 @@ export interface Settings {
   saml_sp_entity_id?: string;
   saml_group_attribute?: string;
   saml_configured?: boolean;
+  // Websuche-Provider (Admin -> Websuche): "duckduckgo" (Vorgabe) | "brave" | "serp".
+  // Der API-Key selbst kommt nie zurueck, nur ob einer hinterlegt ist.
+  web_search_provider?: string;
+  has_web_search_api_key?: boolean;
 }
 
 // Provenance of a memory entry (who/what wrote it).

@@ -3356,12 +3356,16 @@ class RealtimeVoiceSession:
         return ". ".join(parts) + "."
 
     async def _web_search(self, query: str, max_results: int) -> str:
-        """Direct keyless web search (DuckDuckGo) — no agent round-trip."""
-        from app.core.web_search import web_search as _do_search
+        """Direct web search, no agent round-trip — provider ist admin-konfiguriert
+        (Admin -> Websuche: DuckDuckGo/Brave/SerpApi), dieselbe Quelle wie ueberall."""
+        from app.db.session import async_session_factory
+        from app.core.web_search import web_search_with_settings
+
         query = (query or "").strip()
         if not query:
             return "Keine Suchanfrage erkannt."
-        results = await _do_search(query, max_results)
+        async with async_session_factory() as db:
+            results = await web_search_with_settings(query, max_results, db)
         if not results:
             return f"Zu „{query}“ habe ich im Web nichts gefunden."
         # Surface the results to the Jarvis UI too (cards/links), not just to voice.

@@ -95,7 +95,7 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "manage_schedule", "plan_day", "rate_task", "rebuild_app",
         "schedule_meeting", "send_message", "send_message_and_wait", "skill_update",
         "start_app", "stop_app", "tickets", "trigger_create", "trigger_delete",
-        "trigger_list", "trigger_toggle", "update_todos"
+        "trigger_list", "trigger_toggle", "update_todos", "web_search"
     ],
     "read-logs": [
         "read_logs"

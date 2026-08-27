@@ -39,6 +39,7 @@ import {
   ScrollText,
   Brain,
   AppWindow,
+  Search,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 
@@ -49,6 +50,7 @@ import { SecretsView } from "@/app/secrets/view";
 import { HealthView } from "@/app/health/view";
 import { AuditView } from "@/app/audit/view";
 import { DlpView } from "@/app/admin/dlp-view";
+import { WebSearchView } from "@/app/admin/web-search-view";
 import { MasterRulesView } from "@/app/admin/master-rules-view";
 import { cn, timeAgo, formatCost } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
@@ -68,19 +70,19 @@ import { formatMoney } from "@/lib/money";
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
   | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit" | "dlp"
-  | "master-rules"
+  | "master-rules" | "web-search"
   | "pages" | "sso-groups";
 
 // Tabs whose content is a full embedded page component (rendered without
 // their own <Header>). They don't depend on the admin page's own data load.
-const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules"];
+const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules", "web-search"];
 
 // Das Menüband ist zweistufig: oben die Themengruppe, darunter deren Unterreiter.
 // So bleiben alle Bereiche sichtbar, ohne dass 13 Reiter in einer Zeile scrollen.
 const TAB_GROUPS: { id: string; label: string; icon: typeof Users; tabs: Tab[] }[] = [
   { id: "people", label: "Nutzer & Rollen", icon: Users, tabs: ["users", "roles", "sso-groups"] },
   { id: "agents", label: "Agenten", icon: Cpu, tabs: ["agents", "assignments"] },
-  { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains"] },
+  { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains", "web-search"] },
   { id: "security", label: "Sicherheit", icon: Shield, tabs: ["master-rules", "secrets", "dlp", "audit"] },
   { id: "ops", label: "Betrieb", icon: HeartPulse, tabs: ["health", "budget", "feedback"] },
   { id: "system", label: "System", icon: SettingsIcon, tabs: ["settings", "pages"] },
@@ -404,6 +406,7 @@ export default function AdminPage() {
     { id: "settings", label: "Einstellungen", icon: SettingsIcon },
     { id: "ai-accounts", label: "AI-Accounts", icon: Cpu },
     { id: "second-brains", label: "Second Brains", icon: Brain },
+    { id: "web-search", label: "Websuche", icon: Search },
     { id: "secrets", label: "Key Management", icon: KeyRound },
     { id: "health", label: "Health", icon: HeartPulse },
     { id: "audit", label: "Audit Log", icon: ScrollText },
@@ -494,6 +497,7 @@ export default function AdminPage() {
             {tab === "settings" && <SettingsView embedded />}
             {tab === "ai-accounts" && <AIAccountsView embedded />}
             {tab === "second-brains" && <SecondBrainsView embedded />}
+            {tab === "web-search" && <WebSearchView embedded />}
             {tab === "secrets" && <SecretsView embedded />}
             {tab === "health" && <HealthView embedded />}
             {tab === "audit" && <AuditView embedded />}

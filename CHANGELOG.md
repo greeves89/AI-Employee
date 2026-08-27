@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.273.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Admin-konfigurierbare Websuche** (Admin -> Websuche, Vorbild OpenWebUI) — DuckDuckGo bleibt schluessellos die Vorgabe; wahlweise echte Brave-Search-API- oder SerpApi-Anbindung, Provider + Key global umschaltbar. Vorher gab es ZWEI unabhaengige, sich widersprechende DuckDuckGo-Kopien (Sprachfront, Agent-Container) und der bestehende „brave-search"-Eintrag bei den AI-Accounts war nachweislich nur ein Stub ohne echten Aufruf. Jetzt EIN gemeinsames Modul (`core/web_search.py`), das Agent-Container (ueber einen neuen `/agent-search/web`-Endpunkt), Sprachfront UND — als neuer MCP-Tool-Eintrag `web_search` — auch Claude Code direkt nutzen. Schliesst zugleich eine Harness-Luecke: Claude Code hatte bisher ueberhaupt keine Websuche.
+
+### Behoben
+- **"Eigene KI-Zugaenge erlauben"-Schalter liess sich nicht deaktivieren.** Der Schalter fehlte in der PATCH-Feldliste der Einstellungen-API — ein Admin-Klick wurde lautlos verworfen, ohne Fehlermeldung, und `GET /settings/` zeigte deshalb immer "an", unabhaengig vom tatsaechlichen Zustand. Live per DB-Abfrage bestaetigt: der Wert wurde noch nie gespeichert.
+
 ## [1.272.2] - 2026-08-27
 
 ### Behoben
