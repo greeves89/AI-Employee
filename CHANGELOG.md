@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.275.0] - 2026-08-27
+
+### Behoben
+- **Modals schlossen sich nicht beim Klick daneben.** Live gemeldet an der Feedback-Detail-Modal: der Klick-außerhalb-Mechanismus war strukturell kaputt — das unsichtbare `pointer-events-none`-Wrapper-Element ließ Radix' eingebaute Aussenklick-Erkennung ins Leere laufen. Alle betroffenen Dialoge (Feedback-Detail, Mount-Rechte, Datei-Upload, Changelog, Team/Agent anlegen, Delegieren, Freigabe-Anfrage, Analytics-Agentendetail) bekommen jetzt einen expliziten Klick-Handler auf dem Hintergrund.
+- **Element-Label im Feedback-Widget verklebte zwei Textteile ohne Trenner** (z.B. "...erhaltenFeedback wird..." statt "...erhalten Feedback wird..."), weil `textContent` den Text mehrerer Geschwister-Elemente roh aneinanderhängt. Liest jetzt `innerText` (respektiert das gerenderte Layout). Ausserdem schnitt die 80-Zeichen-Grenze mitten im Wort ohne Auslassungszeichen ab — jetzt an der letzten Wortgrenze mit "…".
+
 ## [1.274.2] - 2026-08-27
 
 ### Behoben

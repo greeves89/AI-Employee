@@ -143,6 +143,7 @@ export function ApprovalModal({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
+                onClick={onClose}
               />
             </Dialog.Overlay>
 
