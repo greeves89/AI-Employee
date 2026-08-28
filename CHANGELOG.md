@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.275.3] - 2026-08-28
+
+### Behoben
+- **SSO-Login mit Microsoft endete fuer neue Nutzer mit 500** — live per Log-Traceback bestaetigt: `invalid input value for enum userrole: "UNASSIGNED"`. Die Rolle `UNASSIGNED` (fuer frisch per SSO angemeldete Nutzer ohne Zuteilung) wurde als Python-Enum-Member ergaenzt, die noetige `ALTER TYPE`-Migration fuer den Postgres-Enum-Typ fehlte aber — betraf nicht nur den gemeldeten Kunden, sondern auch die eigene Plattform (dort bisher nur nicht ausgeloest). Nachzieh-Migration ergaenzt (gleiches Muster wie die GitHub-OAuth-Provider-Ergaenzung).
+
 ## [1.275.2] - 2026-08-27
 
 ### Behoben
