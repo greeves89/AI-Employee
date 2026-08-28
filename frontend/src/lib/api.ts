@@ -1661,6 +1661,12 @@ export async function deleteUser(userId: string): Promise<void> {
   await fetchJSON(`${getBase()}/auth/users/${userId}`, { method: "DELETE" });
 }
 
+export async function resetUserPassword(
+  userId: string,
+): Promise<{ user_id: string; email: string; temp_password: string }> {
+  return fetchJSON(`${getBase()}/auth/users/${userId}/reset-password`, { method: "POST" });
+}
+
 // Admin: Agent Stats
 export interface AdminAgentStats {
   agent: {

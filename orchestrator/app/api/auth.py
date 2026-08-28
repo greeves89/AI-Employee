@@ -1,6 +1,7 @@
 """Authentication API endpoints: register, login, logout, user management."""
 
 import logging
+import secrets
 import time
 import uuid
 from collections import defaultdict
@@ -755,6 +756,27 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
 
     logger.info(f"Admin {current.email} created user: {user.email} (role: {user.role.value})")
     return UserResponse.model_validate(user).model_dump()
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(user_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Admin-only: generate a new random password for a user and return it once."""
+    from app.dependencies import get_current_user
+
+    current = await get_current_user(request, db)
+    if current.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    temp_password = secrets.token_urlsafe(12)
+    target.password_hash = hash_password(temp_password)
+    await db.commit()
+
+    logger.info(f"Admin {current.email} reset password for user: {target.email}")
+    return {"user_id": target.id, "email": target.email, "temp_password": temp_password}
 
 
 @router.delete("/users/{user_id}")

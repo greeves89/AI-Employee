@@ -60,6 +60,7 @@ import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { MountPermissionsModal } from "@/components/admin/mount-permissions-modal";
+import { ResetPasswordModal } from "@/components/admin/reset-password-modal";
 import { FeedbackDetailModal } from "@/components/admin/feedback-detail-modal";
 import { RolesPanel } from "@/components/admin/roles-panel";
 import { PagesPanel } from "@/components/admin/pages-panel";
@@ -104,6 +105,7 @@ export default function AdminPage() {
   const toast = useToast();
   const user = useAuthStore((s) => s.user);
   const [mountUserId, setMountUserId] = useState<string | null>(null);
+  const [resetPasswordResult, setResetPasswordResult] = useState<{ email: string; tempPassword: string } | null>(null);
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
@@ -248,6 +250,26 @@ export default function AdminPage() {
       await fetchUsers();
     } catch (e) {
       toast.error("Failed to delete user", e instanceof Error ? e.message : undefined);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleResetPassword = async (u: AdminUser) => {
+    if (u.id === user?.id) return;
+    const ok = await confirm({
+      title: `Passwort für "${u.name}" zurücksetzen?`,
+      message: `${u.email} — das bisherige Passwort wird sofort ungültig.`,
+      variant: "destructive",
+      confirmLabel: "Zurücksetzen",
+    });
+    if (!ok) return;
+    setActionLoading(u.id);
+    try {
+      const res = await api.resetUserPassword(u.id);
+      setResetPasswordResult({ email: res.email, tempPassword: res.temp_password });
+    } catch (e) {
+      toast.error("Passwort-Reset fehlgeschlagen", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -642,6 +664,13 @@ export default function AdminPage() {
                               title="Mount-Permissions"
                             >
                               <Box className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleResetPassword(u)}
+                              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                              title="Passwort zurücksetzen"
+                            >
+                              <KeyRound className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteUser(u)}
@@ -1182,6 +1211,14 @@ export default function AdminPage() {
           userId={mountUserId}
           userName={users.find((u) => u.id === mountUserId)?.name}
           onClose={() => setMountUserId(null)}
+        />
+      )}
+
+      {resetPasswordResult && (
+        <ResetPasswordModal
+          email={resetPasswordResult.email}
+          tempPassword={resetPasswordResult.tempPassword}
+          onClose={() => setResetPasswordResult(null)}
         />
       )}
     </div>
