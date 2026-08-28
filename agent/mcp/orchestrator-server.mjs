@@ -982,6 +982,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "restart_own_container",
+      description:
+        "Rebuild and restart MY OWN container from the current agent image/config, preserving my " +
+        "full workspace (files, git history, memory, everything on disk). This INTERRUPTS whatever " +
+        "I'm currently doing and drops my in-progress conversation turn — ALWAYS tell the user this " +
+        "is about to happen BEFORE calling it, never call it silently. Use only when explicitly " +
+        "asked to restart/rebuild myself, or when a config/instruction change needs a fresh " +
+        "container to take effect. No arguments.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
       name: "web_search",
       description:
         "Search the web for information. Use this when you need current data (weather, news, " +
@@ -1894,6 +1908,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const conts = (result.containers || []).length;
       const url = result.url ? ` Link für den User: ${result.url}` : "";
       return { content: [{ type: "text", text: `App „${args.path}" neu gebaut und gestartet (${conts} Container, ${result.status}).${url}` }] };
+    }
+
+    case "restart_own_container": {
+      await apiCall(`/agent-apps/restart-self`, { method: "POST" });
+      return { content: [{ type: "text", text: "Mein Container wird gerade neu gebaut und startet gleich neu. Mein Workspace bleibt erhalten." }] };
     }
 
     case "web_search": {

@@ -1581,6 +1581,13 @@ class OrchestratorAPIClient:
         url_s = f" Link für den User: {result['url']}" if result.get("url") else ""
         return f"App „{params.get('path')}“ neu gebaut und gestartet ({conts} Container, {result.get('status')}).{url_s}"
 
+    async def restart_own_container(self, params: dict) -> str:
+        """Rebuild and restart MY OWN container, preserving the workspace."""
+        result = await self._request("POST", "/agent-apps/restart-self")
+        if isinstance(result, str):
+            return result
+        return "Mein Container wird gerade neu gebaut und startet gleich neu. Mein Workspace bleibt erhalten."
+
     # ── Web Search (admin-konfigurierter Provider: DuckDuckGo/Brave/SerpApi) ──
 
     async def web_search(self, params: dict) -> str:

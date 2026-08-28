@@ -1942,6 +1942,14 @@ ORCHESTRATOR_TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "restart_own_container",
+            "description": "Rebuild and restart MY OWN container from the current agent image/config, preserving my full workspace (files, git history, memory, everything on disk). This INTERRUPTS whatever I'm currently doing and drops my in-progress conversation turn — ALWAYS tell the user this is about to happen BEFORE calling it, never call it silently. Use only when explicitly asked to restart/rebuild myself, or when a config/instruction change needs a fresh container to take effect. No arguments.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 ]
 
 # ── Combined Tool List ──
