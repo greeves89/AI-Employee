@@ -110,8 +110,8 @@ class UserUpdateRequest(BaseModel):
 
 
 def _set_auth_cookies(response: Response, user: User) -> dict:
-    access = create_access_token(user.id, user.role.value)
-    refresh = create_refresh_token(user.id)
+    access = create_access_token(user.id, user.role.value, user.token_version)
+    refresh = create_refresh_token(user.id, user.token_version)
     response.set_cookie(COOKIE_ACCESS, access, max_age=1800, **COOKIE_OPTS)
     response.set_cookie(COOKIE_REFRESH, refresh, max_age=604800, **COOKIE_OPTS)
     return {"access_token": access}
@@ -261,6 +261,8 @@ async def refresh_token(request: Request, response: Response, db: AsyncSession =
     user = await db.scalar(select(User).where(User.id == payload["sub"]))
     if not user or not user.is_active or not getattr(user, "approved", True):
         raise HTTPException(status_code=401, detail="User not found, inactive, or pending approval")
+    if payload.get("tv", 0) != user.token_version:
+        raise HTTPException(status_code=401, detail="Session revoked")
 
     tokens = _set_auth_cookies(response, user)
     return {"user": UserResponse.model_validate(user).model_dump(), **tokens}
@@ -567,8 +569,8 @@ def finish_sso_login(user, return_to: str | None, provider: str, frontend_url: s
 
     # Set auth cookies (same as normal login)
     redirect_resp = RedirectResponse(url=destination, status_code=302)
-    access = create_access_token(user.id, user.role.value)
-    refresh = create_refresh_token(user.id)
+    access = create_access_token(user.id, user.role.value, user.token_version)
+    refresh = create_refresh_token(user.id, user.token_version)
     redirect_resp.set_cookie(COOKIE_ACCESS, access, max_age=1800, **COOKIE_OPTS)
     redirect_resp.set_cookie(COOKIE_REFRESH, refresh, max_age=604800, **COOKIE_OPTS)
 
@@ -773,6 +775,9 @@ async def reset_user_password(user_id: str, request: Request, db: AsyncSession =
 
     temp_password = secrets.token_urlsafe(12)
     target.password_hash = hash_password(temp_password)
+    # Revoke every session issued before this reset — otherwise a compromised
+    # account stays reachable via its old, still-valid token for up to 7 days.
+    target.token_version += 1
     await db.commit()
 
     logger.info(f"Admin {current.email} reset password for user: {target.email}")

@@ -372,7 +372,7 @@ class RedirectTargetTests(unittest.TestCase):
         from app.api.auth import finish_sso_login
         from app.models.user import UserRole
 
-        user = SimpleNamespace(id="u1", email="a@b.de", role=UserRole.MEMBER, approved=True)
+        user = SimpleNamespace(id="u1", email="a@b.de", role=UserRole.MEMBER, approved=True, token_version=0)
         resp = finish_sso_login(user, return_to, "saml", self.FRONTEND)
         return resp.headers["location"]
 

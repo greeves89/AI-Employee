@@ -42,7 +42,7 @@ class ResetPasswordTests(unittest.IsolatedAsyncioTestCase):
         db.commit.assert_not_called()
 
     async def test_success_returns_plaintext_and_replaces_the_hash(self):
-        target = SimpleNamespace(id="target1", email="target@x.z", password_hash="old-hash")
+        target = SimpleNamespace(id="target1", email="target@x.z", password_hash="old-hash", token_version=0)
         db = SimpleNamespace(get=AsyncMock(return_value=target), commit=AsyncMock())
         with patch("app.dependencies.get_current_user", AsyncMock(return_value=_admin())):
             result = await reset_user_password("target1", SimpleNamespace(), db)
@@ -55,7 +55,7 @@ class ResetPasswordTests(unittest.IsolatedAsyncioTestCase):
     async def test_the_returned_password_actually_verifies(self):
         """Der Sinn der Funktion: das ausgegebene Klartext-Passwort muss das
         Nutzer-Login tatsaechlich wieder oeffnen, nicht nur irgendein String sein."""
-        target = SimpleNamespace(id="target1", email="target@x.z", password_hash="old-hash")
+        target = SimpleNamespace(id="target1", email="target@x.z", password_hash="old-hash", token_version=0)
         db = SimpleNamespace(get=AsyncMock(return_value=target), commit=AsyncMock())
         with patch("app.dependencies.get_current_user", AsyncMock(return_value=_admin())):
             result = await reset_user_password("target1", SimpleNamespace(), db)
@@ -64,13 +64,77 @@ class ResetPasswordTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_two_resets_produce_different_passwords(self):
         """Waere der Zufall schwach/fix, koennte ein alter Reset weiterhin gelten."""
-        target = SimpleNamespace(id="target1", email="target@x.z", password_hash="old-hash")
+        target = SimpleNamespace(id="target1", email="target@x.z", password_hash="old-hash", token_version=0)
         db = SimpleNamespace(get=AsyncMock(return_value=target), commit=AsyncMock())
         with patch("app.dependencies.get_current_user", AsyncMock(return_value=_admin())):
             first = await reset_user_password("target1", SimpleNamespace(), db)
             second = await reset_user_password("target1", SimpleNamespace(), db)
 
         self.assertNotEqual(first["temp_password"], second["temp_password"])
+
+    async def test_reset_bumps_token_version(self):
+        """Der eigentliche Sicherheits-Zweck: ein Reset ohne Session-Invalidierung
+        liesse ein bereits laufendes (z.B. kompromittiertes) Login bis zu 7 Tage
+        weiterlaufen, egal was das neue Passwort ist — JWTs allein lassen sich
+        nicht vorzeitig entwerten, ``token_version`` ist der einzige Hebel dafuer."""
+        target = SimpleNamespace(id="target1", email="target@x.z", password_hash="old-hash", token_version=3)
+        db = SimpleNamespace(get=AsyncMock(return_value=target), commit=AsyncMock())
+        with patch("app.dependencies.get_current_user", AsyncMock(return_value=_admin())):
+            await reset_user_password("target1", SimpleNamespace(), db)
+
+        self.assertEqual(target.token_version, 4)
+
+
+class SessionRevocationTests(unittest.IsolatedAsyncioTestCase):
+    """Der andere Teil des Vertrags: ein Token mit veralteter ``tv`` muss an
+    JEDER Stelle abgelehnt werden, an der Tokens geprueft werden — sonst bliebe
+    ein zurueckgesetztes Passwort wirkungslos fuer laufende Sitzungen."""
+
+    async def test_get_current_user_rejects_a_stale_token_version(self):
+        from datetime import datetime, timezone
+        from app import dependencies
+
+        user = SimpleNamespace(
+            id="u1", email="x@y.z", role=UserRole.MEMBER, is_active=True, approved=True,
+            token_version=1, last_active_at=datetime.now(timezone.utc),
+        )
+        request = SimpleNamespace(
+            cookies={"access_token": "t"}, headers={},
+            url=SimpleNamespace(path="/api/v1/agents/"),
+        )
+        db = SimpleNamespace(scalar=AsyncMock(return_value=user))
+        with patch("app.core.auth.decode_token", return_value={"type": "access", "sub": "u1", "tv": 0}), \
+             patch("app.db.session.set_rls_user", AsyncMock()):
+            with self.assertRaises(HTTPException) as ctx:
+                await dependencies.get_current_user(request, db)
+        self.assertEqual(ctx.exception.status_code, 401)
+
+    async def test_get_current_user_accepts_a_matching_token_version(self):
+        from datetime import datetime, timezone
+        from app import dependencies
+
+        user = SimpleNamespace(
+            id="u1", email="x@y.z", role=UserRole.MEMBER, is_active=True, approved=True,
+            token_version=1, last_active_at=datetime.now(timezone.utc),
+        )
+        request = SimpleNamespace(
+            cookies={"access_token": "t"}, headers={},
+            url=SimpleNamespace(path="/api/v1/agents/"),
+        )
+        db = SimpleNamespace(scalar=AsyncMock(return_value=user))
+        with patch("app.core.auth.decode_token", return_value={"type": "access", "sub": "u1", "tv": 1}), \
+             patch("app.db.session.set_rls_user", AsyncMock()):
+            result = await dependencies.get_current_user(request, db)
+        self.assertEqual(result.id, "u1")
+
+    async def test_get_current_user_ws_rejects_a_stale_token_version(self):
+        from app import dependencies
+
+        user = SimpleNamespace(id="u1", is_active=True, approved=True, token_version=2)
+        db = SimpleNamespace(scalar=AsyncMock(return_value=user))
+        with patch("app.core.auth.decode_token", return_value={"type": "access", "sub": "u1", "tv": 1}):
+            result = await dependencies.get_current_user_ws("t", db)
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":

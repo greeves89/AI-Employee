@@ -130,7 +130,7 @@ class GateTests(unittest.IsolatedAsyncioTestCase):
         # hier der Riegel, nicht die Buchfuehrung.
         user = SimpleNamespace(
             id="u1", email="x@y.z", role=role, is_active=True, approved=True,
-            last_active_at=datetime.now(timezone.utc),
+            token_version=0, last_active_at=datetime.now(timezone.utc),
         )
         db = SimpleNamespace(scalar=AsyncMock(return_value=user))
         with patch("app.core.auth.decode_token", return_value={"type": "access", "sub": "u1"}), \
