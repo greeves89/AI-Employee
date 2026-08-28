@@ -421,7 +421,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         "machine. IMPORTANT: call this DIRECTLY for anything involving ego lite — it " +
         "launches ego lite itself if it isn't already running (a `useOrCreateTaskSpace(...)` " +
         "call is enough). Never call open_app/computer_open_app for ego lite first; that is " +
-        "an unnecessary extra step and not how the user should have to ask for it.",
+        "an unnecessary extra step and not how the user should have to ask for it. If the " +
+        "capability isn't enabled yet and you need to walk the user through installing ego " +
+        "lite: NEVER assume they are on a Mac. The automated one-line install only exists " +
+        "for macOS — on any other OS (or if you don't know which OS the user is on), ASK " +
+        "first, then point them to https://lite.ego.app/ for Windows/Linux instead of " +
+        "saying 'install it on your Mac'.",
       inputSchema: {
         type: "object",
         required: ["script"],

@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.275.4] - 2026-08-28
+
+### Behoben
+- **Agent empfahl unaufgefordert "ego (lite) auf deinem Mac installieren"**, ohne das Betriebssystem des Nutzers zu kennen — live in einem Kundengespraech gefunden. Die automatische Ein-Zeilen-Installation gibt es nur fuer macOS; auf anderen Systemen (oder wenn das Betriebssystem unbekannt ist) soll der Agent jetzt zuerst fragen und sonst auf https://lite.ego.app/ verweisen statt Mac anzunehmen.
+
 ## [1.275.3] - 2026-08-28
 
 ### Behoben
