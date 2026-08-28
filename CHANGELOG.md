@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.276.0] - 2026-08-28
+
+### Neu
+- **Agent kann seinen eigenen Container per Chat neu bauen** (`restart_own_container`): rebuildet den Container aus dem aktuellen Agent-Image/Konfig, der Workspace bleibt vollstaendig erhalten. Ueber einen agent-token-authentifizierten Endpunkt (`POST /agent-apps/restart-self`), respektiert denselben Eval-Gate wie das Admin-"Update"-Feature. In allen drei Laufzeiten verdrahtet (Claude Code, Custom-LLM, Codex) sowie in der Sprachfront-Werkzeug-Parity eingeordnet (delegiert, wie `rebuild_app`).
+
 ## [1.275.4] - 2026-08-28
 
 ### Behoben
