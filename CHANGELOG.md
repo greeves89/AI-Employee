@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.276.1] - 2026-08-29
+
+### Behoben
+- **Chat brach mit `'tuple' object has no attribute 'get'` ab** (Kundenmeldung Christian Uhde, SKBS, 2026-08-28). `_build_responses_body` rief `.get()` auf jedem `tool_calls`-Eintrag ohne Typ-Pruefung auf; ein nicht-dict-Eintrag riss die gesamte Runde ab, noch bevor der Provider-eigene Fehlerpfad greift. Ueberspringt jetzt nicht-dict-Eintraege. Chat-/Task-Fehlermeldungen zeigen zusaetzlich kuenftig den Exception-Typ statt einer blossen Nachricht, damit ein naechstes Auftreten sofort erkennbar ist, auch ohne Container-Log (der nach jedem Agent-Neubau weg ist).
+- **Badge-Zeile auf den Agent-Karten wurde bei zu vielen gleichzeitig aktiven Badges lautlos abgeschnitten** (Kundenmeldung Christian Uhde, SKBS, 2026-08-27: "Buttons sehen komisch aus"). Bricht jetzt in eine zweite Zeile um statt vom Kartenrand verschluckt zu werden.
+
 ## [1.276.0] - 2026-08-28
 
 ### Neu
