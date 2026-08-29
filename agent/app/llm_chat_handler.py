@@ -12,7 +12,7 @@ from app.loop_detector import LoopDetector
 from app.config import settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
-from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
+from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
 from app.tools.definitions import TOOL_DEFINITIONS
 from app.tools.executor import ToolExecutor
 from app.tools.mcp_client import MCPHTTPClient
@@ -972,12 +972,18 @@ class LLMChatHandler:
                 logger.info("LLM Chat vom Nutzer angehalten (%s)", type(e).__name__)
                 return await self._finish_cancelled(message_id, start_time, num_turns)
             logger.exception(f"LLM Chat error: {e}")
+            # format_exception() prefixes the exception TYPE (matches the
+            # provider-level error style) — a bare str(e) like the previous
+            # version left a customer-reported chat error self-diagnosing
+            # only from the container log, and that log is gone the moment
+            # the agent gets recreated (2026-08-28 Christian-Uhde feedback).
+            failure_text = format_exception(e)
             await self.log_publisher.publish_chat(
-                message_id, "error", {"message": str(e)}
+                message_id, "error", {"message": failure_text}
             )
             self.is_running = False
-            result = {"status": "error", "error": str(e)}
-            await self._heal_after_context_overflow(message_id, str(e))
+            result = {"status": "error", "error": failure_text}
+            await self._heal_after_context_overflow(message_id, failure_text)
             await self.log_publisher.publish_chat(message_id, "done", result)
             return result
 

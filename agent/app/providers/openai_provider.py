@@ -387,9 +387,17 @@ class OpenAIProvider(BaseLLMProvider):
                     })
             elif msg.role == "assistant":
                 if msg.tool_calls:
-                    # Re-emit function calls so the API has context
+                    # Re-emit function calls so the API has context. Same
+                    # defensive shape-check as context_compressor._collapse —
+                    # ChatMessage.tool_calls is an untyped list, and this runs
+                    # before the provider's own try/except starts, so a
+                    # malformed entry here crashed the whole turn with a bare,
+                    # un-self-diagnosing exception (customer-reported
+                    # 'tuple' object has no attribute 'get', 2026-08-28).
                     for tc in msg.tool_calls:
-                        func = tc.get("function", {})
+                        if not isinstance(tc, dict):
+                            continue
+                        func = tc.get("function") or {}
                         input_items.append({
                             "type": "function_call",
                             "name": func.get("name", ""),
