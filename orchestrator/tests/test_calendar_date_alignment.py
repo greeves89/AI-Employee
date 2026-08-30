@@ -9,6 +9,7 @@ Mitternacht-Grenzen in der angegebenen Zeitzone liefern.
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from app.core import msgraph_mcp
 
@@ -57,7 +58,11 @@ class DateAlignmentTests(unittest.IsolatedAsyncioTestCase):
                 "ms_list_calendar_events", {"date": "2026-12-24", "timezone": "Europe/Berlin"}, "tok",
             )
         start = datetime.fromisoformat(rec.calls[0]["kwargs"]["params"]["startDateTime"])
-        self.assertEqual(start.astimezone().date().isoformat(), "2026-12-24")
+        # In der ANGEFRAGTEN Zone pruefen, nicht in der des Rechners: bare
+        # .astimezone() nimmt die lokale Zone und ist damit auf einem UTC-Runner rot.
+        self.assertEqual(
+            start.astimezone(ZoneInfo("Europe/Berlin")).date().isoformat(), "2026-12-24"
+        )
 
     async def test_no_date_falls_back_to_the_old_rolling_window_unchanged(self):
         """days_ahead bleibt fuer Mehrtagesuebersichten nuetzlich — Bestandsverhalten."""

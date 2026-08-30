@@ -976,7 +976,7 @@ class LLMChatHandler:
             # provider-level error style) — a bare str(e) like the previous
             # version left a customer-reported chat error self-diagnosing
             # only from the container log, and that log is gone the moment
-            # the agent gets recreated (2026-08-28 Christian-Uhde feedback).
+            # the agent gets recreated (Rueckmeldung beim Kunden, 2026-08-28).
             failure_text = format_exception(e)
             await self.log_publisher.publish_chat(
                 message_id, "error", {"message": failure_text}
