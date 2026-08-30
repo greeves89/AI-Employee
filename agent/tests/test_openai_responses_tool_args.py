@@ -39,8 +39,8 @@ def test_invalid_function_arguments_are_preserved_as_raw():
 
 
 def test_a_malformed_tool_call_entry_does_not_crash_the_whole_turn():
-    """Customer-reported 'tuple' object has no attribute 'get' (2026-08-28,
-    SKBS/gpt-5.6-luna). ChatMessage.tool_calls is an untyped list — a
+    """Beim Kunden gemeldet: 'tuple' object has no attribute 'get' (2026-08-28,
+    Kundenanlage). ChatMessage.tool_calls is an untyped list — a
     non-dict entry must be skipped, not crash body-building for the whole
     Responses-API request before the provider's own try/except even starts."""
     provider = _provider()

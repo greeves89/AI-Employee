@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.276.2] - 2026-08-31
+
+### Behoben
+- **CI war seit dem 27.08. dauerhaft rot — jeder offene Pull Request zeigte einen Fehlschlag, den er gar nicht verursacht hatte.** Ein Kalender-Test verglich das Ergebnis in der Zeitzone des ausfuehrenden Rechners statt in der angefragten. Auf einem Entwicklerrechner mit Europe/Berlin lief er gruen, auf dem UTC-Runner der CI rot. Die Anwendung selbst war immer korrekt; nur die Pruefung war falsch. Wichtiger als der Test: weil rot vier Tage lang der Normalzustand war, fiel zwei Tage spaeter ein **echter** Fehlschlag nicht mehr auf (siehe naechster Punkt).
+- **Ein Personenname und eine Kundenkennung standen im oeffentlichen Repository** — in einem Code-Kommentar und in einem Test-Docstring. Der vorhandene Schutz-Test hatte das korrekt gemeldet, ging aber im Dauer-Rot unter. Beide Stellen sind jetzt durch neutrale Formulierungen ersetzt; der Sachverhalt bleibt vollstaendig nachvollziehbar. Hinweis fuer Betreiber: die Git-Historie enthaelt die Namen weiterhin.
+
 ## [1.276.1] - 2026-08-29
 
 ### Behoben
