@@ -230,14 +230,24 @@ SAVE_MEMORY_TOOL = {
         "name": "save_memory",
         "description": (
             "Remember something for later — save a fact/preference/decision/contact into MY "
-            "long-term memory. Use when the user says 'merk dir…', 'behalte…', 'für später:…'. "
-            "Fast, direct write. Confirm briefly that you saved it."
+            "long-term memory (same store the memory_save MCP tool uses — full agent memory, "
+            "not just conversation logs). Use when the user says 'merk dir…', 'behalte…', "
+            "'für später:…'. Fast, direct write. Confirm briefly that you saved it."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
             "properties": {
                 "content": {"type": "string", "description": "The information to remember."},
                 "key": {"type": "string", "description": "Short label/topic for it (optional)."},
+                "category": {
+                    "type": "string",
+                    "description": "Memory category (broad bucket). Default: fact.",
+                    "enum": ["preference", "contact", "project", "procedure", "decision", "fact", "learning"],
+                },
+                "importance": {
+                    "type": "integer",
+                    "description": "Importance 1-5 (higher = returned first in searches). Default: 3.",
+                },
             },
             "required": ["content"],
         })},
@@ -1497,7 +1507,11 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "get_agent_activity (sofort — zeigt die laufende Aufgabe + die letzten konkreten Schritte "
         "des Agenten aus dem Live-Feed).\n"
         "• Fragen nach MEINEM Wissen ('was weißt du über…', 'hast du dir … gemerkt', zu Kunde/"
-        "Projekt/Kontakt/Verfahren) → search_knowledge (sofort, durchsucht mein Gedächtnis).\n"
+        "Projekt/Kontakt/Verfahren) UND Fragen nach FRÜHEREN GESPRÄCHEN, egal auf welchem Kanal "
+        "('was haben wir besprochen', 'worüber haben wir letztes Mal geredet', 'was war letzte "
+        "Woche', 'hatten wir das schon mal Thema') → search_knowledge (sofort, durchsucht mein "
+        "Gedächtnis — das schließt vergangene Gespräche über Web/App/Telegram/Anruf mit ein, "
+        "nicht nur gemerkte Fakten).\n"
         "• Fragen nach dem zweiten Gehirn / Vault / Wiki / Firmen- oder Abteilungswissen ('steht "
         "was im Wiki zu…', 'schau ins zweite Gehirn', 'gibt es Doku/eine Anleitung zu…') → "
         "search_brain (sofort, durchsucht meine Vaults).\n"
@@ -2712,7 +2726,11 @@ class RealtimeVoiceSession:
             await self._respond(tool_use_id, await self._voice_help())
             return
         if name == "save_memory":
-            await self._respond(tool_use_id, await self._save_memory(str(args.get("content") or ""), str(args.get("key") or "")))
+            await self._respond(tool_use_id, await self._save_memory(
+                str(args.get("content") or ""), str(args.get("key") or ""),
+                category=str(args.get("category") or "") or None,
+                importance=args.get("importance"),
+            ))
             return
         if name == "list_todos":
             await self._respond(tool_use_id, await self._list_todos())
@@ -5438,30 +5456,38 @@ class RealtimeVoiceSession:
             "den Bildschirm zeigen. Sag einfach, was du brauchst."
         )
 
-    async def _save_memory(self, content: str, key: str = "") -> str:
-        """Write a memory into the agent's own long-term store (same table the
-        memory MCP tool uses) — direct, with embedding for later recall."""
+    async def _save_memory(
+        self, content: str, key: str = "", category: str | None = None,
+        importance: int | None = None,
+    ) -> str:
+        """Write a memory into the agent's own long-term store — routed through
+        save_memory_core (in-process, no HTTP hop) so voice-created memories get
+        the SAME dedup/supersede/contradiction handling and embedding as the
+        memory_save MCP tool, instead of a raw insert that bypassed all of it."""
         c = (content or "").strip()
         if not c:
             return "Was soll ich mir merken?"
         k = (key or "").strip() or c[:40]
+        cat = (category or "fact").strip().lower()
+        if cat not in ("preference", "contact", "project", "procedure", "decision", "fact", "learning"):
+            cat = "fact"
+        imp = importance if isinstance(importance, int) and 1 <= importance <= 5 else 3
+        from app.api.memory import MemoryConflict, MemorySave, save_memory_core
         from app.db.session import async_session_factory
-        from app.models.memory import AgentMemory
-        from app.services.embedding_service import get_embedding_service
+        body = MemorySave(
+            agent_id=self.agent_id, category=cat, key=k, content=c,
+            importance=imp, source="conversation",
+        )
         try:
-            vec = None
-            svc = get_embedding_service()
-            if getattr(svc, "enabled", False):
-                vec = await svc.embed(f"{k}: {c}")
             async with async_session_factory() as db:
-                mem = AgentMemory(agent_id=self.agent_id, category="fact", key=k, content=c)
-                if vec is not None:
-                    try:
-                        mem.embedding = vec
-                    except Exception:  # noqa: BLE001
-                        pass
-                db.add(mem)
-                await db.commit()
+                try:
+                    await save_memory_core(db, body, allow_supersede=True)
+                except MemoryConflict:
+                    # No good way to run an interactive "override?" round-trip
+                    # mid-call — this tool is documented as a fast, direct write,
+                    # so a soft contradiction resolves by superseding.
+                    body.override = True
+                    await save_memory_core(db, body, allow_supersede=True)
         except Exception:  # noqa: BLE001
             logger.warning("voice save_memory failed agent=%s", self.agent_id, exc_info=True)
             return "Das Merken hat gerade nicht geklappt."

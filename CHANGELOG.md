@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.276.6] - 2026-08-31
+
+### Behoben
+- **Sprach-Werkzeug `save_memory` schrieb an der zentralen Speicherlogik vorbei** — direkter Roheintrag in die Gedaechtnis-Tabelle statt ueber denselben Pfad wie das MCP-Werkzeug `memory_save`. Dadurch fehlte Ueberschneidungs-/Duplikat-Erkennung komplett, und die Kategorie war unveraenderlich auf "fact" fixiert, obwohl die Gespraechsfuehrung dem Sprachmodell bereits eine differenziertere Kategorisierung ankuendigte, die es technisch gar nicht setzen konnte. Laeuft jetzt ueber dieselbe Kernfunktion wie der MCP-Weg (gleiche Ueberschneidungspruefung, echte Kategorie/Wichtigkeit).
+- **Fragen nach frueheren Gespraechen wurden im Sprachkanal nicht zuverlaessig erkannt.** Die Wissenssuche durchsucht technisch bereits alle Gespraechsverlaeufe kanaluebergreifend, aber die Werkzeug-Auswahl im Systemprompt kannte nur wissensartige Formulierungen ("was weisst du ueber…"), keine rueckblickenden ("was haben wir besprochen", "was war letzte Woche"). Jetzt explizit ergaenzt.
+
+---
+
 ## [1.276.5] - 2026-08-31
 
 ### Abgesichert
