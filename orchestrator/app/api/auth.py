@@ -495,7 +495,8 @@ async def sso_login(
 
     try:
         auth_url = await sso_service.generate_login_url(
-            provider, return_to=safe_internal_path(redirect)
+            provider, return_to=safe_internal_path(redirect),
+            request_host=request.headers.get("host"),
         )
         return RedirectResponse(url=auth_url, status_code=302)
     except ValueError as e:

@@ -103,7 +103,7 @@ class InflightBookkeepingTests(unittest.IsolatedAsyncioTestCase):
 
 
 class DrainPendingLaneTests(unittest.IsolatedAsyncioTestCase):
-    """Live-Fehler auf SKBS (2026-08-31, CEO/Manager, wiederkehrend alle ~18min):
+    """Live-Fehler beim Kunden (2026-08-31, wiederkehrend alle ~18min):
     'tuple' object has no attribute 'get' in _drain_pending. _run_parallel legt
     (msg, msg_json)-Tupel in die Lane (Zeile 741), _lane_worker packt sie korrekt
     aus (Zeile 755), _drain_pending tat es nicht und behandelte das Tupel selbst

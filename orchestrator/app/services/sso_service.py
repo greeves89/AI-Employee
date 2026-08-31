@@ -38,6 +38,34 @@ SSO_STATE_TTL = 600  # 10 minutes
 _MS_MULTITENANT_AUTHORITIES = {"common", "organizations", "consumers"}
 
 
+def resolve_redirect_base_url(request_host: str | None) -> str:
+    """Which base URL a login started on THIS host should redirect back to.
+
+    Defaults to the fixed ``oauth_redirect_base_url`` — unchanged behavior for
+    every deployment that hasn't opted in. Only when the deployment explicitly
+    lists ``request_host`` in ``oauth_redirect_allowed_hosts`` does the login
+    use that host's own URL instead, so a customer reachable under more than
+    one public hostname (a vanity domain alongside their own) can land back on
+    whichever one they actually started from. Not a blind Host-header trust —
+    an unlisted host silently falls back to the fixed base URL, never an
+    attacker-chosen one; the provider (Entra etc.) is the second gate, since
+    it only accepts a redirect_uri it has registered.
+    """
+    fixed = settings.oauth_redirect_base_url
+    allowed = {
+        h.strip().lower()
+        for h in settings.oauth_redirect_allowed_hosts.split(",")
+        if h.strip()
+    }
+    if not request_host or not allowed:
+        return fixed
+    host_only = request_host.split(":", 1)[0].lower()
+    if host_only not in allowed:
+        return fixed
+    scheme = "http" if host_only in ("localhost", "127.0.0.1") else "https"
+    return f"{scheme}://{request_host}"
+
+
 
 def _scopes_for(provider) -> list[str]:
     """Angeforderte Berechtigungen — bei Microsoft die vom Admin freigegebene Auswahl."""
@@ -56,7 +84,7 @@ class SSOService:
         self._jwks_cache: dict[str, dict] = {}
 
     async def generate_login_url(
-        self, provider_name: str, return_to: str | None = None
+        self, provider_name: str, return_to: str | None = None, request_host: str | None = None
     ) -> str:
         """Generate OIDC authorization URL for user login.
 
@@ -66,19 +94,29 @@ class SSOService:
         without ever seeing an AI-Employee login form. It travels INSIDE the
         server-side state record (never as a query parameter the caller controls),
         and the callback re-validates it before redirecting.
+
+        ``request_host`` is the Host header the login was STARTED on — resolved
+        against ``oauth_redirect_allowed_hosts`` (see resolve_redirect_base_url) and
+        stored in the state record so the callback rebuilds the EXACT same
+        redirect_uri for the token exchange, not a freshly-derived one (OAuth2
+        requires the two to match byte-for-byte).
         """
         provider = get_sso_provider(provider_name)
         client_id = get_sso_client_id(provider)
         if not client_id:
             raise ValueError(f"SSO not configured for {provider_name}")
 
+        base_url = resolve_redirect_base_url(request_host)
+
         # Generate and store CSRF state (+ the optional return target)
         state = secrets.token_urlsafe(32)
         state_key = f"sso:state:{state}"
-        payload = json.dumps({"provider": provider_name, "return_to": return_to or ""})
+        payload = json.dumps({
+            "provider": provider_name, "return_to": return_to or "", "base_url": base_url,
+        })
         await self.redis.client.setex(state_key, SSO_STATE_TTL, payload)
 
-        redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/auth/sso/{provider_name}/callback"
+        redirect_uri = f"{base_url}/api/v1/auth/sso/{provider_name}/callback"
 
         params = {
             "client_id": client_id,
@@ -115,16 +153,20 @@ class SSOService:
             record = json.loads(stored)
             stored_provider = record.get("provider", "")
             return_to = str(record.get("return_to") or "")
+            base_url = str(record.get("base_url") or settings.oauth_redirect_base_url)
         except (ValueError, AttributeError):
             stored_provider, return_to = stored, ""
+            base_url = settings.oauth_redirect_base_url
         if stored_provider != provider_name:
             raise ValueError("SSO state mismatch")
         await self.redis.client.delete(state_key)
 
         provider = get_sso_provider(provider_name)
 
-        # Exchange code for tokens
-        token_data = await self._exchange_code(provider, code)
+        # Exchange code for tokens — redirect_uri MUST be byte-for-byte identical
+        # to the one sent in generate_login_url's authorize request (OAuth2 spec),
+        # so this uses the base_url carried in the state, never re-derives it.
+        token_data = await self._exchange_code(provider, code, base_url)
         id_token_raw = token_data.get("id_token")
         access_token = token_data.get("access_token")
 
@@ -199,13 +241,18 @@ class SSOService:
         return user, return_to
 
     async def _exchange_code(
-        self, provider: SSOProviderConfig, code: str
+        self, provider: SSOProviderConfig, code: str, base_url: str | None = None
     ) -> dict:
-        """Exchange authorization code for tokens."""
+        """Exchange authorization code for tokens.
+
+        ``base_url`` must be the SAME one sent in the original authorize request
+        (generate_login_url) — the provider rejects a mismatched redirect_uri.
+        Defaults to the fixed setting so any other caller keeps working unchanged.
+        """
         from app.core.oauth_providers import apply_tenant
         client_id = get_sso_client_id(provider)
         client_secret = get_sso_client_secret(provider)
-        redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/auth/sso/{provider.name}/callback"
+        redirect_uri = f"{base_url or settings.oauth_redirect_base_url}/api/v1/auth/sso/{provider.name}/callback"
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
