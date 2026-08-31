@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.276.3] - 2026-08-31
+
+### Behoben
+- **Chat brach mit `'tuple' object has no attribute 'get'` ab** (Kundenmeldung, wiederkehrend). Andere Ursache als der gleichnamige Fehler in 1.276.1: `_run_parallel` legt Nachrichten als `(msg, msg_json)`-Tupel in die Kanal-Warteschlange, der Nebenläufigkeits-Verbraucher packt sie korrekt aus, `_drain_pending` (fuer bereits waehrend eines laufenden Zugs eingegangene Nachrichten) tat das nicht und behandelte das rohe Tupel wie das Nachrichten-Objekt selbst.
+
 ## [1.276.2] - 2026-08-31
 
 ### Behoben
