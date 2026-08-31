@@ -14,6 +14,7 @@ import signal
 from typing import AsyncIterator
 
 from app.config import settings
+from app.ai_credential_status import report_result_status
 from app.log_publisher import LogPublisher
 from app.llm_chat_handler import DESKTOP_MCP_ACTIVE_ENV
 from app.runner_hooks import (
@@ -174,6 +175,7 @@ class CodexAgentRunner:
             task_id, "system", {"message": f"Starting Codex task with model {model}"}
         )
         result = await self._run_codex(task_id, enhanced_prompt, model, stream="task")
+        await report_result_status(result)
         self.is_running = False
         self._process = None
         return result
@@ -405,6 +407,7 @@ class CodexChatHandler:
             self._runner = None
             self._process = None
 
+        await report_result_status(result)
         await self.log_publisher.publish_chat(message_id, "done", result)
         return result
 

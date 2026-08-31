@@ -6,6 +6,7 @@ import signal
 from typing import AsyncIterator
 
 from app.config import get_oauth_token, settings
+from app.ai_credential_status import is_auth_error, report_result_status
 from app.log_publisher import LogPublisher
 from app.pids_budget import exhaustion_message, find_fork_exhaustion
 from app.runner_hooks import (
@@ -29,13 +30,6 @@ class AgentRunner:
         self._process: asyncio.subprocess.Process | None = None
         self.is_running = False
 
-    #: Merkmale eines Zugangsfehlers im CLI-Ergebnis. Dieselbe Liste wie im
-    #: Chat-Pfad (``chat_handler``) — eine Faehigkeit gehoert in beide Wege.
-    _AUTH_ERROR_MARKERS = (
-        "does not have access", "invalid_grant", "unauthorized",
-        "401", "oauth", "authentication", "revoked",
-    )
-
     async def execute_task(
         self, task_id: str, prompt: str, model: str | None = None,
         lightweight: bool = False,
@@ -57,9 +51,7 @@ class AgentRunner:
         result = await self._execute_task_once(task_id, prompt, model, lightweight)
 
         error_text = str(result.get("error", "")).lower()
-        if result.get("status") == "error" and any(
-            m in error_text for m in self._AUTH_ERROR_MARKERS
-        ):
+        if result.get("status") == "error" and is_auth_error(error_text):
             logger.warning("[Auth] Aufgabe %s scheiterte am Zugang — warte auf neuen "
                            "Token und wiederhole: %s", task_id, error_text[:120])
             await self.log_publisher.publish(
@@ -68,6 +60,7 @@ class AgentRunner:
             )
             await wait_for_new_oauth_token(token_before)
             result = await self._execute_task_once(task_id, prompt, model, lightweight)
+        await report_result_status(result)
         return result
 
     async def _execute_task_once(

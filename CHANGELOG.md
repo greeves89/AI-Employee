@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.276.7] - 2026-09-01
+
+### Behoben
+- **Abgelaufene eigene KI-Zugaenge werden jetzt sichtbar.** Wenn ein Agent beim echten Lauf mit dem persoenlichen Claude- oder Codex-Zugang an einem Auth-Fehler scheitert, markiert die Oberflaeche den Zugang als fehlerhaft; nach einem erfolgreichen Lauf wird der Status wieder gesund statt dauerhaft rot zu bleiben.
+
+---
+
 ## [1.276.6] - 2026-08-31
 
 ### Behoben
