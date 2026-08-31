@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.276.4] - 2026-08-31
+
+### Neu
+- **SSO-Login landete nach der Anbieter-Authentifizierung immer auf einem fest konfigurierten Host**, auch wenn die Anmeldung auf einem anderen erreichbaren Hostnamen begonnen wurde (etwa einer Kurz-Domain neben der eigentlichen Domain). Eine neue optionale Positivliste (`OAUTH_REDIRECT_ALLOWED_HOSTS`) laesst zusaetzliche Hosts ihre eigene Rueckkehr-URL bekommen; ungelistete Hosts fallen weiter auf die feste Basis-URL zurueck, kein Verhaltensunterschied ohne Opt-in.
+
 ## [1.276.3] - 2026-08-31
 
 ### Behoben
