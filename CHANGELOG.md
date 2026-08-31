@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.277.0] - 2026-09-01
+
+### Hinzugefuegt
+- **MCP-Server koennen jetzt einen eigenen OAuth-Callback nutzen.** Administratoren muessen die globale Deployment-Identitaet (`OAUTH_REDIRECT_BASE_URL`) nicht mehr temporaer umbiegen, wenn ein einzelner externer MCP-Server nur eine enge Redirect-Allowlist akzeptiert. Ohne gesetzten Server-Wert bleibt das bisherige Verhalten unveraendert.
+
+---
+
 ## [1.276.6] - 2026-08-31
 
 ### Behoben

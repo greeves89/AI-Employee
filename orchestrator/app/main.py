@@ -1376,6 +1376,9 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_registration_endpoint text"
             ))
             await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_callback_base_url text"
+            ))
+            await conn.execute(_txt_mh(
                 "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_scope text"
             ))
             await conn.execute(_txt_mh(
