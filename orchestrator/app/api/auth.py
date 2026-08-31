@@ -1,5 +1,6 @@
 """Authentication API endpoints: register, login, logout, user management."""
 
+import json
 import logging
 import secrets
 import time
@@ -470,7 +471,7 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
     await sso_service.apply_group_role(user, saml_config.PROVIDER_NAME, groups)
 
     relay = form.get("RelayState") or ""
-    return finish_sso_login(user, relay, saml_config.PROVIDER_NAME, frontend_url)
+    return await finish_sso_login(user, relay, saml_config.PROVIDER_NAME, frontend_url)
 
 
 #: Custom URL scheme the native iOS app registers to catch the final SSO redirect.
@@ -561,10 +562,41 @@ async def sso_callback(
         logger.warning(f"SSO callback failed for {scrub_log(provider)}: {e}")
         return _error_redirect(f"error={str(e)}&provider={provider}")
 
-    return finish_sso_login(user, return_to, provider, frontend_url, client=client)
+    return await finish_sso_login(user, return_to, provider, frontend_url, client=client, redis=redis)
 
 
-def finish_sso_login(user, return_to: str | None, provider: str, frontend_url: str, client: str = ""):
+#: Single-use exchange code TTL — just long enough for the app to receive the
+#: custom-scheme redirect and immediately call /sso/exchange, never longer.
+SSO_EXCHANGE_TTL = 60
+
+
+class SSOExchangeRequest(BaseModel):
+    code: str
+
+
+@router.post("/sso/exchange")
+async def sso_exchange(body: SSOExchangeRequest, request: Request):
+    """Trade a native SSO callback's one-time code for the actual tokens.
+
+    Public (no session yet — this IS how the session starts), but the code is
+    random, single-use (deleted on the first read here, whoever gets there wins),
+    and expires within SSO_EXCHANGE_TTL — see finish_sso_login for why the tokens
+    never travel in the redirect URL itself.
+    """
+    redis = request.app.state.redis
+    key = f"sso:exchange:{body.code}"
+    stored = await redis.client.get(key)
+    if not stored:
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+    await redis.client.delete(key)
+    if isinstance(stored, bytes):
+        stored = stored.decode()
+    return json.loads(stored)
+
+
+async def finish_sso_login(
+    user, return_to: str | None, provider: str, frontend_url: str, client: str = "", redis=None,
+):
     """Freigabe pruefen, Ziel bestimmen, Sitzung herstellen.
 
     Die gemeinsame Endstrecke JEDER Single-Sign-On-Anmeldung — OIDC wie SAML. Wuerde
@@ -573,10 +605,12 @@ def finish_sso_login(user, return_to: str | None, provider: str, frontend_url: s
     Freischaltung herein.
 
     ``client="ios"`` (nur ueber OIDC erreichbar, SAML kennt kein natives Ziel) traegt
-    die frisch ausgestellten Tokens direkt im Redirect an das Custom-URL-Scheme der
-    App statt sie als Cookies zu setzen — die ASWebAuthenticationSession der App laeuft
-    in einem eigenen Browser-Kontext, der keine Cookies mit der eigenen Netzwerk-Session
-    der App teilt.
+    NICHT die Tokens selbst im Redirect an das Custom-URL-Scheme der App, sondern nur
+    einen kurzlebigen Einweg-Austauschcode (siehe /sso/exchange) — anders als eine
+    Universal Link ist ein Custom-Scheme nicht exklusiv reserviert, eine andere App
+    koennte denselben Scheme-Namen registrieren und den Redirect abfangen. Ein Code,
+    der nur einmal und nur fuer Sekunden gegen die eigentlichen Tokens eintauschbar
+    ist, begrenzt den Schaden eines solchen Abfangens auf so gut wie nichts.
     """
     # Freigabe steht aus → keine Sitzung, zurueck zur Anmeldung mit Hinweis.
     if not getattr(user, "approved", True):
@@ -589,10 +623,11 @@ def finish_sso_login(user, return_to: str | None, provider: str, frontend_url: s
     refresh = create_refresh_token(user.id, user.token_version)
 
     if client == "ios":
-        from urllib.parse import urlencode
-        qs = urlencode({"access_token": access, "refresh_token": refresh})
+        code = secrets.token_urlsafe(32)
+        payload = json.dumps({"access_token": access, "refresh_token": refresh})
+        await redis.client.setex(f"sso:exchange:{code}", SSO_EXCHANGE_TTL, payload)
         logger.info(f"SSO login successful: {scrub_log(user.email)} via {scrub_log(provider)} (native)")
-        return RedirectResponse(url=f"{IOS_SSO_CALLBACK_URL}?{qs}", status_code=302)
+        return RedirectResponse(url=f"{IOS_SSO_CALLBACK_URL}?code={code}", status_code=302)
 
     # Where to land: the stored return target (re-validated — it was checked when the
     # login started, and nothing else may reach this), else the dashboard. API paths
