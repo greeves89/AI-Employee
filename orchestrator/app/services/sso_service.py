@@ -84,7 +84,8 @@ class SSOService:
         self._jwks_cache: dict[str, dict] = {}
 
     async def generate_login_url(
-        self, provider_name: str, return_to: str | None = None, request_host: str | None = None
+        self, provider_name: str, return_to: str | None = None, request_host: str | None = None,
+        client: str = "",
     ) -> str:
         """Generate OIDC authorization URL for user login.
 
@@ -100,6 +101,13 @@ class SSOService:
         stored in the state record so the callback rebuilds the EXACT same
         redirect_uri for the token exchange, not a freshly-derived one (OAuth2
         requires the two to match byte-for-byte).
+
+        ``client`` marks a login started from the native iOS app (``"ios"``). It
+        rides along in the same state record so the callback — which otherwise has
+        no way to tell native and web logins apart — knows to hand tokens back via
+        the app's custom URL scheme instead of setting session cookies (the app's
+        ASWebAuthenticationSession runs in a browser context that does not share
+        cookies with the app's own network session).
         """
         provider = get_sso_provider(provider_name)
         client_id = get_sso_client_id(provider)
@@ -113,6 +121,7 @@ class SSOService:
         state_key = f"sso:state:{state}"
         payload = json.dumps({
             "provider": provider_name, "return_to": return_to or "", "base_url": base_url,
+            "client": client,
         })
         await self.redis.client.setex(state_key, SSO_STATE_TTL, payload)
 
@@ -131,6 +140,27 @@ class SSOService:
 
         from app.core.oauth_providers import apply_tenant
         return f"{apply_tenant(provider.authorization_url)}?{urlencode(params)}"
+
+    async def peek_state_client(self, state: str | None) -> str:
+        """Best-effort ``client`` lookup for a pending SSO state, without consuming it.
+
+        Used only to decide WHERE an early-error redirect should land (the native app's
+        custom scheme vs. the web login page) before the callback would otherwise
+        validate/consume the state — never for anything security-relevant, since it
+        doesn't grant or trust anything beyond that one field.
+        """
+        if not state:
+            return ""
+        try:
+            stored = await self.redis.client.get(f"sso:state:{state}")
+            if not stored:
+                return ""
+            if isinstance(stored, bytes):
+                stored = stored.decode()
+            record = json.loads(stored)
+            return str(record.get("client") or "")
+        except Exception:  # noqa: BLE001 — a redirect-target hint must never crash the callback
+            return ""
 
     async def handle_callback(
         self, provider_name: str, code: str, state: str

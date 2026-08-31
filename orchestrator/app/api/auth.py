@@ -245,8 +245,15 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
 
 @router.post("/refresh")
 async def refresh_token(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
-    """Refresh access token using refresh cookie."""
+    """Refresh access token using the refresh cookie (web), or an ``Authorization:
+    Bearer <refresh_token>`` header as a fallback (native app after SSO login — its
+    tokens arrive via the app's custom URL scheme, never as a cookie, see
+    finish_sso_login)."""
     token = request.cookies.get(COOKIE_REFRESH)
+    if not token:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
     if not token:
         raise HTTPException(status_code=401, detail="No refresh token")
 
@@ -466,11 +473,18 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
     return finish_sso_login(user, relay, saml_config.PROVIDER_NAME, frontend_url)
 
 
+#: Custom URL scheme the native iOS app registers to catch the final SSO redirect.
+#: Only ever used when a login's state record was started with ``client=ios`` — see
+#: SSOService.generate_login_url / peek_state_client.
+IOS_SSO_CALLBACK_URL = "aiemployee://sso-callback"
+
+
 @router.get("/sso/{provider}/login")
 async def sso_login(
     provider: str,
     request: Request,
     redirect: str = Query(None),
+    client: str = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Redirect user to SSO provider for authentication.
@@ -478,6 +492,9 @@ async def sso_login(
     ``redirect`` is an optional internal path to land on after a successful login
     (instead of the dashboard). The MS-Graph MCP authorization endpoint uses it so an
     OpenWebUI user authenticates with Microsoft alone — no AI-Employee login form.
+
+    ``client=ios`` marks a login started from the native app — see
+    SSOService.generate_login_url for why that changes how the callback ends.
     """
     from app.core.sso_providers import get_sso_provider, is_sso_available
     from app.services.sso_service import SSOService
@@ -497,6 +514,7 @@ async def sso_login(
         auth_url = await sso_service.generate_login_url(
             provider, return_to=safe_internal_path(redirect),
             request_host=request.headers.get("host"),
+            client=client or "",
         )
         return RedirectResponse(url=auth_url, status_code=302)
     except ValueError as e:
@@ -521,42 +539,60 @@ async def sso_callback(
         # Dev: orchestrator is on :8000, frontend on :3000
         frontend_url = frontend_url.replace(":8000", ":3000")
 
-    if error:
-        return RedirectResponse(
-            url=f"{frontend_url}/login?error=sso_{error}&provider={provider}"
-        )
-
-    if not code or not state:
-        return RedirectResponse(
-            url=f"{frontend_url}/login?error=sso_missing_params&provider={provider}"
-        )
-
     redis = request.app.state.redis
     sso_service = SSOService(db, redis)
+    # Peeked up front (before the state is validated/consumed) purely to pick WHERE
+    # an error should land — the native app's custom scheme vs. the web login page.
+    client = await sso_service.peek_state_client(state)
+
+    def _error_redirect(query: str) -> RedirectResponse:
+        base = IOS_SSO_CALLBACK_URL if client == "ios" else f"{frontend_url}/login"
+        return RedirectResponse(url=f"{base}?{query}")
+
+    if error:
+        return _error_redirect(f"error=sso_{error}&provider={provider}")
+
+    if not code or not state:
+        return _error_redirect(f"error=sso_missing_params&provider={provider}")
 
     try:
         user, return_to = await sso_service.handle_callback(provider, code, state)
     except ValueError as e:
         logger.warning(f"SSO callback failed for {scrub_log(provider)}: {e}")
-        return RedirectResponse(
-            url=f"{frontend_url}/login?error={str(e)}&provider={provider}"
-        )
+        return _error_redirect(f"error={str(e)}&provider={provider}")
 
-    return finish_sso_login(user, return_to, provider, frontend_url)
+    return finish_sso_login(user, return_to, provider, frontend_url, client=client)
 
 
-def finish_sso_login(user, return_to: str | None, provider: str, frontend_url: str):
-    """Freigabe pruefen, Ziel bestimmen, Sitzungs-Cookies setzen.
+def finish_sso_login(user, return_to: str | None, provider: str, frontend_url: str, client: str = ""):
+    """Freigabe pruefen, Ziel bestimmen, Sitzung herstellen.
 
     Die gemeinsame Endstrecke JEDER Single-Sign-On-Anmeldung — OIDC wie SAML. Wuerde
     SAML das nachbauen, gaebe es zwei Stellen, an denen Sitzungen entstehen: die
     Freigabepflicht koennte an einer davon fehlen, und genau dort kaeme jemand ohne
     Freischaltung herein.
+
+    ``client="ios"`` (nur ueber OIDC erreichbar, SAML kennt kein natives Ziel) traegt
+    die frisch ausgestellten Tokens direkt im Redirect an das Custom-URL-Scheme der
+    App statt sie als Cookies zu setzen — die ASWebAuthenticationSession der App laeuft
+    in einem eigenen Browser-Kontext, der keine Cookies mit der eigenen Netzwerk-Session
+    der App teilt.
     """
     # Freigabe steht aus → keine Sitzung, zurueck zur Anmeldung mit Hinweis.
     if not getattr(user, "approved", True):
         logger.info(f"SSO login blocked (pending approval): {user.email}")
+        if client == "ios":
+            return RedirectResponse(url=f"{IOS_SSO_CALLBACK_URL}?pending=1", status_code=302)
         return RedirectResponse(url=f"{frontend_url}/login?pending=1", status_code=302)
+
+    access = create_access_token(user.id, user.role.value, user.token_version)
+    refresh = create_refresh_token(user.id, user.token_version)
+
+    if client == "ios":
+        from urllib.parse import urlencode
+        qs = urlencode({"access_token": access, "refresh_token": refresh})
+        logger.info(f"SSO login successful: {scrub_log(user.email)} via {scrub_log(provider)} (native)")
+        return RedirectResponse(url=f"{IOS_SSO_CALLBACK_URL}?{qs}", status_code=302)
 
     # Where to land: the stored return target (re-validated — it was checked when the
     # login started, and nothing else may reach this), else the dashboard. API paths
@@ -570,8 +606,6 @@ def finish_sso_login(user, return_to: str | None, provider: str, frontend_url: s
 
     # Set auth cookies (same as normal login)
     redirect_resp = RedirectResponse(url=destination, status_code=302)
-    access = create_access_token(user.id, user.role.value, user.token_version)
-    refresh = create_refresh_token(user.id, user.token_version)
     redirect_resp.set_cookie(COOKIE_ACCESS, access, max_age=1800, **COOKIE_OPTS)
     redirect_resp.set_cookie(COOKIE_REFRESH, refresh, max_age=604800, **COOKIE_OPTS)
 
