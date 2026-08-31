@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.276.5] - 2026-08-31
+
+### Abgesichert
+- **Next.js auf 16.3.3 angehoben** — behebt zwei kritische Sicherheitsluecken: unauthentifizierte Remote Code Execution auf Windows-gehosteten Servern (GHSA-p293-qw3h-jr36) und unauthentifizierte RCE in der Image-Optimization-API bei AVIF-Dateien (GHSA-2xp9-vwfh-vxw4). Keine Funktionsaenderung fuer den Nutzer.
+
+### Aktualisiert
+- **Abhaengigkeiten (Frontend):** @xyflow/react 12.11.5, lucide-react 1.34.0, mermaid 11.17.2, @types/node 26.4.0, @types/react-dom 19.2.5 — alles Patch- bzw. Minor-Updates ohne API-Aenderungen.
+- **Abhaengigkeiten (Orchestrator):** aws-sdk-bedrock-runtime auf <0.12 angehoben (war <0.11) — kompatibles Release, keine Breaking Changes.
+
+---
+
 ## [1.276.4] - 2026-08-31
 
 ### Neu
