@@ -111,6 +111,7 @@ class AgentResponse(BaseModel):
     webhook_token: str | None = None
     shared_for_rooms: bool = False  # admin-curated: offered in every user's Meeting-Room picker
     is_platform_agent: bool = False  # admin-curated: visible to every user, not just ownerless-by-accident
+    favorite: bool = False  # the one agent this owner pinned to their iOS home dashboard
     total_cost_usd: float = 0.0
     user_id: str | None = None
     created_at: datetime

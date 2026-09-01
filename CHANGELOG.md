@@ -5,10 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.276.7] - 2026-08-31
+## [1.276.9] - 2026-09-01
 
 ### Behoben
 - **Die Echtzeit-Sprachfunktion war ausgefallen — jeder Verbindungsversuch scheiterte sofort.** Wer das Mikrofon oeffnete, bekam keine Verbindung; im Hintergrund versuchte es die Oberflaeche rund fuenfmal pro Sekunde erneut, sodass in 85 Sekunden ueber 440 Fehlversuche zusammenkamen. Ursache war ein automatisches Abhaengigkeits-Update des AWS-Bedrock-Pakets: ab Version 0.11 nutzt es standardmaessig eine Uebertragungsart, die keine gleichzeitige Zwei-Wege-Uebertragung beherrscht — genau die braucht das Sprachmodell aber. Zusaetzlich wird die dafuer noetige Komponente seit dieser Version nicht mehr automatisch mitinstalliert. Beides ist jetzt fest eingestellt, statt sich auf die Voreinstellung des Pakets zu verlassen; kuenftige Paket-Updates koennen die Sprachfunktion so nicht mehr still abschalten.
+
+---
+
+## [1.276.8] - 2026-09-01
+
+### Behoben
+- **Die Hauptlinie war seit dem 31.08. rot** — die Testreihe des Orchestrators scheiterte an 13 Stellen, seit der native SSO-Anmeldeweg eingezogen ist. Die Ursache lag ausschliesslich in den Tests, nicht in der Anwendung: die gemeinsame Endstrecke jeder SSO-Anmeldung wurde nebenlaeufig (`async`), und der State-Eintrag einer beginnenden Anmeldung fuehrt ein zusaetzliches Feld fuer den Anmeldeweg. Beide Testerwartungen waren noch auf dem alten Stand. Folge fuer den Betreiber: Ein roter Hauptzweig laesst sich nicht mehr von einem echten Fehler unterscheiden — jede offene Aenderung zeigte dieselbe rote Testreihe, unabhaengig davon, ob sie selbst in Ordnung war.
+
+### Nachgetragen
+- **Der native SSO-Anmeldeweg (iOS) ist ohne eigene Release-Spur in die Hauptlinie gelaufen** — weder Versionssprung noch Eintrag. Was seither zusaetzlich enthalten ist: Die Anmeldung aus der App heraus laeuft ueber ein eigenes Rueckkehrziel der App statt ueber Sitzungs-Cookies, weil der Browser-Kontext der App keine Cookies mit ihrer eigenen Netzwerkverbindung teilt. Die Tokens reisen dabei **nicht** in der Rueckkehr-Adresse mit, sondern nur ein einmalig und nur 60 Sekunden lang einloesbarer Austauschcode — ein Custom-URL-Scheme ist nicht exklusiv reserviert, eine fremde App koennte denselben Namen registrieren und die Rueckkehr abfangen.
 
 ---
 
