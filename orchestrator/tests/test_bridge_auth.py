@@ -51,6 +51,7 @@ class BridgeTokenTests(unittest.IsolatedAsyncioTestCase):
         user = MagicMock()
         user.id = "u1"
         user.role = UserRole.ADMIN  # real enum; .value already == "admin"
+        user.token_version = 0
 
         patcher, session = _patch_factory(user=user)
         with patcher:
@@ -70,6 +71,7 @@ class BridgeTokenTests(unittest.IsolatedAsyncioTestCase):
         user = MagicMock()
         user.id = "u2"
         user.role = UserRole.ADMIN  # real enum; .value already == "admin"
+        user.token_version = 0
 
         patcher, session = _patch_factory(user=user)
         with patcher:

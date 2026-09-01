@@ -2,7 +2,7 @@
 # PyInstaller spec for macOS .app bundle
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_data_files
 
 block_cipher = None
 bridge_version = Path('../VERSION').read_text().strip()
@@ -17,6 +17,15 @@ try:
 except Exception:
     pw_datas, pw_binaries, pw_hidden = [], [], []
 
+# certifi's cacert.pem — a frozen build has no OpenSSL default cert directory
+# to fall back on, so without this even a legitimate, CA-signed certificate
+# fails verification (see bridge.py::_default_ssl_context, diagnosed 2026-08-27
+# against a real Cloudflare cert on agents.future-app.de). This is NOT
+# optional the way playwright is — if it's missing, TLS trust is silently
+# broken for every host, not just one feature, so a bare Exception here is
+# left uncaught: a build without a CA bundle should fail loudly, not ship.
+certifi_datas = collect_data_files('certifi')
+
 a = Analysis(
     ['tray_app.py'],
     pathex=['.'],
@@ -24,7 +33,7 @@ a = Analysis(
     datas=[
         ('bridge.py', '.'),   # bundle bridge.py next to executable
         ('_version.py', '.'),
-    ] + pw_datas,
+    ] + pw_datas + certifi_datas,
     hiddenimports=[
         'rumps',
         'pyautogui',

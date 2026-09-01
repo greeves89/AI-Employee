@@ -234,6 +234,15 @@ class Settings(BaseSettings):
     # Anthropic OAuth (Claude Code public client — no secret needed)
     oauth_anthropic_client_id: str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     oauth_redirect_base_url: str = "http://localhost:8000"
+    # Extra hostnames (comma-separated, e.g. "vanity.example.com,www.vanity.example.com") that MAY also
+    # initiate SSO logins and get redirected back to THEMSELVES instead of always
+    # landing on oauth_redirect_base_url's host. A deployment reachable under more
+    # than one public hostname (a short vanity domain alongside the customer's own
+    # domain) needs this, or a login started on the vanity domain always ends up on
+    # the other one after Microsoft/Google redirects back. Each entry here needs a
+    # MATCHING redirect URI registered with the SSO provider (Entra etc.) — this
+    # setting alone does not make the provider accept the callback.
+    oauth_redirect_allowed_hosts: str = ""
     # Public bridge endpoint base for deployments where the browser-facing app
     # host differs from the hostname desktop bridges must use.
     bridge_public_url: str = ""

@@ -16,7 +16,7 @@ thin, self-scoped auth wrapper. Never duplicate app logic here.
 
 import logging
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.docker_apps import (
@@ -27,9 +27,11 @@ from app.api.docker_apps import (
     _start_core,
     _stop_core,
 )
+from app.core.agent_manager import AgentManager
 from app.db.session import get_db
-from app.dependencies import get_docker_service, verify_agent_token
+from app.dependencies import get_docker_service, get_redis_service, verify_agent_token
 from app.services.docker_service import DockerService
+from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
 
@@ -103,3 +105,42 @@ async def agent_rebuild_app(
     agent_id = auth["agent_id"]
     agent = await _load_agent(agent_id, db)
     return await _rebuild_core(docker, agent, agent_id, path)
+
+
+@router.post("/restart-self")
+async def agent_restart_self(
+    auth: dict = Depends(verify_agent_token),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+    redis: RedisService = Depends(get_redis_service),
+):
+    """Rebuild the calling agent's OWN container from its current image/config,
+    preserving its workspace volume — the chat-triggered equivalent of the
+    admin "Update available" button. Unlike ``agents.py``'s owner-gated
+    ``/{agent_id}/update``, this is scoped by the agent's own token
+    (``verify_agent_token``), not a human JWT — an agent has no user session
+    to authenticate a call about itself with.
+
+    Interrupts whatever the agent is currently doing. The tool description on
+    the caller side tells the agent to announce this before calling, not do
+    it silently — same convention as other destructive tools."""
+    agent_id = auth["agent_id"]
+    agent = await _load_agent(agent_id, db)
+
+    from app.services.eval_service import gate_for_agent
+    decision = await gate_for_agent(db, agent)
+    if not decision.get("allowed"):
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "eval_gate", "message": decision.get("message"),
+                    **{k: v for k, v in decision.items() if k != "message"}},
+        )
+
+    manager = AgentManager(db, docker, redis)
+    try:
+        await manager.update_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "restarted", "agent_id": agent_id}

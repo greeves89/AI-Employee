@@ -39,6 +39,8 @@ import {
   ScrollText,
   Brain,
   AppWindow,
+  Search,
+  Download,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 
@@ -49,6 +51,7 @@ import { SecretsView } from "@/app/secrets/view";
 import { HealthView } from "@/app/health/view";
 import { AuditView } from "@/app/audit/view";
 import { DlpView } from "@/app/admin/dlp-view";
+import { WebSearchView } from "@/app/admin/web-search-view";
 import { MasterRulesView } from "@/app/admin/master-rules-view";
 import { cn, timeAgo, formatCost } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
@@ -57,6 +60,7 @@ import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { MountPermissionsModal } from "@/components/admin/mount-permissions-modal";
+import { ResetPasswordModal } from "@/components/admin/reset-password-modal";
 import { FeedbackDetailModal } from "@/components/admin/feedback-detail-modal";
 import { RolesPanel } from "@/components/admin/roles-panel";
 import { PagesPanel } from "@/components/admin/pages-panel";
@@ -68,19 +72,19 @@ import { formatMoney } from "@/lib/money";
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
   | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit" | "dlp"
-  | "master-rules"
+  | "master-rules" | "web-search"
   | "pages" | "sso-groups";
 
 // Tabs whose content is a full embedded page component (rendered without
 // their own <Header>). They don't depend on the admin page's own data load.
-const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules"];
+const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules", "web-search"];
 
 // Das Menüband ist zweistufig: oben die Themengruppe, darunter deren Unterreiter.
 // So bleiben alle Bereiche sichtbar, ohne dass 13 Reiter in einer Zeile scrollen.
 const TAB_GROUPS: { id: string; label: string; icon: typeof Users; tabs: Tab[] }[] = [
   { id: "people", label: "Nutzer & Rollen", icon: Users, tabs: ["users", "roles", "sso-groups"] },
   { id: "agents", label: "Agenten", icon: Cpu, tabs: ["agents", "assignments"] },
-  { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains"] },
+  { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains", "web-search"] },
   { id: "security", label: "Sicherheit", icon: Shield, tabs: ["master-rules", "secrets", "dlp", "audit"] },
   { id: "ops", label: "Betrieb", icon: HeartPulse, tabs: ["health", "budget", "feedback"] },
   { id: "system", label: "System", icon: SettingsIcon, tabs: ["settings", "pages"] },
@@ -101,6 +105,7 @@ export default function AdminPage() {
   const toast = useToast();
   const user = useAuthStore((s) => s.user);
   const [mountUserId, setMountUserId] = useState<string | null>(null);
+  const [resetPasswordResult, setResetPasswordResult] = useState<{ email: string; tempPassword: string } | null>(null);
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
@@ -245,6 +250,26 @@ export default function AdminPage() {
       await fetchUsers();
     } catch (e) {
       toast.error("Failed to delete user", e instanceof Error ? e.message : undefined);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleResetPassword = async (u: AdminUser) => {
+    if (u.id === user?.id) return;
+    const ok = await confirm({
+      title: `Passwort für "${u.name}" zurücksetzen?`,
+      message: `${u.email} — das bisherige Passwort wird sofort ungültig.`,
+      variant: "destructive",
+      confirmLabel: "Zurücksetzen",
+    });
+    if (!ok) return;
+    setActionLoading(u.id);
+    try {
+      const res = await api.resetUserPassword(u.id);
+      setResetPasswordResult({ email: res.email, tempPassword: res.temp_password });
+    } catch (e) {
+      toast.error("Passwort-Reset fehlgeschlagen", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -404,6 +429,7 @@ export default function AdminPage() {
     { id: "settings", label: "Einstellungen", icon: SettingsIcon },
     { id: "ai-accounts", label: "AI-Accounts", icon: Cpu },
     { id: "second-brains", label: "Second Brains", icon: Brain },
+    { id: "web-search", label: "Websuche", icon: Search },
     { id: "secrets", label: "Key Management", icon: KeyRound },
     { id: "health", label: "Health", icon: HeartPulse },
     { id: "audit", label: "Audit Log", icon: ScrollText },
@@ -494,6 +520,7 @@ export default function AdminPage() {
             {tab === "settings" && <SettingsView embedded />}
             {tab === "ai-accounts" && <AIAccountsView embedded />}
             {tab === "second-brains" && <SecondBrainsView embedded />}
+            {tab === "web-search" && <WebSearchView embedded />}
             {tab === "secrets" && <SecretsView embedded />}
             {tab === "health" && <HealthView embedded />}
             {tab === "audit" && <AuditView embedded />}
@@ -637,6 +664,13 @@ export default function AdminPage() {
                               title="Mount-Permissions"
                             >
                               <Box className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleResetPassword(u)}
+                              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                              title="Passwort zurücksetzen"
+                            >
+                              <KeyRound className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteUser(u)}
@@ -1179,6 +1213,14 @@ export default function AdminPage() {
           onClose={() => setMountUserId(null)}
         />
       )}
+
+      {resetPasswordResult && (
+        <ResetPasswordModal
+          email={resetPasswordResult.email}
+          tempPassword={resetPasswordResult.tempPassword}
+          onClose={() => setResetPasswordResult(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1544,6 +1586,18 @@ function FeedbackTab({
   const [noteText, setNoteText] = useState("");
   const [githubConnected, setGithubConnected] = useState<boolean | null>(null);
   const [detailFeedback, setDetailFeedback] = useState<Feedback | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await api.exportFeedback();
+    } catch (e) {
+      toast.error("Export fehlgeschlagen", e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     api.getIntegrations().then((data) => {
@@ -1635,6 +1689,18 @@ function FeedbackTab({
 
   return (
     <div className="space-y-3">
+      {items.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            Als ZIP exportieren
+          </button>
+        </div>
+      )}
       {items.map((f, i) => {
         const CatIcon = CATEGORY_ICONS[f.category] || MessageSquare;
         const catColor = CATEGORY_COLORS[f.category] || "text-zinc-400";

@@ -7,6 +7,7 @@ schlafenden Agenten. Jetzt liegt jede Nachricht waehrend der Verarbeitung in
 einer Inflight-Liste und wird beim naechsten Start zurueck in die Queue gelegt.
 """
 
+import asyncio
 import unittest
 from unittest.mock import AsyncMock
 
@@ -99,6 +100,46 @@ class InflightBookkeepingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("lrem(self.inflight_key", worker)
         start = inspect.getsource(chat_consumer.ChatConsumer.start)
         self.assertIn("_requeue_inflight", start)
+
+
+class DrainPendingLaneTests(unittest.IsolatedAsyncioTestCase):
+    """Live-Fehler beim Kunden (2026-08-31, wiederkehrend alle ~18min):
+    'tuple' object has no attribute 'get' in _drain_pending. _run_parallel legt
+    (msg, msg_json)-Tupel in die Lane (Zeile 741), _lane_worker packt sie korrekt
+    aus (Zeile 755), _drain_pending tat es nicht und behandelte das Tupel selbst
+    wie ein dict."""
+
+    def _consumer_with_lane(self, items: list[tuple[dict, bytes]]) -> ChatConsumer:
+        c = ChatConsumer.__new__(ChatConsumer)
+        c.agent_id = "a1"
+        c._lanes = {}
+        c._handlers = {}
+        lane: asyncio.Queue = asyncio.Queue()
+        for item in items:
+            lane.put_nowait(item)
+        c._lanes["sk1"] = lane
+        c._reset_handler = AsyncMock()
+        c._prepare_text = lambda text, telegram_ctx, source, handler: text
+        return c
+
+    async def test_a_queued_tuple_does_not_crash_draining(self):
+        c = self._consumer_with_lane([
+            ({"text": "hallo"}, b'{"text": "hallo"}'),
+            ({"text": "nochmal"}, b'{"text": "nochmal"}'),
+        ])
+        texts = await c._drain_pending("sk1")
+        self.assertEqual(texts, ["hallo", "nochmal"])
+
+    async def test_a_slash_reset_in_the_lane_still_resets(self):
+        c = self._consumer_with_lane([
+            ({"text": "hallo"}, b'{"text": "hallo"}'),
+            ({"text": "/reset"}, b'{"text": "/reset"}'),
+            ({"text": "danach"}, b'{"text": "danach"}'),
+        ])
+        texts = await c._drain_pending("sk1")
+        c._reset_handler.assert_awaited_once_with("sk1")
+        # /reset clears everything queued BEFORE it, "danach" survives.
+        self.assertEqual(texts, ["danach"])
 
 
 if __name__ == "__main__":

@@ -20,14 +20,18 @@ STT timeout on long audio, and means an interrupted recording never loses the
 already-transcribed part (it is appended live to the transcript).
 """
 import logging
+import uuid
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db.session import get_db
 from app.dependencies import require_auth
+from app.models.meeting import Meeting
+from app.schemas.meeting import MeetingCreate, MeetingListResponse, MeetingResponse, MeetingUpdate
 from app.services.settings_service import SettingsService
 
 logger = logging.getLogger(__name__)
@@ -109,3 +113,96 @@ async def transcribe_chunk(
     except Exception as e:  # noqa: BLE001 — surface a clean error, log the detail
         logger.warning("Meeting transcribe error (fallback): %s", e)
         raise HTTPException(status_code=500, detail="Transkription fehlgeschlagen.")
+
+
+# ── Saved meetings ────────────────────────────────────────────────────────────
+#
+# Transcription above is stateless (no DB write) — the client used to hold the
+# transcript only in memory and either discard it or fire it off as a one-shot
+# chat message. Nothing was ever saved, so there was no history, no renaming,
+# no participants. These endpoints are the actual save/list/edit surface;
+# strictly scoped to the calling user (personal recordings, no agent/admin
+# cross-visibility) — same fetch-then-check-owner shape as schedules.py.
+
+
+async def _get_owned_meeting(meeting_id: str, user, db: AsyncSession) -> Meeting:
+    meeting = await db.get(Meeting, meeting_id)
+    if meeting is None:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+    if meeting.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return meeting
+
+
+@router.post("", response_model=MeetingResponse, status_code=201)
+async def create_meeting(
+    body: MeetingCreate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save a finished recording — the actual persistence step for the
+    recorder UI's "Speichern" action."""
+    meeting = Meeting(
+        id=uuid.uuid4().hex[:12],
+        user_id=user.id,
+        title=body.title,
+        transcript=body.transcript,
+        participants=body.participants,
+        duration_seconds=body.duration_seconds,
+    )
+    db.add(meeting)
+    await db.commit()
+    await db.refresh(meeting)
+    return meeting
+
+
+@router.get("", response_model=MeetingListResponse)
+async def list_meetings(
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Meeting).where(Meeting.user_id == user.id).order_by(Meeting.created_at.desc())
+    )
+    meetings = list(result.scalars().all())
+    return MeetingListResponse(meetings=meetings, total=len(meetings))
+
+
+@router.get("/{meeting_id}", response_model=MeetingResponse)
+async def get_meeting(
+    meeting_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _get_owned_meeting(meeting_id, user, db)
+
+
+@router.patch("/{meeting_id}", response_model=MeetingResponse)
+async def update_meeting(
+    meeting_id: str,
+    body: MeetingUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename, edit the transcript, or edit the participants list."""
+    meeting = await _get_owned_meeting(meeting_id, user, db)
+    if body.title is not None:
+        meeting.title = body.title
+    if body.transcript is not None:
+        meeting.transcript = body.transcript
+    if body.participants is not None:
+        meeting.participants = body.participants
+    await db.commit()
+    await db.refresh(meeting)
+    return meeting
+
+
+@router.delete("/{meeting_id}", status_code=204)
+async def delete_meeting(
+    meeting_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_owned_meeting(meeting_id, user, db)
+    await db.execute(delete(Meeting).where(Meeting.id == meeting_id))
+    await db.commit()

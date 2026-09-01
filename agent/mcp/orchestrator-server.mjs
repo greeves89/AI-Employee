@@ -981,6 +981,42 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["path"],
       },
     },
+    {
+      name: "restart_own_container",
+      description:
+        "Rebuild and restart MY OWN container from the current agent image/config, preserving my " +
+        "full workspace (files, git history, memory, everything on disk). This INTERRUPTS whatever " +
+        "I'm currently doing and drops my in-progress conversation turn — ALWAYS tell the user this " +
+        "is about to happen BEFORE calling it, never call it silently. Use only when explicitly " +
+        "asked to restart/rebuild myself, or when a config/instruction change needs a fresh " +
+        "container to take effect. No arguments.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "web_search",
+      description:
+        "Search the web for information. Use this when you need current data (weather, news, " +
+        "prices, facts) or don't know which URL to visit. Returns top search results with titles, " +
+        "URLs, and snippets. Uses the admin-configured provider (DuckDuckGo by default, or Brave/" +
+        "SerpApi if the admin set an API key under Admin -> Websuche).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query (e.g. 'weather Berlin today', 'Python FastAPI tutorial').",
+          },
+          max_results: {
+            type: "number",
+            description: "Number of results to return (default: 5, max: 10).",
+          },
+        },
+        required: ["query"],
+      },
+    },
   ],
 }));
 
@@ -1872,6 +1908,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const conts = (result.containers || []).length;
       const url = result.url ? ` Link für den User: ${result.url}` : "";
       return { content: [{ type: "text", text: `App „${args.path}" neu gebaut und gestartet (${conts} Container, ${result.status}).${url}` }] };
+    }
+
+    case "restart_own_container": {
+      await apiCall(`/agent-apps/restart-self`, { method: "POST" });
+      return { content: [{ type: "text", text: "Mein Container wird gerade neu gebaut und startet gleich neu. Mein Workspace bleibt erhalten." }] };
+    }
+
+    case "web_search": {
+      const query = (args.query || "").trim();
+      if (!query) {
+        return { content: [{ type: "text", text: "Error: query cannot be empty" }] };
+      }
+      const maxResults = Math.min(Number(args.max_results) || 5, 10);
+      const result = await apiCall(`/agent-search/web`, {
+        method: "POST",
+        body: JSON.stringify({ query, max_results: maxResults }),
+      });
+      const items = result.results || [];
+      if (items.length === 0) {
+        return { content: [{ type: "text", text: `No results found for '${query}'. Try different search terms.` }] };
+      }
+      const blocks = items.map((r) => `**${r.title || ""}**\n${r.url || ""}\n${r.snippet || ""}`);
+      return { content: [{ type: "text", text: `Search results for '${query}':\n\n${blocks.join("\n\n---\n\n")}` }] };
     }
 
     default:
