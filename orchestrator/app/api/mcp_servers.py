@@ -736,7 +736,14 @@ async def update_mcp_server(
         from app.core.encryption import encrypt_token
         server.headers_encrypted = encrypt_token(json_mod.dumps(body.headers)) if body.headers else None
     if body.oauth_callback_base_url is not None:
-        server.oauth_callback_base_url = body.oauth_callback_base_url or None
+        new_base = body.oauth_callback_base_url or None
+        if new_base != server.oauth_callback_base_url and server.oauth_client_id:
+            # The client is registered at the authorization server against the OLD
+            # redirect_uri. Keeping it makes the next flow fail with invalid_request,
+            # and the API offers no way to clear it again.
+            server.oauth_client_id = None
+            server.oauth_client_secret_encrypted = None
+        server.oauth_callback_base_url = new_base
 
     await db.commit()
     return _serialize_mcp_server(server)
