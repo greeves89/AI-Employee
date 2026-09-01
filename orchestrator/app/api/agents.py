@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_agent_version, settings
@@ -645,6 +645,7 @@ async def list_agents(
                 autonomy_level=agent.autonomy_level or "l3",
                 webhook_enabled=agent.webhook_enabled,
                 webhook_token=agent.webhook_token,
+                favorite=agent.favorite,
                 total_cost_usd=config.get("total_cost_usd", 0.0),
                 user_id=agent.user_id,
                 created_at=agent.created_at,
@@ -1147,6 +1148,32 @@ async def set_platform_agent(
     agent.is_platform_agent = bool(is_platform_agent)
     await db.commit()
     return {"id": agent.id, "is_platform_agent": agent.is_platform_agent}
+
+
+@router.patch("/{agent_id}/favorite")
+async def set_favorite(
+    agent_id: str,
+    favorite: bool = Body(..., embed=True),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pin (or unpin) the ONE agent that should be front-and-center on the
+    owner's iOS home dashboard. At most one favorite per owner: setting a new
+    one silently clears whichever agent held it before — a radio button, not
+    a checkbox — so the dashboard always has exactly one clear card to show."""
+    await _check_owner(agent_id, user, db)
+    agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if favorite and agent.user_id:
+        await db.execute(
+            update(Agent)
+            .where(Agent.user_id == agent.user_id, Agent.id != agent.id, Agent.favorite.is_(True))
+            .values(favorite=False)
+        )
+    agent.favorite = bool(favorite)
+    await db.commit()
+    return {"id": agent.id, "favorite": agent.favorite}
 
 
 @router.patch("/{agent_id}/llm-config")

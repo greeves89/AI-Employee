@@ -80,6 +80,10 @@ class Agent(Base, TimestampMixin):
     # Per-agent webhook access (enable/disable + bearer token for external tools like n8n/Zapier)
     webhook_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     webhook_token: Mapped[str | None] = mapped_column(String, nullable=True)
+    # The one agent this owner wants front-and-center on their home screen (iOS
+    # dashboard). At most one true per user — enforced in the endpoint, not the
+    # DB, matching every other flag on this model.
+    favorite: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     tasks: Mapped[list["Task"]] = relationship(back_populates="agent")  # noqa: F821
     owner: Mapped["User | None"] = relationship("User")  # noqa: F821
