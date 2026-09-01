@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Hinzugefuegt
 - **MCP-Server koennen jetzt einen eigenen OAuth-Callback nutzen.** Administratoren muessen die globale Deployment-Identitaet (`OAUTH_REDIRECT_BASE_URL`) nicht mehr temporaer umbiegen, wenn ein einzelner externer MCP-Server nur eine enge Redirect-Allowlist akzeptiert. Ohne gesetzten Server-Wert bleibt das bisherige Verhalten unveraendert.
+- **Der OAuth-Rueckweg bleibt jetzt auch stabil, wenn die Callback-Basis waehrend eines laufenden Verbindungsversuchs geaendert wird.** Vorher berechneten Start und Abschluss den Wert je neu; eine Aenderung dazwischen liess den Token-Tausch mit einer nichtssagenden Anbieter-Meldung scheitern, obwohl alles richtig eingegeben war.
 
 ---
 

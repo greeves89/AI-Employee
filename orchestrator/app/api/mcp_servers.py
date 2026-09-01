@@ -1081,13 +1081,18 @@ async def oauth_connect(
 
     verifier, challenge = oc.gen_pkce()
     state = secrets.token_urlsafe(32)
+    # RFC 6749 4.1.3: der Tausch muss exakt dieselbe redirect_uri senden wie die
+    # Anfrage. Beide Seiten neu zu berechnen haelt das nur, solange niemand
+    # oauth_callback_base_url waehrend der 10 Minuten aendert — deshalb festhalten.
+    redirect_uri = _callback_redirect_uri(server)
     await redis.client.setex(_STATE_PREFIX + state, _STATE_TTL_SECONDS, json_mod.dumps({
         "server_id": server.id, "code_verifier": verifier, "user_id": str(user.id),
+        "redirect_uri": redirect_uri,
     }))
     auth_url = oc.build_authorization_url(
         authorization_endpoint=server.oauth_authorization_endpoint,
         client_id=server.oauth_client_id,
-        redirect_uri=_callback_redirect_uri(server),
+        redirect_uri=redirect_uri,
         state=state,
         code_challenge=challenge,
         scope=server.oauth_scope or "",
@@ -1141,7 +1146,9 @@ async def oauth_callback(
         code=code,
         code_verifier=st["code_verifier"],
         client_id=server.oauth_client_id,
-        redirect_uri=_callback_redirect_uri(server),
+        # Der in der Anfrage benutzte Wert, nicht der jetzt gueltige. Der Rueckfall
+        # deckt Zustaende ab, die vor dieser Aenderung geschrieben wurden.
+        redirect_uri=st.get("redirect_uri") or _callback_redirect_uri(server),
         client_secret=client_secret,
         resource=server.oauth_resource or None,
     )
