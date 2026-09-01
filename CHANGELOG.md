@@ -5,13 +5,63 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.276.7] - 2026-09-01
+## [1.276.12] - 2026-09-01
 
 ### Behoben
 - **Abgelaufene eigene KI-Zugaenge werden jetzt sichtbar.** Wenn ein Agent beim echten Lauf mit dem persoenlichen Claude- oder Codex-Zugang an einem Auth-Fehler scheitert, markiert die Oberflaeche den Zugang als fehlerhaft; nach einem erfolgreichen Lauf wird der Status wieder gesund statt dauerhaft rot zu bleiben.
 
 ### Hinweis
-- Die Statusmeldung ist fuer den Chat-Weg und den Codex-Aufgaben-Weg durch Tests abgesichert. Der Codex-Chat-Weg und die drei Stellen im eigenen LLM-Weg sind es noch nicht.
+- Die Statusmeldung ist fuer den Chat-Weg, den Codex-Aufgaben-Weg und den Codex-Chat-Weg
+  durch Tests abgesichert. Die Stelle im eigenen LLM-Weg ist es nicht: sie meldet einen
+  fest verdrahteten Erfolg und kann einen Zugangsfehler daher gar nicht weitergeben.
+
+---
+
+## [1.276.11] - 2026-09-01
+
+### Behoben
+- **Der Zaehler fuer die Alt-Anmeldungs-Warnung waechst nicht mehr unbegrenzt.** Meldet
+  sich ein Client noch mit dem alten Verfahren an (Zugangsschluessel in der Adresse statt
+  Einmal-Ticket), merkt sich der Dienst das kurz, um dieselbe Warnung nicht im
+  Minutentakt zu wiederholen. Diese Merkliste wurde nie geleert: sie wuchs mit jeder
+  Neuanmeldung und jeder Schluesselerneuerung weiter — nicht mit der Zahl der
+  Verbindungen. Auf einem Server, der wochenlang durchlaeuft, sammelte sich das
+  unbegrenzt an. Jetzt werden abgelaufene Eintraege beim Schreiben mit aufgeraeumt, und
+  die Liste hat zusaetzlich eine feste Obergrenze. Die Warnung selbst und ihr Abstand von
+  zehn Minuten bleiben unveraendert.
+
+  Einordnung: der Verbrauch je Eintrag war klein, ein akutes Problem war das nicht. Es
+  war eine Menge ohne Obergrenze, deren Groesse jemand von aussen bestimmt.
+
+---
+
+## [1.276.10] - 2026-09-01
+
+### Behoben
+- **Skill-Suche und "meine Skills" liessen die `id` weg** (#667). `skill_search` und
+  `skill_get_my_skills` rendern ihre Ergebnisse jetzt mit der numerischen `id` des
+  Skills. Ohne sie konnte ein Agent einen Skill zwar finden, aber weder installieren
+  noch bewerten noch seine Nutzung protokollieren — `skill_rate`, `skill_install`,
+  `skill_record_usage`, `skill_update` und `skill_get` verlangen alle diese ID als
+  Pflichtparameter. Der Server lieferte die ID schon immer korrekt aus; nur die
+  beiden Text-Formatierer im MCP-Server warfen sie beim Rendern weg.
+
+---
+
+## [1.276.9] - 2026-09-01
+
+### Behoben
+- **Die Echtzeit-Sprachfunktion war ausgefallen — jeder Verbindungsversuch scheiterte sofort.** Wer das Mikrofon oeffnete, bekam keine Verbindung; im Hintergrund versuchte es die Oberflaeche rund fuenfmal pro Sekunde erneut, sodass in 85 Sekunden ueber 440 Fehlversuche zusammenkamen. Ursache war ein automatisches Abhaengigkeits-Update des AWS-Bedrock-Pakets: ab Version 0.11 nutzt es standardmaessig eine Uebertragungsart, die keine gleichzeitige Zwei-Wege-Uebertragung beherrscht — genau die braucht das Sprachmodell aber. Zusaetzlich wird die dafuer noetige Komponente seit dieser Version nicht mehr automatisch mitinstalliert. Beides ist jetzt fest eingestellt, statt sich auf die Voreinstellung des Pakets zu verlassen; kuenftige Paket-Updates koennen die Sprachfunktion so nicht mehr still abschalten.
+
+---
+
+## [1.276.8] - 2026-09-01
+
+### Behoben
+- **Die Hauptlinie war seit dem 31.08. rot** — die Testreihe des Orchestrators scheiterte an 13 Stellen, seit der native SSO-Anmeldeweg eingezogen ist. Die Ursache lag ausschliesslich in den Tests, nicht in der Anwendung: die gemeinsame Endstrecke jeder SSO-Anmeldung wurde nebenlaeufig (`async`), und der State-Eintrag einer beginnenden Anmeldung fuehrt ein zusaetzliches Feld fuer den Anmeldeweg. Beide Testerwartungen waren noch auf dem alten Stand. Folge fuer den Betreiber: Ein roter Hauptzweig laesst sich nicht mehr von einem echten Fehler unterscheiden — jede offene Aenderung zeigte dieselbe rote Testreihe, unabhaengig davon, ob sie selbst in Ordnung war.
+
+### Nachgetragen
+- **Der native SSO-Anmeldeweg (iOS) ist ohne eigene Release-Spur in die Hauptlinie gelaufen** — weder Versionssprung noch Eintrag. Was seither zusaetzlich enthalten ist: Die Anmeldung aus der App heraus laeuft ueber ein eigenes Rueckkehrziel der App statt ueber Sitzungs-Cookies, weil der Browser-Kontext der App keine Cookies mit ihrer eigenen Netzwerkverbindung teilt. Die Tokens reisen dabei **nicht** in der Rueckkehr-Adresse mit, sondern nur ein einmalig und nur 60 Sekunden lang einloesbarer Austauschcode — ein Custom-URL-Scheme ist nicht exklusiv reserviert, eine fremde App koennte denselben Namen registrieren und die Rueckkehr abfangen.
 
 ---
 

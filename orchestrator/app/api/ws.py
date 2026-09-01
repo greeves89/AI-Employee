@@ -6,6 +6,7 @@ import os
 import re
 import time
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, Request
@@ -37,8 +38,25 @@ _CHAT_ATTACHMENT_EXTENSIONS = {
 _active_chat_websockets: dict[str, WebSocket] = {}
 
 # Rate-limit the legacy token= warning: at most once per token prefix per 600s
-_legacy_token_warned: dict[str, float] = {}
+_legacy_token_warned: "OrderedDict[str, float]" = OrderedDict()
 _LEGACY_WARN_COOLDOWN = 600
+# Backstop for a burst of many distinct tokens inside one cooldown window, where
+# expiry-based pruning alone would not free anything.
+_LEGACY_WARN_MAX_ENTRIES = 1024
+
+
+def _prune_legacy_warn_cache(now: float) -> None:
+    """Drop expired entries, then evict oldest-first down to the size cap.
+
+    Entries older than the cooldown are worthless -- they would permit a fresh
+    warning anyway -- so removing them cannot change behaviour. Evicting a
+    still-valid entry under the cap can cost one duplicate warning, which is
+    the deliberate price for a bounded cache in a long-running process.
+    """
+    for key in [k for k, ts in _legacy_token_warned.items() if now - ts >= _LEGACY_WARN_COOLDOWN]:
+        del _legacy_token_warned[key]
+    while len(_legacy_token_warned) >= _LEGACY_WARN_MAX_ENTRIES:
+        _legacy_token_warned.popitem(last=False)
 
 
 def init_stream_manager(redis: RedisService, docker: DockerService | None = None) -> StreamManager:
@@ -88,6 +106,7 @@ async def _authenticate_ws(websocket: WebSocket, token: str | None = None, ticke
         key = token[:16]
         now = time.monotonic()
         if now - _legacy_token_warned.get(key, 0) >= _LEGACY_WARN_COOLDOWN:
+            _prune_legacy_warn_cache(now)
             _legacy_token_warned[key] = now
             logger.warning("WebSocket using legacy token= param — migrate to ticket-based auth")
 
