@@ -89,7 +89,7 @@ class BridgeActionNameParityTests(unittest.TestCase):
         hoeren mit — die gehoeren wie `shell` bewusst eingeschaltet."""
         from app.api.computer_use import DEFAULT_ALLOWED_CAPABILITIES
 
-        for group in ("shell", "clipboard", "input_capture", "voice_capture", "browser"):
+        for group in ("shell", "clipboard", "input_capture", "voice_capture", "browser", "ego_browser"):
             with self.subTest(group=group):
                 self.assertNotIn(group, DEFAULT_ALLOWED_CAPABILITIES)
 

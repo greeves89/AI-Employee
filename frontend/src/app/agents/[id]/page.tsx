@@ -1556,6 +1556,25 @@ function AgentSettings({
     }
   };
 
+  // Explicit "everyone's agent" flag (admin only, 2026-08-27) — the ONLY way
+  // an agent becomes visible platform-wide in tasks/notifications/evals/
+  // schedules now. Replaces the old "no owner = everyone's" automatism,
+  // which leaked across departments on a multi-tenant customer install.
+  const [isPlatformAgent, setIsPlatformAgent] = useState(agent.is_platform_agent ?? false);
+  const [platformAgentLoading, setPlatformAgentLoading] = useState(false);
+  const handlePlatformAgentToggle = async (v: boolean) => {
+    setPlatformAgentLoading(true);
+    try {
+      const r = await api.setPlatformAgent(agentId, v);
+      setIsPlatformAgent(r.is_platform_agent);
+      setMessage({ type: "success", text: v ? "Agent als Plattform-Agent markiert" : "Markierung entfernt" });
+    } catch {
+      setMessage({ type: "error", text: "Fehler beim Ändern der Plattform-Agent-Markierung" });
+    } finally {
+      setPlatformAgentLoading(false);
+    }
+  };
+
   const apiBase = typeof window !== "undefined"
     ? window.location.origin.replace(":3000", ":8000")
     : "";
@@ -2216,6 +2235,37 @@ function AgentSettings({
           <div className="p-5 text-xs text-muted-foreground">
             Ist der Agent freigegeben, erscheint er im Meeting-Raum-Agenten-Picker <b>jedes</b> Users —
             so kann jeder ihn zu Räumen hinzufügen, ohne selbst Agenten bereitstellen zu müssen.
+          </div>
+        </div>
+      )}
+
+      {/* Explicit platform-agent flag (admin only) */}
+      {isRoomAdmin && (
+        <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-emerald-400" />
+              <span className="text-sm font-medium">Als Plattform-Agent markieren</span>
+            </div>
+            <button
+              onClick={() => handlePlatformAgentToggle(!isPlatformAgent)}
+              disabled={platformAgentLoading}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-40",
+                isPlatformAgent ? "bg-emerald-500" : "bg-foreground/10"
+              )}
+            >
+              <span className={cn(
+                "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-lg transition-transform",
+                isPlatformAgent ? "translate-x-4" : "translate-x-0"
+              )} />
+            </button>
+          </div>
+          <div className="p-5 text-xs text-muted-foreground">
+            Markiert, ist der Agent für <b>jeden</b> User in Aufgaben, Benachrichtigungen,
+            Golden-Tests und Zeitplänen sichtbar — nicht nur für dessen Besitzer. Ohne diese
+            Markierung sieht ausschließlich der Besitzer (bzw. wem der Agent explizit
+            freigegeben wurde) den Agenten und seine Daten.
           </div>
         </div>
       )}
@@ -3202,7 +3252,14 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
                 transition={{ duration: 0.15 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
             </Dialog.Overlay>
             <Dialog.Content asChild>
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+              {/* Radix zwingt hier pointer-events:auto per Inline-Style (ueberschreibt
+                  die pointer-events-none-Klasse) — dieser Wrapper faengt deshalb JEDEN
+                  Klick im Viewport ab, auch den auf den "Hintergrund". target===currentTarget
+                  unterscheidet Klick-auf-Hintergrund von Klick-auf-Karte (Bubbling). */}
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+                onClick={(e) => { if (e.target === e.currentTarget) setUploadTarget(null); }}
+              >
                 <Dialog.Title className="sr-only">Dateien hochladen</Dialog.Title>
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95, y: 8 }}

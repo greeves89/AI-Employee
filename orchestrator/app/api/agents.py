@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_agent_version, settings
@@ -592,9 +592,12 @@ async def list_agents(
         accessible_ids = {row[0] for row in access_result.all()}
         # Siehe oben: besitzlos ist keine Freigabe. Das Teilen fuer
         # Besprechungsraeume bleibt — es ist eine bewusste Entscheidung.
+        # is_platform_agent (2026-08-27) ist die EINZIGE andere Weise, wie ein
+        # Agent "allen gehoert" — eine bewusste Admin-Markierung, kein NULL.
         agents = [
             a for a in agents
             if a.user_id == user.id or a.id in accessible_ids
+            or getattr(a, "is_platform_agent", False)
             or (room_pool and getattr(a, "shared_for_rooms", False))
         ]
 
@@ -642,6 +645,7 @@ async def list_agents(
                 autonomy_level=agent.autonomy_level or "l3",
                 webhook_enabled=agent.webhook_enabled,
                 webhook_token=agent.webhook_token,
+                favorite=agent.favorite,
                 total_cost_usd=config.get("total_cost_usd", 0.0),
                 user_id=agent.user_id,
                 created_at=agent.created_at,
@@ -1110,6 +1114,66 @@ async def set_room_sharing(
     agent.shared_for_rooms = bool(shared_for_rooms)
     await db.commit()
     return {"id": agent.id, "shared_for_rooms": agent.shared_for_rooms}
+
+
+@router.patch("/{agent_id}/platform-agent")
+async def set_platform_agent(
+    agent_id: str,
+    is_platform_agent: bool = Body(..., embed=True),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin-only: mark an agent as deliberately platform-wide — visible to
+    every user in tasks/notifications/evals/schedules, not just the owner.
+    This is now the ONLY way an agent becomes "everyone's" (2026-08-27) — a
+    NULL user_id alone used to be read the same way, which meant an agent
+    made ownerless by accident (deleted user, a script that forgot
+    user_id) leaked across every user/department, not just intentionally
+    shared ones. Same data-leak guard as room-sharing: a personally-owned
+    agent carries its owner's memory/knowledge and cannot be pooled."""
+    from app.models.user import UserRole
+    if getattr(user, "role", None) != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="admin only")
+    agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if is_platform_agent and agent.user_id and str(agent.user_id) != str(user.id):
+        raise HTTPException(
+            status_code=400,
+            detail="Nur Standard-Agenten (ohne persönlichen Besitzer) können als "
+                   "Plattform-Agent markiert werden. Ein persönlich erstellter Agent "
+                   "trägt das Wissen seines Erstellers und darf nicht für alle "
+                   "freigegeben werden.",
+        )
+    agent.is_platform_agent = bool(is_platform_agent)
+    await db.commit()
+    return {"id": agent.id, "is_platform_agent": agent.is_platform_agent}
+
+
+@router.patch("/{agent_id}/favorite")
+async def set_favorite(
+    agent_id: str,
+    favorite: bool = Body(..., embed=True),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pin (or unpin) the ONE agent that should be front-and-center on the
+    owner's iOS home dashboard. At most one favorite per owner: setting a new
+    one silently clears whichever agent held it before — a radio button, not
+    a checkbox — so the dashboard always has exactly one clear card to show."""
+    await _check_owner(agent_id, user, db)
+    agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if favorite and agent.user_id:
+        await db.execute(
+            update(Agent)
+            .where(Agent.user_id == agent.user_id, Agent.id != agent.id, Agent.favorite.is_(True))
+            .values(favorite=False)
+        )
+    agent.favorite = bool(favorite)
+    await db.commit()
+    return {"id": agent.id, "favorite": agent.favorite}
 
 
 @router.patch("/{agent_id}/llm-config")

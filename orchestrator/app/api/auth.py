@@ -1,6 +1,8 @@
 """Authentication API endpoints: register, login, logout, user management."""
 
+import json
 import logging
+import secrets
 import time
 import uuid
 from collections import defaultdict
@@ -109,8 +111,8 @@ class UserUpdateRequest(BaseModel):
 
 
 def _set_auth_cookies(response: Response, user: User) -> dict:
-    access = create_access_token(user.id, user.role.value)
-    refresh = create_refresh_token(user.id)
+    access = create_access_token(user.id, user.role.value, user.token_version)
+    refresh = create_refresh_token(user.id, user.token_version)
     response.set_cookie(COOKIE_ACCESS, access, max_age=1800, **COOKIE_OPTS)
     response.set_cookie(COOKIE_REFRESH, refresh, max_age=604800, **COOKIE_OPTS)
     return {"access_token": access}
@@ -244,8 +246,15 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
 
 @router.post("/refresh")
 async def refresh_token(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
-    """Refresh access token using refresh cookie."""
+    """Refresh access token using the refresh cookie (web), or an ``Authorization:
+    Bearer <refresh_token>`` header as a fallback (native app after SSO login — its
+    tokens arrive via the app's custom URL scheme, never as a cookie, see
+    finish_sso_login)."""
     token = request.cookies.get(COOKIE_REFRESH)
+    if not token:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
     if not token:
         raise HTTPException(status_code=401, detail="No refresh token")
 
@@ -260,6 +269,8 @@ async def refresh_token(request: Request, response: Response, db: AsyncSession =
     user = await db.scalar(select(User).where(User.id == payload["sub"]))
     if not user or not user.is_active or not getattr(user, "approved", True):
         raise HTTPException(status_code=401, detail="User not found, inactive, or pending approval")
+    if payload.get("tv", 0) != user.token_version:
+        raise HTTPException(status_code=401, detail="Session revoked")
 
     tokens = _set_auth_cookies(response, user)
     return {"user": UserResponse.model_validate(user).model_dump(), **tokens}
@@ -460,7 +471,13 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
     await sso_service.apply_group_role(user, saml_config.PROVIDER_NAME, groups)
 
     relay = form.get("RelayState") or ""
-    return finish_sso_login(user, relay, saml_config.PROVIDER_NAME, frontend_url)
+    return await finish_sso_login(user, relay, saml_config.PROVIDER_NAME, frontend_url)
+
+
+#: Custom URL scheme the native iOS app registers to catch the final SSO redirect.
+#: Only ever used when a login's state record was started with ``client=ios`` — see
+#: SSOService.generate_login_url / peek_state_client.
+IOS_SSO_CALLBACK_URL = "aiemployee://sso-callback"
 
 
 @router.get("/sso/{provider}/login")
@@ -468,6 +485,7 @@ async def sso_login(
     provider: str,
     request: Request,
     redirect: str = Query(None),
+    client: str = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Redirect user to SSO provider for authentication.
@@ -475,6 +493,9 @@ async def sso_login(
     ``redirect`` is an optional internal path to land on after a successful login
     (instead of the dashboard). The MS-Graph MCP authorization endpoint uses it so an
     OpenWebUI user authenticates with Microsoft alone — no AI-Employee login form.
+
+    ``client=ios`` marks a login started from the native app — see
+    SSOService.generate_login_url for why that changes how the callback ends.
     """
     from app.core.sso_providers import get_sso_provider, is_sso_available
     from app.services.sso_service import SSOService
@@ -492,7 +513,9 @@ async def sso_login(
 
     try:
         auth_url = await sso_service.generate_login_url(
-            provider, return_to=safe_internal_path(redirect)
+            provider, return_to=safe_internal_path(redirect),
+            request_host=request.headers.get("host"),
+            client=client or "",
         )
         return RedirectResponse(url=auth_url, status_code=302)
     except ValueError as e:
@@ -517,42 +540,94 @@ async def sso_callback(
         # Dev: orchestrator is on :8000, frontend on :3000
         frontend_url = frontend_url.replace(":8000", ":3000")
 
-    if error:
-        return RedirectResponse(
-            url=f"{frontend_url}/login?error=sso_{error}&provider={provider}"
-        )
-
-    if not code or not state:
-        return RedirectResponse(
-            url=f"{frontend_url}/login?error=sso_missing_params&provider={provider}"
-        )
-
     redis = request.app.state.redis
     sso_service = SSOService(db, redis)
+    # Peeked up front (before the state is validated/consumed) purely to pick WHERE
+    # an error should land — the native app's custom scheme vs. the web login page.
+    client = await sso_service.peek_state_client(state)
+
+    def _error_redirect(query: str) -> RedirectResponse:
+        base = IOS_SSO_CALLBACK_URL if client == "ios" else f"{frontend_url}/login"
+        return RedirectResponse(url=f"{base}?{query}")
+
+    if error:
+        return _error_redirect(f"error=sso_{error}&provider={provider}")
+
+    if not code or not state:
+        return _error_redirect(f"error=sso_missing_params&provider={provider}")
 
     try:
         user, return_to = await sso_service.handle_callback(provider, code, state)
     except ValueError as e:
         logger.warning(f"SSO callback failed for {scrub_log(provider)}: {e}")
-        return RedirectResponse(
-            url=f"{frontend_url}/login?error={str(e)}&provider={provider}"
-        )
+        return _error_redirect(f"error={str(e)}&provider={provider}")
 
-    return finish_sso_login(user, return_to, provider, frontend_url)
+    return await finish_sso_login(user, return_to, provider, frontend_url, client=client, redis=redis)
 
 
-def finish_sso_login(user, return_to: str | None, provider: str, frontend_url: str):
-    """Freigabe pruefen, Ziel bestimmen, Sitzungs-Cookies setzen.
+#: Single-use exchange code TTL — just long enough for the app to receive the
+#: custom-scheme redirect and immediately call /sso/exchange, never longer.
+SSO_EXCHANGE_TTL = 60
+
+
+class SSOExchangeRequest(BaseModel):
+    code: str
+
+
+@router.post("/sso/exchange")
+async def sso_exchange(body: SSOExchangeRequest, request: Request):
+    """Trade a native SSO callback's one-time code for the actual tokens.
+
+    Public (no session yet — this IS how the session starts), but the code is
+    random, single-use (deleted on the first read here, whoever gets there wins),
+    and expires within SSO_EXCHANGE_TTL — see finish_sso_login for why the tokens
+    never travel in the redirect URL itself.
+    """
+    redis = request.app.state.redis
+    key = f"sso:exchange:{body.code}"
+    stored = await redis.client.get(key)
+    if not stored:
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+    await redis.client.delete(key)
+    if isinstance(stored, bytes):
+        stored = stored.decode()
+    return json.loads(stored)
+
+
+async def finish_sso_login(
+    user, return_to: str | None, provider: str, frontend_url: str, client: str = "", redis=None,
+):
+    """Freigabe pruefen, Ziel bestimmen, Sitzung herstellen.
 
     Die gemeinsame Endstrecke JEDER Single-Sign-On-Anmeldung — OIDC wie SAML. Wuerde
     SAML das nachbauen, gaebe es zwei Stellen, an denen Sitzungen entstehen: die
     Freigabepflicht koennte an einer davon fehlen, und genau dort kaeme jemand ohne
     Freischaltung herein.
+
+    ``client="ios"`` (nur ueber OIDC erreichbar, SAML kennt kein natives Ziel) traegt
+    NICHT die Tokens selbst im Redirect an das Custom-URL-Scheme der App, sondern nur
+    einen kurzlebigen Einweg-Austauschcode (siehe /sso/exchange) — anders als eine
+    Universal Link ist ein Custom-Scheme nicht exklusiv reserviert, eine andere App
+    koennte denselben Scheme-Namen registrieren und den Redirect abfangen. Ein Code,
+    der nur einmal und nur fuer Sekunden gegen die eigentlichen Tokens eintauschbar
+    ist, begrenzt den Schaden eines solchen Abfangens auf so gut wie nichts.
     """
     # Freigabe steht aus → keine Sitzung, zurueck zur Anmeldung mit Hinweis.
     if not getattr(user, "approved", True):
         logger.info(f"SSO login blocked (pending approval): {user.email}")
+        if client == "ios":
+            return RedirectResponse(url=f"{IOS_SSO_CALLBACK_URL}?pending=1", status_code=302)
         return RedirectResponse(url=f"{frontend_url}/login?pending=1", status_code=302)
+
+    access = create_access_token(user.id, user.role.value, user.token_version)
+    refresh = create_refresh_token(user.id, user.token_version)
+
+    if client == "ios":
+        code = secrets.token_urlsafe(32)
+        payload = json.dumps({"access_token": access, "refresh_token": refresh})
+        await redis.client.setex(f"sso:exchange:{code}", SSO_EXCHANGE_TTL, payload)
+        logger.info(f"SSO login successful: {scrub_log(user.email)} via {scrub_log(provider)} (native)")
+        return RedirectResponse(url=f"{IOS_SSO_CALLBACK_URL}?code={code}", status_code=302)
 
     # Where to land: the stored return target (re-validated — it was checked when the
     # login started, and nothing else may reach this), else the dashboard. API paths
@@ -566,8 +641,6 @@ def finish_sso_login(user, return_to: str | None, provider: str, frontend_url: s
 
     # Set auth cookies (same as normal login)
     redirect_resp = RedirectResponse(url=destination, status_code=302)
-    access = create_access_token(user.id, user.role.value)
-    refresh = create_refresh_token(user.id)
     redirect_resp.set_cookie(COOKIE_ACCESS, access, max_age=1800, **COOKIE_OPTS)
     redirect_resp.set_cookie(COOKIE_REFRESH, refresh, max_age=604800, **COOKIE_OPTS)
 
@@ -755,6 +828,30 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
 
     logger.info(f"Admin {current.email} created user: {user.email} (role: {user.role.value})")
     return UserResponse.model_validate(user).model_dump()
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(user_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Admin-only: generate a new random password for a user and return it once."""
+    from app.dependencies import get_current_user
+
+    current = await get_current_user(request, db)
+    if current.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    temp_password = secrets.token_urlsafe(12)
+    target.password_hash = hash_password(temp_password)
+    # Revoke every session issued before this reset — otherwise a compromised
+    # account stays reachable via its old, still-valid token for up to 7 days.
+    target.token_version += 1
+    await db.commit()
+
+    logger.info(f"Admin {current.email} reset password for user: {target.email}")
+    return {"user_id": target.id, "email": target.email, "temp_password": temp_password}
 
 
 @router.delete("/users/{user_id}")
