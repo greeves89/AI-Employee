@@ -25,6 +25,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.276.11] - 2026-09-01
+
+### Behoben
+- **Der Zaehler fuer die Alt-Anmeldungs-Warnung waechst nicht mehr unbegrenzt.** Meldet
+  sich ein Client noch mit dem alten Verfahren an (Zugangsschluessel in der Adresse statt
+  Einmal-Ticket), merkt sich der Dienst das kurz, um dieselbe Warnung nicht im
+  Minutentakt zu wiederholen. Diese Merkliste wurde nie geleert: sie wuchs mit jeder
+  Neuanmeldung und jeder Schluesselerneuerung weiter — nicht mit der Zahl der
+  Verbindungen. Auf einem Server, der wochenlang durchlaeuft, sammelte sich das
+  unbegrenzt an. Jetzt werden abgelaufene Eintraege beim Schreiben mit aufgeraeumt, und
+  die Liste hat zusaetzlich eine feste Obergrenze. Die Warnung selbst und ihr Abstand von
+  zehn Minuten bleiben unveraendert.
+
+  Einordnung: der Verbrauch je Eintrag war klein, ein akutes Problem war das nicht. Es
+  war eine Menge ohne Obergrenze, deren Groesse jemand von aussen bestimmt.
+
+---
+
+## [1.276.10] - 2026-09-01
+
+### Behoben
+- **Skill-Suche und "meine Skills" liessen die `id` weg** (#667). `skill_search` und
+  `skill_get_my_skills` rendern ihre Ergebnisse jetzt mit der numerischen `id` des
+  Skills. Ohne sie konnte ein Agent einen Skill zwar finden, aber weder installieren
+  noch bewerten noch seine Nutzung protokollieren — `skill_rate`, `skill_install`,
+  `skill_record_usage`, `skill_update` und `skill_get` verlangen alle diese ID als
+  Pflichtparameter. Der Server lieferte die ID schon immer korrekt aus; nur die
+  beiden Text-Formatierer im MCP-Server warfen sie beim Rendern weg.
+
+---
+
 ## [1.276.9] - 2026-09-01
 
 ### Behoben
