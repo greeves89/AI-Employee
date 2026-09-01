@@ -65,7 +65,7 @@ async def bridge_token() -> str:
                 "Ensure at least one admin account is approved in the platform."
             )
 
-        token = create_access_token(str(user.id), user.role.value)
+        token = create_access_token(str(user.id), user.role.value, user.token_version)
         _TOKEN_CACHE = token
         _TOKEN_EXPIRY = time.monotonic() + _TOKEN_TTL_SECONDS
         return token

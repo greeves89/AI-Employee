@@ -247,18 +247,23 @@ async def webpush_unsubscribe(
 # --- UI-facing: list, count, mark read ---
 
 async def _visible_agent_ids(user, db: AsyncSession) -> list[str]:
-    """Agent ids whose notifications this user may see: own + unowned (system) +
-    explicitly shared. Notifications are keyed by ``agent_id`` (no per-user
-    recipient column), so without this scope every user would see every agent's
-    notifications — a cross-user data leak. Mirrors the agent team-directory
-    visibility model.
+    """Agent ids whose notifications this user may see: own + explicitly
+    shared. Notifications are keyed by ``agent_id`` (no per-user recipient
+    column), so without this scope every user would see every agent's
+    notifications — a cross-user data leak.
+
+    Ownerless agents are NOT auto-included (changed 2026-08-27, see
+    tasks.py::_get_user_agent_ids) — they used to count as "system" agents
+    visible to everyone, which leaked notifications the moment an agent
+    was created without an assigned owner. is_platform_agent (explicit
+    admin flag) is the deliberate replacement for that.
     """
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess
 
     owned = (await db.execute(
         select(Agent.id).where(
-            (Agent.user_id == user.id) | (Agent.user_id.is_(None))
+            (Agent.user_id == user.id) | (Agent.is_platform_agent.is_(True))
         )
     )).scalars().all()
     shared = (await db.execute(

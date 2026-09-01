@@ -5,7 +5,7 @@ from pathlib import Path
 block_cipher = None
 bridge_version = Path('../VERSION').read_text().strip()
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_data_files
 ctk_datas, ctk_binaries, ctk_hidden = collect_all('customtkinter')
 
 # Playwright bringt einen Node-Treiber als DATEN mit, nicht nur Python-Module —
@@ -16,11 +16,16 @@ try:
 except Exception:
     pw_datas, pw_binaries, pw_hidden = [], [], []
 
+# certifi's cacert.pem — see bridge_macos.spec for why this is required, not
+# optional (a frozen build has no OpenSSL default cert directory, so TLS
+# trust silently breaks for every host without it).
+certifi_datas = collect_data_files('certifi')
+
 a = Analysis(
     ['tray_app.py'],
     pathex=['.'],
     binaries=ctk_binaries + pw_binaries,
-    datas=[('bridge.py', '.'), ('_version.py', '.')] + ctk_datas + pw_datas,
+    datas=[('bridge.py', '.'), ('_version.py', '.')] + ctk_datas + pw_datas + certifi_datas,
     hiddenimports=[
         'pystray',
         'pystray._win32',

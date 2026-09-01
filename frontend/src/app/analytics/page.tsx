@@ -107,7 +107,10 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
   return (
     <Dialog.Portal>
       <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" />
-      <Dialog.Content className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <Dialog.Content
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}

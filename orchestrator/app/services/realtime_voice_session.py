@@ -230,14 +230,24 @@ SAVE_MEMORY_TOOL = {
         "name": "save_memory",
         "description": (
             "Remember something for later — save a fact/preference/decision/contact into MY "
-            "long-term memory. Use when the user says 'merk dir…', 'behalte…', 'für später:…'. "
-            "Fast, direct write. Confirm briefly that you saved it."
+            "long-term memory (same store the memory_save MCP tool uses — full agent memory, "
+            "not just conversation logs). Use when the user says 'merk dir…', 'behalte…', "
+            "'für später:…'. Fast, direct write. Confirm briefly that you saved it."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
             "properties": {
                 "content": {"type": "string", "description": "The information to remember."},
                 "key": {"type": "string", "description": "Short label/topic for it (optional)."},
+                "category": {
+                    "type": "string",
+                    "description": "Memory category (broad bucket). Default: fact.",
+                    "enum": ["preference", "contact", "project", "procedure", "decision", "fact", "learning"],
+                },
+                "importance": {
+                    "type": "integer",
+                    "description": "Importance 1-5 (higher = returned first in searches). Default: 3.",
+                },
             },
             "required": ["content"],
         })},
@@ -427,13 +437,21 @@ M365_CALENDAR_TODAY_TOOL = {
         "name": "m365_calendar_today",
         "description": (
             "Read the user's Microsoft 365 calendar directly ('hab ich heute Termine', 'was "
-            "steht im Kalender', 'wann ist mein nächstes Meeting'). Fast, direct Graph read. "
-            "Summarize the events spoken (time + title). Needs the user's M365 connection; if "
-            "not connected, say so."
+            "steht morgen an', 'wann ist mein nächstes Meeting'). Fast, direct Graph read. "
+            "For 'heute'/'morgen' ALWAYS use `when` ('today'/'tomorrow') — NOT days_ahead, "
+            "which is a rolling window from right now and does NOT line up with a calendar "
+            "day (reported live: days_ahead=1 for 'morgen' mostly returned the REST OF TODAY "
+            "instead of tomorrow, since the window only reaches past midnight once the day "
+            "actually turns over). Only use days_ahead for a multi-day overview ('was steht "
+            "diese Woche an' → days_ahead=7). Summarize the events spoken (time + title). "
+            "Needs the user's M365 connection; if not connected, say so."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
-            "properties": {"days_ahead": {"type": "integer", "description": "Days from now to include (default 1 = today)."}},
+            "properties": {
+                "when": {"type": "string", "description": "'today' or 'tomorrow' — one specific calendar day. Preferred for single-day questions."},
+                "days_ahead": {"type": "integer", "description": "Rolling window in days from right now — only for multi-day overviews, ignored if `when` is set."},
+            },
         })},
     }
 }
@@ -442,14 +460,25 @@ M365_MAIL_RECENT_TOOL = {
     "toolSpec": {
         "name": "m365_mail_recent",
         "description": (
-            "Read the user's most recent Microsoft 365 / Outlook inbox emails directly ('was ist "
-            "neu im Postfach', 'letzte Mails', 'hab ich Mail von X'). Fast, direct Graph read "
-            "(subject + sender + received). Summarize spoken. Needs the user's M365 connection; "
-            "if not connected, say so. Reading only — sending/replying is real work → ask_agent."
+            "Read the user's Microsoft 365 / Outlook inbox emails directly, newest first — "
+            "either the plain latest N ('was ist neu im Postfach', 'letzte Mails'), or FILTERED "
+            "by search/sender/subject ('such nach Mails von X', 'gab es was zur Deutschen Bahn/"
+            "Reisekosten/Hotel'). Fast, direct Graph read. When the user names a topic/keyword — "
+            "even loosely ('irgendwas mit Bahn oder Hotel') — ALWAYS pass it via `search` "
+            "instead of just pulling the latest N and eyeballing them: the latest emails are "
+            "rarely the relevant ones for a topic search, and skipping `search` was reported live "
+            "as the agent claiming 'the tool can't search' when it simply wasn't using the "
+            "parameter that does. Summarize spoken. Needs the user's M365 connection; if not "
+            "connected, say so. Reading only — sending/replying is real work → ask_agent."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
-            "properties": {"limit": {"type": "integer", "description": "How many recent emails (default 8, max 20)."}},
+            "properties": {
+                "limit": {"type": "integer", "description": "How many emails (default 8, max 20)."},
+                "search": {"type": "string", "description": "Free-text over subject+body — pass any topic/keyword the user mentions."},
+                "sender": {"type": "string", "description": "Filter by sender name or email address."},
+                "subject": {"type": "string", "description": "Filter by words in the subject line."},
+            },
         })},
     }
 }
@@ -462,7 +491,16 @@ M365_SEND_MAIL_TOOL = {
             "SAFETY: ALWAYS read back recipient, subject and the gist of the body to the user and "
             "get an explicit 'ja, absenden' FIRST. Without a clear confirmation, set send=false "
             "(creates an Outlook draft the user reviews). Only set send=true after the user "
-            "explicitly confirms sending."
+            "explicitly confirms sending. "
+            "SPELLED-OUT ADDRESSES: when the user spells an email letter-by-letter ('a - l - i - "
+            "s - c - h at ...') or says a domain out loud, speech-to-text WILL sometimes mangle it "
+            "(seen live: 'alisch@mindsquare.de' became 'lisch@mainz.de', then 'alish@mind-square.de' "
+            "— three different WRONG addresses in a row, each one confirmed and used without "
+            "catching the error). Do NOT fold a spelled-out address straight into a normal-sounding "
+            "readback sentence. Instead say the letters back ONE BY ONE right after they finish "
+            "spelling ('ich habe verstanden: a-l-i-s-c-h at m-i-n-d-s-q-u-a-r-e punkt d-e, richtig "
+            "so?') and wait for an explicit yes BEFORE calling this tool at all — catching it there "
+            "is far cheaper than after a wrong draft already exists."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
@@ -496,6 +534,54 @@ M365_CREATE_EVENT_TOOL = {
                 "location": {"type": "string", "description": "Location (optional)."},
             },
             "required": ["subject", "start"],
+        })},
+    }
+}
+
+M365_SEARCH_PEOPLE_TOOL = {
+    "toolSpec": {
+        "name": "m365_search_people",
+        "description": (
+            "Look up a PERSON in the organization/directory by name — colleagues, coworkers, "
+            "contacts ('wer ist X', 'E-Mail von X', or before writing to/messaging someone you "
+            "only have a NAME for, not an address). Returns name + email + role. ALWAYS call "
+            "this first when the user names a person for an email or Teams message without "
+            "giving you their address directly — resolve the name here, THEN use the result "
+            "with m365_send_mail or m365_teams_message. This is the same lookup the agent "
+            "(Computer-Use) already uses; the voice path was simply missing it."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "required": ["query"],
+            "properties": {
+                "query": {"type": "string", "description": "Name or keyword to search for (e.g. 'Yannik Gassmann')."},
+            },
+        })},
+    }
+}
+
+M365_TEAMS_MESSAGE_TOOL = {
+    "toolSpec": {
+        "name": "m365_teams_message",
+        "description": (
+            "Send a message to a Microsoft Teams 1:1 chat with a specific PERSON, by name "
+            "('schreib X eine Teams-Nachricht', 'sag X test in Teams'). Looks up the person "
+            "among the user's EXISTING Teams chats and sends there — matches on the chat "
+            "member's name (first name alone is often enough). If the name is ambiguous, try "
+            "m365_search_people first to get their full/canonical name. SAFETY: call once with "
+            "confirmed=false to preview who you'd message and the exact text, read that back, "
+            "get an explicit 'ja, senden', THEN call again with confirmed=true. If no existing "
+            "chat matches, say so plainly — there is no way to start a brand-new Teams chat, "
+            "only to write into one that already exists."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "required": ["person", "message"],
+            "properties": {
+                "person": {"type": "string", "description": "Name (or part of it) of the person to message."},
+                "message": {"type": "string", "description": "The message text."},
+                "confirmed": {"type": "boolean", "description": "true only after the user explicitly confirmed sending; false/omitted previews without sending."},
+            },
         })},
     }
 }
@@ -802,8 +888,20 @@ DESKTOP_TOOL = {
             "Bildschirm, seine Maus, seine Tastatur. Das ist der Weg für alles, was auf "
             "SEINEM Gerät passieren soll, und der einzige Weg zu Adressen, die nur aus "
             "seinem Netz erreichbar sind (Intranet, Ticketsystem, interne Tools).\n"
-            "action='open' — öffnet eine URL oder ein Programm bei ihm. target = URL "
-            "(https://…) oder Programmname ('Notepad', 'Safari').\n"
+            "action='open' — öffnet eine URL oder ein Programm bei ihm, SONST NICHTS "
+            "DANACH. target = URL (https://…) oder Programmname ('Notepad', 'Safari'). Nur "
+            "wenn NACH dem Oeffnen NICHTS mehr auf einer Website passieren soll (kein Suchen, "
+            "kein Klicken, kein Formular). Soll auf der geoeffneten Seite irgendetwas "
+            "geschehen, nimm SOFORT stattdessen 'ego' fuer die GANZE Aufgabe (siehe unten) — "
+            "open+find+click auf Web-Inhalten funktioniert NICHT zuverlaessig. WICHTIG: das "
+            "gilt auch, wenn der Nutzer 'starte/oeffne den Browser' als EIGENEN Satz VOR "
+            "einer Suche/Aktion sagt ('starte den Browser und such nach X') — das ist EINE "
+            "Aufgabe, nicht zwei. `open` fuer 'Browser starten' UND danach `ego` fuer 'X "
+            "suchen' oeffnet ZWEI VERSCHIEDENE Browserfenster (Standardbrowser + ego lite) — "
+            "der Nutzer sieht dann nur das leere erste Fenster und haelt die Suche im zweiten "
+            "fuer nicht passiert (live genau so gemeldet). Erkennst du IRGENDEINE Interaktion "
+            "im ganzen Satz, ignoriere 'starte den Browser' als eigenen Schritt komplett und "
+            "erledige ALLES in einem einzigen 'ego'-Aufruf.\n"
             "action='screenshot' — sieht nach, was gerade auf seinem Bildschirm ist; "
             "mit display=2 den zweiten Monitor. "
             "Nutze das, bevor du klickst oder tippst, und wenn er fragt 'was siehst du'.\n"
@@ -816,31 +914,94 @@ DESKTOP_TOOL = {
             "action='type' — tippt text.\n"
             "action='find' — SUCHT ein Element (Knopf, Feld, Eintrag) ueber den "
             "Bedienungshilfen-Baum und liefert seine Koordinaten; target = Beschriftung "
-            "oder Rolle. action='wait' — wartet, bis so ein Element erscheint. "
-            "action='key' — Tastenkombination, text z. B. 'cmd+f' oder 'enter'. "
-            "action='scroll' — scrollt (text = Anzahl, negativ = nach unten).\n"
+            "oder Rolle. NUR fuer NATIVE Programme (Finder, Excel, Einstellungen) — fuer "
+            "Inhalte INNERHALB eines Browsers (eine Website) funktioniert das NICHT "
+            "zuverlaessig, dafuer IMMER 'ego' nehmen. action='wait' — wartet, bis so ein "
+            "Element erscheint. action='key' — Tastenkombination, text z. B. 'cmd+f' oder "
+            "'enter'. action='scroll' — scrollt (text = Anzahl, negativ = nach unten).\n"
+            "action='ego' — DEIN NORMALER WEG FUER ALLES IN EINEM BROWSER, nicht nur "
+            "Login-Aufgaben: oeffnen, suchen, ein Video/Ergebnis anklicken, ein Formular "
+            "ausfuellen, eine Seite vorlesen — irgendein 'mach das im Browser', 'such mal', "
+            "'oeffne das Video' laeuft HIERUEBER, nicht ueber open+find+click. Bonus: laeuft "
+            "in SEINER ECHTEN, eingeloggten Sitzung (ego lite) — Mail, ein internes "
+            "Reisekosten-/Spesen-Tool (egal wie es heisst, z. B. 'Perk', 'Concur', 'SAP "
+            "Concur' — irgendein Name, den der Nutzer nennt und den DU nicht kennst, ist "
+            "trotzdem KEIN Grund fuer 'ich habe keinen Zugriff'; probiere die URL/den Namen "
+            "einfach in ego lite), Jira, Confluence, interne Tools — ohne erneutes Anmelden. "
+            "text = ein JS-Skript, das gegen ego lite "
+            "laeuft — SO VIEL DAVON WIE FUER DIE GANZE AUFGABE NOETIG IST, roh und "
+            "vollstaendig, genau wie du (das Modell) es auch als Claude Code direkt "
+            "koenntest. Alle Helfer stehen zur Verfuegung, nicht nur die haeufigsten: "
+            "useOrCreateTaskSpace, openOrReuseTab, snapshotText, click, doubleClick, hover, "
+            "dragMouse, fillInput, typeText, pressKey, scroll/scrollBy, waitForElement/"
+            "waitForLoad/waitForNetworkIdle, uploadFile, listTabs/switchTab/closeTab, "
+            "captureScreenshot, serverFetch/browserFetch, js, cdp — nur cliLog(...)-Ausgaben "
+            "kommen zurueck. NACH EINEM TAB OEFFNEN IST DIE AUFGABE NOCH NICHT FERTIG: "
+            "'oeffne YouTube und such nach X' heisst NICHT nur openOrReuseTab('youtube.com') "
+            "— das zeigt nur die Startseite, keine Ergebnisse. Bei einer SUCHE die "
+            "Ergebnis-URL direkt ansteuern (meist `?search_query=`/`?q=`) statt ein Suchfeld "
+            "zu tippen und abzuschicken — einfacher und zuverlaessiger, EIN Aufruf reicht: "
+            "\"const t = await useOrCreateTaskSpace('youtube-suche'); "
+            "await openOrReuseTab('https://www.youtube.com/results?search_query=pokemon', "
+            "{wait:true, timeout:20}); cliLog(await snapshotText());\" — danach hat cliLog "
+            "die ECHTEN Ergebnisse (Titel etc.), nicht nur 'Tab offen'. Fuer eine geloggte "
+            "Seite ohne bekanntes Such-URL-Muster: oeffnen, dann fillInput+click auf das "
+            "Suchfeld, dann snapshotText — alles in EINEM Skript, nicht als mehrere Aufrufe. "
+            "Startet ego lite SELBST, falls es nicht laeuft — KEIN "
+            "vorheriges action='open' noetig, das ist ein unnoetiger Umweg. RUF ES EINFACH "
+            "AUF: behaupte NIEMALS vorab, 'ego' sei 'nicht aktiviert' oder brauche erst eine "
+            "Freigabe von ihm — das weisst du nicht im Voraus. Ist es wirklich gesperrt, kommt "
+            "das als klarer Fehlertext zurueck (den du dann 1:1 weitergibst), nie als "
+            "Vermutung vorher.\n"
             "MEHRERE BILDSCHIRME: erst `screenshot` MIT display=N, dann `click` mit "
             "demselben display=N. Die Koordinaten gelten immer fuer den Bildschirm, "
             "den du gerade angesehen hast.\n"
-            "SO BEDIENST DU EINE APP: oeffnen → `find` auf das Element → `click` → "
-            "`type`/`key` → wieder nachsehen (`screenshot` oder `find`). Sage NIEMALS, "
-            "du koennest 'nur oeffnen, aber nicht navigieren' — das stimmt nicht.\n"
+            "SO BEDIENST DU EINE APP (eine NATIVE App — fuer Browser-Inhalte siehe 'ego' "
+            "oben): oeffnen → `find` auf das Element → `click` → `type`/`key` → wieder "
+            "nachsehen (`screenshot` oder `find`). Sage NIEMALS, du koennest 'nur oeffnen, aber nicht navigieren' — das stimmt nicht.\n"
             "Läuft keine Bridge, sag ihm genau das (Bridge-App starten), weiche NICHT auf "
             "etwas anderes aus. Beschreibe NIEMALS einen Bildschirm, dessen Screenshot "
-            "fehlgeschlagen ist."
+            "fehlgeschlagen ist.\n"
+            "JEDE ANDERE FAEHIGKEIT DER BRIDGE: Die obigen Kurzformen (open/screenshot/find/"
+            "click/type/key/wait/scroll/ego) sind nur die haeufigsten — die Bridge kann mehr, "
+            "u. a. die diskreten ego-Aktionen OHNE eigenes JS-Skript: 'ego_navigate' {url}, "
+            "'ego_snapshot' {max_chars}, 'ego_click' {selector oder text}, 'ego_fill' "
+            "{selector, value}, 'ego_wait' {selector, timeout_ms}, 'ego_capture' {}, "
+            "'ego_tabs' {index?}, 'ego_close' {} — dieselbe echte, eingeloggte Sitzung wie "
+            "'ego' oben, nur schon in einzelne Schritte zerlegt (gut, wenn du KEIN Skript "
+            "schreiben willst). Dazu z. B. shell_run, browser_navigate/-click/-fill/-snapshot "
+            "fuer ein isoliertes Browser-Profil, get_clipboard/set_clipboard, list_windows, "
+            "focus_window, close_app, drag. Fuer JEDE davon: setze action auf den ECHTEN "
+            "Aktionsnamen der Bridge (genau wie der Agent ihn nennt) und uebergib die "
+            "Parameter in `params` als Objekt — z. B. action='ego_navigate', "
+            "params={url:'https://…'}, oder action='shell_run', params={command:'ls'}. Das "
+            "erreicht ALLES, was der Agent (Computer-Use) auch kann — nichts davon ist dir "
+            "verwehrt.\n"
+            "Faehigkeiten, die serverseitig nicht freigeschaltet sind (z. B. shell, "
+            "ego_browser — beide standardmaessig aus), meldet die Bridge als klaren Fehler; "
+            "sag dem Nutzer dann genau das statt es zu verschweigen."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
             "properties": {
-                "action": {"type": "string", "description": "open | screenshot | find | click | type | key | wait | scroll"},
+                "action": {"type": "string", "description": (
+                    "open | screenshot | find | click | type | key | wait | scroll | ego — "
+                    "oder JEDER echte Bridge-Aktionsname (siehe Beschreibung) fuer alles "
+                    "andere, zusammen mit `params`."
+                )},
                 "target": {"type": "string", "description": "URL/Programmname (open) oder Beschriftung des gesuchten Elements (find/wait)."},
-                "text": {"type": "string", "description": "Text (type), Tastenkombination wie 'cmd+f' (key) oder Scroll-Anzahl."},
+                "text": {"type": "string", "description": "Text (type), Tastenkombination wie 'cmd+f' (key), Scroll-Anzahl, oder das JS-Skript (ego)."},
                 "x": {"type": "number", "description": "X-Koordinate (bei action='click')."},
                 "y": {"type": "number", "description": "Y-Koordinate (bei action='click')."},
                 "display": {"type": "number", "description": (
                     "Welchen Bildschirm aufnehmen (bei action='screenshot'). "
                     "1 = Hauptbildschirm. Weglassen = Hauptbildschirm. Nach einem "
                     "Screenshot steht in der Antwort, wie viele es gibt."
+                )},
+                "params": {"type": "object", "description": (
+                    "Nur fuer einen echten Bridge-Aktionsnamen in `action` (nicht fuer die "
+                    "Kurzformen oben) — die Parameter dieser Aktion als Objekt, z. B. "
+                    "{command:'ls'} fuer shell_run oder {url:'https://…'} fuer browser_navigate."
                 )},
             },
             "required": ["action"],
@@ -1346,7 +1507,11 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "get_agent_activity (sofort — zeigt die laufende Aufgabe + die letzten konkreten Schritte "
         "des Agenten aus dem Live-Feed).\n"
         "• Fragen nach MEINEM Wissen ('was weißt du über…', 'hast du dir … gemerkt', zu Kunde/"
-        "Projekt/Kontakt/Verfahren) → search_knowledge (sofort, durchsucht mein Gedächtnis).\n"
+        "Projekt/Kontakt/Verfahren) UND Fragen nach FRÜHEREN GESPRÄCHEN, egal auf welchem Kanal "
+        "('was haben wir besprochen', 'worüber haben wir letztes Mal geredet', 'was war letzte "
+        "Woche', 'hatten wir das schon mal Thema') → search_knowledge (sofort, durchsucht mein "
+        "Gedächtnis — das schließt vergangene Gespräche über Web/App/Telegram/Anruf mit ein, "
+        "nicht nur gemerkte Fakten).\n"
         "• Fragen nach dem zweiten Gehirn / Vault / Wiki / Firmen- oder Abteilungswissen ('steht "
         "was im Wiki zu…', 'schau ins zweite Gehirn', 'gibt es Doku/eine Anleitung zu…') → "
         "search_brain (sofort, durchsucht meine Vaults).\n"
@@ -1699,6 +1864,7 @@ class RealtimeVoiceSession:
             SEARCH_BRAIN_TOOL, READ_BRAIN_TOOL, BRAIN_LINKS_TOOL,
             SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
             M365_SEND_MAIL_TOOL, M365_CREATE_EVENT_TOOL,
+            M365_SEARCH_PEOPLE_TOOL, M365_TEAMS_MESSAGE_TOOL,
             LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL, OPEN_FILE_TOOL, WRITE_BRAIN_TOOL,
             LIST_APPS_TOOL, APP_LOGS_TOOL, START_APP_TOOL, STOP_APP_TOOL, RESTART_APP_TOOL,
             REBUILD_APP_TOOL,
@@ -2226,8 +2392,14 @@ class RealtimeVoiceSession:
             if (data.get("role") or "").upper() == "USER":
                 self._drop_audio = False
         elif kind == "interrupted":
-            # Nova Sonic detected a barge-in itself → skip the rest of this turn.
-            self._drop_audio = True
+            # Nova Sonic detected a barge-in itself (the "just speak to interrupt"
+            # UX) — must do the SAME full stop as the explicit interrupt() button:
+            # dropping future audio alone leaves whatever was already queued (both
+            # server-side _out_queue and the client's local buffer) playing on,
+            # so the bot keeps talking for a few seconds after the user starts
+            # speaking (reported 2026-08-26). interrupt() also purges the queue
+            # and tells the client to flush — do the whole thing, not just step 1.
+            await self.interrupt()
         elif kind == "text":
             role = (data.get("role") or "").upper()
             text = data.get("text", "")
@@ -2438,6 +2610,7 @@ class RealtimeVoiceSession:
                 str(args.get("target") or ""),
                 str(args.get("text") or ""),
                 args.get("x"), args.get("y"), args.get("display"),
+                args.get("params") if isinstance(args.get("params"), dict) else None,
             ))
             return
 
@@ -2472,10 +2645,17 @@ class RealtimeVoiceSession:
             await self._respond(tool_use_id, await self._skill_search(str(args.get("query") or "")))
             return
         if name == "m365_calendar_today":
-            await self._respond(tool_use_id, await self._m365_calendar_today(int(args.get("days_ahead") or 1)))
+            await self._respond(tool_use_id, await self._m365_calendar_today(
+                int(args.get("days_ahead") or 1), str(args.get("when") or ""),
+            ))
             return
         if name == "m365_mail_recent":
-            await self._respond(tool_use_id, await self._m365_mail_recent(int(args.get("limit") or 8)))
+            await self._respond(tool_use_id, await self._m365_mail_recent(
+                int(args.get("limit") or 8),
+                str(args.get("search") or ""),
+                str(args.get("sender") or ""),
+                str(args.get("subject") or ""),
+            ))
             return
         if name == "m365_send_mail":
             await self._respond(tool_use_id, await self._m365_send_mail(
@@ -2488,6 +2668,15 @@ class RealtimeVoiceSession:
                 str(args.get("subject") or ""), str(args.get("start") or ""),
                 str(args.get("end") or ""), str(args.get("attendees") or ""),
                 str(args.get("location") or ""),
+            ))
+            return
+        if name == "m365_search_people":
+            await self._respond(tool_use_id, await self._m365_search_people(str(args.get("query") or "")))
+            return
+        if name == "m365_teams_message":
+            await self._respond(tool_use_id, await self._m365_teams_message(
+                str(args.get("person") or ""), str(args.get("message") or ""),
+                bool(args.get("confirmed") or False),
             ))
             return
         if name == "list_workspace":
@@ -2537,7 +2726,11 @@ class RealtimeVoiceSession:
             await self._respond(tool_use_id, await self._voice_help())
             return
         if name == "save_memory":
-            await self._respond(tool_use_id, await self._save_memory(str(args.get("content") or ""), str(args.get("key") or "")))
+            await self._respond(tool_use_id, await self._save_memory(
+                str(args.get("content") or ""), str(args.get("key") or ""),
+                category=str(args.get("category") or "") or None,
+                importance=args.get("importance"),
+            ))
             return
         if name == "list_todos":
             await self._respond(tool_use_id, await self._list_todos())
@@ -2709,13 +2902,15 @@ class RealtimeVoiceSession:
                     "caption": str(edata.get("caption") or ""),
                 }})
         elif kind == "file":
+            filename = str(edata.get("filename") or "Datei")
+            media_type = str(edata.get("media_type") or "")
+            caption = str(edata.get("caption") or "")
+            path = str(edata.get("path") or "")
             await self._emit({"type": "media", "data": {
-                "kind": "file",
-                "filename": str(edata.get("filename") or "Datei"),
-                "media_type": str(edata.get("media_type") or ""),
-                "caption": str(edata.get("caption") or ""),
-                "path": str(edata.get("path") or ""),  # for the download link
+                "kind": "file", "filename": filename, "media_type": media_type,
+                "caption": caption, "path": path,  # for the download link
             }})
+            await self._persist_media(filename, media_type, path, caption)
 
     def _collect_transfer_files(self) -> list[dict]:
         """List files currently in /workspace/transfer (top + one subdir level)."""
@@ -2788,6 +2983,7 @@ class RealtimeVoiceSession:
                 "caption": "",
                 "path": path,
             }})
+            await self._persist_media(name, media_type, path)
             if len(self._shown_files) >= 24:  # hard cap per call
                 break
 
@@ -3178,12 +3374,16 @@ class RealtimeVoiceSession:
         return ". ".join(parts) + "."
 
     async def _web_search(self, query: str, max_results: int) -> str:
-        """Direct keyless web search (DuckDuckGo) — no agent round-trip."""
-        from app.core.web_search import web_search as _do_search
+        """Direct web search, no agent round-trip — provider ist admin-konfiguriert
+        (Admin -> Websuche: DuckDuckGo/Brave/SerpApi), dieselbe Quelle wie ueberall."""
+        from app.db.session import async_session_factory
+        from app.core.web_search import web_search_with_settings
+
         query = (query or "").strip()
         if not query:
             return "Keine Suchanfrage erkannt."
-        results = await _do_search(query, max_results)
+        async with async_session_factory() as db:
+            results = await web_search_with_settings(query, max_results, db)
         if not results:
             return f"Zu „{query}“ habe ich im Web nichts gefunden."
         # Surface the results to the Jarvis UI too (cards/links), not just to voice.
@@ -3284,8 +3484,14 @@ class RealtimeVoiceSession:
         return ("Ich kenne nur 'schau zu' (starten) und 'fertig' (Skill bauen) — "
                 f"'{action}' sagt mir nichts.")
 
+    #: Kurzformen, die _desktop() selbst in eine Bridge-Aktion uebersetzt — jede
+    #: andere Aktion geht als Rohdurchreiche direkt durch (siehe _desktop unten).
+    _DESKTOP_SHORTHANDS = frozenset({
+        "open", "screenshot", "click", "type", "find", "wait", "key", "scroll", "ego",
+    })
+
     async def _desktop(self, action: str, target: str = "", text: str = "",
-                       x=None, y=None, display=None) -> str:
+                       x=None, y=None, display=None, raw_params: dict | None = None) -> str:
         """Rechner des Nutzers über die Desktop-Bridge bedienen.
 
         Geht bewusst durch `dispatch_bridge_command` — dieselbe Funktion, die auch der
@@ -3376,8 +3582,22 @@ class RealtimeVoiceSession:
             except ValueError:
                 pass
             act, params = "scroll", {"clicks": amount}
+        elif action == "ego":
+            if not text.strip():
+                return "Mir fehlt das Skript für ego lite."
+            act, params = "ego_run", {"script": text}
+        elif action:
+            # Rohdurchreiche: JEDER echte Bridge-Aktionsname, den diese Kurzformen nicht
+            # abdecken (shell_run, browser_*, get_clipboard, list_windows, ...) — sonst
+            # bliebe die Sprachfront bei jeder neuen Bridge-Faehigkeit wieder zurueck,
+            # bis hier von Hand eine weitere Kurzform ergaenzt wird. Genau DAS ist am
+            # 27.08.2026 mit ego_run passiert (Nutzer-Meldung: "1:1 die gleichen Tools
+            # wie der Agent"). Serverseitige Faehigkeitspruefung/Freigabeliste gelten
+            # unveraendert — eine gesperrte Aktion kommt als Fehlertext zurueck, nicht
+            # als stiller Erfolg.
+            act, params = action, dict(raw_params or {})
         else:
-            return f"Die Aktion '{action}' kenne ich nicht."
+            return "Mir fehlt die Aktion."
 
         try:
             out = await dispatch_bridge_command(
@@ -3453,6 +3673,17 @@ class RealtimeVoiceSession:
                     + _bildschirm_hinweis(result))
         if act in ("open_app", "open_url"):
             return f"'{target.strip()}' wurde geöffnet — die Bridge meldet Erfolg."
+        if act == "ego_run":
+            out = str(result.get("output") or "").strip()
+            return out if out else "Erledigt — das Skript hat nichts über cliLog() zurückgegeben."
+        if action not in self._DESKTOP_SHORTHANDS:
+            # Rohdurchreiche-Ergebnis: kein bekanntes Sonderfeld, also den ganzen
+            # (kompakten) Ergebnis-Rumpf zurueckgeben statt eines nichtssagenden
+            # "Erledigt" — sonst kann die Stimme nicht vorlesen, WAS z. B.
+            # shell_run oder browser_snapshot tatsaechlich geliefert haben.
+            if isinstance(result, dict) and result:
+                kompakt = {k: v for k, v in result.items() if k != "screenshot_b64"}
+                return json.dumps(kompakt, ensure_ascii=False)[:2000]
         return "Erledigt."
 
     async def _control_ui(self, action: str, target: str, query: str = "") -> str:
@@ -3676,6 +3907,69 @@ class RealtimeVoiceSession:
                 await db.commit()
         except Exception:  # noqa: BLE001
             logger.debug("voice persist turn failed agent=%s", self.agent_id, exc_info=True)
+
+    async def _persist_media(self, filename: str, media_type: str, path: str, caption: str = "") -> None:
+        """Attach a file the agent presented mid-call to the persisted chat session,
+        the same one ``_persist_turn`` writes to — so it survives after the call
+        (reported 2026-08-26: files shown during the call vanished with the dock,
+        weren't in the real chat, and had no way to open them there).
+
+        Reuses the ``meta.presented_files`` shape the normal (non-voice) chat
+        pipeline already writes (see api/ws.py) so the SAME iOS/web file-card
+        rendering picks it up — no separate voice-only display path.
+        """
+        if not path or not filename:
+            return
+        from app.db.session import async_session_factory
+        from app.models.chat_message import ChatMessage
+        from app.models.chat_session import ChatSession
+        from sqlalchemy import select
+        file_entry = {"path": path, "filename": filename, "media_type": media_type, "caption": caption}
+        try:
+            async with async_session_factory() as db:
+                titled = (await db.execute(
+                    select(ChatSession).where(
+                        ChatSession.agent_id == self.agent_id,
+                        ChatSession.session_id == self.session_id,
+                    )
+                )).scalar_one_or_none()
+                if titled is None:
+                    db.add(ChatSession(
+                        agent_id=self.agent_id, session_id=self.session_id,
+                        title="Sprach-Gespräch",
+                    ))
+                    await db.commit()
+                # An assistant turn is already being coalesced (_persist_turn) →
+                # attach the file to THAT message instead of creating a bare one,
+                # so it lands next to the sentence that announced it.
+                row = None
+                if self._persist_role == "assistant" and self._persist_mid:
+                    row = (await db.execute(
+                        select(ChatMessage).where(
+                            ChatMessage.agent_id == self.agent_id,
+                            ChatMessage.session_id == self.session_id,
+                            ChatMessage.message_id == self._persist_mid,
+                            ChatMessage.role == "assistant",
+                        )
+                    )).scalar_one_or_none()
+                if row is not None:
+                    meta = dict(row.meta or {})
+                    existing = list(meta.get("presented_files") or [])
+                    if not any(f.get("path") == path for f in existing):
+                        existing.append(file_entry)
+                    meta["presented_files"] = existing
+                    row.meta = meta
+                else:
+                    mid = uuid.uuid4().hex[:12]
+                    self._persist_role = "assistant"
+                    self._persist_mid = mid
+                    db.add(ChatMessage(
+                        agent_id=self.agent_id, session_id=self.session_id, message_id=mid,
+                        role="assistant", content="", meta={"source": "voice", "presented_files": [file_entry]},
+                    ))
+                await db.commit()
+        except Exception:  # noqa: BLE001
+            logger.debug("voice persist media failed agent=%s", self.agent_id, exc_info=True)
 
     async def _search_knowledge(self, query: str, limit: int = 5) -> str:
         """Vector-search the agent's own memory/knowledge (the same store the
@@ -3959,35 +4253,52 @@ class RealtimeVoiceSession:
         except Exception:  # noqa: BLE001 — ValueError not-connected / refresh failure
             return None
 
-    async def _m365_calendar_today(self, days_ahead: int = 1) -> str:
-        """Read the user's M365 calendar directly via Graph, no agent round-trip."""
+    async def _m365_calendar_today(self, days_ahead: int = 1, when: str = "") -> str:
+        """Read the user's M365 calendar directly via Graph, no agent round-trip.
+
+        `when` ('today'/'tomorrow') maps to `date` on the shared Graph tool — a
+        real calendar-day boundary, not the rolling `days_ahead` window (see
+        msgraph_mcp.py::ms_list_calendar_events for why the two are NOT
+        interchangeable; reported live 2026-08-27 that days_ahead=1 for
+        "morgen" returned mostly today's remaining events instead)."""
         token = await self._m365_token()
         if not token:
             return "Dein Microsoft-365-Konto ist nicht verbunden — das richtest du in den Einstellungen unter Integrationen ein."
         from app.core.msgraph_mcp import handle_tool
+        when = (when or "").strip().lower()
+        params = {"date": when} if when in ("today", "tomorrow", "heute", "morgen") \
+            else {"days_ahead": max(1, min(days_ahead, 14))}
         try:
-            text = await handle_tool(
-                "ms_list_calendar_events", {"days_ahead": max(1, min(days_ahead, 14))}, token
-            )
+            text = await handle_tool("ms_list_calendar_events", params, token)
         except Exception:  # noqa: BLE001
             logger.warning("voice m365 calendar failed", exc_info=True)
             return "Ich konnte den Kalender gerade nicht abrufen."
         return text or "Ich habe keine Termine gefunden."
 
-    async def _m365_mail_recent(self, limit: int = 8) -> str:
-        """Read the user's most recent inbox mail directly via Graph, no round-trip."""
+    async def _m365_mail_recent(self, limit: int = 8, search: str = "",
+                                 sender: str = "", subject: str = "") -> str:
+        """Read inbox mail directly via Graph, no round-trip — plain latest-N, or
+        filtered by search/sender/subject (the gap reported live 2026-08-27: the
+        tool only ever pulled the latest N, so a topic search silently degraded
+        into "scan the last 20 and hope", and got reported as "can't search" —
+        it could, the parameter was just never forwarded)."""
         token = await self._m365_token()
         if not token:
             return "Dein Microsoft-365-Konto ist nicht verbunden — das richtest du in den Einstellungen unter Integrationen ein."
         from app.core.msgraph_mcp import handle_tool
+        params = {"folder": "inbox", "limit": max(1, min(limit, 20))}
+        if search.strip():
+            params["search"] = search.strip()
+        if sender.strip():
+            params["sender"] = sender.strip()
+        if subject.strip():
+            params["subject"] = subject.strip()
         try:
-            text = await handle_tool(
-                "ms_list_emails", {"folder": "inbox", "limit": max(1, min(limit, 20))}, token
-            )
+            text = await handle_tool("ms_list_emails", params, token)
         except Exception:  # noqa: BLE001
             logger.warning("voice m365 mail failed", exc_info=True)
             return "Ich konnte das Postfach gerade nicht abrufen."
-        return text or "Ich habe keine neuen Mails gefunden."
+        return text or "Ich habe dazu keine Mails gefunden."
 
     async def _m365_send_mail(self, to: str, subject: str, body: str, send: bool = False) -> str:
         """Send an email or (default) create a draft. Sending must be user-confirmed —
@@ -4045,6 +4356,66 @@ class RealtimeVoiceSession:
             logger.warning("voice m365 create_event failed", exc_info=True)
             return "Den Termin konnte ich gerade nicht anlegen."
         return f"Termin „{subject}“ ist im Kalender eingetragen. Bestätige das kurz in der ICH-Form."
+
+    async def _m365_search_people(self, query: str) -> str:
+        """Directory/people lookup — the exact gap reported live: the agent already has
+        this (ms_search_people), voice never did, so a bare name for an email/Teams
+        message had nowhere to resolve to an address."""
+        query = query.strip()
+        if not query:
+            return "Nach wem soll ich suchen?"
+        token = await self._m365_token()
+        if not token:
+            return "Dein Microsoft-365-Konto ist nicht verbunden."
+        from app.core.msgraph_mcp import handle_tool
+        try:
+            text = await handle_tool("ms_search_people", {"query": query}, token)
+        except Exception:  # noqa: BLE001
+            logger.warning("voice m365 search_people failed", exc_info=True)
+            return "Die Personensuche hat gerade nicht geklappt."
+        return text or f"Zu „{query}“ habe ich niemanden gefunden."
+
+    async def _m365_teams_message(self, person: str, message: str, confirmed: bool = False) -> str:
+        """Send to an EXISTING Teams 1:1/group chat, found by matching the chat's member
+        names — there is no tool (agent-side either) to start a brand-new chat, and no
+        direct name→chat-id resolver, so this matches client-side against /me/chats
+        members, same data ms_list_chats already shows the agent."""
+        person, message = person.strip(), message.strip()
+        if not person or not message:
+            return "Mir fehlt die Person oder der Text für die Nachricht."
+        token = await self._m365_token()
+        if not token:
+            return "Dein Microsoft-365-Konto ist nicht verbunden."
+        from app.core.msgraph_mcp import _graph
+        try:
+            data = await _graph("GET", "/me/chats", token, params={"$top": 50, "$expand": "members"})
+        except Exception:  # noqa: BLE001
+            logger.warning("voice teams chat lookup failed", exc_info=True)
+            return "Ich konnte deine Teams-Chats gerade nicht abrufen."
+        needle = person.lower()
+        matches: list[tuple[str, str]] = []
+        for c in data.get("value", []) or []:
+            names = [m.get("displayName", "") for m in c.get("members", []) if m.get("displayName")]
+            if any(needle in n.lower() for n in names):
+                label = c.get("topic") or ", ".join(n for n in names if n) or "Chat"
+                matches.append((c.get("id", ""), label))
+        if not matches:
+            return (f"Ich finde keinen bestehenden Chat mit „{person}“ — einen neuen Chat kann "
+                    f"ich nicht selbst anlegen, nur in einen bereits vorhandenen schreiben. Sag "
+                    f"dem Nutzer das genau.")
+        if len(matches) > 1:
+            options = "; ".join(label for _, label in matches[:5])
+            return f"Mehrere Chats passen zu „{person}“: {options}. Frag nach, welchen er meint."
+        chat_id, label = matches[0]
+        if not confirmed:
+            return f"Ich würde an „{label}“ schreiben: „{message}“. Lies das vor und frag nach Bestätigung."
+        try:
+            await _graph("POST", f"/me/chats/{chat_id}/messages", token,
+                         content=json.dumps({"body": {"content": message}}))
+        except Exception:  # noqa: BLE001
+            logger.warning("voice teams send failed", exc_info=True)
+            return f"Senden an „{label}“ hat nicht geklappt."
+        return f"Nachricht an „{label}“ gesendet."
 
     async def _proactive_loop(self) -> None:
         """(#2) Proactively remind the user of an imminent calendar event during the call.
@@ -4328,6 +4699,7 @@ class RealtimeVoiceSession:
             "kind": "file", "filename": filename, "media_type": mime,
             "caption": rel_disp, "path": full,
         }})
+        await self._persist_media(filename, mime, full, rel_disp)
         return (
             f"Ich habe „{rel_disp}“ als Karte zum Öffnen/Herunterladen bereitgestellt. Sag dem "
             "Nutzer kurz in der ICH-Form, dass die Datei rechts bereitliegt."
@@ -5084,30 +5456,38 @@ class RealtimeVoiceSession:
             "den Bildschirm zeigen. Sag einfach, was du brauchst."
         )
 
-    async def _save_memory(self, content: str, key: str = "") -> str:
-        """Write a memory into the agent's own long-term store (same table the
-        memory MCP tool uses) — direct, with embedding for later recall."""
+    async def _save_memory(
+        self, content: str, key: str = "", category: str | None = None,
+        importance: int | None = None,
+    ) -> str:
+        """Write a memory into the agent's own long-term store — routed through
+        save_memory_core (in-process, no HTTP hop) so voice-created memories get
+        the SAME dedup/supersede/contradiction handling and embedding as the
+        memory_save MCP tool, instead of a raw insert that bypassed all of it."""
         c = (content or "").strip()
         if not c:
             return "Was soll ich mir merken?"
         k = (key or "").strip() or c[:40]
+        cat = (category or "fact").strip().lower()
+        if cat not in ("preference", "contact", "project", "procedure", "decision", "fact", "learning"):
+            cat = "fact"
+        imp = importance if isinstance(importance, int) and 1 <= importance <= 5 else 3
+        from app.api.memory import MemoryConflict, MemorySave, save_memory_core
         from app.db.session import async_session_factory
-        from app.models.memory import AgentMemory
-        from app.services.embedding_service import get_embedding_service
+        body = MemorySave(
+            agent_id=self.agent_id, category=cat, key=k, content=c,
+            importance=imp, source="conversation",
+        )
         try:
-            vec = None
-            svc = get_embedding_service()
-            if getattr(svc, "enabled", False):
-                vec = await svc.embed(f"{k}: {c}")
             async with async_session_factory() as db:
-                mem = AgentMemory(agent_id=self.agent_id, category="fact", key=k, content=c)
-                if vec is not None:
-                    try:
-                        mem.embedding = vec
-                    except Exception:  # noqa: BLE001
-                        pass
-                db.add(mem)
-                await db.commit()
+                try:
+                    await save_memory_core(db, body, allow_supersede=True)
+                except MemoryConflict:
+                    # No good way to run an interactive "override?" round-trip
+                    # mid-call — this tool is documented as a fast, direct write,
+                    # so a soft contradiction resolves by superseding.
+                    body.override = True
+                    await save_memory_core(db, body, allow_supersede=True)
         except Exception:  # noqa: BLE001
             logger.warning("voice save_memory failed agent=%s", self.agent_id, exc_info=True)
             return "Das Merken hat gerade nicht geklappt."

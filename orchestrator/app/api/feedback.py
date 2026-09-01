@@ -14,15 +14,18 @@ nie aus dem Request-Body — ein mitgeschickter Username wird ignoriert.
 """
 
 import base64
+import csv
+import io
 import json
 import logging
 import re
 import time
+import zipfile
 from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -450,6 +453,69 @@ async def list_feedback(
         "total": len(items),
         **counts,
     }
+
+
+_CSV_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value: str | None) -> str:
+    """Entschaerft CSV-/Formel-Injection: jedes Feld kommt aus Nutzer-Feedback
+    (Titel, Notizen, ...) — ein Wert wie ``=cmd|'/c calc'!A1`` wuerde in Excel/
+    Sheets beim Oeffnen als Formel ausgefuehrt. Ein fuehrendes Anfuehrungszeichen
+    zwingt jede gaengige Tabellenkalkulation, die Zelle als reinen Text zu lesen."""
+    text = value or ""
+    if text and text[0] in _CSV_FORMULA_TRIGGERS:
+        return "'" + text
+    return text
+
+
+@router.get("/export")
+async def export_feedback(
+    status: str | None = Query(None),
+    user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """ZIP-Export: eine Uebersicht (CSV) + je Widget-Feedback die Markdown-Datei
+    und den Screenshot, falls vorhanden (admin only). Dieselbe Filterung wie
+    ``list_feedback``, damit "nur offene exportieren" moeglich ist."""
+    query = select(Feedback)
+    if status:
+        query = query.where(Feedback.status == FeedbackStatus(status))
+    query = query.order_by(Feedback.created_at.desc())
+    items = list((await db.execute(query)).scalars().all())
+
+    csv_puffer = io.StringIO()
+    writer = csv.writer(csv_puffer)
+    writer.writerow([
+        "id", "user_name", "title", "category", "status", "sentiment",
+        "page", "element_label", "github_issue_url", "admin_notes", "created_at",
+    ])
+    for f in items:
+        category = f.category.value if isinstance(f.category, FeedbackCategory) else f.category
+        fstatus = f.status.value if isinstance(f.status, FeedbackStatus) else f.status
+        writer.writerow([
+            f.id, _csv_safe(f.user_name), _csv_safe(f.title), category or "", fstatus or "",
+            _csv_safe(f.sentiment), _csv_safe(f.page), _csv_safe(f.element_label),
+            _csv_safe(f.github_issue_url), _csv_safe(f.admin_notes),
+            f.created_at.isoformat() if f.created_at else "",
+        ])
+
+    zip_puffer = io.BytesIO()
+    with zipfile.ZipFile(zip_puffer, "w", zipfile.ZIP_DEFLATED) as archiv:
+        archiv.writestr("feedback.csv", csv_puffer.getvalue())
+        fdir = _feedback_dir()
+        for f in items:
+            if f.md_file and (fdir / f.md_file).exists():
+                archiv.write(fdir / f.md_file, arcname=f"widget/{f.md_file}")
+            if f.screenshot_file and (fdir / f.screenshot_file).exists():
+                archiv.write(fdir / f.screenshot_file, arcname=f"widget/{f.screenshot_file}")
+    zip_puffer.seek(0)
+
+    return StreamingResponse(
+        zip_puffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="feedback-export.zip"'},
+    )
 
 
 @router.get("/item/{fid}")

@@ -30,7 +30,11 @@ dependencies = [
     "exchangelib>=5.4",
     # Realtime voice front — AWS Bedrock Nova Sonic bidirectional streaming
     # (plain boto3 has no bidirectional stream). Pulls in smithy-aws-core.
-    "aws-sdk-bedrock-runtime>=0.7,<0.11",
+    # The [awscrt] extra is REQUIRED, not cosmetic: from 0.11 on, awscrt is only
+    # an optional extra and the default transport is aiohttp, which cannot do
+    # duplex streaming. Without it Nova Sonic dies on every session open.
+    # Older versions (<0.11) don't declare the extra — pip warns and installs.
+    "aws-sdk-bedrock-runtime[awscrt]>=0.7,<0.12",
     # Document text extraction for M365 file reads (ms_read_file_content) — pure
     # Python, no system deps: PDF, Word, Excel content the agent can summarize.
     "pypdf>=5.1",

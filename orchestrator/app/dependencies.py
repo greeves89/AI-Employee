@@ -135,6 +135,10 @@ async def get_current_user(request: Request, db: AsyncSession) -> "User":
     user = await db.scalar(select(User).where(User.id == payload["sub"]))
     if not user or not user.is_active or not getattr(user, "approved", True):
         raise HTTPException(status_code=401, detail="User not found, inactive, or pending approval")
+    # Admin password reset bumps token_version — tokens minted before the reset
+    # must stop working immediately, not just wait out their own expiry.
+    if payload.get("tv", 0) != user.token_version:
+        raise HTTPException(status_code=401, detail="Session revoked")
 
     # Ohne zugewiesene Rolle bleibt die Plattform zu (#560-Folge, Kundenmeldung).
     #
@@ -307,6 +311,8 @@ async def get_current_user_ws(token: str | None, db: AsyncSession) -> "User":
 
     user = await db.scalar(select(User).where(User.id == payload["sub"]))
     if not user or not user.is_active or not getattr(user, "approved", True):
+        return None
+    if payload.get("tv", 0) != user.token_version:
         return None
 
     return user

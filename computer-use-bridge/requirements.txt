@@ -1,4 +1,14 @@
 websockets>=12.0
+# CA bundle for TLS verification — a PyInstaller-frozen build has no OpenSSL
+# default cert directory to fall back on the way a normal Python install
+# does, so ssl.create_default_context() finds NO trusted roots at all and
+# even a valid, CA-signed certificate fails verification (reported +
+# diagnosed 2026-08-27: agents.future-app.de, a real Cloudflare cert,
+# silently failed system trust in the packaged app while the identical
+# check succeeded from a plain `python3` shell). See bridge.py's
+# _default_ssl_context — the .spec files bundle certifi's data file too,
+# without that this pip dependency alone is not enough in a frozen build.
+certifi>=2024.2.2
 pyautogui>=0.9.54
 Pillow>=10.0.0
 # Replay-Modus: observe the human's own clicks/keystrokes to demonstrate a

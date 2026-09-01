@@ -10,7 +10,7 @@ from app.loop_detector import LoopDetector
 from app.config import llm_default_reasoning_effort, settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
-from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
+from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
 from app.runner_hooks import (
     MULTIMODAL_CAPABILITY_NOTE,
     SELF_IMPROVEMENT_SUFFIX,
@@ -668,9 +668,13 @@ class LLMRunner:
 
         except Exception as e:
             logger.exception(f"LLM Runner error: {e}")
-            await self.log_publisher.publish(task_id, "error", {"message": str(e)})
+            # format_exception() prefixes the exception TYPE, matching the
+            # chat handler's error style — same reason: the container log
+            # backing a bare str(e) is gone the moment the agent is recreated.
+            failure_text = format_exception(e)
+            await self.log_publisher.publish(task_id, "error", {"message": failure_text})
             self.is_running = False
-            return {"status": "error", "error": str(e), "num_turns": num_turns}
+            return {"status": "error", "error": failure_text, "num_turns": num_turns}
 
         duration_ms = int((time.time() - start_time) * 1000)
         cost_usd = _estimate_cost(
