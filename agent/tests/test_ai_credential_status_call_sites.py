@@ -91,5 +91,39 @@ class CodexWegMeldetStatus(unittest.IsolatedAsyncioTestCase):
         melde.assert_awaited_once_with(ERFOLG)
 
 
+class CodexChatWegMeldetStatus(unittest.IsolatedAsyncioTestCase):
+    """Der Codex-CHAT-Weg ist eine andere Aufrufstelle als der Codex-AUFGABEN-Weg.
+
+    ``CodexAgentRunner.execute_task`` und ``CodexChatHandler.handle_message`` melden
+    getrennt. Ein Test auf den Aufgaben-Weg laesst den Chat-Weg unbewiesen — die
+    Luecke faellt nicht auf, weil beide im selben Modul liegen und dieselbe Funktion
+    aufrufen.
+    """
+
+    def _handler(self):
+        from app.codex_runner import CodexChatHandler
+
+        publisher = MagicMock()
+        publisher.publish = AsyncMock()
+        publisher.publish_chat = AsyncMock()
+        return CodexChatHandler(log_publisher=publisher)
+
+    async def _melde_bei(self, ergebnis):
+        handler = self._handler()
+        with patch("app.codex_runner.report_result_status", AsyncMock()) as melde, \
+             patch("app.steering.run_turns_with_steering",
+                   AsyncMock(return_value=dict(ergebnis))):
+            await handler.handle_message("m1", "hallo")
+        return melde
+
+    async def test_codex_chatzug_meldet_zugangsfehler(self):
+        melde = await self._melde_bei(AUTH_FEHLER)
+        melde.assert_awaited_once_with(AUTH_FEHLER)
+
+    async def test_erfolgreicher_codex_chatzug_meldet_ok(self):
+        melde = await self._melde_bei(ERFOLG)
+        melde.assert_awaited_once_with(ERFOLG)
+
+
 if __name__ == "__main__":
     unittest.main()
