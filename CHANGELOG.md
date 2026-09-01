@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.269.1] - 2026-08-24
+## [1.276.11] - 2026-09-01
 
 ### Behoben
 - **Der Zaehler fuer die Alt-Anmeldungs-Warnung waechst nicht mehr unbegrenzt.** Meldet
@@ -21,8 +21,210 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Einordnung: der Verbrauch je Eintrag war klein, ein akutes Problem war das nicht. Es
   war eine Menge ohne Obergrenze, deren Groesse jemand von aussen bestimmt.
 
-  Versionsnummer: 1.268.4 bis 1.269.0 sind uebersprungen, weil offene Aenderungen diese
-  Nummern bereits halten.
+---
+
+## [1.276.9] - 2026-09-01
+
+### Behoben
+- **Die Echtzeit-Sprachfunktion war ausgefallen — jeder Verbindungsversuch scheiterte sofort.** Wer das Mikrofon oeffnete, bekam keine Verbindung; im Hintergrund versuchte es die Oberflaeche rund fuenfmal pro Sekunde erneut, sodass in 85 Sekunden ueber 440 Fehlversuche zusammenkamen. Ursache war ein automatisches Abhaengigkeits-Update des AWS-Bedrock-Pakets: ab Version 0.11 nutzt es standardmaessig eine Uebertragungsart, die keine gleichzeitige Zwei-Wege-Uebertragung beherrscht — genau die braucht das Sprachmodell aber. Zusaetzlich wird die dafuer noetige Komponente seit dieser Version nicht mehr automatisch mitinstalliert. Beides ist jetzt fest eingestellt, statt sich auf die Voreinstellung des Pakets zu verlassen; kuenftige Paket-Updates koennen die Sprachfunktion so nicht mehr still abschalten.
+
+---
+
+## [1.276.8] - 2026-09-01
+
+### Behoben
+- **Die Hauptlinie war seit dem 31.08. rot** — die Testreihe des Orchestrators scheiterte an 13 Stellen, seit der native SSO-Anmeldeweg eingezogen ist. Die Ursache lag ausschliesslich in den Tests, nicht in der Anwendung: die gemeinsame Endstrecke jeder SSO-Anmeldung wurde nebenlaeufig (`async`), und der State-Eintrag einer beginnenden Anmeldung fuehrt ein zusaetzliches Feld fuer den Anmeldeweg. Beide Testerwartungen waren noch auf dem alten Stand. Folge fuer den Betreiber: Ein roter Hauptzweig laesst sich nicht mehr von einem echten Fehler unterscheiden — jede offene Aenderung zeigte dieselbe rote Testreihe, unabhaengig davon, ob sie selbst in Ordnung war.
+
+### Nachgetragen
+- **Der native SSO-Anmeldeweg (iOS) ist ohne eigene Release-Spur in die Hauptlinie gelaufen** — weder Versionssprung noch Eintrag. Was seither zusaetzlich enthalten ist: Die Anmeldung aus der App heraus laeuft ueber ein eigenes Rueckkehrziel der App statt ueber Sitzungs-Cookies, weil der Browser-Kontext der App keine Cookies mit ihrer eigenen Netzwerkverbindung teilt. Die Tokens reisen dabei **nicht** in der Rueckkehr-Adresse mit, sondern nur ein einmalig und nur 60 Sekunden lang einloesbarer Austauschcode — ein Custom-URL-Scheme ist nicht exklusiv reserviert, eine fremde App koennte denselben Namen registrieren und die Rueckkehr abfangen.
+
+---
+
+## [1.276.6] - 2026-08-31
+
+### Behoben
+- **Sprach-Werkzeug `save_memory` schrieb an der zentralen Speicherlogik vorbei** — direkter Roheintrag in die Gedaechtnis-Tabelle statt ueber denselben Pfad wie das MCP-Werkzeug `memory_save`. Dadurch fehlte Ueberschneidungs-/Duplikat-Erkennung komplett, und die Kategorie war unveraenderlich auf "fact" fixiert, obwohl die Gespraechsfuehrung dem Sprachmodell bereits eine differenziertere Kategorisierung ankuendigte, die es technisch gar nicht setzen konnte. Laeuft jetzt ueber dieselbe Kernfunktion wie der MCP-Weg (gleiche Ueberschneidungspruefung, echte Kategorie/Wichtigkeit).
+- **Fragen nach frueheren Gespraechen wurden im Sprachkanal nicht zuverlaessig erkannt.** Die Wissenssuche durchsucht technisch bereits alle Gespraechsverlaeufe kanaluebergreifend, aber die Werkzeug-Auswahl im Systemprompt kannte nur wissensartige Formulierungen ("was weisst du ueber…"), keine rueckblickenden ("was haben wir besprochen", "was war letzte Woche"). Jetzt explizit ergaenzt.
+
+---
+
+## [1.276.5] - 2026-08-31
+
+### Abgesichert
+- **Next.js auf 16.3.3 angehoben** — behebt zwei kritische Sicherheitsluecken: unauthentifizierte Remote Code Execution auf Windows-gehosteten Servern (GHSA-p293-qw3h-jr36) und unauthentifizierte RCE in der Image-Optimization-API bei AVIF-Dateien (GHSA-2xp9-vwfh-vxw4). Keine Funktionsaenderung fuer den Nutzer.
+
+### Aktualisiert
+- **Abhaengigkeiten (Frontend):** @xyflow/react 12.11.5, lucide-react 1.34.0, mermaid 11.17.2, @types/node 26.4.0, @types/react-dom 19.2.5 — alles Patch- bzw. Minor-Updates ohne API-Aenderungen.
+- **Abhaengigkeiten (Orchestrator):** aws-sdk-bedrock-runtime auf <0.12 angehoben (war <0.11) — kompatibles Release, keine Breaking Changes.
+
+---
+
+## [1.276.4] - 2026-08-31
+
+### Neu
+- **SSO-Login landete nach der Anbieter-Authentifizierung immer auf einem fest konfigurierten Host**, auch wenn die Anmeldung auf einem anderen erreichbaren Hostnamen begonnen wurde (etwa einer Kurz-Domain neben der eigentlichen Domain). Eine neue optionale Positivliste (`OAUTH_REDIRECT_ALLOWED_HOSTS`) laesst zusaetzliche Hosts ihre eigene Rueckkehr-URL bekommen; ungelistete Hosts fallen weiter auf die feste Basis-URL zurueck, kein Verhaltensunterschied ohne Opt-in.
+
+## [1.276.3] - 2026-08-31
+
+### Behoben
+- **Chat brach mit `'tuple' object has no attribute 'get'` ab** (Kundenmeldung, wiederkehrend). Andere Ursache als der gleichnamige Fehler in 1.276.1: `_run_parallel` legt Nachrichten als `(msg, msg_json)`-Tupel in die Kanal-Warteschlange, der Nebenläufigkeits-Verbraucher packt sie korrekt aus, `_drain_pending` (fuer bereits waehrend eines laufenden Zugs eingegangene Nachrichten) tat das nicht und behandelte das rohe Tupel wie das Nachrichten-Objekt selbst.
+
+## [1.276.2] - 2026-08-31
+
+### Behoben
+- **CI war seit dem 27.08. dauerhaft rot — jeder offene Pull Request zeigte einen Fehlschlag, den er gar nicht verursacht hatte.** Ein Kalender-Test verglich das Ergebnis in der Zeitzone des ausfuehrenden Rechners statt in der angefragten. Auf einem Entwicklerrechner mit Europe/Berlin lief er gruen, auf dem UTC-Runner der CI rot. Die Anwendung selbst war immer korrekt; nur die Pruefung war falsch. Wichtiger als der Test: weil rot vier Tage lang der Normalzustand war, fiel zwei Tage spaeter ein **echter** Fehlschlag nicht mehr auf (siehe naechster Punkt).
+- **Ein Personenname und eine Kundenkennung standen im oeffentlichen Repository** — in einem Code-Kommentar und in einem Test-Docstring. Der vorhandene Schutz-Test hatte das korrekt gemeldet, ging aber im Dauer-Rot unter. Beide Stellen sind jetzt durch neutrale Formulierungen ersetzt; der Sachverhalt bleibt vollstaendig nachvollziehbar. Hinweis fuer Betreiber: die Git-Historie enthaelt die Namen weiterhin.
+
+## [1.276.1] - 2026-08-29
+
+### Behoben
+- **Chat brach mit `'tuple' object has no attribute 'get'` ab** (Kundenmeldung). `_build_responses_body` rief `.get()` auf jedem `tool_calls`-Eintrag ohne Typ-Pruefung auf; ein nicht-dict-Eintrag riss die gesamte Runde ab, noch bevor der Provider-eigene Fehlerpfad greift. Ueberspringt jetzt nicht-dict-Eintraege. Chat-/Task-Fehlermeldungen zeigen zusaetzlich kuenftig den Exception-Typ statt einer blossen Nachricht, damit ein naechstes Auftreten sofort erkennbar ist, auch ohne Container-Log (der nach jedem Agent-Neubau weg ist).
+- **Badge-Zeile auf den Agent-Karten wurde bei zu vielen gleichzeitig aktiven Badges lautlos abgeschnitten** (Kundenmeldung: "Buttons sehen komisch aus"). Bricht jetzt in eine zweite Zeile um statt vom Kartenrand verschluckt zu werden.
+
+## [1.276.0] - 2026-08-28
+
+### Neu
+- **Agent kann seinen eigenen Container per Chat neu bauen** (`restart_own_container`): rebuildet den Container aus dem aktuellen Agent-Image/Konfig, der Workspace bleibt vollstaendig erhalten. Ueber einen agent-token-authentifizierten Endpunkt (`POST /agent-apps/restart-self`), respektiert denselben Eval-Gate wie das Admin-"Update"-Feature. In allen drei Laufzeiten verdrahtet (Claude Code, Custom-LLM, Codex) sowie in der Sprachfront-Werkzeug-Parity eingeordnet (delegiert, wie `rebuild_app`).
+
+## [1.275.4] - 2026-08-28
+
+### Behoben
+- **Agent empfahl unaufgefordert "ego (lite) auf deinem Mac installieren"**, ohne das Betriebssystem des Nutzers zu kennen — live in einem Kundengespraech gefunden. Die automatische Ein-Zeilen-Installation gibt es nur fuer macOS; auf anderen Systemen (oder wenn das Betriebssystem unbekannt ist) soll der Agent jetzt zuerst fragen und sonst auf https://lite.ego.app/ verweisen statt Mac anzunehmen.
+
+## [1.275.3] - 2026-08-28
+
+### Behoben
+- **SSO-Login mit Microsoft endete fuer neue Nutzer mit 500** — live per Log-Traceback bestaetigt: `invalid input value for enum userrole: "UNASSIGNED"`. Die Rolle `UNASSIGNED` (fuer frisch per SSO angemeldete Nutzer ohne Zuteilung) wurde als Python-Enum-Member ergaenzt, die noetige `ALTER TYPE`-Migration fuer den Postgres-Enum-Typ fehlte aber — betraf nicht nur den gemeldeten Kunden, sondern auch die eigene Plattform (dort bisher nur nicht ausgeloest). Nachzieh-Migration ergaenzt (gleiches Muster wie die GitHub-OAuth-Provider-Ergaenzung).
+
+## [1.275.2] - 2026-08-27
+
+### Behoben
+- **Feedback-Detail-Modal zeigte den Volltext technisch-roh** (sichtbare `---`-Frontmatter-Zeilen, `**fett**`, `# Ueberschrift`) statt formatiert. Rendert den Markdown-Volltext jetzt ueber die bestehende `MarkdownContent`-Komponente (dieselbe wie im Agent-Chat); YAML-Frontmatter und die eingebettete Screenshot-Referenz werden rausgeschnitten, weil beides in der Modal schon als eigene Badges/Sektion angezeigt wird.
+
+## [1.275.1] - 2026-08-27
+
+### Behoben
+- **Der Modal-Fix aus 1.275.0 hat live nicht funktioniert — Klick daneben schloss die Modal weiterhin nicht.** Falsche Ursache angenommen: nicht Radix' eingebaute Aussenklick-Erkennung war das Problem, sondern dass Radix' `Dialog.Content` selbst per Inline-Style `pointer-events: auto` erzwingt und damit die `pointer-events-none`-Tailwind-Klasse auf dem umschliessenden Wrapper-Element unwirksam macht — der Wrapper deckt dadurch den GESAMTEN Viewport ab und faengt jeden Klick ab, bevor er das dahinterliegende Overlay je erreicht. Live mit `elementFromPoint`/`getComputedStyle` bestaetigt. Der Klick-Handler sitzt jetzt auf dem Content-Wrapper selbst (`target === currentTarget` unterscheidet Klick-auf-Hintergrund von Klick-auf-Karte), nicht mehr auf dem nie erreichten Overlay.
+
+## [1.275.0] - 2026-08-27
+
+### Behoben
+- **Modals schlossen sich nicht beim Klick daneben.** Live gemeldet an der Feedback-Detail-Modal: der Klick-außerhalb-Mechanismus war strukturell kaputt — das unsichtbare `pointer-events-none`-Wrapper-Element ließ Radix' eingebaute Aussenklick-Erkennung ins Leere laufen. Alle betroffenen Dialoge (Feedback-Detail, Mount-Rechte, Datei-Upload, Changelog, Team/Agent anlegen, Delegieren, Freigabe-Anfrage, Analytics-Agentendetail) bekommen jetzt einen expliziten Klick-Handler auf dem Hintergrund.
+- **Element-Label im Feedback-Widget verklebte zwei Textteile ohne Trenner** (z.B. "...erhaltenFeedback wird..." statt "...erhalten Feedback wird..."), weil `textContent` den Text mehrerer Geschwister-Elemente roh aneinanderhängt. Liest jetzt `innerText` (respektiert das gerenderte Layout). Ausserdem schnitt die 80-Zeichen-Grenze mitten im Wort ohne Auslassungszeichen ab — jetzt an der letzten Wortgrenze mit "…".
+
+## [1.274.2] - 2026-08-27
+
+### Behoben
+- **CSV-/Formel-Injection-Fix aus 1.274.1 war unvollstaendig** — `sentiment` (frei befuellbar ueber das Feedback-Widget) wurde beim Absichern der Export-Spalten uebersehen. Jetzt geht jede exportierte Freitextspalte durch dieselbe Absicherung; ein neuer Test deckt alle betroffenen Spalten gemeinsam ab, nicht nur eine Stichprobe.
+
+## [1.274.1] - 2026-08-27
+
+### Behoben
+- **CSV-/Formel-Injection im Feedback-Export.** Titel, Name und Admin-Notizen kommen aus Nutzer-Feedback und landeten roh in der exportierten CSV — ein Wert wie `=HYPERLINK(...)` haette beim Oeffnen in Excel/Sheets als Formel laufen koennen. Felder, die mit `=`/`+`/`-`/`@`/Tab/CR beginnen, bekommen jetzt ein fuehrendes Anfuehrungszeichen, das jede gaengige Tabellenkalkulation zwingt, sie als reinen Text zu lesen.
+
+## [1.274.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Feedback als ZIP exportieren** (Admin -> Feedback) — eine CSV-Uebersicht ueber alle Eintraege plus, je Widget-Feedback, dessen Markdown-Datei und Screenshot. Neuer Endpoint `GET /feedback/export` (optionaler `status`-Filter, admin-only).
+
+## [1.273.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Admin-konfigurierbare Websuche** (Admin -> Websuche, Vorbild OpenWebUI) — DuckDuckGo bleibt schluessellos die Vorgabe; wahlweise echte Brave-Search-API- oder SerpApi-Anbindung, Provider + Key global umschaltbar. Vorher gab es ZWEI unabhaengige, sich widersprechende DuckDuckGo-Kopien (Sprachfront, Agent-Container) und der bestehende „brave-search"-Eintrag bei den AI-Accounts war nachweislich nur ein Stub ohne echten Aufruf. Jetzt EIN gemeinsames Modul (`core/web_search.py`), das Agent-Container (ueber einen neuen `/agent-search/web`-Endpunkt), Sprachfront UND — als neuer MCP-Tool-Eintrag `web_search` — auch Claude Code direkt nutzen. Schliesst zugleich eine Harness-Luecke: Claude Code hatte bisher ueberhaupt keine Websuche.
+
+### Behoben
+- **"Eigene KI-Zugaenge erlauben"-Schalter liess sich nicht deaktivieren.** Der Schalter fehlte in der PATCH-Feldliste der Einstellungen-API — ein Admin-Klick wurde lautlos verworfen, ohne Fehlermeldung, und `GET /settings/` zeigte deshalb immer "an", unabhaengig vom tatsaechlichen Zustand. Live per DB-Abfrage bestaetigt: der Wert wurde noch nie gespeichert.
+
+## [1.272.2] - 2026-08-27
+
+### Behoben
+- **"Öffne YouTube und such nach X" öffnete nur die Startseite, keine Ergebnisse.** Die `ego`-Beschreibung hatte als einziges Beispiel "öffnen + lesen", kein Suchbeispiel — die Sprachfront rief `openOrReuseTab` auf die Startseite auf und hielt die Aufgabe fuer erledigt, sobald ein Tab offen war. Neues, live verifiziertes Beispiel: bei einer Suche direkt die Ergebnis-URL ansteuern (`?search_query=`/`?q=`) statt eine leere Startseite zu oeffnen und dort stehen zu bleiben. Beschreibung nennt jetzt auch den vollen Helfer-Umfang von ego lite (Task Spaces, Drag, Upload, CDP, Netzwerk-Warten, …), nicht nur eine Kurzliste — dieselbe Rohzugriff-Breite, die Claude Code selbst über die ego-browser-Skill hat.
+
+## [1.272.1] - 2026-08-27
+
+### Behoben
+- **ego lite arbeitete unsichtbar im Hintergrund — die Automatisierung lief korrekt, der Nutzer sah nur nichts davon und hielt sie fuer kaputt.** Startet die `ego-browser`-CLI ego lite selbst (kein laufender Prozess vorhanden), laeuft es als Hintergrunddienst (`--startup-ego-browser-service`) ohne Fenster im Vordergrund. Live verifiziert: die Suche hatte tatsaechlich stattgefunden (echter Tab, echte Ergebnisse), nur unsichtbar. Die Bridge holt ego lite nach jedem erfolgreichen Aufruf jetzt automatisch in den Vordergrund.
+- **"Browser starten" + danach suchen oeffnete zwei verschiedene Fenster.** Sagte der Nutzer "starte den Browser und such nach X" als einen Satz, rief die Sprachfront `open` (Standardbrowser) UND separat `ego` (ego lite) auf — zwei unabhaengige Fenster, der Nutzer sah nur das leere erste. Beschreibung praezisiert: jede Interaktion im Satz macht die GANZE Aufgabe zu einem einzigen `ego`-Aufruf.
+
+## [1.272.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Diskrete ego-lite-Aktionen** — `ego_navigate`/`ego_snapshot`/`ego_click`/`ego_fill`/`ego_wait`/`ego_capture`/`ego_tabs`/`ego_close`, das Gegenstueck zu `browser_*` fuer die echte, eingeloggte Sitzung — kein eigenes JS-Skript mehr noetig fuer die gaengigsten Schritte (`ego_run` bleibt fuer alles Komplexere). Alle acht live gegen ein echtes ego lite verifiziert, bevor sie in die Bridge kamen. Ueber Bridge, MCP-Server, Codex/Custom-LLM-Katalog UND die Sprachfront-Rohdurchreiche erreichbar — keine Extra-Arbeit fuer letztere noetig, das war genau der Sinn der Rohdurchreiche aus 1.271.0.
+- **M365-Mail-Suche fuer die Sprachfront** — `m365_mail_recent` kannte bisher nur "letzte N Mails"; live gemeldet, dass eine Themensuche ("Deutsche Bahn", "Reisekosten") dadurch leerlief. Neu: `search`/`sender`/`subject` werden jetzt an den bestehenden Graph-Suchparameter durchgereicht (der Agent hatte das laengst).
+- **Personensuche + Teams-Nachrichten fuer die Sprachfront** — `m365_search_people` (dieselbe Verzeichnissuche, die der Agent schon hat) und `m365_teams_message` (schreibt in einen bestehenden 1:1-Chat, gefunden ueber die Mitgliedernamen; kein Chat gefunden wird ehrlich gesagt statt geraten). Vorher hatte die Sprachfront fuer Teams ueberhaupt kein Werkzeug.
+
+### Behoben
+- **Kalender "morgen" zeigte ueberwiegend den Rest von heute.** `days_ahead` war ein rollierendes Fenster ab dem exakten Aufrufzeitpunkt, kein Kalendertag — `days_ahead=1` erreicht Mitternacht erst kurz vor Tagesende. Neuer Parameter `date` (`today`/`tomorrow`/ISO-Datum) auf dem gemeinsamen Graph-Werkzeug `ms_list_calendar_events` liefert jetzt echte Mitternacht-zu-Mitternacht-Grenzen; die Sprachfront nutzt ihn ueber ein neues `when`-Feld.
+- **Buchstabierte E-Mail-Adressen wurden mehrfach falsch verstanden und trotzdem verwendet** (live: `alisch@mindsquare.de` wurde nacheinander zu drei falschen Adressen). Die Sprachfront liest eine buchstabierte Adresse jetzt Buchstabe fuer Buchstabe zurueck, bevor sie sie in einer Mail verwendet.
+- **`ego` galt nur fuer Login-Aufgaben** — "Google oeffnen"/"YouTube durchsuchen" liefen ueber den unzuverlaessigen Bedienungshilfen-Weg statt ueber `ego`. Jetzt der Standardweg fuer jede Aufgabe mit Browser-Inhalten, inkl. eines konkreten Beispiels fuer interne Tools (Perk/Concur/SAP), die die Sprachfront vorher faelschlich als "kein Zugriff" abgewiesen hat.
+
+## [1.271.1] - 2026-08-27
+
+### Behoben
+- **`ego` wurde zu eng auf Login-Aufgaben beschraenkt — die Sprachfront nutzte "einfach oeffnen" (Standardbrowser) + Bedienungshilfen-Suche fuer Websites, was fuer Web-Inhalte nicht zuverlaessig funktioniert.** Live gemeldet: "Google oeffnen" + "auf YouTube nach Pokemon Karten suchen" liefen ueber `open_url` + `find_element` + `type` (Standardbrowser, kein DOM-Zugriff) und scheiterten; erst nach expliziter Nutzer-Nachfrage griff `ego` — und funktionierte sofort korrekt (echte Seiten-Snapshots, echtes Navigieren zur Video-URL). Beschreibung praezisiert: `ego` ist jetzt der Standardweg fuer JEDE Aufgabe mit Browser-Inhalten (nicht nur Login), `open`+`find`+`click` ausdruecklich nur noch fuer native Apps. Zusaetzlich: die Sprachfront behauptete vorab faelschlich, `ego` sei "nicht aktiviert" (obwohl in der Bridge laengst freigegeben) — Beschreibung untersagt jetzt ausdruecklich, das ohne echten Fehlertext zu vermuten.
+
+## [1.271.0] - 2026-08-27
+
+### Behoben
+- **Die Sprachfront kannte nur 8 handverdrahtete Bridge-Aktionen — jede neue
+  Faehigkeit (zuletzt `ego_run`) fehlte ihr automatisch, bis sie hier von
+  Hand nachgetragen wurde.** Live gemeldet: "1:1 die gleichen Tools wie der
+  Agent" — der Agent selbst erreicht ueber die MCP-Server der Bridge JEDE
+  Aktion, die Sprachfront kannte nur `open/screenshot/find/click/type/key/
+  wait/scroll` (jetzt neu: `ego`). Die tiefere Ursache: ein drittes, unabhaengig
+  gepflegtes Werkzeug-Schema (`DESKTOP_TOOL`) neben dem MCP-Server und den
+  Codex/Custom-LLM-Definitionen — genau das Muster, vor dem die Harness-
+  Paritaet-Regel warnt. Neu: eine Rohdurchreiche — jeder ECHTE Bridge-
+  Aktionsname (`shell_run`, `browser_navigate`, `ego_run`, `get_clipboard`, …)
+  geht mit einem `params`-Objekt direkt an dieselbe `dispatch_bridge_command`-
+  Funktion, dieselbe Faehigkeits-/Besitzpruefung wie ueberall sonst. Neue
+  Bridge-Aktionen erreichen die Sprachfront damit automatisch — keine
+  manuelle Nachpflege mehr noetig.
+
+## [1.270.1] - 2026-08-27
+
+### Behoben
+- **`ego_run` wurde vom Agenten uebersehen — er versuchte erst `open_app`.**
+  Live im Sprachmodus getestet: auf "oeffne ego lite" probierte der Agent
+  zunaechst verschiedene App-Namen ueber `open_app`, bevor er (nur zufaellig)
+  auf `ego_run` kam. Ursache: die Werkzeug-Beschreibung sagte nicht, dass
+  `ego_run` ego lite bei Bedarf SELBST startet (verifiziert: ein Aufruf mit
+  komplett geschlossener App startet sie automatisch im Hintergrund) —
+  `open_app` davor ist ueberfluessig. Beschreibung in beiden Werkzeug-Quellen
+  (MCP-Server, Codex/Custom-LLM) praezisiert.
+
+## [1.270.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Gespeicherte Meetings — vorher gab es dafuer gar keine Persistenz.** Der
+  Meeting-Recorder in der iOS-App hielt das Transkript nur im Arbeitsspeicher;
+  verlassen der Ansicht oder "Verwerfen" loeschte alles, kein Verlauf, kein
+  Umbenennen, keine Teilnehmerliste. Neue userbased CRUD-Flaeche `/meetings`
+  (`POST` speichern, `GET` Liste + Einzelabruf, `PATCH` umbenennen/Teilnehmer
+  bearbeiten, `DELETE`) — strikt auf den anfragenden Nutzer beschraenkt wie
+  jeder andere neue Endpunkt. Sprecher-Erkennung ist bewusst NICHT enthalten
+  (V1): die Pi-STT (`faster-whisper small`, CPU) ist fuer echte Diarisierung
+  zu ressourcenknapp; Teilnehmer werden manuell eingetragen.
+
+## [1.269.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Agenten koennen jetzt ego lite bedienen — die echte, eingeloggte
+  Browsersitzung des Nutzers, nicht nur ein isoliertes Profil.** Bisher
+  konnte die Desktop-Bridge einen Browser nur im eigenen, separaten Profil
+  steuern (`browser_navigate` & Co.) — bewusst getrennt vom echten Profil des
+  Nutzers, damit kein Login-Diebstahl moeglich ist. Fuer Aufgaben, bei denen
+  der Nutzer bereits angemeldet ist (Mail, interne Tools), war das jedes Mal
+  eine erneute Anmeldung. Neue Faehigkeitsgruppe `ego_browser` (wie `shell`
+  standardmaessig AUS, bewusstes Freischalten durch den Nutzer): eine neue
+  Aktion `ego_run` schickt ein JS-Snippet an das lokale `ego-browser`-CLI
+  (Voraussetzung: die ego-lite-App ist auf dem Rechner installiert) und
+  liefert die Ausgabe zurueck — dieselben Helfer (Task Spaces, Klicken,
+  Formulare fuellen, Seiteninhalt lesen), die auch die `ego-browser`-Skill
+  fuer Claude Code lokal nutzt. Ueber alle drei Laufzeiten hinweg verdrahtet
+  (MCP-Server fuer Claude Code, `computer_use`-Werkzeug fuer Codex/Custom-LLM)
+  und im Berechtigungs-Dialog der Bridge sichtbar.
+
 ## [1.268.4] - 2026-08-24
 
 ### Behoben

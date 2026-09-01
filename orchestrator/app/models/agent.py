@@ -63,6 +63,15 @@ class Agent(Base, TimestampMixin):
     # picker to EVERY user (regardless of ownership), so admins can pre-provision a
     # ready-to-use set of agents for rooms instead of each user bringing their own.
     shared_for_rooms: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Explicit "this is deliberately everyone's agent" flag (2026-08-27) — the
+    # ONLY way an agent should be visible platform-wide. Before this existed,
+    # a NULL user_id alone was (mis)read as "platform agent" everywhere except
+    # the personal agent list (already fixed once, see
+    # test_member_sees_only_own_things.py) — an unowned agent is usually a
+    # mistake (deleted user, script without user_id), not a decision, and
+    # leaked tasks/costs/notifications across departments on a multi-tenant
+    # multi-department customer install. Admin-only toggle, mirrors shared_for_rooms.
+    is_platform_agent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # SHA-256 hex of the plaintext webhook token. Set by
     # /agents/{id}/webhook/rotate; plaintext is shown once and never stored.
     webhook_token_hash: Mapped[str | None] = mapped_column(
@@ -71,6 +80,10 @@ class Agent(Base, TimestampMixin):
     # Per-agent webhook access (enable/disable + bearer token for external tools like n8n/Zapier)
     webhook_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     webhook_token: Mapped[str | None] = mapped_column(String, nullable=True)
+    # The one agent this owner wants front-and-center on their home screen (iOS
+    # dashboard). At most one true per user — enforced in the endpoint, not the
+    # DB, matching every other flag on this model.
+    favorite: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     tasks: Mapped[list["Task"]] = relationship(back_populates="agent")  # noqa: F821
     owner: Mapped["User | None"] = relationship("User")  # noqa: F821

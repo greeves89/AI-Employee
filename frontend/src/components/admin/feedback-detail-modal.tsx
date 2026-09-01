@@ -8,6 +8,19 @@ import { Github } from "@/components/icons/github";
 import * as api from "@/lib/api";
 import type { Feedback } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { MarkdownContent } from "@/components/ui/markdown-content";
+
+/** Die MD-Datei ist die Source of Truth (siehe orchestrator/app/api/feedback.py
+ *  build_md), aber ihr YAML-Frontmatter und die eingebettete Screenshot-/Issue-
+ *  Referenz stehen hier in der Modal schon als eigene Badges/Sektionen — roh
+ *  mitgerendert sah das nur "technisch" aus (sichtbare "---"/"id:"-Zeilen).
+ *  Beides rausschneiden, den Rest als echtes Markdown darstellen. */
+function stripFrontmatterAndDuplicates(md: string): string {
+  return md
+    .replace(/^---\n[\s\S]*?\n---\n/, "")
+    .replace(/^!\[Screenshot\]\([^)]*\)\n?/m, "")
+    .trim();
+}
 
 const CATEGORY_ICONS: Record<string, typeof Bug> = {
   bug: Bug,
@@ -71,7 +84,14 @@ export function FeedbackDetailModal({ feedback: f, onClose }: Props) {
             transition={{ duration: 0.15 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
         </Dialog.Overlay>
         <Dialog.Content asChild>
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+          {/* Radix zwingt hier pointer-events:auto per Inline-Style (ueberschreibt
+              die pointer-events-none-Klasse) — dieser Wrapper faengt deshalb JEDEN
+              Klick im Viewport ab, auch den auf den "Hintergrund". target===currentTarget
+              unterscheidet Klick-auf-Hintergrund von Klick-auf-Karte (Bubbling). */}
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -136,7 +156,7 @@ export function FeedbackDetailModal({ feedback: f, onClose }: Props) {
                   ) : error ? (
                     <p className="text-sm text-red-400">Volltext konnte nicht geladen werden: {error}</p>
                   ) : (
-                    <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans text-foreground/90">{fullText}</pre>
+                    <MarkdownContent content={stripFrontmatterAndDuplicates(fullText || "")} />
                   )
                 ) : f.description ? (
                   <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">{f.description}</p>

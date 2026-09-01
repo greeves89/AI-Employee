@@ -188,6 +188,7 @@ class NovaSonicSession:
         from smithy_aws_core.auth.sigv4 import SigV4AuthScheme
         from smithy_aws_core.identity import AWSCredentialsIdentity
         from smithy_core.aio.interfaces.identity import IdentityResolver
+        from smithy_http.aio.crt import AWSCRTHTTPClient
 
         access, secret, token = self._access_key, self._secret_key, self._session_token
 
@@ -205,6 +206,13 @@ class NovaSonicSession:
             "aws_credentials_identity_resolver": _StaticCreds(),
             "auth_scheme_resolver": HTTPAuthSchemeResolver(),
             "auth_schemes": {"aws.auth#sigv4": SigV4AuthScheme(service="bedrock")},
+            # Nova Sonic needs duplex streaming, and only the CRT transport can do
+            # it. The SDK default is NOT stable across the supported range: 0.7-0.10
+            # default to AWSCRTHTTPClient, 0.11 switched to AIOHTTPClient, which
+            # raises UnsupportedTransportError on every session open. Pinning it
+            # here makes the SDK default irrelevant. `transport` is accepted by
+            # every version from 0.7 through 0.11, on both config paths below.
+            "transport": AWSCRTHTTPClient(),
         }
         if legacy_sdk:
             return Config(**kwargs)
@@ -321,8 +329,13 @@ class NovaSonicSession:
                 "interactive": True, "role": "USER",
                 "textInputConfiguration": {"mediaType": "text/plain"},
             }})
+            # `_sprechbar` statt `_clean_text`: dieser Text wird genau wie ein
+            # Tool-Ergebnis vorgelesen (siehe send_tool_result) — dieselbe
+            # zusaetzliche Kodierung, derselbe "n1./n2."-Bug (erneut gemeldet
+            # am 26.08.2026), nur an dieser zweiten Stelle war der Fix vom
+            # 21.08. noch nicht nachgezogen.
             await self._send_event({"textInput": {
-                "promptName": self._prompt_name, "contentName": content_name, "content": _clean_text(text),
+                "promptName": self._prompt_name, "contentName": content_name, "content": _sprechbar(text),
             }})
             await self._send_event({"contentEnd": {
                 "promptName": self._prompt_name, "contentName": content_name,

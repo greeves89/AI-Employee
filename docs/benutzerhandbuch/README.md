@@ -1373,8 +1373,9 @@ gesetzten Berechtigungen.
   falls der Button verdeckt ist.)*
 
 **Schritt 3 — Berechtigungen festlegen.** Im Dialog wählst du pro Fähigkeit (Screenshot,
-Klick, Tippen, App öffnen, Shell, Zwischenablage …), **was der Agent darf** — jeweils mit
-**Risiko-Einstufung** (gering/mittel/hoch). Nur Freigegebenes ist möglich.
+Klick, Tippen, App öffnen, Shell, Zwischenablage, Browser-Steuerung, ego lite …), **was der
+Agent darf** — jeweils mit **Risiko-Einstufung** (gering/mittel/hoch). Nur Freigegebenes ist
+möglich; wie bei *Shell* sind die risikoreichen Fähigkeiten standardmäßig **aus**.
 
 **Schritt 4 — Nutzen.** Im **Chat** eines Agenten bitten, `computer_use` zu verwenden. Der
 Agent listet die verfügbaren **Bridge-Sessions**, macht Screenshots deines Bildschirms und
@@ -1395,6 +1396,31 @@ tippen und Tastenkombinationen gehen auch ohne, er braucht dann nur deinen Hinwe
 1. Bridge starten, anmelden, Berechtigungen *Screenshot* + *Klick* erlauben.
 2. Im Agent-Chat: „Öffne den Browser und zeig mir die Startseite." → der Agent macht einen
    Screenshot und klickt sich nach deinen Freigaben durch.
+
+### 23.2 ego lite: der Agent arbeitet in deiner ECHTEN, eingeloggten Sitzung
+
+Für Browser-Aufgaben gibt es zwei Wege, die unterschiedliche Dinge wollen:
+
+- **Browser-Steuerung** bedient ein **eigenes, isoliertes** Browser-Profil — du meldest
+  dich dort einmalig separat an, unabhängig von deinem normalen Browser.
+- **ego lite** bedient stattdessen deine **echte, bereits eingeloggte** Browsersitzung
+  (Mail, interne Tools, alles wo du schon angemeldet bist) — ohne erneute Anmeldung.
+  Voraussetzung: die App **ego lite** (`https://lite.ego.app/`) ist auf deinem Rechner
+  installiert und einmal eingerichtet.
+
+**So richtest du es ein:**
+1. ego lite installieren und einmalig das Onboarding in der App durchlaufen (Import aus
+   Chrome o. ä. auf Wunsch).
+2. In der Bridge unter **Berechtigungen** die Fähigkeit **ego lite** einschalten (steht wie
+   *Shell* standardmäßig auf **aus** — bewusst einschalten, weil der Agent damit Zugriff auf
+   bereits angemeldete Konten bekommt).
+3. Im Agent-Chat die Aufgabe stellen, z. B. „Prüfe in meinem Mail-Postfach, ob eine Antwort
+   von X da ist." Der Agent erkennt selbst, dass dafür `ego_run` (statt der isolierten
+   Browser-Steuerung) der richtige Weg ist.
+
+> Nur macOS aktuell unterstützt (Stand `ego lite` 2026). Ist die App nicht gefunden oder die
+> Fähigkeit nicht freigegeben, meldet der Agent das mit klarem Grund statt es stillschweigend
+> zu versuchen.
 
 ---
 
