@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.277.0] - 2026-09-02
+
+### Hinzugefuegt
+- **Zitierte Nachrichten kommen beim Agenten an.** Wer in Telegram auf eine aeltere Nachricht antwortet, meint sie auch — bisher wurde das Zitat verworfen und der Agent sah nur den neuen Satz. Von „<Zitat> und das hier?" kam also bloss „und das hier?" an, und der Bezug musste aus dem Gespraechsverlauf erraten werden; bei langem Verlauf ging das schief. Das Zitat steht der Nachricht jetzt als kurzer Vorspann voran, samt Angabe, ob eine eigene Nachricht des Agenten oder eine des Nutzers zitiert wurde. Markiert man beim Antworten nur eine bestimmte Textstelle, wird genau diese uebernommen statt der ganzen Nachricht. Gilt auch fuer Bilder, Sprachnachrichten und Dateien; sehr lange Zitate werden gekuerzt, damit sie die eigentliche Frage nicht verdraengen.
+
+### Behoben
+- **Agenten konnten ab dem zweiten Zug eines Gespraechs nicht mehr auf Nachrichten reagieren.** Die Kennung der aktuellen Nachricht wurde nur beim ersten Aufschlag einer Sitzung mitgegeben. Danach war schlicht unbekannt, worauf sich eine Reaktion beziehen sollte — Reaktionen waren damit faktisch auf die jeweils erste Nachricht beschraenkt. Die Kennung steht jetzt in jedem Zug bereit.
+- **Ein Agent ohne eigenen Telegram-Bot konnte ueberhaupt nicht reagieren.** Schaltet man den Chat per `/agent <Name>` auf einen Kollegen um, laufen dessen Antworten ueber den bestehenden Bot — eine Reaktion wurde aber mit „kein Bot eingerichtet" abgewiesen. Er durfte also im Chat reden, ihn aber nicht anfassen. Reaktionen laufen jetzt ebenfalls ueber den Bot, der den Chat bedient; ausdruecklich nur, solange der Chat auch wirklich auf diesen Agenten geschaltet ist, damit sich niemand mit einer fremden Chat-Kennung einen beliebigen Bot ausleihen kann.
+
+---
+
 ## [1.276.11] - 2026-09-01
 
 ### Behoben
