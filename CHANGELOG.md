@@ -14,6 +14,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.276.8] - 2026-09-01
+
+### Behoben
+- **Die Hauptlinie war seit dem 31.08. rot** — die Testreihe des Orchestrators scheiterte an 13 Stellen, seit der native SSO-Anmeldeweg eingezogen ist. Die Ursache lag ausschliesslich in den Tests, nicht in der Anwendung: die gemeinsame Endstrecke jeder SSO-Anmeldung wurde nebenlaeufig (`async`), und der State-Eintrag einer beginnenden Anmeldung fuehrt ein zusaetzliches Feld fuer den Anmeldeweg. Beide Testerwartungen waren noch auf dem alten Stand. Folge fuer den Betreiber: Ein roter Hauptzweig laesst sich nicht mehr von einem echten Fehler unterscheiden — jede offene Aenderung zeigte dieselbe rote Testreihe, unabhaengig davon, ob sie selbst in Ordnung war.
+
+### Nachgetragen
+- **Der native SSO-Anmeldeweg (iOS) ist ohne eigene Release-Spur in die Hauptlinie gelaufen** — weder Versionssprung noch Eintrag. Was seither zusaetzlich enthalten ist: Die Anmeldung aus der App heraus laeuft ueber ein eigenes Rueckkehrziel der App statt ueber Sitzungs-Cookies, weil der Browser-Kontext der App keine Cookies mit ihrer eigenen Netzwerkverbindung teilt. Die Tokens reisen dabei **nicht** in der Rueckkehr-Adresse mit, sondern nur ein einmalig und nur 60 Sekunden lang einloesbarer Austauschcode — ein Custom-URL-Scheme ist nicht exklusiv reserviert, eine fremde App koennte denselben Namen registrieren und die Rueckkehr abfangen.
+
+---
+
 ## [1.276.6] - 2026-08-31
 
 ### Behoben

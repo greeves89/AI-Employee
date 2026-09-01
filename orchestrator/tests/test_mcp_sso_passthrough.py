@@ -91,6 +91,7 @@ class StateCarriesReturnTargetTests(unittest.TestCase):
         self.assertEqual(json.loads(record), {
             "provider": "microsoft", "return_to": target,
             "base_url": settings.oauth_redirect_base_url,
+            "client": "",
         })
 
     def test_callback_state_without_return_target_still_works(self):
