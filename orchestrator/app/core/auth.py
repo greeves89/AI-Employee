@@ -22,7 +22,7 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
-def create_access_token(user_id: str, role: str) -> str:
+def create_access_token(user_id: str, role: str, token_version: int = 0) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
@@ -31,11 +31,12 @@ def create_access_token(user_id: str, role: str) -> str:
         "iat": now,
         "exp": now + ACCESS_TOKEN_TTL,
         "jti": uuid.uuid4().hex[:12],
+        "tv": token_version,
     }
     return jwt.encode(payload, settings.api_secret_key, algorithm=ALGORITHM)
 
 
-def create_refresh_token(user_id: str) -> str:
+def create_refresh_token(user_id: str, token_version: int = 0) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
@@ -43,6 +44,7 @@ def create_refresh_token(user_id: str) -> str:
         "iat": now,
         "exp": now + REFRESH_TOKEN_TTL,
         "jti": uuid.uuid4().hex[:12],
+        "tv": token_version,
     }
     return jwt.encode(payload, settings.api_secret_key, algorithm=ALGORITHM)
 

@@ -1110,18 +1110,24 @@ async def ws_agent_voice(
 
 async def _notif_visible_agent_ids(user_id: str | None) -> set[str]:
     """Agent ids whose notifications a user may receive on the live stream
-    (own + unowned + shared) — same scope as the REST notification endpoints,
-    so the live push never leaks another user's agent notifications."""
+    (own + explicitly-platform + shared) — same scope as the REST
+    notification endpoints, so the live push never leaks another user's
+    agent notifications. Ownerless agents are NOT auto-included (changed
+    2026-08-27, see tasks.py::_get_user_agent_ids) — only
+    ``is_platform_agent`` (an explicit admin flag) counts as visible to
+    everyone now, lacking an assigned owner no longer does on its own."""
     if not user_id:
         return set()
-    from sqlalchemy import or_, select
+    from sqlalchemy import select
 
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess
 
     async with async_session_factory() as db:
         owned = (await db.execute(
-            select(Agent.id).where(or_(Agent.user_id == user_id, Agent.user_id.is_(None)))
+            select(Agent.id).where(
+                (Agent.user_id == user_id) | (Agent.is_platform_agent.is_(True))
+            )
         )).scalars().all()
         shared = (await db.execute(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user_id)

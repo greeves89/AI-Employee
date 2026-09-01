@@ -68,7 +68,14 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
             transition={{ duration: 0.15 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
         </Dialog.Overlay>
         <Dialog.Content asChild>
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+          {/* Radix zwingt hier pointer-events:auto per Inline-Style (ueberschreibt
+              die pointer-events-none-Klasse) — dieser Wrapper faengt deshalb JEDEN
+              Klick im Viewport ab, auch den auf den "Hintergrund". target===currentTarget
+              unterscheidet Klick-auf-Hintergrund von Klick-auf-Karte (Bubbling). */}
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}

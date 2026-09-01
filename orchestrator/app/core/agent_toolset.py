@@ -49,6 +49,10 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         # computer_open_url.
         "browser_capture", "browser_click", "browser_close", "browser_fill",
         "browser_navigate", "browser_snapshot", "browser_tabs", "browser_wait",
+        # ego lite: echte, eingeloggte Sitzung des Nutzers (Faehigkeit
+        # `ego_browser`, default aus) — Gegenstueck zum isolierten `browser_*`.
+        "ego_run", "ego_navigate", "ego_snapshot", "ego_click", "ego_fill",
+        "ego_wait", "ego_capture", "ego_tabs", "ego_close",
         "computer_ax_tree", "computer_click", "computer_close_app", "computer_drag",
         "computer_find_element", "computer_focus_window", "computer_get_clipboard",
         "computer_key", "computer_list_sessions", "computer_list_windows",
@@ -89,9 +93,10 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "list_agent_messages", "list_apps", "list_my_team", "list_schedules",
         "list_tasks", "list_team", "list_team_tasks", "list_todos",
         "manage_schedule", "plan_day", "rate_task", "rebuild_app",
+        "restart_own_container",
         "schedule_meeting", "send_message", "send_message_and_wait", "skill_update",
         "start_app", "stop_app", "tickets", "trigger_create", "trigger_delete",
-        "trigger_list", "trigger_toggle", "update_todos"
+        "trigger_list", "trigger_toggle", "update_todos", "web_search"
     ],
     "read-logs": [
         "read_logs"
@@ -155,6 +160,7 @@ DEFINITION_TOOLS = [
     "read_file",
     "rebuild_app",
     "request_approval",
+    "restart_own_container",
     "schedule_meeting",
     "secondbrain_list",
     "secondbrain_read",

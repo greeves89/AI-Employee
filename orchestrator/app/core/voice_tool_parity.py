@@ -67,7 +67,7 @@ DELEGIERT = frozenset({
     "browser", "computer_use",
     "install_package", "skill_search",
     "list_apps", "start_app", "stop_app", "rebuild_app", "app_logs",
-    "complete_onboarding",
+    "complete_onboarding", "restart_own_container",
 })
 
 #: Andere Namen für dieselbe Sache. Die Sprachfront ist historisch gewachsen und

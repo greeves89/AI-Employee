@@ -25,6 +25,7 @@ from app.models.brain import BrainLink
 from app.models.agent_message import AgentMessage
 from app.models.task_rating import TaskRating
 from app.models.test_run import TestRun
+from app.models.meeting import Meeting
 from app.models.meeting_room import MeetingRoom
 from app.models.team import Team  # noqa: F401
 from app.models.approval_rule import ApprovalRule
@@ -62,6 +63,7 @@ __all__ = [
     "AgentMessage",
     "TaskRating",
     "TestRun",
+    "Meeting",
     "MeetingRoom",
     "Team",
     "ApprovalRule",
