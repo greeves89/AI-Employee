@@ -10,6 +10,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ### Behoben
 - **Abgelaufene eigene KI-Zugaenge werden jetzt sichtbar.** Wenn ein Agent beim echten Lauf mit dem persoenlichen Claude- oder Codex-Zugang an einem Auth-Fehler scheitert, markiert die Oberflaeche den Zugang als fehlerhaft; nach einem erfolgreichen Lauf wird der Status wieder gesund statt dauerhaft rot zu bleiben.
 
+### Hinweis
+- Die Statusmeldung ist fuer den Chat-Weg und den Codex-Aufgaben-Weg durch Tests abgesichert. Der Codex-Chat-Weg und die drei Stellen im eigenen LLM-Weg sind es noch nicht.
+
 ---
 
 ## [1.276.6] - 2026-08-31
