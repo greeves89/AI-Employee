@@ -368,12 +368,13 @@ class RedirectTargetTests(unittest.TestCase):
     FRONTEND = "https://ai.example.de"
 
     def _redirect_for(self, return_to):
+        import asyncio
         from types import SimpleNamespace
         from app.api.auth import finish_sso_login
         from app.models.user import UserRole
 
         user = SimpleNamespace(id="u1", email="a@b.de", role=UserRole.MEMBER, approved=True, token_version=0)
-        resp = finish_sso_login(user, return_to, "saml", self.FRONTEND)
+        resp = asyncio.run(finish_sso_login(user, return_to, "saml", self.FRONTEND))
         return resp.headers["location"]
 
     def test_hostile_targets_fall_back_to_the_dashboard(self):
