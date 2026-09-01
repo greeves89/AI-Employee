@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.276.9] - 2026-09-01
+
+### Behoben
+- **Die Echtzeit-Sprachfunktion war ausgefallen — jeder Verbindungsversuch scheiterte sofort.** Wer das Mikrofon oeffnete, bekam keine Verbindung; im Hintergrund versuchte es die Oberflaeche rund fuenfmal pro Sekunde erneut, sodass in 85 Sekunden ueber 440 Fehlversuche zusammenkamen. Ursache war ein automatisches Abhaengigkeits-Update des AWS-Bedrock-Pakets: ab Version 0.11 nutzt es standardmaessig eine Uebertragungsart, die keine gleichzeitige Zwei-Wege-Uebertragung beherrscht — genau die braucht das Sprachmodell aber. Zusaetzlich wird die dafuer noetige Komponente seit dieser Version nicht mehr automatisch mitinstalliert. Beides ist jetzt fest eingestellt, statt sich auf die Voreinstellung des Pakets zu verlassen; kuenftige Paket-Updates koennen die Sprachfunktion so nicht mehr still abschalten.
+
+---
+
 ## [1.276.8] - 2026-09-01
 
 ### Behoben
