@@ -10,6 +10,7 @@ from app import context_compressor, model_registry, multimodal
 from app import announcement_guard
 from app.loop_detector import LoopDetector
 from app.config import settings
+from app.ai_credential_status import report_result_status
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
 from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
@@ -788,6 +789,11 @@ class LLMChatHandler:
                         self.is_running = False
                         result = {"status": "error", "error": event.text}
                         await self._heal_after_context_overflow(message_id, event.text)
+                        # Ein abgelaufener eigener Zugang muss auch HIER sichtbar
+                        # werden. Der Aufgaben-Weg meldet ihn seit #660; der
+                        # Chat-Weg des eigenen Modells war der letzte, der schwieg —
+                        # wer sein Modell nur im Chat nutzt, sah nie einen Hinweis.
+                        await report_result_status(result)
                         await self.log_publisher.publish_chat(message_id, "done", result)
                         return result
 
@@ -984,6 +990,7 @@ class LLMChatHandler:
             self.is_running = False
             result = {"status": "error", "error": failure_text}
             await self._heal_after_context_overflow(message_id, failure_text)
+            await report_result_status(result)
             await self.log_publisher.publish_chat(message_id, "done", result)
             return result
 
@@ -1006,6 +1013,7 @@ class LLMChatHandler:
         }
 
         self.is_running = False
+        await report_result_status(result)
         await self.log_publisher.publish_chat(message_id, "done", result)
         return result
 

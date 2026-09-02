@@ -5,19 +5,76 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.283.0] - 2026-09-02
+## [1.286.0] - 2026-09-02
 
-### Hinzugefuegt
-- **Ballast aus einem laufenden Gespraech nehmen, ohne es zu verlieren** (#538,
-  letzter offener Teil). An jeder Nachricht laesst sich per Hover-Icon eine
+### Hinzugefügt
+- **Ballast aus einem laufenden Gespräch nehmen, ohne es zu verlieren** (#538,
+  letzter offener Teil). An jeder Nachricht lässt sich per Hover-Icon eine
   Werkzeug-Ausgabe (oder die ganze Nachricht) aus dem Kontext nehmen — sie
   bleibt im Verlauf sichtbar, geht nur nicht mehr ans Modell. Jederzeit per
-  Klick umkehrbar, anders als Zurueckspulen wird nichts geloescht. Der
+  Klick umkehrbar, anders als Zurückspulen wird nichts gelöscht. Der
   Kontextring zeigt an, wie viel davon aktuell ausgeschlossen ist.
 - Zusaetzlich als automatischer Unterbau: beim eingebauten Modell (Custom-LLM,
   Anthropic direkt) raeumt Claude jetzt serverseitig selbst alte
-  Werkzeug-Ausgaben weg, sobald der Verlauf zu gross wird — bevor der Request
-  ueberhaupt rausgeht.
+  Werkzeug-Ausgaben weg, sobald der Verlauf zu groß wird — bevor der Request
+  überhaupt rausgeht.
+
+---
+
+## [1.285.0] - 2026-09-02
+
+### Behoben
+- **Abgelaufene eigene KI-Zugänge werden jetzt sichtbar.** Wenn ein Agent beim echten Lauf mit dem persönlichen Claude- oder Codex-Zugang an einem Auth-Fehler scheitert, markiert die Oberfläche den Zugang als fehlerhaft; nach einem erfolgreichen Lauf wird der Status wieder gesund statt dauerhaft rot zu bleiben.
+
+- **Auch der Chat-Weg des eigenen Modells meldet jetzt.** Er war der letzte,
+  der schwieg: wer sein Modell nur im Chat benutzt, hätte einen abgelaufenen
+  Zugang nirgends gesehen — der Agent hätte einfach aufgehört zu antworten.
+
+### Hinweis
+- Die Statusmeldung ist für alle vier Wege durch Tests abgesichert: Claude-Chat,
+  Codex-Aufgaben, Codex-Chat und das eigene Modell (Aufgaben wie Chat). Ein
+  gewöhnlicher Fehler — ein fehlgeschlagenes Werkzeug etwa — färbt den Zugang
+  weiterhin nicht rot; nur Auth-Fehler tun das.
+
+---
+
+## [1.284.0] - 2026-09-02
+
+### Behoben
+- **Der Bildschirm-Server kann nicht mehr die Klicks eines fremden Laufs
+  umlenken.** Der Anker auf eine Computer-Use-Sitzung galt bisher für den
+  ganzen Prozess. Solange jeder Lauf seinen eigenen Prozess bekam, war das
+  gleichbedeutend mit "gilt für diesen Lauf". Sobald sich mehrere Läufe einen
+  Prozess teilen (#638), hätte ein `computer_use_session` aus Lauf A die
+  Befehle von Lauf B auf einen anderen Bildschirm geschickt — auf beiden Seiten
+  ohne Fehlermeldung. Der Anker gilt jetzt je Lauf.
+
+### Geändert
+- **Der Bildschirm-Server läuft über den gemeinsamen Transport** (#638) und
+  kann damit später zu den Servern gehören, die sich einen Prozess teilen.
+  Ohne gesetzten Port verhält er sich unverändert wie bisher.
+- Ein Test verhindert, dass ein umgestellter Server veränderlichen Zustand auf
+  Modulebene zurückbekommt. Genau diese Fehlerklasse bleibt sonst stumm.
+
+---
+
+## [1.283.0] - 2026-09-02
+
+### Behoben
+- **Die Desktop-Bridge schickt das Anmeldetoken nicht mehr in der Adresse der
+  Sprachverbindung.** Beim Oeffnen der Voice-Leiste hängte die Bridge das
+  langlebige Zugangstoken als Parameter an die WebSocket-Adresse. Solche
+  Parameter werden unterwegs mitgeschrieben — in Proxy- und Zugriffsprotokollen,
+  im Verlauf, im Referer — und das Token gilt danach unverändert weiter. Die
+  Bridge holt jetzt, wie die Weboberfläche schon länger, ein Einmal-Ticket
+  (30 Sekunden gültig, genau eine Verwendung). Scheitert das Ticket, scheitert
+  die Verbindung sichtbar, statt still auf den alten Weg zurückzufallen.
+  Damit verschwindet auch die wiederkehrende Warnung "legacy token= param" aus
+  dem Plattformprotokoll — sie hatte genau diese eine Ursache. An der Bedienung
+  ändert sich nichts.
+
+  *Hinweis: Eine Bridge ab dieser Version braucht einen Server, der
+  Einmal-Tickets kennt.*
 
 ---
 

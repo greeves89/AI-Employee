@@ -3748,6 +3748,49 @@ class TelegramSendMessage(BaseModel):
     message: str
 
 
+class AiCredentialStatusReport(BaseModel):
+    status: str
+
+
+@router.post("/{agent_id}/ai-credential-status")
+async def report_ai_credential_status(
+    agent_id: str,
+    body: AiCredentialStatusReport,
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    agent_auth: dict = Depends(verify_agent_token),
+):
+    """Let an agent report the real status of its owner's personal AI credential."""
+    if agent_auth["agent_id"] != agent_id:
+        raise HTTPException(status_code=403, detail="Agent token does not match target agent")
+    if body.status not in {"ok", "auth_failed"}:
+        raise HTTPException(status_code=422, detail="status must be ok or auth_failed")
+
+    try:
+        agent = await manager._get_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    config = agent.config or {}
+    mode = agent.mode or "claude_code"
+    provider = config.get("model_provider")
+    if not provider:
+        provider = _model_provider_for_agent_mode(
+            mode,
+            (agent.llm_config or {}).get("provider_type") if isinstance(agent.llm_config, dict) else None,
+        )
+
+    from app.core.agent_credentials import harness_of
+    from app.api.my_ai_credentials import mark_status
+
+    harness = harness_of(mode, provider)
+    if not agent.user_id or not harness:
+        return {"status": "ignored"}
+
+    await mark_status(db, str(agent.user_id), harness, body.status)
+    return {"status": body.status, "harness": harness}
+
+
 @router.post("/{agent_id}/telegram/send")
 async def send_telegram_message(
     agent_id: str,

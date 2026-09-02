@@ -6,6 +6,7 @@ import logging
 import time
 
 from app import context_compressor, model_registry, multimodal
+from app.ai_credential_status import is_auth_error, report_ai_credential_status, report_result_status
 from app.loop_detector import LoopDetector
 from app.config import llm_default_reasoning_effort, settings
 from app.log_publisher import LogPublisher
@@ -473,6 +474,8 @@ class LLMRunner:
                         await self.log_publisher.publish(
                             task_id, "error", {"message": event.text}
                         )
+                        if is_auth_error(event.text):
+                            await report_ai_credential_status("auth_failed")
                         self.is_running = False
                         return {
                             "status": "error",
@@ -673,6 +676,8 @@ class LLMRunner:
             # backing a bare str(e) is gone the moment the agent is recreated.
             failure_text = format_exception(e)
             await self.log_publisher.publish(task_id, "error", {"message": failure_text})
+            if is_auth_error(failure_text):
+                await report_ai_credential_status("auth_failed")
             self.is_running = False
             return {"status": "error", "error": failure_text, "num_turns": num_turns}
 
@@ -694,6 +699,7 @@ class LLMRunner:
         )
 
         self.is_running = False
+        await report_result_status({"status": "completed"})
         return {
             "status": "completed",
             "result": full_text,
