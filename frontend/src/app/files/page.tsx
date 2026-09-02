@@ -233,9 +233,9 @@ export default function FilesPage() {
             )}
             {isDir ? (
               isExpanded ? (
-                <FolderOpen className="h-3.5 w-3.5 text-amber-400/70 shrink-0" />
+                <FolderOpen className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400/70 shrink-0" />
               ) : (
-                <Folder className="h-3.5 w-3.5 text-amber-400/70 shrink-0" />
+                <Folder className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400/70 shrink-0" />
               )
             ) : (
               <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />

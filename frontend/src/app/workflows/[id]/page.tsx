@@ -72,7 +72,7 @@ function ConditionNode({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Top} className="!bg-amber-400" />
-      <NodeShell selected={selected} active={d.active} color="bg-amber-500/15 text-amber-400" icon={<GitBranch className="h-3.5 w-3.5" />} title={d.title || "Bedingung"}>
+      <NodeShell selected={selected} active={d.active} color="bg-amber-500/15 text-amber-700 dark:text-amber-400" icon={<GitBranch className="h-3.5 w-3.5" />} title={d.title || "Bedingung"}>
         <p className="mt-1 text-[11px] text-muted-foreground/70">
           {c && c.step
             ? `${d.stepTitles?.[c.step] ?? c.step} ${OPS.find((o) => o.v === c.op)?.l ?? c.op}${c.value ? ` „${c.value}"` : ""}`

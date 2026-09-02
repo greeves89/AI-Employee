@@ -137,7 +137,7 @@ const VARIANT_STYLES: Record<ConfirmVariant, {
   },
   warning: {
     iconBg: "bg-amber-500/10",
-    iconColor: "text-amber-400",
+    iconColor: "text-amber-700 dark:text-amber-400",
     Icon: AlertTriangle,
     confirmBg: "bg-amber-500 hover:bg-amber-600 shadow-amber-500/30 text-amber-950",
     defaultLabel: "Confirm",
@@ -231,7 +231,7 @@ function ConfirmDialog({ pending, onClose }: { pending: PendingConfirm | null; o
 const TOAST_STYLES: Record<ToastVariant, { icon: React.ElementType; color: string; bg: string; ring: string }> = {
   info: { icon: Info, color: "text-sky-400", bg: "bg-sky-500/10", ring: "ring-sky-500/20" },
   success: { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", ring: "ring-emerald-500/20" },
-  warning: { icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10", ring: "ring-amber-500/20" },
+  warning: { icon: AlertTriangle, color: "text-amber-700 dark:text-amber-400", bg: "bg-amber-500/10", ring: "ring-amber-500/20" },
   error: { icon: XCircle, color: "text-red-400", bg: "bg-red-500/10", ring: "ring-red-500/20" },
 };
 

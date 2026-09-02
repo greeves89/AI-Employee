@@ -26,7 +26,7 @@ const PROVIDER_COLORS: Record<string, string> = {
   google: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   ollama: "bg-violet-500/10 text-violet-400 border-violet-500/20",
   "lm-studio": "bg-violet-500/10 text-violet-400 border-violet-500/20",
-  bedrock: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  bedrock: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
   "azure-realtime": "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20",
   "brave-search": "bg-orange-500/10 text-orange-400 border-orange-500/20",
 };
@@ -57,7 +57,7 @@ function accountHealthBadge(a: AIAccount): { label: string; className: string } 
   if (!a.last_status) return null;
   const map: Record<string, { label: string; className: string }> = {
     ok: { label: "erreichbar", className: "text-emerald-400" },
-    auth_failed: { label: "Auth fehlgeschlagen", className: "text-amber-400" },
+    auth_failed: { label: "Auth fehlgeschlagen", className: "text-amber-700 dark:text-amber-400" },
     unreachable: { label: "nicht erreichbar", className: "text-red-400" },
     protocol_error: { label: "Protokollfehler", className: "text-red-400" },
     unsupported: { label: "keine Prüfung möglich", className: "text-muted-foreground/50" },
@@ -345,7 +345,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                       </span>
                       <span className="text-[10px] text-muted-foreground/50 truncate flex-1">{m.api_endpoint || "— Endpoint fehlt —"}</span>
                       {discovered && discovered.length > 0 && !discovered.some((d) => d.id === m.name) && (
-                        <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-[10px] text-amber-400" title="Nicht in der vom Provider abgerufenen Liste">
+                        <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-[10px] text-amber-700 dark:text-amber-400" title="Nicht in der vom Provider abgerufenen Liste">
                           nicht in Liste
                         </span>
                       )}
@@ -382,7 +382,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                     </button>
                   </div>
                   {discoverMsg && (
-                    <p className={cn("text-[11px]", discoverMsg.ok ? "text-emerald-400" : "text-amber-400")}>
+                    <p className={cn("text-[11px]", discoverMsg.ok ? "text-emerald-400" : "text-amber-700 dark:text-amber-400")}>
                       {discoverMsg.text}
                     </p>
                   )}
@@ -429,7 +429,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
               </div>
               {form.provider_type === "bedrock" && (
                 <div className="col-span-2 grid grid-cols-2 gap-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.04] p-3">
-                  <div className="col-span-2 text-[11px] text-amber-400/80">
+                  <div className="col-span-2 text-[11px] text-amber-700 dark:text-amber-400/80">
                     AWS Bedrock für Realtime-Sprache (Nova Sonic). Modelle wählst du danach im Sprach-Setup pro Agent aus.
                   </div>
                   <div>
@@ -499,7 +499,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                       {a.provider_type}
                     </span>
                     {!a.has_key && a.provider_type !== "ollama" && a.provider_type !== "lm-studio" && (
-                      <span className="text-[10px] text-amber-400">kein Key</span>
+                      <span className="text-[10px] text-amber-700 dark:text-amber-400">kein Key</span>
                     )}
                     {(() => {
                       const h = accountHealthBadge(a);

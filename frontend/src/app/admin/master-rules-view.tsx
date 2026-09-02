@@ -23,7 +23,7 @@ import type { CommandPolicy, CommandPolicyEffect } from "@/lib/api";
 const WIRKUNGEN: { wert: CommandPolicyEffect; text: string; klasse: string }[] = [
   { wert: "blocked", text: "Gesperrt", klasse: "bg-red-500/10 text-red-400 border-red-500/20" },
   { wert: "high", text: "Hohes Risiko", klasse: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
-  { wert: "medium", text: "Mittleres Risiko", klasse: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  { wert: "medium", text: "Mittleres Risiko", klasse: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" },
   { wert: "allow", text: "Erlaubt", klasse: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
 ];
 
@@ -184,7 +184,7 @@ export function MasterRulesView() {
         </div>
 
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-3">
-          <p className="flex items-start gap-2 text-[11px] text-amber-300/90">
+          <p className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-300/90">
             <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
               Master-Regeln sind eine <strong>Anweisung, keine Sperre</strong>. Sprachmodelle

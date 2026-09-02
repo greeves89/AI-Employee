@@ -772,7 +772,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
             <span className="text-[10px] text-muted-foreground">Delegation</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <Crown className="h-3 w-3 text-amber-400" />
+            <Crown className="h-3 w-3 text-amber-700 dark:text-amber-400" />
             <span className="text-[10px] text-muted-foreground">Team-Lead</span>
           </div>
         </div>
@@ -878,7 +878,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                           {msg.message_type && msg.message_type !== "message" && (
                             <span className={cn(
                               "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium",
-                              msg.message_type === "question" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
+                              msg.message_type === "question" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20" :
                               msg.message_type === "response" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
                               msg.message_type === "handoff" ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" :
                               msg.message_type === "notification" ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" :

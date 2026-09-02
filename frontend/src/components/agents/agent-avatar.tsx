@@ -26,7 +26,7 @@ export const AVATAR_COLORS: Record<string, { bg: string; text: string; dot: stri
   violet: { bg: "bg-violet-500/10", text: "text-violet-400", dot: "bg-violet-500" },
   blue: { bg: "bg-blue-500/10", text: "text-blue-400", dot: "bg-blue-500" },
   emerald: { bg: "bg-emerald-500/10", text: "text-emerald-400", dot: "bg-emerald-500" },
-  amber: { bg: "bg-amber-500/10", text: "text-amber-400", dot: "bg-amber-500" },
+  amber: { bg: "bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500" },
   rose: { bg: "bg-rose-500/10", text: "text-rose-400", dot: "bg-rose-500" },
   cyan: { bg: "bg-cyan-500/10", text: "text-cyan-400", dot: "bg-cyan-500" },
   fuchsia: { bg: "bg-fuchsia-500/10", text: "text-fuchsia-400", dot: "bg-fuchsia-500" },

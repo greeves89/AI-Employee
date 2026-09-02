@@ -73,7 +73,7 @@ const AGENT_COLORS = [
   "text-blue-400",
   "text-emerald-400",
   "text-purple-400",
-  "text-amber-400",
+  "text-amber-700 dark:text-amber-400",
   "text-pink-400",
   "text-cyan-400",
 ];
@@ -457,7 +457,7 @@ ${msgHtml}
               <button
                 onClick={handleStop}
                 disabled={actionLoading}
-                className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
               >
                 {actionLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -895,7 +895,7 @@ ${msgHtml}
                 </span>
               )}
               {room.state === "paused" && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[11px] font-medium text-amber-400">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">
                   <Square className="h-2.5 w-2.5" />
                   Pausiert
                 </span>
@@ -970,7 +970,7 @@ function DeliverableResult({ roomId, deliv }: { roomId: string; deliv: api.Deliv
         <span className={cn(
           "text-[10px] px-2 py-0.5 rounded-full border font-medium",
           done ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-               : "bg-amber-500/10 text-amber-400 border-amber-500/20",
+               : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
         )}>
           {done ? "fertig" : "in Arbeit"} · {files.length} Datei{files.length === 1 ? "" : "en"}
         </span>

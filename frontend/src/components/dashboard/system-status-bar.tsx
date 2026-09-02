@@ -42,7 +42,7 @@ function StatusDot({
   };
   const textColors: Record<DotStatus, string> = {
     healthy: "text-emerald-400",
-    degraded: "text-amber-400",
+    degraded: "text-amber-700 dark:text-amber-400",
     unhealthy: "text-red-400",
     unknown: "text-muted-foreground",
   };

@@ -99,7 +99,7 @@ export function ChatOverview({
               )}
             >
               {s.pinned && (
-                <span className="absolute right-2.5 top-2.5 z-10 text-amber-400" title="Angepinnt">
+                <span className="absolute right-2.5 top-2.5 z-10 text-amber-700 dark:text-amber-400" title="Angepinnt">
                   <Pin className="h-3.5 w-3.5 fill-amber-400/30" />
                 </span>
               )}

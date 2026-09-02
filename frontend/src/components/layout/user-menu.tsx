@@ -209,7 +209,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
               </div>
               <div className="flex-1 overflow-y-auto px-6 py-4">
                 {aboutChangelog ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] [&_h1]:hidden [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06] [&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[11px] [&_code]:font-mono [&_code]:text-amber-600 dark:[&_code]:text-amber-300 [&_code]:before:content-[''] [&_code]:after:content-['']">
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] [&_h1]:hidden [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06] [&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[11px] [&_code]:font-mono [&_code]:text-amber-600 dark:[&_code]:text-amber-700 dark:text-amber-300 [&_code]:before:content-[''] [&_code]:after:content-['']">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{aboutChangelog}</ReactMarkdown>
                   </div>
                 ) : (

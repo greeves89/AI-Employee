@@ -196,7 +196,7 @@ export function ConciergeWidget() {
                                 {broken ? (
                                   <CircleAlert className="h-3 w-3 shrink-0 text-red-400" />
                                 ) : (
-                                  <Clock className="h-3 w-3 shrink-0 text-amber-400" />
+                                  <Clock className="h-3 w-3 shrink-0 text-amber-700 dark:text-amber-400" />
                                 )}
                                 <span className="truncate text-[12px] font-medium">
                                   {it.title}

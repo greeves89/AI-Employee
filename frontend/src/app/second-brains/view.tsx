@@ -124,7 +124,7 @@ function BrainMcpModal({
 
         {token && (
           <div>
-            <label className="block text-[11px] font-medium text-amber-400 mb-1 flex items-center gap-1">
+            <label className="block text-[11px] font-medium text-amber-700 dark:text-amber-400 mb-1 flex items-center gap-1">
               <KeyRound className="h-3.5 w-3.5" /> Bearer-Token — wird nur JETZT angezeigt, kopiere ihn
             </label>
             <div className="flex items-center gap-2">
@@ -435,7 +435,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
                     </span>
                     <span className={cn(
                       "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
-                      b.default_mode === "rw" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-amber-500/20 bg-amber-500/10 text-amber-400"
+                      b.default_mode === "rw" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400" : "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400"
                     )}>
                       {b.default_mode}
                     </span>
@@ -514,7 +514,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
             </label>
 
             {importErsetzen && (
-              <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-2.5 text-[11px] text-amber-300/90">
+              <p className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-2.5 text-[11px] text-amber-700 dark:text-amber-300/90">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 Dateien, die nicht im Archiv stehen, werden unwiderruflich entfernt.
               </p>

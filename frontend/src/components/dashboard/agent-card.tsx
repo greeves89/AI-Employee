@@ -116,7 +116,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                     title="Kein Auftrag — es fehlen Verantwortungsbereiche. Proaktive Läufe werden übersprungen."
                     className="shrink-0"
                   >
-                    <AlertTriangle className="h-3 w-3 text-amber-400 animate-pulse" />
+                    <AlertTriangle className="h-3 w-3 text-amber-700 dark:text-amber-400 animate-pulse" />
                   </span>
                 ) : (
                   <span title="Beauftragt — Verantwortungsbereiche hinterlegt" className="shrink-0">
@@ -169,7 +169,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
               </div>
             ) : null}
             {(updating || agent.update_available) && (
-              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-400 border-amber-500/20">
+              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                 {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpCircle className="h-3 w-3" />}
                 {updating ? "Aktualisiere…" : "Update"}
               </div>
@@ -188,7 +188,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                 "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium",
                 agent.budget_exceeded_action === "stop"
                   ? "bg-red-500/10 text-red-400 border-red-500/20"
-                  : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                  : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
               )}>
                 {agent.budget_exceeded_action === "stop" ? "Budget gestoppt" : "Sparmodus"}
               </div>
@@ -283,7 +283,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
         {/* Footer */}
         <div className="mt-4 flex items-center justify-between pt-3 border-t border-foreground/[0.04]">
           {!simpleMode && agent.queue_depth !== null && agent.queue_depth > 0 ? (
-            <div className="flex items-center gap-1.5 text-[11px] text-amber-400">
+            <div className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
               <Layers className="h-3 w-3" />
               {agent.queue_depth} queued
             </div>

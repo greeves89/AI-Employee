@@ -22,7 +22,7 @@ import { getWsUrl, getApiUrl } from "@/lib/config";
 import { formatMoney } from "@/lib/money";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string; label: string }> = {
-  pending:   { icon: Clock,        color: "text-amber-400",   badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",     label: "Pending" },
+  pending:   { icon: Clock,        color: "text-amber-700 dark:text-amber-400",   badge: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",     label: "Pending" },
   queued:    { icon: Clock,        color: "text-blue-400",    badge: "bg-blue-500/10 text-blue-400 border-blue-500/20",         label: "Queued" },
   running:   { icon: Loader2,      color: "text-blue-400",    badge: "bg-blue-500/10 text-blue-400 border-blue-500/20",         label: "Running" },
   completed: { icon: CheckCircle2, color: "text-emerald-400", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", label: "Completed" },
@@ -326,7 +326,7 @@ export default function TaskDetailPage() {
         {task.dry_run && (
           <div className="flex flex-col gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-4 sm:flex-row sm:items-center">
             <div className="flex-1">
-              <p className="flex items-center gap-2 text-sm font-semibold text-amber-300">
+              <p className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300">
                 <FlaskConical className="h-4 w-4" /> Vorschau (Dry-Run) — nichts wurde ausgeführt
               </p>
               <p className="mt-1 text-xs text-muted-foreground/80">
@@ -609,7 +609,7 @@ export default function TaskDetailPage() {
                                 <div key={i} className="flex items-center gap-2 text-[11px]">
                                   <span className={cn(
                                     "w-14 shrink-0 text-[10px]",
-                                    g.outcome === "blocked" ? "text-red-400" : g.outcome === "failure" ? "text-amber-400" : "text-emerald-400/70",
+                                    g.outcome === "blocked" ? "text-red-400" : g.outcome === "failure" ? "text-amber-700 dark:text-amber-400" : "text-emerald-400/70",
                                   )}>{g.outcome ?? "—"}</span>
                                   <span className="font-medium">{g.event_type}</span>
                                   {g.command && <span className="truncate text-muted-foreground/60">{g.command}</span>}

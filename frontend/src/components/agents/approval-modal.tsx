@@ -42,7 +42,7 @@ const riskConfig = {
   },
   medium: {
     icon: AlertTriangle,
-    color: "text-amber-400",
+    color: "text-amber-700 dark:text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/20",
     label: "MEDIUM RISK",

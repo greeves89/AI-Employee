@@ -93,7 +93,7 @@ export default function CustomPageView() {
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/15">
-            <ShieldAlert className="h-7 w-7 text-amber-400" />
+            <ShieldAlert className="h-7 w-7 text-amber-700 dark:text-amber-400" />
           </div>
           <p className="text-base font-semibold">
             {forbidden ? "Kein Zugriff auf diese Seite" : "Seite nicht gefunden"}
@@ -166,7 +166,7 @@ export default function CustomPageView() {
 
       {hintVisible && !frameLoaded && (
         <div className="flex items-start gap-3 border-b border-amber-500/20 bg-amber-500/[0.07] px-6 py-3">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
           <div className="min-w-0 text-[12px] text-muted-foreground">
             <span className="font-medium text-foreground">Bleibt der Bereich leer?</span> Dann
             erlaubt <span className="break-all font-mono">{page.url}</span> das Einbetten nicht

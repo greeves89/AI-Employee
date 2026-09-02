@@ -503,7 +503,7 @@ export default function AdminPage() {
                     {t.count != null && t.count > 0 && (
                       <span className={cn(
                         "rounded px-1.5 py-0.5 text-[10px]",
-                        id === "feedback" ? "bg-amber-500/20 text-amber-400" : "bg-foreground/10"
+                        id === "feedback" ? "bg-amber-500/20 text-amber-700 dark:text-amber-400" : "bg-foreground/10"
                       )}>
                         {t.count}
                       </span>
@@ -596,7 +596,7 @@ export default function AdminPage() {
                         {formatCost(u.monthly_cost_usd ?? 0)} diesen Monat
                       </p>
                       {u.approved === false && (
-                        <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-400">
+                        <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400">
                           Wartet auf Freischaltung
                         </span>
                       )}
@@ -609,7 +609,7 @@ export default function AdminPage() {
                         u.role === "admin"   ? "bg-amber-500/10 text-amber-500" :
                         u.role === "manager" ? "bg-purple-500/10 text-purple-400" :
                         u.role === "viewer"  ? "bg-zinc-500/10 text-zinc-400" :
-                        u.role === "unassigned" ? "bg-amber-500/10 text-amber-400" :
+                        u.role === "unassigned" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" :
                                                "bg-blue-500/10 text-blue-500"
                       )}
                     >
@@ -788,7 +788,7 @@ export default function AdminPage() {
                           ) : (
                             <button
                               onClick={() => handleStopAgent(agent.id)}
-                              className="p-2 rounded-lg text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                              className="p-2 rounded-lg text-muted-foreground hover:text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
                               title="Stop"
                             >
                               <Container className="h-4 w-4" />
@@ -1016,7 +1016,7 @@ export default function AdminPage() {
                           <div className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] p-3 text-[12px] space-y-0.5">
                             <p className="text-emerald-400 font-medium">{distResult.created_count} Kopie(n) erstellt</p>
                             {distResult.created.map((c) => <div key={c.agent_id} className="text-muted-foreground">✓ {c.user_name} → {c.agent_name}</div>)}
-                            {distResult.skipped_count > 0 && <p className="text-amber-400 font-medium mt-1">{distResult.skipped_count} übersprungen</p>}
+                            {distResult.skipped_count > 0 && <p className="text-amber-700 dark:text-amber-400 font-medium mt-1">{distResult.skipped_count} übersprungen</p>}
                             {distResult.skipped.map((s, i) => <div key={i} className="text-muted-foreground/70">– {s.user_name || s.user_id || "?"}: {s.reason}</div>)}
                           </div>
                         )}
@@ -1388,7 +1388,7 @@ function BudgetTab({
             : "border-foreground/[0.06] bg-card/80"
         )}>
           <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Nahe am Limit</p>
-          <p className={cn("text-2xl font-bold", agentsNearBudget.length > 0 ? "text-amber-400" : "text-foreground")}>
+          <p className={cn("text-2xl font-bold", agentsNearBudget.length > 0 ? "text-amber-700 dark:text-amber-400" : "text-foreground")}>
             {agentsNearBudget.length}
           </p>
           <p className="text-[10px] text-muted-foreground/50 mt-0.5">&gt;75% verbraucht</p>
@@ -1421,7 +1421,7 @@ function BudgetTab({
                   {isOver ? (
                     <AlertTriangle className="h-4 w-4 text-red-400" />
                   ) : isNear ? (
-                    <AlertTriangle className="h-4 w-4 text-amber-400" />
+                    <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400" />
                   ) : limit != null ? (
                     <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                   ) : (
@@ -1539,7 +1539,7 @@ function BudgetTab({
 // --- Feedback Tab Component ---
 
 const STATUS_OPTIONS: { value: FeedbackStatus; label: string; color: string }[] = [
-  { value: "pending", label: "Pending", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+  { value: "pending", label: "Pending", color: "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/20" },
   { value: "reviewed", label: "Reviewed", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
   { value: "in_progress", label: "In Progress", color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
   { value: "closed", label: "Closed", color: "text-zinc-400 bg-zinc-500/10 border-zinc-500/20" },
@@ -1554,7 +1554,7 @@ const CATEGORY_ICONS: Record<string, typeof Bug> = {
 
 const CATEGORY_COLORS: Record<string, string> = {
   bug: "text-red-400",
-  feature: "text-amber-400",
+  feature: "text-amber-700 dark:text-amber-400",
   improvement: "text-blue-400",
   general: "text-zinc-400",
 };
@@ -1563,7 +1563,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 const SENTIMENTS: Record<string, { label: string; icon: typeof ThumbsUp; color: string }> = {
   positiv: { label: "Gefällt mir", icon: ThumbsUp, color: "text-emerald-400" },
   negativ: { label: "Stört mich", icon: ThumbsDown, color: "text-orange-400" },
-  wunsch: { label: "Wunsch", icon: Lightbulb, color: "text-amber-400" },
+  wunsch: { label: "Wunsch", icon: Lightbulb, color: "text-amber-700 dark:text-amber-400" },
 };
 
 function FeedbackTab({

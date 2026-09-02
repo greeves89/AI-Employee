@@ -340,7 +340,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                 <span className={cn(
                   schedule.success_count / schedule.total_runs >= 0.8
                     ? "text-emerald-400/60"
-                    : "text-amber-400/60"
+                    : "text-amber-700 dark:text-amber-400/60"
                 )}>
                   {Math.round((schedule.success_count / schedule.total_runs) * 100)}% success
                 </span>
@@ -357,7 +357,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
               className={cn(
                 "flex w-full items-center gap-1.5 text-[11px] transition-colors",
                 needsSetup
-                  ? "text-amber-400 hover:text-amber-300"
+                  ? "text-amber-700 dark:text-amber-400 hover:text-amber-700 dark:text-amber-300"
                   : "text-muted-foreground/60 hover:text-foreground",
               )}
             >
@@ -371,7 +371,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
               <span className="ml-auto text-[10px] text-muted-foreground/40">{summary}</span>
             </button>
             {needsSetup && !expanded && (
-              <p className="mt-1 text-[10px] text-amber-400/70">
+              <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-400/70">
                 Ohne Verantwortungsbereiche wird jeder proaktive Lauf übersprungen — aufklappen und eintragen.
               </p>
             )}

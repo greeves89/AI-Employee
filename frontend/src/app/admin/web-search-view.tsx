@@ -119,7 +119,7 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
               className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[13px] focus:border-primary/30 focus:outline-none"
             />
             {!hasKey && !apiKey && (
-              <p className="mt-1.5 text-[11px] text-amber-400/80">
+              <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400/80">
                 Kein Key hinterlegt — die Suche fällt bis dahin automatisch auf DuckDuckGo zurück.
               </p>
             )}

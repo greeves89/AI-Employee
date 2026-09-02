@@ -17,7 +17,7 @@ const ACTION_LABEL: Record<string, string> = {
   allow: "Erlauben", log: "Nur loggen", mask: "Maskieren", block: "Blockieren",
 };
 const ACTION_COLOR: Record<string, string> = {
-  allow: "text-muted-foreground", log: "text-sky-400", mask: "text-amber-400", block: "text-red-400",
+  allow: "text-muted-foreground", log: "text-sky-400", mask: "text-amber-700 dark:text-amber-400", block: "text-red-400",
 };
 
 export function DlpView({ embedded = false }: { embedded?: boolean }) {
@@ -179,7 +179,7 @@ export function DlpView({ embedded = false }: { embedded?: boolean }) {
               return (
                 <div key={e.id} className="flex items-center gap-2 text-[12px]">
                   <span className={cn("w-16 shrink-0 text-[11px]",
-                    e.event_type === "dlp_blocked" ? "text-red-400" : e.event_type === "dlp_masked" ? "text-amber-400" : "text-sky-400")}>
+                    e.event_type === "dlp_blocked" ? "text-red-400" : e.event_type === "dlp_masked" ? "text-amber-700 dark:text-amber-400" : "text-sky-400")}>
                     {e.event_type.replace("dlp_", "")}
                   </span>
                   <span className="w-20 shrink-0 text-muted-foreground/50">{e.channel}</span>

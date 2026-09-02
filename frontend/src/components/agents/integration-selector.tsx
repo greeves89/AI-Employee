@@ -29,7 +29,7 @@ const BUILTIN_MCP_SERVERS = [
   {
     name: "Notifications",
     icon: Bell,
-    color: "text-amber-400",
+    color: "text-amber-700 dark:text-amber-400",
     iconBg: "bg-amber-500/10",
     tools: [
       { name: "notify_user", description: "Send notification (Web UI + Telegram for high/urgent)" },

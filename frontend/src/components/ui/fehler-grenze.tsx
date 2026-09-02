@@ -50,7 +50,7 @@ export class FehlerGrenze extends React.Component<Props, State> {
 
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-        <AlertTriangle className="h-6 w-6 text-amber-400/70" />
+        <AlertTriangle className="h-6 w-6 text-amber-700 dark:text-amber-400/70" />
         <p className="text-sm font-medium">
           {this.props.bereich ?? "Dieser Bereich"} konnte nicht angezeigt werden
         </p>

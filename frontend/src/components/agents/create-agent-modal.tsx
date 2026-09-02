@@ -107,7 +107,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   dev: "bg-blue-500/10 text-blue-400",
   data: "bg-emerald-500/10 text-emerald-400",
   writing: "bg-purple-500/10 text-purple-400",
-  ops: "bg-amber-500/10 text-amber-400",
+  ops: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
   creative: "bg-pink-500/10 text-pink-400",
   general: "bg-gray-500/10 text-gray-400",
   marketing: "bg-orange-500/10 text-orange-400",
@@ -746,7 +746,7 @@ export function CreateAgentModal({
                                       <p className="truncate text-sm font-medium">{option.label}</p>
                                       <span className={cn(
                                         "rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider",
-                                        option.connected ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"
+                                        option.connected ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
                                       )}>
                                         {option.connected ? "ready" : "setup"}
                                       </span>
@@ -1147,7 +1147,7 @@ export function CreateAgentModal({
                                         "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
                                         isSelected
                                           ? isFullAccess
-                                            ? "bg-amber-500/20 text-amber-400"
+                                            ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
                                             : "bg-primary/20 text-primary"
                                           : "bg-foreground/[0.06] text-muted-foreground"
                                       )}
@@ -1264,7 +1264,7 @@ export function CreateAgentModal({
                               {selectedTemplate.model.split("-").slice(0, 2).join(" ")}
                             </span>
                             {selectedTemplate.permissions.map((p) => (
-                              <span key={p} className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">
+                              <span key={p} className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">
                                 {p}
                               </span>
                             ))}

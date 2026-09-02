@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.292.0] - 2026-09-03
+
+### Behoben
+- **Das Benachrichtigungsfeld war nirgends zu sehen** (#677). Es lag am linken
+  Rand seines Containers — und dessen Eltern verbergen an beiden Einbaustellen
+  ihren Überlauf. Das Feld wurde gezeichnet und im selben Bild weggeschnitten:
+  der Knopf sah aus wie tot, obwohl er tat, was er sollte. In der ganzen
+  Anwendung gab es keine Stelle, an der das Feld je sichtbar war. Es hängt jetzt
+  direkt am Dokument, wird am Knopf ausgerichtet, wandert beim Rollen mit und
+  bleibt auch auf schmalen Geräten im Bild.
+- **Bernsteinfarbene Hinweise waren im hellen Thema unlesbar** (#664). Helle
+  Schrift auf hellem Grund — im dunklen Thema, der Vorgabe, fällt das nicht auf.
+  Gemeldet am Hinweis „Interne Adresse zulassen"; tatsächlich betroffen waren
+  **243 Stellen in 75 Dateien**. Alle haben jetzt das im Projekt schon übliche
+  Gegenstück fürs helle Thema.
+
+---
+
 ## [1.291.0] - 2026-09-02
 
 ### Geändert

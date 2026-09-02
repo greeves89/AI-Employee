@@ -19,7 +19,7 @@ import type { Schedule } from "@/lib/types";
 /* ─── Single Tasks Config ─────────────────────────────────────────── */
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; badge: string; color: string }> = {
-  pending: { icon: Clock, badge: "bg-amber-500/10 text-amber-400 border-amber-500/20", color: "text-amber-400" },
+  pending: { icon: Clock, badge: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20", color: "text-amber-700 dark:text-amber-400" },
   queued: { icon: Clock, badge: "bg-blue-500/10 text-blue-400 border-blue-500/20", color: "text-blue-400" },
   running: { icon: Loader2, badge: "bg-blue-500/10 text-blue-400 border-blue-500/20", color: "text-blue-400" },
   completed: { icon: CheckCircle2, badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", color: "text-emerald-400" },
@@ -333,7 +333,7 @@ function SingleTasksView() {
                             // Bei einer laufenden Aufgabe NICHT erst beim Überfahren
                             // zeigen: wer sie stoppen will, sucht den Knopf sofort.
                             ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20"
-                            : "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20 opacity-0 group-hover:opacity-100",
+                            : "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 opacity-0 group-hover:opacity-100",
                         )}
                         title={laeuft
                           ? "Laufende Aufgabe stoppen — der Agent bricht seine Arbeit ab"
@@ -610,7 +610,7 @@ function ScheduledTasksView() {
                   {[
                     { value: 0, label: "Low", color: "text-slate-400" },
                     { value: 1, label: "Normal", color: "text-blue-400" },
-                    { value: 2, label: "High", color: "text-amber-400" },
+                    { value: 2, label: "High", color: "text-amber-700 dark:text-amber-400" },
                     { value: 3, label: "Urgent", color: "text-red-400" },
                   ].map((p) => (
                     <button
@@ -791,7 +791,7 @@ function ScheduledTasksView() {
                     onClick={() => handleToggle(schedule)}
                     className={`flex h-8 w-8 items-center justify-center rounded-lg border backdrop-blur-sm transition-colors ${
                       schedule.enabled
-                        ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20"
+                        ? "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
                         : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
                     }`}
                   >

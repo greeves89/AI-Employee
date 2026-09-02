@@ -2073,13 +2073,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             unabhaengig davon, ob der Agent selbst gerade denkt. */}
         {offeneAuftraege.length > 0 && (
           <div className="flex items-center gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-400" />
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-700 dark:text-amber-400" />
             <div className="flex min-w-0 flex-col">
               {/* Nur die OFFENEN zaehlen. Ein Bruch „3 von 6" bezog sich auf das
                   ganze Gespraech und war nicht lesbar, wenn man gerade 4 Auftraege
                   vergeben hatte — man sucht dann die 6, die es im Bild nicht gibt.
                   Was hier zaehlt, ist ohnehin nur: worauf warte ich noch. */}
-              <span className="text-xs text-amber-200/90">
+              <span className="text-xs text-amber-700 dark:text-amber-200/90">
                 {offeneAuftraege.length}{" "}
                 {offeneAuftraege.length === 1 ? "Auftrag läuft noch" : "Aufträge laufen noch"}
               </span>
@@ -2123,7 +2123,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         {liveElsewhere && !isWaiting && !messages.some((m) => m.isStreaming) && (
           <div className="flex items-start gap-3 pl-1 py-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/20 shrink-0">
-              <Bot className="h-3.5 w-3.5 text-amber-400" />
+              <Bot className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" />
             </div>
             <div className="flex flex-col gap-1 min-w-0">
               <div className="flex items-center gap-2">
@@ -2384,9 +2384,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       {pendingApproval && (
         <div className="mx-4 mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-amber-300">Der Agent braucht deine Antwort</p>
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Der Agent braucht deine Antwort</p>
               <div className="mt-1">
                 <ApprovalPrompt
                   request={pendingApproval}
@@ -2669,7 +2669,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   <button
                     onClick={() => sendMessage(true)}
                     disabled={!isConnected || isUploading || !input.trim()}
-                    className="flex h-9 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 text-[11px] font-medium text-amber-300 transition-all hover:bg-amber-500/20 disabled:opacity-40"
+                    className="flex h-9 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 transition-all hover:bg-amber-500/20 disabled:opacity-40"
                     title="Nur planen — der Agent beschreibt die Schritte, führt aber nichts aus"
                   >
                     <ListChecks className="h-4 w-4" /> Planen
@@ -2814,7 +2814,7 @@ function MessageActions({
           }
           className={cn(
             "rounded p-1 hover:bg-foreground/[0.06]",
-            excluded ? "text-amber-500 hover:text-amber-400" : "text-muted-foreground/60 hover:text-foreground",
+            excluded ? "text-amber-500 hover:text-amber-700 dark:text-amber-400" : "text-muted-foreground/60 hover:text-foreground",
           )}
         >
           {excluded ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}

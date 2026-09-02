@@ -58,7 +58,7 @@ function fmtUptime(s: number | null): string {
 }
 function tempColor(t: number | null): string {
   if (t == null) return "text-slate-400";
-  if (t >= 75) return "text-rose-400"; if (t >= 60) return "text-amber-400"; return "text-emerald-400";
+  if (t >= 75) return "text-rose-400"; if (t >= 60) return "text-amber-700 dark:text-amber-400"; return "text-emerald-400";
 }
 function stateColor(s: string): { dot: string; text: string; glow: string } {
   switch (s) {
@@ -204,7 +204,7 @@ function OverviewView({ data, onOpenAgent }: { data: Overview | null; onOpenAgen
         <BigStat label="Agenten aktiv" value={`${data?.agents_working ?? 0}/${data?.agents_total ?? 0}`} accent="text-cyan-300" icon={<Bot className="w-4 h-4" />} />
         <BigStat label="Tasks laufen" value={data?.tasks.running ?? 0} accent="text-emerald-300" icon={<Activity className="w-4 h-4" />} pulse={(data?.tasks.running ?? 0) > 0} />
         <BigStat label="Heute fertig" value={data?.tasks.done_today ?? 0} accent="text-violet-300" icon={<CircleDot className="w-4 h-4" />} />
-        <BigStat label="AI-Kosten heute" value={`$${nf(data?.ai_spend.cost_usd_today ?? 0, 2)}`} accent="text-amber-300" icon={<Euro className="w-4 h-4" />} />
+        <BigStat label="AI-Kosten heute" value={`$${nf(data?.ai_spend.cost_usd_today ?? 0, 2)}`} accent="text-amber-700 dark:text-amber-300" icon={<Euro className="w-4 h-4" />} />
       </div>
       <div className="grid grid-cols-[1fr_320px] gap-3 min-h-0">
         <Panel title="Aktivität" icon={<Activity className="w-4 h-4 text-violet-400" />}>
@@ -335,7 +335,7 @@ function TasksView({ data }: { data: Overview | null }) {
     <div className="h-full grid grid-rows-[auto_1fr] gap-3">
       <div className="grid grid-cols-3 gap-3">
         <BigStat label="Läuft" value={data?.tasks.running ?? 0} accent="text-emerald-300" icon={<Activity className="w-4 h-4" />} pulse={(data?.tasks.running ?? 0) > 0} />
-        <BigStat label="Wartet" value={data?.tasks.pending ?? 0} accent="text-amber-300" icon={<ListTodo className="w-4 h-4" />} />
+        <BigStat label="Wartet" value={data?.tasks.pending ?? 0} accent="text-amber-700 dark:text-amber-300" icon={<ListTodo className="w-4 h-4" />} />
         <BigStat label="Heute fertig" value={data?.tasks.done_today ?? 0} accent="text-cyan-300" icon={<CircleDot className="w-4 h-4" />} />
       </div>
       <Panel title="Letzte Tasks" icon={<ListTodo className="w-4 h-4 text-cyan-400" />}>
@@ -406,7 +406,7 @@ function SettingsView() {
   };
   return (
     <div className="h-full overflow-y-auto kiosk-scroll max-w-2xl mx-auto space-y-3">
-      <Panel title="Strom & Kosten" icon={<Euro className="w-4 h-4 text-amber-300" />}>
+      <Panel title="Strom & Kosten" icon={<Euro className="w-4 h-4 text-amber-700 dark:text-amber-300" />}>
         <Field label="Strompreis (€/kWh)"><input type="number" step="0.01" value={tariff} onChange={(e) => setTariff(e.target.value)} className="kiosk-input" /></Field>
       </Panel>
       <Panel title="Energiesparen & Anzeige" icon={<Gauge className="w-4 h-4 text-cyan-300" />}>
@@ -429,7 +429,7 @@ function Panel({ title, icon, right, compact, children }: { title: string; icon:
     <div className={`kiosk-card ${compact ? "p-2.5" : "p-3"} flex flex-col min-h-0`}>
       <div className="flex items-center justify-between mb-2 shrink-0">
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-300">{icon}{title}</div>
-        {right ? <span className="text-[10px] text-amber-400/80">{right}</span> : null}
+        {right ? <span className="text-[10px] text-amber-700 dark:text-amber-400/80">{right}</span> : null}
       </div>
       <div className="flex-1 min-h-0">{children}</div>
     </div>

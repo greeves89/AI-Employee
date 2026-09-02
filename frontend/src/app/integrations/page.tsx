@@ -74,7 +74,7 @@ function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; c
     return {
       ok: false,
       label: `OAuth erforderlich — auf „Verbinden“ klicken · ${checked}`,
-      className: "text-amber-400",
+      className: "text-amber-700 dark:text-amber-400",
       title: "Der Server ist OAuth-geschützt und wurde angelegt, aber noch nicht verbunden. Auf „Verbinden“ klicken, um die Autorisierung zu starten.",
     };
   }
@@ -88,7 +88,7 @@ function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; c
   return {
     ok: false,
     label: `${server.last_error || fallback} · ${checked}`,
-    className: server.last_status === "auth_failed" ? "text-amber-400" : "text-red-400",
+    className: server.last_status === "auth_failed" ? "text-amber-700 dark:text-amber-400" : "text-red-400",
     title: MCP_HEALTH_ORCH_ONLY,
   };
 }
@@ -114,7 +114,7 @@ function formatAgentHealth(
   if (entry.agent_status === "needs_auth") {
     return {
       label: `Agent-Sicht: Authentifizierung nötig (${entry.needs_auth}/${total})`,
-      className: "text-amber-400",
+      className: "text-amber-700 dark:text-amber-400",
       ok: false,
     };
   }
@@ -521,7 +521,7 @@ export default function IntegrationsPage() {
                               </li>
                               <li>Under <strong className="text-foreground">API Permissions</strong> → Add permission → Microsoft Graph → Delegated:<br />
                                 <span className="text-[10px] font-mono text-blue-300/80">User.Read, Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Chat.ReadBasic, ChannelMessage.Read.All, ChannelMessage.Send, Team.ReadBasic.All, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, offline_access</span>
-                                <p className="mt-1 text-amber-400/80">→ Then click <strong>&quot;Grant admin consent&quot;</strong></p>
+                                <p className="mt-1 text-amber-700 dark:text-amber-400/80">→ Then click <strong>&quot;Grant admin consent&quot;</strong></p>
                               </li>
                               <li>Under <strong className="text-foreground">Certificates &amp; Secrets</strong> create a new Client Secret</li>
                               <li>Enter <strong className="text-foreground">Client ID &amp; Secret</strong> in <strong className="text-foreground">Settings → OAuth → Microsoft 365</strong></li>
@@ -1051,7 +1051,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
               // Erscheint erst NACH einer Ablehnung wegen privater Adresse — also
               // genau dann, wenn er hilft, und nicht als Dauerangebot.
               <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 space-y-1.5">
-                <label className="flex items-start gap-2 text-[11px] text-amber-200/90 cursor-pointer">
+                <label className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-200/90 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={allowPrivate}
@@ -1063,7 +1063,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                     eigenen Netz und ist von aussen nicht erreichbar.
                   </span>
                 </label>
-                <p className="text-[10px] text-amber-200/60 pl-5">
+                <p className="text-[10px] text-amber-700 dark:text-amber-200/60 pl-5">
                   Gilt nur für diesen Eintrag. Adressen, hinter denen nie ein
                   MCP-Server steht, bleiben gesperrt: dieser Server selbst
                   (127.0.0.1) und der Metadatenpunkt der Cloud (169.254.169.254).
@@ -1154,7 +1154,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       {server.has_auth && (
                         <span
                           title="Zugangs-Token gespeichert"
-                          className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400"
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
                         >
                           <KeyRound className="h-2.5 w-2.5" />
                           Token
@@ -1169,7 +1169,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                             "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
                             server.oauth_connected
                               ? "bg-emerald-500/10 text-emerald-400"
-                              : "bg-amber-500/10 text-amber-400"
+                              : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
                           )}
                         >
                           <ShieldCheck className="h-2.5 w-2.5" />
@@ -1199,7 +1199,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       </div>
                     )}
                     {disagreement && (
-                      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-400" title="Der Orchestrator erreicht den Server, aber mindestens ein Agent nicht — oft ein pro-Agent-Token, das der Server ablehnt.">
+                      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400" title="Der Orchestrator erreicht den Server, aber mindestens ein Agent nicht — oft ein pro-Agent-Token, das der Server ablehnt.">
                         <AlertCircle className="h-3 w-3 shrink-0" />
                         <span className="truncate">Diskrepanz: Orchestrator erreichbar, Agents melden Probleme</span>
                       </div>

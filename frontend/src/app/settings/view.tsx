@@ -98,7 +98,7 @@ const PROVIDERS: {
     label: "Amazon Bedrock",
     short: "Bedrock",
     icon: Cloud,
-    color: "text-amber-400",
+    color: "text-amber-700 dark:text-amber-400",
     bgColor: "bg-amber-500/10 border-amber-500/20",
     description: "AWS managed service with IAM credentials",
   },
@@ -1794,7 +1794,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                           <div className="mt-1.5 rounded-md border border-foreground/10 bg-background/50 px-3 py-2 font-mono text-[10px] text-blue-300/80 leading-relaxed">
                             User.Read, Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Chat.ReadBasic, ChannelMessage.Read.All, ChannelMessage.Send, Team.ReadBasic.All, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, offline_access
                           </div>
-                          <p className="mt-1 text-[10px] text-amber-400/80">→ Danach <strong>&quot;Administratorzustimmung erteilen&quot;</strong> klicken</p>
+                          <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-400/80">→ Danach <strong>&quot;Administratorzustimmung erteilen&quot;</strong> klicken</p>
                         </li>
                         <li>
                           Unter <strong className="text-foreground">Zertifikate &amp; Geheimnisse</strong> → Neuer geheimer Clientschlüssel erstellen
@@ -1899,7 +1899,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 text-[12px] font-medium">
-                        <Lock className="h-3.5 w-3.5 text-amber-400" />
+                        <Lock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" />
                         Microsoft nur lesend
                       </div>
                       <p className="mt-0.5 text-[10px] text-muted-foreground/60">
@@ -1926,7 +1926,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     </button>
                   </div>
                   {!settings?.msgraph_read_only && (
-                    <p className="mt-1.5 text-[10px] text-amber-400/70">
+                    <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-400/70">
                       Schreibzugriff ist freigegeben. Agenten mit &quot;Read + Write&quot; können in echten Postfächern senden und ändern.
                     </p>
                   )}
@@ -1964,7 +1964,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     </button>
                   </div>
                   {!settings?.has_microsoft_oauth && (
-                    <p className="mt-1.5 text-[10px] text-amber-400/70">Erst die Microsoft App-Registrierung oben eintragen &amp; speichern.</p>
+                    <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-400/70">Erst die Microsoft App-Registrierung oben eintragen &amp; speichern.</p>
                   )}
                   {settings?.msgraph_mcp_external_enabled && (
                     <div className="mt-2.5 space-y-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
@@ -2315,8 +2315,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   </button>
                 </div>
                 <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400 mt-0.5" />
-                  <p className="text-[10px] leading-relaxed text-amber-300">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400 mt-0.5" />
+                  <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">
                     <strong>Achtung:</strong> Danach ist die Anmeldung NUR noch über Microsoft-SSO möglich. Nutzer ohne SSO-Konto im konfigurierten Tenant werden ausgesperrt. Notfall-Zugang: auf dem Server ENV <code className="font-mono">EMERGENCY_PASSWORD_LOGIN=true</code> setzen.
                   </p>
                 </div>

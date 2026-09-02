@@ -149,7 +149,7 @@ export default function TriggersPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10">
-              <Zap className="h-5 w-5 text-amber-400" />
+              <Zap className="h-5 w-5 text-amber-700 dark:text-amber-400" />
             </div>
             <div>
               <p className="text-sm font-medium">{triggers.length} Trigger{triggers.length !== 1 ? "s" : ""}</p>
@@ -358,7 +358,7 @@ export default function TriggersPage() {
                         </span>
                       )}
                       {trigger.payload_conditions && (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-400">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
                           {Object.keys(trigger.payload_conditions).length} conditions
                         </span>
                       )}

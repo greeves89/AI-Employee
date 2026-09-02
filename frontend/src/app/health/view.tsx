@@ -21,8 +21,8 @@ function StatusBadge({ status }: { status: string }) {
     healthy: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
     passing: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
     passed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-    warning: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-    degraded: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    warning: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
+    degraded: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
     skipped: "bg-gray-500/10 text-gray-400 border-gray-500/20",
     error: "bg-red-500/10 text-red-400 border-red-500/20",
     failed: "bg-red-500/10 text-red-400 border-red-500/20",
@@ -42,7 +42,7 @@ function StatusBadge({ status }: { status: string }) {
 function StatusIcon({ status }: { status: string }) {
   const s = status?.toLowerCase();
   if (s === "healthy" || s === "passed" || s === "passing") return <CheckCircle2 className="w-5 h-5 text-emerald-400" />;
-  if (s === "warning" || s === "degraded") return <AlertTriangle className="w-5 h-5 text-amber-400" />;
+  if (s === "warning" || s === "degraded") return <AlertTriangle className="w-5 h-5 text-amber-700 dark:text-amber-400" />;
   return <XCircle className="w-5 h-5 text-red-400" />;
 }
 
@@ -211,7 +211,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                 <HeartPulse className={cn(
                   "w-7 h-7",
                   overallStatus === "healthy" ? "text-emerald-400" :
-                  overallStatus === "degraded" ? "text-amber-400" :
+                  overallStatus === "degraded" ? "text-amber-700 dark:text-amber-400" :
                   "text-red-400"
                 )} />
               </div>
@@ -294,7 +294,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
               </div>
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="w-4 h-4 text-amber-400" />
+                  <DollarSign className="w-4 h-4 text-amber-700 dark:text-amber-400" />
                   <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Kosten</span>
                 </div>
                 <p className="text-2xl font-bold">{formatMoney(autoMetrics.total_cost_usd)}</p>
@@ -351,7 +351,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
               {/* Daily cost trend */}
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
                 <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-amber-400" />
+                  <DollarSign className="w-5 h-5 text-amber-700 dark:text-amber-400" />
                   Kosten pro Tag
                 </h3>
                 <p className="text-[11px] text-muted-foreground/60 mb-4">USD je Tag</p>
@@ -470,11 +470,11 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                           <span className={cn(
                             "font-medium",
                             a.success_rate >= 80 ? "text-emerald-400" :
-                            a.success_rate >= 50 ? "text-amber-400" : "text-red-400"
+                            a.success_rate >= 50 ? "text-amber-700 dark:text-amber-400" : "text-red-400"
                           )}>
                             {a.success_rate}% Erfolg
                           </span>
-                          <span className="text-amber-400">{formatMoney(a.total_cost_usd || 0)}</span>
+                          <span className="text-amber-700 dark:text-amber-400">{formatMoney(a.total_cost_usd || 0)}</span>
                           {a.avg_duration_ms && (
                             <span className="text-blue-400">{Math.round(a.avg_duration_ms / 1000)}s</span>
                           )}
@@ -520,7 +520,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
             {/* Rating Trend Chart */}
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
               <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
-                <Star className="w-5 h-5 text-amber-400" />
+                <Star className="w-5 h-5 text-amber-700 dark:text-amber-400" />
                 Rating-Verlauf
               </h3>
               <p className="text-[11px] text-muted-foreground/60 mb-4">Durchschnitt pro 5 Tasks</p>
@@ -572,7 +572,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <div className="flex items-center gap-1.5">
-                        <Star className="w-3 h-3 text-amber-400" />
+                        <Star className="w-3 h-3 text-amber-700 dark:text-amber-400" />
                         <span className="text-xs font-medium">{report.average_rating?.toFixed(1) || "-"}/5</span>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -694,7 +694,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
         {/* No data hint */}
         {!loading && reports.length === 0 && (
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-8 text-center">
-            <Star className="w-8 h-8 text-amber-400/40 mx-auto mb-3" />
+            <Star className="w-8 h-8 text-amber-700 dark:text-amber-400/40 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground mb-1">Noch keine Performance-Daten</p>
             <p className="text-[11px] text-muted-foreground/60">
               Bewerte abgeschlossene Tasks via Telegram (1-5 Sterne), um Charts zu sehen.

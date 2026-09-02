@@ -1394,9 +1394,9 @@ export function VoiceSessionModal({
           {pendingApproval && (
             <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-amber-300">Der Agent braucht deine Freigabe</p>
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Der Agent braucht deine Freigabe</p>
                   {/* Frage, Optionen, Ansicht und Freitext kommen aus der
                       gemeinsamen Komponente — bis 2026-08-18 stand das hier
                       als eigene Fassung und ging beim Erweitern verloren. */}
@@ -1513,7 +1513,7 @@ export function VoiceSessionModal({
                   <p className="max-w-[240px] text-center text-xs text-muted-foreground/70">{statusMsg}</p>
                 )}
                 {paused && (
-                  <p className="max-w-[260px] text-center text-xs text-amber-400/90">
+                  <p className="max-w-[260px] text-center text-xs text-amber-700 dark:text-amber-400/90">
                     Fokus-Modus: Mikro aus — ich arbeite weiter und melde mich, wenn etwas fertig ist.
                   </p>
                 )}
@@ -1797,7 +1797,7 @@ export function VoiceSessionModal({
                       {t.done ? (
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
                       ) : (
-                        <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-amber-400" />
+                        <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-amber-700 dark:text-amber-400" />
                       )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start gap-1.5">
@@ -1872,7 +1872,7 @@ export function VoiceSessionModal({
                                 : a.kind === "tool"
                                 ? "text-sky-400"
                                 : a.kind === "approval"
-                                ? "text-amber-300"
+                                ? "text-amber-700 dark:text-amber-300"
                                 : "text-muted-foreground"
                             }
                           >
@@ -1884,13 +1884,13 @@ export function VoiceSessionModal({
                             )}
                             {a.kind === "tool" && (
                               <>
-                                <span className="text-amber-400">[{a.label}]</span>
+                                <span className="text-amber-700 dark:text-amber-400">[{a.label}]</span>
                                 {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
                               </>
                             )}
                             {a.kind === "approval" && (
                               <>
-                                <span className="text-amber-400">[Freigabe]</span> {a.label}
+                                <span className="text-amber-700 dark:text-amber-400">[Freigabe]</span> {a.label}
                                 {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
                               </>
                             )}
@@ -2104,7 +2104,7 @@ export function VoiceSessionModal({
             <div className="mb-3 mt-4 rounded-lg border border-border bg-black/40 p-3">
               <div className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">
                 {delegating ? (
-                  <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
+                  <Loader2 className="h-3 w-3 animate-spin text-amber-700 dark:text-amber-400" />
                 ) : (
                   <Radio className="h-3 w-3 text-emerald-400" />
                 )}
@@ -2123,7 +2123,7 @@ export function VoiceSessionModal({
                         : a.kind === "tool"
                         ? "text-sky-400"
                         : a.kind === "approval"
-                        ? "text-amber-300"
+                        ? "text-amber-700 dark:text-amber-300"
                         : "text-muted-foreground"
                     }
                   >
@@ -2135,13 +2135,13 @@ export function VoiceSessionModal({
                     )}
                     {a.kind === "tool" && (
                       <>
-                        <span className="text-amber-400">[{a.label}]</span>
+                        <span className="text-amber-700 dark:text-amber-400">[{a.label}]</span>
                         {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
                       </>
                     )}
                     {a.kind === "approval" && (
                       <>
-                        <span className="text-amber-400">[Freigabe]</span> {a.label}
+                        <span className="text-amber-700 dark:text-amber-400">[Freigabe]</span> {a.label}
                         {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
                       </>
                     )}
@@ -2233,7 +2233,7 @@ function Buehnenkarte({
             </div>
           </div>
           {blockiert && (
-            <p className="text-[11px] text-amber-400/90">
+            <p className="text-[11px] text-amber-700 dark:text-amber-400/90">
               Dein Browser hat den Tab blockiert — hier klicken zum Öffnen.
             </p>
           )}
@@ -2308,7 +2308,7 @@ function CtrlButton({
 }) {
   const tones = {
     neutral: "bg-foreground/[0.05] text-muted-foreground hover:bg-foreground/[0.10] hover:text-foreground",
-    amber: "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25",
+    amber: "bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25",
     red: "bg-red-500/10 text-red-400 hover:bg-red-500/20",
   } as const;
   return (

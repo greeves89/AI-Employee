@@ -133,7 +133,7 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
                                   ? mode === "none"
                                     ? "bg-zinc-500/20 text-zinc-300"
                                     : mode === "ro"
-                                    ? "bg-amber-500/20 text-amber-400"
+                                    ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
                                     : "bg-emerald-500/20 text-emerald-400"
                                   : "text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.04]"
                               )}

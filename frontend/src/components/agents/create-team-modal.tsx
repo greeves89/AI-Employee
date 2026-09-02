@@ -221,7 +221,7 @@ export function CreateTeamModal({
                     <div>
                       <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                         <span className="inline-flex items-center gap-1.5">
-                          <Crown className="h-3.5 w-3.5 text-amber-400" /> Lead
+                          <Crown className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" /> Lead
                         </span>{" "}
                         <span className="text-muted-foreground/40">(optional)</span>
                       </label>

@@ -31,13 +31,13 @@ const CATEGORY_ICONS: Record<string, typeof Bug> = {
 
 const CATEGORY_COLORS: Record<string, string> = {
   bug: "text-red-400",
-  feature: "text-amber-400",
+  feature: "text-amber-700 dark:text-amber-400",
   improvement: "text-blue-400",
   general: "text-zinc-400",
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  pending: "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/20",
   reviewed: "text-blue-400 bg-blue-500/10 border-blue-500/20",
   in_progress: "text-violet-400 bg-violet-500/10 border-violet-500/20",
   closed: "text-zinc-400 bg-zinc-500/10 border-zinc-500/20",
@@ -46,7 +46,7 @@ const STATUS_COLORS: Record<string, string> = {
 const SENTIMENTS: Record<string, { label: string; icon: typeof ThumbsUp; color: string }> = {
   positiv: { label: "Gefällt mir", icon: ThumbsUp, color: "text-emerald-400" },
   negativ: { label: "Stört mich", icon: ThumbsDown, color: "text-orange-400" },
-  wunsch: { label: "Wunsch", icon: Lightbulb, color: "text-amber-400" },
+  wunsch: { label: "Wunsch", icon: Lightbulb, color: "text-amber-700 dark:text-amber-400" },
 };
 
 interface Props {

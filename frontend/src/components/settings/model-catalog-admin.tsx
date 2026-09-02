@@ -153,7 +153,7 @@ export function ModelCatalogAdmin() {
                                   className={cn(
                                     "text-[9px] uppercase tracking-wide rounded px-1.5 py-0.5 font-medium shrink-0",
                                     m.source === "discovered"
-                                      ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20"
                                       : "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20",
                                   )}
                                 >

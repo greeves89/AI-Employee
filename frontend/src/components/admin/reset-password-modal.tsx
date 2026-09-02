@@ -61,7 +61,7 @@ export function ResetPasswordModal({ email, tempPassword, onClose }: Props) {
               </div>
 
               <div className="px-6 py-5 space-y-3">
-                <p className="text-xs text-amber-400">
+                <p className="text-xs text-amber-700 dark:text-amber-400">
                   Jetzt kopieren — dieses Passwort wird nur einmal angezeigt und danach nie wieder.
                 </p>
                 <div className="flex items-center gap-2">

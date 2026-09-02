@@ -112,9 +112,9 @@ export function SessionRail({
                 >
                   <span className="flex items-center gap-1.5 text-xs">
                     {isBusy ? (
-                      <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-400" />
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-700 dark:text-amber-400" />
                     ) : s.pinned ? (
-                      <Pin className="h-3 w-3 shrink-0 fill-amber-400/30 text-amber-400" />
+                      <Pin className="h-3 w-3 shrink-0 fill-amber-400/30 text-amber-700 dark:text-amber-400" />
                     ) : (
                       <MessageSquare className="h-3 w-3 shrink-0 text-muted-foreground/50" />
                     )}
@@ -150,7 +150,7 @@ export function SessionRail({
                         className="rounded p-0.5 hover:bg-foreground/[0.1]"
                         title={s.pinned ? "Loslösen" : "Anpinnen"}
                       >
-                        <Pin className={cn("h-3 w-3", s.pinned && "text-amber-400")} />
+                        <Pin className={cn("h-3 w-3", s.pinned && "text-amber-700 dark:text-amber-400")} />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); startRename(s); }}

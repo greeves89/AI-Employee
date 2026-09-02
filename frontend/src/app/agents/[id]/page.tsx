@@ -55,7 +55,7 @@ import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { formatMoney } from "@/lib/money";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string }> = {
-  pending: { icon: Clock, color: "text-amber-400", badge: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  pending: { icon: Clock, color: "text-amber-700 dark:text-amber-400", badge: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" },
   queued: { icon: Clock, color: "text-blue-400", badge: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
   running: { icon: Loader2, color: "text-blue-400", badge: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
   completed: { icon: CheckCircle2, color: "text-emerald-400", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
@@ -322,8 +322,8 @@ export default function AgentDetailPage() {
                 </div>
                 {diskLimitMb > 0 && (
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <HardDrive className={cn("h-3 w-3", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-orange-400")} />
-                    <span className={cn("font-medium", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-orange-400")}>
+                    <HardDrive className={cn("h-3 w-3", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-700 dark:text-amber-400" : "text-orange-400")} />
+                    <span className={cn("font-medium", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-700 dark:text-amber-400" : "text-orange-400")}>
                       {diskUsageMb >= 1024 ? `${(diskUsageMb / 1024).toFixed(1)} GB` : `${diskUsageMb.toFixed(0)} MB`} / {diskLimitMb >= 1024 ? `${(diskLimitMb / 1024).toFixed(0)} GB` : `${diskLimitMb.toFixed(0)} MB`}
                     </span>
                   </div>
@@ -549,10 +549,10 @@ function UpdateBanner({ agentId, onUpdated }: { agentId: string; onUpdated: (age
     >
       <div className="flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
-          <ArrowUpCircle className="h-4 w-4 text-amber-400" />
+          <ArrowUpCircle className="h-4 w-4 text-amber-700 dark:text-amber-400" />
         </div>
         <div>
-          <p className="text-sm font-medium text-amber-400">Update available</p>
+          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Update available</p>
           <p className="text-xs text-muted-foreground">A new agent image version is available. Your data will be preserved.</p>
         </div>
       </div>
@@ -611,7 +611,7 @@ function InfoCard({
 function BudgetBar({ spent, budget, action }: { spent: number; budget: number; action: "haiku" | "stop" }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const tone =
-    pct >= 100 ? "text-red-400" : pct >= 80 ? "text-amber-400" : "text-emerald-400";
+    pct >= 100 ? "text-red-400" : pct >= 80 ? "text-amber-700 dark:text-amber-400" : "text-emerald-400";
   const fill =
     pct >= 100 ? "bg-red-400" : pct >= 80 ? "bg-amber-400" : "bg-emerald-400";
 
@@ -623,7 +623,7 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
       title={`Bei Erreichen des Budgets: ${action === "stop" ? "Agent anhalten" : "auf Haiku wechseln"}`}
       className="flex items-center gap-2.5 rounded-lg border border-foreground/[0.06] bg-card/60 px-3 py-1.5"
     >
-      <DollarSign className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+      <DollarSign className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
       <span className="shrink-0 text-[11px] text-muted-foreground">Budget</span>
       <div className="h-1 min-w-[3rem] flex-1 rounded-full bg-foreground/[0.08]">
         <div className={cn("h-1 rounded-full transition-all duration-700", fill)} style={{ width: `${pct}%` }} />
@@ -905,7 +905,7 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
                 <span className="text-muted-foreground">Rate:</span>{" "}
                 <span className={cn(
                   "font-medium",
-                  metrics.success_rate >= 0.8 ? "text-emerald-400" : metrics.success_rate >= 0.5 ? "text-amber-400" : "text-red-400"
+                  metrics.success_rate >= 0.8 ? "text-emerald-400" : metrics.success_rate >= 0.5 ? "text-amber-700 dark:text-amber-400" : "text-red-400"
                 )}>
                   {(metrics.success_rate * 100).toFixed(0)}%
                 </span>
@@ -1081,7 +1081,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
               "text-[10px] px-2 py-0.5 rounded-full border font-medium",
               botRunning
                 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
             )}>
               {botRunning ? "Verbunden" : "Nicht aktiv"}
             </span>
@@ -1734,13 +1734,13 @@ function AgentSettings({
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
           <div className="flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4 text-amber-400" />
+            <ShieldAlert className="h-4 w-4 text-amber-700 dark:text-amber-400" />
             <span className="text-sm font-medium">Autonomie-Level</span>
             <span className={cn(
               "text-[10px] px-2 py-0.5 rounded-full border font-medium",
               autonomyLevel === "l1" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
               autonomyLevel === "l2" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-              autonomyLevel === "l3" && "bg-amber-500/10 text-amber-400 border-amber-500/20",
+              autonomyLevel === "l3" && "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
               autonomyLevel === "l4" && "bg-red-500/10 text-red-400 border-red-500/20",
             )}>
               {autonomyLevel.toUpperCase()}
@@ -2490,7 +2490,7 @@ function AgentSettings({
                     "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
                     isSelected
                       ? isFullAccess
-                        ? "bg-amber-500/20 text-amber-400"
+                        ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
                         : "bg-primary/20 text-primary"
                       : "bg-foreground/[0.06] text-muted-foreground"
                   )}
@@ -2559,7 +2559,7 @@ function AgentSettings({
         <div className={cn(
           "rounded-lg border px-4 py-2.5 text-sm",
           message.type === "success" && "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-          message.type === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-400",
+          message.type === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400",
           message.type === "error" && "border-red-500/20 bg-red-500/10 text-red-400",
         )}>
           {message.text}
@@ -2822,7 +2822,7 @@ function MountSelectorSection({ agentId }: { agentId: string }) {
                       <span className={cn(
                         "inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide",
                         entry.mode === "rw"
-                          ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
                           : "bg-foreground/[0.04] text-muted-foreground border-foreground/[0.1]"
                       )}>
                         {entry.mode === "rw" ? "read-write" : "read-only"}
@@ -3003,9 +3003,9 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             )}
             {isDir ? (
               isExpanded ? (
-                <FolderOpen className="h-3.5 w-3.5 text-amber-400/70 shrink-0" />
+                <FolderOpen className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400/70 shrink-0" />
               ) : (
-                <Folder className="h-3.5 w-3.5 text-amber-400/70 shrink-0" />
+                <Folder className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400/70 shrink-0" />
               )
             ) : (
               <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
@@ -3068,7 +3068,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
   };
 
   const diskColor = diskPercent >= 95 ? "bg-red-500" : diskPercent >= 80 ? "bg-amber-500" : "bg-emerald-500";
-  const diskTextColor = diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-emerald-400";
+  const diskTextColor = diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-700 dark:text-amber-400" : "text-emerald-400";
   const diskUsageLabel = diskUsageMb >= 1024 ? `${(diskUsageMb / 1024).toFixed(1)} GB` : `${diskUsageMb.toFixed(0)} MB`;
   const diskLimitLabel = diskLimitMb >= 1024 ? `${(diskLimitMb / 1024).toFixed(0)} GB` : `${diskLimitMb.toFixed(0)} MB`;
 

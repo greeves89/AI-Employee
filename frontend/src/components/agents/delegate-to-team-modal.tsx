@@ -125,7 +125,7 @@ export function DelegateToTeamModal({
                   {/* Body */}
                   <div className="px-6 py-5 space-y-5">
                     {!team?.lead_agent_id && (
-                      <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-400">
+                      <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-400">
                         Dieses Team hat keinen Lead. Lege zuerst einen Lead fest, damit der Task zugewiesen werden kann.
                       </div>
                     )}

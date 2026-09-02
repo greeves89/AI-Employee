@@ -43,7 +43,7 @@ function Stars({ value }: { value: number | null | undefined }) {
   if (!value) return <span className="text-muted-foreground">—</span>;
   const full = Math.round(value);
   return (
-    <span className="text-amber-400 text-sm">
+    <span className="text-amber-700 dark:text-amber-400 text-sm">
       {"★".repeat(full)}{"☆".repeat(5 - full)}
       <span className="ml-1 text-xs text-muted-foreground">{value.toFixed(1)}</span>
     </span>
@@ -58,7 +58,7 @@ function StatCard({
   const colors: Record<string, string> = {
     blue: "text-blue-400 bg-blue-500/10",
     emerald: "text-emerald-400 bg-emerald-500/10",
-    amber: "text-amber-400 bg-amber-500/10",
+    amber: "text-amber-700 dark:text-amber-400 bg-amber-500/10",
     purple: "text-purple-400 bg-purple-500/10",
     cyan: "text-cyan-400 bg-cyan-500/10",
   };
@@ -212,7 +212,7 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
               {data.ratings?.length > 0 && (
                 <div>
                   <div className="flex items-center gap-1.5 mb-2">
-                    <MessageSquare className="h-3.5 w-3.5 text-amber-400" />
+                    <MessageSquare className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" />
                     <p className="text-[11px] font-medium text-muted-foreground/70">Bewertungen</p>
                   </div>
                   <div className="space-y-1.5">
@@ -466,7 +466,7 @@ export default function AnalyticsPage() {
                           </td>
                           <td className="py-2.5 px-3 text-right text-[12px]">
                             {s.manual_duration_seconds
-                              ? <span className="text-amber-400">{fmtSeconds(s.manual_duration_seconds)}</span>
+                              ? <span className="text-amber-700 dark:text-amber-400">{fmtSeconds(s.manual_duration_seconds)}</span>
                               : <span className="text-muted-foreground/40">—</span>}
                           </td>
                           <td className="py-2.5 px-3 text-right text-[12px] text-blue-400">
@@ -489,7 +489,7 @@ export default function AnalyticsPage() {
                                   "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
                                   s.roi_factor >= 5 ? "bg-emerald-500/10 text-emerald-400" :
                                   s.roi_factor >= 2 ? "bg-blue-500/10 text-blue-400" :
-                                  "bg-amber-500/10 text-amber-400"
+                                  "bg-amber-500/10 text-amber-700 dark:text-amber-400"
                                 )}>
                                   {s.roi_factor}×
                                 </span>
@@ -548,7 +548,7 @@ export default function AnalyticsPage() {
                                 <span className={cn(
                                   "font-medium",
                                   a.success_rate_pct >= 80 ? "text-emerald-400" :
-                                  a.success_rate_pct >= 60 ? "text-amber-400" : "text-red-400"
+                                  a.success_rate_pct >= 60 ? "text-amber-700 dark:text-amber-400" : "text-red-400"
                                 )}>
                                   {a.success_rate_pct}%
                                 </span>
@@ -557,7 +557,7 @@ export default function AnalyticsPage() {
                                 <span className={cn(
                                   "font-medium",
                                   a.rework_rate_pct <= 10 ? "text-emerald-400" :
-                                  a.rework_rate_pct <= 25 ? "text-amber-400" : "text-red-400"
+                                  a.rework_rate_pct <= 25 ? "text-amber-700 dark:text-amber-400" : "text-red-400"
                                 )}>
                                   {a.rework_rate_pct ?? 0}%
                                 </span>

@@ -57,7 +57,7 @@ export { imageExtensions, markdownExtensions, binaryExtensions, htmlExtensions, 
 
 const fileColorMap: Record<string, string> = {
   py: "text-blue-400", ts: "text-blue-400", tsx: "text-cyan-400",
-  js: "text-amber-400", jsx: "text-amber-400", json: "text-emerald-400",
+  js: "text-amber-700 dark:text-amber-400", jsx: "text-amber-700 dark:text-amber-400", json: "text-emerald-400",
   md: "text-zinc-400", html: "text-orange-400", htm: "text-orange-400",
   css: "text-violet-400", sh: "text-emerald-400",
   yml: "text-red-400", yaml: "text-red-400", sql: "text-blue-400",

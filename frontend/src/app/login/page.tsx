@@ -90,7 +90,7 @@ export default function LoginPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
             <div className="w-full max-w-md rounded-2xl border border-amber-500/20 bg-card p-8 text-center shadow-2xl">
               <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/15">
-                <Clock className="h-8 w-8 text-amber-400" />
+                <Clock className="h-8 w-8 text-amber-700 dark:text-amber-400" />
               </div>
               <h2 className="text-lg font-semibold text-foreground">Warten auf Freischaltung</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">

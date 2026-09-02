@@ -321,7 +321,7 @@ function SchedulesPageInner() {
                   {[
                     { value: 0, label: "Low", color: "text-slate-400" },
                     { value: 1, label: "Normal", color: "text-blue-400" },
-                    { value: 2, label: "High", color: "text-amber-400" },
+                    { value: 2, label: "High", color: "text-amber-700 dark:text-amber-400" },
                     { value: 3, label: "Urgent", color: "text-red-400" },
                   ].map((p) => (
                     <button
@@ -463,7 +463,7 @@ function SchedulesPageInner() {
                     onClick={() => handleToggle(schedule)}
                     className={`flex h-8 w-8 items-center justify-center rounded-lg border backdrop-blur-sm transition-colors ${
                       schedule.enabled
-                        ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20"
+                        ? "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
                         : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
                     }`}
                   >

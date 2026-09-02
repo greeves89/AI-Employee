@@ -45,16 +45,16 @@ const CATEGORY_CONFIG: Record<string, { icon: typeof DollarSign; color: string; 
   file_write: { icon: FileX, color: "text-orange-400", label: "Datei schreiben" },
   external_api: { icon: Globe, color: "text-purple-400", label: "Externe API" },
   external_communication: { icon: Globe, color: "text-purple-400", label: "Externe Komm." },
-  purchase: { icon: ShoppingCart, color: "text-amber-400", label: "Kauf" },
+  purchase: { icon: ShoppingCart, color: "text-amber-700 dark:text-amber-400", label: "Kauf" },
   shell_exec: { icon: Settings, color: "text-red-400", label: "Shell" },
-  system_config: { icon: Settings, color: "text-amber-400", label: "System" },
+  system_config: { icon: Settings, color: "text-amber-700 dark:text-amber-400", label: "System" },
   custom: { icon: Settings, color: "text-zinc-400", label: "Sonstige" },
 };
 
 const LEVEL_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
   l1: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", label: "L1" },
   l2: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", label: "L2" },
-  l3: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", label: "L3" },
+  l3: { bg: "bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", border: "border-amber-500/20", label: "L3" },
   l4: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20", label: "L4" },
 };
 
@@ -89,7 +89,7 @@ const riskConfig = {
   },
   medium: {
     icon: AlertTriangle,
-    color: "text-amber-400",
+    color: "text-amber-700 dark:text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/20",
     label: "MEDIUM RISK",
@@ -621,7 +621,7 @@ export default function ApprovalsPage() {
                           {cfg.label}
                         </span>
                         {rule.threshold !== null && (
-                          <span className="inline-flex items-center rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+                          <span className="inline-flex items-center rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
                             &gt; {rule.threshold}
                           </span>
                         )}

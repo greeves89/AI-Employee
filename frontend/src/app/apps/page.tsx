@@ -149,7 +149,7 @@ export default function AppsPage() {
                           isBusy ? "bg-primary/10 text-primary border-primary/20"
                             : running ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                             : notStarted ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
-                            : "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                            : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
                         )}>
                           {isBusy && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
                           {isBusy ? "startet…" : running ? "läuft" : notStarted ? "nicht gestartet" : "gestoppt"}
@@ -185,7 +185,7 @@ export default function AppsPage() {
                     )}
                     {running && !readOnly && (
                       <button onClick={() => act(app.project, () => api.stopApp(app.project))} disabled={isBusy}
-                        className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors">
+                        className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors">
                         {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />} Stoppen
                       </button>
                     )}
@@ -240,7 +240,7 @@ export default function AppsPage() {
                         <button
                           onClick={() => report(app)}
                           disabled={reporting.has(app.project)}
-                          className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
+                          className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
                         >
                           {reporting.has(app.project) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Flag className="h-3.5 w-3.5" />}
                           An Agent melden (soll beheben)
@@ -427,7 +427,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
                         <span className={cn(
                           "text-[10px] px-2 py-0.5 rounded-full border shrink-0",
                           c.status === "running" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            : "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                            : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
                         )}>{c.status}</span>
                       </div>
                     ))}
@@ -457,7 +457,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
                       {detail.shares.map((s) => (
                         <div key={s.id} className="flex items-center justify-between gap-3 px-3 py-2">
                           <div className="flex items-center gap-2 min-w-0">
-                            {s.scope === "public" ? <Globe className="h-4 w-4 text-amber-400 shrink-0" />
+                            {s.scope === "public" ? <Globe className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0" />
                               : s.scope === "authenticated" ? <Users className="h-4 w-4 text-blue-400 shrink-0" />
                               : <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />}
                             <div className="min-w-0">
@@ -527,8 +527,8 @@ function DetailModal({ app, onClose, onShowLogs }: {
                     {scope === "public" && (
                       <div className="space-y-2">
                         <div className="flex items-start gap-2 rounded-lg bg-amber-500/[0.07] border border-amber-500/20 px-3 py-2">
-                          <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
-                          <p className="text-[11px] text-amber-200/90">
+                          <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+                          <p className="text-[11px] text-amber-700 dark:text-amber-200/90">
                             Jeder mit dem Link kommt <strong>ohne Anmeldung</strong> an die App — auch außerhalb
                             eures Netzes. Nur für Demos, und nie für Apps mit echten Daten.
                           </p>
@@ -550,7 +550,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
                           Unbefristet — läuft nie ab
                         </label>
                         {neverExpires && (
-                          <p className="text-[11px] text-amber-300/90">
+                          <p className="text-[11px] text-amber-700 dark:text-amber-300/90">
                             Dieser Link bleibt gültig, bis du ihn zurückziehst. Niemand
                             erinnert dich daran.
                           </p>
@@ -576,7 +576,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
 
                     {freshLink && (
                       <div className="space-y-1.5">
-                        <p className="flex items-center gap-1.5 text-[11px] text-amber-300">
+                        <p className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
                           <Link2 className="h-3.5 w-3.5" />
                           Jetzt kopieren — dieser Link wird nur einmal angezeigt.
                         </p>
@@ -669,7 +669,7 @@ function LogsModal({ app, onClose }: { app: api.AppEntry; onClose: () => void })
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded-full border",
                     c.status === "running" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                      : "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                      : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
                   )}>{c.status}</span>
                 </div>
                 <pre className="text-[11px] leading-relaxed whitespace-pre-wrap break-words font-mono text-foreground/75 bg-foreground/[0.03] rounded-lg p-3 max-h-72 overflow-auto">

@@ -126,7 +126,7 @@ export default function OnboardingPage() {
                   <div key={a.name} className="rounded-lg bg-foreground/[0.03] px-3 py-2">
                     <p className="text-sm font-medium">
                       {a.display_name}
-                      {!a.available && <span className="text-amber-400 text-[11px] ml-2">(Template fehlt)</span>}
+                      {!a.available && <span className="text-amber-700 dark:text-amber-400 text-[11px] ml-2">(Template fehlt)</span>}
                     </p>
                     {a.description && <p className="text-xs text-muted-foreground mt-0.5">{a.description}</p>}
                   </div>

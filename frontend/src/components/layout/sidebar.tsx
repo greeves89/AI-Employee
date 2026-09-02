@@ -433,7 +433,7 @@ export function Sidebar() {
                           {item.href === "/approvals" && pendingApprovals > 0 ? (
                             <span
                               title={`${pendingApprovals} offene Freigabe(n)`}
-                              className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-400"
+                              className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-700 dark:text-amber-400"
                             >
                               {pendingApprovals > 99 ? "99+" : pendingApprovals}
                             </span>

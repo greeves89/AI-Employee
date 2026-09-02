@@ -52,7 +52,7 @@ const statusConfig = {
   },
   partial: {
     label: "Partial",
-    color: "text-amber-400",
+    color: "text-amber-700 dark:text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/20",
     dot: "bg-amber-400",
@@ -438,7 +438,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                         <button
                           onClick={() => handleRebuild(app)}
                           disabled={isActionLoading}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-50"
                           title="Rebuild images & recreate containers"
                         >
                           {isActionLoading && actionLoading === app.path ? (
@@ -637,7 +637,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                               {container?.exposed_ports?.map((ep) => (
                                 <span
                                   key={ep}
-                                  className="inline-flex items-center rounded-md bg-amber-500/5 border border-amber-500/15 px-2 py-0.5 text-[10px] font-mono text-amber-400/60"
+                                  className="inline-flex items-center rounded-md bg-amber-500/5 border border-amber-500/15 px-2 py-0.5 text-[10px] font-mono text-amber-700 dark:text-amber-400/60"
                                   title="Exposed but not mapped to host"
                                 >
                                   {ep}
