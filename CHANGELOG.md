@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.287.0] - 2026-09-02
+
+### Neu
+- **Die Release-Spur wird jetzt maschinell geprüft** (#699). Dass zu jeder
+  Änderung `VERSION`, das Label im Agenten-Abbild und ein CHANGELOG-Abschnitt
+  gehören, war reine Disziplin — nichts hat es kontrolliert. Entsprechend trugen
+  am 02.09. zwei Paare offener Anfragen dieselbe Nummer, drei lagen unter dem
+  Stand des Hauptzweigs, und eine Änderung war ganz ohne Eintrag durchgelaufen.
+  Wer wissen will, was auf seiner Anlage neu ist, schaut in den Änderungsbericht;
+  steht dort nichts, wurde unsichtbar ausgeliefert.
+  - Auf dem Hauptzweig hart: Nummer muss steigen, Label und Datei müssen
+    übereinstimmen, der Abschnitt muss existieren.
+  - In einer offenen Anfrage nur ein Hinweis — dort kann der Zusammenführen die
+    Nummer noch auflösen; ein Prüflauf, der oft falsch anschlägt, wird ignoriert.
+  - Geprüft wird ausdrücklich **Monotonie, nicht Lückenlosigkeit**: übersprungene
+    Nummern entstehen regulär, wenn mehrere Zweige nebeneinander warten.
+  - Ein reiner Nachtrag in der Dokumentation braucht keinen Versionssprung.
+
+---
+
 ## [1.286.0] - 2026-09-02
 
 ### Hinzugefügt

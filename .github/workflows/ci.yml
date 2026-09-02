@@ -97,6 +97,46 @@ jobs:
         working-directory: agent
         run: pytest -q
 
+  # ── Release-Spur (#699): VERSION, Dockerfile-Label und CHANGELOG gehoerten
+  #    zusammen, wurden aber von nichts geprueft. Folge am 02.09.2026: zwei Paare
+  #    offener PRs auf derselben Nummer, drei unter dem Stand von main, ein
+  #    Direkt-Commit ganz ohne Eintrag. Auf main hart, im PR nur ein Hinweis —
+  #    dort kann der Merge die Nummer noch aufloesen. ──
+  release-track:
+    name: Release-Spur
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Der Push-Check vergleicht gegen den vorherigen Stand; mit einem
+          # flachen Klon gibt es keinen.
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Pruefe die Spur (main)
+        if: github.event_name == 'push'
+        run: python scripts/release_track_check.py push --vorher "${{ github.event.before }}"
+      - name: Hinweise zur Spur (Pull Request)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Die Nummern der ANDEREN offenen PRs holen — der einzige Teil, der
+          # sich nicht aus dem Checkout allein beantworten laesst.
+          fremde=""
+          for nr in $(gh pr list --state open --json number -q '.[].number'); do
+            [ "$nr" = "${{ github.event.number }}" ] && continue
+            zweig=$(gh pr view "$nr" --json headRefName -q .headRefName)
+            v=$(git show "origin/$zweig:VERSION" 2>/dev/null | tr -d '[:space:]') || true
+            [ -n "$v" ] && fremde="$fremde,$nr=$v"
+          done
+          git fetch -q origin main
+          python scripts/release_track_check.py pr --basis origin/main --fremde "${fremde#,}"
+
   # ── Compose validity: would have caught a broken docker-compose.yml before deploy. ──
   compose-config:
     name: docker compose config
