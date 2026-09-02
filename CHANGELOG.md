@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.278.0] - 2026-09-02
+
+### Behoben
+- **Der Erinnerungs-Zähler log.** „(50 Einträge)" bedeutete in Wahrheit „so
+  viele, wie auf eine Seite passen" — bei 50 wie bei 500 gespeicherten
+  Erinnerungen stand dieselbe Zahl da, und auch die Zahlen an den
+  Kategorie-Chips zählten nur die gerade sichtbare Seite. Beide Werte kommen
+  jetzt aus der Datenbank über den gesamten Bestand.
+- Dieselbe Zahl bekam auch der Agent über den Erinnerungs-MCP-Server zu sehen.
+  Er nennt jetzt „50 of 500", wenn er nur einen Ausschnitt hat.
+
+### Neu
+- **Weitere Erinnerungen nachladen.** Ab der 51. Erinnerung war der Rest ohne
+  Umweg über die Suche unerreichbar. Ein Knopf „Mehr laden (50 von 320)" holt
+  die nächste Seite nach.
+
+### Geändert
+- Vier englische Tooltips im Erinnerungs-Tab auf Deutsch gebracht.
+
+---
+
 ## [1.277.0] - 2026-09-02
 
 ### Hinzugefuegt

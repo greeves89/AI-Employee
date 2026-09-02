@@ -1324,9 +1324,11 @@ export async function updateSettings(data: Record<string, unknown>): Promise<voi
 export async function getAgentMemories(
   agentId: string,
   category?: string,
-): Promise<{ memories: AgentMemory[]; total: number; categories: Record<string, number> }> {
+  offset = 0,
+): Promise<{ memories: AgentMemory[]; total: number; has_more: boolean; categories: Record<string, number> }> {
   const params = new URLSearchParams();
   if (category) params.set("category", category);
+  if (offset) params.set("offset", String(offset));
   return fetchJSON(`${getBase()}/memory/agents/${agentId}?${params}`);
 }
 
