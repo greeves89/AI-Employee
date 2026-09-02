@@ -370,6 +370,19 @@ export function VoiceSessionModal({
   const wsReconnectTimer = useRef<number | undefined>(undefined);
   const voiceSessionRef = useRef<string>("");
   const MAX_VOICE_RECONNECTS = 8;
+  // Die Zaehler-Grenze allein hat am 31.08.2026 nicht gehalten: gemessen wurden
+  // 441 Verbindungsversuche in 85 Sekunden (#691). Der Zaehler wird
+  // zurueckgesetzt, sobald Gespraechsdaten eintreffen — kommt vom Server auch
+  // im Fehlerfall noch irgendein Ereignis, faengt das Zaehlen von vorn an und
+  // die Grenze ist wirkungslos. Deshalb zusaetzlich eine Bremse, die von
+  // KEINEM Ruecksetzen abhaengt: Versuche innerhalb eines Zeitfensters.
+  const VERSUCHSFENSTER_MS = 60_000;
+  const MAX_VERSUCHE_IM_FENSTER = 10;
+  const versucheImFenster = useRef<number[]>([]);
+  // Fester Abstand von 600 ms gegen einen Fehler, der nie von allein weggeht,
+  // ist nur ein schnelleres Scheitern. Verdoppeln, gedeckelt bei 30 s.
+  const BACKOFF_START_MS = 600;
+  const BACKOFF_DECKEL_MS = 30_000;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
@@ -543,6 +556,23 @@ export function VoiceSessionModal({
 
     const scheduleReconnect = () => {
       if (cancelled || closingRef.current) return;
+
+      // Zeitfenster-Bremse: unabhaengig davon, was den Zaehler zurueckgesetzt
+      // hat. Sie ist es, die den Sturm vom 31.08. verhindert haette.
+      const jetzt = Date.now();
+      versucheImFenster.current = versucheImFenster.current.filter(
+        (t) => jetzt - t < VERSUCHSFENSTER_MS,
+      );
+      if (versucheImFenster.current.length >= MAX_VERSUCHE_IM_FENSTER) {
+        setState("error");
+        setError(
+          "Die Sprachverbindung scheitert wiederholt. Ich habe aufgehört, es zu "
+          + "versuchen — bitte über „Neu verbinden“ starten.",
+        );
+        return;
+      }
+      versucheImFenster.current.push(jetzt);
+
       if (reconnectsRef.current >= MAX_VOICE_RECONNECTS) {
         setState("error");
         setError("Sprachverbindung verloren. Bitte neu starten.");
@@ -550,7 +580,13 @@ export function VoiceSessionModal({
       }
       reconnectsRef.current += 1;
       setState("connecting");
-      wsReconnectTimer.current = window.setTimeout(() => { void connectWs(); }, 600);
+      // Exponentiell: 600 ms, 1.2 s, 2.4 s … bis 30 s. Gegen einen dauerhaften
+      // Fehler ist jeder schnelle Neuversuch nur mehr Last und mehr Protokoll.
+      const wartezeit = Math.min(
+        BACKOFF_DECKEL_MS,
+        BACKOFF_START_MS * 2 ** Math.max(0, reconnectsRef.current - 1),
+      );
+      wsReconnectTimer.current = window.setTimeout(() => { void connectWs(); }, wartezeit);
     };
 
     neuVerbindenRef.current = () => {
@@ -558,6 +594,7 @@ export function VoiceSessionModal({
       // Zaehler zuruecksetzen: der Nutzer hat sich bewusst entschieden, das
       // ist kein weiterer Versuch einer kaputten Sitzung.
       reconnectsRef.current = 1;   // >0, damit der Server das Gespraech nachlaedt
+      versucheImFenster.current = [];  // bewusste Entscheidung, kein Sturm
       setError(null);
       setState("connecting");
       try { wsRef.current?.close(); } catch { /* schliesst gleich selbst */ }

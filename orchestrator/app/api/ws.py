@@ -1020,6 +1020,19 @@ async def ws_agent_voice(
             await session.init(db)
     except Exception as e:  # noqa: BLE001
         logger.exception("voice session init failed agent=%s model=%s", scrub_log(agent_id), scrub_log(interaction_model))
+        # `init()` baut den Bedrock-Client — und damit eine HTTP-Sitzung — BEVOR
+        # es den Datenstrom oeffnet. Scheitert es danach, blieb dieser Client
+        # bisher offen zurueck: am 31.08.2026 waren das 473 „Unclosed client
+        # session" in 85 Sekunden (#691). Zusammen mit einem Wiederverbinden im
+        # Sekundentakt wuchs das Fehlerprotokoll auf 668 KB in einer Stunde,
+        # erzwang eine ausserplanmaessige Rotation und schob einen MONAT
+        # Diagnose-Historie aus dem Fenster. Das Aufraeumen gehoert deshalb in
+        # JEDEN Fehlerfall, nicht nur in den erwarteten.
+        try:
+            await session.close()
+        except Exception:  # noqa: BLE001
+            logger.debug("Aufraeumen nach fehlgeschlagenem Sprach-Start misslang",
+                         exc_info=True)
         try:
             await websocket.send_text(json.dumps({
                 "type": "error",

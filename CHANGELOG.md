@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.293.0] - 2026-09-03
+
+### Behoben
+- **Ein Sprachfehler konnte Diagnose-Historie vernichten** (#691). Am 31.08.
+  scheiterte der Sprach-Start 441-mal in 85 Sekunden; dabei blieben 473
+  HTTP-Sitzungen offen. Das Fehlerprotokoll wuchs auf 668 KB in einer Stunde —
+  normal sind 2 MB in dreieinhalb Tagen —, erzwang eine außerplanmäßige Rotation
+  und schob die älteste Datei aus dem Fenster. **Ein Monat Diagnose-Historie
+  ging so verloren.** Die auslösende Ursache selbst war klein und ist getrennt
+  behoben; hier geht es um das, was daraus eine Eskalation gemacht hat.
+  - Die Sitzung wird jetzt in **jedem** Fehlerfall geschlossen. Der Client wird
+    gebaut, bevor der Datenstrom geöffnet wird — scheitert es danach, blieb er
+    bisher offen zurück.
+  - Neue Bremse fürs Wiederverbinden: höchstens zehn Versuche je Minute. Die
+    vorhandene Grenze von acht Versuchen war wirkungslos, weil ihr Zähler
+    zurückgesetzt wird, sobald Daten eintreffen — die neue Bremse hängt an der
+    Zeit und ist davon unabhängig.
+  - Der Abstand zwischen Versuchen verdoppelt sich jetzt (600 ms bis 30 s)
+    statt fest bei 600 ms zu bleiben. Gegen einen Fehler, der nicht von allein
+    weggeht, ist ein schneller Neuversuch nur mehr Last.
+  - Wer selbst auf „Neu verbinden" drückt, setzt die Bremse zurück — das ist
+    eine Entscheidung, kein Sturm.
+
+---
+
 ## [1.292.0] - 2026-09-03
 
 ### Behoben
