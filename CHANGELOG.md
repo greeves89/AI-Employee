@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.285.0] - 2026-09-02
+
+### Behoben
+- **Abgelaufene eigene KI-Zugänge werden jetzt sichtbar.** Wenn ein Agent beim echten Lauf mit dem persönlichen Claude- oder Codex-Zugang an einem Auth-Fehler scheitert, markiert die Oberfläche den Zugang als fehlerhaft; nach einem erfolgreichen Lauf wird der Status wieder gesund statt dauerhaft rot zu bleiben.
+
+- **Auch der Chat-Weg des eigenen Modells meldet jetzt.** Er war der letzte,
+  der schwieg: wer sein Modell nur im Chat benutzt, hätte einen abgelaufenen
+  Zugang nirgends gesehen — der Agent hätte einfach aufgehört zu antworten.
+
+### Hinweis
+- Die Statusmeldung ist für alle vier Wege durch Tests abgesichert: Claude-Chat,
+  Codex-Aufgaben, Codex-Chat und das eigene Modell (Aufgaben wie Chat). Ein
+  gewöhnlicher Fehler — ein fehlgeschlagenes Werkzeug etwa — färbt den Zugang
+  weiterhin nicht rot; nur Auth-Fehler tun das.
+
+---
+
 ## [1.284.0] - 2026-09-02
 
 ### Behoben

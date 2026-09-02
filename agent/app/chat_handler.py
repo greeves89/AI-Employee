@@ -9,6 +9,7 @@ import signal
 from typing import AsyncIterator
 
 from app.config import get_oauth_token, settings
+from app.ai_credential_status import is_auth_error, report_result_status
 from app.log_publisher import LogPublisher
 from app.runner_hooks import feed_prompt_via_stdin
 
@@ -131,13 +132,7 @@ class ChatHandler:
         if (
             result.get("status") == "error"
             and not _is_context_length_error(error_text)
-            and any(
-                phrase in error_text
-                for phrase in [
-                    "does not have access", "invalid_grant", "unauthorized",
-                    "401", "token", "oauth", "authentication", "revoked",
-                ]
-            )
+            and is_auth_error(error_text)
         ):
             logger.warning(f"Auth error detected, waiting for token refresh: {error_text[:100]}")
             await self.log_publisher.publish_chat(
@@ -147,6 +142,7 @@ class ChatHandler:
             from app.config import wait_for_new_oauth_token
             await wait_for_new_oauth_token(token_before)
             result = await self._execute_cli(message_id, text, model)
+        await report_result_status(result)
         return result
 
     # Claude has no reasoning-effort flag; thinking depth is driven by the
