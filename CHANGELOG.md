@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.291.0] - 2026-09-02
+
+### Geändert
+- **Die Wache gegen Kundennamen führt diese nicht mehr im Klartext** (#688).
+  Sie verhindert, dass Kunden-, Firmen- und Personennamen in dieses öffentliche
+  Verzeichnis geraten — und tat das, indem sie die Namen vollständig auflistete,
+  in einer Datei, die durch ihren Namen ankündigt, dass dort Kundennamen zu
+  finden sind, und die sich selbst von der Prüfung ausnahm. Aus der
+  Schutzmaßnahme war damit das gepflegteste, maschinenlesbare Verzeichnis
+  überhaupt geworden; der Kommentar daneben lud ausdrücklich zum Erweitern ein.
+  - Gespeichert werden jetzt nur noch Prüfsummen. Erkennen genügt, anzeigen ist
+    nicht nötig.
+  - Auch die Fehlermeldung nennt den getroffenen Begriff nicht mehr, sondern nur
+    Datei und Zeile — das Protokoll eines öffentlichen Verzeichnisses ist
+    ebenso öffentlich.
+  - Die Prüfung selbst arbeitet mit einem eigens angelegten Begriff ohne realen
+    Bezug; vorher brauchte sie dafür einen echten Namen.
+  - Bewusster Tausch: aus der Teilstring-Suche wird eine Wortsuche. Ein Name
+    ohne Trennzeichen mitten in einem längeren Wort wird nicht mehr gefunden;
+    alle praktisch aufgetretenen Fälle bleiben erfasst. Ein Test hält das fest,
+    statt es zu verschweigen.
+  - Was einmal veröffentlicht wurde, bleibt in der Versionsgeschichte. Hier geht
+    es darum, dass die Liste nicht weiter wächst.
+
+---
+
 ## [1.290.0] - 2026-09-02
 
 ### Behoben
