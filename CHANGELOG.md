@@ -14,10 +14,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   bleibt im Verlauf sichtbar, geht nur nicht mehr ans Modell. Jederzeit per
   Klick umkehrbar, anders als Zurückspulen wird nichts gelöscht. Der
   Kontextring zeigt an, wie viel davon aktuell ausgeschlossen ist.
-- Zusaetzlich als automatischer Unterbau: beim eingebauten Modell (Custom-LLM,
-  Anthropic direkt) raeumt Claude jetzt serverseitig selbst alte
+- Zusätzlich als automatischer Unterbau: beim eingebauten Modell (Custom-LLM,
+  Anthropic direkt) räumt Claude jetzt serverseitig selbst alte
   Werkzeug-Ausgaben weg, sobald der Verlauf zu groß wird — bevor der Request
   überhaupt rausgeht.
+- Diese Beta-Funktion schaltet sich selbst ab, wenn die Schnittstelle sie einmal
+  ablehnt — sonst hinge der gesamte Chat-Weg des eingebauten Modells an einer
+  Bequemlichkeit, die nur den Verlauf kleiner hält. Das Ausschließen von Hand
+  bleibt davon unberührt.
+
 
 ---
 

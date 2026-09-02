@@ -16,6 +16,30 @@ from app.providers.base import (
 
 logger = logging.getLogger(__name__)
 
+# Context-Editing (#538) ist eine BETA. Laeuft sie aus, oder kennt ein Modell sie
+# nicht, antwortet die API mit 400 — und ohne Bremse waere damit der ganze
+# Chat-Weg tot, wegen einer Bequemlichkeit, die nur den Verlauf kleiner haelt.
+# Nach der ersten Ablehnung wird sie deshalb dauerhaft weggelassen. Klassenweit,
+# nicht je Instanz: sonst laeuft der naechste Provider erneut hinein.
+_CONTEXT_EDITING_AUS = False
+
+_CE_MARKER = (
+    "context_management",
+    "context-management",
+    "clear_tool_uses",
+    "anthropic-beta",
+)
+
+
+def _betrifft_context_editing(fehlertext: str) -> bool:
+    """Ob eine 400 an Context-Editing liegt — und nicht an etwas anderem.
+
+    Ein zu breiter Treffer wuerde die Beta bei jedem beliebigen Eingabefehler
+    abschalten; ein zu enger laesst den Totalausfall bestehen.
+    """
+    text = (fehlertext or "").lower()
+    return any(marker in text for marker in _CE_MARKER)
+
 
 def _to_anthropic_blocks(content) -> list[dict]:
     """Convert generic content blocks (text/image) to Anthropic block format."""
@@ -112,6 +136,7 @@ class AnthropicProvider(BaseLLMProvider):
         messages: list[ChatMessage],
         tools: list[dict] | None = None,
     ) -> AsyncIterator[LLMEvent]:
+        global _CONTEXT_EDITING_AUS
         """Stream a chat completion via Anthropic Messages API."""
         url = f"{self.api_endpoint}/messages"
 
@@ -203,14 +228,14 @@ class AnthropicProvider(BaseLLMProvider):
         # hier gehaltene Verlauf (self._history) bleibt dabei unveraendert, nur was
         # ueber die Leitung geht wird kleiner. Mit reinen Defaults (100k Token
         # Schwelle, letzte 3 Werkzeug-Paare bleiben woertlich).
-        body["context_management"] = {"edits": [{"type": "clear_tool_uses_20250919"}]}
-
         headers = {
             "x-api-key": self.api_key,
             "anthropic-version": "2023-06-01",
-            "anthropic-beta": "context-management-2025-06-27",
             "Content-Type": "application/json",
         }
+        if not _CONTEXT_EDITING_AUS:
+            body["context_management"] = {"edits": [{"type": "clear_tool_uses_20250919"}]}
+            headers["anthropic-beta"] = "context-management-2025-06-27"
 
         input_tokens = 0
         output_tokens = 0
@@ -230,7 +255,26 @@ class AnthropicProvider(BaseLLMProvider):
             async with self.http.stream("POST", url, json=body, headers=headers) as response:
                 if response.status_code != 200:
                     error_body = await response.aread()
-                    yield LLMEvent(type="error", text=f"API error {response.status_code}: {error_body.decode()}")
+                    text = error_body.decode()
+                    if (response.status_code == 400
+                            and not _CONTEXT_EDITING_AUS
+                            and "context_management" in body
+                            and _betrifft_context_editing(text)):
+                        _CONTEXT_EDITING_AUS = True
+                        logger.warning(
+                            "[Anthropic] Context-Editing abgelehnt — ab jetzt ohne. "
+                            "Der Verlauf wird nicht mehr serverseitig aufgeraeumt; "
+                            "das manuelle Ausschliessen (#538) bleibt unberuehrt. "
+                            "Grund im Wortlaut: %s", text[:300],
+                        )
+                        yield LLMEvent(
+                            type="error",
+                            text="Der Versuch, den Verlauf serverseitig zu kuerzen, "
+                                 "wurde abgelehnt. Ich habe das abgeschaltet — "
+                                 "schick die Nachricht einfach nochmal.",
+                        )
+                        return
+                    yield LLMEvent(type="error", text=f"API error {response.status_code}: {text}")
                     return
 
                 async for line in response.aiter_lines():
