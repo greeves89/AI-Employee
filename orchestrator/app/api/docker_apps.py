@@ -19,7 +19,7 @@ from urllib.parse import urlencode
 
 import httpx
 import yaml
-from docker.errors import ContainerError, ImageNotFound, NotFound
+from docker.errors import APIError, ContainerError, ImageNotFound, NotFound
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -187,6 +187,111 @@ def _run_compose(
             detail=f"Docker image '{COMPOSE_RUNNER_IMAGE}' not found. "
             "Pull it with: docker pull docker:cli",
         )
+
+
+# Compose benennt den laufenden Container vor dem Ersetzen in ``<hex>_<name>`` um
+# und legt den neuen unter dem echten Namen an. Bricht das dazwischen ab, bleibt
+# die Sicherungskopie liegen — mitsamt den Projektbezeichnungen.
+_BACKUP_NAME = re.compile(r"^/?[0-9a-f]{6,}_.+$")
+
+_NAME_CONFLICT = re.compile(
+    r'container name "?/?[^"\s]+"? is already in use', re.IGNORECASE
+)
+
+# Eine Sperre je App. Zwei Rebuilds derselben App gleichzeitig sind genau das,
+# was die liegengebliebenen Kopien ueberhaupt erst erzeugt (#644).
+_PROJECT_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _project_lock(project_name: str) -> asyncio.Lock:
+    lock = _PROJECT_LOCKS.get(project_name)
+    if lock is None:
+        lock = _PROJECT_LOCKS[project_name] = asyncio.Lock()
+    return lock
+
+
+def _is_name_conflict(output: str | None) -> bool:
+    """Nur ein Namenskonflikt rechtfertigt einen zweiten Anlauf. Ein voller
+    Datentraeger oder ein kaputtes Dockerfile wird dadurch nicht besser — der
+    Nutzer wartet dann bloss doppelt so lang auf dieselbe Fehlermeldung."""
+    return bool(_NAME_CONFLICT.search(output or ""))
+
+
+def _reconcile_stale_backups(docker: DockerService, project_name: str) -> list[str]:
+    """Raeumt Recreate-Reste weg, die jeden weiteren Rebuild blockieren (#644).
+
+    Entfernt wird nur, wo fuer denselben Platz (Dienst + Nummer) MEHRERE
+    Container existieren — der Zustand, den ein abgebrochener Recreate
+    hinterlaesst. Gibt es fuer einen Platz nur einen Container, ist er die App,
+    auch wenn sein Name zufaellig nach Sicherungskopie aussieht.
+    """
+    try:
+        containers = docker.client.containers.list(
+            all=True,
+            filters={"label": f"com.docker.compose.project={project_name}"},
+        )
+    except APIError as e:
+        logger.warning(f"Could not list containers of {scrub_log(project_name)}: {scrub_log(str(e))}")
+        return []
+
+    plaetze: dict[tuple[str, str], list] = {}
+    for c in containers:
+        labels = c.labels or {}
+        plaetze.setdefault(
+            (
+                labels.get("com.docker.compose.service", ""),
+                labels.get("com.docker.compose.container-number", ""),
+            ),
+            [],
+        ).append(c)
+
+    entfernt: list[str] = []
+    for gruppe in plaetze.values():
+        if len(gruppe) < 2:
+            continue
+        for c in gruppe:
+            name = c.name or ""
+            if not _BACKUP_NAME.match(name):
+                continue
+            try:
+                c.remove(force=True)
+            except NotFound:
+                continue        # ein paralleler Aufraeumer war schneller
+            except APIError as e:
+                # "removal of container is already in progress" — laeuft bereits
+                logger.warning(f"Could not remove leftover {scrub_log(name)}: {scrub_log(str(e))}")
+                continue
+            entfernt.append(name)
+
+    if entfernt:
+        logger.info(
+            f"Removed {len(entfernt)} leftover compose container(s) of "
+            f"{scrub_log(project_name)}: {scrub_log(', '.join(entfernt))}"
+        )
+    return entfernt
+
+
+async def _compose_with_conflict_recovery(
+    docker: DockerService,
+    workspace_volume: str,
+    project_name: str,
+    compose_file: str,
+    command: list[str],
+) -> tuple[int, str]:
+    """Ein Compose-Lauf, der einen Namenskonflikt einmal selbst aufloest."""
+    exit_code, output = await asyncio.to_thread(
+        _run_compose, docker, workspace_volume, project_name, compose_file, command,
+    )
+    if exit_code == 0 or not _is_name_conflict(output):
+        return exit_code, output
+
+    logger.warning(
+        f"Name conflict for {scrub_log(project_name)}, reconciling leftovers and retrying once"
+    )
+    await asyncio.to_thread(_reconcile_stale_backups, docker, project_name)
+    return await asyncio.to_thread(
+        _run_compose, docker, workspace_volume, project_name, compose_file, command,
+    )
 
 
 def _get_project_containers(docker: DockerService, project_name: str) -> list[dict]:
@@ -449,11 +554,11 @@ async def _start_core(docker: DockerService, agent: Agent, agent_id: str, path: 
         _prepare_free_port_compose, docker, agent, path, compose_file
     )
 
-    exit_code, output = await asyncio.to_thread(
-        _run_compose,
-        docker, workspace_volume, project_name, compose_file,
-        ["up", "-d", "--build"],
-    )
+    async with _project_lock(project_name):
+        exit_code, output = await _compose_with_conflict_recovery(
+            docker, workspace_volume, project_name, compose_file,
+            ["up", "-d", "--build"],
+        )
 
     # Compose-Ausgabe kann Build-Argumente und Env-Dumps enthalten. `scrub_log`
     # entfernt nur Steuerzeichen (Log-Injection) — Geheimnisse maskiert erst
@@ -480,9 +585,10 @@ async def _stop_core(docker: DockerService, agent: Agent, agent_id: str, path: s
     compose_file = _resolve_compose_file(docker, agent, path, require=False)
 
     logger.info(f"Stopping Docker app: {scrub_log(project_name)}")
-    exit_code, output = await asyncio.to_thread(
-        _run_compose, docker, workspace_volume, project_name, compose_file, ["down"],
-    )
+    async with _project_lock(project_name):
+        exit_code, output = await asyncio.to_thread(
+            _run_compose, docker, workspace_volume, project_name, compose_file, ["down"],
+        )
     output = redact_logs(output)          # siehe _start_core
     if exit_code != 0:
         logger.warning(f"Compose down warning for {scrub_log(project_name)}: {scrub_log(output)}")
@@ -503,10 +609,13 @@ async def _rebuild_core(docker: DockerService, agent: Agent, agent_id: str, path
     compose_file = await asyncio.to_thread(
         _prepare_free_port_compose, docker, agent, path, compose_file
     )
-    exit_code, output = await asyncio.to_thread(
-        _run_compose, docker, workspace_volume, project_name, compose_file,
-        ["up", "-d", "--build", "--force-recreate"],
-    )
+    async with _project_lock(project_name):
+        # Ein abgebrochener Recreate blockiert von allein jeden weiteren Versuch.
+        await asyncio.to_thread(_reconcile_stale_backups, docker, project_name)
+        exit_code, output = await _compose_with_conflict_recovery(
+            docker, workspace_volume, project_name, compose_file,
+            ["up", "-d", "--build", "--force-recreate"],
+        )
     output = redact_logs(output)          # siehe _start_core
     if exit_code != 0:
         logger.error(f"Failed to rebuild {scrub_log(project_name)}: {scrub_log(output)}")

@@ -51,6 +51,8 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
   const [categories, setCategories] = useState<Record<string, number>>({});
   const [activeCategory, setActiveCategory] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editImportance, setEditImportance] = useState(3);
@@ -70,11 +72,25 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
       const data = await getAgentMemories(agentId, category);
       setMemories(data.memories);
       setCategories(data.categories);
+      setHasMore(data.has_more);
     } catch {
       // ignore
     }
     setLoading(false);
   }, [agentId, activeCategory]);
+
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true);
+    try {
+      const category = activeCategory === "all" ? undefined : activeCategory;
+      const data = await getAgentMemories(agentId, category, memories.length);
+      setMemories((prev) => [...prev, ...data.memories]);
+      setHasMore(data.has_more);
+    } catch {
+      // ignore
+    }
+    setLoadingMore(false);
+  }, [agentId, activeCategory, memories.length]);
 
   useEffect(() => {
     fetchMemories();
@@ -143,6 +159,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
   };
 
   const totalMemories = Object.values(categories).reduce((a, b) => a + b, 0);
+  const activeTotal = activeCategory === "all" ? totalMemories : (categories[activeCategory] || 0);
   const visibleMemories = reflectionOnly
     ? memories.filter((m) => m.source === "reflection")
     : memories;
@@ -448,14 +465,14 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                         <button
                           onClick={() => handleSave(mem.id)}
                           className="p-1.5 rounded-lg text-emerald-400 hover:bg-accent transition-colors"
-                          title="Save"
+                          title="Speichern"
                         >
                           <Save className="h-3 w-3" />
                         </button>
                         <button
                           onClick={() => setEditingId(null)}
                           className="p-1.5 rounded-lg text-muted-foreground hover:bg-accent transition-colors"
-                          title="Cancel"
+                          title="Abbrechen"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -465,14 +482,14 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                         <button
                           onClick={() => handleEdit(mem)}
                           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                          title="Edit"
+                          title="Bearbeiten"
                         >
                           <Pencil className="h-3 w-3" />
                         </button>
                         <button
                           onClick={() => handleDelete(mem.id)}
                           className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-accent transition-colors"
-                          title="Delete"
+                          title="Löschen"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
@@ -483,6 +500,22 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {!loading && hasMore && !reflectionOnly && (
+        <div className="flex justify-center pt-1">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            {loadingMore ? (
+              <RefreshCw className="h-3 w-3 animate-spin" />
+            ) : (
+              `Mehr laden (${memories.length} von ${activeTotal})`
+            )}
+          </button>
         </div>
       )}
     </div>

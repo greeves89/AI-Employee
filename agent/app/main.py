@@ -469,6 +469,8 @@ def setup_codex_auth() -> None:
     """
     import shutil
 
+    from app import codex_auth_sync
+
     source = "/shared/.codex/auth.json"
     codex_home = os.environ.get("CODEX_HOME", "/home/agent/.codex")
     target = os.path.join(codex_home, "auth.json")
@@ -484,6 +486,7 @@ def setup_codex_auth() -> None:
             # Aus der Umgebung entfernen, damit der Zugang nicht in jedem
             # Prozessabbild und in `env`-Ausgaben mitläuft.
             os.environ.pop("CODEX_AUTH_JSON", None)
+            codex_auth_sync.record_start("own")
             print(f"[Agent] Codex auth configured from own credential at {target}")
             return
         except Exception as e:
@@ -491,6 +494,7 @@ def setup_codex_auth() -> None:
 
     if settings.openai_api_key or os.environ.get("OPENAI_API_KEY"):
         os.makedirs(codex_home, exist_ok=True)
+        codex_auth_sync.record_start("apikey")
         print("[Agent] Codex API key auth configured from environment")
         return
     if not os.path.exists(source):
@@ -500,6 +504,7 @@ def setup_codex_auth() -> None:
         os.makedirs(codex_home, exist_ok=True)
         shutil.copyfile(source, target)
         os.chmod(target, 0o600)
+        codex_auth_sync.record_start("shared")
         print(f"[Agent] Codex auth configured at {target}")
     except Exception as e:
         print(f"[Agent] WARN: Failed to configure Codex auth: {e}")

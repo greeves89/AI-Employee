@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import and_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -181,8 +182,8 @@ class ReflectionService:
 
         stats = {
             "transcripts_read": 0, "facts_new": 0, "facts_superseded": 0,
-            "pending_approvals": 0, "kb_entries": 0, "skills_drafted": 0,
-            "skipped": 0, "agents": [], "errors": [],
+            "pending_approvals": 0, "kb_entries": 0, "kb_skipped": 0,
+            "skills_drafted": 0, "skipped": 0, "agents": [], "errors": [],
         }
         tokens = {"in": 0, "out": 0}
         status = "completed"
@@ -735,7 +736,34 @@ class ReflectionService:
                 before = {"id": existing.id, "content": existing.content[:800], "title": existing.title}
             await self._queue_approval(db, run_id, agent.id, "knowledge", proposal, before, stats)
             return
-        await self._apply_knowledge(db, run_id, proposal, stats)
+        await self._apply_knowledge_guarded(db, run_id, proposal, stats)
+
+    async def _apply_knowledge_guarded(
+        self, db: AsyncSession, run_id: int, proposal: dict, stats: dict
+    ) -> bool:
+        """Wie ``_apply_knowledge``, nur reisst ein einzelner Eintrag den Lauf nicht mit.
+
+        Scheitert ein Schreibvorgang, ist die Session vergiftet: jede weitere
+        Anweisung desselben Laufs endet danach mit „transaction has been rolled
+        back", und alle uebrigen Erkenntnisse der Nacht gehen mit verloren. Ein
+        Eintrag weniger ist ein guenstigerer Preis als eine Nacht ohne Reflexion.
+
+        Nicht in ``_apply_knowledge`` selbst: der Freigabeweg
+        (``apply_reflection_approval``) MUSS weiterhin durchschlagen, damit der
+        Mensch, der gerade auf „freigeben" geklickt hat, den Fehler zu sehen
+        bekommt statt eines stillen Nichts.
+        """
+        try:
+            await self._apply_knowledge(db, run_id, proposal, stats)
+            return True
+        except SQLAlchemyError as e:
+            await db.rollback()
+            stats["kb_skipped"] = stats.get("kb_skipped", 0) + 1
+            logger.warning(
+                "[Reflection] Wissenseintrag %r uebersprungen: %s",
+                str(proposal.get("title") or "")[:80], e,
+            )
+            return False
 
     async def _apply_knowledge(self, db: AsyncSession, run_id: int, proposal: dict, stats: dict) -> None:
         """Wissenseintrag schreiben und den Vorgang im Pruefprotokoll festhalten."""
@@ -861,7 +889,7 @@ class ReflectionService:
             if cfg["mode"] == "strict":
                 await self._queue_approval(db, run_id, approver_agent, "knowledge", proposal, None, stats)
             else:
-                await self._apply_knowledge(db, run_id, proposal, stats)
+                await self._apply_knowledge_guarded(db, run_id, proposal, stats)
             n += 1
         return n
 
@@ -872,11 +900,15 @@ class ReflectionService:
         try:
             if not settings.telegram_chat_id:
                 return
+            skipped = stats.get("kb_skipped") or 0
             msg = (
                 f"Nachtschicht #{run_id} — {status}\n"
                 f"Transcripts: {stats['transcripts_read']} | Neu: {stats['facts_new']} | "
                 f"Aktualisiert: {stats['facts_superseded']} | Freigaben offen: {stats['pending_approvals']}\n"
                 f"Wissen: {stats['kb_entries']} | Skill-Entwuerfe: {stats['skills_drafted']}"
+                # Uebersprungene Eintraege nur nennen, wenn es welche gab — sonst
+                # steht in jedem Bericht eine Null, die niemanden interessiert.
+                + (f" | Wissen uebersprungen: {skipped}" if skipped else "")
             )
             import redis.asyncio as aioredis
             client = aioredis.from_url(settings.redis_url)

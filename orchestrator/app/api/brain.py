@@ -492,7 +492,10 @@ async def agent_contribute(
     all_tags = list(set(tags + inline_tags))
 
     existing = (await db.execute(
-        select(KnowledgeEntry).where(KnowledgeEntry.title == title)
+        select(KnowledgeEntry).where(
+            KnowledgeEntry.title == title,
+            KnowledgeEntry.user_id == user_id,
+        )
     )).scalar_one_or_none()
 
     if existing:
