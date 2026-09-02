@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, delete, or_, select, text as sa_text, update
+from sqlalchemy import and_, delete, func, or_, select, text as sa_text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -696,10 +696,17 @@ async def list_agent_memories(
     agent_id: str,
     category: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all memories for an agent (for the frontend Memory tab + agent API)."""
+    """List memories for an agent (for the frontend Memory tab + agent API).
+
+    `total` and `categories` are real counts over ALL of the agent's memories
+    (not just the page returned) — a prior version derived both from the
+    limited page itself, so "(50 entries)" silently meant "however many fit
+    in one page", identical whether the agent truly had 50 memories or 500.
+    """
     if hasattr(user, "role"):
         from app.models.user import UserRole
         from app.models.agent import Agent
@@ -712,21 +719,33 @@ async def list_agent_memories(
             agent_obj = await db.get(Agent, agent_id)
             if agent_obj and agent_obj.user_id and agent_obj.user_id != user.id:
                 raise HTTPException(status_code=403, detail="Access denied")
+
+    # Real per-category breakdown across ALL memories, regardless of the
+    # active filter — so chip counts stay accurate even while one is selected.
+    cat_rows = (await db.execute(
+        select(AgentMemory.category, func.count())
+        .where(AgentMemory.agent_id == agent_id)
+        .group_by(AgentMemory.category)
+    )).all()
+    categories: dict[str, int] = {cat: count for cat, count in cat_rows}
+    total = sum(categories.values())
+
     query = select(AgentMemory).where(AgentMemory.agent_id == agent_id)
     if category:
         query = query.where(AgentMemory.category == category)
-    query = query.order_by(AgentMemory.importance.desc(), AgentMemory.updated_at.desc()).limit(limit)
+    query = (
+        query.order_by(AgentMemory.importance.desc(), AgentMemory.updated_at.desc())
+        .offset(offset).limit(limit)
+    )
     result = await db.execute(query)
     memories = result.scalars().all()
 
-    # Group by category for UI
-    categories: dict[str, int] = {}
-    for m in memories:
-        categories[m.category] = categories.get(m.category, 0) + 1
+    filtered_total = categories.get(category, 0) if category else total
 
     return {
         "memories": [_to_response(m) for m in memories],
-        "total": len(memories),
+        "total": filtered_total,
+        "has_more": offset + len(memories) < filtered_total,
         "categories": categories,
     }
 

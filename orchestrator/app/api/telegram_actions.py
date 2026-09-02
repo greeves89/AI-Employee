@@ -49,6 +49,49 @@ async def _get_bot_token(agent_id: str, db: AsyncSession) -> str:
     return token
 
 
+async def _bot_token_for_chat(agent_id: str, chat_id: str, db: AsyncSession) -> str:
+    """Token, mit dem dieser Agent in DIESEM Chat handeln darf.
+
+    Eigener Bot zuerst. Ein Agent ohne eigenen Bot kann trotzdem in einem Chat
+    stehen: `/agent <Name>` schaltet die Weiche auf ihn, und seine Antworten gehen
+    seither ueber den Gateway-Bot des Kollegen raus. Reaktionen scheiterten dort
+    bisher mit „No Telegram bot configured" — der Agent redet also im Chat, darf
+    ihn aber nicht anfassen.
+
+    Der Bot eines Kollegen ist NUR erlaubt, wenn die Weiche gerade ausdruecklich
+    auf diesen Agenten zeigt. Ohne diese Bedingung koennte sich jeder Agent mit
+    einer fremden chat_id den Bot eines beliebigen anderen ausleihen.
+    """
+    result = await db.execute(select(Agent).where(Agent.id == agent_id))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    token = (agent.config or {}).get("telegram_bot_token")
+    if token:
+        return token
+
+    redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        if await redis.get(f"telegram:chat:{chat_id}:active_agent") != agent_id:
+            raise HTTPException(
+                status_code=400,
+                detail="No Telegram bot configured for this agent, and this chat "
+                       "is not currently routed to it.",
+            )
+        kandidaten = await db.execute(select(Agent).where(Agent.id != agent_id))
+        for kandidat in kandidaten.scalars().all():
+            fremd = (kandidat.config or {}).get("telegram_bot_token")
+            if fremd and await redis.sismember(
+                f"agent:{kandidat.id}:tg_auth", str(chat_id)
+            ):
+                return fremd
+    finally:
+        await redis.aclose()
+    raise HTTPException(
+        status_code=400, detail="No Telegram bot reachable for this chat.",
+    )
+
+
 async def _tg_request(token: str, method: str, data: dict | None = None, files: dict | None = None, timeout: int = 30) -> dict:
     """Make a request to the Telegram Bot API."""
     url = f"{TG_API.format(token=token)}/{method}"
@@ -836,7 +879,7 @@ async def react_to_message(
     Der Agent entscheidet selbst, ob eine Reaktion passt. Bewusst KEINE Automatik:
     Ein Zeichen bei jeder Nachricht wirkt mechanisch; der Normalfall ist keine.
     """
-    token = await _get_bot_token(agent_auth["agent_id"], db)
+    token = await _bot_token_for_chat(agent_auth["agent_id"], str(body.chat_id), db)
     emoji = (body.emoji or "").strip()
     if emoji and emoji not in _ALLOWED_REACTIONS:
         raise HTTPException(

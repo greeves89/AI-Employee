@@ -5,12 +5,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.277.0] - 2026-09-01
+## [1.279.0] - 2026-09-02
+
+### Hinzugefügt
+- **MCP-Server können jetzt einen eigenen OAuth-Callback nutzen.** Administratoren müssen die globale Deployment-Identität (`OAUTH_REDIRECT_BASE_URL`) nicht mehr temporär umbiegen, wenn ein einzelner externer MCP-Server nur eine enge Redirect-Allowlist akzeptiert. Ohne gesetzten Server-Wert bleibt das bisherige Verhalten unverändert.
+- **Der OAuth-Rückweg bleibt jetzt auch stabil, wenn die Callback-Basis während eines laufenden Verbindungsversuchs geändert wird.** Vorher berechneten Start und Abschluss den Wert je neu; eine Änderung dazwischen ließ den Token-Tausch mit einer nichtssagenden Anbieter-Meldung scheitern, obwohl alles richtig eingegeben war.
+- **Nach einer Änderung der Callback-Basis lässt sich der MCP-Server wieder verbinden.** Bisher blieb eine beim Anbieter automatisch angelegte Client-Registrierung an die alte Rückkehr-Adresse gebunden: jeder weitere Versuch scheiterte, und die Oberfläche bot keinen Weg, die veraltete Registrierung loszuwerden — der Server war ohne Datenbankeingriff nicht mehr nutzbar. Die Registrierung wird beim Wechsel der Basis nun verworfen, sodass die Erkennung sie gegen die neue Adresse neu anlegt. Hinweis: Wer seine Client-ID von Hand eingetragen hat (Anbieter ohne automatische Registrierung), muss sie nach einem Wechsel der Basis einmal erneut eintragen.
+- **Und man kommt in der Oberfläche an die Einstellung heran.** Die Adresse war
+  ausschliesslich über die Schnittstelle zu setzen — in der Integrationen-Seite
+  gab es kein Feld dafür. Wer sie nicht kannte, bog weiter die globale Adresse
+  um, also genau das, was hier abgestellt werden sollte. Das Feld steht jetzt im
+  Bearbeiten-Dialog des Servers und warnt vor dem Verlust der Registrierung.
+
+---
+
+## [1.278.0] - 2026-09-02
+
+### Behoben
+- **Der Erinnerungs-Zähler log.** „(50 Einträge)" bedeutete in Wahrheit „so
+  viele, wie auf eine Seite passen" — bei 50 wie bei 500 gespeicherten
+  Erinnerungen stand dieselbe Zahl da, und auch die Zahlen an den
+  Kategorie-Chips zählten nur die gerade sichtbare Seite. Beide Werte kommen
+  jetzt aus der Datenbank über den gesamten Bestand.
+- Dieselbe Zahl bekam auch der Agent über den Erinnerungs-MCP-Server zu sehen.
+  Er nennt jetzt „50 of 500", wenn er nur einen Ausschnitt hat.
+
+### Neu
+- **Weitere Erinnerungen nachladen.** Ab der 51. Erinnerung war der Rest ohne
+  Umweg über die Suche unerreichbar. Ein Knopf „Mehr laden (50 von 320)" holt
+  die nächste Seite nach.
+
+### Geändert
+- Vier englische Tooltips im Erinnerungs-Tab auf Deutsch gebracht.
+
+---
+
+## [1.277.0] - 2026-09-02
 
 ### Hinzugefuegt
-- **MCP-Server koennen jetzt einen eigenen OAuth-Callback nutzen.** Administratoren muessen die globale Deployment-Identitaet (`OAUTH_REDIRECT_BASE_URL`) nicht mehr temporaer umbiegen, wenn ein einzelner externer MCP-Server nur eine enge Redirect-Allowlist akzeptiert. Ohne gesetzten Server-Wert bleibt das bisherige Verhalten unveraendert.
-- **Der OAuth-Rueckweg bleibt jetzt auch stabil, wenn die Callback-Basis waehrend eines laufenden Verbindungsversuchs geaendert wird.** Vorher berechneten Start und Abschluss den Wert je neu; eine Aenderung dazwischen liess den Token-Tausch mit einer nichtssagenden Anbieter-Meldung scheitern, obwohl alles richtig eingegeben war.
-- **Nach einer Aenderung der Callback-Basis laesst sich der MCP-Server wieder verbinden.** Bisher blieb eine beim Anbieter automatisch angelegte Client-Registrierung an die alte Rueckkehr-Adresse gebunden: jeder weitere Versuch scheiterte, und die Oberflaeche bot keinen Weg, die veraltete Registrierung loszuwerden — der Server war ohne Datenbankeingriff nicht mehr nutzbar. Die Registrierung wird beim Wechsel der Basis nun verworfen, sodass die Erkennung sie gegen die neue Adresse neu anlegt. Hinweis: Wer seine Client-ID von Hand eingetragen hat (Anbieter ohne automatische Registrierung), muss sie nach einem Wechsel der Basis einmal erneut eintragen.
+- **Zitierte Nachrichten kommen beim Agenten an.** Wer in Telegram auf eine aeltere Nachricht antwortet, meint sie auch — bisher wurde das Zitat verworfen und der Agent sah nur den neuen Satz. Von „<Zitat> und das hier?" kam also bloss „und das hier?" an, und der Bezug musste aus dem Gespraechsverlauf erraten werden; bei langem Verlauf ging das schief. Das Zitat steht der Nachricht jetzt als kurzer Vorspann voran, samt Angabe, ob eine eigene Nachricht des Agenten oder eine des Nutzers zitiert wurde. Markiert man beim Antworten nur eine bestimmte Textstelle, wird genau diese uebernommen statt der ganzen Nachricht. Gilt auch fuer Bilder, Sprachnachrichten und Dateien; sehr lange Zitate werden gekuerzt, damit sie die eigentliche Frage nicht verdraengen.
+
+### Behoben
+- **Agenten konnten ab dem zweiten Zug eines Gespraechs nicht mehr auf Nachrichten reagieren.** Die Kennung der aktuellen Nachricht wurde nur beim ersten Aufschlag einer Sitzung mitgegeben. Danach war schlicht unbekannt, worauf sich eine Reaktion beziehen sollte — Reaktionen waren damit faktisch auf die jeweils erste Nachricht beschraenkt. Die Kennung steht jetzt in jedem Zug bereit.
+- **Ein Agent ohne eigenen Telegram-Bot konnte ueberhaupt nicht reagieren.** Schaltet man den Chat per `/agent <Name>` auf einen Kollegen um, laufen dessen Antworten ueber den bestehenden Bot — eine Reaktion wurde aber mit „kein Bot eingerichtet" abgewiesen. Er durfte also im Chat reden, ihn aber nicht anfassen. Reaktionen laufen jetzt ebenfalls ueber den Bot, der den Chat bedient; ausdruecklich nur, solange der Chat auch wirklich auf diesen Agenten geschaltet ist, damit sich niemand mit einer fremden Chat-Kennung einen beliebigen Bot ausleihen kann.
 
 ---
 
