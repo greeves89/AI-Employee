@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.284.0] - 2026-09-02
+
+### Behoben
+- **Der Bildschirm-Server kann nicht mehr die Klicks eines fremden Laufs
+  umlenken.** Der Anker auf eine Computer-Use-Sitzung galt bisher für den
+  ganzen Prozess. Solange jeder Lauf seinen eigenen Prozess bekam, war das
+  gleichbedeutend mit "gilt für diesen Lauf". Sobald sich mehrere Läufe einen
+  Prozess teilen (#638), hätte ein `computer_use_session` aus Lauf A die
+  Befehle von Lauf B auf einen anderen Bildschirm geschickt — auf beiden Seiten
+  ohne Fehlermeldung. Der Anker gilt jetzt je Lauf.
+
+### Geändert
+- **Der Bildschirm-Server läuft über den gemeinsamen Transport** (#638) und
+  kann damit später zu den Servern gehören, die sich einen Prozess teilen.
+  Ohne gesetzten Port verhält er sich unverändert wie bisher.
+- Ein Test verhindert, dass ein umgestellter Server veränderlichen Zustand auf
+  Modulebene zurückbekommt. Genau diese Fehlerklasse bleibt sonst stumm.
+
+---
+
 ## [1.283.0] - 2026-09-02
 
 ### Behoben
