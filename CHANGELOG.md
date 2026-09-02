@@ -27,6 +27,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   weiter; die Anzahl steht als `kb_skipped` im Ergebnis. Der manuelle Freigabeweg
   meldet Fehler weiterhin unverändert zurück — wer auf "freigeben" klickt, soll
   sehen, wenn es nicht geklappt hat.
+- **Die Zusicherung hält auch dort, wo Alembic nicht durchläuft.** Scheitert die
+  Migration — ein im Code selbst dokumentierter Fall —, legt der Rückfall aus den
+  Modellen wieder die alte, globale Eindeutigkeit an; auf so einer Anlage wäre
+  der Fehler unverändert da. Dieselben beiden Indizes werden deshalb bei jedem
+  Start abgesichert.
 
 ---
 
