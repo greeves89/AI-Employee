@@ -1096,6 +1096,14 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt(
                 "ALTER TABLE agent_plan_items ADD COLUMN IF NOT EXISTS schedule_id varchar"
             ))
+            await conn.execute(_txt(
+                "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS "
+                "consecutive_failures integer NOT NULL DEFAULT 0"
+            ))
+            await conn.execute(_txt(
+                "ALTER TABLE agents ADD COLUMN IF NOT EXISTS "
+                "is_platform_agent boolean NOT NULL DEFAULT false"
+            ))
             # Web-Push-Anmeldungen der Browser — das Gegenstueck zu device_tokens (iOS).
             # Der Endpunkt ist eindeutig, damit ein erneut angemeldeter Browser den
             # bestehenden Eintrag auffrischt statt Meldungen doppelt zu bekommen.
@@ -1302,6 +1310,32 @@ async def lifespan(app: FastAPI):
         logger.info("job_state table ensured")
     except Exception as e:
         logger.warning(f"Could not ensure job_state table: {e}")
+
+    # Saved meeting recordings (v1.269.0): previously the recorder held its
+    # transcript only in memory, so there was no history/list, no renaming, no
+    # participants. New table, no migration ships for it — ensured on every
+    # startup, same reasoning as job_state above.
+    try:
+        from app.db.session import engine as _eng_mt
+        from sqlalchemy import text as _txt_mt
+        async with _eng_mt.begin() as conn:
+            await conn.execute(_txt_mt(
+                "CREATE TABLE IF NOT EXISTS meetings ("
+                "id varchar PRIMARY KEY, "
+                "user_id varchar NOT NULL, "
+                "title varchar NOT NULL, "
+                "transcript text NOT NULL DEFAULT '', "
+                "participants json NOT NULL DEFAULT '[]'::json, "
+                "duration_seconds integer NOT NULL DEFAULT 0, "
+                "created_at timestamptz NOT NULL DEFAULT now(), "
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_mt(
+                "CREATE INDEX IF NOT EXISTS ix_meetings_user_id ON meetings (user_id)"
+            ))
+        logger.info("meetings table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure meetings table: {e}")
 
     # External MCP servers: optional custom auth headers and persisted discovery
     # health. Ensured on every startup, independent of Alembic (the migration chain

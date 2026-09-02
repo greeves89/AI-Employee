@@ -365,7 +365,129 @@ const TOOLS = [
     description: "Close the agent's browser. The profile (and its logins) is kept.",
     inputSchema: { type: "object", properties: {} },
   },
+{
+    name: "ego_run",
+    description:
+      "Run a JS automation script against ego lite, a Chromium-based browser on the " +
+      "user's machine that works in their REAL, already-logged-in browser session " +
+      "(unlike browser_navigate/browser_*, which use an isolated separate profile the " +
+      "user has to sign into again). Use this when the task needs an account the user " +
+      "is already logged into in their everyday browser (mail, internal tools, etc.) " +
+      "and re-authenticating in a fresh profile would be unnecessary friction. The " +
+      "script runs via the local `ego-browser nodejs` CLI with helpers like " +
+      "useOrCreateTaskSpace, openOrReuseTab, snapshotText, click, fillInput, js, cdp — " +
+      "write it exactly as you would inside an `ego-browser nodejs <<'EOF' ... EOF` " +
+      "heredoc. Only the text passed to cliLog(...) calls is returned. Requires the " +
+      "'ego_browser' capability (off by default) AND ego lite installed on the user's " +
+      "machine. IMPORTANT: call this DIRECTLY for anything involving ego lite — it " +
+      "launches ego lite itself if it isn't already running (a `useOrCreateTaskSpace(...)` " +
+      "call is enough). Never call open_app/computer_open_app for ego lite first; that is " +
+      "an unnecessary extra step and not how the user should have to ask for it. If the " +
+      "capability isn't enabled yet and you need to walk the user through installing ego " +
+      "lite: NEVER assume they are on a Mac. The automated one-line install only exists " +
+      "for macOS — on any other OS (or if you don't know which OS the user is on), ASK " +
+      "first, then point them to https://lite.ego.app/ for Windows/Linux instead of " +
+      "saying 'install it on your Mac'.",
+    inputSchema: {
+      type: "object",
+      required: ["script"],
+      properties: {
+        script: {
+          type: "string",
+          description:
+            "The Node.js script body (same helpers/conventions as the ego-browser skill's heredoc).",
+        },
+        timeout: {
+          type: "integer",
+          description: "Seconds before the script is aborted (default 120).",
+          default: 120,
+        },
+      },
+    },
+  },
   {
+    name: "ego_navigate",
+    description:
+      "Open a URL in ego lite — the user's REAL, already-logged-in browser session " +
+      "(counterpart to browser_navigate, which uses an isolated separate profile). " +
+      "Requires the 'ego_browser' capability. Launches ego lite itself if needed.",
+    inputSchema: {
+      type: "object",
+      required: ["url"],
+      properties: { url: { type: "string", description: "http(s) URL." } },
+    },
+  },
+  {
+    name: "ego_snapshot",
+    description:
+      "Structured text snapshot of the current page in ego lite — the reliable way to " +
+      "see what is on a page (counterpart to browser_snapshot).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        max_chars: { type: "number", description: "Truncate the snapshot (default 20000)." },
+      },
+    },
+  },
+  {
+    name: "ego_click",
+    description:
+      "Click an element in ego lite. selector accepts CSS, 'xpath=...', '@N'/'ref=N', or " +
+      "'loc=...' (from ego_snapshot output); text does a best-effort text match if no " +
+      "selector is given.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string", description: "CSS/xpath=/@N/loc= selector." },
+        text: { type: "string", description: "Visible text (used when no selector given)." },
+      },
+    },
+  },
+  {
+    name: "ego_fill",
+    description: "Fill a form field in ego lite (clears it first).",
+    inputSchema: {
+      type: "object",
+      required: ["selector", "value"],
+      properties: {
+        selector: { type: "string", description: "CSS/xpath=/@N/loc= selector of the field." },
+        value: { type: "string", description: "Value to enter." },
+      },
+    },
+  },
+  {
+    name: "ego_wait",
+    description: "Wait for an element to become visible in ego lite before acting on it.",
+    inputSchema: {
+      type: "object",
+      required: ["selector"],
+      properties: {
+        selector: { type: "string", description: "CSS/xpath=/@N/loc= selector to wait for." },
+        timeout_ms: { type: "number", description: "Max wait in ms (default 15000)." },
+      },
+    },
+  },
+  {
+    name: "ego_capture",
+    description: "Screenshot of the current page in ego lite.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "ego_tabs",
+    description: "List the open tabs in ego lite's task space, or switch to one by index.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        index: { type: "number", description: "Tab to switch to. Omit to just list." },
+      },
+    },
+  },
+  {
+    name: "ego_close",
+    description: "Close the current tab in ego lite's task space.",
+    inputSchema: { type: "object", properties: {} },
+  },
+    {
     name: "computer_shell",
     description:
       "Run a shell command ON THE USER'S OWN MACHINE (their Mac/PC) via the bridge — " +
@@ -735,7 +857,110 @@ export function buildServer() {
             isError: !result.ok,
           };
 
-        case "computer_shell": {
+  case "ego_run": {
+          const timeout = args?.timeout ?? 120;
+          result = await sendCommand("ego_run", {
+            script: args?.script ?? "",
+            timeout,
+          }, timeout + 30);
+          return {
+            content: [{ type: "text", text: result.ok ? (result.output || "(no output)") : `Error: ${result.error}` }],
+            isError: !result.ok,
+          };
+        }
+
+        case "ego_navigate":
+          result = await sendCommand("ego_navigate", { url: args?.url ?? "" }, 45);
+          return {
+            content: [{
+              type: "text",
+              text: result.ok ? `Opened: ${result.title || ""} (${result.url})` : `Error: ${result.error}`,
+            }],
+            isError: !result.ok,
+          };
+
+        case "ego_snapshot":
+          result = await sendCommand("ego_snapshot", {
+            max_chars: args?.max_chars ?? 20000,
+          }, 45);
+          if (!result.ok) {
+            return { content: [{ type: "text", text: `Error: ${result.error}` }], isError: true };
+          }
+          return {
+            content: [{
+              type: "text",
+              text: `${result.title || ""} (${result.url})\n\n${result.snapshot}` +
+                    (result.truncated ? "\n\n[truncated — raise max_chars if you need more]" : ""),
+            }],
+          };
+
+        case "ego_click":
+          result = await sendCommand("ego_click", {
+            selector: args?.selector ?? "",
+            text: args?.text ?? "",
+          }, 40);
+          return {
+            content: [{ type: "text", text: result.ok ? `Clicked: ${result.clicked}` : `Error: ${result.error}` }],
+            isError: !result.ok,
+          };
+
+        case "ego_fill":
+          result = await sendCommand("ego_fill", {
+            selector: args?.selector ?? "",
+            value: args?.value ?? "",
+          }, 40);
+          return {
+            content: [{ type: "text", text: result.ok ? `Filled: ${result.filled}` : `Error: ${result.error}` }],
+            isError: !result.ok,
+          };
+
+        case "ego_wait":
+          result = await sendCommand("ego_wait", {
+            selector: args?.selector ?? "",
+            timeout_ms: args?.timeout_ms ?? 15000,
+          }, ((args?.timeout_ms ?? 15000) / 1000) + 20);
+          return {
+            content: [{ type: "text", text: result.ok ? `Ready: ${result.url}` : `Error: ${result.error}` }],
+            isError: !result.ok,
+          };
+
+        case "ego_capture":
+          result = await sendCommand("ego_capture", {}, 45);
+          if (!result.ok) {
+            return { content: [{ type: "text", text: `Error: ${result.error}` }], isError: true };
+          }
+          return {
+            content: [
+              { type: "text", text: `Page: ${result.url}` },
+              { type: "image", data: result.screenshot_b64, mimeType: "image/png" },
+            ],
+          };
+
+        case "ego_tabs": {
+          const params = args?.index === undefined ? {} : { index: args.index };
+          result = await sendCommand("ego_tabs", params, 30);
+          if (!result.ok) {
+            return { content: [{ type: "text", text: `Error: ${result.error}` }], isError: true };
+          }
+          if (result.tabs) {
+            return {
+              content: [{
+                type: "text",
+                text: result.tabs.map((t) => `[${t.index}] ${t.title} — ${t.url}`).join("\n") || "No tabs.",
+              }],
+            };
+          }
+          return { content: [{ type: "text", text: `Switched to tab ${result.active}: ${result.url}` }] };
+        }
+
+        case "ego_close":
+          result = await sendCommand("ego_close", {}, 30);
+          return {
+            content: [{ type: "text", text: result.ok ? "Tab closed." : `Error: ${result.error}` }],
+            isError: !result.ok,
+          };
+
+              case "computer_shell": {
           result = await sendCommand("shell_run", {
             command: args.command,
             cwd: args?.cwd,

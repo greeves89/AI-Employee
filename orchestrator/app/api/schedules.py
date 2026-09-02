@@ -26,6 +26,11 @@ async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
 
     When called by an agent token, returns only that agent's
     own ID — the user.id is the agent_id, not a user UUID in this case.
+
+    Ownerless agents are NOT auto-included (changed 2026-08-27, see
+    tasks.py::_get_user_agent_ids) — an unassigned agent's schedules used
+    to show up for every user, not just admins. is_platform_agent (explicit
+    admin flag) still grants that, deliberately marked ones only.
     """
     from app.models.user import UserRole
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
@@ -36,7 +41,7 @@ async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
     from app.models.agent_access import AgentAccess
     owned = await db.execute(
         select(Agent.id).where(
-            (Agent.user_id == user.id) | (Agent.user_id.is_(None))
+            (Agent.user_id == user.id) | (Agent.is_platform_agent.is_(True))
         )
     )
     shared = await db.execute(

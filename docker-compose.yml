@@ -158,6 +158,7 @@ services:
       OAUTH_APPLE_KEY_ID: ${OAUTH_APPLE_KEY_ID:-}
       OAUTH_APPLE_PRIVATE_KEY: ${OAUTH_APPLE_PRIVATE_KEY:-}
       OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:8000}
+      OAUTH_REDIRECT_ALLOWED_HOSTS: ${OAUTH_REDIRECT_ALLOWED_HOSTS:-}
       # Public base URL (Cloudflare tunnel domain) → absolute, shareable app links.
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       # Bridge-facing base URL, when it differs from PUBLIC_APP_URL (e.g. an

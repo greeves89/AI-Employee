@@ -507,7 +507,7 @@ class ChatConsumer:
             # they are all this channel, so nothing needs re-queueing.
             while not lane.empty():
                 try:
-                    qmsg = lane.get_nowait()
+                    qmsg, _ = lane.get_nowait()
                 except asyncio.QueueEmpty:
                     break
                 if qmsg.get("text", "").strip() == "/reset":

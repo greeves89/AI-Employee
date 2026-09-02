@@ -115,9 +115,11 @@ class EveryRuntimeIsToldTheSizeTests(unittest.TestCase):
 
 class TheScreenCanBeChosenEverywhereTests(unittest.TestCase):
     def test_the_voice_tool_takes_a_display(self):
-        # Die Beschreibung ist mit dem Klick-Fix laenger geworden; das
-        # Eigenschaftsfeld liegt entsprechend weiter hinten.
-        block = VOICE.split("DESKTOP_TOOL = {", 1)[1][:5000]
+        # Ab "inputSchema" statt einer festen Zeichenzahl ab DESKTOP_TOOL —
+        # die Beschreibung ist schon zweimal gewachsen und hat eine feste
+        # Fensterlaenge jedes Mal unterlaufen; die Felder liegen IMMER direkt
+        # hinter inputSchema, unabhaengig davon, wie lang die Beschreibung ist.
+        block = VOICE.split("DESKTOP_TOOL = {", 1)[1].split('"inputSchema"', 1)[1][:2000]
         self.assertIn('"display"', block)
 
     def test_the_voice_path_forwards_it(self):

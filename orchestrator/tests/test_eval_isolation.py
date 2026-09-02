@@ -44,12 +44,15 @@ class EvalIsolationTests(unittest.IsolatedAsyncioTestCase):
                          user_id="bob", config={}))
             db.add(Agent(id="a-platform", name="Plattform", state=AgentState.RUNNING,
                          user_id=None, config={}))
+            db.add(Agent(id="a-flagged", name="Deliberate Plattform-Agent", state=AgentState.RUNNING,
+                         user_id=None, is_platform_agent=True, config={}))
             db.add(EvalSet(id="es-anna", name="Annas Tests", items=[], user_id="anna"))
             db.add(EvalSet(id="es-bob", name="Bobs Tests", items=[], user_id="bob"))
             for run_id, agent_id, set_id in (
                 ("ev-anna", "a-anna", "es-anna"),
                 ("ev-bob", "a-bob", "es-bob"),
                 ("ev-platform", "a-platform", "es-anna"),
+                ("ev-flagged", "a-flagged", "es-anna"),
             ):
                 db.add(EvalRun(id=run_id, set_id=set_id, agent_id=agent_id,
                                status="completed", score=90.0, total=1, passed=1,
@@ -73,16 +76,26 @@ class EvalIsolationTests(unittest.IsolatedAsyncioTestCase):
     async def test_own_runs_are_visible(self):
         self.assertIn("ev-anna", await self._runs(_user("anna")))
 
-    async def test_ownerless_agents_stay_visible_to_everyone(self):
-        """Dieselbe Auslegung wie in der Agentenliste — zwei verschiedene
-        Bedeutungen von „meins" waeren schlimmer als eine grosszuegige."""
-        self.assertIn("ev-platform", await self._runs(_user("anna")))
-        self.assertIn("ev-platform", await self._runs(_user("bob")))
+    async def test_ownerless_agents_are_hidden_from_regular_users(self):
+        """Umgekehrt seit 2026-08-27 (gemeldet bei einem Mehr-Abteilungen-Kunden):
+        ein Agent ohne zugewiesenen Besitzer ist NICHT mehr automatisch
+        "fuer alle" — sonst sieht jede neue Abteilung jede andere, bis jemand
+        die Zuweisung nachtraegt. Admins sehen ihn weiterhin (naechster Test),
+        so kann er zugewiesen werden."""
+        self.assertNotIn("ev-platform", await self._runs(_user("anna")))
+        self.assertNotIn("ev-platform", await self._runs(_user("bob")))
+
+    async def test_explicitly_flagged_platform_agents_stay_visible(self):
+        """Der Ersatz fuer den alten Automatismus: is_platform_agent ist eine
+        bewusste Admin-Markierung, kein NULL-Nebeneffekt — die bleibt fuer
+        alle sichtbar, genau wie frueher gewollt war."""
+        self.assertIn("ev-flagged", await self._runs(_user("anna")))
+        self.assertIn("ev-flagged", await self._runs(_user("bob")))
 
     async def test_admin_sees_everything(self):
         self.assertEqual(
             await self._runs(_user("root", role="admin")),
-            {"ev-anna", "ev-bob", "ev-platform"},
+            {"ev-anna", "ev-bob", "ev-platform", "ev-flagged"},
         )
 
     async def test_asking_for_a_foreign_agent_is_refused(self):
