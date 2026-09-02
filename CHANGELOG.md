@@ -5,23 +5,163 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.276.13] - 2026-09-02
+## [1.284.0] - 2026-09-02
 
 ### Behoben
 - **Der Bildschirm-Server kann nicht mehr die Klicks eines fremden Laufs
-  umlenken.** Der Anker auf eine Computer-Use-Sitzung galt bisher fuer den
+  umlenken.** Der Anker auf eine Computer-Use-Sitzung galt bisher für den
   ganzen Prozess. Solange jeder Lauf seinen eigenen Prozess bekam, war das
-  gleichbedeutend mit "gilt fuer diesen Lauf". Sobald sich mehrere Laeufe einen
-  Prozess teilen (#638), haette ein `computer_use_session` aus Lauf A die
+  gleichbedeutend mit "gilt für diesen Lauf". Sobald sich mehrere Läufe einen
+  Prozess teilen (#638), hätte ein `computer_use_session` aus Lauf A die
   Befehle von Lauf B auf einen anderen Bildschirm geschickt — auf beiden Seiten
   ohne Fehlermeldung. Der Anker gilt jetzt je Lauf.
 
-### Geaendert
-- **Der Bildschirm-Server laeuft ueber den gemeinsamen Transport** (#638) und
-  kann damit spaeter zu den Servern gehoeren, die sich einen Prozess teilen.
-  Ohne gesetzten Port verhaelt er sich unveraendert wie bisher.
-- Ein Test verhindert, dass ein umgestellter Server veraenderlichen Zustand auf
-  Modulebene zurueckbekommt. Genau diese Fehlerklasse bleibt sonst stumm.
+### Geändert
+- **Der Bildschirm-Server läuft über den gemeinsamen Transport** (#638) und
+  kann damit später zu den Servern gehören, die sich einen Prozess teilen.
+  Ohne gesetzten Port verhält er sich unverändert wie bisher.
+- Ein Test verhindert, dass ein umgestellter Server veränderlichen Zustand auf
+  Modulebene zurückbekommt. Genau diese Fehlerklasse bleibt sonst stumm.
+
+---
+
+## [1.283.0] - 2026-09-02
+
+### Behoben
+- **Die Desktop-Bridge schickt das Anmeldetoken nicht mehr in der Adresse der
+  Sprachverbindung.** Beim Oeffnen der Voice-Leiste hängte die Bridge das
+  langlebige Zugangstoken als Parameter an die WebSocket-Adresse. Solche
+  Parameter werden unterwegs mitgeschrieben — in Proxy- und Zugriffsprotokollen,
+  im Verlauf, im Referer — und das Token gilt danach unverändert weiter. Die
+  Bridge holt jetzt, wie die Weboberfläche schon länger, ein Einmal-Ticket
+  (30 Sekunden gültig, genau eine Verwendung). Scheitert das Ticket, scheitert
+  die Verbindung sichtbar, statt still auf den alten Weg zurückzufallen.
+  Damit verschwindet auch die wiederkehrende Warnung "legacy token= param" aus
+  dem Plattformprotokoll — sie hatte genau diese eine Ursache. An der Bedienung
+  ändert sich nichts.
+
+  *Hinweis: Eine Bridge ab dieser Version braucht einen Server, der
+  Einmal-Tickets kennt.*
+
+---
+
+## [1.282.0] - 2026-09-02
+
+### Behoben
+- **Eine App lässt sich wieder neu bauen, nachdem ein Rebuild einmal
+  abgebrochen ist** (#644). Bisher konnte der Betreiber in einen Zustand
+  geraten, aus dem er von allein nicht mehr herauskam: jeder weitere
+  "Neu bauen" endete mit einem Fehler über einen belegten Containernamen,
+  obwohl das Abbild sauber gebaut wurde. Ursache war ein Rest aus dem
+  abgebrochenen Versuch, den niemand mehr aufräumte. Der wird jetzt vor dem
+  Neubau entfernt, und ein Namenskonflikt löst genau einen zweiten Anlauf
+  aus. Ein echter Baufehler wird weiterhin sofort gemeldet und nicht
+  wiederholt.
+- **Zwei gleichzeitige Starts oder Neubauten derselben App überholen sich
+  nicht mehr.** Genau dieses Überholen hat die liegengebliebenen Reste
+  überhaupt erst erzeugt. Verschiedene Apps laufen weiterhin parallel.
+
+---
+
+## [1.281.0] - 2026-09-02
+
+### Behoben
+- **Wissensspeicher: gleiche Titel bei verschiedenen Besitzern möglich** — bisher
+  musste ein Titel im GESAMTEN System einmalig sein, obwohl jeder Nutzer seinen
+  eigenen Wissensspeicher hat. Sobald ein zweiter Nutzer einen naheliegenden Titel
+  wie "Klare Aufgabendefinition" erzeugte, brach der Speichervorgang mit einem
+  Datenbankfehler ab — und riss den kompletten Reflexionslauf mit sich, nicht nur
+  den einen Eintrag. Titel sind jetzt je Besitzer eindeutig; systemweite Einträge
+  ohne Besitzer bleiben wie bisher global eindeutig.
+- **Fremde Wissenseinträge wurden überschrieben** — beim Speichern über die
+  Brain-Schnittstelle wurde ein Eintrag GLEICHEN TITELS gesucht, ohne auf den
+  Besitzer zu achten. Wer einen Titel verwendete, den ein anderer Nutzer schon
+  hatte, überschrieb dessen Inhalt still und ohne Fehlermeldung. Alle Titelsuchen
+  sind jetzt auf den Besitzer eingeschränkt; ein Test am Quelltext hält das fest.
+- **Ein einziger Wissenseintrag reisst nicht mehr den ganzen Nachtlauf mit** —
+  scheiterte im nächtlichen Reflexionslauf das Speichern EINES Eintrags, brach
+  der komplette Lauf ab und alle folgenden Erkenntnisse der Nacht gingen verloren.
+  Der Lauf überspringt den betroffenen Eintrag jetzt, protokolliert ihn und macht
+  weiter; die Anzahl steht als `kb_skipped` im Ergebnis. Der manuelle Freigabeweg
+  meldet Fehler weiterhin unverändert zurück — wer auf "freigeben" klickt, soll
+  sehen, wenn es nicht geklappt hat.
+- **Die Zusicherung hält auch dort, wo Alembic nicht durchläuft.** Scheitert die
+  Migration — ein im Code selbst dokumentierter Fall —, legt der Rückfall aus den
+  Modellen wieder die alte, globale Eindeutigkeit an; auf so einer Anlage wäre
+  der Fehler unverändert da. Dieselben beiden Indizes werden deshalb bei jedem
+  Start abgesichert.
+
+---
+
+## [1.280.0] - 2026-09-02
+
+### Behoben
+- **Ein eigener Codex-Zugang stirbt nicht mehr nach der ersten Token-Erneuerung.**
+  Der ChatGPT-Refresh-Token ist einmalig: die Codex-CLI tauscht ihn bei jeder
+  Erneuerung gegen einen neuen. Dieser neue Token lebte bisher nur im Container.
+  Beim nächsten Start spielte die Plattform die alte, bereits verbrauchte Fassung
+  aus der Datenbank wieder ein — der Anbieter lehnte sie ab
+  (`refresh_token_reused`), und der Agent war ab da bei JEDEM Start tot, ohne dass
+  ein Neustart half. Betroffene sahen nur, dass ihr Agent nichts mehr lieferte.
+  Erneuert die CLI jetzt den Zugang, meldet der Agent die neue Fassung zurück und
+  der nächste Start beginnt mit einem gültigen Token.
+  **Einmalig nötig:** ein Zugang, der bereits mit `refresh_token_reused`
+  abgelehnt wird, ist beim Anbieter verbraucht und lässt sich durch nichts
+  wiederbeleben — er muss einmal neu angemeldet werden (Einstellungen → eigener
+  KI-Zugang → Codex). Danach hält er von allein.
+
+### Sicherheit
+- Der Rückweg schreibt ausschließlich den **eigenen** Zugang des Besitzers und
+  nur, wenn dort schon einer hinterlegt war. Wer schreibt, entscheidet der
+  Agenten-Token, nicht die Nutzlast. Der gemeinsame Zugang der Anlage bleibt
+  unantastbar; ein fremdes Konto und eine ältere Fassung werden abgelehnt — ein
+  einzelner Agent kann so weder die Anlage noch den Zugang eines anderen kippen.
+
+---
+
+## [1.279.0] - 2026-09-02
+
+### Hinzugefügt
+- **MCP-Server können jetzt einen eigenen OAuth-Callback nutzen.** Administratoren müssen die globale Deployment-Identität (`OAUTH_REDIRECT_BASE_URL`) nicht mehr temporär umbiegen, wenn ein einzelner externer MCP-Server nur eine enge Redirect-Allowlist akzeptiert. Ohne gesetzten Server-Wert bleibt das bisherige Verhalten unverändert.
+- **Der OAuth-Rückweg bleibt jetzt auch stabil, wenn die Callback-Basis während eines laufenden Verbindungsversuchs geändert wird.** Vorher berechneten Start und Abschluss den Wert je neu; eine Änderung dazwischen ließ den Token-Tausch mit einer nichtssagenden Anbieter-Meldung scheitern, obwohl alles richtig eingegeben war.
+- **Nach einer Änderung der Callback-Basis lässt sich der MCP-Server wieder verbinden.** Bisher blieb eine beim Anbieter automatisch angelegte Client-Registrierung an die alte Rückkehr-Adresse gebunden: jeder weitere Versuch scheiterte, und die Oberfläche bot keinen Weg, die veraltete Registrierung loszuwerden — der Server war ohne Datenbankeingriff nicht mehr nutzbar. Die Registrierung wird beim Wechsel der Basis nun verworfen, sodass die Erkennung sie gegen die neue Adresse neu anlegt. Hinweis: Wer seine Client-ID von Hand eingetragen hat (Anbieter ohne automatische Registrierung), muss sie nach einem Wechsel der Basis einmal erneut eintragen.
+- **Und man kommt in der Oberfläche an die Einstellung heran.** Die Adresse war
+  ausschliesslich über die Schnittstelle zu setzen — in der Integrationen-Seite
+  gab es kein Feld dafür. Wer sie nicht kannte, bog weiter die globale Adresse
+  um, also genau das, was hier abgestellt werden sollte. Das Feld steht jetzt im
+  Bearbeiten-Dialog des Servers und warnt vor dem Verlust der Registrierung.
+
+---
+
+## [1.278.0] - 2026-09-02
+
+### Behoben
+- **Der Erinnerungs-Zähler log.** „(50 Einträge)" bedeutete in Wahrheit „so
+  viele, wie auf eine Seite passen" — bei 50 wie bei 500 gespeicherten
+  Erinnerungen stand dieselbe Zahl da, und auch die Zahlen an den
+  Kategorie-Chips zählten nur die gerade sichtbare Seite. Beide Werte kommen
+  jetzt aus der Datenbank über den gesamten Bestand.
+- Dieselbe Zahl bekam auch der Agent über den Erinnerungs-MCP-Server zu sehen.
+  Er nennt jetzt „50 of 500", wenn er nur einen Ausschnitt hat.
+
+### Neu
+- **Weitere Erinnerungen nachladen.** Ab der 51. Erinnerung war der Rest ohne
+  Umweg über die Suche unerreichbar. Ein Knopf „Mehr laden (50 von 320)" holt
+  die nächste Seite nach.
+
+### Geändert
+- Vier englische Tooltips im Erinnerungs-Tab auf Deutsch gebracht.
+
+---
+
+## [1.277.0] - 2026-09-02
+
+### Hinzugefuegt
+- **Zitierte Nachrichten kommen beim Agenten an.** Wer in Telegram auf eine aeltere Nachricht antwortet, meint sie auch — bisher wurde das Zitat verworfen und der Agent sah nur den neuen Satz. Von „<Zitat> und das hier?" kam also bloss „und das hier?" an, und der Bezug musste aus dem Gespraechsverlauf erraten werden; bei langem Verlauf ging das schief. Das Zitat steht der Nachricht jetzt als kurzer Vorspann voran, samt Angabe, ob eine eigene Nachricht des Agenten oder eine des Nutzers zitiert wurde. Markiert man beim Antworten nur eine bestimmte Textstelle, wird genau diese uebernommen statt der ganzen Nachricht. Gilt auch fuer Bilder, Sprachnachrichten und Dateien; sehr lange Zitate werden gekuerzt, damit sie die eigentliche Frage nicht verdraengen.
+
+### Behoben
+- **Agenten konnten ab dem zweiten Zug eines Gespraechs nicht mehr auf Nachrichten reagieren.** Die Kennung der aktuellen Nachricht wurde nur beim ersten Aufschlag einer Sitzung mitgegeben. Danach war schlicht unbekannt, worauf sich eine Reaktion beziehen sollte — Reaktionen waren damit faktisch auf die jeweils erste Nachricht beschraenkt. Die Kennung steht jetzt in jedem Zug bereit.
+- **Ein Agent ohne eigenen Telegram-Bot konnte ueberhaupt nicht reagieren.** Schaltet man den Chat per `/agent <Name>` auf einen Kollegen um, laufen dessen Antworten ueber den bestehenden Bot — eine Reaktion wurde aber mit „kein Bot eingerichtet" abgewiesen. Er durfte also im Chat reden, ihn aber nicht anfassen. Reaktionen laufen jetzt ebenfalls ueber den Bot, der den Chat bedient; ausdruecklich nur, solange der Chat auch wirklich auf diesen Agenten geschaltet ist, damit sich niemand mit einer fremden Chat-Kennung einen beliebigen Bot ausleihen kann.
 
 ---
 

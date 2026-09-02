@@ -42,6 +42,7 @@ class McpServer(Base, TimestampMixin):
     oauth_authorization_endpoint: Mapped[str | None] = mapped_column(Text, nullable=True)
     oauth_token_endpoint: Mapped[str | None] = mapped_column(Text, nullable=True)
     oauth_registration_endpoint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    oauth_callback_base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     oauth_scope: Mapped[str | None] = mapped_column(Text, nullable=True)
     # RFC 8707 resource indicator — the protected resource id from the PRM doc.
     oauth_resource: Mapped[str | None] = mapped_column(Text, nullable=True)

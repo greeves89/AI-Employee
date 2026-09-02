@@ -13,6 +13,7 @@ import os
 import signal
 from typing import AsyncIterator
 
+from app import codex_auth_sync
 from app.config import settings
 from app.log_publisher import LogPublisher
 from app.llm_chat_handler import DESKTOP_MCP_ACTIVE_ENV
@@ -316,6 +317,14 @@ class CodexAgentRunner:
         except Exception as e:
             result_data = {"status": "error", "error": str(e)}
             await _publish(self.log_publisher, stream, target_id, "error", {"message": str(e)})
+
+        # Hat die CLI waehrend des Laufs den Refresh-Token erneuert, lebt der neue
+        # nur im Container. Auch nach einem Fehlerlauf melden — gerade der
+        # abgelaufene Token loest die Erneuerung aus.
+        try:
+            await codex_auth_sync.push_if_rotated()
+        except Exception:  # noqa: BLE001 — ein Lauf darf daran nie scheitern
+            logger.debug("Codex-Erneuerung konnte nicht gesichert werden", exc_info=True)
 
         return result_data
 

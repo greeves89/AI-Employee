@@ -356,6 +356,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const catSummary = Object.entries(result.categories)
         .map(([k, v]) => `${k}: ${v}`)
         .join(", ");
+      const shown =
+        result.has_more || result.memories.length < (result.total ?? 0)
+          ? `${result.memories.length} of ${result.total}`
+          : `${result.total ?? result.memories.length}`;
       const lines = result.memories.map(
         (m) =>
           `[${m.category}] ${m.key} (id:${m.id}, importance:${m.importance}, accessed:${m.access_count}x)\n  ${m.content}`
@@ -364,7 +368,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [
           {
             type: "text",
-            text: `${result.total} memories (${catSummary}):\n\n${wrapData("memory", lines.join("\n\n"))}`,
+            // `total` ist seit v1.278 die ECHTE Gesamtzahl, nicht die Seitengroesse.
+            // Ohne den Zusatz laese der Agent "500 memories" und darunter 50 —
+            // und wuesste nicht, dass er den Rest per offset nachholen kann.
+            text: `${shown} memories (${catSummary}):\n\n${wrapData("memory", lines.join("\n\n"))}`,
           },
         ],
       };
