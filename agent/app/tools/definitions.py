@@ -516,7 +516,22 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                             "'focus_window'. Browser in the agent's OWN profile (needs the "
                             "'browser' capability): 'browser_navigate', 'browser_snapshot', "
                             "'browser_click', 'browser_fill', 'browser_wait', "
-                            "'browser_capture', 'browser_tabs', 'browser_close'."
+                            "'browser_capture', 'browser_tabs', 'browser_close'. "
+                            "ego lite — the user's REAL, already-logged-in browser session "
+                            "(needs the 'ego_browser' capability, off by default). Prefer this "
+                            "over browser_* for ANY task involving real web content, not just "
+                            "logins: navigating, searching, clicking a result, filling a form, "
+                            "reading a page. Discrete actions (mirror browser_*, no JS needed): "
+                            "'ego_navigate' {url}, 'ego_snapshot' {max_chars}, 'ego_click' "
+                            "{selector | text}, 'ego_fill' {selector, value}, 'ego_wait' "
+                            "{selector, timeout_ms}, 'ego_capture' {}, 'ego_tabs' {index?}, "
+                            "'ego_close' {}. For anything more composite, 'ego_run' {script: "
+                            "'<JS body, same helpers as the ego-browser skill heredoc — "
+                            "useOrCreateTaskSpace/openOrReuseTab/snapshotText/click/js/cdp>', "
+                            "timeout: 120} returns whatever the script passed to cliLog(). Call "
+                            "ego actions DIRECTLY — ego lite launches itself if not already "
+                            "running. Do NOT call open_app for ego lite first, that is an "
+                            "unnecessary extra step."
                         ),
                     },
                     "session_id": {
@@ -1925,6 +1940,14 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                 "properties": {"path": {"type": "string", "description": "App path in /workspace (from list_apps)."}},
                 "required": ["path"],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "restart_own_container",
+            "description": "Rebuild and restart MY OWN container from the current agent image/config, preserving my full workspace (files, git history, memory, everything on disk). This INTERRUPTS whatever I'm currently doing and drops my in-progress conversation turn — ALWAYS tell the user this is about to happen BEFORE calling it, never call it silently. Use only when explicitly asked to restart/rebuild myself, or when a config/instruction change needs a fresh container to take effect. No arguments.",
+            "parameters": {"type": "object", "properties": {}},
         },
     },
 ]

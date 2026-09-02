@@ -54,11 +54,27 @@ function cssPath(el: Element): string {
   return parts.join(" > ");
 }
 
+// Schneidet an der letzten Wortgrenze vor dem Limit statt mitten im Wort ab,
+// und markiert den Schnitt mit "…" — sonst sieht ein abgeschnittenes Label
+// (z.B. in der Feedback-Detail-Modal) wie ein kaputter String aus.
+function truncateLabel(s: string, limit = 80): string {
+  if (s.length <= limit) return s;
+  const cut = s.lastIndexOf(" ", limit);
+  const at = cut > limit * 0.5 ? cut : limit;
+  return s.slice(0, at).trimEnd() + "…";
+}
+
 function labelOf(el: Element): string {
   const al = el.getAttribute("aria-label") || (el as HTMLElement).title;
-  if (al) return al.trim().slice(0, 80);
-  const t = (el.textContent || "").replace(/\s+/g, " ").trim();
-  return (t || el.tagName.toLowerCase()).slice(0, 80);
+  if (al) return truncateLabel(al.trim());
+  // innerText statt textContent: textContent haengt den Text aller
+  // Nachfahren-Knoten roh aneinander (zwei Block-Geschwister werden ohne
+  // Trenner zu einem Wort verklebt, z.B. "erhaltenFeedback wird..."), waehrend
+  // innerText das gerenderte Layout beruecksichtigt und zwischen Bloecken
+  // Zeilenumbrueche einfuegt.
+  const raw = (el as HTMLElement).innerText ?? el.textContent ?? "";
+  const t = raw.replace(/\s+/g, " ").trim();
+  return truncateLabel(t || el.tagName.toLowerCase());
 }
 
 // Zeichnet das angepinnte Element als roten Rahmen in den fertigen Screenshot.

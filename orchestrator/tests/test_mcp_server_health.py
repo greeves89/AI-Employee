@@ -78,6 +78,32 @@ def test_mcp_server_serializer_exposes_health_fields():
     assert payload["tools"] == [{"name": "search"}]
 
 
+def test_callback_redirect_uri_uses_server_callback_base(monkeypatch):
+    monkeypatch.setattr("app.core.mcp_oauth.issuer", lambda: "https://deploy.example.test")
+    server = McpServer(oauth_callback_base_url="http://localhost:18473/custom/")
+
+    assert (
+        mcp_servers._callback_redirect_uri(server)
+        == "http://localhost:18473/custom/api/v1/mcp-servers/oauth/callback"
+    )
+
+
+def test_callback_redirect_uri_falls_back_to_issuer(monkeypatch):
+    monkeypatch.setattr("app.core.mcp_oauth.issuer", lambda: "https://deploy.example.test")
+
+    assert (
+        mcp_servers._callback_redirect_uri(McpServer())
+        == "https://deploy.example.test/api/v1/mcp-servers/oauth/callback"
+    )
+
+
+def test_update_model_rejects_invalid_oauth_callback_base_url():
+    with pytest.raises(ValueError):
+        mcp_servers.McpServerUpdate(oauth_callback_base_url="https://user@example.test/cb")
+    with pytest.raises(ValueError):
+        mcp_servers.McpServerUpdate(oauth_callback_base_url="https://callback.example.test?next=/x")
+
+
 def test_validate_mcp_url_rejects_unsafe_literal_hosts():
     with pytest.raises(mcp_servers.McpDiscoveryError):
         mcp_servers._validate_mcp_url("http://127.0.0.1:8000/mcp")
@@ -159,6 +185,55 @@ async def test_refresh_persists_auth_failed_health_state(monkeypatch):
     assert db.commits == 1
 
 
+@pytest.mark.asyncio
+async def test_update_clears_oauth_callback_base_url_with_empty_string():
+    server = McpServer(
+        id=1,
+        name="oauth",
+        url="https://mcp.example.test",
+        tools=[],
+        enabled=True,
+        oauth_callback_base_url="https://callback.example.test",
+    )
+    db = _FakeSession(server)
+
+    payload = await mcp_servers.update_mcp_server(
+        1,
+        mcp_servers.McpServerUpdate(oauth_callback_base_url=""),
+        user=SimpleNamespace(id="admin"),
+        db=db,
+    )
+
+    assert payload["oauth_callback_base_url"] is None
+    assert server.oauth_callback_base_url is None
+    assert db.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_update_omitted_oauth_callback_base_url_leaves_existing_value():
+    server = McpServer(
+        id=1,
+        name="oauth",
+        url="https://mcp.example.test",
+        tools=[],
+        enabled=True,
+        oauth_callback_base_url="https://callback.example.test",
+    )
+    db = _FakeSession(server)
+
+    payload = await mcp_servers.update_mcp_server(
+        1,
+        mcp_servers.McpServerUpdate(enabled=False),
+        user=SimpleNamespace(id="admin"),
+        db=db,
+    )
+
+    assert payload["oauth_callback_base_url"] == "https://callback.example.test"
+    assert server.oauth_callback_base_url == "https://callback.example.test"
+    assert server.enabled is False
+    assert db.commits == 1
+
+
 def test_startup_ensure_mentions_mcp_health_columns():
     main_py = Path(__file__).resolve().parents[1] / "app" / "main.py"
     text = main_py.read_text()
@@ -166,3 +241,4 @@ def test_startup_ensure_mentions_mcp_health_columns():
     assert "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS last_checked_at timestamptz" in text
     assert "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS last_status varchar(32)" in text
     assert "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS last_error varchar(255)" in text
+    assert "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_callback_base_url text" in text

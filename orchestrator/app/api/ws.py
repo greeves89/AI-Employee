@@ -6,6 +6,7 @@ import os
 import re
 import time
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, Request
@@ -37,8 +38,25 @@ _CHAT_ATTACHMENT_EXTENSIONS = {
 _active_chat_websockets: dict[str, WebSocket] = {}
 
 # Rate-limit the legacy token= warning: at most once per token prefix per 600s
-_legacy_token_warned: dict[str, float] = {}
+_legacy_token_warned: "OrderedDict[str, float]" = OrderedDict()
 _LEGACY_WARN_COOLDOWN = 600
+# Backstop for a burst of many distinct tokens inside one cooldown window, where
+# expiry-based pruning alone would not free anything.
+_LEGACY_WARN_MAX_ENTRIES = 1024
+
+
+def _prune_legacy_warn_cache(now: float) -> None:
+    """Drop expired entries, then evict oldest-first down to the size cap.
+
+    Entries older than the cooldown are worthless -- they would permit a fresh
+    warning anyway -- so removing them cannot change behaviour. Evicting a
+    still-valid entry under the cap can cost one duplicate warning, which is
+    the deliberate price for a bounded cache in a long-running process.
+    """
+    for key in [k for k, ts in _legacy_token_warned.items() if now - ts >= _LEGACY_WARN_COOLDOWN]:
+        del _legacy_token_warned[key]
+    while len(_legacy_token_warned) >= _LEGACY_WARN_MAX_ENTRIES:
+        _legacy_token_warned.popitem(last=False)
 
 
 def init_stream_manager(redis: RedisService, docker: DockerService | None = None) -> StreamManager:
@@ -88,6 +106,7 @@ async def _authenticate_ws(websocket: WebSocket, token: str | None = None, ticke
         key = token[:16]
         now = time.monotonic()
         if now - _legacy_token_warned.get(key, 0) >= _LEGACY_WARN_COOLDOWN:
+            _prune_legacy_warn_cache(now)
             _legacy_token_warned[key] = now
             logger.warning("WebSocket using legacy token= param — migrate to ticket-based auth")
 
@@ -1110,18 +1129,24 @@ async def ws_agent_voice(
 
 async def _notif_visible_agent_ids(user_id: str | None) -> set[str]:
     """Agent ids whose notifications a user may receive on the live stream
-    (own + unowned + shared) — same scope as the REST notification endpoints,
-    so the live push never leaks another user's agent notifications."""
+    (own + explicitly-platform + shared) — same scope as the REST
+    notification endpoints, so the live push never leaks another user's
+    agent notifications. Ownerless agents are NOT auto-included (changed
+    2026-08-27, see tasks.py::_get_user_agent_ids) — only
+    ``is_platform_agent`` (an explicit admin flag) counts as visible to
+    everyone now, lacking an assigned owner no longer does on its own."""
     if not user_id:
         return set()
-    from sqlalchemy import or_, select
+    from sqlalchemy import select
 
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess
 
     async with async_session_factory() as db:
         owned = (await db.execute(
-            select(Agent.id).where(or_(Agent.user_id == user_id, Agent.user_id.is_(None)))
+            select(Agent.id).where(
+                (Agent.user_id == user_id) | (Agent.is_platform_agent.is_(True))
+            )
         )).scalars().all()
         shared = (await db.execute(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user_id)

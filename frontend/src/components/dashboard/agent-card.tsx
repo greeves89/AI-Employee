@@ -127,8 +127,13 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
             </div>
           </div>
 
-          {/* Status badges */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* Status badges — up to 5 can be simultaneously true (proactive,
+              provider, update/image-outdated, budget, online status). No
+              wrap here + the card's overflow-hidden silently clipped the row
+              past the card edge on any agent with more active badges than
+              its siblings (customer-reported, "Buttons sehen komisch aus",
+              2026-08-27) instead of reflowing to a second line. */}
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
             {(() => {
               // Proactive mode indicator: lightning + trigger interval (e.g. "1h").
               const proactive = (agent.config as { proactive?: { enabled?: boolean; interval_seconds?: number } } | null | undefined)?.proactive;

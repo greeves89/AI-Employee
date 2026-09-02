@@ -30,6 +30,31 @@ from typing import Any
 
 import websockets
 
+try:
+    import certifi
+except ImportError:  # pragma: no cover — kept optional, see _default_ssl_context
+    certifi = None  # type: ignore[assignment]
+
+
+def _default_ssl_context() -> ssl.SSLContext:
+    """``ssl.create_default_context()``, but pointed at certifi's CA bundle.
+
+    A PyInstaller-frozen build has no OpenSSL default cert directory to fall
+    back on the way a normal Python install does — ``load_default_certs()``
+    then finds nothing, and even a perfectly valid, CA-signed certificate
+    fails verification. This is why _system_handshake_ok kept returning
+    False for a real Cloudflare cert in the packaged app while the exact
+    same call succeeded from a plain `python3` shell (reported + diagnosed
+    2026-08-27) — the frozen build was silently falling through to strict
+    TLS pinning for a normal, publicly-trusted host, not just self-signed
+    ones. requirements.txt/spec files now bundle certifi's cacert.pem so
+    this file is always present in a shipped build.
+    """
+    if certifi is not None:
+        return ssl.create_default_context(cafile=certifi.where())
+    return ssl.create_default_context()
+
+
 def _setup_logging() -> logging.Logger:
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -172,12 +197,15 @@ def _pinned_context(pem: str) -> ssl.SSLContext:
 def _system_handshake_ok(host: str, port: int, timeout: float = 10.0) -> bool:
     """Besteht der Server die normale System-Verifikation (oeffentliche CA)?"""
     import socket
-    ctx = ssl.create_default_context()
+    ctx = _default_ssl_context()
     try:
         with socket.create_connection((host, port), timeout=timeout) as sock:
             with ctx.wrap_socket(sock, server_hostname=host):
                 return True
-    except ssl.SSLCertVerificationError:
+    except (ssl.SSLError, OSError):
+        # Not just SSLCertVerificationError: a plain network failure here
+        # (offline, DNS hiccup, timeout) must also fall through to the
+        # pinned/self-signed path below, not crash ssl_context_for outright.
         return False
 
 
@@ -186,9 +214,22 @@ def ssl_context_for(url: str, allow_pin_new: bool = True) -> ssl.SSLContext | No
 
     ``allow_pin_new`` steuert NUR den Erstkontakt (noch kein Pin fuer den
     Host): normale Verbindungen duerfen pinnen (TOFU, wie SSH), stille
-    Hintergrundaufrufe koennen es abschalten. Ein GEAENDERTES Zertifikat
-    wird hier nie akzeptiert — dafuer gibt es ``repin_server``, das an eine
-    ausdrueckliche Nutzeraktion gebunden ist.
+    Hintergrundaufrufe koennen es abschalten. Pinning ist die Vertrauensbasis
+    NUR fuer selbstsignierte Server (eine Kundenanlage, lokale Boxen) — dort wird ein
+    GEAENDERTES Zertifikat nie automatisch akzeptiert, das braucht immer
+    ``repin_server`` per ausdruecklicher Nutzeraktion.
+
+    Ein Host, der schon die normale System-CA-Pruefung besteht (oeffentliche
+    CA, gueltige Kette), wird IMMER darueber vertraut — auch wenn von
+    frueher noch ein Pin fuer denselben Host existiert. Grund: hinter einem
+    CDN/Tunnel (z. B. Cloudflare) kann sich das ausgelieferte Blatt-Zertifikat
+    aendern, obwohl es weiterhin eine gueltige, CA-signierte Kette ist — das
+    ist keine Kompromittierung, das ist normaler CDN-Betrieb. Ein starrer Pin
+    hat das faelschlich als "Zertifikat geaendert" behandelt und die Bridge
+    dauerhaft mit einem irrefuehrenden "server nicht erreichbar" blockiert
+    (gemeldet 2026-08-27, betraf agents.future-app.de). Das Sicherheitsniveau
+    sinkt dadurch nicht: eine gueltige CA-Kette ist bereits der Vertrauens-
+    anker, den TLS ueberall sonst auch verwendet.
     """
     if not url.lower().startswith(("https://", "wss://")):
         return None
@@ -206,6 +247,9 @@ def ssl_context_for(url: str, allow_pin_new: bool = True) -> ssl.SSLContext | No
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
         return ctx
+
+    if _system_handshake_ok(host, port):
+        return _default_ssl_context()
 
     if tls_cfg.get("mode") == "pinned" and tls_cfg.get("host") == host:
         pem = str(tls_cfg.get("cert_pem") or "")
@@ -226,9 +270,6 @@ def ssl_context_for(url: str, allow_pin_new: bool = True) -> ssl.SSLContext | No
                 "Wenn nicht, spricht hier gerade jemand anderes fuer den Server."
             )
         return _pinned_context(pem)
-
-    if _system_handshake_ok(host, port):
-        return ssl.create_default_context()
 
     if not allow_pin_new:
         raise TlsTrustError(
@@ -875,6 +916,15 @@ BASE_ACTIONS = [
     "shell_run",
     "browser_navigate", "browser_snapshot", "browser_click", "browser_fill",
     "browser_wait", "browser_capture", "browser_tabs", "browser_close",
+    # ego lite: lokale JS-Automation gegen die ECHTE, eingeloggte Browsersitzung
+    # des Nutzers (siehe EgoBrowser-Abschnitt unten). Wie `browser_*` immer
+    # angekuendigt, auch ohne installiertes ego lite — der Fehler kommt dann
+    # erst beim Aufruf, mit klarer Meldung statt stiller Zusage.
+    "ego_run",
+    # Diskrete Gegenstuecke zu browser_* — dieselbe echte Sitzung, aber ohne
+    # dass ein Modell selbst JS schreiben muss.
+    "ego_navigate", "ego_snapshot", "ego_click", "ego_fill", "ego_wait",
+    "ego_capture", "ego_tabs", "ego_close",
 ]
 
 # Nur wenn der Bedienungshilfen-Baum ueberhaupt verfuegbar ist — ohne ihn waere
@@ -1142,6 +1192,255 @@ class BrowserController:
                 {"index": i, "url": p.url, "title": p.title()} for i, p in enumerate(pages)
             ]}
         return self._call(job)
+
+
+def _ego_browser_binary() -> str | None:
+    """Pfad zum lokalen ``ego-browser``-CLI — oder ``None``, wenn ego lite auf
+    diesem Rechner nicht installiert bzw. nicht eingerichtet ist.
+
+    Das CLI wird beim Onboarding der ego-lite-App unter ``~/.local/bin/ego-browser``
+    registriert (siehe ``~/.claude/skills/ego-browser/references/install.md``).
+    Als Tray-/LaunchAgent-Prozess gestartet hat die Bridge dieses Verzeichnis oft
+    NICHT im PATH — deshalb zusaetzlich der feste Pfad, nicht nur ``shutil.which``.
+    """
+    import shutil
+    found = shutil.which("ego-browser")
+    if found:
+        return found
+    candidate = os.path.join(os.path.expanduser("~"), ".local", "bin", "ego-browser")
+    if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+        return candidate
+    return None
+
+
+def ego_browser_available() -> bool:
+    return _ego_browser_binary() is not None
+
+
+def ego_run(script: str, timeout: int = 120) -> dict:
+    """Ein JS-Snippet an die lokale ego-lite-Automation schicken.
+
+    ego lite arbeitet BEWUSST in der echten, eingeloggten Sitzung des Nutzers —
+    Task Spaces erben den Login-Status, anders als ``BrowserController`` oben,
+    der bewusst ein eigenes, isoliertes Profil haelt (siehe dessen Docstring).
+    Das ist hier der ganze Zweck: der Agent soll ohne erneute Anmeldung an
+    bereits eingeloggten Konten arbeiten koennen. Die Kehrseite steht
+    serverseitig in ``computer_use.py``: die Faehigkeitsgruppe ``ego_browser``
+    ist wie ``shell`` standardmaessig AUS, der Nutzer schaltet sie bewusst frei
+    — und anders als ``browser_navigate`` gibt es HIER keine feingranulare
+    Adress-Freigabe: ein JS-Skript ist kein einzelnes Ziel, das sich vorab
+    pruefen liesse. Die Capability-Gruppe ist die einzige Schranke.
+
+    Ausfuehrung ueber ``ego-browser nodejs`` (dasselbe CLI, das die
+    ``ego-browser``-Skill lokal fuer Claude Code nutzt) — das Skript geht per
+    stdin rein, die komplette ``cliLog()``-Ausgabe kommt per stdout zurueck.
+    """
+    import subprocess
+    binary = _ego_browser_binary()
+    if not binary:
+        return {"ok": False, "error": (
+            "ego lite ist auf diesem Rechner nicht gefunden (weder auf dem PATH "
+            "noch unter ~/.local/bin/ego-browser). Installation: https://lite.ego.app/"
+        )}
+    if not script.strip():
+        return {"ok": False, "error": "Kein Skript uebergeben."}
+    try:
+        result = subprocess.run(
+            [binary, "nodejs"],
+            input=script,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"ego-browser antwortet nicht (>{timeout}s)"}
+    except OSError as e:
+        return {"ok": False, "error": f"ego-browser liess sich nicht starten: {e}"}
+    if result.returncode != 0:
+        return {"ok": False, "error": (
+            result.stderr.strip() or result.stdout.strip()
+            or f"ego-browser beendete sich mit Code {result.returncode}"
+        )}
+    # cliLog() schreibt nachweislich auf stderr, nicht stdout (leer bei jedem
+    # lokalen Test) — vermutlich reserviert das CLI stdout fuer ein eigenes
+    # Protokoll. stdout wird trotzdem mitgenommen, falls eine kuenftige
+    # Fassung dort etwas ausgibt.
+    output = result.stderr
+    if result.stdout:
+        output = (output + "\n" + result.stdout) if output else result.stdout
+    _ego_bring_to_front()
+    return {"ok": True, "output": output}
+
+
+def _ego_bring_to_front() -> None:
+    """ego lite ins Vordergrund holen — live beim Nutzer gefunden: startet die
+    ``ego-browser``-CLI die App selbst (siehe ``_ego_browser_binary``-Docstring
+    oben), laeuft sie im HINTERGRUND als ``--startup-ego-browser-service``, ganz
+    ohne sichtbares Fenster im Vordergrund. Automatisierung lief korrekt (echte
+    Tabs, echte Suchergebnisse), der Nutzer sah davon aber nichts und hielt es
+    fuer kaputt. Best-effort: ein fehlgeschlagener Vordergrund-Wechsel darf das
+    eigentliche Ergebnis nicht kaputt machen, deshalb wird hier nichts geworfen.
+    """
+    if not IS_MAC:
+        return
+    import subprocess
+    try:
+        subprocess.run(["open", "-a", "ego lite"], capture_output=True, timeout=5)
+    except Exception:  # noqa: BLE001 — rein kosmetisch, nie den Aufruf sprengen
+        pass
+
+
+# ── Diskrete ego-Aktionen (wie browser_*, aber gegen die echte Sitzung) ───────
+#
+# ego_run oben bleibt fuer freie/zusammengesetzte Skripte. Diese Aktionen sind
+# die gaengigsten Einzelschritte als eigene, typisierte Aktion — wie
+# browser_navigate/-click/-fill/... — damit ein Modell (auch die Sprachfront)
+# sie ohne eigenes JS aufrufen kann. Jede baut EIN kleines Skript, das sein
+# Ergebnis als JSON-Zeile ueber cliLog() zurueckgibt, und parst das hier.
+#
+# Alle teilen sich denselben Task-Space-Namen ("bridge"), damit navigate →
+# click → fill → snapshot in AUFEINANDERFOLGENDEN aufrufen dieselbe Sitzung
+# und denselben Tab weiterbenutzen (jeder Aufruf ist ein eigener Prozess -
+# ohne denselben Namen wuerde jede Aktion einen neuen Tab aufmachen).
+_EGO_TASK_SPACE = "bridge"
+
+
+def _ego_script_json(script: str, timeout: int = 60) -> dict:
+    """Wie ego_run, erwartet aber die letzte cliLog()-Zeile als EIN JSON-Objekt."""
+    result = ego_run(script, timeout)
+    if not result.get("ok"):
+        return result
+    lines = [ln for ln in (result.get("output") or "").splitlines() if ln.strip()]
+    if not lines:
+        return {"ok": False, "error": "ego lite hat keine Ausgabe geliefert."}
+    try:
+        return json.loads(lines[-1])
+    except ValueError:
+        return {"ok": False, "error": f"Unerwartete Ausgabe von ego lite: {lines[-1][:300]}"}
+
+
+def ego_navigate(url: str, timeout_ms: int = 30000) -> dict:
+    secs = max(1, timeout_ms // 1000)
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        f"await openOrReuseTab({json.dumps(url)}, {{wait:true, timeout:{secs}}});"
+        "const info = await pageInfo();"
+        "cliLog(JSON.stringify({ok:true, url:info.url, title:info.title}));"
+    )
+    return _ego_script_json(script, timeout=secs + 20)
+
+
+def ego_snapshot(max_chars: int = 20000) -> dict:
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        "const text = await snapshotText();"
+        "const info = await pageInfo();"
+        f"const max = {int(max_chars)};"
+        "cliLog(JSON.stringify({ok:true, url:info.url, title:info.title, "
+        "snapshot: text.slice(0, max), truncated: text.length > max}));"
+    )
+    return _ego_script_json(script, timeout=45)
+
+
+def ego_click(selector: str = "", text: str = "") -> dict:
+    """``click()`` in ego lite nimmt EIN Ziel (CSS/xpath=/@N/loc=) — anders als
+    Playwright kennt es kein separates "nach sichtbarem Text suchen". Ohne
+    Selektor wird der Text deshalb selbst in ein XPath gegossen."""
+    target = selector.strip()
+    if not target and text.strip():
+        escaped = text.strip().replace('"', '\\"')
+        target = f'xpath=//*[contains(normalize-space(.), "{escaped}")]'
+    if not target:
+        return {"ok": False, "error": "Kein Ziel angegeben (selector oder text)."}
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        f"await click({json.dumps(target)}, {{label:'click'}});"
+        "const info = await pageInfo();"
+        f"cliLog(JSON.stringify({{ok:true, clicked:{json.dumps(target)}, url:info.url}}));"
+    )
+    return _ego_script_json(script, timeout=30)
+
+
+def ego_fill(selector: str, value: str) -> dict:
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        f"await fillInput({json.dumps(selector)}, {json.dumps(value)});"
+        f"cliLog(JSON.stringify({{ok:true, filled:{json.dumps(selector)}}}));"
+    )
+    return _ego_script_json(script, timeout=30)
+
+
+def ego_wait(selector: str = "", timeout_ms: int = 15000) -> dict:
+    if not selector.strip():
+        return {"ok": False, "error": "Kein Element zum Warten angegeben."}
+    secs = max(1, timeout_ms // 1000)
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        f"await waitForElement({json.dumps(selector)}, {{timeout:{secs}}});"
+        "const info = await pageInfo();"
+        "cliLog(JSON.stringify({ok:true, url:info.url}));"
+    )
+    return _ego_script_json(script, timeout=secs + 20)
+
+
+def ego_capture() -> dict:
+    """``captureScreenshot()`` liefert live verifiziert einen Dateipfad auf
+    DIESER Maschine zurueck, kein Base64 — die Bridge liest die Datei selbst
+    und raeumt sie danach auf (dieselbe Verantwortung wie ueberall sonst, wo
+    die Bridge Screenshots als Base64 zurueckgibt)."""
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        "const path = await captureScreenshot();"
+        "const info = await pageInfo();"
+        "cliLog(JSON.stringify({ok:true, path, url:info.url}));"
+    )
+    result = _ego_script_json(script, timeout=30)
+    if not result.get("ok"):
+        return result
+    path = result.get("path") or ""
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError as e:
+        return {"ok": False, "error": f"Screenshot-Datei nicht lesbar: {e}"}
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return {"ok": True, "url": result.get("url"), "screenshot_b64": base64.b64encode(data).decode()}
+
+
+def ego_tabs(index: int | None = None) -> dict:
+    if index is None:
+        script = (
+            f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+            "const tabs = await listTabs();"
+            "cliLog(JSON.stringify({ok:true, tabs: tabs.map((tb,i)=>"
+            "({index:i, url:tb.url, title:tb.title}))}));"
+        )
+        return _ego_script_json(script, timeout=20)
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        "const tabs = await listTabs();"
+        f"const idx = {int(index)};"
+        "if (idx < 0 || idx >= tabs.length) {"
+        "cliLog(JSON.stringify({ok:false, error:'Kein Tab mit dieser Nummer'}));"
+        "} else {"
+        "await switchTab(tabs[idx].targetId);"
+        "cliLog(JSON.stringify({ok:true, active: idx, url: tabs[idx].url}));"
+        "}"
+    )
+    return _ego_script_json(script, timeout=20)
+
+
+def ego_close() -> dict:
+    script = (
+        f"const t = await useOrCreateTaskSpace({json.dumps(_EGO_TASK_SPACE)});"
+        "await closeTab();"
+        "cliLog(JSON.stringify({ok:true}));"
+    )
+    return _ego_script_json(script, timeout=20)
 
 
 def allowed_shell_dirs() -> list[str]:
@@ -1854,6 +2153,48 @@ class CommandDispatcher:
             elif action == "browser_close":
                 return self._browser.close()
 
+            # ── ego lite (echte, eingeloggte Sitzung) ────────────────────────
+            elif action == "ego_run":
+                return ego_run(
+                    str(params.get("script") or ""),
+                    int(params.get("timeout") or 120),
+                )
+
+            elif action == "ego_navigate":
+                return ego_navigate(
+                    str(params.get("url") or ""),
+                    int(params.get("timeout_ms") or 30000),
+                )
+
+            elif action == "ego_snapshot":
+                return ego_snapshot(int(params.get("max_chars") or 20000))
+
+            elif action == "ego_click":
+                return ego_click(
+                    str(params.get("selector") or ""), str(params.get("text") or "")
+                )
+
+            elif action == "ego_fill":
+                return ego_fill(
+                    str(params.get("selector") or ""), str(params.get("value") or "")
+                )
+
+            elif action == "ego_wait":
+                return ego_wait(
+                    str(params.get("selector") or ""),
+                    int(params.get("timeout_ms") or 15000),
+                )
+
+            elif action == "ego_capture":
+                return ego_capture()
+
+            elif action == "ego_tabs":
+                idx = params.get("index")
+                return ego_tabs(int(idx) if idx is not None else None)
+
+            elif action == "ego_close":
+                return ego_close()
+
             elif action == "open_url":
                 # Eigener Zweig, weil `open -a <url>` NICHT funktioniert: -a erwartet eine
                 # Anwendung. Eine Adresse geht ohne -a an den Standardbrowser. Genau daran
@@ -2143,6 +2484,7 @@ class Bridge:
                     "capabilities": BASE_ACTIONS
                                     + (AX_ACTIONS if ax_tree_available() else []),
                     "ax_tree_available": ax_tree_available(),
+                    "ego_browser_available": ego_browser_available(),
                 }
                 await ws.send(json.dumps(caps))
                 log.info(f"Connected. Waiting for commands... (platform: {platform.system()})")

@@ -1581,6 +1581,36 @@ class OrchestratorAPIClient:
         url_s = f" Link für den User: {result['url']}" if result.get("url") else ""
         return f"App „{params.get('path')}“ neu gebaut und gestartet ({conts} Container, {result.get('status')}).{url_s}"
 
+    async def restart_own_container(self, params: dict) -> str:
+        """Rebuild and restart MY OWN container, preserving the workspace."""
+        result = await self._request("POST", "/agent-apps/restart-self")
+        if isinstance(result, str):
+            return result
+        return "Mein Container wird gerade neu gebaut und startet gleich neu. Mein Workspace bleibt erhalten."
+
+    # ── Web Search (admin-konfigurierter Provider: DuckDuckGo/Brave/SerpApi) ──
+
+    async def web_search(self, params: dict) -> str:
+        """Websuche ueber den zentral admin-konfigurierten Provider — EIN Weg
+        fuer alle Laufzeiten statt einer eigenen DuckDuckGo-Kopie hier."""
+        query = (params.get("query") or "").strip()
+        if not query:
+            return "Error: query cannot be empty"
+        max_results = min(int(params.get("max_results") or 5), 10)
+        result = await self._request(
+            "POST", "/agent-search/web", json={"query": query, "max_results": max_results}
+        )
+        if isinstance(result, str):
+            return result
+        items = result.get("results") or []
+        if not items:
+            return f"No results found for '{query}'. Try different search terms."
+        blocks = [
+            f"**{r.get('title', '')}**\n{r.get('url', '')}\n{r.get('snippet', '')}"
+            for r in items
+        ]
+        return f"Search results for '{query}':\n\n" + "\n\n---\n\n".join(blocks)
+
     async def close(self) -> None:
         """Close the HTTP client."""
         await self._client.aclose()

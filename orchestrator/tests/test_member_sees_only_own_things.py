@@ -25,6 +25,35 @@ API = (ROOT / "orchestrator/app/api/agents.py").read_text()
 VIEW = (ROOT / "frontend/src/app/settings/view.tsx").read_text()
 MANAGER = (ROOT / "orchestrator/app/core/agent_manager.py").read_text()
 
+# 2026-08-27: the SAME "unowned = shared" mistake this file was written to guard
+# against had quietly drifted back in — not in agents.py, but in five OTHER
+# endpoints that never got the memo (found on a multi-department customer
+# install, where it leaked one department's tasks/costs/notifications
+# to another). Their code comments even cited agents.py as the precedent
+# ("dieselbe Regel wie in der Agentenliste") — a precedent that had already
+# stopped being true. Guarding all five here, same file, same reasoning,
+# instead of five new near-duplicate test files.
+_UNOWNED_LEAK_FILES = {
+    "tasks.py": ROOT / "orchestrator/app/api/tasks.py",
+    "ws.py": ROOT / "orchestrator/app/api/ws.py",
+    "evals.py": ROOT / "orchestrator/app/api/evals.py",
+    "schedules.py": ROOT / "orchestrator/app/api/schedules.py",
+    "notifications.py": ROOT / "orchestrator/app/api/notifications.py",
+}
+
+
+class OwnerlessLeakDoesNotReturnTests(unittest.TestCase):
+    def test_no_endpoint_treats_unowned_as_shared(self):
+        offenders = []
+        for label, path in _UNOWNED_LEAK_FILES.items():
+            code = [
+                line for line in path.read_text().splitlines()
+                if not line.lstrip().startswith("#")
+            ]
+            if any("user_id.is_(None)" in line or "user_id == None" in line for line in code):
+                offenders.append(label)
+        self.assertEqual(offenders, [])
+
 
 class UnownedIsNotSharedTests(unittest.TestCase):
     def test_the_personal_list_no_longer_lets_unowned_through(self):

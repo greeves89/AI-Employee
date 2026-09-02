@@ -1,4 +1,4 @@
-import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, FeedbackStatus, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -56,6 +56,16 @@ export async function setRoomSharing(
   return fetchJSON(`${getBase()}/agents/${agentId}/room-sharing`, {
     method: "PATCH",
     body: JSON.stringify({ shared_for_rooms: shared }),
+  });
+}
+
+export async function setPlatformAgent(
+  agentId: string,
+  isPlatformAgent: boolean,
+): Promise<{ id: string; is_platform_agent: boolean }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/platform-agent`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_platform_agent: isPlatformAgent }),
   });
 }
 
@@ -1314,9 +1324,11 @@ export async function updateSettings(data: Record<string, unknown>): Promise<voi
 export async function getAgentMemories(
   agentId: string,
   category?: string,
-): Promise<{ memories: AgentMemory[]; total: number; categories: Record<string, number> }> {
+  offset = 0,
+): Promise<{ memories: AgentMemory[]; total: number; has_more: boolean; categories: Record<string, number> }> {
   const params = new URLSearchParams();
   if (category) params.set("category", category);
+  if (offset) params.set("offset", String(offset));
   return fetchJSON(`${getBase()}/memory/agents/${agentId}?${params}`);
 }
 
@@ -1473,6 +1485,7 @@ export interface McpServerInfo {
   // Client-side OAuth (#426)
   oauth_enabled?: boolean;
   oauth_client_id?: string | null;
+  oauth_callback_base_url?: string | null;
   oauth_connected?: boolean;  // a refresh token is stored → the flow completed
   oauth_scope?: string | null;
   oauth_expires_at?: string | null;
@@ -1649,6 +1662,12 @@ export async function updateUser(
 
 export async function deleteUser(userId: string): Promise<void> {
   await fetchJSON(`${getBase()}/auth/users/${userId}`, { method: "DELETE" });
+}
+
+export async function resetUserPassword(
+  userId: string,
+): Promise<{ user_id: string; email: string; temp_password: string }> {
+  return fetchJSON(`${getBase()}/auth/users/${userId}/reset-password`, { method: "POST" });
 }
 
 // Admin: Agent Stats
@@ -2127,6 +2146,22 @@ export async function createGithubIssueFromFeedback(
   return fetchJSON(`${getBase()}/feedback/${feedbackId}/github-issue`, {
     method: "POST",
   });
+}
+
+export async function exportFeedback(status?: FeedbackStatus): Promise<void> {
+  const base = getBase();
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  const res = await fetch(`${base}/feedback/export${q}`, { credentials: "include" });
+  if (!res.ok) throw new Error(`Export fehlgeschlagen: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "feedback-export.zip";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // --- Health & Performance ---

@@ -67,7 +67,12 @@ def _build_telegram_prompt(text: str, tg: dict, is_new_session: bool = False) ->
     agent_token = settings.agent_token
 
     # Build header
-    header = f"[TELEGRAM] From: {first_name or username or 'User'} | chat_id: {chat_id}"
+    # message_id gehoert in den Kopf, nicht nur in das curl-Beispiel weiter unten:
+    # das Beispiel steht ausschliesslich im Block fuer eine NEUE Sitzung. Ab dem
+    # zweiten Zug kannte der Agent die Kennung der aktuellen Nachricht sonst gar
+    # nicht mehr und konnte auf sie weder reagieren noch sie zitieren.
+    header = (f"[TELEGRAM] From: {first_name or username or 'User'} | "
+              f"chat_id: {chat_id} | message_id: {msg_ref}")
     if media_type:
         header += f" | media: {media_type} (file_id: {file_id})"
     if callback_data:
@@ -138,6 +143,8 @@ Antworte einfach als Text — er geht automatisch an den Nutzer. Die vollstaendi
 Orchestrator-Telegram-API (Dateien, Fotos, Sprache, Reaktionen, Tastaturen) steht
 am Anfang DIESER Sitzung im Verlauf: dort die genauen curl-Aufrufe nachlesen statt
 raten. api.telegram.org rufst du nie direkt auf, den Bot-Token hast du nicht.
+Reagieren kannst du jederzeit — die message_id der aktuellen Nachricht steht oben
+im Kopf. Der Normalfall bleibt KEINE Reaktion, und nie eine statt einer Antwort.
 Basis-URL: {api_base}
 Auth-Header: {auth}"""
 
@@ -507,7 +514,7 @@ class ChatConsumer:
             # they are all this channel, so nothing needs re-queueing.
             while not lane.empty():
                 try:
-                    qmsg = lane.get_nowait()
+                    qmsg, _ = lane.get_nowait()
                 except asyncio.QueueEmpty:
                     break
                 if qmsg.get("text", "").strip() == "/reset":

@@ -62,3 +62,8 @@ class User(Base, TimestampMixin):
     # Monthly spend cap across ALL of the user's agents (None = unlimited).
     # When exceeded, every agent of this user behaves per its budget_exceeded_action.
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Bumped whenever an admin resets this user's password — embedded in every
+    # freshly issued access/refresh token as "tv" and checked on every request,
+    # so a reset actually revokes sessions issued before it (JWTs alone can't
+    # be invalidated early; this is the only revocation mechanism in the app).
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)

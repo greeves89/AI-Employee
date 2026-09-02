@@ -121,11 +121,21 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_list_calendar_events",
-        "description": "List upcoming calendar events for the user.",
+        "description": (
+            "List calendar events for the user — either a rolling window from right now "
+            "(days_ahead), or ONE specific calendar day (date). For 'what's on today/"
+            "tomorrow', ALWAYS use `date` — `days_ahead` is a window starting at the exact "
+            "current moment, not a calendar day, so days_ahead=1 for 'tomorrow' silently "
+            "returns whatever falls in the next 24 hours (mostly still today) instead of "
+            "tomorrow's events; this was reported live as the tool 'not working' when it was "
+            "just the wrong parameter for the question being asked."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "days_ahead": {"type": "number", "description": "How many days ahead to look (1-90). Default: 7."},
+                "days_ahead": {"type": "number", "description": "Rolling window in days from right now (1-90). Ignored if `date` is set. Default: 7."},
+                "date": {"type": "string", "description": "A SPECIFIC calendar day: 'today', 'tomorrow', or an ISO date (YYYY-MM-DD). Takes priority over days_ahead."},
+                "timezone": {"type": "string", "description": "IANA timezone for interpreting `date`'s day boundaries (e.g. Europe/Berlin). Default: Europe/Berlin."},
                 "limit": {"type": "number", "description": "Max events to return. Default: 20."},
             },
         },
@@ -1257,10 +1267,40 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
 
     elif name == "ms_list_calendar_events":
         from datetime import datetime, timedelta, timezone
-        days = min(int(args.get("days_ahead", 7)), 90)
+        from zoneinfo import ZoneInfo
         limit = min(int(args.get("limit", 20)), 50)
-        now = datetime.now(timezone.utc)
-        end = now + timedelta(days=days)
+        date_arg = str(args.get("date") or "").strip().lower()
+        if date_arg:
+            # EIN Kalendertag (Mitternacht bis Mitternacht in der angegebenen Zone) —
+            # bewusst NICHT dasselbe wie days_ahead unten: "days_ahead=1" ist ein
+            # rollierendes Fenster ab JETZT, kein Kalendertag. Live gemeldet: "Termine
+            # fuer morgen" gab days_ahead=1 mit, bekam aber ueberwiegend den Rest von
+            # HEUTE zurueck, weil das Fenster erst um Mitternacht wirklich "morgen"
+            # erreicht. Siehe Werkzeugbeschreibung oben.
+            try:
+                tz = ZoneInfo(str(args.get("timezone") or "Europe/Berlin"))
+            except Exception:  # noqa: BLE001 — unbekannte Zone -> Standard statt Absturz
+                tz = ZoneInfo("Europe/Berlin")
+            today_local = datetime.now(tz).date()
+            if date_arg in ("today", "heute"):
+                day = today_local
+            elif date_arg in ("tomorrow", "morgen"):
+                day = today_local + timedelta(days=1)
+            else:
+                try:
+                    day = datetime.strptime(date_arg, "%Y-%m-%d").date()
+                except ValueError:
+                    day = today_local
+            start_local = datetime(day.year, day.month, day.day, tzinfo=tz)
+            end_local = start_local + timedelta(days=1)
+            now, end = start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
+            days = 1
+            no_events_note = f"No events on {day.isoformat()}."
+        else:
+            days = min(int(args.get("days_ahead", 7)), 90)
+            now = datetime.now(timezone.utc)
+            end = now + timedelta(days=days)
+            no_events_note = f"No events in the next {days} days."
         params = {
             "startDateTime": now.isoformat(),
             "endDateTime": end.isoformat(),
@@ -1271,7 +1311,7 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
         data = await _graph("GET", "/me/calendarView", token, params=params)
         events = data.get("value", [])
         if not events:
-            return f"No events in the next {days} days."
+            return no_events_note
         lines = []
         for e in events:
             start = e.get("start", {}).get("dateTime", "")[:16]
