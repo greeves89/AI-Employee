@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.281.0] - 2026-09-02
+
+### Behoben
+- **Wissensspeicher: gleiche Titel bei verschiedenen Besitzern möglich** — bisher
+  musste ein Titel im GESAMTEN System einmalig sein, obwohl jeder Nutzer seinen
+  eigenen Wissensspeicher hat. Sobald ein zweiter Nutzer einen naheliegenden Titel
+  wie "Klare Aufgabendefinition" erzeugte, brach der Speichervorgang mit einem
+  Datenbankfehler ab — und riss den kompletten Reflexionslauf mit sich, nicht nur
+  den einen Eintrag. Titel sind jetzt je Besitzer eindeutig; systemweite Einträge
+  ohne Besitzer bleiben wie bisher global eindeutig.
+- **Fremde Wissenseinträge wurden überschrieben** — beim Speichern über die
+  Brain-Schnittstelle wurde ein Eintrag GLEICHEN TITELS gesucht, ohne auf den
+  Besitzer zu achten. Wer einen Titel verwendete, den ein anderer Nutzer schon
+  hatte, überschrieb dessen Inhalt still und ohne Fehlermeldung. Alle Titelsuchen
+  sind jetzt auf den Besitzer eingeschränkt; ein Test am Quelltext hält das fest.
+- **Ein einziger Wissenseintrag reisst nicht mehr den ganzen Nachtlauf mit** —
+  scheiterte im nächtlichen Reflexionslauf das Speichern EINES Eintrags, brach
+  der komplette Lauf ab und alle folgenden Erkenntnisse der Nacht gingen verloren.
+  Der Lauf überspringt den betroffenen Eintrag jetzt, protokolliert ihn und macht
+  weiter; die Anzahl steht als `kb_skipped` im Ergebnis. Der manuelle Freigabeweg
+  meldet Fehler weiterhin unverändert zurück — wer auf "freigeben" klickt, soll
+  sehen, wenn es nicht geklappt hat.
+- **Die Zusicherung hält auch dort, wo Alembic nicht durchläuft.** Scheitert die
+  Migration — ein im Code selbst dokumentierter Fall —, legt der Rückfall aus den
+  Modellen wieder die alte, globale Eindeutigkeit an; auf so einer Anlage wäre
+  der Fehler unverändert da. Dieselben beiden Indizes werden deshalb bei jedem
+  Start abgesichert.
+
+---
+
 ## [1.280.0] - 2026-09-02
 
 ### Behoben
