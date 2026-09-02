@@ -260,6 +260,16 @@ def api_login(base_url, email, password):
         return json.loads(r.read())["access_token"]
 
 
+def api_ws_ticket(base_url, token) -> str:
+    """Einmal-Ticket fuer eine WebSocket-Verbindung holen (30 s gueltig).
+
+    Der Dauer-JWT darf NICHT in die WS-URL: Query-Parameter landen in
+    Proxy- und Zugriffsprotokollen. Faellt das Ticket aus, ist das ein
+    Verbindungsfehler — kein Grund, auf ``token=`` zurueckzufallen (#337).
+    """
+    return _api("POST", base_url, "/api/v1/ws/ticket", token)["ticket"]
+
+
 def _scope_payload(cfg: dict | None) -> dict:
     """Freigabelisten fuer den Server — und zwar so, dass "keine Einschraenkung"
     auch wirklich ankommt.
@@ -1448,9 +1458,9 @@ def _show_main_window_ctk(cfg: dict) -> None:
 _voice_state: dict = {}
 
 
-def _voice_ws_url(base_url: str, agent_id: str, token: str) -> str:
+def _voice_ws_url(base_url: str, agent_id: str, ticket: str) -> str:
     ws_base = base_url.rstrip("/").replace("https://", "wss://").replace("http://", "ws://")
-    q = urllib.parse.urlencode({"token": token})
+    q = urllib.parse.urlencode({"ticket": ticket})
     return f"{ws_base}/api/v1/ws/agents/{agent_id}/voice?{q}"
 
 
@@ -1511,7 +1521,9 @@ def _start_voice_ws(cfg: dict, agent_id: str, on_event) -> None:
     async def _runner():
         import websockets
 
-        url = _voice_ws_url(cfg["url"], agent_id, cfg["token"])
+        ticket = await asyncio.get_running_loop().run_in_executor(
+            None, api_ws_ticket, cfg["url"], cfg["token"])
+        url = _voice_ws_url(cfg["url"], agent_id, ticket)
         async with websockets.connect(
             url, ping_interval=20, ssl=_tls_context(cfg["url"]),
         ) as ws:

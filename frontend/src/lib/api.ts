@@ -1324,9 +1324,11 @@ export async function updateSettings(data: Record<string, unknown>): Promise<voi
 export async function getAgentMemories(
   agentId: string,
   category?: string,
-): Promise<{ memories: AgentMemory[]; total: number; categories: Record<string, number> }> {
+  offset = 0,
+): Promise<{ memories: AgentMemory[]; total: number; has_more: boolean; categories: Record<string, number> }> {
   const params = new URLSearchParams();
   if (category) params.set("category", category);
+  if (offset) params.set("offset", String(offset));
   return fetchJSON(`${getBase()}/memory/agents/${agentId}?${params}`);
 }
 
@@ -1483,6 +1485,7 @@ export interface McpServerInfo {
   // Client-side OAuth (#426)
   oauth_enabled?: boolean;
   oauth_client_id?: string | null;
+  oauth_callback_base_url?: string | null;
   oauth_connected?: boolean;  // a refresh token is stored → the flow completed
   oauth_scope?: string | null;
   oauth_expires_at?: string | null;

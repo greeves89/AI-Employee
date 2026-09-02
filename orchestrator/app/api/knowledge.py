@@ -438,9 +438,12 @@ async def agent_read(
     agent_obj = await db.get(Agent, agent_id)
     owner_user_id = agent_obj.user_id if agent_obj else None
 
-    stmt = select(KnowledgeEntry).where(KnowledgeEntry.title == title)
-    if owner_user_id:
-        stmt = stmt.where(KnowledgeEntry.user_id == owner_user_id)
+    # Auch ohne Besitzer bleibt die Abfrage eingeschraenkt (dann auf die globalen
+    # Eintraege) — sonst liest ein besitzerloser Agent den Eintrag eines Mandanten.
+    stmt = select(KnowledgeEntry).where(
+        KnowledgeEntry.title == title,
+        KnowledgeEntry.user_id == owner_user_id,
+    )
     result = await db.execute(stmt)
     entry = result.scalar_one_or_none()
     if not entry:
