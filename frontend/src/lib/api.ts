@@ -1485,6 +1485,7 @@ export interface McpServerInfo {
   // Client-side OAuth (#426)
   oauth_enabled?: boolean;
   oauth_client_id?: string | null;
+  oauth_callback_base_url?: string | null;
   oauth_connected?: boolean;  // a refresh token is stored → the flow completed
   oauth_scope?: string | null;
   oauth_expires_at?: string | null;

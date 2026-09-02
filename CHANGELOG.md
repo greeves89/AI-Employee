@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.279.0] - 2026-09-02
+
+### Hinzugefügt
+- **MCP-Server können jetzt einen eigenen OAuth-Callback nutzen.** Administratoren müssen die globale Deployment-Identität (`OAUTH_REDIRECT_BASE_URL`) nicht mehr temporär umbiegen, wenn ein einzelner externer MCP-Server nur eine enge Redirect-Allowlist akzeptiert. Ohne gesetzten Server-Wert bleibt das bisherige Verhalten unverändert.
+- **Der OAuth-Rückweg bleibt jetzt auch stabil, wenn die Callback-Basis während eines laufenden Verbindungsversuchs geändert wird.** Vorher berechneten Start und Abschluss den Wert je neu; eine Änderung dazwischen ließ den Token-Tausch mit einer nichtssagenden Anbieter-Meldung scheitern, obwohl alles richtig eingegeben war.
+- **Nach einer Änderung der Callback-Basis lässt sich der MCP-Server wieder verbinden.** Bisher blieb eine beim Anbieter automatisch angelegte Client-Registrierung an die alte Rückkehr-Adresse gebunden: jeder weitere Versuch scheiterte, und die Oberfläche bot keinen Weg, die veraltete Registrierung loszuwerden — der Server war ohne Datenbankeingriff nicht mehr nutzbar. Die Registrierung wird beim Wechsel der Basis nun verworfen, sodass die Erkennung sie gegen die neue Adresse neu anlegt. Hinweis: Wer seine Client-ID von Hand eingetragen hat (Anbieter ohne automatische Registrierung), muss sie nach einem Wechsel der Basis einmal erneut eintragen.
+- **Und man kommt in der Oberfläche an die Einstellung heran.** Die Adresse war
+  ausschliesslich über die Schnittstelle zu setzen — in der Integrationen-Seite
+  gab es kein Feld dafür. Wer sie nicht kannte, bog weiter die globale Adresse
+  um, also genau das, was hier abgestellt werden sollte. Das Feld steht jetzt im
+  Bearbeiten-Dialog des Servers und warnt vor dem Verlust der Registrierung.
+
+---
+
 ## [1.278.0] - 2026-09-02
 
 ### Behoben
