@@ -188,6 +188,31 @@ class McpServerUpdate(BaseModel):
     enabled: bool | None = None
     bearer_token: str | None = None  # "" clears the token; None leaves it unchanged
     headers: dict[str, str] | None = None  # {} clears; None leaves unchanged
+    oauth_callback_base_url: str | None = None  # "" clears; None leaves unchanged
+
+    @field_validator("oauth_callback_base_url")
+    @classmethod
+    def validate_oauth_callback_base_url(cls, v: str | None) -> str | None:
+        if v is None or not v.strip():
+            return v
+        raw = v.strip().rstrip("/")
+        parsed = urlparse(raw)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("OAuth callback base URL must be a valid http(s) URL without credentials, query, or fragment")
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("OAuth callback base URL has an invalid port") from exc
+        if port is not None and not (1 <= port <= 65535):
+            raise ValueError("OAuth callback base URL has an invalid port")
+        return raw
 
 
 class McpToolCall(BaseModel):
@@ -271,6 +296,7 @@ def _serialize_mcp_server(server: McpServer) -> dict:
         "allow_private_host": bool(getattr(server, "allow_private_host", False)),
         "oauth_enabled": bool(getattr(server, "oauth_enabled", False)),
         "oauth_client_id": getattr(server, "oauth_client_id", None),
+        "oauth_callback_base_url": getattr(server, "oauth_callback_base_url", None),
         "oauth_connected": bool(getattr(server, "oauth_refresh_token_encrypted", None)),
         "oauth_scope": getattr(server, "oauth_scope", None),
         "oauth_expires_at": (
@@ -709,6 +735,15 @@ async def update_mcp_server(
     if body.headers is not None:
         from app.core.encryption import encrypt_token
         server.headers_encrypted = encrypt_token(json_mod.dumps(body.headers)) if body.headers else None
+    if body.oauth_callback_base_url is not None:
+        new_base = body.oauth_callback_base_url or None
+        if new_base != server.oauth_callback_base_url and server.oauth_client_id:
+            # The client is registered at the authorization server against the OLD
+            # redirect_uri. Keeping it makes the next flow fail with invalid_request,
+            # and the API offers no way to clear it again.
+            server.oauth_client_id = None
+            server.oauth_client_secret_encrypted = None
+        server.oauth_callback_base_url = new_base
 
     await db.commit()
     return _serialize_mcp_server(server)
@@ -870,10 +905,11 @@ _STATE_PREFIX = "mcp_oauth_client:state:"
 _STATE_TTL_SECONDS = 600  # 10 min to complete the browser round-trip
 
 
-def _callback_redirect_uri() -> str:
+def _callback_redirect_uri(server: McpServer | None = None) -> str:
     """Public redirect URI the authorization server sends the browser back to."""
     from app.core import mcp_oauth as oas
-    return f"{oas.issuer()}/api/v1/mcp-servers/oauth/callback"
+    base = (getattr(server, "oauth_callback_base_url", None) or oas.issuer()).rstrip("/")
+    return f"{base}/api/v1/mcp-servers/oauth/callback"
 
 
 def _integrations_redirect(status: str, **params) -> RedirectResponse:
@@ -1012,7 +1048,7 @@ async def oauth_discover(
         server.oauth_client_id = body.client_id.strip()
         server.oauth_client_secret_encrypted = None
     elif not server.oauth_client_id and endpoints["registration_endpoint"]:
-        reg = await _register_oauth_client(endpoints["registration_endpoint"], _callback_redirect_uri())
+        reg = await _register_oauth_client(endpoints["registration_endpoint"], _callback_redirect_uri(server))
         server.oauth_client_id = reg["client_id"]
         secret = reg.get("client_secret")
         server.oauth_client_secret_encrypted = encrypt_token(secret) if secret else None
@@ -1030,7 +1066,7 @@ async def oauth_discover(
         "client_id": server.oauth_client_id,
         "dynamically_registered": registered,
         "needs_client_id": not server.oauth_client_id,
-        "redirect_uri": _callback_redirect_uri(),
+        "redirect_uri": _callback_redirect_uri(server),
     }
 
 
@@ -1052,13 +1088,18 @@ async def oauth_connect(
 
     verifier, challenge = oc.gen_pkce()
     state = secrets.token_urlsafe(32)
+    # RFC 6749 4.1.3: der Tausch muss exakt dieselbe redirect_uri senden wie die
+    # Anfrage. Beide Seiten neu zu berechnen haelt das nur, solange niemand
+    # oauth_callback_base_url waehrend der 10 Minuten aendert — deshalb festhalten.
+    redirect_uri = _callback_redirect_uri(server)
     await redis.client.setex(_STATE_PREFIX + state, _STATE_TTL_SECONDS, json_mod.dumps({
         "server_id": server.id, "code_verifier": verifier, "user_id": str(user.id),
+        "redirect_uri": redirect_uri,
     }))
     auth_url = oc.build_authorization_url(
         authorization_endpoint=server.oauth_authorization_endpoint,
         client_id=server.oauth_client_id,
-        redirect_uri=_callback_redirect_uri(),
+        redirect_uri=redirect_uri,
         state=state,
         code_challenge=challenge,
         scope=server.oauth_scope or "",
@@ -1112,7 +1153,9 @@ async def oauth_callback(
         code=code,
         code_verifier=st["code_verifier"],
         client_id=server.oauth_client_id,
-        redirect_uri=_callback_redirect_uri(),
+        # Der in der Anfrage benutzte Wert, nicht der jetzt gueltige. Der Rueckfall
+        # deckt Zustaende ab, die vor dieser Aenderung geschrieben wurden.
+        redirect_uri=st.get("redirect_uri") or _callback_redirect_uri(server),
         client_secret=client_secret,
         resource=server.oauth_resource or None,
     )
