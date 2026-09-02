@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.288.0] - 2026-09-02
+
+### Behoben
+- **Jede delegierte Aufgabe starb nach genau 30 Minuten** (#692). Der Wächter
+  über hängengebliebene Aufgaben prüfte, wann zuletzt etwas an der Aufgabe
+  geschrieben wurde — zwischen Start und Ende schrieb aber nichts. Er maß damit
+  nicht die Gesundheit des Arbeiters, sondern schlicht die verstrichene Zeit,
+  und brach nach einer halben Stunde ausnahmslos alles ab. Gemeldet wurde das
+  als „kein Lebenszeichen — Arbeiter vermutlich gestorben", was jede Fehlersuche
+  in Richtung Speichermangel und Netzwerk schickte. Am 31.08. starben so vier
+  parallel laufende Reviews mitten in der Arbeit; drei teilten sich sogar
+  dieselbe Abbruchsekunde.
+  - Der Agent sendet jetzt jede Minute ein echtes Lebenszeichen. Damit misst der
+    Wächter endlich das, was sein Name behauptet.
+  - Die Spalte dafür gab es seit jeher in der Datenbank — gefüttert hatte sie nie
+    jemand.
+  - Die Schwelle ist einstellbar (`WATCHDOG_STALE_TASK_MINUTES`, Vorgabe 180
+    Minuten): ein Agent auf einem älteren Abbild sendet noch kein Lebenszeichen
+    und wäre sonst weiter gedeckelt.
+- **Nach einem solchen Abbruch lief der Agent trotzdem weiter** und verbrauchte
+  Zeit und Guthaben für ein Ergebnis, das niemand mehr annahm. Er bekommt jetzt
+  das Abbruchsignal, das es für den Knopf „Stopp" längst gab.
+- Der irreführende Quellkommentar, der die falsche Annahme über Jahre festhielt,
+  ist durch den tatsächlichen Hergang ersetzt.
+
+---
+
 ## [1.287.0] - 2026-09-02
 
 ### Neu

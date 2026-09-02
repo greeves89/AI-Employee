@@ -318,11 +318,12 @@ async def _listen_task_events(redis: RedisService) -> None:
     """Background task that listens for task start + completion events from agents."""
     try:
         pubsub = await redis.subscribe("task:completions")
-        # Also subscribe to task:started channel
+        # Also subscribe to task:started + task:heartbeat channels
         if redis.client:
             await pubsub.subscribe("task:started")
-        logger.info("[TaskListener] Started listening on task:completions + task:started")
-        print("[TaskListener] Started listening on task:completions + task:started")
+            await pubsub.subscribe("task:heartbeat")
+        logger.info("[TaskListener] Listening on task:completions + task:started + task:heartbeat")
+        print("[TaskListener] Listening on task:completions + task:started + task:heartbeat")
     except Exception as e:
         logger.error(f"[TaskListener] Failed to start: {e}", exc_info=True)
         return
@@ -354,6 +355,8 @@ async def _listen_task_events(redis: RedisService) -> None:
                     router = TaskRouter(db, redis, lb)
                     if channel == "task:started":
                         await router.handle_task_start(data)
+                    elif channel == "task:heartbeat":
+                        await router.handle_task_heartbeat(data)
                     else:
                         await router.handle_task_completion(data)
         except Exception as e:

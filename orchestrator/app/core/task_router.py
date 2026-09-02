@@ -493,6 +493,40 @@ class TaskRouter:
         except Exception as e:
             logger.warning(f"job_state checkpoint (start) failed for {task_id}: {e}")
 
+    async def handle_task_heartbeat(self, data: dict) -> None:
+        """Ein Lebenszeichen einer laufenden Aufgabe festhalten (#692).
+
+        Der Waechter (#211) prueft, wie lange an einer laufenden Aufgabe nichts
+        mehr geschrieben wurde. Zwischen Start und Ende schrieb aber NICHTS —
+        er mass damit nicht die Gesundheit des Arbeiters, sondern die
+        verstrichene Zeit, und brach nach 30 Minuten jede noch so gesunde
+        Aufgabe ab (belegt am 31.08.2026 an vier parallelen Reviews).
+
+        Fortgeschrieben wird beides: ``job_state.last_heartbeat`` — die Spalte
+        gab es laengst, gefuettert hat sie nie jemand — und ``Task.updated_at``,
+        woran der Waechter haengt.
+        """
+        task_id = data.get("task_id")
+        if not task_id:
+            return
+        result = await self.db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task or task.status != TaskStatus.RUNNING:
+            return  # nur eine laufende Aufgabe kann ein Lebenszeichen geben
+        task.updated_at = datetime.now(timezone.utc)
+        await self.db.commit()
+
+        try:
+            # `checkpoint` erneuert `last_heartbeat` bei jedem Aufruf — ohne
+            # weitere Angaben ist es genau das Lebenszeichen, das die Spalte
+            # seit jeher vorsah und nie bekommen hat.
+            from app.services.job_state import checkpoint
+
+            await checkpoint(self.db, f"task:{task_id}", kind="agent_task", ref_id=task_id)
+        except Exception as e:  # noqa: BLE001
+            # Ein Lebenszeichen darf nie etwas zum Scheitern bringen.
+            logger.debug(f"job_state heartbeat fuer {task_id} nicht gesetzt: {e}")
+
     async def delete_task(self, task_id: str) -> bool:
         """Delete a task. Only non-running tasks can be deleted."""
         result = await self.db.execute(select(Task).where(Task.id == task_id))

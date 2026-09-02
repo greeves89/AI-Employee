@@ -153,6 +153,7 @@ class TaskConsumer:
     async def _run_task(self, task: dict) -> None:
         """Execute ONE task in its own runner, then release the semaphore slot."""
         task_id = task.get("id")
+        herzschlag = None
         runner = self._make_runner()
         self._active_runners.add(runner)
         if task_id:
@@ -173,6 +174,14 @@ class TaskConsumer:
             await self._log_publisher.publish(task_id, "system", {
                 "message": f"Task started: {prompt_preview} (model: {model})"
             })
+
+            # Lebenszeichen, solange gearbeitet wird (#692). Ohne das misst der
+            # Waechter im Orchestrator `Task.updated_at` — und die Zeile wird
+            # zwischen Start und Ende NIE angefasst. Er war damit faktisch eine
+            # harte 30-Minuten-Obergrenze fuer jede delegierte Aufgabe: am
+            # 31.08.2026 starben vier parallele Reviews nach 30.3 Minuten mit
+            # "Worker still gestorben", obwohl sie kerngesund arbeiteten.
+            herzschlag = asyncio.create_task(self._herzschlag(task_id))
 
             is_lightweight = task.get("lightweight", False)
             # Der lokale Semaphore oben deckelt nur DIESEN Pool; erst der
@@ -222,6 +231,8 @@ class TaskConsumer:
             except Exception:
                 pass  # best effort
         finally:
+            if herzschlag is not None:
+                herzschlag.cancel()
             self._active_runners.discard(runner)
             if task_id:
                 self._runner_by_task.pop(task_id, None)
@@ -239,6 +250,37 @@ class TaskConsumer:
             except Exception:  # noqa: BLE001
                 pass
             self._sem.release()
+
+    #: Wie oft ein Lebenszeichen geht. Deutlich unter der Waechter-Schwelle
+    #: (Standard 30 Minuten), damit ein einzelner verpasster Schlag — etwa bei
+    #: einer kurzen Redis-Unterbrechung — noch keinen Abbruch ausloest.
+    HERZSCHLAG_SEKUNDEN = 60
+
+    async def _herzschlag(self, task_id: str | None) -> None:
+        """Meldet, solange die Aufgabe laeuft: „ich lebe noch".
+
+        Der Waechter im Orchestrator (#211) prueft, wann an der Aufgabe zuletzt
+        etwas geschrieben wurde. Zwischen `task:started` und `task:completions`
+        schreibt aber nichts — der Waechter mass damit nicht die Gesundheit des
+        Arbeiters, sondern schlicht die verstrichene Zeit (#692).
+
+        Ein Fehler hier darf die Aufgabe nie mitreissen: schlaegt das Senden
+        fehl, wird es beim naechsten Schlag erneut versucht.
+        """
+        if not task_id:
+            return
+        while True:
+            try:
+                await asyncio.sleep(self.HERZSCHLAG_SEKUNDEN)
+                if self.redis:
+                    await self.redis.publish(
+                        "task:heartbeat",
+                        json.dumps({"task_id": task_id, "agent_id": self.agent_id}),
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Herzschlag fuer {task_id} nicht zugestellt: {e}")
 
     async def _cancel_listener(self) -> None:
         """Auf „stopp diese Aufgabe" hoeren.

@@ -55,9 +55,13 @@ _AGENT_ACL_CHANNEL_PATTERNS = [
     "agents:logs:all",
     "chat:completions",
     "agent:messages:persist",
-    # task_consumer.py publishes task lifecycle events on these two globals.
+    # task_consumer.py publishes task lifecycle events on these globals.
     "task:started",
     "task:completions",
+    # Lebenszeichen einer laufenden Aufgabe (#692). Ohne diesen Kanal mass der
+    # Waechter nur die verstrichene Zeit und brach nach 30 Minuten jede noch so
+    # gesunde Aufgabe ab.
+    "task:heartbeat",
 ]
 # Broad read/write/pubsub plus the connection basics, explicitly minus
 # admin/dangerous command categories (FLUSHALL, FLUSHDB, CONFIG, SHUTDOWN, ACL,

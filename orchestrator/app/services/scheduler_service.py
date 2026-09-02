@@ -1516,7 +1516,7 @@ class SchedulerService:
             return await router.dispatch_due_retries()
 
     async def _tick_stale_task_watchdog(self) -> None:
-        """Mark RUNNING tasks that stopped heart-beating (>30min) as stale.
+        """Mark RUNNING tasks that stopped heart-beating as stale.
 
         A worker that crashes mid-job (container OOM, network drop) leaves its
         task pinned in RUNNING forever. updated_at stops advancing, so we flip
@@ -1524,23 +1524,45 @@ class SchedulerService:
         instead of the operator discovering a missing artifact hours later.
         """
         import json as _json
+        from datetime import timedelta as _td
 
+        from app.config import settings as _cfg
+
+        # Einstellbar seit #692: der feste 30-Minuten-Wert war faktisch eine
+        # Obergrenze fuer jede delegierte Aufgabe, weil niemand ein Lebenszeichen
+        # sendete. Der Herzschlag kommt jetzt — aber ein Agent auf einem aelteren
+        # Abbild sendet ihn noch nicht, deshalb liegt der Standard hoeher.
+        schwelle = _td(minutes=max(1, int(getattr(_cfg, "watchdog_stale_task_minutes", 180))))
         now = datetime.now(timezone.utc)
         async with resilient_session() as db:
-            stale = await find_stale_tasks(db, now)
+            stale = await find_stale_tasks(db, now, schwelle)
             if not stale:
                 return
             from app.models.notification import Notification
 
+            minuten = int(schwelle.total_seconds() // 60)
             for task in stale:
-                mark_task_stale(task, now)
+                mark_task_stale(task, now, schwelle)
+                # Ohne das laeuft der Agent nach dem Abbruch weiter und verbrennt
+                # Zeit und Token fuer ein Ergebnis, das niemand mehr annimmt
+                # (#692 Punkt C). Der Kanal existiert bereits fuer `cancel_task`.
+                if self.redis and self.redis.client and task.agent_id:
+                    try:
+                        # Rohe Kennung, genau wie `cancel_task` — der Zuhoerer im
+                        # Agenten liest die Nutzlast als ID, JSON wuerde er fuer
+                        # eine unbekannte Aufgabe halten und nichts stoppen.
+                        await self.redis.client.publish(
+                            f"agent:{task.agent_id}:task:cancel", task.id
+                        )
+                    except Exception as e:
+                        logger.warning("[Scheduler] StaleTaskWatchdog cancel error: %s", e)
                 db.add(
                     Notification(
                         agent_id=task.agent_id or "system",
                         type="error",
                         title="Task stale (kein Heartbeat)",
                         message=(
-                            f'Task "{task.title}" hat seit über 30min kein '
+                            f'Task "{task.title}" hat seit über {minuten} min kein '
                             "Lebenszeichen gesendet und wurde als stale markiert."
                         )[:240],
                         priority="high",
@@ -1552,7 +1574,7 @@ class SchedulerService:
                     payload = {
                         "text": (
                             f"⚠️ Task *{md_escape(task.title)}* stale — kein "
-                            f"Heartbeat >30min (id `{task.id}`), als fehlgeschlagen markiert."
+                            f"Heartbeat >{minuten} min (id `{task.id}`), als fehlgeschlagen markiert."
                         ),
                         "parse_mode": "Markdown",
                     }

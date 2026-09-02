@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379"
     redis_url_internal: str = "redis://redis:6379"
 
+    # Wie lange eine laufende Aufgabe ohne Lebenszeichen bleiben darf, bevor der
+    # Waechter sie als tot markiert (#692). Bis der Herzschlag ueberall ankommt
+    # (aeltere Agenten-Abbilder senden ihn noch nicht), ist eine Anlage mit dem
+    # alten Wert von 30 Minuten sonst weiter gedeckelt.
+    watchdog_stale_task_minutes: int = 180
+
     # Claude Authentication (either API key OR OAuth token)
     anthropic_api_key: str = ""
     claude_code_oauth_token: str = ""
