@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.290.0] - 2026-09-02
+
+### Behoben
+- **Läufe meldeten Erfolg, obwohl sie sofort gestorben waren** (#680). Vom 27.
+  bis 30.08. hat 76 Stunden lang kein einziger Zeitplan-Lauf eines Agenten
+  Arbeit geleistet — und trotzdem standen alle 94 Läufe auf „fertig", das
+  Fehlerfeld war leer. Im Ergebnis stand der wahre Grund: 71-mal ein abgelaufener
+  Zugang, 23-mal ein erschöpftes Kontingent. Drei Tage ohne Podcast, ohne
+  Tagesplan, ohne Morgencheck — und eine Oberfläche voller grüner Haken, weil
+  jede Überwachung auf „fehlgeschlagen" filtert.
+  - Der Status wird jetzt aus dem Ergebnis abgeleitet: bekannte Fehlerwortlaute
+    oder eine leere Ausgabe in unter zehn Sekunden gelten als Fehlschlag, mit
+    dem Grund im Fehlerfeld.
+  - Ab drei Fehlschlägen in Folge kommt eine Meldung mit hoher Priorität — und
+    zwar nur beim Überschreiten der Schwelle. Sonst wären es damals 69
+    Meldungen gewesen und die Anzeige wertlos.
+  - Liegt es am Zugang, sagt die Meldung das dazu: Wiederholen hilft dann nicht,
+    nur neu anmelden.
+  - Die Prüfung liegt bewusst im Orchestrator. Das bisherige Sicherheitsnetz —
+    ein Kontrolllauf um 08:00 — lief im selben Behälter mit derselben Anmeldung
+    und starb am selben Fehler. Ein Selbsttest kann einen Anmeldeausfall
+    grundsätzlich nicht auffangen.
+  - Ein Bericht, der über Anmeldefehler nur schreibt, wird davon nicht erfasst.
+
+---
+
 ## [1.289.0] - 2026-09-02
 
 ### Behoben

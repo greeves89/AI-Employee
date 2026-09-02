@@ -608,6 +608,27 @@ class TaskRouter:
         task.status = TaskStatus.COMPLETED if data.get("status") == "completed" else TaskStatus.FAILED
         task.result = data.get("result")
         task.error = data.get("error")
+
+        # Ein „fertig", hinter dem nichts steht, ist kein Erfolg (#680). Vom
+        # 27. bis 30.08.2026 standen 94 Laeufe auf gruen, waehrend 71 davon an
+        # einem abgelaufenen Zugang und 23 an einem erschoepften Kontingent
+        # gestorben waren — drei Tage ohne Podcast, ohne Tagesplan, ohne
+        # Morgencheck, und keine Ueberwachung schlug an, weil alle auf `failed`
+        # filtern. Die Pruefung liegt HIER und nicht im Agenten: das bisherige
+        # Sicherheitsnetz lief im selben Container mit derselben Anmeldung und
+        # starb am selben 401.
+        if task.status == TaskStatus.COMPLETED:
+            from app.core.run_outcome import warum_kein_erfolg
+
+            grund = warum_kein_erfolg(task.result, data.get("duration_ms"))
+            if grund:
+                task.status = TaskStatus.FAILED
+                task.error = grund
+                logger.warning(
+                    "Lauf %s meldete Erfolg, war aber keiner: %s", scrub_log(task_id), grund,
+                )
+                if agent_id:
+                    await self._melde_ausfall_serie(agent_id, task, grund)
         task.cost_usd = data.get("cost_usd")
         task.input_tokens = data.get("input_tokens")
         task.output_tokens = data.get("output_tokens")
@@ -1106,6 +1127,67 @@ class TaskRouter:
             return True
 
         return False
+
+    async def _melde_ausfall_serie(self, agent_id: str, task, grund: str) -> None:
+        """Meldet, wenn mehrere Laeufe in Folge nur so AUSSAHEN, als gaebe es sie.
+
+        Ein einzelner Fehlschlag ist Rauschen. 71 in Folge waren ein
+        dreitaegiger Totalausfall, den niemand bemerkt hat (#680) — weil jeder
+        einzelne Lauf gruen aussah und keine Ueberwachung darauf schaut.
+
+        Gemeldet wird nur beim UEBERSCHREITEN der Schwelle, nicht bei jedem
+        weiteren Fehlschlag: sonst haette der Nutzer damals 69 Meldungen
+        bekommen und die Anzeige waere wertlos geworden.
+        """
+        from app.core.run_outcome import SERIE_MELDEN_AB, ist_zugangsproblem
+
+        try:
+            zeilen = (await self.db.execute(
+                select(Task)
+                .where(Task.agent_id == agent_id, Task.completed_at.isnot(None))
+                .order_by(Task.completed_at.desc())
+                .limit(SERIE_MELDEN_AB + 1)
+            )).scalars().all()
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Ausfall-Serie nicht pruefbar: %s", e)
+            return
+
+        letzte = [z for z in zeilen if z.id != task.id][:SERIE_MELDEN_AB]
+        # Der aktuelle Lauf zaehlt mit; davor muessen SERIE_MELDEN_AB - 1
+        # ebenfalls gescheitert sein, und der davor NICHT (sonst wurde die
+        # Meldung bereits abgesetzt).
+        davor = letzte[:SERIE_MELDEN_AB - 1]
+        if len(davor) < SERIE_MELDEN_AB - 1:
+            return
+        if not all(z.status == TaskStatus.FAILED for z in davor):
+            return
+        noch_davor = letzte[SERIE_MELDEN_AB - 1:SERIE_MELDEN_AB]
+        if noch_davor and noch_davor[0].status == TaskStatus.FAILED:
+            return  # Schwelle war schon ueberschritten — nicht erneut melden
+
+        from app.models.notification import Notification
+
+        hinweis = (" Ein Wiederholen hilft hier nicht — der Zugang muss neu "
+                   "angemeldet werden." if ist_zugangsproblem(grund) else "")
+        notif = Notification(
+            agent_id=agent_id,
+            type="error",
+            title="Mehrere Laeufe ohne Ergebnis",
+            message=(
+                f"Die letzten {SERIE_MELDEN_AB} Laeufe dieses Agenten haben nichts "
+                f"geliefert. Grund zuletzt: {grund}.{hinweis}"
+            )[:240],
+            priority="high",
+            action_url="/tasks",
+            meta={"type": "run_outcome_streak", "reason": grund,
+                  "streak": SERIE_MELDEN_AB, "task_id": task.id},
+        )
+        self.db.add(notif)
+        await self.db.commit()
+        await self.db.refresh(notif)
+        await self._publish_notification(notif)
+        logger.warning("Ausfall-Serie bei Agent %s gemeldet: %s",
+                       scrub_log(agent_id), grund)
 
     async def _update_agent_metrics(self, agent_id: str, result_data: dict) -> None:
         """Track agent performance metrics for learning insights."""
