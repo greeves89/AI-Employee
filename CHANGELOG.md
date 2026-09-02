@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.276.12] - 2026-09-02
+## [1.276.13] - 2026-09-02
 
 ### Behoben
 - **Der Bildschirm-Server kann nicht mehr die Klicks eines fremden Laufs
