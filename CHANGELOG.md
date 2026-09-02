@@ -7,6 +7,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ## [1.293.0] - 2026-09-03
 
+### Nachgetragen
+- **Lizenzweite Agenten-Obergrenze und Rückmeldung an den Lizenzserver** liegen
+  seit dem 24.08. in der Hauptlinie, waren aber nie im Änderungsbericht
+  vermerkt (#671). Wer die Version seiner Anlage abliest, fand unter dieser
+  Nummer nichts davon — gerade bei etwas, das nach aussen funkt, ist das die
+  Angabe, die man im Zweifel braucht. Deshalb hier der Nachtrag:
+  - Das in der Lizenz hinterlegte Instanzlimit wird beim Anlegen eines Agenten
+    jetzt durchgesetzt (Antwort 402, wenn es erreicht ist). Die bestehende
+    Obergrenze je Benutzer bleibt davon unberührt und gilt zusätzlich.
+  - Ein Dienst meldet in Abständen Version und Anzahl aktiver Agenten an einen
+    Lizenzserver. **Er ist ausdrücklich abgeschaltet, solange kein Administrator
+    eine Serveradresse hinterlegt**, und schweigt zusätzlich ohne Lizenzschlüssel
+    sowie in der Gemeinschaftsausgabe. Übertragen werden Instanzkennung,
+    Lizenzkennung, Version und die Zahl der Agenten — keine Inhalte, keine
+    Namen, keine Nutzerdaten.
+
+
 ### Behoben
 - **Ein Sprachfehler konnte Diagnose-Historie vernichten** (#691). Am 31.08.
   scheiterte der Sprach-Start 441-mal in 85 Sekunden; dabei blieben 473
