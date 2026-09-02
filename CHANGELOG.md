@@ -13,7 +13,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   langlebige Zugangstoken als Parameter an die WebSocket-Adresse. Solche
   Parameter werden unterwegs mitgeschrieben — in Proxy- und Zugriffsprotokollen,
   im Verlauf, im Referer — und das Token gilt danach unverändert weiter. Die
-  Bridge holt jetzt, wie die Weboberflaeche schon länger, ein Einmal-Ticket
+  Bridge holt jetzt, wie die Weboberfläche schon länger, ein Einmal-Ticket
   (30 Sekunden gültig, genau eine Verwendung). Scheitert das Ticket, scheitert
   die Verbindung sichtbar, statt still auf den alten Weg zurückzufallen.
   Damit verschwindet auch die wiederkehrende Warnung "legacy token= param" aus
