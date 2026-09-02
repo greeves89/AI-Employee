@@ -194,9 +194,23 @@ class UiTests(unittest.TestCase):
 
     def test_api_bindings(self):
         src = (REPO / "frontend/src/lib/api.ts").read_text()
-        for fn in ("forkChatSession", "rewindChatSession", "summarizeChatSession"):
+        for fn in ("forkChatSession", "rewindChatSession", "summarizeChatSession",
+                   "setMessageContextExclusion"):
             with self.subTest(fn=fn):
                 self.assertIn(fn, src)
+
+    def test_exclude_action_exists(self):
+        """#538 Punkt 4: eine Nachricht (oder nur ihre Werkzeug-Ausgabe) von Hand
+        aus dem Kontext nehmen, ohne sie zu loeschen."""
+        src = self.CHAT.read_text()
+        self.assertIn("toggleContextExclusion", src)
+        self.assertIn("onToggleExclude", src)
+
+    def test_exclude_toggle_does_not_ask(self):
+        """Jederzeit umkehrbar, nichts geht verloren — eine Rueckfrage waere nur
+        im Weg (wie bei Verzweigen)."""
+        block = self.CHAT.read_text().split("const toggleContextExclusion")[1][:900]
+        self.assertNotIn("chatConfirm", block)
 
 
 if __name__ == "__main__":

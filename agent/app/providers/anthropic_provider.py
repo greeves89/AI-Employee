@@ -197,9 +197,18 @@ class AnthropicProvider(BaseLLMProvider):
             if anthropic_tools:
                 body["tools"] = anthropic_tools
 
+        # Automatischer Unterbau zum manuellen Ausschliessen (#538 Punkt 4): sobald
+        # der Verlauf trotzdem zu gross wird, raeumt Anthropic serverseitig alte
+        # Werkzeug-Ein-/Ausgaben weg, BEVOR der Request beim Modell ankommt — der
+        # hier gehaltene Verlauf (self._history) bleibt dabei unveraendert, nur was
+        # ueber die Leitung geht wird kleiner. Mit reinen Defaults (100k Token
+        # Schwelle, letzte 3 Werkzeug-Paare bleiben woertlich).
+        body["context_management"] = {"edits": [{"type": "clear_tool_uses_20250919"}]}
+
         headers = {
             "x-api-key": self.api_key,
             "anthropic-version": "2023-06-01",
+            "anthropic-beta": "context-management-2025-06-27",
             "Content-Type": "application/json",
         }
 
@@ -243,6 +252,13 @@ class AnthropicProvider(BaseLLMProvider):
                         # „Denken" zählt bei Claude zu output_tokens.)
                         cache_write_tokens = int(usage.get("cache_creation_input_tokens") or 0)
                         cached_tokens = int(usage.get("cache_read_input_tokens") or 0)
+                        for edit in (event.get("message", {}).get("context_management") or {}).get(
+                            "applied_edits", []
+                        ):
+                            logger.info(
+                                "[Anthropic] Context-Editing griff: %s Werkzeug-Aufrufe / %s Token entfernt",
+                                edit.get("cleared_tool_uses"), edit.get("cleared_input_tokens"),
+                            )
 
                     elif event_type == "content_block_start":
                         block = event.get("content_block", {})

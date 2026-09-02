@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.283.0] - 2026-09-02
+
+### Hinzugefuegt
+- **Ballast aus einem laufenden Gespraech nehmen, ohne es zu verlieren** (#538,
+  letzter offener Teil). An jeder Nachricht laesst sich per Hover-Icon eine
+  Werkzeug-Ausgabe (oder die ganze Nachricht) aus dem Kontext nehmen — sie
+  bleibt im Verlauf sichtbar, geht nur nicht mehr ans Modell. Jederzeit per
+  Klick umkehrbar, anders als Zurueckspulen wird nichts geloescht. Der
+  Kontextring zeigt an, wie viel davon aktuell ausgeschlossen ist.
+- Zusaetzlich als automatischer Unterbau: beim eingebauten Modell (Custom-LLM,
+  Anthropic direkt) raeumt Claude jetzt serverseitig selbst alte
+  Werkzeug-Ausgaben weg, sobald der Verlauf zu gross wird — bevor der Request
+  ueberhaupt rausgeht.
+
+---
+
 ## [1.282.0] - 2026-09-02
 
 ### Behoben

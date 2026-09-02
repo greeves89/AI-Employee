@@ -10,6 +10,8 @@ import {
   ArrowDown,
   Undo2,
   Sparkles as SummarizeIcon,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { LogEvent } from "@/lib/types";
@@ -90,7 +92,7 @@ interface ChatMessage {
   toolCalls?: { tool: string; input: string }[];
   /** Verweist auf eine Auftrags-Kachel; die Zeile wird dann als Kachel gezeichnet. */
   taskCardId?: string;
-  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; presented_files?: ChatFile[] };
+  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; presented_files?: ChatFile[]; context_excluded?: boolean; tool_output_excluded?: boolean };
   images?: ChatImage[];
   files?: ChatFile[];
 }
@@ -1527,6 +1529,29 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     }
   }, [agentId, activeSessionId]);
 
+  // Aus dem Kontext nehmen, ohne zu loeschen (#538 Punkt 4). Anders als Verzweigen/
+  // Zurueckspulen bleibt die Nachricht im Verlauf sichtbar — nur das, was ans Modell
+  // geht, aendert sich. Deshalb jederzeit umkehrbar, ohne Rueckfrage.
+  const toggleContextExclusion = useCallback(async (
+    messageId: string,
+    scope: "message" | "tool_output",
+    excluded: boolean,
+  ) => {
+    if (!activeSessionId) return;
+    // Anzeige-IDs von Antworten tragen ein "response-"-Praefix (siehe loadHistory);
+    // dem Backend ist nur die eigentliche message_id bekannt.
+    const rawId = messageId.startsWith("response-") ? messageId.slice("response-".length) : messageId;
+    const metaKey = scope === "tool_output" ? "tool_output_excluded" : "context_excluded";
+    try {
+      await api.setMessageContextExclusion(agentId, activeSessionId, rawId, scope, excluded);
+      setMessages((prev) => prev.map((m) => (
+        m.id === messageId ? { ...m, meta: { ...m.meta, [metaKey]: excluded || undefined } } : m
+      )));
+    } catch (e) {
+      chatToast.error("Nicht möglich", e instanceof Error ? e.message : undefined);
+    }
+  }, [agentId, activeSessionId]);
+
   const summarizeToNew = useCallback(async () => {
     if (!activeSessionId) return;
     try {
@@ -2030,7 +2055,15 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               </div>
             );
           }
-          return <MessageRow key={`${msg.id}-${msg.role}`} message={msg} onFork={forkFrom} onRewind={rewindTo} />;
+          return (
+            <MessageRow
+              key={`${msg.id}-${msg.role}`}
+              message={msg}
+              onFork={forkFrom}
+              onRewind={rewindTo}
+              onToggleExclude={toggleContextExclusion}
+            />
+          );
         })}
         {/* „Es wird noch am Thema gearbeitet." — Wunsch des Kunden (13.08.2026):
             Nach dem Delegieren ist der Zug des Agenten BEENDET, also laeuft kein
@@ -2258,6 +2291,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                         <div className="flex justify-between">
                           <dt>bereits verdichtet</dt>
                           <dd className="tabular-nums text-foreground/80">{contextInfo.compacted}</dd>
+                        </div>
+                      )}
+                      {(contextInfo.context_excluded > 0 || contextInfo.tool_output_excluded > 0) && (
+                        <div className="flex justify-between">
+                          <dt>von Hand aus dem Kontext genommen</dt>
+                          <dd className="tabular-nums text-foreground/80">
+                            {contextInfo.context_excluded + contextInfo.tool_output_excluded}
+                          </dd>
                         </div>
                       )}
                       {contextInfo.model && (
@@ -2659,10 +2700,12 @@ function MessageRow({
   message,
   onFork,
   onRewind,
+  onToggleExclude,
 }: {
   message: ChatMessage;
   onFork?: (messageId: string) => void;
   onRewind?: (messageId: string) => void;
+  onToggleExclude?: (messageId: string, scope: "message" | "tool_output", excluded: boolean) => void;
 }) {
   if (message.role === "system") {
     if (message.isQueued) {
@@ -2693,8 +2736,22 @@ function MessageRow({
     );
   }
 
+  // Werkzeug-Ausgabe ist meist der Ballast — steckt sie drin, greift der feinere
+  // Bereich; sonst die ganze Nachricht (#538 Punkt 4).
+  const hasToolOutput = !!message.steps?.some((s) => s.type === "tool_call");
+  const excludeScope: "message" | "tool_output" = hasToolOutput ? "tool_output" : "message";
+  const excluded = !!(excludeScope === "tool_output"
+    ? message.meta?.tool_output_excluded
+    : message.meta?.context_excluded);
   const actions = (
-    <MessageActions messageId={message.id} onFork={onFork} onRewind={onRewind} />
+    <MessageActions
+      messageId={message.id}
+      onFork={onFork}
+      onRewind={onRewind}
+      onToggleExclude={onToggleExclude}
+      excludeScope={excludeScope}
+      excluded={excluded}
+    />
   );
 
   if (message.role === "user") {
@@ -2722,12 +2779,18 @@ function MessageActions({
   messageId,
   onFork,
   onRewind,
+  onToggleExclude,
+  excludeScope,
+  excluded,
 }: {
   messageId?: string;
   onFork?: (id: string) => void;
   onRewind?: (id: string) => void;
+  onToggleExclude?: (id: string, scope: "message" | "tool_output", excluded: boolean) => void;
+  excludeScope?: "message" | "tool_output";
+  excluded?: boolean;
 }) {
-  if (!messageId || (!onFork && !onRewind)) return null;
+  if (!messageId || (!onFork && !onRewind && !onToggleExclude)) return null;
   return (
     <span className="ml-1 inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
       {onFork && (
@@ -2737,6 +2800,24 @@ function MessageActions({
           className="rounded p-1 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
         >
           <GitBranch className="h-3 w-3" />
+        </button>
+      )}
+      {onToggleExclude && excludeScope && (
+        <button
+          onClick={() => onToggleExclude(messageId, excludeScope, !excluded)}
+          title={
+            excluded
+              ? "Wieder in den Kontext aufnehmen"
+              : excludeScope === "tool_output"
+                ? "Werkzeug-Ausgabe aus dem Kontext nehmen — der Text bleibt sichtbar, nur die Ausgabe geht nicht mehr ans Modell"
+                : "Nachricht aus dem Kontext nehmen — bleibt im Verlauf sichtbar, geht nur nicht mehr ans Modell"
+          }
+          className={cn(
+            "rounded p-1 hover:bg-foreground/[0.06]",
+            excluded ? "text-amber-500 hover:text-amber-400" : "text-muted-foreground/60 hover:text-foreground",
+          )}
+        >
+          {excluded ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
         </button>
       )}
       {onRewind && (

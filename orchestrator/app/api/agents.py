@@ -2452,8 +2452,20 @@ async def get_chat_history(
     user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get chat history for an agent, optionally filtered by session."""
+    """Get chat history for an agent, optionally filtered by session.
+
+    Zwei Adressaten, zwei Sichten: der MENSCH in der Oberflaeche bekommt alles,
+    unveraendert — verdichtete und aus dem Kontext genommene Nachrichten bleiben
+    sichtbar, sonst koennte er sie nie wieder anschalten. Der AGENT SELBST, der
+    sich hierueber seinen Verlauf zurueckholt (siehe ``_check_owner_or_self``),
+    bekommt genau das, was auch ans Modell gehen soll: verdichtete und von Hand
+    ausgeschlossene Nachrichten (#538 Punkt 4/5) fehlen ganz, geloeste
+    Werkzeug-Ausgaben fehlen nur teilweise (der Gespraechstext bleibt).
+    """
+    from app.dependencies import is_agent_principal
+
     await _check_owner_or_self(agent_id, user, db)
+    for_model = is_agent_principal(user)
     query = select(ChatMessage).where(ChatMessage.agent_id == agent_id)
     if session_id is not None:
         query = query.where(ChatMessage.session_id == session_id)
@@ -2476,6 +2488,10 @@ async def get_chat_history(
             continue
         seen.add(key)
         deduped.append(msg)
+
+    if for_model:
+        from app.core.chat_history import excluded_from_model, tool_output_excluded
+        deduped = [m for m in deduped if not excluded_from_model(m)]
 
     def _normalise_tool_calls(tool_calls):
         if not isinstance(tool_calls, list):
@@ -2503,7 +2519,10 @@ async def get_chat_history(
                 "role": msg.role,
                 "content": msg.content,
                 "timestamp": msg.timestamp.isoformat(),
-                "toolCalls": _normalise_tool_calls(msg.tool_calls),
+                "toolCalls": (
+                    None if for_model and tool_output_excluded(msg)
+                    else _normalise_tool_calls(msg.tool_calls)
+                ),
                 "meta": msg.meta,
                 "sessionId": msg.session_id,
             }
@@ -2585,6 +2604,11 @@ class ForkRequest(BaseModel):
     message_id: str
 
 
+class ContextExclusionRequest(BaseModel):
+    scope: str = "tool_output"  # "tool_output" (nur Werkzeug-Ausgabe) | "message" (ganze Nachricht)
+    excluded: bool = True
+
+
 @router.post("/{agent_id}/chat/sessions/{session_id}/fork")
 async def fork_chat_session(
     agent_id: str,
@@ -2651,6 +2675,33 @@ async def summarize_chat_session(
     return result
 
 
+@router.post("/{agent_id}/chat/sessions/{session_id}/messages/{message_id}/context")
+async def set_message_context_exclusion(
+    agent_id: str,
+    session_id: str,
+    message_id: str,
+    body: ContextExclusionRequest,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Eine Nachricht (oder nur ihre Werkzeug-Ausgabe) von Hand aus dem Kontext
+    nehmen oder wieder aufnehmen (#538 Punkt 4).
+
+    Anders als ``rewind`` wird nichts geloescht — die Nachricht bleibt im Verlauf
+    sichtbar, geht nur nicht mehr ans Modell. Jederzeit umkehrbar.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.core.chat_history import set_context_exclusion
+
+    result = await set_context_exclusion(
+        db, agent_id, session_id, message_id, scope=body.scope, excluded=body.excluded
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("reason", "Nicht moeglich"))
+    await db.commit()
+    return result
+
+
 @router.get("/{agent_id}/chat/sessions/{session_id}/context")
 async def chat_session_context(
     agent_id: str,
@@ -2667,7 +2718,10 @@ async def chat_session_context(
     wäre schlechter als eine, der man ansieht, dass sie gerundet ist.
     """
     from app.core.agent_toolset import context_window_for
-    from app.core.chat_history import KEEP_VERBATIM, SUMMARY_MIN_MESSAGES, messages_of
+    from app.core.chat_history import (
+        KEEP_VERBATIM, SUMMARY_MIN_MESSAGES, excluded_from_model, messages_of,
+        tool_output_excluded,
+    )
 
     await _check_owner(agent_id, user, db)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
@@ -2675,8 +2729,13 @@ async def chat_session_context(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     messages = await messages_of(db, agent_id, session_id)
-    live = [m for m in messages if not (m.meta or {}).get("compacted")]
-    chars = sum(len(m.content or "") for m in live)
+    live = [m for m in messages if not excluded_from_model(m)]
+    # Werkzeug-Ausgaben, die geloest wurden, zaehlen nicht mehr mit — genau das
+    # war der Zweck (#538 Punkt 4), sonst bliebe die Anzeige unveraendert.
+    chars = sum(
+        len(m.content or "") + (0 if tool_output_excluded(m) else len(str(m.tool_calls or "")))
+        for m in live
+    )
     used = chars // 4
     window = context_window_for(agent.model)
 
@@ -2688,6 +2747,8 @@ async def chat_session_context(
         "percent": round(min(100.0, used / window * 100), 1) if window else None,
         "messages": len(live),
         "compacted": len(messages) - len(live),
+        "context_excluded": sum(1 for m in messages if (m.meta or {}).get("context_excluded")),
+        "tool_output_excluded": sum(1 for m in messages if tool_output_excluded(m)),
         "keeps_verbatim": KEEP_VERBATIM,
         # Verdichten lohnt erst, wenn ueberhaupt etwas zu falten ist.
         "can_compact": len(live) >= SUMMARY_MIN_MESSAGES and len(live) > KEEP_VERBATIM,

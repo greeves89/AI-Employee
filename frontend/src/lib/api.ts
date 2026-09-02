@@ -1082,6 +1082,8 @@ export interface ChatHistoryMessage {
       size?: number;
       caption?: string;
     }[];
+    context_excluded?: boolean;
+    tool_output_excluded?: boolean;
   };
   images?: { media_type: string; data: string }[];
   sessionId?: string;
@@ -2680,6 +2682,10 @@ export interface ChatContextInfo {
   percent: number | null;
   messages: number;
   compacted: number;
+  /** Von Hand aus dem Kontext genommen (#538 Punkt 4) — ganze Nachrichten bzw.
+   *  nur ihre Werkzeug-Ausgabe. */
+  context_excluded: number;
+  tool_output_excluded: number;
   keeps_verbatim: number;
   can_compact: boolean;
   model: string;
@@ -3642,6 +3648,21 @@ export async function summarizeChatSession(agentId: string, sessionId: string) {
   return fetchJSON<{ ok: boolean; session_id: string; summarized: number }>(
     `${getBase()}/agents/${agentId}/chat/sessions/${encodeURIComponent(sessionId)}/summarize`,
     { method: "POST" },
+  );
+}
+
+// Nachricht (oder nur ihre Werkzeug-Ausgabe) von Hand aus dem Kontext nehmen — oder
+// wieder rein (#538 Punkt 4). Nichts wird geloescht, nur nicht mehr ans Modell geschickt.
+export async function setMessageContextExclusion(
+  agentId: string,
+  sessionId: string,
+  messageId: string,
+  scope: "message" | "tool_output",
+  excluded: boolean,
+) {
+  return fetchJSON<{ ok: boolean; message_id: string; scope: string; excluded: boolean }>(
+    `${getBase()}/agents/${agentId}/chat/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}/context`,
+    { method: "POST", body: JSON.stringify({ scope, excluded }) },
   );
 }
 
