@@ -37,8 +37,40 @@ def as_utc(dt: datetime | None) -> datetime | None:
     return dt
 
 
+#: Ein Lebenszeichen JUENGER als das gilt als Beweis, dass die Arbeit noch
+#: laeuft — und nicht als Grund, sie zu ersetzen (#695). Der Agent steckt in
+#: einem eigenen Container und ueberlebt den Neustart des Orchestrators; wer
+#: gerade eben noch geschlagen hat, ist mit hoher Wahrscheinlichkeit am Leben.
+#: Zwei Minuten sind zwei verpasste Schlaege bei einem Takt von 60 Sekunden.
+_WOHL_NOCH_AM_LEBEN = timedelta(minutes=2)
+
+
+def wahrscheinlich_noch_am_leben(
+    job: JobState, now: datetime, frisch: timedelta = _WOHL_NOCH_AM_LEBEN
+) -> bool:
+    """Schlaegt das Herz so frisch, dass ein Ersatz einen Doppellauf erzeugen wuerde?
+
+    Die Auslassung, die #695 teuer gemacht hat: gerade frisch gestartete,
+    putzmuntere Aufgaben fielen am sichersten in die Wiederaufnahme, weil ihr
+    Lebenszeichen am juengsten war.
+    """
+    if job.status != "running":
+        return False
+    hb = as_utc(job.last_heartbeat)
+    if hb is None:
+        return False
+    return (now - hb) <= frisch
+
+
 def is_resumable(job: JobState, now: datetime, stale_after: timedelta = _RESUME_STALE_AFTER) -> bool:
-    """A job can be auto-resumed when it was running with a recent heartbeat."""
+    """A job can be auto-resumed when it was running with a recent heartbeat.
+
+    ACHTUNG: „resumable" heisst nur „das Lebenszeichen ist nicht uralt". Ob die
+    Arbeit noch LAEUFT, beantwortet das nicht — der Agent lebt in einem eigenen
+    Container. Vor dem Ersetzen fragt `_resume_agent_task` den Agenten direkt
+    (`_agent_claims_task`), und `wahrscheinlich_noch_am_leben` haelt den ganz
+    frischen Fall zusaetzlich zurueck (#695).
+    """
     if job.status != "running":
         return False
     hb = as_utc(job.last_heartbeat)

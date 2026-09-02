@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.289.0] - 2026-09-02
+
+### Behoben
+- **Ein Neustart liess laufende Aufgaben ein zweites Mal komplett durchlaufen**
+  (#695). Der Agent steckt in einem eigenen Container und übersteht den Neustart
+  des Orchestrators mühelos — dieser nahm die Aufgabe trotzdem als abgebrochen
+  an und schickte 775 Millisekunden später einen Ersatz los. In der Nacht zum
+  01.09. endete das Original **36 Sekunden nach** seinem eigenen Ersatz; beide
+  hatten einen vollständigen Tagesabschluss-Bericht erzeugt. Der Nutzer bekam
+  ihn doppelt, bezahlt wurde er ebenso doppelt. Rückblickend erklärt das eine
+  Reihe von Berichten, die zwei- bis dreimal ankamen und für Fehler des
+  Zeitplaners gehalten wurden.
+  - Vor dem Ersetzen wird der Agent jetzt gefragt, ob er die Aufgabe noch
+    bearbeitet. Die Abfrage dafür gab es längst — an dieser Stelle hat sie nur
+    nie jemand aufgerufen.
+  - Ein Lebenszeichen von vor Sekunden hält den Ersatz zusätzlich zurück. Bisher
+    fielen ausgerechnet die frischesten, kerngesunden Aufgaben am sichersten in
+    die Wiederaufnahme.
+  - Bleibt es doch bei einem Ersatz, bekommt der alte Lauf jetzt das
+    Abbruchsignal. Die Datenbankzeile auf „fehlgeschlagen" zu setzen erreichte
+    einen fremden Container nie — er arbeitete ahnungslos weiter.
+  - Lässt sich die Frage nicht beantworten, wird **nicht** ersetzt: ein doppelter
+    Lauf kostet Geld und verwirrt, ein ausgelassener Ersatz nur Zeit.
+
+---
+
 ## [1.288.0] - 2026-09-02
 
 ### Behoben

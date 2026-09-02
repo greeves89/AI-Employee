@@ -2047,10 +2047,62 @@ clean Markdown; you don't need to commit.
                 )
                 return
 
+            # ERST FRAGEN, OB SIE UEBERHAUPT TOT IST (#695). Der Agent steckt in
+            # einem EIGENEN Container und ueberlebt den Neustart des
+            # Orchestrators muehelos. Ohne diese Frage wurde eine putzmuntere
+            # Aufgabe "wiederaufgenommen", waehrend sie weiterlief: in der Nacht
+            # zum 01.09. endete das Original 36 Sekunden NACH der Disposition
+            # seines eigenen Ersatzes — beide lieferten einen vollstaendigen
+            # Bericht, der Nutzer bekam ihn doppelt, die Kosten ebenso.
+            # `_agent_claims_task` gab es laengst; im Resume-Pfad fragte sie nur
+            # niemand.
+            from app.services.job_state import wahrscheinlich_noch_am_leben
+
+            # Zweite Sicherung, falls die Statusabfrage nichts hergibt: ein
+            # Lebenszeichen von vor Sekunden ist kein Grund zu ersetzen.
+            lebt_noch = wahrscheinlich_noch_am_leben(job, datetime.now(timezone.utc))
+            if lebt_noch:
+                logger.info("[Resume] Job %s hat gerade eben noch geschlagen — kein Ersatz",
+                            job.id)
+            if not lebt_noch and orig is not None and orig.agent_id \
+                    and not is_terminal_task_status(orig.status):
+                try:
+                    lebt_noch = await router._agent_claims_task(orig.agent_id, orig.id)
+                except Exception as e:  # noqa: BLE001
+                    # Im Zweifel NICHT ersetzen: ein doppelter Lauf kostet Geld
+                    # und verwirrt, ein ausgelassener Ersatz nur Zeit.
+                    logger.warning("[Resume] Lebensfrage fuer %s fehlgeschlagen: %s — "
+                                   "kein Ersatz, um einen Doppellauf auszuschliessen",
+                                   orig.id, e)
+                    lebt_noch = True
+
+            if lebt_noch:
+                # `orig` kann fehlen (Zeile geloescht) — dann steht nur die
+                # Job-Kennung zur Verfuegung.
+                logger.info(
+                    "[Resume] Aufgabe %s laeuft im Agenten weiter — kein Ersatz. "
+                    "Der Container hat den Neustart ueberlebt.",
+                    orig.id if orig is not None else job.ref_id or job.id,
+                )
+                await delete_job(db, job.id)
+                return
+
             # Retire a non-terminal original so it can't run alongside the replacement.
             if orig is not None and not is_terminal_task_status(orig.status):
                 if orig.status == TaskStatus.QUEUED and orig.agent_id:
                     await router._remove_from_queue(orig.agent_id, orig.id)
+                # Die Zeile auf FAILED zu setzen ist fuer einen fremden, lebenden
+                # Container rein kosmetisch — er erfaehrt davon nichts. Das
+                # Abbruchsignal gab es fuer den Stopp-Knopf laengst; hier hat es
+                # nie jemand benutzt (#695, gleiche Auslassung wie #692).
+                if orig.agent_id and app.state.redis and app.state.redis.client:
+                    try:
+                        await app.state.redis.client.publish(
+                            f"agent:{orig.agent_id}:task:cancel", orig.id
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("[Resume] Abbruchsignal fuer %s nicht zustellbar: %s",
+                                       orig.id, e)
                 orig.status = TaskStatus.FAILED
                 orig.error = "Superseded by auto-resume after container restart"
                 orig.completed_at = datetime.now(timezone.utc)
