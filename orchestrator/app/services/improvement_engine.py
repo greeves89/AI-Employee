@@ -587,7 +587,10 @@ async def _handle_skill_plateau(db: AsyncSession, skill: "Skill") -> None:
         f"#skill-improvement #plateau [[Skill improvement plateau]]\n"
     )
     existing = (await db.execute(
-        select(KnowledgeEntry).where(KnowledgeEntry.title == title)
+        select(KnowledgeEntry).where(
+            KnowledgeEntry.title == title,
+            KnowledgeEntry.user_id.is_(None),
+        )
     )).scalar_one_or_none()
     if existing:
         existing.content = body

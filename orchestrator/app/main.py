@@ -1276,6 +1276,36 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure chat_sessions table: {e}")
 
+    # Ensure the per-tenant title uniqueness on knowledge_entries on every
+    # startup, independent of Alembic. Die Migration b7c1e93a5f20 loest die
+    # GLOBALE Eindeutigkeit auf; scheitert `alembic upgrade head` aber (10 heads,
+    # bekannter Fall weiter oben), greift der create_all-Rueckfall — und der legt
+    # aus dem Modell wieder einen globalen Unique-Index an. Dann brechen
+    # Reflexionslaeufe weiterhin an fremden Titeln ab. Idempotent.
+    try:
+        from app.db.session import engine as _eng_kt
+        from sqlalchemy import text as _txt_kt
+        async with _eng_kt.begin() as conn:
+            await conn.execute(_txt_kt("DROP INDEX IF EXISTS ix_knowledge_entries_title"))
+            await conn.execute(_txt_kt(
+                "CREATE INDEX IF NOT EXISTS ix_knowledge_entries_title "
+                "ON knowledge_entries (title)"
+            ))
+            # user_id ist nullable (systemweite Eintraege). Zwei partielle Indizes,
+            # weil NULLs in Postgres als verschieden gelten — ein gemeinsamer Index
+            # auf (title, user_id) wuerde mehrfache globale Titel erlauben.
+            await conn.execute(_txt_kt(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_entries_title_global "
+                "ON knowledge_entries (title) WHERE user_id IS NULL"
+            ))
+            await conn.execute(_txt_kt(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_entries_title_per_user "
+                "ON knowledge_entries (title, user_id) WHERE user_id IS NOT NULL"
+            ))
+        logger.info("knowledge_entries title uniqueness ensured (per tenant)")
+    except Exception as e:
+        logger.warning(f"Could not ensure knowledge_entries title indexes: {e}")
+
     # Ensure the job_state table (long-running job checkpoints + auto-resume) on
     # every startup, independent of Alembic — no migration ships for it, and on an
     # already-provisioned DB `alembic upgrade head` succeeds so the create_all
@@ -1374,6 +1404,9 @@ async def lifespan(app: FastAPI):
             ))
             await conn.execute(_txt_mh(
                 "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_registration_endpoint text"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_callback_base_url text"
             ))
             await conn.execute(_txt_mh(
                 "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_scope text"

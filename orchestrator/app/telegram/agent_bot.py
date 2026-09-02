@@ -43,6 +43,36 @@ def _strip_markdown(text: str) -> str:
     return t.strip()
 
 
+_QUOTE_MAX_CHARS = 500
+
+
+def _quoted_context(message) -> str:
+    """Vorspann aus der zitierten Nachricht, wenn der Nutzer auf etwas antwortet.
+
+    Telegram liefert das Zitat in `reply_to_message` mit (und seit Bot-API 7.0 die
+    genaue Textstelle in `quote`). Beides wurde bisher verworfen: beim Agenten kam
+    von „<Zitat> und das hier?" nur „und das hier?" an, und er musste den Bezug aus
+    dem Verlauf raten — bei langem Verlauf raet er falsch.
+    """
+    original = getattr(message, "reply_to_message", None)
+    if original is None:
+        return ""
+    # Die markierte Teilstelle ist genauer als die ganze Nachricht: wer einen Satz
+    # aus einer langen Antwort markiert, meint genau diesen Satz.
+    fragment = getattr(getattr(message, "quote", None), "text", None)
+    body = " ".join(
+        (fragment or getattr(original, "text", None)
+         or getattr(original, "caption", None) or "").split()
+    )
+    if not body:
+        return ""
+    if len(body) > _QUOTE_MAX_CHARS:
+        body = body[:_QUOTE_MAX_CHARS].rstrip() + " […]"
+    author = getattr(original, "from_user", None)
+    wer = ("einer deiner eigenen Nachrichten" if getattr(author, "is_bot", False)
+           else f"{getattr(author, 'first_name', '') or 'dem Nutzer'}")
+    return f"[Zitat aus {wer}]\n> {body}\n\n"
+
 
 logger = logging.getLogger(__name__)
 
@@ -372,7 +402,7 @@ class TelegramAgentBot:
             )
             return
 
-        text = update.message.text
+        text = _quoted_context(update.message) + (update.message.text or "")
         user = update.effective_user
 
         target_agent_id = await self._active_target_agent_id(chat_id)
@@ -574,7 +604,10 @@ class TelegramAgentBot:
             "file_id": file_id,
         }
 
-        text = f"[Telegram {media_type}] {caption}".strip() if caption else f"[Telegram {media_type} received, file_id: {file_id}]"
+        text = _quoted_context(update.message) + (
+            f"[Telegram {media_type}] {caption}".strip() if caption
+            else f"[Telegram {media_type} received, file_id: {file_id}]"
+        )
 
         # Photos (and image documents) are downloaded here and handed to the
         # agent directly as a vision image — no tool call, no token needed.

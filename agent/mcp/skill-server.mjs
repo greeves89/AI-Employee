@@ -249,7 +249,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       const lines = result.skills.map((s) => {
         const rating = s.avg_rating ? ` [${"★".repeat(Math.round(s.avg_rating))}${"☆".repeat(5 - Math.round(s.avg_rating))}]` : "";
-        return `**${s.name}** (${s.category})${rating} — ${s.description}\n${s.content.substring(0, 200)}${s.content.length > 200 ? "..." : ""}`;
+        // The id must be rendered: skill_rate/skill_install/skill_record_usage all
+        // require it, and search is one of only two ways an agent ever sees a skill.
+        return `**${s.name}** (id: ${s.id}, ${s.category})${rating} — ${s.description}\n${s.content.substring(0, 200)}${s.content.length > 200 ? "..." : ""}`;
       });
       return {
         content: [{
@@ -288,7 +290,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
       const lines = result.skills.map((s) =>
-        `**${s.name}** — ${s.description}\n${s.content.substring(0, 300)}${s.content.length > 300 ? "..." : ""}`
+        `**${s.name}** (id: ${s.id}) — ${s.description}\n${s.content.substring(0, 300)}${s.content.length > 300 ? "..." : ""}`
       );
       return {
         content: [{
