@@ -15,10 +15,9 @@ import unittest
 from unittest.mock import patch
 
 import jwt
+from app.services.apns_service import APNsService
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-
-from app.services.apns_service import APNsService
 
 
 def _schluesselpaar():
