@@ -123,6 +123,15 @@ services:
       OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:8000}
       API_SECRET_KEY: ${API_SECRET_KEY:-change-me-in-production}
       CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:-}
+      # Push-Meldungen an die mobile App (Apple Push Notification service).
+      # Ohne diese Werte verschickt der Server keine Push-Meldungen. Der
+      # Schluessel ist ein mehrzeiliges PEM; in der .env wird er einzeilig mit
+      # maskierten Umbruechen (\n) hinterlegt.
+      APNS_AUTH_KEY: ${APNS_AUTH_KEY:-}
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-com.da.ai-employee-ios.ai-employee-ios}
+      APNS_SANDBOX: ${APNS_SANDBOX:-true}
       AGENT_IMAGE: ai-employee-agent:latest
       KIOSK_VOICE_ENABLED: ${KIOSK_VOICE_ENABLED:-}
       KIOSK_ENABLED: ${KIOSK_ENABLED:-false}

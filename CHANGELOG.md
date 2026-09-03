@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.308.0] - 2026-09-03
+
+### Behoben
+- **Push-Einstellungen kamen nie im Behälter an.** Die APNs-Werte waren in der
+  Konfiguration vorgesehen und im Code ausgewertet, wurden aber in keiner
+  Compose-Datei durchgereicht: Wer sie in die `.env` eintrug, bei dem blieb der
+  Versand trotzdem still aus, und der Dienst meldete lediglich "nicht
+  konfiguriert" — das sieht nach einem fehlenden Schlüssel aus, nicht nach einer
+  fehlenden Zeile in der Compose-Datei. Push an iPhones konnte damit bisher gar
+  nicht funktionieren. Eine Prüfstufe leitet die erwarteten Namen künftig aus
+  der Konfiguration ab.
+- `.env.example` beschreibt die fünf Werte samt Herkunft und der Stolperfalle
+  mit dem mehrzeiligen Schlüssel.
+
+---
+
 ## [1.307.1] - 2026-09-03
 
 ### Behoben
