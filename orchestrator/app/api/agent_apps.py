@@ -44,10 +44,15 @@ async def agent_list_apps(
     db: AsyncSession = Depends(get_db),
     docker: DockerService = Depends(get_docker_service),
 ):
-    """List the agent's own apps (docker-compose projects) + running status."""
+    """List the agent's own apps (docker-compose projects) + running status.
+
+    Anders als die Verwaltungsoberflaeche bekommt der Agent auch Projekte
+    gemeldet, die nur ein Dockerfile haben: Sie sind nicht startbar, aber der
+    Agent muss sie sehen, um zu erkennen, dass ihm die compose-Datei fehlt.
+    """
     agent_id = auth["agent_id"]
     agent = await _load_agent(agent_id, db)
-    return await _discover_core(docker, agent, agent_id)
+    return await _discover_core(docker, agent, agent_id, include_dockerfile_only=True)
 
 
 @router.get("/logs")

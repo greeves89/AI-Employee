@@ -1886,7 +1886,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "list_apps",
-            "description": "List MY OWN docker-compose apps (the projects under /workspace/projects/) with running status and containers. I have NO docker myself — the platform (orchestrator) runs them; use the app_* tools to drive them. Use the app 'path' from here for the other app tools.",
+            "description": "List MY OWN docker-compose apps (the projects under /workspace/projects/) with running status and containers. I have NO docker myself — the platform (orchestrator) runs them; use the app_* tools to drive them. Use the app 'path' from here for the other app tools. A project listed with status 'needs_compose' has a Dockerfile but no compose file: it cannot be built or started until I add a docker-compose.yml next to it.",
             "parameters": {"type": "object", "properties": {}},
         },
     },

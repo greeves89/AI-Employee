@@ -338,6 +338,29 @@ Match how much context you load to the SIZE of the request. Do NOT run the full 
 - **Platform errors: `/shared/platform-errors.log`** — the platform's own WARNING/ERROR logs (secret-redacted). Read this file when something on the platform misbehaves or you want to improve the platform itself; turn recurring errors into a GitHub issue or PR.
 - Knowledge base: `/workspace/knowledge.md` (my role, skills, learnings)
 
+## Docker: du hast KEIN `docker`-Kommando (WICHTIG)
+In deinem Behaelter gibt es weder `docker` noch `docker compose` — absichtlich,
+denn ein Docker-Zugang im Behaelter waere gleichbedeutend mit Vollzugriff auf den
+ganzen Rechner. Versuchst du es trotzdem, bekommst du "command not found" und
+haeltst das faelschlich fuer einen kaputten Behaelter.
+**Stattdessen** laufen deine Anwendungen ueber den Orchestrator:
+- `list_apps` — welche Anwendungen liegen in meinem Workspace, was laeuft gerade
+- `rebuild_app` — bauen UND starten (`docker compose up -d --build`). **Das ist
+  dein Image-Build.** Nach JEDER Code- oder Konfigurationsaenderung noetig; ein
+  blosses `start_app` nimmt Aenderungen nicht auf.
+- `start_app` / `stop_app` / `app_logs` — starten, stoppen, Protokolle lesen
+**Eine Anwendung braucht eine `docker-compose.yml`.** Ein Dockerfile allein
+genuegt nicht — die Plattform startet ausschliesslich ueber compose. Meldet
+`list_apps` fuer dein Projekt den Status `needs_compose`, fehlt genau diese
+Datei. Lege sie daneben, im einfachsten Fall:
+```yaml
+services:
+  app:
+    build: .
+    ports: ["8080:8080"]
+```
+Danach `rebuild_app` mit dem Pfad aus `list_apps`.
+
 ## Bildschirm des Nutzers bedienen
 Alles, was auf dem Bildschirm des Nutzers passiert, laeuft AUSSCHLIESSLICH ueber die
 `computer_*`-Werkzeuge — niemals ueber `bash`, `open`, AppleScript oder Tastatur-Tricks.

@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.310.0] - 2026-09-03
+
+### Behoben
+- **Agenten liefen beim Bauen eigener Anwendungen ins Leere.** Im
+  Agenten-Behälter gibt es absichtlich kein `docker` — ein Docker-Zugang dort
+  wäre Vollzugriff auf den Rechner. Der Weg über den Orchestrator existierte
+  auch, nur stand er nirgends: Weder die Anleitung noch die Werkzeugtexte
+  erwähnten ihn. Also griffen Agenten zum fehlenden Kommando und meldeten einen
+  Fehler, der wie ein kaputter Behälter aussieht.
+  - Die Anleitung sagt jetzt ausdrücklich, dass es kein `docker` gibt, und
+    nennt den Ersatz (`rebuild_app` ist der Image-Build).
+  - Wirksam beim nächsten Neuerstellen eines Agenten.
+- **Projekte mit blossem Dockerfile waren unsichtbar.** Die Suche fand nur
+  compose-Dateien; ein Verzeichnis mit reinem Dockerfile tauchte in `list_apps`
+  gar nicht auf — für den Agenten sah sein eigenes Projekt aus wie nicht
+  vorhanden. Solche Projekte werden ihm jetzt mit dem Status `needs_compose`
+  und einem Hinweis gemeldet, was fehlt. Die Verwaltungsoberfläche bekommt sie
+  nicht: dort wären es Einträge, die niemand starten kann.
+
+---
+
 ## [1.309.0] - 2026-09-03
 
 ### Neu

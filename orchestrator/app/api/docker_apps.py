@@ -410,7 +410,24 @@ def _app_public_url(agent_id: str, containers: list[dict]) -> str | None:
     return None
 
 
-async def _discover_core(docker: DockerService, agent: Agent, agent_id: str) -> dict:
+async def _discover_core(
+    docker: DockerService,
+    agent: Agent,
+    agent_id: str,
+    *,
+    include_dockerfile_only: bool = False,
+) -> dict:
+    """Apps im Workspace des Agenten finden.
+
+    ``include_dockerfile_only`` meldet zusaetzlich Verzeichnisse, die zwar ein
+    Dockerfile haben, aber keine compose-Datei. Sie sind nicht startbar — die
+    Plattform fuehrt Anwendungen ausschliesslich ueber compose —, tauchten aber
+    bisher nirgends auf. Fuer den Agenten sah sein eigenes Projekt damit aus wie
+    nicht vorhanden, also griff er zu ``docker build`` und lief in ein
+    fehlendes Docker-Kommando. Sichtbar mit Hinweis ist besser als unsichtbar.
+    Die Verwaltungsoberflaeche bekommt sie nicht: dort waeren sie Eintraege,
+    die niemand starten kann.
+    """
     # Find all compose files in workspace (max depth 3 to avoid deep recursion).
     # The agent's own container may be momentarily stopped (DB still has its id) — in
     # that case exec raises a 409; treat it as "no reachable apps" instead of a 500.
@@ -424,7 +441,10 @@ async def _discover_core(docker: DockerService, agent: Agent, agent_id: str) -> 
         return {"apps": []}
 
     if exit_code != 0 or not stdout.strip():
-        return {"apps": []}
+        # Keine compose-Datei heisst nicht "keine Projekte": Genau hier liegt der
+        # Fall, um den es geht — ein Verzeichnis mit blossem Dockerfile.
+        return {"apps": _dockerfile_only_apps(docker, agent, agent_id, [])
+                if include_dockerfile_only else []}
 
     apps = []
     for compose_path in stdout.strip().split("\n"):
@@ -493,7 +513,59 @@ async def _discover_core(docker: DockerService, agent: Agent, agent_id: str) -> 
             "url": _app_public_url(agent_id, running_containers) if status in ("running", "partial") else None,
         })
 
+    if include_dockerfile_only:
+        apps.extend(_dockerfile_only_apps(docker, agent, agent_id, apps))
+
     return {"apps": apps}
+
+
+def _dockerfile_only_apps(
+    docker: DockerService, agent: Agent, agent_id: str, gefunden: list[dict],
+) -> list[dict]:
+    """Verzeichnisse mit Dockerfile, aber ohne compose-Datei.
+
+    Best effort: Faellt die Suche aus, bleibt es bei den compose-Apps — eine
+    Zusatzinformation darf die Liste nie zum Scheitern bringen.
+    """
+    try:
+        exit_code, stdout = docker.exec_in_container(
+            agent.container_id,
+            "find /workspace -maxdepth 3 -name 'Dockerfile'",
+        )
+    except Exception as e:  # noqa: BLE001 — Behaelter nicht erreichbar
+        logger.info("discover_apps: Dockerfile-Suche fehlgeschlagen fuer %s: %s",
+                    scrub_log(agent_id), e)
+        return []
+    if exit_code != 0 or not stdout.strip():
+        return []
+
+    bekannt = {a["path"] for a in gefunden}
+    zusatz: list[dict] = []
+    for pfad in stdout.strip().split("\n"):
+        pfad = pfad.strip()
+        if not pfad:
+            continue
+        verzeichnis = "/".join(pfad.split("/")[:-1])
+        rel_path = verzeichnis.replace("/workspace/", "").replace("/workspace", "") or "."
+        if rel_path in bekannt:
+            continue
+        bekannt.add(rel_path)
+        zusatz.append({
+            "name": rel_path.split("/")[-1] if rel_path != "." else "root",
+            "path": rel_path,
+            "compose_file": None,
+            "services": [],
+            "status": "needs_compose",
+            "containers": [],
+            "url": None,
+            "hint": (
+                "Nur ein Dockerfile, keine compose-Datei — dieses Projekt laesst "
+                "sich so nicht bauen oder starten. Lege eine docker-compose.yml "
+                "daneben (mindestens: services.<name>.build: .) und rufe dann "
+                "rebuild_app mit diesem Pfad."
+            ),
+        })
+    return zusatz
 
 
 def _resolve_compose_file(docker: DockerService, agent: Agent, path: str, *, require: bool) -> str:

@@ -927,7 +927,8 @@ export function buildServer() {
           "List MY OWN docker-compose apps (the projects under /workspace/projects/) with their " +
           "running status and containers. I have NO docker myself — the platform (orchestrator) " +
           "runs them; use these app_* tools to drive them. Use the app 'path' from here for the " +
-          "other app tools.",
+          "other app tools. A project listed with status 'needs_compose' has a Dockerfile but no " +
+          "compose file: it cannot be built or started until I add a docker-compose.yml next to it.",
         inputSchema: { type: "object", properties: {} },
       },
       {
