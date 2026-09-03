@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import time
+from pathlib import Path
 from collections import defaultdict
 
 from app.core.log_redaction import scrub_log
@@ -48,6 +49,16 @@ EINDEUTIGE_MUSTER = [
     r"<\|endoftext\|>",
     r"\[INST\]",
     r"<<SYS>>",
+    # Deutsche Entsprechungen. Die Muster waren durchweg englisch — auf einer
+    # deutschsprachigen Anlage ist das eine offene Flanke: „Vergiss alle
+    # bisherigen Anweisungen" rutschte glatt durch, das englische Gegenstueck
+    # nicht. Gemessen am eigenen Repo loesen sie keinen einzigen Fehltreffer aus.
+    r"ignorier[e]?\s+(alle\s+)?(bisherigen|vorherigen|vorigen)\s+anweisungen",
+    r"vergiss\s+(alle\s+)?(deine\s+)?(bisherigen|vorherigen|vorigen)\s+anweisungen",
+    r"vergiss\s+alles\s+(bisherige|was\s+du)",
+    r"du\s+bist\s+(ab\s+)?jetzt\s+(ein|eine|kein)",
+    r"tu\s+so,?\s+als\s+(ob\s+)?(du|w(ä|ae)r)",
+    r"gib\s+(mir\s+)?(deine[nr]?\s+)?(system\s*)?(anweisung|prompt)\s+aus",
 ]
 
 #: Fuer sich genommen harmlos. `system:` stellte 19 der 26 Fehltreffer.
@@ -56,6 +67,10 @@ SCHWACHE_MUSTER = [
     r"<\s*system\s*>",
     r"new\s+instructions?\s*:",
     r"act\s+as\s+(if\s+)?(you\s+are\s+)?",
+    # Deutsche Entsprechungen der schwachen Klasse — einzeln arglos, im
+    # Verbund aussagekräftig.
+    r"neue\s+anweisung(en)?\s*:",
+    r"(verhalte\s+dich|agiere)\s+(wie|als)\s+",
 ]
 
 #: Die alte Liste bleibt als Ganzes bestehen — mehrere Stellen lesen sie.
@@ -84,16 +99,86 @@ class SecurityVerdict:
         self.matched_pattern = matched_pattern
 
 
+#: Zeilen des EIGENEN Quelltexts, in denen ein Muster trifft — der Musterkatalog
+#: selbst, seine Tests und die Auswertung. Diese Dateien MUESSEN den Angriffstext
+#: enthalten, sonst pruefen sie nichts.
+#:
+#: Warum inhaltsbasiert und nicht ueber den Dateipfad: Der Sentinel sieht nur
+#: TEXT, keinen Pfad. Eine Ausnahme „Treffer in Datei X ist harmlos" waere ein
+#: Freifahrtschein — es genuegte, den Dateinamen in den Angriffstext zu
+#: schreiben. (Genau diese Schwaeche hatte die frueher entfernte
+#: „[Sentinel]"-Ausnahme in ``sentinel_service._scan``.) Eine ZEILE des eigenen
+#: Repos kann ein Angreifer dagegen nicht faelschen: er muesste sie dort
+#: hineinschreiben, und dann hat er ohnehin Schreibrechte.
+_EIGENE_DATEIEN = (
+    "security/agent_guard.py",
+    "services/sentinel_service.py",
+    "services/trend_service.py",
+    # Die Tests fuehren echte Angriffsbeispiele — sonst pruefen sie nichts. Wer
+    # am Sentinel arbeitet, liest sie mit. Im Auslieferungs-Abbild fehlen sie
+    # womoeglich; dann faellt der Eintrag einfach weg (fail-open).
+    "../tests/test_sentinel_detection.py",
+    "../tests/test_injection_pattern_precision.py",
+)
+
+_eigene_zeilen: frozenset[str] | None = None
+
+
+def eigene_musterzeilen() -> frozenset[str]:
+    """Die getrimmten Zeilen des eigenen Quelltexts, die ein Muster ausloesen.
+
+    Einmal gelesen, dann gemerkt. Faellt das Lesen aus (anderes Abbild, keine
+    Quellen im Container), bleibt die Menge leer — dann verhaelt sich die
+    Erkennung wie vorher. Fail-open ist hier Pflicht: eine fehlende Ausnahme
+    darf nie dazu fuehren, dass ein echter Angriff durchrutscht, und ein Fehler
+    beim Lesen nie dazu, dass gar nichts mehr geprueft wird.
+    """
+    global _eigene_zeilen
+    if _eigene_zeilen is not None:
+        return _eigene_zeilen
+    zeilen: set[str] = set()
+    wurzel = Path(__file__).resolve().parents[1]
+    for rel in _EIGENE_DATEIEN:
+        try:
+            text = (wurzel / rel).read_text()
+        except OSError:
+            continue
+        for zeile in text.splitlines():
+            gestutzt = zeile.strip()
+            if not gestutzt:
+                continue
+            if any(m.search(gestutzt) for m in _compiled_patterns):
+                zeilen.add(gestutzt)
+    _eigene_zeilen = frozenset(zeilen)
+    return _eigene_zeilen
+
+
+def _ohne_eigene_zeilen(text: str) -> str:
+    """Den Text ohne die Zeilen, die woertlich aus dem eigenen Quelltext stammen.
+
+    Liest ein Agent den Sicherheitscode — etwa waehrend der Arbeit am Sentinel
+    selbst —, traegt sein Werkzeug-Ergebnis den Musterkatalog. Vor #687 hat ihn
+    das mitten im Lauf gestoppt: das Sicherheitssubsystem loeste seinen eigenen
+    Detektor aus. Was daneben steht, wird weiterhin voll geprueft; nur die
+    woertlich bekannten Zeilen fallen weg.
+    """
+    bekannt = eigene_musterzeilen()
+    if not bekannt:
+        return text
+    return "\n".join(z for z in text.splitlines() if z.strip() not in bekannt)
+
+
 def bewerte_injection(text: str) -> tuple[list[str], list[str]]:
     """Die Fundstellen, getrennt nach eindeutig und schwach — ohne Urteil.
 
     Ein Muster zaehlt EINMAL, auch wenn es mehrfach vorkommt: sonst ergaebe eine
     einzige Datei mit vielen `system:`-Zeilen von allein einen Befund.
     """
+    pruefbar = _ohne_eigene_zeilen(text)
     eindeutig = [t.group(0) for t in
-                 (m.search(text) for m in _eindeutig_kompiliert) if t]
+                 (m.search(pruefbar) for m in _eindeutig_kompiliert) if t]
     schwach = [t.group(0) for t in
-               (m.search(text) for m in _schwach_kompiliert) if t]
+               (m.search(pruefbar) for m in _schwach_kompiliert) if t]
     return eindeutig, schwach
 
 
@@ -102,10 +187,14 @@ def detect_injection(text: str) -> tuple[bool, str]:
 
     Returns (is_suspicious, matched_pattern).
 
-    Regel seit #687: EIN eindeutiges Muster genuegt — „ignore all previous
-    instructions" in einer Werkzeugausgabe ist genau der Angriff, den dieser
+    Regel seit #687: EIN eindeutiges Muster genuegt — ein woertlicher
+    Umsturzbefehl in einer Werkzeugausgabe ist genau der Angriff, den dieser
     Waechter fangen soll. Schwache Muster brauchen dagegen Gesellschaft; einzeln
     sind sie in gewoehnlichem Text zu haeufig, um etwas zu bedeuten.
+
+    (Der Beispieltext steht hier bewusst NICHT woertlich: dieser Docstring wird
+    mitgelesen, wenn ein Agent die Datei oeffnet, und loeste dann den eigenen
+    Detektor aus — der Fehler, den #687 abstellt.)
 
     (Zwischenzeitlich stand hier eine nach HERKUNFT gestaffelte Schwelle — fuer
     gelesenen Inhalt hoeher als fuer eine eingehende Anweisung. Der Gedanke

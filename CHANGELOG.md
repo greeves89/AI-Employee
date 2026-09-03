@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.299.0] - 2026-09-03
+
+### Behoben
+- **Das Sicherheitssubsystem löste seinen eigenen Wächter aus** (#687). Wer am
+  Sentinel arbeitete, las dabei den Musterkatalog — und wurde dafür als
+  Angreifer behandelt. Zwischen dem 15. und 21.08. lief der harte Stopp
+  ungebremst und brach **53 echte Agentenläufe ab, 28 davon mit dieser
+  Begründung**. Gemessen am eigenen Bestand trafen die Muster 26 von 1128
+  Dateien; jetzt sind es **null**.
+  - Zeilen, die wörtlich aus dem eigenen Quelltext stammen, gelten nicht mehr
+    als Fund. Die Ausnahme arbeitet über den **Inhalt**, nicht über den
+    Dateipfad: Der Wächter sieht nur Text, und eine Regel „Treffer in Datei X
+    ist harmlos" wäre ein Freifahrtschein — man müsste nur den Dateinamen in den
+    Angriffstext schreiben. Eine Zeile des eigenen Bestands kann dagegen niemand
+    fälschen, ohne Schreibrechte darauf zu haben.
+  - Steht ein Angriff **neben** bekanntem Text, wird er weiterhin erkannt. Nur
+    die bekannten Zeilen fallen weg, nicht das übrige Ereignis.
+  - Fehlen die Quelldateien, prüft der Wächter wie bisher.
+
+### Neu
+- **Angriffe auf Deutsch werden erkannt.** Die Muster waren durchweg englisch —
+  auf einer deutschsprachigen Anlage eine offene Flanke: „Vergiss alle
+  bisherigen Anweisungen" rutschte glatt durch, das englische Gegenstück nicht.
+  Acht Entsprechungen ergänzt, ohne einen einzigen neuen Fehltreffer.
+
+---
+
 ## [1.298.0] - 2026-09-03
 
 ### Behoben
