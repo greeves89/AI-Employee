@@ -1911,6 +1911,44 @@ clean Markdown; you don't need to commit.
     await app.state.redis.connect()
     app.state.docker = DockerService()
 
+    # Redis-ACL-Nutzer der Agenten wiederherstellen.
+    #
+    # Redis haelt seine ACL-Nutzer nur im Speicher (keine `aclfile` in der
+    # Dienstdefinition). Nach einem Neustart von Redis — oder des ganzen Hosts —
+    # sind sie deshalb ALLE weg, und jeder Agent scheitert beim Verbinden mit
+    # „invalid username-password pair". Angelegt wurden sie bisher nur beim
+    # Erstellen oder Aktualisieren eines Agenten; niemand stellte sie danach
+    # wieder her. Bei eingeschalteter ACL ist das ein Totalausfall nach jedem
+    # Neustart, aus dem die Anlage von allein nicht mehr herausfindet.
+    #
+    # Am 03.09.2026 nach einem Host-Neustart genau so beobachtet: zwei von drei
+    # Agenten in einer Neustartschleife, der dritte lief nur, weil er zufaellig
+    # danach neu erstellt worden war.
+    #
+    # Das Passwort ist aus `api_secret_key` + Agenten-Kennung ableitbar (siehe
+    # `agent_acl_password`), der Orchestrator kann es also jederzeit neu setzen.
+    # `ACL SETUSER` ersetzt die Regeln vollstaendig und ist damit wiederholbar.
+    if settings.redis_acl_enabled:
+        try:
+            from app.db.session import async_session_factory as _sf_acl
+            from app.models.agent import Agent as _AgentACL
+            from sqlalchemy import select as _sel_acl
+
+            async with _sf_acl() as _db_acl:
+                _ids = (await _db_acl.execute(_sel_acl(_AgentACL.id))).scalars().all()
+            _ok = 0
+            for _aid in _ids:
+                try:
+                    await app.state.redis.ensure_agent_acl_user(_aid)
+                    _ok += 1
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("Redis-ACL fuer %s nicht gesetzt: %s", _aid, e)
+            logger.info("Redis-ACL fuer %s von %s Agenten sichergestellt", _ok, len(_ids))
+        except Exception as e:  # noqa: BLE001
+            # Ein Fehler hier darf den Start nicht verhindern — ohne ACL laufen
+            # die Agenten notfalls ueber den gemeinsamen Zugang weiter.
+            logger.warning("Redis-ACL-Wiederherstellung uebersprungen: %s", e)
+
     # Initialize stream manager for WebSocket
     init_stream_manager(app.state.redis, app.state.docker)
 

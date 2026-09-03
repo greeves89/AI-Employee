@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.303.0] - 2026-09-03
+
+### Behoben
+- **Ein Neustart von Redis sperrte alle Agenten aus.** Beim Absichern des
+  Speicher-Controllers auf einer Anlage aufgefallen: Nach dem Host-Neustart
+  hingen zwei von drei Agenten in einer Neustartschleife und meldeten einen
+  ungültigen Zugang; der dritte lief nur, weil er zufällig danach neu erstellt
+  worden war.
+  - Redis hält seine Zugangsregeln nur im Arbeitsspeicher. Nach jedem Neustart
+    sind sie weg. Angelegt wurden sie bisher ausschliesslich beim Erstellen oder
+    Aktualisieren eines Agenten — danach stellte sie niemand wieder her.
+  - Bei eingeschalteter Zugangstrennung war das ein Totalausfall nach jedem
+    Neustart, aus dem die Anlage von allein nicht mehr herausfand: Jeder Agent
+    hätte einzeln neu erstellt werden müssen.
+  - Der Orchestrator stellt sie jetzt beim Start für alle Agenten wieder her.
+    Das Passwort ist aus dem Serverschlüssel ableitbar — die Möglichkeit war
+    vorgesehen und im Quelltext sogar so beschrieben, es fehlte nur der Aufruf.
+  - Ein einzelner Fehlschlag hält die übrigen nicht auf, und ein Fehler dabei
+    verhindert den Start nicht.
+
+---
+
 ## [1.302.0] - 2026-09-03
 
 ### Behoben
