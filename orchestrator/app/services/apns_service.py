@@ -28,6 +28,22 @@ class APNsService:
             settings.apns_auth_key and settings.apns_key_id and settings.apns_team_id
         )
 
+    @staticmethod
+    def _auth_key() -> str:
+        """Den Schluessel aus der Konfiguration in ein brauchbares PEM bringen.
+
+        Der Schluessel ist ein mehrzeiliger PEM-Block, die Konfiguration eine
+        Zeile pro Wert. In der Praxis wird er deshalb mit \n statt echter
+        Zeilenumbrueche eingetragen — dann kaeme hier die Zeichenfolge
+        Backslash-n an, und das Signieren scheitert mit einer Meldung ueber ein
+        ungueltiges Schluesselformat, die auf alles Moegliche hindeutet, nur
+        nicht auf die Ursache. Beide Schreibweisen sind daher zugelassen.
+        """
+        key = settings.apns_auth_key.strip()
+        if "\\n" in key and "\n" not in key:
+            key = key.replace("\\n", "\n")
+        return key
+
     @classmethod
     def _provider_token(cls) -> str:
         # Apple wants the JWT refreshed periodically; 30 min is safely under
@@ -37,7 +53,7 @@ class APNsService:
             return cls._token
         cls._token = jwt.encode(
             {"iss": settings.apns_team_id, "iat": int(now)},
-            settings.apns_auth_key,
+            cls._auth_key(),
             algorithm="ES256",
             headers={"kid": settings.apns_key_id},
         )

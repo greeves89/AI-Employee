@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.307.1] - 2026-09-03
+
+### Behoben
+- **APNs-Schlüssel wird auch einzeilig angenommen.** Der Schlüssel ist ein
+  mehrzeiliger PEM-Block, die Konfiguration kennt aber nur eine Zeile pro Wert
+  — in der Praxis trägt man ihn deshalb mit maskierten Zeilenumbrüchen ein.
+  Bisher scheiterte dann das Signieren mit einer Meldung über ein ungültiges
+  Schlüsselformat, und der Versand blieb ohne erkennbaren Grund aus. Beide
+  Schreibweisen funktionieren jetzt.
+
+---
+
 ## [1.307.0] - 2026-09-03
 
 ### Neu
