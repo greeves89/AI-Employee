@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.298.0] - 2026-09-03
+
+### Behoben
+- **„Extra High" kam beim Modell als „High" an.** Ein Betreiber stellte die
+  höchste Denktiefe ein und bekam sie nicht — und zwar still, ohne Meldung. Die
+  Ursache lag nicht in der Einstellung, sondern ganz am Ende der Kette: der
+  Baustein für OpenAI-Modelle stufte „Extra High" nach dem **Namen** des Modells
+  herab und liess sie nur für die Codex-Familie durch. Diese Regel war richtig,
+  als sie geschrieben wurde, und ist mit jedem neuen Modell falscher geworden.
+  Am Endpunkt des Betreibers nachgemessen: sein Modell nimmt die höchste Stufe
+  an.
+  - Die eingestellte Stufe wird jetzt gesendet. Lehnt ein Modell sie ab, geht der
+    Zug einmal mit der nächstniedrigeren durch und die Ablehnung wird für dieses
+    Modell gemerkt — kein zweiter Anlauf bei jeder Anfrage, keine Liste, die
+    jemand pflegen müsste.
+  - Erkannt wird nur eine Ablehnung, die wirklich die Denkstufe betrifft. Ein
+    Ratenlimit oder ein zu langer Verlauf setzt die Einstellung nicht herab.
+  - Das Herabsetzen steht jetzt im Protokoll. Dass es still geschah, war der
+    Grund, warum es monatelang niemandem auffiel.
+
+---
+
 ## [1.297.0] - 2026-09-03
 
 ### Behoben

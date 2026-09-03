@@ -51,6 +51,27 @@ def _chat_image_parts(images: list[dict]) -> list[dict]:
 # Azure deployments named accordingly) is served via /responses.
 _RESPONSES_API_PATTERNS = ("codex", "gpt-5", "gpt5")
 
+#: Modelle, die "xhigh" nachweislich abgelehnt haben. Wird zur Laufzeit
+#: gefuellt, nicht gepflegt — eine handgeschriebene Liste war genau das
+#: Problem (siehe _effective_reasoning_effort). Prozessweit, weil ein Modell
+#: sich nicht je Provider-Instanz anders verhaelt.
+_XHIGH_ABGELEHNT: set[str] = set()
+
+
+def _lehnt_xhigh_ab(error_text: str) -> bool:
+    """Sagt der Fehler, dass die Stufe „xhigh" nicht zulaessig ist?
+
+    Absichtlich eng: ein beliebiger 400 darf die Stufe nicht dauerhaft
+    herabsetzen — sonst verliert ein Betreiber seine Einstellung wegen eines
+    unabhaengigen Fehlers, und zwar still.
+    """
+    t = (error_text or "").lower()
+    if "xhigh" in t:
+        return True
+    return ("effort" in t and
+            any(w in t for w in ("invalid", "unsupported", "not supported",
+                                 "does not support", "unexpected value")))
+
 def _extract_tokens_error(error_text: str) -> str | None:
     """Return the correct tokens param name if OpenAI tells us to use the other one."""
     if "max_completion_tokens" in error_text and "max_tokens" in error_text:
@@ -105,12 +126,23 @@ class OpenAIProvider(BaseLLMProvider):
         return m.startswith(("o1", "o3", "o4"))
 
     def _effective_reasoning_effort(self) -> str:
-        """"xhigh" only exists on the Codex family (Responses API); plain GPT-5,
-        the o-series and arbitrary OpenAI-compatible endpoints 400 on it — for
-        those the user's "max" clamps to the strongest level they accept."""
-        if self.reasoning_effort == "xhigh" and not (
-            self._is_responses_model() and "codex" in self.model_name.lower()
-        ):
+        """Die Stufe, die tatsaechlich rausgeht.
+
+        Frueher stand hier eine Namensregel: „xhigh" gilt nur fuer die
+        Codex-Familie, alles andere wird auf „high" heruntergestuft. Die war
+        zum Zeitpunkt des Schreibens richtig und ist mit jedem neuen Modell
+        falscher geworden — am 03.09.2026 stellte ein Betreiber „Extra High"
+        ein und bekam „high", weil sein Modell nicht „codex" heisst. Nachgemessen
+        am echten Endpunkt: es nimmt „xhigh" an (HTTP 200). Das Herunterstufen
+        geschah still, also merkte es niemand.
+
+        Jetzt wird die gewuenschte Stufe GESENDET; lehnt das Modell sie ab,
+        faellt der Aufrufer einmalig zurueck und merkt es sich (siehe
+        ``_xhigh_abgelehnt``). Dasselbe Muster benutzt diese Datei schon fuer
+        ``temperature`` und den Namen des Token-Feldes: ausprobieren statt eine
+        Modellliste pflegen, die niemand aktuell haelt.
+        """
+        if self.reasoning_effort == "xhigh" and self.model_name in _XHIGH_ABGELEHNT:
             return "high"
         return self.reasoning_effort
 
@@ -254,6 +286,26 @@ class OpenAIProvider(BaseLLMProvider):
                 if response.status_code != 200:
                     error_body = await response.aread()
                     error_text = error_body.decode("utf-8", errors="replace")
+                    # Lehnt dieses Modell „xhigh" ab, einmal mit „high"
+                    # wiederholen und es fuer die Zukunft merken — statt jede
+                    # Anfrage vorsorglich herabzustufen (siehe
+                    # _effective_reasoning_effort).
+                    if (response.status_code == 400
+                            and (body.get("reasoning") or {}).get("effort") == "xhigh"
+                            and _lehnt_xhigh_ab(error_text)):
+                        _XHIGH_ABGELEHNT.add(self.model_name)
+                        logger.info(
+                            "[OpenAI] %s nimmt kein xhigh — einmalig auf high "
+                            "zurueck und ab jetzt gemerkt", self.model_name,
+                        )
+                        # Erneut aufrufen statt den Koerper von Hand umzubauen:
+                        # `_build_responses_body` fragt `_effective_reasoning_effort`,
+                        # und die liefert jetzt „high", weil das Modell eben
+                        # gemerkt wurde. Eine zweite Ablehnung kann es nicht
+                        # geben — die Bedingung oben trifft dann nicht mehr zu.
+                        async for ereignis in self._stream_responses(url, messages, tools):
+                            yield ereignis
+                        return
                     yield LLMEvent(type="error", text=f"API error {response.status_code}: {error_text}")
                     return
 
@@ -509,6 +561,19 @@ class OpenAIProvider(BaseLLMProvider):
                     if "temperature" in error_text and "temperature" in body:
                         retry_body = dict(body)
                         retry_body.pop("temperature", None)
+                        async for event in self._stream_chat_with_body(url, headers, retry_body):
+                            yield event
+                        return
+                    # Dasselbe fuer die Denkstufe: senden, und nur bei echter
+                    # Ablehnung herabsetzen — nicht vorsorglich.
+                    if body.get("reasoning_effort") == "xhigh" and _lehnt_xhigh_ab(error_text):
+                        _XHIGH_ABGELEHNT.add(self.model_name)
+                        logger.info(
+                            "[OpenAI] %s nimmt kein xhigh — einmalig auf high "
+                            "zurueck und ab jetzt gemerkt", self.model_name,
+                        )
+                        retry_body = dict(body)
+                        retry_body["reasoning_effort"] = "high"
                         async for event in self._stream_chat_with_body(url, headers, retry_body):
                             yield event
                         return

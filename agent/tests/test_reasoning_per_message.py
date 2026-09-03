@@ -103,18 +103,38 @@ class OpenAIProviderReasoningTests(unittest.TestCase):
         body = p._build_responses_body([], None)
         self.assertEqual(body.get("reasoning"), {"effort": "xhigh"})
 
-    def test_xhigh_clamps_to_high_for_plain_gpt5(self):
-        """Plain GPT-5.x doesn't know xhigh — it must arrive as high, not 400."""
+    # Diese beiden Tests haben bis zum 03.09.2026 das FALSCHE Verhalten
+    # festgeschrieben: „xhigh" wurde nach dem Namen des Modells vorsorglich auf
+    # „high" herabgestuft. Ein Betreiber stellte „Extra High" ein und bekam es
+    # nicht — sein Modell (gpt-5.6-luna) nimmt xhigh nachweislich an (am echten
+    # Endpunkt gemessen, HTTP 200). Die Namensregel war bei ihrer Entstehung
+    # richtig und mit jedem neuen Modell falscher.
+    #
+    # Jetzt gilt: senden, und nur bei echter Ablehnung einmalig herabsetzen.
+    def test_xhigh_wird_gesendet_statt_vorsorglich_herabgestuft(self):
         p = self._provider(model="gpt-5.5")
         p.reasoning_effort = "xhigh"
         body = p._build_responses_body([], None)
-        self.assertEqual(body.get("reasoning"), {"effort": "high"})
+        self.assertEqual(body.get("reasoning"), {"effort": "xhigh"})
 
-    def test_xhigh_clamps_to_high_in_chat_completions(self):
+    def test_xhigh_wird_auch_bei_chat_completions_gesendet(self):
         p = self._provider(model="o3")
         p.reasoning_effort = "xhigh"
         body = p._build_chat_body([], None)
-        self.assertEqual(body.get("reasoning_effort"), "high")
+        self.assertEqual(body.get("reasoning_effort"), "xhigh")
+
+    def test_nach_einer_ablehnung_kommt_high(self):
+        """Der Rueckfall — geprueft ueber denselben Weg, den der Fehlerzweig
+        beschreitet."""
+        from app.providers import openai_provider as op
+        p = self._provider(model="gpt-5.5")
+        p.reasoning_effort = "xhigh"
+        op._XHIGH_ABGELEHNT.add("gpt-5.5")
+        try:
+            self.assertEqual(p._build_responses_body([], None).get("reasoning"),
+                             {"effort": "high"})
+        finally:
+            op._XHIGH_ABGELEHNT.discard("gpt-5.5")
 
 
 class WsWhitelistTests(unittest.TestCase):
