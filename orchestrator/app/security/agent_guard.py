@@ -20,16 +20,26 @@ from app.core.log_redaction import scrub_log
 logger = logging.getLogger(__name__)
 
 # Patterns that indicate prompt injection attempts
-INJECTION_PATTERNS = [
+# Gewichtete Muster statt „erster Treffer gewinnt" (#687).
+#
+# Gemessen am eigenen Repository trafen die alten Muster 26 von 1126 Textdateien
+# (2,3 %) — 19 davon allein wegen `system\s*:\s*`, das in jeder docker-compose,
+# jedem YAML-Schluessel und jedem Rollenlabel steht. Vom 15. bis 21.08.2026 lief
+# der harte Stopp ungated in Produktion und hat 53 echte Agentenlaeufe
+# abgebrochen, 28 davon wegen `prompt_injection`. Ein Waechter, der dauerhaft rot
+# leuchtet, wird weggeklickt — und uebersieht dann den echten Fall.
+#
+# Deshalb zwei Klassen:
+#   EINDEUTIG — kommt in gewoehnlichem Text praktisch nie vor; ein Vorkommen
+#               genuegt.
+#   SCHWACH   — auch in harmlosem Text haeufig; erst ZWEI davon (oder eines
+#               plus ein eindeutiges) ergeben einen Befund.
+EINDEUTIGE_MUSTER = [
     r"ignore\s+(all\s+)?previous\s+instructions",
-    r"you\s+are\s+now\s+",
-    r"system\s*:\s*",
-    r"<\s*system\s*>",
-    r"IMPORTANT:\s*override",
     r"forget\s+(all\s+)?(your\s+)?instructions",
-    r"new\s+instructions?\s*:",
-    r"act\s+as\s+(if\s+)?(you\s+are\s+)?",
+    r"you\s+are\s+now\s+",
     r"pretend\s+(you\s+are|to\s+be)",
+    r"IMPORTANT:\s*override",
     r"jailbreak",
     r"DAN\s+mode",
     r"bypass\s+(all\s+)?restrictions",
@@ -40,7 +50,25 @@ INJECTION_PATTERNS = [
     r"<<SYS>>",
 ]
 
+#: Fuer sich genommen harmlos. `system:` stellte 19 der 26 Fehltreffer.
+SCHWACHE_MUSTER = [
+    r"system\s*:\s*",
+    r"<\s*system\s*>",
+    r"new\s+instructions?\s*:",
+    r"act\s+as\s+(if\s+)?(you\s+are\s+)?",
+]
+
+#: Die alte Liste bleibt als Ganzes bestehen — mehrere Stellen lesen sie.
+INJECTION_PATTERNS = EINDEUTIGE_MUSTER + SCHWACHE_MUSTER
+
+#: Wie viele schwache Muster ZUSAMMEN einen Befund ergeben. Zwei reichen nicht:
+#: `orchestrator/app/api/meeting_rooms.py` enthaelt „act as meeting moderator"
+#: und ein `system:` in einer Signatur — beides voellig arglos.
+SCHWACHE_FUER_BEFUND = 3
+
 _compiled_patterns = [re.compile(p, re.IGNORECASE) for p in INJECTION_PATTERNS]
+_eindeutig_kompiliert = [re.compile(p, re.IGNORECASE) for p in EINDEUTIGE_MUSTER]
+_schwach_kompiliert = [re.compile(p, re.IGNORECASE) for p in SCHWACHE_MUSTER]
 
 # Maximum sizes
 MAX_CHAT_MESSAGE_LENGTH = 10_000
@@ -56,15 +84,40 @@ class SecurityVerdict:
         self.matched_pattern = matched_pattern
 
 
+def bewerte_injection(text: str) -> tuple[list[str], list[str]]:
+    """Die Fundstellen, getrennt nach eindeutig und schwach — ohne Urteil.
+
+    Ein Muster zaehlt EINMAL, auch wenn es mehrfach vorkommt: sonst ergaebe eine
+    einzige Datei mit vielen `system:`-Zeilen von allein einen Befund.
+    """
+    eindeutig = [t.group(0) for t in
+                 (m.search(text) for m in _eindeutig_kompiliert) if t]
+    schwach = [t.group(0) for t in
+               (m.search(text) for m in _schwach_kompiliert) if t]
+    return eindeutig, schwach
+
+
 def detect_injection(text: str) -> tuple[bool, str]:
     """Check text for prompt injection patterns.
 
     Returns (is_suspicious, matched_pattern).
+
+    Regel seit #687: EIN eindeutiges Muster genuegt — „ignore all previous
+    instructions" in einer Werkzeugausgabe ist genau der Angriff, den dieser
+    Waechter fangen soll. Schwache Muster brauchen dagegen Gesellschaft; einzeln
+    sind sie in gewoehnlichem Text zu haeufig, um etwas zu bedeuten.
+
+    (Zwischenzeitlich stand hier eine nach HERKUNFT gestaffelte Schwelle — fuer
+    gelesenen Inhalt hoeher als fuer eine eingehende Anweisung. Der Gedanke
+    klingt richtig, trennt aber nicht: Angriff UND Fehlalarm kommen beide aus
+    gelesenem Inhalt. Sie haette ausgerechnet den scharfen Fall stumpf gemacht,
+    was die vorhandenen Tests sofort gezeigt haben.)
     """
-    for pattern in _compiled_patterns:
-        match = pattern.search(text)
-        if match:
-            return True, match.group(0)
+    eindeutig, schwach = bewerte_injection(text)
+    if eindeutig:
+        return True, eindeutig[0]
+    if len(schwach) >= SCHWACHE_FUER_BEFUND:
+        return True, schwach[0]
     return False, ""
 
 

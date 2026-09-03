@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.296.0] - 2026-09-03
+
+### Behoben
+- **Die Injektions-Erkennung schlug fast nur falsch an** (#687). Die Muster
+  trafen 26 von 1126 Textdateien des eigenen Verzeichnisses — 19 davon allein
+  wegen `system:`, das in jeder Compose-Datei und jedem Rollenlabel steht. Das
+  war nicht theoretisch: zwischen dem 15. und 21.08. hat der harte Stopp
+  **53 echte Agentenläufe abgebrochen, 28 davon wegen vermeintlicher
+  Injektion**. Und es blieb gefährlich, weil beim Einschalten der Redis-Trennung
+  jeder Agent, der am Sicherheitscode arbeitet, mitten im Lauf gestoppt worden
+  wäre.
+  - Die Muster sind jetzt in zwei Klassen geteilt. **Ein eindeutiges genügt** —
+    „ignore all previous instructions" in einer Werkzeugausgabe ist genau der
+    Angriff, den dieser Wächter fangen soll. **Schwache brauchen Gesellschaft**:
+    erst drei zusammen ergeben einen Befund, weil sie einzeln in gewöhnlichem
+    Text zu häufig sind.
+  - Ergebnis: von 26 auf 3 Treffer. Die verbleibenden drei sind Dateien, die
+    Angriffsmuster **definieren** — sie enthalten die Texte wirklich und lösen
+    zu Recht aus. Eine Ausnahme dafür wurde bewusst **nicht** eingebaut: sie wäre
+    ein Umgehungsweg für jeden, der den Dateinamen in seinen Angriffstext
+    schreibt.
+  - Der modellfreie Ansatz bleibt unangetastet; es ging allein um Trennschärfe.
+
+---
+
 ## [1.295.0] - 2026-09-03
 
 ### Behoben
