@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.302.0] - 2026-09-03
+
+### Behoben
+- **Läufe starben spurlos, wenn dem Host der Speicher ausging** (#653). Zehn von
+  neunzehn fehlgeschlagenen Aufgaben einer Woche endeten mit „Connection closed
+  by server" — mehr stand nirgends. Die Suche danach lief jedes Mal ins Leere
+  und schrieb den Fehler erst dem Prozesslimit, dann dem Wächter zu; beides
+  falsch. Tatsächlich fehlt auf dem betroffenen Host der Speicher-Controller des
+  Kernels. Dann kann kein Limit je Behälter durchgesetzt werden, es gibt keine
+  Buchführung, und bei Knappheit beendet der Kernel den grössten Prozess — meist
+  einen laufenden Agenten.
+  - Beim Start wird jetzt einmal gemeldet, ob der Host Speicherlimits überhaupt
+    durchsetzen kann. Ist der Controller ausdrücklich abgeschaltet, steht in der
+    Meldung, wie sich das ändern lässt.
+  - Ein abgerissener Lauf bekommt seine wahrscheinliche Ursache in den
+    Fehlertext geschrieben, statt nur „Verbindung weg" zu melden. Der
+    ursprüngliche Wortlaut bleibt erhalten.
+  - Beides greift nur auf betroffenen Anlagen. Wo der Controller vorhanden ist,
+    ändert sich nichts — dort wäre der Hinweis eine Irreführung.
+
+  Das ist die Sichtbarkeit, nicht die Abhilfe. Den grössten Hebel hat #638
+  (eingebaute Dienste einmal je Behälter statt einmal je Lauf: gemessen 691 MB
+  von 1,04 GB pro Lauf). Die Kernel-Einstellung selbst zu ändern erfordert einen
+  Neustart des Hosts und ist die Entscheidung des Betreibers.
+
+---
+
 ## [1.301.0] - 2026-09-03
 
 ### Behoben

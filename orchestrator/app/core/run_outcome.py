@@ -63,6 +63,41 @@ def warum_kein_erfolg(ergebnis: str | None, dauer_ms: int | None) -> str | None:
     return None
 
 
+#: „Connection closed by server" ist die Meldung, die ein vom Kernel
+#: abgeschossener Lauf hinterlaesst — mehr sieht der Orchestrator nicht (#653).
+_ABRISS = re.compile(r"connection closed by server|server disconnected", re.I)
+
+
+def erklaerung_fuer_abriss(fehlertext: str | None) -> str | None:
+    """Der wahrscheinliche Grund fuer einen abgerissenen Lauf — sonst ``None``.
+
+    Auf einem Host ohne cgroup-Speicher-Controller sucht sich der Kernel bei
+    Knappheit das groesste Opfer und beendet es hart. Der Lauf reisst ab, und
+    weil es keine Buchfuehrung je Container gibt, bleibt nirgends eine Spur.
+    Zehn von neunzehn fehlgeschlagenen Aufgaben einer Woche gingen so verloren,
+    und die Fehlersuche lief jedes Mal ins Leere.
+
+    Wenn der Controller fehlt, gehoert dieser Zusammenhang in die Meldung —
+    nicht als Behauptung, sondern als das, was er ist: die naheliegendste
+    Erklaerung.
+    """
+    if not _ABRISS.search(fehlertext or ""):
+        return None
+    try:
+        from app.core.host_memory import speicher_controller_da
+    except ImportError:
+        return None
+    if speicher_controller_da() is not False:
+        return None
+    return (
+        "Der Lauf ist abgerissen. Auf diesem Host kann der Speicher nicht je "
+        "Container begrenzt werden (cgroup-Speicher-Controller fehlt), deshalb "
+        "beendet der Kernel bei Knappheit den groessten Prozess — meist einen "
+        "laufenden Agenten. Das ist die wahrscheinlichste Ursache und wird "
+        "nirgends sonst protokolliert (#653)."
+    )
+
+
 def ist_zugangsproblem(grund: str | None) -> bool:
     """Ob der Grund am Zugang liegt — dann hilft kein Wiederholen, nur Anmelden."""
     return grund in {"Zugang abgelaufen", "Zugang abgelehnt"}

@@ -872,6 +872,17 @@ async def lifespan(app: FastAPI):
     if setup_platform_error_log():
         logger.info("Platform error log active -> /shared/platform-errors.log (secret-redacted)")
 
+    # Einmal beim Start sagen, ob der Host ueberhaupt Speicherlimits durchsetzen
+    # kann (#653). Fehlt der Controller, sterben Laeufe unter Last spurlos und
+    # melden nur "Connection closed by server" — die Suche danach lief bisher
+    # jedes Mal ins Leere.
+    try:
+        from app.core.host_memory import beim_start_melden
+
+        beim_start_melden()
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Host-Speicherpruefung nicht moeglich: %s", e)
+
     # Run Alembic migrations to create/update tables
     # If Alembic fails (fresh DB, broken migration chain), fall back to
     # creating tables directly from SQLAlchemy models + stamp HEAD.

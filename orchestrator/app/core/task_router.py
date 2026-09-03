@@ -609,6 +609,16 @@ class TaskRouter:
         task.result = data.get("result")
         task.error = data.get("error")
 
+        # Ein abgerissener Lauf bekommt seine wahrscheinliche Ursache mit (#653):
+        # ohne Speicher-Controller schiesst der Kernel den groessten Prozess ab,
+        # und der Orchestrator sieht davon nur "Connection closed by server".
+        if task.status == TaskStatus.FAILED and task.error:
+            from app.core.run_outcome import erklaerung_fuer_abriss
+
+            zusatz = erklaerung_fuer_abriss(task.error)
+            if zusatz:
+                task.error = f"{task.error} — {zusatz}"
+
         # Ein „fertig", hinter dem nichts steht, ist kein Erfolg (#680). Vom
         # 27. bis 30.08.2026 standen 94 Laeufe auf gruen, waehrend 71 davon an
         # einem abgelaufenen Zugang und 23 an einem erschoepften Kontingent
