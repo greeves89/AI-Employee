@@ -43,6 +43,17 @@ class Settings(BaseSettings):
     # alten Wert von 30 Minuten sonst weiter gedeckelt.
     watchdog_stale_task_minutes: int = 180
 
+    # Die eingebauten MCP-Server in EINEM Prozess je Container statt in elf je
+    # Lauf (#638). Gemessen: 81 Threads und ~691 MB werden zu 7 Threads und
+    # 82 MB — rund 609 MB je Lauf, und die Zahl gleichzeitiger Laeufe steigt
+    # rechnerisch von 4 auf 47.
+    #
+    # 0 = aus (jeder Lauf startet seine eigenen Server, wie bisher). Der Port
+    # gilt CONTAINER-INTERN: der Sammelprozess lauscht auf 127.0.0.1 im
+    # jeweiligen Agenten-Container, es gibt also keinen Konflikt zwischen
+    # Agenten und nichts nach aussen.
+    mcp_http_port: int = 0
+
     # Claude Authentication (either API key OR OAuth token)
     anthropic_api_key: str = ""
     claude_code_oauth_token: str = ""

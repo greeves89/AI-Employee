@@ -1787,6 +1787,11 @@ class AgentManager:
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
+            # Eingebaute MCP-Server gemeinsam statt je Lauf (#638). Leer = aus,
+            # dann verhaelt sich der Agent wie bisher. Container-intern, also
+            # kein Konflikt zwischen Agenten.
+            **({"MCP_HTTP_PORT": str(settings.mcp_http_port)}
+               if settings.mcp_http_port else {}),
             "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
             "MAX_TURNS": str(settings.max_turns),
             # Per-agent parallelism (config['parallel_sessions']) overrides the
@@ -2084,6 +2089,11 @@ class AgentManager:
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
+            # Eingebaute MCP-Server gemeinsam statt je Lauf (#638). Leer = aus,
+            # dann verhaelt sich der Agent wie bisher. Container-intern, also
+            # kein Konflikt zwischen Agenten.
+            **({"MCP_HTTP_PORT": str(settings.mcp_http_port)}
+               if settings.mcp_http_port else {}),
             "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
             "MAX_TURNS": str(settings.max_turns),
             # Per-agent parallelism (config['parallel_sessions']) overrides the

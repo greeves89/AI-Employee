@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.306.0] - 2026-09-03
+
+### Neu
+- **Schalter für die gemeinsamen Werkzeug-Dienste** (#638). Der Umbau aus
+  1.305.0 lässt sich jetzt einschalten: `MCP_HTTP_PORT` in der Anlagen-Umgebung
+  (z. B. `8790`), leer oder 0 bedeutet aus. Der Port gilt behälter-intern — die
+  Dienste lauschen nur dort, es gibt keinen Konflikt zwischen Agenten und nichts
+  nach aussen.
+  - Wirksam ab dem nächsten Neuerstellen eines Agenten.
+  - Rückwärts genauso: Schalter weg, Agenten neu erstellen, alles wie vorher.
+
+---
+
 ## [1.305.0] - 2026-09-03
 
 ### Geändert

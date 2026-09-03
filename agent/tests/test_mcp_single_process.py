@@ -182,3 +182,32 @@ class DieProzessgrenzeSteigtMitTests(unittest.TestCase):
     def test_mindestens_ein_lauf_bleibt_immer(self):
         os.environ["MCP_HTTP_PORT"] = "8899"
         self.assertGreaterEqual(max_concurrent_runs(pids_max=100), 1)
+
+
+class DerSchalterKommtVomOrchestratorTests(unittest.TestCase):
+    """Der Agent kann sich nicht selbst umstellen — die Umgebung setzt der
+    Orchestrator beim Erstellen des Containers. Ohne diesen Weg bliebe der
+    gemeinsame Modus totes Werkzeug."""
+
+    MGR = (Path(__file__).resolve().parents[2] / "orchestrator" / "app" / "core"
+           / "agent_manager.py").read_text()
+    CFG = (Path(__file__).resolve().parents[2] / "orchestrator" / "app"
+           / "config.py").read_text()
+
+    def test_es_gibt_eine_einstellung(self):
+        self.assertIn("mcp_http_port: int = 0", self.CFG)
+
+    def test_die_vorgabe_ist_aus(self):
+        """Eine Speicheroptimierung darf sich nicht von selbst einschalten."""
+        self.assertIn("mcp_http_port: int = 0", self.CFG)
+
+    def test_sie_erreicht_beide_erstellungswege(self):
+        """Agenten werden an zwei Stellen gebaut (Neuanlage und Aktualisierung).
+        Nur eine zu treffen hiesse: der Modus haengt davon ab, wie der Agent
+        zuletzt entstanden ist."""
+        self.assertEqual(self.MGR.count('"MCP_HTTP_PORT": str(settings.mcp_http_port)'), 2)
+
+    def test_bei_null_wird_die_variable_gar_nicht_gesetzt(self):
+        """Eine gesetzte 0 waere zweideutig — der Agent prueft auf Vorhandensein
+        und Wert. Sauberer ist, sie wegzulassen."""
+        self.assertIn("if settings.mcp_http_port else {}", self.MGR)
