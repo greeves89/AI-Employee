@@ -125,6 +125,10 @@ services:
       # Admin-Zugangs (#589). Standard aus — aendert, wie JEDER Agent sich
       # verbindet.
       REDIS_ACL_ENABLED: ${REDIS_ACL_ENABLED:-false}
+      # Eingebaute Werkzeug-Dienste gemeinsam je Container statt je Lauf (#638).
+      # Gemessen: 691 MB -> 82 MB je Lauf. 0 = aus. Der Port gilt INNERHALB des
+      # jeweiligen Agenten-Containers, nicht auf dem Host.
+      MCP_HTTP_PORT: ${MCP_HTTP_PORT:-0}
       OAUTH_GOOGLE_SCOPES: ${OAUTH_GOOGLE_SCOPES:-}
       OAUTH_MICROSOFT_SCOPES: ${OAUTH_MICROSOFT_SCOPES:-}
       OAUTH_GITHUB_SCOPES: ${OAUTH_GITHUB_SCOPES:-}
