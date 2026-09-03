@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.295.0] - 2026-09-03
+
+### Behoben
+- **Kundennamen standen offen in Issues, Pull Requests und Kommentaren.** Die
+  Wache prüfte bisher nur die Dateien dieses öffentlichen Verzeichnisses — damit
+  war nur die Hälfte abgedeckt: Vorgänge und Kommentare stehen auf derselben
+  öffentlichen Seite und werden genauso von Suchmaschinen erfasst. Aufgefallen
+  beim Öffnen eines Vorgangs, in dessen erster Zeile ein Klarname stand. Die
+  Nachprüfung über 1573 Objekte ergab neun Vorgänge, einen Pull Request und zwei
+  Kommentare; alle sind bereinigt.
+
+### Neu
+- **Die Prüfung deckt jetzt auch GitHub ab** und läuft bei jedem Push mit
+  (letzte 30 Tage). Sie benutzt dieselben Prüfsummen wie die Datei-Prüfung —
+  eine Quelle, kein zweites Klartextverzeichnis — und meldet nur den Ort, nicht
+  den getroffenen Begriff: das Protokoll eines öffentlichen Verzeichnisses ist
+  ebenso öffentlich.
+
+---
+
 ## [1.294.0] - 2026-09-03
 
 ### Neu

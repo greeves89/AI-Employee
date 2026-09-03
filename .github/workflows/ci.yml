@@ -137,6 +137,29 @@ jobs:
           git fetch -q origin main
           python scripts/release_track_check.py pr --basis origin/main --fremde "${fremde#,}"
 
+  # ── Kundennamen in GitHub-Inhalten (#688-Folgefund, 03.09.2026): Die
+  #    Datei-Wache deckte nur den Quelltext ab. Issues, PR-Beschreibungen und
+  #    Kommentare stehen auf derselben oeffentlichen Seite und wurden nie
+  #    geprueft — es standen neun Issues, ein PR und zwei Kommentare offen da. ──
+  github-customer-names:
+    name: Kundennamen in Issues/PRs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Pruefe Issues, Pull Requests und Kommentare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Nur die letzten 30 Tage: der Altbestand ist bereinigt, und ein Lauf
+        # ueber alles kostet bei jedem Push mehrere hundert API-Aufrufe.
+        run: python scripts/check_github_customer_names.py --seit 30
+
   # ── Compose validity: would have caught a broken docker-compose.yml before deploy. ──
   compose-config:
     name: docker compose config
