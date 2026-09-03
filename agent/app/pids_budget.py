@@ -31,6 +31,27 @@ DEFAULT_RESERVE = 120
 # Threads plus der ``claude``-Prozess mit 8.
 DEFAULT_COST_PER_RUN = 88
 
+# Dasselbe, wenn die eingebauten Server GEMEINSAM laufen (#638, Phase 3): dann
+# gehoeren sie zur Grundlast des Containers, nicht mehr zu jedem einzelnen Lauf.
+# Uebrig bleibt der ``claude``-Prozess. Gemessen wurde der Sammelprozess mit
+# 7 Threads und 82 MB — gegenueber 81 Threads und ~691 MB fuer dieselben Server
+# einzeln.
+COST_PER_RUN_GEMEINSAM = 8
+
+# Was der Sammelprozess einmalig kostet; er laeuft, solange der Container laeuft.
+RESERVE_GEMEINSAMER_MCP = 10
+
+
+def _gemeinsamer_mcp_modus() -> bool:
+    """Laufen die eingebauten Server in EINEM Prozess?
+
+    Die Umschaltung haengt an derselben Variablen wie der Start selbst
+    (``agent/app/main.py``). Wird hier zu billig gerechnet, waehrend die Server
+    doch einzeln laufen, erstickt der Container am pids-Limit — deshalb ist die
+    Vorgabe die teure Annahme.
+    """
+    return bool(int(os.environ.get("MCP_HTTP_PORT") or 0))
+
 # Ist das Budget nicht lesbar (kein Linux, cgroup v1 ohne die Datei, keine
 # Rechte), gilt serielle Ausfuehrung. Lieber langsam als erdrosselt.
 FALLBACK_MAX_CONCURRENT = 1
@@ -81,15 +102,26 @@ def read_pids_limits() -> tuple[int | None, int | None]:
 
 def max_concurrent_runs(
     pids_max: int | None = None,
-    reserve: int = DEFAULT_RESERVE,
-    cost_per_run: int = DEFAULT_COST_PER_RUN,
+    reserve: int | None = None,
+    cost_per_run: int | None = None,
 ) -> int:
     """Wie viele Laeufe gleichzeitig ins pids-Budget passen — mindestens einer.
 
     ``(pids_max - reserve) / cost_per_run``. Ist ``pids_max`` unbekannt, gilt
     ``FALLBACK_MAX_CONCURRENT``; abstuerzen waere hier das Schlechteste, weil
     der Agent dann gar nicht mehr arbeitet.
+
+    Laufen die eingebauten MCP-Server gemeinsam (#638), kostet ein Lauf nur noch
+    den ``claude``-Prozess statt zusaetzlich elf Serverprozesse. Bei 512 Plaetzen
+    sind das rund 47 gleichzeitige Laeufe statt vier — der Sprung, um den es bei
+    dem Umbau ging.
     """
+    if cost_per_run is None or reserve is None:
+        gemeinsam = _gemeinsamer_mcp_modus()
+        if cost_per_run is None:
+            cost_per_run = COST_PER_RUN_GEMEINSAM if gemeinsam else DEFAULT_COST_PER_RUN
+        if reserve is None:
+            reserve = DEFAULT_RESERVE + (RESERVE_GEMEINSAMER_MCP if gemeinsam else 0)
     if pids_max is None:
         _, pids_max = read_pids_limits()
     if pids_max is None:

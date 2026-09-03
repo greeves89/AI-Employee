@@ -154,12 +154,20 @@ class TheSameWayAsAnApprovalTests(unittest.TestCase):
         self.assertIn("await self._fragen_und_warten(body, params)", block)
 
     def test_the_mcp_runtime_shares_the_handler(self):
-        self.assertIn('case "present_view":\n    case "request_approval": {', self.MCP)
+        # Ohne Bindung an die Einrueckung: seit die Serverdateien Fabriken sind
+        # (#638), steht der Rumpf zwei Zeichen weiter innen. Geprueft wird, was
+        # gemeint war — beide Faelle laufen in DENSELBEN Zweig.
+        self.assertRegex(
+            self.MCP,
+            r'case "present_view":\s*\n\s*case "request_approval": \{',
+        )
 
     def test_showing_a_view_is_not_reported_as_high_risk(self):
         """Sie fuehrt nichts aus. Alles als hohes Risiko zu melden stumpft die
         Dringlichkeitsstufen ab, bis niemand mehr hinsieht."""
-        block = self.MCP.split('case "present_view":', 1)[1][:1400]
+        # Fenster grosszuegiger: seit die Serverdateien Fabriken sind (#638),
+        # traegt jede Zeile zwei Zeichen mehr Einrueckung.
+        block = self.MCP.split('case "present_view":', 1)[1][:2000]
         self.assertIn('istAnsicht ? "low" : "high"', block)
 
 

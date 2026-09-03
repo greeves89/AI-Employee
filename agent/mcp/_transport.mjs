@@ -56,11 +56,19 @@ function readJsonBody(req) {
  * @param {() => import("@modelcontextprotocol/sdk/server/index.js").Server} buildServer
  */
 export async function startServer(name, buildServer) {
+  // Der Sammelstart (_all.mjs) importiert die Serverdateien, um an ihre
+  // Fabriken zu kommen — dabei laeuft ihre letzte Zeile mit. Ohne diese Sperre
+  // wollte jede Datei ihren eigenen HTTP-Dienst auf demselben Port oeffnen und
+  // alle bis auf die erste scheiterten mit EADDRINUSE.
+  if (process.env.MCP_COMBINED === "1") return;
+
   const port = Number(process.env.MCP_HTTP_PORT || 0);
   if (!port) {
     await buildServer().connect(new StdioServerTransport());
     return;
   }
+  // Einzeln gestartet mit Port: ein Prozess, ein Server. Das ist der Weg fuer
+  // einen einzelnen Server im HTTP-Modus; den gemeinsamen Prozess baut _all.mjs.
   await serveHttp(port, { [name]: buildServer });
 }
 

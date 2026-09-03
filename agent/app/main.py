@@ -117,12 +117,77 @@ def _auth_header_args(name: str, auth: dict, headers: dict) -> list[str]:
     return [f"{k}: {v}" for k, v in _auth_headers_for(name, auth, headers).items()]
 
 
+def _start_combined_mcp(port: int) -> bool:
+    """Die eingebauten MCP-Server in EINEM Prozess hochfahren (#638, Phase 3).
+
+    Bis hierher startete Claude Code je Lauf elf einzelne node-Prozesse ueber
+    stdio. Gemessen im laufenden Container: 81 Threads und rund 691 MB — das
+    2,4-fache des eigentlichen Modell-Prozesses. Das war der Grund fuer die
+    Deckelung auf vier gleichzeitige Laeufe (#628) und auf einem Host mit
+    knappem Speicher der Grund fuer abbrechende Laeufe (#653).
+
+    Derselbe Satz Server als ein Prozess: 7 Threads, 82 MB (nachgemessen).
+
+    Gibt zurueck, ob der Prozess laeuft. Wenn nicht, faellt der Aufrufer auf den
+    bisherigen Weg zurueck — ein Agent ohne Werkzeuge waere schlimmer als einer,
+    der mehr Speicher braucht.
+    """
+    import socket
+    import time as _t
+
+    proc = subprocess.Popen(
+        ["node", "/opt/mcp/_all.mjs"],
+        env={**os.environ, "MCP_HTTP_PORT": str(port)},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    # Warten, bis der Port wirklich antwortet. Ohne das registriert Claude Code
+    # Adressen, die es noch nicht gibt, und der erste Werkzeugaufruf scheitert.
+    for _ in range(50):  # bis 5 Sekunden
+        if proc.poll() is not None:
+            fehler = (proc.stderr.read() or "")[-300:] if proc.stderr else ""
+            print(f"[Agent] WARN: gemeinsamer MCP-Prozess beendet sich sofort: {fehler}")
+            return False
+        with socket.socket() as s:
+            s.settimeout(0.2)
+            if s.connect_ex(("127.0.0.1", port)) == 0:
+                print(f"[Agent] MCP-Server gemeinsam auf 127.0.0.1:{port}")
+                return True
+        _t.sleep(0.1)
+    print("[Agent] WARN: gemeinsamer MCP-Prozess antwortet nicht — nutze Einzelprozesse")
+    proc.terminate()
+    return False
+
+
 def register_mcp_servers() -> None:
     """Register MCP servers via `claude mcp add` so Claude Code discovers them in -p mode.
 
     .mcp.json alone is NOT sufficient — Claude Code headless mode requires servers
     to be registered via `claude mcp add --scope user`.
     """
+    # Ein Prozess statt elf (#638). Ohne MCP_HTTP_PORT bleibt alles wie bisher —
+    # die Umstellung ist damit jederzeit abschaltbar, und ein Fehlschlag beim
+    # Hochfahren faellt automatisch auf den alten Weg zurueck.
+    _http_port = int(os.environ.get("MCP_HTTP_PORT") or 0)
+    if _http_port and _start_combined_mcp(_http_port):
+        _namen = ["bash-approval", "memory", "notifications", "orchestrator",
+                  "skills", "desktop", "hyperframes", "email", "brain", "read-logs"]
+        if os.environ.get("MSGRAPH_ENABLED", "").lower() == "true":
+            _namen.append("msgraph")
+        _ok = 0
+        for _n in _namen:
+            if _run_mcp_add(["--transport", "http", _sanitize_mcp_name(_n),
+                             f"http://127.0.0.1:{_http_port}/mcp/{_n}"]):
+                _ok += 1
+        print(f"[Agent] {_ok}/{len(_namen)} eingebaute MCP-Server ueber einen Prozess")
+        # Die uebrigen Registrierungen (Bridge, eigene HTTP-Server, Playwright)
+        # laufen unveraendert weiter — deshalb hier kein `return`, sondern eine
+        # Sperre fuer den Block der Einzelprozesse.
+        _einzeln = False
+    else:
+        _einzeln = True
+
     # Built-in stdio servers
     # AGENT_TOKEN is required for all API calls (verify_agent_token auth)
     builtin_servers = {
@@ -219,7 +284,10 @@ def register_mcp_servers() -> None:
         },
     }
 
-    for name, cfg in builtin_servers.items():
+    # Nur wenn der gemeinsame Prozess NICHT laeuft — sonst waeren dieselben
+    # Server doppelt angemeldet, einmal als HTTP-Adresse und einmal als eigener
+    # Prozess, und der Gewinn waere dahin.
+    for name, cfg in (builtin_servers.items() if _einzeln else []):
         env_args: list[str] = []
         for k, v in cfg["env"].items():
             env_args.extend(["-e", f"{k}={v}"])
@@ -238,7 +306,8 @@ def register_mcp_servers() -> None:
 
     # MS Graph MCP — Microsoft 365 (Outlook, Calendar, Teams, Planner, To-Do, OneDrive)
     # Registered when MSGRAPH_ENABLED=true (set by orchestrator when microsoft integration exists)
-    if os.environ.get("MSGRAPH_ENABLED", "").lower() == "true":
+    # Im gemeinsamen Prozess ist er bereits ueber seine HTTP-Adresse angemeldet.
+    if _einzeln and os.environ.get("MSGRAPH_ENABLED", "").lower() == "true":
         env_args = [
             "-e", f"ORCHESTRATOR_URL={settings.orchestrator_url}",
             "-e", f"AGENT_ID={settings.agent_id}",

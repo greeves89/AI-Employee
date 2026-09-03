@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.305.0] - 2026-09-03
+
+### Geändert
+- **Die eingebauten Werkzeug-Dienste laufen in einem Prozess statt in elf**
+  (#638). Bisher startete jeder Lauf seinen eigenen vollständigen Satz. Im
+  laufenden Behälter gemessen:
+
+  | | vorher | nachher |
+  |---|---|---|
+  | Prozesse | 10 (11 mit Microsoft) | **1** |
+  | Threads | 81 | **7** |
+  | Speicher | ~691 MB | **82 MB** |
+
+  Rund **609 MB je Lauf**. Das war der Grund für die Deckelung auf vier
+  gleichzeitige Läufe — und auf einer Anlage mit knappem Speicher der Grund für
+  abbrechende Läufe. Rechnerisch sind jetzt **47 statt 4** gleichzeitige Läufe
+  möglich.
+
+  - Jede Serverdatei liefert nun eine Fabrik statt einer festen Instanz. Das war
+    nötig, nicht kosmetisch: Ein Dienst lässt sich nur an **eine** Verbindung
+    binden, ein gemeinsamer Prozess bedient aber mehrere Läufe gleichzeitig.
+  - **Vorerst abgeschaltet.** Ohne gesetzten Port verhält sich alles exakt wie
+    bisher; die Umstellung lässt sich jederzeit zurücknehmen. Scheitert der
+    gemeinsame Start, fällt der Agent selbsttätig auf Einzelprozesse zurück —
+    ein Agent ohne Werkzeuge wäre schlimmer als einer, der mehr Speicher braucht.
+  - Fällt ein einzelner Dienst aus, fehlt genau er; die übrigen laufen weiter.
+
+---
+
 ## [1.304.0] - 2026-09-03
 
 ### Behoben

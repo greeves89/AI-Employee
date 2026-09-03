@@ -12,7 +12,7 @@
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { startServer } from "./_transport.mjs";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -578,27 +578,34 @@ async function handleTool(name, args) {
 
 // ─── MCP Server setup ─────────────────────────────────────────────────────────
 
-const server = new Server(
-  { name: "msgraph", version: "1.0.0" },
-  { capabilities: { tools: {} } }
-);
+// Eine Fabrik statt einer Modul-Instanz: im HTTP-Modus bedient ein Prozess
+// mehrere gleichzeitige Laeufe, und ein `Server` laesst sich nur an genau einen
+// Transport binden (siehe _transport.mjs).
+export function buildServer() {
+  const server = new Server(
+    { name: "msgraph", version: "1.0.0" },
+    { capabilities: { tools: {} } }
+  );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  try {
-    const result = await handleTool(name, args || {});
-    return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    };
-  } catch (err) {
-    return {
-      content: [{ type: "text", text: `Error: ${err.message}` }],
-      isError: true,
-    };
-  }
-});
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    try {
+      const result = await handleTool(name, args || {});
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (err) {
+      return {
+        content: [{ type: "text", text: `Error: ${err.message}` }],
+        isError: true,
+      };
+    }
+  });
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+  return server;
+}
+
+
+await startServer("msgraph", buildServer);
