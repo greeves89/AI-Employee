@@ -211,3 +211,28 @@ class DerSchalterKommtVomOrchestratorTests(unittest.TestCase):
         """Eine gesetzte 0 waere zweideutig — der Agent prueft auf Vorhandensein
         und Wert. Sauberer ist, sie wegzulassen."""
         self.assertIn("if settings.mcp_http_port else {}", self.MGR)
+
+
+class EigeneAdressenDesBetreibersGewinnenTests(unittest.TestCase):
+    """Beim ersten Scharfschalten aufgefallen: Auf einer Anlage mit
+    Microsoft-Anbindung steht `msgraph` in CUSTOM_MCP_SERVERS und zeigt auf den
+    Orchestrator. Der gemeinsame Block meldete ihn trotzdem lokal an — und
+    ueberschrieb damit die vom Betreiber eingerichtete Adresse. Sichtbar wurde
+    es nur an einer Warnung („already exists"), die leicht als Kosmetik
+    durchgegangen waere.
+    """
+
+    def test_msgraph_wird_uebersprungen_wenn_er_woanders_herkommt(self):
+        block = _MAIN.split("_namen = [", 1)[1][:1200]
+        self.assertIn('"msgraph" not in _custom_namen', block)
+
+    def test_ohne_eigene_adresse_laeuft_er_weiterhin_lokal(self):
+        block = _MAIN.split("_namen = [", 1)[1][:1200]
+        self.assertIn('MSGRAPH_ENABLED", "").lower() == "true"', block)
+        self.assertIn('_namen.append("msgraph")', block)
+
+    def test_eine_kaputte_liste_legt_den_start_nicht_lahm(self):
+        """CUSTOM_MCP_SERVERS kommt als Text aus der Umgebung — ein Tippfehler
+        darf nicht den ganzen Agenten kosten."""
+        block = _MAIN.split("_custom_namen = set(", 1)[1][:300]
+        self.assertIn("except (ValueError, TypeError)", block)

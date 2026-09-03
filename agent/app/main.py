@@ -173,7 +173,18 @@ def register_mcp_servers() -> None:
     if _http_port and _start_combined_mcp(_http_port):
         _namen = ["bash-approval", "memory", "notifications", "orchestrator",
                   "skills", "desktop", "hyperframes", "email", "brain", "read-logs"]
-        if os.environ.get("MSGRAPH_ENABLED", "").lower() == "true":
+        # msgraph NUR dann lokal anmelden, wenn die Anlage ihn nicht ohnehin
+        # ueber eine eigene Adresse bereitstellt. Auf einer Anlage mit
+        # Microsoft-Anbindung steht er in CUSTOM_MCP_SERVERS und zeigt auf den
+        # Orchestrator — die dort hinterlegte Adresse ist die massgebliche, und
+        # sie hier zu ueberschreiben hiesse, die Einrichtung des Betreibers
+        # stillschweigend zu uebergehen.
+        try:
+            _custom_namen = set(json.loads(os.environ.get("CUSTOM_MCP_SERVERS") or "{}"))
+        except (ValueError, TypeError):
+            _custom_namen = set()
+        if (os.environ.get("MSGRAPH_ENABLED", "").lower() == "true"
+                and "msgraph" not in _custom_namen):
             _namen.append("msgraph")
         _ok = 0
         for _n in _namen:

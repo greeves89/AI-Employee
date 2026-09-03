@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.306.1] - 2026-09-03
+
+### Behoben
+- **Microsoft-Anbindung wurde bei gemeinsamen Werkzeug-Diensten übergangen.**
+  Ist der Sammelbetrieb eingeschaltet (`MCP_HTTP_PORT`) und die
+  Microsoft-Anbindung aktiv, meldete der Agent den Dienst zusätzlich lokal an
+  und überschrieb damit stillschweigend die Adresse, die der Betreiber in der
+  Anlagen-Konfiguration hinterlegt hatte. Jetzt hat die hinterlegte Adresse
+  Vorrang; lokal angemeldet wird nur, wenn keine konfiguriert ist.
+
+---
+
 ## [1.306.0] - 2026-09-03
 
 ### Neu
