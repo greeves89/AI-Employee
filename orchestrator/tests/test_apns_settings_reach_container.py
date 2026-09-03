@@ -46,7 +46,7 @@ class PushEinstellungenTests(unittest.TestCase):
             with self.subTest(datei=datei):
                 self.assertTrue(pfad.exists(), f"{datei} fehlt")
                 text = pfad.read_text(encoding="utf-8")
-                fehlend = {n for n in erwartet if not re.search(rf"^\s+{n}:", text, re.M)}
+                fehlend = {n for n in erwartet if not re.search(rf"^\s+{n}:", text, re.MULTILINE)}
                 self.assertEqual(
                     set(), fehlend,
                     f"{datei} reicht nicht durch: {sorted(fehlend)} — "
@@ -58,7 +58,7 @@ class PushEinstellungenTests(unittest.TestCase):
         for datei in COMPOSE:
             text = (REPO / datei).read_text(encoding="utf-8")
             for name in ("APNS_AUTH_KEY", "APNS_KEY_ID", "APNS_TEAM_ID"):
-                treffer = re.search(rf"^\s+{name}:\s*(.+)$", text, re.M)
+                treffer = re.search(rf"^\s+{name}:\s*(.+)$", text, re.MULTILINE)
                 with self.subTest(datei=datei, name=name):
                     self.assertIsNotNone(treffer)
                     self.assertRegex(treffer.group(1).strip(), rf"^\$\{{{name}:-\}}$")
