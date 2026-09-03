@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.309.0] - 2026-09-03
+
+### Neu
+- **Push erreicht Testflug- und Entwicklungsgeräte gleichzeitig.** Apple trennt
+  beide Umgebungen strikt, und beide Gerätearten sind im Alltag parallel im
+  Umlauf. Schlägt die Zustellung mit `BadDeviceToken` fehl, wird jetzt die
+  andere Umgebung versucht, statt die Meldung verloren zu geben. Bisher
+  entschied ein einzelner Schalter, welche Hälfte der Geräte erreichbar war —
+  und der Unterschied ist von aussen nicht erkennbar, weil Apple in beiden
+  Fällen dieselbe Fehlermeldung liefert.
+  - Steht der Schalter falsch, sagt das Protokoll das jetzt ausdrücklich.
+
+---
+
 ## [1.308.0] - 2026-09-03
 
 ### Behoben

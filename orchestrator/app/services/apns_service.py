@@ -70,11 +70,18 @@ class APNsService:
     ) -> bool:
         if not cls.configured():
             return False
-        host = (
-            "api.sandbox.push.apple.com"
-            if settings.apns_sandbox
-            else "api.push.apple.com"
-        )
+        # Reihenfolge: erst die eingestellte Umgebung, dann die andere. Apple
+        # trennt Test- und Verkaufsversionen strikt; ein Geraete-Schluessel aus
+        # einem Xcode-Build ist an der Verkaufsadresse ungueltig und umgekehrt.
+        # Beide Arten sind gleichzeitig im Umlauf (Entwicklung am Schreibtisch,
+        # Testflug beim Kunden), und der Unterschied ist von aussen nicht
+        # erkennbar: Apple antwortet in beiden Faellen mit BadDeviceToken. Wer
+        # den Schalter falsch stellt, sucht den Fehler deshalb ueberall, nur
+        # nicht dort. Der zweite Versuch kostet nur bei Geraeten etwas, deren
+        # Zustellung ohnehin scheitert.
+        hosts = ["api.sandbox.push.apple.com", "api.push.apple.com"]
+        if not settings.apns_sandbox:
+            hosts.reverse()
         payload = {
             "aps": {
                 "alert": {"title": title, "body": body},
@@ -95,14 +102,26 @@ class APNsService:
         }
         try:
             async with httpx.AsyncClient(http2=True, timeout=10.0) as client:
-                r = await client.post(
-                    f"https://{host}/3/device/{device_token}",
-                    headers=headers, json=payload,
-                )
-            if r.status_code != 200:
+                for versuch, host in enumerate(hosts):
+                    r = await client.post(
+                        f"https://{host}/3/device/{device_token}",
+                        headers=headers, json=payload,
+                    )
+                    if r.status_code == 200:
+                        if versuch:
+                            # Nicht die eingestellte Umgebung — der Schalter
+                            # passt nicht zu den Geraeten, die sich anmelden.
+                            logger.info(
+                                "APNs: Zustellung gelang erst ueber %s. "
+                                "APNS_SANDBOX passt nicht zu den angemeldeten "
+                                "Geraeten.", host,
+                            )
+                        return True
+                    if r.status_code != 400 or "BadDeviceToken" not in r.text:
+                        break   # Anderer Fehler — der zweite Anlauf hilft nicht
                 logger.warning("APNs %s for %s…: %s",
                                r.status_code, device_token[:8], r.text)
-            return r.status_code == 200
+            return False
         except Exception:  # noqa: BLE001
             logger.exception("APNs send failed")
             return False
