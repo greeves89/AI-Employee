@@ -92,6 +92,10 @@ export function DelegateToTeamModal({
               />
             </Dialog.Overlay>
 
+            {/* Dialog.Content deckt den ganzen Viewport ab und faengt daher JEDEN
+                Klick ab, auch den auf den "Hintergrund" — der Overlay-onClick oben
+                erreicht deshalb nie den Nutzer. target===currentTarget unterscheidet
+                Klick-auf-Hintergrund von Klick-auf-Karte (Bubbling). */}
             <Dialog.Content asChild>
               <motion.div
                 className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -99,6 +103,7 @@ export function DelegateToTeamModal({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
+                onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false); }}
               >
                 <motion.div
                   className="w-full max-w-lg rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl shadow-black/40 overflow-hidden max-h-[90vh] overflow-y-auto"
@@ -120,7 +125,7 @@ export function DelegateToTeamModal({
                   {/* Body */}
                   <div className="px-6 py-5 space-y-5">
                     {!team?.lead_agent_id && (
-                      <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-400">
+                      <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-400">
                         Dieses Team hat keinen Lead. Lege zuerst einen Lead fest, damit der Task zugewiesen werden kann.
                       </div>
                     )}

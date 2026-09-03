@@ -19,7 +19,7 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   },
   budget_exceeded: {
     label: "Budget erschöpft",
-    className: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    className: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
   },
   failed: {
     label: "Fehlgeschlagen",

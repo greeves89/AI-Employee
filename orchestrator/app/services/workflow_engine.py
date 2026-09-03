@@ -16,6 +16,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from app.core.task_router import UnknownAgentError
 from app.models.task import Task, TaskStatus
 from app.models.workflow import Workflow, WorkflowRun
 
@@ -80,14 +81,22 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def start_run(workflow: Workflow, db, run_id: str | None = None) -> WorkflowRun:
-    """Create a fresh run positioned at the workflow's start step."""
+async def start_run(
+    workflow: Workflow, db, run_id: str | None = None, context: dict | None = None
+) -> WorkflowRun:
+    """Create a fresh run positioned at the workflow's start step.
+
+    ``context`` setzt Startwerte, auf die Schritte per ``{{name}}`` zugreifen —
+    genau die Mechanik, die auch Schritt-Ergebnisse benutzen. Ein von aussen
+    ausgeloester Lauf (#392) legt dort seine Nutzlast unter ``trigger`` ab, ohne
+    dass es dafuer eine zweite Ersetzungslogik braeuchte.
+    """
     defn = workflow.definition or {}
     run = WorkflowRun(
         id=run_id or f"wfr_{uuid.uuid4().hex[:12]}",
         workflow_id=workflow.id,
         status="running",
-        context={},
+        context=dict(context or {}),
         current_step=defn.get("start"),
         current_task_id=None,
     )
@@ -153,12 +162,26 @@ async def advance_run(run: WorkflowRun, workflow: Workflow, db, router) -> None:
 
             if stype == "agent_task":
                 prompt = substitute(step.get("prompt", ""), run.context)
-                task = await router.create_and_route_task(
-                    title=step.get("title") or "Workflow-Schritt",
-                    prompt=prompt,
-                    agent_id=step.get("agent_id"),
-                    metadata={"workflow_run": run.id, "workflow_step": run.current_step},
-                )
+                try:
+                    task = await router.create_and_route_task(
+                        title=step.get("title") or "Workflow-Schritt",
+                        prompt=prompt,
+                        agent_id=step.get("agent_id"),
+                        metadata={"workflow_run": run.id, "workflow_step": run.current_step},
+                    )
+                except UnknownAgentError as e:
+                    # Der Schritt zeigt auf einen geloeschten Agenten. Den Lauf
+                    # sauber scheitern lassen und den Grund HINSCHREIBEN — sonst
+                    # haengt er stumm, und niemand weiss, welcher Schritt klemmt.
+                    run.status = "failed"
+                    run.error = f'Schritt „{run.current_step}“: {e}'[:2000]
+                    run.completed_at = _now()
+                    await db.commit()
+                    logger.warning(
+                        "workflow %s gestoppt — Schritt %s zeigt auf unbekannten Agenten: %s",
+                        run.id, run.current_step, e,
+                    )
+                    return
                 run.current_task_id = task.id
                 await db.commit()
                 return  # resume when the task completes

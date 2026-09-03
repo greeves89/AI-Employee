@@ -27,7 +27,7 @@ const SOURCE_CONFIG: Record<string, { label: string; className: string; icon?: t
   conversation: { label: "Gespräch", className: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
   reflection: { label: "Nachtschicht", className: "bg-violet-500/10 text-violet-400 border-violet-500/20", icon: Moon },
   user: { label: "Du", className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
-  improvement: { label: "Verbesserung", className: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  improvement: { label: "Verbesserung", className: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" },
   compaction: { label: "Kompaktierung", className: "bg-slate-500/10 text-slate-400 border-slate-500/20" },
 };
 
@@ -51,6 +51,8 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
   const [categories, setCategories] = useState<Record<string, number>>({});
   const [activeCategory, setActiveCategory] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editImportance, setEditImportance] = useState(3);
@@ -70,11 +72,25 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
       const data = await getAgentMemories(agentId, category);
       setMemories(data.memories);
       setCategories(data.categories);
+      setHasMore(data.has_more);
     } catch {
       // ignore
     }
     setLoading(false);
   }, [agentId, activeCategory]);
+
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true);
+    try {
+      const category = activeCategory === "all" ? undefined : activeCategory;
+      const data = await getAgentMemories(agentId, category, memories.length);
+      setMemories((prev) => [...prev, ...data.memories]);
+      setHasMore(data.has_more);
+    } catch {
+      // ignore
+    }
+    setLoadingMore(false);
+  }, [agentId, activeCategory, memories.length]);
 
   useEffect(() => {
     fetchMemories();
@@ -143,6 +159,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
   };
 
   const totalMemories = Object.values(categories).reduce((a, b) => a + b, 0);
+  const activeTotal = activeCategory === "all" ? totalMemories : (categories[activeCategory] || 0);
   const visibleMemories = reflectionOnly
     ? memories.filter((m) => m.source === "reflection")
     : memories;
@@ -273,7 +290,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                             className={cn(
                               "h-2.5 w-2.5",
                               i <= (isEditing ? editImportance : mem.importance)
-                                ? "text-amber-400 fill-amber-400"
+                                ? "text-amber-700 dark:text-amber-400 fill-amber-400"
                                 : "text-muted-foreground/20"
                             )}
                             onClick={() => isEditing && setEditImportance(i)}
@@ -448,14 +465,14 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                         <button
                           onClick={() => handleSave(mem.id)}
                           className="p-1.5 rounded-lg text-emerald-400 hover:bg-accent transition-colors"
-                          title="Save"
+                          title="Speichern"
                         >
                           <Save className="h-3 w-3" />
                         </button>
                         <button
                           onClick={() => setEditingId(null)}
                           className="p-1.5 rounded-lg text-muted-foreground hover:bg-accent transition-colors"
-                          title="Cancel"
+                          title="Abbrechen"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -465,14 +482,14 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                         <button
                           onClick={() => handleEdit(mem)}
                           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                          title="Edit"
+                          title="Bearbeiten"
                         >
                           <Pencil className="h-3 w-3" />
                         </button>
                         <button
                           onClick={() => handleDelete(mem.id)}
                           className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-accent transition-colors"
-                          title="Delete"
+                          title="Löschen"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
@@ -483,6 +500,22 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {!loading && hasMore && !reflectionOnly && (
+        <div className="flex justify-center pt-1">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            {loadingMore ? (
+              <RefreshCw className="h-3 w-3 animate-spin" />
+            ) : (
+              `Mehr laden (${memories.length} von ${activeTotal})`
+            )}
+          </button>
         </div>
       )}
     </div>

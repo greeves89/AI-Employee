@@ -13,7 +13,9 @@ import os
 import signal
 from typing import AsyncIterator
 
+from app import codex_auth_sync
 from app.config import settings
+from app.ai_credential_status import report_result_status
 from app.log_publisher import LogPublisher
 from app.llm_chat_handler import DESKTOP_MCP_ACTIVE_ENV
 from app.runner_hooks import (
@@ -174,6 +176,7 @@ class CodexAgentRunner:
             task_id, "system", {"message": f"Starting Codex task with model {model}"}
         )
         result = await self._run_codex(task_id, enhanced_prompt, model, stream="task")
+        await report_result_status(result)
         self.is_running = False
         self._process = None
         return result
@@ -195,9 +198,13 @@ class CodexAgentRunner:
         ]
         # Per-message reasoning level chosen by the user in the chat. Passed as a
         # CLI override (not the config TOML) so it applies to THIS turn only.
-        _reasoning = getattr(self, "_reasoning", "")
+        # Stufe am Lauf gewinnt; sonst die Standard-Denktiefe des Agenten —
+        # _run_codex bedient Chat UND Aufgaben, damit gilt sie fuer beide.
+        _reasoning = getattr(self, "_reasoning", "") or settings.default_reasoning
         if _reasoning:
-            effort = "minimal" if _reasoning == "off" else _reasoning
+            # Codex calls the extremes differently: no thinking is "minimal",
+            # the top level is "xhigh".
+            effort = {"off": "minimal", "max": "xhigh"}.get(_reasoning, _reasoning)
             common += ["-c", f'model_reasoning_effort="{effort}"']
         if resume:
             cmd = ["codex", "exec", "resume"] + common + ["--last", "-"]
@@ -274,6 +281,11 @@ class CodexAgentRunner:
                     result_data.update({
                         "input_tokens": usage.get("input_tokens"),
                         "output_tokens": usage.get("output_tokens"),
+                        # Feinaufschlüsselung, sofern Codex sie meldet (GPT-Modelle):
+                        # gecachte Eingabe + „nachgedachte" Ausgabe.
+                        "cached_tokens": usage.get("cached_input_tokens") or 0,
+                        "reasoning_tokens": usage.get("reasoning_output_tokens") or 0,
+                        "cache_write_tokens": 0,
                     })
 
             returncode = await self._process.wait()
@@ -307,6 +319,14 @@ class CodexAgentRunner:
         except Exception as e:
             result_data = {"status": "error", "error": str(e)}
             await _publish(self.log_publisher, stream, target_id, "error", {"message": str(e)})
+
+        # Hat die CLI waehrend des Laufs den Refresh-Token erneuert, lebt der neue
+        # nur im Container. Auch nach einem Fehlerlauf melden — gerade der
+        # abgelaufene Token loest die Erneuerung aus.
+        try:
+            await codex_auth_sync.push_if_rotated()
+        except Exception:  # noqa: BLE001 — ein Lauf darf daran nie scheitern
+            logger.debug("Codex-Erneuerung konnte nicht gesichert werden", exc_info=True)
 
         return result_data
 
@@ -350,12 +370,35 @@ class CodexChatHandler:
         self._runner = CodexAgentRunner(self.log_publisher)
 
         async def _run_turn(t: str, is_resume: bool) -> dict:
+            from app.chat_handler import _is_context_length_error
+
             res = await self._runner._run_codex(message_id, t, model, stream="chat", resume=is_resume)
             # If `resume --last` isn't supported / no session was saved, don't lose the
             # folded message — fall back to a fresh turn.
             if is_resume and res.get("status") == "error":
-                logger.warning("Codex resume failed, retrying fresh: %s", str(res.get("error"))[:120])
+                # Zu langer Verlauf: dieselbe Selbstheilung wie im Claude-Pfad —
+                # Sitzung verwerfen, Nutzer informieren, frisch wiederholen (#623).
+                if _is_context_length_error(res.get("error", "")):
+                    await self.log_publisher.publish_chat(
+                        message_id, "system",
+                        {"message": "Der Gespraechsverlauf war zu lang geworden — ich "
+                                    "beginne eine neue Sitzung und beantworte die "
+                                    "Nachricht gleich erneut. Frueheres aus diesem Chat "
+                                    "kenne ich dann nicht mehr aus dem Verlauf."},
+                    )
+                else:
+                    logger.warning("Codex resume failed, retrying fresh: %s", str(res.get("error"))[:120])
                 res = await self._runner._run_codex(message_id, t, model, stream="chat", resume=False)
+            # Frische Sitzung und trotzdem zu gross: die EINZELNE Nachricht sprengt
+            # das Fenster — wiederholen ist zwecklos, erklaeren hilft (#623).
+            if res.get("status") == "error" and _is_context_length_error(res.get("error", "")):
+                res = {
+                    "status": "error",
+                    "error": ("Diese einzelne Nachricht ist zu gross fuer das "
+                              "Kontextfenster des Modells. Bitte kuerzer fassen — "
+                              "oder grosse Inhalte als Datei in den Workspace legen "
+                              "und in der Nachricht darauf verweisen."),
+                }
             return res
 
         try:
@@ -373,6 +416,7 @@ class CodexChatHandler:
             self._runner = None
             self._process = None
 
+        await report_result_status(result)
         await self.log_publisher.publish_chat(message_id, "done", result)
         return result
 
@@ -441,6 +485,12 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
         "orchestrator": "/opt/mcp/orchestrator-server.mjs",
         "desktop": "/opt/mcp/computer-use-server.mjs",
         "read_logs": "/opt/mcp/read-logs-server.mjs",
+        # Fehlten bis 2026-08-12: ein Codex-Agent hatte KEIN Microsoft 365, keine
+        # Mail und kein Video — Claude Code schon. Zwei Listen, die niemand
+        # gegeneinander geprueft hat. Der Paritaetstest tut das jetzt.
+        "msgraph": "/opt/mcp/msgraph-server.mjs",
+        "email": "/opt/mcp/email-server.mjs",
+        "hyperframes": "/opt/mcp/hyperframes-server.mjs",
     }
 
     lines: list[str] = [
@@ -450,6 +500,10 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
     ]
 
     desktop_mcp_active = False
+    # Welche Abschnitte bereits in der Datei stehen. Codex bricht beim ERSTEN
+    # doppelten Schluessel ab und laedt dann GAR KEINE Konfiguration — der Agent
+    # steht ohne jedes Werkzeug da und kann nur noch reden.
+    geschrieben: set[str] = set()
 
     # Stdio built-in servers
     for name, script in builtin_servers.items():
@@ -473,6 +527,7 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
                 f'AGENT_NAME = "{_toml_escape(agent_name)}"',
                 f'DEFAULT_MODEL = "{_toml_escape(default_model)}"',
             ]
+        geschrieben.add(name)
         lines += [
             f"[mcp_servers.{name}]",
             'command = "node"',
@@ -497,6 +552,27 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
                 if not _valid_http_url(srv_url):
                     logger.warning("Skipping MCP server %r with invalid URL: %r", srv_name, srv_url)
                     continue
+                if safe_name in geschrieben:
+                    # Genau hier ging es am 2026-08-16 kaputt: ``msgraph`` ist
+                    # seit dem 12.08. ein EINGEBAUTER Server und wird zusaetzlich
+                    # eingeschleust, sobald ein Agent die Microsoft-Integration
+                    # hat. Zwei Abschnitte gleichen Namens — und Codex verwarf
+                    # die komplette Datei. Der Agent hatte danach kein einziges
+                    # Werkzeug und antwortete auf jede Bitte nur mit „ich
+                    # kuemmere mich darum", weil er buchstaeblich nichts tun
+                    # konnte.
+                    #
+                    # Der eingebaute gewinnt: er ist in jedem Agenten vorhanden
+                    # und in beiden Laufzeiten derselbe (Paritaet). Ein
+                    # uebersprungener Doppelgaenger kostet nichts — eine
+                    # unlesbare Konfiguration kostet alles.
+                    logger.warning(
+                        "MCP-Server %r ist bereits eingebaut — der eingeschleuste "
+                        "wird uebersprungen (doppelter Abschnitt wuerde die ganze "
+                        "config.toml unbrauchbar machen)", srv_name,
+                    )
+                    continue
+                geschrieben.add(safe_name)
                 lines += [
                     f"[mcp_servers.{safe_name}]",
                     f'url = "{_toml_escape(srv_url)}"',

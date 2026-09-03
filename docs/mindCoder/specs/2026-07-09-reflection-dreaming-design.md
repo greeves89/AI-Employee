@@ -85,4 +85,4 @@ Modul 4 ist der einzige agent-seitige Eingriff: context_compressor -> api_client
 ## Rollout
 
 Feature-Branch, 2 Alembic-Migrationen, Versionsbump (minor), CHANGELOG, Handbuch-Kapitel "Nachtschicht"
-mit Screenshots, Deploy: Pi zuerst; SKBS unberuehrt (pullt selbst, Feature default aus).
+mit Screenshots, Deploy: Pi zuerst; Kundenanlage unberuehrt (pullt selbst, Feature default aus).

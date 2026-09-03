@@ -17,6 +17,7 @@ import {
   FilePreview, FilePreviewEmpty,
   getFileColor, formatFileSize, formatModified, formatModifiedFull,
 } from "@/components/files/file-preview";
+import { useOrdnerAbwurf } from "@/components/files/use-ordner-abwurf";
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-400",
@@ -54,6 +55,24 @@ export default function FilesPage() {
       setTreeData((prev) => ({ ...prev, [key]: [] }));
     }
   };
+
+  // Ziehen und Fallenlassen aus dem Betriebssystem — derselbe Haken wie im
+  // Arbeitsbereich eines einzelnen Agenten. Hier traegt das Ziel die
+  // Agentenkennung mit, weil mehrere Baeume nebeneinander stehen.
+  const { dropZiel, dropLaeuft, beiDragOver, beiDragLeave, beiDrop } = useOrdnerAbwurf({
+    aufloesen: (ziel) => {
+      const trenner = ziel.indexOf(":");
+      return { agentId: ziel.slice(0, trenner), pfad: ziel.slice(trenner + 1) };
+    },
+    melden: toast,
+    nachAbwurf: async (ziel) => {
+      const trenner = ziel.indexOf(":");
+      const id = ziel.slice(0, trenner);
+      const pfad = ziel.slice(trenner + 1);
+      setExpandedDirs((prev) => new Set(prev).add(ziel));
+      await loadDir(id, pfad);
+    },
+  });
 
   const toggleAgent = async (agentId: string) => {
     setExpandedAgents((prev) => {
@@ -185,16 +204,24 @@ export default function FilesPage() {
       const dirKey = `${agentId}:${entry.path}`;
       const isExpanded = expandedDirs.has(dirKey);
       const isSelected = selectedFile?.agentId === agentId && selectedFile?.path === entry.path;
+      // Eine Datei ist kein Ziel — wer auf sie zielt, meint ihren Ordner.
+      const abwurfZiel = isDir ? dirKey : key;
+      const istAbwurfZiel = dropZiel === abwurfZiel;
+      const laedtHierher = dropLaeuft === abwurfZiel;
 
       return (
         <div key={entry.path}>
           <div
             className={cn(
               "flex items-center gap-2 py-1 px-3 hover:bg-foreground/[0.04] transition-colors cursor-pointer group",
-              isSelected && "bg-primary/10 border-r-2 border-primary"
+              isSelected && "bg-primary/10 border-r-2 border-primary",
+              istAbwurfZiel && "bg-primary/15 ring-1 ring-inset ring-primary/50"
             )}
             style={{ paddingLeft: `${depth * 18 + 12}px` }}
             onClick={() => isDir ? toggleDir(agentId, entry.path) : handleFileClick(agentId, entry)}
+            onDragOver={(e) => beiDragOver(e, abwurfZiel)}
+            onDragLeave={beiDragLeave}
+            onDrop={(e) => beiDrop(e, abwurfZiel)}
           >
             {isDir ? (
               <ChevronRight className={cn(
@@ -206,14 +233,17 @@ export default function FilesPage() {
             )}
             {isDir ? (
               isExpanded ? (
-                <FolderOpen className="h-3.5 w-3.5 text-amber-400/70 shrink-0" />
+                <FolderOpen className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400/70 shrink-0" />
               ) : (
-                <Folder className="h-3.5 w-3.5 text-amber-400/70 shrink-0" />
+                <Folder className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400/70 shrink-0" />
               )
             ) : (
               <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
             )}
             <span className="text-[12px] truncate flex-1 min-w-0">{entry.name}</span>
+            {laedtHierher && (
+              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40 shrink-0" />
+            )}
             {!isDir && entry.modified > 0 && (
               <span className="text-[10px] text-muted-foreground/30 tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
                 {formatModified(entry.modified)}
@@ -229,6 +259,15 @@ export default function FilesPage() {
                 onClick={(e) => { e.stopPropagation(); handleDownload(agentId, entry.path); }}
                 className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
                 title="Download"
+              >
+                <Download className="h-2.5 w-2.5" />
+              </button>
+            )}
+            {isDir && (
+              <button
+                onClick={(e) => { e.stopPropagation(); window.open(api.getFolderDownloadUrl(agentId, entry.path), "_blank"); }}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                title="Ordner als ZIP herunterladen (ohne node_modules, .git …)"
               >
                 <Download className="h-2.5 w-2.5" />
               </button>
@@ -431,6 +470,7 @@ export default function FilesPage() {
             <div className="flex-1 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
               {selectedFile ? (
                 <FilePreview
+                  agentId={selectedFile.agentId}
                   key={`${selectedFile.agentId}:${selectedFile.path}`}
                   fileUrl={api.getFileDownloadUrl(selectedFile.agentId, selectedFile.path)}
                   filePath={selectedFile.path}

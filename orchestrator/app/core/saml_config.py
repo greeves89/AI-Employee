@@ -33,9 +33,10 @@ IDP_CERT = "saml_idp_x509_cert"
 # Angaben zu UNS als Dienstanbieter.
 SP_ENTITY_ID = "saml_sp_entity_id"
 
-# Gruppen-Abbildung: aus welchem Attribut die Gruppen kommen und was sie bedeuten.
+# Aus welchem Assertion-Attribut die Gruppen kommen. Was sie BEDEUTEN steht nicht
+# mehr hier, sondern in der Tabelle ``sso_group_role_mappings`` — gemeinsam mit dem
+# Microsoft-OIDC-Login, siehe app/core/sso_group_roles.py.
 GROUP_ATTRIBUTE = "saml_group_attribute"
-GROUP_ROLE_MAP = "saml_group_role_map"        # JSON {"Gruppenname": "admin"|"manager"|"member"}
 
 _DEFAULT_GROUP_ATTRIBUTE = "groups"
 
@@ -62,7 +63,7 @@ async def load_settings(db: AsyncSession) -> dict:
 
     svc = SettingsService(db)
     keys = (IDP_ENTITY_ID, IDP_SSO_URL, IDP_SLO_URL, IDP_CERT, SP_ENTITY_ID,
-            GROUP_ATTRIBUTE, GROUP_ROLE_MAP, DISPLAY_NAME_SETTING)
+            GROUP_ATTRIBUTE, DISPLAY_NAME_SETTING)
     return {k: (await svc.get(k)) or "" for k in keys}
 
 
@@ -156,37 +157,3 @@ def extract_groups(attributes: dict, cfg: dict) -> list[str]:
     return []
 
 
-def role_for_groups(groups: list[str], group_role_map: dict) -> str | None:
-    """Welche Rolle die Gruppen ergeben, oder ``None`` wenn keine passt.
-
-    Die HOECHSTE zutreffende Rolle gewinnt: wer in „IT-Admins" UND „Alle Mitarbeiter"
-    steht, soll Administrator sein und nicht zufaellig Mitglied, je nachdem wie das
-    Verzeichnis die Gruppen sortiert. Ohne Treffer wird die Rolle NICHT angefasst —
-    eine leere Zuordnung darf niemandem Rechte wegnehmen, die ein Mensch vergeben hat.
-    """
-    if not group_role_map:
-        return None
-    rank = {"admin": 3, "manager": 2, "member": 1}
-    best: str | None = None
-    lowered = {g.lower() for g in groups}
-    for group, role in group_role_map.items():
-        if str(group).lower() in lowered:
-            role = str(role).lower()
-            if role in rank and (best is None or rank[role] > rank[best]):
-                best = role
-    return best
-
-
-def parse_group_role_map(raw: str) -> dict:
-    """Die hinterlegte Zuordnung lesen. Kaputte Eingabe heisst „keine Zuordnung",
-    nicht „Absturz beim Anmelden"."""
-    import json
-
-    if not raw:
-        return {}
-    try:
-        data = json.loads(raw)
-        return data if isinstance(data, dict) else {}
-    except (ValueError, TypeError):
-        logger.warning("SAML-Gruppenzuordnung ist kein gueltiges JSON — wird ignoriert")
-        return {}

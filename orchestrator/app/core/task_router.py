@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.load_balancer import LoadBalancer
 from app.core.log_redaction import scrub_log
+from app.core.text_preview import truncate_preserving_words
 from app.models.agent import Agent
 from app.models.approval_rule import ApprovalRule
 from app.models.task import Task, TaskStatus, is_terminal_task_status
@@ -22,6 +23,9 @@ from app.services.skill_auto_injector import auto_inject_skills
 # notification that points at the task — otherwise clicking a "Task fertig"
 # notification 404s because the task was already GC'd. 7 days.
 TASK_EVICT_GRACE_SECONDS = int(7 * 24 * 3600)
+# Escalated run lineages a schedule can rack up before it auto-disables
+# instead of paging the human again — see _escalate_exhausted_task.
+_SCHEDULE_AUTO_PAUSE_THRESHOLD = 3
 
 # Model used for self-reflection rating + improvement suggestions
 _REFLECTION_MODEL = "claude-haiku-4-5-20251001"
@@ -31,6 +35,35 @@ _REFLECTION_MODEL = "claude-haiku-4-5-20251001"
 BUDGET_FALLBACK_MODEL = "claude-haiku-4-5-20251001"
 
 _ID_ALPHABET = string.digits + string.ascii_lowercase
+
+
+class UnknownAgentError(Exception):
+    """Delegation an einen Agenten, den es nicht (mehr) gibt.
+
+    Die Meldung ist an den AGENTEN gerichtet, nicht an ein Protokoll — sie nennt
+    die Kollegen, die es wirklich gibt, damit er seinen Auftrag im selben Zug
+    korrigieren kann, statt auf ein Ergebnis zu warten, das nie kommt.
+    """
+
+    def __init__(self, agent_id: str, kollegen: list[tuple[str, str]] | None = None):
+        self.agent_id = agent_id
+        self.kollegen = kollegen or []
+        if self.kollegen:
+            liste = ", ".join(f"{name} ({aid})" for aid, name in self.kollegen)
+            hinweis = (
+                f" Dein Team ist: {liste}. Schicke den Auftrag an eine dieser "
+                f"Kennungen — oder rufe `list_my_team` auf, falls du unsicher bist."
+            )
+        else:
+            hinweis = (
+                " Rufe `list_my_team` auf, um zu sehen, an wen du delegieren "
+                "kannst."
+            )
+        super().__init__(
+            f"Es gibt keinen Agenten mit der Kennung '{agent_id}'. Moeglicherweise "
+            f"wurde er geloescht, seit du ihn kennengelernt hast — deine Erinnerung "
+            f"kann also stimmen und trotzdem veraltet sein.{hinweis}"
+        )
 
 
 def _make_task_id() -> str:
@@ -280,21 +313,19 @@ class TaskRouter:
                 return task
 
         if not await self._agent_exists(agent_id):
+            # Frueher landete das als PENDING OHNE agent_id in der Datenbank — und
+            # blieb dort liegen: der Reparaturlauf sucht ausdruecklich nur
+            # PENDING-Auftraege MIT agent_id. Niemand erfuhr davon, am wenigsten
+            # der Auftraggeber, der auf ein Ergebnis wartete, das nie kommen kann.
+            #
+            # Beim Kunden am 2026-08-13 fuenf solcher Waisen an einen Kollegen,
+            # den es einmal GAB und der geloescht wurde. Die Erinnerung des
+            # Agenten war korrekt — nur hatte ihm niemand gesagt, dass sich die
+            # Welt geaendert hat. Genau das holt der Fehler jetzt nach: er nennt
+            # die Kollegen, die es wirklich gibt, damit der Agent sich im selben
+            # Zug selbst korrigieren kann.
             logger.warning("Cannot route task %s to missing agent %s", scrub_log(task_id), scrub_log(agent_id))
-            task = Task(
-                id=task_id,
-                title=title,
-                prompt=prompt,
-                status=TaskStatus.PENDING,
-                priority=priority,
-                model=model,
-                parent_task_id=parent_task_id,
-                metadata_=dict(metadata or {}),
-            )
-            self.db.add(task)
-            await self.db.commit()
-            await self.db.refresh(task)
-            return task
+            raise UnknownAgentError(agent_id, await self._delegatable_agents(created_by_agent))
 
         # Content-based routing (opt-in per agent): pick a model tier from the
         # prompt itself, like OpenWebUI's router — but only when the caller
@@ -366,6 +397,9 @@ class TaskRouter:
         await self._publish_activity(agent_id, f"Task queued: {title} (priority: {priority})")
 
         await self.db.refresh(task)
+        # Kachel im Chat des Auftraggebers: ab jetzt sieht der Mensch, dass etwas
+        # laeuft — statt auf eine Rueckmeldung zu warten, die frueher nie kam.
+        await self.publish_task_card(task, "queued")
         return task
 
     async def _agent_exists(self, agent_id: str | None) -> bool:
@@ -375,6 +409,36 @@ class TaskRouter:
 
         existing = await self.db.scalar(select(Agent.id).where(Agent.id == agent_id))
         return existing is not None
+
+    async def _delegatable_agents(self, created_by_agent: str | None) -> list[tuple[str, str]]:
+        """An wen darf dieser Agent wirklich delegieren — (id, name).
+
+        Die Teams des Auftraggebers, nicht alle Agenten der Anlage: die
+        Mandantentrennung gilt auch in einer Fehlermeldung. Ohne Auftraggeber
+        (Zeitplan, Oberflaeche) bleibt die Liste leer — dann nennt der Fehler nur
+        die unbekannte Kennung.
+        """
+        if not created_by_agent:
+            return []
+        try:
+            from app.models.agent import Agent
+            from app.models.team import Team
+
+            teams = (await self.db.execute(select(Team))).scalars().all()
+            ids: set[str] = set()
+            for t in teams:
+                mitglieder = set(t.member_agent_ids or [])
+                if created_by_agent in mitglieder:
+                    ids |= mitglieder
+            ids.discard(created_by_agent)
+            if not ids:
+                return []
+            rows = (await self.db.execute(
+                select(Agent.id, Agent.name).where(Agent.id.in_(ids))
+            )).all()
+            return sorted((r[0], r[1]) for r in rows)
+        except Exception:  # noqa: BLE001 — eine Fehlermeldung darf nie selbst scheitern
+            return []
 
     async def _publish_activity(self, agent_id: str, message: str) -> None:
         """Publish an activity event to the agent's log channel + history."""
@@ -429,6 +493,40 @@ class TaskRouter:
         except Exception as e:
             logger.warning(f"job_state checkpoint (start) failed for {task_id}: {e}")
 
+    async def handle_task_heartbeat(self, data: dict) -> None:
+        """Ein Lebenszeichen einer laufenden Aufgabe festhalten (#692).
+
+        Der Waechter (#211) prueft, wie lange an einer laufenden Aufgabe nichts
+        mehr geschrieben wurde. Zwischen Start und Ende schrieb aber NICHTS —
+        er mass damit nicht die Gesundheit des Arbeiters, sondern die
+        verstrichene Zeit, und brach nach 30 Minuten jede noch so gesunde
+        Aufgabe ab (belegt am 31.08.2026 an vier parallelen Reviews).
+
+        Fortgeschrieben wird beides: ``job_state.last_heartbeat`` — die Spalte
+        gab es laengst, gefuettert hat sie nie jemand — und ``Task.updated_at``,
+        woran der Waechter haengt.
+        """
+        task_id = data.get("task_id")
+        if not task_id:
+            return
+        result = await self.db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        if not task or task.status != TaskStatus.RUNNING:
+            return  # nur eine laufende Aufgabe kann ein Lebenszeichen geben
+        task.updated_at = datetime.now(timezone.utc)
+        await self.db.commit()
+
+        try:
+            # `checkpoint` erneuert `last_heartbeat` bei jedem Aufruf — ohne
+            # weitere Angaben ist es genau das Lebenszeichen, das die Spalte
+            # seit jeher vorsah und nie bekommen hat.
+            from app.services.job_state import checkpoint
+
+            await checkpoint(self.db, f"task:{task_id}", kind="agent_task", ref_id=task_id)
+        except Exception as e:  # noqa: BLE001
+            # Ein Lebenszeichen darf nie etwas zum Scheitern bringen.
+            logger.debug(f"job_state heartbeat fuer {task_id} nicht gesetzt: {e}")
+
     async def delete_task(self, task_id: str) -> bool:
         """Delete a task. Only non-running tasks can be deleted."""
         result = await self.db.execute(select(Task).where(Task.id == task_id))
@@ -445,13 +543,35 @@ class TaskRouter:
         return True
 
     async def cancel_task(self, task_id: str) -> Task | None:
-        """Cancel a queued/pending task."""
+        """Eine Aufgabe abbrechen — wartend ODER laufend.
+
+        Bis 1.258.x wurde eine LAUFENDE Aufgabe mit einem Fehler abgelehnt.
+        Damit gab es keinen Weg, sie zu stoppen: die Sprachfront meldete
+        trotzdem Erfolg, und der Nutzer sah die Aufgabe weiterlaufen — am
+        21.08.2026 dreimal hintereinander.
+
+        Fuer laufende Aufgaben wird jetzt der Kanal ``task:cancel`` benutzt.
+        Den gab es schon; er hatte nur nie einen Zuhoerer (siehe
+        ``TaskConsumer._cancel_listener``).
+        """
         result = await self.db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
         if not task:
             return None
-        if task.status not in (TaskStatus.QUEUED, TaskStatus.PENDING):
+        if task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
             raise ValueError(f"Cannot cancel a task with status '{task.status.value}'")
+        if task.status == TaskStatus.RUNNING and task.agent_id:
+            # Den Agenten bitten, den laufenden Vorgang abzubrechen. Der Eintrag
+            # wird trotzdem sofort als abgebrochen gefuehrt: er SOLL nicht mehr
+            # als laufend gelten, und der Runner bestaetigt es gleich selbst.
+            try:
+                if self.redis.client:
+                    await self.redis.client.publish(
+                        f"agent:{task.agent_id}:task:cancel", task_id
+                    )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Abbruchsignal fuer %s nicht zustellbar: %s",
+                               scrub_log(task_id), scrub_log(e))
         if task.agent_id:
             await self._remove_from_queue(task.agent_id, task_id)
         task.status = TaskStatus.CANCELLED
@@ -488,6 +608,27 @@ class TaskRouter:
         task.status = TaskStatus.COMPLETED if data.get("status") == "completed" else TaskStatus.FAILED
         task.result = data.get("result")
         task.error = data.get("error")
+
+        # Ein „fertig", hinter dem nichts steht, ist kein Erfolg (#680). Vom
+        # 27. bis 30.08.2026 standen 94 Laeufe auf gruen, waehrend 71 davon an
+        # einem abgelaufenen Zugang und 23 an einem erschoepften Kontingent
+        # gestorben waren — drei Tage ohne Podcast, ohne Tagesplan, ohne
+        # Morgencheck, und keine Ueberwachung schlug an, weil alle auf `failed`
+        # filtern. Die Pruefung liegt HIER und nicht im Agenten: das bisherige
+        # Sicherheitsnetz lief im selben Container mit derselben Anmeldung und
+        # starb am selben 401.
+        if task.status == TaskStatus.COMPLETED:
+            from app.core.run_outcome import warum_kein_erfolg
+
+            grund = warum_kein_erfolg(task.result, data.get("duration_ms"))
+            if grund:
+                task.status = TaskStatus.FAILED
+                task.error = grund
+                logger.warning(
+                    "Lauf %s meldete Erfolg, war aber keiner: %s", scrub_log(task_id), grund,
+                )
+                if agent_id:
+                    await self._melde_ausfall_serie(agent_id, task, grund)
         task.cost_usd = data.get("cost_usd")
         task.input_tokens = data.get("input_tokens")
         task.output_tokens = data.get("output_tokens")
@@ -568,6 +709,9 @@ class TaskRouter:
         )
         if delegator_id and delegator_id != agent_id:
             logger.info("Firing delegation callback for task %s → delegator %s", task.id, delegator_id)
+            # Erst die Kachel aktualisieren (sofort sichtbar), dann den Lead
+            # anstossen (der braucht einen ganzen Zug).
+            await self.publish_task_card(task, "done")
             await self._notify_delegating_agent(task, delegator_id)
 
         # Request user rating via notification + Telegram inline keyboard
@@ -723,12 +867,77 @@ class TaskRouter:
 
         summary = self_healing.escalation_summary(history, task.error)
         permanent = self_healing.classify_error(task.error) == self_healing.PERMANENT
+
+        # A recurring schedule with no circuit breaker escalated the SAME
+        # broken run hourly, forever — 27 stuck approvals for one dead
+        # schedule (reported 2026-08-27). Count escalated LINEAGES (not raw
+        # attempts — those are already deduped, see _update_schedule_stats)
+        # and auto-pause the schedule once it's clearly not self-recovering,
+        # instead of paging the human every hour about the exact same thing.
+        schedule_paused_note = ""
+        schedule_id = (task.metadata_ or {}).get("schedule_id")
+        existing_approval: CommandApproval | None = None
+        if schedule_id:
+            from app.models.schedule import Schedule
+            sched = (await self.db.execute(
+                select(Schedule).where(Schedule.id == schedule_id)
+            )).scalar_one_or_none()
+            if sched:
+                sched.consecutive_failures += 1
+                if sched.consecutive_failures >= _SCHEDULE_AUTO_PAUSE_THRESHOLD and sched.enabled:
+                    sched.enabled = False
+                    schedule_paused_note = (
+                        f"\n\nDer Zeitplan „{sched.name}“ wurde nach "
+                        f"{sched.consecutive_failures} aufeinanderfolgenden gescheiterten "
+                        "Läufen automatisch pausiert, damit das nicht stündlich weiter "
+                        "eskaliert. Unter Zeitpläne wieder aktivieren, sobald die Ursache "
+                        "behoben ist."
+                    )
+                await self.db.commit()
+
+            # One open escalation PER SCHEDULE, not one per hourly run — the
+            # user's second complaint about the same flood: "wieso sollte ich
+            # da Approve oder Deny klicken... das sind ja 27 fuer dasselbe."
+            # Update the existing pending one in place instead of piling on.
+            pending = (await self.db.execute(
+                select(CommandApproval).where(
+                    CommandApproval.command == "task_failed",
+                    CommandApproval.status == ApprovalStatus.PENDING,
+                )
+            )).scalars().all()
+            existing_approval = next(
+                (a for a in pending if (a.meta or {}).get("schedule_id") == schedule_id), None
+            )
+
         try:
+            if existing_approval:
+                existing_approval.description = f"{task.title}\n\n{summary}{schedule_paused_note}"
+                existing_approval.task_id = task.id
+                meta = dict(existing_approval.meta or {})
+                meta.update({
+                    "task_id": task.id,
+                    "attempts": len(history),
+                    "history": history[-5:],
+                    "question": f'„{task.title}“ ist endgültig gescheitert. Übernehmen?',
+                    "recurrences": int(meta.get("recurrences") or 1) + 1,
+                })
+                if schedule_paused_note:
+                    meta["schedule_paused"] = True
+                existing_approval.meta = meta
+                existing_approval.created_at = datetime.now(timezone.utc)
+                await self.db.commit()
+                logger.info(
+                    "[Selbstheilung] %s: bestehende Eskalation fuer Zeitplan %s aktualisiert "
+                    "(kein neues Approval) statt erneut zu eskalieren",
+                    scrub_log(task.id), scrub_log(schedule_id),
+                )
+                return
+
             approval = CommandApproval(
                 agent_id=agent_id or "system",
                 task_id=task.id,
                 command="task_failed",
-                description=f"{task.title}\n\n{summary}",
+                description=f"{task.title}\n\n{summary}{schedule_paused_note}",
                 risk_level="high",
                 status=ApprovalStatus.PENDING,
                 meta={
@@ -739,6 +948,8 @@ class TaskRouter:
                     "history": history[-5:],
                     "question": f'„{task.title}“ ist endgültig gescheitert. Übernehmen?',
                     "options": ["Ich übernehme", "Verwerfen"],
+                    **({"schedule_id": schedule_id} if schedule_id else {}),
+                    **({"schedule_paused": True} if schedule_paused_note else {}),
                 },
             )
             self.db.add(approval)
@@ -748,8 +959,8 @@ class TaskRouter:
             notif = Notification(
                 agent_id=agent_id or "system",
                 type="error",
-                title="Aufgabe braucht dich",
-                message=f"{task.title}: {summary}"[:240],
+                title="Zeitplan pausiert" if schedule_paused_note else "Aufgabe braucht dich",
+                message=(f"{task.title}: {summary}{schedule_paused_note}")[:240],
                 priority="high",
                 action_url="/approvals",
                 meta={
@@ -757,6 +968,7 @@ class TaskRouter:
                     "task_id": task.id,
                     "approval_id": approval.id,
                     "attempts": len(history),
+                    **({"schedule_paused": True} if schedule_paused_note else {}),
                 },
             )
             self.db.add(notif)
@@ -916,6 +1128,67 @@ class TaskRouter:
 
         return False
 
+    async def _melde_ausfall_serie(self, agent_id: str, task, grund: str) -> None:
+        """Meldet, wenn mehrere Laeufe in Folge nur so AUSSAHEN, als gaebe es sie.
+
+        Ein einzelner Fehlschlag ist Rauschen. 71 in Folge waren ein
+        dreitaegiger Totalausfall, den niemand bemerkt hat (#680) — weil jeder
+        einzelne Lauf gruen aussah und keine Ueberwachung darauf schaut.
+
+        Gemeldet wird nur beim UEBERSCHREITEN der Schwelle, nicht bei jedem
+        weiteren Fehlschlag: sonst haette der Nutzer damals 69 Meldungen
+        bekommen und die Anzeige waere wertlos geworden.
+        """
+        from app.core.run_outcome import SERIE_MELDEN_AB, ist_zugangsproblem
+
+        try:
+            zeilen = (await self.db.execute(
+                select(Task)
+                .where(Task.agent_id == agent_id, Task.completed_at.isnot(None))
+                .order_by(Task.completed_at.desc())
+                .limit(SERIE_MELDEN_AB + 1)
+            )).scalars().all()
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Ausfall-Serie nicht pruefbar: %s", e)
+            return
+
+        letzte = [z for z in zeilen if z.id != task.id][:SERIE_MELDEN_AB]
+        # Der aktuelle Lauf zaehlt mit; davor muessen SERIE_MELDEN_AB - 1
+        # ebenfalls gescheitert sein, und der davor NICHT (sonst wurde die
+        # Meldung bereits abgesetzt).
+        davor = letzte[:SERIE_MELDEN_AB - 1]
+        if len(davor) < SERIE_MELDEN_AB - 1:
+            return
+        if not all(z.status == TaskStatus.FAILED for z in davor):
+            return
+        noch_davor = letzte[SERIE_MELDEN_AB - 1:SERIE_MELDEN_AB]
+        if noch_davor and noch_davor[0].status == TaskStatus.FAILED:
+            return  # Schwelle war schon ueberschritten — nicht erneut melden
+
+        from app.models.notification import Notification
+
+        hinweis = (" Ein Wiederholen hilft hier nicht — der Zugang muss neu "
+                   "angemeldet werden." if ist_zugangsproblem(grund) else "")
+        notif = Notification(
+            agent_id=agent_id,
+            type="error",
+            title="Mehrere Laeufe ohne Ergebnis",
+            message=(
+                f"Die letzten {SERIE_MELDEN_AB} Laeufe dieses Agenten haben nichts "
+                f"geliefert. Grund zuletzt: {grund}.{hinweis}"
+            )[:240],
+            priority="high",
+            action_url="/tasks",
+            meta={"type": "run_outcome_streak", "reason": grund,
+                  "streak": SERIE_MELDEN_AB, "task_id": task.id},
+        )
+        self.db.add(notif)
+        await self.db.commit()
+        await self.db.refresh(notif)
+        await self._publish_notification(notif)
+        logger.warning("Ausfall-Serie bei Agent %s gemeldet: %s",
+                       scrub_log(agent_id), grund)
+
     async def _update_agent_metrics(self, agent_id: str, result_data: dict) -> None:
         """Track agent performance metrics for learning insights."""
         from app.models.agent import Agent
@@ -976,6 +1249,7 @@ class TaskRouter:
 
         if result_data.get("status") == "completed":
             schedule.success_count += 1
+            schedule.consecutive_failures = 0
         else:
             schedule.fail_count += 1
             await self._alert_schedule_failure(schedule, result_data)
@@ -1720,6 +1994,185 @@ class TaskRouter:
         except Exception as e:
             logger.warning(f"Could not notify parent agent for subtask {subtask.id}: {e}")
 
+    async def _session_of_running_turn(self, agent_id: str | None) -> str | None:
+        """Der Gespraechsfaden, in dem dieser Agent GERADE arbeitet.
+
+        Auftraege, die ueber den stdio-MCP-Server entstehen (Claude Code, Codex),
+        fuehren keinen Faden mit — der Werkzeugserver kennt die Sitzung des Chats
+        nicht. Der Agent selbst schreibt sie aber waehrend eines Zuges in seinen
+        Statuseintrag (``current_task = "chat:{faden}"``).
+
+        Das ist NICHT der frueher hier benutzte Auffangweg „zuletzt benutzter
+        Faden": gefragt wird nach dem Gespraech, das in DIESEM Moment laeuft. Es
+        ist damit dasselbe, in dem der Mensch gerade sitzt — und nicht irgendein
+        anderes.
+        """
+        if not agent_id or not (self.redis and self.redis.client):
+            return None
+        try:
+            status = await self.redis.client.hgetall(f"agent:{agent_id}:status")
+            if not status:
+                return None
+
+            def _text(wert) -> str:
+                return wert.decode() if isinstance(wert, bytes) else str(wert or "")
+
+            eintraege = {_text(k): _text(v) for k, v in status.items()}
+            aktuell = eintraege.get("current_task", "")
+            if aktuell.startswith("chat:"):
+                return aktuell[5:]
+
+            # ``current_task`` traegt nur EINE Arbeit. Agenten laufen aber
+            # parallel (MAX_PARALLEL_TASKS/-CHATS): wer nebenher einen
+            # Zeitplan-Auftrag abarbeitet, hat dort dessen Kennung stehen — und
+            # der Chat, in dem der Mensch gerade sitzt, war unsichtbar. Genau so
+            # gingen am 2026-08-13 zwei von vier Kacheln verloren.
+            # ``active_sessions`` fuehrt ALLE laufenden Arbeiten. Genau ein
+            # offenes Gespraech ist eindeutig; bei mehreren waere jede Wahl
+            # geraten, und eine Kachel im falschen Chat ist schlimmer als keine.
+            try:
+                laufend = json.loads(eintraege.get("active_sessions") or "[]")
+            except (TypeError, ValueError):
+                return None
+            faeden = [str(e)[5:] for e in laufend if str(e).startswith("chat:")]
+            return faeden[0] if len(faeden) == 1 else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    async def _persist_task_card(self, task: Task, payload: dict,
+                                 session_id: str | None) -> None:
+        """Die Kachel als Zeile im Chatverlauf — damit sie ein Neuladen ueberlebt.
+
+        Eine Zeile je Auftrag, beim Abschluss aktualisiert statt verdoppelt: zwei
+        Kacheln fuer denselben Auftrag waeren schlimmer als keine.
+        """
+        try:
+            from app.models.chat_message import ChatMessage as _CM
+
+            row = (await self.db.execute(
+                select(_CM).where(_CM.message_id == f"card-{task.id}")
+            )).scalar_one_or_none()
+            if row is None:
+                row = _CM(
+                    agent_id=(task.metadata_ or {}).get("created_by_agent"),
+                    session_id=session_id,
+                    message_id=f"card-{task.id}",
+                    role="system",
+                    content="",
+                )
+                self.db.add(row)
+            row.meta = {**(row.meta or {}), "task_card": payload}
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(row, "meta")
+            await self.db.commit()
+        except Exception:  # noqa: BLE001
+            logger.debug("[Kachel] nicht im Verlauf gespeichert", exc_info=True)
+
+    async def publish_task_card(self, task: Task, phase: str) -> None:
+        """Kachel im Chat des Auftraggebers — Live-Stand eines delegierten Auftrags.
+
+        Ein Team-Lead schreibt „ich habe beauftragt" und der Mensch sieht danach
+        nichts: kein Fortschritt, kein Ende, keine Rueckfrage. Er muss nachfragen,
+        um zu erfahren, ob ueberhaupt etwas passiert. Diese Kachel schliesst die
+        Luecke — sie erscheint beim Anlegen und aktualisiert sich beim Abschluss.
+
+        Bewusst OHNE ``message_id``: der Weiterleiter im WS laesst Ereignisse ohne
+        Nachrichtenkennung immer durch (Steuerereignisse). Mit einer fremden
+        Kennung wuerde die Kachel als „gehoert zu einem anderen Chat" verworfen.
+
+        Fehler hier duerfen den Auftrag nie anhalten — eine Anzeige ist kein
+        Betriebsmittel.
+        """
+        try:
+            meta = task.metadata_ or {}
+            delegator = meta.get("created_by_agent")
+            session = meta.get("chat_session_id") or await self._session_of_running_turn(delegator)
+            if not (delegator and self.redis and self.redis.client):
+                return
+            if delegator == task.agent_id:
+                return  # sich selbst beauftragen ist keine Delegation
+
+            name = None
+            if task.agent_id:
+                from app.models.agent import Agent as _A
+
+                name = (await self.db.execute(
+                    select(_A.name).where(_A.id == task.agent_id)
+                )).scalar_one_or_none()
+
+            payload = {
+                "task_id": task.id,
+                "title": task.title,
+                "phase": phase,                      # queued | done
+                "status": getattr(task.status, "value", str(task.status)),
+                "assigned_agent_id": task.agent_id,
+                "assigned_agent_name": name or task.agent_id,
+                "result_preview": (task.result or task.error or "")[:400],
+                "cost_usd": task.cost_usd,
+                "duration_ms": task.duration_ms,
+                # Ohne den Faden kann das Fenster nicht entscheiden, ob die
+                # Kachel hierher gehoert — und zeigte sie in JEDEM Gespraech.
+                "session_id": session,
+            }
+
+            # Dauerhaft im Verlauf ablegen, nicht nur waehrend des Laufs senden.
+            # Sonst ist die Kachel nach einem Neuladen weg — und mit ihr die
+            # einzige Spur, dass ueberhaupt jemand beauftragt wurde. Bilder und
+            # angebotene Dateien liegen aus demselben Grund im Verlauf.
+            # Ohne Faden gehoert die Kachel in kein Gespraech. Sie trotzdem zu
+            # speichern hiess: sie taucht in ALLEN auf.
+            if session:
+                # Den ermittelten Faden am Auftrag festhalten — sonst sucht die
+                # spaetere Fertigmeldung ihn vergeblich, weil der Agent laengst
+                # in einem anderen Zug steckt.
+                if not meta.get("chat_session_id"):
+                    try:
+                        from sqlalchemy.orm.attributes import flag_modified
+
+                        task.metadata_ = {**meta, "chat_session_id": session}
+                        flag_modified(task, "metadata_")
+                        await self.db.commit()
+                    except Exception:  # noqa: BLE001
+                        logger.debug("[Kachel] Faden nicht am Auftrag vermerkt", exc_info=True)
+                await self._persist_task_card(task, payload, session)
+
+            await self.redis.client.publish(
+                f"agent:{delegator}:chat:response",
+                json.dumps({
+                    "type": "task_card",
+                    "agent_id": delegator,
+                    "session_id": session,
+                    "data": payload,
+                }),
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("[Kachel] konnte nicht gesendet werden", exc_info=True)
+
+    async def _latest_chat_session(self, agent_id: str) -> str | None:
+        """Der zuletzt benutzte Gesprächsfaden dieses Agenten.
+
+        Auffangweg für Aufträge, die den Faden nicht mitführen — das sind alle,
+        die über den stdio-MCP-Server entstehen (Claude Code, Codex): dort kennt
+        der Werkzeugserver die Sitzung des Chats nicht.
+
+        Der zuletzt benutzte Faden ist fast immer der richtige: der Mensch hat
+        gerade dort um die Delegation gebeten. Und selbst wenn nicht, ist ein
+        Faden, den jemand ansieht, allemal besser als ``webapp:default``, wo die
+        Rückmeldung garantiert niemanden erreicht.
+        """
+        try:
+            from app.models.chat_message import ChatMessage as _CM
+
+            return (await self.db.execute(
+                select(_CM.session_id)
+                .where(_CM.agent_id == agent_id, _CM.session_id.isnot(None))
+                .order_by(_CM.timestamp.desc())
+                .limit(1)
+            )).scalar_one_or_none()
+        except Exception:  # noqa: BLE001
+            logger.debug("Letzten Gespraechsfaden nicht ermittelbar", exc_info=True)
+            return None
+
     async def _notify_delegating_agent(self, task: Task, delegator_agent_id: str) -> None:
         """When a delegated task completes, notify the agent that created it.
 
@@ -1729,7 +2182,15 @@ class TaskRouter:
         """
         try:
             status = "completed" if task.status == TaskStatus.COMPLETED else "failed"
-            result_preview = (task.result or task.error or "No output")[:800]
+            # Ein blosses [:800] schnitt regelmaessig mitten im Wort ab, wenn ein
+            # Sub-Agent erst seine Pflicht-Vorabchecks beschreibt, bevor die
+            # eigentliche Antwort kommt — die sah dadurch aus, als fehle sie
+            # komplett (Bericht 2026-08-13: "Hallo Welt" nie erreicht, weil der
+            # Vorspann laenger als das Limit war). truncate_preserving_words
+            # schneidet an der letzten Wortgrenze statt mitten im Wort.
+            result_preview = truncate_preserving_words(
+                task.result or task.error or "No output", 2000
+            )
 
             # Wake the delegating agent if it idle-stopped while waiting, so it
             # actually consumes the queued result (mirrors dispatch).
@@ -1760,20 +2221,45 @@ class TaskRouter:
                     f"agent:{delegator_agent_id}:messages", message
                 )
 
-                # Also push to the delegating agent's chat queue so it
-                # picks up the result in the next chat interaction.
-                # Format must match what the agent runner expects: {id, text}
+                # Auch in die Chat-Warteschlange, damit der Lead die Fertigmeldung
+                # aufgreift und dem Menschen berichtet.
+                #
+                # ZWEI Fehler steckten hier bis v1.186.0:
+                #  * Der Schluessel hiess ``session_id``; der Agent liest aber
+                #    ``chat_session_id``. Die Fertigmeldung landete deshalb in
+                #    ``webapp:default`` — einem Faden, den niemand ansieht. Fuer den
+                #    Nutzer sah es aus, als komme nie eine Rueckmeldung.
+                #  * Der Text trug Emojis, obwohl sie in nutzersichtbarem Text
+                #    ausdruecklich nicht vorkommen duerfen.
                 callback_id = uuid.uuid4().hex[:12]
-                status_emoji = "✅" if status == "completed" else "❌"
+                # NUR der Faden, in dem wirklich beauftragt wurde. Der
+                # frueher hier benutzte Auffangweg „zuletzt benutzter Faden" hat
+                # bei mehreren parallelen Gespraechen Rueckmeldungen in ein
+                # FREMDES Gespraech geschrieben — schlimmer als gar keine.
+                origin_session = (task.metadata_ or {}).get("chat_session_id")
+                marker = "Erledigt" if status == "completed" else "Fehlgeschlagen"
                 chat_notification = json.dumps({
                     "id": callback_id,
                     "text": (
-                        f"{status_emoji} [Delegation Result] Task '{task.title}' "
-                        f"(#{task.id}) has {status}.\n"
-                        f"Result: {result_preview[:300]}"
+                        f"[Rueckmeldung: {marker}] Der Auftrag '{task.title}' "
+                        f"(#{task.id}) ist {'abgeschlossen' if status == 'completed' else 'gescheitert'}.\n"
+                        f"Ergebnis: {result_preview}\n\n"
+                        "Berichte dem Menschen kurz, was dabei herausgekommen ist. "
+                        "Wenn das Ergebnis die Aufgabe nicht erfuellt, sage das deutlich."
                     ),
-                    "session_id": "delegation-callback",
+                    # In DEN Faden, in dem die Delegation beauftragt wurde.
+                    "chat_session_id": origin_session,
+                    "source": "webapp",
                 })
+                # Zuordnung Nachricht -> Gespraechsfaden hinterlegen. Ohne sie
+                # verwirft der Weiterleiter im WS die Antwort des Leads: er kennt
+                # nur Kennungen, die DIESER Browser gesendet hat, und eine vom
+                # Orchestrator angestossene Antwort ist fuer ihn fremd. Sie landete
+                # dadurch in der Datenbank, aber nie auf dem Bildschirm.
+                if origin_session:
+                    await self.redis.client.setex(
+                        f"chat:msg:{callback_id}:session", 3600, origin_session
+                    )
                 await self.redis.client.lpush(
                     f"agent:{delegator_agent_id}:chat", chat_notification
                 )
@@ -1785,11 +2271,10 @@ class TaskRouter:
 
             # Send Telegram notification to the user for immediate visibility
             try:
-                status_emoji = "✅" if status == "completed" else "❌"
                 title = (task.title or "Task")[:60]
-                cost_info = f" (${task.cost_usd:.3f})" if task.cost_usd else ""
+                cost_info = f" ({task.cost_usd:.3f} USD)" if task.cost_usd else ""
                 telegram_text = (
-                    f"{status_emoji} Delegierter Task {status}: {title}{cost_info}"
+                    f"[{marker}] Delegierter Auftrag: {title}{cost_info}"
                 )
                 if self.redis.client and delegator_agent_id:
                     await self.redis.client.publish(

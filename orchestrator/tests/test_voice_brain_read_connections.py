@@ -1,6 +1,6 @@
 """#477 (Voice-Pfad): Knoteninhalt vorlesen + Verbindungen auflisten.
 
-Kundenfeedback Klinikum Braunschweig: die Graph-Navigation per Sprache funktioniert,
+Kundenfeedback eines Kunden: die Graph-Navigation per Sprache funktioniert,
 aber (1) der Inhalt eines angesprungenen Punktes wird nicht vorgelesen und (2) „womit
 hängt dieser Punkt zusammen?" wird nicht beantwortet. Für die personal-KB deckt das
 ``_wikilink_neighbours`` ab; der Voice-Agent arbeitet aber über die gemounteten

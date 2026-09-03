@@ -8,7 +8,10 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.datastructures import MutableHeaders
+
+from app.core.task_router import UnknownAgentError
 
 from app.api.router import api_router
 from app.api.ws import init_stream_manager
@@ -315,11 +318,12 @@ async def _listen_task_events(redis: RedisService) -> None:
     """Background task that listens for task start + completion events from agents."""
     try:
         pubsub = await redis.subscribe("task:completions")
-        # Also subscribe to task:started channel
+        # Also subscribe to task:started + task:heartbeat channels
         if redis.client:
             await pubsub.subscribe("task:started")
-        logger.info("[TaskListener] Started listening on task:completions + task:started")
-        print("[TaskListener] Started listening on task:completions + task:started")
+            await pubsub.subscribe("task:heartbeat")
+        logger.info("[TaskListener] Listening on task:completions + task:started + task:heartbeat")
+        print("[TaskListener] Listening on task:completions + task:started + task:heartbeat")
     except Exception as e:
         logger.error(f"[TaskListener] Failed to start: {e}", exc_info=True)
         return
@@ -351,6 +355,8 @@ async def _listen_task_events(redis: RedisService) -> None:
                     router = TaskRouter(db, redis, lb)
                     if channel == "task:started":
                         await router.handle_task_start(data)
+                    elif channel == "task:heartbeat":
+                        await router.handle_task_heartbeat(data)
                     else:
                         await router.handle_task_completion(data)
         except Exception as e:
@@ -700,6 +706,34 @@ async def _init_db_from_models() -> None:
     except Exception as e:
         logger.warning(f"Could not ensure second_brains MCP columns: {e}")
 
+    # Git-Abgleich je Vault (optional — ein Vault laeuft auch ganz ohne).
+    try:
+        async with engine.begin() as conn:
+            for spalte in (
+                "git_url text",
+                "git_branch varchar(200)",
+                "git_token_encrypted text",
+                "git_last_sync_at timestamptz",
+                "git_last_status varchar(255)",
+            ):
+                await conn.execute(_sql_text(
+                    f"ALTER TABLE second_brains ADD COLUMN IF NOT EXISTS {spalte}"
+                ))
+        logger.info("second_brains git columns ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure second_brains git columns: {e}")
+
+    # Einzelfreigabe fuer eigene KI-Abos (Kundenvorgabe 18.08.2026).
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(_sql_text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                "allow_personal_credentials boolean NOT NULL DEFAULT false"
+            ))
+        logger.info("users.allow_personal_credentials ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure second_brains git columns: {e}")
+
     # Agent clone origin: distributed copies of a "trained" source agent track it
     # via agents.source_agent_id. Ensure idempotently (create_all never ALTERs).
     try:
@@ -710,6 +744,24 @@ async def _init_db_from_models() -> None:
         logger.info("agents.source_agent_id ensured")
     except Exception as e:
         logger.warning(f"Could not ensure agents.source_agent_id: {e}")
+
+    # Einrichtungshaken normalisieren. Das Einrichtungsgespraech ist entfallen —
+    # der Agent haelt sich an seine Vorlage. Ein Bestandsagent, der noch auf
+    # `false` steht, koennte den Haken nie mehr bekommen: das Interview, das ihn
+    # setzte, gibt es nicht mehr. Er bliebe in der Oberflaeche fuer immer als
+    # "nicht eingerichtet" markiert. Einmalig geradeziehen, idempotent.
+    try:
+        async with engine.begin() as conn:
+            res = await conn.execute(_sql_text(
+                "UPDATE agents SET config = jsonb_set("
+                "  config::jsonb, '{onboarding_complete}', 'true'::jsonb, true"
+                ")::json "
+                "WHERE coalesce((config->>'onboarding_complete')::boolean, false) IS NOT TRUE"
+            ))
+            if res.rowcount:
+                logger.info("Einrichtungshaken normalisiert: %d Agent(en)", res.rowcount)
+    except Exception as e:
+        logger.warning(f"Could not normalise onboarding_complete: {e}")
 
     await engine.dispose()
 
@@ -809,7 +861,14 @@ async def lifespan(app: FastAPI):
 
     # Mirror WARNING+ logs (redacted) to /shared/platform-errors.log so agents can
     # read platform errors from the shared volume and help fix the platform.
-    from app.core.platform_error_log import setup_platform_error_log
+    from app.core.platform_error_log import setup_console_logging, setup_platform_error_log
+
+    # Zuerst die Konsole: ohne Ausgabe-Handler war alles unterhalb von WARNING
+    # unsichtbar, und eine Diagnose anhand fehlender Log-Zeilen ist Raten.
+    _console_level = setup_console_logging()
+    logger.info("Konsolen-Logging aktiv (Stufe %s)",
+                logging.getLevelName(_console_level))
+
     if setup_platform_error_log():
         logger.info("Platform error log active -> /shared/platform-errors.log (secret-redacted)")
 
@@ -995,6 +1054,11 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt("CREATE INDEX IF NOT EXISTS ix_workflow_runs_status ON workflow_runs (status)"))
             # Organisation (#394-org): folders + sharing.
             await conn.execute(_txt("ALTER TABLE workflows ADD COLUMN IF NOT EXISTS folder_id varchar"))
+            # Webhook-Ausloeser koennen einen Workflow starten statt eines
+            # Einzelauftrags (#392). Leer = Auftrag wie bisher.
+            await conn.execute(_txt(
+                "ALTER TABLE event_triggers ADD COLUMN IF NOT EXISTS workflow_id varchar"
+            ))
             await conn.execute(_txt(
                 "CREATE TABLE IF NOT EXISTS workflow_folders ("
                 "id varchar PRIMARY KEY, name varchar NOT NULL, user_id varchar NOT NULL,"
@@ -1034,6 +1098,14 @@ async def lifespan(app: FastAPI):
             ))
             await conn.execute(_txt(
                 "ALTER TABLE agent_plan_items ADD COLUMN IF NOT EXISTS schedule_id varchar"
+            ))
+            await conn.execute(_txt(
+                "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS "
+                "consecutive_failures integer NOT NULL DEFAULT 0"
+            ))
+            await conn.execute(_txt(
+                "ALTER TABLE agents ADD COLUMN IF NOT EXISTS "
+                "is_platform_agent boolean NOT NULL DEFAULT false"
             ))
             # Web-Push-Anmeldungen der Browser — das Gegenstueck zu device_tokens (iOS).
             # Der Endpunkt ist eindeutig, damit ein erneut angemeldeter Browser den
@@ -1081,6 +1153,96 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure app_shares table: {e}")
 
+    # Eigene Menuepunkte (fremde Seiten im Rahmen oder als Link). Wie bei den
+    # uebrigen jungen Tabellen idempotent beim Start statt per Migration — eine
+    # Bestandsinstallation kaeme sonst ohne Handanlegen nicht an die Funktion.
+    try:
+        from app.db.session import engine as _eng_cp
+        from sqlalchemy import text as _txt_cp
+        async with _eng_cp.begin() as conn:
+            await conn.execute(_txt_cp(
+                "CREATE TABLE IF NOT EXISTS custom_pages ("
+                "id serial PRIMARY KEY, slug varchar(64) NOT NULL UNIQUE, title varchar(120) NOT NULL,"
+                "description varchar(400), url text NOT NULL,"
+                "icon varchar(60) NOT NULL DEFAULT 'Globe',"
+                "group_key varchar(20) NOT NULL DEFAULT 'collab',"
+                "open_mode varchar(10) NOT NULL DEFAULT 'iframe',"
+                "sort_order integer NOT NULL DEFAULT 0,"
+                "enabled boolean NOT NULL DEFAULT true,"
+                "allow_media boolean NOT NULL DEFAULT false,"
+                "created_by varchar,"
+                "created_at timestamptz NOT NULL DEFAULT now(),"
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_cp(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_custom_pages_slug ON custom_pages (slug)"
+            ))
+        logger.info("custom_pages table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure custom_pages table: {e}")
+
+    # IdP-Gruppen auf Rollen (SAML + Microsoft-OIDC, vereinheitlicht) + die dabei
+    # gesehenen Gruppennamen. Zwei Tabellen, weil es zwei verschiedene Dinge sind —
+    # eine Zuordnung aendert sich selten und ist eine bewusste Admin-Entscheidung,
+    # eine Beobachtung entsteht bei jedem Login von selbst.
+    try:
+        from app.db.session import engine as _eng_sso
+        from sqlalchemy import text as _txt_sso
+        async with _eng_sso.begin() as conn:
+            await conn.execute(_txt_sso(
+                "CREATE TABLE IF NOT EXISTS sso_group_role_mappings ("
+                "id serial PRIMARY KEY, provider varchar(20) NOT NULL,"
+                "group_name varchar(200) NOT NULL, target_kind varchar(20) NOT NULL,"
+                "target_value varchar(40) NOT NULL, priority integer NOT NULL DEFAULT 0,"
+                "created_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_sso(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_sso_group_role_provider_group "
+                "ON sso_group_role_mappings (provider, group_name)"
+            ))
+            await conn.execute(_txt_sso(
+                "CREATE TABLE IF NOT EXISTS sso_observed_groups ("
+                "id serial PRIMARY KEY, provider varchar(20) NOT NULL,"
+                "group_name varchar(200) NOT NULL,"
+                "first_seen_at timestamptz NOT NULL DEFAULT now(),"
+                "last_seen_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_sso(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_sso_observed_provider_group "
+                "ON sso_observed_groups (provider, group_name)"
+            ))
+        logger.info("sso_group_role_mappings + sso_observed_groups tables ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure sso_group_role_mappings tables: {e}")
+
+    # Eigener Claude-/Codex-Zugang je Nutzer. Getrennte Zugaenge = getrennte
+    # Token-Familien: die Rotation des einen kann die des anderen nicht mehr
+    # umbringen (der Grund, weshalb Codex-Recreates bis heute serialisiert werden).
+    try:
+        from app.db.session import engine as _eng_uc
+        from sqlalchemy import text as _txt_uc
+        async with _eng_uc.begin() as conn:
+            await conn.execute(_txt_uc(
+                "CREATE TABLE IF NOT EXISTS user_ai_credentials ("
+                "id serial PRIMARY KEY, user_id varchar NOT NULL,"
+                "harness varchar(20) NOT NULL, secret_encrypted text NOT NULL,"
+                "label varchar(120), last_status varchar(32),"
+                "last_used_at timestamptz,"
+                "created_at timestamptz NOT NULL DEFAULT now(),"
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_uc(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_ai_credential "
+                "ON user_ai_credentials (user_id, harness)"
+            ))
+            await conn.execute(_txt_uc(
+                "CREATE INDEX IF NOT EXISTS ix_user_ai_credentials_user "
+                "ON user_ai_credentials (user_id)"
+            ))
+        logger.info("user_ai_credentials table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure app_shares table: {e}")
+
     # Ensure the chat_sessions table (per-chat title/pin metadata) on every
     # startup, independent of Alembic (10 heads → `upgrade head` may not run the
     # create-all fallback). Idempotent. Without it, get_chat_sessions 500s.
@@ -1095,6 +1257,7 @@ async def lifespan(app: FastAPI):
                 "session_id varchar NOT NULL, "
                 "title text, "
                 "pinned boolean NOT NULL DEFAULT false, "
+                "reasoning_level varchar, "
                 "created_at timestamptz NOT NULL DEFAULT now(), "
                 "updated_at timestamptz NOT NULL DEFAULT now())"
             ))
@@ -1108,9 +1271,43 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt_cs(
                 "CREATE INDEX IF NOT EXISTS ix_chat_sessions_session_id ON chat_sessions (session_id)"
             ))
+            # v1.234.0: per-chat reasoning level (NULL = Auto / harness default)
+            await conn.execute(_txt_cs(
+                "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS reasoning_level varchar"
+            ))
         logger.info("chat_sessions table ensured")
     except Exception as e:
         logger.warning(f"Could not ensure chat_sessions table: {e}")
+
+    # Ensure the per-tenant title uniqueness on knowledge_entries on every
+    # startup, independent of Alembic. Die Migration b7c1e93a5f20 loest die
+    # GLOBALE Eindeutigkeit auf; scheitert `alembic upgrade head` aber (10 heads,
+    # bekannter Fall weiter oben), greift der create_all-Rueckfall — und der legt
+    # aus dem Modell wieder einen globalen Unique-Index an. Dann brechen
+    # Reflexionslaeufe weiterhin an fremden Titeln ab. Idempotent.
+    try:
+        from app.db.session import engine as _eng_kt
+        from sqlalchemy import text as _txt_kt
+        async with _eng_kt.begin() as conn:
+            await conn.execute(_txt_kt("DROP INDEX IF EXISTS ix_knowledge_entries_title"))
+            await conn.execute(_txt_kt(
+                "CREATE INDEX IF NOT EXISTS ix_knowledge_entries_title "
+                "ON knowledge_entries (title)"
+            ))
+            # user_id ist nullable (systemweite Eintraege). Zwei partielle Indizes,
+            # weil NULLs in Postgres als verschieden gelten — ein gemeinsamer Index
+            # auf (title, user_id) wuerde mehrfache globale Titel erlauben.
+            await conn.execute(_txt_kt(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_entries_title_global "
+                "ON knowledge_entries (title) WHERE user_id IS NULL"
+            ))
+            await conn.execute(_txt_kt(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_entries_title_per_user "
+                "ON knowledge_entries (title, user_id) WHERE user_id IS NOT NULL"
+            ))
+        logger.info("knowledge_entries title uniqueness ensured (per tenant)")
+    except Exception as e:
+        logger.warning(f"Could not ensure knowledge_entries title indexes: {e}")
 
     # Ensure the job_state table (long-running job checkpoints + auto-resume) on
     # every startup, independent of Alembic — no migration ships for it, and on an
@@ -1146,6 +1343,32 @@ async def lifespan(app: FastAPI):
         logger.info("job_state table ensured")
     except Exception as e:
         logger.warning(f"Could not ensure job_state table: {e}")
+
+    # Saved meeting recordings (v1.269.0): previously the recorder held its
+    # transcript only in memory, so there was no history/list, no renaming, no
+    # participants. New table, no migration ships for it — ensured on every
+    # startup, same reasoning as job_state above.
+    try:
+        from app.db.session import engine as _eng_mt
+        from sqlalchemy import text as _txt_mt
+        async with _eng_mt.begin() as conn:
+            await conn.execute(_txt_mt(
+                "CREATE TABLE IF NOT EXISTS meetings ("
+                "id varchar PRIMARY KEY, "
+                "user_id varchar NOT NULL, "
+                "title varchar NOT NULL, "
+                "transcript text NOT NULL DEFAULT '', "
+                "participants json NOT NULL DEFAULT '[]'::json, "
+                "duration_seconds integer NOT NULL DEFAULT 0, "
+                "created_at timestamptz NOT NULL DEFAULT now(), "
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_mt(
+                "CREATE INDEX IF NOT EXISTS ix_meetings_user_id ON meetings (user_id)"
+            ))
+        logger.info("meetings table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure meetings table: {e}")
 
     # External MCP servers: optional custom auth headers and persisted discovery
     # health. Ensured on every startup, independent of Alembic (the migration chain
@@ -1184,6 +1407,9 @@ async def lifespan(app: FastAPI):
             ))
             await conn.execute(_txt_mh(
                 "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_registration_endpoint text"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_callback_base_url text"
             ))
             await conn.execute(_txt_mh(
                 "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_scope text"
@@ -1292,6 +1518,66 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to seed URL allowlist templates: {e}")
 
+    # Einmalige Bereinigung: die alte Vorgabe 4096 aus den Agenten-Konfigurationen
+    # entfernen. Sie stand dort nicht, weil jemand sie gewollt hat, sondern weil sie
+    # die Vorgabe war — und sie kappt lange Antworten mitten im Satz.
+    # Bewusst NUR exakt 4096: wer eine andere Zahl eingetragen hat, hat sich etwas
+    # dabei gedacht, und die bleibt unangetastet.
+    try:
+        from sqlalchemy import select as _sel_mt
+        from sqlalchemy.orm.attributes import flag_modified as _flag_mt
+
+        from app.db.session import async_session_factory as _sf_mt
+        from app.models.agent import Agent as _AgentMT
+
+        async with _sf_mt() as db:
+            cleared = 0
+            for agent in (await db.execute(_sel_mt(_AgentMT))).scalars().all():
+                cfg = agent.llm_config or {}
+                if cfg.get("max_tokens") == 4096:
+                    cfg = dict(cfg)
+                    cfg["max_tokens"] = 0
+                    agent.llm_config = cfg
+                    _flag_mt(agent, "llm_config")
+                    cleared += 1
+            if cleared:
+                await db.commit()
+                logger.info(
+                    "Antwortlaengen-Grenze bei %d Agenten entfernt (alte Vorgabe 4096)",
+                    cleared,
+                )
+    except Exception as e:
+        logger.warning(f"Failed to clear legacy max_tokens: {e}")
+
+    # Seed builtin eval sets (#193): Team-Grundlagen + Angriffsfaelle.
+    # Nur anlegen, nie ueberschreiben — wer eine Sammlung angepasst hat, soll sie
+    # beim naechsten Start nicht zurueckgesetzt bekommen.
+    try:
+        from sqlalchemy import select as _select
+
+        from app.core.eval_seeds import BUILTIN_EVAL_SETS
+        from app.db.session import async_session_factory as _sf_evals
+        from app.models.eval_set import EvalSet as _EvalSet
+
+        async with _sf_evals() as db:
+            created = 0
+            for spec in BUILTIN_EVAL_SETS:
+                exists = (await db.execute(
+                    _select(_EvalSet).where(_EvalSet.id == spec["id"])
+                )).scalar_one_or_none()
+                if exists is not None:
+                    continue
+                db.add(_EvalSet(
+                    id=spec["id"], name=spec["name"], role=spec.get("role", ""),
+                    description=spec.get("description", ""), items=spec["items"],
+                ))
+                created += 1
+            if created:
+                await db.commit()
+        logger.info("Builtin eval sets seeded (%d new)", created)
+    except Exception as e:
+        logger.warning(f"Failed to seed builtin eval sets: {e}")
+
     # Seed builtin agent templates
     try:
         from app.core.agent_templates import BUILTIN_TEMPLATES
@@ -1305,7 +1591,20 @@ async def lifespan(app: FastAPI):
                     sel(AgentTemplate).where(AgentTemplate.name == tmpl_data["name"])
                 )
                 if not existing:
-                    tmpl = AgentTemplate(is_builtin=True, **tmpl_data)
+                    # Mitgelieferte Vorlagen sind sofort sichtbar. Ohne das
+                    # griff die Vorgabe des Modells (``is_published=False``)
+                    # und JEDER Nicht-Administrator sah beim Anlegen eines
+                    # Agenten „Noch keine Vorlagen angelegt" — obwohl 31
+                    # Vorlagen in der Datenbank standen (beobachtet 2026-08-16).
+                    # Der Entwurf-/Veroeffentlichen-Ablauf ist fuer die selbst
+                    # geschriebenen Vorlagen des Administrators gedacht, nicht
+                    # fuer die, die mit dem Produkt kommen.
+                    tmpl = AgentTemplate(
+                        is_builtin=True,
+                        is_published=True,
+                        published_at=datetime.now(timezone.utc),
+                        **tmpl_data,
+                    )
                     db.add(tmpl)
                 elif existing.is_builtin:
                     # Update builtin templates if source has changed
@@ -1321,6 +1620,23 @@ async def lifespan(app: FastAPI):
         logger.info(f"Seeded/synced {len(BUILTIN_TEMPLATES)} builtin agent templates")
     except Exception as e:
         logger.warning(f"Failed to seed templates: {e}")
+
+    # Bestehende Anlagen nachziehen: dort stehen die mitgelieferten Vorlagen auf
+    # „nicht veroeffentlicht" und sind fuer Nicht-Administratoren unsichtbar.
+    # Die Korrektur im Seeder oben erreicht sie nicht, weil sie schon existieren.
+    try:
+        from app.core.agent_templates import publish_builtin_templates_once
+        from app.db.session import async_session_factory as _sf_pub
+
+        async with _sf_pub() as db:
+            anzahl = await publish_builtin_templates_once(db)
+        if anzahl:
+            logger.info(
+                "%d mitgelieferte Vorlagen nachtraeglich veroeffentlicht — "
+                "sie waren fuer Nicht-Administratoren unsichtbar", anzahl,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to publish builtin templates: {e}")
 
     # Seed builtin skills (feierabend, morning_briefing, daily_log_check)
     try:
@@ -1731,25 +2047,85 @@ clean Markdown; you don't need to commit.
                 )
                 return
 
+            # ERST FRAGEN, OB SIE UEBERHAUPT TOT IST (#695). Der Agent steckt in
+            # einem EIGENEN Container und ueberlebt den Neustart des
+            # Orchestrators muehelos. Ohne diese Frage wurde eine putzmuntere
+            # Aufgabe "wiederaufgenommen", waehrend sie weiterlief: in der Nacht
+            # zum 01.09. endete das Original 36 Sekunden NACH der Disposition
+            # seines eigenen Ersatzes — beide lieferten einen vollstaendigen
+            # Bericht, der Nutzer bekam ihn doppelt, die Kosten ebenso.
+            # `_agent_claims_task` gab es laengst; im Resume-Pfad fragte sie nur
+            # niemand.
+            from app.services.job_state import wahrscheinlich_noch_am_leben
+
+            # Zweite Sicherung, falls die Statusabfrage nichts hergibt: ein
+            # Lebenszeichen von vor Sekunden ist kein Grund zu ersetzen.
+            lebt_noch = wahrscheinlich_noch_am_leben(job, datetime.now(timezone.utc))
+            if lebt_noch:
+                logger.info("[Resume] Job %s hat gerade eben noch geschlagen — kein Ersatz",
+                            job.id)
+            if not lebt_noch and orig is not None and orig.agent_id \
+                    and not is_terminal_task_status(orig.status):
+                try:
+                    lebt_noch = await router._agent_claims_task(orig.agent_id, orig.id)
+                except Exception as e:  # noqa: BLE001
+                    # Im Zweifel NICHT ersetzen: ein doppelter Lauf kostet Geld
+                    # und verwirrt, ein ausgelassener Ersatz nur Zeit.
+                    logger.warning("[Resume] Lebensfrage fuer %s fehlgeschlagen: %s — "
+                                   "kein Ersatz, um einen Doppellauf auszuschliessen",
+                                   orig.id, e)
+                    lebt_noch = True
+
+            if lebt_noch:
+                # `orig` kann fehlen (Zeile geloescht) — dann steht nur die
+                # Job-Kennung zur Verfuegung.
+                logger.info(
+                    "[Resume] Aufgabe %s laeuft im Agenten weiter — kein Ersatz. "
+                    "Der Container hat den Neustart ueberlebt.",
+                    orig.id if orig is not None else job.ref_id or job.id,
+                )
+                await delete_job(db, job.id)
+                return
+
             # Retire a non-terminal original so it can't run alongside the replacement.
             if orig is not None and not is_terminal_task_status(orig.status):
                 if orig.status == TaskStatus.QUEUED and orig.agent_id:
                     await router._remove_from_queue(orig.agent_id, orig.id)
+                # Die Zeile auf FAILED zu setzen ist fuer einen fremden, lebenden
+                # Container rein kosmetisch — er erfaehrt davon nichts. Das
+                # Abbruchsignal gab es fuer den Stopp-Knopf laengst; hier hat es
+                # nie jemand benutzt (#695, gleiche Auslassung wie #692).
+                if orig.agent_id and app.state.redis and app.state.redis.client:
+                    try:
+                        await app.state.redis.client.publish(
+                            f"agent:{orig.agent_id}:task:cancel", orig.id
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("[Resume] Abbruchsignal fuer %s nicht zustellbar: %s",
+                                       orig.id, e)
                 orig.status = TaskStatus.FAILED
                 orig.error = "Superseded by auto-resume after container restart"
                 orig.completed_at = datetime.now(timezone.utc)
                 orig.notified = True
                 await db.commit()
 
-            new_task = await router.create_and_route_task(
-                title=meta.get("title") or f"[Resumed] {job.ref_id or job.id}",
-                prompt=prompt,
-                priority=int(meta.get("priority") or 5),
-                agent_id=meta.get("agent_id"),
-                model=meta.get("model"),
-                metadata={"resumed_from_task": job.ref_id, "resumed_from_job": job.id,
-                          "resume_count": resume_count},
-            )
+            try:
+                new_task = await router.create_and_route_task(
+                    title=meta.get("title") or f"[Resumed] {job.ref_id or job.id}",
+                    prompt=prompt,
+                    priority=int(meta.get("priority") or 5),
+                    agent_id=meta.get("agent_id"),
+                    model=meta.get("model"),
+                    metadata={"resumed_from_task": job.ref_id, "resumed_from_job": job.id,
+                              "resume_count": resume_count},
+                )
+            except UnknownAgentError as e:
+                # Der Agent wurde geloescht, waehrend seine Aufgabe unterbrochen
+                # war. Sie kann niemandem mehr gehoeren — den Auftrag verwerfen,
+                # statt ihn bei jedem Start erneut zu versuchen.
+                logger.warning("[Resume] Job %s verworfen: %s", job.id, e)
+                await delete_job(db, job.id)
+                return
             await delete_job(db, job.id)
             logger.info(
                 f"[Resume] Re-enqueued interrupted job {job.id} (task {job.ref_id}) as new task {new_task.id}"
@@ -1775,17 +2151,21 @@ clean Markdown; you don't need to commit.
             for job in crashed:
                 logger.warning(f"[Startup] Job {job.id} ({job.kind}) crashed across restart — no heartbeat")
                 try:
+                    from app.services.watchdog import md_escape
                     await app.state.redis.publish(
                         "telegram:notification",
                         json.dumps({
-                            "type": "error",
-                            "title": "Job nach Neustart abgestürzt",
-                            "message": f"Job '{job.kind}' ({job.id}) hat den Container-Neustart nicht überlebt (kein Heartbeat).",
+                            "text": (
+                                "❌ *Job nach Neustart abgestürzt*\n\n"
+                                f"Job '{md_escape(str(job.kind))}' (`{md_escape(str(job.id))}`) hat den "
+                                "Container-Neustart nicht überlebt (kein Heartbeat)."
+                            ),
+                            "parse_mode": "Markdown",
                             "priority": "high",
                         }),
                     )
                 except Exception:
-                    pass
+                    logger.warning("[Startup] Crashed-job Telegram alert failed", exc_info=True)
     except Exception as e:
         logger.warning(f"Job-state recovery failed: {e}")
 
@@ -1815,6 +2195,17 @@ clean Markdown; you don't need to commit.
 
     scheduler = SchedulerService(app.state.redis, docker_service=app.state.docker)
     scheduler_task = asyncio.create_task(scheduler.run())
+
+    # Start Sentinel service (Sentinel epic #588, skeleton per #590). Off by
+    # default via settings.sentinel_enabled — see sentinel_service.py docstring:
+    # _scan never triggers yet, so this has no observable effect even when on.
+    sentinel_task = None
+    if settings.sentinel_enabled:
+        from app.services.sentinel_service import SentinelService
+
+        sentinel = SentinelService(app.state.redis, app.state.docker)
+        app.state.sentinel = sentinel
+        sentinel_task = asyncio.create_task(sentinel.run())
 
     # Start skill catalog crawler (weekly GitHub crawl)
     from app.services.skill_crawler import SkillCrawlerService
@@ -1859,6 +2250,14 @@ clean Markdown; you don't need to commit.
     disk_monitor_task = asyncio.create_task(disk_monitor.run())
     app.state.disk_monitor = disk_monitor
 
+    # Start license heartbeat (call2home — opt-in, no-op unless license_server_url is set)
+    from app.services.license_heartbeat_service import LicenseHeartbeatService
+    from app.db.session import async_session_factory as _sf_lic_hb
+
+    license_heartbeat = LicenseHeartbeatService(_sf_lic_hb)
+    license_heartbeat_task = asyncio.create_task(license_heartbeat.run())
+    app.state.license_heartbeat = license_heartbeat
+
     # Start embedding backfill (for semantic memory search)
     from app.services.embedding_backfill import run_backfill_loop
     from app.db.session import async_session_factory as _sf_emb
@@ -1893,6 +2292,9 @@ clean Markdown; you don't need to commit.
     mcp_oauth_refresh_task.cancel()
     claude_token_task.cancel()
     scheduler_task.cancel()
+    if sentinel_task:
+        sentinel.stop()
+        sentinel_task.cancel()
     skill_crawler_task.cancel()
     improvement_task.cancel()
     self_test_task.cancel()
@@ -1900,6 +2302,8 @@ clean Markdown; you don't need to commit.
     user_lifecycle_task.cancel()
     disk_monitor.stop()
     disk_monitor_task.cancel()
+    license_heartbeat.stop()
+    license_heartbeat_task.cancel()
     embedding_backfill_task.cancel()
     if telegram_task:
         telegram_task.cancel()
@@ -1954,6 +2358,17 @@ else:
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization"],
     )
+
+
+# Delegation an einen Agenten, den es nicht (mehr) gibt: 400 mit der vollen
+# Meldung. Sie ist an den AGENTEN gerichtet — er liest sie als Werkzeug-Antwort
+# und kann seinen Auftrag im selben Zug korrigieren. Zentral registriert, damit
+# JEDER Weg zur Auftragserstellung sie gleich behandelt (Werkzeug, Oberflaeche,
+# Team-Ansicht, Zeitplan) statt jeder fuer sich.
+@app.exception_handler(UnknownAgentError)
+async def _unknown_agent_handler(request, exc: UnknownAgentError):  # noqa: ARG001
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
 
 app.include_router(api_router, prefix="/api/v1")
 

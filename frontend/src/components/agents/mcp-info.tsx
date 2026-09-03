@@ -62,7 +62,7 @@ const MCP_SERVERS: McpServer[] = [
   {
     name: "Notifications",
     icon: Bell,
-    color: "text-amber-400",
+    color: "text-amber-700 dark:text-amber-400",
     description:
       "Agents can notify you via Web UI and Telegram. High-priority " +
       "notifications are pushed to Telegram. Critical actions require explicit " +

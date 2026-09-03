@@ -13,12 +13,56 @@ from sqlalchemy import select
 from app.models.schedule import Schedule
 from app.models.task import Task, TaskStatus
 
-# A RUNNING task bumps updated_at (TimestampMixin onupdate) on every status/step
-# write, so no bump for this long means the worker died silently. A schedule
-# whose next_run_at slipped past the grace window means the scheduler was down
-# during its fire time (container restart).
+# ACHTUNG, hier stand jahrelang etwas Falsches (#692): "Eine laufende Aufgabe
+# schiebt updated_at bei jedem Status-/Schritt-Schreiben weiter". Fuer den
+# Agenten-Pfad stimmte das nie — zwischen `task:started` und `task:completions`
+# schrieb NICHTS an der Zeile. Der Waechter mass damit nicht die Gesundheit des
+# Arbeiters, sondern die verstrichene Zeit: eine harte Obergrenze fuer jede
+# delegierte Aufgabe, gemeldet als "Worker still gestorben". Am 31.08.2026
+# starben so vier parallele Reviews nach 30.3 Minuten mitten in der Arbeit.
+#
+# Seitdem sendet der Task-Runner ein echtes Lebenszeichen (`task:heartbeat`,
+# jede Minute), und der Waechter misst wieder, was sein Name behauptet. Der Wert
+# hier ist nur noch der Rueckfall — die Anlage stellt ihn ueber
+# `watchdog_stale_task_minutes` ein (Standard 180, damit ein Agent auf einem
+# aelteren Abbild ohne Herzschlag nicht sofort wieder gedeckelt ist).
+#
+# Eine Zeitplanung, deren next_run_at aus dem Kulanzfenster gelaufen ist,
+# bedeutet dagegen wirklich: der Planer war zur Feuerzeit nicht da.
 _STALE_TASK_THRESHOLD = timedelta(minutes=30)
 _MISSED_SCHEDULE_GRACE = timedelta(minutes=5)
+# Der Sentinel erneuert sein Lebenszeichen alle 15 Sekunden (sentinel_service.py).
+# Zwei Minuten Toleranz heisst: acht verpasste Schlaege, bevor Alarm ausgeloest
+# wird — genug fuer eine Redis-Neuverbindung, zu wenig fuer einen echten
+# Stillstand, der unbemerkt bliebe.
+_SENTINEL_HEARTBEAT_THRESHOLD = timedelta(minutes=2)
+
+
+def is_sentinel_stale(
+    last_beat: str | float | None,
+    now: datetime,
+    threshold: timedelta = _SENTINEL_HEARTBEAT_THRESHOLD,
+) -> bool:
+    """Ist das Lebenszeichen des Sentinel zu alt?
+
+    Ein Waechter, der stehenbleibt, ist gefaehrlicher als gar keiner: die Anlage
+    sieht ueberwacht aus und ist es nicht. Deshalb ist ein FEHLENDES Lebenszeichen
+    kein Alarm — der Dienst ist dann schlicht ausgeschaltet, was ein bewusster
+    Zustand ist. Alarm gibt es nur, wenn er einmal gelebt hat und dann verstummt.
+
+    ``last_beat`` ist der Rohwert aus Redis (Unix-Zeit als Zeichenkette). Ein
+    unlesbarer Wert gilt als still — lieber ein Fehlalarm als ein blinder Fleck.
+    """
+    if last_beat is None or last_beat == "":
+        return False
+    try:
+        beat = float(last_beat)
+    except (TypeError, ValueError):
+        return True
+    if beat <= 0:
+        return True
+    alter = now.timestamp() - beat
+    return alter > threshold.total_seconds()
 
 
 def md_escape(s: str) -> str:
@@ -40,7 +84,11 @@ def as_utc(dt: datetime | None) -> datetime | None:
 
 
 def is_task_stale(task: Task, now: datetime, threshold: timedelta = _STALE_TASK_THRESHOLD) -> bool:
-    """A RUNNING task is stale when its last heartbeat (updated_at) is older than threshold."""
+    """Eine laufende Aufgabe gilt als tot, wenn ihr letztes Lebenszeichen zu alt ist.
+
+    Das Lebenszeichen ist `updated_at`; seit #692 schiebt der Herzschlag des
+    Task-Runners diese Spalte tatsaechlich weiter.
+    """
     if task.status != TaskStatus.RUNNING:
         return False
     updated = as_utc(task.updated_at)
@@ -61,9 +109,16 @@ def is_schedule_missed(
     return (now - nra) > grace
 
 
-def mark_task_stale(task: Task, now: datetime) -> Task:
-    """Flip a stale task to FAILED with a diagnostic error + metadata flag."""
-    minutes = int(_STALE_TASK_THRESHOLD.total_seconds() // 60)
+def mark_task_stale(
+    task: Task, now: datetime, threshold: timedelta = _STALE_TASK_THRESHOLD
+) -> Task:
+    """Flip a stale task to FAILED with a diagnostic error + metadata flag.
+
+    ``threshold`` steht in der Meldung — mit einer fest verdrahteten Zahl wuerde
+    sie bei einer angehobenen Schwelle etwas Falsches behaupten und die naechste
+    Fehlersuche in die Irre schicken (#692).
+    """
+    minutes = int(threshold.total_seconds() // 60)
     task.status = TaskStatus.FAILED
     task.completed_at = now
     task.error = f"Watchdog: no heartbeat for over {minutes} min — task marked stale."

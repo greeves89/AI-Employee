@@ -10,7 +10,7 @@ const statusIcons: Record<string, { icon: typeof CheckCircle2; color: string }> 
   completed: { icon: CheckCircle2, color: "text-emerald-400" },
   failed: { icon: XCircle, color: "text-red-400" },
   running: { icon: Loader2, color: "text-blue-400" },
-  queued: { icon: Clock, color: "text-amber-400" },
+  queued: { icon: Clock, color: "text-amber-700 dark:text-amber-400" },
   pending: { icon: Clock, color: "text-muted-foreground" },
   cancelled: { icon: XCircle, color: "text-zinc-400" },
 };

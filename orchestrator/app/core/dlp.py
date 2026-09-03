@@ -90,6 +90,45 @@ def scan_matches(text: str) -> dict[str, list[str]]:
     return out
 
 
+#: Ersetzungsmarken der Muster, die ein Geheimnis am FORMAT erkennen — ein
+#: GitHub-Token faengt mit ``ghp_`` an, ein JWT hat drei base64-Teile, ein
+#: PEM-Block hat eine Kopfzeile. Wer so etwas findet, hat ein Geheimnis gefunden.
+#:
+#: Nicht dabei: die ``KEY=VALUE``-Heuristik („alles, was TOKEN/SECRET/PASSWORD
+#: heisst, gefolgt von vier Zeichen"). Die ist fuer das MASKIEREN goldrichtig —
+#: im Zweifel schwaerzen kostet nichts. Als Ausloeser fuer einen STOPP ist sie
+#: falsch: ``GH_TOKEN=nicht-gesetzt`` in einer Protokollzeile oder ein
+#: ``API_KEY=<dein-schluessel>`` in einer Anleitung reichen ihr schon.
+#:
+#: Genau das ist am 2026-08-15 passiert: drei Minuten nach dem Einschalten hielt
+#: der Sentinel den Hauptagenten an — wegen einer Zeichenkette, die mit „GH"
+#: anfing. Maskieren und Anhalten sind verschiedene Eingriffe und brauchen
+#: verschiedene Schwellen.
+HIGH_CONFIDENCE_SECRET_MARKERS = frozenset({
+    "[REDACTED_KEY_BLOCK]",
+    "[REDACTED_API_KEY]",
+    "[REDACTED_GH_TOKEN]",
+    "[REDACTED_SLACK_TOKEN]",
+    "[REDACTED_AWS_KEY]",
+    "[REDACTED_JWT]",
+    "[REDACTED_TELEGRAM_TOKEN]",
+})
+
+
+def find_high_confidence_secrets(text: str) -> list[str]:
+    """Nur Geheimnisse, die am Format erkennbar sind — fuer Eingriffe, die wehtun.
+
+    ``scan_matches`` bleibt unveraendert die richtige Wahl fuers Maskieren: dort
+    ist ein Fehlalarm harmlos. Hier geht es um Faelle, in denen eine Fehldeutung
+    Arbeit zerstoert, und da zaehlt nur, was sich nicht wegdiskutieren laesst.
+    """
+    treffer: list[str] = []
+    for pat, repl in _SECRET_PATTERNS:
+        if repl in HIGH_CONFIDENCE_SECRET_MARKERS:
+            treffer += _finds(pat, text)
+    return treffer
+
+
 def classify(text: str) -> dict[str, int]:
     """Return ``{class: match_count}`` for every DLP class present in ``text``."""
     return {c: len(v) for c, v in scan_matches(text).items()}

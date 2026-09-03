@@ -20,7 +20,15 @@ async function fetchPhoto(): Promise<string | null> {
     const res = await fetch(`${getBase()}/auth/me/photo`, { credentials: "include" });
     if (!res.ok) return null;
     const blob = await res.blob();
-    return URL.createObjectURL(blob);
+    // data: URI statt blob: URL — Safari kann blob: URLs aus manchen Kontexten
+    // (u.a. html-to-image beim Feedback-Screenshot) nicht zuverlaessig erneut
+    // laden ("WebKitBlobResource error 1"), data: URIs sind davon nicht betroffen.
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
   } catch {
     return null;
   }

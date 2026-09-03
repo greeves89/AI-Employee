@@ -56,6 +56,10 @@ class AuditEventType(str, Enum):
     # App-Freigaben (#467) — wer eine Agenten-App für wen geöffnet hat
     APP_SHARED = "app_shared"                     # Freigabe erteilt (Person/alle/öffentlich)
     APP_SHARE_REVOKED = "app_share_revoked"       # Freigabe zurückgezogen
+    # Eigene Menuepunkte — welche fremde Seite ein Administrator eingebunden hat
+    CUSTOM_PAGE_CREATED = "custom_page_created"
+    CUSTOM_PAGE_UPDATED = "custom_page_updated"
+    CUSTOM_PAGE_DELETED = "custom_page_deleted"
     # External MCP servers (#414) — operator-triggered diagnostics
     MCP_TOOL_CALLED = "mcp_tool_called"           # admin invoked a tool by hand (tools/call)
     MCP_TOOL_CALL_FAILED = "mcp_tool_call_failed" # manual tool invocation could not reach/run

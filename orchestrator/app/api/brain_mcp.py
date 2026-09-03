@@ -99,7 +99,7 @@ BRAIN_TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Vault-relative target path, e.g. 'Wiki/skbs-ai.md'. Must end in .md/.markdown/.txt.",
+                    "description": "Vault-relative target path, e.g. 'Wiki/notiz.md'. Must end in .md/.markdown/.txt.",
                 },
                 "content": {
                     "type": "string",

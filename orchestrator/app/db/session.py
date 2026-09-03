@@ -19,14 +19,26 @@ _CONNECT_TIMEOUT = 10
 engine = create_async_engine(
     settings.database_url,
     echo=False,
-    # Auto-scaling pool: small warm pool + unlimited overflow.
-    # Connections are created on demand and returned when done.
-    # PostgreSQL's max_connections (set in docker-compose) is the real cap.
-    pool_size=5,        # Keep 5 warm connections (background tasks)
-    max_overflow=-1,    # Unlimited: scale to whatever is needed, PG is the limit
-    pool_recycle=300,   # Recycle connections every 5 min (prevents stale)
-    pool_pre_ping=True, # Verify connection is alive before using
-    pool_timeout=10,    # Fail fast if PG itself is overloaded (seconds)
+    # BEGRENZTER Pool — bewusst NICHT mehr unbegrenzt.
+    #
+    # Vorher stand hier max_overflow=-1 ("unbegrenzt, PG ist die Grenze"). Auf
+    # dem Raspberry Pi war genau das die Ursache naechtlicher DB-Timeouts
+    # (2026-08-19, rein 01-05 Uhr, ~360/h): der naechtliche Reflection/Dreaming-
+    # Job faechert DB-Arbeit parallel auf, und ein unbegrenzter Pool oeffnet
+    # dann schlagartig sehr viele NEUE Verbindungen gleichzeitig. Postgres auf
+    # dem Pi kann so viele Neu-Verbindungen (TCP-Accept + Backend-Fork + SSL)
+    # nicht schnell genug annehmen -> der Verbindungsaufbau laeuft in einen
+    # TimeoutError, und alles im Zeitfenster (auch /kiosk/overview) gibt 500.
+    #
+    # Mit begrenztem Overflow WARTET ein Burst stattdessen kurz in der
+    # Pool-Queue (billig) statt Postgres mit hunderten gleichzeitigen
+    # Verbindungsaufbauten zu ueberrennen. Die Tages-Spitze lag bei ~11
+    # Verbindungen — 30 sind reichlich Kopffreiheit; PG erlaubt 250.
+    pool_size=10,       # warme Grundmenge
+    max_overflow=20,    # + bis zu 20 unter Last -> hoechstens 30 gleichzeitig
+    pool_recycle=900,   # 15 min: seltener neu aufbauen = weniger Handshake-Last
+    pool_pre_ping=True, # tote Verbindung vor Nutzung erkennen
+    pool_timeout=20,    # so lange auf einen freien Platz warten, bevor es fehlschlaegt
     connect_args={"timeout": _CONNECT_TIMEOUT},  # bound the NEW-connection handshake (#356)
 )
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

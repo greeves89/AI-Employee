@@ -264,7 +264,7 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
                 {/* Lead badge */}
                 <div className="mt-4 border-t border-foreground/[0.06] pt-3">
                   {lead ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-400">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-400">
                       <Crown className="h-3.5 w-3.5" />
                       Lead: {lead.name}
                     </span>

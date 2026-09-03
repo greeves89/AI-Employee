@@ -14,7 +14,7 @@ import { formatMoney } from "@/lib/money";
 const priorityOptions = [
   { value: 0, label: "Low", color: "text-zinc-400 border-zinc-500/20 bg-zinc-500/10" },
   { value: 1, label: "Normal", color: "text-blue-400 border-blue-500/20 bg-blue-500/10" },
-  { value: 2, label: "High", color: "text-amber-400 border-amber-500/20 bg-amber-500/10" },
+  { value: 2, label: "High", color: "text-amber-700 dark:text-amber-400 border-amber-500/20 bg-amber-500/10" },
   { value: 3, label: "Urgent", color: "text-red-400 border-red-500/20 bg-red-500/10" },
 ];
 
@@ -240,7 +240,7 @@ export default function NewTaskPage() {
                   ))}
                 </ul>
                 {!agentId && (
-                  <p className="text-[11px] text-amber-400/90">
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400/90">
                     Für Datei-Anhänge oben einen konkreten Agenten wählen (nicht Auto-assign).
                   </p>
                 )}

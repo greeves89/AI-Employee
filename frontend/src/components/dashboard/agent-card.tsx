@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, UserCog, AlertTriangle, ArrowUpCircle, Plug, Wallet, Zap, Loader2 } from "lucide-react";
+import { Cpu, MemoryStick, Layers, ArrowUpRight, UserCheck, AlertTriangle, ArrowUpCircle, Plug, Wallet, Zap, Loader2 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -106,20 +106,20 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                   </span>
                 )}
                 {/* Ohne Auftrag kann der Agent nichts tun: der proaktive Lauf wird dann
-                    uebersprungen. Das muss man an der Kachel sehen, nicht erst im Log. */}
-                {!agent.onboarding_complete ? (
-                  <span title="Nicht eingerichtet — er weiß noch nicht, wofür er da ist" className="shrink-0">
-                    <UserCog className="h-3 w-3 text-amber-400 animate-pulse" />
-                  </span>
-                ) : agent.has_responsibilities === false ? (
+                    uebersprungen. Das muss man an der Kachel sehen, nicht erst im Log.
+                    Das frühere Abzeichen „nicht eingerichtet" ist entfallen — das
+                    Einrichtungsgespräch gibt es nicht mehr, der Agent hält sich an
+                    seine Vorlage. Es hätte nur noch einen Zustand angezeigt, den
+                    niemand mehr ändern kann. */}
+                {agent.has_responsibilities === false ? (
                   <span
                     title="Kein Auftrag — es fehlen Verantwortungsbereiche. Proaktive Läufe werden übersprungen."
                     className="shrink-0"
                   >
-                    <AlertTriangle className="h-3 w-3 text-amber-400 animate-pulse" />
+                    <AlertTriangle className="h-3 w-3 text-amber-700 dark:text-amber-400 animate-pulse" />
                   </span>
                 ) : (
-                  <span title="Eingerichtet & beauftragt" className="shrink-0">
+                  <span title="Beauftragt — Verantwortungsbereiche hinterlegt" className="shrink-0">
                     <UserCheck className="h-3 w-3 text-emerald-400" />
                   </span>
                 )}
@@ -127,8 +127,13 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
             </div>
           </div>
 
-          {/* Status badges */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* Status badges — up to 5 can be simultaneously true (proactive,
+              provider, update/image-outdated, budget, online status). No
+              wrap here + the card's overflow-hidden silently clipped the row
+              past the card edge on any agent with more active badges than
+              its siblings (customer-reported, "Buttons sehen komisch aus",
+              2026-08-27) instead of reflowing to a second line. */}
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
             {(() => {
               // Proactive mode indicator: lightning + trigger interval (e.g. "1h").
               const proactive = (agent.config as { proactive?: { enabled?: boolean; interval_seconds?: number } } | null | undefined)?.proactive;
@@ -164,7 +169,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
               </div>
             ) : null}
             {(updating || agent.update_available) && (
-              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-400 border-amber-500/20">
+              <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                 {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpCircle className="h-3 w-3" />}
                 {updating ? "Aktualisiere…" : "Update"}
               </div>
@@ -183,7 +188,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                 "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium",
                 agent.budget_exceeded_action === "stop"
                   ? "bg-red-500/10 text-red-400 border-red-500/20"
-                  : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                  : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
               )}>
                 {agent.budget_exceeded_action === "stop" ? "Budget gestoppt" : "Sparmodus"}
               </div>
@@ -278,7 +283,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
         {/* Footer */}
         <div className="mt-4 flex items-center justify-between pt-3 border-t border-foreground/[0.04]">
           {!simpleMode && agent.queue_depth !== null && agent.queue_depth > 0 ? (
-            <div className="flex items-center gap-1.5 text-[11px] text-amber-400">
+            <div className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
               <Layers className="h-3 w-3" />
               {agent.queue_depth} queued
             </div>

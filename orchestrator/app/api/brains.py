@@ -17,13 +17,13 @@ import secrets
 import subprocess
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core import vault
+from app.core import vault, vault_transfer
 from app.core.encryption import encrypt_token
 from app.db.session import get_db
 from app.dependencies import require_auth
@@ -456,6 +456,84 @@ async def brain_delete_file(brain_id: int, path: str, user=Depends(require_auth)
     except Exception as e:
         log.warning("deindex after delete failed brain=%s path=%s: %s", brain.slug, vault.safe_log(path), vault.safe_log(e))
     return {"ok": True, "path": path}
+
+
+@router.get("/{brain_id}/export")
+async def brain_export(brain_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Den ganzen Vault als ZIP herunterladen — Ordnerstruktur inklusive.
+
+    Ein Obsidian-Vault ist nichts als Markdown in Ordnern; das Ergebnis laesst
+    sich direkt in Obsidian oeffnen.
+    """
+    import io
+    from fastapi.responses import Response
+
+    _require_admin(user)
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain:
+        raise HTTPException(status_code=404, detail="Brain not found")
+
+    puffer = io.BytesIO()
+    anzahl = vault_transfer.exportiere_zip(brain.host_path, puffer)
+    log.info("[Vault] Export %s: %d Dateien", brain.slug, anzahl)
+    return Response(
+        content=puffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{brain.slug}.zip"'},
+    )
+
+
+@router.post("/{brain_id}/import")
+async def brain_import(
+    brain_id: int,
+    file: UploadFile = File(...),
+    replace: bool = False,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Einen Vault als ZIP einspielen.
+
+    ``replace=false`` (Vorgabe) fuegt zusammen, ``replace=true`` macht den Vault
+    zum Abbild des Archivs.
+
+    **Danach wird neu indiziert** — sonst lauegen die Notizen zwar auf der
+    Platte, waeren aber semantisch unauffindbar, weil die Einbettungen fehlen.
+    Der Indexlauf ist inkrementell und entfernt auch die Eintraege geloeschter
+    Dateien, passt also zu beiden Betriebsarten.
+    """
+    import io
+    import zipfile
+
+    _require_admin(user)
+    brain = await db.get(SecondBrain, brain_id)
+    if not brain:
+        raise HTTPException(status_code=404, detail="Brain not found")
+
+    roh = await file.read()
+    if len(roh) > vault_transfer.MAX_ARCHIV_BYTES:
+        raise HTTPException(status_code=413, detail="Archiv zu gross")
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(roh)) as archiv:
+            bericht = vault_transfer.importiere_zip(brain.host_path, archiv, ersetzen=replace)
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Keine gueltige ZIP-Datei")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Die Einbettungen nachziehen. Ohne diesen Schritt findet die semantische
+    # Suche die frisch importierten Notizen nicht — sie waeren fuer Agenten
+    # praktisch unsichtbar.
+    try:
+        stats = await vault_indexer.reindex_vault(db, brain.label, brain.host_path)
+    except Exception as e:  # noqa: BLE001
+        log.warning("[Vault] Neuindizierung nach Import fehlgeschlagen brain=%s: %s",
+                    brain.slug, vault.safe_log(e))
+        stats = {"error": "Neuindizierung fehlgeschlagen — bitte manuell anstossen"}
+
+    log.info("[Vault] Import %s: %d Dateien, %d geloescht", brain.slug,
+             bericht.geschrieben, bericht.geloescht)
+    return {"ok": True, "brain": brain.slug, **bericht.als_dict(), "index": stats}
 
 
 @router.post("/{brain_id}/reindex")

@@ -181,7 +181,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                         </span>
                         <span className={cn(
                           "text-[10px] font-bold",
-                          pct >= 90 ? "text-red-400" : pct >= 75 ? "text-amber-400" : "text-emerald-400"
+                          pct >= 90 ? "text-red-400" : pct >= 75 ? "text-amber-700 dark:text-amber-400" : "text-emerald-400"
                         )}>
                           {Math.round(pct)}%
                         </span>
@@ -472,7 +472,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
                       <span className={cn(
                         "ml-auto rounded-md px-2 py-0.5 text-[11px] font-medium",
                         actions[c] === "block" ? "bg-red-500/10 text-red-400"
-                          : actions[c] === "mask" ? "bg-amber-500/10 text-amber-400"
+                          : actions[c] === "mask" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
                           : "bg-sky-500/10 text-sky-400",
                       )}>{DLP_ACTION_LABEL[actions[c]] ?? actions[c] ?? "—"}</span>
                     </div>

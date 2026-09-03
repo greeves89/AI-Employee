@@ -123,7 +123,7 @@ export function BrainBrowser({ brain, onClose }: { brain: SecondBrain; onClose: 
           <div className="min-w-0 text-sm font-semibold truncate">
             {brain.name}
             <span className="ml-2 text-xs font-normal text-muted-foreground/50">{brain.container_path}</span>
-            {readOnly && <span className="ml-2 text-[10px] text-amber-400">read-only</span>}
+            {readOnly && <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">read-only</span>}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-0.5 rounded-lg bg-foreground/[0.05] p-0.5">

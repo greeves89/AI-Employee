@@ -44,10 +44,23 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "brain_related", "brain_search", "brain_update"
     ],
     "computer-use": [
+        # Browser im eigenen Profil der Bridge — der verlaessliche Weg fuer
+        # Seiten LESEN und Formulare AUSFUELLEN, im Gegensatz zum blinden
+        # computer_open_url.
+        "browser_capture", "browser_click", "browser_close", "browser_fill",
+        "browser_navigate", "browser_snapshot", "browser_tabs", "browser_wait",
+        # ego lite: echte, eingeloggte Sitzung des Nutzers (Faehigkeit
+        # `ego_browser`, default aus) — Gegenstueck zum isolierten `browser_*`.
+        "ego_run", "ego_navigate", "ego_snapshot", "ego_click", "ego_fill",
+        "ego_wait", "ego_capture", "ego_tabs", "ego_close",
         "computer_ax_tree", "computer_click", "computer_close_app", "computer_drag",
-        "computer_find_element", "computer_get_clipboard", "computer_key",
-        "computer_list_sessions", "computer_move", "computer_open_app",
+        "computer_find_element", "computer_focus_window", "computer_get_clipboard",
+        "computer_key", "computer_list_sessions", "computer_list_windows",
+        "computer_move", "computer_open_app",
         "computer_screenshot", "computer_scroll", "computer_set_clipboard",
+        # Shell auf dem Rechner des Nutzers — Faehigkeit `shell` (default aus)
+        # UND Ordner-Freigabe in der Bridge noetig (bridge.py:shell_run).
+        "computer_shell",
         "computer_type", "computer_use_session", "computer_wait_for_element"
     ],
     "email": [
@@ -70,8 +83,8 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "send_teams_message", "update_calendar_event", "update_planner_task"
     ],
     "notification": [
-        "escalate_if_unsure", "notify_user", "present_file", "request_approval",
-        "send_telegram"
+        "escalate_if_unsure", "notify_user", "present_file", "present_view",
+        "request_approval", "send_telegram"
     ],
     "orchestrator": [
         "app_logs", "complete_onboarding", "complete_todo", "create_schedule",
@@ -80,9 +93,10 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "list_agent_messages", "list_apps", "list_my_team", "list_schedules",
         "list_tasks", "list_team", "list_team_tasks", "list_todos",
         "manage_schedule", "plan_day", "rate_task", "rebuild_app",
+        "restart_own_container",
         "schedule_meeting", "send_message", "send_message_and_wait", "skill_update",
         "start_app", "stop_app", "tickets", "trigger_create", "trigger_delete",
-        "trigger_list", "trigger_toggle", "update_todos"
+        "trigger_list", "trigger_toggle", "update_todos", "web_search"
     ],
     "read-logs": [
         "read_logs"
@@ -94,22 +108,86 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
 }
 
 DEFINITION_TOOLS = [
-    "app_logs", "bash", "brain_contribute", "brain_delete", "brain_get",
-    "brain_list", "brain_related", "brain_search", "brain_update", "browser",
-    "check_approval", "complete_onboarding", "complete_todo", "computer_use",
-    "create_schedule", "create_skill", "create_task", "create_task_batch",
-    "edit_file", "escalate_if_unsure", "get_agent_conversation", "get_day_plan",
-    "git_diff", "git_status", "glob", "grep", "list_agent_messages", "list_apps",
-    "list_files", "list_schedules", "list_tasks", "list_team", "list_todos",
-    "manage_schedule", "memory_delete", "memory_list", "memory_save",
-    "memory_search", "multi_edit", "notify_user", "plan_day", "present_file",
-    "present_image", "rate_task", "read_file", "rebuild_app", "request_approval",
-    "secondbrain_list", "secondbrain_read", "secondbrain_search",
-    "secondbrain_write", "send_message", "send_message_and_wait", "send_telegram",
-    "send_voice", "skill_get_my_skills", "skill_install", "skill_propose",
-    "skill_rate", "skill_search", "start_app", "stop_app", "tickets",
-    "trigger_create", "trigger_delete", "trigger_list", "trigger_toggle",
-    "update_todos", "view_image", "web_fetch", "web_search", "write_file"
+    "app_logs",
+    "bash",
+    "brain_contribute",
+    "brain_delete",
+    "brain_get",
+    "brain_list",
+    "brain_related",
+    "brain_search",
+    "brain_update",
+    "browser",
+    "check_approval",
+    "complete_onboarding",
+    "complete_todo",
+    "computer_use",
+    "create_schedule",
+    "create_skill",
+    "create_task",
+    "create_task_batch",
+    "delegate_and_wait",
+    "edit_file",
+    "escalate_if_unsure",
+    "get_agent_conversation",
+    "get_day_plan",
+    "get_tasks_status",
+    "git_diff",
+    "git_status",
+    "glob",
+    "grep",
+    "list_agent_messages",
+    "list_apps",
+    "list_files",
+    "list_my_team",
+    "list_schedules",
+    "list_tasks",
+    "list_team",
+    "list_team_tasks",
+    "list_todos",
+    "manage_schedule",
+    "memory_delete",
+    "memory_list",
+    "memory_save",
+    "memory_search",
+    "multi_edit",
+    "notify_user",
+    "plan_day",
+    "present_file",
+    "present_image",
+    "present_view",
+    "rate_task",
+    "read_file",
+    "rebuild_app",
+    "request_approval",
+    "restart_own_container",
+    "schedule_meeting",
+    "secondbrain_list",
+    "secondbrain_read",
+    "secondbrain_search",
+    "secondbrain_write",
+    "send_message",
+    "send_message_and_wait",
+    "send_telegram",
+    "send_voice",
+    "skill_get_my_skills",
+    "skill_install",
+    "skill_propose",
+    "skill_rate",
+    "skill_search",
+    "skill_update",
+    "start_app",
+    "stop_app",
+    "tickets",
+    "trigger_create",
+    "trigger_delete",
+    "trigger_list",
+    "trigger_toggle",
+    "update_todos",
+    "view_image",
+    "web_fetch",
+    "web_search",
+    "write_file",
 ]
 
 

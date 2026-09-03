@@ -10,6 +10,8 @@ import {
   ArrowDown,
   Undo2,
   Sparkles as SummarizeIcon,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { LogEvent } from "@/lib/types";
@@ -19,6 +21,7 @@ import { MarkdownContent } from "@/components/ui/markdown-content";
 import { cn, formatBytes } from "@/lib/utils";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import * as api from "@/lib/api";
+import { ApprovalPrompt, type ApprovalPromptData } from "@/components/agents/approval-prompt";
 import { useAuthStore } from "@/lib/auth";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
@@ -26,17 +29,27 @@ import { useSimpleMode } from "@/hooks/use-simple-mode";
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
 /** How hard the agent should think before answering. "" keeps whatever the
- *  agent's harness is configured with; the rest is an explicit per-message
- *  override. `short` is what's shown next to the icon once a level is picked. */
-type ReasoningLevel = "" | "off" | "low" | "medium" | "high";
+ *  agent's harness is configured with; the rest is an explicit override that is
+ *  persisted per chat session. `short` is what's shown next to the icon once a
+ *  level is picked. */
+type ReasoningLevel = "" | "off" | "low" | "medium" | "high" | "max";
 
+// ChatGPT-nahe Bezeichnungen (Wunsch Christian): Low / Medium / High / Extra
+// High statt deutscher Prosa. Der Wert bleibt intern gleich (off/low/medium/
+// high/max); "max" wird serverseitig zu "xhigh" bzw. auf "high" geclampt.
 const REASONING_OPTIONS: { value: ReasoningLevel; label: string; short: string }[] = [
-  { value: "", label: "Standard", short: "" },
-  { value: "off", label: "Nicht nachdenken", short: "aus" },
-  { value: "low", label: "Kurz nachdenken", short: "kurz" },
-  { value: "medium", label: "Mittel", short: "mittel" },
-  { value: "high", label: "Gründlich nachdenken", short: "gründlich" },
+  { value: "", label: "Auto", short: "auto" },
+  { value: "off", label: "Minimal", short: "min" },
+  { value: "low", label: "Low", short: "low" },
+  { value: "medium", label: "Medium", short: "med" },
+  { value: "high", label: "High", short: "high" },
+  { value: "max", label: "Extra High", short: "xhigh" },
 ];
+
+/** Stored levels come from the DB — anything unknown falls back to Auto so the
+ *  button never renders "undefined". */
+const asReasoningLevel = (v: unknown): ReasoningLevel =>
+  REASONING_OPTIONS.some((o) => o.value === v) ? (v as ReasoningLevel) : "";
 
 interface TextStep {
   type: "text";
@@ -77,7 +90,9 @@ interface ChatMessage {
   isQueued?: boolean;
   steps?: AssistantStep[];
   toolCalls?: { tool: string; input: string }[];
-  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; presented_files?: ChatFile[] };
+  /** Verweist auf eine Auftrags-Kachel; die Zeile wird dann als Kachel gezeichnet. */
+  taskCardId?: string;
+  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; presented_files?: ChatFile[]; context_excluded?: boolean; tool_output_excluded?: boolean };
   images?: ChatImage[];
   files?: ChatFile[];
 }
@@ -86,9 +101,30 @@ interface ChatEvent {
   agent_id: string;
   message_id: string;
   session_id?: string;  // owning session (set by the server) — used to isolate chat tabs
-  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file";
+  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card";
   data: Record<string, unknown>;
   timestamp: string;
+}
+
+/** Ein delegierter Auftrag als Kachel im Chat.
+ *
+ * Ohne die sah der Mensch nach „ich habe beauftragt" nichts mehr: kein
+ * Fortschritt, kein Ende. Er musste nachfragen, um zu erfahren, ob ueberhaupt
+ * etwas passiert — am 2026-08-13 nach 18 Minuten Stille.
+ */
+interface TaskCard {
+  task_id: string;
+  title: string;
+  phase: "queued" | "done";
+  status: string;
+  assigned_agent_id?: string;
+  assigned_agent_name?: string;
+  kind?: "task" | "message";
+  result_preview?: string;
+  cost_usd?: number | null;
+  duration_ms?: number | null;
+  session_id?: string | null;
+  at: number;
 }
 
 interface SessionTab {
@@ -97,6 +133,7 @@ interface SessionTab {
   preview: string;
   title?: string | null;   // custom rename; falls back to preview
   pinned?: boolean;
+  reasoning?: ReasoningLevel;  // persisted thinking depth; "" → Auto
   isNew?: boolean;
   last_message_at?: string | null;
   message_count?: number;
@@ -332,7 +369,7 @@ function ContextRing({ percent }: { percent: number }) {
   );
 }
 
-export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds }: { agentId: string; initialSessionId?: string | null; embedded?: boolean; busySessionIds?: string[] }) {
+export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds, onTurnChange }: { agentId: string; initialSessionId?: string | null; embedded?: boolean; busySessionIds?: string[]; onTurnChange?: () => void }) {
   const { simpleMode } = useSimpleMode();
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -365,12 +402,37 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     });
   };
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Delegierte Auftraege dieses Gespraechs, nach Auftragskennung.
+  const [taskCards, setTaskCards] = useState<Record<string, TaskCard>>({});
+  // Stand aller delegierten Auftraege dieses Gespraechs — die Grundlage der
+  // Sammelanzeige „In Arbeit". Nur was noch nicht fertig ist zaehlt als offen;
+  // ein ausgeblendetes Kaertchen (Kreuz) verschwindet hier automatisch mit, weil
+  // es aus `taskCards` entfernt wird.
+  const alleAuftraege = useMemo(() => Object.values(taskCards), [taskCards]);
+  const offeneAuftraege = useMemo(
+    () => alleAuftraege.filter((k) => k.phase !== "done"),
+    [alleAuftraege],
+  );
+  const auftraegeGesamt = alleAuftraege.length;
+  // Aufgabe, deren Einzelheiten gerade im Fenster stehen (null = zu).
+  const [cardDetail, setCardDetail] = useState<TaskCard | null>(null);
+  const [cardDetailFull, setCardDetailFull] = useState<Record<string, unknown> | null>(null);
   const [input, setInput] = useState("");
-  // Per-message reasoning depth, picked by the user (like the thinking selector
-  // in ChatGPT/Claude Code). "" = leave the agent's harness at its default.
+  // Reasoning depth, picked by the user (like the thinking selector in
+  // ChatGPT/Claude Code). "" = leave the agent's harness at its default.
+  // Persisted per chat session (chat_sessions.reasoning_level) and hydrated on
+  // mount/session switch, so it no longer resets to "Auto" on every remount.
   const [reasoning, setReasoning] = useState<ReasoningLevel>("");
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const reasoningRef = useRef<HTMLDivElement | null>(null);
+  // Mirror for WS closures (same pattern as activeSessionIdRef below).
+  const reasoningLevelRef = useRef<ReasoningLevel>("");
+  useEffect(() => {
+    reasoningLevelRef.current = reasoning;
+  }, [reasoning]);
+  // True once the user picked a level in THIS mount — the async session load on
+  // mount must not clobber a fresh pick with the stored value.
+  const reasoningTouchedRef = useRef(false);
   // Close the popover on an outside click — it sits above the input, so leaving
   // it open would cover the conversation.
   useEffect(() => {
@@ -394,6 +456,31 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   const [historyReloadKey, setHistoryReloadKey] = useState(0);
   const isWaitingRef = useRef(false);
   const pendingCountRef = useRef(0);
+  // Notbremse gegen haengende Anzeige: wann kam zuletzt ein Ereignis fuer diesen
+  // Faden, und wie oft hintereinander meldete der Agent "nicht beschaeftigt".
+  // Ohne das bleibt "Thinking..." stehen, sobald ein `done` unterwegs verloren
+  // geht (z.B. weil die Faden-Abschottung es verwirft).
+  const lastEventAtRef = useRef(0);
+  const notBusyStreakRef = useRef(0);
+  // Wann endete der EIGENE Zug zuletzt. Die Zustandsabfrage laeuft alle vier
+  // Sekunden; unmittelbar danach steht dort noch „beschaeftigt", obwohl der Zug
+  // durch ist. Ohne diese Sperre blitzt „Agent arbeitet gerade an dieser
+  // Unterhaltung" nach jeder eigenen Antwort kurz auf.
+  const eigenerZugEndeteRef = useRef(0);
+  // Ueber einen Ref, damit der Ereignis-Verteiler nicht bei jedem Rendern der
+  // Elternseite neu gebaut (und die WS-Verbindung neu aufgesetzt) wird.
+  const onTurnChangeRef = useRef(onTurnChange);
+  useEffect(() => { onTurnChangeRef.current = onTurnChange; });
+  // Welche Gespraechszeilen in der Seitenleiste als „arbeitet" markiert sind.
+  // Die Liste von der Elternseite kommt aus einer Abfrage im 15-Sekunden-Takt —
+  // fuer den EIGENEN laufenden Zug wissen wir es hier sofort und genauer. Ohne
+  // das blieb die Zeile blass, waehrend im Fenster schon „Thinking..." lief: ein
+  // Chat sah je nach Ausloeser des Zuges unterschiedlich aus.
+  const beschaeftigteFaeden = useMemo(() => {
+    const faeden = new Set(busySessionIds || []);
+    if (isWaiting && activeSessionId) faeden.add(activeSessionId);
+    return Array.from(faeden);
+  }, [busySessionIds, isWaiting, activeSessionId]);
   const [connectionFailed, setConnectionFailed] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
@@ -404,14 +491,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   const [totalTurns, setTotalTurns] = useState(0);
 
   // L3 approval polling
-  interface PendingApproval {
-    approval_id: string;
-    tool: string;
-    reasoning: string;
-    risk_level: string;
-    agent_id: string;
-  }
+  // Frage, Optionen und Ansicht standen in der Antwort der Schnittstelle
+  // laengst drin — hier waren sie nur nicht deklariert und wurden deshalb nie
+  // gezeichnet. Der Chat zeigte bis 2026-08-18 den Werkzeugnamen (bei einer
+  // Rueckfrage leer) und zwei feste Knoepfe.
+  type PendingApproval = ApprovalPromptData & { risk_level: string };
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -449,6 +535,20 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
 
+  // Pick a thinking depth: applies from the next message on AND is remembered
+  // for this chat. Fire-and-forget — a failed write only loses the preference,
+  // the message itself always carries the level.
+  const pickReasoning = useCallback((level: ReasoningLevel) => {
+    setReasoning(level);
+    setReasoningOpen(false);
+    reasoningTouchedRef.current = true;
+    const sid = activeSessionIdRef.current || currentWsSessionId.current;
+    if (sid) {
+      setSessions((prev) => prev.map((s) => (s.id === sid ? { ...s, reasoning: level } : s)));
+      api.updateChatSession(agentId, sid, { reasoning: level }).catch(() => {});
+    }
+  }, [agentId]);
+
   useEffect(() => {
     isWaitingRef.current = isWaiting;
   }, [isWaiting]);
@@ -471,6 +571,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
             preview: s.preview || "",
             title: s.title ?? null,
             pinned: !!s.pinned,
+            reasoning: asReasoningLevel(s.reasoning),
             last_message_at: s.last_message_at,
             message_count: s.message_count,
           }));
@@ -479,7 +580,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           // If no initialSessionId → user wants a new chat, don't auto-select
           if (initialSessionId) {
             const found = tabs.find((t) => t.id === initialSessionId);
-            setActiveSessionId(found ? found.id : tabs[0].id);
+            const selected = found ?? tabs[0];
+            setActiveSessionId(selected.id);
+            // Restore the chat's stored thinking depth — unless the user already
+            // picked one in the short window before this fetch resolved.
+            if (!reasoningTouchedRef.current) {
+              setReasoning(selected.reasoning ?? "");
+            }
           }
           // If no initialSessionId, leave activeSessionId null → new chat
         }
@@ -506,6 +613,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           preview: s.preview || "",
           title: s.title ?? null,
           pinned: !!s.pinned,
+          reasoning: asReasoningLevel(s.reasoning),
           last_message_at: s.last_message_at,
           message_count: s.message_count,
         }))
@@ -528,9 +636,29 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         if (hasMore) {
           console.warn("[Chat] More than 500 messages in session - older messages not shown");
         }
+        // Gespeicherte Auftrags-Kacheln zurueckholen. Ohne das waren sie nach
+        // jedem Neuladen weg — und mit ihnen die einzige Spur im Gespraech, dass
+        // ueberhaupt jemand beauftragt wurde.
+        const wiederhergestellt: Record<string, TaskCard> = {};
+        for (const m of history) {
+          const gespeichert = (m as { meta?: { task_card?: TaskCard } }).meta?.task_card;
+          if (gespeichert?.task_id
+              && (!gespeichert.session_id || gespeichert.session_id === activeSessionId)) {
+            wiederhergestellt[gespeichert.task_id] = {
+              ...gespeichert,
+              at: new Date(m.timestamp).getTime() || Date.now(),
+            };
+          }
+        }
+        setTaskCards(wiederhergestellt);
+
+        // Die Kachel-Zeilen selbst gehoeren NICHT in den Nachrichtenstrom — sie
+        // haben keinen Text und wurden sonst als leere graue Blasen gezeichnet.
+        // Ihr Inhalt steckt in ``meta.task_card`` und wird als Kachel gerendert.
         if (history.length > 0) {
           const restored: ChatMessage[] = history.map((m) => {
             // Convert legacy toolCalls to steps
+            const kachel = (m as { meta?: { task_card?: TaskCard } }).meta?.task_card;
             let steps: AssistantStep[] | undefined;
             if (m.role === "assistant") {
               steps = [];
@@ -565,6 +693,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
               meta: m.meta ?? undefined,
               images: m.role === "assistant" && presented?.length ? presented : m.images,
               files: m.role === "assistant" && presentedFiles?.length ? presentedFiles : undefined,
+              // Kachel-Zeile: wird als Kachel gezeichnet, nicht als Blase.
+              taskCardId: (m.meta as { task_card?: TaskCard } | undefined)?.task_card?.task_id,
             };
           });
           // Deduplicate by id+role
@@ -608,6 +738,18 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     loadHistory();
   }, [agentId, activeSessionId, historyReloadKey]);
 
+  // Beim Wechsel des Gespraechs gehoert der Wartezustand des vorigen nicht mehr
+  // hierher. Der Zaehler lebt im Fenster, nicht im Gespraech — und die Ereignisse
+  // des verlassenen Gespraechs werden von der Faden-Abschottung verworfen, koennen
+  // ihn also nie mehr herunterzaehlen. Ohne diesen Schnitt zeigte JEDES neu
+  // geoeffnete Gespraech "Thinking...", weil ein fremder Zug den Zaehler oben hielt.
+  useEffect(() => {
+    pendingCountRef.current = 0;
+    notBusyStreakRef.current = 0;
+    lastEventAtRef.current = 0;
+    setIsWaiting(false);
+  }, [activeSessionId]);
+
   // Live-resume: while a conversation is open, poll the agent's status. If the agent
   // is working on THIS session but not via our own turn (we re-entered mid-run), show
   // a live indicator; when it finishes, reload history so the answer appears — even
@@ -622,9 +764,36 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         const list = (a as unknown as { active_sessions?: string[] }).active_sessions;
         const busy = Array.isArray(list) && list.includes(`chat:${activeSessionId}`);
         if (cancelled) return;
-        setLiveElsewhere(busy && !isWaitingRef.current);
+        // „Arbeitet woanders dran" nur, wenn es nicht der eigene, gerade
+        // beendete Zug ist. Der Messwert hinkt dem Ende bis zu einer Runde
+        // hinterher — genau deshalb blitzte das Banner nach jeder Antwort auf.
+        const frischFertig = Date.now() - eigenerZugEndeteRef.current < 8000;
+        setLiveElsewhere(busy && !isWaitingRef.current && !frischFertig);
         if (prevBusy && !busy) setHistoryReloadKey((k) => k + 1);  // a turn just finished
         prevBusy = busy;
+
+        // Notbremse: der Agent selbst ist die Wahrheit. Meldet er ueber mehrere
+        // Runden hinweg, dass er an diesem Faden NICHT arbeitet, und kam auch
+        // laenger kein Ereignis, dann laeuft nichts mehr — egal was der Zaehler
+        // sagt. Bewusst traege (3 Runden = 12s UND 20s Ruhe), weil der Anlauf
+        // eines Zuges mehrere Sekunden dauert und ein zu eiliger Abbruch die
+        // Anzeige mitten im Denken loeschen wuerde.
+        if (!busy && isWaitingRef.current) {
+          notBusyStreakRef.current += 1;
+          const ruhe = Date.now() - lastEventAtRef.current;
+          if (notBusyStreakRef.current >= 3 && ruhe > 20000) {
+            notBusyStreakRef.current = 0;
+            pendingCountRef.current = 0;
+            setIsWaiting(false);
+            setMessages((prev) =>
+              prev
+                .filter((m) => !m.isQueued)
+                .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
+            );
+          }
+        } else {
+          notBusyStreakRef.current = 0;
+        }
       } catch { /* transient — ignore */ }
     };
     check();
@@ -777,10 +946,18 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
             if (!activeSessionIdRef.current) {
               setActiveSessionId(sid);
             }
+            // A brand-new session inherits the currently selected thinking depth
+            // ("kein Reset auf Auto") — persist it so it survives reloads. The
+            // backend sends this event only for new sessions; the write is
+            // idempotent, so a stray duplicate event is harmless.
+            const inherited = reasoningLevelRef.current;
+            if (inherited) {
+              api.updateChatSession(agentId, sid, { reasoning: inherited }).catch(() => {});
+            }
             // Only add to session tabs if truly new (not already in list)
             setSessions((prev) => {
               if (prev.some((s) => s.id === sid)) return prev;
-              return [{ id: sid, label: `Chat ${prev.length + 1}`, preview: "", isNew: true }, ...prev];
+              return [{ id: sid, label: `Chat ${prev.length + 1}`, preview: "", reasoning: inherited, isNew: true }, ...prev];
             });
           }
           return;
@@ -802,6 +979,63 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     // different session (another tab, a background task, a voice delegation)
     // must NOT bleed into this view.
     if (event.session_id && activeSessionIdRef.current && event.session_id !== activeSessionIdRef.current) {
+      return;
+    }
+
+    lastEventAtRef.current = Date.now();
+    notBusyStreakRef.current = 0;
+
+    // Der Zustand des Agenten hat sich soeben geaendert — die Elternseite soll
+    // ihn JETZT nachladen statt beim naechsten Takt ihrer 15-Sekunden-Abfrage.
+    if (type === "done" || type === "cancelled" || type === "error") {
+      eigenerZugEndeteRef.current = Date.now();
+      onTurnChangeRef.current?.();
+    }
+
+    // Ein laufender Zug zeigt sich durch seine Ereignisse, nicht durch eine
+    // Zaehlung abgeschickter Nachrichten. Faengt der Agent einen WEITEREN Zug an
+    // (die zweite Nachricht wurde nicht mitgefaltet, sondern eigenstaendig
+    // beantwortet), hebt das die Anzeige wieder an.
+    if (type === "text" || type === "tool_call" || type === "tool_result") {
+      if (pendingCountRef.current === 0) pendingCountRef.current = 1;
+      if (!isWaitingRef.current) {
+        setIsWaiting(true);
+        // Ein Zug, den der Agent VON SICH AUS beginnt — nach einer Delegation,
+        // nach einer Fertigmeldung, aus einem Zeitplan — faengt ohne unser
+        // Zutun an. Die Elternseite erfaehrt davon sonst erst beim naechsten
+        // 15-Sekunden-Takt, und ein kurzer Zug ist bis dahin vorbei: der
+        // Spinner an der Gespraechszeile blieb aus, obwohl gearbeitet wurde.
+        // Ein Chat muss gleich aussehen, egal wer den Zug angestossen hat.
+        onTurnChangeRef.current?.();
+      }
+    }
+
+    // Kachel eines delegierten Auftrags — eigener Zustand, kein Chatverlauf:
+    // sie aktualisiert sich an Ort und Stelle (queued -> done), statt zweimal
+    // als Nachricht aufzutauchen.
+    if (type === "task_card") {
+      const card = data as unknown as TaskCard;
+      if (!card?.task_id) return;
+      // Nur im eigenen Gespraech. Eine Kachel ohne Faden gehoert in KEINES —
+      // sie in allen zu zeigen war der Fehler.
+      if (!card.session_id || card.session_id !== activeSessionIdRef.current) return;
+      setTaskCards((prev) => {
+        const next = { ...prev };
+        next[card.task_id] = { ...(next[card.task_id] || {}), ...card, at: Date.now() };
+        return next;
+      });
+      // Einmalig eine Zeile im Verlauf anlegen — an DIESER Stelle gehoert sie hin.
+      setMessages((prev) =>
+        prev.some((m) => m.taskCardId === card.task_id)
+          ? prev
+          : [...prev, {
+              id: `card-${card.task_id}`,
+              role: "system" as const,
+              content: "",
+              timestamp: new Date().toISOString(),
+              taskCardId: card.task_id,
+            }],
+      );
       return;
     }
 
@@ -974,6 +1208,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
             num_turns: Number(data.num_turns || 0),
             input_tokens: Number(data.input_tokens || 0),
             output_tokens: Number(data.output_tokens || 0),
+            reasoning_tokens: Number(data.reasoning_tokens || 0),
+            cached_tokens: Number(data.cached_tokens || 0),
+            cache_write_tokens: Number(data.cache_write_tokens || 0),
           };
           // Mark all running tool calls as done
           const steps = (msgs[assistantIdx].steps || []).map((s) =>
@@ -991,10 +1228,20 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           setTotalTurns((t) => t + meta.num_turns);
           setMessageCount((c) => c + 1);
         }
-        // Decrement pending count - only stop waiting when all messages are processed
-        pendingCountRef.current = Math.max(0, pendingCountRef.current - 1);
-        if (pendingCountRef.current === 0) {
-          setIsWaiting(false);
+        // `done` beendet den ZUG, nicht "eine von N Nachrichten". Live-Steering
+        // faltet nachgereichte Nachrichten in den laufenden Zug — die Antwort
+        // kommt unter der Kennung der ERSTEN, es gibt also nur EIN `done`. Wer
+        // hier je Nachricht herunterzaehlte, blieb bei zwei schnell
+        // hintereinander gesendeten Nachrichten dauerhaft auf 1 stehen: Spinner
+        // und Stop-Knopf blieben aktiv, obwohl der Agent laengst fertig war.
+        // Faengt der Agent doch noch einen eigenen Zug fuer die zweite Nachricht
+        // an, hebt dessen erstes Ereignis die Anzeige wieder an (siehe oben).
+        pendingCountRef.current = 0;
+        setIsWaiting(false);
+        // Die Steering-Hinweise sind Live-Zustand, kein Verlauf. Nach dem Zug
+        // sind sie unwahr ("steering current agent turn" — es laeuft keiner).
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].isQueued) msgs.splice(i, 1);
         }
       }
 
@@ -1050,6 +1297,23 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     followRef.current = nearBottom;
     setShowJumpToLatest(!nearBottom);
+  }, []);
+
+  /** Einzelheiten einer Kachel im Fenster zeigen — nicht auf einer neuen Seite.
+   *
+   * Ein Seitenwechsel reisst aus dem Gespraech heraus: der Verlauf ist weg, der
+   * Rueckweg kostet einen Klick, und wer nur kurz nachsehen wollte, verliert den
+   * Faden. Die vollstaendige Aufgabe wird nachgeladen; die Kachel selbst zeigt
+   * sofort, was sie schon weiss. */
+  const openCardDetail = useCallback(async (card: TaskCard) => {
+    setCardDetail(card);
+    setCardDetailFull(null);
+    try {
+      const task = await api.getTask(card.task_id);
+      setCardDetailFull(task as unknown as Record<string, unknown>);
+    } catch {
+      setCardDetailFull(null);   // Kachelangaben genuegen dann
+    }
   }, []);
 
   const jumpToLatest = useCallback(() => {
@@ -1127,7 +1391,16 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     setPendingImages([]);
     setPendingFiles([]);
     pendingCountRef.current += 1;
+    // Zaehlt als Lebenszeichen — sonst schlaegt die Notbremse waehrend des
+    // Anlaufs zu, in dem der Agent noch gar nicht als beschaeftigt gilt.
+    lastEventAtRef.current = Date.now();
+    notBusyStreakRef.current = 0;
     setIsWaiting(true);
+    // Gleich nachfassen: die „Aktiver Chat"-Anzeige haengt am Zustand des
+    // Agenten, den die Elternseite nur alle 15 Sekunden abfragt. Genau daher
+    // kamen die beobachteten sieben Sekunden — im Mittel die halbe Wartezeit auf
+    // den naechsten Takt, nicht die Anlaufzeit des Agenten.
+    onTurnChangeRef.current?.();
     inputRef.current?.focus();
 
     setSessions((prev) =>
@@ -1137,7 +1410,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           : s
       )
     );
-  }, [input, pendingImages, pendingFiles, activeSessionId, agentId]);
+  }, [input, pendingImages, pendingFiles, activeSessionId, agentId, reasoning]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -1256,6 +1529,29 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
     }
   }, [agentId, activeSessionId]);
 
+  // Aus dem Kontext nehmen, ohne zu loeschen (#538 Punkt 4). Anders als Verzweigen/
+  // Zurueckspulen bleibt die Nachricht im Verlauf sichtbar — nur das, was ans Modell
+  // geht, aendert sich. Deshalb jederzeit umkehrbar, ohne Rueckfrage.
+  const toggleContextExclusion = useCallback(async (
+    messageId: string,
+    scope: "message" | "tool_output",
+    excluded: boolean,
+  ) => {
+    if (!activeSessionId) return;
+    // Anzeige-IDs von Antworten tragen ein "response-"-Praefix (siehe loadHistory);
+    // dem Backend ist nur die eigentliche message_id bekannt.
+    const rawId = messageId.startsWith("response-") ? messageId.slice("response-".length) : messageId;
+    const metaKey = scope === "tool_output" ? "tool_output_excluded" : "context_excluded";
+    try {
+      await api.setMessageContextExclusion(agentId, activeSessionId, rawId, scope, excluded);
+      setMessages((prev) => prev.map((m) => (
+        m.id === messageId ? { ...m, meta: { ...m.meta, [metaKey]: excluded || undefined } } : m
+      )));
+    } catch (e) {
+      chatToast.error("Nicht möglich", e instanceof Error ? e.message : undefined);
+    }
+  }, [agentId, activeSessionId]);
+
   const summarizeToNew = useCallback(async () => {
     if (!activeSessionId) return;
     try {
@@ -1271,6 +1567,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
   const switchSession = (sessionId: string) => {
     if (sessionId === activeSessionId) return;
     setActiveSessionId(sessionId);
+    // Each chat keeps its own thinking depth — adopt the target's stored level.
+    // A target not in the list yet (fresh fork/continuation, the closure predates
+    // the refresh) inherited the CURRENT level server-side — keep it, don't clear.
+    const target = sessions.find((s) => s.id === sessionId);
+    if (target) setReasoning(target.reasoning ?? "");
     // No need to notify backend - session_id is sent with every message
   };
 
@@ -1283,6 +1584,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         const remaining = sessions.filter((s) => s.id !== sessionId);
         if (remaining.length > 0) {
           setActiveSessionId(remaining[0].id);
+          setReasoning(remaining[0].reasoning ?? "");
         } else {
           setActiveSessionId(null);
           setMessages([]);
@@ -1567,7 +1869,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           className="border-r border-border bg-card/40"
           sessions={sessions.map((s) => ({ ...s, fallbackLabel: s.label }))}
           selectedId={activeSessionId}
-          busyIds={busySessionIds}
+          busyIds={beschaeftigteFaeden}
           onSelect={switchSession}
           onNew={createNewSession}
           newDisabled={!isConnected}
@@ -1692,9 +1994,104 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
             </button>
           </div>
         )}
-        {messages.filter((msg, idx, arr) => arr.findIndex((m) => m.id === msg.id && m.role === msg.role) === idx).map((msg) => (
-          <MessageRow key={`${msg.id}-${msg.role}`} message={msg} onFork={forkFrom} onRewind={rewindTo} />
-        ))}
+        {messages.filter((msg, idx, arr) => arr.findIndex((m) => m.id === msg.id && m.role === msg.role) === idx).map((msg) => {
+          // Eine Auftrags-Kachel ist ein Element des VERLAUFS, keine eigene Zone:
+          // sie steht dort, wo der Auftrag vergeben wurde, und alles Spaetere
+          // kommt darunter. Vorher hingen alle Kacheln am Ende und rutschten bei
+          // jeder neuen Nachricht mit.
+          const karte = taskCards[msg.taskCardId || ""];
+          if (msg.taskCardId && karte) {
+            const laeuft = karte.phase !== "done";
+            const gescheitert = karte.status === "failed";
+            return (
+              <div key={`${msg.id}-card`} className="mx-auto w-full max-w-3xl px-4 py-1">
+                <div
+                  className={`group relative rounded-lg border px-2.5 py-1.5 pr-7 text-xs ${
+                    laeuft
+                      ? "border-amber-500/40 bg-amber-500/5"
+                      : gescheitert
+                        ? "border-destructive/40 bg-destructive/5"
+                        : "border-emerald-600/30 bg-emerald-600/5"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => openCardDetail(karte)}
+                    className="block w-full text-left"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {laeuft ? (
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-500" />
+                      ) : gescheitert ? (
+                        <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate font-medium">{karte.title}</span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {karte.assigned_agent_name}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 pl-5 text-[11px] text-muted-foreground">
+                      {laeuft ? "in Arbeit" : gescheitert ? "fehlgeschlagen" : "abgeschlossen"}
+                      {karte.duration_ms ? ` · ${Math.round(karte.duration_ms / 1000)} s` : ""}
+                    </div>
+                  </button>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Kachel ausblenden"
+                    title="Ausblenden"
+                    onClick={() => setTaskCards((prev) => {
+                      const next = { ...prev };
+                      delete next[karte.task_id];
+                      return next;
+                    })}
+                    className="absolute right-1.5 top-1.5 cursor-pointer rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100"
+                  >
+                    <X className="h-3 w-3" />
+                  </span>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <MessageRow
+              key={`${msg.id}-${msg.role}`}
+              message={msg}
+              onFork={forkFrom}
+              onRewind={rewindTo}
+              onToggleExclude={toggleContextExclusion}
+            />
+          );
+        })}
+        {/* „Es wird noch am Thema gearbeitet." — Wunsch des Kunden (13.08.2026):
+            Nach dem Delegieren ist der Zug des Agenten BEENDET, also laeuft kein
+            Spinner, obwohl die Auftraege noch laufen. Genau in dieser Luecke sah
+            der Mensch bisher nichts und musste nachfragen. Die Kacheln zeigen
+            jede Aufgabe einzeln — hier steht der Stand in EINER Zeile, und zwar
+            unabhaengig davon, ob der Agent selbst gerade denkt. */}
+        {offeneAuftraege.length > 0 && (
+          <div className="flex items-center gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-700 dark:text-amber-400" />
+            <div className="flex min-w-0 flex-col">
+              {/* Nur die OFFENEN zaehlen. Ein Bruch „3 von 6" bezog sich auf das
+                  ganze Gespraech und war nicht lesbar, wenn man gerade 4 Auftraege
+                  vergeben hatte — man sucht dann die 6, die es im Bild nicht gibt.
+                  Was hier zaehlt, ist ohnehin nur: worauf warte ich noch. */}
+              <span className="text-xs text-amber-700 dark:text-amber-200/90">
+                {offeneAuftraege.length}{" "}
+                {offeneAuftraege.length === 1 ? "Auftrag läuft noch" : "Aufträge laufen noch"}
+              </span>
+              <span className="truncate text-[10px] text-muted-foreground">
+                {/* WER noch aussteht, nicht nur „irgendetwas laeuft" — das war
+                    der eigentliche Wunsch: „warte noch auf SubAgents". */}
+                wartet auf {Array.from(new Set(offeneAuftraege.map(
+                  (k) => k.assigned_agent_name || "einen Kollegen"))).join(", ")}
+              </span>
+            </div>
+          </div>
+        )}
         {isWaiting && !messages.some((m) => m.isStreaming) && (
           <div className="flex items-start gap-3 pl-1 py-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-500/20 shrink-0">
@@ -1726,7 +2123,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
         {liveElsewhere && !isWaiting && !messages.some((m) => m.isStreaming) && (
           <div className="flex items-start gap-3 pl-1 py-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/20 shrink-0">
-              <Bot className="h-3.5 w-3.5 text-amber-400" />
+              <Bot className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" />
             </div>
             <div className="flex flex-col gap-1 min-w-0">
               <div className="flex items-center gap-2">
@@ -1756,6 +2153,80 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
           <ArrowDown className="h-3.5 w-3.5" />
           Zum Neuesten
         </button>
+      )}
+
+      {/* Einzelheiten einer Auftrags-Kachel — im Fenster, damit das Gespraech
+          stehen bleibt. */}
+      {cardDetail && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={() => setCardDetail(null)}
+        >
+          <div
+            className="max-h-[80dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <h3 className="min-w-0 flex-1 text-sm font-semibold">{cardDetail.title}</h3>
+              <button
+                type="button"
+                onClick={() => setCardDetail(null)}
+                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent"
+                aria-label="Schliessen"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+              <dt className="text-muted-foreground">Bearbeiter</dt>
+              <dd>{cardDetail.assigned_agent_name || "—"}</dd>
+              <dt className="text-muted-foreground">Stand</dt>
+              <dd>
+                {cardDetail.phase === "done"
+                  ? cardDetail.status === "failed" ? "fehlgeschlagen" : "abgeschlossen"
+                  : "in Arbeit"}
+              </dd>
+              <dt className="text-muted-foreground">Kennung</dt>
+              <dd className="font-mono">{cardDetail.task_id}</dd>
+              {cardDetail.duration_ms ? (
+                <>
+                  <dt className="text-muted-foreground">Dauer</dt>
+                  <dd>{Math.round(cardDetail.duration_ms / 1000)} s</dd>
+                </>
+              ) : null}
+            </dl>
+
+            {cardDetailFull?.prompt ? (
+              <>
+                <h4 className="mt-4 text-xs font-semibold text-muted-foreground">Auftrag</h4>
+                <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-foreground/[0.04] p-3 text-xs">
+                  {String(cardDetailFull.prompt)}
+                </pre>
+              </>
+            ) : null}
+
+            {(cardDetailFull?.result || cardDetail.result_preview) ? (
+              <>
+                <h4 className="mt-4 text-xs font-semibold text-muted-foreground">Ergebnis</h4>
+                <div className="mt-1 max-h-72 overflow-y-auto rounded-lg bg-foreground/[0.04] p-3 text-xs">
+                  <MarkdownContent content={String(cardDetailFull?.result || cardDetail.result_preview)} />
+                </div>
+              </>
+            ) : cardDetail.phase !== "done" ? (
+              <p className="mt-4 text-xs text-muted-foreground">
+                Läuft noch — das Ergebnis erscheint hier, sobald es vorliegt.
+              </p>
+            ) : null}
+
+            <a
+              href={`/tasks/${cardDetail.task_id}`}
+              className="mt-4 inline-block text-xs underline-offset-2 hover:underline"
+            >
+              Vollständige Aufgabenseite öffnen
+            </a>
+          </div>
+        </div>
       )}
 
       {/* L3 Approval Request Banner */}
@@ -1820,6 +2291,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                         <div className="flex justify-between">
                           <dt>bereits verdichtet</dt>
                           <dd className="tabular-nums text-foreground/80">{contextInfo.compacted}</dd>
+                        </div>
+                      )}
+                      {(contextInfo.context_excluded > 0 || contextInfo.tool_output_excluded > 0) && (
+                        <div className="flex justify-between">
+                          <dt>von Hand aus dem Kontext genommen</dt>
+                          <dd className="tabular-nums text-foreground/80">
+                            {contextInfo.context_excluded + contextInfo.tool_output_excluded}
+                          </dd>
                         </div>
                       )}
                       {contextInfo.model && (
@@ -1905,39 +2384,32 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
       {pendingApproval && (
         <div className="mx-4 mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-amber-300">Freigabe erforderlich</p>
-              <p className="mt-0.5 text-xs text-amber-400/80">{pendingApproval.tool}</p>
-              {pendingApproval.reasoning && (
-                <p className="mt-1 text-xs text-muted-foreground">{pendingApproval.reasoning}</p>
-              )}
-            </div>
-            <div className="flex gap-2 shrink-0">
-              <button
-                onClick={async () => {
-                  await fetch(`${getApiUrl()}/api/v1/approvals/${pendingApproval.approval_id}/approve`, {
-                    method: "POST", credentials: "include"
-                  });
-                  setPendingApproval(null);
-                }}
-                className="rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/30"
-              >
-                Freigeben
-              </button>
-              <button
-                onClick={async () => {
-                  await fetch(`${getApiUrl()}/api/v1/approvals/${pendingApproval.approval_id}/deny`, {
-                    method: "POST", credentials: "include",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ decision: "deny", reason: "Vom Nutzer abgelehnt" })
-                  });
-                  setPendingApproval(null);
-                }}
-                className="rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/30"
-              >
-                Ablehnen
-              </button>
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Der Agent braucht deine Antwort</p>
+              <div className="mt-1">
+                <ApprovalPrompt
+                  request={pendingApproval}
+                  busy={approvalBusy}
+                  onAnswer={async (antwort) => {
+                    setApprovalBusy(true);
+                    try {
+                      await api.approveCommand(pendingApproval.approval_id, antwort);
+                      setPendingApproval(null);
+                    } catch { /* bleibt stehen, damit man es erneut versuchen kann */ }
+                    finally { setApprovalBusy(false); }
+                  }}
+                  onDeny={async () => {
+                    setApprovalBusy(true);
+                    try {
+                      await api.denyCommand(pendingApproval.approval_id, "Vom Nutzer abgelehnt");
+                      setPendingApproval(null);
+                    } catch { /* siehe oben */ }
+                    finally { setApprovalBusy(false); }
+                  }}
+                  compact
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -2099,7 +2571,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                   {REASONING_OPTIONS.map((opt) => (
                     <button
                       key={opt.value || "default"}
-                      onClick={() => { setReasoning(opt.value); setReasoningOpen(false); }}
+                      onClick={() => pickReasoning(opt.value)}
                       className={cn(
                         "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-foreground/[0.06]",
                         reasoning === opt.value ? "text-violet-300" : "text-foreground/80",
@@ -2197,7 +2669,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds 
                   <button
                     onClick={() => sendMessage(true)}
                     disabled={!isConnected || isUploading || !input.trim()}
-                    className="flex h-9 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 text-[11px] font-medium text-amber-300 transition-all hover:bg-amber-500/20 disabled:opacity-40"
+                    className="flex h-9 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 transition-all hover:bg-amber-500/20 disabled:opacity-40"
                     title="Nur planen — der Agent beschreibt die Schritte, führt aber nichts aus"
                   >
                     <ListChecks className="h-4 w-4" /> Planen
@@ -2228,10 +2700,12 @@ function MessageRow({
   message,
   onFork,
   onRewind,
+  onToggleExclude,
 }: {
   message: ChatMessage;
   onFork?: (messageId: string) => void;
   onRewind?: (messageId: string) => void;
+  onToggleExclude?: (messageId: string, scope: "message" | "tool_output", excluded: boolean) => void;
 }) {
   if (message.role === "system") {
     if (message.isQueued) {
@@ -2262,8 +2736,22 @@ function MessageRow({
     );
   }
 
+  // Werkzeug-Ausgabe ist meist der Ballast — steckt sie drin, greift der feinere
+  // Bereich; sonst die ganze Nachricht (#538 Punkt 4).
+  const hasToolOutput = !!message.steps?.some((s) => s.type === "tool_call");
+  const excludeScope: "message" | "tool_output" = hasToolOutput ? "tool_output" : "message";
+  const excluded = !!(excludeScope === "tool_output"
+    ? message.meta?.tool_output_excluded
+    : message.meta?.context_excluded);
   const actions = (
-    <MessageActions messageId={message.id} onFork={onFork} onRewind={onRewind} />
+    <MessageActions
+      messageId={message.id}
+      onFork={onFork}
+      onRewind={onRewind}
+      onToggleExclude={onToggleExclude}
+      excludeScope={excludeScope}
+      excluded={excluded}
+    />
   );
 
   if (message.role === "user") {
@@ -2291,12 +2779,18 @@ function MessageActions({
   messageId,
   onFork,
   onRewind,
+  onToggleExclude,
+  excludeScope,
+  excluded,
 }: {
   messageId?: string;
   onFork?: (id: string) => void;
   onRewind?: (id: string) => void;
+  onToggleExclude?: (id: string, scope: "message" | "tool_output", excluded: boolean) => void;
+  excludeScope?: "message" | "tool_output";
+  excluded?: boolean;
 }) {
-  if (!messageId || (!onFork && !onRewind)) return null;
+  if (!messageId || (!onFork && !onRewind && !onToggleExclude)) return null;
   return (
     <span className="ml-1 inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
       {onFork && (
@@ -2306,6 +2800,24 @@ function MessageActions({
           className="rounded p-1 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
         >
           <GitBranch className="h-3 w-3" />
+        </button>
+      )}
+      {onToggleExclude && excludeScope && (
+        <button
+          onClick={() => onToggleExclude(messageId, excludeScope, !excluded)}
+          title={
+            excluded
+              ? "Wieder in den Kontext aufnehmen"
+              : excludeScope === "tool_output"
+                ? "Werkzeug-Ausgabe aus dem Kontext nehmen — der Text bleibt sichtbar, nur die Ausgabe geht nicht mehr ans Modell"
+                : "Nachricht aus dem Kontext nehmen — bleibt im Verlauf sichtbar, geht nur nicht mehr ans Modell"
+          }
+          className={cn(
+            "rounded p-1 hover:bg-foreground/[0.06]",
+            excluded ? "text-amber-500 hover:text-amber-700 dark:text-amber-400" : "text-muted-foreground/60 hover:text-foreground",
+          )}
+        >
+          {excluded ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
         </button>
       )}
       {onRewind && (
@@ -2438,7 +2950,7 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
             groups.push({ kind: "text", content: step.content, idx: i });
           }
         });
-        return groups.map((g) =>
+        return groups.map((g, gi) =>
           g.kind === "text" ? (
             <div key={`text-${g.idx}`}>
               <MarkdownContent content={g.content} />
@@ -2450,7 +2962,18 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
             <ToolCluster
               key={`tools-${g.idx}`}
               steps={g.steps}
-              isStreaming={message.isStreaming && g.steps.some((s) => s.status === "running")}
+              // Der Zug laeuft — mehr braucht die Anzeige nicht zu wissen. Vorher
+              // stand hier zusaetzlich „und ein Werkzeug arbeitet gerade", womit
+              // die Bedingung genau in der Denkpause zwischen den Werkzeugen
+              // falsch wurde: alle Ergebnisse zurueck, der Agent verarbeitet sie,
+              // und die Zeile sagte „4 Tools" statt „Arbeitet…". Es sah
+              // eingeschlafen aus, obwohl gearbeitet wurde.
+              //
+              // Nur die LETZTE Kette im Turn darf den nachrichtenweiten Streaming-
+              // Zustand erben — sonst zeigten laengst fertige, frueher im selben
+              // Turn abgeschlossene Ketten weiter „Arbeitet…" und klappten erst
+              // alle gemeinsam um, wenn der GESAMTE Turn endete.
+              isStreaming={message.isStreaming && gi === groups.length - 1}
             />
           )
         );
@@ -2667,12 +3190,16 @@ function formatAudioTime(seconds: number) {
 
 /* ─── Tool Call Block (Claude CLI Style) ────────────────────────────── */
 
-function ToolCluster({ steps }: { steps: ToolStep[]; isStreaming?: boolean }) {
+function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: boolean }) {
   // Stays compact (overlapping bubbles) at all times — even while the agent is
   // working — so it doesn't pop open and resize on every tool call. The running
   // tool's bubble shows a live spinner; click to expand for details.
   const [expanded, setExpanded] = useState(false);
-  const anyRunning = steps.some((s) => s.status === "running");
+  // ``isStreaming`` wurde uebergeben, aber nie ausgepackt — die Information war
+  // da und wurde verworfen. Sie ist der eigentliche Punkt: „arbeitet" heisst,
+  // dass der ZUG laeuft, nicht dass gerade ein Werkzeug rechnet. Zwischen zwei
+  // Werkzeugen denkt der Agent, und genau dann sah es tot aus.
+  const anyRunning = isStreaming || steps.some((s) => s.status === "running");
 
   if (expanded) {
     return (
@@ -2731,7 +3258,10 @@ function ToolCluster({ steps }: { steps: ToolStep[]; isStreaming?: boolean }) {
           </span>
         )}
       </div>
-      <span className="text-[11px] text-muted-foreground group-hover:text-foreground">
+      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground group-hover:text-foreground">
+        {/* „es dreht sich kein Kreis" — aus dem ersten Kundenfeedback zu dieser
+            Zeile. Ein Wort allein liest man nicht als Bewegung. */}
+        {anyRunning && <Loader2 className="h-3 w-3 animate-spin text-amber-500" />}
         {anyRunning ? "Arbeitet…" : `${steps.length} ${steps.length === 1 ? "Tool" : "Tools"}`} · Details
       </span>
     </button>
@@ -2822,11 +3352,16 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
 
 /* ─── Meta Bar ──────────────────────────────────────────────────────── */
 
-function MetaBar({ meta }: { meta: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number } }) {
+function MetaBar({ meta }: { meta: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number } }) {
   const parts: string[] = [];
   if (meta.duration_ms) parts.push(`${(meta.duration_ms / 1000).toFixed(1)}s`);
   if (meta.cost_usd) parts.push(formatMoney(meta.cost_usd));
   if (meta.num_turns) parts.push(`${meta.num_turns} turns`);
+  // Feinaufschlüsselung — macht sichtbar, ob die Reasoning-Stufe den Verbrauch
+  // verändert (der eigentliche Wunsch): „Denk"-Tokens + Cache-Treffer.
+  if (meta.reasoning_tokens) parts.push(`${meta.reasoning_tokens} reasoning`);
+  if (meta.cached_tokens) parts.push(`${meta.cached_tokens} cached`);
+  if (meta.cache_write_tokens) parts.push(`${meta.cache_write_tokens} cache-write`);
   if (meta.input_tokens || meta.output_tokens)
     parts.push(`${meta.input_tokens ?? 0} ↑ / ${meta.output_tokens ?? 0} ↓ tok`);
   if (parts.length === 0) return null;

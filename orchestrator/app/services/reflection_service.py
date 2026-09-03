@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import and_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -57,6 +58,43 @@ _COST_IN = 1.0 / 1_000_000
 _COST_OUT = 5.0 / 1_000_000
 _BUNDLE_MAX_CHARS = 12_000
 _MEETING_KEY = "__meetings__"
+
+
+def _model_names(models) -> list[str]:
+    """AIAccount.models fuehrt je nach Herkunft Strings oder Dicts (name/id)."""
+    out = []
+    for m in models or []:
+        name = m if isinstance(m, str) else (m.get("name") or m.get("id") or "")
+        if name:
+            out.append(name)
+    return out
+
+
+def openai_compat_request(endpoint: str, azure: bool, api_version: str, model: str) -> tuple[str, str]:
+    """(URL, Auth-Stil) fuer einen OpenAI-kompatiblen Chat-Completions-Call.
+
+    Kondensat der URL-Logik des Agent-Providers (agent/app/providers/
+    openai_provider.py): volle Pfade gelten verbatim, Azures /openai/v1-Surface
+    braucht keine api-version, klassisches Azure traegt das Deployment im Pfad —
+    und Projekt-Endpunkte aus der Foundry-Oberflaeche werden auf die
+    Ressourcen-Wurzel gekuerzt (an ihnen antwortet der Deployment-Pfad mit 400).
+    """
+    ep = endpoint.rstrip("/")
+    azure = azure or ".openai.azure.com" in ep
+    auth = "api-key" if azure else "bearer"
+    ver = api_version or "2024-10-21"
+    if ep.endswith("/chat/completions"):
+        if azure and "api-version=" not in ep:
+            sep = "&" if "?" in ep else "?"
+            return f"{ep}{sep}api-version={ver}", auth
+        return ep, auth
+    if ep.endswith("/openai/v1"):
+        return f"{ep}/chat/completions", auth
+    if azure:
+        root = ep.split("/api/projects")[0].split("/openai")[0].rstrip("/")
+        return f"{root}/openai/deployments/{model}/chat/completions?api-version={ver}", auth
+    base = ep if ep.endswith("/v1") else f"{ep}/v1"
+    return f"{base}/chat/completions", auth
 
 _EXTRACT_PROMPT = """Du bist der naechtliche Reflexions-Job einer KI-Agenten-Plattform.
 Du liest das heutige Arbeitsprotokoll des Agenten "{agent_name}" und destillierst daraus
@@ -144,8 +182,8 @@ class ReflectionService:
 
         stats = {
             "transcripts_read": 0, "facts_new": 0, "facts_superseded": 0,
-            "pending_approvals": 0, "kb_entries": 0, "skills_drafted": 0,
-            "skipped": 0, "agents": [], "errors": [],
+            "pending_approvals": 0, "kb_entries": 0, "kb_skipped": 0,
+            "skills_drafted": 0, "skipped": 0, "agents": [], "errors": [],
         }
         tokens = {"in": 0, "out": 0}
         status = "completed"
@@ -243,10 +281,11 @@ class ReflectionService:
         if mode not in ("auto", "hybrid", "strict"):
             mode = _DEFAULTS["mode"]
 
-        # LLM backend resolution (three tiers):
+        # LLM backend resolution (four tiers):
         #   1. Anthropic key from env config
         #   2. Anthropic key from the encrypted DB settings (Settings -> Modelle)
         #   3. An active Bedrock AI-Account (e.g. the Pi) -> invoke_model fallback
+        #   4. An active Azure-OpenAI/OpenAI AI-Account -> chat completions
         api_key = settings.anthropic_api_key or (await svc.get("anthropic_api_key")) or None
         backend = "anthropic" if api_key else None
         bedrock = None
@@ -269,7 +308,52 @@ class ReflectionService:
             except Exception as e:  # noqa: BLE001
                 logger.debug("[Reflection] bedrock account resolution failed: %s", e)
 
-        model = (await svc.get("reflection_model")) or _DEFAULTS["model"]
+        # Tier 4: Anlagen ohne Anthropic-Key und ohne Bedrock (z.B. reines
+        # Azure OpenAI) — bis hier war backend None und jede Extraktion bzw.
+        # Feedback-Rueckfrage lief in den "kein LLM-Zugang"-Fallback.
+        openai_acc = None
+        if not backend:
+            try:
+                from app.core.encryption import decrypt_token
+                from app.models.ai_account import AIAccount
+                accounts = (await db.execute(
+                    select(AIAccount).where(
+                        AIAccount.is_active == True,  # noqa: E712
+                        AIAccount.provider_type.in_(("azure-openai", "openai")),
+                    )
+                )).scalars().all()
+                for acc in accounts:
+                    if not acc.api_key_encrypted:
+                        continue
+                    try:
+                        key = decrypt_token(acc.api_key_encrypted)
+                    except Exception:  # noqa: BLE001
+                        logger.warning("[Reflection] openai account %s: key decrypt failed", acc.id)
+                        continue
+                    endpoint = (
+                        acc.api_endpoint
+                        or ("https://api.openai.com" if acc.provider_type == "openai" else "")
+                    ).strip()
+                    if not endpoint:
+                        continue
+                    openai_acc = {
+                        "endpoint": endpoint,
+                        "api_key": key,
+                        "azure": acc.provider_type == "azure-openai",
+                        "api_version": ((acc.extra or {}).get("api_version") or "").strip(),
+                        "deployments": _model_names(acc.models),
+                    }
+                    backend = "openai"
+                    break
+            except Exception as e:  # noqa: BLE001
+                logger.debug("[Reflection] openai account resolution failed: %s", e)
+
+        configured = await svc.get("reflection_model")
+        model = configured or _DEFAULTS["model"]
+        if backend == "openai" and not configured:
+            # Auf Azure zaehlt der Deployment-Name, ein Claude-Default waere
+            # dort sinnlos — ohne explizite Wahl das erste Deployment des Kontos.
+            model = ((openai_acc or {}).get("deployments") or [model])[0]
         if backend == "bedrock" and "anthropic." not in model and "amazon." not in model:
             # Default on Bedrock: Nova Lite — available on any account that runs
             # Nova Sonic (voice), while Anthropic models need the use-case form.
@@ -289,6 +373,7 @@ class ReflectionService:
             "api_key": api_key,
             "backend": backend,
             "bedrock": bedrock,
+            "openai": openai_acc,
         }
 
     async def _load_watermarks(self, db: AsyncSession) -> dict:
@@ -385,15 +470,12 @@ class ReflectionService:
             raise BudgetExceeded()
         if not cfg.get("backend"):
             logger.info(
-                "[Reflection] kein LLM-Zugang (weder Anthropic-Key noch Bedrock-Account) — Extraktion uebersprungen"
+                "[Reflection] kein LLM-Zugang (kein Anthropic-Key, Bedrock- oder OpenAI-Account) — Extraktion uebersprungen"
             )
             return None
         prompt = _EXTRACT_PROMPT.format(agent_name=agent_name, transcript=transcript)
         try:
-            if cfg["backend"] == "bedrock":
-                data = await self._call_bedrock(cfg, prompt)
-            else:
-                data = await self._call_anthropic(cfg, prompt)
+            data = await self._call_llm(cfg, prompt)
             if data is None:
                 return None
             usage = data.get("usage") or {}
@@ -408,6 +490,51 @@ class ReflectionService:
         except (httpx.HTTPError, ValueError, KeyError) as e:
             logger.warning("[Reflection] LLM extraction failed: %s", e)
             return None
+
+    async def _call_llm(self, cfg: dict, prompt: str) -> dict | None:
+        """Backend-Dispatch — jeder Zweig liefert die Anthropic-Antwortform."""
+        if cfg["backend"] == "bedrock":
+            return await self._call_bedrock(cfg, prompt)
+        if cfg["backend"] == "openai":
+            return await self._call_openai_compat(cfg, prompt)
+        return await self._call_anthropic(cfg, prompt)
+
+    async def _call_openai_compat(self, cfg: dict, prompt: str) -> dict | None:
+        """Azure OpenAI / OpenAI-kompatibel, normalisiert auf die Anthropic-Form.
+
+        Bewusst ohne Token-Deckel: der Parametername haengt an Modellgeneration
+        und api-version (max_tokens vs. max_completion_tokens) — weglassen ist
+        der einzige Wert, den jede Kombination akzeptiert.
+        """
+        acc = cfg["openai"]
+        url, auth = openai_compat_request(
+            acc["endpoint"], acc["azure"], acc["api_version"], cfg["model"]
+        )
+        headers = {"content-type": "application/json"}
+        if auth == "api-key":
+            headers["api-key"] = acc["api_key"]
+        else:
+            headers["authorization"] = f"Bearer {acc['api_key']}"
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                url,
+                headers=headers,
+                json={
+                    "model": cfg["model"],
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+        resp.raise_for_status()
+        data = resp.json()
+        text = (((data.get("choices") or [{}])[0]).get("message") or {}).get("content") or ""
+        usage = data.get("usage") or {}
+        return {
+            "content": [{"text": text}],
+            "usage": {
+                "input_tokens": usage.get("prompt_tokens") or 0,
+                "output_tokens": usage.get("completion_tokens") or 0,
+            },
+        }
 
     async def _call_anthropic(self, cfg: dict, prompt: str) -> dict | None:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -609,7 +736,34 @@ class ReflectionService:
                 before = {"id": existing.id, "content": existing.content[:800], "title": existing.title}
             await self._queue_approval(db, run_id, agent.id, "knowledge", proposal, before, stats)
             return
-        await self._apply_knowledge(db, run_id, proposal, stats)
+        await self._apply_knowledge_guarded(db, run_id, proposal, stats)
+
+    async def _apply_knowledge_guarded(
+        self, db: AsyncSession, run_id: int, proposal: dict, stats: dict
+    ) -> bool:
+        """Wie ``_apply_knowledge``, nur reisst ein einzelner Eintrag den Lauf nicht mit.
+
+        Scheitert ein Schreibvorgang, ist die Session vergiftet: jede weitere
+        Anweisung desselben Laufs endet danach mit „transaction has been rolled
+        back", und alle uebrigen Erkenntnisse der Nacht gehen mit verloren. Ein
+        Eintrag weniger ist ein guenstigerer Preis als eine Nacht ohne Reflexion.
+
+        Nicht in ``_apply_knowledge`` selbst: der Freigabeweg
+        (``apply_reflection_approval``) MUSS weiterhin durchschlagen, damit der
+        Mensch, der gerade auf „freigeben" geklickt hat, den Fehler zu sehen
+        bekommt statt eines stillen Nichts.
+        """
+        try:
+            await self._apply_knowledge(db, run_id, proposal, stats)
+            return True
+        except SQLAlchemyError as e:
+            await db.rollback()
+            stats["kb_skipped"] = stats.get("kb_skipped", 0) + 1
+            logger.warning(
+                "[Reflection] Wissenseintrag %r uebersprungen: %s",
+                str(proposal.get("title") or "")[:80], e,
+            )
+            return False
 
     async def _apply_knowledge(self, db: AsyncSession, run_id: int, proposal: dict, stats: dict) -> None:
         """Wissenseintrag schreiben und den Vorgang im Pruefprotokoll festhalten."""
@@ -735,7 +889,7 @@ class ReflectionService:
             if cfg["mode"] == "strict":
                 await self._queue_approval(db, run_id, approver_agent, "knowledge", proposal, None, stats)
             else:
-                await self._apply_knowledge(db, run_id, proposal, stats)
+                await self._apply_knowledge_guarded(db, run_id, proposal, stats)
             n += 1
         return n
 
@@ -746,11 +900,15 @@ class ReflectionService:
         try:
             if not settings.telegram_chat_id:
                 return
+            skipped = stats.get("kb_skipped") or 0
             msg = (
                 f"Nachtschicht #{run_id} — {status}\n"
                 f"Transcripts: {stats['transcripts_read']} | Neu: {stats['facts_new']} | "
                 f"Aktualisiert: {stats['facts_superseded']} | Freigaben offen: {stats['pending_approvals']}\n"
                 f"Wissen: {stats['kb_entries']} | Skill-Entwuerfe: {stats['skills_drafted']}"
+                # Uebersprungene Eintraege nur nennen, wenn es welche gab — sonst
+                # steht in jedem Bericht eine Null, die niemanden interessiert.
+                + (f" | Wissen uebersprungen: {skipped}" if skipped else "")
             )
             import redis.asyncio as aioredis
             client = aioredis.from_url(settings.redis_url)

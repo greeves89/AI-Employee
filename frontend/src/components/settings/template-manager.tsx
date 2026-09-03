@@ -40,7 +40,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   dev: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   data: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   writing: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-  ops: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  ops: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
   creative: "bg-pink-500/10 text-pink-400 border-pink-500/20",
   general: "bg-gray-500/10 text-gray-400 border-gray-500/20",
   marketing: "bg-orange-500/10 text-orange-400 border-orange-500/20",
@@ -300,7 +300,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
                   className={cn(
                     "flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors mr-2",
                     t.is_published
-                      ? "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                      ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
                       : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20",
                   )}
                 >

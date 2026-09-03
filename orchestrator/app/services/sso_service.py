@@ -24,6 +24,7 @@ from app.core.sso_providers import (
     get_sso_provider,
 )
 from app.core.permissions import role_for_new_user
+from app.core.sso_group_roles import record_observed_groups, resolve_target
 from app.models.user import User, UserRole
 from app.services.redis_service import RedisService
 
@@ -35,6 +36,34 @@ SSO_STATE_TTL = 600  # 10 minutes
 # Entra multi-tenant authority aliases — a login through any of these is NOT
 # locked to one org, so the email must NOT be auto-trusted (cross-tenant takeover).
 _MS_MULTITENANT_AUTHORITIES = {"common", "organizations", "consumers"}
+
+
+def resolve_redirect_base_url(request_host: str | None) -> str:
+    """Which base URL a login started on THIS host should redirect back to.
+
+    Defaults to the fixed ``oauth_redirect_base_url`` — unchanged behavior for
+    every deployment that hasn't opted in. Only when the deployment explicitly
+    lists ``request_host`` in ``oauth_redirect_allowed_hosts`` does the login
+    use that host's own URL instead, so a customer reachable under more than
+    one public hostname (a vanity domain alongside their own) can land back on
+    whichever one they actually started from. Not a blind Host-header trust —
+    an unlisted host silently falls back to the fixed base URL, never an
+    attacker-chosen one; the provider (Entra etc.) is the second gate, since
+    it only accepts a redirect_uri it has registered.
+    """
+    fixed = settings.oauth_redirect_base_url
+    allowed = {
+        h.strip().lower()
+        for h in settings.oauth_redirect_allowed_hosts.split(",")
+        if h.strip()
+    }
+    if not request_host or not allowed:
+        return fixed
+    host_only = request_host.split(":", 1)[0].lower()
+    if host_only not in allowed:
+        return fixed
+    scheme = "http" if host_only in ("localhost", "127.0.0.1") else "https"
+    return f"{scheme}://{request_host}"
 
 
 
@@ -55,7 +84,8 @@ class SSOService:
         self._jwks_cache: dict[str, dict] = {}
 
     async def generate_login_url(
-        self, provider_name: str, return_to: str | None = None
+        self, provider_name: str, return_to: str | None = None, request_host: str | None = None,
+        client: str = "",
     ) -> str:
         """Generate OIDC authorization URL for user login.
 
@@ -65,19 +95,37 @@ class SSOService:
         without ever seeing an AI-Employee login form. It travels INSIDE the
         server-side state record (never as a query parameter the caller controls),
         and the callback re-validates it before redirecting.
+
+        ``request_host`` is the Host header the login was STARTED on — resolved
+        against ``oauth_redirect_allowed_hosts`` (see resolve_redirect_base_url) and
+        stored in the state record so the callback rebuilds the EXACT same
+        redirect_uri for the token exchange, not a freshly-derived one (OAuth2
+        requires the two to match byte-for-byte).
+
+        ``client`` marks a login started from the native iOS app (``"ios"``). It
+        rides along in the same state record so the callback — which otherwise has
+        no way to tell native and web logins apart — knows to hand tokens back via
+        the app's custom URL scheme instead of setting session cookies (the app's
+        ASWebAuthenticationSession runs in a browser context that does not share
+        cookies with the app's own network session).
         """
         provider = get_sso_provider(provider_name)
         client_id = get_sso_client_id(provider)
         if not client_id:
             raise ValueError(f"SSO not configured for {provider_name}")
 
+        base_url = resolve_redirect_base_url(request_host)
+
         # Generate and store CSRF state (+ the optional return target)
         state = secrets.token_urlsafe(32)
         state_key = f"sso:state:{state}"
-        payload = json.dumps({"provider": provider_name, "return_to": return_to or ""})
+        payload = json.dumps({
+            "provider": provider_name, "return_to": return_to or "", "base_url": base_url,
+            "client": client,
+        })
         await self.redis.client.setex(state_key, SSO_STATE_TTL, payload)
 
-        redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/auth/sso/{provider_name}/callback"
+        redirect_uri = f"{base_url}/api/v1/auth/sso/{provider_name}/callback"
 
         params = {
             "client_id": client_id,
@@ -92,6 +140,27 @@ class SSOService:
 
         from app.core.oauth_providers import apply_tenant
         return f"{apply_tenant(provider.authorization_url)}?{urlencode(params)}"
+
+    async def peek_state_client(self, state: str | None) -> str:
+        """Best-effort ``client`` lookup for a pending SSO state, without consuming it.
+
+        Used only to decide WHERE an early-error redirect should land (the native app's
+        custom scheme vs. the web login page) before the callback would otherwise
+        validate/consume the state — never for anything security-relevant, since it
+        doesn't grant or trust anything beyond that one field.
+        """
+        if not state:
+            return ""
+        try:
+            stored = await self.redis.client.get(f"sso:state:{state}")
+            if not stored:
+                return ""
+            if isinstance(stored, bytes):
+                stored = stored.decode()
+            record = json.loads(stored)
+            return str(record.get("client") or "")
+        except Exception:  # noqa: BLE001 — a redirect-target hint must never crash the callback
+            return ""
 
     async def handle_callback(
         self, provider_name: str, code: str, state: str
@@ -114,16 +183,20 @@ class SSOService:
             record = json.loads(stored)
             stored_provider = record.get("provider", "")
             return_to = str(record.get("return_to") or "")
+            base_url = str(record.get("base_url") or settings.oauth_redirect_base_url)
         except (ValueError, AttributeError):
             stored_provider, return_to = stored, ""
+            base_url = settings.oauth_redirect_base_url
         if stored_provider != provider_name:
             raise ValueError("SSO state mismatch")
         await self.redis.client.delete(state_key)
 
         provider = get_sso_provider(provider_name)
 
-        # Exchange code for tokens
-        token_data = await self._exchange_code(provider, code)
+        # Exchange code for tokens — redirect_uri MUST be byte-for-byte identical
+        # to the one sent in generate_login_url's authorize request (OAuth2 spec),
+        # so this uses the base_url carried in the state, never re-derives it.
+        token_data = await self._exchange_code(provider, code, base_url)
         id_token_raw = token_data.get("id_token")
         access_token = token_data.get("access_token")
 
@@ -170,6 +243,14 @@ class SSOService:
             email_verified=email_verified,
         )
 
+        # Gruppen des Nutzers lesen und die Rolle danach ausrichten — bei jedem
+        # Login neu, nicht nur beim ersten (wechselt jemand in Entra die Abteilung,
+        # zieht die Berechtigung hier nach). Nur Microsoft: Google-Gruppen brauchen
+        # Workspace-Admin-SDK-Rechte, die nichts mit diesem Login zu tun haben.
+        if provider_name == "microsoft" and access_token:
+            groups = await self._fetch_microsoft_groups(access_token)
+            await self.apply_group_role(user, provider_name, groups)
+
         # Unified login: when the provider also returned Graph tokens (login now
         # requests the full Graph scopes + offline_access), persist them so MS
         # Graph is usable right after login — no separate "connect M365" step.
@@ -190,13 +271,18 @@ class SSOService:
         return user, return_to
 
     async def _exchange_code(
-        self, provider: SSOProviderConfig, code: str
+        self, provider: SSOProviderConfig, code: str, base_url: str | None = None
     ) -> dict:
-        """Exchange authorization code for tokens."""
+        """Exchange authorization code for tokens.
+
+        ``base_url`` must be the SAME one sent in the original authorize request
+        (generate_login_url) — the provider rejects a mismatched redirect_uri.
+        Defaults to the fixed setting so any other caller keeps working unchanged.
+        """
         from app.core.oauth_providers import apply_tenant
         client_id = get_sso_client_id(provider)
         client_secret = get_sso_client_secret(provider)
-        redirect_uri = f"{settings.oauth_redirect_base_url}/api/v1/auth/sso/{provider.name}/callback"
+        redirect_uri = f"{base_url or settings.oauth_redirect_base_url}/api/v1/auth/sso/{provider.name}/callback"
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
@@ -233,49 +319,131 @@ class SSOService:
 
             return resp.json()
 
-    async def apply_group_role(self, user: User, groups: list[str], group_role_map: dict) -> bool:
-        """Rolle aus den Gruppen des Identitaetsanbieters setzen. Gibt zurueck, ob
-        sich etwas geaendert hat.
+    async def apply_group_role(self, user: User, provider: str, groups: list[str]) -> bool:
+        """Rolle (oder CustomRole) aus den Gruppen des Identitaetsanbieters setzen.
 
-        Drei bewusste Entscheidungen:
+        Gibt zurueck, ob sich etwas geaendert hat. Zuerst wird IMMER festgehalten,
+        welche Gruppen gesehen wurden (``record_observed_groups``) — unabhaengig
+        davon, ob eine Zuordnung dafuer existiert. Das ist die Grundlage, auf der die
+        Verwaltung Gruppen zum Anklicken statt zum Abtippen anbietet.
+
+        Drei bewusste Entscheidungen, unveraendert aus dem SAML-only Vorgaenger:
 
         * **Kein Treffer aendert nichts.** Eine leere oder unpassende Zuordnung darf
           niemandem Rechte wegnehmen, die ein Mensch von Hand vergeben hat.
-        * **Die hoechste Rolle gewinnt** (siehe ``saml_config.role_for_groups``) —
-          sonst haengt das Ergebnis davon ab, wie das Verzeichnis die Gruppen sortiert.
-        * **Der allererste Nutzer behaelt Administrator.** Ihn ueber eine
-          Gruppenzuordnung herabzustufen wuerde die Plattform aussperren.
+        * **Die hoechst priorisierte Zuordnung gewinnt** (siehe
+          ``sso_group_roles.resolve_target``).
+        * **Der letzte Administrator bleibt Administrator.** Ihn ueber eine
+          Gruppenzuordnung herabzustufen wuerde die Plattform aussperren — egal ob
+          das neue Ziel eine feste Rolle oder eine CustomRole ist.
         """
-        from app.core.saml_config import role_for_groups
+        await record_observed_groups(self.db, provider, groups or [])
 
-        role_name = role_for_groups(groups or [], group_role_map or {})
-        if not role_name:
+        target = await resolve_target(self.db, provider, groups or [])
+        if target is None:
+            await self.db.commit()  # die Beobachtung soll trotzdem stehen bleiben
             return False
+        kind, value = target
 
-        target = {"admin": UserRole.ADMIN, "manager": UserRole.MANAGER,
-                  "member": UserRole.MEMBER}.get(role_name)
-        if target is None or user.role == target:
-            return False
-
-        if user.role == UserRole.ADMIN and target != UserRole.ADMIN:
-            from sqlalchemy import func
-            admin_count = await self.db.scalar(
-                select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
-            )
-            if (admin_count or 0) <= 1:
+        if kind == "custom_role":
+            try:
+                new_custom_role_id = int(value)
+            except (TypeError, ValueError):
+                logger.warning("SSO-Gruppenzuordnung zeigt auf eine ungueltige CustomRole-ID: %s", value)
+                await self.db.commit()
+                return False
+            from app.models.custom_role import CustomRole
+            if not await self.db.get(CustomRole, new_custom_role_id):
+                # Die Zuordnung zeigt auf eine inzwischen geloeschte CustomRole. Faellt
+                # sonst still auf die Mitglied-Vorgaben zurueck (get_effective_permissions
+                # tut das ohnehin) — hier wird es wenigstens sichtbar geloggt, statt dass
+                # ein Administrator raetselt, warum jemand ploetzlich weniger darf.
                 logger.warning(
-                    "Gruppenzuordnung wuerde den letzten Administrator herabstufen — uebersprungen"
+                    "SSO-Gruppenzuordnung zeigt auf eine geloeschte CustomRole (%s) — uebersprungen",
+                    new_custom_role_id,
                 )
+                await self.db.commit()
+                return False
+            new_role = UserRole.MEMBER  # Basis-Rolle; die CustomRole traegt die eigentlichen Rechte
+            unchanged = user.role == new_role and user.custom_role_id == new_custom_role_id
+        else:
+            new_role = {"admin": UserRole.ADMIN, "manager": UserRole.MANAGER,
+                        "member": UserRole.MEMBER}.get(value)
+            new_custom_role_id = None
+            if new_role is None:
+                await self.db.commit()
+                return False
+            unchanged = user.role == new_role and user.custom_role_id is None
+
+        if unchanged:
+            await self.db.commit()
+            return False
+
+        if user.role == UserRole.ADMIN and new_role != UserRole.ADMIN:
+            # FOR UPDATE sperrt die aktiven Administrator-Zeilen: zwei gleichzeitige
+            # Logins, die durch dieselbe IdP-Gruppenaenderung beide den letzten
+            # verbliebenen Administrator herabstufen wollen, duerfen sich nicht beide
+            # auf denselben (dann veralteten) Zaehlerstand verlassen — der zweite
+            # muss auf den ersten warten und sieht danach die aktuelle Zahl. Ohne die
+            # Sperre koennten zwei parallele Anmeldungen beide durchkommen und die
+            # Plattform waere ohne jeden Administrator (TOCTOU).
+            #
+            # Nur AKTIVE Administratoren zaehlen: ein deaktiviertes Admin-Konto (z.B.
+            # beim Offboarding abgeschaltet, aber nie auf eine andere Rolle gesetzt)
+            # kann sich nicht mehr anmelden und faengt niemanden auf — es als Schutz
+            # mitzuzaehlen waere ein Lockout, der sich als Schutz tarnt.
+            active_admin_ids = (await self.db.execute(
+                select(User.id)
+                .where(User.role == UserRole.ADMIN, User.is_active.is_(True))
+                .with_for_update()
+            )).scalars().all()
+            if len(active_admin_ids) <= 1:
+                logger.warning(
+                    "Gruppenzuordnung wuerde den letzten aktiven Administrator herabstufen — uebersprungen"
+                )
+                await self.db.commit()
                 return False
 
         previous = user.role
-        user.role = target
+        user.role = new_role
+        user.custom_role_id = new_custom_role_id
         await self.db.commit()
         logger.info(
-            "Rolle aus IdP-Gruppen gesetzt: %s %s -> %s",
-            scrub_log(user.email), previous.value, target.value,
+            "Rolle aus IdP-Gruppen gesetzt: %s %s -> %s%s",
+            scrub_log(user.email), previous.value, new_role.value,
+            f" (CustomRole {new_custom_role_id})" if new_custom_role_id else "",
         )
         return True
+
+    async def _fetch_microsoft_groups(self, access_token: str) -> list[str]:
+        """Die eigenen Gruppen des angemeldeten Nutzers via Microsoft Graph.
+
+        ``User.Read`` — das ohnehin schon angeforderte Pflicht-Scope des
+        Microsoft-Logins (siehe ``MICROSOFT_REQUIRED_SCOPES``) — ist laut
+        Microsofts eigener Referenz die geringste noetige Berechtigung fuer
+        ``GET /me/memberOf``. Es braucht also KEINE zusaetzliche, admin-
+        genehmigungspflichtige Berechtigung (``GroupMember.Read.All`` o.ae.) — genau
+        das war bisher der Grund, Gruppen NICHT anzufragen.
+
+        Schlaegt der Aufruf fehl, bleibt die Rolle einfach unveraendert. Ein
+        SSO-Login darf nicht daran scheitern, dass Graph gerade nicht antwortet.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://graph.microsoft.com/v1.0/me/memberOf?$select=displayName",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                if resp.status_code != 200:
+                    logger.warning(
+                        "Microsoft-Gruppen konnten nicht gelesen werden: %s", resp.status_code
+                    )
+                    return []
+                data = resp.json()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Microsoft-Gruppen konnten nicht gelesen werden: %s", e)
+            return []
+        return [g["displayName"] for g in data.get("value", []) if g.get("displayName")]
 
     async def _find_or_create_user(
         self,

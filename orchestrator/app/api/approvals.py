@@ -27,6 +27,43 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
+# Sentinel epic #588, issue #591: feed this endpoint's already-server-side
+# decision points (a command was submitted for approval; a human approved,
+# denied or cancelled it) into the Sentinel's event pipeline (#590) as a
+# second, orchestrator-generated telemetry source alongside `agent:*:logs`.
+#
+# Der oben beschriebene Vorbehalt ist mit #590 aufgeloest: frueher ging dieses
+# Ereignis auf `agents:logs:all`, den global beschreibbaren Kanal. Der Sentinel
+# liest den nicht mehr — er hoert je Agent auf `agent:{id}:logs` und leitet die
+# Zuordnung aus dem Kanalnamen ab statt aus dem Feld `agent_id`. Deshalb muss
+# auch dieses Ereignis in den Namensraum des betroffenen Agenten, sonst erreicht
+# es den Sentinel nicht mehr.
+def _sentinel_pipeline_channel(agent_id: str) -> str:
+    return f"agent:{agent_id}:logs"
+
+
+async def _publish_sentinel_event(
+    redis: "RedisService | None", agent_id: str, event_type: str, data: dict
+) -> None:
+    """Emit one orchestrator-generated event for the Sentinel pipeline (#591).
+
+    Best-effort like `_publish_notification` — a missing/unavailable Redis
+    client must never break the approval flow itself.
+    """
+    if not redis or not redis.client or not agent_id:
+        return
+    try:
+        event = json.dumps({
+            "agent_id": agent_id,
+            "task_id": "",
+            "type": event_type,
+            "data": {**data, "source": "orchestrator"},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        await redis.client.publish(_sentinel_pipeline_channel(agent_id), event)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[Sentinel] Failed to publish {event_type} event for {scrub_log(agent_id)}: {e}")
+
 
 def _get_redis() -> RedisService | None:
     from app.api.ws import _redis
@@ -53,6 +90,18 @@ class ApprovalRequest(BaseModel):
     # Wofuer die Freigabe steht: gewoehnliche Rueckfrage, Eskalation wegen
     # Unsicherheit (#389), erschoepfte Selbstheilung (#390), Reflexionsvorschlag.
     kind: str | None = None
+    # Eine Ansicht statt einer Liste von Textoptionen: {"name": ..., "data": {...}}.
+    #
+    # Der Name zeigt auf eine Komponente, die IM FRONTEND liegt — der Agent
+    # liefert bewusst kein Markup. Ein Modell, das HTML in die Oberflaeche
+    # schreiben darf, ist ein Einfallstor mit Zwischenschritt.
+    #
+    # Bewusst hier und nicht als eigener Endpunkt: eine Ansicht ist eine
+    # Rueckfrage, die anders aussieht. Sie braucht dasselbe Anhalten des Agenten,
+    # denselben Rueckweg (``user_response``), dieselbe Ablage und dieselbe
+    # Zustellung nach Telegram und iOS. Ein zweiter Weg daneben muesste das alles
+    # noch einmal koennen — und wuerde beim ersten Kanal auseinanderlaufen.
+    view: dict | None = None
 
 
 class ConfidenceCheck(BaseModel):
@@ -71,9 +120,58 @@ class ApprovalDecision(BaseModel):
     reason: str | None = None
 
 
+class ApprovalAnswer(BaseModel):
+    """Die Antwort auf eine Rueckfrage — die gewaehlte Option oder freier Text.
+
+    Fragt ein Agent per ``request_approval`` mit Antwortmoeglichkeiten nach, dann
+    ist „genehmigt" keine Antwort: er will wissen, WELCHE. Ueber Telegram ging
+    das schon immer (die Wahl landet in ``user_response``), in der Weboberflaeche
+    nicht — dort standen die Optionen nur als Text da, und wer wirklich antworten
+    wollte, musste ABLEHNEN und die Antwort ins Begruendungsfeld tippen.
+
+    Optional, damit die bisherigen Aufrufer ohne Rumpf unveraendert
+    weiterfunktionieren.
+    """
+
+    answer: str | None = None
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
+
+#: Was eine Ansicht sein darf. Der Name zeigt auf eine Komponente im Frontend;
+#: was hier nicht steht, gibt es nicht. Bewusst eine Liste und keine Pruefung auf
+#: „sieht harmlos aus": ein Name, den die Oberflaeche nicht kennt, wuerde dort zu
+#: einer leeren Flaeche — der Agent haette angehalten und niemand koennte
+#: antworten.
+ERLAUBTE_ANSICHTEN = {
+    # Der kleinste Beweis: aus mehreren Bildern eines waehlen. Deckt den
+    # haeufigsten Fall ab (Marketing-Agent erzeugt Varianten) und braucht keine
+    # Bearbeitung im Browser.
+    "image_choice",
+}
+
+#: Obergrenze fuer die Nutzlast einer Ansicht. Sie liegt in ``meta`` derselben
+#: Zeile wie die Freigabe und geht ueber denselben Redis-Kanal — ein Agent, der
+#: dort ein eingebettetes Bild ablegt, wuerde beides sprengen. Bilder gehoeren
+#: als Pfad hinein, nicht als Inhalt.
+ANSICHT_MAX_ZEICHEN = 8000
+
+
+def _saubere_ansicht(roh: dict) -> dict | None:
+    """Nimmt nur, was die Oberflaeche auch zeichnen kann."""
+    name = (roh or {}).get("name")
+    if name not in ERLAUBTE_ANSICHTEN:
+        logger.warning("Unbekannte Ansicht %r angefordert — wird ignoriert, die "
+                       "Rueckfrage laeuft ueber die Textoptionen", scrub_log(str(name)))
+        return None
+    daten = (roh or {}).get("data") or {}
+    if len(json.dumps(daten, default=str)) > ANSICHT_MAX_ZEICHEN:
+        logger.warning("Ansicht %r zu gross — wird ignoriert", scrub_log(str(name)))
+        return None
+    return {"name": name, "data": daten}
+
 
 def _approval_to_dict(a: CommandApproval) -> dict:
     meta = a.meta or {}
@@ -87,6 +185,7 @@ def _approval_to_dict(a: CommandApproval) -> dict:
         "input": meta.get("input") or {},
         "question": meta.get("question"),
         "options": meta.get("options"),
+        "view": meta.get("view"),
         "context": meta.get("context"),
         "target_channel": meta.get("target_channel"),
         "meta": meta,
@@ -209,6 +308,8 @@ async def request_approval(
         meta["kind"] = body.kind
     if body.task_id:
         meta["task_id"] = body.task_id
+    if body.view:
+        meta["view"] = _saubere_ansicht(body.view)
 
     # Persist to DB
     approval = CommandApproval(
@@ -335,6 +436,28 @@ async def request_approval(
     )
     db.add(audit_entry)
     await db.commit()
+
+    # Sentinel event (#591): command submitted + policy verdict + approval
+    # requested collapse into one server-observed moment here — `risk_level`
+    # already IS the policy verdict (computed client-side against the policies
+    # `command_policies.py` served, then reported back in this same request).
+    #
+    # `reasoning` is agent-supplied free text and can carry secrets or real
+    # names (see PR #596 review) — `scrub_log()` only strips control chars for
+    # log-injection safety, it does not redact content. Rather than trust a
+    # regex-based redactor to catch every credential/PII shape, the Sentinel
+    # payload is kept to structured, non-sensitive fields only; a full-text
+    # audit trail of `reasoning` already exists in AuditLog above for anyone
+    # with DB access, which is a narrower trust boundary than this pub/sub
+    # channel.
+    await _publish_sentinel_event(
+        redis, agent_id, "approval_requested",
+        {
+            "approval_id": str(approval.id),
+            "tool": approval_tool,
+            "risk_level": body.risk_level,
+        },
+    )
 
     logger.info(
         f"Approval {approval.id} created for agent {scrub_log(agent_id)} - "
@@ -582,6 +705,7 @@ async def list_all_approvals(
 @router.post("/{approval_id}/approve")
 async def approve_request(
     approval_id: str,
+    body: ApprovalAnswer | None = None,
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
@@ -610,7 +734,12 @@ async def approve_request(
 
     approval.status = ApprovalStatus.APPROVED
     approval.resolved_at = datetime.now(timezone.utc)
-    approval.user_response = f"Approved by {user.email}"
+    # Hat der Nutzer eine Option gewaehlt oder etwas geschrieben, ist DAS die
+    # Antwort. Vorher stand hier immer „Approved by <mail>" — bei einer
+    # Rueckfrage mit vier Antwortmoeglichkeiten erfuhr der Agent also nie,
+    # welche gemeint war, und fragte im naechsten Zug erneut.
+    antwort = (body.answer or "").strip() if body else ""
+    approval.user_response = antwort or f"Approved by {user.email}"
 
     audit_entry = AuditLog(
         agent_id=approval.agent_id,
@@ -630,8 +759,22 @@ async def approve_request(
     if redis and redis.client:
         await redis.client.publish(
             f"approval:{approval.id}",
-            json.dumps({"status": "approved", "approval_id": str(approval.id)}),
+            # ``reason`` ist derselbe Schluessel, den der Telegram-Weg seit jeher
+            # mit der gewaehlten Option fuellt — die Agentenseite braucht dadurch
+            # keine Aenderung.
+            json.dumps({"status": "approved", "approval_id": str(approval.id),
+                        **({"reason": antwort} if antwort else {})}),
         )
+
+    # Sentinel event (#591): approval result. Emitted here — the single moment
+    # the decision is actually written — rather than at the agent-facing
+    # `/check/{id}` poll endpoint the issue originally pointed at, which fires
+    # every ~2s while pending and would otherwise re-publish the same result
+    # on every poll after resolution.
+    await _publish_sentinel_event(
+        redis, approval.agent_id, "approval_resolved",
+        {"approval_id": approval_id, "status": "approved", "risk_level": approval.risk_level},
+    )
 
     logger.info(f"Approval {approval.id} approved by user {user.id}")
     return {
@@ -683,6 +826,17 @@ async def deny_request(
             json.dumps({"status": "denied", "approval_id": str(approval.id), "reason": decision.reason}),
         )
 
+    # Sentinel event (#591): approval result, see approve_request for why this
+    # is emitted at the resolution endpoint rather than the polling one.
+    # `decision.reason` is human-supplied free text with the same secret/PII
+    # risk as `reasoning` above (PR #596 review) — deliberately left out of
+    # the Sentinel payload for the same reason; the full reason is still
+    # recorded in `approval.user_response` / AuditLog.
+    await _publish_sentinel_event(
+        redis, approval.agent_id, "approval_resolved",
+        {"approval_id": approval_id, "status": "denied", "risk_level": approval.risk_level},
+    )
+
     logger.info(f"Approval {approval.id} denied by user {user.id}")
     return {"approval_id": approval_id, "status": "denied", "reason": decision.reason, "message": "Command denied."}
 
@@ -706,5 +860,13 @@ async def cancel_approval_request(
     approval.resolved_at = datetime.now(timezone.utc)
     approval.user_response = "Cancelled by user"
     await db.commit()
+
+    # Sentinel event (#591): a cancel is also a resolution outcome — a Sentinel
+    # rule tracking "was this risky command ever actually approved?" needs to
+    # see it too, not just approve/deny.
+    await _publish_sentinel_event(
+        _get_redis(), approval.agent_id, "approval_resolved",
+        {"approval_id": approval_id, "status": "cancelled", "risk_level": approval.risk_level},
+    )
 
     return {"message": "Approval request cancelled"}

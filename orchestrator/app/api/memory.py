@@ -14,8 +14,8 @@ Memory system upgrade (issue #24):
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-from sqlalchemy import and_, delete, or_, select, text as sa_text, update
+from pydantic import BaseModel, Field
+from sqlalchemy import and_, delete, func, or_, select, text as sa_text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -620,29 +620,29 @@ async def search_memories(
 
 # --- UI-facing endpoints ---
 
-@router.get("/preload/{agent_id}")
-async def preload_critical_memories(
-    agent_id: str,
-    task_context: str | None = Query(
+class PreloadRequest(BaseModel):
+    """Rumpf fuer ``POST /preload/{agent_id}``.
+
+    Der Aufgabentext steht bewusst im RUMPF und nicht in der Abfragezeichenkette:
+    uvicorn schreibt jeden Pfad samt Abfrage ins Zugriffsprotokoll, und hier steht
+    echter Nutzertext — bis zu 500 Zeichen einer Aufgabenbeschreibung. Der landete
+    damit in jedem Log, das jemand einsammelt oder weiterreicht.
+    """
+
+    task_context: str | None = Field(
         None, max_length=500,
-        description="Task title/description — adds a semantically-ranked 'task_relevant' slice (issue #547)",
-    ),
-    room: str | None = Query(None, description="Restrict the task_relevant slice to this room / sub-rooms"),
-    user=Depends(require_auth_or_agent),
-    db: AsyncSession = Depends(get_db),
-):
-    """Return the agent's most critical memories for prompt injection.
+        description="Aufgabentitel/-beschreibung — ergaenzt eine semantisch passende "
+                    "'task_relevant'-Auswahl (#547)",
+    )
+    room: str | None = Field(None, description="Auswahl auf diesen Raum / Unterraeume begrenzen")
 
-    Returns memories that the agent should ALWAYS know:
-    - importance >= 4 (user corrections, key decisions, credentials)
-    - categories: credentials, preference, procedure
-    - recent learnings (last 10)
-    - task_relevant: top-N memories semantically close to ``task_context``, if given
-      (empty list if omitted or embeddings are disabled — best-effort, never blocks)
 
-    Requires user or agent auth. This response includes credential-category
-    memories in clear text, so it must never be unauthenticated: an agent
-    principal may only preload its own memories; a user must own the agent.
+async def _preload(agent_id, task_context, room, user, db):
+    """Die kritischen Erinnerungen eines Agenten — gemeinsamer Kern beider Wege.
+
+    Die Antwort enthaelt Zugangsdaten im Klartext. Sie darf deshalb nie
+    unauthentifiziert sein: ein Agent darf ausschliesslich SEINE eigenen laden,
+    ein Nutzer nur die eines Agenten, der ihm gehoert.
     """
     if hasattr(user, "role"):
         from app.models.user import UserRole
@@ -660,15 +660,53 @@ async def preload_critical_memories(
     return await collect_preload(db, agent_id, task_context=task_context, room=room)
 
 
+@router.get("/preload/{agent_id}")
+async def preload_critical_memories(
+    agent_id: str,
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Die kritischen Erinnerungen — ohne Aufgabenbezug.
+
+    Bewusst OHNE ``task_context``: hier gaebe es ihn nur als Abfrageparameter, und
+    genau der landet im Zugriffsprotokoll. Wer die aufgabenbezogene Auswahl will,
+    nimmt ``POST``. Aeltere Agenten, die den Parameter noch anhaengen, laufen
+    weiter — er wird schlicht ignoriert, statt mitgeschrieben zu werden.
+    """
+    return await _preload(agent_id, None, None, user, db)
+
+
+@router.post("/preload/{agent_id}")
+async def preload_critical_memories_for_task(
+    agent_id: str,
+    body: PreloadRequest,
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Wie oben, zusaetzlich mit einer semantisch zur Aufgabe passenden Auswahl.
+
+    Derselbe Inhalt, nur ein anderer Weg fuer den Aufgabentext — im Rumpf statt in
+    der URL.
+    """
+    return await _preload(agent_id, body.task_context, body.room, user, db)
+
+
 @router.get("/agents/{agent_id}")
 async def list_agent_memories(
     agent_id: str,
     category: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all memories for an agent (for the frontend Memory tab + agent API)."""
+    """List memories for an agent (for the frontend Memory tab + agent API).
+
+    `total` and `categories` are real counts over ALL of the agent's memories
+    (not just the page returned) — a prior version derived both from the
+    limited page itself, so "(50 entries)" silently meant "however many fit
+    in one page", identical whether the agent truly had 50 memories or 500.
+    """
     if hasattr(user, "role"):
         from app.models.user import UserRole
         from app.models.agent import Agent
@@ -681,21 +719,33 @@ async def list_agent_memories(
             agent_obj = await db.get(Agent, agent_id)
             if agent_obj and agent_obj.user_id and agent_obj.user_id != user.id:
                 raise HTTPException(status_code=403, detail="Access denied")
+
+    # Real per-category breakdown across ALL memories, regardless of the
+    # active filter — so chip counts stay accurate even while one is selected.
+    cat_rows = (await db.execute(
+        select(AgentMemory.category, func.count())
+        .where(AgentMemory.agent_id == agent_id)
+        .group_by(AgentMemory.category)
+    )).all()
+    categories: dict[str, int] = {cat: count for cat, count in cat_rows}
+    total = sum(categories.values())
+
     query = select(AgentMemory).where(AgentMemory.agent_id == agent_id)
     if category:
         query = query.where(AgentMemory.category == category)
-    query = query.order_by(AgentMemory.importance.desc(), AgentMemory.updated_at.desc()).limit(limit)
+    query = (
+        query.order_by(AgentMemory.importance.desc(), AgentMemory.updated_at.desc())
+        .offset(offset).limit(limit)
+    )
     result = await db.execute(query)
     memories = result.scalars().all()
 
-    # Group by category for UI
-    categories: dict[str, int] = {}
-    for m in memories:
-        categories[m.category] = categories.get(m.category, 0) + 1
+    filtered_total = categories.get(category, 0) if category else total
 
     return {
         "memories": [_to_response(m) for m in memories],
-        "total": len(memories),
+        "total": filtered_total,
+        "has_more": offset + len(memories) < filtered_total,
         "categories": categories,
     }
 
@@ -746,8 +796,21 @@ async def update_memory(
 
 
 @router.delete("/{memory_id}")
-async def delete_memory(memory_id: int, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Delete a memory entry."""
+async def delete_memory(
+    memory_id: int,
+    # Frueher stand hier `require_auth` — ein reines NUTZER-Login. Der Agent
+    # schickt sein Agenten-Token, also antwortete das Loeschen ihm immer mit
+    # 401. Das Werkzeug `memory_delete` gab es damit auf dem Papier, aber es
+    # hat nie funktioniert: ein Agent, der merkte, dass sein Wissen veraltet
+    # ist, konnte es nicht wegraeumen. Beim Nutzer am 18.08.2026 blieben so
+    # vier Notizen mit einem laengst geloeschten Kollegen stehen.
+    # `_assert_agent_access` unten kannte den Agenten-Fall die ganze Zeit —
+    # nur kam er nie dort an. Speichern (`/save`) und Auflisten
+    # (`/agents/{id}`) lassen den Agenten ebenfalls durch.
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a memory entry (UI or the agent cleaning up after itself)."""
     result = await db.execute(select(AgentMemory).where(AgentMemory.id == memory_id))
     memory = result.scalar_one_or_none()
     if not memory:

@@ -19,7 +19,7 @@ const TYPE_LABELS: Record<string, { label: string; Icon: typeof KeyRound }> = {
 const TYPE_COLORS: Record<string, string> = {
   api_key: "bg-violet-500/10 text-violet-400 border-violet-500/20",
   sso_profile: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  oauth_token: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  oauth_token: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
 };
 
 const TYPE_COPY = {

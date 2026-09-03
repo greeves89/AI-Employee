@@ -10,6 +10,7 @@ import redis.asyncio as aioredis
 
 from app.config import settings
 from app.log_publisher import LogPublisher
+from app.run_budget import get_run_budget
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,12 @@ def _build_telegram_prompt(text: str, tg: dict, is_new_session: bool = False) ->
     agent_token = settings.agent_token
 
     # Build header
-    header = f"[TELEGRAM] From: {first_name or username or 'User'} | chat_id: {chat_id}"
+    # message_id gehoert in den Kopf, nicht nur in das curl-Beispiel weiter unten:
+    # das Beispiel steht ausschliesslich im Block fuer eine NEUE Sitzung. Ab dem
+    # zweiten Zug kannte der Agent die Kennung der aktuellen Nachricht sonst gar
+    # nicht mehr und konnte auf sie weder reagieren noch sie zitieren.
+    header = (f"[TELEGRAM] From: {first_name or username or 'User'} | "
+              f"chat_id: {chat_id} | message_id: {msg_ref}")
     if media_type:
         header += f" | media: {media_type} (file_id: {file_id})"
     if callback_data:
@@ -121,6 +127,26 @@ AFTER the user gives feedback: if you used a marketplace skill, call skill_rate
 (skill_id, helpfulness, rating, user_rating from their words). Omit task_id — this is a chat.
 
 """
+
+    # Die vollstaendige API-Referenz wiegt rund neunzig Zeilen. Sie JEDER Nachricht
+    # anzuhaengen liess den ohnehin wachsenden --resume-Verlauf schneller an die
+    # Laengengrenze stossen, obwohl der Agent sie ab dem zweiten Zug laengst im
+    # Verlauf hat. Neue Sitzung: alles. Folgezug: ein kurzer Verweis darauf.
+    if not is_new_session:
+        return f"""{header}{voice_hint}
+
+{startup_block}{text}
+
+---
+TELEGRAM CONTEXT:
+Antworte einfach als Text — er geht automatisch an den Nutzer. Die vollstaendige
+Orchestrator-Telegram-API (Dateien, Fotos, Sprache, Reaktionen, Tastaturen) steht
+am Anfang DIESER Sitzung im Verlauf: dort die genauen curl-Aufrufe nachlesen statt
+raten. api.telegram.org rufst du nie direkt auf, den Bot-Token hast du nicht.
+Reagieren kannst du jederzeit — die message_id der aktuellen Nachricht steht oben
+im Kopf. Der Normalfall bleibt KEINE Reaktion, und nie eine statt einer Antwort.
+Basis-URL: {api_base}
+Auth-Header: {auth}"""
 
     return f"""{header}{voice_hint}
 
@@ -488,7 +514,7 @@ class ChatConsumer:
             # they are all this channel, so nothing needs re-queueing.
             while not lane.empty():
                 try:
-                    qmsg = lane.get_nowait()
+                    qmsg, _ = lane.get_nowait()
                 except asyncio.QueueEmpty:
                     break
                 if qmsg.get("text", "").strip() == "/reset":
@@ -535,22 +561,61 @@ class ChatConsumer:
             return handler.session_id is None
         return True
 
-    def _prepare_text(self, text: str, telegram_ctx: dict | None, source: str, handler: object) -> str:
-        from app.runner_hooks import get_approval_rules_prefix
-        rules_prefix = get_approval_rules_prefix()
-        is_new = self._is_new_session(handler)
+    def _skills_prefix(self, text: str) -> str:
         # custom_llm builds its own skills/marketplace context into the system
         # prompt on the first message (see LLMChatHandler). The CLI-based chat
         # handlers (claude_code / codex_cli) had NO such injection at all — the
         # agent only saw a soft "use skill_search" hint and regularly skipped it
         # (#468). Inject the same context CLI tasks already get, once per session.
-        skills_prefix = ""
-        if is_new and settings.agent_mode != "custom_llm":
-            from app.runner_hooks import get_marketplace_skill_suggestions, get_skills_context
-            skills_prefix = get_skills_context() + get_marketplace_skill_suggestions(text[:200])
+        if settings.agent_mode == "custom_llm":
+            return ""
+        from app.runner_hooks import get_marketplace_skill_suggestions, get_skills_context
+        return get_skills_context() + get_marketplace_skill_suggestions(text[:200])
+
+    def _wrap(self, text: str, telegram_ctx: dict | None, source: str, is_new: bool) -> str:
         if telegram_ctx:
-            return rules_prefix + skills_prefix + _build_telegram_prompt(text, telegram_ctx, is_new_session=is_new)
-        return rules_prefix + skills_prefix + _build_channel_prompt(text, source, is_new)
+            return _build_telegram_prompt(text, telegram_ctx, is_new_session=is_new)
+        return _build_channel_prompt(text, source, is_new)
+
+    def _prepare_text(self, text: str, telegram_ctx: dict | None, source: str, handler: object) -> str:
+        from app.runner_hooks import get_approval_rules_prefix
+        is_new = self._is_new_session(handler)
+        # Die Autonomie-Regeln standen bisher vor JEDER Nachricht — obwohl sie sich
+        # zwischen zwei Nachrichten fast nie aendern und im Verlauf laengst stehen.
+        # Jetzt: zum Sitzungsbeginn, und danach nur, wenn der Nutzer sie wirklich
+        # geaendert hat (sonst wuesste der Agent von der Aenderung nichts).
+        #
+        # Der Merker gehoert an den HANDLER, nicht an den Consumer: ein Consumer
+        # bedient mehrere Sitzungen gleichzeitig (self._handlers, je source_key).
+        # Lag er am Consumer, genuegte eine zweite Sitzung, die die neuen Regeln
+        # abholt, damit die erste sie nie zu sehen bekam — sie haette mit einer
+        # zurueckgezogenen Freigabe weitergearbeitet.
+        rules_prefix = get_approval_rules_prefix()
+        if is_new or rules_prefix != getattr(handler, "_last_rules_prefix", None):
+            # Ohne Handler (erste Nachricht eines Kanals) gibt es nichts zu merken —
+            # is_new ist dann ohnehin wahr, die Regeln gehen also raus.
+            if handler is not None:
+                handler._last_rules_prefix = rules_prefix
+        else:
+            rules_prefix = ""
+        skills_prefix = self._skills_prefix(text) if is_new else ""
+        return rules_prefix + skills_prefix + self._wrap(text, telegram_ctx, source, is_new)
+
+    def _fresh_session_text(self, text: str, telegram_ctx: dict | None, source: str) -> str:
+        """Dieselbe Nachricht, aber als ERSTE einer neuen Sitzung aufbereitet.
+
+        Wird gebraucht, wenn ein Zug am zu langen Verlauf scheitert: der Handler
+        wirft die Sitzung weg und wiederholt. Ohne diese Fassung liefe er mit dem
+        Folgezug-Prompt weiter — der die Regeln, den Skills-Block und die volle
+        Telegram-Referenz weglaesst und auf einen Verlauf verweist, den die neue
+        Sitzung gar nicht hat.
+        """
+        from app.runner_hooks import get_approval_rules_prefix
+        return (
+            get_approval_rules_prefix()
+            + self._skills_prefix(text)
+            + self._wrap(text, telegram_ctx, source, True)
+        )
 
     def _save_images(self, message_id: str, images: list[dict]) -> list[str]:
         """Decode base64 images to workspace files (for the CLI handler).
@@ -589,6 +654,14 @@ class ChatConsumer:
         self.redis = aioredis.from_url(settings.redis_url, decode_responses=False)
         log_publisher = LogPublisher(self.redis, self.agent_id)
 
+        # Absturzsicherung (#645): brpop NIMMT die Nachricht aus der Queue —
+        # stirbt der Container mitten in der Verarbeitung (OOM, Neustart-Schleife
+        # beim Aufwecken), war sie weg. Genau so verschwand eine Telegram-
+        # Sprachnachricht an einen schlafenden Agenten. Deshalb liegt jede
+        # Nachricht waehrend der Verarbeitung zusaetzlich in einer Inflight-Liste
+        # und wird beim naechsten Start zurueck in die Queue gelegt.
+        await self._requeue_inflight()
+
         # Start cancel listener in background
         self._cancel_listener_task = asyncio.create_task(self._listen_for_cancel())
 
@@ -600,6 +673,32 @@ class ChatConsumer:
         else:
             await self._run_serial(log_publisher)
 
+    @property
+    def inflight_key(self) -> str:
+        return f"{self.queue_name}:inflight"
+
+    async def _requeue_inflight(self) -> None:
+        """Beim Start: Nachrichten des letzten Absturzes zurueck in die Queue.
+
+        rpush ans RECHTE Ende — dort liest brpop als naechstes, die verlorene
+        Nachricht kommt also VOR neu eingegangenen dran (alte Reihenfolge).
+        """
+        moved = 0
+        try:
+            while True:
+                # lpop, nicht rpop: links liegt die zuletzt gezogene (juengste)
+                # Nachricht — sie muss beim Zuruecklegen ZUERST an die Queue,
+                # damit die aelteste am rechten Ende landet, wo brpop liest.
+                raw = await self.redis.lpop(self.inflight_key)
+                if raw is None:
+                    break
+                await self.redis.rpush(self.queue_name, raw)
+                moved += 1
+        except Exception:  # noqa: BLE001
+            logger.warning("Inflight-Requeue fehlgeschlagen", exc_info=True)
+        if moved:
+            logger.info("Chat consumer: %s unverarbeitete Nachricht(en) aus dem letzten Lauf zurueckgelegt", moved)
+
     async def _run_serial(self, log_publisher: LogPublisher) -> None:
         """Proven serial path: exactly one chat turn at a time (default)."""
         while self.running:
@@ -608,7 +707,11 @@ class ChatConsumer:
                 if result is None:
                     continue
                 _, msg_json = result
-                await self._process_one(json.loads(msg_json), log_publisher)
+                await self.redis.lpush(self.inflight_key, msg_json)
+                try:
+                    await self._process_one(json.loads(msg_json), log_publisher)
+                finally:
+                    await self.redis.lrem(self.inflight_key, 1, msg_json)
             except aioredis.TimeoutError:
                 continue
             except aioredis.ConnectionError:
@@ -628,6 +731,7 @@ class ChatConsumer:
                 if result is None:
                     continue
                 _, msg_json = result
+                await self.redis.lpush(self.inflight_key, msg_json)
                 msg = json.loads(msg_json)
                 sk = self._source_key(
                     msg.get("source", "telegram" if msg.get("telegram") else "webapp"),
@@ -641,7 +745,7 @@ class ChatConsumer:
                     self._lane_tasks[sk] = asyncio.create_task(
                         self._lane_worker(sk, lane, log_publisher)
                     )
-                await lane.put(msg)
+                await lane.put((msg, msg_json))
             except aioredis.TimeoutError:
                 continue
             except aioredis.ConnectionError:
@@ -655,12 +759,17 @@ class ChatConsumer:
         lifetime (an idle lane just blocks cheaply on an empty queue) — no
         concurrent cleanup, so no lost-message race with the dispatcher."""
         while self.running:
-            msg = await lane.get()
+            msg, msg_json = await lane.get()
             async with self._sem:
                 try:
                     await self._process_one(msg, log_publisher)
                 except Exception as e:  # noqa: BLE001
                     await self._report_loop_error(e)
+                finally:
+                    try:
+                        await self.redis.lrem(self.inflight_key, 1, msg_json)
+                    except Exception:  # noqa: BLE001
+                        pass
 
     async def _report_loop_error(self, e: Exception) -> None:
         if self.redis:
@@ -691,6 +800,16 @@ class ChatConsumer:
 
         # Route to the correct per-channel handler
         source_key = self._source_key(source, chat_session_id, telegram_ctx)
+
+        # Den laufenden Gespraechsfaden bekanntgeben, damit Auftraege, die in
+        # diesem Zug vergeben werden, ihn mitfuehren. Sonst meldet der
+        # Orchestrator die Fertigstellung spaeter in einen Faden zurueck, den
+        # niemand ansieht — fuer den Nutzer sah es aus, als komme nie eine
+        # Rueckmeldung, obwohl die Arbeit fertig war.
+        from app.tools.api_client import current_chat_session
+
+        current_chat_session.set(chat_session_id)
+
         handler = await self._get_or_create_handler(source_key, effective_model, log_publisher)
 
         # Handle special commands
@@ -698,7 +817,12 @@ class ChatConsumer:
             await self._reset_handler(source_key)
             return
 
+        raw_text = text
         text = self._prepare_text(text, telegram_ctx, source, handler)
+        # Fallschirm fuer den Laengenfehler: dieselbe Nachricht, aufbereitet als
+        # erste einer neuen Sitzung. Der Handler greift nur danach, wenn er den
+        # Verlauf tatsaechlich wegwerfen musste.
+        fresh_text = self._fresh_session_text(raw_text, telegram_ctx, source)
 
         # Images: the custom-LLM handler sees them natively. The Claude Code CLI
         # handler can't take inline images, so save them to the workspace and
@@ -710,11 +834,15 @@ class ChatConsumer:
             else:
                 saved = self._save_images(message_id, images)
                 if saved:
-                    text += (
+                    suffix = (
                         "\n\n[Attached image(s) saved to the workspace — "
                         "use the Read tool to view them:]\n"
                         + "\n".join(saved)
                     )
+                    text += suffix
+                    fresh_text += suffix
+        if hasattr(handler, "session_id"):
+            handler.fresh_session_text = fresh_text
 
         # Mark as working while processing chat. Report the SESSION id (not the
         # per-message id) so the UI can link the busy pill/rail to the actual
@@ -745,56 +873,68 @@ class ChatConsumer:
         # „hat sich nicht mehr gemeldet" abgebrochen — noch bevor der Agent ueberhaupt
         # etwas tun konnte.
         log_publisher.last_activity_at = time.monotonic()
-        turn = asyncio.ensure_future(
-            handler.handle_message(
-                message_id=message_id,
-                text=text,
-                model=model,
-                reasoning=reasoning,
-                **handle_kwargs,
-            )
-        )
-        try:
-            while True:
-                try:
-                    await asyncio.wait_for(asyncio.shield(turn), timeout=15)
-                    break
-                except asyncio.TimeoutError:
-                    quiet = time.monotonic() - getattr(
-                        log_publisher, "last_activity_at", time.monotonic()
-                    )
-                    if quiet >= idle_limit:
-                        turn.cancel()
-                        raise
-                    continue
-            # Persist Claude session ID so we can --resume after restart
-            await self._persist_session(source_key, handler, effective_model)
-        except asyncio.TimeoutError:
-            logger.error(
-                "Chat turn %s aborted — no activity for %ss (agent appears stuck)",
-                message_id, idle_limit,
+        # Der Platz muss VOR dem Erzeugen des Turns genommen werden — sonst
+        # startet der eigentliche CLI-Prozess (im ersten `await` innerhalb
+        # von `handle_message`) schon, bevor das prozessweite RunBudget
+        # (Issue #628 Phase 2) ueberhaupt gefragt wurde.
+        async with get_run_budget().slot_for_chat():
+            # Uhr NACH dem Warten auf den Platz neu stellen. Das Warten kann unter
+            # Last laenger dauern als `idle_limit` (600s bzw. 1800s); ohne dieses
+            # zweite Zuruecksetzen zaehlt die Wartezeit als Stillstand und der
+            # gerade erst gestartete Turn wird schon bei der ersten 15-Sekunden-
+            # Pruefung abgebrochen — derselbe Fehler, den der Kommentar oben
+            # bereits einmal beseitigt hat, nur mit dem Platz-Warten als Ursache.
+            log_publisher.last_activity_at = time.monotonic()
+            turn = asyncio.ensure_future(
+                handler.handle_message(
+                    message_id=message_id,
+                    text=text,
+                    model=model,
+                    reasoning=reasoning,
+                    **handle_kwargs,
+                )
             )
             try:
-                if hasattr(handler, "stop_current"):
-                    await handler.stop_current()
-            except Exception:  # noqa: BLE001
-                pass
-            await log_publisher.publish_chat(
-                message_id, "error",
-                {"message": "Der Agent hat sich zwischendurch nicht mehr gemeldet und "
-                            "wurde abgebrochen. Bitte erneut versuchen."},
-            )
-            await log_publisher.publish_chat(message_id, "done", {"status": "timeout"})
-        finally:
-            self._active_source_keys.discard(source_key)
-            if not self._active_source_keys:
-                await log_publisher.publish_status("idle")
-            else:
-                # Other sessions still running → keep the busy set accurate.
-                busy = self._busy_chat_sessions()
-                await log_publisher.publish_status(
-                    "working", busy[0] if busy else "", active_sessions=busy,
+                while True:
+                    try:
+                        await asyncio.wait_for(asyncio.shield(turn), timeout=15)
+                        break
+                    except asyncio.TimeoutError:
+                        quiet = time.monotonic() - getattr(
+                            log_publisher, "last_activity_at", time.monotonic()
+                        )
+                        if quiet >= idle_limit:
+                            turn.cancel()
+                            raise
+                        continue
+                # Persist Claude session ID so we can --resume after restart
+                await self._persist_session(source_key, handler, effective_model)
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Chat turn %s aborted — no activity for %ss (agent appears stuck)",
+                    message_id, idle_limit,
                 )
+                try:
+                    if hasattr(handler, "stop_current"):
+                        await handler.stop_current()
+                except Exception:  # noqa: BLE001
+                    pass
+                await log_publisher.publish_chat(
+                    message_id, "error",
+                    {"message": "Der Agent hat sich zwischendurch nicht mehr gemeldet und "
+                                "wurde abgebrochen. Bitte erneut versuchen."},
+                )
+                await log_publisher.publish_chat(message_id, "done", {"status": "timeout"})
+            finally:
+                self._active_source_keys.discard(source_key)
+                if not self._active_source_keys:
+                    await log_publisher.publish_status("idle")
+                else:
+                    # Other sessions still running → keep the busy set accurate.
+                    busy = self._busy_chat_sessions()
+                    await log_publisher.publish_status(
+                        "working", busy[0] if busy else "", active_sessions=busy,
+                    )
 
     async def stop(self) -> None:
         self.running = False

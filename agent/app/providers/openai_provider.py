@@ -15,12 +15,18 @@ Auto-detection priority:
 
 import json
 import logging
+import time
 from typing import AsyncIterator
 
 import httpx
 
 from app import multimodal
-from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
+from app.providers.base import (
+    BaseLLMProvider,
+    ChatMessage,
+    LLMEvent,
+    describe_failure,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +104,16 @@ class OpenAIProvider(BaseLLMProvider):
             return True
         return m.startswith(("o1", "o3", "o4"))
 
+    def _effective_reasoning_effort(self) -> str:
+        """"xhigh" only exists on the Codex family (Responses API); plain GPT-5,
+        the o-series and arbitrary OpenAI-compatible endpoints 400 on it — for
+        those the user's "max" clamps to the strongest level they accept."""
+        if self.reasoning_effort == "xhigh" and not (
+            self._is_responses_model() and "codex" in self.model_name.lower()
+        ):
+            return "high"
+        return self.reasoning_effort
+
     @staticmethod
     def _parse_function_arguments(arguments_json: str, final_arguments: str | None = None) -> dict:
         """Parse streamed function-call arguments.
@@ -173,7 +189,12 @@ class OpenAIProvider(BaseLLMProvider):
             # This surface serves deployments via /chat/completions — the
             # per-deployment /responses route is not exposed, so always
             # use chat completions (GPT-5 reasoning params handled below).
-            root = ep.split("/openai")[0].rstrip("/")
+            # Die Ressourcen-Wurzel gewinnen. Azure AI Foundry zeigt in der
+            # Oberflaeche einen PROJEKT-Endpunkt zum Kopieren an
+            # (…/api/projects/<name>), und genau den traegt jeder ein. Haengt man
+            # daran /openai/deployments/…, antwortet der Dienst mit 400. Der
+            # Deployment-Pfad gehoert an die Ressource, nicht ans Projekt.
+            root = ep.split("/api/projects")[0].split("/openai")[0].rstrip("/")
             url = f"{root}/openai/deployments/{self.model_name}/chat/completions?api-version={self._azure_version()}"
             return url, "chat"
 
@@ -214,9 +235,17 @@ class OpenAIProvider(BaseLLMProvider):
         """Stream via the OpenAI Responses API."""
         body = self._build_responses_body(messages, tools)
         headers = self._headers()
+        _start = time.monotonic()
+
+        def _diag(e):
+            return describe_failure(e, url=url, body=body, messages=messages,
+                                    model=self.model, started=_start)
 
         input_tokens = 0
         output_tokens = 0
+        cached_tokens = 0
+        cache_write_tokens = 0
+        reasoning_tokens = 0
         # Track function calls: item_id -> {name, arguments_json, call_id}
         pending_calls: dict[str, dict] = {}
 
@@ -288,6 +317,12 @@ class OpenAIProvider(BaseLLMProvider):
                         usage = resp.get("usage", {})
                         input_tokens = usage.get("input_tokens", 0)
                         output_tokens = usage.get("output_tokens", 0)
+                        # Feinaufschlüsselung (Responses-API): cache/reasoning.
+                        in_det = usage.get("input_tokens_details") or {}
+                        out_det = usage.get("output_tokens_details") or {}
+                        cached_tokens = int(in_det.get("cached_tokens") or 0)
+                        cache_write_tokens = int(in_det.get("cache_write_tokens") or 0)
+                        reasoning_tokens = int(out_det.get("reasoning_tokens") or 0)
 
                         # Emit any remaining pending calls
                         for item_id, tc in pending_calls.items():
@@ -301,16 +336,18 @@ class OpenAIProvider(BaseLLMProvider):
                         pending_calls.clear()
 
         except httpx.ConnectError as e:
-            yield LLMEvent(type="error", text=f"Connection failed: {e}")
+            yield LLMEvent(type="error", text=f"Connection failed: {_diag(e)}")
             return
-        except httpx.ReadTimeout:
-            yield LLMEvent(type="error", text="Request timed out")
+        except httpx.ReadTimeout as e:
+            yield LLMEvent(type="error", text=f"Request timed out: {_diag(e)}")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {_diag(e)}")
             return
 
-        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
+        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens,
+                       cached_tokens=cached_tokens, cache_write_tokens=cache_write_tokens,
+                       reasoning_tokens=reasoning_tokens)
 
     def _build_responses_body(
         self, messages: list[ChatMessage], tools: list[dict] | None
@@ -350,9 +387,17 @@ class OpenAIProvider(BaseLLMProvider):
                     })
             elif msg.role == "assistant":
                 if msg.tool_calls:
-                    # Re-emit function calls so the API has context
+                    # Re-emit function calls so the API has context. Same
+                    # defensive shape-check as context_compressor._collapse —
+                    # ChatMessage.tool_calls is an untyped list, and this runs
+                    # before the provider's own try/except starts, so a
+                    # malformed entry here crashed the whole turn with a bare,
+                    # un-self-diagnosing exception (customer-reported
+                    # 'tuple' object has no attribute 'get', 2026-08-28).
                     for tc in msg.tool_calls:
-                        func = tc.get("function", {})
+                        if not isinstance(tc, dict):
+                            continue
+                        func = tc.get("function") or {}
                         input_items.append({
                             "type": "function_call",
                             "name": func.get("name", ""),
@@ -379,9 +424,10 @@ class OpenAIProvider(BaseLLMProvider):
         body: dict = {
             "model": self.model_name,
             "input": input_items,
-            "max_output_tokens": self.max_tokens,
             "stream": True,
         }
+        if self.max_tokens:
+            body["max_output_tokens"] = self.max_tokens
 
         if instructions:
             body["instructions"] = instructions
@@ -389,7 +435,7 @@ class OpenAIProvider(BaseLLMProvider):
         if self.temperature is not None and not self._is_responses_model():
             body["temperature"] = self.temperature
         if self.reasoning_effort and self._supports_reasoning_effort():
-            body["reasoning"] = {"effort": self.reasoning_effort}
+            body["reasoning"] = {"effort": self._effective_reasoning_effort()}
 
         # Tools in Responses API format
         if tools:
@@ -428,7 +474,23 @@ class OpenAIProvider(BaseLLMProvider):
         """Execute a single chat completions stream request. Retries once on tokens param mismatch."""
         input_tokens = 0
         output_tokens = 0
+        cached_tokens = 0
+        reasoning_tokens = 0
+        cache_write_tokens = 0  # Chat-Completions meldet keinen Cache-Write
+
+        def _detail(usage: dict) -> None:
+            nonlocal cached_tokens, reasoning_tokens
+            in_det = usage.get("prompt_tokens_details") or {}
+            out_det = usage.get("completion_tokens_details") or {}
+            cached_tokens = int(in_det.get("cached_tokens") or 0) or cached_tokens
+            reasoning_tokens = int(out_det.get("reasoning_tokens") or 0) or reasoning_tokens
         pending_tool_calls: dict[int, dict] = {}
+        _start = time.monotonic()
+
+        def _diag(e):
+            return describe_failure(e, url=url, body=body,
+                                    messages=body.get("messages"),
+                                    model=self.model, started=_start)
 
         try:
             async with self.http.stream("POST", url, json=body, headers=headers) as response:
@@ -481,7 +543,9 @@ class OpenAIProvider(BaseLLMProvider):
                                 if usage:
                                     input_tokens = usage.get("prompt_tokens", input_tokens)
                                     output_tokens = usage.get("completion_tokens", output_tokens)
-                        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
+                                    _detail(usage)
+                        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens,
+                                       cached_tokens=cached_tokens, reasoning_tokens=reasoning_tokens)
                         return
                     yield LLMEvent(type="error", text=f"API error {response.status_code}: {error_text}")
                     return
@@ -507,21 +571,23 @@ class OpenAIProvider(BaseLLMProvider):
                     if usage:
                         input_tokens = usage.get("prompt_tokens", input_tokens)
                         output_tokens = usage.get("completion_tokens", output_tokens)
+                        _detail(usage)
 
                     for _ev in self._parse_chat_chunk(chunk, pending_tool_calls):
                         yield _ev
 
         except httpx.ConnectError as e:
-            yield LLMEvent(type="error", text=f"Connection failed: {e}")
+            yield LLMEvent(type="error", text=f"Connection failed: {_diag(e)}")
             return
-        except httpx.ReadTimeout:
-            yield LLMEvent(type="error", text="Request timed out")
+        except httpx.ReadTimeout as e:
+            yield LLMEvent(type="error", text=f"Request timed out: {_diag(e)}")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {_diag(e)}")
             return
 
-        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
+        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens,
+                       cached_tokens=cached_tokens, reasoning_tokens=reasoning_tokens)
 
     def _parse_chat_chunk(
         self, chunk: dict, pending_tool_calls: dict[int, dict]
@@ -639,15 +705,20 @@ class OpenAIProvider(BaseLLMProvider):
         }
         # GPT-5 / o-series / codex reasoning models require
         # `max_completion_tokens` and reject a custom `temperature`.
+        # Ohne eigene Grenze wird der Schluessel gar nicht gesendet — dann gilt
+        # das Maximum des Modells. Eine Zahl hineinzuschreiben, nur um eine zu
+        # haben, kappt lange Antworten mitten im Satz.
         if self._is_responses_model():
-            body["max_completion_tokens"] = self.max_tokens
+            if self.max_tokens:
+                body["max_completion_tokens"] = self.max_tokens
         else:
-            body["max_tokens"] = self.max_tokens
+            if self.max_tokens:
+                body["max_tokens"] = self.max_tokens
             if self._supports_custom_temperature():
                 body["temperature"] = self.temperature
 
         if self.reasoning_effort and self._supports_reasoning_effort():
-            body["reasoning_effort"] = self.reasoning_effort
+            body["reasoning_effort"] = self._effective_reasoning_effort()
 
         if tools:
             body["tools"] = tools
@@ -684,6 +755,11 @@ class OpenAIProvider(BaseLLMProvider):
         """Stream via the legacy Completions API."""
         body = self._build_legacy_body(messages)
         headers = self._headers()
+        _start = time.monotonic()
+
+        def _diag(e):
+            return describe_failure(e, url=url, body=body, messages=messages,
+                                    model=self.model, started=_start)
 
         input_tokens = 0
         output_tokens = 0
@@ -722,26 +798,28 @@ class OpenAIProvider(BaseLLMProvider):
                         yield LLMEvent(type="text_delta", text=text)
 
         except httpx.ConnectError as e:
-            yield LLMEvent(type="error", text=f"Connection failed: {e}")
+            yield LLMEvent(type="error", text=f"Connection failed: {_diag(e)}")
             return
-        except httpx.ReadTimeout:
-            yield LLMEvent(type="error", text="Request timed out")
+        except httpx.ReadTimeout as e:
+            yield LLMEvent(type="error", text=f"Request timed out: {_diag(e)}")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {_diag(e)}")
             return
 
         yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
 
     def _build_legacy_body(self, messages: list[ChatMessage]) -> dict:
         """Build request body for /completions (legacy) format."""
-        return {
+        body: dict = {
             "model": self.model_name,
             "prompt": self._messages_to_prompt(messages),
-            "max_tokens": self.max_tokens,
             "temperature": self.temperature,
             "stream": True,
         }
+        if self.max_tokens:
+            body["max_tokens"] = self.max_tokens
+        return body
 
     def _messages_to_prompt(self, messages: list[ChatMessage]) -> str:
         """Convert a messages list to a single prompt string for legacy completions."""

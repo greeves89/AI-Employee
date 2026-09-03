@@ -37,11 +37,20 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379"
     redis_url_internal: str = "redis://redis:6379"
 
+    # Wie lange eine laufende Aufgabe ohne Lebenszeichen bleiben darf, bevor der
+    # Waechter sie als tot markiert (#692). Bis der Herzschlag ueberall ankommt
+    # (aeltere Agenten-Abbilder senden ihn noch nicht), ist eine Anlage mit dem
+    # alten Wert von 30 Minuten sonst weiter gedeckelt.
+    watchdog_stale_task_minutes: int = 180
+
     # Claude Authentication (either API key OR OAuth token)
     anthropic_api_key: str = ""
     claude_code_oauth_token: str = ""
     claude_code_oauth_refresh_token: str = ""
     default_model: str = "claude-sonnet-4-6"
+    # LLM nur fuer die Feedback-Widget-Rueckfrage. Leer = reflection_model
+    # (Settings/DB) bzw. dessen Default. Auf Bedrock volle Id (us.anthropic....).
+    feedback_model: str = ""
     max_turns: int = 100
     # How many DIFFERENT chat sessions one agent processes concurrently. 1 = serial
     # (proven default). >1 lets independent sessions/tasks run in parallel in one
@@ -121,6 +130,27 @@ class Settings(BaseSettings):
     # 0 = keine Umrechnung, es bleibt bei USD.
     display_currency: str = "EUR"
     usd_eur_rate: float = 0.92
+
+    # Darf die Teamlizenz (der Claude-/Codex-Zugang der Installation) benutzt
+    # werden? Vorgabe an — sonst staende jede bestehende Installation nach dem
+    # Update ohne Zugang da. Aus heisst: jeder bringt sein eigenes Abo mit, und
+    # ein Agent ohne eigenen Zugang sagt das auch, statt still zu scheitern.
+    allow_team_license: bool = True
+    #: Duerfen Mitarbeiter ihr EIGENES Claude-/ChatGPT-Abo einbinden?
+    #:
+    #: Vom Kunden im Termin am 18.08.2026 ausdruecklich als Bedingung genannt:
+    #: „muss zentral steuerbar sein, sonst Sicherheitsrisiko". Der persoenliche
+    #: Weg wurde am selben Tag gebaut — ohne diesen Schalter waere er in jeder
+    #: Anlage fuer jeden offen, ohne dass ein Administrator es sieht oder
+    #: unterbinden kann.
+    #:
+    #: Vorgabe **an**, wie bei ``allow_team_license``: eine bestehende Anlage
+    #: darf nach einem Update nicht ploetzlich ohne Zugang dastehen. Wer es
+    #: zumacht, tut das bewusst.
+    #: Duerfen Mitarbeiter ihr EIGENES Claude-/Codex-Abo einbinden?
+    #: Vorgabe AUS — ausdrueckliche Kundenvorgabe (18.08.2026): generell
+    #: unterbinden koennen, einzelne Nutzer manuell freischalten.
+    allow_personal_credentials: bool = False
     # Host metrics JSON written by the host power collector (bind-mounted read-only).
     kiosk_metrics_path: str = "/kiosk-metrics/metrics.json"
     secondbrain_container_base: str = "/mnt/brains"
@@ -142,9 +172,33 @@ class Settings(BaseSettings):
     # Runs as a compose service on the internal network.
     stt_service_url: str = "http://stt-service:8003"
 
+    # Kontaktformular der Landingpage (Opt-in: ohne User/Passwort antwortet
+    # der Endpunkt mit 503). Zugangsdaten NIE ins Repo — nur in die .env der
+    # Installation. Absender muss beim SMTP-Anbieter verifiziert sein.
+    contact_smtp_host: str = "smtp-relay.brevo.com"
+    contact_smtp_port: int = 587
+    contact_smtp_user: str = ""
+    contact_smtp_password: str = ""
+    contact_to: str = ""
+    contact_from: str = ""
+
     # Security
     encryption_key: str = ""
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing
+    # When True, SentinelService (orchestrator/app/services/sentinel_service.py,
+    # Sentinel epic #588 sub-issue #590) subscribes to agents:logs:all and reacts
+    # to events. Default off: as of #590 this is a skeleton only — _scan always
+    # returns None (no detection rules yet, see #592) and _stop_agent/_notify are
+    # unwired stubs (see #591), so enabling it today has no observable effect
+    # beyond an idle Redis subscription.
+    sentinel_enabled: bool = False
+    # When True, each agent container connects to Redis with its OWN least-privilege
+    # ACL user (derived deterministically from api_secret_key, see redis_service.py
+    # ensure_agent_acl_user) instead of the single shared admin credential every
+    # agent currently gets via redis_url_internal. Default off: this is new,
+    # unverified-against-a-live-Redis infrastructure — flip only after a real
+    # redis-server ACL smoke test (part of Sentinel epic #588, sub-issue #589).
+    redis_acl_enabled: bool = False
     registration_open: bool = True  # Allow new user registration
     # When True, new self-registered users (SSO or password) land in "pending approval"
     # (approved=False) and must be unlocked by an admin before they can use the app
@@ -186,6 +240,15 @@ class Settings(BaseSettings):
     # Anthropic OAuth (Claude Code public client — no secret needed)
     oauth_anthropic_client_id: str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     oauth_redirect_base_url: str = "http://localhost:8000"
+    # Extra hostnames (comma-separated, e.g. "vanity.example.com,www.vanity.example.com") that MAY also
+    # initiate SSO logins and get redirected back to THEMSELVES instead of always
+    # landing on oauth_redirect_base_url's host. A deployment reachable under more
+    # than one public hostname (a short vanity domain alongside the customer's own
+    # domain) needs this, or a login started on the vanity domain always ends up on
+    # the other one after Microsoft/Google redirects back. Each entry here needs a
+    # MATCHING redirect URI registered with the SSO provider (Entra etc.) — this
+    # setting alone does not make the provider accept the callback.
+    oauth_redirect_allowed_hosts: str = ""
     # Public bridge endpoint base for deployments where the browser-facing app
     # host differs from the hostname desktop bridges must use.
     bridge_public_url: str = ""
@@ -216,6 +279,15 @@ class Settings(BaseSettings):
     feedback_webhook_url: str = ""
     feedback_webhook_api_key: str = ""
 
+    # Feedback-Widget: MD-Dateien (+PNG-Screenshots) sind die Source of Truth,
+    # abgelegt in diesem Verzeichnis (Compose-Volume, ueberlebt Redeploys).
+    feedback_dir: str = "/data/feedback"
+    # Beim Speichern automatisch ein GitHub-Issue anlegen (best-effort, nutzt
+    # die GitHub-Integration aus oauth_integrations). Default aus.
+    feedback_issue_enabled: bool = False
+    # Ziel-Repo fuer Feedback-Issues ("owner/repo"). Leer -> Default-Repo.
+    github_repo: str = ""
+
     # GitHub API token for skill crawler (avoids 60 req/h rate limit → 5000 req/h)
     github_token: str = ""
 
@@ -231,6 +303,14 @@ class Settings(BaseSettings):
     oauth_microsoft_scopes: str = ""
     oauth_github_scopes: str = ""
     oauth_anthropic_scopes: str = ""
+
+    # Opt-in "prompt" value for the Microsoft authorize URL (env: OAUTH_MICROSOFT_PROMPT).
+    # Empty by default = no forced prompt, so a tenant-wide admin consent grant is
+    # honored on connect. Tenants with end-user consent disabled can never satisfy a
+    # forced "prompt=consent" dialog — Entra re-forces it on every attempt even after
+    # the grant exists (#571). Set to "consent" to restore the old forced-reconsent
+    # behaviour where that is actually wanted.
+    oauth_microsoft_prompt: str = ""
 
     # Skill file attachments — stored on shared Docker volume
     skill_files_root: str = "/shared/skill-files"

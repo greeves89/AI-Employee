@@ -26,12 +26,12 @@ const PROVIDER_COLORS: Record<string, string> = {
   google: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   ollama: "bg-violet-500/10 text-violet-400 border-violet-500/20",
   "lm-studio": "bg-violet-500/10 text-violet-400 border-violet-500/20",
-  bedrock: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  bedrock: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
   "azure-realtime": "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20",
   "brave-search": "bg-orange-500/10 text-orange-400 border-orange-500/20",
 };
 
-type ModelRow ={ name: string; provider_type: string; api_endpoint: string };
+type ModelRow ={ name: string; provider_type: string; api_endpoint: string; enabled: boolean };
 
 type FormState = {
   name: string;
@@ -50,14 +50,14 @@ const EMPTY_FORM: FormState = {
   aws_access_key_id: "", aws_region: "us-east-1",
 };
 
-const EMPTY_MODEL: ModelRow = { name: "", provider_type: "azure-openai", api_endpoint: "" };
+const EMPTY_MODEL: ModelRow = { name: "", provider_type: "azure-openai", api_endpoint: "", enabled: true };
 
 // Connection state from the last model-discovery check (#435).
 function accountHealthBadge(a: AIAccount): { label: string; className: string } | null {
   if (!a.last_status) return null;
   const map: Record<string, { label: string; className: string }> = {
     ok: { label: "erreichbar", className: "text-emerald-400" },
-    auth_failed: { label: "Auth fehlgeschlagen", className: "text-amber-400" },
+    auth_failed: { label: "Auth fehlgeschlagen", className: "text-amber-700 dark:text-amber-400" },
     unreachable: { label: "nicht erreichbar", className: "text-red-400" },
     protocol_error: { label: "Protokollfehler", className: "text-red-400" },
     unsupported: { label: "keine Prüfung möglich", className: "text-muted-foreground/50" },
@@ -121,6 +121,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
       api_key: "",
       models: (a.models || []).map((m) => ({
         name: m.name, provider_type: m.provider_type, api_endpoint: m.api_endpoint || "",
+        enabled: m.enabled !== false,
       })),
       api_version: String(extra.api_version || ""),
       aws_access_key_id: String(extra.aws_access_key_id || ""),
@@ -134,7 +135,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
   const addModel = () => {
     const name = newModel.name.trim();
     if (!name || form.models.some((m) => m.name === name)) return;
-    setForm((f) => ({ ...f, models: [...f.models, {
+    setForm((f) => ({ ...f, models: [...f.models, { enabled: true,
       name,
       provider_type: newModel.provider_type || f.provider_type,
       api_endpoint: (newModel.api_endpoint || f.api_endpoint).trim(),
@@ -177,7 +178,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
       if (f.models.some((m) => m.name === id)) {
         return { ...f, models: f.models.filter((m) => m.name !== id) };
       }
-      return { ...f, models: [...f.models, { name: id, provider_type: f.provider_type, api_endpoint: f.api_endpoint.trim() }] };
+      return { ...f, models: [...f.models, { name: id, provider_type: f.provider_type, api_endpoint: f.api_endpoint.trim(), enabled: true }] };
     });
   };
 
@@ -206,7 +207,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
     // come from the catalog; Brave has none). Auto-fill Bedrock's default.
     let models = form.models;
     if (isBedrock && models.length === 0) {
-      models = [{ name: "amazon.nova-2-sonic-v1:0", provider_type: "bedrock", api_endpoint: "" }];
+      models = [{ name: "amazon.nova-2-sonic-v1:0", provider_type: "bedrock", api_endpoint: "", enabled: true }];
     }
     if (!form.name.trim() || (models.length === 0 && !isBrave)) {
       showToast("error", "Name und mindestens ein Modell sind Pflicht");
@@ -232,6 +233,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
           name: m.name,
           provider_type: m.provider_type || form.provider_type,
           api_endpoint: (m.api_endpoint || form.api_endpoint).trim(),
+          enabled: m.enabled !== false,
         })),
         extra,
         ...(form.api_key ? { api_key: form.api_key } : {}),
@@ -343,10 +345,23 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                       </span>
                       <span className="text-[10px] text-muted-foreground/50 truncate flex-1">{m.api_endpoint || "— Endpoint fehlt —"}</span>
                       {discovered && discovered.length > 0 && !discovered.some((d) => d.id === m.name) && (
-                        <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-[10px] text-amber-400" title="Nicht in der vom Provider abgerufenen Liste">
+                        <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-[10px] text-amber-700 dark:text-amber-400" title="Nicht in der vom Provider abgerufenen Liste">
                           nicht in Liste
                         </span>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, models: f.models.map((x) => x.name === m.name ? { ...x, enabled: !(x.enabled !== false) } : x) }))}
+                        className={cn(
+                          "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors",
+                          m.enabled !== false
+                            ? "border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-400 hover:bg-emerald-500/[0.15]"
+                            : "border-foreground/[0.12] bg-foreground/[0.04] text-muted-foreground hover:text-foreground"
+                        )}
+                        title={m.enabled !== false ? "Fuer Agenten freigegeben — klicken zum Sperren" : "Gesperrt — klicken zum Freigeben"}
+                      >
+                        {m.enabled !== false ? "freigegeben" : "gesperrt"}
+                      </button>
                       <button type="button" onClick={() => removeModel(m.name)} className="shrink-0 text-muted-foreground hover:text-red-400">
                         <X className="h-3.5 w-3.5" />
                       </button>
@@ -367,7 +382,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                     </button>
                   </div>
                   {discoverMsg && (
-                    <p className={cn("text-[11px]", discoverMsg.ok ? "text-emerald-400" : "text-amber-400")}>
+                    <p className={cn("text-[11px]", discoverMsg.ok ? "text-emerald-400" : "text-amber-700 dark:text-amber-400")}>
                       {discoverMsg.text}
                     </p>
                   )}
@@ -414,7 +429,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
               </div>
               {form.provider_type === "bedrock" && (
                 <div className="col-span-2 grid grid-cols-2 gap-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.04] p-3">
-                  <div className="col-span-2 text-[11px] text-amber-400/80">
+                  <div className="col-span-2 text-[11px] text-amber-700 dark:text-amber-400/80">
                     AWS Bedrock für Realtime-Sprache (Nova Sonic). Modelle wählst du danach im Sprach-Setup pro Agent aus.
                   </div>
                   <div>
@@ -484,7 +499,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                       {a.provider_type}
                     </span>
                     {!a.has_key && a.provider_type !== "ollama" && a.provider_type !== "lm-studio" && (
-                      <span className="text-[10px] text-amber-400">kein Key</span>
+                      <span className="text-[10px] text-amber-700 dark:text-amber-400">kein Key</span>
                     )}
                     {(() => {
                       const h = accountHealthBadge(a);
@@ -492,7 +507,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                     })()}
                   </div>
                   <p className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
-                    {(a.models || []).map((m) => m.name).join(", ") || "— keine Modelle —"}
+                    {(a.models || []).map((m) => m.enabled === false ? `${m.name} (gesperrt)` : m.name).join(", ") || "— keine Modelle —"}
                     {a.last_status && a.last_status !== "ok" && a.last_error && (
                       <span className="text-red-400/70"> — {a.last_error}</span>
                     )}

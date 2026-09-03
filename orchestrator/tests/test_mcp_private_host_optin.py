@@ -1,7 +1,7 @@
 """Interne MCP-Server zulassen — pro Eintrag, nicht für die ganze Installation.
 
 Der Anlass: ein Administrator trägt seinen EIGENEN MCP-Server ein, der im Haus
-steht (``skbs-s-kichat.klinikum-bs.de`` → 192.168.245.87), und bekommt eine
+steht (``ki-chat.example.com`` → 192.168.245.87), und bekommt eine
 Ablehnung mit dem Hinweis auf eine Umgebungsvariable. Die gibt es zwar, aber sie
 öffnet die **ganze** Installation und braucht einen Neustart — für einen einzigen
 Eintrag ist das das falsche Werkzeug.

@@ -48,6 +48,8 @@ SECRET_KEYS = {
     "exchange_service_account_password",
     # SMTP relay auth password (optional) — secret
     "smtp_relay_password",
+    # Websuche: nur gebraucht wenn Provider brave/serp gewaehlt ist.
+    "web_search_api_key",
 }
 
 # All settings keys that can be persisted
@@ -60,6 +62,12 @@ ALLOWED_KEYS = SECRET_KEYS | {
     # Dienst nicht, und ``set()`` warf „Unknown setting". Weil das Frontend beide
     # bei JEDEM Speichern mitschickt, scheiterte damit das komplette Speichern der
     # Einstellungen, nicht nur die Waehrung.
+    "allow_team_license",
+    "allow_personal_credentials",
+    # Master-Regeln: Verhaltensvorgaben fuer ALLE Agenten aller Nutzer.
+    # Bewusst KEIN Geheimnis — sie sollen im Klartext nachlesbar sein.
+    "master_rules",
+    "master_rules_enabled",
     "display_currency",
     "usd_eur_rate",
     "aws_region",
@@ -79,6 +87,10 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "oauth_apple_key_id",
     # License
     "license_key",
+    # call2home — opt-in usage/renewal heartbeat, see services/license_heartbeat_service.py.
+    # Empty license_server_url = disabled, nothing is ever sent.
+    "license_server_url",
+    "license_instance_id",
     # Lifecycle configuration
     "agent_idle_timeout_minutes",
     # Expose MS Graph MCP server to external LLM clients (OpenWebUI)
@@ -109,7 +121,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "apns_bundle_id",
     "apns_sandbox",
     # On-prem Exchange (EWS) — admin connection config (per-user auth via impersonation)
-    "exchange_server_url",            # e.g. "mail.klinikum-bs.de" (EWS host)
+    "exchange_server_url",            # e.g. "mail.example.com" (EWS host)
     "exchange_auth_mode",             # "service_account" | "modern_auth" | "basic"
     "exchange_service_account_user",  # service-account UPN (service_account mode)
     "exchange_tenant_id",             # Entra tenant (modern_auth mode)
@@ -162,7 +174,6 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "saml_idp_x509_cert",
     "saml_sp_entity_id",
     "saml_group_attribute",        # aus welchem Attribut die Gruppen kommen
-    "saml_group_role_map",         # JSON {"Gruppe": "admin"|"manager"|"member"}
     # Web Push (VAPID): EINMAL erzeugt, danach unveraendert. Ein Wechsel entwertet
     # saemtliche bestehenden Browser-Anmeldungen — Meldungen blieben dann still aus.
     "webpush_vapid_private_key",
@@ -177,6 +188,10 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "model_enabled_overrides",     # JSON {model_value: bool} — admin freischaltung
     # DLP egress filter (#388): scan outbound text for PII/secrets before sending
     "dlp_enabled",                 # "true" | "false" (default off — opt-in)
+    # Websuche-Provider (Vorbild OpenWebUI): "duckduckgo" (default, keylos) | "brave" | "serp".
+    # Der Key ist zusaetzlich in SECRET_KEYS — nur fuer brave/serp gebraucht.
+    "web_search_provider",
+    "web_search_api_key",
 }
 
 

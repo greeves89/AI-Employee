@@ -98,9 +98,13 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       FEEDBACK_WEBHOOK_URL: ${FEEDBACK_WEBHOOK_URL:-}
       FEEDBACK_WEBHOOK_API_KEY: ${FEEDBACK_WEBHOOK_API_KEY:-}
+      FEEDBACK_DIR: /data/feedback
+      FEEDBACK_ISSUE_ENABLED: ${FEEDBACK_ISSUE_ENABLED:-false}
+      GITHUB_REPO: ${GITHUB_REPO:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       CLAUDE_CODE_OAUTH_REFRESH_TOKEN: ${CLAUDE_CODE_OAUTH_REFRESH_TOKEN:-}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-claude-sonnet-4-6}
+      FEEDBACK_MODEL: ${FEEDBACK_MODEL:-}
       MAX_TURNS: ${MAX_TURNS:-100}
       MAX_AGENTS: ${MAX_AGENTS:-10}
       EXTENDED_THINKING: ${EXTENDED_THINKING:-true}
@@ -139,6 +143,7 @@ services:
     - ./VERSION:/VERSION:ro
     - ./CHANGELOG.md:/CHANGELOG.md:ro
     - ai-employee-shared:/shared
+    - feedback_data:/data/feedback
     - ${HOME}/.ai-employee:/host-auth:ro
     - ${SECONDBRAIN_BASE:-/srv/secondbrain}:/srv/secondbrain
     deploy:
@@ -301,6 +306,7 @@ volumes:
   redis_data: null
   embedding_models: null
   stt_models: null
+  feedback_data: null
   ai-employee-shared:
     external: true
 networks:

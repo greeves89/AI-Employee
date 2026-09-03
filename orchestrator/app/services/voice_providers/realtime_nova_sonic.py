@@ -30,6 +30,7 @@ import base64
 import json
 import logging
 import os
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -43,6 +44,44 @@ OUTPUT_SAMPLE_RATE = 24000
 # Event callback: (event_type, payload) -> awaitable.
 # event_type ∈ {"audio", "text", "tool_use", "usage", "error", "done"}
 EventCallback = Callable[[str, dict], Awaitable[None]]
+
+
+def _sprechbar(s: Any) -> str:
+    r"""Text, der VORGELESEN wird — ohne alles, was man nicht sprechen kann.
+
+    Zwei Dinge, die im Sprachkanal nichts verloren haben:
+
+    1. **Zeilenumbrueche.** ``send_tool_result`` verpackt den Text zusaetzlich
+       mit ``json.dumps``; ein echter Umbruch wird dabei wieder zu den zwei
+       SICHTBAREN Zeichen ``\`` und ``n``. Nova reicht die Zeichenkette
+       woertlich ans Modell, das den Backslash nicht sprechen kann — im
+       Transkript stand dann „n n1. InsideAI" (gemeldet am 21.08.2026).
+       ``_clean_text`` wandelt literale Escapes zwar in echte Umbrueche
+       zurueck, aber die naechste Kodierung machte das sofort wieder zunichte.
+       Fuer gesprochenen Text traegt ein Umbruch ohnehin keine Bedeutung: ein
+       Absatz wird zur Sprechpause, eine Zeile zum Leerzeichen.
+    2. **Markdown.** ``**InsideAI**`` wurde als „InsideAI Sternchen Sternchen"
+       vorgelesen — im selben Bildschirmfoto zu sehen.
+
+    Bewusst NICHT in ``_clean_text`` eingebaut: das saeubert alles, was in die
+    Engine geht (auch Eingespieltes, wo echte Umbrueche unbeschadet ankommen).
+    Hier geht es nur um den Weg, der zusaetzlich kodiert wird.
+    """
+    t = _clean_text(s)
+    # Absatz = Sprechpause, einfacher Umbruch = Leerzeichen.
+    # Steht davor schon ein Satzzeichen (haeufig ein Doppelpunkt vor einer
+    # Aufzaehlung), waere ein zusaetzlicher Punkt zu hoeren: „Ergebnisse:. Eins".
+    t = re.sub(r"(?<=[.!?:;])[ \t]*\n[ \t]*\n\s*", " ", t)
+    t = re.sub(r"[ \t]*\n[ \t]*\n\s*", ". ", t)
+    t = re.sub(r"[ \t]*[\n\r\t][ \t]*", " ", t)
+    # Markdown-Auszeichnung: der Inhalt bleibt, die Zeichen fliegen raus.
+    t = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", t)      # [Text](Ziel) -> Text
+    t = re.sub(r"(\*\*|__|`+|~~)", "", t)                # fett/kursiv/code
+    t = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", t)          # Ueberschriften
+    # Doppelte Satzzeichen aus dem Absatz-Ersatz und Mehrfach-Leerzeichen.
+    t = re.sub(r"\.\s*\.(\s|$)", ". ", t)
+    t = re.sub(r"[ ]{2,}", " ", t)
+    return t.strip()
 
 
 def _clean_text(s: Any) -> str:
@@ -118,6 +157,9 @@ class NovaSonicSession:
         # AWS_ERROR_HTTP_STREAM_HAS_COMPLETED from an internal task whose exception
         # is never retrieved — so all sends short-circuit once this is True.
         self._input_dead = False
+        #: (Art, Bytes) des zuletzt gesendeten Nicht-Audio-Ereignisses — die
+        #: Brotkrume fuer „Invalid input request", siehe _send_event.
+        self.letztes_ereignis: tuple[str, int] | None = None
         # Serializes multi-event sequences (contentStart→content→contentEnd) so
         # concurrently-fired tool results / text injections can't interleave on the
         # wire. Single-event audio sends stay lock-free (own persistent content block).
@@ -125,12 +167,28 @@ class NovaSonicSession:
 
     # ── stream setup ────────────────────────────────────────────────
 
-    def _config(self):
-        from aws_sdk_bedrock_runtime.config import Config
+    async def _config(self):
+        # aws-sdk-bedrock-runtime 0.10 renamed Config -> AsyncBedrockRuntimeConfig
+        # and BedrockRuntimeClient -> AsyncBedrockRuntimeClient, kept the field
+        # names and the auth/models modules intact, but forbids constructing the
+        # config directly — it must come from `await ...Config.resolve(...)`.
+        # Deployments carry either SDK generation depending on when their image
+        # was built, so both paths must work; a missing SDK still fails loudly.
+        try:
+            from aws_sdk_bedrock_runtime.config import Config
+
+            legacy_sdk = True
+        except ImportError:
+            from aws_sdk_bedrock_runtime.config import (
+                AsyncBedrockRuntimeConfig as Config,
+            )
+
+            legacy_sdk = False
         from aws_sdk_bedrock_runtime.auth import HTTPAuthSchemeResolver
         from smithy_aws_core.auth.sigv4 import SigV4AuthScheme
         from smithy_aws_core.identity import AWSCredentialsIdentity
         from smithy_core.aio.interfaces.identity import IdentityResolver
+        from smithy_http.aio.crt import AWSCRTHTTPClient
 
         access, secret, token = self._access_key, self._secret_key, self._session_token
 
@@ -142,13 +200,23 @@ class NovaSonicSession:
                     session_token=token,
                 )
 
-        return Config(
-            endpoint_uri=f"https://bedrock-runtime.{self.region}.amazonaws.com",
-            region=self.region,
-            aws_credentials_identity_resolver=_StaticCreds(),
-            auth_scheme_resolver=HTTPAuthSchemeResolver(),
-            auth_schemes={"aws.auth#sigv4": SigV4AuthScheme(service="bedrock")},
-        )
+        kwargs = {
+            "endpoint_uri": f"https://bedrock-runtime.{self.region}.amazonaws.com",
+            "region": self.region,
+            "aws_credentials_identity_resolver": _StaticCreds(),
+            "auth_scheme_resolver": HTTPAuthSchemeResolver(),
+            "auth_schemes": {"aws.auth#sigv4": SigV4AuthScheme(service="bedrock")},
+            # Nova Sonic needs duplex streaming, and only the CRT transport can do
+            # it. The SDK default is NOT stable across the supported range: 0.7-0.10
+            # default to AWSCRTHTTPClient, 0.11 switched to AIOHTTPClient, which
+            # raises UnsupportedTransportError on every session open. Pinning it
+            # here makes the SDK default irrelevant. `transport` is accepted by
+            # every version from 0.7 through 0.11, on both config paths below.
+            "transport": AWSCRTHTTPClient(),
+        }
+        if legacy_sdk:
+            return Config(**kwargs)
+        return await Config.resolve(**kwargs)
 
     async def _send_event(self, event: dict) -> None:
         # Never write to a stream the server has already completed — awscrt would
@@ -160,16 +228,31 @@ class NovaSonicSession:
             BidirectionalInputPayloadPart as Payload,
         )
         data = json.dumps({"event": event}).encode("utf-8")
+        # Brotkrume fuer den Fehlerfall. Bedrock antwortet auf ein unbrauchbares
+        # Ereignis mit „Invalid input request, please fix your input and try
+        # again." — ohne zu sagen, WELCHES. Zweimal am 19.08.2026 aufgetreten,
+        # und im Log stand nur die Meldung. Hier merken wir uns die Art und
+        # Groesse des zuletzt gesendeten Ereignisses (Audio ausgenommen, das
+        # waere jede Zehntelsekunde eine Zeile), damit die naechste Meldung
+        # sagen kann, worauf sie folgte.
+        art = next(iter(event.keys()), "?")
+        if art != "audioInput":
+            self.letztes_ereignis = (art, len(data))
         await self._stream.input_stream.send(InChunk(value=Payload(bytes_=data)))
 
     async def open(self) -> None:
         """Open the bidirectional stream and prime it with prompt + system + tools."""
-        from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient
+        try:
+            from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient
+        except ImportError:  # SDK >= 0.10, see _config
+            from aws_sdk_bedrock_runtime.client import (
+                AsyncBedrockRuntimeClient as BedrockRuntimeClient,
+            )
         from aws_sdk_bedrock_runtime.models import (
             InvokeModelWithBidirectionalStreamOperationInput as OpInput,
         )
 
-        self._client = BedrockRuntimeClient(config=self._config())
+        self._client = BedrockRuntimeClient(config=await self._config())
         self._stream = await self._client.invoke_model_with_bidirectional_stream(
             OpInput(model_id=self.model_id)
         )
@@ -246,8 +329,13 @@ class NovaSonicSession:
                 "interactive": True, "role": "USER",
                 "textInputConfiguration": {"mediaType": "text/plain"},
             }})
+            # `_sprechbar` statt `_clean_text`: dieser Text wird genau wie ein
+            # Tool-Ergebnis vorgelesen (siehe send_tool_result) — dieselbe
+            # zusaetzliche Kodierung, derselbe "n1./n2."-Bug (erneut gemeldet
+            # am 26.08.2026), nur an dieser zweiten Stelle war der Fix vom
+            # 21.08. noch nicht nachgezogen.
             await self._send_event({"textInput": {
-                "promptName": self._prompt_name, "contentName": content_name, "content": _clean_text(text),
+                "promptName": self._prompt_name, "contentName": content_name, "content": _sprechbar(text),
             }})
             await self._send_event({"contentEnd": {
                 "promptName": self._prompt_name, "contentName": content_name,
@@ -272,7 +360,10 @@ class NovaSonicSession:
             # Nova Sonic requires the tool result content as a JSON string, not prose.
             await self._send_event({"toolResult": {
                 "promptName": self._prompt_name, "contentName": content_name,
-                "content": json.dumps({"result": _clean_text(result)}),
+                # `_sprechbar` statt `_clean_text`: der Text geht hier durch eine
+                # ZWEITE Kodierung, die echte Umbrueche wieder sichtbar machen
+                # wuerde. Siehe dort.
+                "content": json.dumps({"result": _sprechbar(result)}),
             }})
             await self._send_event({"contentEnd": {
                 "promptName": self._prompt_name, "contentName": content_name,
@@ -308,7 +399,10 @@ class NovaSonicSession:
         except Exception as e:  # noqa: BLE001
             # Always log (even if already closing) so the real Bedrock error is never
             # invisible — this is how "unexpected error during processing" surfaces.
-            logger.warning("NovaSonic receive loop error (closed=%s): %r", self._closed, e, exc_info=True)
+            logger.warning(
+                "NovaSonic receive loop error (closed=%s, zuletzt gesendet=%s): %r",
+                self._closed, self.letztes_ereignis, e, exc_info=True,
+            )
             if not self._closed:
                 await self._safe_emit("error", {"message": str(e)})
         finally:

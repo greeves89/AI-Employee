@@ -20,16 +20,89 @@ import re
 DEFAULT_TOLERANCE = 5.0
 
 
-def check_item(item: dict, answer: str | None) -> dict:
+#: Werkzeuge, die nur den eigenen Kopf befragen oder den Papierkram erledigen.
+#: Wer ausschliesslich diese ruft, hat geredet und nicht gearbeitet. Spiegelt
+#: ``LLMRunner._BOOKKEEPING_TOOLS`` auf der Agentenseite.
+BOOKKEEPING_TOOLS = frozenset({
+    "rate_task", "skill_rate", "memory_save", "memory_search", "memory_list",
+    "memory_delete", "brain_search", "brain_related", "skill_search",
+    "list_todos", "update_todos", "search_tools", "notify_user",
+    "escalate_if_unsure", "request_approval", "check_approval",
+})
+
+
+def check_item(item: dict, answer: str | None, facts: dict | None = None) -> dict:
     """Eine einzelne Aufgabe bewerten.
 
     Rückgabe enthält IMMER ``checks`` — auch bei Erfolg. Ein Fehlschlag ohne
     Begründung ist wertlos: dann steht da „Test rot", und jemand muss von Hand
     nachstellen, was eigentlich erwartet war.
+
+    ``facts`` sind **nachgemessene Tatsachen** über den Lauf, vom Aufrufer aus der
+    Datenbank zusammengetragen: welche Werkzeuge wirklich gerufen wurden, wie viele
+    Aufträge der Agent vergeben hat. Damit bleibt diese Funktion rein — gleiche
+    Eingabe, gleiche Ausgabe — und kann trotzdem prüfen, was **passiert** ist statt
+    nur, was **dasteht**.
+
+    Warum das nötig wurde: Am 2026-08-12 sind fünf Ausfälle beim Kunden
+    aufgeschlagen, keiner davon von einem Test gefunden. Der teuerste: ein Agent
+    BESCHRIEB seine Delegation, statt sie auszuführen — mit erfundener
+    Statustabelle. Eine Textprüfung findet das nie, im Gegenteil: die erfundene
+    Antwort liest sich **besser** als die ehrliche. Erst der Blick auf die
+    tatsächlich vergebenen Aufträge trennt Reden von Tun.
     """
     text = answer or ""
     haystack = text.lower()
+    facts = facts or {}
     checks: list[dict] = []
+
+    tools_called = {str(t) for t in (facts.get("tools_called") or [])}
+
+    for name in item.get("expect_tools") or []:
+        checks.append({
+            "kind": "tool_called", "value": name, "ok": str(name) in tools_called,
+        })
+
+    for name in item.get("expect_no_tools") or []:
+        checks.append({
+            "kind": "tool_not_called", "value": name, "ok": str(name) not in tools_called,
+        })
+
+    if item.get("expect_substantive_work"):
+        # „Hat er die Aufgabe ueberhaupt angefasst?" Jede echte Arbeit braucht
+        # mindestens EINEN Griff nach draussen — lesen, suchen, ausfuehren,
+        # schreiben. Bleibt nur der Papierkram, war es eine Ankuendigung.
+        real = sorted(tools_called - BOOKKEEPING_TOOLS)
+        checks.append({
+            "kind": "substantive_work", "value": real or None, "ok": bool(real),
+            **({} if real else {"error": "Nur Buchhaltung gerufen — angekuendigt statt getan"}),
+        })
+
+    expected_delegations = item.get("expect_delegated")
+    if expected_delegations is not None:
+        try:
+            wanted = int(expected_delegations)
+        except (TypeError, ValueError):
+            wanted = 0
+        got = int(facts.get("delegated_tasks") or 0)
+        checks.append({
+            "kind": "delegated", "value": f"{got}/{wanted}", "ok": got >= wanted,
+            **({} if got >= wanted else
+               {"error": "Weniger Auftraege vergeben als verlangt — BESCHRIEBEN statt beauftragt?"}),
+        })
+
+    completed = item.get("expect_delegations_completed")
+    if completed is not None:
+        try:
+            wanted = int(completed)
+        except (TypeError, ValueError):
+            wanted = 0
+        got = int(facts.get("delegated_completed") or 0)
+        checks.append({
+            "kind": "delegations_completed", "value": f"{got}/{wanted}", "ok": got >= wanted,
+            **({} if got >= wanted else
+               {"error": "Vergebene Auftraege sind nicht abgeschlossen zurueckgekommen"}),
+        })
 
     for needle in item.get("expect_contains") or []:
         ok = str(needle).lower() in haystack

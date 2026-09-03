@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useTheme } from "@/components/theme-provider";
 import {
   Activity,
   LayoutDashboard,
@@ -17,8 +15,7 @@ import {
   ScrollText,
   Workflow,
   Bot,
-  Sun,
-  Moon,
+  LifeBuoy,
   MessageSquarePlus,
   ShieldCheck,
   BookOpen,
@@ -30,30 +27,86 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Bell,
-  Star,
   BarChart3,
-  Info,
   HelpCircle,
-  X,
 } from "lucide-react";
-import { motion } from "framer-motion";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { NotificationBell } from "./notification-bell";
 import { UpdateBanner } from "./update-banner";
 import { UserMenu } from "./user-menu";
-import { FeedbackModal } from "@/components/feedback/feedback-modal";
 import { useAuthStore } from "@/lib/auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
-import { getMyPermissions, getPendingApprovalCount, type RolePermissions } from "@/lib/api";
+import {
+  getMyPermissions,
+  getPendingApprovalCount,
+  listMyCustomPages,
+  type CustomPage,
+  type RolePermissions,
+} from "@/lib/api";
+import { pageIcon } from "@/lib/page-icons";
 
 type NavItem = {
   href: string;
   label: string;
   icon: React.ElementType;
   simpleVisible: boolean;
+  /** Gesetzt bei selbst angelegten Menuepunkten der Art "Link": der Eintrag
+   *  oeffnet die Adresse direkt in einem neuen Tab, statt erst unsere Seite zu
+   *  laden, die nur einen Knopf dorthin zeigt. */
+  external?: string;
 };
+
+/** Nur echte Webadressen taugen als Ziel eines Menuepunkts.
+ *
+ *  Alles andere — allen voran ``javascript:`` — waere fremder Code, der beim
+ *  Klick in unserer eigenen Oberflaeche liefe, mit der Sitzung des Angemeldeten.
+ *  Der Server prueft das bereits beim Anlegen und Aendern; hier steht die zweite
+ *  Sperre fuer Eintraege, die auf anderem Weg in die Datenbank gelangt sind.
+ *  Ein ungueltiger Eintrag verschwindet lieber, als still auf ``#`` zu zeigen —
+ *  ein Menuepunkt, der nichts tut, sieht aus wie ein Fehler und wird gemeldet. */
+function nurWebAdresse(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  return /^https?:\/\//i.test(url.trim()) ? url.trim() : undefined;
+}
+
+/** Ein Menuepunkt fuehrt entweder in die Anwendung (Next-Link) oder nach draussen
+ *  (neuer Tab). Beide Darstellungen — eingeklappt und ausgeklappt — brauchen
+ *  dieselbe Unterscheidung, deshalb steht sie hier an einer Stelle. */
+function NavShell({
+  item,
+  className,
+  title,
+  onClick,
+  children,
+}: {
+  item: NavItem;
+  className: string;
+  title?: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  if (item.external) {
+    // Zweites Schloss. Der Server laesst beim Anlegen und Aendern nur http/https
+    // durch (custom_pages._validate_url) — aber Zeilen aus der Zeit davor oder
+    // aus einem direkten Datenbankzugriff kaemen daran vorbei, und ein
+    // ``javascript:``-Wert im ``href`` waere fremder Code in unserer Oberflaeche.
+    return (
+      <a
+        href={item.external}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={title}
+        onClick={onClick}
+        className={className}
+      >
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link href={item.href} title={title} onClick={onClick} className={className}>
+      {children}
+    </Link>
+  );
+}
 
 type NavGroup = {
   label: string;
@@ -128,10 +181,8 @@ const navGroups: NavGroup[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { theme, toggleTheme } = useTheme();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebarCollapsed();
   // The desktop icon-rail (collapsed) must NOT apply on mobile — there the sidebar is
   // an off-canvas drawer that always shows the full menu. Track the lg breakpoint.
@@ -145,26 +196,8 @@ export function Sidebar() {
   }, []);
   const effectiveCollapsed = isDesktop && collapsed;
   const closeMobile = () => setMobileOpen(false);
-  const [aboutOpen, setAboutOpen] = useState(false);
-  const [aboutVersion, setAboutVersion] = useState<string | null>(null);
-  const [aboutChangelog, setAboutChangelog] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<RolePermissions | null>(null);
-  // GitHub-star nudge: highlight the Star link at most once per calendar day.
-  const [starNudge, setStarNudge] = useState(false);
-
-  useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    try {
-      if (localStorage.getItem("star-nudge-day") !== today) {
-        localStorage.setItem("star-nudge-day", today);
-        setStarNudge(true);
-        const t = setTimeout(() => setStarNudge(false), 10000);
-        return () => clearTimeout(t);
-      }
-    } catch {
-      /* localStorage unavailable — skip the nudge */
-    }
-  }, []);
+  const [customPages, setCustomPages] = useState<CustomPage[]>([]);
 
   useEffect(() => {
     if (!user) {
@@ -176,18 +209,18 @@ export function Sidebar() {
       .catch(() => setPermissions(null));
   }, [user?.id, user?.custom_role_id, user?.role]);
 
+  // Vom Administrator angelegte Menuepunkte. Der Server liefert hier bereits nur,
+  // was diese Rolle sehen darf — die Adresse einer fremden Seite soll niemand
+  // bekommen, nur weil die Seitenleiste sie hinterher ausgeblendet haette.
   useEffect(() => {
-    if (!aboutOpen || aboutVersion) return;
-    const base = process.env.NEXT_PUBLIC_API_URL || "";
-    fetch(`${base}/api/v1/version/`)
-      .then((r) => r.json())
-      .then((d) => setAboutVersion(d.current ?? d.version ?? null))
-      .catch(() => {});
-    fetch(`${base}/api/v1/version/changelog`)
-      .then((r) => r.json())
-      .then((d) => setAboutChangelog(d.content ?? null))
-      .catch(() => {});
-  }, [aboutOpen, aboutVersion]);
+    if (!user) {
+      setCustomPages([]);
+      return;
+    }
+    listMyCustomPages()
+      .then((d) => setCustomPages(d.pages))
+      .catch(() => setCustomPages([]));
+  }, [user?.id, user?.custom_role_id, user?.role]);
 
   // Track which groups are open (all open by default)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
@@ -222,17 +255,39 @@ export function Sidebar() {
     return allowed.some((path) => href === path || href.startsWith(`${path.replace(/\/$/, "")}/`));
   };
 
+  // Angelegte Seiten in ihre Gruppe einsortieren. Sie stehen ans Ende der Gruppe,
+  // damit die gewohnten Punkte ihren Platz behalten; untereinander entscheidet die
+  // im Verwaltungsbereich vergebene Reihenfolge (der Server liefert schon sortiert).
+  const extraItemsFor = (groupKey: string): NavItem[] =>
+    customPages
+      .filter((p) => p.group_key === groupKey)
+      .map((p) => ({
+        href: p.menu_path,
+        label: p.title,
+        icon: pageIcon(p.icon),
+        simpleVisible: true,
+        external: p.open_mode === "link" ? nurWebAdresse(p.url) : undefined,
+      }));
+
   const visibleGroups = navGroups
     .filter((group) => !group.adminOnly || isAdmin)
-    .map((group) => ({ ...group, items: group.items.filter((item) => canSeePath(item.href)) }))
+    .map((group) => ({
+      ...group,
+      items: [...group.items, ...extraItemsFor(group.key)].filter((item) => canSeePath(item.href)),
+    }))
     .filter((group) => group.items.length > 0);
 
   // In collapsed mode, show all visible items (groups are irrelevant)
   const allItems = visibleGroups.flatMap((g) => g.items);
 
+  // Genauer Pfad oder ein Unterpfad davon — nicht blosses startsWith. Sonst
+  // faerbte /p/kunde auch /p/kunden-portal mit ein, sobald zwei angelegte Seiten
+  // mit demselben Wortanfang beginnen. Nach draussen fuehrende Punkte sind nie aktiv.
+  const isItemActive = (item: NavItem) =>
+    !item.external && (pathname === item.href || pathname.startsWith(`${item.href}/`));
+
   // Check if any item in a group is active
-  const isGroupActive = (group: NavGroup) =>
-    group.items.some((item) => pathname.startsWith(item.href));
+  const isGroupActive = (group: NavGroup) => group.items.some(isItemActive);
 
   return (
     <aside
@@ -264,10 +319,30 @@ export function Sidebar() {
                 <span className="text-[10px] text-muted-foreground">Online</span>
               </div>
             </div>
+            {/* Concierge und Feedback wohnen hier oben als Paar — die frueheren
+                schwebenden Knoepfe unten rechts haben Eingabefelder ueberdeckt. */}
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  closeMobile();
+                  window.dispatchEvent(new CustomEvent("concierge-widget:open"));
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-all"
+                title="Concierge"
+                aria-label="Concierge öffnen"
+              >
+                <LifeBuoy className="h-4 w-4" />
+              </button>
+            )}
             <button
-              onClick={() => setFeedbackOpen(true)}
+              onClick={() => {
+                // Startet den Widget-Flow (Element anpinnen) statt des alten Modals.
+                closeMobile();
+                window.dispatchEvent(new CustomEvent("feedback-widget:open"));
+              }}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 hover:text-primary hover:bg-primary/10 transition-all"
               title="Feedback senden"
+              aria-label="Feedback geben"
             >
               <MessageSquarePlus className="h-4 w-4" />
             </button>
@@ -275,19 +350,17 @@ export function Sidebar() {
         )}
       </div>
 
-      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
-
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 scrollbar-thin">
         {effectiveCollapsed ? (
           // Collapsed: just icons
           allItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname.startsWith(item.href);
+            const isActive = isItemActive(item);
             return (
-              <Link
+              <NavShell
                 key={item.href}
-                href={item.href}
+                item={item}
                 title={item.label}
                 onClick={closeMobile}
                 className={cn(
@@ -305,7 +378,7 @@ export function Sidebar() {
                     <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400" />
                   )}
                 </span>
-              </Link>
+              </NavShell>
             );
           })
         ) : (
@@ -337,11 +410,11 @@ export function Sidebar() {
                   <div className="mt-0.5 space-y-0.5">
                     {group.items.map((item) => {
                       const Icon = item.icon;
-                      const isActive = pathname.startsWith(item.href);
+                      const isActive = isItemActive(item);
                       return (
-                        <Link
+                        <NavShell
                           key={item.href}
-                          href={item.href}
+                          item={item}
                           onClick={closeMobile}
                           className={cn(
                             "group flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150",
@@ -360,14 +433,14 @@ export function Sidebar() {
                           {item.href === "/approvals" && pendingApprovals > 0 ? (
                             <span
                               title={`${pendingApprovals} offene Freigabe(n)`}
-                              className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-400"
+                              className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-700 dark:text-amber-400"
                             >
                               {pendingApprovals > 99 ? "99+" : pendingApprovals}
                             </span>
                           ) : isActive ? (
                             <div className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_6px_rgba(59,130,246,0.5)]" />
                           ) : null}
-                        </Link>
+                        </NavShell>
                       );
                     })}
                   </div>
@@ -388,35 +461,6 @@ export function Sidebar() {
       )}>
         {effectiveCollapsed ? (
           <>
-            <NotificationBell variant="sidebar" collapsed />
-            <button
-              onClick={toggleTheme}
-              title={theme === "dark" ? "Light Mode" : "Dark Mode"}
-              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-            <a
-              href="https://github.com/greeves89/AI-Employee"
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Star on GitHub"
-              className={cn(
-                "flex items-center justify-center h-9 w-9 rounded-xl transition-all hover:bg-yellow-500/10 hover:text-yellow-400",
-                starNudge
-                  ? "bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/30 animate-pulse"
-                  : "text-muted-foreground"
-              )}
-            >
-              <Star className="h-4 w-4" />
-            </a>
-            <button
-              onClick={() => setAboutOpen(true)}
-              title="Über AI Employee"
-              className="flex items-center justify-center h-9 w-9 rounded-xl text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all"
-            >
-              <Info className="h-4 w-4" />
-            </button>
             {isAdmin && (
               <Link
                 href="/admin"
@@ -431,45 +475,10 @@ export function Sidebar() {
                 <Shield className="h-4 w-4" />
               </Link>
             )}
+            <UserMenu collapsed />
           </>
         ) : (
-          <>
-            <NotificationBell variant="sidebar" />
-            <button
-              onClick={toggleTheme}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              <span className="text-[13px] font-medium">
-                {theme === "dark" ? "Light Mode" : "Dark Mode"}
-              </span>
-            </button>
-            <a
-              href="https://github.com/greeves89/AI-Employee"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "flex w-full items-center gap-3 rounded-xl px-3 py-2 transition-all duration-150 hover:bg-yellow-500/10 hover:text-yellow-400",
-                starNudge
-                  ? "bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/30 animate-pulse"
-                  : "text-muted-foreground"
-              )}
-            >
-              <Star className="h-4 w-4" />
-              <span className="text-[13px] font-medium">Star on GitHub</span>
-            </a>
-            <button
-              onClick={() => setAboutOpen(true)}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
-            >
-              <Info className="h-4 w-4" />
-              <span className="text-[13px] font-medium">Über AI Employee</span>
-              {aboutVersion && (
-                <span className="ml-auto text-[11px] font-mono text-muted-foreground/50">v{aboutVersion}</span>
-              )}
-            </button>
-            <UserMenu />
-          </>
+          <UserMenu />
         )}
       </div>
 
@@ -487,62 +496,6 @@ export function Sidebar() {
           <ChevronLeft className="h-3 w-3" />
         )}
       </button>
-
-      {/* About Modal — portal to document.body to escape motion.aside transform context */}
-      {aboutOpen && typeof document !== "undefined" && createPortal(
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
-            onClick={() => setAboutOpen(false)}
-          />
-          <div className="fixed z-[101] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.2 }}
-            className="w-[90vw] max-w-2xl max-h-[80vh] flex flex-col rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl"
-          >
-                <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-foreground/[0.06] shrink-0">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
-                    <Bot className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-base font-semibold">AI Employee</p>
-                    {aboutVersion && <p className="text-[12px] text-muted-foreground font-mono">v{aboutVersion}</p>}
-                  </div>
-                  <button
-                    onClick={() => setAboutOpen(false)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-all"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto px-6 py-4">
-                  {aboutChangelog ? (
-                    <div className="prose prose-sm dark:prose-invert max-w-none text-[13px] [&_h1]:hidden [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-muted-foreground [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:space-y-1 [&_li]:text-muted-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_hr]:border-foreground/[0.06] [&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[11px] [&_code]:font-mono [&_code]:text-amber-600 dark:[&_code]:text-amber-300 [&_code]:before:content-[''] [&_code]:after:content-['']">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{aboutChangelog}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-24 text-muted-foreground text-sm">
-                      Lade Changelog...
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center justify-between px-6 py-3 border-t border-foreground/[0.06] shrink-0">
-                  <span className="text-[11px] text-muted-foreground/50">Made with ♥ by greeves89</span>
-                  <a href="https://github.com/greeves89/AI-Employee" target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-yellow-400 transition-colors">
-                    <Star className="h-3 w-3" />GitHub
-                  </a>
-                </div>
-          </motion.div>
-          </div>
-        </>,
-        document.body
-      )}
     </aside>
   );
 }

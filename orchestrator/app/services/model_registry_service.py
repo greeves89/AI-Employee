@@ -288,6 +288,43 @@ async def _discover_openai() -> list[dict]:
     return out
 
 
+async def _discover_foundry() -> list[dict]:
+    """Claude-Deployments einer Azure-AI-Foundry-Ressource (Kundenbefund
+    2026-08-18: fuer "foundry" gab es keinerlei Suchpfad — deployte Modelle
+    tauchten nie im Katalog auf). Erreichbar nur, wenn in den Provider-
+    Einstellungen Ressource + Key hinterlegt sind; best-effort wie die anderen.
+    """
+    key = settings.foundry_api_key
+    resource = (settings.foundry_resource or "").strip()
+    if not (key and resource):
+        return []
+    base = resource if "://" in resource else f"https://{resource}.services.ai.azure.com"
+    url = base.rstrip("/") + "/anthropic/v1/models"
+    headers = {"x-api-key": key, "api-key": key, "anthropic-version": "2023-06-01"}
+    out: list[dict] = []
+    try:
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            for m in resp.json().get("data", []):
+                mid = m.get("id", "")
+                if model_family(mid) != "claude_code":
+                    continue
+                out.append(
+                    {
+                        "mode": "claude_code",
+                        "provider": "foundry",
+                        "value": mid,
+                        "label": m.get("display_name") or mid,
+                        "tier": "Discovered",
+                        "source": "discovered",
+                    }
+                )
+    except Exception as e:  # noqa: BLE001 — discovery is best-effort
+        logger.warning("Foundry model discovery failed: %s", e)
+    return out
+
+
 async def discover(db: AsyncSession) -> dict:
     """Query provider APIs, store the non-seed extras, return an admin catalog.
 
@@ -297,9 +334,11 @@ async def discover(db: AsyncSession) -> dict:
     """
     anthropic_queried = bool(await _anthropic_auth_headers())
     openai_queried = bool(settings.openai_api_key)
+    foundry_queried = bool(settings.foundry_api_key and settings.foundry_resource)
     anthropic = await _discover_anthropic()
     openai = await _discover_openai()
-    found = anthropic + openai
+    foundry = await _discover_foundry()
+    found = anthropic + openai + foundry
 
     seed_keys = {(r["mode"], r["provider"], r["value"]) for r in _seed_models()}
     extras: list[dict] = []
@@ -320,20 +359,23 @@ async def discover(db: AsyncSession) -> dict:
         "providers_queried": {
             "anthropic": anthropic_queried,
             "openai": openai_queried,
+            "foundry": foundry_queried,
         },
     }
     await svc.set(CACHE_KEY, json.dumps(cache))
     await db.commit()
     logger.info(
-        "Model discovery: %d anthropic + %d openai found, %d new extras cached",
-        len(anthropic), len(openai), len(extras),
+        "Model discovery: %d anthropic + %d openai + %d foundry found, %d new extras cached",
+        len(anthropic), len(openai), len(foundry), len(extras),
     )
     result = await get_admin_catalog(db)
     result["last_discovery"] = {
         "anthropic_found": len(anthropic),
         "openai_found": len(openai),
+        "foundry_found": len(foundry),
         "new_extras": len(extras),
         "anthropic_queried": anthropic_queried,
         "openai_queried": openai_queried,
+        "foundry_queried": foundry_queried,
     }
     return result

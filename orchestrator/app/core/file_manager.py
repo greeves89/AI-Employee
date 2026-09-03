@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 # Upload limits
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB per file
 MAX_UPLOAD_TOTAL_BYTES = 200 * 1024 * 1024  # 200 MB total per upload batch
+#: Obergrenze fuers Bearbeiten im Browser. Wer eine 5-MB-Datei im Textfeld
+#: aendert, hat sich vertan — und der ganze Inhalt geht durch den Speicher.
+MAX_EDIT_SIZE_BYTES = 1 * 1024 * 1024  # 1 MB
 
 # Blocked file extensions (dangerous executables / scripts that could escape container)
 BLOCKED_EXTENSIONS = {
@@ -68,6 +71,29 @@ def _validate_filename(filename: str) -> str:
     return filename
 
 
+#: Was beim Ordner-Export draussen bleibt. Alles davon ist entweder aus dem
+#: Rest wiederherstellbar (`npm install`, `pip install`) oder gehoert nicht zum
+#: Inhalt. In einem Projektordner machen diese Verzeichnisse leicht das
+#: Tausendfache des eigentlichen Codes aus — ein Export, der daran scheitert
+#: oder eine Stunde laeuft, hilft niemandem.
+EXPORT_AUSGENOMMEN = {
+    "node_modules", ".git", "__pycache__", ".venv", "venv", ".mypy_cache",
+    ".pytest_cache", ".next", ".turbo", "dist", "build", ".cache",
+}
+
+#: Obergrenze fuer einen Ordner-Export (entpackt gemessen).
+MAX_EXPORT_BYTES = 500 * 1024 * 1024  # 500 MB
+
+
+def _ist_ausgenommen(pfad: str) -> bool:
+    """Liegt dieser Eintrag in einem ausgenommenen Verzeichnis?"""
+    return any(teil in EXPORT_AUSGENOMMEN for teil in pfad.split("/"))
+
+
+class ExportZuGross(ValueError):
+    """Der Ordner passt nicht in einen Export — mit Zahlen zum Anzeigen."""
+
+
 class FileManager:
     """Manages file access in agent workspace volumes via Docker exec."""
 
@@ -117,6 +143,104 @@ class FileManager:
             raise ValueError("Cannot read symlinks for security reasons")
 
         return self.docker.get_file_from_container(container_id, validated)
+
+    def write_file(self, container_id: str, file_path: str, content: str) -> int:
+        """Eine Textdatei im Arbeitsbereich ueberschreiben.
+
+        Vom Kunden am 18.08.2026 gewuenscht: ``.env``-Dateien liessen sich
+        ansehen, aber nicht aendern — wer eine Zeile korrigieren wollte, musste
+        herunterladen, bearbeiten und wieder hochladen.
+
+        Bewusst hier und nicht in der Schnittstelle: ``_validate_path`` ist die
+        EINE Stelle, die den Arbeitsbereich absichert (Nullbytes, absolute
+        Pfade, ``..`` NACH dem Normalisieren). Ein zweiter Schreibweg mit
+        eigener Pruefung waere genau die Luecke, die man spaeter sucht.
+        """
+        validated = _validate_path(file_path)
+        _validate_filename(os.path.basename(validated))
+
+        roh = content.encode("utf-8")
+        if len(roh) > MAX_EDIT_SIZE_BYTES:
+            raise ValueError(
+                f"Datei zu gross zum Bearbeiten "
+                f"({len(roh)} > {MAX_EDIT_SIZE_BYTES} Bytes)"
+            )
+
+        # Symlinks und Verzeichnisse ausschliessen — ueber einen Symlink liesse
+        # sich sonst ausserhalb des Arbeitsbereichs schreiben, obwohl der Pfad
+        # selbst sauber aussieht. Lesen prueft dasselbe.
+        ziel = shlex.quote(validated)
+        _, art = self.docker.exec_in_container(
+            container_id,
+            ["bash", "-c", f"if [ -L {ziel} ]; then echo SYMLINK; "
+                           f"elif [ -d {ziel} ]; then echo DIR; else echo OK; fi"],
+        )
+        art = (art or "").strip()
+        if art == "SYMLINK":
+            raise ValueError("Symlinks werden aus Sicherheitsgruenden nicht beschrieben")
+        if art == "DIR":
+            raise ValueError("Das ist ein Verzeichnis, keine Datei")
+
+        self.docker.write_file_in_container(container_id, validated, content)
+        logger.info("[Dateien] %s geschrieben (%d Bytes)", scrub_log(validated), len(roh))
+        return len(roh)
+
+    def export_folder_zip(self, container_id: str, folder: str) -> tuple[bytes, int]:
+        """Einen Ordner aus dem Arbeitsbereich als ZIP zurueckgeben.
+
+        Wunsch des Nutzers vom 21.08.2026: das Verzeichnis einer App als ZIP
+        herunterladen — sowohl aus der App-Uebersicht als auch aus dem
+        Dateibaum.
+
+        Der Weg fuehrt ueber ``get_archive`` (Docker liefert ein tar) und packt
+        um. Bewusst NICHT ``zip`` im Container aufrufen: das ist dort oft gar
+        nicht installiert, und ein Export, der je nach Abbild funktioniert oder
+        nicht, ist keiner.
+
+        Ausgenommen sind die ueblichen Wiederherstellbaren (``node_modules``,
+        ``.git``, ``__pycache__`` …). In einem Projektordner machen die leicht
+        das Tausendfache des eigentlichen Codes aus.
+
+        Gibt ``(zip_bytes, anzahl_dateien)`` zurueck.
+        """
+        import io
+        import tarfile
+        import zipfile
+
+        validated = _validate_path(folder)
+
+        container = self.docker.client.containers.get(container_id)
+        bits, _ = container.get_archive(validated)
+        tar_puffer = io.BytesIO(b"".join(bits))
+
+        zip_puffer = io.BytesIO()
+        gesamt = 0
+        anzahl = 0
+        # Docker packt den Ordner MIT seinem eigenen Namen als Wurzel ein —
+        # genau richtig: entpackt entsteht wieder ein Ordner statt einer
+        # Dateiwolke im Download-Verzeichnis.
+        with tarfile.open(fileobj=tar_puffer) as tar, \
+                zipfile.ZipFile(zip_puffer, "w", zipfile.ZIP_DEFLATED) as archiv:
+            for eintrag in tar:
+                if not eintrag.isfile():
+                    continue  # Verzeichnisse entstehen von selbst, Symlinks bleiben draussen
+                if _ist_ausgenommen(eintrag.name):
+                    continue
+                gesamt += eintrag.size
+                if gesamt > MAX_EXPORT_BYTES:
+                    raise ExportZuGross(
+                        f"Der Ordner ist groesser als {MAX_EXPORT_BYTES // (1024 * 1024)} MB "
+                        "(ohne node_modules und Konsorten). Lade einen Unterordner herunter."
+                    )
+                quelle = tar.extractfile(eintrag)
+                if quelle is None:
+                    continue
+                archiv.writestr(eintrag.name, quelle.read())
+                anzahl += 1
+
+        logger.info("[Dateien] Export %s: %d Dateien, %d Bytes",
+                    scrub_log(validated), anzahl, gesamt)
+        return zip_puffer.getvalue(), anzahl
 
     async def upload_files(
         self, container_id: str, target_path: str, files: list[tuple[str, bytes]]

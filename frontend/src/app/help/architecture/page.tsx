@@ -102,7 +102,7 @@ function Ref({ groups }: { groups: Group[] }) {
               return (
                 <li key={i} className="flex items-start gap-2 font-mono text-[11.5px] leading-relaxed text-muted-foreground">
                   {write && (
-                    <span className="mt-0.5 rounded bg-amber-500/15 px-1 text-[9px] font-semibold not-italic text-amber-400">WRITE</span>
+                    <span className="mt-0.5 rounded bg-amber-500/15 px-1 text-[9px] font-semibold not-italic text-amber-700 dark:text-amber-400">WRITE</span>
                   )}
                   <span className="min-w-0">{text}</span>
                 </li>

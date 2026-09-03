@@ -46,6 +46,7 @@ export interface AIModel {
   name: string;                       // model / Azure deployment name
   provider_type: AIAccountProviderType; // which API the model speaks
   api_endpoint: string;               // the endpoint/surface for this model
+  enabled?: boolean;                  // Freigabe fuer Agenten (fehlt = freigegeben)
 }
 
 export interface AIAccount {
@@ -114,6 +115,7 @@ export interface Agent {
   webhook_enabled?: boolean;
   webhook_token?: string | null;
   shared_for_rooms?: boolean;
+  is_platform_agent?: boolean;
   total_cost_usd: number;
   user_id: string | null;
   created_at: string;
@@ -274,6 +276,11 @@ export interface Settings {
   msgraph_read_only: boolean;
   // Security / Login
   sso_only_login?: boolean;
+  /** Duerfen Mitarbeiter ihr eigenes Claude-/ChatGPT-Abo einbinden? */
+  allow_personal_credentials?: boolean;
+  /** Master-Regeln: Verhaltensvorgaben fuer ALLE Agenten aller Nutzer. */
+  master_rules?: string;
+  master_rules_enabled?: boolean;
   require_user_approval?: boolean;
   revoke_msgraph_on_logout?: boolean;
   // Meeting → MS Planner + "Dreaming"-Memory
@@ -300,8 +307,11 @@ export interface Settings {
   saml_idp_x509_cert?: string;
   saml_sp_entity_id?: string;
   saml_group_attribute?: string;
-  saml_group_role_map?: string;
   saml_configured?: boolean;
+  // Websuche-Provider (Admin -> Websuche): "duckduckgo" (Vorgabe) | "brave" | "serp".
+  // Der API-Key selbst kommt nie zurueck, nur ob einer hinterlegt ist.
+  web_search_provider?: string;
+  has_web_search_api_key?: boolean;
 }
 
 // Provenance of a memory entry (who/what wrote it).
@@ -525,6 +535,13 @@ export interface Feedback {
   status: FeedbackStatus;
   admin_notes: string | null;
   github_issue_url: string | null;
+  // Widget-Feedback: gepinntes Element + Ablage im MD-Store (leer bei Alt-Einträgen).
+  page: string | null;
+  element_label: string | null;
+  selector: string | null;
+  sentiment: string | null;
+  md_file: string | null;
+  screenshot_file: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -582,6 +599,9 @@ export interface ApprovalRequest {
   denied_by?: string;
   denied_at?: string;
   deny_reason?: string;
+  /** Eine Ansicht statt reiner Wortoptionen. Der Name zeigt auf eine
+   *  Komponente in `agent-views.tsx`; unbekannte Namen filtert der Server. */
+  view?: { name: string; data: Record<string, unknown> } | null;
 }
 
 // Docker Apps

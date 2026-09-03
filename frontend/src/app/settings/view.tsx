@@ -7,8 +7,7 @@ import {
   CheckCircle2, AlertCircle, Shield, Bot, Gauge, Coins,
   UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
   ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles, Network,
-  Plug, Mic, AlertTriangle, Moon,
-} from "lucide-react";
+  Plug, Mic, AlertTriangle, Moon, KeyRound } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
 import { TemplateManager } from "@/components/settings/template-manager";
@@ -20,6 +19,8 @@ import { SamlConfig } from "@/components/settings/saml-config";
 import { TeamsCallingConfig } from "@/components/settings/teams-calling-config";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { MyAiCredentials } from "@/components/settings/my-ai-credentials";
+import { AvailableModels } from "@/components/settings/available-models";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Settings, ModelProvider, AIAccount } from "@/lib/types";
 
@@ -97,7 +98,7 @@ const PROVIDERS: {
     label: "Amazon Bedrock",
     short: "Bedrock",
     icon: Cloud,
-    color: "text-amber-400",
+    color: "text-amber-700 dark:text-amber-400",
     bgColor: "bg-amber-500/10 border-amber-500/20",
     description: "AWS managed service with IAM credentials",
   },
@@ -211,7 +212,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   // UI state
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [secTab, setSecTab] = useState<"modelle" | "integrationen" | "voice" | "system">("modelle");
+  const [secTab, setSecTab] = useState<"modelle" | "meine" | "integrationen" | "voice" | "system">("modelle");
   const user = useAuthStore((s) => s.user);
 
   const toggleMsgraphExt = async (enabled: boolean) => {
@@ -247,6 +248,20 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setMessage(e instanceof Error ? e.message : "Konnte SSO-Only nicht ändern");
     } finally {
       setSsoOnlySaving(false);
+    }
+  };
+  // Eigene KI-Abos zentral erlauben oder sperren. Vom Kunden am 18.08.2026 zur
+  // Bedingung gemacht: „muss zentral steuerbar sein, sonst Sicherheitsrisiko".
+  const [eigeneZugaengeSpeichert, setEigeneZugaengeSpeichert] = useState(false);
+  const toggleEigeneZugaenge = async (enabled: boolean) => {
+    setEigeneZugaengeSpeichert(true);
+    try {
+      await api.updateSettings({ allow_personal_credentials: enabled });
+      setSettings(await api.getSettings());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte die Freigabe nicht ändern");
+    } finally {
+      setEigeneZugaengeSpeichert(false);
     }
   };
   const [dreamingSaving, setDreamingSaving] = useState(false);
@@ -338,6 +353,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     }
   };
   const isAdmin = user?.role === "admin";
+  // Wer ohne Adminrechte auf „voice"/„system" landet (alte Verknuepfung,
+  // Adresszeile), bekaeme sonst genau die leere Seite zu sehen, die wir eben
+  // abgeschafft haben.
+  useEffect(() => {
+    if (!isAdmin && (secTab === "voice" || secTab === "system")) setSecTab("modelle");
+  }, [isAdmin, secTab]);
   // License state
   const [license, setLicense] = useState<import("@/lib/api").License | null>(null);
   const [licenseKeyInput, setLicenseKeyInput] = useState("");
@@ -722,9 +743,24 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         <div className="flex gap-1 overflow-x-auto rounded-xl border border-border/50 bg-card/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {([
             { id: "modelle" as const, label: "Modelle", icon: Cpu },
+            // Der eigene Zugang gehoert dem Nutzer, nicht der Anlage — deshalb
+            // hier und nicht in der Admin-Konsole. Sichtbar fuer JEDEN, auch
+            // ohne Adminrechte: bis 2026-08-15 gab es dafuer gar keine Seite,
+            // obwohl die Agenten-Anlage ausdruecklich darauf verweist.
+            { id: "meine" as const, label: "Meine KI-Zugänge", icon: KeyRound },
             { id: "integrationen" as const, label: "Integrationen", icon: Plug },
-            { id: "voice" as const, label: "Voice", icon: Mic },
-            { id: "system" as const, label: "System", icon: Shield },
+            // Voice und System enthalten AUSSCHLIESSLICH adminbeschraenkte
+            // Inhalte. Fuer einen normalen Nutzer waren sie bisher zwei leere
+            // Seiten — er klickte, sah nichts und hielt es fuer einen Fehler.
+            // Ein Reiter ohne Inhalt ist schlechter als kein Reiter.
+            //
+            // Kommt spaeter etwas Nutzereigenes dazu (etwa eine zugewiesene
+            // Stimme), gehoert die Bedingung hier gelockert — nicht der Reiter
+            // dauerhaft leer stehen gelassen.
+            ...(isAdmin ? [
+              { id: "voice" as const, label: "Voice", icon: Mic },
+              { id: "system" as const, label: "System", icon: Shield },
+            ] : []),
           ]).map((t) => {
             const Icon = t.icon;
             return (
@@ -746,7 +782,24 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         </div>
 
         {/* ─── Tab: Modelle ─── */}
-        {secTab === "modelle" && (
+        {/* Fuer einen Member ist in diesem Reiter NICHTS einstellbar: Provider,
+            Plattform-Login, Max Turns, gleichzeitige Agenten — alles gehoert der
+            Anlage. Er bekommt deshalb die Frage beantwortet, die er wirklich
+            hat: welche Modelle stehen mir zur Verfuegung. */}
+        {secTab === "modelle" && !isAdmin && (
+          <div className="space-y-6">
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <Cpu className="h-4 w-4 text-muted-foreground/60" />
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  Verfügbare Modelle
+                </h2>
+              </div>
+              <AvailableModels />
+            </section>
+          </div>
+        )}
+        {secTab === "modelle" && isAdmin && (
         <div className="space-y-6">
         {/* ─── Section 1: Model Provider ─── */}
         <section>
@@ -1148,6 +1201,20 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         )}
 
         {/* ─── Tab: Integrationen ─── */}
+        {secTab === "meine" && (
+          <div className="space-y-6">
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <KeyRound className="h-4 w-4 text-muted-foreground/60" />
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  Meine KI-Zugänge
+                </h2>
+              </div>
+              <MyAiCredentials />
+            </section>
+          </div>
+        )}
+
         {secTab === "integrationen" && (
         <div className="space-y-6">
         {/* ─── Section 4: Notifications ─── */}
@@ -1727,7 +1794,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                           <div className="mt-1.5 rounded-md border border-foreground/10 bg-background/50 px-3 py-2 font-mono text-[10px] text-blue-300/80 leading-relaxed">
                             User.Read, Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Chat.ReadBasic, ChannelMessage.Read.All, ChannelMessage.Send, Team.ReadBasic.All, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, offline_access
                           </div>
-                          <p className="mt-1 text-[10px] text-amber-400/80">→ Danach <strong>&quot;Administratorzustimmung erteilen&quot;</strong> klicken</p>
+                          <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-400/80">→ Danach <strong>&quot;Administratorzustimmung erteilen&quot;</strong> klicken</p>
                         </li>
                         <li>
                           Unter <strong className="text-foreground">Zertifikate &amp; Geheimnisse</strong> → Neuer geheimer Clientschlüssel erstellen
@@ -1832,7 +1899,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 text-[12px] font-medium">
-                        <Lock className="h-3.5 w-3.5 text-amber-400" />
+                        <Lock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400" />
                         Microsoft nur lesend
                       </div>
                       <p className="mt-0.5 text-[10px] text-muted-foreground/60">
@@ -1859,7 +1926,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     </button>
                   </div>
                   {!settings?.msgraph_read_only && (
-                    <p className="mt-1.5 text-[10px] text-amber-400/70">
+                    <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-400/70">
                       Schreibzugriff ist freigegeben. Agenten mit &quot;Read + Write&quot; können in echten Postfächern senden und ändern.
                     </p>
                   )}
@@ -1897,7 +1964,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     </button>
                   </div>
                   {!settings?.has_microsoft_oauth && (
-                    <p className="mt-1.5 text-[10px] text-amber-400/70">Erst die Microsoft App-Registrierung oben eintragen &amp; speichern.</p>
+                    <p className="mt-1.5 text-[10px] text-amber-700 dark:text-amber-400/70">Erst die Microsoft App-Registrierung oben eintragen &amp; speichern.</p>
                   )}
                   {settings?.msgraph_mcp_external_enabled && (
                     <div className="mt-2.5 space-y-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
@@ -1993,7 +2060,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   label="EWS-Server (Host)"
                   value={exchangeServerUrl}
                   onChange={setExchangeServerUrl}
-                  placeholder="mail.klinikum-bs.de"
+                  placeholder="mail.example.com"
                   mono
                 />
                 <SelectField
@@ -2012,7 +2079,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                       label="Service-Account (UPN)"
                       value={exchangeSvcUser}
                       onChange={setExchangeSvcUser}
-                      placeholder="svc-aiemployee@klinikum-bs.de"
+                      placeholder="svc-aiemployee@example.com"
                       mono
                     />
                     <CredentialField
@@ -2055,7 +2122,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                         label="Relay-Host"
                         value={smtpHost}
                         onChange={setSmtpHost}
-                        placeholder="192.168.20.213 / mail.klinikum-bs.de"
+                        placeholder="192.168.10.20 / mail.example.com"
                         mono
                       />
                     </div>
@@ -2107,7 +2174,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     label="Erlaubte Empfänger-Domains"
                     value={smtpAllowedDomains}
                     onChange={setSmtpAllowedDomains}
-                    placeholder="leer = nur eigene Domain · z.B. skbs.de, partner.de · * = alle"
+                    placeholder="leer = nur eigene Domain · z.B. firma.de, partner.de · * = alle"
                     hint="Schutz gegen Massenversand: standardmäßig darf der Agent nur an die eigene Domain senden."
                     mono
                   />
@@ -2178,6 +2245,43 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
               </h2>
             </div>
 
+            <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden mb-4">
+              {/* Eigene KI-Abos der Mitarbeiter */}
+              <div className="p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-[12px] font-medium">
+                      <Shield className="h-3.5 w-3.5 text-blue-400" />
+                      Eigene KI-Zugänge der Mitarbeiter erlauben
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                      Mitarbeiter dürfen ihr privates Claude- oder ChatGPT-Abo einbinden
+                      und damit Agenten betreiben. Aus: bereits hinterlegte Zugänge
+                      wirken nicht mehr, die Agenten fallen auf die Firmen-Konten zurück.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleEigeneZugaenge(!settings?.allow_personal_credentials)}
+                    disabled={eigeneZugaengeSpeichert}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                      settings?.allow_personal_credentials ? "bg-emerald-500" : "bg-foreground/[0.1]",
+                      eigeneZugaengeSpeichert && "opacity-40 cursor-not-allowed",
+                    )}
+                  >
+                    {eigeneZugaengeSpeichert ? (
+                      <Loader2 className="mx-auto h-3 w-3 animate-spin text-white" />
+                    ) : (
+                      <span className={cn(
+                        "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                        settings?.allow_personal_credentials ? "translate-x-6" : "translate-x-1",
+                      )} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
               {/* Nur SSO-Login */}
               <div className="p-5">
@@ -2211,8 +2315,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   </button>
                 </div>
                 <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400 mt-0.5" />
-                  <p className="text-[10px] leading-relaxed text-amber-300">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400 mt-0.5" />
+                  <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">
                     <strong>Achtung:</strong> Danach ist die Anmeldung NUR noch über Microsoft-SSO möglich. Nutzer ohne SSO-Konto im konfigurierten Tenant werden ausgesperrt. Notfall-Zugang: auf dem Server ENV <code className="font-mono">EMERGENCY_PASSWORD_LOGIN=true</code> setzen.
                   </p>
                 </div>
@@ -2290,7 +2394,13 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         )}
 
         {/* ─── Save Button ─── */}
-        <div className="flex items-center gap-3 pt-2 pb-8">
+                {/* Der Knopf speichert die PLATTFORM-Einstellungen. Auf den
+            Reitern eines Nutzers gibt es nichts zu speichern — „Meine
+            KI-Zugaenge" sichert sofort beim Verbinden. Ein Knopf, der
+            nichts tut, laesst den Nutzer glauben, er haette etwas
+            vergessen. */}
+        {isAdmin && secTab !== "meine" && (
+<div className="flex items-center gap-3 pt-2 pb-8">
           <button
             onClick={handleSave}
             disabled={saving}
@@ -2319,6 +2429,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             </span>
           )}
         </div>
+        )}
         {/* ─── Claude OAuth Code Paste Modal ─── */}
         {claudeLoginOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">

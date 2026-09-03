@@ -228,10 +228,14 @@ async def list_runs(
         .limit(limit)
     )
     if user.role != "admin":
-        # Agenten ohne Besitzer sind Plattform-Agenten und fuer alle sichtbar —
-        # dieselbe Regel wie in der Agentenliste. Zwei verschiedene Auslegungen von
-        # „meins" waeren schlimmer als eine grosszuegige.
-        query = query.where((Agent.user_id == str(user.id)) | (Agent.user_id.is_(None)))
+        # Ownerless agents no longer count as "everyone's" on their own
+        # (changed 2026-08-27, see tasks.py::_get_user_agent_ids) — on a
+        # multi-department install an unassigned agent leaked its eval
+        # runs, incl. prompts/results, to every other user. Only
+        # is_platform_agent (explicit admin flag) still grants that.
+        query = query.where(
+            (Agent.user_id == str(user.id)) | (Agent.is_platform_agent.is_(True))
+        )
     if agent_id:
         await _owned_agent(db, agent_id, user)
         query = query.where(EvalRun.agent_id == agent_id)

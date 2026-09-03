@@ -25,7 +25,7 @@ import type { CommandPolicy, CommandPolicyEffect, CommandPolicyScope } from "@/l
 const effectConfig: Record<CommandPolicyEffect, { icon: typeof ShieldAlert; color: string; bg: string; label: string }> = {
   blocked: { icon: ShieldAlert, color: "text-red-400", bg: "bg-red-500/10", label: "Block" },
   high: { icon: AlertCircle, color: "text-orange-400", bg: "bg-orange-500/10", label: "High Approval" },
-  medium: { icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10", label: "Medium Approval" },
+  medium: { icon: AlertTriangle, color: "text-amber-700 dark:text-amber-400", bg: "bg-amber-500/10", label: "Medium Approval" },
   allow: { icon: ShieldCheck, color: "text-emerald-400", bg: "bg-emerald-500/10", label: "Allow" },
 };
 

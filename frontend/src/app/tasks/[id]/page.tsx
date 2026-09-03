@@ -22,7 +22,7 @@ import { getWsUrl, getApiUrl } from "@/lib/config";
 import { formatMoney } from "@/lib/money";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string; label: string }> = {
-  pending:   { icon: Clock,        color: "text-amber-400",   badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",     label: "Pending" },
+  pending:   { icon: Clock,        color: "text-amber-700 dark:text-amber-400",   badge: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",     label: "Pending" },
   queued:    { icon: Clock,        color: "text-blue-400",    badge: "bg-blue-500/10 text-blue-400 border-blue-500/20",         label: "Queued" },
   running:   { icon: Loader2,      color: "text-blue-400",    badge: "bg-blue-500/10 text-blue-400 border-blue-500/20",         label: "Running" },
   completed: { icon: CheckCircle2, color: "text-emerald-400", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", label: "Completed" },
@@ -326,7 +326,7 @@ export default function TaskDetailPage() {
         {task.dry_run && (
           <div className="flex flex-col gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-4 sm:flex-row sm:items-center">
             <div className="flex-1">
-              <p className="flex items-center gap-2 text-sm font-semibold text-amber-300">
+              <p className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300">
                 <FlaskConical className="h-4 w-4" /> Vorschau (Dry-Run) — nichts wurde ausgeführt
               </p>
               <p className="mt-1 text-xs text-muted-foreground/80">
@@ -459,7 +459,7 @@ export default function TaskDetailPage() {
         )}
 
         {/* Live Output (hidden in simple mode) */}
-        {!simpleMode && <div className="rounded-xl border border-foreground/[0.06] bg-black overflow-hidden">
+        {!simpleMode && <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] dark:bg-black overflow-hidden">
           <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
             <div className="flex items-center gap-2.5">
               <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
@@ -581,7 +581,7 @@ export default function TaskDetailPage() {
                         {currentStepDurationMs != null && <span className="text-muted-foreground/40"> · {formatDuration(currentStepDurationMs)}</span>}
                       </span>
                     </div>
-                    <div ref={replayContainerRef} className="h-[400px] overflow-y-auto rounded-lg bg-black p-4 font-mono text-[12px] leading-relaxed space-y-1">
+                    <div ref={replayContainerRef} className="h-[400px] overflow-y-auto rounded-lg bg-foreground/[0.03] dark:bg-black p-4 font-mono text-[12px] leading-relaxed space-y-1">
                       {mergedReplay.map((ev, i) => (
                         <TaskLogLine key={i} event={ev} agentNames={agentNames} />
                       ))}
@@ -609,7 +609,7 @@ export default function TaskDetailPage() {
                                 <div key={i} className="flex items-center gap-2 text-[11px]">
                                   <span className={cn(
                                     "w-14 shrink-0 text-[10px]",
-                                    g.outcome === "blocked" ? "text-red-400" : g.outcome === "failure" ? "text-amber-400" : "text-emerald-400/70",
+                                    g.outcome === "blocked" ? "text-red-400" : g.outcome === "failure" ? "text-amber-700 dark:text-amber-400" : "text-emerald-400/70",
                                   )}>{g.outcome ?? "—"}</span>
                                   <span className="font-medium">{g.event_type}</span>
                                   {g.command && <span className="truncate text-muted-foreground/60">{g.command}</span>}
@@ -688,9 +688,9 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
         const who = agentNames[target] || (target ? target.slice(0, 8) : "Auto-Zuweisung");
         const what = String(input.title || input.prompt || "");
         return (
-          <div className="text-amber-300 flex items-start gap-1.5">
+          <div className="text-amber-700 dark:text-amber-300 flex items-start gap-1.5">
             <span className="text-muted-foreground/40 mr-0.5 select-none">{time}</span>
-            <ArrowRight className="h-3 w-3 mt-0.5 shrink-0 text-amber-400" />
+            <ArrowRight className="h-3 w-3 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
             <span>
               <span className="font-medium">Delegiert an {who}</span>
               {what ? `: ${what.slice(0, 140)}` : ""}
@@ -699,11 +699,11 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
         );
       }
       return (
-        <div className="text-blue-400">
+        <div className="text-blue-600 dark:text-blue-400">
           <span className="text-muted-foreground/40 mr-2 select-none">{time}</span>
           <span className="inline-flex items-center gap-1">
-            <Wrench className="h-3 w-3 text-yellow-400 inline" />
-            <span className="text-yellow-400 font-medium">{tool}</span>
+            <Wrench className="h-3 w-3 text-yellow-700 dark:text-yellow-400 inline" />
+            <span className="text-yellow-700 dark:text-yellow-400 font-medium">{tool}</span>
           </span>
           <span className="text-muted-foreground/50 ml-2">
             {JSON.stringify(input).slice(0, 300)}
@@ -719,7 +719,7 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
       );
     case "error":
       return (
-        <div className="text-red-400 flex items-start gap-1.5">
+        <div className="text-red-600 dark:text-red-400 flex items-start gap-1.5">
           <span className="text-muted-foreground/40 mr-0.5 select-none">{time}</span>
           <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
           {String(data.message || "")}
@@ -727,14 +727,14 @@ function TaskLogLine({ event, agentNames = {} }: { event: LogEvent; agentNames?:
       );
     case "system":
       return (
-        <div className="text-violet-400/70 text-[11px]">
+        <div className="text-violet-600/80 dark:text-violet-400/70 text-[11px]">
           <span className="text-muted-foreground/30 mr-2 select-none">{time}</span>
           {String(data.message || "")}
         </div>
       );
     case "result":
       return (
-        <div className="text-emerald-400 border-t border-foreground/[0.08] mt-3 pt-3">
+        <div className="text-emerald-700 dark:text-emerald-400 border-t border-foreground/[0.08] mt-3 pt-3">
           <span className="text-muted-foreground/40 mr-2 select-none">{time}</span>
           Task completed — Cost: {formatMoney(Number(data.cost_usd || 0))} | Duration: {formatDuration(Number(data.duration_ms || 0))} | Turns: {Number(data.num_turns || 0)}
         </div>

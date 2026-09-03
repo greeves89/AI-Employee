@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 const STATE_COLORS: Record<string, string> = {
   idle: "bg-gray-500/20 text-gray-400",
   running: "bg-emerald-500/20 text-emerald-400",
-  paused: "bg-amber-500/20 text-amber-400",
+  paused: "bg-amber-500/20 text-amber-700 dark:text-amber-400",
   completed: "bg-blue-500/20 text-blue-400",
 };
 
@@ -389,7 +389,7 @@ export default function MeetingRoomsPage() {
                           <Bot className="h-3.5 w-3.5 shrink-0" />
                           <span className="truncate">{agent.name}</span>
                           {selectedAgents.includes(agent.id) && agent.id === selectedTeamLeadId && (
-                            <span className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-amber-400">
+                            <span className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">
                               Lead
                             </span>
                           )}
@@ -398,7 +398,7 @@ export default function MeetingRoomsPage() {
                     )}
                   </div>
                   {teamOverflow && (
-                    <p className="mt-1.5 text-[11px] text-amber-400">
+                    <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">
                       Team hat mehr als 6 Mitglieder — 6 vorausgewählt, bitte anpassen.
                     </p>
                   )}
@@ -682,7 +682,7 @@ export default function MeetingRoomsPage() {
                 </div>
 
                 {room.scheduled_for && room.state === "idle" && (
-                  <div className="mb-3 flex items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-xs text-amber-400">
+                  <div className="mb-3 flex items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5 text-xs text-amber-700 dark:text-amber-400">
                     <Clock className="h-3.5 w-3.5 shrink-0" />
                     Folgetermin: startet automatisch, sobald die Aufgaben erledigt sind (spätestens {new Date(room.scheduled_for).toLocaleString("de-DE")})
                   </div>
@@ -709,7 +709,7 @@ export default function MeetingRoomsPage() {
                     <button
                       onClick={() => handleStop(room.id)}
                       disabled={actionLoading === room.id}
-                      className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
                     >
                       {actionLoading === room.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -872,7 +872,7 @@ function DeliverableFiles({ roomId }: { roomId: string }) {
           "text-[10px] px-2 py-0.5 rounded-full border font-medium",
           integrated
             ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-            : "bg-amber-500/10 text-amber-400 border-amber-500/20",
+            : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
         )}>
           {integrated ? "integriert" : "in Arbeit"}
         </span>

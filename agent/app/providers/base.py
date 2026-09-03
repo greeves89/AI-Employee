@@ -11,16 +11,91 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+def _cause_chain(exc: BaseException, tiefe: int = 4) -> list[str]:
+    """Die Kette darunterliegender Fehler — dort steht der eigentliche Grund.
+
+    ``httpx`` verpackt den Socket-Fehler: ein abgerissener Strom kommt oben als
+    ``ReadError('')`` an, waehrend darunter ``ConnectionResetError``,
+    ``SSLEOFError``, ``EndOfStream`` oder ``IncompleteRead`` steht. Ohne diese
+    Kette ist die Meldung buchstaeblich leer — genau der Fall, der am 2026-08-13
+    beim Kunden dreimal auftrat und nur durch Archaeologie in den Aufgaben-
+    schritten einzugrenzen war.
+    """
+    glieder: list[str] = []
+    gesehen: set[int] = {id(exc)}
+    aktuell: BaseException | None = exc
+    while len(glieder) < tiefe:
+        aktuell = aktuell.__cause__ or aktuell.__context__
+        if aktuell is None or id(aktuell) in gesehen:
+            break
+        gesehen.add(id(aktuell))
+        text = str(aktuell).strip()
+        glieder.append(f"{type(aktuell).__name__}: {text}" if text else type(aktuell).__name__)
+    return glieder
+
+
 def format_exception(exc: BaseException) -> str:
     """Human-readable exception string that is NEVER empty.
 
     Some exceptions (timeouts, certain OpenAI/httpx SDK errors) have an empty str(),
     which produced the useless task error 'Unexpected error: '. Fall back to the type
-    name / repr so failures are always debuggable."""
+    name / repr so failures are always debuggable.
+
+    Reicht der eigene Text nicht (``ReadError('')``), wird die Ursachenkette
+    angehaengt — sonst wirft man genau die Information weg, wegen der man den
+    Fehler ueberhaupt liest.
+    """
     msg = str(exc).strip()
-    if msg:
-        return f"{type(exc).__name__}: {msg}"
-    return repr(exc) or type(exc).__name__
+    kopf = f"{type(exc).__name__}: {msg}" if msg else (repr(exc) or type(exc).__name__)
+    kette = _cause_chain(exc)
+    return f"{kopf} <- {' <- '.join(kette)}" if kette else kopf
+
+
+def describe_failure(
+    exc: BaseException,
+    *,
+    url: str = "",
+    body: dict | None = None,
+    messages: list | None = None,
+    model: str = "",
+    started: float | None = None,
+) -> str:
+    """Der Fehler PLUS die Umstaende, unter denen er auftrat.
+
+    Ohne diese Umstaende ist ein abgerissener Strom nicht diagnostizierbar: man
+    sieht „ReadError('')" und weiss weder, wie gross die Anfrage war, noch an
+    welchem Endpunkt sie hing, noch ob sie nach einer Sekunde oder nach zwei
+    Minuten abriss. Beim Kunden kostete genau das eine Stunde Rekonstruktion aus
+    den Aufgabenschritten — fuer eine Information, die hier in einer Zeile
+    haette stehen koennen.
+
+    Bewusst OHNE Inhalte: nur Groessen, Anzahl und Host. Der Prompt gehoert nicht
+    in eine Fehlermeldung, die in der Oberflaeche und in Protokollen landet.
+    """
+    teile: list[str] = [format_exception(exc)]
+    umstaende: list[str] = []
+    if model:
+        umstaende.append(f"Modell={model}")
+    if url:
+        # Nur Host und letzter Pfadteil — Abfragezeichenfolgen koennen Schluessel tragen.
+        ohne_frage = url.split("?", 1)[0]
+        teil = ohne_frage.split("://", 1)[-1]
+        host = teil.split("/", 1)[0]
+        umstaende.append(f"Endpunkt={host}/…/{ohne_frage.rsplit('/', 1)[-1]}")
+    if messages is not None:
+        umstaende.append(f"Nachrichten={len(messages)}")
+    if body is not None:
+        try:
+            import json as _json
+
+            umstaende.append(f"Anfrage={len(_json.dumps(body)):,} Zeichen")
+        except Exception:  # noqa: BLE001 — eine Diagnose darf nie selbst scheitern
+            pass
+    if started is not None:
+        umstaende.append(f"nach {time.monotonic() - started:.1f}s")
+    if umstaende:
+        teile.append(f"[{', '.join(umstaende)}]")
+    return " ".join(teile)
 
 
 @dataclass
@@ -34,6 +109,11 @@ class LLMEvent:
     # Usage stats (only on "done" events)
     input_tokens: int = 0
     output_tokens: int = 0
+    # Feinaufschlüsselung, sofern der Provider sie meldet (für die Token-Anzeige
+    # im Chat — u.a. um zu sehen, ob eine Reasoning-Stufe den Verbrauch ändert).
+    reasoning_tokens: int = 0       # Teil der Ausgabe, den das Modell „nachgedacht" hat
+    cached_tokens: int = 0          # Eingabe, die aus dem Prompt-Cache gelesen wurde
+    cache_write_tokens: int = 0     # Eingabe, die neu in den Cache geschrieben wurde
 
 
 @dataclass

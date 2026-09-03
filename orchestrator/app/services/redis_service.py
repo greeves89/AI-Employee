@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import logging
 import os
 import secrets
@@ -5,9 +7,102 @@ import secrets
 import redis.asyncio as aioredis
 from redis.asyncio.sentinel import Sentinel
 
+from app.config import settings
 from app.core.log_redaction import scrub_log
 
 logger = logging.getLogger(__name__)
+
+
+def agent_acl_username(agent_id: str) -> str:
+    """Redis ACL username for an agent's own scoped connection."""
+    return f"agent-{agent_id}"
+
+
+def agent_acl_password(agent_id: str) -> str:
+    """Derive a per-agent Redis ACL password deterministically from api_secret_key.
+
+    Same pattern as make_agent_token() in dependencies.py: no extra secret to
+    store or rotate per agent, the orchestrator can always re-derive it (e.g.
+    to reconnect after a Redis restart) purely from agent_id + the existing
+    server secret. Domain-separated via the "redis-acl:" prefix so this
+    password can never collide with the HMAC agent auth token.
+    """
+    return hmac.new(
+        settings.api_secret_key.encode(),
+        f"redis-acl:{agent_id}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+# Redis ACL rule set for a single agent's own connection (part of Sentinel epic
+# #588, sub-issue #589). Goal: an agent can fully use its own key/channel space
+# and the few global channels/queues the agent code actually publishes to or
+# reads from (see agent/app/{log_publisher,message_consumer,task_consumer,
+# chat_consumer}.py, agent/app/tools/api_client.py) — but can no longer spoof
+# another agent's status/logs/activity, nor run admin-level commands (FLUSHALL,
+# CONFIG, ACL, KEYS, MONITOR, ...) against the shared Redis instance. Today
+# every agent container connects with the one shared requirepass credential,
+# so any agent can currently publish to ANY other agent's agent:{id}:logs
+# channel and impersonate it.
+#
+# `meeting:*:response:{id}` is still "own key space" despite the wildcard:
+# only the room_id varies, {id} is always this agent's own id (see
+# message_consumer.py: `f"meeting:{room_id}:response:{self.agent_id}"`), so a
+# full read/write grant here does not expose another agent's data.
+_AGENT_ACL_KEY_PATTERNS = ["agent:{id}:*", "meeting:*:response:{id}"]
+_AGENT_ACL_CHANNEL_PATTERNS = [
+    "agent:{id}:*",
+    "agents:logs:all",
+    "chat:completions",
+    "agent:messages:persist",
+    # task_consumer.py publishes task lifecycle events on these globals.
+    "task:started",
+    "task:completions",
+    # Lebenszeichen einer laufenden Aufgabe (#692). Ohne diesen Kanal mass der
+    # Waechter nur die verstrichene Zeit und brach nach 30 Minuten jede noch so
+    # gesunde Aufgabe ab.
+    "task:heartbeat",
+]
+# Broad read/write/pubsub plus the connection basics, explicitly minus
+# admin/dangerous command categories (FLUSHALL, FLUSHDB, CONFIG, SHUTDOWN, ACL,
+# MONITOR, KEYS, CLIENT LIST, DEBUG, ...).
+#
+# ``+@connection`` kam nach dem Rauchtest gegen ein echtes Redis 7.4 dazu (#589):
+# ohne sie fehlt ``PING``, und darauf stuetzen sich der Verbindungsaufbau und die
+# periodische Gesundheitspruefung von ``redis-py`` — der Agent kam gar nicht erst
+# hoch. Die Kategorie enthaelt auch ``CLIENT LIST``; das ist unbedenklich, weil
+# die beiden folgenden Verbote sie wieder entziehen (``client|list`` steht in
+# @admin UND @dangerous, ``ping`` in keinem von beiden — am lebenden Server
+# nachgeprueft). Die REIHENFOLGE ist deshalb wesentlich: erst erlauben, dann
+# entziehen.
+_AGENT_ACL_COMMAND_RULES = [
+    "+@read", "+@write", "+@pubsub", "+@connection", "-@admin", "-@dangerous",
+]
+
+# The inter-agent inbox (message_consumer.py's send_message tool does
+# `LPUSH agent:{to_agent_id}:messages`) needs to stay reachable across ALL
+# agent ids, not just this agent's own — but granting the broad +@read/+@write
+# above on that wildcard would also let any agent LRANGE/LREM/LPOP another
+# agent's inbox. Redis 7 ACL selectors scope an independent command+key rule
+# alongside the user's root permissions, so this selector grants exactly one
+# command (LPUSH) on exactly this pattern, with no read/delete access.
+_CROSS_AGENT_INBOX_SELECTOR = "(~agent:*:messages +lpush)"
+
+
+def build_agent_acl_setuser_args(agent_id: str) -> list[str]:
+    """Build the `ACL SETUSER` argument list for one agent's scoped user.
+
+    Split out as a pure function (no I/O) so the exact rule set can be unit
+    tested without a live Redis — and so the same args can be pasted into
+    `redis-cli ACL SETUSER ...` for a manual live smoke test before this is
+    enabled by default (settings.redis_acl_enabled).
+    """
+    args = ["reset", "on", f">{agent_acl_password(agent_id)}", "resetkeys", "resetchannels"]
+    args += [f"~{p.format(id=agent_id)}" for p in _AGENT_ACL_KEY_PATTERNS]
+    args += [f"&{p.format(id=agent_id)}" for p in _AGENT_ACL_CHANNEL_PATTERNS]
+    args += _AGENT_ACL_COMMAND_RULES
+    args.append(_CROSS_AGENT_INBOX_SELECTOR)
+    return args
 
 
 class RedisService:
@@ -70,6 +165,58 @@ class RedisService:
         if self.client:
             await self.client.aclose()
 
+    async def ensure_agent_acl_user(self, agent_id: str) -> str:
+        """Create/update the least-privilege Redis ACL user for one agent.
+
+        Idempotent (ACL SETUSER replaces the user's rules wholesale each
+        call), so this is safe to call on every agent create/start/restart —
+        it always converges on build_agent_acl_setuser_args()'s current rule
+        set. Returns the scoped REDIS_URL to hand to that agent's container.
+        Requires settings.redis_acl_enabled (see config.py for why this
+        defaults to off) and an admin-level self.client connection.
+        """
+        if not self.client:
+            raise RuntimeError("Redis not connected")
+        username = agent_acl_username(agent_id)
+        await self.client.execute_command("ACL", "SETUSER", username, *build_agent_acl_setuser_args(agent_id))
+        return self._scoped_url(username, agent_acl_password(agent_id))
+
+    async def revoke_agent_acl_user(self, agent_id: str) -> None:
+        """Remove an agent's scoped ACL user (call on agent deletion)."""
+        if not self.client:
+            return
+        username = agent_acl_username(agent_id)
+        try:
+            await self.client.execute_command("ACL", "DELUSER", username)
+        except Exception as e:
+            logger.warning("Failed to delete Redis ACL user %s: %s", scrub_log(username), e)
+
+    def _scoped_url(self, username: str, password: str) -> str:
+        """Rewrite self.redis_url's auth to the given ACL user, keep host/port/db.
+
+        Raises in Sentinel-HA mode (see connect()): self.redis_url is a fixed
+        standalone address, but under REDIS_SENTINEL_URL the actual Redis
+        master is discovered dynamically and can move on failover, so baking
+        a scoped URL from self.redis_url's host/port would point an agent at
+        a stale or wrong node. Per-agent ACL over Sentinel needs its own
+        discovery-aware connection string, tracked as a follow-up on #589 —
+        until then, the caller (_agent_redis_url in agent_manager.py) lets
+        this propagate and fails closed: with redis_acl_enabled explicitly
+        on, a security flag that quietly degrades to the shared admin
+        credential on error would defeat its own purpose.
+        """
+        if os.environ.get("REDIS_SENTINEL_URL", "").strip():
+            raise NotImplementedError(
+                "Per-agent Redis ACL URLs are not yet supported in Sentinel-HA "
+                "mode — tracked as a follow-up on #589"
+            )
+        from urllib.parse import urlsplit, urlunsplit
+        parts = urlsplit(self.redis_url)
+        netloc = f"{username}:{password}@{parts.hostname}"
+        if parts.port:
+            netloc += f":{parts.port}"
+        return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
     async def get_agent_status(self, agent_id: str) -> dict:
         if not self.client:
             return {}
@@ -109,6 +256,26 @@ class RedisService:
         'return redis.call("del", KEYS[1]) else return 0 end'
     )
 
+    async def acquire_lock(self, key: str, ttl_seconds: int = 20) -> str | None:
+        """Atomically acquire a short-lived named lock (SET NX EX).
+
+        Generic building block behind acquire_dispatch_lock. Returns a token
+        to release the lock with, or None if another holder already has it.
+        """
+        if not self.client:
+            return None
+        token = secrets.token_hex(8)
+        acquired = await self.client.set(f"lock:{key}", token, nx=True, ex=ttl_seconds)
+        return token if acquired else None
+
+    async def release_lock(self, key: str, token: str) -> None:
+        if not self.client or not token:
+            return
+        try:
+            await self.client.eval(self._RELEASE_LOCK_SCRIPT, 1, f"lock:{key}", token)
+        except Exception as e:
+            logger.warning("Failed to release lock %s: %s", scrub_log(key), e)
+
     async def acquire_dispatch_lock(self, agent_id: str, ttl_seconds: int = 20) -> str | None:
         """Atomically acquire a short-lived per-agent task-dispatch lock.
 
@@ -121,25 +288,10 @@ class RedisService:
         Returns a token to release the lock with, or None if another
         dispatch for this agent is already in flight.
         """
-        if not self.client:
-            return None
-        token = secrets.token_hex(8)
-        acquired = await self.client.set(
-            f"agent:{agent_id}:dispatch_lock", token, nx=True, ex=ttl_seconds
-        )
-        return token if acquired else None
+        return await self.acquire_lock(f"agent:{agent_id}:dispatch_lock", ttl_seconds)
 
     async def release_dispatch_lock(self, agent_id: str, token: str) -> None:
-        if not self.client or not token:
-            return
-        try:
-            await self.client.eval(
-                self._RELEASE_LOCK_SCRIPT, 1, f"agent:{agent_id}:dispatch_lock", token
-            )
-        except Exception as e:
-            logger.warning(
-                "Failed to release dispatch lock for agent %s: %s", scrub_log(agent_id), e
-            )
+        await self.release_lock(f"agent:{agent_id}:dispatch_lock", token)
 
     async def subscribe(self, channel: str):
         if not self.client:

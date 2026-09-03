@@ -6,11 +6,12 @@ import logging
 import time
 
 from app import context_compressor, model_registry, multimodal
+from app.ai_credential_status import is_auth_error, report_ai_credential_status, report_result_status
 from app.loop_detector import LoopDetector
-from app.config import settings
+from app.config import llm_default_reasoning_effort, settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
-from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
+from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
 from app.runner_hooks import (
     MULTIMODAL_CAPABILITY_NOTE,
     SELF_IMPROVEMENT_SUFFIX,
@@ -81,6 +82,13 @@ class LLMRunner:
         # tool call fails with "Unknown MCP tool".
         self._tool_executor._mcp_client = self._mcp_client
         self._all_tools: list[dict] | None = None
+        # Modelle, die in diesem Lauf schon ausgefallen sind (#200) — verhindert,
+        # dass die Ausweichkette im Kreis laeuft.
+        self._models_tried: set[str] = set()
+        # Wie oft in diesem Lauf schon wegen einer abgerissenen Verbindung
+        # wiederholt wurde. Begrenzt, damit ein dauerhaft kaputter Weg nicht
+        # still im Kreis laeuft.
+        self._connection_retries: int = 0
         # Lazy tool loading: tools activated on demand via search_tools (LRU-capped).
         # Only CORE + search_tools + these are sent per request → under the 128 cap.
         self._activated: list[str] = []
@@ -108,13 +116,53 @@ class LLMRunner:
         )
         return self._context_window
 
-    @staticmethod
-    def _compliance_gaps(tools_called: set[str], lightweight: bool) -> list[str]:
-        """Mandatory closing steps the agent skipped (enforced, not prompt-only).
+    #: Werkzeuge, die zum Abschluss-Ritual gehoeren oder nur den eigenen Kopf
+    #: befragen. Keines davon veraendert etwas an der Aufgabe.
+    _BOOKKEEPING_TOOLS = frozenset({
+        "rate_task", "skill_rate", "memory_save", "memory_search", "memory_list",
+        "memory_delete", "brain_search", "brain_related", "skill_search",
+        "list_todos", "update_todos", "search_tools", "notify_user",
+        "escalate_if_unsure", "request_approval", "check_approval",
+    })
 
-        Lightweight (chat-style) tasks don't require task reflection.
+    @classmethod
+    def _did_substantive_work(cls, tools_called: set[str]) -> bool:
+        """Hat der Agent die Aufgabe ueberhaupt angefasst?
+
+        Jede echte Aufgabe braucht mindestens EINEN Griff nach draussen — lesen,
+        suchen, ausfuehren, schreiben. Selbst eine reine Lese-Pruefung liest
+        Dateien. Bleibt nur das Abschluss-Ritual uebrig, hat der Agent geredet
+        und nicht gearbeitet.
+        """
+        return bool(tools_called - cls._BOOKKEEPING_TOOLS)
+
+    @classmethod
+    def _compliance_gaps(cls, tools_called: set[str], lightweight: bool) -> list[str]:
+        """Was der Lauf noch schuldig ist — Arbeit zuerst, Buchhaltung danach.
+
+        Die Reihenfolge ist der Kern. Bis v1.178.2 fragte dieses Gatter nur nach
+        dem Abschluss-Ritual. Ein Agent, der die Aufgabe blosss ANKUENDIGTE und
+        keinen einzigen Werkzeugaufruf machte, wurde deshalb aufgefordert,
+        ``rate_task`` nachzuholen — tat das brav, und der Lauf endete als
+        **COMPLETED**. Beim Kunden standen so am 2026-08-12 zwei Auftraege auf
+        „erledigt", in deren Ergebnis woertlich steht: „Ich habe inhaltlich noch
+        keine Repo-Aenderungen umgesetzt (nur angekuendigt)." Drei Zuege, ein
+        einziger Werkzeugaufruf — und der war die Bewertung selbst.
+
+        Das Gatter hat die Ankuendigung damit nicht nur durchgelassen, sondern
+        sie in einen erfolgreichen Abschluss hineingerettet. Der Team-Lead meldete
+        anschliessend wahrheitsgemaess „erledigt", weil der Task so dastand.
         """
         gaps: list[str] = []
+        if not lightweight and not cls._did_substantive_work(tools_called):
+            # Zuerst die Arbeit. Alles andere waere die Aufforderung, den
+            # Papierkram fuer eine nicht getane Aufgabe zu erledigen.
+            gaps.append(
+                "actually DO the task — you have not called a single tool that "
+                "touches it. Announcing what you will do is not doing it. Start "
+                "now: read the files, run the checks, make the changes"
+            )
+            return gaps
         if not lightweight and "rate_task" not in tools_called:
             gaps.append("call rate_task to record this task's quality")
         if "skill_install" in tools_called and "skill_rate" not in tools_called:
@@ -180,6 +228,79 @@ class LLMRunner:
             self._activated = self._activated[-MAX_ACTIVATED_TOOLS:]
         return "Folgende Tools sind ab deinem nächsten Schritt aufrufbar:\n" + "\n".join(lines)
 
+    async def _retry_after_connection_glitch(self, task_id: str, error_text: str | None) -> bool:
+        """Abgerissene Verbindung: DENSELBEN Aufruf noch einmal, kurz gewartet.
+
+        Ein Modellwechsel waere hier die falsche Antwort — das Modell ist in
+        Ordnung, die Leitung war es nicht. Und ohne gefuellte Ausweichkette
+        (Regelfall) haette der Wechsel ohnehin nichts zu wechseln: der Lauf starb
+        an einem einzigen abgerissenen Lesevorgang, nach 40 Zuegen Arbeit.
+
+        Hoechstens zwei Versuche. Reisst es dreimal, liegt es nicht am Zufall,
+        und stilles Weiterprobieren wuerde nur den echten Grund verdecken.
+        """
+        from app import model_fallback
+
+        if not model_fallback.is_connection_glitch(error_text):
+            return False
+        if self._connection_retries >= 2:
+            return False
+        self._connection_retries += 1
+        wartezeit = 2 * self._connection_retries
+        logger.warning(
+            "[Verbindung] abgerissen (%s) — Versuch %d/2 in %ds",
+            (error_text or "")[:120], self._connection_retries, wartezeit,
+        )
+        await self.log_publisher.publish(
+            task_id, "system",
+            {"message": f"[Verbindung abgerissen — neuer Versuch {self._connection_retries}/2]"},
+        )
+        await asyncio.sleep(wartezeit)
+        return True
+
+    async def _switch_to_fallback(self, task_id: str, error_text: str | None) -> bool:
+        """Auf das nächste Ausweichmodell umstellen — wenn es sich lohnt (#200).
+
+        Gibt zurück, ob gewechselt wurde. Bei ``False`` scheitert der Lauf wie
+        bisher; das ist der richtige Ausgang für Einrichtungsfehler.
+
+        Der Wechsel wird **sichtbar protokolliert**. Ein stiller Modellwechsel
+        wäre schlimmer als keiner: dann wundert sich später jemand über andere
+        Antwortqualität oder andere Kosten und findet den Grund nicht mehr.
+        """
+        from app import model_fallback
+
+        if not model_fallback.is_retryable(error_text):
+            return False
+        chain = model_fallback.parse_chain(settings.llm_fallback_models)
+        target = model_fallback.next_model(
+            settings.llm_model_name, chain, self._models_tried
+        )
+        if not target:
+            return False
+
+        previous = settings.llm_model_name
+        self._models_tried.add(previous)
+        settings.llm_model_name = target
+        # Der Anbieter haelt Modellname und Circuit-Breaker fest — er muss neu
+        # gebaut werden, sonst laeuft der naechste Zug wieder ins alte Modell.
+        if self._provider:
+            try:
+                await self._provider.close()
+            except Exception:  # noqa: BLE001
+                logger.debug("Alter Provider liess sich nicht schliessen", exc_info=True)
+        self._provider = None
+        self._context_window = 0          # anderes Modell, anderes Fenster
+
+        logger.warning("[Modell] %s antwortete nicht (%s) — weiter mit %s",
+                       previous, (error_text or "")[:120], target)
+        await self.log_publisher.publish(
+            task_id, "system",
+            {"message": f"[Modellwechsel: {previous} → {target}, Grund: "
+                        f"{(error_text or 'unbekannt')[:120]}]"},
+        )
+        return True
+
     def _get_provider(self) -> BaseLLMProvider:
         if not self._provider:
             self._provider = create_provider(
@@ -190,7 +311,7 @@ class LLMRunner:
                 max_tokens=settings.llm_max_tokens,
                 temperature=settings.llm_temperature,
                 thinking_mode=settings.llm_thinking_mode,
-                reasoning_effort=settings.llm_reasoning_effort,
+                reasoning_effort=llm_default_reasoning_effort(),
                 api_version=settings.llm_api_version,
             )
         return self._provider
@@ -293,6 +414,7 @@ class LLMRunner:
                 has_tool_calls = False
                 turn_text = ""
                 turn_tool_calls: list[dict] = []
+                switched_model = False
                 tools = await self._get_tools()  # re-fetch each turn: picks up search_tools activations
 
                 async for event in provider.stream_completion(messages, tools):
@@ -331,15 +453,44 @@ class LLMRunner:
                             overhead_tokens = max(overhead_tokens, gap)
 
                     elif event.type == "error":
+                        # Ausweichen statt aufgeben (#200): bei Rate-Limit,
+                        # Zeitueberschreitung oder Ueberlastung ist der Auftrag
+                        # nicht unloesbar — nur dieses Modell antwortet gerade
+                        # nicht. Einrichtungsfehler (falscher Schluessel, falscher
+                        # Bereitstellungsname) weichen bewusst NICHT aus, sonst
+                        # verdeckt die Kette die eigentliche Ursache.
+                        # Erst der billige Fall: die Verbindung riss ab. Dann
+                        # hilft DERSELBE Aufruf noch einmal — ein Modellwechsel
+                        # waere die falsche Antwort und ohne gefuellte Kette
+                        # ohnehin wirkungslos.
+                        if await self._retry_after_connection_glitch(task_id, event.text):
+                            switched_model = True   # Merker heisst „Zug wiederholen"
+                            provider = self._get_provider()
+                            break
+                        if await self._switch_to_fallback(task_id, event.text):
+                            switched_model = True
+                            provider = self._get_provider()
+                            break
                         await self.log_publisher.publish(
                             task_id, "error", {"message": event.text}
                         )
+                        if is_auth_error(event.text):
+                            await report_ai_credential_status("auth_failed")
                         self.is_running = False
                         return {
                             "status": "error",
                             "error": event.text,
                             "num_turns": num_turns,
                         }
+
+                if switched_model:
+                    # Zug wiederholen — entweder mit anderem Modell oder, nach
+                    # einer abgerissenen Verbindung, mit demselben. Der Verlauf
+                    # bleibt unberuehrt:
+                    # es gab keine verwertbare Antwort, die hineingehoerte. Der
+                    # Zugzaehler wurde bereits erhoeht — das ist Absicht, sonst
+                    # koennte eine dauerhaft ausfallende Kette endlos laufen.
+                    continue
 
                 # Add assistant message to history
                 if turn_text and not turn_tool_calls:
@@ -520,9 +671,15 @@ class LLMRunner:
 
         except Exception as e:
             logger.exception(f"LLM Runner error: {e}")
-            await self.log_publisher.publish(task_id, "error", {"message": str(e)})
+            # format_exception() prefixes the exception TYPE, matching the
+            # chat handler's error style — same reason: the container log
+            # backing a bare str(e) is gone the moment the agent is recreated.
+            failure_text = format_exception(e)
+            await self.log_publisher.publish(task_id, "error", {"message": failure_text})
+            if is_auth_error(failure_text):
+                await report_ai_credential_status("auth_failed")
             self.is_running = False
-            return {"status": "error", "error": str(e), "num_turns": num_turns}
+            return {"status": "error", "error": failure_text, "num_turns": num_turns}
 
         duration_ms = int((time.time() - start_time) * 1000)
         cost_usd = _estimate_cost(
@@ -542,6 +699,7 @@ class LLMRunner:
         )
 
         self.is_running = False
+        await report_result_status({"status": "completed"})
         return {
             "status": "completed",
             "result": full_text,

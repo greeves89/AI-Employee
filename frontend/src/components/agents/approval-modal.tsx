@@ -13,12 +13,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ApprovalRequest } from "@/lib/types";
+import { ApprovalPrompt } from "@/components/agents/approval-prompt";
 
 interface ApprovalModalProps {
   request: ApprovalRequest | null;
   open: boolean;
   onClose: () => void;
-  onApprove: (approvalId: string) => Promise<void>;
+  onApprove: (approvalId: string, answer?: string) => Promise<void>;
   onDeny: (approvalId: string, reason?: string) => Promise<void>;
 }
 
@@ -41,7 +42,7 @@ const riskConfig = {
   },
   medium: {
     icon: AlertTriangle,
-    color: "text-amber-400",
+    color: "text-amber-700 dark:text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/20",
     label: "MEDIUM RISK",
@@ -67,6 +68,12 @@ export function ApprovalModal({
   const [denyReason, setDenyReason] = useState("");
   const [showDenyForm, setShowDenyForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  //: Welche Option gerade abgeschickt wird — nur fuer die Anzeige, damit der
+  //: Nutzer sieht, WELCHER Knopf gerade laeuft.
+  const [gewaehlt, setGewaehlt] = useState<string | null>(null);
+  //: Eigene Antwort, wenn keine der angebotenen passt. Ohne dieses Feld muesste
+  //: der Nutzer wieder ablehnen, um etwas zu schreiben.
+  const [eigeneAntwort, setEigeneAntwort] = useState("");
 
   if (!request) return null;
 
@@ -84,6 +91,24 @@ export function ApprovalModal({
       console.error("Failed to approve:", error);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Eine Antwort ist eine Zustimmung MIT Inhalt — sie geht denselben Weg wie
+  // „Approve", nur mit der Wahl im Gepaeck. Genauso macht es der Telegram-Weg
+  // seit jeher; eine zweite Mechanik daneben waere die naechste Baustelle.
+  const handleAnswer = async (antwort: string) => {
+    setGewaehlt(antwort);
+    setIsSubmitting(true);
+    try {
+      await onApprove(request.approval_id, antwort);
+      setEigeneAntwort("");
+      onClose();
+    } catch (error) {
+      console.error("Failed to answer:", error);
+    } finally {
+      setIsSubmitting(false);
+      setGewaehlt(null);
     }
   };
 
@@ -121,6 +146,10 @@ export function ApprovalModal({
               />
             </Dialog.Overlay>
 
+            {/* Dialog.Content deckt den ganzen Viewport ab und faengt daher JEDEN
+                Klick ab, auch den auf den "Hintergrund" — der Overlay-onClick oben
+                erreicht deshalb nie den Nutzer. target===currentTarget unterscheidet
+                Klick-auf-Hintergrund von Klick-auf-Karte (Bubbling). */}
             <Dialog.Content asChild>
               <motion.div
                 className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -128,6 +157,7 @@ export function ApprovalModal({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
+                onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
               >
                 <motion.div
                   className="w-full max-w-2xl rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl shadow-black/40 overflow-hidden max-h-[90vh] overflow-y-auto"
@@ -191,48 +221,12 @@ export function ApprovalModal({
                     </div>
 
                     {isQuestion ? (
-                      <>
-                        {/* Question */}
-                        <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                            Question
-                          </label>
-                          <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm">
-                            {request.question}
-                          </div>
-                        </div>
-
-                        {/* Options */}
-                        {request.options && request.options.length > 0 && (
-                          <div>
-                            <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                              Options
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                              {request.options.map((opt) => (
-                                <span
-                                  key={opt}
-                                  className="inline-flex items-center rounded-lg bg-foreground/[0.04] border border-foreground/[0.06] px-3 py-1.5 text-sm"
-                                >
-                                  {opt}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Context */}
-                        {request.context && (
-                          <div>
-                            <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                              Context
-                            </label>
-                            <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm">
-                              {request.context}
-                            </div>
-                          </div>
-                        )}
-                      </>
+                      <ApprovalPrompt
+                        request={request}
+                        busy={isSubmitting}
+                        onAnswer={(antwort) => handleAnswer(antwort ?? "")}
+                        onDeny={() => setShowDenyForm(true)}
+                      />
                     ) : (
                       <>
                         {/* Tool */}

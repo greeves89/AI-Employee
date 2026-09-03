@@ -86,6 +86,84 @@ BUILTIN_VERTICAL_PACKS: list[dict] = [
                       "Passwort zurücksetzt.",
         },
     },
+    {
+        "slug": "steuerkanzlei",
+        "name": "Steuerkanzlei",
+        "description": "Buchhaltung, Lohn und Fristen — Agenten, die einer Kanzlei "
+                       "die Vorarbeit abnehmen. Freigabe bleibt beim Menschen.",
+        "icon": "Receipt",
+        "industry": "tax",
+        "template_names": ["bookkeeper", "payroll-clerk", "legal-assistant"],
+        "knowledge_entries": [
+            {
+                "title": "Arbeitsweise in der Kanzlei",
+                "content": "# Arbeitsweise in der Kanzlei\n\n"
+                           "- Jede Buchung ist ein **Vorschlag**. Freigabe durch eine "
+                           "fachkundige Person, bevor sie verbucht wird.\n"
+                           "- Unklarer Beleg kommt in die Rückfragenliste — niemals schätzen.\n"
+                           "- Pflichtangaben nach §14 UStG bei jeder Eingangsrechnung prüfen.\n"
+                           "- Mandantendaten verlassen die Anlage nicht. Keine externen "
+                           "Dienste ohne ausdrückliche Freigabe.\n"
+                           "- Kontenrahmen (SKR03/SKR04) hier hinterlegen, bevor gearbeitet wird.\n",
+                "tags": ["steuer", "arbeitsweise"],
+            },
+            {
+                "title": "Wiederkehrende Fristen",
+                "content": "# Wiederkehrende Fristen\n\n"
+                           "- Umsatzsteuer-Voranmeldung: monatlich oder quartalsweise, "
+                           "10. des Folgemonats (mit Dauerfristverlängerung 10. des Folgemonats +1).\n"
+                           "- Lohnsteuer-Anmeldung: 10. des Folgemonats.\n"
+                           "- SV-Beitragsnachweis: fünftletzter Bankarbeitstag des Monats.\n"
+                           "- Fristen als terminierte Aufgabe anlegen, nicht nur erwähnen.\n",
+                "tags": ["steuer", "fristen"],
+            },
+        ],
+        "demo_task": {
+            "title": "Demo: Belegprüfung vorbereiten",
+            "prompt": "Lege eine Checkliste an, mit der eine Eingangsrechnung auf die "
+                      "Pflichtangaben nach §14 UStG geprüft wird. Ergänze für jede "
+                      "Angabe, was zu tun ist, wenn sie fehlt.",
+        },
+    },
+    {
+        "slug": "handwerksbetrieb",
+        "name": "Handwerksbetrieb",
+        "description": "Angebote, Disposition und Kundenkontakt — Agenten für das "
+                       "Büro hinter der Baustelle.",
+        "icon": "Wrench",
+        "industry": "trades",
+        "template_names": ["quote-clerk", "dispatcher", "first-level-support"],
+        "knowledge_entries": [
+            {
+                "title": "Angebote und Preise",
+                "content": "# Angebote und Preise\n\n"
+                           "- Preise kommen **ausschliesslich** aus der hinterlegten "
+                           "Preisliste. Fehlt ein Preis, geht die Position mit Hinweis "
+                           "in die Rückfragenliste — geschätzte Preise kosten Marge.\n"
+                           "- Material, Lohn und Fremdleistung getrennt ausweisen.\n"
+                           "- Anfahrt, Entsorgung und Gerüst sind eigene Positionen.\n"
+                           "- Nachträge nie stillschweigend einrechnen.\n"
+                           "- Jedes Angebot mit Gültigkeitsdauer und Zahlungsbedingungen.\n",
+                "tags": ["handwerk", "kalkulation"],
+            },
+            {
+                "title": "Disposition",
+                "content": "# Disposition\n\n"
+                           "- Ein Termin gilt erst als geplant, wenn er im Kalender steht.\n"
+                           "- Fahrzeit und Materialverfügbarkeit gehören in die Planung.\n"
+                           "- Verschiebung? Kunde aktiv informieren, mit neuem Zeitfenster.\n"
+                           "- Doppelbelegung ist ein Fehler, kein Kompromiss.\n",
+                "tags": ["handwerk", "disposition"],
+            },
+        ],
+        "demo_task": {
+            "title": "Demo: Angebotsvorlage erstellen",
+            "prompt": "Erstelle eine Angebotsvorlage für einen Handwerksbetrieb mit "
+                      "Positionsliste (Menge, Einheit, Einzelpreis, Gesamt), getrennt "
+                      "nach Material und Lohn, inklusive Gültigkeitsdauer und "
+                      "Zahlungsbedingungen.",
+        },
+    },
 ]
 
 

@@ -26,6 +26,7 @@ from app.services.redis_service import RedisService
 from app.services.watchdog import (
     as_utc,
     find_missed_schedules,
+    is_sentinel_stale,
     find_stale_tasks,
     mark_task_stale,
     md_escape,
@@ -45,6 +46,37 @@ _TRANSIENT_DB_ERRORS = (OperationalError, DBAPIError, ConnectionError, TimeoutEr
 # Frage, die jemand abends sieht und morgens beantworten will, darf nicht ueber
 # Nacht verschwinden.
 _APPROVAL_TTL_HOURS = 24
+
+# Consecutive failed DueSchedules ticks (30s cadence) before escalating to the
+# user. 4 ticks (~2min) rather than 1: a single blip self-heals silently and is
+# not worth an alert. Confirmed need via issue #601 (2026-08-15): a ~30min
+# Postgres outage silently blocked every DueSchedules check during the 06:00
+# job window with no escalation at all — the only reason it was caught was an
+# unrelated 06:30 safety-net schedule set up separately for those two jobs.
+# Schedules without such a safety net would simply have stayed silent.
+_DUE_SCHEDULES_ALERT_THRESHOLD = 4
+
+# OVERLOADED is usually a short-lived queue spike. Do not lose a daily cron slot
+# immediately, but also do not keep a schedule in a retry loop forever.
+_OVERLOAD_RETRY_MAX_ATTEMPTS = 2
+_OVERLOAD_RETRY_DELAY = timedelta(minutes=12)
+_OVERLOAD_RETRY_TTL_SECONDS = 6 * 3600
+
+# Same idea for the other transient skips (off-duty hours, momentarily busy
+# with another task): one collision at the exact cron tick used to cost the
+# whole day, since next_run_at jumped straight to _calc_next_run(now) — see
+# _retry_or_advance. A dispatch-lock collision resolves in seconds, not minutes,
+# so it gets its own, much shorter delay tuned to the 30s tick interval.
+_TRANSIENT_RETRY_MAX_ATTEMPTS = 2
+_TRANSIENT_RETRY_DELAY = timedelta(minutes=12)
+_LOCK_RETRY_MAX_ATTEMPTS = 3
+_LOCK_RETRY_DELAY = timedelta(seconds=30)
+_RETRY_REASONS = ("overload", "off_duty", "busy", "lock", "down")
+
+# Eine Meldung pro Zeitplan und Stunde. Ein Zeitplan, der oefter als stuendlich
+# laeuft, verwirft bei einer laengeren Stoerung sonst die ganze Nacht lang alle
+# ~25 Minuten einen Slot und meldet jeden einzeln.
+_DROPPED_SLOT_ALERT_COOLDOWN_SECONDS = 3600
 
 # GC runs every 60 seconds
 _GC_INTERVAL_SECONDS = 60
@@ -72,6 +104,7 @@ class SchedulerService:
         self._channel_responder = None
         self._teams_meetings = None
         self._slack_gateway = None
+        self._discord_gateway = None
         self._codex_refresh_counter = 0
         # Rhythmus-Invariante wird alle 5 Minuten geprueft — beim ersten Tick sofort,
         # damit ein frisch gestarteter Orchestrator die Zeitplaene nicht erst spaeter anlegt.
@@ -79,9 +112,15 @@ class SchedulerService:
         # Per-schedule drift value at which we last alerted; prevents hourly spam
         # for a stuck schedule — only re-alerts when drift increases.
         self._watchdog_alerted: dict[str, int] = {}
+        # Einmal melden, wenn der Sentinel verstummt — nicht alle 30 Sekunden.
+        self._sentinel_alerted: bool = False
         # Per-schedule missed slot (next_run_at iso) already alerted; prevents
         # re-alerting the same missed window every 30s tick.
         self._missed_alerted: dict[str, str] = {}
+        # Consecutive failed DueSchedules ticks + whether we've already told the
+        # user about the current outage (reset on the first successful tick).
+        self._due_schedules_fail_streak = 0
+        self._due_schedules_db_alerted = False
 
     async def run(self) -> None:
         """Main loop - checks every 30s. Runs schedules always, GC every 60s,
@@ -102,12 +141,36 @@ class SchedulerService:
                 except Exception as e:
                     logger.warning("[Scheduler] MissedScheduleWatchdog error: %s", e)
                 try:
+                    await self._tick_sentinel_liveness()
+                except Exception as e:
+                    logger.warning("[Scheduler] SentinelLiveness error: %s", e)
+                try:
                     await self._check_due_schedules()
+                    if self._due_schedules_fail_streak >= _DUE_SCHEDULES_ALERT_THRESHOLD:
+                        logger.info(
+                            "[Scheduler] DueSchedules DB recovered after %s failed tick(s)",
+                            self._due_schedules_fail_streak,
+                        )
+                    self._due_schedules_fail_streak = 0
+                    self._due_schedules_db_alerted = False
                 except _TRANSIENT_DB_ERRORS as e:
+                    self._due_schedules_fail_streak += 1
                     logger.warning(
                         "[Scheduler] DueSchedules DB unavailable (transient, "
-                        "retrying next tick): %s", e,
+                        "retrying next tick, %s consecutive): %s",
+                        self._due_schedules_fail_streak, e,
                     )
+                    if (
+                        self._due_schedules_fail_streak >= _DUE_SCHEDULES_ALERT_THRESHOLD
+                        and not self._due_schedules_db_alerted
+                    ):
+                        self._due_schedules_db_alerted = True
+                        try:
+                            await self._alert_due_schedules_down(self._due_schedules_fail_streak)
+                        except Exception as alert_err:
+                            logger.warning(
+                                "[Scheduler] DueSchedules alert error: %s", alert_err,
+                            )
                 # Tagesplan: jeder Block mit Uhrzeit MUSS einen Ausloeser haben.
                 try:
                     armed = await self._arm_plan_blocks()
@@ -240,7 +303,11 @@ class SchedulerService:
                         if result:
                             logger.info("[Scheduler] Reflection: %s", result)
                     except Exception as e:
-                        logger.warning("[Scheduler] Reflection error: %s", e)
+                        # %r + exc_info: ein TimeoutError hat einen LEEREN str(),
+                        # sodass "Reflection error: " ohne jede Ursache im Log
+                        # stand — genau das verschleierte die naechtlichen
+                        # DB-Timeouts. Typname und Traceback muessen mit rein.
+                        logger.warning("[Scheduler] Reflection error: %r", e, exc_info=True)
 
                     # Wochensynthese (#384) haengt am SELBEN Takt — ein eigener
                     # Scheduler waere ein zweites Uhrwerk fuer dieselbe Frage.
@@ -266,10 +333,12 @@ class SchedulerService:
                     try:
                         if self._teams_gateway is None:
                             from app.core.channel_gateway import ChannelResponder
+                            from app.services.discord_gateway import DiscordGateway
                             from app.services.slack_gateway import SlackGateway
                             from app.services.teams_gateway import TeamsGateway
                             self._teams_gateway = TeamsGateway(self.redis)
                             self._slack_gateway = SlackGateway(self.redis)
+                            self._discord_gateway = DiscordGateway(self.redis)
                             self._channel_responder = ChannelResponder(self.redis)
 
                         # EIN Lauscher je Agent bedient alle abgefragten Kanaele.
@@ -282,6 +351,9 @@ class SchedulerService:
                         slack_result = await self._slack_gateway.tick()
                         if slack_result:
                             logger.info("[Scheduler] Slack: %s", slack_result)
+                        discord_result = await self._discord_gateway.tick()
+                        if discord_result:
+                            logger.info("[Scheduler] Discord: %s", discord_result)
                         # Termine: Agent als Beisitzer an den laufenden Termin-Chat
                         # haengen bzw. nach dem Termin das Transkript ablegen. Haengt am
                         # selben Takt und an derselben Chat-Liste wie der Teams-Eingang.
@@ -636,6 +708,22 @@ class SchedulerService:
                 select(Agent).where(Agent.id == schedule.agent_id)
             )).scalar_one_or_none()
             if duty_agent is not None:
+                # Ein gestoppter Agent (Idle-/UserLifecycle-Stop) ist kein
+                # Ausfall, solange er sich wecken laesst: faellige Zeitplaene
+                # und Kalender-Bloecke STARTEN ihn — vorher galt er als DOWN,
+                # der Lauf verschwand spurlos und der Tick versuchte es alle
+                # 30 s erneut (#632).
+                if schedule.enabled and agent_duty._state_str(duty_agent) not in agent_duty._LIVE_STATES:
+                    from app.core.agent_wakeup import ensure_agent_running
+                    if await ensure_agent_running(schedule.agent_id, self.docker, self.redis):
+                        try:
+                            await db.refresh(duty_agent)
+                        except Exception:  # noqa: BLE001 — Fake-DBs in Tests koennen kein refresh
+                            duty_agent.state = "running"
+                        logger.info(
+                            "[Scheduler] %s — Agent %s war gestoppt und wurde fuer den faelligen Lauf geweckt",
+                            schedule.name, schedule.agent_id,
+                        )
                 queue_depth = await self.redis.get_queue_depth(schedule.agent_id)
                 stale = await self._stale_task_count(db, schedule.agent_id, now)
                 duty = agent_duty.assess(
@@ -646,8 +734,44 @@ class SchedulerService:
                     # Ausfall/Blockade: die Arbeit muss jemand anders uebernehmen,
                     # sonst bleibt sie liegen und niemand merkt es.
                     if agent_duty.needs_handover(duty):
-                        await duty_service.escalate_failure(db, self.redis, duty_agent, duty)
-                    schedule.next_run_at = _calc_next_run(schedule, now)
+                        await duty_service.escalate_failure(
+                            db, self.redis, duty_agent, duty, lost_run=schedule.name,
+                        )
+                        # Der Ausfall kostet genau hier einen faelligen Lauf. Ohne
+                        # Eintrag verschwindet er spurlos — kein Task, keine Liste,
+                        # kein Zaehler (#632).
+                        await duty_service.escalate_skipped_run(
+                            db, self.redis, duty_agent, duty,
+                            schedule_id=schedule.id, schedule_name=schedule.name,
+                            slot=as_utc(schedule.next_run_at or now),
+                        )
+                        # Ohne Verschieben bliebe next_run_at in der Vergangenheit:
+                        # jeder Tick meldet denselben Ausfall neu. Kurz nachsetzen
+                        # (der Agent laesst sich vielleicht gleich wecken), dann
+                        # regulaer weiterruecken — wie off_duty.
+                        schedule.next_run_at = await self._retry_or_advance(
+                            schedule, now, reason="down",
+                            max_attempts=_TRANSIENT_RETRY_MAX_ATTEMPTS, delay=_TRANSIENT_RETRY_DELAY,
+                        )
+                    elif duty["state"] == agent_duty.OVERLOADED:
+                        # Kein Handover noetig (der Agent lebt, er ist nur beschaeftigt) —
+                        # aber ohne Meldung verschwindet der uebersprungene Lauf spurlos (#605).
+                        await duty_service.escalate_overload(
+                            db, self.redis, duty_agent, duty, schedule.name,
+                        )
+                        schedule.next_run_at = await self._next_run_after_overload(
+                            schedule, now
+                        )
+                    else:
+                        # Weder Handover-wuerdig (DOWN/BLOCKED) noch ueberlastet —
+                        # das ist heute nur OFF_DUTY (ausserhalb der Dienstzeit).
+                        # Knapp daneben liegende Dienstzeiten oder eine kurz falsch
+                        # gesetzte Uhrzeit kosten sonst sofort den ganzen Tag, statt
+                        # es gleich nochmal zu versuchen.
+                        schedule.next_run_at = await self._retry_or_advance(
+                            schedule, now, reason="off_duty",
+                            max_attempts=_TRANSIENT_RETRY_MAX_ATTEMPTS, delay=_TRANSIENT_RETRY_DELAY,
+                        )
                     logger.info(
                         "[Scheduler] %s uebersprungen — Agent %s: %s (%s)",
                         schedule.name, schedule.agent_id, duty["state"], duty["reason"],
@@ -668,7 +792,10 @@ class SchedulerService:
                 current_task and not current_task.startswith("chat:")
             )
             if is_busy_with_task:
-                schedule.next_run_at = _calc_next_run(schedule, now)
+                schedule.next_run_at = await self._retry_or_advance(
+                    schedule, now, reason="busy",
+                    max_attempts=_TRANSIENT_RETRY_MAX_ATTEMPTS, delay=_TRANSIENT_RETRY_DELAY,
+                )
                 logger.info(
                     "[Scheduler] Proactive %s skipped - agent busy (queue=%s, task=%r)",
                     schedule.name, queue_depth, current_task,
@@ -707,18 +834,23 @@ class SchedulerService:
             # (beim Kunden 493 Laeufe, 51 USD, null Ergebnis). Jetzt wird der Lauf gar nicht
             # erst gestartet — stattdessen bekommt der Besitzer EINE Benachrichtigung, und
             # die Agentenkachel traegt ein Ausrufezeichen.
-            from app.core.onboarding import is_onboarded, has_duties, onboarding_note
+            # Nur noch EINE Bedingung: hat er Verantwortungsbereiche. Der frueher
+            # zusaetzlich gepruefte Einrichtungshaken war eine Falle, seit das
+            # Einrichtungsgespraech entfallen ist — nichts konnte ihn mehr setzen,
+            # also waeren die Laeufe eines Bestandsagenten fuer immer uebersprungen
+            # worden.
+            from app.core.onboarding import has_duties, onboarding_note
             from app.models.agent import Agent as _Agent
             _agent = (await db.execute(
                 select(_Agent).where(_Agent.id == schedule.agent_id)
             )).scalar_one_or_none() if schedule.agent_id else None
-            if _agent is not None and not (is_onboarded(_agent) and has_duties(_agent)):
+            if _agent is not None and not has_duties(_agent):
                 await self._nudge_missing_assignment(db, _agent)
                 schedule.next_run_at = _calc_next_run(schedule, now)
                 logger.info(
-                    "[Scheduler] %s uebersprungen — Agent %s hat keinen Auftrag "
-                    "(eingerichtet=%s, Bereiche=%s)",
-                    schedule.name, _agent.id, is_onboarded(_agent), has_duties(_agent),
+                    "[Scheduler] %s uebersprungen — Agent %s hat keine "
+                    "Verantwortungsbereiche",
+                    schedule.name, _agent.id,
                 )
                 return
 
@@ -779,8 +911,13 @@ class SchedulerService:
         if schedule.agent_id:
             lock_token = await self.redis.acquire_dispatch_lock(schedule.agent_id)
             if lock_token is None:
-                # Another dispatch for this agent is in flight right now.
-                schedule.next_run_at = _calc_next_run(schedule, now)
+                # Another dispatch for this agent is in flight right now — resolves
+                # in seconds, so retry on roughly the next tick instead of losing
+                # the whole day over a momentary collision.
+                schedule.next_run_at = await self._retry_or_advance(
+                    schedule, now, reason="lock",
+                    max_attempts=_LOCK_RETRY_MAX_ATTEMPTS, delay=_LOCK_RETRY_DELAY,
+                )
                 logger.info(
                     "[Scheduler] %s skipped - dispatch lock held for agent %s",
                     schedule.name, schedule.agent_id,
@@ -794,7 +931,10 @@ class SchedulerService:
             )
             if is_busy_with_task:
                 await self.redis.release_dispatch_lock(schedule.agent_id, lock_token)
-                schedule.next_run_at = _calc_next_run(schedule, now)
+                schedule.next_run_at = await self._retry_or_advance(
+                    schedule, now, reason="busy",
+                    max_attempts=_TRANSIENT_RETRY_MAX_ATTEMPTS, delay=_TRANSIENT_RETRY_DELAY,
+                )
                 logger.info(
                     "[Scheduler] %s skipped - agent busy (queue=%s, task=%r)",
                     schedule.name, queue_depth, current_task,
@@ -830,6 +970,7 @@ class SchedulerService:
         # feuerte im 30-Sekunden-Takt weiter.
         schedule.last_run_at = now
         schedule.total_runs += 1
+        await self._clear_retry_budgets(schedule)
         if not schedule.cron_expression and schedule.interval_seconds == 0:
             schedule.enabled = False
             schedule.next_run_at = now
@@ -840,6 +981,139 @@ class SchedulerService:
             "[Scheduler] %s triggered task %s, next run at %s",
             schedule.name, task.id, schedule.next_run_at.isoformat(),
         )
+
+    async def _next_run_after_overload(self, schedule: Schedule, now: datetime) -> datetime:
+        """Retry briefly for transient overload before giving up on the slot."""
+        return await self._retry_or_advance(
+            schedule, now, reason="overload",
+            max_attempts=_OVERLOAD_RETRY_MAX_ATTEMPTS, delay=_OVERLOAD_RETRY_DELAY,
+        )
+
+    async def _retry_or_advance(
+        self, schedule: Schedule, now: datetime, *, reason: str,
+        max_attempts: int, delay: timedelta,
+    ) -> datetime:
+        """Retry briefly for a transient skip before giving up on today's slot.
+
+        Generalizes the overload-retry fix (#605/v1.220.4) to every other
+        transient reason a due schedule gets skipped for (agent briefly down,
+        momentarily busy, a dispatch lock held for a few seconds). Before this,
+        a single collision at the exact cron tick jumped straight to
+        _calc_next_run(now) — for a once-a-day schedule that meant losing the
+        whole day for a blip that may have cleared a minute later. One Redis
+        counter per (reason, schedule) so different reasons don't share a
+        retry budget.
+        """
+        client = getattr(self.redis, "client", None)
+        if client is None:
+            return _calc_next_run(schedule, now)
+
+        key = f"schedule:retry:{reason}:{schedule.id}"
+        slot_key = f"{key}:slot"
+        slot = as_utc(schedule.next_run_at)
+        try:
+            attempt = int(await client.incr(key))
+            if attempt == 1:
+                await client.expire(key, _OVERLOAD_RETRY_TTL_SECONDS)
+        except Exception:  # noqa: BLE001
+            logger.debug("[Scheduler] Retry-Zaehler (%s) nicht verfuegbar", reason, exc_info=True)
+            return _calc_next_run(schedule, now)
+
+        # Den urspruenglichen Soll-Slot merken, sonst meldet das Aufgeben spaeter
+        # die letzte Wiederholung statt der Uhrzeit, die im Zeitplan steht. Eigenes
+        # try: eine Stoerung hier darf keine Wiederholung in ein Aufgeben verwandeln.
+        try:
+            await client.set(
+                slot_key, slot.isoformat(), ex=_OVERLOAD_RETRY_TTL_SECONDS, nx=True,
+            )
+            if attempt > max_attempts:
+                stored = await client.get(slot_key)
+                if stored:
+                    slot = as_utc(datetime.fromisoformat(stored))
+                await client.delete(key, slot_key)
+        except Exception:  # noqa: BLE001
+            logger.debug("[Scheduler] Soll-Slot (%s) nicht verfuegbar", reason, exc_info=True)
+
+        if attempt <= max_attempts:
+            return now + delay
+        await self._report_dropped_slot(schedule, slot, reason=reason, attempts=max_attempts)
+        return _calc_next_run(schedule, now)
+
+    async def _clear_retry_budgets(self, schedule: Schedule) -> None:
+        """Wiederholungs-Budgets nach einem geglueckten Lauf zuruecksetzen.
+
+        Die Zaehler leben 6 Stunden. Ohne Ruecksetzen erbt der naechste Slot
+        eines stuendlichen Zeitplans das schon aufgebrauchte Budget des
+        vorherigen — er wird beim ersten Huerdchen sofort verworfen, und die
+        Meldung nennt den alten, laengst gelaufenen Soll-Slot.
+        """
+        client = getattr(self.redis, "client", None)
+        if client is None:
+            return
+        keys = [f"schedule:retry:{r}:{schedule.id}" for r in _RETRY_REASONS]
+        try:
+            await client.delete(*keys, *(f"{k}:slot" for k in keys))
+        except Exception:  # noqa: BLE001
+            logger.debug("[Scheduler] Retry-Budgets nicht ruecksetzbar", exc_info=True)
+
+    async def _report_dropped_slot(
+        self, schedule: Schedule, slot: datetime, *, reason: str, attempts: int,
+    ) -> None:
+        """Einen endgueltig verworfenen Lauf zaehlen und melden (#631).
+
+        Bis hierher war das Aufgeben die einzige Zustandsaenderung im Scheduler,
+        die weder gezaehlt noch gemeldet wurde: der Skip-Zweig kehrt vor
+        ``total_runs += 1`` zurueck, und ``_retry_or_advance`` setzt
+        ``next_run_at`` in die Zukunft. Damit sah der Fehler-Waechter
+        ``drift == 0``, der Verpasst-Waechter fand nichts (er sucht
+        ``next_run_at`` in der Vergangenheit), und ``success_rate`` blieb 1.0 —
+        ein Tageszeitplan konnte tagelang ausfallen und meldete perfekte Quote.
+        ``last_run_at`` bleibt bewusst unberuehrt: es hat kein Lauf
+        stattgefunden.
+        """
+        import json as _json
+
+        # Einmal-Laeufe (Plan-Bloecke) verlieren nichts: sie behalten ihren
+        # einen Auftrag und versuchen es in 60 Sekunden wieder. Nur wer eine
+        # feste Wiederkehr hat, verliert wirklich den Termin von heute.
+        if not schedule.cron_expression and not schedule.interval_seconds:
+            return
+
+        schedule.total_runs += 1
+        schedule.fail_count += 1
+
+        logger.warning(
+            "[Scheduler] %s: Slot %s nach %s Versuchen (%s) verworfen",
+            schedule.name, slot.isoformat(), attempts, reason,
+        )
+
+        client = getattr(self.redis, "client", None)
+        if client is None:
+            return
+        try:
+            fresh = await client.set(
+                f"schedule:dropped:{schedule.id}", "1",
+                nx=True, ex=_DROPPED_SLOT_ALERT_COOLDOWN_SECONDS,
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("[Scheduler] Meldungs-Drossel nicht verfuegbar", exc_info=True)
+            fresh = True
+        if not fresh:
+            return
+
+        payload = {
+            "text": (
+                f"Zeitplan *{md_escape(schedule.name)}*: Lauf um "
+                f"{slot.isoformat()} entfaellt ersatzlos "
+                f"(Grund: {md_escape(reason)}, nach {attempts} Versuchen). "
+                f"Naechster regulaerer Termin unveraendert."
+            ),
+            "parse_mode": "Markdown",
+        }
+        try:
+            await client.publish("telegram:notification", _json.dumps(payload))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Scheduler] DroppedSlot publish error: %s", e)
 
     async def _arm_plan_blocks(self) -> int:
         """Sicherstellen, dass jeder geplante Block mit Uhrzeit einen Ausloeser hat.
@@ -884,7 +1158,11 @@ class SchedulerService:
             missed = (await db.execute(
                 select(AgentPlanItem, Schedule)
                 .join(Schedule, Schedule.id == AgentPlanItem.schedule_id)
-                .where(AgentPlanItem.status == "planned", Schedule.total_runs > 0)
+                # last_run_at statt total_runs: ein verworfener Slot (#631) zaehlt
+                # als fehlgeschlagener Lauf mit, hat aber nichts ausgefuehrt — ueber
+                # total_runs wuerde der Block als erledigt abgehakt und per
+                # Titel-Suche an einen fremden Task gehaengt.
+                .where(AgentPlanItem.status == "planned", Schedule.last_run_at.is_not(None))
             )).all()
             for item, sched in missed:
                 task = (await db.execute(
@@ -900,39 +1178,58 @@ class SchedulerService:
             if settled:
                 await db.commit()
 
-            orphans = (await db.execute(
-                select(AgentPlanItem).where(
-                    AgentPlanItem.status == "planned",
-                    AgentPlanItem.planned_start.isnot(None),
-                    AgentPlanItem.schedule_id.is_(None),
-                    AgentPlanItem.plan_date >= _date.today(),
-                )
-            )).scalars().all()
-            for item in orphans:
-                schedule_id = _uuid.uuid4().hex[:8]
-                db.add(Schedule(
-                    id=schedule_id,
-                    name=f"[Plan] {item.title[:60]}",
-                    prompt=block_prompt(item),
-                    interval_seconds=0,
-                    priority=0 if item.priority == "high" else 1,
-                    agent_id=item.agent_id,
-                    enabled=True,
-                    # Verpasste Zeiten werden nachgeholt — aber GESTAFFELT. Fuenf
-                    # Bloecke, deren Zeit vorbei ist, wuerden sonst gleichzeitig
-                    # feuern; auf einem Pi bringt das die CLI zum Absturz (exit -6).
-                    next_run_at=max(
-                        item.planned_start,
-                        datetime.now(timezone.utc) + timedelta(minutes=3 * armed),
-                    ) if item.planned_start < datetime.now(timezone.utc)
-                    else item.planned_start,
-                ))
-                item.schedule_id = schedule_id
-                armed += 1
-            if armed:
-                # Ohne das faellt beim Verlassen der Sitzung alles weg: die Zeitplaene
-                # waren angelegt und beim naechsten Blick wieder verschwunden.
-                await db.commit()
+            # Arming orphans (SELECT unclaimed items, INSERT a Schedule each) is not
+            # atomic by itself: two scheduler ticks — from this process or another
+            # orchestrator replica — can both SELECT the same "schedule_id IS NULL"
+            # item before either COMMITs, and each create its OWN Schedule row for
+            # it. That is exactly what happened for #548 on 2026-08-13: one plan
+            # block ("Deploy-Gate Status pruefen") got two independent Schedule
+            # rows, each later fired its own [Plan] task, and the two tasks sent
+            # contradicting Telegram updates to the user. The per-agent dispatch
+            # lock above doesn't help here — it guards *dispatch*, this races
+            # earlier, at *schedule creation*. Hold a short-lived global lock
+            # around select+insert so only one process can arm orphans at a time;
+            # by the time a second process gets the lock, the first has already
+            # committed, so the item no longer shows up as an orphan.
+            lock_token = await self.redis.acquire_lock("arm_plan_blocks", ttl_seconds=25)
+            if lock_token is None:
+                return armed
+            try:
+                orphans = (await db.execute(
+                    select(AgentPlanItem).where(
+                        AgentPlanItem.status == "planned",
+                        AgentPlanItem.planned_start.isnot(None),
+                        AgentPlanItem.schedule_id.is_(None),
+                        AgentPlanItem.plan_date >= _date.today(),
+                    )
+                )).scalars().all()
+                for item in orphans:
+                    schedule_id = _uuid.uuid4().hex[:8]
+                    db.add(Schedule(
+                        id=schedule_id,
+                        name=f"[Plan] {item.title[:60]}",
+                        prompt=block_prompt(item),
+                        interval_seconds=0,
+                        priority=0 if item.priority == "high" else 1,
+                        agent_id=item.agent_id,
+                        enabled=True,
+                        # Verpasste Zeiten werden nachgeholt — aber GESTAFFELT. Fuenf
+                        # Bloecke, deren Zeit vorbei ist, wuerden sonst gleichzeitig
+                        # feuern; auf einem Pi bringt das die CLI zum Absturz (exit -6).
+                        next_run_at=max(
+                            item.planned_start,
+                            datetime.now(timezone.utc) + timedelta(minutes=3 * armed),
+                        ) if item.planned_start < datetime.now(timezone.utc)
+                        else item.planned_start,
+                    ))
+                    item.schedule_id = schedule_id
+                    armed += 1
+                if armed:
+                    # Ohne das faellt beim Verlassen der Sitzung alles weg: die Zeitplaene
+                    # waren angelegt und beim naechsten Blick wieder verschwunden.
+                    await db.commit()
+            finally:
+                await self.redis.release_lock("arm_plan_blocks", lock_token)
         return armed
 
     async def _night_runs(
@@ -976,6 +1273,8 @@ class SchedulerService:
         Nutzer die Dienstzeit geaendert hat. Ausgeschaltet lassen kann er sie: ein
         ``enabled=False`` wird respektiert und nicht wieder angeknipst.
         """
+        from sqlalchemy import or_
+
         from app.core import plan_rhythm
         from app.models.agent import Agent as _Agent
 
@@ -1005,10 +1304,20 @@ class SchedulerService:
             # Alt-Bestand: „Tagesplanung am Morgen" legte frueher einen EIGENEN
             # Zeitplan an. Der Morgencheck macht dasselbe — zwei Planungslaeufe an
             # einem Morgen sind einer zu viel, also raeumt der Abgleich ihn weg.
+            # Zwei Namensschemata aus der Vor-Rhythmus-Zeit: das juengere endet auf
+            # „— Tagesplanung", ein aelteres nutzte „[Plan] Morgencheck:"/
+            # „[Plan] Abendplanung:" (mit Datum im Titel, deshalb Praefix-Vergleich
+            # bis zum Doppelpunkt statt exaktem Namen) — beide blieben bislang
+            # unentdeckt liegen und feuerten fuer einen gestoppten Agenten seither
+            # alle 30 Sekunden ins Leere.
             legacy = (await db.execute(
                 select(Schedule).where(
                     Schedule.agent_id.in_(agent_ids),
-                    Schedule.name.like("%— Tagesplanung"),
+                    or_(
+                        Schedule.name.like("%— Tagesplanung"),
+                        Schedule.name.like("[Plan] Morgencheck:%"),
+                        Schedule.name.like("[Plan] Abendplanung:%"),
+                    ),
                 )
             )).scalars().all()
             for old in legacy:
@@ -1207,7 +1516,7 @@ class SchedulerService:
             return await router.dispatch_due_retries()
 
     async def _tick_stale_task_watchdog(self) -> None:
-        """Mark RUNNING tasks that stopped heart-beating (>30min) as stale.
+        """Mark RUNNING tasks that stopped heart-beating as stale.
 
         A worker that crashes mid-job (container OOM, network drop) leaves its
         task pinned in RUNNING forever. updated_at stops advancing, so we flip
@@ -1215,23 +1524,45 @@ class SchedulerService:
         instead of the operator discovering a missing artifact hours later.
         """
         import json as _json
+        from datetime import timedelta as _td
 
+        from app.config import settings as _cfg
+
+        # Einstellbar seit #692: der feste 30-Minuten-Wert war faktisch eine
+        # Obergrenze fuer jede delegierte Aufgabe, weil niemand ein Lebenszeichen
+        # sendete. Der Herzschlag kommt jetzt — aber ein Agent auf einem aelteren
+        # Abbild sendet ihn noch nicht, deshalb liegt der Standard hoeher.
+        schwelle = _td(minutes=max(1, int(getattr(_cfg, "watchdog_stale_task_minutes", 180))))
         now = datetime.now(timezone.utc)
         async with resilient_session() as db:
-            stale = await find_stale_tasks(db, now)
+            stale = await find_stale_tasks(db, now, schwelle)
             if not stale:
                 return
             from app.models.notification import Notification
 
+            minuten = int(schwelle.total_seconds() // 60)
             for task in stale:
-                mark_task_stale(task, now)
+                mark_task_stale(task, now, schwelle)
+                # Ohne das laeuft der Agent nach dem Abbruch weiter und verbrennt
+                # Zeit und Token fuer ein Ergebnis, das niemand mehr annimmt
+                # (#692 Punkt C). Der Kanal existiert bereits fuer `cancel_task`.
+                if self.redis and self.redis.client and task.agent_id:
+                    try:
+                        # Rohe Kennung, genau wie `cancel_task` — der Zuhoerer im
+                        # Agenten liest die Nutzlast als ID, JSON wuerde er fuer
+                        # eine unbekannte Aufgabe halten und nichts stoppen.
+                        await self.redis.client.publish(
+                            f"agent:{task.agent_id}:task:cancel", task.id
+                        )
+                    except Exception as e:
+                        logger.warning("[Scheduler] StaleTaskWatchdog cancel error: %s", e)
                 db.add(
                     Notification(
                         agent_id=task.agent_id or "system",
                         type="error",
                         title="Task stale (kein Heartbeat)",
                         message=(
-                            f'Task "{task.title}" hat seit über 30min kein '
+                            f'Task "{task.title}" hat seit über {minuten} min kein '
                             "Lebenszeichen gesendet und wurde als stale markiert."
                         )[:240],
                         priority="high",
@@ -1243,7 +1574,7 @@ class SchedulerService:
                     payload = {
                         "text": (
                             f"⚠️ Task *{md_escape(task.title)}* stale — kein "
-                            f"Heartbeat >30min (id `{task.id}`), als fehlgeschlagen markiert."
+                            f"Heartbeat >{minuten} min (id `{task.id}`), als fehlgeschlagen markiert."
                         ),
                         "parse_mode": "Markdown",
                     }
@@ -1255,6 +1586,103 @@ class SchedulerService:
                         logger.warning("[Scheduler] StaleTaskWatchdog publish error: %s", e)
             await db.commit()
             logger.info("[Scheduler] StaleTaskWatchdog: marked %s task(s) stale", len(stale))
+
+    async def _tick_sentinel_liveness(self) -> None:
+        """Meldet, wenn der Sentinel verstummt ist (#590 Punkt 6).
+
+        Ein Waechter, der unbemerkt stehenbleibt, ist gefaehrlicher als gar
+        keiner: die Anlage sieht ueberwacht aus und ist es nicht. Deshalb
+        ueberwacht der Wachhund den Waechter.
+
+        Ein FEHLENDES Lebenszeichen ist kein Alarm — dann ist der Dienst schlicht
+        aus, und das ist ein bewusster Zustand. Gemeldet wird nur, wer einmal
+        gelebt hat und dann verstummt.
+        """
+        from app.models.notification import Notification
+        from app.services.sentinel_service import SENTINEL_HEARTBEAT_KEY
+
+        if not self.redis or not self.redis.client:
+            return
+        try:
+            schlag = await self.redis.client.get(SENTINEL_HEARTBEAT_KEY)
+        except Exception:  # noqa: BLE001 — Redis weg ist ein anderes Problem
+            return
+        if isinstance(schlag, bytes):
+            schlag = schlag.decode()
+
+        now = datetime.now(timezone.utc)
+        if not is_sentinel_stale(schlag, now):
+            self._sentinel_alerted = False
+            return
+        if self._sentinel_alerted:
+            return          # einmal melden, nicht alle 30 Sekunden
+        self._sentinel_alerted = True
+        logger.error("[Scheduler] Sentinel verstummt — letztes Lebenszeichen: %s", schlag)
+        async with resilient_session() as db:
+            db.add(Notification(
+                agent_id="system",
+                type="error",
+                title="Sentinel antwortet nicht mehr",
+                message=(
+                    "Die Verhaltensueberwachung hat sich seit ueber zwei Minuten "
+                    "nicht gemeldet. Sie laeuft also nicht mehr, waehrend die "
+                    "Oberflaeche sie als aktiv fuehrt — Agenten laufen derzeit "
+                    "unbeaufsichtigt. Orchestrator-Protokoll pruefen."
+                ),
+                priority="urgent",
+            ))
+            await db.commit()
+
+    async def _alert_due_schedules_down(self, streak: int) -> None:
+        """Escalate once a DB outage has blocked schedule-checking for a while.
+
+        A single failed tick is a harmless blip and self-heals on its own —
+        see _TRANSIENT_DB_ERRORS above. But if the DB stays unreachable for
+        minutes, NO schedule can fire during that window (the 06:00 jobs
+        included), and until now nothing told the user unless a schedule
+        happened to have its own separate safety-net job. Root-caused via
+        issue #601 on 2026-08-15.
+        """
+        outage_min = round(streak * 30 / 60, 1)
+        logger.error(
+            "[Scheduler] DueSchedules DB unreachable for %s consecutive ticks "
+            "(~%s min) — schedules may be missed", streak, outage_min,
+        )
+        try:
+            from app.models.notification import Notification
+            async with resilient_session() as db:
+                db.add(Notification(
+                    agent_id="system",
+                    type="error",
+                    title="Zeitplaene koennen nicht geprueft werden",
+                    message=(
+                        f"Die Datenbank ist seit ~{outage_min} Minuten nicht "
+                        "erreichbar, waehrend der Scheduler faellige Zeitplaene "
+                        "pruefen wollte. Faellige Jobs feuern in diesem Fenster "
+                        "nicht von selbst nach — nur ein eigens eingerichteter "
+                        "Safety-Net-Zeitplan wuerde sie nachtraeglich abfangen."
+                    ),
+                    priority="urgent",
+                ))
+                await db.commit()
+        except _TRANSIENT_DB_ERRORS as e:
+            # DB still down — the Notification row can't be written either, but
+            # the Telegram publish below goes over Redis, not the DB, so it can
+            # still reach the user.
+            logger.warning("[Scheduler] DueSchedules alert Notification write failed (DB still down): %s", e)
+        if self.redis and self.redis.client:
+            import json as _json
+            payload = {
+                "text": (
+                    f"🔴 Scheduler: Datenbank seit ~{outage_min} Minuten nicht "
+                    "erreichbar — faellige Zeitplaene werden gerade nicht geprueft."
+                ),
+                "parse_mode": "Markdown",
+            }
+            try:
+                await self.redis.client.publish("telegram:notification", _json.dumps(payload))
+            except Exception as e:
+                logger.warning("[Scheduler] DueSchedules alert publish error: %s", e)
 
     async def _tick_missed_schedule_watchdog(self) -> None:
         """Alert on enabled schedules whose fire window was missed (>5min late).

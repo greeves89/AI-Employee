@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
+import * as Dialog from "@radix-ui/react-dialog";
 import Link from "next/link";
 import {
   Cpu, MemoryStick, HardDrive, MessageSquare, History,
@@ -24,6 +25,8 @@ import {
   getFileColor, formatModified, formatModifiedFull,
   formatFileSize as formatFileSizeShared,
 } from "@/components/files/file-preview";
+import { useOrdnerAbwurf } from "@/components/files/use-ordner-abwurf";
+import { FileUploader } from "@/components/files/file-uploader";
 import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
 import { AutonomyMatrix } from "@/components/agents/autonomy-matrix";
@@ -52,7 +55,7 @@ import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { formatMoney } from "@/lib/money";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string }> = {
-  pending: { icon: Clock, color: "text-amber-400", badge: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  pending: { icon: Clock, color: "text-amber-700 dark:text-amber-400", badge: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" },
   queued: { icon: Clock, color: "text-blue-400", badge: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
   running: { icon: Loader2, color: "text-blue-400", badge: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
   completed: { icon: CheckCircle2, color: "text-emerald-400", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
@@ -163,19 +166,34 @@ export default function AgentDetailPage() {
     if (visible) setActiveSub(requestedTab as SubKey);
   }, [requestedTab, groupsForMode]);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await api.getAgent(agentId);
-        setAgent(data as Agent);
-      } catch {
-        // ignore
-      }
-    };
-    load();
-    const interval = setInterval(load, 15000);
-    return () => clearInterval(interval);
+  const ladeAgent = useCallback(async () => {
+    try {
+      const data = await api.getAgent(agentId);
+      setAgent(data as Agent);
+    } catch {
+      // ignore
+    }
   }, [agentId]);
+
+  useEffect(() => {
+    ladeAgent();
+    const interval = setInterval(ladeAgent, 15000);
+    return () => clearInterval(interval);
+  }, [ladeAgent]);
+
+  // Nach dem Absenden einer Chatnachricht kurz nachfassen. Die „Aktiver
+  // Chat"-Anzeige haengt an `current_task` des Agenten; der Takt oben liegt bei
+  // 15 Sekunden, im Mittel wartete man also 7,5 Sekunden auf die Anzeige — genau
+  // die vom Kunden gemessenen sieben. Der Agent selbst war da laengst dran.
+  // Ein kurzer Stoss trifft den Moment, in dem er den Auftrag aufnimmt, ohne
+  // dauerhaft haeufiger abzufragen.
+  const nachfassenTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const nachfassen = useCallback(() => {
+    nachfassenTimers.current.forEach(clearTimeout);
+    nachfassenTimers.current = [600, 1800, 4000].map((ms) => setTimeout(ladeAgent, ms));
+    ladeAgent();
+  }, [ladeAgent]);
+  useEffect(() => () => { nachfassenTimers.current.forEach(clearTimeout); }, []);
 
   if (!agent) {
     return (
@@ -304,8 +322,8 @@ export default function AgentDetailPage() {
                 </div>
                 {diskLimitMb > 0 && (
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <HardDrive className={cn("h-3 w-3", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-orange-400")} />
-                    <span className={cn("font-medium", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-orange-400")}>
+                    <HardDrive className={cn("h-3 w-3", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-700 dark:text-amber-400" : "text-orange-400")} />
+                    <span className={cn("font-medium", diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-700 dark:text-amber-400" : "text-orange-400")}>
                       {diskUsageMb >= 1024 ? `${(diskUsageMb / 1024).toFixed(1)} GB` : `${diskUsageMb.toFixed(0)} MB`} / {diskLimitMb >= 1024 ? `${(diskLimitMb / 1024).toFixed(0)} GB` : `${diskLimitMb.toFixed(0)} MB`}
                     </span>
                   </div>
@@ -474,6 +492,7 @@ export default function AgentDetailPage() {
               agentId={agentId}
               initialSessionId={chatFocusSession}
               busySessionIds={busyChatSessions}
+              onTurnChange={nachfassen}
             />
           )}
           {activeSub === "speech" && (
@@ -530,10 +549,10 @@ function UpdateBanner({ agentId, onUpdated }: { agentId: string; onUpdated: (age
     >
       <div className="flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
-          <ArrowUpCircle className="h-4 w-4 text-amber-400" />
+          <ArrowUpCircle className="h-4 w-4 text-amber-700 dark:text-amber-400" />
         </div>
         <div>
-          <p className="text-sm font-medium text-amber-400">Update available</p>
+          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Update available</p>
           <p className="text-xs text-muted-foreground">A new agent image version is available. Your data will be preserved.</p>
         </div>
       </div>
@@ -592,7 +611,7 @@ function InfoCard({
 function BudgetBar({ spent, budget, action }: { spent: number; budget: number; action: "haiku" | "stop" }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const tone =
-    pct >= 100 ? "text-red-400" : pct >= 80 ? "text-amber-400" : "text-emerald-400";
+    pct >= 100 ? "text-red-400" : pct >= 80 ? "text-amber-700 dark:text-amber-400" : "text-emerald-400";
   const fill =
     pct >= 100 ? "bg-red-400" : pct >= 80 ? "bg-amber-400" : "bg-emerald-400";
 
@@ -604,7 +623,7 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
       title={`Bei Erreichen des Budgets: ${action === "stop" ? "Agent anhalten" : "auf Haiku wechseln"}`}
       className="flex items-center gap-2.5 rounded-lg border border-foreground/[0.06] bg-card/60 px-3 py-1.5"
     >
-      <DollarSign className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+      <DollarSign className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
       <span className="shrink-0 text-[11px] text-muted-foreground">Budget</span>
       <div className="h-1 min-w-[3rem] flex-1 rounded-full bg-foreground/[0.08]">
         <div className={cn("h-1 rounded-full transition-all duration-700", fill)} style={{ width: `${pct}%` }} />
@@ -886,7 +905,7 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
                 <span className="text-muted-foreground">Rate:</span>{" "}
                 <span className={cn(
                   "font-medium",
-                  metrics.success_rate >= 0.8 ? "text-emerald-400" : metrics.success_rate >= 0.5 ? "text-amber-400" : "text-red-400"
+                  metrics.success_rate >= 0.8 ? "text-emerald-400" : metrics.success_rate >= 0.5 ? "text-amber-700 dark:text-amber-400" : "text-red-400"
                 )}>
                   {(metrics.success_rate * 100).toFixed(0)}%
                 </span>
@@ -1062,7 +1081,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
               "text-[10px] px-2 py-0.5 rounded-full border font-medium",
               botRunning
                 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
             )}>
               {botRunning ? "Verbunden" : "Nicht aktiv"}
             </span>
@@ -1239,11 +1258,33 @@ function AgentSettings({
   // Model-Router: opt-in content-based model routing (OpenWebUI-style)
   const existingRouterCfg = (agent.config as { model_router?: api.ModelRouterConfig } | null)?.model_router;
   const [routerEnabled, setRouterEnabled] = useState<boolean>(Boolean(existingRouterCfg?.enabled));
+  // Die Vorgaben standen bis 1.253.x nur als PLATZHALTER in den Feldern. Wer den
+  // Router einschaltete, sah Modellnamen und durfte annehmen, sie seien gesetzt —
+  // gespeichert wurde aber der leere String. Auf der Anlage lagen deshalb 146
+  // Auftraege mit LEEREM Modellnamen; der Router entschied, und die Entscheidung
+  // war jedes Mal "". Jetzt sind es echte Werte in einer Auswahlliste.
+  const ROUTER_VORGABEN = {
+    simple: "claude-haiku-4-5-20251001",
+    standard: "claude-sonnet-5",
+    complex: "claude-opus-5",
+  } as const;
   const [routerRules, setRouterRules] = useState({
-    simple: existingRouterCfg?.rules?.simple ?? "",
-    standard: existingRouterCfg?.rules?.standard ?? "",
-    complex: existingRouterCfg?.rules?.complex ?? "",
+    simple: existingRouterCfg?.rules?.simple || ROUTER_VORGABEN.simple,
+    standard: existingRouterCfg?.rules?.standard || ROUTER_VORGABEN.standard,
+    complex: existingRouterCfg?.rules?.complex || ROUTER_VORGABEN.complex,
   });
+  //: Nur freigegebene Modelle — dieselbe Quelle wie beim Anlegen eines Agenten,
+  //: damit hier nichts waehlbar ist, was der Administrator gesperrt hat.
+  const [routerModelle, setRouterModelle] = useState<api.ModelCatalogProvider[]>([]);
+  useEffect(() => {
+    if (!routerEnabled || routerModelle.length) return;
+    api.getModelCatalog()
+      .then((k) => {
+        const modus = k.modes.find((m) => m.mode === agent.mode) ?? k.modes[0];
+        setRouterModelle(modus?.providers ?? []);
+      })
+      .catch(() => setRouterModelle([]));
+  }, [routerEnabled, routerModelle.length, agent.mode]);
   const [routerSaving, setRouterSaving] = useState(false);
   const saveModelRouter = async (next: { enabled: boolean; rules: typeof routerRules }) => {
     setRouterSaving(true);
@@ -1372,6 +1413,12 @@ function AgentSettings({
 
   // Claude Code model selection state
   const [agentModel, setAgentModel] = useState(agent.model);
+  // Standard-Denktiefe des Agenten (config.default_reasoning) — gilt fuer
+  // Aufgaben, Zeitplaene, Delegationen und Chats ohne gewaehlte Stufe.
+  const [defaultReasoning, setDefaultReasoning] = useState<string>(
+    String((agent.config as Record<string, unknown> | null)?.default_reasoning ?? "")
+  );
+  const [reasoningSaving, setReasoningSaving] = useState(false);
   const [agentProvider, setAgentProvider] = useState<string>(agent.model_provider || "anthropic");
   const [modelSaving, setModelSaving] = useState(false);
   // Provider/model catalog from the backend (single source of truth). Falls
@@ -1509,6 +1556,25 @@ function AgentSettings({
     }
   };
 
+  // Explicit "everyone's agent" flag (admin only, 2026-08-27) — the ONLY way
+  // an agent becomes visible platform-wide in tasks/notifications/evals/
+  // schedules now. Replaces the old "no owner = everyone's" automatism,
+  // which leaked across departments on a multi-tenant customer install.
+  const [isPlatformAgent, setIsPlatformAgent] = useState(agent.is_platform_agent ?? false);
+  const [platformAgentLoading, setPlatformAgentLoading] = useState(false);
+  const handlePlatformAgentToggle = async (v: boolean) => {
+    setPlatformAgentLoading(true);
+    try {
+      const r = await api.setPlatformAgent(agentId, v);
+      setIsPlatformAgent(r.is_platform_agent);
+      setMessage({ type: "success", text: v ? "Agent als Plattform-Agent markiert" : "Markierung entfernt" });
+    } catch {
+      setMessage({ type: "error", text: "Fehler beim Ändern der Plattform-Agent-Markierung" });
+    } finally {
+      setPlatformAgentLoading(false);
+    }
+  };
+
   const apiBase = typeof window !== "undefined"
     ? window.location.origin.replace(":3000", ":8000")
     : "";
@@ -1630,14 +1696,34 @@ function AgentSettings({
             {(["simple", "standard", "complex"] as const).map((tier) => (
               <div key={tier}>
                 <label className="block text-[11px] font-medium text-muted-foreground mb-1 capitalize">{tier}</label>
-                <input
-                  type="text"
+                <select
                   value={routerRules[tier]}
-                  placeholder={tier === "simple" ? "claude-haiku-4-5-20251001" : tier === "standard" ? "claude-sonnet-5" : "claude-opus-5"}
-                  onChange={(e) => setRouterRules((prev) => ({ ...prev, [tier]: e.target.value }))}
-                  onBlur={() => saveModelRouter({ enabled: routerEnabled, rules: routerRules })}
+                  onChange={(e) => {
+                    const naechste = { ...routerRules, [tier]: e.target.value };
+                    setRouterRules(naechste);
+                    // Direkt speichern: ein `select` hat kein sinnvolles
+                    // "Feld verlassen", und ein stillschweigend nicht
+                    // gespeicherter Wert war hier schon einmal das Problem.
+                    saveModelRouter({ enabled: routerEnabled, rules: naechste });
+                  }}
                   className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-xs outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
-                />
+                >
+                  {/* Der gespeicherte Wert muss waehlbar bleiben, auch wenn ein
+                      Administrator das Modell inzwischen gesperrt hat — sonst
+                      springt die Auswahl beim Oeffnen stumm auf etwas anderes. */}
+                  {routerModelle.every((pr) => pr.models.every((m) => m.value !== routerRules[tier])) && (
+                    <option value={routerRules[tier]}>{routerRules[tier]} (nicht freigegeben)</option>
+                  )}
+                  {routerModelle.map((pr) => (
+                    <optgroup key={pr.provider} label={pr.provider}>
+                      {pr.models.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}{m.tier ? ` — ${m.tier}` : ""}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
             ))}
           </div>
@@ -1648,13 +1734,13 @@ function AgentSettings({
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
           <div className="flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4 text-amber-400" />
+            <ShieldAlert className="h-4 w-4 text-amber-700 dark:text-amber-400" />
             <span className="text-sm font-medium">Autonomie-Level</span>
             <span className={cn(
               "text-[10px] px-2 py-0.5 rounded-full border font-medium",
               autonomyLevel === "l1" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
               autonomyLevel === "l2" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-              autonomyLevel === "l3" && "bg-amber-500/10 text-amber-400 border-amber-500/20",
+              autonomyLevel === "l3" && "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
               autonomyLevel === "l4" && "bg-red-500/10 text-red-400 border-red-500/20",
             )}>
               {autonomyLevel.toUpperCase()}
@@ -1793,6 +1879,58 @@ function AgentSettings({
         </div>
       )}
 
+      {/* Standard-Denktiefe — Kundenwunsch: einmal am Agenten statt pro Chat.
+          Gilt fuer Aufgaben, Zeitplaene, delegierte Auftraege und Chats ohne
+          gewaehlte Stufe; die Stufe im Chat gewinnt weiterhin. */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+        <div className="flex items-center gap-2 border-b border-foreground/[0.06] px-5 py-3">
+          <Brain className="h-4 w-4 text-blue-400" />
+          <span className="text-sm font-medium">Standard-Denktiefe</span>
+          {reasoningSaving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="flex gap-1.5">
+            {([
+              { value: "", label: "Auto" },
+              { value: "off", label: "Minimal" },
+              { value: "low", label: "Low" },
+              { value: "medium", label: "Medium" },
+              { value: "high", label: "High" },
+              { value: "max", label: "Extra High" },
+            ] as { value: string; label: string }[]).map((o) => (
+              <button
+                key={o.value || "auto"}
+                onClick={async () => {
+                  const prev = defaultReasoning;
+                  setDefaultReasoning(o.value);
+                  setReasoningSaving(true);
+                  try {
+                    await api.updateAgentDefaultReasoning(agentId, o.value);
+                    setMessage({ type: "success", text: o.value ? "Standard-Denktiefe gespeichert — gilt vollstaendig ab dem naechsten Neuerstellen des Agenten." : "Standard-Denktiefe auf Auto zurueckgesetzt." });
+                  } catch {
+                    setDefaultReasoning(prev);
+                    setMessage({ type: "error", text: "Standard-Denktiefe konnte nicht gespeichert werden." });
+                  } finally {
+                    setReasoningSaving(false);
+                  }
+                }}
+                className={cn(
+                  "flex-1 rounded-lg px-3 py-2 text-xs font-medium transition-all text-center",
+                  defaultReasoning === o.value
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground/50">
+            Gilt fuer Aufgaben, Zeitplaene, delegierte Auftraege, Agent-zu-Agent-Nachrichten und Chats ohne gewaehlte Stufe. Eine im Chat gewaehlte Denktiefe gewinnt weiterhin. Vollstaendig wirksam ab dem naechsten Neuerstellen/Update des Agenten.
+          </p>
+        </div>
+      </div>
+
       {/* LLM Configuration (custom_llm only) */}
       {agent.mode === "custom_llm" && (
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
@@ -1833,7 +1971,7 @@ function AgentSettings({
                       const id = e.target.value ? Number(e.target.value) : null;
                       setAiAcctSel(id);
                       const acc = aiAccounts.find((a) => a.id === id);
-                      setAiAcctModel(acc?.models?.[0]?.name ?? "");
+                      setAiAcctModel(acc?.models?.find((m) => m.enabled !== false)?.name ?? "");
                     }}
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-violet-500/50"
                   >
@@ -1851,9 +1989,11 @@ function AgentSettings({
                     disabled={aiAcctSel === null}
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm outline-none focus:border-violet-500/50 disabled:opacity-40"
                   >
-                    {(aiAccounts.find((a) => a.id === aiAcctSel)?.models ?? []).map((m) => (
-                      <option key={m.name} value={m.name}>{m.name}</option>
-                    ))}
+                    {(aiAccounts.find((a) => a.id === aiAcctSel)?.models ?? [])
+                      .filter((m) => m.enabled !== false)
+                      .map((m) => (
+                        <option key={m.name} value={m.name}>{m.name}</option>
+                      ))}
                   </select>
                 </div>
               </div>
@@ -2099,6 +2239,37 @@ function AgentSettings({
         </div>
       )}
 
+      {/* Explicit platform-agent flag (admin only) */}
+      {isRoomAdmin && (
+        <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-emerald-400" />
+              <span className="text-sm font-medium">Als Plattform-Agent markieren</span>
+            </div>
+            <button
+              onClick={() => handlePlatformAgentToggle(!isPlatformAgent)}
+              disabled={platformAgentLoading}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-40",
+                isPlatformAgent ? "bg-emerald-500" : "bg-foreground/10"
+              )}
+            >
+              <span className={cn(
+                "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-lg transition-transform",
+                isPlatformAgent ? "translate-x-4" : "translate-x-0"
+              )} />
+            </button>
+          </div>
+          <div className="p-5 text-xs text-muted-foreground">
+            Markiert, ist der Agent für <b>jeden</b> User in Aufgaben, Benachrichtigungen,
+            Golden-Tests und Zeitplänen sichtbar — nicht nur für dessen Besitzer. Ohne diese
+            Markierung sieht ausschließlich der Besitzer (bzw. wem der Agent explizit
+            freigegeben wurde) den Agenten und seine Daten.
+          </div>
+        </div>
+      )}
+
       {/* External Webhook Access */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
@@ -2319,7 +2490,7 @@ function AgentSettings({
                     "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
                     isSelected
                       ? isFullAccess
-                        ? "bg-amber-500/20 text-amber-400"
+                        ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
                         : "bg-primary/20 text-primary"
                       : "bg-foreground/[0.06] text-muted-foreground"
                   )}
@@ -2388,7 +2559,7 @@ function AgentSettings({
         <div className={cn(
           "rounded-lg border px-4 py-2.5 text-sm",
           message.type === "success" && "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-          message.type === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-400",
+          message.type === "warning" && "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400",
           message.type === "error" && "border-red-500/20 bg-red-500/10 text-red-400",
         )}>
           {message.text}
@@ -2651,7 +2822,7 @@ function MountSelectorSection({ agentId }: { agentId: string }) {
                       <span className={cn(
                         "inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide",
                         entry.mode === "rw"
-                          ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
                           : "bg-foreground/[0.04] text-muted-foreground border-foreground/[0.1]"
                       )}>
                         {entry.mode === "rw" ? "read-write" : "read-only"}
@@ -2683,13 +2854,16 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
   const confirm = useConfirm();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [treeData, setTreeData] = useState<Record<string, FileEntry[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["/workspace"]));
   const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState<FileSortMode>("name");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Ziel-Ordner fuers Upload-Modal — null = geschlossen. Wird entweder vom
+  // Toolbar-Button (Ziel /workspace) oder vom Ordner-Symbol im Baum gesetzt,
+  // damit die Datei direkt im gerade betrachteten Projektordner landet statt
+  // immer im Transfer-Wurzelordner.
+  const [uploadTarget, setUploadTarget] = useState<string | null>(null);
 
   const loadDir = async (path: string) => {
     try {
@@ -2704,6 +2878,17 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
     setLoading(true);
     loadDir("/workspace").finally(() => setLoading(false));
   }, [agentId]);
+
+  // Ziehen und Fallenlassen aus dem Betriebssystem — dieselbe Mechanik wie im
+  // agentenuebergreifenden Baum unter /files.
+  const { dropZiel, dropLaeuft, beiDragOver, beiDragLeave, beiDrop } = useOrdnerAbwurf({
+    aufloesen: (ziel) => ({ agentId, pfad: ziel }),
+    melden: toast,
+    nachAbwurf: async (ziel) => {
+      setExpanded((prev) => new Set(prev).add(ziel));
+      await loadDir(ziel);
+    },
+  });
 
   const toggleDir = async (path: string) => {
     setExpanded((prev) => {
@@ -2727,20 +2912,6 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
     const paths = Array.from(new Set(["/workspace"].concat(Array.from(expanded))));
     await Promise.all(paths.map(loadDir));
     setLoading(false);
-  };
-
-  const handleUpload = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setUploading(true);
-    try {
-      await api.uploadFiles(agentId, "/workspace", files);
-      await refreshAll();
-    } catch (e) {
-      toast.error("Upload failed", e instanceof Error ? e.message : undefined);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
   };
 
   const handleDownload = (path: string) => {
@@ -2803,16 +2974,24 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
       const isDir = entry.type === "directory";
       const isExpanded = expanded.has(entry.path);
       const isSelected = selectedFile?.path === entry.path;
+      // Eine Datei ist kein Ziel — wer auf sie zielt, meint ihren Ordner.
+      const abwurfZiel = isDir ? entry.path : path;
+      const istAbwurfZiel = dropZiel === abwurfZiel;
+      const laedtHierher = dropLaeuft === abwurfZiel;
 
       return (
         <div key={entry.path}>
           <div
             className={cn(
               "flex items-center gap-2 py-1 px-3 hover:bg-foreground/[0.04] transition-colors cursor-pointer group",
-              isSelected && "bg-primary/10 border-r-2 border-primary"
+              isSelected && "bg-primary/10 border-r-2 border-primary",
+              istAbwurfZiel && "bg-primary/15 ring-1 ring-inset ring-primary/50"
             )}
             style={{ paddingLeft: `${depth * 18 + 12}px` }}
             onClick={() => isDir ? toggleDir(entry.path) : setSelectedFile(entry)}
+            onDragOver={(e) => beiDragOver(e, abwurfZiel)}
+            onDragLeave={beiDragLeave}
+            onDrop={(e) => beiDrop(e, abwurfZiel)}
           >
             {isDir ? (
               <ChevronRight className={cn(
@@ -2824,9 +3003,9 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             )}
             {isDir ? (
               isExpanded ? (
-                <FolderOpen className="h-3.5 w-3.5 text-amber-400/70 shrink-0" />
+                <FolderOpen className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400/70 shrink-0" />
               ) : (
-                <Folder className="h-3.5 w-3.5 text-amber-400/70 shrink-0" />
+                <Folder className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400/70 shrink-0" />
               )
             ) : (
               <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
@@ -2851,6 +3030,24 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
                 <Download className="h-2.5 w-2.5" />
               </button>
             )}
+            {isDir && (
+              <button
+                onClick={(e) => { e.stopPropagation(); window.open(api.getFolderDownloadUrl(agentId, entry.path), "_blank"); }}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                title={`Ordner als ZIP herunterladen (ohne node_modules, .git …)`}
+              >
+                <Download className="h-2.5 w-2.5" />
+              </button>
+            )}
+            {isDir && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setUploadTarget(entry.path); }}
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                title={`Hierher hochladen (${entry.path})`}
+              >
+                <Upload className="h-2.5 w-2.5" />
+              </button>
+            )}
             {entry.path !== "/workspace" && (
               <button
                 onClick={(e) => { e.stopPropagation(); handleDelete(entry.path, entry.name); }}
@@ -2860,7 +3057,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
                 <Trash2 className="h-2.5 w-2.5" />
               </button>
             )}
-            {isDir && isExpanded && !treeData[entry.path] && (
+            {((isDir && isExpanded && !treeData[entry.path]) || laedtHierher) && (
               <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40 shrink-0" />
             )}
           </div>
@@ -2871,7 +3068,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
   };
 
   const diskColor = diskPercent >= 95 ? "bg-red-500" : diskPercent >= 80 ? "bg-amber-500" : "bg-emerald-500";
-  const diskTextColor = diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-400" : "text-emerald-400";
+  const diskTextColor = diskPercent >= 95 ? "text-red-400" : diskPercent >= 80 ? "text-amber-700 dark:text-amber-400" : "text-emerald-400";
   const diskUsageLabel = diskUsageMb >= 1024 ? `${(diskUsageMb / 1024).toFixed(1)} GB` : `${diskUsageMb.toFixed(0)} MB`;
   const diskLimitLabel = diskLimitMb >= 1024 ? `${(diskLimitMb / 1024).toFixed(0)} GB` : `${diskLimitMb.toFixed(0)} MB`;
 
@@ -2932,19 +3129,12 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             >
               <RefreshCw className="h-3 w-3" />
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => handleUpload(e.target.files)}
-            />
             <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="flex h-7 items-center gap-1 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors shrink-0"
+              onClick={() => setUploadTarget("/workspace")}
+              className="flex h-7 items-center gap-1 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
+              title="Ziel im nächsten Schritt wählbar"
             >
-              {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+              <Upload className="h-3 w-3" />
               Upload
             </button>
           </div>
@@ -2969,7 +3159,18 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
         </div>
 
         {/* Tree content */}
-        <div className="flex-1 overflow-y-auto py-1 font-mono">
+        {/* Der Rahmen selbst nimmt Dateien ebenfalls an: wer in den leeren Raum
+            unter dem Baum faellt, meint den Wurzelordner. Ohne das waere der
+            grosse leere Bereich die einzige Flaeche, auf der nichts passiert. */}
+        <div
+          className={cn(
+            "flex-1 overflow-y-auto py-1 font-mono transition-colors",
+            dropZiel === "/workspace" && "bg-primary/5 ring-1 ring-inset ring-primary/30"
+          )}
+          onDragOver={(e) => beiDragOver(e, "/workspace")}
+          onDragLeave={beiDragLeave}
+          onDrop={(e) => beiDrop(e, "/workspace")}
+        >
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -3029,6 +3230,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
       <div className="flex-1 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
         {selectedFile ? (
           <FilePreview
+            agentId={agentId}
             key={selectedFile.path}
             fileUrl={api.getFileDownloadUrl(agentId, selectedFile.path)}
             filePath={selectedFile.path}
@@ -3040,6 +3242,44 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
           <FilePreviewEmpty />
         )}
       </div>
+
+      {/* Upload-Modal — fragt/zeigt das Ziel, statt immer nach /workspace zu laden */}
+      {uploadTarget && (
+        <Dialog.Root open onOpenChange={(o) => !o && setUploadTarget(null)}>
+          <Dialog.Portal>
+            <Dialog.Overlay asChild>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
+            </Dialog.Overlay>
+            <Dialog.Content asChild>
+              {/* Radix zwingt hier pointer-events:auto per Inline-Style (ueberschreibt
+                  die pointer-events-none-Klasse) — dieser Wrapper faengt deshalb JEDEN
+                  Klick im Viewport ab, auch den auf den "Hintergrund". target===currentTarget
+                  unterscheidet Klick-auf-Hintergrund von Klick-auf-Karte (Bubbling). */}
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+                onClick={(e) => { if (e.target === e.currentTarget) setUploadTarget(null); }}
+              >
+                <Dialog.Title className="sr-only">Dateien hochladen</Dialog.Title>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                  transition={{ duration: 0.18 }}
+                  className="pointer-events-auto w-full max-w-md"
+                >
+                  <FileUploader
+                    agentId={agentId}
+                    targetPath={uploadTarget}
+                    onUploadComplete={refreshAll}
+                    onClose={() => setUploadTarget(null)}
+                  />
+                </motion.div>
+              </div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+      )}
     </div>
   );
 }

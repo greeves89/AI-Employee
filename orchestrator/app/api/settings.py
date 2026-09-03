@@ -60,6 +60,8 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         max_turns=settings.max_turns,
         max_agents=settings.max_agents,
         registration_open=settings.registration_open,
+        allow_team_license=settings.allow_team_license,
+        allow_personal_credentials=settings.allow_personal_credentials,
         display_currency=settings.display_currency,
         usd_eur_rate=settings.usd_eur_rate,
         sso_only_login=settings.sso_only_login,
@@ -111,6 +113,8 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         smtp_relay_verify_tls=(await svc.get("smtp_relay_verify_tls") or "true").lower() in ("true", "1", "yes"),
         smtp_relay_user=(await svc.get("smtp_relay_user") or "") if admin else "",
         smtp_allowed_recipient_domains=(await svc.get("smtp_allowed_recipient_domains") or "") if admin else "",
+        web_search_provider=await svc.get("web_search_provider") or "duckduckgo",
+        has_web_search_api_key=bool(await svc.get("web_search_api_key")),
         # SAML: Einrichtungsangaben sind interne Infrastruktur → nur fuer Admins.
         # `saml_configured` darf jeder sehen, denn genau das entscheidet, ob die
         # Anmeldeseite den Knopf zeigt.
@@ -130,7 +134,7 @@ async def _saml_response_fields(svc: SettingsService, admin: bool) -> dict:
     values = {k: (await svc.get(k)) or "" for k in (
         saml_config.DISPLAY_NAME_SETTING, saml_config.IDP_ENTITY_ID,
         saml_config.IDP_SSO_URL, saml_config.IDP_SLO_URL, saml_config.IDP_CERT,
-        saml_config.SP_ENTITY_ID, saml_config.GROUP_ATTRIBUTE, saml_config.GROUP_ROLE_MAP,
+        saml_config.SP_ENTITY_ID, saml_config.GROUP_ATTRIBUTE,
     )}
     out = {k: (v if admin else "") for k, v in values.items()}
     out["saml_configured"] = saml_config.is_configured(values)
@@ -144,11 +148,17 @@ _FIELD_MAP: dict[str, str] = {
     "max_turns": "max_turns",
     "max_agents": "max_agents",
     "registration_open": "registration_open",
+    "allow_team_license": "allow_team_license",
     "display_currency": "display_currency",
     "usd_eur_rate": "usd_eur_rate",
     "sso_only_login": "sso_only_login",
     "require_user_approval": "require_user_approval",
     "revoke_msgraph_on_logout": "revoke_msgraph_on_logout",
+    # Fehlte hier komplett — die PATCH-Schleife unten ueberspringt ein Feld
+    # lautlos, wenn es nicht in dieser Map steht. Der Schalter "Eigene
+    # KI-Zugaenge erlauben" tat deshalb NIE etwas: weder Ein- noch Ausschalten
+    # kam beim echten Freigabe-Check (agent_credentials.py) an.
+    "allow_personal_credentials": "allow_personal_credentials",
     "anthropic_api_key": "anthropic_api_key",
     "aws_access_key_id": "aws_access_key_id",
     "aws_secret_access_key": "aws_secret_access_key",
@@ -191,6 +201,8 @@ async def update_settings(
         )
     if data.display_currency is not None and data.display_currency not in ("EUR", "USD"):
         raise HTTPException(status_code=422, detail="Anzeigewährung: EUR oder USD.")
+    if data.web_search_provider is not None and data.web_search_provider not in ("duckduckgo", "brave", "serp"):
+        raise HTTPException(status_code=422, detail="Websuche-Provider: duckduckgo, brave oder serp.")
 
     # Handle simple mapped fields
     for field_name, config_attr in _FIELD_MAP.items():
@@ -296,7 +308,7 @@ async def update_settings(
         # SAML 2.0 — derselbe Weg, sonst laesst es sich nicht einrichten.
         "saml_display_name", "saml_idp_entity_id", "saml_idp_sso_url",
         "saml_idp_slo_url", "saml_idp_x509_cert", "saml_sp_entity_id",
-        "saml_group_attribute", "saml_group_role_map",
+        "saml_group_attribute",
         # Ticketsystem — derselbe Weg, sonst laesst es sich nicht einrichten.
         "ticket_base_url", "ticket_profile", "ticket_api_token",
         # Teams-Anrufe — derselbe Weg, sonst laesst es sich nicht einrichten.
@@ -304,6 +316,12 @@ async def update_settings(
         "teams_calling_tenant_id", "teams_calling_enabled",
     ]
     for field_name in _REFLECTION_FIELDS:
+        value = getattr(data, field_name, None)
+        if value is not None:
+            await svc.set(field_name, str(value))
+
+    # Websuche-Provider — DB-only, gelesen von orchestrator/app/core/web_search.py
+    for field_name in ("web_search_provider", "web_search_api_key"):
         value = getattr(data, field_name, None)
         if value is not None:
             await svc.set(field_name, str(value))

@@ -81,7 +81,7 @@ export function JarvisCore({ state, compact = false }: { state: string; compact?
       {spinning && (
         <span
           className={`absolute ${s.arc} rounded-full border-2 border-transparent border-t-current animate-spin ${
-            state === "processing" ? "text-amber-400" : "text-zinc-400"
+            state === "processing" ? "text-amber-700 dark:text-amber-400" : "text-zinc-400"
           } [animation-duration:1400ms]`}
         />
       )}

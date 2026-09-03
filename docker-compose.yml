@@ -115,15 +115,32 @@ services:
       # Set to true only if your MCP servers live on an internal/private network
       # (e.g. docker service names). Off by default as an SSRF guard.
       MCP_ALLOW_PRIVATE_URLS: ${MCP_ALLOW_PRIVATE_URLS:-}
+      # Sentinel (Epic #588): zentrale Verhaltensueberwachung mit Stopp-Befugnis.
+      # Standard aus — eingeschaltet kann der Dienst Agenten anhalten, und das ist
+      # eine Entscheidung des Betreibers. Ohne diese beiden Zeilen war der
+      # Schalter ueber die .env gar nicht erreichbar: die Compose-Datei reicht
+      # Variablen einzeln durch, was nicht dasteht, kommt nicht im Container an.
+      SENTINEL_ENABLED: ${SENTINEL_ENABLED:-false}
+      # Eigener, minimal berechtigter Redis-Zugang je Agent statt des geteilten
+      # Admin-Zugangs (#589). Standard aus — aendert, wie JEDER Agent sich
+      # verbindet.
+      REDIS_ACL_ENABLED: ${REDIS_ACL_ENABLED:-false}
       OAUTH_GOOGLE_SCOPES: ${OAUTH_GOOGLE_SCOPES:-}
       OAUTH_MICROSOFT_SCOPES: ${OAUTH_MICROSOFT_SCOPES:-}
       OAUTH_GITHUB_SCOPES: ${OAUTH_GITHUB_SCOPES:-}
       OAUTH_ANTHROPIC_SCOPES: ${OAUTH_ANTHROPIC_SCOPES:-}
       FEEDBACK_WEBHOOK_URL: ${FEEDBACK_WEBHOOK_URL:-}
       FEEDBACK_WEBHOOK_API_KEY: ${FEEDBACK_WEBHOOK_API_KEY:-}
+      # Feedback-Widget: MD+PNG-Ablage (Volume unten) + optionale Issue-Spiegelung
+      FEEDBACK_DIR: /data/feedback
+      FEEDBACK_ISSUE_ENABLED: ${FEEDBACK_ISSUE_ENABLED:-false}
+      # Sinnvoller Standard statt leer — sonst zeigt der Bridge-Download auf
+      # `github.com//releases/...` (siehe api/downloads.py).
+      GITHUB_REPO: ${GITHUB_REPO:-greeves89/AI-Employee}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       CLAUDE_CODE_OAUTH_REFRESH_TOKEN: ${CLAUDE_CODE_OAUTH_REFRESH_TOKEN:-}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-claude-sonnet-4-6}
+      FEEDBACK_MODEL: ${FEEDBACK_MODEL:-}
       MAX_TURNS: ${MAX_TURNS:-100}
       MAX_AGENTS: ${MAX_AGENTS:-10}
       EXTENDED_THINKING: ${EXTENDED_THINKING:-true}
@@ -141,6 +158,7 @@ services:
       OAUTH_APPLE_KEY_ID: ${OAUTH_APPLE_KEY_ID:-}
       OAUTH_APPLE_PRIVATE_KEY: ${OAUTH_APPLE_PRIVATE_KEY:-}
       OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:8000}
+      OAUTH_REDIRECT_ALLOWED_HOSTS: ${OAUTH_REDIRECT_ALLOWED_HOSTS:-}
       # Public base URL (Cloudflare tunnel domain) → absolute, shareable app links.
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       # Bridge-facing base URL, when it differs from PUBLIC_APP_URL (e.g. an
@@ -179,6 +197,8 @@ services:
       - ./VERSION:/VERSION:ro
       - ./CHANGELOG.md:/CHANGELOG.md:ro
       - ai-employee-shared:/shared
+      # Feedback-Widget: MD-Dateien + Screenshots ueberleben Redeploys
+      - feedback_data:/data/feedback
       - ${HOME}/.ai-employee:/host-auth:ro
       # Second Brains base — orchestrator provisions per-department vault folders here
       - ${SECONDBRAIN_BASE:-/srv/secondbrain}:/srv/secondbrain
@@ -348,6 +368,7 @@ volumes:
   redis_data:
   embedding_models:
   stt_models:
+  feedback_data:
   ai-employee-shared:
     external: true
 

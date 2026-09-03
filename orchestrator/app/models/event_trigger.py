@@ -31,6 +31,11 @@ class EventTrigger(Base, TimestampMixin):
     prompt_template: Mapped[str] = mapped_column(Text, nullable=False)  # supports {{payload.field}} interpolation
     priority: Mapped[int] = mapped_column(Integer, default=5)
     model: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Statt eines einzelnen Auftrags eine ganze Workflow-Kette starten (#392).
+    # Gesetzt = Workflow, leer = Auftrag wie bisher. Bewusst hier und nicht als
+    # zweites Ausloeser-System: Treffererkennung, Bedingungen, Zaehler und
+    # Sicherheitspruefung der Nutzlast gelten damit fuer beide Ziele gleich.
+    workflow_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # State
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)

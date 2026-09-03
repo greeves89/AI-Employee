@@ -32,31 +32,20 @@ def has_duties(agent) -> bool:
 
 
 def onboarding_note(agent, *, spoken: bool = False) -> str:
-    """Prompt-Block zum Einrichtungsstand, oder "" wenn alles steht.
+    """Prompt-Block zu fehlenden Daueraufgaben, oder "" wenn welche hinterlegt sind.
+
+    Das Einrichtungsgespraech ist entfallen — der Agent haelt sich an seine Vorlage.
+    Uebrig bleibt die einzige Luecke, die ihn wirklich lahmlegt: ohne
+    Verantwortungsbereiche kann er sich keinen Tag bauen, und der Zeitplaner
+    ueberspringt seine proaktiven Laeufe.
 
     ``spoken=True`` liefert die Fassung fuer den Sprachfront: kuerzer, in der Ich-Form,
     ohne Werkzeugnamen zum Vorlesen.
     """
-    if agent is None:
-        return ""
-    onboarded = is_onboarded(agent)
-    duties = has_duties(agent)
-    if onboarded and duties:
+    if agent is None or has_duties(agent):
         return ""
 
     if spoken:
-        if not onboarded:
-            return (
-                "\n=== DU BIST NOCH NICHT EINGERICHTET ===\n"
-                "Niemand hat dir bisher gesagt, wofuer du da bist. Sag das dem Nutzer FREUNDLICH "
-                "und DIREKT zu Beginn — nicht 'wie kann ich helfen?', sondern sinngemaess: 'Ich "
-                "kann dir gern helfen — sag mir nur zuerst, wofuer du mich brauchst.' Frag dann "
-                "nach: Welche Rolle? Welche Aufgaben soll ich dauerhaft uebernehmen? Was soll ich "
-                "NICHT tun? Sobald du eine Antwort hast, sicherst du sie SOFORT mit "
-                "`complete_onboarding` (jede genannte Daueraufgabe als eigenen Bereich). "
-                "Danach bestaetigst du in EINEM Satz, was du ab jetzt uebernimmst.\n"
-                "=== ENDE ===\n"
-            )
         return (
             "\n=== DIR FEHLEN NOCH DAUERAUFGABEN ===\n"
             "Du bist eingerichtet, hast aber keine Verantwortungsbereiche — du wartest also auf "
@@ -65,24 +54,6 @@ def onboarding_note(agent, *, spoken: bool = False) -> str:
             "`complete_onboarding`.\n=== ENDE ===\n"
         )
 
-    if not onboarded:
-        return (
-            "\n=== EINRICHTUNG STEHT AUS (WICHTIG) ===\n"
-            "Niemand hat dir bisher gesagt, wofuer du da bist. Halte deswegen NICHT still an und\n"
-            "melde auch nicht 'nichts zu tun' — FRAG. Wende dich mit `notify_user`\n"
-            "(is_checkin: true) an deinen Ansprechpartner und bitte um genau vier Dinge:\n"
-            "  1. Welche Rolle sollst du ausfuellen?\n"
-            "  2. Welche Aufgaben uebernimmst du DAUERHAFT (und in welchem Takt)?\n"
-            "  3. Was sollst du ausdruecklich NICHT tun?\n"
-            "  4. Wer ist dein Ansprechpartner und wann ist er erreichbar?\n"
-            "Kommt keine Antwort, fragst du beim naechsten Lauf erneut (die Meldebremse von\n"
-            "einmal pro Halbtag gilt weiterhin — lieber einmal taeglich nachhaken als\n"
-            "monatelang leer laufen). Sobald die Antwort da ist, rufst du\n"
-            "`complete_onboarding` auf: Rolle, Grenzen und JEDE genannte Daueraufgabe als\n"
-            "eigenen Verantwortungsbereich. Damit bist du eingerichtet und planst ab dem\n"
-            "naechsten Lauf deinen Tag selbst.\n"
-            "=== ENDE ===\n"
-        )
     return (
         "\n=== KEINE VERANTWORTUNGSBEREICHE HINTERLEGT ===\n"
         "Du bist eingerichtet, hast aber keine Daueraufgaben — dein Tagesplan kann deshalb nur\n"

@@ -110,3 +110,23 @@ CLAUDE.md
 
 # Electron-Build-Artefakte der Desktop-Bridge (1.6 GB, rein generiert)
 desktop/release/
+
+# pdf.js-Beiwerk wird beim Build aus node_modules kopiert (generiert)
+frontend/public/pdfjs/
+
+# Core-Dumps abgestuerzter Kindprozesse (je ~14 MB, landen im Arbeitsverzeichnis
+# des Prozesses). Ohne dieses Muster nimmt ein `git add -A` sie versehentlich mit.
+# ACHTUNG: das blanke Muster `core` hat auch orchestrator/app/core/ ignoriert
+# und damit einen Commit-Teil verschluckt — deshalb nur Wurzel + PID-Namen.
+/core
+core.[0-9]*
+
+# Sicherungskopien der .env. Sie entstehen beim Bearbeiten von Hand und beim
+# Einrichten (etwa `cp .env .env.bak`) und enthalten dieselben Geheimnisse wie
+# das Original: Datenbank-, Redis- und OAuth-Zugaenge. Zeile 2 deckt nur `.env`
+# selbst ab — `.env.bak` war damit versionierbar und rutscht bei einem
+# `git add -A` mit. Die beiden Beispieldateien sind ausdruecklich ausgenommen,
+# weil sie versioniert bleiben muessen.
+.env.*
+!.env.example
+!.env.community.example

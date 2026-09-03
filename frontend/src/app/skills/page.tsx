@@ -18,14 +18,14 @@ import type { Agent } from "@/lib/types";
 
 const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Code2; color: string }> = {
   // DB enum values (uppercase)
-  TOOL:     { label: "Tools",      icon: Wrench,    color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  TOOL:     { label: "Tools",      icon: Wrench,    color: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" },
   WORKFLOW: { label: "Workflows",  icon: GitBranch, color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
   TEMPLATE: { label: "Templates",  icon: FileText,  color: "bg-purple-500/10 text-purple-400 border-purple-500/20" },
   PATTERN:  { label: "Patterns",   icon: Layers,    color: "bg-pink-500/10 text-pink-400 border-pink-500/20" },
   ROUTINE:  { label: "Routinen",   icon: Repeat,    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
   RECIPE:   { label: "Rezepte",    icon: ChefHat,   color: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
   // Legacy lowercase keys (from older crawled skills)
-  tools:    { label: "Tools",      icon: Wrench,    color: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  tools:    { label: "Tools",      icon: Wrench,    color: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" },
   dev:      { label: "Dev",        icon: Code2,     color: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
 };
 
@@ -540,7 +540,7 @@ function SkillSourcesAdmin() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium truncate">{s.name}</span>
                       {s.trusted && <span className="flex items-center gap-0.5 text-[10px] text-emerald-400"><ShieldCheck className="h-3 w-3" />trusted</span>}
-                      {s.has_credential && <span className="text-[10px] text-amber-400">Credential</span>}
+                      {s.has_credential && <span className="text-[10px] text-amber-700 dark:text-amber-400">Credential</span>}
                     </div>
                     <div className="text-muted-foreground truncate">
                       {s.location}{s.ref ? `#${s.ref}` : ""}{s.subdir ? ` /${s.subdir}` : ""}
@@ -1006,13 +1006,13 @@ export default function SkillsPage() {
                           href={skill.source_url || `https://github.com/${skill.source_repo}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[10px] text-amber-400/70 hover:text-amber-400 mt-1 inline-flex items-center gap-1 transition-colors"
+                          className="text-[10px] text-amber-700 dark:text-amber-400/70 hover:text-amber-700 dark:text-amber-400 mt-1 inline-flex items-center gap-1 transition-colors"
                         >
                           📦 {skill.source_repo} ↗
                         </a>
                       )}
                     </div>
-                    <span className="shrink-0 text-[10px] rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400 px-2 py-0.5">
+                    <span className="shrink-0 text-[10px] rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2 py-0.5">
                       Auto-generiert
                     </span>
                   </div>

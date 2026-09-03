@@ -43,6 +43,13 @@ class User(Base, TimestampMixin):
         Integer, ForeignKey("custom_roles.id", ondelete="SET NULL"), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    #: Einzelfreigabe fuer ein EIGENES Claude-/Codex-Abo. Greift nur, wenn der
+    #: globale Schalter aus ist — genau die zweite Ebene, die der Kunde am
+    #: 18.08.2026 verlangt hat: „generell unterbinden … fuer User manuell
+    #: freischalten".
+    allow_personal_credentials: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     # Admin-approval gate (OpenWebUI-style). True = approved/usable. New self-registered
     # users (SSO or password) get False when `require_user_approval` is on → they wait
     # for an admin to approve. Distinct from is_active (deactivation). Default True so
@@ -55,3 +62,8 @@ class User(Base, TimestampMixin):
     # Monthly spend cap across ALL of the user's agents (None = unlimited).
     # When exceeded, every agent of this user behaves per its budget_exceeded_action.
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Bumped whenever an admin resets this user's password — embedded in every
+    # freshly issued access/refresh token as "tv" and checked on every request,
+    # so a reset actually revokes sessions issued before it (JWTs alone can't
+    # be invalidated early; this is the only revocation mechanism in the app).
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)

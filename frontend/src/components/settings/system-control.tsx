@@ -11,7 +11,7 @@ import { useConfirm } from "@/components/ui/dialog-provider";
 // can be restarted from outside the home LAN without SSH.
 const STATE_STYLES: Record<string, string> = {
   running: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  restarting: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  restarting: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
   exited: "bg-red-500/10 text-red-400 border-red-500/20",
   absent: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
 };
@@ -129,7 +129,7 @@ export function SystemControl() {
                       <button
                         onClick={() => restart(label as "orchestrator" | "frontend")}
                         disabled={busy !== null}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-400 hover:bg-amber-500/15 disabled:opacity-50 transition-all shrink-0"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 disabled:opacity-50 transition-all shrink-0"
                       >
                         {busy === label ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -154,7 +154,7 @@ export function SystemControl() {
         )}
 
         <div className="flex items-start gap-2 px-5 py-3 border-t border-foreground/[0.04] bg-foreground/[0.01]">
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-400/60 mt-0.5 shrink-0" />
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400/60 mt-0.5 shrink-0" />
           <p className="text-[10px] text-muted-foreground/50">
             Nur Orchestrator und Frontend sind neustartbar — Datenbank, Redis und Proxy sind bewusst ausgenommen,
             damit ein Fehlklick nichts Kritisches trifft.

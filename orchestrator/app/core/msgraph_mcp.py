@@ -121,11 +121,21 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_list_calendar_events",
-        "description": "List upcoming calendar events for the user.",
+        "description": (
+            "List calendar events for the user — either a rolling window from right now "
+            "(days_ahead), or ONE specific calendar day (date). For 'what's on today/"
+            "tomorrow', ALWAYS use `date` — `days_ahead` is a window starting at the exact "
+            "current moment, not a calendar day, so days_ahead=1 for 'tomorrow' silently "
+            "returns whatever falls in the next 24 hours (mostly still today) instead of "
+            "tomorrow's events; this was reported live as the tool 'not working' when it was "
+            "just the wrong parameter for the question being asked."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "days_ahead": {"type": "number", "description": "How many days ahead to look (1-90). Default: 7."},
+                "days_ahead": {"type": "number", "description": "Rolling window in days from right now (1-90). Ignored if `date` is set. Default: 7."},
+                "date": {"type": "string", "description": "A SPECIFIC calendar day: 'today', 'tomorrow', or an ISO date (YYYY-MM-DD). Takes priority over days_ahead."},
+                "timezone": {"type": "string", "description": "IANA timezone for interpreting `date`'s day boundaries (e.g. Europe/Berlin). Default: Europe/Berlin."},
                 "limit": {"type": "number", "description": "Max events to return. Default: 20."},
             },
         },
@@ -351,6 +361,31 @@ MSGRAPH_TOOLS = [
         },
     },
     {
+        "name": "ms_list_meeting_transcripts",
+        "description": "List Teams meetings from the user's own calendar that have transcripts available. Scans past days, resolves each Teams meeting to its transcript IDs. Fetch content with ms_get_meeting_transcript.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "days_back": {"type": "number", "description": "How many past days to scan (1-30). Default: 1."},
+                "limit": {"type": "number", "description": "Max calendar events to inspect. Default: 20."},
+            },
+        },
+    },
+    {
+        "name": "ms_get_meeting_transcript",
+        "description": "Fetch a Teams meeting transcript as speaker-attributed dialog text (condensed from WebVTT). IDs come from ms_list_meeting_transcripts.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "online_meeting_id": {"type": "string", "description": "Online meeting ID (from ms_list_meeting_transcripts)."},
+                "transcript_id": {"type": "string", "description": "Transcript ID (from ms_list_meeting_transcripts)."},
+                "raw": {"type": "boolean", "description": "Return raw WebVTT instead of condensed dialog. Default: false."},
+                "max_chars": {"type": "number", "description": "Truncate output beyond this many characters. Default: 20000."},
+            },
+            "required": ["online_meeting_id", "transcript_id"],
+        },
+    },
+    {
         "name": "ms_find_meeting_times",
         "description": "Suggest meeting times when the given attendees are free (Microsoft findMeetingTimes). Returns candidate slots with a confidence score.",
         "inputSchema": {
@@ -560,14 +595,51 @@ MSGRAPH_TOOLS = [
     },
     {
         "name": "ms_move_email",
-        "description": "Move an email to a well-known folder (inbox, archive, deleteditems, junkemail, drafts, sentitems).",
+        "description": "Move an email into a folder. The destination is either a well-known folder (inbox, archive, deleteditems, junkemail, drafts, sentitems) OR a custom folder ID from ms_list_mail_folders (e.g. a 'Jira' subfolder).",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "email_id": {"type": "string", "description": "The message ID (from ms_list_emails)."},
-                "folder": {"type": "string", "description": "Destination: inbox, archive, deleteditems, junkemail, drafts, sentitems."},
+                "folder": {"type": "string", "description": "Destination: a well-known name (inbox, archive, …) or a folder ID from ms_list_mail_folders."},
             },
             "required": ["email_id", "folder"],
+        },
+    },
+    {
+        "name": "ms_list_mail_folders",
+        "description": "List the mailbox folders — including custom folders (e.g. 'Jira') and one level of subfolders — with their IDs and unread counts. Use a returned folder id as the destination for ms_move_email, as the parent for ms_create_mail_folder, or as the target for ms_create_mail_rule.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "ms_create_mail_folder",
+        "description": "Create a new mail folder. Omit parent_id for a top-level folder, or pass a parent_id (from ms_list_mail_folders) to create a subfolder (e.g. a 'Jira' folder under the inbox). Returns the new folder's id.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Display name of the new folder."},
+                "parent_id": {"type": "string", "description": "Optional parent folder ID (or well-known name like 'inbox'). Omit for top level."},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "ms_list_mail_rules",
+        "description": "List the inbox rules (message rules) that automatically file/handle incoming mail, with their conditions and actions.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "ms_create_mail_rule",
+        "description": "Create an inbox rule that automatically files INCOMING mail. Example: move every mail whose subject contains 'Jira' into the Jira folder. Give at least one condition (subject_contains and/or from_contains) and a target move_to_folder_id (from ms_list_mail_folders). This only affects mail arriving AFTER the rule is created — existing mail is moved with ms_move_email.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Name of the rule."},
+                "subject_contains": {"type": "string", "description": "Optional: match when the subject contains this text."},
+                "from_contains": {"type": "string", "description": "Optional: match when the sender name/address contains this text."},
+                "move_to_folder_id": {"type": "string", "description": "Target folder ID (from ms_list_mail_folders) to move matching mail into."},
+                "mark_as_read": {"type": "boolean", "description": "Optionally also mark matching mail as read. Default: false."},
+            },
+            "required": ["name", "move_to_folder_id"],
         },
     },
     {
@@ -823,6 +895,9 @@ WRITE_TOOLS = {
     "ms_create_contact",
     "ms_update_contact",
     "ms_delete_contact",
+    # Mail folders + inbox rules write (Mail.ReadWrite — kein neuer Scope)
+    "ms_create_mail_folder",
+    "ms_create_mail_rule",
 }
 
 # Required args per tool (from each tool's inputSchema) — checked centrally in the
@@ -955,6 +1030,38 @@ def _fmt_size(b: int) -> str:
     if b < 1024 ** 2:
         return f"{b // 1024}KB"
     return f"{b // (1024 ** 2)}MB"
+
+
+_VTT_VOICE_RE = re.compile(r"<v\s+([^>]*)>(.*?)</v>", re.DOTALL)
+_VTT_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _vtt_to_dialog(vtt: str) -> str:
+    """Condense a WebVTT transcript into speaker-attributed dialog lines.
+
+    Keeps chronological order, merges consecutive cues of the same speaker and
+    drops timestamps/cue ids — several times fewer tokens than raw VTT, which is
+    what the LLM actually needs for action-item extraction."""
+    merged: list[tuple[str, str]] = []
+    for m in _VTT_VOICE_RE.finditer(vtt):
+        speaker = m.group(1).strip()
+        text = _VTT_TAG_RE.sub("", m.group(2)).replace("\r", " ").replace("\n", " ").strip()
+        if not text:
+            continue
+        if merged and merged[-1][0] == speaker:
+            merged[-1] = (speaker, merged[-1][1] + " " + text)
+        else:
+            merged.append((speaker, text))
+    if merged:
+        return "\n".join(f"{s}: {t}" for s, t in merged)
+    # Transcript without <v> voice tags — strip the VTT scaffolding instead.
+    plain = []
+    for ln in vtt.splitlines():
+        s = ln.strip()
+        if not s or s == "WEBVTT" or "-->" in s or s.isdigit():
+            continue
+        plain.append(_VTT_TAG_RE.sub("", s))
+    return "\n".join(plain)
 
 
 def _strip_html(s) -> str:
@@ -1160,10 +1267,40 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
 
     elif name == "ms_list_calendar_events":
         from datetime import datetime, timedelta, timezone
-        days = min(int(args.get("days_ahead", 7)), 90)
+        from zoneinfo import ZoneInfo
         limit = min(int(args.get("limit", 20)), 50)
-        now = datetime.now(timezone.utc)
-        end = now + timedelta(days=days)
+        date_arg = str(args.get("date") or "").strip().lower()
+        if date_arg:
+            # EIN Kalendertag (Mitternacht bis Mitternacht in der angegebenen Zone) —
+            # bewusst NICHT dasselbe wie days_ahead unten: "days_ahead=1" ist ein
+            # rollierendes Fenster ab JETZT, kein Kalendertag. Live gemeldet: "Termine
+            # fuer morgen" gab days_ahead=1 mit, bekam aber ueberwiegend den Rest von
+            # HEUTE zurueck, weil das Fenster erst um Mitternacht wirklich "morgen"
+            # erreicht. Siehe Werkzeugbeschreibung oben.
+            try:
+                tz = ZoneInfo(str(args.get("timezone") or "Europe/Berlin"))
+            except Exception:  # noqa: BLE001 — unbekannte Zone -> Standard statt Absturz
+                tz = ZoneInfo("Europe/Berlin")
+            today_local = datetime.now(tz).date()
+            if date_arg in ("today", "heute"):
+                day = today_local
+            elif date_arg in ("tomorrow", "morgen"):
+                day = today_local + timedelta(days=1)
+            else:
+                try:
+                    day = datetime.strptime(date_arg, "%Y-%m-%d").date()
+                except ValueError:
+                    day = today_local
+            start_local = datetime(day.year, day.month, day.day, tzinfo=tz)
+            end_local = start_local + timedelta(days=1)
+            now, end = start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
+            days = 1
+            no_events_note = f"No events on {day.isoformat()}."
+        else:
+            days = min(int(args.get("days_ahead", 7)), 90)
+            now = datetime.now(timezone.utc)
+            end = now + timedelta(days=days)
+            no_events_note = f"No events in the next {days} days."
         params = {
             "startDateTime": now.isoformat(),
             "endDateTime": end.isoformat(),
@@ -1174,7 +1311,7 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
         data = await _graph("GET", "/me/calendarView", token, params=params)
         events = data.get("value", [])
         if not events:
-            return f"No events in the next {days} days."
+            return no_events_note
         lines = []
         for e in events:
             start = e.get("start", {}).get("dateTime", "")[:16]
@@ -1550,6 +1687,76 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
         join = data.get("joinWebUrl") or data.get("joinUrl") or ""
         return f"Teams-Meeting '{args['subject']}' erstellt.\nJoin-Link: {join}"
 
+    elif name == "ms_list_meeting_transcripts":
+        from datetime import datetime, timedelta, timezone
+        days = max(1, min(int(args.get("days_back", 1) or 1), 30))
+        limit = min(int(args.get("limit", 20) or 20), 50)
+        now = datetime.now(timezone.utc)
+        params = {
+            "startDateTime": (now - timedelta(days=days)).isoformat(),
+            "endDateTime": now.isoformat(),
+            "$top": limit,
+            "$select": "id,subject,start,end,isOnlineMeeting,onlineMeetingUrl",
+            "$orderby": "start/dateTime desc",
+        }
+        data = await _graph("GET", "/me/calendarView", token, params=params)
+        events = [e for e in data.get("value", []) if e.get("isOnlineMeeting") and e.get("onlineMeetingUrl")]
+        if not events:
+            return f"No Teams meetings found in the last {days} day(s)."
+        lines = []
+        for e in events:
+            start = e.get("start", {}).get("dateTime", "")[:16]
+            subject = e.get("subject") or "Teams-Meeting"
+            # Resolve calendar event -> onlineMeeting via the join URL. Single quotes
+            # must be doubled inside an OData string literal.
+            join_url = (e.get("onlineMeetingUrl") or "").replace("'", "''")
+            try:
+                om = await _graph(
+                    "GET", "/me/onlineMeetings", token,
+                    params={"$filter": f"JoinWebUrl eq '{join_url}'"},
+                )
+            except GraphError:
+                continue
+            meetings = om.get("value", [])
+            if not meetings:
+                continue
+            om_id = meetings[0].get("id")
+            try:
+                tr = await _graph("GET", f"/me/onlineMeetings/{_gid(om_id)}/transcripts", token)
+            except GraphError as exc:
+                if exc.status_code in (401, 403, 404):
+                    continue  # no transcript access for this meeting (tenant policy / not organizer)
+                raise
+            transcripts = tr.get("value", [])
+            if not transcripts:
+                lines.append(f"• {subject} ({start}) — kein Transkript")
+                continue
+            # A meeting can have several fragments (transcription stopped/restarted).
+            for t in transcripts:
+                lines.append(
+                    f"• {subject} ({start})\n"
+                    f"  online_meeting_id: {om_id}\n  transcript_id: {t.get('id')}"
+                )
+        if not lines:
+            return (
+                f"No transcripts found in the last {days} day(s). Note: depending on "
+                "tenant policy, transcripts may only be readable for meetings the user organized."
+            )
+        return "\n".join(lines)
+
+    elif name == "ms_get_meeting_transcript":
+        om_id = _gid(args["online_meeting_id"])
+        t_id = _gid(args["transcript_id"])
+        resp = await _graph_bytes(
+            "GET", f"/me/onlineMeetings/{om_id}/transcripts/{t_id}/content?$format=text/vtt", token
+        )
+        vtt = resp.text or ""
+        text = vtt if args.get("raw") else _vtt_to_dialog(vtt)
+        max_chars = max(1000, min(int(args.get("max_chars", 20000) or 20000), 100000))
+        if len(text) > max_chars:
+            text = text[:max_chars] + f"\n… [truncated at {max_chars} chars]"
+        return text or "Transcript is empty."
+
     elif name == "ms_find_meeting_times":
         dur = int(args.get("duration_minutes", 30))
         attendees = [
@@ -1826,10 +2033,116 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
         return f"E-Mail weitergeleitet an {args['to']}."
 
     elif name == "ms_move_email":
-        dest = _folder(args["folder"])
+        # Ziel ist entweder ein Standardordner-Name ODER eine Custom-Ordner-ID
+        # aus ms_list_mail_folders. Vorher konnte NUR in die feste Menge
+        # verschoben werden (ein eigener Ordner wie "Jira" fiel still auf
+        # "inbox" zurück) — genau das liess die Jira-Sortier-Aufgabe scheitern.
+        raw = str(args["folder"]).strip()
+        dest = _folder(raw) if raw.lower() in _ALLOWED_FOLDERS else raw
+        # destinationId geht in den JSON-Body (kein Pfad) — keine Injection.
         await _graph("POST", f"/me/messages/{_gid(args['email_id'])}/move", token,
                     content=json.dumps({"destinationId": dest}))
         return f"E-Mail nach '{dest}' verschoben."
+
+    elif name == "ms_list_mail_folders":
+        # Oberste Ebene + eine Ebene Unterordner (dort liegt z.B. ein
+        # 'Jira'-Ordner unter dem Posteingang).
+        data = await _graph(
+            "GET", "/me/mailFolders", token,
+            params={"$top": 100,
+                    "$select": "id,displayName,unreadItemCount,totalItemCount,childFolderCount",
+                    "$expand": "childFolders($select=id,displayName,unreadItemCount,totalItemCount)"},
+        )
+        lines: list[str] = []
+
+        def _fmt(f: dict, indent: str = "") -> None:
+            lines.append(
+                f"{indent}• {f.get('displayName')} "
+                f"(ungelesen {f.get('unreadItemCount', 0)}/{f.get('totalItemCount', 0)})\n"
+                f"{indent}  id: {f.get('id')}"
+            )
+            for c in f.get("childFolders") or []:
+                _fmt(c, indent + "  ")
+
+        for f in data.get("value", []):
+            _fmt(f)
+        return "\n".join(lines) if lines else "Keine Mail-Ordner gefunden."
+
+    elif name == "ms_create_mail_folder":
+        folder_name = str(args["name"]).strip()
+        if not folder_name:
+            return "Error: name darf nicht leer sein."
+        body = {"displayName": folder_name}
+        parent = str(args.get("parent_id") or "").strip()
+        if parent:
+            # Well-known-Name (inbox) ODER eine Ordner-ID — beides zulaessig.
+            p = _folder(parent) if parent.lower() in _ALLOWED_FOLDERS else parent
+            path = f"/me/mailFolders/{_gid(p)}/childFolders"
+        else:
+            path = "/me/mailFolders"
+        created = await _graph("POST", path, token, content=json.dumps(body))
+        return (f"Ordner '{folder_name}' angelegt. id: {created.get('id')}"
+                if created.get("id") else f"Ordner '{folder_name}' angelegt.")
+
+    elif name == "ms_list_mail_rules":
+        data = await _graph("GET", "/me/mailFolders/inbox/messageRules", token)
+        rules = data.get("value", [])
+        if not rules:
+            return "Keine Posteingangsregeln vorhanden."
+        out: list[str] = []
+        for r in rules:
+            cond = r.get("conditions") or {}
+            act = r.get("actions") or {}
+            teile = []
+            if cond.get("subjectContains"):
+                teile.append("Betreff enthält " + ", ".join(cond["subjectContains"]))
+            if cond.get("senderContains"):
+                teile.append("Absender enthält " + ", ".join(cond["senderContains"]))
+            aktion = []
+            if act.get("moveToFolder"):
+                aktion.append("verschiebe in Ordner")
+            if act.get("markAsRead"):
+                aktion.append("als gelesen markieren")
+            status = "aktiv" if r.get("isEnabled") else "inaktiv"
+            out.append(f"• {r.get('displayName')} [{status}]: "
+                       f"{'; '.join(teile) or 'keine Bedingung'} → {', '.join(aktion) or 'keine Aktion'}")
+        return "\n".join(out)
+
+    elif name == "ms_create_mail_rule":
+        subject = str(args.get("subject_contains") or "").strip()
+        sender = str(args.get("from_contains") or "").strip()
+        if not subject and not sender:
+            return ("Error: mindestens eine Bedingung nötig — subject_contains "
+                    "und/oder from_contains.")
+        conditions: dict = {}
+        if subject:
+            conditions["subjectContains"] = [subject]
+        if sender:
+            conditions["senderContains"] = [sender]
+        actions: dict = {
+            "moveToFolder": str(args["move_to_folder_id"]).strip(),
+            "stopProcessingRules": True,
+        }
+        mark = args.get("mark_as_read")
+        if mark if isinstance(mark, bool) else str(mark).lower() in ("true", "1", "yes"):
+            actions["markAsRead"] = True
+        # sequence muss eindeutig sein — hinter die bestehenden Regeln setzen.
+        try:
+            existing = (await _graph("GET", "/me/mailFolders/inbox/messageRules", token)).get("value", [])
+        except GraphError:
+            existing = []
+        body = {
+            "displayName": str(args["name"]).strip() or "Regel",
+            "sequence": len(existing) + 1,
+            "isEnabled": True,
+            "conditions": conditions,
+            "actions": actions,
+        }
+        created = await _graph("POST", "/me/mailFolders/inbox/messageRules", token,
+                              content=json.dumps(body))
+        return (f"Regel '{body['displayName']}' angelegt (gilt für neu eintreffende Mails). "
+                f"id: {created.get('id')}" if created.get("id")
+                else f"Regel '{body['displayName']}' angelegt.")
 
     elif name == "ms_mark_email_read":
         read = args.get("read", True)

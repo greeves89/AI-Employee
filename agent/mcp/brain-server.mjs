@@ -205,7 +205,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }),
       });
       return {
-        content: [{ type: "text", text: `✅ Brain node saved: "${result.title}" (id: ${result.id}). Auto-linking in progress.` }],
+        content: [{ type: "text", text: `Brain node saved: "${result.title}" (id: ${result.id}). Auto-linking in progress.` }],
       };
     }
 
@@ -246,7 +246,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         method: "PUT",
         body: JSON.stringify(body),
       });
-      return { content: [{ type: "text", text: `✅ Brain entry ${result.id} updated: "${result.title}". Re-linking in progress.` }] };
+      return { content: [{ type: "text", text: `Brain entry ${result.id} updated: "${result.title}". Re-linking in progress.` }] };
     }
 
     if (name === "brain_delete") {

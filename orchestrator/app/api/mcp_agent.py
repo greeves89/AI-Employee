@@ -14,6 +14,7 @@ Supported MCP methods:
   tools/call       → execute a tool (send_task, get_status, list_tasks)
 """
 
+import logging
 import json
 import uuid
 from datetime import datetime, timezone
@@ -30,6 +31,8 @@ from app.models.agent import Agent
 from app.models.task import Task, TaskStatus
 from app.models.team import Team
 from app.services.redis_service import RedisService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mcp", tags=["mcp-agent"])
 
@@ -336,7 +339,11 @@ async def _list_my_team(agent: Agent, db: AsyncSession) -> list[dict]:
                 "role": role_by_id.get(mid),
                 "is_lead": mid == t.lead_agent_id,
             }
-            for mid in (t.member_agent_ids or [])
+            # Mitglieder, die es nicht mehr gibt, werden NICHT als Kollege
+            # aufgelistet — sonst haelt der Lead sie fuer erreichbar und
+            # delegiert Arbeit, die nie jemand annimmt. Gleicher Fix wie in
+            # teams.py:list_my_teams.
+            for mid in (t.member_agent_ids or []) if mid in name_by_id
         ]
         out.append({
             "team_id": t.id,

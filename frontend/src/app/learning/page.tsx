@@ -32,7 +32,7 @@ const ORIGIN_LABEL: Record<string, string> = {
 };
 
 const STATUS_STYLE: Record<string, string> = {
-  draft: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  draft: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
   active: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   validated: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   rolled_back: "bg-red-500/10 text-red-400 border-red-500/20",

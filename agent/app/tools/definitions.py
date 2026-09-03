@@ -511,7 +511,27 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                             "Action to perform. Special: 'list_sessions'. Desktop actions: "
                             "'screenshot', 'mouse_click', 'mouse_move', 'mouse_scroll', "
                             "'type', 'key', 'hotkey', 'open_app', 'close_app', "
-                            "'clipboard_read', 'clipboard_write', 'shell_run', 'ax_tree'."
+                            "'clipboard_read', 'clipboard_write', 'shell_run', 'ax_tree', "
+                            "'find_element', 'wait_for_element', 'list_windows', "
+                            "'focus_window'. Browser in the agent's OWN profile (needs the "
+                            "'browser' capability): 'browser_navigate', 'browser_snapshot', "
+                            "'browser_click', 'browser_fill', 'browser_wait', "
+                            "'browser_capture', 'browser_tabs', 'browser_close'. "
+                            "ego lite — the user's REAL, already-logged-in browser session "
+                            "(needs the 'ego_browser' capability, off by default). Prefer this "
+                            "over browser_* for ANY task involving real web content, not just "
+                            "logins: navigating, searching, clicking a result, filling a form, "
+                            "reading a page. Discrete actions (mirror browser_*, no JS needed): "
+                            "'ego_navigate' {url}, 'ego_snapshot' {max_chars}, 'ego_click' "
+                            "{selector | text}, 'ego_fill' {selector, value}, 'ego_wait' "
+                            "{selector, timeout_ms}, 'ego_capture' {}, 'ego_tabs' {index?}, "
+                            "'ego_close' {}. For anything more composite, 'ego_run' {script: "
+                            "'<JS body, same helpers as the ego-browser skill heredoc — "
+                            "useOrCreateTaskSpace/openOrReuseTab/snapshotText/click/js/cdp>', "
+                            "timeout: 120} returns whatever the script passed to cliLog(). Call "
+                            "ego actions DIRECTLY — ego lite launches itself if not already "
+                            "running. Do NOT call open_app for ego lite first, that is an "
+                            "unnecessary extra step."
                         ),
                     },
                     "session_id": {
@@ -521,9 +541,18 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     "params": {
                         "type": "object",
                         "description": (
-                            "Action parameters. Examples: screenshot {scale: 0.5}; "
+                            "Action parameters. Examples: screenshot {scale: 0.5} "
+                            "or screenshot {scale: 0.5, display: 2} for a second monitor "
+                            "(the reply states the image size and which displays exist — "
+                            "click coordinates must lie inside that size); "
                             "mouse_click {x: 100, y: 200, button: 'left'}; type {text: 'https://example.com'}; "
-                            "key {key: 'enter'}; hotkey {keys: ['ctrl', 'l']}; open_app {name: 'Edge'}."
+                            "key {key: 'enter'}; hotkey {keys: ['ctrl', 'l']}; open_app {name: 'Edge'}; "
+                            "find_element {query: 'Save', role: 'AXButton'}; "
+                            "focus_window {app: 'Excel'}; browser_navigate {url: 'https://…'}; "
+                            "browser_fill {selector: '#user', value: 'abc'}; "
+                            "browser_click {text: 'Anmelden'}. Prefer find_element over "
+                            "guessing coordinates, and browser_* over open_url when you "
+                            "actually need to READ or FILL a page."
                         ),
                     },
                     "timeout": {
@@ -592,7 +621,14 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "list_team",
-            "description": "List all agents in your team with their names, roles, and current status.",
+            "description": (
+                "SYSTEM-WIDE directory of agents visible to you across teams, with names, "
+                "roles and status. Use it to FIND someone outside your own team. "
+                "This is NOT your team: when asked 'which agents do you have / who is on "
+                "your team', answer from list_my_team ALONE and never merge these entries "
+                "into it — an agent from another team is not your colleague, and naming "
+                "them as one leads to work handed to someone who never picks it up."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -1235,6 +1271,61 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "present_view",
+            "description": (
+                "Ask the user something with a PICTURE instead of a list of words, "
+                "and WAIT for the answer. Blocks exactly like request_approval and "
+                "returns what the user chose.\n\n"
+                "Use it when the answer is easier to point at than to describe — "
+                "choosing between images you generated is the clear case. If plain "
+                "words do the job, use request_approval; a view for a yes/no "
+                "question is just slower.\n\n"
+                "The view itself lives in the web UI; you pick one by name and hand "
+                "it data. Views available today:\n"
+                "  image_choice — several images side by side, the user picks one. "
+                "Data: {\"images\": [{\"path\": \"/workspace/...\", \"label\": \"...\"}]}. "
+                "Give FILE PATHS in your workspace, never image content.\n\n"
+                "Always pass `options` as well: they are the same question in plain "
+                "words. Telegram, the phone app and voice-only use them — a view "
+                "that only works in one place leaves those users stuck."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "view": {
+                        "type": "string",
+                        "description": "Which view to show",
+                        "enum": ["image_choice"],
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "The view's payload — see the description for the shape it expects",
+                    },
+                    "question": {
+                        "type": "string",
+                        "description": "The question, in words. Shown above the view and used wherever the view cannot be drawn.",
+                    },
+                    "options": {
+                        "type": "array",
+                        "description": (
+                            "The same choices in plain words — the fallback for "
+                            "Telegram, phone and voice. Keep them in the same order "
+                            "as the view's items."
+                        ),
+                        "items": {"type": "string"},
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Additional context for the user",
+                    },
+                },
+                "required": ["view", "data", "question"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "escalate_if_unsure",
             "description": (
                 "Report how confident you are (0-100) BEFORE acting on an uncertain "
@@ -1454,6 +1545,156 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     "limit": {"type": "number", "description": "Max related entries (default 10, max 50)."},
                 },
                 "required": ["id"],
+            },
+        },
+    },
+    # ── Team-Werkzeuge (Paritaet mit orchestrator-server.mjs) ──
+    # Fehlten bis 2026-08-12 im Custom-LLM. Ohne sie kann ein Agent weder
+    # sehen, wer zu ihm gehoert, noch was die anderen tun — und erfindet es.
+    {
+        "type": "function",
+        "function": {
+            "name": "list_my_team",
+            "description": "Who is on my team — the agents I can delegate to. Call this BEFORE claiming what other agents are doing.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_team_tasks",
+            "description": "What my team is actually working on right now. Use this instead of guessing or describing a status you have not checked.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_tasks_status",
+            "description": "Check whether tasks I delegated are still running or finished.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Task ids to check."
+                    }
+                },
+                "required": [
+                    "task_ids"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_meeting",
+            "description": "Set up a meeting between several agents to align on a topic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "What the meeting is about."
+                    },
+                    "agent_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Participating agents."
+                    }
+                },
+                "required": [
+                    "topic"
+                ]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "skill_update",
+            "description": "Update one of my installed skills.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {
+                        "type": "string",
+                        "description": "The skill to update."
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "New skill content."
+                    }
+                },
+                "required": [
+                    "skill_id"
+                ]
+            }
+        }
+    },
+    # ── Delegieren und auf das Ergebnis warten ──
+    # Gab es bis 2026-08-12 NUR im MCP-Satz, also nur fuer Claude Code. Ohne dieses
+    # Werkzeug beschreibt ein Modell die Delegation, statt sie auszufuehren — beim
+    # Kunden stand eine erfundene Statustabelle im Chat, waehrend alle Agenten
+    # nachweislich im Leerlauf waren.
+    {
+        "type": "function",
+        "function": {
+            "name": "delegate_and_wait",
+            "description": (
+                "Give concrete work to OTHER agents and WAIT for their results. Use this "
+                "whenever you say you will 'beauftragen', 'delegieren', 'aufteilen' or "
+                "report on what other agents are doing — announcing it without calling "
+                "this tool is a false statement. Creates real tasks on their boards and "
+                "returns each result (or says plainly that one is still running). "
+                "Max 20 tasks, wait up to 600s. For fire-and-forget use create_task_batch."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tasks": {
+                        "type": "array",
+                        "description": "The pieces of work, one per agent.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string", "description": "Short title."},
+                                "prompt": {
+                                    "type": "string",
+                                    "description": (
+                                        "Full instruction. Must stand on its own: the "
+                                        "receiver has its OWN /workspace and cannot see "
+                                        "yours. Never point at a /workspace/... path of "
+                                        "yours — copy what they need to /shared/ and name "
+                                        "that path, or put the content into this prompt."
+                                    ),
+                                },
+                                "agent_id": {"type": "string", "description": "Target agent id (omit = auto-assign)."},
+                                "priority": {"type": "integer", "description": "1 (high) to 10 (low), default 5."},
+                            },
+                            "required": ["title", "prompt"],
+                        },
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "description": "How long to wait for results (10-600, default 300).",
+                    },
+                },
+                "required": ["tasks"],
             },
         },
     },
@@ -1699,6 +1940,14 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                 "properties": {"path": {"type": "string", "description": "App path in /workspace (from list_apps)."}},
                 "required": ["path"],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "restart_own_container",
+            "description": "Rebuild and restart MY OWN container from the current agent image/config, preserving my full workspace (files, git history, memory, everything on disk). This INTERRUPTS whatever I'm currently doing and drops my in-progress conversation turn — ALWAYS tell the user this is about to happen BEFORE calling it, never call it silently. Use only when explicitly asked to restart/rebuild myself, or when a config/instruction change needs a fresh container to take effect. No arguments.",
+            "parameters": {"type": "object", "properties": {}},
         },
     },
 ]

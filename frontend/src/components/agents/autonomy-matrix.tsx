@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 const STATE_META: Record<AutonomyState, { label: string; icon: typeof Check; on: string }> = {
   allow: { label: "Erlaubt", icon: Check, on: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-  ask: { label: "Freigabe", icon: HelpCircle, on: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+  ask: { label: "Freigabe", icon: HelpCircle, on: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" },
   deny: { label: "Verboten", icon: Ban, on: "bg-red-500/15 text-red-400 border-red-500/30" },
 };
 const GROUP_ICON: Record<string, typeof Container> = { container: Container, external: Globe };

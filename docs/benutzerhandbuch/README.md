@@ -4,7 +4,7 @@
 **Version:** 1.154.0
 **Stand:** 7. August 2026
 **Zielgruppe:** Endanwender & Administratoren
-**Instanz:** skbs-s-kichat.klinikum-bs.de
+**Instanz:** ki-chat.example.com
 
 ---
 
@@ -78,6 +78,9 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 31. [Nachtschicht (Reflection) — Agenten lernen über Nacht](#31-nachtschicht-reflection--agenten-lernen-über-nacht)
 32. [Apps (Ergebnisse deiner Agenten öffnen & freigeben)](#32-apps-ergebnisse-deiner-agenten-öffnen--freigeben)
 33. [Activity — Tageskalender aller Agenten](#33-activity--tageskalender-aller-agenten)
+34. [Kanäle: Telegram, Teams, Slack, WhatsApp, Discord](#34-kanäle-telegram-teams-slack-whatsapp-discord)
+35. [Branchen-Pakete: ein fertiges Team in einem Schritt](#35-branchen-pakete-ein-fertiges-team-in-einem-schritt)
+36. [Ausweichmodell, wenn das Hauptmodell streikt](#36-ausweichmodell-wenn-das-hauptmodell-streikt)
 
 **Anhang A** — [Was kann ein Agent? (Beispiele)](#a-was-kann-ein-agent-typische-einsätze)
 · **Anhang B** — [Admin-Schnellstart: 3 Rezepte](#b-admin-schnellstart-3-rezepte-ende-zu-ende)
@@ -216,7 +219,7 @@ Kapitel erklärt die Übersichtsseite und wie du Schritt für Schritt einen Agen
 Seitenleiste → **Agents**. Jeder Agent erscheint als **Kachel**. Was du darauf siehst:
 
 - **Name** des Agenten (oben links auf der Kachel).
-- **Modell-/Account-Badge** (z. B. *SKBS – Azure*) — zeigt, mit welchem Modell er denkt.
+- **Modell-/Account-Badge** (z. B. *Firma – Azure*) — zeigt, mit welchem Modell er denkt.
 - **Update-Badge** (orange „Update") — erscheint nur, wenn eine **neue Container-Version**
   bereitsteht. Klick darauf bzw. **Update** aktualisiert ihn (Workspace bleibt erhalten).
 - **Status-Punkt**: *Idle* (bereit, nichts zu tun), *Working* (arbeitet gerade),
@@ -285,7 +288,7 @@ einzelnen Agenten.
 **Die Kopfzeile** (oben):
 - **Live-Werte** — CPU-Auslastung, belegter Arbeitsspeicher und Festplatte (z. B.
   *45 MB / 10 GB*).
-- **Modell-/Account-Anzeige** — z. B. *SKBS – Azure / gpt-5.4*.
+- **Modell-/Account-Anzeige** — z. B. *Firma – Azure / gpt-5.4*.
 - **Restart** — startet den Container neu (z. B. wenn er hängt; Daten bleiben erhalten).
 - **Custom LLM** — Schnellzugriff auf die Modell-/LLM-Einstellung.
 - **Status-Badge** rechts — *Idle* / *Working* / …
@@ -492,9 +495,15 @@ und Anzahl der Läufe sagen nichts darüber, **ob die Arbeit taugt**; diese Kart
 - **Bewertungen** — der Schnitt deiner Daumen/Sterne auf seine Aufgaben.
 - **Im Dienst seit** — die Grundlage für die Probezeit-Bilanz.
 
-Oben rechts stellst du den **Zeitraum** um (7 / 30 / 90 Tage). Fehlt ihm die Einrichtung
-oder fehlen die Verantwortungsbereiche, steht das als **Warnung** in der Karte — das ist
-dann der erste Hebel, nicht das Modell.
+Oben rechts stellst du den **Zeitraum** um (7 / 30 / 90 Tage). Fehlen ihm die
+**Verantwortungsbereiche**, steht das als **Warnung** in der Karte — das ist dann der
+erste Hebel, nicht das Modell.
+
+> **Seit 1.194.0:** Das frühere Abzeichen „Nicht eingerichtet" ist entfallen. Ein neuer
+> Agent gilt sofort als eingerichtet — was er tun soll, steht in seiner **Vorlage**, ein
+> Einrichtungsgespräch führt er nicht mehr. Übrig bleibt genau eine Warnung, und die ist
+> die wichtige: **ohne Verantwortungsbereiche werden seine proaktiven Läufe
+> übersprungen**. Wie du sie hinterlegst, steht in Abschnitt 5.4.
 
 ### 5.7 Szenario: Vom leeren Agenten zum fertigen Helfer
 1. **Agents → + New Agent → Leerer Agent.**
@@ -723,6 +732,29 @@ GitHub-Webhook) löst **automatisch** einen Task bei einem Agenten aus. Seitenle
 
 ---
 
+### Einen Workflow statt eines Auftrags starten
+
+Ein Trigger kann statt eines Einzelauftrags eine ganze **Workflow-Kette** starten:
+
+1. Trigger anlegen oder bearbeiten.
+2. Unter **Ziel** den gewünschten **Workflow** wählen (leer = Auftrag wie bisher).
+3. Speichern.
+
+Im Workflow stehen die Daten des Ereignisses als Platzhalter bereit:
+
+| Platzhalter | Inhalt |
+|---|---|
+| `{{trigger}}` | die vollständige Nutzlast als JSON |
+| `{{trigger_prompt}}` | der aus der Vorlage gefüllte Text |
+| `{{trigger_source}}` | Herkunft, z. B. `github` |
+| `{{trigger_event}}` | Ereignisart, z. B. `pull_request` |
+
+> Zeigt ein Trigger auf einen gelöschten oder abgeschalteten Workflow, wird
+> ersatzweise ein normaler Auftrag angelegt — damit das Ereignis nicht
+> stillschweigend verschwindet.
+
+---
+
 ## 12. Schedules
 
 **Schedules** sind **wiederkehrende, zeitgesteuerte Tasks** — der Agent erledigt etwas
@@ -775,6 +807,15 @@ entscheidest. Seitenleiste → **Approvals**.
    **„Ja, bitte umsetzen"**, **„Nur interne Quellen verwenden"**, **„Nein, erst Konzept
    zeigen"**.
 4. **Erst nach deiner Entscheidung** macht der Agent weiter — entsprechend deiner Wahl.
+
+> **Antworten braucht keine Freigabe.** Ein Agent darf dir und seinen Kollegen
+> jederzeit antworten. Freigabepflichtig sind Handlungen **nach aussen**: E-Mail
+> und M365, externe Schnittstellen, `git push`, Käufe. Nachrichten an dich und in
+> eure Kanäle sind ab Stufe **L2** frei.
+>
+> Vorher war das anders, mit einer unangenehmen Folge: Agenten blieben mitten in
+> der Arbeit stehen, weil sie unsicher waren, ob schon das *Antworten* eine
+> Freigabe braucht.
 
 Freigaben werden zusätzlich per **Telegram** und **iOS-Push** zugestellt, damit du sie auch
 unterwegs beantworten kannst.
@@ -1183,7 +1224,7 @@ Stellschrauben. Klick **+ Neue Rolle** und fülle aus:
 - **Mountshares** — welche **Second Brains** die Gruppe nutzen darf (z. B.
   *brain-it_operations*).
 - **AI-Accounts (Konten)** — welche zentralen Modell-Zugänge erlaubt sind (z. B.
-  *SKBS – Azure*).
+  *Firma – Azure*).
 - **Keys / Secrets** — welche hinterlegten Secrets die Gruppe nutzen darf.
 - **MCP-Server / Tools** — welche MCP-Anbindungen erlaubt sind (*SharePoint-MCP, DMS-MCP,
   MediaWiki-MCP*).
@@ -1332,8 +1373,9 @@ gesetzten Berechtigungen.
   falls der Button verdeckt ist.)*
 
 **Schritt 3 — Berechtigungen festlegen.** Im Dialog wählst du pro Fähigkeit (Screenshot,
-Klick, Tippen, App öffnen, Shell, Zwischenablage …), **was der Agent darf** — jeweils mit
-**Risiko-Einstufung** (gering/mittel/hoch). Nur Freigegebenes ist möglich.
+Klick, Tippen, App öffnen, Shell, Zwischenablage, Browser-Steuerung, ego lite …), **was der
+Agent darf** — jeweils mit **Risiko-Einstufung** (gering/mittel/hoch). Nur Freigegebenes ist
+möglich; wie bei *Shell* sind die risikoreichen Fähigkeiten standardmäßig **aus**.
 
 **Schritt 4 — Nutzen.** Im **Chat** eines Agenten bitten, `computer_use` zu verwenden. Der
 Agent listet die verfügbaren **Bridge-Sessions**, macht Screenshots deines Bildschirms und
@@ -1354,6 +1396,31 @@ tippen und Tastenkombinationen gehen auch ohne, er braucht dann nur deinen Hinwe
 1. Bridge starten, anmelden, Berechtigungen *Screenshot* + *Klick* erlauben.
 2. Im Agent-Chat: „Öffne den Browser und zeig mir die Startseite." → der Agent macht einen
    Screenshot und klickt sich nach deinen Freigaben durch.
+
+### 23.2 ego lite: der Agent arbeitet in deiner ECHTEN, eingeloggten Sitzung
+
+Für Browser-Aufgaben gibt es zwei Wege, die unterschiedliche Dinge wollen:
+
+- **Browser-Steuerung** bedient ein **eigenes, isoliertes** Browser-Profil — du meldest
+  dich dort einmalig separat an, unabhängig von deinem normalen Browser.
+- **ego lite** bedient stattdessen deine **echte, bereits eingeloggte** Browsersitzung
+  (Mail, interne Tools, alles wo du schon angemeldet bist) — ohne erneute Anmeldung.
+  Voraussetzung: die App **ego lite** (`https://lite.ego.app/`) ist auf deinem Rechner
+  installiert und einmal eingerichtet.
+
+**So richtest du es ein:**
+1. ego lite installieren und einmalig das Onboarding in der App durchlaufen (Import aus
+   Chrome o. ä. auf Wunsch).
+2. In der Bridge unter **Berechtigungen** die Fähigkeit **ego lite** einschalten (steht wie
+   *Shell* standardmäßig auf **aus** — bewusst einschalten, weil der Agent damit Zugriff auf
+   bereits angemeldete Konten bekommt).
+3. Im Agent-Chat die Aufgabe stellen, z. B. „Prüfe in meinem Mail-Postfach, ob eine Antwort
+   von X da ist." Der Agent erkennt selbst, dass dafür `ego_run` (statt der isolierten
+   Browser-Steuerung) der richtige Weg ist.
+
+> Nur macOS aktuell unterstützt (Stand `ego lite` 2026). Ist die App nicht gefunden oder die
+> Fähigkeit nicht freigegeben, meldet der Agent das mit klarem Grund statt es stillschweigend
+> zu versuchen.
 
 ---
 
@@ -1509,7 +1576,30 @@ nicht mehr, welche Änderung es war. Golden-Tests sind der Regressionstest dafü
    - **Auftrag** — was der Agent tun soll
    - **Muss enthalten** — eine Angabe je Zeile, Groß-/Kleinschreibung egal
    - **Darf nicht enthalten** — z. B. „ich kann das nicht"
+   - **Werkzeuge, die laufen müssen** — z. B. `delegate_and_wait`
+   - **Werkzeuge, die nicht laufen dürfen** — z. B. `bash`
+   - **Es muss wirklich gearbeitet worden sein** — Haken setzen, wenn der Agent
+     die Aufgabe angefasst haben muss statt sie nur zu beschreiben
+   - **Aufträge vergeben / davon abgeschlossen** — für Team-Leads
 5. **Aufgabe hinzufügen** für weitere, dann **Speichern**.
+
+> **Warum Werkzeuge und nicht nur Text?** Ein Agent ohne passendes Werkzeug
+> *beschreibt* die Handlung, statt sie auszuführen — mit einer sauberen
+> Statustabelle für Arbeit, die nie stattgefunden hat. Diese erfundene Antwort
+> enthält **mehr** von dem, was man erwartet, als die ehrliche „ich kann das
+> nicht". Eine reine Textprüfung bewertet sie deshalb **besser**. Erst der Blick
+> darauf, was wirklich gelaufen ist, trennt Reden von Tun.
+
+### Zwei Sammlungen sind schon da
+
+Jede Anlage bringt zwei mitgelieferte Sammlungen mit:
+
+- **Team-Grundlagen** — kennt der Lead sein Team, beauftragt er wirklich, kommen
+  die Ergebnisse zurück, benennt er Fehlschläge als solche
+- **Angriffsfälle** — Anweisungen, die in Kollegen-Nachrichten, Webseiten,
+  Dateien oder Werkzeug-Antworten versteckt sind
+
+Beide lassen sich wie eigene Sammlungen bearbeiten und laufen lassen.
 
 > **Jede Aufgabe braucht mindestens eine Erwartung.** Eine Aufgabe, die nie
 > durchfallen kann, ist kein Test — sie würde den Wert stillschweigend nach oben
@@ -1866,6 +1956,133 @@ Anklicken einer Aufgabe unter **Tasks** (Kap. 6).
 
 Die Seite zeigt nur Agenten, die du auch sonst siehst (deine eigenen plus mit dir
 geteilte) — Administratoren sehen alle Agenten.
+
+---
+
+---
+
+## 34. Kanäle: Telegram, Teams, Slack, WhatsApp, Discord
+
+Ein Agent ist über **fünf Kanäle** erreichbar. Egal welcher — der Ablauf dahinter ist
+derselbe: Nachricht aufnehmen, ins Gedächtnis legen, Agent antworten lassen.
+
+### Einen Kanal einschalten
+
+1. **Agenten** öffnen → gewünschter Agent → Reiter **Settings**.
+2. Abschnitt **Kanäle** aufklappen.
+3. Kanal wählen und **Aktiv** setzen.
+4. **Bot-Token** eintragen (wird verschlüsselt gespeichert, nie im Klartext angezeigt).
+5. **Kanal-IDs** eintragen — welche Chats/Channels der Agent mitliest.
+6. **Speichern**.
+
+### Discord einrichten
+
+Discord braucht drei Dinge, sonst bleibt es still:
+
+1. Im **Discord Developer Portal** eine Anwendung anlegen → **Bot** hinzufügen.
+2. Beim Bot die Berechtigung **Message Content Intent** einschalten.
+   > **Ohne diesen Schalter liefert Discord den Text jeder Nachricht leer aus.**
+   > Der Agent bekommt dann lauter leere Nachrichten und antwortet nie. Das ist die
+   > mit Abstand häufigste Ursache, wenn Discord „nicht geht".
+3. Den Bot mit den Rechten **View Channels**, **Send Messages** und
+   **Read Message History** auf den Server einladen.
+4. Kanal-ID holen: in Discord **Einstellungen → Erweitert → Entwicklermodus** an,
+   dann Rechtsklick auf den Kanal → **Kanal-ID kopieren**.
+
+### Wann antwortet der Agent?
+
+Standardmäßig **nur, wenn er angesprochen wird** — per Erwähnung, mit seinem Namen
+oder einem hinterlegten Stichwort. In einem Kanal mit Menschen soll er nicht auf
+jede Zeile antworten.
+
+Für einen Kanal, der dem Agenten allein gehört, kannst du **Erwähnung nötig**
+ausschalten; dann bearbeitet er alles, was dort geschrieben wird.
+
+### Was der Filter unterwegs prüft
+
+Jede ausgehende Nachricht läuft durch den **DLP-Filter** (siehe Admin-Konsole),
+falls er eingeschaltet ist — auf **allen** Kanälen. Enthält eine Antwort z. B. eine
+IBAN oder ein Zugangstoken, wird sie maskiert oder zurückgehalten. Der Empfänger
+bekommt dann einen kurzen Hinweis statt der Nachricht, damit niemand auf eine
+Antwort wartet, die nie kommt.
+
+> Lange Antworten werden bei Discord an Absätzen **geteilt**, nicht abgeschnitten —
+> eine halbe Antwort sieht sonst aus wie eine ganze.
+>
+> _[Screenshot folgt: Kanäle-Abschnitt in den Agent-Settings mit aktivem Discord]_
+
+---
+
+## 35. Branchen-Pakete: ein fertiges Team in einem Schritt
+
+Statt Agenten einzeln anzulegen, richtet ein **Branchen-Paket** ein komplettes Team
+ein: mehrere Agenten mit passenden Rollen, Startwissen und eine erste Aufgabe zum
+Ausprobieren.
+
+### Ein Paket einrichten
+
+1. Links im Menü **Onboarding** (oder beim ersten Start automatisch).
+2. Das passende Paket wählen:
+   - **Entwickler-Team** — Fullstack, DevOps, Code-Review
+   - **Content-Studio** — Technische Doku, Social Media, SEO
+   - **Support-Desk** — First-Level, Recherche, Doku
+   - **Steuerkanzlei** — Buchhaltung, Lohnbuchhaltung, Legal Assistant
+   - **Handwerksbetrieb** — Angebot & Kalkulation, Disposition, Support
+3. **Vorschau** zeigt, welche Agenten und welches Startwissen angelegt werden.
+4. **Einrichten** — die Agenten entstehen, das Wissen landet im Second Brain.
+5. Die **Demo-Aufgabe** starten, um das Team einmal laufen zu sehen.
+
+### Steuerkanzlei — was die Agenten dürfen und was nicht
+
+Die Geld-Rollen arbeiten **zu**, sie entscheiden nicht:
+
+- Jede Buchung ist ein **Vorschlag** und braucht die Freigabe einer fachkundigen
+  Person, bevor sie verbucht wird.
+- Ein unklarer Beleg kommt in die **Rückfragenliste** — der Agent schätzt nicht.
+- Pflichtangaben nach §14 UStG werden bei jeder Eingangsrechnung geprüft.
+
+> **Vor dem ersten Einsatz** den Kontenrahmen (SKR03/SKR04) im Wissen des
+> Buchhaltungs-Agenten hinterlegen. Ohne ihn kann er nicht kontieren.
+
+### Handwerksbetrieb — Preise kommen aus der Liste
+
+Der Kalkulations-Agent nimmt Preise **ausschließlich** aus der hinterlegten
+Preisliste. Fehlt ein Preis, geht die Position mit Hinweis in die Rückfragenliste,
+statt geschätzt zu werden — geschätzte Preise kosten Marge, und zwar unbemerkt.
+
+> _[Screenshot folgt: Paketauswahl mit Vorschau der enthaltenen Agenten]_
+
+---
+
+## 36. Ausweichmodell, wenn das Hauptmodell streikt
+
+Modelle sind nicht immer erreichbar: Rate-Limit bei vielen gleichzeitigen Aufträgen,
+Wartungsfenster einer Azure-Bereitstellung, Überlastung beim Anbieter. Ohne
+Ausweichmodell bricht der Auftrag dann ab.
+
+### Einrichten
+
+1. **Agenten** → gewünschter Agent → **Settings** → **Modell**.
+2. Feld **Ausweichmodelle** — ein Modell je Zeile, **in der Reihenfolge**, in der
+   ausgewichen werden soll.
+3. **Speichern**, dann den Agenten **aktualisieren** (Update-Knopf auf der Karte).
+
+> Nur Modelle desselben Zugangs eintragen. Ein Modell auf einem anderen Endpunkt
+> braucht einen eigenen Zugang und funktioniert hier nicht.
+
+### Was passiert im Betrieb
+
+- Antwortet das Modell wegen **Auslastung** nicht, wechselt der Agent auf das
+  nächste der Liste und **macht dort weiter**, wo er war.
+- Im Verlauf steht dann eine Zeile wie
+  `[Modellwechsel: gpt-5.6-terra → gpt-5.3-codex, Grund: rate limit]`.
+- Bei einem **Einrichtungsfehler** — falscher Schlüssel, falscher
+  Bereitstellungsname — wird **nicht** gewechselt. Dort hilft kein zweites Modell,
+  und ein Wechsel würde nur die eigentliche Ursache verdecken.
+
+> **Ohne Eintrag ändert sich nichts.** Ein leeres Feld heißt: abbrechen wie bisher.
+>
+> _[Screenshot folgt: Modell-Abschnitt mit zwei Ausweichmodellen]_
 
 ---
 

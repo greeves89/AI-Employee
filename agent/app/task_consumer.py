@@ -7,6 +7,13 @@ import redis.asyncio as aioredis
 
 from app.config import settings
 from app.log_publisher import LogPublisher
+from app.pids_budget import (
+    DEFAULT_COST_PER_RUN,
+    DEFAULT_RESERVE,
+    max_concurrent_runs,
+    read_pids_limits,
+)
+from app.run_budget import get_run_budget
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +21,36 @@ logger = logging.getLogger(__name__)
 def _max_parallel_tasks() -> int:
     """How many tasks ONE agent runs at the same time. Default 1 = serial (unchanged
     behaviour). Set MAX_PARALLEL_TASKS>1 to let independent tasks run concurrently —
-    each in its own runner subprocess. Mirrors MAX_PARALLEL_CHATS on the chat side."""
+    each in its own runner subprocess. Mirrors MAX_PARALLEL_CHATS on the chat side.
+
+    Der Wunsch aus ``MAX_PARALLEL_TASKS`` ist eine Obergrenze, keine Zusage: was
+    nicht ins pids-Budget des Containers passt, wird gedeckelt. Sonst startet der
+    Agent mehr Laeufe, als der Kernel Prozesse hergibt — und ab da scheitert jedes
+    ``gh``/``git``/``pytest`` still (Issue #628)."""
     try:
-        return max(1, int(os.getenv("MAX_PARALLEL_TASKS", "1")))
+        wanted = max(1, int(os.getenv("MAX_PARALLEL_TASKS", "1")))
     except (TypeError, ValueError):
-        return 1
+        wanted = 1
+
+    budget = max_concurrent_runs(
+        reserve=_env_int("PIDS_RESERVE", DEFAULT_RESERVE),
+        cost_per_run=_env_int("PIDS_COST_PER_RUN", DEFAULT_COST_PER_RUN),
+    )
+    if wanted > budget:
+        logger.warning(
+            "MAX_PARALLEL_TASKS=%d passt nicht ins pids-Budget des Containers — "
+            "gedeckelt auf %d (siehe Issue #628)",
+            wanted, budget,
+        )
+        return budget
+    return wanted
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
 
 
 class TaskConsumer:
@@ -43,6 +75,12 @@ class TaskConsumer:
         # der Orchestrator hielt die uebrigen deshalb faelschlich fuer verschollen
         # und raeumte sie mitten in der Arbeit ab.
         self._active_task_ids: set[str] = set()
+        #: Aufgabe -> ihr Runner. Ohne diese Zuordnung liess sich eine EINZELNE
+        #: laufende Aufgabe nicht stoppen: `stop()` kannte nur „alle Runner".
+        #: Genau daran scheiterte das Abbrechen per Sprache — der Nutzer sagte
+        #: dreimal „abbrechen", bekam dreimal „ist gestoppt", und die Aufgabe
+        #: lief weiter (gemeldet am 21.08.2026).
+        self._runner_by_task: dict[str, object] = {}
 
     def _make_runner(self):
         """Fresh runner instance per task — independent subprocess, no shared state."""
@@ -65,8 +103,20 @@ class TaskConsumer:
         # Report as ready
         await self._log_publisher.publish_status("idle")
         await self._log_publisher.publish("", "system", {"message": f"Agent {self.agent_id} ready"})
-        if max_parallel > 1:
-            logger.info("Task parallelism enabled: up to %d tasks concurrently", max_parallel)
+        current, limit = read_pids_limits()
+        logger.info(
+            "Task parallelism: %d concurrent (pids %s/%s)",
+            max_parallel,
+            current if current is not None else "?",
+            limit if limit is not None else "?",
+        )
+
+        # Der Abbruch-Zuhoerer laeuft neben der Warteschlange — sonst koennte er
+        # erst dran kommen, wenn gerade keine Aufgabe verarbeitet wird, also
+        # genau dann nicht, wenn man ihn braucht.
+        abbruch = asyncio.create_task(self._cancel_listener())
+        self._inflight.add(abbruch)
+        abbruch.add_done_callback(self._inflight.discard)
 
         while self.running:
             # Only pull a new task once a slot is free → at most N tasks in flight,
@@ -103,8 +153,11 @@ class TaskConsumer:
     async def _run_task(self, task: dict) -> None:
         """Execute ONE task in its own runner, then release the semaphore slot."""
         task_id = task.get("id")
+        herzschlag = None
         runner = self._make_runner()
         self._active_runners.add(runner)
+        if task_id:
+            self._runner_by_task[task_id] = runner
         # Any task working → agent shows "working"; when the last finishes we go idle.
         try:
             if task_id:
@@ -122,13 +175,26 @@ class TaskConsumer:
                 "message": f"Task started: {prompt_preview} (model: {model})"
             })
 
+            # Lebenszeichen, solange gearbeitet wird (#692). Ohne das misst der
+            # Waechter im Orchestrator `Task.updated_at` — und die Zeile wird
+            # zwischen Start und Ende NIE angefasst. Er war damit faktisch eine
+            # harte 30-Minuten-Obergrenze fuer jede delegierte Aufgabe: am
+            # 31.08.2026 starben vier parallele Reviews nach 30.3 Minuten mit
+            # "Worker still gestorben", obwohl sie kerngesund arbeiteten.
+            herzschlag = asyncio.create_task(self._herzschlag(task_id))
+
             is_lightweight = task.get("lightweight", False)
-            result_data = await runner.execute_task(
-                task_id=task_id,
-                prompt=task["prompt"],
-                model=task.get("model"),
-                lightweight=is_lightweight,
-            )
+            # Der lokale Semaphore oben deckelt nur DIESEN Pool; erst der
+            # prozessweite RunBudget-Platz (Issue #628 Phase 2) verhindert,
+            # dass Aufgaben + Chat + Nachrichten gemeinsam ueber das
+            # Container-Budget hinaus laufen.
+            async with get_run_budget().slot_for_task():
+                result_data = await runner.execute_task(
+                    task_id=task_id,
+                    prompt=task["prompt"],
+                    model=task.get("model"),
+                    lightweight=is_lightweight,
+                )
 
             status = result_data.get("status", "unknown")
             cost = result_data.get("cost_usd", 0)
@@ -165,7 +231,11 @@ class TaskConsumer:
             except Exception:
                 pass  # best effort
         finally:
+            if herzschlag is not None:
+                herzschlag.cancel()
             self._active_runners.discard(runner)
+            if task_id:
+                self._runner_by_task.pop(task_id, None)
             self._active_task_ids.discard(task_id)
             # Only flip to idle when no other task is still running.
             try:
@@ -180,6 +250,87 @@ class TaskConsumer:
             except Exception:  # noqa: BLE001
                 pass
             self._sem.release()
+
+    #: Wie oft ein Lebenszeichen geht. Deutlich unter der Waechter-Schwelle
+    #: (Standard 30 Minuten), damit ein einzelner verpasster Schlag — etwa bei
+    #: einer kurzen Redis-Unterbrechung — noch keinen Abbruch ausloest.
+    HERZSCHLAG_SEKUNDEN = 60
+
+    async def _herzschlag(self, task_id: str | None) -> None:
+        """Meldet, solange die Aufgabe laeuft: „ich lebe noch".
+
+        Der Waechter im Orchestrator (#211) prueft, wann an der Aufgabe zuletzt
+        etwas geschrieben wurde. Zwischen `task:started` und `task:completions`
+        schreibt aber nichts — der Waechter mass damit nicht die Gesundheit des
+        Arbeiters, sondern schlicht die verstrichene Zeit (#692).
+
+        Ein Fehler hier darf die Aufgabe nie mitreissen: schlaegt das Senden
+        fehl, wird es beim naechsten Schlag erneut versucht.
+        """
+        if not task_id:
+            return
+        while True:
+            try:
+                await asyncio.sleep(self.HERZSCHLAG_SEKUNDEN)
+                if self.redis:
+                    await self.redis.publish(
+                        "task:heartbeat",
+                        json.dumps({"task_id": task_id, "agent_id": self.agent_id}),
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Herzschlag fuer {task_id} nicht zugestellt: {e}")
+
+    async def _cancel_listener(self) -> None:
+        """Auf „stopp diese Aufgabe" hoeren.
+
+        Der Kanal ``agent:{id}:task:cancel`` wurde vom Orchestrator seit jeher
+        BESENDET — nur hat ihm nie jemand zugehoert. Ein Abbruch erreichte
+        deshalb ausschliesslich Chat-Zuege (ueber ``chat:cancel``), waehrend
+        eingeplante Aufgaben unbeirrt weiterliefen. Der Nutzer sagte am
+        21.08.2026 dreimal „abbrechen", bekam dreimal „ist gestoppt" — und sah
+        die Aufgabe weiterlaufen.
+
+        Nutzlast ist die Aufgabenkennung; ``all`` stoppt alles Laufende.
+        """
+        kanal = f"agent:{self.agent_id}:task:cancel"
+        verbindung = aioredis.from_url(settings.redis_url, decode_responses=True)
+        pubsub = verbindung.pubsub()
+        await pubsub.subscribe(kanal)
+        logger.info("Auf Aufgaben-Abbrueche horchend: %s", kanal)
+        try:
+            while self.running:
+                nachricht = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if not nachricht or nachricht.get("type") != "message":
+                    await asyncio.sleep(0.05)
+                    continue
+                wen = str(nachricht.get("data") or "").strip()
+                ziele = (
+                    list(self._runner_by_task.items()) if wen in ("", "all")
+                    else [(wen, self._runner_by_task.get(wen))]
+                )
+                for tid, runner in ziele:
+                    if not runner:
+                        logger.info("Abbruch fuer %s: laeuft hier nicht (mehr)", tid)
+                        continue
+                    try:
+                        if getattr(runner, "is_running", False):
+                            await runner.interrupt()
+                            logger.info("Aufgabe %s auf Zuruf gestoppt", tid)
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("Aufgabe %s liess sich nicht stoppen: %s", tid, e)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — der Zuhoerer darf den Agenten nie mitreissen
+            logger.warning("Abbruch-Zuhoerer beendet", exc_info=True)
+        finally:
+            try:
+                await pubsub.unsubscribe(kanal)
+                await pubsub.aclose()
+                await verbindung.aclose()
+            except Exception:  # noqa: BLE001
+                pass
 
     async def stop(self) -> None:
         self.running = False

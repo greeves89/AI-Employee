@@ -137,7 +137,7 @@ const CAPABILITY_META: CapabilityMeta[] = [
 
 const RISK_COLORS = {
   low: "text-emerald-400",
-  medium: "text-amber-400",
+  medium: "text-amber-700 dark:text-amber-400",
   high: "text-red-400",
 };
 
@@ -477,8 +477,8 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
                   <CodeBlock>{`# Cloudflare Access (Service-Token)\nCF_ACCESS_CLIENT_ID=<id> CF_ACCESS_CLIENT_SECRET=<secret> python tray_app.py\n\n# Beliebiger Proxy-Header\npython bridge.py --url ${baseUrl} --token <dein-token> --session <id> \\\n  --header 'CF-Access-Client-Id: <id>' --header 'CF-Access-Client-Secret: <secret>'`}</CodeBlock>
                 </InstallStep>
                 <div className="flex items-start gap-2 rounded-lg bg-amber-500/5 border border-amber-500/20 px-3 py-2.5">
-                  <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-400/80">
+                  <AlertCircle className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700 dark:text-amber-400/80">
                     Die Bridge kann Maus, Tastatur und Bildschirm steuern. Nur verbinden, wenn du dem Agent vertraust.
                     Erlaubte Aktionen kannst du per Session einschränken.
                   </p>
@@ -599,7 +599,7 @@ function SessionCard({
           )}>
             {isConnected
               ? <Wifi className="h-4 w-4 text-emerald-400" />
-              : <WifiOff className="h-4 w-4 text-amber-400" />}
+              : <WifiOff className="h-4 w-4 text-amber-700 dark:text-amber-400" />}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -620,7 +620,7 @@ function SessionCard({
                 "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border",
                 isConnected
                   ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                  : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                  : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20"
               )}>
                 <span className={cn("h-1.5 w-1.5 rounded-full", isConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400")} />
                 {isConnected ? "Verbunden" : "Warte auf Bridge"}
@@ -687,7 +687,7 @@ function SessionCard({
                     <div className="flex items-center gap-2 shrink-0">
                       <span className={cn(
                         "text-[9px] font-medium uppercase",
-                        cap.risk === "high" ? "text-red-400/60" : cap.risk === "medium" ? "text-amber-400/60" : "text-emerald-400/60"
+                        cap.risk === "high" ? "text-red-400/60" : cap.risk === "medium" ? "text-amber-700 dark:text-amber-400/60" : "text-emerald-400/60"
                       )}>
                         {cap.risk === "high" ? "⚠ hoch" : cap.risk === "medium" ? "mittel" : "gering"}
                       </span>
@@ -738,7 +738,7 @@ function SessionCard({
           </p>
         )}
         {bridgeUrl.source === "browser_derived" && (
-          <p className="text-[10px] text-amber-400/70">
+          <p className="text-[10px] text-amber-700 dark:text-amber-400/70">
             Abgeleitet aus der Adresse dieses Browsers. Wenn die Bridge über einen anderen Hostnamen verbindet, verwende diesen Hostnamen.
           </p>
         )}
@@ -795,8 +795,8 @@ function SessionCard({
               >
                 {screenshotError === "disconnected" ? (
                   <div className="flex flex-col items-center justify-center h-32 rounded-lg border border-dashed border-amber-500/30 bg-amber-500/5 gap-2">
-                    <WifiOff className="h-5 w-5 text-amber-400/60" />
-                    <p className="text-xs text-amber-400/80 font-medium">Bridge getrennt</p>
+                    <WifiOff className="h-5 w-5 text-amber-700 dark:text-amber-400/60" />
+                    <p className="text-xs text-amber-700 dark:text-amber-400/80 font-medium">Bridge getrennt</p>
                     <p className="text-[10px] text-muted-foreground/60">Bridge-App neu starten — Verbindung wird automatisch erkannt.</p>
                   </div>
                 ) : screenshotError === "error" ? (

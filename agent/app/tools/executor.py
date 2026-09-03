@@ -46,6 +46,10 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     # Nachfragen darf nie an einer Freigabe scheitern: ein Agent, der die
     # Rueckfrage nicht stellen kann, raet stattdessen (#389).
     "escalate_if_unsure",
+    # Eine Ansicht IST eine Rueckfrage, nur mit Bild statt Wortliste — sie darf
+    # aus demselben Grund nicht an einer Freigabe haengen. Sie fuehrt zudem
+    # nichts aus: sie zeigt etwas und wartet auf die Wahl des Nutzers.
+    "present_view",
     "rate_task",
     "memory_save", "memory_search", "memory_list", "memory_delete",
     "read_file", "list_files", "glob", "grep", "view_image",
@@ -55,7 +59,8 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "secondbrain_search", "secondbrain_read", "secondbrain_write", "secondbrain_list",
     "list_team", "list_tasks", "list_todos", "list_schedules", "trigger_list",
     "skill_search", "skill_get_my_skills", "skill_install", "skill_rate",
-    "send_message", "create_task",
+    "send_message", "create_task", "delegate_and_wait",
+    "list_my_team", "list_team_tasks", "get_tasks_status",
 })
 
 
@@ -1053,57 +1058,15 @@ class ToolExecutor:
         return f"Saved to Second Brain: {os.path.relpath(target, root)} ({len(content)} chars)."
 
     async def _tool_web_search(self, params: dict) -> str:
-        """Search the web using DuckDuckGo (no API key needed)."""
-        query = params.get("query", "").strip()
-        max_results = min(params.get("max_results", 5), 10)
-        if not query:
-            return "Error: query cannot be empty"
-
+        """Search the web via the orchestrator's admin-configured provider
+        (DuckDuckGo/Brave/SerpApi — Admin -> Websuche). Vorher eine eigene,
+        fest verdrahtete DuckDuckGo-Kopie hier; jetzt EIN gemeinsamer Weg mit
+        der Sprachfront und Claude Code (siehe orchestrator/app/core/web_search.py)."""
+        client = self._get_api_client()
         try:
-            import httpx
-            # DuckDuckGo HTML search
-            async with httpx.AsyncClient(
-                follow_redirects=True,
-                timeout=15,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                },
-            ) as client:
-                response = await client.get(
-                    "https://html.duckduckgo.com/html/",
-                    params={"q": query},
-                )
-                response.raise_for_status()
-                html = response.text
-
-            # Parse results from DDG HTML
-            import re
-            results = []
-            # Extract result blocks: <a class="result__a" href="...">title</a> + <a class="result__snippet">snippet</a>
-            blocks = re.findall(
-                r'class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>.*?'
-                r'class="result__snippet"[^>]*>(.*?)</(?:a|span)',
-                html, re.DOTALL
-            )
-            for url, title, snippet in blocks[:max_results]:
-                # Clean HTML from title/snippet
-                title = re.sub(r"<[^>]+>", "", title).strip()
-                snippet = re.sub(r"<[^>]+>", "", snippet).strip()
-                # DDG wraps URLs in a redirect — extract the real URL
-                real_url = url
-                if "uddg=" in url:
-                    match = re.search(r"uddg=([^&]+)", url)
-                    if match:
-                        from urllib.parse import unquote
-                        real_url = unquote(match.group(1))
-                results.append(f"**{title}**\n{real_url}\n{snippet}")
-
-            if not results:
-                return f"No results found for '{query}'. Try different search terms."
-
-            return f"Search results for '{query}':\n\n" + "\n\n---\n\n".join(results)
+            return await client.web_search(params)
         except Exception as e:
-            return f"Error searching for '{query}': {e}"
+            return f"Error searching for '{params.get('query', '')}': {e}"
 
     async def _tool_web_fetch(self, params: dict) -> str:
         """Fetch a URL and return its content as readable text."""

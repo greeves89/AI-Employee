@@ -359,7 +359,7 @@ export default function AgentsPage() {
               <button
                 onClick={handleUpdateAll}
                 disabled={updatingAll}
-                className="inline-flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-all duration-200"
+                className="inline-flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-all duration-200"
               >
                 {updatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpCircle className="h-4 w-4" />}
                 Update All ({agentsNeedingUpdate.length})
@@ -383,7 +383,7 @@ export default function AgentsPage() {
               <button
                 onClick={handleRestartAll}
                 disabled={restartingAll}
-                className="inline-flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 text-sm font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-all duration-200"
+                className="inline-flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-all duration-200"
               >
                 {restartingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
                 Restart All
@@ -495,7 +495,7 @@ export default function AgentsPage() {
                 <div className="flex items-center gap-2 mb-3">
                   {g.isTeam ? <Users className="h-4 w-4 text-violet-400" /> : <Bot className="h-4 w-4 text-muted-foreground" />}
                   <h3 className="text-sm font-semibold">{g.name}</h3>
-                  {g.leadName && <span className="flex items-center gap-1 text-[11px] text-amber-400"><Crown className="h-3 w-3" /> {g.leadName} · Lead</span>}
+                  {g.leadName && <span className="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-400"><Crown className="h-3 w-3" /> {g.leadName} · Lead</span>}
                   <span className="text-[11px] text-muted-foreground">· {g.agents.length} Agent{g.agents.length !== 1 ? "s" : ""}</span>
                 </div>
               )}
@@ -521,7 +521,7 @@ export default function AgentsPage() {
                       {agent.update_available && (
                         <button
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleUpdateAgent(agent.id); }}
-                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm text-amber-400 hover:bg-amber-500/15 transition-colors"
+                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 transition-colors"
                           title="Update agent"
                         >
                           <ArrowUpCircle className="h-3.5 w-3.5" />
@@ -538,7 +538,7 @@ export default function AgentsPage() {
                       ) : (
                         <button
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleStop(agent.id); }}
-                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm text-muted-foreground hover:text-amber-400 hover:bg-amber-500/15 transition-colors"
+                          className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm text-muted-foreground hover:text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 transition-colors"
                           title="Stop"
                         >
                           <Square className="h-3.5 w-3.5" />

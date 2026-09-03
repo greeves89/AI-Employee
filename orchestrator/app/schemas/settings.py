@@ -16,6 +16,11 @@ class SettingsUpdate(BaseModel):
     max_agents: int | None = None
     registration_open: bool | None = None
     # Anzeigewaehrung: nur die Darstellung, nie die gespeicherten Betraege.
+    allow_team_license: bool | None = None
+    allow_personal_credentials: bool | None = None
+    #: Master-Regeln — Verhaltensvorgaben fuer ALLE Agenten aller Nutzer.
+    master_rules: str | None = None
+    master_rules_enabled: bool | None = None
     display_currency: str | None = None
     usd_eur_rate: float | None = None
     sso_only_login: bool | None = None
@@ -69,14 +74,14 @@ class SettingsUpdate(BaseModel):
     voice_interaction_account_id: str | None = None  # AI-account id providing the realtime creds
     nova_sonic_voice: str | None = None              # voiceId des Echtzeit-Gespraechs
     # On-prem Exchange (EWS) connection config — auth is per-user via impersonation
-    exchange_server_url: str | None = None               # EWS host, e.g. "mail.klinikum-bs.de"
+    exchange_server_url: str | None = None               # EWS host, e.g. "mail.example.com"
     exchange_auth_mode: str | None = None                # "service_account" | "modern_auth" | "basic"
     exchange_service_account_user: str | None = None     # service-account UPN
     exchange_service_account_password: str | None = None # secret
     exchange_tenant_id: str | None = None                # Entra tenant (modern_auth)
     exchange_mcp_external_enabled: bool | None = None
     # SMTP relay for SENDING mail — the universal send path (works where EWS is blocked).
-    smtp_relay_host: str | None = None                    # relay host/IP, e.g. "192.168.20.213"
+    smtp_relay_host: str | None = None                    # relay host/IP, e.g. "192.168.10.20"
     smtp_relay_port: str | None = None                    # default 25
     smtp_relay_starttls: bool | None = None               # use STARTTLS if offered (default true)
     smtp_relay_verify_tls: bool | None = None             # verify relay cert (default true); disable only for a trusted internal relay
@@ -106,7 +111,6 @@ class SettingsUpdate(BaseModel):
     saml_idp_x509_cert: str | None = None
     saml_sp_entity_id: str | None = None
     saml_group_attribute: str | None = None
-    saml_group_role_map: str | None = None
     # Ticketsystem
     ticket_base_url: str | None = None
     ticket_api_token: str | None = None
@@ -116,6 +120,9 @@ class SettingsUpdate(BaseModel):
     teams_calling_app_secret: str | None = None
     teams_calling_tenant_id: str | None = None
     teams_calling_enabled: str | None = None
+    # Websuche-Provider (Admin -> Websuche): "duckduckgo" (Vorgabe) | "brave" | "serp"
+    web_search_provider: str | None = None
+    web_search_api_key: str | None = None  # nur fuer brave/serp, secret
 
 
 class VoiceSettings(BaseModel):
@@ -149,6 +156,10 @@ class SettingsResponse(BaseModel):
     max_turns: int
     max_agents: int
     registration_open: bool
+    allow_team_license: bool = True
+    allow_personal_credentials: bool = True
+    master_rules: str = ""
+    master_rules_enabled: bool = True
     display_currency: str = "EUR"
     usd_eur_rate: float = 0.92
     sso_only_login: bool = False
@@ -207,5 +218,7 @@ class SettingsResponse(BaseModel):
     saml_idp_x509_cert: str = ""
     saml_sp_entity_id: str = ""
     saml_group_attribute: str = ""
-    saml_group_role_map: str = ""
     saml_configured: bool = False
+    # Websuche-Provider — API-Key ist SECRET_KEYS und wird nie zurueckgegeben.
+    web_search_provider: str = "duckduckgo"
+    has_web_search_api_key: bool = False

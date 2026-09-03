@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell, Check, CheckCheck, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -51,6 +52,30 @@ export function NotificationBell({
   const [taskModalId, setTaskModalId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
+  // Das Feld haengt nicht mehr im Seitenstreifen, sondern direkt am Dokument
+  // (Portal). Vorher lag es `absolute left-full` in einem Container, dessen
+  // Eltern allesamt ihren Ueberlauf verbergen — an BEIDEN Einbaustellen. Es
+  // wurde also gezeichnet und im selben Bild weggeschnitten; der Knopf sah aus
+  // wie tot, obwohl er tat, was er sollte (#677).
+  const feldRef = useRef<HTMLDivElement>(null);
+  const knopfRef = useRef<HTMLDivElement>(null);
+  const [lage, setLage] = useState<{ left: number; bottom: number; width: number } | null>(null);
+
+  const lageBerechnen = useCallback(() => {
+    const anker = knopfRef.current;
+    if (!anker) return;
+    const r = anker.getBoundingClientRect();
+    // Auf schmalen Geraeten summieren sich Streifenbreite und Versatz, bis das
+    // Feld aus dem Bild laeuft. Dort nimmt es die volle Breite minus Rand und
+    // rueckt an den linken Rand.
+    const rand = 8;
+    const breite = Math.min(360, window.innerWidth - 2 * rand);
+    let left = r.right + 8;
+    if (left + breite > window.innerWidth - rand) {
+      left = Math.max(rand, window.innerWidth - breite - rand);
+    }
+    setLage({ left, bottom: Math.max(rand, window.innerHeight - r.bottom), width: breite });
+  }, []);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const intentionalClose = useRef(false);
@@ -162,7 +187,13 @@ export function NotificationBell({
   // Close panel on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+      const ziel = e.target as Node;
+      const imKnopf = panelRef.current?.contains(ziel);
+      // Ohne diese zweite Pruefung wuerde jeder Klick INS Feld als „ausserhalb"
+      // gelten und es schliessen — es haengt seit dem Portal nicht mehr im
+      // selben Teilbaum wie der Knopf.
+      const imFeld = feldRef.current?.contains(ziel);
+      if (!imKnopf && !imFeld) {
         setIsOpen(false);
       }
     };
@@ -171,9 +202,25 @@ export function NotificationBell({
   }, [isOpen]);
 
   const handleOpen = () => {
+    if (!isOpen) {
+      lageBerechnen();
+      fetchNotifications();
+    }
     setIsOpen(!isOpen);
-    if (!isOpen) fetchNotifications();
   };
+
+  // Beim Rollen und bei Groessenaenderungen nachfuehren — ein festes Feld
+  // wandert sonst von seinem Knopf weg.
+  useEffect(() => {
+    if (!isOpen) return;
+    const nach = () => lageBerechnen();
+    window.addEventListener("resize", nach);
+    window.addEventListener("scroll", nach, true);
+    return () => {
+      window.removeEventListener("resize", nach);
+      window.removeEventListener("scroll", nach, true);
+    };
+  }, [isOpen, lageBerechnen]);
 
   const handleMarkRead = async (id: number) => {
     try {
@@ -238,7 +285,7 @@ export function NotificationBell({
   };
 
   return (
-    <div className="relative" ref={panelRef}>
+    <div className="relative" ref={(el) => { panelRef.current = el; knopfRef.current = el; }}>
       {variant === "sidebar" && collapsed ? (
         <button
           onClick={handleOpen}
@@ -300,8 +347,11 @@ export function NotificationBell({
         </button>
       )}
 
-      {isOpen && (
-        <div className="absolute left-full ml-2 bottom-0 w-[360px] max-h-[480px] rounded-xl border border-border bg-card shadow-2xl z-50 overflow-hidden flex flex-col">
+      {isOpen && lage && typeof document !== "undefined" && createPortal(
+        <div
+          ref={feldRef}
+          style={{ left: lage.left, bottom: lage.bottom, width: lage.width }}
+          className="fixed max-h-[480px] rounded-xl border border-border bg-card shadow-2xl z-[100] overflow-hidden flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold">Notifications</h3>
@@ -420,7 +470,8 @@ export function NotificationBell({
               ))
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
       <TaskDetailModal taskId={taskModalId} onClose={() => setTaskModalId(null)} />
     </div>

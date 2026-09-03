@@ -28,6 +28,22 @@ const CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
 const BUNDLE_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "";
 const SEMVER = /^\d+\.\d+\.\d+/;
 
+// Wurde das Image ohne APP_VERSION gebaut (`docker compose build frontend` von
+// Hand statt ueber scripts/update.sh), steht hier "dev" — und der Abgleich
+// unten faellt still aus. Genau das ist am 21.08.2026 passiert: nach dem Deploy
+// hielt der Browser stundenlang die alte Oberflaeche und NICHTS sagte es.
+// Im Produktionsbuild ist "dev" immer ein unvollstaendiger Deploy.
+if (typeof window !== "undefined"
+    && process.env.NODE_ENV === "production"
+    && !SEMVER.test(BUNDLE_VERSION)) {
+  console.warn(
+    "[AI-Employee] Dieses Frontend-Bundle kennt seine eigene Version nicht "
+    + `(NEXT_PUBLIC_APP_VERSION="${BUNDLE_VERSION}"). Der Hinweis auf eine `
+    + "veraltete Oberflaeche kann deshalb nicht erscheinen. Beim Bauen "
+    + "APP_VERSION setzen — scripts/update.sh tut das.",
+  );
+}
+
 export function UpdateBanner() {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -54,7 +70,18 @@ export function UpdateBanner() {
 
     checkVersion();
     const interval = setInterval(checkVersion, CHECK_INTERVAL);
-    return () => clearInterval(interval);
+    // Alle 30 Minuten ist zu traege, wenn jemand stundenlang dieselbe Seite
+    // offen haelt und zwischendurch deployed wird: er sieht dann eine alte
+    // Oberflaeche und haelt sie fuer den neuen Stand. Beim Zurueckkommen auf
+    // den Tab fragen wir deshalb sofort nach.
+    const beiRueckkehr = () => {
+      if (document.visibilityState === "visible") checkVersion();
+    };
+    document.addEventListener("visibilitychange", beiRueckkehr);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", beiRueckkehr);
+    };
   }, []);
 
   const fetchChangelog = useCallback(async () => {
@@ -167,12 +194,12 @@ export function UpdateBanner() {
             className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 cursor-pointer hover:bg-amber-500/15 transition-colors"
             onClick={() => window.location.reload()}
           >
-            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-medium text-amber-300">
+              <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
                 Veraltete Oberfläche — neu laden
               </p>
-              <p className="text-[10px] text-amber-400/70 truncate">
+              <p className="text-[10px] text-amber-700 dark:text-amber-400/70 truncate">
                 Frontend {BUNDLE_VERSION} · Backend {backendVersion}
               </p>
             </div>
@@ -181,7 +208,7 @@ export function UpdateBanner() {
                 e.stopPropagation();
                 setMismatchDismissed(true);
               }}
-              className="shrink-0 rounded-lg p-1 text-amber-400/50 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+              className="shrink-0 rounded-lg p-1 text-amber-700 dark:text-amber-400/50 hover:text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 transition-colors"
             >
               <X className="h-3 w-3" />
             </button>
@@ -201,12 +228,17 @@ export function UpdateBanner() {
             />
           </Dialog.Overlay>
           <Dialog.Content asChild>
+            {/* Radix zwingt hier pointer-events:auto per Inline-Style (ueberschreibt
+                die pointer-events-none-Klasse) — dieser Wrapper faengt deshalb JEDEN
+                Klick im Viewport ab, auch den auf den "Hintergrund". target===currentTarget
+                unterscheidet Klick-auf-Hintergrund von Klick-auf-Karte (Bubbling). */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: "spring", duration: 0.4, bounce: 0.15 }}
               className="fixed inset-0 z-50 ml-[130px] flex items-center justify-center pointer-events-none"
+              onClick={(e) => { if (e.target === e.currentTarget) setModalOpen(false); }}
             >
               <div className="w-[560px] max-h-[80vh] rounded-2xl border border-foreground/[0.06] bg-card shadow-2xl shadow-black/40 flex flex-col pointer-events-auto">
               {/* Header */}

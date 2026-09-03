@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
   Plus,
   Loader2,
+  RefreshCw,
   Package,
   Settings,
   ShieldOff,
@@ -95,13 +96,18 @@ const CATEGORY_LABELS: Record<string, string> = {
   sales: "Sales",
   management: "Management",
   security: "Security",
+  // Fehlten bis 2026-08-16: drei Kacheln zeigten den rohen englischen
+  // Schluessel, weil die Vorlage eine Kategorie benutzt, die hier nie
+  // nachgetragen wurde. Ein Test haelt beide Listen jetzt zusammen.
+  productivity: "Produktivität",
+  finance: "Finanzen",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
   dev: "bg-blue-500/10 text-blue-400",
   data: "bg-emerald-500/10 text-emerald-400",
   writing: "bg-purple-500/10 text-purple-400",
-  ops: "bg-amber-500/10 text-amber-400",
+  ops: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
   creative: "bg-pink-500/10 text-pink-400",
   general: "bg-gray-500/10 text-gray-400",
   marketing: "bg-orange-500/10 text-orange-400",
@@ -109,6 +115,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   sales: "bg-rose-500/10 text-rose-400",
   management: "bg-indigo-500/10 text-indigo-400",
   security: "bg-red-500/10 text-red-400",
+  productivity: "bg-teal-500/10 text-teal-400",
+  finance: "bg-lime-500/10 text-lime-400",
 };
 
 const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[]; noKey?: boolean }> = {
@@ -156,7 +164,7 @@ function harnessForAccountProvider(provider: string): string {
 }
 
 function firstModelName(account?: AIAccount): string {
-  const first = account?.models?.[0];
+  const first = account?.models?.find((m) => m.enabled !== false) ?? account?.models?.[0];
   if (!first) return "";
   if (typeof first === "string") return first;
   return first.name;
@@ -178,6 +186,11 @@ export function CreateAgentModal({
   const { simpleMode } = useSimpleMode();
   const [step, setStep] = useState<Step>("template");
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
+  // Bis 2026-08-16 gab es diesen Zustand nicht: eine leere Liste hiess sowohl
+  // „wird noch geladen" als auch „ist fehlgeschlagen". Bei einem Fehler stand
+  // deshalb DAUERHAFT „Vorlagen werden geladen…" da — ohne Spinner, ohne
+  // Hinweis, ohne Weg zurueck.
+  const [vorlagenZustand, setVorlagenZustand] = useState<"laedt" | "da" | "fehler">("laedt");
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
@@ -221,6 +234,22 @@ export function CreateAgentModal({
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [selectedAccountKey, setSelectedAccountKey] = useState<string>("oauth:claude");
 
+  // Ausgelagert, damit der Knopf „Erneut versuchen" denselben Weg geht wie das
+  // Oeffnen des Fensters — sonst haette der Wiederholversuch seine eigene,
+  // ungetestete Zweitfassung.
+  const ladeVorlagen = useCallback(() => {
+    setVorlagenZustand("laedt");
+    api.getTemplates()
+      .then((data) => {
+        setTemplates(data.templates);
+        setVorlagenZustand("da");
+      })
+      .catch(() => {
+        setTemplates([]);
+        setVorlagenZustand("fehler");
+      });
+  }, []);
+
   // Load templates and permission packages on open
   useEffect(() => {
     if (open) {
@@ -254,9 +283,7 @@ export function CreateAgentModal({
       setLlmToolsEnabled(true);
       setShowApiKey(false);
 
-      api.getTemplates().then((data) => {
-        setTemplates(data.templates);
-      }).catch(() => setTemplates([]));
+      ladeVorlagen();
 
       setPermissionsMode("auto");
       api.getPermissionPackages().then((data) => {
@@ -269,7 +296,7 @@ export function CreateAgentModal({
         setDerivedPermissions({});
       });
     }
-  }, [open]);
+  }, [open, ladeVorlagen]);
 
   const selectTemplate = (template: AgentTemplate | null) => {
     setSelectedTemplate(template);
@@ -496,6 +523,10 @@ export function CreateAgentModal({
               />
             </Dialog.Overlay>
 
+            {/* Dialog.Content deckt den ganzen Viewport ab und faengt daher JEDEN
+                Klick ab, auch den auf den "Hintergrund" — der Overlay-onClick oben
+                erreicht deshalb nie den Nutzer. target===currentTarget unterscheidet
+                Klick-auf-Hintergrund von Klick-auf-Karte (Bubbling). */}
             <Dialog.Content asChild>
               <motion.div
                 className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -503,6 +534,7 @@ export function CreateAgentModal({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
+                onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false); }}
               >
               <motion.div
                 className="w-full max-w-2xl rounded-2xl border border-foreground/[0.08] bg-card shadow-2xl shadow-black/40 overflow-hidden max-h-[90vh] overflow-y-auto"
@@ -595,9 +627,58 @@ export function CreateAgentModal({
                       })}
                     </div>
 
-                    {templates.length === 0 && (
-                      <p className="text-xs text-muted-foreground/50 text-center py-6">
-                        Vorlagen werden geladen...
+                    {/* Solange geladen wird: Platzhalter in genau dem Raster der
+                        echten Kacheln. Der Nutzer sieht sofort, WAS kommt und
+                        wie viel — und der Inhalt springt beim Eintreffen nicht.
+                        „Leerer Agent" darueber ist schon anklickbar, wer keine
+                        Vorlage will, muss also gar nicht warten. */}
+                    {vorlagenZustand === "laedt" && (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" aria-hidden>
+                          {[0, 1, 2, 3].map((i) => (
+                            <div
+                              key={i}
+                              className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] p-4"
+                            >
+                              <div className="h-11 w-11 shrink-0 animate-pulse rounded-xl bg-foreground/[0.06]" />
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <div className="h-3 w-2/5 animate-pulse rounded bg-foreground/[0.06]" />
+                                <div className="h-2.5 w-4/5 animate-pulse rounded bg-foreground/[0.04]" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p
+                          className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground/60"
+                          role="status"
+                        >
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Vorlagen werden geladen…
+                        </p>
+                      </>
+                    )}
+
+                    {/* Fehlschlag sah bis 2026-08-16 exakt aus wie Laden — die
+                        Meldung blieb einfach fuer immer stehen. */}
+                    {vorlagenZustand === "fehler" && (
+                      <div className="rounded-xl border border-border bg-card/40 px-4 py-5 text-center">
+                        <p className="text-sm font-medium">Vorlagen nicht erreichbar</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Du kannst trotzdem oben mit „Leerer Agent" weitermachen.
+                        </p>
+                        <button
+                          onClick={ladeVorlagen}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs transition-colors hover:bg-foreground/[0.04]"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          Erneut versuchen
+                        </button>
+                      </div>
+                    )}
+
+                    {vorlagenZustand === "da" && templates.length === 0 && (
+                      <p className="py-6 text-center text-xs text-muted-foreground/50">
+                        Noch keine Vorlagen angelegt.
                       </p>
                     )}
                   </div>
@@ -665,7 +746,7 @@ export function CreateAgentModal({
                                       <p className="truncate text-sm font-medium">{option.label}</p>
                                       <span className={cn(
                                         "rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider",
-                                        option.connected ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"
+                                        option.connected ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
                                       )}>
                                         {option.connected ? "ready" : "setup"}
                                       </span>
@@ -938,10 +1019,12 @@ export function CreateAgentModal({
                             onChange={(e) => setAiAccountModel(e.target.value)}
                             className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                           >
-                            {(aiAccounts.find((a) => a.id === aiAccountId)?.models ?? []).map((m) => {
-                              const name = typeof m === "string" ? m : m.name;
-                              return <option key={name} value={name}>{name}</option>;
-                            })}
+                            {(aiAccounts.find((a) => a.id === aiAccountId)?.models ?? [])
+                              .filter((m) => typeof m === "string" || m.enabled !== false)
+                              .map((m) => {
+                                const name = typeof m === "string" ? m : m.name;
+                                return <option key={name} value={name}>{name}</option>;
+                              })}
                           </select>
                         </div>
                       )}
@@ -1064,7 +1147,7 @@ export function CreateAgentModal({
                                         "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
                                         isSelected
                                           ? isFullAccess
-                                            ? "bg-amber-500/20 text-amber-400"
+                                            ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
                                             : "bg-primary/20 text-primary"
                                           : "bg-foreground/[0.06] text-muted-foreground"
                                       )}
@@ -1181,7 +1264,7 @@ export function CreateAgentModal({
                               {selectedTemplate.model.split("-").slice(0, 2).join(" ")}
                             </span>
                             {selectedTemplate.permissions.map((p) => (
-                              <span key={p} className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400">
+                              <span key={p} className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">
                                 {p}
                               </span>
                             ))}

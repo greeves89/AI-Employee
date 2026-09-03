@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
  *    never loses the part that was already transcribed.
  *
  * Transcription itself runs server-side (/meetings/transcribe): local faster-whisper
- * where available (SKBS), OpenAI Whisper fallback where not (Pi).
+ * where available (Kundenanlage), OpenAI Whisper fallback where not (Pi).
  */
 // Short segments = a near-live transcript (update roughly every segment). Kept at
 // 20s as a balance: live-ish feel vs. the tiny audio gap at each segment boundary.

@@ -45,16 +45,16 @@ const CATEGORY_CONFIG: Record<string, { icon: typeof DollarSign; color: string; 
   file_write: { icon: FileX, color: "text-orange-400", label: "Datei schreiben" },
   external_api: { icon: Globe, color: "text-purple-400", label: "Externe API" },
   external_communication: { icon: Globe, color: "text-purple-400", label: "Externe Komm." },
-  purchase: { icon: ShoppingCart, color: "text-amber-400", label: "Kauf" },
+  purchase: { icon: ShoppingCart, color: "text-amber-700 dark:text-amber-400", label: "Kauf" },
   shell_exec: { icon: Settings, color: "text-red-400", label: "Shell" },
-  system_config: { icon: Settings, color: "text-amber-400", label: "System" },
+  system_config: { icon: Settings, color: "text-amber-700 dark:text-amber-400", label: "System" },
   custom: { icon: Settings, color: "text-zinc-400", label: "Sonstige" },
 };
 
 const LEVEL_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
   l1: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", label: "L1" },
   l2: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", label: "L2" },
-  l3: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", label: "L3" },
+  l3: { bg: "bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", border: "border-amber-500/20", label: "L3" },
   l4: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20", label: "L4" },
 };
 
@@ -89,7 +89,7 @@ const riskConfig = {
   },
   medium: {
     icon: AlertTriangle,
-    color: "text-amber-400",
+    color: "text-amber-700 dark:text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/20",
     label: "MEDIUM RISK",
@@ -300,9 +300,23 @@ export default function ApprovalsPage() {
     }
   };
 
-  const handleApprove = async (approvalId: string) => {
-    await approveCommand(approvalId);
+  const handleApprove = async (approvalId: string, answer?: string) => {
+    await approveCommand(approvalId, answer);
     await loadApprovals();
+  };
+
+  // Direkt aus der Liste antworten, ohne das Fenster zu oeffnen. Nutzt denselben
+  // Weg wie das Fenster — eine zweite Mechanik daneben waere die naechste
+  // Baustelle.
+  const handleAnswerInline = async (approvalId: string, answer: string) => {
+    setBusyApprovalId(approvalId);
+    try {
+      await handleApprove(approvalId, answer);
+    } catch (error) {
+      console.error("Failed to answer:", error);
+    } finally {
+      setBusyApprovalId(null);
+    }
   };
 
   // Reflection entries are resolved inline (Übernehmen/Verwerfen), no modal.
@@ -607,7 +621,7 @@ export default function ApprovalsPage() {
                           {cfg.label}
                         </span>
                         {rule.threshold !== null && (
-                          <span className="inline-flex items-center rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+                          <span className="inline-flex items-center rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
                             &gt; {rule.threshold}
                           </span>
                         )}
@@ -802,15 +816,23 @@ export default function ApprovalsPage() {
                             {/* Question */}
                             <p className="text-sm mb-2">{approval.question}</p>
                             {/* Options */}
+                            {/* Anklickbar, genau wie im Detailfenster — sonst
+                                haetten wir zwei Ansichten derselben Frage, von
+                                denen nur eine antworten kann. */}
                             {approval.options && approval.options.length > 0 && (
                               <div className="flex flex-wrap gap-2 mb-2">
                                 {approval.options.map((opt) => (
-                                  <span
+                                  <button
                                     key={opt}
-                                    className="inline-flex items-center rounded-lg bg-foreground/[0.04] border border-foreground/[0.06] px-2.5 py-1 text-xs text-muted-foreground"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAnswerInline(approval.approval_id, opt);
+                                    }}
+                                    disabled={isBusy}
+                                    className="inline-flex items-center rounded-lg border border-foreground/[0.06] bg-foreground/[0.04] px-2.5 py-1 text-xs transition-all hover:border-primary/40 hover:bg-primary/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     {opt}
-                                  </span>
+                                  </button>
                                 ))}
                               </div>
                             )}

@@ -6,7 +6,9 @@ import signal
 from typing import AsyncIterator
 
 from app.config import get_oauth_token, settings
+from app.ai_credential_status import is_auth_error, report_result_status
 from app.log_publisher import LogPublisher
+from app.pids_budget import exhaustion_message, find_fork_exhaustion
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
     compose_prompt_bundle,
@@ -27,13 +29,6 @@ class AgentRunner:
         self.log_publisher = log_publisher
         self._process: asyncio.subprocess.Process | None = None
         self.is_running = False
-
-    #: Merkmale eines Zugangsfehlers im CLI-Ergebnis. Dieselbe Liste wie im
-    #: Chat-Pfad (``chat_handler``) — eine Faehigkeit gehoert in beide Wege.
-    _AUTH_ERROR_MARKERS = (
-        "does not have access", "invalid_grant", "unauthorized",
-        "401", "oauth", "authentication", "revoked",
-    )
 
     async def execute_task(
         self, task_id: str, prompt: str, model: str | None = None,
@@ -56,9 +51,7 @@ class AgentRunner:
         result = await self._execute_task_once(task_id, prompt, model, lightweight)
 
         error_text = str(result.get("error", "")).lower()
-        if result.get("status") == "error" and any(
-            m in error_text for m in self._AUTH_ERROR_MARKERS
-        ):
+        if result.get("status") == "error" and is_auth_error(error_text):
             logger.warning("[Auth] Aufgabe %s scheiterte am Zugang — warte auf neuen "
                            "Token und wiederhole: %s", task_id, error_text[:120])
             await self.log_publisher.publish(
@@ -67,6 +60,7 @@ class AgentRunner:
             )
             await wait_for_new_oauth_token(token_before)
             result = await self._execute_task_once(task_id, prompt, model, lightweight)
+        await report_result_status(result)
         return result
 
     async def _execute_task_once(
@@ -114,6 +108,15 @@ class AgentRunner:
         ]
 
         env = os.environ.copy()
+        # Standard-Denktiefe des Agenten: Aufgaben haben keine Stufen-Wahl am Lauf,
+        # also zaehlt hier die Einstellung aus den Agenten-Einstellungen. "off"
+        # raeumt ein etwaiges Container-Budget weg statt darauf zurueckzufallen.
+        from app.config import CLAUDE_THINKING_BUDGET
+        _level = (settings.default_reasoning or "").strip().lower()
+        if _level == "off":
+            env.pop("MAX_THINKING_TOKENS", None)
+        elif _level in CLAUDE_THINKING_BUDGET:
+            env["MAX_THINKING_TOKENS"] = CLAUDE_THINKING_BUDGET[_level]
         if settings.anthropic_api_key:
             env["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
         else:
@@ -128,6 +131,9 @@ class AgentRunner:
         result_data: dict = {"status": "completed"}
         got_result = False
         stderr_lines: list[str] = []
+        # Belegzeilen fuer ein erschoepftes pids-Budget. Sie entstehen dort, wo ein
+        # Werkzeug startet — in stderr des CLI und in den Ergebnissen der Werkzeuge.
+        fork_evidence: list[str] = []
         text_output: list[str] = []
         presented_files: list[dict] = []
         seen_file_paths: set[str] = set()
@@ -143,6 +149,9 @@ class AgentRunner:
                 decoded = line.decode("utf-8", errors="replace").strip()
                 if decoded:
                     stderr_lines.append(decoded)
+                    hit = find_fork_exhaustion(decoded)
+                    if hit:
+                        fork_evidence.append(hit)
                     logger.warning(f"[Claude CLI stderr] {decoded}")
 
         try:
@@ -163,6 +172,8 @@ class AgentRunner:
 
             async for event in self._stream_output(self._process):
                 await self._process_event(task_id, event)
+
+                fork_evidence.extend(self._fork_evidence_from_event(event))
 
                 for payload in self._present_file_payloads_from_event(event):
                     path = str(payload.get("path") or "")
@@ -213,6 +224,20 @@ class AgentRunner:
                 await self.log_publisher.publish(
                     task_id, "error", {"message": result_data["error"]}
                 )
+
+            # Ein Lauf, dem der Container die Prozesse ausgehen laesst, liefert
+            # trotzdem ein "result"-Ereignis — nur ohne die Arbeit. Genau so kamen
+            # Aufgaben als erledigt zurueck, zu denen es weder PR noch Datei gab
+            # (#628). Lieber ehrlich gescheitert als still leergelaufen.
+            if fork_evidence and result_data.get("status") == "completed":
+                reason = exhaustion_message(fork_evidence[0])
+                logger.error("Task %s: %s", task_id, reason)
+                result_data = {
+                    "status": "error",
+                    "error": reason,
+                    "result": result_data.get("result", ""),
+                }
+                await self.log_publisher.publish(task_id, "error", {"message": reason})
 
         except asyncio.CancelledError:
             await self.interrupt()
@@ -353,6 +378,42 @@ class AgentRunner:
                 return None
             return payload if isinstance(payload, dict) else None
         return None
+
+    @staticmethod
+    def _fork_evidence_from_event(event: dict) -> list[str]:
+        """Belegzeilen fuer erschoepftes pids-Budget aus GESCHEITERTEN Werkzeugen.
+
+        Zwei Einschraenkungen, beide gegen Fehlalarm:
+
+        Nur ``tool_result`` — der Fliesstext des Modells bleibt aussen vor, sonst
+        schiesst sich ein Agent ab, der ueber genau diesen Fehler schreibt.
+
+        Und nur ein Ergebnis mit ``is_error``. Ein erfolgreiches Werkzeug ist
+        gelaufen, egal was in seiner Ausgabe steht — und was drinsteht, ist oft
+        genau diese Meldung: wer ``/shared/platform-errors.log`` liest oder
+        Container-Protokolle abruft, bekommt fremde ``fork: retry``-Zeilen
+        zurueck. Ohne diese Bedingung wuerde ausgerechnet die Untersuchung von
+        #628 sich selbst als gescheitert markieren.
+        """
+        blocks: list = []
+        if event.get("type") == "tool_result" and event.get("is_error"):
+            blocks.append(event.get("content"))
+        elif event.get("type") == "user":
+            for block in event.get("message", {}).get("content", []) or []:
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_result"
+                    and block.get("is_error")
+                ):
+                    blocks.append(block.get("content"))
+
+        found: list[str] = []
+        for content in blocks:
+            for text in AgentRunner._first_text_blocks(content):
+                hit = find_fork_exhaustion(text)
+                if hit:
+                    found.append(hit)
+        return found
 
     def _present_file_payloads_from_event(self, event: dict) -> list[dict]:
         """Find present_file marker payloads in Claude task-stream events.

@@ -141,6 +141,13 @@ async def list_my_teams(user=Depends(require_auth_or_agent), db: AsyncSession = 
                 "description": t.description,
                 "lead_agent_id": t.lead_agent_id,
                 "i_am_lead": t.lead_agent_id == caller_id,
+                # Mitglieder, die es nicht mehr gibt, werden NICHT als Mitglied
+                # ausgegeben. Vorher erschien die blanke Kennung als Kollege
+                # „ohne Rolle" — der Lead zaehlte sie auf und haette ihr Arbeit
+                # geben koennen, die nie jemand annimmt.
+                "stale_member_ids": [
+                    mid for mid in (t.member_agent_ids or []) if mid not in name_by_id
+                ],
                 "members": [
                     {
                         "id": mid,
@@ -149,7 +156,9 @@ async def list_my_teams(user=Depends(require_auth_or_agent), db: AsyncSession = 
                         "is_lead": mid == t.lead_agent_id,
                         "is_me": mid == caller_id,
                     }
-                    for mid in (t.member_agent_ids or [])
+                    # Nur echte Agenten. Eine Kennung ohne Agenten ist kein
+                    # Kollege, sondern ein Ueberbleibsel.
+                    for mid in (t.member_agent_ids or []) if mid in name_by_id
                 ],
             }
             for t in mine

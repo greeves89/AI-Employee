@@ -57,7 +57,14 @@ jobs:
         working-directory: orchestrator
         run: |
           pip install --no-cache-dir -e .
-          pip install --no-cache-dir pytest pytest-asyncio aiosqlite
+          pip install --no-cache-dir pytest pytest-asyncio aiosqlite ruff numpy
+      # Undefinierte Namen sind zur Laufzeit ein NameError, aber beim Import
+      # unsichtbar. Genau so lief das Anlegen eines Agenten fuenf Tage lang in
+      # einen 500 ("cannot access local variable 'config'"), waehrend die Tests
+      # gruen waren. Eigener Schritt und nicht nur im pytest-Lauf: so steht der
+      # Grund im CI-Protokoll, statt in einer Testmeldung zu verschwinden.
+      - name: Lint — undefinierte Namen (F821)
+        run: ruff check --select F821 --output-format concise orchestrator/app agent/app
       - name: Run tests
         working-directory: orchestrator
         env:
@@ -66,12 +73,12 @@ jobs:
           KIOSK_ENABLED: "false"
         run: pytest -q
 
-  # ── Agent MCP arg-parse smoke: guards the #342/#285 regression class where
-  #    Responses-API tool arguments delivered only on the `.done` event get
-  #    dropped, so every string parameter reaches the server empty. The agent
-  #    suite is not otherwise run in CI, so this targeted job is the guard. ──
-  agent-argparse-smoke:
-    name: Agent MCP arg-parse smoke
+  # ── Agenten-Testlauf. Frueher liefen hier DREI namentlich genannte Dateien,
+  #    und der Rest der Suite gar nicht: jeder neue Agenten-Test war damit ab
+  #    dem Tag seiner Entstehung tot. Jetzt die ganze Suite; die Dateien, die
+  #    ein Netz oder fremde Module brauchen, schliessen sich selbst aus. ──
+  agent-tests:
+    name: Agent pytest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -82,10 +89,53 @@ jobs:
         working-directory: agent
         run: |
           pip install --no-cache-dir -e .
-          pip install --no-cache-dir pytest pytest-asyncio
-      - name: Run arg-parse regression tests
+          # trio: anyio faehrt jeden @pytest.mark.anyio-Test gegen BEIDE Backends.
+          # Ohne trio faellt die Haelfte mit ModuleNotFoundError aus — nicht weil
+          # der Code kaputt waere, sondern weil das Backend fehlt.
+          pip install --no-cache-dir pytest pytest-asyncio trio
+      - name: Run agent tests
         working-directory: agent
-        run: pytest -q tests/test_openai_responses_tool_args.py tests/test_responses_stream_smoke.py tests/test_chat_watchdog_publisher_identity.py
+        run: pytest -q
+
+  # ── Release-Spur (#699): VERSION, Dockerfile-Label und CHANGELOG gehoerten
+  #    zusammen, wurden aber von nichts geprueft. Folge am 02.09.2026: zwei Paare
+  #    offener PRs auf derselben Nummer, drei unter dem Stand von main, ein
+  #    Direkt-Commit ganz ohne Eintrag. Auf main hart, im PR nur ein Hinweis —
+  #    dort kann der Merge die Nummer noch aufloesen. ──
+  release-track:
+    name: Release-Spur
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Der Push-Check vergleicht gegen den vorherigen Stand; mit einem
+          # flachen Klon gibt es keinen.
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Pruefe die Spur (main)
+        if: github.event_name == 'push'
+        run: python scripts/release_track_check.py push --vorher "${{ github.event.before }}"
+      - name: Hinweise zur Spur (Pull Request)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Die Nummern der ANDEREN offenen PRs holen — der einzige Teil, der
+          # sich nicht aus dem Checkout allein beantworten laesst.
+          fremde=""
+          for nr in $(gh pr list --state open --json number -q '.[].number'); do
+            [ "$nr" = "${{ github.event.number }}" ] && continue
+            zweig=$(gh pr view "$nr" --json headRefName -q .headRefName)
+            v=$(git show "origin/$zweig:VERSION" 2>/dev/null | tr -d '[:space:]') || true
+            [ -n "$v" ] && fremde="$fremde,$nr=$v"
+          done
+          git fetch -q origin main
+          python scripts/release_track_check.py pr --basis origin/main --fremde "${fremde#,}"
 
   # ── Compose validity: would have caught a broken docker-compose.yml before deploy. ──
   compose-config:

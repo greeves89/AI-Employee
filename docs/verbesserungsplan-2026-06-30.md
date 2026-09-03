@@ -104,4 +104,4 @@ Status-Legende: ✅ live + verifiziert · 🟡 geplant (Ursache+Lösung steht, B
 
 ---
 
-**Bilanz:** 9 Releases v1.90.0→v1.93.3, alle live auf skbs-s-kichat + GitHub + mindcode; agent-seitige Releases auf alle 5 Agenten ausgerollt; Security-Fund behoben; #7 end-to-end verifiziert.
+**Bilanz:** 9 Releases v1.90.0→v1.93.3, alle live auf kunden-host + GitHub + mindcode; agent-seitige Releases auf alle 5 Agenten ausgerollt; Security-Fund behoben; #7 end-to-end verifiziert.

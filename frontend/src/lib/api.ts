@@ -1,4 +1,4 @@
-import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
+import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, FeedbackStatus, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
 
 let _refreshing: Promise<void> | null = null;
@@ -56,6 +56,16 @@ export async function setRoomSharing(
   return fetchJSON(`${getBase()}/agents/${agentId}/room-sharing`, {
     method: "PATCH",
     body: JSON.stringify({ shared_for_rooms: shared }),
+  });
+}
+
+export async function setPlatformAgent(
+  agentId: string,
+  isPlatformAgent: boolean,
+): Promise<{ id: string; is_platform_agent: boolean }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/platform-agent`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_platform_agent: isPlatformAgent }),
   });
 }
 
@@ -130,7 +140,7 @@ export async function updateAutonomyMatrix(
 }
 
 export async function getAgentMessages(minutes: number = 60): Promise<{
-  connections: { from: string; to: string; count: number; last_at: string }[];
+  connections: { from: string; to: string; from_name: string; to_name: string; count: number; last_at: string }[];
   messages: { from: string; to: string; text: string; from_name: string; timestamp: string }[];
   total: number;
 }> {
@@ -163,6 +173,16 @@ export async function getDelegations(minutes: number = 1440): Promise<{
   total: number;
 }> {
   return fetchJSON(`${getBase()}/agents/team/delegations?minutes=${minutes}`);
+}
+
+export async function updateAgentDefaultReasoning(
+  agentId: string,
+  level: string,
+): Promise<{ agent_id: string; default_reasoning: string; applies_after: string }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/default-reasoning`, {
+    method: "PATCH",
+    body: JSON.stringify({ default_reasoning: level }),
+  });
 }
 
 export async function updateAgentModel(
@@ -261,9 +281,11 @@ export interface AdminModelCatalog {
   last_discovery?: {
     anthropic_found: number;
     openai_found: number;
+    foundry_found?: number;
     new_extras: number;
     anthropic_queried: boolean;
     openai_queried: boolean;
+    foundry_queried?: boolean;
   };
 }
 // Full catalog incl. disabled models + source flags (admin only).
@@ -991,6 +1013,27 @@ export async function uploadFiles(
   return res.json();
 }
 
+/**
+ * Einen ganzen Ordner aus dem Arbeitsbereich als ZIP herunterladen.
+ *
+ * Der Browser laedt selbst; die Anmeldung reist im Cookie mit. Genutzt von der
+ * App-Uebersicht (Verzeichnis einer App) und vom Dateibaum (beliebiger Ordner).
+ */
+export function getFolderDownloadUrl(agentId: string, path: string): string {
+  return `${getBase()}/agents/${agentId}/files/download-folder?path=${encodeURIComponent(path)}`;
+}
+
+export async function saveFileContent(
+  agentId: string,
+  path: string,
+  content: string,
+): Promise<{ path: string; bytes: number }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/files/content`, {
+    method: "PUT",
+    body: JSON.stringify({ path, content }),
+  });
+}
+
 export async function deleteFile(agentId: string, path: string): Promise<void> {
   const res = await fetch(
     `${getBase()}/agents/${agentId}/files?path=${encodeURIComponent(path)}`,
@@ -1028,6 +1071,9 @@ export interface ChatHistoryMessage {
     num_turns?: number;
     input_tokens?: number;
     output_tokens?: number;
+    reasoning_tokens?: number;
+    cached_tokens?: number;
+    cache_write_tokens?: number;
     presented_images?: { media_type: string; data: string }[];
     presented_files?: {
       path: string;
@@ -1036,6 +1082,8 @@ export interface ChatHistoryMessage {
       size?: number;
       caption?: string;
     }[];
+    context_excluded?: boolean;
+    tool_output_excluded?: boolean;
   };
   images?: { media_type: string; data: string }[];
   sessionId?: string;
@@ -1049,6 +1097,7 @@ export interface ChatSession {
   preview: string;
   title?: string | null;   // custom rename; falls back to preview when null
   pinned?: boolean;
+  reasoning?: string | null;  // persisted thinking depth; "" → Auto (harness default)
 }
 
 export async function getChatSessions(
@@ -1057,12 +1106,13 @@ export async function getChatSessions(
   return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions`);
 }
 
-// Rename and/or pin a chat session (metadata is created lazily server-side).
+// Rename, pin and/or set the thinking depth of a chat session (metadata is
+// created lazily server-side).
 export async function updateChatSession(
   agentId: string,
   sessionId: string,
-  patch: { title?: string | null; pinned?: boolean },
-): Promise<{ id: string; title: string | null; pinned: boolean }> {
+  patch: { title?: string | null; pinned?: boolean; reasoning?: string },
+): Promise<{ id: string; title: string | null; pinned: boolean; reasoning?: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions/${sessionId}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
@@ -1276,9 +1326,11 @@ export async function updateSettings(data: Record<string, unknown>): Promise<voi
 export async function getAgentMemories(
   agentId: string,
   category?: string,
-): Promise<{ memories: AgentMemory[]; total: number; categories: Record<string, number> }> {
+  offset = 0,
+): Promise<{ memories: AgentMemory[]; total: number; has_more: boolean; categories: Record<string, number> }> {
   const params = new URLSearchParams();
   if (category) params.set("category", category);
+  if (offset) params.set("offset", String(offset));
   return fetchJSON(`${getBase()}/memory/agents/${agentId}?${params}`);
 }
 
@@ -1435,6 +1487,7 @@ export interface McpServerInfo {
   // Client-side OAuth (#426)
   oauth_enabled?: boolean;
   oauth_client_id?: string | null;
+  oauth_callback_base_url?: string | null;
   oauth_connected?: boolean;  // a refresh token is stored → the flow completed
   oauth_scope?: string | null;
   oauth_expires_at?: string | null;
@@ -1611,6 +1664,12 @@ export async function updateUser(
 
 export async function deleteUser(userId: string): Promise<void> {
   await fetchJSON(`${getBase()}/auth/users/${userId}`, { method: "DELETE" });
+}
+
+export async function resetUserPassword(
+  userId: string,
+): Promise<{ user_id: string; email: string; temp_password: string }> {
+  return fetchJSON(`${getBase()}/auth/users/${userId}/reset-password`, { method: "POST" });
 }
 
 // Admin: Agent Stats
@@ -1811,6 +1870,36 @@ export async function deleteSecondBrain(id: number): Promise<{ ok: boolean; id: 
 }
 
 // MCP exposure: generate/rotate the Bearer token (plaintext returned ONCE), or disable.
+/** Vault als ZIP herunterladen — Ordnerstruktur bleibt erhalten. */
+export function getBrainExportUrl(brainId: number): string {
+  return `${getBase()}/brains/${brainId}/export`;
+}
+
+/**
+ * Vault aus einem ZIP einspielen.
+ *
+ * `replace=false` fuegt zusammen (loescht nichts), `replace=true` macht den
+ * Vault zum Abbild des Archivs. Der Server zieht danach die Einbettungen nach —
+ * ohne das waeren die Notizen semantisch unauffindbar.
+ */
+export async function importBrainZip(
+  brainId: number,
+  file: File,
+  replace = false,
+): Promise<{
+  ok: boolean; written: number; deleted: number; bytes: number;
+  skipped: string[]; skipped_total: number; index: Record<string, unknown>;
+}> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(
+    `${getBase()}/brains/${brainId}/import?replace=${replace}`,
+    { method: "POST", body: fd, credentials: "include" },
+  );
+  if (!res.ok) throw new Error((await res.text()).slice(0, 300));
+  return res.json();
+}
+
 export async function generateBrainMcpToken(
   id: number,
 ): Promise<{ mcp_enabled: boolean; mcp_path: string; token: string }> {
@@ -1958,6 +2047,40 @@ export async function createFeedback(data: {
   });
 }
 
+// Feedback-Widget: genau EINE Requirements-Rückfrage vom LLM.
+export async function feedbackWidgetReply(
+  messages: { role: "user" | "bot"; text: string }[],
+  context: Record<string, unknown>,
+): Promise<{ reply: string }> {
+  return fetchJSON(`${getBase()}/feedback/reply`, {
+    method: "POST",
+    body: JSON.stringify({ messages, context }),
+  });
+}
+
+// Feedback-Widget: speichert MD (+PNG) serverseitig und legt den DB-Eintrag an.
+// Der User kommt aus der Session — bewusst kein user-Feld im Payload.
+export async function feedbackWidgetSave(
+  messages: { role: "user" | "bot"; text: string }[],
+  context: Record<string, unknown>,
+  screenshot: string | null,
+): Promise<{ ok: boolean; id: string; screenshot: string | null; issue_url?: string }> {
+  return fetchJSON(`${getBase()}/feedback/save`, {
+    method: "POST",
+    body: JSON.stringify({ messages, context, screenshot }),
+  });
+}
+
+// URL des gespeicherten Feedback-Screenshots (admin-only, Auth via Cookie).
+export function feedbackImageUrl(fid: string): string {
+  return `${getBase()}/feedback/image/${encodeURIComponent(fid)}`;
+}
+
+// Volltext (Markdown) eines Widget-Feedbacks (admin-only).
+export async function getFeedbackItem(fid: string): Promise<{ id: string; md: string }> {
+  return fetchJSON(`${getBase()}/feedback/item/${encodeURIComponent(fid)}`);
+}
+
 // Agent Assignments (Admin)
 export async function assignAgentToUser(userId: string, templateId: number, name?: string, budgetUsd?: number): Promise<{ status: string; agent_id: string; agent_name: string; user_name: string; template_name: string }> {
   return fetchJSON(`${getBase()}/admin/assign-agent`, {
@@ -2025,6 +2148,22 @@ export async function createGithubIssueFromFeedback(
   return fetchJSON(`${getBase()}/feedback/${feedbackId}/github-issue`, {
     method: "POST",
   });
+}
+
+export async function exportFeedback(status?: FeedbackStatus): Promise<void> {
+  const base = getBase();
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  const res = await fetch(`${base}/feedback/export${q}`, { credentials: "include" });
+  if (!res.ok) throw new Error(`Export fehlgeschlagen: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "feedback-export.zip";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // --- Health & Performance ---
@@ -2543,6 +2682,10 @@ export interface ChatContextInfo {
   percent: number | null;
   messages: number;
   compacted: number;
+  /** Von Hand aus dem Kontext genommen (#538 Punkt 4) — ganze Nachrichten bzw.
+   *  nur ihre Werkzeug-Ausgabe. */
+  context_excluded: number;
+  tool_output_excluded: number;
   keeps_verbatim: number;
   can_compact: boolean;
   model: string;
@@ -2584,9 +2727,16 @@ export async function getPendingApprovals(): Promise<{ approvals: ApprovalReques
   return fetchJSON(`${getBase()}/approvals/pending`);
 }
 
-export async function approveCommand(approvalId: string): Promise<{ approval_id: string; status: string }> {
+// `answer` ist die gewaehlte Antwortmoeglichkeit (oder freier Text), wenn der
+// Agent eine Rueckfrage mit Optionen gestellt hat. Ohne sie verhaelt sich der
+// Aufruf wie bisher — der Server nimmt dann „Approved by <mail>".
+export async function approveCommand(
+  approvalId: string,
+  answer?: string,
+): Promise<{ approval_id: string; status: string }> {
   return fetchJSON(`${getBase()}/approvals/${approvalId}/approve`, {
     method: "POST",
+    body: JSON.stringify({ answer: answer || null }),
   });
 }
 
@@ -3501,6 +3651,21 @@ export async function summarizeChatSession(agentId: string, sessionId: string) {
   );
 }
 
+// Nachricht (oder nur ihre Werkzeug-Ausgabe) von Hand aus dem Kontext nehmen — oder
+// wieder rein (#538 Punkt 4). Nichts wird geloescht, nur nicht mehr ans Modell geschickt.
+export async function setMessageContextExclusion(
+  agentId: string,
+  sessionId: string,
+  messageId: string,
+  scope: "message" | "tool_output",
+  excluded: boolean,
+) {
+  return fetchJSON<{ ok: boolean; message_id: string; scope: string; excluded: boolean }>(
+    `${getBase()}/agents/${agentId}/chat/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}/context`,
+    { method: "POST", body: JSON.stringify({ scope, excluded }) },
+  );
+}
+
 // Teams-Anrufe: Agent mit Stimme im Termin (service-hosted media).
 export interface TeamsCallingSetup {
   callback_url: string;
@@ -3893,4 +4058,178 @@ export async function delegateToTeam(
 
 export async function getTeamTasks(id: string): Promise<{ tasks: Task[]; total: number; team_id: string }> {
   return fetchJSON(`${getBase()}/teams/${id}/tasks`);
+}
+
+// --- Eigene Menuepunkte: fremde Seiten als Rahmen oder Link -------------------
+// Der Server liefert unter /mine nur, was die Rolle sehen darf (menu_paths) —
+// die Seitenleiste filtert nicht selbst nach, sie zeigt einfach was ankommt.
+
+export type CustomPageOpenMode = "iframe" | "link";
+
+export interface CustomPage {
+  id: number;
+  slug: string;
+  title: string;
+  description: string | null;
+  url: string;
+  icon: string;
+  group_key: string;
+  open_mode: CustomPageOpenMode;
+  sort_order: number;
+  enabled: boolean;
+  allow_media: boolean;
+  menu_path: string;
+}
+
+export interface CustomPageInput {
+  slug: string;
+  title: string;
+  url: string;
+  description?: string | null;
+  icon?: string;
+  group_key?: string;
+  open_mode?: CustomPageOpenMode;
+  sort_order?: number;
+  enabled?: boolean;
+  allow_media?: boolean;
+}
+
+/** Menuepunkte fuer den angemeldeten Nutzer (bereits nach Rolle gefiltert). */
+export async function listMyCustomPages(): Promise<{ pages: CustomPage[] }> {
+  return fetchJSON(`${getBase()}/custom-pages/mine`);
+}
+
+/** Eine Seite zum Anzeigen. 403, wenn die Rolle sie nicht sehen darf. */
+export async function getCustomPageBySlug(slug: string): Promise<CustomPage> {
+  return fetchJSON(`${getBase()}/custom-pages/by-slug/${encodeURIComponent(slug)}`);
+}
+
+/** Alle Seiten inkl. abgeschalteter — nur fuer Administratoren. */
+export async function listCustomPages(): Promise<{ pages: CustomPage[]; groups: string[]; modes: CustomPageOpenMode[] }> {
+  return fetchJSON(`${getBase()}/custom-pages/`);
+}
+
+export async function createCustomPage(body: CustomPageInput): Promise<CustomPage> {
+  return fetchJSON(`${getBase()}/custom-pages/`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateCustomPage(id: number, body: Partial<CustomPageInput>): Promise<CustomPage> {
+  return fetchJSON(`${getBase()}/custom-pages/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function deleteCustomPage(id: number): Promise<{ deleted: number; menu_path: string }> {
+  return fetchJSON(`${getBase()}/custom-pages/${id}`, { method: "DELETE" });
+}
+
+/* ── Meine KI-Zugaenge (eigenes Claude-/Codex-Abo) ────────────────────────
+   Die Schnittstelle gibt es seit v1.185.0; bis 2026-08-15 rief sie niemand auf,
+   weil die Oberflaeche dazu fehlte. Das Geheimnis kommt bewusst NIE zurueck —
+   man sieht nur, dass etwas hinterlegt ist. */
+export async function getMyAiCredentials(): Promise<{
+  credentials: {
+    harness: string; label: string | null; last_status: string | null;
+    last_used_at: string | null; created_at: string | null;
+  }[];
+  team_license_allowed: boolean;
+}> {
+  return fetchJSON(`${getBase()}/me/ai-credentials`);
+}
+
+export async function putMyAiCredential(body: {
+  harness: string; secret: string; label: string | null;
+}): Promise<unknown> {
+  return fetchJSON(`${getBase()}/me/ai-credentials`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteMyAiCredential(harness: string): Promise<unknown> {
+  return fetchJSON(`${getBase()}/me/ai-credentials/${harness}`, { method: "DELETE" });
+}
+
+/* Anmeldung fuer den EIGENEN Zugang — gleicher Ablauf wie beim Administrator,
+   aber das Ergebnis landet in `user_ai_credentials` statt als plattformweite
+   Integration. Nur aus dieser Ablage liest der Agentenbau. */
+export async function startMyAnthropicLogin(): Promise<{ auth_url: string }> {
+  return fetchJSON(`${getBase()}/me/ai-credentials/anthropic/start`, { method: "POST" });
+}
+
+export async function exchangeMyAnthropicLogin(body: {
+  code: string; state: string; label: string | null;
+}): Promise<{ status: string; label: string; hint: string }> {
+  return fetchJSON(`${getBase()}/me/ai-credentials/anthropic/exchange`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function startMyCodexLogin(): Promise<{
+  session_id: string; verification_uri: string; user_code: string;
+  expires_at: string; status: string;
+}> {
+  return fetchJSON(`${getBase()}/me/ai-credentials/codex/start`, { method: "POST" });
+}
+
+export async function getMyCodexLoginStatus(sessionId: string): Promise<{
+  status: string; account_label: string | null; error: string | null;
+  user_code: string | null; verification_uri: string | null;
+}> {
+  return fetchJSON(`${getBase()}/me/ai-credentials/codex/status/${sessionId}`);
+}
+
+// --- SSO-Gruppen auf Rollen abbilden (Entra/Azure AD, SAML) -------------------
+// Ersetzt die freie JSON-Textbox: Zuordnungen leben serverseitig in einer Tabelle,
+// die Verwaltung zeigt tatsaechlich gesehene Gruppennamen zum Anklicken an.
+
+export type SsoProvider = "microsoft" | "saml";
+export type SsoTargetKind = "role" | "custom_role";
+
+export interface SsoGroupRoleMapping {
+  id: number;
+  provider: SsoProvider;
+  group_name: string;
+  target_kind: SsoTargetKind;
+  target_value: string;
+  custom_role_name: string | null;
+  priority: number;
+}
+
+export interface SsoObservedGroup {
+  group_name: string;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  mapped: boolean;
+}
+
+export async function listSsoGroupMappings(provider?: SsoProvider): Promise<{
+  mappings: SsoGroupRoleMapping[];
+  providers: SsoProvider[];
+  target_kinds: SsoTargetKind[];
+  roles: string[];
+}> {
+  const qs = provider ? `?provider=${provider}` : "";
+  return fetchJSON(`${getBase()}/sso-group-mappings/${qs}`);
+}
+
+export async function listSsoObservedGroups(provider: SsoProvider): Promise<{ groups: SsoObservedGroup[] }> {
+  return fetchJSON(`${getBase()}/sso-group-mappings/observed?provider=${provider}`);
+}
+
+export async function createSsoGroupMapping(body: {
+  provider: SsoProvider; group_name: string; target_kind: SsoTargetKind;
+  target_value: string; priority?: number;
+}): Promise<SsoGroupRoleMapping> {
+  return fetchJSON(`${getBase()}/sso-group-mappings/`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateSsoGroupMapping(
+  id: number,
+  body: Partial<{ target_kind: SsoTargetKind; target_value: string; priority: number }>,
+): Promise<SsoGroupRoleMapping> {
+  return fetchJSON(`${getBase()}/sso-group-mappings/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function deleteSsoGroupMapping(id: number): Promise<{ deleted: number }> {
+  return fetchJSON(`${getBase()}/sso-group-mappings/${id}`, { method: "DELETE" });
 }

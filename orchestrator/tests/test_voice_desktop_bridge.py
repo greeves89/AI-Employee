@@ -145,7 +145,7 @@ class VoiceToolTests(unittest.IsolatedAsyncioTestCase):
     async def test_no_bridge_says_so_instead_of_deflecting(self):
         v = self._voice()
         with unittest.mock.patch.object(cu, "_find_user_session", new=AsyncMock(return_value=None)):
-            out = await v._desktop("open", "https://servicedesk.skbs.de/wm")
+            out = await v._desktop("open", "https://servicedesk.example.com/wm")
         self.assertIn("Bridge", out)
         self.assertNotIn("selbst", out.lower())   # kein "ruf es selbst auf"
 
@@ -308,7 +308,13 @@ class VoiceAgentScopingTests(unittest.IsolatedAsyncioTestCase):
         ):
             await v._analyse_screenshot_bg("abc", "", "")
         said = v._nova.inject_user_text.await_args[0][0]
-        self.assertIn("nicht zurueck", said)
+        # Seit dem 21.08.2026 wird der GRUND mitgesagt, nicht nur „kam nicht
+        # zurueck": damals lautete er „You've hit your limit · resets 3:10pm",
+        # und der Nutzer suchte eine halbe Stunde bei den Bildern, weil die
+        # Stimme ihn verschwieg. Geprueft wird weiterhin die Haltung — Fehler
+        # eingestehen statt etwas zu erfinden.
+        self.assertIn("fehlgeschlagen", said)
+        self.assertIn("Timeout", said)
         self.assertIn("erfinde nichts", said.lower())
 
 
@@ -369,3 +375,88 @@ class BridgeResultHonestyTests(unittest.IsolatedAsyncioTestCase):
     async def test_open_url_is_a_known_capability(self):
         """Unbekannte Aktionen sind fail-closed — ohne Eintrag waere open_url tot."""
         self.assertEqual(cu._ACTION_TO_GROUP.get("open_url"), "apps")
+
+
+class EgoAndRawPassthroughTests(unittest.IsolatedAsyncioTestCase):
+    """#ego-lite (27.08.2026): live gemeldet, dass die Sprachfront erst `open_app`
+    mit Namensraten versuchte statt `ego_run` direkt zu nutzen, und danach
+    forderte der Nutzer ausdruecklich "1:1 die gleichen Tools wie der Agent".
+    Die Kurzform `action='ego'` deckt den ersten Fall ab; die Rohdurchreiche
+    (jeder echte Bridge-Aktionsname + `params`) deckt den zweiten strukturell
+    ab — keine Aktion soll je wieder von Hand nachgetragen werden muessen.
+    """
+
+    def _voice(self):
+        from app.services.realtime_voice_session import RealtimeVoiceSession
+        v = RealtimeVoiceSession.__new__(RealtimeVoiceSession)
+        v.user_id, v.agent_id = "u1", "agent-1"
+        v.redis = AsyncMock()
+        v._emit = AsyncMock()
+        return v
+
+    async def _run(self, action, target="", text="", raw_params=None, result=None):
+        v = self._voice()
+        with unittest.mock.patch.object(
+            cu, "_find_user_session", new=AsyncMock(return_value=("s1", _session()))
+        ), unittest.mock.patch.object(
+            cu, "dispatch_bridge_command", new=AsyncMock(return_value={"result": result or {}}),
+        ) as disp:
+            out = await v._desktop(action, target, text, raw_params=raw_params)
+        return out, disp
+
+    async def test_ego_maps_to_ego_run_with_the_script_in_text(self):
+        _out, disp = await self._run(
+            "ego", text="cliLog('hi')", result={"ok": True, "output": "hi\n"},
+        )
+        self.assertEqual(disp.await_args[0][1], "ego_run")
+        self.assertEqual(disp.await_args[0][2], {"script": "cliLog('hi')"})
+
+    async def test_ego_without_a_script_asks_back_instead_of_calling_the_bridge(self):
+        out, disp = await self._run("ego", text="")
+        self.assertIn("fehlt", out.lower())
+        disp.assert_not_awaited()
+
+    async def test_ego_output_is_spoken_verbatim(self):
+        out, _ = await self._run(
+            "ego", text="cliLog('geoeffnet: google.com')",
+            result={"ok": True, "output": "geoeffnet: google.com\n"},
+        )
+        self.assertIn("geoeffnet: google.com", out)
+
+    async def test_an_unrecognised_action_passes_straight_through(self):
+        """Keine der acht Kurzformen — genau der Fall, der ego_run erst gefehlt hat."""
+        _out, disp = await self._run(
+            "browser_navigate", raw_params={"url": "https://intranet/reisekosten"},
+            result={"ok": True, "url": "https://intranet/reisekosten"},
+        )
+        self.assertEqual(disp.await_args[0][1], "browser_navigate")
+        self.assertEqual(disp.await_args[0][2], {"url": "https://intranet/reisekosten"})
+
+    async def test_passthrough_result_is_reported_not_just_erledigt(self):
+        """Ohne das laesst sich am gesprochenen "Erledigt" nicht ablesen, WAS z. B.
+        shell_run tatsaechlich geliefert hat."""
+        out, _ = await self._run(
+            "shell_run", raw_params={"command": "ls"},
+            result={"ok": True, "stdout": "todo.md\n"},
+        )
+        self.assertIn("todo.md", out)
+        self.assertNotEqual(out.strip(), "Erledigt.")
+
+    async def test_passthrough_still_goes_through_the_same_capability_gate(self):
+        """Rohdurchreiche ist kein zweiter, schwaecherer Weg — dieselbe Sperre gilt."""
+        v = self._voice()
+        with unittest.mock.patch.object(
+            cu, "_find_user_session", new=AsyncMock(return_value=("s1", _session()))
+        ), unittest.mock.patch.object(
+            cu, "dispatch_bridge_command",
+            new=AsyncMock(side_effect=HTTPException(
+                status_code=403, detail="Action 'ego_run' is not permitted",
+            )),
+        ):
+            out = await v._desktop("ego_run", raw_params={"script": "cliLog(1)"})
+        self.assertIn("not permitted", out)
+
+    async def test_an_empty_action_asks_back_instead_of_guessing(self):
+        out, disp = await self._run("")
+        self.assertIn("fehlt", out.lower())
+        disp.assert_not_awaited()

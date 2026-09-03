@@ -218,5 +218,111 @@ class WatermarkTests(unittest.TestCase):
         self.assertEqual(got, now - timedelta(hours=24))
 
 
+class TestOpenAICompatRequest(unittest.TestCase):
+    """URL-/Auth-Aufbau fuer den OpenAI-kompatiblen Backend-Zweig (Tier 4).
+
+    Spiegelt die Faelle des Agent-Providers: klassisches Azure (Deployment im
+    Pfad + api-version), die /openai/v1-Surface (keine api-version), der aus
+    der Foundry-Oberflaeche kopierte PROJEKT-Endpunkt (muss auf die
+    Ressourcen-Wurzel gekuerzt werden) und plain OpenAI-kompatibel (Bearer).
+    """
+
+    def test_klassisches_azure_deployment_im_pfad(self):
+        from app.services.reflection_service import openai_compat_request
+        url, auth = openai_compat_request(
+            "https://res.openai.azure.com", True, "", "mini-deploy"
+        )
+        self.assertEqual(
+            url,
+            "https://res.openai.azure.com/openai/deployments/mini-deploy"
+            "/chat/completions?api-version=2024-10-21",
+        )
+        self.assertEqual(auth, "api-key")
+
+    def test_azure_v1_surface_ohne_api_version(self):
+        from app.services.reflection_service import openai_compat_request
+        url, auth = openai_compat_request(
+            "https://res.openai.azure.com/openai/v1", True, "2024-10-21", "mini-deploy"
+        )
+        self.assertEqual(url, "https://res.openai.azure.com/openai/v1/chat/completions")
+        self.assertEqual(auth, "api-key")
+
+    def test_foundry_projekt_endpunkt_wird_auf_wurzel_gekuerzt(self):
+        from app.services.reflection_service import openai_compat_request
+        url, _ = openai_compat_request(
+            "https://res.cognitiveservices.azure.com/api/projects/demo", True, "v1", "d"
+        )
+        self.assertEqual(
+            url,
+            "https://res.cognitiveservices.azure.com/openai/deployments/d"
+            "/chat/completions?api-version=v1",
+        )
+
+    def test_plain_openai_bearer(self):
+        from app.services.reflection_service import openai_compat_request
+        url, auth = openai_compat_request("https://api.openai.com", False, "", "m")
+        self.assertEqual(url, "https://api.openai.com/v1/chat/completions")
+        self.assertEqual(auth, "bearer")
+
+    def test_voller_pfad_gilt_verbatim(self):
+        from app.services.reflection_service import openai_compat_request
+        url, _ = openai_compat_request(
+            "https://gw.example.com/v1/chat/completions", False, "", "m"
+        )
+        self.assertEqual(url, "https://gw.example.com/v1/chat/completions")
+
+
+class TestCallOpenAICompat(unittest.IsolatedAsyncioTestCase):
+    """Der Azure-Call wird auf die Anthropic-Antwortform normalisiert —
+    _extract und die Feedback-Rueckfrage bleiben dadurch format-agnostisch."""
+
+    async def test_antwort_und_usage_normalisiert(self):
+        from app.services import reflection_service as rs
+
+        gesehen = {}
+
+        class _Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "choices": [{"message": {"content": "Auf welchem Geraet?"}}],
+                    "usage": {"prompt_tokens": 11, "completion_tokens": 7},
+                }
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, headers=None, json=None):
+                gesehen.update(url=url, headers=headers, body=json)
+                return _Resp()
+
+        cfg = {
+            "model": "mini-deploy",
+            "openai": {
+                "endpoint": "https://res.openai.azure.com",
+                "api_key": "geheim",
+                "azure": True,
+                "api_version": "",
+            },
+        }
+        with patch.object(rs.httpx, "AsyncClient", lambda **kw: _Client()):
+            data = await ReflectionService(None)._call_openai_compat(cfg, "prompt")
+
+        self.assertEqual(data["content"][0]["text"], "Auf welchem Geraet?")
+        self.assertEqual(data["usage"], {"input_tokens": 11, "output_tokens": 7})
+        self.assertEqual(gesehen["headers"]["api-key"], "geheim")
+        self.assertIn("/openai/deployments/mini-deploy/", gesehen["url"])
+        # Bewusst kein Token-Deckel: der Parametername haengt an Modellgeneration
+        # und api-version — kein max_tokens/max_completion_tokens im Body.
+        self.assertNotIn("max_tokens", gesehen["body"])
+        self.assertNotIn("max_completion_tokens", gesehen["body"])
+
+
 if __name__ == "__main__":
     unittest.main()

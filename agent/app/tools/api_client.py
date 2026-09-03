@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import time
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
@@ -16,6 +17,37 @@ from app import multimodal
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+#: In welchem Gespraech der Agent gerade steht. Der Chat-Verbraucher setzt sie zu
+#: Beginn jedes Zuges; die Werkzeuge, die Auftraege vergeben, haengen sie an.
+#:
+#: Warum das noetig ist: Wenn ein delegierter Auftrag fertig ist, meldet der
+#: Orchestrator das an den Auftraggeber zurueck. Ohne Faden landet diese Meldung in
+#: ``webapp:default`` — einem Gespraech, das niemand ansieht. Fuer den Nutzer sah es
+#: aus, als komme nie eine Rueckmeldung, obwohl die Arbeit laengst fertig war.
+current_chat_session: ContextVar[str | None] = ContextVar(
+    "current_chat_session", default=None
+)
+
+
+def _session_field() -> dict:
+    """``{"chat_session_id": ...}`` — oder nichts, ausserhalb eines Gespraechs."""
+    session = current_chat_session.get()
+    return {"chat_session_id": session} if session else {}
+
+
+def _truncate_preserving_words(text: str, limit: int) -> str:
+    """Kuerzt an der letzten Wortgrenze statt mitten im Wort.
+
+    Ein blosses ``text[:limit]`` schnitt regelmaessig ab, bevor ein Sub-Agent
+    nach seinen Pflicht-Vorabchecks ueberhaupt bei der eigentlichen Antwort
+    ankam — die sah dadurch aus, als fehle sie komplett.
+    """
+    if len(text) <= limit:
+        return text
+    cut = text.rfind(" ", 0, limit)
+    at = cut if cut > 0 else limit
+    return text[:at].rstrip() + " […]"
 
 
 class OrchestratorAPIClient:
@@ -51,15 +83,41 @@ class OrchestratorAPIClient:
 
     # ── Task Management (orchestrator-server.mjs) ──
 
+    @staticmethod
+    def _task_payload(t: dict, *, standard_titel: str = "Task", vorgabe_prio: int = 5) -> dict:
+        """EIN Bauplan fuer jeden Auftrag, den ein Agent anlegt.
+
+        Es gibt drei Werkzeuge, die Auftraege erzeugen — ``create_task``,
+        ``create_task_batch`` und ``delegate_and_wait`` — und sie bauten ihre
+        Nutzlast jeweils selbst zusammen. Als der Gespraechsfaden dazukam, wurde
+        er an zwei von dreien angehaengt; ``create_task_batch`` blieb aussen vor.
+        Folge beim Nutzer am 2026-08-13: **in derselben Sekunde** trugen zwei
+        Auftraege den Faden und zwei nicht — fuer die einen erschien eine Kachel
+        im Chat, fuer die anderen nicht.
+
+        Deshalb hier gebuendelt: ein Feld, das kuenftig dazukommt, gilt sofort
+        fuer alle drei Wege. Drei fast gleiche Stellen zu pflegen heisst, eine
+        davon zu vergessen.
+        """
+        return {
+            "title": t.get("title", standard_titel),
+            "prompt": t.get("prompt", ""),
+            "priority": t.get("priority", vorgabe_prio),
+            "agent_id": t.get("agent_id"),
+            **({"model": t["model"]} if t.get("model") else {}),
+            **_session_field(),
+        }
+
     async def create_task(self, params: dict) -> str:
         """Create a task for self or another agent."""
         agent_id = params.get("agent_id", self.agent_id)
         body = {
-            "title": params.get("title", "Task from agent"),
-            "prompt": params.get("prompt", ""),
-            "priority": params.get("priority", 0),
-            "agent_id": agent_id,
-            "model": params.get("model"),
+            **self._task_payload(
+                {**params, "agent_id": agent_id},
+                standard_titel="Task from agent",
+                vorgabe_prio=0,
+            ),
+            "created_by_agent": self.agent_id,
         }
         result = await self._request("POST", "/tasks/", json=body)
         if isinstance(result, str):
@@ -222,10 +280,32 @@ class OrchestratorAPIClient:
         payload = result.get("result", result)
         if action == "screenshot" and isinstance(payload, dict):
             if payload.get("screenshot_b64"):
+                # Groesse und Bildschirme MITSAGEN. Die Bridge rechnet beides
+                # seit jeher aus; hier ging es bisher verloren, und das Modell
+                # nannte Klickkoordinaten, ohne zu wissen, wie gross das Bild
+                # ist — und wusste nichts von einem zweiten Monitor
+                # (gemeldet am 21.08.2026).
+                hinweis = ["Screenshot captured from the user's desktop."]
+                groesse = payload.get("image_size") or {}
+                if groesse.get("w") and groesse.get("h"):
+                    hinweis.append(
+                        f"Image is {groesse['w']}x{groesse['h']} points — click "
+                        "coordinates must be inside that, (0,0) is top left."
+                    )
+                monitore = payload.get("displays") or []
+                if len(monitore) > 1:
+                    liste = ", ".join(
+                        f"{d.get('number')}{' (primary)' if d.get('primary') else ''}: "
+                        f"{d.get('width')}x{d.get('height')}" for d in monitore
+                    )
+                    hinweis.append(
+                        f"The user has {len(monitore)} displays ({liste}); this is number "
+                        f"{payload.get('display')}. Pass params.display=N for another one."
+                    )
                 return multimodal.IMAGE_SENTINEL + json.dumps({
                     "media_type": "image/png",
                     "data": payload["screenshot_b64"],
-                    "note": "Screenshot captured from the user's desktop.",
+                    "note": " ".join(hinweis),
                 })
             return "Error: screenshot did not return image data"
         return json.dumps(payload, ensure_ascii=False)
@@ -708,6 +788,16 @@ class OrchestratorAPIClient:
             "risk_level": "medium",
             "target_channel": params.get("target_channel", "all"),
         }
+        return await self._fragen_und_warten(body, params)
+
+    async def _fragen_und_warten(self, body: dict, params: dict) -> str:
+        """Frage stellen und anhalten, bis der Nutzer entschieden hat.
+
+        Herausgeloest, damit ``present_view`` denselben Weg geht: dieselbe
+        Warteschleife, dieselbe Zeitgrenze, dieselbe Rueckmeldung. Eine Ansicht
+        ist eine Rueckfrage, die anders aussieht — sie darf keine zweite
+        Mechanik daneben bekommen, sonst laufen die beiden auseinander.
+        """
         result = await self._request("POST", "/approvals/request", json=body)
         if isinstance(result, str):
             return result
@@ -732,13 +822,13 @@ class OrchestratorAPIClient:
             choice = check.get("user_response") or ""
             if status == "approved":
                 return (
-                    f"APPROVED by the user."
+                    "APPROVED by the user."
                     + (f" Chosen option: {choice}." if choice else "")
                     + " You may now proceed accordingly."
                 )
             if status == "denied":
                 return (
-                    f"DENIED by the user."
+                    "DENIED by the user."
                     + (f" {choice}" if choice else "")
                     + " Do NOT perform the action. Stop and inform the user."
                 )
@@ -748,6 +838,38 @@ class OrchestratorAPIClient:
             f"Do NOT proceed with the action. Stop now and tell the user you are waiting "
             f"for their approval; they can still decide later under Approvals."
         )
+
+    async def present_view(self, params: dict) -> str:
+        """Eine Ansicht zeigen statt einer Liste von Woertern — und warten.
+
+        Geht bewusst denselben Weg wie ``request_approval``: derselbe Endpunkt,
+        dasselbe Anhalten, derselbe Rueckweg ueber ``user_response``. Der
+        Unterschied ist ein Feld mehr im Rumpf.
+
+        ``options`` sind kein Beiwerk: Telegram, die Telefon-App und der reine
+        Sprachbetrieb koennen keine Ansicht zeichnen. Ohne sie waere der Nutzer
+        dort mit einer Frage allein, die er nicht beantworten kann — und der
+        Agent stuende bis zur Zeitgrenze.
+        """
+        optionen = params.get("options") or []
+        if not optionen:
+            # Aus den Bildbeschriftungen ableiten, statt den Nutzer auf anderen
+            # Kanaelen im Regen stehen zu lassen.
+            bilder = (params.get("data") or {}).get("images") or []
+            optionen = [
+                str(b.get("label") or f"Bild {i + 1}")
+                for i, b in enumerate(bilder)
+                if isinstance(b, dict)
+            ]
+        body = {
+            "question": params.get("question", ""),
+            "options": optionen or ["Ja", "Nein"],
+            "context": params.get("context", ""),
+            "risk_level": "low",
+            "target_channel": "all",
+            "view": {"name": params.get("view"), "data": params.get("data") or {}},
+        }
+        return await self._fragen_und_warten(body, params)
 
     async def escalate_if_unsure(self, params: dict) -> str:
         """Konfidenz melden — der Server entscheidet, ob sie reicht (#389).
@@ -946,15 +1068,7 @@ class OrchestratorAPIClient:
         if not tasks:
             return "Error: tasks list is required"
         body = {
-            "tasks": [
-                {
-                    "title": t.get("title", "Task"),
-                    "prompt": t.get("prompt", ""),
-                    "priority": t.get("priority", 5),
-                    "agent_id": t.get("agent_id"),
-                }
-                for t in tasks
-            ],
+            "tasks": [self._task_payload(t) for t in tasks],
             "created_by_agent": self.agent_id,
         }
         result = await self._request("POST", "/tasks/batch", json=body)
@@ -965,6 +1079,175 @@ class OrchestratorAPIClient:
         for t in created:
             lines.append(f"  - #{t.get('id')}: \"{t.get('title')}\" → {t.get('agent_id', 'auto')} [{t.get('status')}]")
         return "\n".join(lines)
+
+    async def delegate_and_wait(self, params: dict) -> str:
+        """Auftraege an andere Agenten geben UND auf die Ergebnisse warten.
+
+        Bis hierher gab es das nur im MCP-Satz, also nur fuer Claude Code. Ein
+        Custom-LLM-Agent konnte Nachrichten schicken und Aufgaben anlegen, aber
+        nicht beauftragen und auf das Ergebnis warten — und tat deshalb, was ein
+        Modell ohne passendes Werkzeug tut: er BESCHRIEB die Delegation. Beim
+        Kunden stand daraufhin eine erfundene Statustabelle („Mr. Develop —
+        laeuft") im Chat, waehrend alle Agenten nachweislich im Leerlauf waren.
+
+        Gleiche Mechanik wie im MCP-Server: Stapel anlegen, dann die Aufgaben
+        abfragen, bis alle fertig sind oder die Frist reisst.
+        """
+        import asyncio as _asyncio
+
+        tasks = params.get("tasks") or []
+        if not tasks:
+            return "Error: tasks list is required"
+        timeout = max(10, min(int(params.get("timeout_seconds") or 300), 600))
+
+        body = {
+            "tasks": [self._task_payload(t) for t in tasks[:20]],
+            "created_by_agent": self.agent_id,
+        }
+        batch = await self._request("POST", "/tasks/batch", json=body)
+        if isinstance(batch, str):
+            return batch
+        task_ids = [t.get("id") for t in batch.get("tasks", []) if t.get("id")]
+        if not task_ids:
+            return "Error: no tasks were created"
+
+        results: dict = {}
+        loop = _asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while loop.time() < deadline and len(results) < len(task_ids):
+            await _asyncio.sleep(4)
+            for tid in task_ids:
+                if tid in results:
+                    continue
+                t = await self._request("GET", f"/tasks/{tid}")
+                if isinstance(t, str) or not isinstance(t, dict):
+                    continue
+                if t.get("status") in ("completed", "failed"):
+                    results[tid] = t
+
+        done, total = len(results), len(task_ids)
+        # Die Rueckgabe muss unmissverstaendlich sagen, dass das Warten VORBEI ist.
+        #
+        # Am 2026-08-13 hat ein Team-Lead genau hier den falschen Schluss gezogen:
+        # ``delegate_and_wait`` kam mit dem fertigen Ergebnis zurueck, und er
+        # schrieb dem Menschen trotzdem „Angestossen: Mr. Design erstellt JETZT
+        # das Paket". Der Mensch las „laeuft", wartete 18 Minuten und musste
+        # nachfragen — dabei war die Arbeit beim Zurueckkommen dieses Aufrufs
+        # bereits erledigt.
+        #
+        # Ein blosses „1/1 Auftraege abgeschlossen" reichte dafuer nicht. Der
+        # Unterschied zwischen „ich habe angestossen" und „ich habe das Ergebnis"
+        # muss in der Rueckgabe selbst stehen, nicht in der Werkzeugbeschreibung,
+        # die zwanzig Zuege vorher gelesen wurde.
+        if done == total:
+            head = (f"FERTIG: alle {total} Auftraege sind abgeschlossen. Das hier "
+                    f"ist das ENDERGEBNIS, kein Zwischenstand. Gib es dem Menschen "
+                    f"wieder und sage ausdruecklich, dass die Arbeit erledigt ist. "
+                    f"Schreibe NICHT, dass etwas 'angestossen' wurde oder 'jetzt "
+                    f"laeuft'.")
+        else:
+            head = (f"TEILWEISE FERTIG: {done} von {total} Auftraegen sind zurueck, "
+                    f"{total - done} laufen noch. Berichte beides getrennt — was "
+                    f"vorliegt und worauf noch gewartet wird.")
+        lines = [head, ""]
+        for tid in task_ids:
+            t = results.get(tid)
+            if not t:
+                # Ehrlich benennen statt als Erfolg zaehlen — genau das war der Fehler.
+                lines.append(f"  - #{tid}: laeuft noch (Frist von {timeout}s erreicht)")
+                continue
+            lines.append(f"  - #{tid} \"{t.get('title', '')}\" [{t.get('status')}]: "
+                         f"{_truncate_preserving_words(str(t.get('result') or '(keine Ausgabe)'), 1500)}")
+        return "\n".join(lines)
+
+    async def list_my_team(self, params: dict) -> str:
+        """Wer gehoert zu meinem Team — Voraussetzung fuer jedes Delegieren."""
+        result = await self._request("GET", "/teams/mine")
+        if isinstance(result, str):
+            return result
+        # /teams/mine antwortet {"teams": [{name, team_id, i_am_lead, members: [...]}]}.
+        # Die Mitglieder stehen JE TEAM, nicht oben — oben nachzusehen liefert
+        # immer eine leere Liste und damit ein falsches "kein Team".
+        teams = result.get("teams") or []
+        if not teams:
+            return "Kein Team zugeordnet — Auftraege gehen ohne agent_id an die automatische Zuteilung."
+        blocks = []
+        for t in teams:
+            members = t.get("members") or []
+            head = f"Team \"{t.get('name', 'ohne Namen')}\" [{t.get('team_id', '?')}]"
+            if t.get("i_am_lead"):
+                head += " — du bist der LEAD"
+            lines = [head]
+            for m in members:
+                tags = ", ".join(filter(None, [
+                    "LEAD" if m.get("is_lead") else None,
+                    "du selbst" if m.get("is_me") else None,
+                ]))
+                lines.append(f"  - {m.get('name', '?')} (id: {m.get('id', '?')}"
+                             + (f", {tags}" if tags else "") + ") — "
+                             + (m.get("role") or "ohne Rolle"))
+            blocks.append("\n".join(lines))
+        return "\n\n".join(blocks)
+
+    async def list_team_tasks(self, params: dict) -> str:
+        """Woran arbeitet mein Team gerade — die ehrliche Antwort statt einer geratenen."""
+        teams = await self._request("GET", "/teams/")
+        if isinstance(teams, str):
+            return teams
+        rows = teams if isinstance(teams, list) else teams.get("teams", [])
+        # /teams/ liefert die Mitglieder als reine ID-Liste in member_agent_ids —
+        # eine "members"-Liste mit Objekten gibt es hier nicht.
+        mine = next((t for t in rows
+                     if self.agent_id in (t.get("member_agent_ids") or [])), None)
+        if not mine:
+            return "Kein Team zugeordnet."
+        result = await self._request("GET", f"/teams/{mine.get('id')}/tasks")
+        if isinstance(result, str):
+            return result
+        tasks = result if isinstance(result, list) else result.get("tasks", [])
+        if not tasks:
+            return "Das Team hat gerade keine laufenden Aufgaben."
+        lines = [f"{len(tasks)} Aufgaben im Team:"]
+        for t in tasks[:40]:
+            lines.append(f"  - #{t.get('id')} \"{t.get('title', '')}\" [{t.get('status')}] "
+                         f"→ {t.get('agent_name') or t.get('agent_id') or 'unzugeteilt'}")
+        return "\n".join(lines)
+
+    async def get_tasks_status(self, params: dict) -> str:
+        """Laufen meine Auftraege noch? Ohne das bleibt nur Raten."""
+        ids = params.get("task_ids") or []
+        if not ids:
+            return "Error: task_ids is required"
+        lines = []
+        for tid in ids[:40]:
+            t = await self._request("GET", f"/tasks/{tid}")
+            if isinstance(t, str) or not isinstance(t, dict):
+                lines.append(f"  - #{tid}: nicht abrufbar")
+                continue
+            lines.append(f"  - #{tid} \"{t.get('title', '')}\" [{t.get('status')}]"
+                         + (f": {str(t.get('result'))[:400]}" if t.get("result") else ""))
+        return "\n".join(lines) or "Keine Angaben."
+
+    async def schedule_meeting(self, params: dict) -> str:
+        """Eine Abstimmung mehrerer Agenten ansetzen."""
+        body = {k: v for k, v in params.items() if v is not None}
+        body.setdefault("created_by_agent", self.agent_id)
+        result = await self._request("POST", "/meeting-rooms/schedule", json=body)
+        if isinstance(result, str):
+            return result
+        return (f"Termin angesetzt: \"{result.get('topic') or result.get('title', '')}\" "
+                f"(Raum {result.get('room_id') or result.get('id')})")
+
+    async def skill_update(self, params: dict) -> str:
+        """Einen eigenen Skill nachziehen."""
+        skill_id = params.get("skill_id")
+        if not skill_id:
+            return "Error: skill_id is required"
+        body = {k: v for k, v in params.items() if k != "skill_id" and v is not None}
+        result = await self._request("PATCH", f"/skills/agent/{skill_id}", json=body)
+        if isinstance(result, str):
+            return result
+        return f"Skill {skill_id} aktualisiert."
 
     # ── Synchronous messaging ──
 
@@ -1297,6 +1580,36 @@ class OrchestratorAPIClient:
         conts = len(result.get("containers", []))
         url_s = f" Link für den User: {result['url']}" if result.get("url") else ""
         return f"App „{params.get('path')}“ neu gebaut und gestartet ({conts} Container, {result.get('status')}).{url_s}"
+
+    async def restart_own_container(self, params: dict) -> str:
+        """Rebuild and restart MY OWN container, preserving the workspace."""
+        result = await self._request("POST", "/agent-apps/restart-self")
+        if isinstance(result, str):
+            return result
+        return "Mein Container wird gerade neu gebaut und startet gleich neu. Mein Workspace bleibt erhalten."
+
+    # ── Web Search (admin-konfigurierter Provider: DuckDuckGo/Brave/SerpApi) ──
+
+    async def web_search(self, params: dict) -> str:
+        """Websuche ueber den zentral admin-konfigurierten Provider — EIN Weg
+        fuer alle Laufzeiten statt einer eigenen DuckDuckGo-Kopie hier."""
+        query = (params.get("query") or "").strip()
+        if not query:
+            return "Error: query cannot be empty"
+        max_results = min(int(params.get("max_results") or 5), 10)
+        result = await self._request(
+            "POST", "/agent-search/web", json={"query": query, "max_results": max_results}
+        )
+        if isinstance(result, str):
+            return result
+        items = result.get("results") or []
+        if not items:
+            return f"No results found for '{query}'. Try different search terms."
+        blocks = [
+            f"**{r.get('title', '')}**\n{r.get('url', '')}\n{r.get('snippet', '')}"
+            for r in items
+        ]
+        return f"Search results for '{query}':\n\n" + "\n\n---\n\n".join(blocks)
 
     async def close(self) -> None:
         """Close the HTTP client."""

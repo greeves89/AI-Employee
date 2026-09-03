@@ -46,6 +46,41 @@ logger = logging.getLogger(__name__)
 # The slow ask_agent tool spins up a full agent turn in the container — only for
 # real work that needs the agent's brain/tools.
 
+MCP_SEARCH_TOOLS_TOOL = {
+    "toolSpec": {
+        "name": "mcp_search_tools",
+        "description": (
+            "Durchsuche ALLE Werkzeuge der angebundenen Dienste nach einem Stichwort. "
+            "Benutze das, wenn du glaubst, ein Dienst koenne etwas, du das Werkzeug aber "
+            "nicht direkt hast. Danach mit mcp_call_tool aufrufen. Sage NIE, du haettest "
+            "keinen Zugriff, ohne vorher hier gesucht zu haben."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Stichwort, z.B. 'Projekte'"}},
+            "required": ["query"],
+        })},
+    }
+}
+
+MCP_CALL_TOOL_TOOL = {
+    "toolSpec": {
+        "name": "mcp_call_tool",
+        "description": (
+            "Rufe ein Werkzeug eines angebundenen Dienstes beim Namen auf — auch eines, "
+            "das du nicht direkt in deiner Liste hast. Den Namen liefert mcp_search_tools."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Werkzeugname aus mcp_search_tools"},
+                "arguments": {"type": "string", "description": "Argumente als JSON-Objekt"},
+            },
+            "required": ["name"],
+        })},
+    }
+}
+
 GET_AGENT_STATUS_TOOL = {
     "toolSpec": {
         "name": "get_agent_status",
@@ -80,6 +115,58 @@ GET_AGENT_SETTINGS_TOOL = {
             "Read the agent's current settings instantly: model, mode/harness, provider, "
             "autonomy level, budget. Use for 'which model do you use', 'what's your setup'. "
             "Fast — reads directly, does NOT disturb the agent."
+        ),
+        "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
+    }
+}
+
+ESCALATE_IF_UNSURE_TOOL = {
+    "toolSpec": {
+        "name": "escalate_if_unsure",
+        "description": (
+            "Say how confident you are (0-100) BEFORE acting on something you are "
+            "not sure about. The SERVER decides whether that is enough — the rule "
+            "belongs to the operator, not to you: judging your own 40 percent would "
+            "be as unreliable as the answer itself.\n\n"
+            "Above the threshold this returns at once and costs nothing — nobody is "
+            "disturbed. Below it, the decision goes to a human and this WAITS for "
+            "their answer.\n\n"
+            "Use it whenever you would otherwise GUESS: an instruction that can be "
+            "read two ways, a name you are not sure you heard right, missing "
+            "information you cannot look up. On the phone this matters more than in "
+            "writing — a wrong name or date sounds just as confident as a right one, "
+            "and nobody can scroll back to check.\n\n"
+            "Not for things that are merely risky but clear — that is request_approval."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "confidence": {"type": "number",
+                               "description": "0-100, how sure you are"},
+                "question": {"type": "string",
+                             "description": "What you would ask the human"},
+                "context": {"type": "string",
+                            "description": "What you are unsure about, in one or two sentences"},
+                "options": {"type": "array", "items": {"type": "string"},
+                            "description": "The choices, if there are any"},
+            },
+            "required": ["confidence", "question"],
+        })},
+    }
+}
+
+LIST_AGENT_SECRETS_TOOL = {
+    "toolSpec": {
+        "name": "list_agent_secrets",
+        "description": (
+            "Which API keys and access credentials the agent HAS — by NAME only. "
+            "Use it when asked 'do you have access to X', 'do you have a key for Y', "
+            "'which credentials do you have'.\n\n"
+            "You never see the values, and you never need them: the keys already sit "
+            "in the agent's environment as variables. To actually CALL such an API, "
+            "delegate with ask_agent — the agent reads the variable itself and makes "
+            "the call. Never ask the user to read a key out loud, and never repeat "
+            "one you were told."
         ),
         "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
     }
@@ -143,14 +230,24 @@ SAVE_MEMORY_TOOL = {
         "name": "save_memory",
         "description": (
             "Remember something for later — save a fact/preference/decision/contact into MY "
-            "long-term memory. Use when the user says 'merk dir…', 'behalte…', 'für später:…'. "
-            "Fast, direct write. Confirm briefly that you saved it."
+            "long-term memory (same store the memory_save MCP tool uses — full agent memory, "
+            "not just conversation logs). Use when the user says 'merk dir…', 'behalte…', "
+            "'für später:…'. Fast, direct write. Confirm briefly that you saved it."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
             "properties": {
                 "content": {"type": "string", "description": "The information to remember."},
                 "key": {"type": "string", "description": "Short label/topic for it (optional)."},
+                "category": {
+                    "type": "string",
+                    "description": "Memory category (broad bucket). Default: fact.",
+                    "enum": ["preference", "contact", "project", "procedure", "decision", "fact", "learning"],
+                },
+                "importance": {
+                    "type": "integer",
+                    "description": "Importance 1-5 (higher = returned first in searches). Default: 3.",
+                },
             },
             "required": ["content"],
         })},
@@ -340,13 +437,21 @@ M365_CALENDAR_TODAY_TOOL = {
         "name": "m365_calendar_today",
         "description": (
             "Read the user's Microsoft 365 calendar directly ('hab ich heute Termine', 'was "
-            "steht im Kalender', 'wann ist mein nächstes Meeting'). Fast, direct Graph read. "
-            "Summarize the events spoken (time + title). Needs the user's M365 connection; if "
-            "not connected, say so."
+            "steht morgen an', 'wann ist mein nächstes Meeting'). Fast, direct Graph read. "
+            "For 'heute'/'morgen' ALWAYS use `when` ('today'/'tomorrow') — NOT days_ahead, "
+            "which is a rolling window from right now and does NOT line up with a calendar "
+            "day (reported live: days_ahead=1 for 'morgen' mostly returned the REST OF TODAY "
+            "instead of tomorrow, since the window only reaches past midnight once the day "
+            "actually turns over). Only use days_ahead for a multi-day overview ('was steht "
+            "diese Woche an' → days_ahead=7). Summarize the events spoken (time + title). "
+            "Needs the user's M365 connection; if not connected, say so."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
-            "properties": {"days_ahead": {"type": "integer", "description": "Days from now to include (default 1 = today)."}},
+            "properties": {
+                "when": {"type": "string", "description": "'today' or 'tomorrow' — one specific calendar day. Preferred for single-day questions."},
+                "days_ahead": {"type": "integer", "description": "Rolling window in days from right now — only for multi-day overviews, ignored if `when` is set."},
+            },
         })},
     }
 }
@@ -355,14 +460,25 @@ M365_MAIL_RECENT_TOOL = {
     "toolSpec": {
         "name": "m365_mail_recent",
         "description": (
-            "Read the user's most recent Microsoft 365 / Outlook inbox emails directly ('was ist "
-            "neu im Postfach', 'letzte Mails', 'hab ich Mail von X'). Fast, direct Graph read "
-            "(subject + sender + received). Summarize spoken. Needs the user's M365 connection; "
-            "if not connected, say so. Reading only — sending/replying is real work → ask_agent."
+            "Read the user's Microsoft 365 / Outlook inbox emails directly, newest first — "
+            "either the plain latest N ('was ist neu im Postfach', 'letzte Mails'), or FILTERED "
+            "by search/sender/subject ('such nach Mails von X', 'gab es was zur Deutschen Bahn/"
+            "Reisekosten/Hotel'). Fast, direct Graph read. When the user names a topic/keyword — "
+            "even loosely ('irgendwas mit Bahn oder Hotel') — ALWAYS pass it via `search` "
+            "instead of just pulling the latest N and eyeballing them: the latest emails are "
+            "rarely the relevant ones for a topic search, and skipping `search` was reported live "
+            "as the agent claiming 'the tool can't search' when it simply wasn't using the "
+            "parameter that does. Summarize spoken. Needs the user's M365 connection; if not "
+            "connected, say so. Reading only — sending/replying is real work → ask_agent."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
-            "properties": {"limit": {"type": "integer", "description": "How many recent emails (default 8, max 20)."}},
+            "properties": {
+                "limit": {"type": "integer", "description": "How many emails (default 8, max 20)."},
+                "search": {"type": "string", "description": "Free-text over subject+body — pass any topic/keyword the user mentions."},
+                "sender": {"type": "string", "description": "Filter by sender name or email address."},
+                "subject": {"type": "string", "description": "Filter by words in the subject line."},
+            },
         })},
     }
 }
@@ -375,7 +491,16 @@ M365_SEND_MAIL_TOOL = {
             "SAFETY: ALWAYS read back recipient, subject and the gist of the body to the user and "
             "get an explicit 'ja, absenden' FIRST. Without a clear confirmation, set send=false "
             "(creates an Outlook draft the user reviews). Only set send=true after the user "
-            "explicitly confirms sending."
+            "explicitly confirms sending. "
+            "SPELLED-OUT ADDRESSES: when the user spells an email letter-by-letter ('a - l - i - "
+            "s - c - h at ...') or says a domain out loud, speech-to-text WILL sometimes mangle it "
+            "(seen live: 'alisch@mindsquare.de' became 'lisch@mainz.de', then 'alish@mind-square.de' "
+            "— three different WRONG addresses in a row, each one confirmed and used without "
+            "catching the error). Do NOT fold a spelled-out address straight into a normal-sounding "
+            "readback sentence. Instead say the letters back ONE BY ONE right after they finish "
+            "spelling ('ich habe verstanden: a-l-i-s-c-h at m-i-n-d-s-q-u-a-r-e punkt d-e, richtig "
+            "so?') and wait for an explicit yes BEFORE calling this tool at all — catching it there "
+            "is far cheaper than after a wrong draft already exists."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
@@ -409,6 +534,54 @@ M365_CREATE_EVENT_TOOL = {
                 "location": {"type": "string", "description": "Location (optional)."},
             },
             "required": ["subject", "start"],
+        })},
+    }
+}
+
+M365_SEARCH_PEOPLE_TOOL = {
+    "toolSpec": {
+        "name": "m365_search_people",
+        "description": (
+            "Look up a PERSON in the organization/directory by name — colleagues, coworkers, "
+            "contacts ('wer ist X', 'E-Mail von X', or before writing to/messaging someone you "
+            "only have a NAME for, not an address). Returns name + email + role. ALWAYS call "
+            "this first when the user names a person for an email or Teams message without "
+            "giving you their address directly — resolve the name here, THEN use the result "
+            "with m365_send_mail or m365_teams_message. This is the same lookup the agent "
+            "(Computer-Use) already uses; the voice path was simply missing it."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "required": ["query"],
+            "properties": {
+                "query": {"type": "string", "description": "Name or keyword to search for (e.g. 'Yannik Gassmann')."},
+            },
+        })},
+    }
+}
+
+M365_TEAMS_MESSAGE_TOOL = {
+    "toolSpec": {
+        "name": "m365_teams_message",
+        "description": (
+            "Send a message to a Microsoft Teams 1:1 chat with a specific PERSON, by name "
+            "('schreib X eine Teams-Nachricht', 'sag X test in Teams'). Looks up the person "
+            "among the user's EXISTING Teams chats and sends there — matches on the chat "
+            "member's name (first name alone is often enough). If the name is ambiguous, try "
+            "m365_search_people first to get their full/canonical name. SAFETY: call once with "
+            "confirmed=false to preview who you'd message and the exact text, read that back, "
+            "get an explicit 'ja, senden', THEN call again with confirmed=true. If no existing "
+            "chat matches, say so plainly — there is no way to start a brand-new Teams chat, "
+            "only to write into one that already exists."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "required": ["person", "message"],
+            "properties": {
+                "person": {"type": "string", "description": "Name (or part of it) of the person to message."},
+                "message": {"type": "string", "description": "The message text."},
+                "confirmed": {"type": "boolean", "description": "true only after the user explicitly confirmed sending; false/omitted previews without sending."},
+            },
         })},
     }
 }
@@ -715,31 +888,121 @@ DESKTOP_TOOL = {
             "Bildschirm, seine Maus, seine Tastatur. Das ist der Weg für alles, was auf "
             "SEINEM Gerät passieren soll, und der einzige Weg zu Adressen, die nur aus "
             "seinem Netz erreichbar sind (Intranet, Ticketsystem, interne Tools).\n"
-            "action='open' — öffnet eine URL oder ein Programm bei ihm. target = URL "
-            "(https://…) oder Programmname ('Notepad', 'Safari').\n"
-            "action='screenshot' — sieht nach, was gerade auf seinem Bildschirm ist. "
+            "action='open' — öffnet eine URL oder ein Programm bei ihm, SONST NICHTS "
+            "DANACH. target = URL (https://…) oder Programmname ('Notepad', 'Safari'). Nur "
+            "wenn NACH dem Oeffnen NICHTS mehr auf einer Website passieren soll (kein Suchen, "
+            "kein Klicken, kein Formular). Soll auf der geoeffneten Seite irgendetwas "
+            "geschehen, nimm SOFORT stattdessen 'ego' fuer die GANZE Aufgabe (siehe unten) — "
+            "open+find+click auf Web-Inhalten funktioniert NICHT zuverlaessig. WICHTIG: das "
+            "gilt auch, wenn der Nutzer 'starte/oeffne den Browser' als EIGENEN Satz VOR "
+            "einer Suche/Aktion sagt ('starte den Browser und such nach X') — das ist EINE "
+            "Aufgabe, nicht zwei. `open` fuer 'Browser starten' UND danach `ego` fuer 'X "
+            "suchen' oeffnet ZWEI VERSCHIEDENE Browserfenster (Standardbrowser + ego lite) — "
+            "der Nutzer sieht dann nur das leere erste Fenster und haelt die Suche im zweiten "
+            "fuer nicht passiert (live genau so gemeldet). Erkennst du IRGENDEINE Interaktion "
+            "im ganzen Satz, ignoriere 'starte den Browser' als eigenen Schritt komplett und "
+            "erledige ALLES in einem einzigen 'ego'-Aufruf.\n"
+            "action='screenshot' — sieht nach, was gerade auf seinem Bildschirm ist; "
+            "mit display=2 den zweiten Monitor. "
             "Nutze das, bevor du klickst oder tippst, und wenn er fragt 'was siehst du'.\n"
-            "action='click' — klickt bei x/y. action='type' — tippt text.\n"
+            "action='click' — klickt bei x/y; bei mehreren Monitoren display "
+            "mitgeben. KOORDINATEN NIEMALS RATEN: nimm ausschliesslich Werte, die "
+            "dir gerade `find` geliefert hat oder die du in EINEM Screenshot "
+            "abgelesen hast, den du unmittelbar davor gemacht hast. Erfundene "
+            "Zahlen klicken irgendwohin — beim Nutzer am 21.08.2026 landete ein "
+            "geratener Klick in einem fremden Fenster. Im Zweifel erst `find`. "
+            "action='type' — tippt text.\n"
             "action='find' — SUCHT ein Element (Knopf, Feld, Eintrag) ueber den "
             "Bedienungshilfen-Baum und liefert seine Koordinaten; target = Beschriftung "
-            "oder Rolle. action='wait' — wartet, bis so ein Element erscheint. "
-            "action='key' — Tastenkombination, text z. B. 'cmd+f' oder 'enter'. "
-            "action='scroll' — scrollt (text = Anzahl, negativ = nach unten).\n"
-            "SO BEDIENST DU EINE APP: oeffnen → `find` auf das Element → `click` → "
-            "`type`/`key` → wieder nachsehen (`screenshot` oder `find`). Sage NIEMALS, "
-            "du koennest 'nur oeffnen, aber nicht navigieren' — das stimmt nicht.\n"
+            "oder Rolle. NUR fuer NATIVE Programme (Finder, Excel, Einstellungen) — fuer "
+            "Inhalte INNERHALB eines Browsers (eine Website) funktioniert das NICHT "
+            "zuverlaessig, dafuer IMMER 'ego' nehmen. action='wait' — wartet, bis so ein "
+            "Element erscheint. action='key' — Tastenkombination, text z. B. 'cmd+f' oder "
+            "'enter'. action='scroll' — scrollt (text = Anzahl, negativ = nach unten).\n"
+            "action='ego' — DEIN NORMALER WEG FUER ALLES IN EINEM BROWSER, nicht nur "
+            "Login-Aufgaben: oeffnen, suchen, ein Video/Ergebnis anklicken, ein Formular "
+            "ausfuellen, eine Seite vorlesen — irgendein 'mach das im Browser', 'such mal', "
+            "'oeffne das Video' laeuft HIERUEBER, nicht ueber open+find+click. Bonus: laeuft "
+            "in SEINER ECHTEN, eingeloggten Sitzung (ego lite) — Mail, ein internes "
+            "Reisekosten-/Spesen-Tool (egal wie es heisst, z. B. 'Perk', 'Concur', 'SAP "
+            "Concur' — irgendein Name, den der Nutzer nennt und den DU nicht kennst, ist "
+            "trotzdem KEIN Grund fuer 'ich habe keinen Zugriff'; probiere die URL/den Namen "
+            "einfach in ego lite), Jira, Confluence, interne Tools — ohne erneutes Anmelden. "
+            "text = ein JS-Skript, das gegen ego lite "
+            "laeuft — SO VIEL DAVON WIE FUER DIE GANZE AUFGABE NOETIG IST, roh und "
+            "vollstaendig, genau wie du (das Modell) es auch als Claude Code direkt "
+            "koenntest. Alle Helfer stehen zur Verfuegung, nicht nur die haeufigsten: "
+            "useOrCreateTaskSpace, openOrReuseTab, snapshotText, click, doubleClick, hover, "
+            "dragMouse, fillInput, typeText, pressKey, scroll/scrollBy, waitForElement/"
+            "waitForLoad/waitForNetworkIdle, uploadFile, listTabs/switchTab/closeTab, "
+            "captureScreenshot, serverFetch/browserFetch, js, cdp — nur cliLog(...)-Ausgaben "
+            "kommen zurueck. NACH EINEM TAB OEFFNEN IST DIE AUFGABE NOCH NICHT FERTIG: "
+            "'oeffne YouTube und such nach X' heisst NICHT nur openOrReuseTab('youtube.com') "
+            "— das zeigt nur die Startseite, keine Ergebnisse. Bei einer SUCHE die "
+            "Ergebnis-URL direkt ansteuern (meist `?search_query=`/`?q=`) statt ein Suchfeld "
+            "zu tippen und abzuschicken — einfacher und zuverlaessiger, EIN Aufruf reicht: "
+            "\"const t = await useOrCreateTaskSpace('youtube-suche'); "
+            "await openOrReuseTab('https://www.youtube.com/results?search_query=pokemon', "
+            "{wait:true, timeout:20}); cliLog(await snapshotText());\" — danach hat cliLog "
+            "die ECHTEN Ergebnisse (Titel etc.), nicht nur 'Tab offen'. Fuer eine geloggte "
+            "Seite ohne bekanntes Such-URL-Muster: oeffnen, dann fillInput+click auf das "
+            "Suchfeld, dann snapshotText — alles in EINEM Skript, nicht als mehrere Aufrufe. "
+            "Startet ego lite SELBST, falls es nicht laeuft — KEIN "
+            "vorheriges action='open' noetig, das ist ein unnoetiger Umweg. RUF ES EINFACH "
+            "AUF: behaupte NIEMALS vorab, 'ego' sei 'nicht aktiviert' oder brauche erst eine "
+            "Freigabe von ihm — das weisst du nicht im Voraus. Ist es wirklich gesperrt, kommt "
+            "das als klarer Fehlertext zurueck (den du dann 1:1 weitergibst), nie als "
+            "Vermutung vorher.\n"
+            "MEHRERE BILDSCHIRME: erst `screenshot` MIT display=N, dann `click` mit "
+            "demselben display=N. Die Koordinaten gelten immer fuer den Bildschirm, "
+            "den du gerade angesehen hast.\n"
+            "SO BEDIENST DU EINE APP (eine NATIVE App — fuer Browser-Inhalte siehe 'ego' "
+            "oben): oeffnen → `find` auf das Element → `click` → `type`/`key` → wieder "
+            "nachsehen (`screenshot` oder `find`). Sage NIEMALS, du koennest 'nur oeffnen, aber nicht navigieren' — das stimmt nicht.\n"
             "Läuft keine Bridge, sag ihm genau das (Bridge-App starten), weiche NICHT auf "
             "etwas anderes aus. Beschreibe NIEMALS einen Bildschirm, dessen Screenshot "
-            "fehlgeschlagen ist."
+            "fehlgeschlagen ist.\n"
+            "JEDE ANDERE FAEHIGKEIT DER BRIDGE: Die obigen Kurzformen (open/screenshot/find/"
+            "click/type/key/wait/scroll/ego) sind nur die haeufigsten — die Bridge kann mehr, "
+            "u. a. die diskreten ego-Aktionen OHNE eigenes JS-Skript: 'ego_navigate' {url}, "
+            "'ego_snapshot' {max_chars}, 'ego_click' {selector oder text}, 'ego_fill' "
+            "{selector, value}, 'ego_wait' {selector, timeout_ms}, 'ego_capture' {}, "
+            "'ego_tabs' {index?}, 'ego_close' {} — dieselbe echte, eingeloggte Sitzung wie "
+            "'ego' oben, nur schon in einzelne Schritte zerlegt (gut, wenn du KEIN Skript "
+            "schreiben willst). Dazu z. B. shell_run, browser_navigate/-click/-fill/-snapshot "
+            "fuer ein isoliertes Browser-Profil, get_clipboard/set_clipboard, list_windows, "
+            "focus_window, close_app, drag. Fuer JEDE davon: setze action auf den ECHTEN "
+            "Aktionsnamen der Bridge (genau wie der Agent ihn nennt) und uebergib die "
+            "Parameter in `params` als Objekt — z. B. action='ego_navigate', "
+            "params={url:'https://…'}, oder action='shell_run', params={command:'ls'}. Das "
+            "erreicht ALLES, was der Agent (Computer-Use) auch kann — nichts davon ist dir "
+            "verwehrt.\n"
+            "Faehigkeiten, die serverseitig nicht freigeschaltet sind (z. B. shell, "
+            "ego_browser — beide standardmaessig aus), meldet die Bridge als klaren Fehler; "
+            "sag dem Nutzer dann genau das statt es zu verschweigen."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
             "properties": {
-                "action": {"type": "string", "description": "open | screenshot | find | click | type | key | wait | scroll"},
+                "action": {"type": "string", "description": (
+                    "open | screenshot | find | click | type | key | wait | scroll | ego — "
+                    "oder JEDER echte Bridge-Aktionsname (siehe Beschreibung) fuer alles "
+                    "andere, zusammen mit `params`."
+                )},
                 "target": {"type": "string", "description": "URL/Programmname (open) oder Beschriftung des gesuchten Elements (find/wait)."},
-                "text": {"type": "string", "description": "Text (type), Tastenkombination wie 'cmd+f' (key) oder Scroll-Anzahl."},
+                "text": {"type": "string", "description": "Text (type), Tastenkombination wie 'cmd+f' (key), Scroll-Anzahl, oder das JS-Skript (ego)."},
                 "x": {"type": "number", "description": "X-Koordinate (bei action='click')."},
                 "y": {"type": "number", "description": "Y-Koordinate (bei action='click')."},
+                "display": {"type": "number", "description": (
+                    "Welchen Bildschirm aufnehmen (bei action='screenshot'). "
+                    "1 = Hauptbildschirm. Weglassen = Hauptbildschirm. Nach einem "
+                    "Screenshot steht in der Antwort, wie viele es gibt."
+                )},
+                "params": {"type": "object", "description": (
+                    "Nur fuer einen echten Bridge-Aktionsnamen in `action` (nicht fuer die "
+                    "Kurzformen oben) — die Parameter dieser Aktion als Objekt, z. B. "
+                    "{command:'ls'} fuer shell_run oder {url:'https://…'} fuer browser_navigate."
+                )},
             },
             "required": ["action"],
         })},
@@ -776,6 +1039,35 @@ CONTROL_UI_TOOL = {
                 "query": {"type": "string", "description": "Optional topic to focus in the knowledge_graph."},
             },
             "required": ["action", "target"],
+        })},
+    }
+}
+
+LEARN_SKILL_TOOL = {
+    "toolSpec": {
+        "name": "learn_skill",
+        "description": (
+            "ZUSCHAUEN und daraus ein Skill bauen: Der Nutzer macht eine Aufgabe EINMAL "
+            "selbst an seinem Rechner vor (klicken, tippen), und daraus wird ein "
+            "wiederverwendbares Skill. Genau dafür, wenn der Nutzer sagt 'schau mal zu, was "
+            "ich mache', 'lern das von mir', 'ich zeig dir das einmal' o.ä.\n"
+            "action='start' — ab jetzt zeichnet die Bridge die Klicks, Tastatureingaben und "
+            "Screenshots des Nutzers auf. Der Nutzer arbeitet dann normal; ihr könnt "
+            "weiter reden. Setzt die Bridge-Berechtigung 'Eingaben mitschneiden' voraus.\n"
+            "action='finish' — wenn der Nutzer 'fertig' (oder 'das war's', 'stopp') sagt: "
+            "Aufzeichnung beenden, die Schritte und Bilder analysieren und ein Skill-Entwurf "
+            "bauen. Das Skill wird als ENTWURF gespeichert und erst nach Freigabe aktiv.\n"
+            "goal (optional): eine kurze Beschreibung, WAS die Aufgabe erreichen soll — das "
+            "hilft beim Benennen und Beschreiben des Skills. Sag kurz, was du tust "
+            "('alles klar, ich schaue zu' / 'ich baue jetzt das Skill')."
+        ),
+        "inputSchema": {"json": json.dumps({
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "description": "start | finish"},
+                "goal": {"type": "string", "description": "Kurz: was die Aufgabe erreichen soll."},
+            },
+            "required": ["action"],
         })},
     }
 }
@@ -891,11 +1183,14 @@ GET_DELEGATED_TASKS_TOOL = {
     "toolSpec": {
         "name": "get_delegated_tasks",
         "description": (
-            "List the tasks YOU delegated in THIS voice conversation, each with its short id, "
-            "instruction and status (running / done). Use it to report the current state of your "
-            "delegated tasks to the user, or to find the right id before a specific refine_task "
-            "(when several tasks run and the user means one particular one). Instant, no agent "
-            "round-trip."
+            "List delegated tasks with their short id, instruction and status. Shows BOTH the "
+            "tasks you delegated in THIS voice conversation (running / done, still steerable via "
+            "refine_task) AND the tasks recently run for this agent in EARLIER conversations, "
+            "with their result. Use it to report the current state, to find the right id before a "
+            "refine_task, and — importantly — when the user asks about a task from a PREVIOUS "
+            "session ('did you do the thing I asked earlier', 'what came of the mail task'): the "
+            "result of an earlier delegation shows up here even though this session did not start "
+            "it. Instant, no agent round-trip."
         ),
         "inputSchema": {"json": json.dumps({"type": "object", "properties": {}})},
     }
@@ -1104,11 +1399,65 @@ def _short_args(args: dict, limit: int = 160) -> str:
     return joined[:limit] + ("…" if len(joined) > limit else "")
 
 
+def _bildschirm_hinweis(result: dict) -> str:
+    """Was das Modell ueber Bildgroesse und Bildschirme wissen muss.
+
+    Die Bridge rechnet ``image_size`` und die Bildschirmliste seit jeher aus —
+    und niemand hat sie je weitergereicht. Das Modell nannte deshalb
+    Klickkoordinaten, ohne zu wissen, wie gross das Bild ueberhaupt ist, und
+    wusste nichts von einem zweiten Monitor. Beides am 21.08.2026 gemeldet:
+    „der voice und auch agent wissen WIE GROSS das Bild ist, damit der besser
+    klicken kann" und „geh bitte auf bildschirm 1 oder 2".
+
+    Gibt "" zurueck, wenn die Bridge nichts mitgeliefert hat — aeltere Bridges
+    tun das nicht, und ein erfundener Hinweis waere schlimmer als keiner.
+    """
+    teile = []
+    groesse = result.get("image_size") or {}
+    if groesse.get("w") and groesse.get("h"):
+        teile.append(
+            f" Das Bild ist {groesse['w']} mal {groesse['h']} Punkte gross — "
+            "Klickkoordinaten muessen INNERHALB dieser Groesse liegen, (0,0) ist oben links."
+        )
+    bildschirme = result.get("displays") or []
+    if len(bildschirme) > 1:
+        aktuell = result.get("display")
+        liste = ", ".join(
+            f"{b['number']}{' (Haupt)' if b.get('primary') else ''}: {b.get('width')}x{b.get('height')}"
+            for b in bildschirme
+        )
+        teile.append(
+            f" Der Nutzer hat {len(bildschirme)} Bildschirme ({liste}); du siehst gerade "
+            f"Nummer {aktuell}. Sagt er „geh auf Bildschirm 2\", mach einen neuen Screenshot "
+            "mit display=2."
+        )
+    return "".join(teile)
+
+
 def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
     lang = "Deutsch" if (language or "de").startswith("de") else language
     role = f" Deine Rolle: {agent_role}." if agent_role else ""
     return (
         _now_context() +
+        # Ganz vorne, weil es die haeufigste sichtbare Panne ist. Gemeldet am
+        # 21.08.2026 mit zwei Bildschirmfotos: im Transkript stand woertlich
+        # „Punkte zur Performance: n n-   Echtzeit-Faehigkeit**:" — das Modell
+        # hatte „\n\n- **Echtzeit-Faehigkeit**:" formatiert, und die
+        # Sprachsynthese liest die Markup-Zeichen mit. Im zweiten Fall endete
+        # ein Satz mit Doppelpunkt und die angekuendigte Liste kam gar nicht.
+        # Beides ist dieselbe Ursache: fuers Auge formatiert, obwohl es fuers
+        # Ohr ist. Nachtraeglich reparieren laesst sich das nicht — gesprochen
+        # ist gesprochen.
+        "DU WIRST VORGELESEN, NICHT GELESEN. Schreibe reinen Fliesstext. KEINE "
+        "Sternchen, keine Bindestrich-Listen, keine Nummerierung am Zeilenanfang, "
+        "keine Überschriften, keine Zeilenumbrüche, keine Backticks. Diese "
+        "Zeichen werden LAUT MITGESPROCHEN und klingen wie Kauderwelsch — aus "
+        "„**Punkt**:“ wird ein gestammeltes „Sternchen Punkt Sternchen“. "
+        "Mehrere Punkte verbindest du mit Worten: „erstens … zweitens … und "
+        "drittens …“ oder „zum einen … zum anderen …“. Kündigst du etwas mit "
+        "einem Doppelpunkt an, MUSS im selben Atemzug der Inhalt folgen — ein "
+        "Satz, der mit „:“ endet und dann aufhört, ist schlimmer als keine "
+        "Antwort.\n"
         "NICHT LAUT DENKEN: Sprich NIEMALS deinen Denkprozess aus. Kein „Okay, der Nutzer "
         "fragt…“, kein „Ich muss prüfen…“, kein „Lass mich…“, keine Begründung, WARUM du "
         "etwas tust, keine Werkzeugnamen. Denke still, antworte direkt. Fragt er nach der "
@@ -1158,7 +1507,11 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "get_agent_activity (sofort — zeigt die laufende Aufgabe + die letzten konkreten Schritte "
         "des Agenten aus dem Live-Feed).\n"
         "• Fragen nach MEINEM Wissen ('was weißt du über…', 'hast du dir … gemerkt', zu Kunde/"
-        "Projekt/Kontakt/Verfahren) → search_knowledge (sofort, durchsucht mein Gedächtnis).\n"
+        "Projekt/Kontakt/Verfahren) UND Fragen nach FRÜHEREN GESPRÄCHEN, egal auf welchem Kanal "
+        "('was haben wir besprochen', 'worüber haben wir letztes Mal geredet', 'was war letzte "
+        "Woche', 'hatten wir das schon mal Thema') → search_knowledge (sofort, durchsucht mein "
+        "Gedächtnis — das schließt vergangene Gespräche über Web/App/Telegram/Anruf mit ein, "
+        "nicht nur gemerkte Fakten).\n"
         "• Fragen nach dem zweiten Gehirn / Vault / Wiki / Firmen- oder Abteilungswissen ('steht "
         "was im Wiki zu…', 'schau ins zweite Gehirn', 'gibt es Doku/eine Anleitung zu…') → "
         "search_brain (sofort, durchsucht meine Vaults).\n"
@@ -1307,13 +1660,43 @@ def _system_prompt(agent_name: str, agent_role: str, language: str) -> str:
         "springt der Graph direkt auf den passenden Punkt statt leer aufzugehen. Auch bei jeder "
         "Folgesuche im schon offenen Graphen ('such nach ähnlichen Themen') erneut control_ui mit "
         "der neuen query aufrufen.\n"
-        "GESPRÄCHSTITEL: Sobald nach dem ersten echten Austausch klar ist, worum es geht, rufe "
-        "EINMAL rename_conversation mit einem kurzen thematischen Titel auf. Kommentiere das nicht.\n"
+        "GESPRÄCHSTITEL (PFLICHT): Rufe SPÄTESTENS nach der ERSTEN inhaltlichen Nutzeräußerung "
+        "genau EINMAL rename_conversation mit einem kurzen, thematischen Titel (2–5 Wörter) auf — "
+        "auch bei einem kleinen Anliegen. Warte NICHT auf ein 'großes' Thema; benenne nach dem, "
+        "was der Nutzer zuerst will. Der Standardname 'Sprach-Gespräch' darf NICHT stehen bleiben. "
+        "Kommentiere das nicht.\n"
         "DATEIEN ZEIGEN: Soll der Nutzer eine Datei sehen/bekommen, delegiere per ask_agent mit der "
         "klaren Anweisung, die Datei mit present_file zu präsentieren — dann erscheint sie klickbar "
         "im UI. Beantworte auch mehrteilige Fragen VOLLSTÄNDIG (jeden Teil).\n"
-        "Halte gesprochene Antworten kurz — keine Aufzählungen, kein Code, sprich wie ein Mensch."
+        "Halte gesprochene Antworten kurz und sprich wie ein Mensch: kein Code, keine "
+        "Stichpunkt-Liste zum Vorlesen. Mehrere Punkte gehören in FLIESSTEXT "
+        "('dafür gibt es drei Gründe: erstens …, zweitens …'). Wenn du etwas "
+        "ankündigst, sag es auch — ein Satz, der mit einem Doppelpunkt endet und "
+        "dann aufhört, ist schlimmer als gar keine Antwort."
     )
+
+
+#: Fehlermeldungen der Sprach-Engines, die von selbst wieder weggehen. Bewusst
+#: eine Positivliste: was hier nicht steht, wird dem Nutzer gezeigt statt still
+#: im Kreis neu verbunden. Ein falscher Zugangsschluessel wuerde sonst achtmal
+#: hintereinander scheitern, ohne dass jemand erfaehrt, warum.
+_VORUEBERGEHEND = (
+    "timed out",           # „Model has timed out in processing the request"
+    "timeout",
+    "throttl",             # Drosselung durch AWS
+    "too many requests",
+    "service unavailable",
+    "internal server error",
+    "connection reset",
+    "stream has completed",
+    "stream_has_completed",   # AWS_ERROR_HTTP_STREAM_HAS_COMPLETED
+    "temporarily",
+)
+
+
+def _ist_voruebergehend(meldung: str) -> bool:
+    text = (meldung or "").lower()
+    return any(m in text for m in _VORUEBERGEHEND)
 
 
 @dataclass
@@ -1349,9 +1732,22 @@ class RealtimeVoiceSession:
     _cm_assistant: str = ""     # last assistant turn text
     _resume_summary: str = ""  # prior conversation context when continuing a session
     _resumed_from_earlier_call: bool = False  # summary came from an EARLIER call, not this session
+    #: Der Nutzer hat ausdruecklich ein NEUES Gespraech gestartet. Dann wird das
+    #: letzte Gespraech nicht nachgeladen — sonst begruesst ein frischer
+    #: Sprachchat mit „wir waren gerade dabei…" und macht am alten Thema weiter.
+    #: Die Nachlade-Logik selbst bleibt: nach einem Verbindungsabbruch oder beim
+    #: zweiten Anruf ist sie genau richtig.
+    neues_gespraech: bool = False
     _needs_briefing: bool = False  # kein Auftrag → das gehoert in den ERSTEN Satz
     _agent_config: dict | None = None  # fuer Zeitzone und Co. waehrend des Gespraechs
     _tool_calls: dict = field(default_factory=dict)  # tool_use_id → (Name, Argumente)
+    #: Werkzeugname → (MCP-Ziel, Originalname). Wird beim Verbinden gefuellt;
+    #: hier vorbelegt, damit die Zustellung auch dann nicht wirft, wenn das
+    #: Laden der Server fehlgeschlagen ist.
+    _mcp_plan: dict = field(default_factory=dict)
+    #: Name, Dienst und Beschreibung ALLER Werkzeuge — auch der nicht
+    #: deklarierten. Grundlage fuer `mcp_search_tools`.
+    _mcp_katalog: list = field(default_factory=list)
     _memory_context: str = ""  # facts this agent stored earlier (name, preferences, decisions)
     # Tasks I delegated in THIS call — so "wie ist der Stand" reflects MY tasks
     # (the ones shown live on the right), not the agent's unrelated global lane.
@@ -1406,7 +1802,7 @@ class RealtimeVoiceSession:
                        ChatMessage.role.in_(("user", "assistant")))
                 .order_by(ChatMessage.id.desc()).limit(12)
             )).scalars().all()
-            if not rows:
+            if not rows and not self.neues_gespraech:
                 last_session = (await db.execute(
                     select(ChatMessage.session_id)
                     .where(ChatMessage.agent_id == self.agent_id,
@@ -1463,10 +1859,12 @@ class RealtimeVoiceSession:
         # engine converts it to OpenAI function format internally.
         _tools = [
             GET_AGENT_STATUS_TOOL, LIST_AGENT_TASKS_TOOL, GET_AGENT_SETTINGS_TOOL,
+            LIST_AGENT_SECRETS_TOOL, ESCALATE_IF_UNSURE_TOOL,
             GET_AGENT_ACTIVITY_TOOL, WEB_SEARCH_TOOL, SEARCH_KNOWLEDGE_TOOL,
             SEARCH_BRAIN_TOOL, READ_BRAIN_TOOL, BRAIN_LINKS_TOOL,
             SKILL_SEARCH_TOOL, M365_CALENDAR_TODAY_TOOL, M365_MAIL_RECENT_TOOL,
             M365_SEND_MAIL_TOOL, M365_CREATE_EVENT_TOOL,
+            M365_SEARCH_PEOPLE_TOOL, M365_TEAMS_MESSAGE_TOOL,
             LIST_WORKSPACE_TOOL, SEARCH_FILES_TOOL, READ_FILE_TOOL, OPEN_FILE_TOOL, WRITE_BRAIN_TOOL,
             LIST_APPS_TOOL, APP_LOGS_TOOL, START_APP_TOOL, STOP_APP_TOOL, RESTART_APP_TOOL,
             REBUILD_APP_TOOL,
@@ -1475,8 +1873,56 @@ class RealtimeVoiceSession:
             COMPLETE_ONBOARDING_TOOL,
             SET_AUTONOMY_TOOL, SET_MODEL_TOOL, VOICE_HELP_TOOL,
             ASK_AGENT_TOOL, PLAN_TASK_TOOL, CANCEL_TASK_TOOL, MANAGE_SCHEDULES_TOOL, DELEGATE_TASKS_TOOL, REFINE_TASK_TOOL, GET_DELEGATED_TASKS_TOOL,
-            SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, DESKTOP_TOOL, RENAME_CONVERSATION_TOOL,
+            SHOW_ON_SCREEN_TOOL, CONTROL_UI_TOOL, DESKTOP_TOOL, LEARN_SKILL_TOOL,
+            RENAME_CONVERSATION_TOOL,
         ]
+
+        # Die MCP-Server, die AN DIESEM AGENTEN haengen, werden zu echten
+        # Werkzeugen der Sprachfront.
+        #
+        # Bis hierher stand die Werkzeugliste vollstaendig von Hand im Quelltext.
+        # Wer einen MCP-Server anband, sah ihn im Chat — die Stimme nicht. Sie
+        # reichte den Auftrag per `ask_agent` weiter, und der Nutzer musste ihr am
+        # Ende selbst sagen, welches Werkzeug es gibt (gemeldet am 18.08.2026 mit
+        # einem Server, der 32 Werkzeuge meldete).
+        #
+        # Die Auswahl kommt aus derselben Stelle wie die des Containers, samt
+        # Gruppenrechten — siehe core/agent_mcp_servers.py.
+        try:
+            from app.core.agent_mcp_servers import (
+                WERKZEUG_BUDGET, servers_for_agent, voice_toolspecs,
+            )
+            from app.db.session import async_session_factory
+            async with async_session_factory() as _db:
+                _server = await servers_for_agent(_db, self.agent_id, cfg)
+                # Budget: das Gesamtpaket muss unter die Grenze der Engine passen.
+                # Die eingebauten Werkzeuge stehen schon fest, dazu die beiden
+                # Nachschlage-Werkzeuge unten.
+                _platz = WERKZEUG_BUDGET - len(_tools) - 2
+                # Die Namen, die hier oben schon vergeben sind, muessen mit —
+                # sonst kann ein angebundener Dienst einen davon ein zweites Mal
+                # belegen, und Bedrock weist den GESAMTEN Sitzungsstart ab
+                # (`ValidationException: Input is invalid`). Genau so ist die
+                # Sprachfront am 18.08. ausgefallen, nachdem ein Dienst ein
+                # eigenes `list_todos` mitbrachte.
+                _belegt = {
+                    str(((t or {}).get("toolSpec") or {}).get("name") or "")
+                    for t in _tools
+                }
+                _belegt.discard("")
+                _fremde, self._mcp_plan, self._mcp_katalog = voice_toolspecs(
+                    _server, _platz, _belegt
+                )
+            if self._mcp_plan:
+                _tools = _tools + _fremde + [MCP_SEARCH_TOOLS_TOOL, MCP_CALL_TOOL_TOOL]
+                logger.info(
+                    "[Sprache] %d MCP-Werkzeuge aus %d Server(n) fuer Agent %s: %d direkt, "
+                    "%d ueber Nachschlagen",
+                    len(self._mcp_plan), len(_server), self.agent_id,
+                    len(_fremde), len(self._mcp_plan) - len(_fremde),
+                )
+        except Exception as e:  # noqa: BLE001 — ohne Fremdwerkzeuge reden statt gar nicht
+            logger.warning("[Sprache] MCP-Werkzeuge nicht ladbar: %s", e)
         # Einrichtungsstand: wer anruft, soll nicht 'wie kann ich helfen?' hoeren,
         # wenn der Agent noch gar nicht weiss, wofuer er da ist.
         from app.core.onboarding import onboarding_note
@@ -1490,9 +1936,40 @@ class RealtimeVoiceSession:
         # Abend „ich plane dir den heutigen Tag", waehrend der Agent laengst morgen plant.
         from app.core import plan_rhythm as _rhythm
         _rhythm_note = _rhythm.rhythm_note(agent, spoken=True)
+        # Die angebundenen MCP-Werkzeuge ausdruecklich benennen. Ohne diesen Satz
+        # reichte die Stimme selbst DANN noch an den Agenten weiter, wenn sie das
+        # Werkzeug hatte — sie kannte es, hielt es aber nicht fuer ihres.
+        _mcp_note = ""
+        if self._mcp_plan:
+            _dienste = sorted({ziel.name for ziel, _ in self._mcp_plan.values()})
+            _mcp_note = (
+                "\n\nANGEBUNDENE DIENSTE: Du hast Werkzeuge aus "
+                + ", ".join(_dienste)
+                + ". Die gehoeren DIR — benutze sie SELBST und direkt. Gib so etwas "
+                "NIEMALS an den Agenten weiter und behaupte nie, du haettest keinen "
+                "Zugriff darauf. Ihre Beschreibung beginnt mit dem Dienstnamen in "
+                "eckigen Klammern. Hast du ein passendes Werkzeug nicht direkt in "
+                "deiner Liste, suche es mit mcp_search_tools und rufe es mit "
+                "mcp_call_tool auf.\n"
+            )
+
+        # Master-Regeln des Betreibers. Die Agenten-Laufzeiten bekommen sie ueber
+        # ihre Anleitungsdatei; die Sprachfront baut ihren Prompt selbst und
+        # muss sie ausdruecklich holen — sonst gaelte das Gesetz fuer alle
+        # ausser der Stimme. Ganz vorne, damit sie ueber allem steht.
+        _master = ""
+        try:
+            from app.core import master_rules as _mr
+            from app.db.session import async_session_factory
+            async with async_session_factory() as _db:
+                _master = await _mr.load(_db)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Sprache] Master-Regeln nicht ladbar: %s", e)
+
         sys_prompt = (
-            _system_prompt(agent_name, agent_role, language)
-            + _ob_note + _rhythm_note + self._memory_context
+            _master
+            + _system_prompt(agent_name, agent_role, language)
+            + _ob_note + _rhythm_note + _mcp_note + self._memory_context
         )
         engine = creds.get("engine") or "nova_sonic"
 
@@ -1748,12 +2225,31 @@ class RealtimeVoiceSession:
         if self._closed or not self._nova:
             return
         if not answer or answer.startswith("[Fehler"):
-            msg = ("Die Auswertung des Screenshots kam nicht zurueck. Sag das kurz und frage, "
-                   "was er sieht — erfinde nichts.")
+            # Den GRUND weitersagen, nicht nur „kam nicht zurueck".
+            #
+            # Am 21.08.2026 hiess der Grund „You've hit your limit · resets
+            # 3:10pm" — das Kontingent des Agenten war aufgebraucht. Die Stimme
+            # sagte stattdessen „die Auswertung kam nicht zurueck" und fragte den
+            # Nutzer, was ER sieht. Der suchte darauf eine halbe Stunde den
+            # Fehler bei den Bildern, obwohl die Antwort im Klartext vorlag.
+            grund = answer[8:].rstrip("]").strip() if answer.startswith("[Fehler") else ""
+            msg = (
+                f"Die Auswertung ist fehlgeschlagen. Der Grund im Wortlaut: {grund}. "
+                "Sag ihm diesen Grund kurz und in eigenen Worten — erfinde nichts "
+                "dazu und frage nicht, was er sieht."
+                if grund else
+                "Die Auswertung des Screenshots kam nicht zurueck — ohne Begruendung. "
+                "Sag das kurz und frage, was er sieht — erfinde nichts."
+            )
         else:
             msg = ("Auswertung des Screenshots ist da: " + answer +
                    "\nGib das jetzt knapp wieder, in einem oder zwei Saetzen.")
         await self._inject_when_quiet(msg)
+
+    #: Wie lange eine Zwischenmeldung hoechstens auf eine Sprechpause wartet,
+    #: nachdem die kurze Frist erfolglos war. Grosszuegig, weil eine
+    #: Fertigmeldung nicht auf die Sekunde dringend ist — aber ankommen muss.
+    NACHREICH_FRIST = 180.0
 
     async def _inject_when_quiet(self, msg: str, *, timeout: float = 25.0) -> bool:
         """Die EINE Stelle fuer Meldungen, die VON SELBST kommen.
@@ -1769,20 +2265,61 @@ class RealtimeVoiceSession:
         Stillstands-Wachhund. Begrenzt, damit nie etwas haengen bleibt.
         """
         deadline = time.monotonic() + timeout
+        ruhig = False
         while not self._closed and self._nova:
             quiet = time.monotonic() - getattr(self, "_last_spoken", 0.0)
             if quiet > 1.2 and not self._drop_audio:
+                ruhig = True
                 break
             if time.monotonic() > deadline:
                 break
             await asyncio.sleep(0.3)
         if self._closed or not self._nova:
+            logger.info("Zwischenmeldung verworfen, Sitzung beendet agent=%s: %.60s",
+                        self.agent_id, msg)
             return False
+        if not ruhig:
+            # ``_last_spoken`` wird bei JEDEM Audioschnipsel neu gesetzt. Redet das
+            # Modell durchgehend — beobachtet am 18.08.2026: 38 Sekunden am Stueck —
+            # wird es nie still, und frueher wurde nach 25 Sekunden trotzdem
+            # eingespielt. Genau das haengt die Meldung an den laufenden Satz: sie
+            # steht im Text und wird nie gesprochen. Der Nutzer bekommt also nichts
+            # mit, obwohl die Aufgabe fertig ist.
+            #
+            # Also weiter warten statt sie zu verheizen. Eine Fertigmeldung ist nicht
+            # auf die Sekunde dringend — sie muss aber ankommen.
+            logger.info(
+                "Zwischenmeldung wartet: Modell spricht seit %.0fs durchgehend agent=%s",
+                timeout, self.agent_id,
+            )
+            lange_frist = time.monotonic() + self.NACHREICH_FRIST
+            while not self._closed and self._nova and time.monotonic() < lange_frist:
+                quiet = time.monotonic() - getattr(self, "_last_spoken", 0.0)
+                if quiet > 1.2 and not self._drop_audio:
+                    ruhig = True
+                    break
+                await asyncio.sleep(0.5)
+            if self._closed or not self._nova:
+                logger.warning("Zwischenmeldung verworfen, Sitzung endete waehrend "
+                               "des Wartens agent=%s: %.60s", self.agent_id, msg)
+                return False
+        if not ruhig:
+            # Letzter Ausweg nach der langen Frist: lieber einspielen und
+            # riskieren, dass es verschluckt wird, als gar nichts zu melden.
+            # Laut, damit es nicht wieder unbemerkt bleibt.
+            logger.warning(
+                "Zwischenmeldung nach %.0fs immer noch keine Sprechpause — wird in "
+                "die laufende Ausgabe eingespielt und kann verschluckt werden "
+                "agent=%s: %.60s", self.NACHREICH_FRIST, self.agent_id, msg,
+            )
         try:
             await self._nova.inject_user_text(self._engine_safe(msg))
+            logger.info("Zwischenmeldung eingespielt (Sprechpause=%s) agent=%s",
+                        "ja" if ruhig else "nein", self.agent_id)
             return True
         except Exception:  # noqa: BLE001 — eine Zwischenmeldung reisst nie das Gespraech
-            logger.debug("inject failed agent=%s", self.agent_id, exc_info=True)
+            logger.warning("Zwischenmeldung fehlgeschlagen agent=%s", self.agent_id,
+                           exc_info=True)
             return False
 
     async def _notify_files_bg(self, paths: list[str]) -> None:
@@ -1855,8 +2392,14 @@ class RealtimeVoiceSession:
             if (data.get("role") or "").upper() == "USER":
                 self._drop_audio = False
         elif kind == "interrupted":
-            # Nova Sonic detected a barge-in itself → skip the rest of this turn.
-            self._drop_audio = True
+            # Nova Sonic detected a barge-in itself (the "just speak to interrupt"
+            # UX) — must do the SAME full stop as the explicit interrupt() button:
+            # dropping future audio alone leaves whatever was already queued (both
+            # server-side _out_queue and the client's local buffer) playing on,
+            # so the bot keeps talking for a few seconds after the user starts
+            # speaking (reported 2026-08-26). interrupt() also purges the queue
+            # and tells the client to flush — do the whole thing, not just step 1.
+            await self.interrupt()
         elif kind == "text":
             role = (data.get("role") or "").upper()
             text = data.get("text", "")
@@ -1887,7 +2430,36 @@ class RealtimeVoiceSession:
                 len(getattr(self, "_shown_files", ())),
                 len(self._planned), data.get("message", ""),
             )
-            await self._emit({"type": "error", "data": {"message": data.get("message", "Realtime-Fehler")}})
+            # Vorübergehend oder endgültig? Der Browser bleibt bei einem Fehler
+            # stehen und zeigt ihn an — richtig bei fehlenden Zugangsdaten,
+            # falsch bei „Model has timed out in processing the request"
+            # (gemeldet am 18.08.2026). Das ist dasselbe wie ein abgerissener
+            # Stream und gehört genauso behandelt: neu verbinden, Gespräch
+            # fortsetzen. Ohne die Unterscheidung müsste der Nutzer bei jedem
+            # Schluckauf von Hand neu starten.
+            meldung = str(data.get("message", "Realtime-Fehler"))
+            if "content filter" in meldung.lower():
+                # AWS blockt hier fast immer den beim Aufbau injizierten
+                # Gespraechsverlauf (_greet mit _resume_summary) — deterministisch,
+                # bei jedem Verbindungsaufbau derselben Sitzung wieder. Ein
+                # Reconnect ist zwecklos; was hilft, ist ein frisches Gespraech
+                # ohne den beanstandeten Verlauf. Das muss die Meldung sagen,
+                # sonst startet der Nutzer achtmal dasselbe neu.
+                await self._emit({"type": "error", "data": {
+                    "message": (
+                        "Der Modell-Anbieter blockiert Inhalte dieses Gespraechs "
+                        "(Content-Filter) — das betrifft den geladenen Verlauf, "
+                        "nicht deine Frage. Starte ein neues Gespraech, dann "
+                        "laeuft die Sprachsteuerung wieder."
+                    ),
+                    "retryable": False,
+                    "reason": "content_filter",
+                }})
+            else:
+                await self._emit({"type": "error", "data": {
+                    "message": meldung,
+                    "retryable": _ist_voruebergehend(meldung),
+                }})
         elif kind == "done":
             await self._emit({"type": "done", "data": {}})
             await self._emit(None)  # end the outbound stream
@@ -1950,6 +2522,50 @@ class RealtimeVoiceSession:
             "input": _short_args(args),
         }})
 
+        # ── Werkzeuge der angebundenen MCP-Server: direkt dorthin, nicht ueber
+        #    den Agenten. Genau das war die Beschwerde — die Stimme reichte alles
+        #    weiter, statt das Werkzeug zu benutzen, das der Nutzer angebunden hat.
+        if name == "mcp_search_tools":
+            from app.core.agent_mcp_servers import suche_im_katalog
+            await self._respond(tool_use_id, suche_im_katalog(
+                self._mcp_katalog, str(args.get("query") or "")))
+            return
+
+        if name == "mcp_call_tool":
+            gesucht = str(args.get("name") or "").strip()
+            roh_args = args.get("arguments")
+            if isinstance(roh_args, str):
+                try:
+                    roh_args = json.loads(roh_args) if roh_args.strip() else {}
+                except (json.JSONDecodeError, TypeError):
+                    roh_args = {}
+            if not isinstance(roh_args, dict):
+                roh_args = {}
+            if gesucht not in self._mcp_plan:
+                # Wortlaut fuer das Modell: es soll suchen statt zu behaupten,
+                # es gaebe das Werkzeug nicht.
+                await self._respond(tool_use_id, (
+                    f"Es gibt kein Werkzeug namens {gesucht}. "
+                    "Suche zuerst mit mcp_search_tools nach dem richtigen Namen."
+                ))
+                return
+            name, args = gesucht, roh_args
+
+        if name in self._mcp_plan:
+            server, original = self._mcp_plan[name]
+            try:
+                from app.core.agent_mcp_servers import call_agent_tool
+                antwort = await call_agent_tool(server, original, args)
+            except Exception as e:  # noqa: BLE001
+                # Der Wortlaut geht an das Modell — es soll dem Nutzer SAGEN
+                # koennen, was schiefging, statt still auf `ask_agent`
+                # auszuweichen und so zu tun, als gaebe es das Werkzeug nicht.
+                logger.warning("[Sprache] MCP-Werkzeug %s auf %s fehlgeschlagen: %s",
+                               original, server.name, e)
+                antwort = f"Der Dienst {server.name} hat nicht geantwortet: {e}"
+            await self._respond(tool_use_id, antwort)
+            return
+
         # ── Fast tools: read orchestrator data directly (ms, no agent round-trip) ──
         if name == "get_agent_status":
             await self._respond(tool_use_id, await self._fast_status())
@@ -1959,6 +2575,12 @@ class RealtimeVoiceSession:
             return
         if name == "get_agent_settings":
             await self._respond(tool_use_id, await self._fast_settings())
+            return
+        if name == "list_agent_secrets":
+            await self._respond(tool_use_id, await self._fast_secrets())
+            return
+        if name == "escalate_if_unsure":
+            await self._respond(tool_use_id, await self._eskalieren(args))
             return
         if name == "get_agent_activity":
             await self._respond(tool_use_id, await self._fast_activity())
@@ -1987,7 +2609,8 @@ class RealtimeVoiceSession:
                 str(args.get("action") or "").strip().lower(),
                 str(args.get("target") or ""),
                 str(args.get("text") or ""),
-                args.get("x"), args.get("y"),
+                args.get("x"), args.get("y"), args.get("display"),
+                args.get("params") if isinstance(args.get("params"), dict) else None,
             ))
             return
 
@@ -1995,6 +2618,12 @@ class RealtimeVoiceSession:
             await self._respond(tool_use_id, await self._control_ui(
                 str(args.get("action") or ""), str(args.get("target") or ""),
                 str(args.get("query") or ""),
+            ))
+            return
+        if name == "learn_skill":
+            await self._respond(tool_use_id, await self._learn_skill(
+                str(args.get("action") or "").strip().lower(),
+                str(args.get("goal") or ""),
             ))
             return
         if name == "rename_conversation":
@@ -2016,10 +2645,17 @@ class RealtimeVoiceSession:
             await self._respond(tool_use_id, await self._skill_search(str(args.get("query") or "")))
             return
         if name == "m365_calendar_today":
-            await self._respond(tool_use_id, await self._m365_calendar_today(int(args.get("days_ahead") or 1)))
+            await self._respond(tool_use_id, await self._m365_calendar_today(
+                int(args.get("days_ahead") or 1), str(args.get("when") or ""),
+            ))
             return
         if name == "m365_mail_recent":
-            await self._respond(tool_use_id, await self._m365_mail_recent(int(args.get("limit") or 8)))
+            await self._respond(tool_use_id, await self._m365_mail_recent(
+                int(args.get("limit") or 8),
+                str(args.get("search") or ""),
+                str(args.get("sender") or ""),
+                str(args.get("subject") or ""),
+            ))
             return
         if name == "m365_send_mail":
             await self._respond(tool_use_id, await self._m365_send_mail(
@@ -2032,6 +2668,15 @@ class RealtimeVoiceSession:
                 str(args.get("subject") or ""), str(args.get("start") or ""),
                 str(args.get("end") or ""), str(args.get("attendees") or ""),
                 str(args.get("location") or ""),
+            ))
+            return
+        if name == "m365_search_people":
+            await self._respond(tool_use_id, await self._m365_search_people(str(args.get("query") or "")))
+            return
+        if name == "m365_teams_message":
+            await self._respond(tool_use_id, await self._m365_teams_message(
+                str(args.get("person") or ""), str(args.get("message") or ""),
+                bool(args.get("confirmed") or False),
             ))
             return
         if name == "list_workspace":
@@ -2081,7 +2726,11 @@ class RealtimeVoiceSession:
             await self._respond(tool_use_id, await self._voice_help())
             return
         if name == "save_memory":
-            await self._respond(tool_use_id, await self._save_memory(str(args.get("content") or ""), str(args.get("key") or "")))
+            await self._respond(tool_use_id, await self._save_memory(
+                str(args.get("content") or ""), str(args.get("key") or ""),
+                category=str(args.get("category") or "") or None,
+                importance=args.get("importance"),
+            ))
             return
         if name == "list_todos":
             await self._respond(tool_use_id, await self._list_todos())
@@ -2253,13 +2902,15 @@ class RealtimeVoiceSession:
                     "caption": str(edata.get("caption") or ""),
                 }})
         elif kind == "file":
+            filename = str(edata.get("filename") or "Datei")
+            media_type = str(edata.get("media_type") or "")
+            caption = str(edata.get("caption") or "")
+            path = str(edata.get("path") or "")
             await self._emit({"type": "media", "data": {
-                "kind": "file",
-                "filename": str(edata.get("filename") or "Datei"),
-                "media_type": str(edata.get("media_type") or ""),
-                "caption": str(edata.get("caption") or ""),
-                "path": str(edata.get("path") or ""),  # for the download link
+                "kind": "file", "filename": filename, "media_type": media_type,
+                "caption": caption, "path": path,  # for the download link
             }})
+            await self._persist_media(filename, media_type, path, caption)
 
     def _collect_transfer_files(self) -> list[dict]:
         """List files currently in /workspace/transfer (top + one subdir level)."""
@@ -2332,6 +2983,7 @@ class RealtimeVoiceSession:
                 "caption": "",
                 "path": path,
             }})
+            await self._persist_media(name, media_type, path)
             if len(self._shown_files) >= 24:  # hard cap per call
                 break
 
@@ -2381,27 +3033,87 @@ class RealtimeVoiceSession:
         (``_planned``). Vorher fehlten die eingeplanten hier — der Agent antwortete
         auf „guck mal in die Aufgabe rein" mit „habe noch keine delegiert", waehrend
         genau diese Aufgabe lief.
+
+        Zeigt ZUSAETZLICH die zuletzt fuer diesen Agenten gelaufenen Aufgaben aus
+        FRUEHEREN Sprachsitzungen. Ohne das sah eine NEUE Sitzung nur ihren eigenen
+        (leeren) In-Memory-Zustand: eine per Sprache delegierte Aufgabe lief durch,
+        ihr Ergebnis (auch ein „das geht mit meinen Tools nicht, bitte Ruecksprache")
+        blieb dem Nutzer aber verborgen, weil das die Sitzung war, die sie angestossen
+        hatte — genau die ist beim naechsten Mal weg.
         """
-        if not self._delegations and not self._planned:
-            return "Ich habe in diesem Gespräch noch keine Aufgabe delegiert."
-        running = [d for d in self._delegations if not d["done"]]
-        done = len(self._delegations) - len(running)
-        total_running = len(running) + len(self._planned)
-        lines = [f"Meine Aufgaben ({total_running} laufen, {done} fertig):"]
-        for d in self._delegations:
-            if d["done"]:
-                extra = f" — {d['result']}" if d.get("result") else ""
-                lines.append(f"[id {d['id']}] FERTIG: {d['instruction']}{extra}")
-            else:
-                extra = f" (gerade: {d['last']})" if d.get("last") else ""
-                lines.append(f"[id {d['id']}] LÄUFT: {d['instruction']}{extra}")
-        for tid, title in self._planned.items():
-            status, last = await self._planned_task_state(tid)
-            extra = f" (gerade: {last})" if last else ""
-            state = f"EINGEPLANT/{status}" if status else "EINGEPLANT"
-            lines.append(f"[id {tid}] {state}, läuft im Hintergrund: {title}{extra}")
-        lines.append("Für eine Korrektur an einer davon: refine_task (id optional = letzte laufende).")
+        lines: list[str] = []
+        if self._delegations or self._planned:
+            running = [d for d in self._delegations if not d["done"]]
+            done = len(self._delegations) - len(running)
+            total_running = len(running) + len(self._planned)
+            lines.append(f"In diesem Gespräch ({total_running} laufen, {done} fertig):")
+            for d in self._delegations:
+                if d["done"]:
+                    extra = f" — {d['result']}" if d.get("result") else ""
+                    lines.append(f"[id {d['id']}] FERTIG: {d['instruction']}{extra}")
+                else:
+                    extra = f" (gerade: {d['last']})" if d.get("last") else ""
+                    lines.append(f"[id {d['id']}] LÄUFT: {d['instruction']}{extra}")
+            for tid, title in self._planned.items():
+                status, last = await self._planned_task_state(tid)
+                extra = f" (gerade: {last})" if last else ""
+                state = f"EINGEPLANT/{status}" if status else "EINGEPLANT"
+                lines.append(f"[id {tid}] {state}, läuft im Hintergrund: {title}{extra}")
+            lines.append("Für eine Korrektur an einer davon: refine_task (id optional = letzte laufende).")
+
+        vorher = await self._recent_agent_tasks()
+        if vorher:
+            lines.append("Aus früheren Gesprächen (zuletzt für dich erledigt):")
+            lines.extend(vorher)
+
+        if not lines:
+            return ("Ich habe in diesem Gespräch noch keine Aufgabe delegiert, und aus "
+                    "früheren finde ich auch keine offene oder kürzlich erledigte.")
         return " ".join(lines)
+
+    async def _recent_agent_tasks(self, limit: int = 5) -> list[str]:
+        """Zuletzt fuer DIESEN Agenten gelaufene, vom Nutzer angestossene Aufgaben.
+
+        Sitzungsuebergreifend aus der Datenbank — damit eine neue Sprachsitzung
+        weiss, was frueher delegiert wurde und wie es ausging. Automatische
+        Laeufe (Zeitplan/Proaktiv, Titel in ``[...]``) werden ausgeblendet: die
+        hat der Nutzer nicht delegiert, sie wuerden die Antwort nur zumuellen.
+        """
+        agent_id = getattr(self, "agent_id", None)
+        if not agent_id:
+            return []
+        try:
+            from datetime import datetime, timedelta, timezone
+            from app.db.session import resilient_session
+            from app.models.task import Task
+            from sqlalchemy import select
+            seit = datetime.now(timezone.utc) - timedelta(days=2)
+            async with resilient_session() as db:
+                rows = (await db.execute(
+                    select(Task)
+                    .where(Task.agent_id == agent_id)
+                    .where(Task.created_at >= seit)
+                    .where(~Task.title.like("[%"))   # keine [Scheduled]/[Proactive]/…
+                    .order_by(Task.created_at.desc())
+                    .limit(limit)
+                )).scalars().all()
+        except Exception:  # noqa: BLE001 — Aufgabenliste darf den Sprach-Turn nicht kippen
+            logger.warning("recent_agent_tasks lookup failed agent=%s", agent_id, exc_info=True)
+            return []
+
+        out: list[str] = []
+        for t in rows:
+            status = str(getattr(t.status, "value", t.status) or "").lower()
+            zustand = {"completed": "FERTIG", "running": "LÄUFT",
+                       "failed": "FEHLGESCHLAGEN"}.get(status, status.upper() or "?")
+            titel = (t.title or t.prompt or "Aufgabe")[:70]
+            # Bei fertigen Aufgaben das Ergebnis kurz mitgeben — DAS ist die
+            # Rueckmeldung, die der Nutzer sonst nie zu hoeren bekam.
+            ergebnis = ""
+            if status == "completed" and (t.result or "").strip():
+                ergebnis = " — " + " ".join((t.result or "").split())[:200]
+            out.append(f"[id {t.id}] {zustand}: {titel}{ergebnis}")
+        return out
 
     async def _delegate_and_report(
         self,
@@ -2662,12 +3374,16 @@ class RealtimeVoiceSession:
         return ". ".join(parts) + "."
 
     async def _web_search(self, query: str, max_results: int) -> str:
-        """Direct keyless web search (DuckDuckGo) — no agent round-trip."""
-        from app.core.web_search import web_search as _do_search
+        """Direct web search, no agent round-trip — provider ist admin-konfiguriert
+        (Admin -> Websuche: DuckDuckGo/Brave/SerpApi), dieselbe Quelle wie ueberall."""
+        from app.db.session import async_session_factory
+        from app.core.web_search import web_search_with_settings
+
         query = (query or "").strip()
         if not query:
             return "Keine Suchanfrage erkannt."
-        results = await _do_search(query, max_results)
+        async with async_session_factory() as db:
+            results = await web_search_with_settings(query, max_results, db)
         if not results:
             return f"Zu „{query}“ habe ich im Web nichts gefunden."
         # Surface the results to the Jarvis UI too (cards/links), not just to voice.
@@ -2681,8 +3397,101 @@ class RealtimeVoiceSession:
         ]
         return f"Web-Ergebnisse zu „{query}“:\n" + "\n".join(lines)
 
+    async def _learn_skill(self, action: str, goal: str = "") -> str:
+        """Dem Nutzer bei einer Aufgabe zuschauen und daraus ein Skill bauen.
+
+        Der komplette Weg existierte serverseitig schon (Replay-Mitschnitt der
+        menschlichen Klicks/Tasten + `replay_skill_service`), war aber nur ueber
+        die HTTP-Oberflaeche erreichbar — die Stimme kannte ihn nicht. Genau die
+        Luecke, die der Nutzer beschrieben hat: „schau zu, was ich mache … sag
+        ich fertig, bau ein Skill … und das per Voice".
+
+        Nutzt dieselben Bausteine wie der HTTP-Endpunkt (`_send_bridge_action`,
+        die `recording*`-Felder der Sitzung, `create_skill_from_recording`) —
+        kein zweiter, abweichender Aufzeichnungsweg.
+        """
+        from app.api.computer_use import (
+            _find_user_session, _send_bridge_action, _action_allowed,
+            DEFAULT_ALLOWED_CAPABILITIES,
+        )
+
+        if not self.user_id or self.user_id == "unknown":
+            return "Ich kann die Bridge gerade niemandem zuordnen."
+        found = await _find_user_session(str(self.user_id))
+        if not found:
+            return ("Es läuft keine Desktop-Bridge. Der Nutzer muss die Bridge-App auf "
+                    "seinem Rechner starten — dann kann ich zuschauen. Sag ihm das.")
+        _session_id, sess = found
+        if not sess.get("bridge_connected"):
+            return ("Die Bridge besteht, ist aber gerade nicht verbunden. Der Nutzer soll "
+                    "die Bridge-App starten. Sag ihm genau das.")
+
+        act = (action or "").strip().lower()
+
+        if act in ("start", "watch", "zuschauen", "beobachten", "lernen", ""):
+            allowed = sess.get("allowed_capabilities", DEFAULT_ALLOWED_CAPABILITIES)
+            if not _action_allowed("start_input_capture", allowed):
+                return ("Dafür fehlt die Berechtigung: Der Nutzer muss in der Bridge unter "
+                        "Berechtigungen 'Eingaben mitschneiden' aktivieren. Sag ihm das genau, "
+                        "dann geht es sofort.")
+            try:
+                result = await _send_bridge_action(sess, "start_input_capture")
+            except Exception:  # noqa: BLE001 — Bridge weg/Timeout
+                return "Die Bridge hat den Mitschnitt nicht gestartet. Ist die App noch verbunden?"
+            if not result.get("ok"):
+                return f"Der Mitschnitt ließ sich nicht starten: {result.get('error') or 'unbekannt'}"
+            sess["recording"] = True
+            sess["recording_steps"] = []
+            sess["capture_human"] = True
+            self._learn_goal = goal
+            return ("Ich schaue jetzt zu. Mach die Aufgabe einmal ganz normal vor — klicken, "
+                    "tippen, alles wie sonst. Wir können dabei reden. Sag 'fertig', wenn du "
+                    "durch bist, dann baue ich ein Skill daraus.")
+
+        if act in ("finish", "fertig", "stop", "stopp", "done", "ende", "das wars"):
+            if not sess.get("recording"):
+                return ("Ich zeichne gerade nichts auf. Sag 'schau zu, was ich mache', dann "
+                        "starte ich den Mitschnitt.")
+            try:
+                await _send_bridge_action(sess, "stop_input_capture")
+            except Exception:  # noqa: BLE001 — Bridge stoppt bei Trennung selbst
+                pass
+            sess["recording"] = False
+            sess["capture_human"] = False
+            steps = sess.get("recording_steps", [])
+            if not steps:
+                return ("Ich habe keine Schritte mitbekommen. Meist liegt das an der fehlenden "
+                        "Berechtigung 'Eingaben mitschneiden' — bitte pruefen und nochmal.")
+            from app.services.replay_skill_service import (
+                create_skill_from_recording, ReplaySkillError,
+            )
+            from app.db.session import async_session_factory
+            try:
+                async with async_session_factory() as db:
+                    skill = await create_skill_from_recording(
+                        db, steps, created_by=str(self.user_id),
+                        goal_hint=goal or getattr(self, "_learn_goal", ""),
+                    )
+            except ReplaySkillError as e:
+                return f"Aus dem Mitschnitt ließ sich kein Skill bauen: {e}"
+            except Exception:  # noqa: BLE001
+                logger.warning("learn_skill authoring failed agent=%s", self.agent_id, exc_info=True)
+                return "Beim Bauen des Skills ist etwas schiefgegangen. Ich habe die Aufzeichnung aber."
+            return (f"Fertig — aus {len(steps)} Schritten habe ich das Skill '{skill.name}' "
+                    "gebaut. Es liegt als Entwurf im Skill-Bereich; aktiv wird es erst, wenn "
+                    "du es dort freigibst.")
+
+        return ("Ich kenne nur 'schau zu' (starten) und 'fertig' (Skill bauen) — "
+                f"'{action}' sagt mir nichts.")
+
+    #: Kurzformen, die _desktop() selbst in eine Bridge-Aktion uebersetzt — jede
+    #: andere Aktion geht als Rohdurchreiche direkt durch (siehe _desktop unten).
+    _DESKTOP_SHORTHANDS = frozenset({
+        "open", "screenshot", "click", "type", "find", "wait", "key", "scroll", "ego",
+    })
+
     async def _desktop(self, action: str, target: str = "", text: str = "",
-                       x=None, y=None) -> str:
+                       x=None, y=None, display=None, raw_params: dict | None = None) -> str:
         """Rechner des Nutzers über die Desktop-Bridge bedienen.
 
         Geht bewusst durch `dispatch_bridge_command` — dieselbe Funktion, die auch der
@@ -2730,11 +3539,19 @@ class RealtimeVoiceSession:
                 act, params = "open_app", {"name": tgt}
         elif action == "screenshot":
             act, params = "screenshot", {"scale": 0.5}
+            # Bildschirmwahl nur mitgeben, wenn wirklich eine kam — eine
+            # aeltere Bridge kennt den Parameter nicht.
+            if display:
+                params["display"] = int(display)
         elif action == "click":
             if x is None or y is None:
                 return "Für einen Klick brauche ich x und y — vorher einen Screenshot machen."
             try:
                 act, params = "mouse_click", {"x": int(x), "y": int(y)}
+                # Bei mehreren Monitoren muss der Klick wissen, WELCHER gemeint
+                # ist — sonst gilt der Versatz des zuletzt aufgenommenen.
+                if display:
+                    params["display"] = int(display)
             except (TypeError, ValueError):
                 # Ohne das flog die ValueError am try/except unten vorbei, _respond wurde
                 # nie aufgerufen und der Sprach-Turn blieb stehen, bis Nova selbst abbrach.
@@ -2765,8 +3582,22 @@ class RealtimeVoiceSession:
             except ValueError:
                 pass
             act, params = "scroll", {"clicks": amount}
+        elif action == "ego":
+            if not text.strip():
+                return "Mir fehlt das Skript für ego lite."
+            act, params = "ego_run", {"script": text}
+        elif action:
+            # Rohdurchreiche: JEDER echte Bridge-Aktionsname, den diese Kurzformen nicht
+            # abdecken (shell_run, browser_*, get_clipboard, list_windows, ...) — sonst
+            # bliebe die Sprachfront bei jeder neuen Bridge-Faehigkeit wieder zurueck,
+            # bis hier von Hand eine weitere Kurzform ergaenzt wird. Genau DAS ist am
+            # 27.08.2026 mit ego_run passiert (Nutzer-Meldung: "1:1 die gleichen Tools
+            # wie der Agent"). Serverseitige Faehigkeitspruefung/Freigabeliste gelten
+            # unveraendert — eine gesperrte Aktion kommt als Fehlertext zurueck, nicht
+            # als stiller Erfolg.
+            act, params = action, dict(raw_params or {})
         else:
-            return f"Die Aktion '{action}' kenne ich nicht."
+            return "Mir fehlt die Aktion."
 
         try:
             out = await dispatch_bridge_command(
@@ -2816,9 +3647,16 @@ class RealtimeVoiceSession:
             b64 = result.get("screenshot_b64") or ""
             if not b64:
                 return "Der Screenshot kam leer zurück — ich sehe seinen Bildschirm gerade nicht."
+            # Zwei Screenshots nebeneinander sind ohne Nummer nicht zu
+            # unterscheiden — beide hiessen bis eben „Bildschirm des Nutzers".
+            nr = result.get("display")
+            groesse = result.get("image_size") or {}
+            beschriftung = f"Bildschirm {nr}" if nr else "Bildschirm des Nutzers"
+            if groesse.get("w") and groesse.get("h"):
+                beschriftung += f" — {groesse['w']} x {groesse['h']}"
             await self._emit({"type": "media", "data": {
                 "kind": "image", "media_type": "image/png", "b64": b64,
-                "caption": "Bildschirm des Nutzers", "auto_open": True,
+                "caption": beschriftung, "auto_open": True,
             }})
             # Nova Sonic hat keinen Bildkanal. Aber ICH haenge an einem echten Agenten,
             # und DER sieht Bilder — mit dem Zugang, der fuer ihn ohnehin eingerichtet
@@ -2831,9 +3669,21 @@ class RealtimeVoiceSession:
             asyncio.create_task(self._analyse_screenshot_bg(b64, text.strip(), plat))
             return ("Screenshot gemacht und dem Nutzer angezeigt. Sag ihm in EINEM kurzen "
                     "Satz, dass du gerade draufschaust — und beschreibe NICHTS, du kennst "
-                    "den Inhalt noch nicht. Die Auswertung kommt gleich von selbst.")
+                    "den Inhalt noch nicht. Die Auswertung kommt gleich von selbst."
+                    + _bildschirm_hinweis(result))
         if act in ("open_app", "open_url"):
             return f"'{target.strip()}' wurde geöffnet — die Bridge meldet Erfolg."
+        if act == "ego_run":
+            out = str(result.get("output") or "").strip()
+            return out if out else "Erledigt — das Skript hat nichts über cliLog() zurückgegeben."
+        if action not in self._DESKTOP_SHORTHANDS:
+            # Rohdurchreiche-Ergebnis: kein bekanntes Sonderfeld, also den ganzen
+            # (kompakten) Ergebnis-Rumpf zurueckgeben statt eines nichtssagenden
+            # "Erledigt" — sonst kann die Stimme nicht vorlesen, WAS z. B.
+            # shell_run oder browser_snapshot tatsaechlich geliefert haben.
+            if isinstance(result, dict) and result:
+                kompakt = {k: v for k, v in result.items() if k != "screenshot_b64"}
+                return json.dumps(kompakt, ensure_ascii=False)[:2000]
         return "Erledigt."
 
     async def _control_ui(self, action: str, target: str, query: str = "") -> str:
@@ -3057,6 +3907,69 @@ class RealtimeVoiceSession:
                 await db.commit()
         except Exception:  # noqa: BLE001
             logger.debug("voice persist turn failed agent=%s", self.agent_id, exc_info=True)
+
+    async def _persist_media(self, filename: str, media_type: str, path: str, caption: str = "") -> None:
+        """Attach a file the agent presented mid-call to the persisted chat session,
+        the same one ``_persist_turn`` writes to — so it survives after the call
+        (reported 2026-08-26: files shown during the call vanished with the dock,
+        weren't in the real chat, and had no way to open them there).
+
+        Reuses the ``meta.presented_files`` shape the normal (non-voice) chat
+        pipeline already writes (see api/ws.py) so the SAME iOS/web file-card
+        rendering picks it up — no separate voice-only display path.
+        """
+        if not path or not filename:
+            return
+        from app.db.session import async_session_factory
+        from app.models.chat_message import ChatMessage
+        from app.models.chat_session import ChatSession
+        from sqlalchemy import select
+        file_entry = {"path": path, "filename": filename, "media_type": media_type, "caption": caption}
+        try:
+            async with async_session_factory() as db:
+                titled = (await db.execute(
+                    select(ChatSession).where(
+                        ChatSession.agent_id == self.agent_id,
+                        ChatSession.session_id == self.session_id,
+                    )
+                )).scalar_one_or_none()
+                if titled is None:
+                    db.add(ChatSession(
+                        agent_id=self.agent_id, session_id=self.session_id,
+                        title="Sprach-Gespräch",
+                    ))
+                    await db.commit()
+                # An assistant turn is already being coalesced (_persist_turn) →
+                # attach the file to THAT message instead of creating a bare one,
+                # so it lands next to the sentence that announced it.
+                row = None
+                if self._persist_role == "assistant" and self._persist_mid:
+                    row = (await db.execute(
+                        select(ChatMessage).where(
+                            ChatMessage.agent_id == self.agent_id,
+                            ChatMessage.session_id == self.session_id,
+                            ChatMessage.message_id == self._persist_mid,
+                            ChatMessage.role == "assistant",
+                        )
+                    )).scalar_one_or_none()
+                if row is not None:
+                    meta = dict(row.meta or {})
+                    existing = list(meta.get("presented_files") or [])
+                    if not any(f.get("path") == path for f in existing):
+                        existing.append(file_entry)
+                    meta["presented_files"] = existing
+                    row.meta = meta
+                else:
+                    mid = uuid.uuid4().hex[:12]
+                    self._persist_role = "assistant"
+                    self._persist_mid = mid
+                    db.add(ChatMessage(
+                        agent_id=self.agent_id, session_id=self.session_id, message_id=mid,
+                        role="assistant", content="", meta={"source": "voice", "presented_files": [file_entry]},
+                    ))
+                await db.commit()
+        except Exception:  # noqa: BLE001
+            logger.debug("voice persist media failed agent=%s", self.agent_id, exc_info=True)
 
     async def _search_knowledge(self, query: str, limit: int = 5) -> str:
         """Vector-search the agent's own memory/knowledge (the same store the
@@ -3340,35 +4253,52 @@ class RealtimeVoiceSession:
         except Exception:  # noqa: BLE001 — ValueError not-connected / refresh failure
             return None
 
-    async def _m365_calendar_today(self, days_ahead: int = 1) -> str:
-        """Read the user's M365 calendar directly via Graph, no agent round-trip."""
+    async def _m365_calendar_today(self, days_ahead: int = 1, when: str = "") -> str:
+        """Read the user's M365 calendar directly via Graph, no agent round-trip.
+
+        `when` ('today'/'tomorrow') maps to `date` on the shared Graph tool — a
+        real calendar-day boundary, not the rolling `days_ahead` window (see
+        msgraph_mcp.py::ms_list_calendar_events for why the two are NOT
+        interchangeable; reported live 2026-08-27 that days_ahead=1 for
+        "morgen" returned mostly today's remaining events instead)."""
         token = await self._m365_token()
         if not token:
             return "Dein Microsoft-365-Konto ist nicht verbunden — das richtest du in den Einstellungen unter Integrationen ein."
         from app.core.msgraph_mcp import handle_tool
+        when = (when or "").strip().lower()
+        params = {"date": when} if when in ("today", "tomorrow", "heute", "morgen") \
+            else {"days_ahead": max(1, min(days_ahead, 14))}
         try:
-            text = await handle_tool(
-                "ms_list_calendar_events", {"days_ahead": max(1, min(days_ahead, 14))}, token
-            )
+            text = await handle_tool("ms_list_calendar_events", params, token)
         except Exception:  # noqa: BLE001
             logger.warning("voice m365 calendar failed", exc_info=True)
             return "Ich konnte den Kalender gerade nicht abrufen."
         return text or "Ich habe keine Termine gefunden."
 
-    async def _m365_mail_recent(self, limit: int = 8) -> str:
-        """Read the user's most recent inbox mail directly via Graph, no round-trip."""
+    async def _m365_mail_recent(self, limit: int = 8, search: str = "",
+                                 sender: str = "", subject: str = "") -> str:
+        """Read inbox mail directly via Graph, no round-trip — plain latest-N, or
+        filtered by search/sender/subject (the gap reported live 2026-08-27: the
+        tool only ever pulled the latest N, so a topic search silently degraded
+        into "scan the last 20 and hope", and got reported as "can't search" —
+        it could, the parameter was just never forwarded)."""
         token = await self._m365_token()
         if not token:
             return "Dein Microsoft-365-Konto ist nicht verbunden — das richtest du in den Einstellungen unter Integrationen ein."
         from app.core.msgraph_mcp import handle_tool
+        params = {"folder": "inbox", "limit": max(1, min(limit, 20))}
+        if search.strip():
+            params["search"] = search.strip()
+        if sender.strip():
+            params["sender"] = sender.strip()
+        if subject.strip():
+            params["subject"] = subject.strip()
         try:
-            text = await handle_tool(
-                "ms_list_emails", {"folder": "inbox", "limit": max(1, min(limit, 20))}, token
-            )
+            text = await handle_tool("ms_list_emails", params, token)
         except Exception:  # noqa: BLE001
             logger.warning("voice m365 mail failed", exc_info=True)
             return "Ich konnte das Postfach gerade nicht abrufen."
-        return text or "Ich habe keine neuen Mails gefunden."
+        return text or "Ich habe dazu keine Mails gefunden."
 
     async def _m365_send_mail(self, to: str, subject: str, body: str, send: bool = False) -> str:
         """Send an email or (default) create a draft. Sending must be user-confirmed —
@@ -3426,6 +4356,66 @@ class RealtimeVoiceSession:
             logger.warning("voice m365 create_event failed", exc_info=True)
             return "Den Termin konnte ich gerade nicht anlegen."
         return f"Termin „{subject}“ ist im Kalender eingetragen. Bestätige das kurz in der ICH-Form."
+
+    async def _m365_search_people(self, query: str) -> str:
+        """Directory/people lookup — the exact gap reported live: the agent already has
+        this (ms_search_people), voice never did, so a bare name for an email/Teams
+        message had nowhere to resolve to an address."""
+        query = query.strip()
+        if not query:
+            return "Nach wem soll ich suchen?"
+        token = await self._m365_token()
+        if not token:
+            return "Dein Microsoft-365-Konto ist nicht verbunden."
+        from app.core.msgraph_mcp import handle_tool
+        try:
+            text = await handle_tool("ms_search_people", {"query": query}, token)
+        except Exception:  # noqa: BLE001
+            logger.warning("voice m365 search_people failed", exc_info=True)
+            return "Die Personensuche hat gerade nicht geklappt."
+        return text or f"Zu „{query}“ habe ich niemanden gefunden."
+
+    async def _m365_teams_message(self, person: str, message: str, confirmed: bool = False) -> str:
+        """Send to an EXISTING Teams 1:1/group chat, found by matching the chat's member
+        names — there is no tool (agent-side either) to start a brand-new chat, and no
+        direct name→chat-id resolver, so this matches client-side against /me/chats
+        members, same data ms_list_chats already shows the agent."""
+        person, message = person.strip(), message.strip()
+        if not person or not message:
+            return "Mir fehlt die Person oder der Text für die Nachricht."
+        token = await self._m365_token()
+        if not token:
+            return "Dein Microsoft-365-Konto ist nicht verbunden."
+        from app.core.msgraph_mcp import _graph
+        try:
+            data = await _graph("GET", "/me/chats", token, params={"$top": 50, "$expand": "members"})
+        except Exception:  # noqa: BLE001
+            logger.warning("voice teams chat lookup failed", exc_info=True)
+            return "Ich konnte deine Teams-Chats gerade nicht abrufen."
+        needle = person.lower()
+        matches: list[tuple[str, str]] = []
+        for c in data.get("value", []) or []:
+            names = [m.get("displayName", "") for m in c.get("members", []) if m.get("displayName")]
+            if any(needle in n.lower() for n in names):
+                label = c.get("topic") or ", ".join(n for n in names if n) or "Chat"
+                matches.append((c.get("id", ""), label))
+        if not matches:
+            return (f"Ich finde keinen bestehenden Chat mit „{person}“ — einen neuen Chat kann "
+                    f"ich nicht selbst anlegen, nur in einen bereits vorhandenen schreiben. Sag "
+                    f"dem Nutzer das genau.")
+        if len(matches) > 1:
+            options = "; ".join(label for _, label in matches[:5])
+            return f"Mehrere Chats passen zu „{person}“: {options}. Frag nach, welchen er meint."
+        chat_id, label = matches[0]
+        if not confirmed:
+            return f"Ich würde an „{label}“ schreiben: „{message}“. Lies das vor und frag nach Bestätigung."
+        try:
+            await _graph("POST", f"/me/chats/{chat_id}/messages", token,
+                         content=json.dumps({"body": {"content": message}}))
+        except Exception:  # noqa: BLE001
+            logger.warning("voice teams send failed", exc_info=True)
+            return f"Senden an „{label}“ hat nicht geklappt."
+        return f"Nachricht an „{label}“ gesendet."
 
     async def _proactive_loop(self) -> None:
         """(#2) Proactively remind the user of an imminent calendar event during the call.
@@ -3709,6 +4699,7 @@ class RealtimeVoiceSession:
             "kind": "file", "filename": filename, "media_type": mime,
             "caption": rel_disp, "path": full,
         }})
+        await self._persist_media(filename, mime, full, rel_disp)
         return (
             f"Ich habe „{rel_disp}“ als Karte zum Öffnen/Herunterladen bereitgestellt. Sag dem "
             "Nutzer kurz in der ICH-Form, dass die Datei rechts bereitliegt."
@@ -4387,36 +5378,72 @@ class RealtimeVoiceSession:
             return "An meine Zeitpläne komme ich gerade nicht ran."
 
     async def _cancel_task(self) -> str:
-        """Stop ongoing work by voice: signal the agent to stop the current chat turn
-        and cancel any still-queued scheduled tasks (running ones can't be pulled)."""
-        stopped = False
+        """Laufende und wartende Arbeit dieses Agenten wirklich stoppen — und
+        danach NACHSEHEN, ob es geklappt hat.
+
+        Die alte Fassung meldete Erfolg, sobald ein Redis-``publish`` ohne
+        Fehler zurueckkam. Ein publish gelingt aber auch, wenn niemand zuhoert.
+        Dazu kannte sie nur ``self._planned``, also Aufgaben, die IN DIESER
+        Sitzung eingeplant wurden — bei einem fortgesetzten Gespraech ist das
+        leer. Ergebnis am 21.08.2026: der Nutzer sagte dreimal „abbrechen",
+        bekam dreimal „ist gestoppt", und die Aufgabe lief Stunden spaeter
+        immer noch.
+
+        Jetzt: alle offenen Aufgaben des Agenten aus der Datenbank holen,
+        abbrechen, und anschliessend erneut nachsehen. Gesagt wird, was
+        tatsaechlich der Fall ist.
+        """
+        from app.core.load_balancer import LoadBalancer
+        from app.core.task_router import TaskRouter
+        from app.db.session import async_session_factory
+        from app.models.task import Task, TaskStatus
+        from sqlalchemy import select
+
+        OFFEN = (TaskStatus.QUEUED, TaskStatus.PENDING, TaskStatus.RUNNING)
+
+        # Laufende Chat-Zuege stoppen (das hat immer funktioniert).
         try:
             if self.redis.client:
                 await self.redis.client.publish(f"agent:{self.agent_id}:chat:cancel", "stop")
-                stopped = True
         except Exception:  # noqa: BLE001
-            pass
-        cancelled = 0
-        if self._planned:
-            from app.db.session import async_session_factory
-            from app.core.task_router import TaskRouter
-            from app.core.load_balancer import LoadBalancer
-            for tid in list(self._planned.keys()):
-                try:
-                    async with async_session_factory() as db:
-                        await TaskRouter(db, self.redis, LoadBalancer(self.redis)).cancel_task(tid)
-                    self._planned.pop(tid, None)
-                    cancelled += 1
-                except Exception:  # noqa: BLE001 — running/already done → can't cancel
-                    pass
-        if stopped or cancelled:
-            parts = []
-            if stopped:
-                parts.append("die laufende Aufgabe gestoppt")
-            if cancelled:
-                parts.append(f"{cancelled} eingeplante Aufgabe(n) abgebrochen")
-            return "Ich habe " + " und ".join(parts) + "."
-        return "Es lief gerade nichts, was ich abbrechen könnte."
+            logger.warning("[Sprache] Chat-Abbruch nicht zustellbar", exc_info=True)
+
+        async def _offene() -> list:
+            async with async_session_factory() as db:
+                r = await db.execute(
+                    select(Task.id, Task.title).where(
+                        Task.agent_id == self.agent_id, Task.status.in_(OFFEN)
+                    )
+                )
+                return list(r)
+
+        vorher = await _offene()
+        if not vorher:
+            return "Es lief gerade nichts, was ich abbrechen könnte."
+
+        for tid, _titel in vorher:
+            try:
+                async with async_session_factory() as db:
+                    await TaskRouter(db, self.redis, LoadBalancer(self.redis)).cancel_task(tid)
+                self._planned.pop(tid, None)
+            except Exception as e:  # noqa: BLE001 — gerade fertig geworden o.ae.
+                logger.info("[Sprache] %s nicht abbrechbar: %s", tid, e)
+
+        # Der Runner braucht einen Moment, um den Abbruch zu quittieren.
+        await asyncio.sleep(1.5)
+        uebrig = await _offene()
+
+        geschafft = len(vorher) - len(uebrig)
+        if not uebrig:
+            return (f"Ich habe {geschafft} Aufgabe(n) gestoppt. Es läuft nichts mehr."
+                    if geschafft else "Es läuft nichts mehr.")
+        # NICHT behaupten, alles sei gestoppt — genau das war der Fehler.
+        namen = ", ".join((t or "ohne Titel")[:40] for _i, t in uebrig[:3])
+        return (
+            f"Ich habe {geschafft} Aufgabe(n) gestoppt, aber {len(uebrig)} läuft/laufen noch: "
+            f"{namen}. Die reagiert gerade nicht auf den Abbruch — sag mir Bescheid, "
+            "wenn ich es gleich noch einmal versuchen soll."
+        )
 
     async def _voice_help(self) -> str:
         """Spoken capability overview."""
@@ -4429,30 +5456,38 @@ class RealtimeVoiceSession:
             "den Bildschirm zeigen. Sag einfach, was du brauchst."
         )
 
-    async def _save_memory(self, content: str, key: str = "") -> str:
-        """Write a memory into the agent's own long-term store (same table the
-        memory MCP tool uses) — direct, with embedding for later recall."""
+    async def _save_memory(
+        self, content: str, key: str = "", category: str | None = None,
+        importance: int | None = None,
+    ) -> str:
+        """Write a memory into the agent's own long-term store — routed through
+        save_memory_core (in-process, no HTTP hop) so voice-created memories get
+        the SAME dedup/supersede/contradiction handling and embedding as the
+        memory_save MCP tool, instead of a raw insert that bypassed all of it."""
         c = (content or "").strip()
         if not c:
             return "Was soll ich mir merken?"
         k = (key or "").strip() or c[:40]
+        cat = (category or "fact").strip().lower()
+        if cat not in ("preference", "contact", "project", "procedure", "decision", "fact", "learning"):
+            cat = "fact"
+        imp = importance if isinstance(importance, int) and 1 <= importance <= 5 else 3
+        from app.api.memory import MemoryConflict, MemorySave, save_memory_core
         from app.db.session import async_session_factory
-        from app.models.memory import AgentMemory
-        from app.services.embedding_service import get_embedding_service
+        body = MemorySave(
+            agent_id=self.agent_id, category=cat, key=k, content=c,
+            importance=imp, source="conversation",
+        )
         try:
-            vec = None
-            svc = get_embedding_service()
-            if getattr(svc, "enabled", False):
-                vec = await svc.embed(f"{k}: {c}")
             async with async_session_factory() as db:
-                mem = AgentMemory(agent_id=self.agent_id, category="fact", key=k, content=c)
-                if vec is not None:
-                    try:
-                        mem.embedding = vec
-                    except Exception:  # noqa: BLE001
-                        pass
-                db.add(mem)
-                await db.commit()
+                try:
+                    await save_memory_core(db, body, allow_supersede=True)
+                except MemoryConflict:
+                    # No good way to run an interactive "override?" round-trip
+                    # mid-call — this tool is documented as a fast, direct write,
+                    # so a soft contradiction resolves by superseding.
+                    body.override = True
+                    await save_memory_core(db, body, allow_supersede=True)
         except Exception:  # noqa: BLE001
             logger.warning("voice save_memory failed agent=%s", self.agent_id, exc_info=True)
             return "Das Merken hat gerade nicht geklappt."
@@ -4697,6 +5732,134 @@ class RealtimeVoiceSession:
                 f"Provider: {cfg.get('model_provider', 'Standard')}; "
                 f"Autonomie: {(a.autonomy_level or 'l3').upper()}; Budget: {budget}."
             )
+
+    async def _eskalieren(self, args: dict) -> str:
+        """Bei Unsicherheit an einen Menschen abgeben, statt zu raten.
+
+        Bis 2026-08-18 hatte die Sprachfront dieses Werkzeug NICHT — als einzige
+        der vier Laufzeiten. Sie hat also geraten, wo der Agent gefragt haette.
+        Am Telefon wiegt das schwerer als im Geschriebenen: ein falscher Name
+        klingt genauso sicher wie ein richtiger, und niemand kann zurueckblaettern.
+
+        Bewusst ueber ``confidence_gate`` — dieselbe Funktion, die der Agent
+        aufruft. Die Schwelle gehoert dem Betreiber und steht pro Agent in der
+        Konfiguration; sie hier noch einmal zu entscheiden hiesse, zwei Regeln zu
+        haben, von denen eine irgendwann die falsche ist.
+        """
+        from app.api.approvals import ConfidenceCheck, confidence_gate
+        from app.db.session import async_session_factory
+
+        try:
+            async with async_session_factory() as db:
+                ergebnis = await confidence_gate(
+                    ConfidenceCheck(
+                        confidence=args.get("confidence", 0),
+                        question=str(args.get("question") or "").strip(),
+                        context=str(args.get("context") or "").strip() or None,
+                        options=args.get("options") or None,
+                        target_channel="all",
+                    ),
+                    agent_auth={"agent_id": self.agent_id},
+                    db=db,
+                )
+        except Exception as e:  # noqa: BLE001
+            # Eine gescheiterte Rueckfrage darf nicht zum Weitermachen einladen —
+            # sonst raet das Modell trotzdem, nur mit Rueckendeckung.
+            logger.warning("Konfidenz-Gate fehlgeschlagen agent=%s: %s", self.agent_id, e)
+            return ("Die Rueckfrage konnte nicht gestellt werden. Rate NICHT — sag dem "
+                    "Nutzer, dass du unsicher bist, und frag ihn direkt.")
+
+        if not ergebnis.get("escalated"):
+            return str(ergebnis.get("message") or "Deine Sicherheit reicht — mach weiter.")
+
+        # Die Frage steht jetzt als Freigabe im Cockpit (mit den Optionen als
+        # Knoepfen). Die Antwort kommt ueber denselben Weg zurueck wie jede
+        # Freigabe; sobald sie da ist, meldet sie sich in einer Sprechpause.
+        freigabe_id = str(ergebnis.get("approval_id") or "")
+        if freigabe_id:
+            asyncio.create_task(self._auf_entscheidung_warten(freigabe_id))
+        return (
+            "Deine Sicherheit reicht nicht — ich habe die Frage an den Nutzer gegeben. "
+            "Sag ihm JETZT in einem Satz, dass du kurz nachfragst und worum es geht, "
+            "und ARBEITE NICHT WEITER an dieser Sache, bis die Antwort da ist."
+        )
+
+    async def _auf_entscheidung_warten(self, approval_id: str) -> None:
+        """Die Antwort abholen und dem Modell zutragen — in einer Sprechpause."""
+        from sqlalchemy import select
+
+        from app.db.session import async_session_factory
+        from app.models.command_approval import ApprovalStatus, CommandApproval
+
+        frist = time.monotonic() + 900
+        while not self._closed and time.monotonic() < frist:
+            await asyncio.sleep(3)
+            try:
+                async with async_session_factory() as db:
+                    zeile = (await db.execute(
+                        select(CommandApproval).where(CommandApproval.id == int(approval_id))
+                    )).scalar_one_or_none()
+            except Exception:  # noqa: BLE001
+                continue
+            if not zeile or zeile.status == ApprovalStatus.PENDING:
+                continue
+            antwort = (zeile.user_response or "").strip()
+            if zeile.status == ApprovalStatus.APPROVED:
+                note = (f"HINWEIS (Antwort auf meine Rueckfrage, KEIN neuer Auftrag): "
+                        f"Der Nutzer hat geantwortet: {antwort or 'einverstanden'}. "
+                        "Richte dich danach und mach weiter.")
+            else:
+                note = ("HINWEIS (Antwort auf meine Rueckfrage): Der Nutzer hat abgelehnt"
+                        + (f" — {antwort}" if antwort else "")
+                        + ". Mach NICHT weiter, frag nach, wie er es stattdessen will.")
+            await self._inject_when_quiet(note)
+            return
+
+    async def _fast_secrets(self) -> str:
+        """Welche Zugaenge der Agent hat — NUR die Namen.
+
+        Gemeldet am 18.08.2026: auf „hast du Zugang zu diesem Project-Planner-Key?"
+        antwortete die Sprachfront „keine speziellen Umgebungsvariablen gefunden"
+        und zaehlte stattdessen ihre eigenen Einstellungen auf. Sie hatte schlicht
+        keinen Blick darauf: die Schluessel werden vom ``agent_manager`` als
+        Umgebungsvariablen in den AGENTEN-Container gelegt, und die Sprachfront
+        laeuft im Orchestrator.
+
+        **Warum hier keine Werte stehen.** Der gesprochene Verlauf wird als
+        Nachricht gespeichert und geht Wort fuer Wort an einen fremden Dienst
+        (Bedrock). Ein Schluessel, der einmal dort landet, ist nicht mehr
+        einzufangen. Die Sprachfront braucht ihn auch nicht: der Agent hat die
+        Variable bereits und ruft die Schnittstelle selbst auf — das ist der Weg
+        ueber ``ask_agent``.
+        """
+        from sqlalchemy import select
+
+        from app.db.session import async_session_factory
+        from app.models.agent_secret import AgentSecret, AgentSecretAssignment
+
+        async with async_session_factory() as db:
+            zuordnungen = (await db.execute(
+                select(AgentSecretAssignment.secret_id)
+                .where(AgentSecretAssignment.agent_id == self.agent_id)
+            )).scalars().all()
+            if not zuordnungen:
+                return ("Diesem Agenten ist kein Zugang zugewiesen. Zuweisen kann man "
+                        "sie unter Einstellungen, Zugaenge.")
+            rows = (await db.execute(
+                select(AgentSecret).where(
+                    AgentSecret.id.in_(zuordnungen), AgentSecret.is_active.is_(True))
+            )).scalars().all()
+        if not rows:
+            return "Zugaenge sind zwar zugewiesen, aber keiner davon ist aktiv."
+        namen = ", ".join(
+            f"{r.name} (Variable {r.key_name})" for r in rows
+        )
+        return (
+            f"Der Agent hat {len(rows)} Zugang/Zugaenge: {namen}. "
+            "Die Werte stehen ihm als Umgebungsvariablen zur Verfuegung — ich sehe "
+            "sie nicht und brauche sie nicht. Fuer einen Aufruf gib die Aufgabe per "
+            "ask_agent an den Agenten weiter; er liest die Variable selbst."
+        )
 
     # ── teardown ────────────────────────────────────────────────────
 

@@ -184,6 +184,50 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "present_view",
+      description:
+        "Ask the user something with a PICTURE instead of a list of words, and WAIT " +
+        "for the answer. Blocks exactly like request_approval and returns the choice.\n\n" +
+        "Use it when the answer is easier to point at than to describe — choosing " +
+        "between images you generated is the clear case. If plain words do the job, " +
+        "use request_approval; a view for a yes/no question is just slower.\n\n" +
+        "The view itself lives in the web UI; you pick one by name and hand it data.\n" +
+        "  image_choice — several images side by side, the user picks one. " +
+        "data: {\"images\": [{\"path\": \"/workspace/...\", \"label\": \"...\"}]}. " +
+        "Give FILE PATHS in your workspace, never image content.\n\n" +
+        "Always pass `options` too: the same question in plain words. Telegram, the " +
+        "phone app and voice-only cannot draw a view — without options those users " +
+        "are stuck with a question they cannot answer, and you wait until timeout.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          view: {
+            type: "string",
+            enum: ["image_choice"],
+            description: "Which view to show.",
+          },
+          data: {
+            type: "object",
+            description: "The view's payload — see the description for the expected shape.",
+          },
+          question: {
+            type: "string",
+            description:
+              "The question in words. Shown above the view and used wherever the view cannot be drawn.",
+          },
+          options: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "The same choices in plain words — fallback for Telegram, phone and voice. " +
+              "Same order as the view's items.",
+          },
+          context: { type: "string", description: "Additional context for the user." },
+        },
+        required: ["view", "data", "question"],
+      },
+    },
+    {
       name: "escalate_if_unsure",
       description:
         "Report how confident you are (0-100) BEFORE acting on an uncertain decision. " +
@@ -312,16 +356,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
 
+    case "present_view":
     case "request_approval": {
+      // Eine Ansicht ist eine Rueckfrage, die anders aussieht: derselbe
+      // Endpunkt, dasselbe Anhalten, derselbe Rueckweg. Ein zweiter Zweig mit
+      // eigener Warteschleife wuerde beim ersten Umbau auseinanderlaufen.
+      const istAnsicht = name === "present_view";
+
+      // Ohne Wortoptionen waere der Nutzer auf Telegram, Telefon und im reinen
+      // Sprachbetrieb mit einer Frage allein, die er dort nicht beantworten
+      // kann — und der Agent wartete bis zur Zeitgrenze. Notfalls aus den
+      // Bildbeschriftungen ableiten.
+      let optionen = args.options;
+      if (istAnsicht && (!optionen || !optionen.length)) {
+        const bilder = (args.data && args.data.images) || [];
+        optionen = bilder.map((b, i) => String((b && b.label) || `Bild ${i + 1}`));
+      }
+
       // Post to the proper approvals endpoint (persisted in DB, shown on Approvals page)
       const result = await apiCall("/approvals/request", {
         method: "POST",
         body: JSON.stringify({
           question: args.question,
-          options: args.options || ["Approve", "Deny"],
+          options: (optionen && optionen.length) ? optionen : ["Approve", "Deny"],
           context: args.context || "",
-          risk_level: "high",
+          // Eine Ansicht fuehrt nichts aus, sie zeigt und wartet — sie als
+          // hohes Risiko zu melden wuerde die Dringlichkeitsstufen abstumpfen.
+          risk_level: istAnsicht ? "low" : "high",
           target_channel: args.target_channel || "all",
+          ...(istAnsicht ? { view: { name: args.view, data: args.data || {} } } : {}),
         }),
       });
 
@@ -346,12 +409,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       if (decision) {
         const approved = decision.status === "approved";
+        // Die Antwort des Nutzers wurde bisher NUR bei Ablehnung weitergegeben.
+        // Bei einer Rueckfrage mit Antwortmoeglichkeiten ist sie aber der ganze
+        // Punkt: „genehmigt" beantwortet die Frage nicht, welche Option gemeint
+        // war. Der Custom-LLM-Weg liest `user_response` seit jeher als die
+        // Wahl — hier fehlte es, und damit war die Faehigkeit nicht in allen
+        // Laufzeiten gleich.
+        const antwort = (decision.user_response || "").trim();
+        const istNurBestaetigung = /^Approved by /.test(antwort);
+        const gewaehlt = antwort && !istNurBestaetigung
+          ? ` Antwort des Nutzers: "${antwort}" — richte dich danach.`
+          : "";
         return {
           content: [{
             type: "text",
             text: approved
-              ? `User APPROVED the action (approval_id: ${approvalId}). You may proceed.`
-              : `User DENIED the action (approval_id: ${approvalId}). Reason: "${decision.user_response || "No reason given"}". Do NOT proceed.`,
+              ? `User APPROVED the action (approval_id: ${approvalId}). You may proceed.${gewaehlt}`
+              : `User DENIED the action (approval_id: ${approvalId}). Reason: "${antwort || "No reason given"}". Do NOT proceed.`,
           }],
         };
       } else {

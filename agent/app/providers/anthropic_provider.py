@@ -2,13 +2,43 @@
 
 import json
 import logging
+import time
 from typing import AsyncIterator
 
 import httpx
 
-from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
+from app.providers.base import (
+    BaseLLMProvider,
+    ChatMessage,
+    LLMEvent,
+    describe_failure,
+)
 
 logger = logging.getLogger(__name__)
+
+# Context-Editing (#538) ist eine BETA. Laeuft sie aus, oder kennt ein Modell sie
+# nicht, antwortet die API mit 400 — und ohne Bremse waere damit der ganze
+# Chat-Weg tot, wegen einer Bequemlichkeit, die nur den Verlauf kleiner haelt.
+# Nach der ersten Ablehnung wird sie deshalb dauerhaft weggelassen. Klassenweit,
+# nicht je Instanz: sonst laeuft der naechste Provider erneut hinein.
+_CONTEXT_EDITING_AUS = False
+
+_CE_MARKER = (
+    "context_management",
+    "context-management",
+    "clear_tool_uses",
+    "anthropic-beta",
+)
+
+
+def _betrifft_context_editing(fehlertext: str) -> bool:
+    """Ob eine 400 an Context-Editing liegt — und nicht an etwas anderem.
+
+    Ein zu breiter Treffer wuerde die Beta bei jedem beliebigen Eingabefehler
+    abschalten; ein zu enger laesst den Totalausfall bestehen.
+    """
+    text = (fehlertext or "").lower()
+    return any(marker in text for marker in _CE_MARKER)
 
 
 def _to_anthropic_blocks(content) -> list[dict]:
@@ -64,11 +94,49 @@ def _to_anthropic_tools(tools: list[dict]) -> list[dict]:
 class AnthropicProvider(BaseLLMProvider):
     """Provider for the Anthropic Messages API (claude models via direct API)."""
 
+    #: Antwortlänge je Modellfamilie, wenn keine eigene Grenze gesetzt ist.
+    #: Anders als bei OpenAI und Google ist ``max_tokens`` bei Anthropic ein
+    #: **Pflichtfeld** — weglassen geht nicht, es muss eine Zahl hinein.
+    #:
+    #: Zu hoch ist keine sichere Wahl: die API weist einen Wert oberhalb des
+    #: Modellmaximums mit 400 ab, und dann antwortet der Agent gar nicht mehr.
+    #: Deshalb je Familie der dort erlaubte Wert, und im Zweifel der niedrigste.
+    _FAMILY_MAX_TOKENS: tuple[tuple[str, int], ...] = (
+        ("claude-opus-4", 32_000),
+        ("claude-sonnet-4", 64_000),
+        ("claude-haiku-4", 64_000),
+        ("claude-opus-5", 64_000),
+        ("claude-sonnet-5", 64_000),
+        ("claude-fable-5", 64_000),
+        ("claude-3-7", 64_000),
+        ("claude-3-5-haiku", 8_192),
+        ("claude-3-5", 8_192),
+        ("claude-3", 4_096),
+    )
+    _SAFE_DEFAULT_MAX_TOKENS = 8_192
+
+    def _max_tokens_for_request(self) -> int:
+        """Was in ``max_tokens`` geschrieben wird.
+
+        Eine gesetzte Grenze gilt unverändert. Ohne Grenze (0) wird nicht gekappt,
+        sondern der für diese Modellfamilie erlaubte Höchstwert genommen — ein
+        unbekanntes Modell bekommt den überall gültigen Wert, damit ein Tippfehler
+        im Modellnamen nicht in ein 400 läuft.
+        """
+        if self.max_tokens:
+            return self.max_tokens
+        name = (self.model_name or "").lower()
+        for prefix, value in self._FAMILY_MAX_TOKENS:
+            if prefix in name:
+                return value
+        return self._SAFE_DEFAULT_MAX_TOKENS
+
     async def _stream_completion_impl(
         self,
         messages: list[ChatMessage],
         tools: list[dict] | None = None,
     ) -> AsyncIterator[LLMEvent]:
+        global _CONTEXT_EDITING_AUS
         """Stream a chat completion via Anthropic Messages API."""
         url = f"{self.api_endpoint}/messages"
 
@@ -134,7 +202,7 @@ class AnthropicProvider(BaseLLMProvider):
         body: dict = {
             "model": self.model_name,
             "messages": conv_messages,
-            "max_tokens": self.max_tokens,
+            "max_tokens": self._max_tokens_for_request(),
             "stream": True,
         }
         # Prompt caching: the system prompt + tool definitions are large and
@@ -154,23 +222,59 @@ class AnthropicProvider(BaseLLMProvider):
             if anthropic_tools:
                 body["tools"] = anthropic_tools
 
+        # Automatischer Unterbau zum manuellen Ausschliessen (#538 Punkt 4): sobald
+        # der Verlauf trotzdem zu gross wird, raeumt Anthropic serverseitig alte
+        # Werkzeug-Ein-/Ausgaben weg, BEVOR der Request beim Modell ankommt — der
+        # hier gehaltene Verlauf (self._history) bleibt dabei unveraendert, nur was
+        # ueber die Leitung geht wird kleiner. Mit reinen Defaults (100k Token
+        # Schwelle, letzte 3 Werkzeug-Paare bleiben woertlich).
         headers = {
             "x-api-key": self.api_key,
             "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
         }
+        if not _CONTEXT_EDITING_AUS:
+            body["context_management"] = {"edits": [{"type": "clear_tool_uses_20250919"}]}
+            headers["anthropic-beta"] = "context-management-2025-06-27"
 
         input_tokens = 0
         output_tokens = 0
+        cached_tokens = 0
+        cache_write_tokens = 0
         current_tool_id = ""
         current_tool_name = ""
         current_tool_json = ""
+
+        _start = time.monotonic()
+
+        def _diag(e):
+            return describe_failure(e, url=url, body=body, messages=messages,
+                                    model=self.model, started=_start)
 
         try:
             async with self.http.stream("POST", url, json=body, headers=headers) as response:
                 if response.status_code != 200:
                     error_body = await response.aread()
-                    yield LLMEvent(type="error", text=f"API error {response.status_code}: {error_body.decode()}")
+                    text = error_body.decode()
+                    if (response.status_code == 400
+                            and not _CONTEXT_EDITING_AUS
+                            and "context_management" in body
+                            and _betrifft_context_editing(text)):
+                        _CONTEXT_EDITING_AUS = True
+                        logger.warning(
+                            "[Anthropic] Context-Editing abgelehnt — ab jetzt ohne. "
+                            "Der Verlauf wird nicht mehr serverseitig aufgeraeumt; "
+                            "das manuelle Ausschliessen (#538) bleibt unberuehrt. "
+                            "Grund im Wortlaut: %s", text[:300],
+                        )
+                        yield LLMEvent(
+                            type="error",
+                            text="Der Versuch, den Verlauf serverseitig zu kuerzen, "
+                                 "wurde abgelehnt. Ich habe das abgeschaltet — "
+                                 "schick die Nachricht einfach nochmal.",
+                        )
+                        return
+                    yield LLMEvent(type="error", text=f"API error {response.status_code}: {text}")
                     return
 
                 async for line in response.aiter_lines():
@@ -187,6 +291,18 @@ class AnthropicProvider(BaseLLMProvider):
                     if event_type == "message_start":
                         usage = event.get("message", {}).get("usage", {})
                         input_tokens = usage.get("input_tokens", 0)
+                        # Claude meldet den Prompt-Cache getrennt: neu geschrieben
+                        # vs. gelesen. (Kein separates reasoning_tokens — das
+                        # „Denken" zählt bei Claude zu output_tokens.)
+                        cache_write_tokens = int(usage.get("cache_creation_input_tokens") or 0)
+                        cached_tokens = int(usage.get("cache_read_input_tokens") or 0)
+                        for edit in (event.get("message", {}).get("context_management") or {}).get(
+                            "applied_edits", []
+                        ):
+                            logger.info(
+                                "[Anthropic] Context-Editing griff: %s Werkzeug-Aufrufe / %s Token entfernt",
+                                edit.get("cleared_tool_uses"), edit.get("cleared_input_tokens"),
+                            )
 
                     elif event_type == "content_block_start":
                         block = event.get("content_block", {})
@@ -226,13 +342,14 @@ class AnthropicProvider(BaseLLMProvider):
                         pass
 
         except httpx.ConnectError as e:
-            yield LLMEvent(type="error", text=f"Connection failed: {e}")
+            yield LLMEvent(type="error", text=f"Connection failed: {_diag(e)}")
             return
-        except httpx.ReadTimeout:
-            yield LLMEvent(type="error", text="Request timed out")
+        except httpx.ReadTimeout as e:
+            yield LLMEvent(type="error", text=f"Request timed out: {_diag(e)}")
             return
         except Exception as e:
-            yield LLMEvent(type="error", text=f"Unexpected error: {format_exception(e)}")
+            yield LLMEvent(type="error", text=f"Unexpected error: {_diag(e)}")
             return
 
-        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens)
+        yield LLMEvent(type="done", input_tokens=input_tokens, output_tokens=output_tokens,
+                       cached_tokens=cached_tokens, cache_write_tokens=cache_write_tokens)

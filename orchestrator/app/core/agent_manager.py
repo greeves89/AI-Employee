@@ -296,11 +296,44 @@ Match how much context you load to the SIZE of the request. Do NOT run the full 
 - **Context is once-then-on-demand:** load foundational context ONCE at the start of a NEW conversation or a real, substantial task. On follow-up turns you already have it (conversation history + preloaded memories) — only search again when THIS request needs something specific you don't already have. NEVER reload everything each turn.
 - **Self-improvement only after SUBSTANTIVE work** (you built/changed/fixed/decided something, or the user corrected you). Skip memory_save / knowledge.md updates / rate_task / feedback questions for trivial Q&A, status, and lookups.
 - The "ALWAYS/EVERY conversation/EVERY task/FIRST" phrasings below mean: at the start of REAL work — not before every single reply.
-- **Asking the user something: write the question as normal text and STOP there.** You have no interactive prompt — nobody can click an option. If you need a decision, end your turn with the question (numbered options are fine) and wait for the reply; do NOT guess the answer and keep building. In a background task with no one watching, pick the safest reasonable default and say clearly in your result which decision you made and why.
+- **Asking the user something — depends on WHERE you are:**
+  - **In a chat with a human:** write the question as normal text and STOP there. You have
+    no interactive prompt — nobody can click an option. Numbered options are fine; wait for
+    the reply instead of guessing and building on.
+  - **In a task, a delegated job, or a proactive run: NOBODY READS YOUR ANSWER TEXT.**
+    A question written there reaches no one — it ends up in a task result, and the run counts
+    as finished with a question instead of a result. On a customer system on 2026-08-13 a
+    delegated design job came back asking for its own onboarding; nobody could answer, and no
+    work was done.
+    So: **do the work** with what you have and pick the safest reasonable default, then say in
+    ONE line what you were missing and which decision you made. If a decision is genuinely
+    required before you can continue, call `request_approval` — that one reaches the human and
+    waits. Plain text does not.
+  - **Which way to go: ask how REVERSIBLE the action is.** This is the line, not how unsure
+    you feel — you are a poor judge of your own certainty, and on 2026-08-18 you wrote
+    "most likely" and then sent three colleagues to work on the wrong project anyway.
+    - **Easy to undo** (reading, a local file, a draft, a scratch branch): pick the sensible
+      default and keep going. Say in one line what you assumed.
+    - **Hard to undo** (delegating work to a colleague, sending a message or mail, creating a
+      calendar entry, publishing, deleting, anything that leaves this machine): if WHAT you
+      are acting on is not named in this conversation and you did not just look it up, call
+      `request_approval` FIRST. One question costs a minute; three colleagues on the wrong
+      project cost an afternoon.
 
 ## Environment
-- Workspace: `/workspace/` (persistent across tasks)
-- Shared files: `/shared/` (all agents can read/write)
+- Workspace: `/workspace/` (persistent across tasks) — **YOURS ALONE. No other agent can see it.**
+  Every agent has its own separate volume. A path like `/workspace/projects/foo`
+  is meaningless to a colleague: on their side it simply does not exist.
+- **Delegating? Never send one of your own `/workspace/` paths.** The receiver
+  will look, find nothing, and report back that there is no such thing — which
+  reads like they refused to work. Instead do ONE of these:
+  1. **Put the files in `/shared/` first** and delegate THAT path. This is the
+     only directory every agent sees.
+  2. **Delegate self-contained work** — put everything needed into the task
+     prompt itself, and ask for the result as text.
+  Same rule in reverse: when a colleague hands you a `/workspace/...` path, say
+  so and ask for it under `/shared/` — do not guess what they meant.
+- Shared files: `/shared/` (all agents can read/write) — the ONLY common ground
 - Team directory: `/shared/team.json` (SNAPSHOT from when your container last started — it lists all agents and carries no team membership. For anything about YOUR team, call `list_my_team` instead; this file goes stale as soon as members change.)
 - **Platform errors: `/shared/platform-errors.log`** — the platform's own WARNING/ERROR logs (secret-redacted). Read this file when something on the platform misbehaves or you want to improve the platform itself; turn recurring errors into a GitHub issue or PR.
 - Knowledge base: `/workspace/knowledge.md` (my role, skills, learnings)
@@ -328,6 +361,45 @@ mit wem er eigentlich schreibt.
   es kommt („Von CodeReview: …"). Wenn nein, sag dem Mitglied ab. Du bist der Filter, nicht
   die Weiterleitung. Hast du selbst kein Telegram, sag das dem Mitglied — dann bleibt es
   beim Chat, und das reicht.
+
+## Wenn du Code lieferst: die Version gehoert dazu (WICHTIG)
+Ein zusammengefuehrter Pull Request ohne Versionssprung ist eine Aenderung, die
+niemand nachvollziehen kann: die Betreiber sehen an keiner Stelle, was auf ihrer
+Anlage eigentlich neu ist. Am 14.08.2026 sind so sechs Pull Requests mit ueber
+1000 Zeilen in die Hauptlinie gelaufen — ohne eine einzige Zeile Release-Spur.
+
+Zu JEDER Aenderung, die zusammengefuehrt wird, gehoeren deshalb drei Dinge im
+selben Zug:
+
+1. **`VERSION` erhoehen** (SemVer: Fehlerbehebung = Patch, neue Faehigkeit =
+   Minor) und **dieselbe Nummer** in `agent/Dockerfile` (`LABEL
+   ai-employee.version`). Die beiden duerfen nie auseinanderlaufen.
+2. **`CHANGELOG.md`**: ein Eintrag unter der neuen Nummer, der sagt, was sich fuer
+   den NUTZER aendert — nicht, welche Dateien du angefasst hast. Wer es liest,
+   soll verstehen, was vorher schlecht war.
+3. Erst dann zusammenfuehren.
+
+Bist du dir bei der Stufe unsicher, nimm die kleinere und schreib deine
+Unsicherheit in den Eintrag. Eine zu vorsichtige Nummer ist harmlos, eine
+fehlende Nummer nicht.
+
+## Namen gehoeren nicht in Code, Commits oder Tickets (WICHTIG)
+Alles, was du in ein Repository, eine Commit-Nachricht, einen Pull Request oder ein
+Issue schreibst, kann **oeffentlich** sein — auch wenn das Repo heute privat ist.
+Deshalb: **nie den Namen eines Kunden, einer Firma oder einer Person** hineinschreiben.
+Das gilt genauso fuer Kommentare, Tests, Beispieldaten, CHANGELOG und Dokumentation.
+
+Statt des Namens schreibst du **„beim Kunden", „eine Kundenanlage", „der Betreiber"**.
+Der Sachverhalt bleibt dabei vollstaendig nachvollziehbar — nur der Name faellt weg.
+Fuer Beispiele und Testdaten: `example.com` / `example.invalid` (dafuer reserviert),
+`m.mustermann`, generische private IPs. Nie ein echter Host, eine echte Adresse oder
+eine interne IP.
+
+Das passiert beilaeufig und ohne Absicht: du schreibst auf, WO ein Fehler auftrat, und
+der Ort hat nun einmal einen Namen. Genau deshalb achte aktiv darauf.
+
+Wo der Klarname hingehoert: in dein **Gedaechtnis** (`save_memory`) und in interne
+Notizen. Dort ist er noetig und richtig — im Repository nicht.
 
 ## Zwei Dinge gleichzeitig dringend?
 Reihenfolge, wenn mehreres draengt:
@@ -415,7 +487,20 @@ I have persistent long-term memory that survives across ALL conversations and ta
 - **create_task** - Create a new task (for self or another agent)
 - **list_tasks** - List tasks assigned to me (filter by status)
 - **list_team** - See the agents visible to you (your team members plus other teams' leads) with roles and status
-- **list_my_team** - See ONLY the members of the team(s) YOU belong to (with roles + who is the lead). **When someone asks "who is on your team / who are your colleagues / which agents do you have", ALWAYS call `list_my_team` first and answer from its result — never from memory.** As a team lead, this is how you know your own team.
+- **list_my_team** - See ONLY the members of the team(s) YOU belong to (with roles + who is the lead). As a team lead, this is how you know your own team.
+
+**Your roster is something you LOOK UP, never something you REMEMBER.**
+Colleagues get created, renamed and deleted while you are not running. A stored
+team list is a snapshot of a world that has already moved on. So call
+`list_my_team` (or `list_team`) *before you act on it*, not only when someone
+asks you about it:
+  - before you delegate, send a message, or name a colleague to the user
+  - before you write anything about the team into memory or into a file
+  - at the start of any task whose plan involves another agent
+If a colleague you expected is gone, say so plainly and re-plan with the agents
+that actually exist — do not queue work for a name that is no longer there. If a
+memory of yours turns out to be wrong about the team, delete it with
+`memory_delete`; leaving it there means you will believe it again tomorrow.
 - **write_knowledge** - Save/update an entry in the shared Knowledge Base (upsert by title; appears in the Knowledge graph). Use for durable, searchable knowledge — e.g. importing wiki pages (read via a MediaWiki MCP, then write each page here) or storing a meeting protocol.
 - **send_message** - Send a text message to another agent
 - **create_schedule** - Create a recurring task schedule; use cron_expression for exact wall-clock times and interval_seconds for relative intervals
@@ -606,31 +691,30 @@ My workspace has a soft quota of **$AGENT_WORKSPACE_SIZE_GB GB**.
 
 DEFAULT_KNOWLEDGE_MD = """# Agent Knowledge Base
 
-## Onboarding Status: NOT COMPLETED
-**IMPORTANT: On my FIRST conversation, I MUST conduct an onboarding interview!**
+## Meine Rolle
 
-### Onboarding Interview Steps:
-1. Introduce myself and explain that I'm a new team member that needs setup
-2. Ask the user: "What role should I fill?" (e.g., Developer, Researcher, Writer, Analyst, DevOps, etc.)
-3. Ask: "What are my main responsibilities?"
-4. Ask: "Are there things I should NOT do or be careful about?"
-5. Ask: "What tools, languages, or frameworks should I focus on?"
-6. Ask: "Any other preferences or instructions?"
-7. After getting answers, update THIS file (knowledge.md) with my complete profile
-8. Change "Onboarding Status" above to "COMPLETED"
-9. Write a brief summary of my role to /shared/team.json (read existing, add myself)
+Meine Rolle, meine Schwerpunkte und meine Grenzen stehen in meiner **Vorlage** und in
+meiner Agenten-Konfiguration. Die gelten — ich frage sie nicht noch einmal ab.
 
-## My Role
-<!-- Filled in after onboarding interview -->
+**Kein Onboarding-Interview.** Frueher stand hier die Anweisung, bei der ersten
+Unterhaltung Rolle, Aufgaben und Grenzen zu erfragen. Das war schon dann ueberfluessig,
+wenn ein Agent aus einer Vorlage entsteht — dort ist all das bereits festgelegt —, und
+es hat aktiv geschadet: am 2026-08-13 kam ein delegierter Auftrag mit der Rueckfrage
+„fuer mich sind keine Verantwortungsbereiche hinterlegt, bitte festlegen" zurueck,
+statt mit Arbeit. In einem Auftrag sitzt niemand, der antwortet.
 
-## My Responsibilities
-<!-- Filled in after onboarding interview -->
+Fehlt mir etwas fuer eine konkrete Aufgabe:
+1. Ich **arbeite trotzdem** und waehle die sicherste vernuenftige Annahme.
+2. Ich sage in EINER Zeile, was gefehlt hat und wie ich entschieden habe.
+3. Braucht es wirklich eine Entscheidung, rufe ich `request_approval` — das erreicht
+   einen Menschen und wartet. Eine Frage als Fliesstext erreicht in einem Auftrag
+   niemanden.
 
-## Boundaries & Rules
-<!-- Filled in after onboarding interview -->
+## Verantwortungsbereiche
 
-## Tech Stack & Skills
-<!-- Filled in after onboarding interview -->
+Was ich dauerhaft besitze, pflegt der Mensch in meinen Einstellungen (Bereich
+„Verantwortungsbereiche"). Sind dort keine hinterlegt, arbeite ich auftragsbezogen —
+das ist kein Fehler und kein Grund, eine Aufgabe anzuhalten.
 
 ## Learned Patterns
 <!-- I update this section after each task with new learnings -->
@@ -638,6 +722,35 @@ DEFAULT_KNOWLEDGE_MD = """# Agent Knowledge Base
 ## Errors & Fixes
 <!-- Common errors and how I resolved them -->
 """
+
+
+def strip_onboarding_block(knowledge: str) -> str | None:
+    """Den ueberholten Onboarding-Abschnitt aus einer bestehenden knowledge.md nehmen.
+
+    ``None`` heisst: nichts zu tun.
+
+    Die Datei liegt im Volume des Agenten und wird beim Neuerstellen bewusst NICHT
+    ueberschrieben — dort steht Gelerntes drin. Folge: Agenten, die vor dem
+    Wegfall des Interviews entstanden sind, tragen die Anweisung weiter mit sich
+    herum und halten damit weiter Auftraege an, um nach ihrer Rolle zu fragen.
+
+    Deshalb wird hier **nur der Kopf** ersetzt: alles ab dem ersten Abschnitt, den
+    der Agent selbst gefuellt haben koennte, bleibt Zeichen fuer Zeichen stehen.
+    Eine Datei, die den Block nicht (mehr) hat, wird nicht angefasst.
+    """
+    if not knowledge or "Onboarding Status: NOT COMPLETED" not in knowledge:
+        return None
+
+    # Erster Abschnitt, der dem Agenten gehoert. Ab da wird nichts mehr angefasst.
+    keep_from = len(knowledge)
+    for marker in ("## Learned Patterns", "## Errors & Fixes", "## My Role"):
+        pos = knowledge.find(marker)
+        if pos != -1:
+            keep_from = min(keep_from, pos)
+    tail = knowledge[keep_from:] if keep_from < len(knowledge) else ""
+
+    head = DEFAULT_KNOWLEDGE_MD.split("## Learned Patterns")[0]
+    return head + tail if tail else DEFAULT_KNOWLEDGE_MD
 
 
 def _build_mounts_section(mount_labels: list[str], catalog: dict | None = None) -> str:
@@ -684,6 +797,55 @@ def agent_timezone(config: dict | None) -> str:
     """Die Zeitzone DIESES Agenten — dieselbe Reihenfolge wie ueberall sonst."""
     from app.core.plan_rhythm import timezone_name
     return timezone_name(config)
+
+
+def _laufzeit_hinweis(mode: str | None) -> str:
+    """Der eine Absatz, der sich je Laufzeit WIRKLICH unterscheidet.
+
+    Der uebrige Anleitungstext ist bewusst fuer alle gleich — Paritaet entsteht
+    dadurch, dass es EINE Quelle gibt. Unterschiedlich ist nur, wie die jeweilige
+    Laufzeit ihre Schleife fuehrt, und dazu sagt jeder Anbieter etwas anderes:
+
+    * **Claude Code** — Anthropic empfiehlt fuer lange Laeufe ausdruecklich
+      Selbstpruefung auf Takt: „Establish a method for checking your own work as
+      you build; run it every [interval]". Dazu: zu kleinteilige Anweisungen
+      SENKEN die Qualitaet („too prescriptive … reduce output quality"), also
+      Ziel und Grenzen nennen, nicht jeden Schritt.
+    * **Codex / OpenAI** — der Agents-SDK bricht bei ``max_turns`` mit einer
+      Ausnahme ab und empfiehlt, das aufzufangen und den Nutzer um Eingrenzung
+      zu bitten („I couldn't finish within the turn limit. Please narrow the
+      request."). Das ist eine Haltung, keine Einstellung — deshalb steht sie
+      hier im Text.
+    * **Custom-LLM** — unser eigener Harness. Er sagt dem Agenten aktiv, wie
+      viel Budget bleibt, und bittet am Ende um einen Abschluss. Damit die
+      Systemmeldungen nicht aus dem Nichts kommen, sind sie hier angekuendigt.
+    """
+    if mode == "codex_cli":
+        return (
+            "\n## Wenn die Aufgabe zu gross ist\n"
+            "Merkst du, dass du sie in diesem Lauf nicht fertig bekommst, brich nicht "
+            "einfach ab. Bring zuerst das Wichtigste zu Ende, sag dann klar, was fertig "
+            "ist und was offen bleibt, und schlage vor, wie man die Aufgabe teilt. Eine "
+            "halbe Aufgabe mit klarem Schnitt ist brauchbar; eine mittendrin abgebrochene "
+            "nicht.\n"
+        )
+    if mode == "custom_llm":
+        return (
+            "\n## Arbeitsbudget\n"
+            "Du bekommst gegen Ende eine Systemmeldung, wie viele Schritte dir noch "
+            "bleiben. Nimm sie ernst: bring dann das Wichtigste zu Ende und fasse "
+            "zusammen, statt eine neue Baustelle aufzumachen. Ist das Budget auf, wirst du "
+            "um einen Abschluss gebeten — dort gehoert hin, was fertig ist, was offen ist "
+            "und was der naechste Schritt waere.\n"
+        )
+    # claude_code und alles ohne bekannten Modus
+    return (
+        "\n## Bei langen Arbeiten: pruefe dich selbst auf Takt\n"
+        "Baust du laenger an einer Sache, leg dir zu Beginn fest, WIE du dein Ergebnis "
+        "pruefst (Test, Aufruf, Gegenlesen) — und fuehre diese Pruefung regelmaessig aus, "
+        "nicht erst am Ende. Ein frischer Blick von aussen (ein Subagent ohne deinen "
+        "bisherigen Verlauf) findet mehr als deine eigene Nachkontrolle.\n"
+    )
 
 
 def instructions_paths(mode: str | None) -> list[str]:
@@ -734,7 +896,8 @@ def _identity_line(name: str, role: str) -> str:
 
 def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
                       workspace_size_gb: float | None = None,
-                      agent_name: str = "", agent_role: str = "") -> str:
+                      agent_name: str = "", agent_role: str = "",
+                      master_rules: str = "", mode: str | None = None) -> str:
     """Render the agent CLAUDE.md from its template — the SINGLE place that fills
     its placeholders (identity, workspace soft-quota, host-mounts section). Used by
     the create / update / restart paths, so the substitution lives in exactly one spot.
@@ -743,7 +906,12 @@ def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
     honour an individual agent's quota override (``config["workspace_size_gb"]``).
     """
     size = settings.agent_workspace_size_gb if workspace_size_gb is None else workspace_size_gb
-    return (
+    # Die Master-Regeln stehen GANZ OBEN, nicht am Ende: die Agenten-Laufzeit
+    # kuerzt eine zu lange Anleitung von hinten (siehe
+    # runner_hooks.get_identity_context). Angehaengt waeren ausgerechnet die
+    # Regeln, die immer gelten sollen, bei einem gespraechigen Agenten als
+    # Erstes weg.
+    return master_rules + _laufzeit_hinweis(mode) + (
         DEFAULT_CLAUDE_MD
         .replace("$AGENT_IDENTITY", _identity_line(agent_name, agent_role))
         .replace("$AGENT_WORKSPACE_SIZE_GB", str(size))
@@ -771,6 +939,27 @@ class AgentManager:
         self.db = db
         self.docker = docker
         self.redis = redis
+
+    async def _agent_redis_url(self, agent_id: str) -> str:
+        """REDIS_URL for one agent's container.
+
+        Behind settings.redis_acl_enabled (default off, see config.py /
+        Sentinel epic #588 sub-issue #589): provisions a least-privilege
+        per-agent Redis ACL user and returns credentials scoped to it,
+        instead of every agent sharing the one admin credential.
+
+        Fail-closed once the flag is explicitly on: if ACL provisioning
+        fails (Sentinel-HA not yet supported, Redis unreachable, ...), the
+        exception propagates and the caller's create/restart/update fails
+        loudly instead of silently handing the agent the shared admin
+        credential — a security flag that quietly degrades to "no security"
+        on error would defeat its own purpose. With the flag at its default
+        (False) this method never touches Redis, so this change has zero
+        effect until an operator explicitly opts in.
+        """
+        if not settings.redis_acl_enabled:
+            return settings.redis_url_internal
+        return await self.redis.ensure_agent_acl_user(agent_id)
 
     @staticmethod
     def _mode_for_ai_provider(provider_type: str | None, requested_mode: str = "custom_llm") -> str:
@@ -869,6 +1058,74 @@ class AgentManager:
             env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude_code_oauth_token
         return env
 
+    async def _owner_credential_env(
+        self, owner_id: str | None, mode: str | None, model_provider: str | None
+    ) -> dict[str, str]:
+        """Der Zugang des **Besitzers** dieses Agenten — oder die Teamlizenz.
+
+        Wird NACH ``_build_provider_env`` gemischt und überschreibt dessen Werte.
+        Damit gilt die Reihenfolge aus :mod:`app.core.agent_credentials`: eigener
+        Zugang → Teamlizenz (falls der Administrator sie freigegeben hat) → nichts.
+
+        Massgeblich ist der Besitzer, nicht der gerade Eingeloggte: ein Agent
+        arbeitet auch nachts weiter, wenn niemand angemeldet ist.
+
+        Warum das mehr ist als Bequemlichkeit: bisher teilten sich **alle**
+        Codex-Agenten einen rotierenden Refresh-Token. Erneuert ihn einer, sind
+        die anderen tot — deshalb muss das Neuerstellen bis heute serialisiert
+        werden. Getrennte Zugänge sind getrennte Token-Familien; der Ausfall
+        eines Abos trifft dann genau einen Agenten.
+        """
+        from app.core import agent_credentials as creds
+
+        try:
+            source, harness, secret = await creds.resolve(
+                self.db, owner_id=owner_id, mode=mode, model_provider=model_provider
+            )
+        except Exception:  # noqa: BLE001
+            # Ein Fehler beim Aufloesen darf keinen Agenten am Start hindern —
+            # dann greift wie bisher die globale Einstellung.
+            logger.warning("[Zugang] Aufloesen fehlgeschlagen, globale Einstellung gilt",
+                           exc_info=True)
+            return {}
+
+        if not harness:
+            return {}
+        if not secret:
+            logger.info("[Zugang] %s: kein Zugang fuer Besitzer %s (%s)",
+                        harness, scrub_log(owner_id or "-"), source)
+            return {}
+        logger.info("[Zugang] %s laeuft mit %s Zugang",
+                    harness, "eigenem" if source == creds.SOURCE_PERSONAL else "Team-")
+        return creds.env_for(harness, secret)
+
+    async def _warn_model_substituted(self, acc, gewuenscht: str, ersatz: str) -> None:
+        """Den Besitzer darauf hinweisen, dass sein Agent auf einem ANDEREN
+        Modell laeuft als ausgewaehlt.
+
+        Best effort: eine fehlgeschlagene Meldung darf das Anlegen eines
+        Agenten nicht verhindern — aber schweigen darf sie nicht.
+        """
+        try:
+            from app.models.notification import Notification
+
+            self.db.add(Notification(
+                agent_id="system",
+                type="warning",
+                title="Agent laeuft auf einem anderen Modell",
+                message=(
+                    f"Im Zugang '{acc.name}' ist das Modell '{gewuenscht}' nicht "
+                    f"hinterlegt. Der Agent laeuft stattdessen auf '{ersatz}'. "
+                    f"Trage '{gewuenscht}' im Zugang nach oder waehle ein "
+                    f"freigegebenes Modell."
+                )[:2000],
+                priority="high",
+                action_url="/admin",
+            ))
+            await self.db.commit()
+        except Exception:  # noqa: BLE001
+            logger.exception("[AI-Konto] Hinweis auf Modellwechsel fehlgeschlagen")
+
     async def _effective_llm_config(
         self, ai_account_id: int | None, inline_llm_config: dict | None,
         agent_model: str | None = None,
@@ -896,7 +1153,30 @@ class AgentManager:
                         entry = m
                         break
                 if entry is None and models:
+                    # Der Agent verlangt ein Modell, das dieses Konto nicht
+                    # fuehrt. Bisher wurde stillschweigend der ERSTE Eintrag
+                    # genommen — der Agent lief dann auf einem anderen Modell,
+                    # ohne dass irgendwo etwas davon stand.
+                    #
+                    # Beim Nutzer am 2026-08-15 genau so passiert: ausgewaehlt
+                    # war gpt-5.6-sol, gelaufen ist gpt-5.3-codex. In einer
+                    # Anlage, in der der Administrator Modelle FREIGIBT, ist das
+                    # der gefaehrlichste Fehler ueberhaupt — man glaubt, das
+                    # freigegebene Modell zu benutzen.
+                    #
+                    # Der Rueckfall bleibt (ein laufender Agent soll nicht wegen
+                    # einer Konto-Aenderung stehenbleiben), aber er ist ab jetzt
+                    # laut: im Protokoll UND als Meldung an den Besitzer.
                     entry = models[0]
+                    if agent_model:
+                        ersatz = entry.get("name") if isinstance(entry, dict) else entry
+                        logger.warning(
+                            "[AI-Konto %s] Modell %r nicht im Konto — es laeuft %r",
+                            ai_account_id, agent_model, ersatz,
+                        )
+                        await self._warn_model_substituted(
+                            acc, agent_model, str(ersatz or "?")
+                        )
                 if isinstance(entry, dict):
                     mname = entry.get("name", "") or ""
                     prov = entry.get("provider_type") or acc.provider_type
@@ -910,7 +1190,7 @@ class AgentManager:
                     "api_endpoint": endp,
                     "api_key": _decrypt(acc.api_key_encrypted) if acc.api_key_encrypted else "",
                     "model_name": mname,
-                    "max_tokens": extra.get("max_tokens", 4096),
+                    "max_tokens": extra.get("max_tokens") or 0,   # 0 = keine eigene Grenze
                     "temperature": extra.get("temperature", 0.7),
                     "system_prompt": extra.get("system_prompt", ""),
                     "tools_enabled": extra.get("tools_enabled", True),
@@ -934,12 +1214,21 @@ class AgentManager:
             "LLM_API_ENDPOINT": cfg.get("api_endpoint", "") or "",
             "LLM_API_KEY": cfg.get("api_key", "") or "",
             "LLM_MODEL_NAME": cfg.get("model_name", ""),
-            "LLM_MAX_TOKENS": str(cfg.get("max_tokens", 4096)),
+            # 0 = keine eigene Grenze, dann entscheidet das Modell. Die frueheren
+            # 4096 stammten aus einer Zeit, in der Modelle nicht mehr konnten —
+            # fuer ein Review oder eine Datei brach die Antwort damit mitten im
+            # Satz ab, und das sah aus wie ein fertiges Ergebnis.
+            "LLM_MAX_TOKENS": str(cfg.get("max_tokens") or 0),
             "LLM_TEMPERATURE": str(cfg.get("temperature", 0.7)),
             "LLM_SYSTEM_PROMPT": cfg.get("system_prompt", "") or "",
             "LLM_TOOLS_ENABLED": str(cfg.get("tools_enabled", True)).lower(),
             "LLM_THINKING_MODE": cfg.get("thinking_mode", "auto"),
             "LLM_REASONING_EFFORT": cfg.get("reasoning_effort", "") or "",
+            # Ausweichmodelle bei Rate-Limit/Ueberlastung (#200). Liste oder
+            # kommagetrennter Text, beides erlaubt — leer heisst kein Ausweichen.
+            "LLM_FALLBACK_MODELS": ",".join(cfg["fallback_models"])
+            if isinstance(cfg.get("fallback_models"), list)
+            else (cfg.get("fallback_models") or ""),
             # Azure OpenAI specifics (empty for other providers)
             "LLM_API_VERSION": cfg.get("api_version", "") or "",
             "LLM_DEPLOYMENT": cfg.get("deployment", "") or "",
@@ -1143,8 +1432,20 @@ class AgentManager:
             env.setdefault("GH_TOKEN", github_token)
         return env
 
-    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str = "l3") -> Agent:
+    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str = "l3",
+                           knowledge_md: str | None = None) -> Agent:
         agent_id = uuid.uuid4().hex[:8]
+        # Ein Agent ohne Besitzer ist ein Betriebsunfall, kein Betriebsmodus:
+        # er taucht in keiner persoenlichen Liste mehr auf (seit dem Schliessen
+        # des stillen Freigabewegs) und niemand fuehlt sich zustaendig. Das
+        # Anlegen wird deshalb nicht verhindert — interne Wege brauchen es —
+        # aber es steht im Protokoll, statt unbemerkt zu bleiben.
+        if not user_id:
+            logger.warning(
+                "Agent %r wird OHNE Besitzer angelegt — er erscheint in keiner "
+                "persoenlichen Uebersicht und muss von einem Administrator "
+                "zugewiesen werden.", name,
+            )
         container_name = f"ai-agent-{_container_slug(name)}-{agent_id}"
         volume_name = f"workspace-{agent_id}"
         session_volume = f"claude-session-{agent_id}"
@@ -1188,7 +1489,7 @@ class AgentManager:
             "AGENT_NAME": name,
             "AGENT_ROLE": role or "",
             "AGENT_TOKEN": make_agent_token(agent_id),
-            "REDIS_URL": settings.redis_url_internal,
+            "REDIS_URL": await self._agent_redis_url(agent_id),
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
             "MAX_TURNS": str(settings.max_turns),
@@ -1198,7 +1499,14 @@ class AgentManager:
             # Der Container tickt in SEINER Zeitzone. Ohne das lief `date` im Agenten
             # in UTC: er schrieb „07:00" in einen Zeitplan und meinte neun, und in
             # jedem Bericht stand eine Uhrzeit, die zwei Stunden daneben lag.
-            "TZ": agent_timezone(config),
+            #
+            # ``None``, nicht ``config``: hier wird der Agent gerade erst angelegt,
+            # eine eigene Zeitzone hat er noch nicht — es gilt die Vorgabe. Die
+            # Variable ``config`` existiert an dieser Stelle NICHT (sie wird erst
+            # weiter unten fuer den proaktiven Zeitplan gesetzt), und der Zugriff
+            # darauf liess jedes Anlegen eines Agenten mit 500 scheitern:
+            # „cannot access local variable 'config'".
+            "TZ": agent_timezone(None),
         }
 
         if mode == "custom_llm" and effective_llm:
@@ -1217,6 +1525,9 @@ class AgentManager:
             provider_env = {
                 **self._build_provider_env(model_provider),
                 **self._cli_account_env(mode, effective_llm),
+                # Zuletzt, damit der eigene Zugang des Besitzers die globale
+                # Einstellung ueberschreibt (#eigene-Abos).
+                **await self._owner_credential_env(user_id, mode, model_provider),
             }
             mcp_env = await self._get_custom_mcp_env(agent_id=agent_id, agent_integrations=integrations)
             integration_env = await self._get_integration_env(integrations or [], user_id=user_id)
@@ -1264,15 +1575,22 @@ class AgentManager:
 
         # Initialize workspace files
         agent_mounts = []
-        claude_md = _render_claude_md(agent_mounts, agent_name=name, agent_role=role or "")
+        from app.core import master_rules as _mr
+        claude_md = _render_claude_md(agent_mounts, agent_name=name, agent_role=role or "",
+                                      master_rules=await _mr.load(self.db), mode=mode)
         # Same instruction text for EVERY harness — only the file name differs, because
         # each CLI reads its own (see instructions_paths). Two copies of this branch used
         # to decide it; now there is one list and no mode can quietly fall through.
         try:
             for _path in instructions_paths(mode):
                 self.docker.write_file_in_container(container.id, _path, claude_md)
+            # Kommt der Agent aus einer Vorlage, gilt DEREN Beschreibung. Die
+            # leere Vorgabe wuerde sie ueberschreiben — und genau deshalb stand
+            # bei jedem Vorlagen-Agenten "Onboarding NOT COMPLETED", obwohl Rolle,
+            # Schwerpunkte und Grenzen laengst festgelegt waren.
             self.docker.write_file_in_container(
-                container.id, "/workspace/knowledge.md", DEFAULT_KNOWLEDGE_MD
+                container.id, "/workspace/knowledge.md",
+                (knowledge_md or "").strip() or DEFAULT_KNOWLEDGE_MD,
             )
             logger.info(
                 "Initialized %s + knowledge.md for agent %s (mode=%s)",
@@ -1314,7 +1632,12 @@ class AgentManager:
             config={
                 "session_volume": session_volume,
                 "role": role or "",
-                "onboarding_complete": False if mode == "claude_code" else True,
+                # Das Einrichtungsgespraech ist entfallen — der Agent haelt sich an
+                # seine Vorlage. Ein Agent, der hier auf `false` stuende, bekaeme
+                # ein Interview eingeblendet, das es nicht mehr gibt, und seine
+                # proaktiven Laeufe wuerden dauerhaft uebersprungen: nichts koennte
+                # den Haken je setzen. Was er tun soll, steht in Rolle und Vorlage.
+                "onboarding_complete": True,
                 "model_provider": self._model_provider_for_mode(mode, effective_llm),
                 "integrations": integrations or [],
                 "permissions": agent_permissions,
@@ -1458,9 +1781,12 @@ class AgentManager:
             "AGENT_NAME": agent.name,
             "AGENT_ROLE": role,
             "AGENT_TOKEN": make_agent_token(agent_id),
-            "REDIS_URL": settings.redis_url_internal,
+            "REDIS_URL": await self._agent_redis_url(agent_id),
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
+            # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
+            # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
+            "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
             "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
             "MAX_TURNS": str(settings.max_turns),
             # Per-agent parallelism (config['parallel_sessions']) overrides the
@@ -1488,6 +1814,7 @@ class AgentManager:
             provider_env = {
                 **self._build_provider_env(agent_provider),
                 **self._cli_account_env(mode, effective_llm),
+                **await self._owner_credential_env(agent.user_id, mode, agent_provider),
             }
             mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
@@ -1510,18 +1837,21 @@ class AgentManager:
         mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         def _create_agent_container():
-            return self.docker.create_container(
-                image=settings.agent_image,
-                name=container_name,
-                environment=env_vars,
-                volume_name=volume_name,
-                session_volume_name=session_volume,
-                shared_volume_name="ai-employee-shared",
-                network=settings.agent_network,
-                memory_limit=settings.agent_memory_limit,
-                cpu_quota=settings.agent_cpu_quota,
-                needs_sudo=needs_sudo,
-                bind_mounts=bind_mounts,
+            return self._create_or_adopt(
+                container_name,
+                lambda: self.docker.create_container(
+                    image=settings.agent_image,
+                    name=container_name,
+                    environment=env_vars,
+                    volume_name=volume_name,
+                    session_volume_name=session_volume,
+                    shared_volume_name="ai-employee-shared",
+                    network=settings.agent_network,
+                    memory_limit=settings.agent_memory_limit,
+                    cpu_quota=settings.agent_cpu_quota,
+                    needs_sudo=needs_sudo,
+                    bind_mounts=bind_mounts,
+                ),
             )
         if mode == "codex_cli":
             # Serialize Codex recreation: only ONE codex container comes up at a time
@@ -1549,12 +1879,16 @@ class AgentManager:
         # Claude Code, AGENT.md for Custom LLM — model-agnostic naming).
         try:
             agent_mounts = config.get("mounts", [])
-            fresh_claude_md = _render_claude_md(
-                agent_mounts, catalog, agent_name=agent.name, agent_role=role or ""
-            )
+            from app.core import master_rules as _mr
             mode = agent.mode or config.get("mode", "claude_code")
+            fresh_claude_md = _render_claude_md(
+                agent_mounts, catalog, agent_name=agent.name, agent_role=role or "",
+                master_rules=await _mr.load(self.db), mode=mode,
+            )
             for target_file in instructions_paths(mode):
                 self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
+            await self.migrate_knowledge_file(container.id, agent_id)
+
             # Clean up old CLAUDE.md if this is now a custom_llm agent (one-time migration)
             if mode != "claude_code":
                 try:
@@ -1587,6 +1921,32 @@ class AgentManager:
         await self._publish_event(agent_id, "system", "Agent stopped")
         return agent
 
+    def _create_or_adopt(self, container_name: str, anlegen):
+        """Container anlegen — oder den uebernehmen, der schon da ist.
+
+        Der Containername ist fest je Agent. Legen zwei Wege gleichzeitig an
+        (ein Start-Klick und, sagen wir, ein Reparaturlauf), raeumt der eine ab,
+        waehrend der andere schon baut. Der Verlierer bekam bis 1.228.0
+        „Conflict. The container name ... is already in use" — und der Nutzer
+        eine nackte 500 mit „This page couldn't load", gemeldet am 18.08.2026.
+
+        Der fertige Container ist genau der, den wir bauen wollten. Ihn zu
+        loeschen waere falsch: er koennte bereits arbeiten. Also uebernehmen.
+        """
+        try:
+            return anlegen()
+        except APIError as e:
+            if "already in use" not in str(e):
+                raise
+            logger.warning(
+                "Container %s war schon da — uebernommen statt neu gebaut",
+                scrub_log(container_name),
+            )
+            vorhandener = self.docker.client.containers.get(container_name)
+            if vorhandener.status != "running":
+                vorhandener.start()
+            return vorhandener
+
     async def start_agent(self, agent_id: str) -> Agent:
         await self._publish_event(agent_id, "system", "Agent starting...")
         agent = await self._get_agent(agent_id)
@@ -1605,6 +1965,32 @@ class AgentManager:
         await self._publish_event(agent_id, "system", "Agent started")
         return agent
 
+    async def migrate_knowledge_file(self, container_id: str, agent_id: str) -> bool:
+        """Den entfallenen Onboarding-Abschnitt aus der Wissensdatei nehmen.
+
+        Bewusst an EINER Stelle und von beiden Wegen gerufen (``restart_agent``
+        und ``update_agent`` ueber ``refresh_instructions``). Die erste Fassung
+        hing nur in ``restart_agent`` — das Neuerstellen laeuft aber ueber
+        ``update_agent``, und so passierte beim Kunden schlicht nichts. Genau
+        dieselbe Falle wie zwei Mal zuvor an diesem Wochenende.
+        """
+        try:
+            _, current = self.docker.exec_in_container(
+                container_id, ["cat", "/workspace/knowledge.md"]
+            )
+            migrated = strip_onboarding_block(current or "")
+            if not migrated:
+                return False
+            self.docker.write_file_in_container(
+                container_id, "/workspace/knowledge.md", migrated
+            )
+            logger.info("[Wissen] Onboarding-Abschnitt bei %s entfernt", scrub_log(agent_id))
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Wissen] knowledge.md von %s nicht migriert: %s",
+                           scrub_log(agent_id), scrub_log(e))
+            return False
+
     async def refresh_instructions(self, agent: Agent) -> bool:
         """Schreibt die aktuelle Anleitung in einen BESTEHENDEN Container.
 
@@ -1621,12 +2007,17 @@ class AgentManager:
             from app.core.mounts import get_effective_catalog
             catalog = await get_effective_catalog(self.db)
             mode = agent.mode or (agent.config or {}).get("mode", "claude_code")
+            from app.core import master_rules as _mr
             rendered = _render_claude_md(
                 (agent.config or {}).get("mounts", []), catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
+                master_rules=await _mr.load(self.db), mode=mode,
             )
             for path in instructions_paths(mode):
                 self.docker.write_file_in_container(agent.container_id, path, rendered)
+            # Wissensdatei mitziehen — sie liegt im Volume und ueberlebt sonst
+            # jede Aenderung an der Vorlage.
+            await self.migrate_knowledge_file(agent.container_id, agent.id)
             return True
         except Exception as e:  # noqa: BLE001 — Anleitung ist wichtig, aber nicht kritisch
             logger.warning(f"Could not refresh instructions for agent {agent.id}: {e}")
@@ -1687,9 +2078,12 @@ class AgentManager:
             "AGENT_NAME": agent.name,
             "AGENT_ROLE": role,
             "AGENT_TOKEN": make_agent_token(agent_id),
-            "REDIS_URL": settings.redis_url_internal,
+            "REDIS_URL": await self._agent_redis_url(agent_id),
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
+            # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
+            # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
+            "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
             "TZ": agent_timezone(config),      # siehe oben: der Container tickt lokal
             "MAX_TURNS": str(settings.max_turns),
             # Per-agent parallelism (config['parallel_sessions']) overrides the
@@ -1732,6 +2126,7 @@ class AgentManager:
             provider_env = {
                 **self._build_provider_env(agent_provider),
                 **self._cli_account_env(mode, effective_llm),
+                **await self._owner_credential_env(agent.user_id, mode, agent_provider),
             }
             mcp_env = await self._get_custom_mcp_env(agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", []))
             integration_env = await self._get_integration_env(config.get("integrations", []), user_id=agent.user_id)
@@ -1754,18 +2149,24 @@ class AgentManager:
         mount_entries = resolve_agent_mounts(config.get("mounts", []), catalog, config.get("mount_modes", {}))
         bind_mounts = mounts_to_docker_volumes(mount_entries) or None
         def _create_agent_container():
-            return self.docker.create_container(
-                image=settings.agent_image,
-                name=container_name,
-                environment=env_vars,
-                volume_name=volume_name,
-                session_volume_name=session_volume,
-                shared_volume_name="ai-employee-shared",
-                network=settings.agent_network,
-                memory_limit=settings.agent_memory_limit,
-                cpu_quota=settings.agent_cpu_quota,
-                needs_sudo=needs_sudo,
-                bind_mounts=bind_mounts,
+            # Gleiche Uebernahme wie in `restart_agent`: der Name ist fest, also
+            # kann ein zweiter Weg denselben Container in der Zwischenzeit
+            # aufgebaut haben. Siehe dort fuer den Hergang.
+            return self._create_or_adopt(
+                container_name,
+                lambda: self.docker.create_container(
+                    image=settings.agent_image,
+                    name=container_name,
+                    environment=env_vars,
+                    volume_name=volume_name,
+                    session_volume_name=session_volume,
+                    shared_volume_name="ai-employee-shared",
+                    network=settings.agent_network,
+                    memory_limit=settings.agent_memory_limit,
+                    cpu_quota=settings.agent_cpu_quota,
+                    needs_sudo=needs_sudo,
+                    bind_mounts=bind_mounts,
+                ),
             )
         if mode == "codex_cli":
             # Serialize Codex recreation: only ONE codex container comes up at a time
@@ -1791,9 +2192,11 @@ class AgentManager:
         _instructions_files = instructions_paths(mode)
         try:
             _agent_mounts = (agent.config or {}).get("mounts", [])
+            from app.core import master_rules as _mr
             _rendered = _render_claude_md(
                 _agent_mounts, catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
+                master_rules=await _mr.load(self.db), mode=mode,
             )
             for _path in _instructions_files:
                 self.docker.write_file_in_container(container.id, _path, _rendered)
@@ -1858,7 +2261,7 @@ class AgentManager:
             "provider_type": llm_cfg.get("provider_type", ""),
             "api_endpoint": llm_cfg.get("api_endpoint", ""),
             "model_name": llm_cfg.get("model_name", ""),
-            "max_tokens": llm_cfg.get("max_tokens", 4096),
+            "max_tokens": llm_cfg.get("max_tokens") or 0,
             "temperature": llm_cfg.get("temperature", 0.7),
             "system_prompt": llm_cfg.get("system_prompt", ""),
             "tools_enabled": llm_cfg.get("tools_enabled", True),
@@ -1867,6 +2270,8 @@ class AgentManager:
 
     async def remove_agent(self, agent_id: str, remove_data: bool = False) -> None:
         await self._publish_event(agent_id, "system", f"Agent being removed (delete data: {remove_data})")
+        if settings.redis_acl_enabled:
+            await self.redis.revoke_agent_acl_user(agent_id)
         agent = await self._get_agent(agent_id)
         if agent.container_id:
             try:
@@ -1978,7 +2383,7 @@ class AgentManager:
                 "provider_type": llm_cfg.get("provider_type", ""),
                 "api_endpoint": llm_cfg.get("api_endpoint", ""),
                 "model_name": llm_cfg.get("model_name", ""),
-                "max_tokens": llm_cfg.get("max_tokens", 4096),
+                "max_tokens": llm_cfg.get("max_tokens") or 0,
                 "temperature": llm_cfg.get("temperature", 0.7),
                 "system_prompt": llm_cfg.get("system_prompt", ""),
                 "tools_enabled": llm_cfg.get("tools_enabled", True),
@@ -2067,6 +2472,7 @@ class AgentManager:
             "webhook_enabled": agent.webhook_enabled,
             "webhook_token": agent.webhook_token,
             "shared_for_rooms": getattr(agent, "shared_for_rooms", False),
+            "favorite": getattr(agent, "favorite", False),
             "total_cost_usd": config.get("total_cost_usd", 0.0),
             "user_id": agent.user_id,
             "created_at": agent.created_at,

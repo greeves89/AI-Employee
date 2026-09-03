@@ -179,7 +179,7 @@ function NoRoleNotice({ email }: { email: string }) {
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-md rounded-2xl border border-amber-500/20 bg-card p-8 text-center shadow-2xl">
         <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/15">
-          <ShieldAlert className="h-8 w-8 text-amber-400" />
+          <ShieldAlert className="h-8 w-8 text-amber-700 dark:text-amber-400" />
         </div>
         <h2 className="text-lg font-semibold text-foreground">Noch keine Rolle zugewiesen</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">

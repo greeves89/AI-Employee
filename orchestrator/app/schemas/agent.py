@@ -28,7 +28,10 @@ class LLMConfig(BaseModel):
     api_endpoint: str
     api_key: str  # plaintext on input, encrypted in DB, never in response
     model_name: str
-    max_tokens: int = 4096
+    # 0 = keine eigene Grenze; dann entscheidet das Modell (siehe
+    # agent/app/config.py). Die frueheren 4096 haben lange Antworten
+    # mitten im Satz gekappt, und das sah aus wie ein fertiges Ergebnis.
+    max_tokens: int = 0
     temperature: float = 0.7
     system_prompt: str = ""
     tools_enabled: bool = True
@@ -107,6 +110,8 @@ class AgentResponse(BaseModel):
     webhook_enabled: bool = False
     webhook_token: str | None = None
     shared_for_rooms: bool = False  # admin-curated: offered in every user's Meeting-Room picker
+    is_platform_agent: bool = False  # admin-curated: visible to every user, not just ownerless-by-accident
+    favorite: bool = False  # the one agent this owner pinned to their iOS home dashboard
     total_cost_usd: float = 0.0
     user_id: str | None = None
     created_at: datetime

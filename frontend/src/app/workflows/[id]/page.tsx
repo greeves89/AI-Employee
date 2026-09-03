@@ -25,6 +25,7 @@ type StepData = {
   seconds?: number;
   check?: { step: string; op: string; value?: string };
   active?: boolean;   // highlighted during a run
+  stepTitles?: Record<string, string>;   // id -> display label, injected for rendering only
 };
 
 const OPS = [
@@ -71,9 +72,11 @@ function ConditionNode({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Top} className="!bg-amber-400" />
-      <NodeShell selected={selected} active={d.active} color="bg-amber-500/15 text-amber-400" icon={<GitBranch className="h-3.5 w-3.5" />} title={d.title || "Bedingung"}>
+      <NodeShell selected={selected} active={d.active} color="bg-amber-500/15 text-amber-700 dark:text-amber-400" icon={<GitBranch className="h-3.5 w-3.5" />} title={d.title || "Bedingung"}>
         <p className="mt-1 text-[11px] text-muted-foreground/70">
-          {c ? `${c.step} ${OPS.find((o) => o.v === c.op)?.l ?? c.op}${c.value ? ` „${c.value}"` : ""}` : "keine Bedingung"}
+          {c && c.step
+            ? `${d.stepTitles?.[c.step] ?? c.step} ${OPS.find((o) => o.v === c.op)?.l ?? c.op}${c.value ? ` „${c.value}"` : ""}`
+            : "keine Bedingung"}
         </p>
         <div className="mt-1 flex justify-between text-[10px]"><span className="text-emerald-400">ja ↙</span><span className="text-red-400">nein ↘</span></div>
       </NodeShell>
@@ -228,6 +231,7 @@ export default function WorkflowEditorPage() {
       startRef.current = def.start;
       const r = await api.runWorkflow(wfId);
       setRun(r);
+      setSelectedId(null); // switch the side panel from node-config to the run status
       clearInterval(runPoll.current);
       runPoll.current = setInterval(async () => {
         try {
@@ -249,7 +253,18 @@ export default function WorkflowEditorPage() {
   }, [run, setNodes]);
 
   const selected = useMemo(() => nodes.find((n) => n.id === selectedId), [nodes, selectedId]);
-  const stepIds = nodes.map((n) => n.id);
+  // Auto-generated ids (e.g. "nmscwadin1") aren't meaningful on their own — resolve them to the
+  // node's title everywhere they're displayed (condition dropdown + on-canvas condition summary).
+  const stepTitles = useMemo(() => {
+    const m: Record<string, string> = {};
+    nodes.forEach((n) => { m[n.id] = (n.data as StepData).title || n.id; });
+    return m;
+  }, [nodes]);
+  const renderNodes = useMemo(
+    () => nodes.map((n) => ({ ...n, data: { ...(n.data as StepData), stepTitles } })),
+    [nodes, stepTitles],
+  );
+  const stepOptions = nodes.map((n) => ({ id: n.id, label: stepTitles[n.id] !== n.id ? `${stepTitles[n.id]} (${n.id})` : n.id }));
   const readOnly = wf?.role === "viewer";
 
   return (
@@ -282,7 +297,7 @@ export default function WorkflowEditorPage() {
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1">
           <ReactFlow
-            nodes={nodes} edges={edges}
+            nodes={renderNodes} edges={edges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
             nodeTypes={nodeTypes}
             onNodeClick={(_, n) => setSelectedId(n.id)}
@@ -300,9 +315,9 @@ export default function WorkflowEditorPage() {
         {/* Config / run panel */}
         <div className="w-80 shrink-0 overflow-y-auto border-l border-foreground/[0.06] p-4">
           {selected ? (
-            <NodeConfig node={selected} agents={agents} stepIds={stepIds} onChange={(p) => patchNode(selected.id, p)} onDelete={() => deleteNode(selected.id)} onClose={() => setSelectedId(null)} />
+            <NodeConfig node={selected} agents={agents} stepOptions={stepOptions.filter((s) => s.id !== selected.id)} onChange={(p) => patchNode(selected.id, p)} onDelete={() => deleteNode(selected.id)} onClose={() => setSelectedId(null)} />
           ) : run ? (
-            <RunPanel run={run} />
+            <RunPanel run={run} stepTitles={stepTitles} />
           ) : (
             <div className="text-sm text-muted-foreground/60">
               <p className="mb-2 font-medium text-foreground">Workflow bauen</p>
@@ -323,7 +338,7 @@ function PaletteBtn({ icon, label, onClick }: { icon: React.ReactNode; label: st
   );
 }
 
-function NodeConfig({ node, agents, stepIds, onChange, onDelete, onClose }: { node: Node; agents: Agent[]; stepIds: string[]; onChange: (p: Partial<StepData>) => void; onDelete: () => void; onClose: () => void }) {
+function NodeConfig({ node, agents, stepOptions, onChange, onDelete, onClose }: { node: Node; agents: Agent[]; stepOptions: { id: string; label: string }[]; onChange: (p: Partial<StepData>) => void; onDelete: () => void; onClose: () => void }) {
   const d = node.data as StepData;
   return (
     <div className="space-y-3">
@@ -358,7 +373,7 @@ function NodeConfig({ node, agents, stepIds, onChange, onDelete, onClose }: { no
           <Field label="Prüfe Ergebnis von Schritt">
             <select value={d.check?.step ?? ""} onChange={(e) => onChange({ check: { ...(d.check ?? { op: "not_empty" }), step: e.target.value } })} className={inp}>
               <option value="">— wählen —</option>
-              {stepIds.filter((s) => s !== node.id).map((s) => <option key={s} value={s}>{s}</option>)}
+              {stepOptions.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
           </Field>
           <Field label="Operator">
@@ -380,21 +395,23 @@ function NodeConfig({ node, agents, stepIds, onChange, onDelete, onClose }: { no
   );
 }
 
-function RunPanel({ run }: { run: api.WorkflowRun }) {
+function RunPanel({ run, stepTitles }: { run: api.WorkflowRun; stepTitles: Record<string, string> }) {
   const icon = run.status === "completed" ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : run.status === "failed" ? <XCircle className="h-4 w-4 text-red-400" /> : <Loader2 className="h-4 w-4 animate-spin text-blue-400" />;
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-sm font-medium">{icon}
         {run.status === "completed" ? "Fertig" : run.status === "failed" ? "Fehlgeschlagen" : "Läuft…"}
       </div>
-      <div className="text-[12px] text-muted-foreground/70">Schritte erledigt: {run.steps_done}{run.current_step ? ` · aktuell: ${run.current_step}` : ""}</div>
+      <div className="text-[12px] text-muted-foreground/70">
+        Schritte erledigt: {run.steps_done}{run.current_step ? ` · aktuell: ${stepTitles[run.current_step] ?? run.current_step}` : ""}
+      </div>
       {run.error && <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2 text-[12px] text-red-400">{run.error}</div>}
       {Object.keys(run.context || {}).length > 0 && (
         <div className="space-y-1.5">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">Ergebnisse</p>
           {Object.entries(run.context).map(([sid, v]) => (
             <div key={sid} className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-2">
-              <p className="text-[11px] font-medium text-foreground/80">{sid}</p>
+              <p className="text-[11px] font-medium text-foreground/80">{stepTitles[sid] ?? sid}</p>
               <p className="mt-0.5 line-clamp-4 text-[11px] text-muted-foreground/70">{v.result || "—"}</p>
             </div>
           ))}

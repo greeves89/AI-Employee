@@ -26,8 +26,10 @@ CHANNEL_TELEGRAM = "telegram"
 CHANNEL_TEAMS = "teams"
 CHANNEL_SLACK = "slack"
 CHANNEL_WHATSAPP = "whatsapp"
+CHANNEL_DISCORD = "discord"
 
-KNOWN_CHANNELS = (CHANNEL_TELEGRAM, CHANNEL_TEAMS, CHANNEL_SLACK, CHANNEL_WHATSAPP)
+KNOWN_CHANNELS = (CHANNEL_TELEGRAM, CHANNEL_TEAMS, CHANNEL_SLACK,
+                  CHANNEL_WHATSAPP, CHANNEL_DISCORD)
 
 # Präfix der Nachrichten-Kennung je Kanal. NICHT aus dem Kanalnamen ableiten: die
 # Telegram-Rückstrecke filtert Antworten mit ``msg_id.startswith("tg-")``, und ein
@@ -38,6 +40,7 @@ CHANNEL_PREFIX = {
     CHANNEL_TEAMS: "tm",
     CHANNEL_SLACK: "sl",
     CHANNEL_WHATSAPP: "wa",
+    CHANNEL_DISCORD: "dc",
 }
 
 
@@ -187,10 +190,50 @@ async def send_reply(channel: str, agent, context: dict, text: str) -> bool:
         from app.services.slack_gateway import send_reply as _send
     elif channel == CHANNEL_WHATSAPP:
         from app.services.whatsapp_gateway import send_reply as _send
+    elif channel == CHANNEL_DISCORD:
+        from app.services.discord_gateway import send_reply as _send
     else:
         logger.warning("[Gateway] kein Rueckweg fuer Kanal %s", channel)
         return False
-    return await _send(agent, context, text)
+
+    checked = await _dlp_checked(text, agent, channel)
+    if checked is None:
+        return await _send(agent, context, _DLP_BLOCKED_NOTICE)
+    return await _send(agent, context, checked)
+
+
+#: Was der Empfänger sieht, wenn der Filter blockt. Wortlaut wie im Telegram-Weg —
+#: der Mensch soll wissen, dass etwas unterdrückt wurde, und nicht auf eine
+#: Antwort warten, die nie kommt.
+_DLP_BLOCKED_NOTICE = (
+    "[Nachricht durch DLP-Filter blockiert — sie enthielt sensible Daten "
+    "(z. B. ein Secret) und wurde nicht gesendet.]"
+)
+
+
+async def _dlp_checked(text: str, agent, channel: str) -> str | None:
+    """Ausgehenden Text prüfen (#388). ``None`` heisst: blockiert.
+
+    Der Filter hing bis v1.181.0 **nur** am Telegram-Weg. Teams, Slack und
+    WhatsApp gingen ungeprüft raus — auf einer Klinikanlage genau der Fall, für
+    den es den Filter gibt. Hier ist die einzige Stelle, an der diese Kanäle
+    senden; damit gilt der Haken auch für jeden Kanal, der später dazukommt,
+    ohne dass jemand daran denken muss.
+
+    Fail-open wie überall sonst: ein Fehler im Filter darf keine Zustellung
+    verhindern. Ein blockierender Befund darf es sehr wohl.
+    """
+    try:
+        from app.core.dlp import evaluate_egress
+
+        verdict = await evaluate_egress(
+            text, agent_id=getattr(agent, "id", None), channel=channel
+        )
+        return None if verdict.blocked else verdict.output
+    except Exception:  # noqa: BLE001
+        logger.debug("[Gateway] DLP-Pruefung fehlgeschlagen — Text geht ungeprueft raus",
+                     exc_info=True)
+        return text
 
 
 class ChannelResponder:
@@ -208,7 +251,7 @@ class ChannelResponder:
 
     # Präfixe, für die dieser Lauscher zuständig ist. Telegram fehlt: dessen
     # Rückweg streamt und liegt weiterhin im Telegram-Bot.
-    HANDLED = (CHANNEL_TEAMS, CHANNEL_SLACK, CHANNEL_WHATSAPP)
+    HANDLED = (CHANNEL_TEAMS, CHANNEL_SLACK, CHANNEL_WHATSAPP, CHANNEL_DISCORD)
 
     def __init__(self, redis=None):
         self.redis = redis

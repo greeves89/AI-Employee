@@ -1,13 +1,30 @@
 websockets>=12.0
-edge-tts>=7.2.8
+# CA bundle for TLS verification — a PyInstaller-frozen build has no OpenSSL
+# default cert directory to fall back on the way a normal Python install
+# does, so ssl.create_default_context() finds NO trusted roots at all and
+# even a valid, CA-signed certificate fails verification (reported +
+# diagnosed 2026-08-27: agents.future-app.de, a real Cloudflare cert,
+# silently failed system trust in the packaged app while the identical
+# check succeeded from a plain `python3` shell). See bridge.py's
+# _default_ssl_context — the .spec files bundle certifi's data file too,
+# without that this pip dependency alone is not enough in a frozen build.
+certifi>=2024.2.2
 pyautogui>=0.9.54
 Pillow>=10.0.0
 # Replay-Modus: observe the human's own clicks/keystrokes to demonstrate a
 # workflow once. Only listens between an explicit start/stop (see InputRecorder).
 pynput>=1.7.6
+# Voice-on-Desktop Phase 1 (#478): capture the human's microphone, chunked and
+# streamed upstream. Only listens between an explicit start/stop (see VoiceCapture).
+sounddevice>=0.4.6
+numpy>=1.26.0
 # System tray app
 rumps>=0.4.0; sys_platform == "darwin"
 pystray>=0.19.0; sys_platform != "darwin"
+# Der Berechtigungs-Dialog unter Windows. Stand bisher NUR in der
+# CI-Installationsliste — diese Datei ist die einzige Wahrheit, sonst laeuft
+# beides wieder auseinander.
+customtkinter>=5.2.0; sys_platform == "win32"
 # macOS only (AXUIElement support):
 pyobjc-framework-ApplicationServices>=10.0; sys_platform == "darwin"
 pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
@@ -15,7 +32,15 @@ pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
 # Screenshot `screencapture` als Fremdprozess, und macOS fragt jedes Mal neu
 # nach der Freigabe.
 pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"
+# Mikrofon-Freigabe abfragen (tray_app.py). Stand bisher nur in der
+# CI-Installationsliste.
+pyobjc-framework-AVFoundation>=10.0; sys_platform == "darwin"
 # Windows only (UI Automation — das Gegenstueck zum AX-Baum von macOS). Ohne das
 # kann die Bridge unter Windows nur klicken, wohin jemand zeigt, aber keine
 # Elemente FINDEN; die Bedienung innerhalb einer Anwendung waere ein Blindflug.
 uiautomation>=2.0.18; sys_platform == "win32"
+# Browser-Steuerung im EIGENEN Profil (Capability-Gruppe `browser`, default aus).
+# Bewusst OHNE `playwright install`: genutzt wird das im Haus freigegebene Edge
+# bzw. Chrome ueber `channel=`, nicht ein mitgeliefertes Chromium — das haelt die
+# Tray-App klein und den Browser unter der Kontrolle der IT.
+playwright>=1.47.0

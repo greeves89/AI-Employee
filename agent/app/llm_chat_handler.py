@@ -7,16 +7,24 @@ import os
 import time
 
 from app import context_compressor, model_registry, multimodal
+from app import announcement_guard
 from app.loop_detector import LoopDetector
 from app.config import settings
+from app.ai_credential_status import report_result_status
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
-from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent
+from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
 from app.tools.definitions import TOOL_DEFINITIONS
 from app.tools.executor import ToolExecutor
 from app.tools.mcp_client import MCPHTTPClient
 
 logger = logging.getLogger(__name__)
+
+#: Wie viele frueherer Zuege beim Neustart zurueckgeholt werden. Bewusst
+#: begrenzt: der Verlauf wandert in den Kontext, und die Kompaktierung greift
+#: erst danach. Reicht fuer „worum geht es hier eigentlich", ohne das Fenster
+#: schon beim ersten Zug zu fuellen.
+VERLAUF_NACHLADEN_MAX = 40
 
 # Tool-loop cap per chat message. Honors the admin-configured
 # "Max Turns per Task" setting (settings.max_turns); the constant is
@@ -30,12 +38,30 @@ def _max_turns() -> int:
     return settings.max_turns if settings.max_turns and settings.max_turns > 0 else DEFAULT_MAX_TURNS
 
 
+#: Ab welchem Anteil des Zugbudgets der Agent erfaehrt, wie viel ihm bleibt.
+#:
+#: Anthropic unterscheidet ausdruecklich zwischen einem Deckel, „the model is
+#: not aware of", und einem Budget, mit dem es „paces itself and finishes
+#: gracefully instead of being cut off". Bis hierher hatten wir nur den Deckel:
+#: die Schleife endete bei ``max_turns`` STILL — kein Wort, keine
+#: Zusammenfassung, der Nutzer sah nur abgebrochene Arbeit.
+BUDGET_WARNUNG_AB = 0.7
+
+#: Wie oft daran erinnert wird. Jeden Zug waere Laerm; einmal reicht nicht,
+#: wenn danach noch zwanzig Zuege kommen.
+BUDGET_WARNUNG_ALLE = 10
+
+
 # --- Lazy tool loading -------------------------------------------------------
 # OpenAI/Azure cap function tools at 128 PER REQUEST. Instead of sending the whole
 # catalog (18 built-in + 41 orchestrator API + every MCP tool), we send only a small
 # CORE set + a `search_tools` meta-tool, and ACTIVATE specific tools on demand when
 # the model searches for them. So the catalog can grow without limit.
 CORE_TOOL_NAMES = {
+    # Delegieren gehoert in den KERN, nicht in den Katalog: was der Agent erst
+    # ueber search_tools finden muss, findet er in der Praxis nicht — und redet
+    # dann darueber, statt es zu tun.
+    "delegate_and_wait", "list_my_team", "list_team_tasks", "get_tasks_status",
     "bash", "read_file", "write_file", "edit_file", "multi_edit",
     "list_files", "grep", "glob", "git_status", "git_diff",
     "web_search", "web_fetch",
@@ -149,6 +175,12 @@ class LLMChatHandler:
         self.log_publisher = log_publisher
         self.is_running = False
         self._provider: BaseLLMProvider | None = None
+        # Modelle, die in dieser Sitzung schon ausgefallen sind (#200).
+        self._models_tried: set[str] = set()
+        # Wie oft in diesem Lauf schon wegen einer abgerissenen Verbindung
+        # wiederholt wurde. Begrenzt, damit ein dauerhaft kaputter Weg nicht
+        # still im Kreis laeuft.
+        self._connection_retries: int = 0
         self._tool_executor = ToolExecutor()
         self._mcp_client = MCPHTTPClient()
         # Execute MCP tool calls on the same client that ran discovery (shared
@@ -224,6 +256,30 @@ class LLMChatHandler:
         nothing to do.
         """
         return context_compressor.estimate_tokens(self._history) + self._overhead_tokens
+
+
+    async def _heal_after_context_overflow(self, message_id: str, error_text: str) -> None:
+        """Fallnetz zu #623: Kontextueberlauf heilt sich fuer den NAECHSTEN Zug.
+
+        Der praeventive Kompaktierer (siehe _needs_compaction) verhindert das
+        normalerweise — schlaegt trotzdem ein Zug mit Kontextlaengen-Fehler auf,
+        wird der Verlauf sofort komprimiert und der Nutzer informiert, statt
+        dass jede weitere Nachricht identisch scheitert (Symptom #613).
+        """
+        from app.chat_handler import _is_context_length_error
+        if not _is_context_length_error(error_text):
+            return
+        try:
+            await self._compact_history(message_id)
+            await self.log_publisher.publish_chat(
+                message_id, "system",
+                {"message": "Der Gespraechsverlauf war zu lang geworden — ich habe "
+                            "ihn komprimiert. Bitte schicke deine Nachricht noch "
+                            "einmal; Details aus fruehen Nachrichten kenne ich nur "
+                            "noch zusammengefasst."},
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("Notkompaktierung nach Kontextueberlauf fehlgeschlagen", exc_info=True)
 
     def _needs_compaction(self) -> bool:
         """Check if the conversation needs compaction."""
@@ -373,6 +429,72 @@ class LLMChatHandler:
             self._activated = self._activated[-MAX_ACTIVATED_TOOLS:]
         return "Folgende Tools sind ab deinem nächsten Schritt aufrufbar:\n" + "\n".join(lines)
 
+    async def _retry_after_connection_glitch(self, task_id: str, error_text: str | None) -> bool:
+        """Abgerissene Verbindung: DENSELBEN Aufruf noch einmal, kurz gewartet.
+
+        Ein Modellwechsel waere hier die falsche Antwort — das Modell ist in
+        Ordnung, die Leitung war es nicht. Und ohne gefuellte Ausweichkette
+        (Regelfall) haette der Wechsel ohnehin nichts zu wechseln: der Lauf starb
+        an einem einzigen abgerissenen Lesevorgang, nach 40 Zuegen Arbeit.
+
+        Hoechstens zwei Versuche. Reisst es dreimal, liegt es nicht am Zufall,
+        und stilles Weiterprobieren wuerde nur den echten Grund verdecken.
+        """
+        from app import model_fallback
+
+        if not model_fallback.is_connection_glitch(error_text):
+            return False
+        if self._connection_retries >= 2:
+            return False
+        self._connection_retries += 1
+        wartezeit = 2 * self._connection_retries
+        logger.warning(
+            "[Verbindung] abgerissen (%s) — Versuch %d/2 in %ds",
+            (error_text or "")[:120], self._connection_retries, wartezeit,
+        )
+        await self.log_publisher.publish(
+            task_id, "system",
+            {"message": f"[Verbindung abgerissen — neuer Versuch {self._connection_retries}/2]"},
+        )
+        await asyncio.sleep(wartezeit)
+        return True
+
+    async def _switch_to_fallback(self, message_id: str, error_text: str | None) -> bool:
+        """Auf das nächste Ausweichmodell umstellen (#200) — wie im Auftragslauf.
+
+        Bewusst dieselbe Entscheidung aus ``model_fallback``: Kapazitätsprobleme
+        weichen aus, Einrichtungsfehler scheitern sofort. Zwei Auslegungen davon
+        wären genau die Sorte Doppelpflege, die hier schon mehrfach zugeschlagen hat.
+        """
+        from app import model_fallback
+
+        if not model_fallback.is_retryable(error_text):
+            return False
+        chain = model_fallback.parse_chain(settings.llm_fallback_models)
+        target = model_fallback.next_model(
+            settings.llm_model_name, chain, self._models_tried
+        )
+        if not target:
+            return False
+
+        previous = settings.llm_model_name
+        self._models_tried.add(previous)
+        settings.llm_model_name = target
+        if self._provider:
+            try:
+                await self._provider.close()
+            except Exception:  # noqa: BLE001
+                logger.debug("Alter Provider liess sich nicht schliessen", exc_info=True)
+        self._provider = None
+
+        logger.warning("[Modell] %s antwortete nicht (%s) — weiter mit %s",
+                       previous, (error_text or "")[:120], target)
+        await self.log_publisher.publish_chat(
+            message_id, "system",
+            {"message": f"[Modellwechsel: {previous} → {target}]"},
+        )
+        return True
+
     def _get_provider(self) -> BaseLLMProvider:
         if not self._provider:
             self._provider = create_provider(
@@ -387,6 +509,81 @@ class LLMChatHandler:
                 api_version=settings.llm_api_version,
             )
         return self._provider
+
+    async def _abschluss_erbitten(self, message_id: str, provider, zuege: int) -> str:
+        """Einen letzten Zug OHNE Werkzeuge: was ist fertig, was bleibt offen.
+
+        Ohne Werkzeuge, weil der Agent sonst weiterarbeitet statt abzuschliessen
+        — und genau das Budget ist ja gerade der Grund, warum er aufhoeren soll.
+
+        Best effort: schlaegt der Abschluss fehl, bleibt es beim bisherigen
+        Text. Ein Fehler HIER darf die geleistete Arbeit nicht auch noch
+        verschlucken.
+        """
+        self._history.append(ChatMessage(
+            role="system",
+            content=(
+                f"Dein Arbeitsbudget fuer diese Aufgabe ist aufgebraucht ({zuege} Schritte). "
+                "Schliesse jetzt ab, ohne weitere Werkzeuge zu benutzen. Sage in wenigen "
+                "Saetzen: was ist FERTIG, was ist OFFEN, und was waere der naechste Schritt. "
+                "Wenn die Aufgabe zu gross war, sag das und schlage vor, wie man sie teilt."
+            ),
+        ))
+        try:
+            text = ""
+            async for event in provider.stream_completion(self._history, []):
+                if event.type == "text_delta":
+                    text += event.text
+                    await self.log_publisher.publish_chat(message_id, "text", {"text": event.text})
+            return text.strip()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Chat] Abschluss nach Budgetende fehlgeschlagen: %s", e)
+            return ("\n\n[System: Das Arbeitsbudget war aufgebraucht, bevor die Aufgabe "
+                    "fertig wurde. Bitte grenze sie enger ein oder teile sie auf.]")
+
+    async def _verlauf_nachladen(self) -> list[ChatMessage]:
+        """Die letzten Zuege dieser Unterhaltung aus dem Orchestrator holen.
+
+        Best effort: geht es schief, redet der Agent ohne Vorgeschichte weiter —
+        das ist der Zustand von vorher und darf den Zug nicht kippen.
+        """
+        from app.tools.api_client import current_chat_session
+
+        session_id = current_chat_session.get(None)
+        if not session_id:
+            return []
+        try:
+            from app.tools.api_client import OrchestratorAPIClient
+            client = OrchestratorAPIClient()
+            try:
+                antwort = await client._request(
+                    "GET",
+                    f"/agents/{client.agent_id}/chat/history",
+                    params={"session_id": session_id, "limit": VERLAUF_NACHLADEN_MAX},
+                )
+            finally:
+                await client._client.aclose()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[Kontext] Verlauf nicht nachladbar: %s", e)
+            return []
+
+        if not isinstance(antwort, dict):
+            logger.warning("[Kontext] Verlauf nicht nachladbar: %s", str(antwort)[:200])
+            return []
+
+        zuege: list[ChatMessage] = []
+        for eintrag in antwort.get("messages") or []:
+            rolle = eintrag.get("role")
+            inhalt = (eintrag.get("content") or "").strip()
+            # Nur echte Wortmeldungen. `system`-Zeilen sind Kacheln und
+            # Statusmeldungen der Oberflaeche — sie standen dem Modell nie zur
+            # Verfuegung und wuerden es jetzt nur verwirren.
+            if rolle in ("user", "assistant") and inhalt:
+                zuege.append(ChatMessage(role=rolle, content=inhalt))
+
+        if zuege:
+            logger.info("[Kontext] %d fruehere Zuege dieser Unterhaltung geladen", len(zuege))
+        return zuege
 
     async def handle_message(
         self,
@@ -408,11 +605,13 @@ class LLMChatHandler:
         provider = self._get_provider()
         # The provider is cached across turns, so a per-message choice has to be
         # written onto it each turn (and an explicit "off" has to clear the
-        # container default, not fall through to it).
+        # container default, not fall through to it). "max" becomes "xhigh"; the
+        # provider clamps it to "high" for models that don't know xhigh.
         if reasoning:
-            provider.reasoning_effort = "" if reasoning == "off" else reasoning
+            provider.reasoning_effort = {"off": "", "max": "xhigh"}.get(reasoning, reasoning)
         else:
-            provider.reasoning_effort = settings.llm_reasoning_effort
+            from app.config import llm_default_reasoning_effort
+            provider.reasoning_effort = llm_default_reasoning_effort()
 
         # Build system message if this is the first message
         if not self._history:
@@ -454,6 +653,23 @@ class LLMChatHandler:
                 system_prompt = system_prompt + "\n" + marketplace
             self._history.append(ChatMessage(role="system", content=system_prompt))
 
+            # Den bisherigen Verlauf DIESER Unterhaltung zurueckholen.
+            #
+            # Bei dieser Laufzeit lebt der Verlauf ausschliesslich im
+            # Arbeitsspeicher — anders als bei den CLI-Laufzeiten, die ihre
+            # Sitzung ueber `--resume` wiederfinden. Nach jedem Neustart,
+            # Update oder Container-Tausch stand der Agent in einem Chat mit 70
+            # gespeicherten Nachrichten vor einem leeren Blatt und musste sich
+            # aus semantisch gesuchten Erinnerungen zusammenreimen, worum es
+            # geht. Beim Kunden am 18.08.2026 riet er daraufhin das falsche
+            # Projekt und schickte vier Kollegen darauf los.
+            #
+            # Die Erinnerungen bleiben — sie tragen Wissen ueber Unterhaltungen
+            # hinweg. Sie sind nur nicht mehr die einzige Quelle.
+            geladen = await self._verlauf_nachladen()
+            if geladen:
+                self._history.extend(geladen)
+
         # Add user message to history (image-aware)
         self._history.append(multimodal.user_message(text, images))
 
@@ -463,6 +679,8 @@ class LLMChatHandler:
 
         # Reset loop detector for this message
         self._loop_detector.reset()
+        # Ein Anstupser je Nachricht des Menschen — siehe unten.
+        ansporn_offen = True
 
         tools = await self._get_tools()
         full_text = ""
@@ -471,16 +689,41 @@ class LLMChatHandler:
         max_turns = _max_turns()
         total_input_tokens = 0
         total_output_tokens = 0
+        total_reasoning_tokens = 0
+        total_cached_tokens = 0
+        total_cache_write_tokens = 0
 
         try:
+            letzte_warnung = 0
             while num_turns < max_turns:
                 num_turns += 1
+
+                # Budget-Bewusstsein: dem Agenten SAGEN, wie viel ihm bleibt,
+                # statt ihn irgendwann abzuschneiden. Ein Modell, das sein
+                # Budget kennt, teilt sich ein und liefert einen brauchbaren
+                # Zwischenstand; eines, das es nicht kennt, wird mitten im Satz
+                # gekappt.
+                rest = max_turns - num_turns
+                if (num_turns >= max_turns * BUDGET_WARNUNG_AB
+                        and num_turns - letzte_warnung >= BUDGET_WARNUNG_ALLE):
+                    letzte_warnung = num_turns
+                    self._history.append(ChatMessage(
+                        role="system",
+                        content=(
+                            f"Hinweis zum Arbeitsbudget: dir bleiben noch etwa {rest} Schritte "
+                            "fuer diese Aufgabe. Teile sie dir ein. Wenn es knapp wird, bring "
+                            "zuerst das Wichtigste zu Ende und fasse dann zusammen, was erledigt "
+                            "ist und was offen bleibt — statt mitten in der Arbeit zu enden."
+                        ),
+                    ))
                 # Re-fetch each turn so tools activated via search_tools on the
                 # previous turn become callable now (lazy loading).
                 tools = await self._get_tools()
                 has_tool_calls = False
                 turn_text = ""
                 turn_tool_calls: list[dict] = []
+                tools_dieser_zug: set[str] = set()
+                switched_model = False
 
                 async for event in provider.stream_completion(self._history, tools):
                     if event.type == "text_delta":
@@ -519,17 +762,46 @@ class LLMChatHandler:
                         # turn's tokens for the message's total cost.
                         total_input_tokens += event.input_tokens or 0
                         total_output_tokens += event.output_tokens or 0
+                        total_reasoning_tokens += getattr(event, "reasoning_tokens", 0) or 0
+                        total_cached_tokens += getattr(event, "cached_tokens", 0) or 0
+                        total_cache_write_tokens += getattr(event, "cache_write_tokens", 0) or 0
 
                     elif event.type == "error":
                         if self._stopping:
                             return await self._finish_cancelled(message_id, start_time, num_turns)
+                        # Gleiche Ausfallsicherheit wie im Auftragslauf (#200) —
+                        # im Chat merkt der Mensch einen Ausfall sofort, hier ist
+                        # sie also eher wichtiger als dort.
+                        # Erst der billige Fall: abgerissene Verbindung, derselbe
+                        # Aufruf noch einmal. Siehe llm_runner — gleiche Regel in
+                        # beiden Laufzeiten, sonst ist der Chat schlechter dran.
+                        if await self._retry_after_connection_glitch(message_id, event.text):
+                            switched_model = True   # Merker heisst „Zug wiederholen"
+                            provider = self._get_provider()
+                            break
+                        if await self._switch_to_fallback(message_id, event.text):
+                            switched_model = True
+                            provider = self._get_provider()
+                            break
                         await self.log_publisher.publish_chat(
                             message_id, "error", {"message": event.text}
                         )
                         self.is_running = False
                         result = {"status": "error", "error": event.text}
+                        await self._heal_after_context_overflow(message_id, event.text)
+                        # Ein abgelaufener eigener Zugang muss auch HIER sichtbar
+                        # werden. Der Aufgaben-Weg meldet ihn seit #660; der
+                        # Chat-Weg des eigenen Modells war der letzte, der schwieg —
+                        # wer sein Modell nur im Chat nutzt, sah nie einen Hinweis.
+                        await report_result_status(result)
                         await self.log_publisher.publish_chat(message_id, "done", result)
                         return result
+
+                if switched_model:
+                    # Zug wiederholen (anderes Modell ODER dasselbe nach einer
+                    # abgerissenen Verbindung) — es gab keine verwertbare
+                    # Antwort, die in den Verlauf gehoerte.
+                    continue
 
                 # Add assistant response to history
                 if turn_text and not turn_tool_calls:
@@ -561,10 +833,36 @@ class LLMChatHandler:
                             )
                             max_turns = num_turns + _max_turns()
                             continue
+
+                    # „Ich mache das jetzt" — und dann nichts.
+                    #
+                    # Im Auftrags-Pfad ist das seit v1.178.2 abgesichert; der
+                    # Chat hatte die Pruefung nie, und die Sprachfront laeuft
+                    # ueber den Chat. Am 2026-08-16 sagte ein Agent per Sprache
+                    # zweimal zu, eine App JETZT zu bauen, und tat beide Male
+                    # nichts — erst auf „Hast du die App gebaut!!!???" sah er
+                    # nach und gab zu, dass nichts existiert.
+                    #
+                    # Bewusst enger als beim Auftrag: im Chat ist Reden der
+                    # Normalfall. Ausloeser ist nicht die fehlende Arbeit,
+                    # sondern der WIDERSPRUCH zwischen Zusage und Untaetigkeit.
+                    # Genau einmal je Zug — ein zweiter Anstupser waere
+                    # Bevormundung, wenn der Agent begruendet ablehnt.
+                    if ansporn_offen and announcement_guard.promises_but_does_nothing(
+                        turn_text, tools_dieser_zug
+                    ):
+                        ansporn_offen = False
+                        logger.info("[Chat] Zusage ohne Handlung — Anstupser")
+                        self._history.append(ChatMessage(
+                            role="user", content=announcement_guard.NUDGE,
+                        ))
+                        max_turns = num_turns + 4
+                        continue
                     break
 
                 # Loop detection: check for repetitive tool call patterns
                 for tc in turn_tool_calls:
+                    tools_dieser_zug.add(tc["name"])
                     self._loop_detector.record(tc["name"], tc["input"])
                 if self._loop_detector.is_looping():
                     loop_msg = (
@@ -658,17 +956,41 @@ class LLMChatHandler:
                         # New input extends the work budget for this message.
                         max_turns = num_turns + _max_turns()
 
+            else:
+                # Das Zugbudget ist aufgebraucht, ohne dass der Agent fertig
+                # wurde. Bis hierher endete die Schleife hier STILL — der
+                # Nutzer bekam abgebrochene Arbeit ohne Hinweis und ohne zu
+                # wissen, was erledigt ist.
+                #
+                # OpenAI empfiehlt fuer genau diesen Fall einen Behandler, der
+                # den Lauf sauber beendet („I couldn't finish within the turn
+                # limit. Please narrow the request."). Statt eines festen
+                # Satzes lassen wir den Agenten selbst zusammenfassen — er
+                # weiss als Einziger, was er geschafft hat.
+                logger.info("[Chat] Zugbudget (%d) erschoepft — Abschluss wird erbeten", max_turns)
+                abschluss = await self._abschluss_erbitten(message_id, provider, num_turns)
+                if abschluss:
+                    full_text += "\n\n" + abschluss
+
         except Exception as e:
             # Vom Nutzer abgebrochen: kein Fehler, sondern das gewuenschte Ergebnis.
             if self._stopping:
                 logger.info("LLM Chat vom Nutzer angehalten (%s)", type(e).__name__)
                 return await self._finish_cancelled(message_id, start_time, num_turns)
             logger.exception(f"LLM Chat error: {e}")
+            # format_exception() prefixes the exception TYPE (matches the
+            # provider-level error style) — a bare str(e) like the previous
+            # version left a customer-reported chat error self-diagnosing
+            # only from the container log, and that log is gone the moment
+            # the agent gets recreated (Rueckmeldung beim Kunden, 2026-08-28).
+            failure_text = format_exception(e)
             await self.log_publisher.publish_chat(
-                message_id, "error", {"message": str(e)}
+                message_id, "error", {"message": failure_text}
             )
             self.is_running = False
-            result = {"status": "error", "error": str(e)}
+            result = {"status": "error", "error": failure_text}
+            await self._heal_after_context_overflow(message_id, failure_text)
+            await report_result_status(result)
             await self.log_publisher.publish_chat(message_id, "done", result)
             return result
 
@@ -684,10 +1006,14 @@ class LLMChatHandler:
             ),
             "input_tokens": total_input_tokens,
             "output_tokens": total_output_tokens,
+            "reasoning_tokens": total_reasoning_tokens,
+            "cached_tokens": total_cached_tokens,
+            "cache_write_tokens": total_cache_write_tokens,
             "tool_calls": accumulated_tool_calls or None,
         }
 
         self.is_running = False
+        await report_result_status(result)
         await self.log_publisher.publish_chat(message_id, "done", result)
         return result
 

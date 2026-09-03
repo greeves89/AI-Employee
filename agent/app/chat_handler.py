@@ -9,10 +9,32 @@ import signal
 from typing import AsyncIterator
 
 from app.config import get_oauth_token, settings
+from app.ai_credential_status import is_auth_error, report_result_status
 from app.log_publisher import LogPublisher
 from app.runner_hooks import feed_prompt_via_stdin
 
 logger = logging.getLogger(__name__)
+
+# Wortlaute, mit denen die CLI bzw. die API einen zu langen Verlauf meldet. Die
+# Formulierung wechselt je nach Modell und Fassung, deshalb mehrere Varianten.
+_CONTEXT_LENGTH_MARKERS = (
+    "prompt too long",
+    "prompt is too long",
+    "context length",
+    "context_length_exceeded",
+    "context window",
+    "maximum context",
+    "too many tokens",
+    "exceed context limit",
+    "exceeds the context",
+    "maximum context length",
+)
+
+
+def _is_context_length_error(error: str) -> bool:
+    """Ist das ein „der Verlauf ist zu lang"-Fehler?"""
+    text = (error or "").lower()
+    return any(marker in text for marker in _CONTEXT_LENGTH_MARKERS)
 
 
 class ChatHandler:
@@ -28,15 +50,55 @@ class ChatHandler:
         self.pending_drain = None
 
     async def _run_turn_with_retries(
-        self, message_id: str, text: str, model: str
+        self, message_id: str, text: str, model: str, fresh_text: str | None = None
     ) -> dict:
-        """One Claude CLI turn (resumes via self.session_id) + session/auth retries."""
+        """One Claude CLI turn (resumes via self.session_id) + session/auth retries.
+
+        ``fresh_text`` ist dieselbe Nachricht, aufbereitet als erste einer neuen
+        Sitzung. Muss der Verlauf hier weggeworfen werden, laeuft die Wiederholung
+        damit — sonst verweist der Folgezug-Prompt auf einen Verlauf, den es nicht
+        mehr gibt, und Regeln wie Skills-Block fehlen der neuen Sitzung dauerhaft.
+        """
         # Vor dem Lauf merken, WELCHER Token benutzt wurde — nur so laesst sich
         # spaeter feststellen, ob die Plattform inzwischen einen neuen hinterlegt
         # hat, statt blind eine Weile zu warten.
         from app.config import get_oauth_token
         token_before = get_oauth_token()
+        # Ob dieser Zug auf einem Verlauf aufsetzt, entscheidet spaeter, ob ein
+        # Laengenfehler durch einen Neustart der Sitzung ueberhaupt heilbar ist.
+        was_resumed = self.session_id is not None
         result = await self._execute_cli(message_id, text, model)
+
+        # Der Verlauf ist zu lang geworden. Ohne diesen Zweig bleibt die zu grosse
+        # Historie in der --resume-Sitzung stehen und JEDE weitere Nachricht
+        # scheitert identisch — der Chat ist tot, bis jemand von Hand zuruecksetzt.
+        if result.get("status") == "error" and _is_context_length_error(
+            result.get("error", "")
+        ):
+            logger.warning(
+                f"Context length exceeded in session {self.session_id}, resetting session"
+            )
+            self.session_id = None
+            if not was_resumed:
+                # Die Sitzung war schon frisch: ein zweiter Versuch scheitert
+                # identisch. Statt des rohen CLI-Fehlers bekommt der Nutzer
+                # eine Erklaerung, was er tun kann (#623).
+                result = {
+                    "status": "error",
+                    "error": ("Diese einzelne Nachricht ist zu gross fuer das "
+                              "Kontextfenster des Modells. Bitte kuerzer fassen — "
+                              "oder grosse Inhalte als Datei in den Workspace legen "
+                              "und in der Nachricht darauf verweisen."),
+                }
+            if was_resumed:
+                await self.log_publisher.publish_chat(
+                    message_id, "system",
+                    {"message": "Der Gespraechsverlauf war zu lang geworden — ich "
+                                "beginne eine neue Sitzung und beantworte die "
+                                "Nachricht gleich erneut. Frueheres aus diesem Chat "
+                                "kenne ich dann nicht mehr aus dem Verlauf."},
+                )
+                result = await self._execute_cli(message_id, fresh_text or text, model)
 
         # If --resume failed, reset session and retry without it
         if (
@@ -50,7 +112,7 @@ class ChatHandler:
                 message_id, "system",
                 {"message": "Session expired, starting fresh conversation..."},
             )
-            result = await self._execute_cli(message_id, text, model)
+            result = await self._execute_cli(message_id, fresh_text or text, model)
 
         # Zugangsfehler: auf den ERNEUERTEN Token warten und wiederholen.
         #
@@ -64,12 +126,13 @@ class ChatHandler:
         # ins Leere, und der Nutzer bekam den Fehler rot in den Chat. Jetzt wird
         # gewartet, bis sich der Token wirklich geaendert hat.
         error_text = result.get("error", "").lower()
-        if result.get("status") == "error" and any(
-            phrase in error_text
-            for phrase in [
-                "does not have access", "invalid_grant", "unauthorized",
-                "401", "token", "oauth", "authentication", "revoked",
-            ]
+        # „prompt is too long: 215000 tokens > 200000" enthaelt „token" und sah
+        # deshalb wie ein Zugangsfehler aus — der Lauf wartete auf einen neuen
+        # Token, den es nie brauchte. Laengenfehler sind hier schon behandelt.
+        if (
+            result.get("status") == "error"
+            and not _is_context_length_error(error_text)
+            and is_auth_error(error_text)
         ):
             logger.warning(f"Auth error detected, waiting for token refresh: {error_text[:100]}")
             await self.log_publisher.publish_chat(
@@ -79,11 +142,14 @@ class ChatHandler:
             from app.config import wait_for_new_oauth_token
             await wait_for_new_oauth_token(token_before)
             result = await self._execute_cli(message_id, text, model)
+        await report_result_status(result)
         return result
 
     # Claude has no reasoning-effort flag; thinking depth is driven by the
     # MAX_THINKING_TOKENS budget. Mapped from the user's per-message choice.
-    _THINKING_BUDGET = {"low": "4000", "medium": "10000", "high": "31999"}
+    # "max" aliases "high": 31999 is Claude Code's ultrathink ceiling, and without
+    # an entry "max" would silently fall back to the container default (< high).
+    from app.config import CLAUDE_THINKING_BUDGET as _THINKING_BUDGET
 
     async def handle_message(
         self, message_id: str, text: str, model: str | None = None,
@@ -99,13 +165,19 @@ class ChatHandler:
         model = model or settings.default_model
         # Held on the instance for this turn (incl. steering follow-ups) instead of
         # threaded through _run_turn_with_retries' three call sites.
-        self._reasoning = reasoning or ""
+        # Stufe am Lauf gewinnt; sonst gilt die Standard-Denktiefe des Agenten.
+        from app.config import settings as _settings
+        self._reasoning = reasoning or _settings.default_reasoning or ""
         self.is_running = True
 
         async def _run_turn(t: str, _is_resume: bool) -> dict:
             # session_id (set on the first turn) makes _execute_cli use --resume,
             # so a folded message continues the SAME conversation.
-            return await self._run_turn_with_retries(message_id, t, model)
+            #
+            # Die Neusitzungs-Fassung passt nur zum ERSTEN Zug: ein gefalteter
+            # Zug (_is_resume) traegt eine andere, blanke Nachricht.
+            fresh = None if _is_resume else getattr(self, "fresh_session_text", None)
+            return await self._run_turn_with_retries(message_id, t, model, fresh_text=fresh)
 
         try:
             result = await run_turns_with_steering(
@@ -340,12 +412,22 @@ class ChatHandler:
                     else:
                         # Use accumulated text, fallback to result field
                         final_text = full_text or event.get("result", "")
+                        # Token-Nutzung aus dem Claude-CLI-Result (steht im
+                        # `usage`-Block) — bisher NICHT ausgelesen, deshalb zeigte
+                        # die Chat-Meta-Zeile bei Claude-Code-Agenten nur
+                        # Dauer/Turns, keine Tokens. Claude meldet den Prompt-Cache
+                        # getrennt; ein eigenes reasoning_tokens gibt es nicht.
+                        _usage = event.get("usage") or {}
                         result_data = {
                             "status": "completed",
                             "text": final_text,
                             "cost_usd": event.get("cost_usd", 0),
                             "duration_ms": event.get("duration_ms", 0),
                             "num_turns": event.get("num_turns", 0),
+                            "input_tokens": _usage.get("input_tokens") or 0,
+                            "output_tokens": _usage.get("output_tokens") or 0,
+                            "cache_write_tokens": _usage.get("cache_creation_input_tokens") or 0,
+                            "cached_tokens": _usage.get("cache_read_input_tokens") or 0,
                             "tool_calls": accumulated_tool_calls or None,
                         }
                         # If we got text from result but didn't stream it yet, send it now

@@ -13,6 +13,9 @@ class TaskCreate(BaseModel):
     model: str | None = None
     parent_task_id: str | None = None  # For subtask hierarchies
     created_by_agent: str | None = None  # Agent that delegated this task
+    # In welchem Gespraech der Auftrag entstanden ist. Ohne das landet die
+    # Fertigmeldung spaeter in einem Faden, den niemand ansieht.
+    chat_session_id: str | None = None
     dry_run: bool = False  # #386: produce a plan preview instead of executing
 
 

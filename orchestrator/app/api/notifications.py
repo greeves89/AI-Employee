@@ -247,18 +247,23 @@ async def webpush_unsubscribe(
 # --- UI-facing: list, count, mark read ---
 
 async def _visible_agent_ids(user, db: AsyncSession) -> list[str]:
-    """Agent ids whose notifications this user may see: own + unowned (system) +
-    explicitly shared. Notifications are keyed by ``agent_id`` (no per-user
-    recipient column), so without this scope every user would see every agent's
-    notifications — a cross-user data leak. Mirrors the agent team-directory
-    visibility model.
+    """Agent ids whose notifications this user may see: own + explicitly
+    shared. Notifications are keyed by ``agent_id`` (no per-user recipient
+    column), so without this scope every user would see every agent's
+    notifications — a cross-user data leak.
+
+    Ownerless agents are NOT auto-included (changed 2026-08-27, see
+    tasks.py::_get_user_agent_ids) — they used to count as "system" agents
+    visible to everyone, which leaked notifications the moment an agent
+    was created without an assigned owner. is_platform_agent (explicit
+    admin flag) is the deliberate replacement for that.
     """
     from app.models.agent import Agent
     from app.models.agent_access import AgentAccess
 
     owned = (await db.execute(
         select(Agent.id).where(
-            (Agent.user_id == user.id) | (Agent.user_id.is_(None))
+            (Agent.user_id == user.id) | (Agent.is_platform_agent.is_(True))
         )
     )).scalars().all()
     shared = (await db.execute(
@@ -460,6 +465,11 @@ async def _send_telegram(body: NotificationCreate, redis: RedisService, notif_id
         except Exception:
             reply_markup = None
 
+    emoji = {"info": "ℹ️", "warning": "⚠️", "error": "❌", "success": "✅", "approval": "❓"}.get(body.type, "📢")
+    text = f"{emoji} *{body.title}*"
+    if body.message:
+        text += f"\n\n{body.message}"
+
     # 1. Try per-agent bot first
     try:
         import app.main as main_mod
@@ -467,28 +477,25 @@ async def _send_telegram(body: NotificationCreate, redis: RedisService, notif_id
         if tg_manager and body.agent_id:
             bot = tg_manager.get_bot(body.agent_id)
             if bot and bot._started:
-                emoji = {"info": "ℹ️", "warning": "⚠️", "error": "❌", "success": "✅", "approval": "❓"}.get(body.type, "📢")
-                text = f"{emoji} *{body.title}*"
-                if body.message:
-                    text += f"\n\n{body.message}"
                 await bot.send_to_all_authorized(text, reply_markup=reply_markup)
                 return  # Sent via agent bot, no need for global bot
     except Exception:
-        pass
+        logger.warning("[Notify] Agent bot delivery failed, falling back to global bot", exc_info=True)
 
-    # 2. Fallback: global bot
+    # 2. Fallback: global bot. The only subscriber is TelegramBot._listen_notifications,
+    # which reads "text" off the singular `telegram:notification` channel.
     try:
         from app.config import settings
         if not settings.telegram_bot_token or not settings.telegram_chat_id:
             return
-        await redis.client.publish("telegram:notifications", json.dumps({
-            "title": body.title,
-            "message": body.message,
+        await redis.client.publish("telegram:notification", json.dumps({
+            "text": text,
+            "parse_mode": "Markdown",
             "priority": body.priority,
             "agent_id": body.agent_id,
         }))
     except Exception:
-        pass
+        logger.warning("[Notify] Global bot fallback delivery failed", exc_info=True)
 
 
 def _to_response(n: Notification) -> dict:

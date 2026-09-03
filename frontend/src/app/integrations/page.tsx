@@ -74,7 +74,7 @@ function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; c
     return {
       ok: false,
       label: `OAuth erforderlich — auf „Verbinden“ klicken · ${checked}`,
-      className: "text-amber-400",
+      className: "text-amber-700 dark:text-amber-400",
       title: "Der Server ist OAuth-geschützt und wurde angelegt, aber noch nicht verbunden. Auf „Verbinden“ klicken, um die Autorisierung zu starten.",
     };
   }
@@ -88,7 +88,7 @@ function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; c
   return {
     ok: false,
     label: `${server.last_error || fallback} · ${checked}`,
-    className: server.last_status === "auth_failed" ? "text-amber-400" : "text-red-400",
+    className: server.last_status === "auth_failed" ? "text-amber-700 dark:text-amber-400" : "text-red-400",
     title: MCP_HEALTH_ORCH_ONLY,
   };
 }
@@ -114,7 +114,7 @@ function formatAgentHealth(
   if (entry.agent_status === "needs_auth") {
     return {
       label: `Agent-Sicht: Authentifizierung nötig (${entry.needs_auth}/${total})`,
-      className: "text-amber-400",
+      className: "text-amber-700 dark:text-amber-400",
       ok: false,
     };
   }
@@ -521,7 +521,7 @@ export default function IntegrationsPage() {
                               </li>
                               <li>Under <strong className="text-foreground">API Permissions</strong> → Add permission → Microsoft Graph → Delegated:<br />
                                 <span className="text-[10px] font-mono text-blue-300/80">User.Read, Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Chat.ReadBasic, ChannelMessage.Read.All, ChannelMessage.Send, Team.ReadBasic.All, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, offline_access</span>
-                                <p className="mt-1 text-amber-400/80">→ Then click <strong>&quot;Grant admin consent&quot;</strong></p>
+                                <p className="mt-1 text-amber-700 dark:text-amber-400/80">→ Then click <strong>&quot;Grant admin consent&quot;</strong></p>
                               </li>
                               <li>Under <strong className="text-foreground">Certificates &amp; Secrets</strong> create a new Client Secret</li>
                               <li>Enter <strong className="text-foreground">Client ID &amp; Secret</strong> in <strong className="text-foreground">Settings → OAuth → Microsoft 365</strong></li>
@@ -628,6 +628,10 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   const [privateBlocked, setPrivateBlocked] = useState(false);
   const [allowPrivate, setAllowPrivate] = useState(false);
   const [removeHeaders, setRemoveHeaders] = useState(false);
+  // Eigene Rueckkehr-Adresse fuer den OAuth-Tanz dieses einen Servers.
+  // Ohne dieses Feld waere der Wert nur per API zu setzen — die Einstellung
+  // existierte, aber niemand kaeme in der Oberflaeche an sie heran.
+  const [addCallbackBase, setAddCallbackBase] = useState("");
   const [adding, setAdding] = useState(false);
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -735,6 +739,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     resetForm();
     setAddName(server.name);
     setAddUrl(server.url);
+    setAddCallbackBase(server.oauth_callback_base_url || "");
     setShowForm(true);
   };
 
@@ -775,10 +780,19 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     if (editingId == null || !addName.trim() || !addUrl.trim()) return;
     setAdding(true);
     try {
-      const data: { name?: string; url?: string; bearer_token?: string; headers?: Record<string, string> } = {
+      const data: {
+        name?: string; url?: string; bearer_token?: string;
+        headers?: Record<string, string>; oauth_callback_base_url?: string;
+      } = {
         name: addName.trim(),
         url: addUrl.trim(),
       };
+      // "" loescht den Wert, weglassen laesst ihn unveraendert (PATCH-Semantik).
+      // Deshalb nur senden, wenn er sich gegenueber dem Gespeicherten geaendert hat.
+      const basisVorher = editingServer?.oauth_callback_base_url || "";
+      if (addCallbackBase.trim() !== basisVorher) {
+        data.oauth_callback_base_url = addCallbackBase.trim();
+      }
       // Token: only send when the user typed one, or explicitly asked to remove it
       // (""). Leaving it untouched keeps the stored credential (PATCH: None = unchanged).
       if (removeToken) data.bearer_token = "";
@@ -996,6 +1010,32 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                 Für Server, die statt „Bearer" einen eigenen Header erwarten (z. B. Composio: x-consumer-api-key).
               </p>
             </div>
+            {editingId != null && (
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground mb-1 block">
+                  Eigene OAuth-Rückkehr-Adresse{" "}
+                  <span className="text-muted-foreground/40">(optional — leer = die dieser Installation)</span>
+                </label>
+                <input
+                  type="url"
+                  value={addCallbackBase}
+                  onChange={(e) => setAddCallbackBase(e.target.value)}
+                  placeholder="https://beispiel.invalid"
+                  className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                />
+                <p className="text-[10px] text-muted-foreground/50 mt-1">
+                  Nur nötig, wenn dieser Anbieter eine enge Liste erlaubter Rückkehr-Adressen führt.
+                  Sonst musste bisher die Adresse der ganzen Installation umgestellt werden — was
+                  gleichzeitig Anmeldung und Kalender-Anbindung umgehängt hat.
+                  {editingServer?.oauth_client_id && (
+                    <>
+                      {" "}Achtung: Beim Ändern wird die automatische Anbieter-Registrierung verworfen
+                      und beim nächsten Verbinden neu angelegt.
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
             {probeResult && (
               <div className={cn(
                 "rounded-lg border px-3 py-2 text-[11px] flex items-center gap-2",
@@ -1011,7 +1051,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
               // Erscheint erst NACH einer Ablehnung wegen privater Adresse — also
               // genau dann, wenn er hilft, und nicht als Dauerangebot.
               <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 space-y-1.5">
-                <label className="flex items-start gap-2 text-[11px] text-amber-200/90 cursor-pointer">
+                <label className="flex items-start gap-2 text-[11px] text-amber-700 dark:text-amber-200/90 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={allowPrivate}
@@ -1023,7 +1063,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                     eigenen Netz und ist von aussen nicht erreichbar.
                   </span>
                 </label>
-                <p className="text-[10px] text-amber-200/60 pl-5">
+                <p className="text-[10px] text-amber-700 dark:text-amber-200/60 pl-5">
                   Gilt nur für diesen Eintrag. Adressen, hinter denen nie ein
                   MCP-Server steht, bleiben gesperrt: dieser Server selbst
                   (127.0.0.1) und der Metadatenpunkt der Cloud (169.254.169.254).
@@ -1114,7 +1154,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       {server.has_auth && (
                         <span
                           title="Zugangs-Token gespeichert"
-                          className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400"
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
                         >
                           <KeyRound className="h-2.5 w-2.5" />
                           Token
@@ -1129,7 +1169,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                             "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
                             server.oauth_connected
                               ? "bg-emerald-500/10 text-emerald-400"
-                              : "bg-amber-500/10 text-amber-400"
+                              : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
                           )}
                         >
                           <ShieldCheck className="h-2.5 w-2.5" />
@@ -1159,7 +1199,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       </div>
                     )}
                     {disagreement && (
-                      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-400" title="Der Orchestrator erreicht den Server, aber mindestens ein Agent nicht — oft ein pro-Agent-Token, das der Server ablehnt.">
+                      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400" title="Der Orchestrator erreicht den Server, aber mindestens ein Agent nicht — oft ein pro-Agent-Token, das der Server ablehnt.">
                         <AlertCircle className="h-3 w-3 shrink-0" />
                         <span className="truncate">Diskrepanz: Orchestrator erreichbar, Agents melden Probleme</span>
                       </div>

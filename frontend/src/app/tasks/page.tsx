@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Plus, CheckCircle2, XCircle, Clock, Loader2, RotateCcw, Timer,
   Hash, Cpu, Trash2, Ban, Pause, Play, PlayCircle, CalendarClock, Sparkles,
-  GitBranch,
+  GitBranch, ChevronRight, Bot,
 } from "lucide-react";
 import { useTasks } from "@/hooks/use-tasks";
 import { useAgents } from "@/hooks/use-agents";
@@ -19,7 +19,7 @@ import type { Schedule } from "@/lib/types";
 /* ─── Single Tasks Config ─────────────────────────────────────────── */
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; badge: string; color: string }> = {
-  pending: { icon: Clock, badge: "bg-amber-500/10 text-amber-400 border-amber-500/20", color: "text-amber-400" },
+  pending: { icon: Clock, badge: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20", color: "text-amber-700 dark:text-amber-400" },
   queued: { icon: Clock, badge: "bg-blue-500/10 text-blue-400 border-blue-500/20", color: "text-blue-400" },
   running: { icon: Loader2, badge: "bg-blue-500/10 text-blue-400 border-blue-500/20", color: "text-blue-400" },
   completed: { icon: CheckCircle2, badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", color: "text-emerald-400" },
@@ -269,7 +269,12 @@ function SingleTasksView() {
             const cfg = statusConfig[task.status] ?? statusConfig.pending;
             const Icon = cfg.icon;
             const canDelete = task.status !== "running";
-            const canCancel = task.status === "queued" || task.status === "pending";
+            // Laufende Aufgaben waren hier nie abbrechbar — passend dazu wies
+            // der Server sie ab. Genau daran scheiterte das Stoppen: der Nutzer
+            // hatte KEINEN Weg, eine laufende Aufgabe anzuhalten, und die
+            // Sprachfront meldete trotzdem Erfolg (21.08.2026).
+            const laeuft = task.status === "running";
+            const canCancel = laeuft || task.status === "queued" || task.status === "pending";
             return (
               <Link key={task.id} href={`/tasks/${task.id}`}>
               <motion.div
@@ -322,11 +327,20 @@ function SingleTasksView() {
                     {canCancel && (
                       <button
                         onClick={(e) => handleCancel(e, task.id)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-[11px] font-medium text-amber-400 hover:bg-amber-500/20 transition-colors opacity-0 group-hover:opacity-100"
-                        title="Cancel task"
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors",
+                          laeuft
+                            // Bei einer laufenden Aufgabe NICHT erst beim Überfahren
+                            // zeigen: wer sie stoppen will, sucht den Knopf sofort.
+                            ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20"
+                            : "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 opacity-0 group-hover:opacity-100",
+                        )}
+                        title={laeuft
+                          ? "Laufende Aufgabe stoppen — der Agent bricht seine Arbeit ab"
+                          : "Wartende Aufgabe aus der Warteschlange nehmen"}
                       >
                         <Ban className="h-3 w-3" />
-                        Cancel
+                        {laeuft ? "Stoppen" : "Abbrechen"}
                       </button>
                     )}
                     {canDelete && (
@@ -396,6 +410,9 @@ function ScheduledTasksView() {
   const [creating, setCreating] = useState(false);
   const [triggering, setTriggering] = useState<string | null>(null);
   const { agents } = useAgents();
+  //: Welche Agenten aufgeklappt sind. Startet LEER — bei einem Dutzend Agenten
+  //: mit je mehreren Zeitplaenen ist eine flache Liste nicht mehr lesbar.
+  const [offeneGruppen, setOffeneGruppen] = useState<Set<string>>(new Set());
 
   // Create form state
   const [name, setName] = useState("");
@@ -403,6 +420,44 @@ function ScheduledTasksView() {
   const [intervalSeconds, setIntervalSeconds] = useState(3600);
   const [priority, setPriority] = useState(1);
   const [agentId, setAgentId] = useState("");
+
+  //: Nach Agent gruppiert, Gruppen alphabetisch, Zeitplaene innerhalb nach dem
+  //: naechsten Lauf — was als naechstes dran ist, steht oben.
+  const gruppen = useMemo(() => {
+    const namen = new Map(agents.map((a) => [a.id, a.name]));
+    const nach = new Map<string, { id: string; name: string; plaene: Schedule[] }>();
+    for (const plan of schedules) {
+      const id = plan.agent_id ?? "";
+      if (!nach.has(id)) {
+        nach.set(id, {
+          id,
+          // Ein Zeitplan ohne Agenten laeuft ueber die Lastverteilung — er
+          // gehoert trotzdem sichtbar irgendwohin, sonst faellt er unter den
+          // Tisch.
+          name: id ? (namen.get(id) ?? `Unbekannter Agent (${id})`) : "Ohne festen Agenten",
+          plaene: [],
+        });
+      }
+      nach.get(id)!.plaene.push(plan);
+    }
+    return Array.from(nach.values())
+      .map((g) => ({
+        ...g,
+        plaene: [...g.plaene].sort((a, b) => a.next_run_at.localeCompare(b.next_run_at)),
+        aktiv: g.plaene.filter((p) => p.enabled).length,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [schedules, agents]);
+
+  const gruppeUmschalten = (id: string) =>
+    setOffeneGruppen((vorher) => {
+      const naechste = new Set(vorher);
+      if (naechste.has(id)) naechste.delete(id);
+      else naechste.add(id);
+      return naechste;
+    });
+
+  const alleOffen = gruppen.length > 0 && offeneGruppen.size === gruppen.length;
 
   const refresh = useCallback(async () => {
     try {
@@ -555,7 +610,7 @@ function ScheduledTasksView() {
                   {[
                     { value: 0, label: "Low", color: "text-slate-400" },
                     { value: 1, label: "Normal", color: "text-blue-400" },
-                    { value: 2, label: "High", color: "text-amber-400" },
+                    { value: 2, label: "High", color: "text-amber-700 dark:text-amber-400" },
                     { value: 3, label: "Urgent", color: "text-red-400" },
                   ].map((p) => (
                     <button
@@ -642,11 +697,55 @@ function ScheduledTasksView() {
           animate="visible"
           className="space-y-3"
         >
-          {schedules.map((schedule) => (
+          {/* Alles auf einmal auf- oder zuklappen — bei vielen Agenten spart
+              das ein Dutzend Klicks. */}
+          <div className="flex justify-end">
+            <button
+              onClick={() =>
+                setOffeneGruppen(alleOffen ? new Set() : new Set(gruppen.map((g) => g.id)))
+              }
+              className="text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
+            >
+              {alleOffen ? "Alle zuklappen" : "Alle aufklappen"}
+            </button>
+          </div>
+
+          {gruppen.map((gruppe) => {
+            const offen = offeneGruppen.has(gruppe.id);
+            return (
+          <div key={gruppe.id || "ohne-agent"} className="space-y-3">
+            <button
+              onClick={() => gruppeUmschalten(gruppe.id)}
+              className="flex w-full items-center gap-2.5 rounded-xl border border-foreground/[0.06] bg-card/50 px-4 py-2.5 text-left transition-colors hover:border-foreground/[0.1] hover:bg-card/80"
+            >
+              <ChevronRight
+                className={`h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform duration-150 ${offen ? "rotate-90" : ""}`}
+              />
+              <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+              <span className="text-sm font-medium truncate">{gruppe.name}</span>
+              <span className="ml-auto flex items-center gap-3 text-[11px] text-muted-foreground/60 shrink-0">
+                <span>
+                  {gruppe.plaene.length} {gruppe.plaene.length === 1 ? "Zeitplan" : "Zeitpläne"}
+                </span>
+                {gruppe.aktiv > 0 && (
+                  <span className="inline-flex items-center gap-1 text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    {gruppe.aktiv} aktiv
+                  </span>
+                )}
+                {!offen && gruppe.plaene[0] && (
+                  <span title="Nächster Lauf in dieser Gruppe">
+                    Nächster: {formatRelative(gruppe.plaene[0].next_run_at)}
+                  </span>
+                )}
+              </span>
+            </button>
+
+            {offen && gruppe.plaene.map((schedule) => (
             <motion.div
               key={schedule.id}
               variants={itemVariants}
-              className="group rounded-2xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm transition-all hover:border-foreground/[0.1]"
+              className="group ml-4 rounded-2xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm transition-all hover:border-foreground/[0.1]"
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
@@ -692,7 +791,7 @@ function ScheduledTasksView() {
                     onClick={() => handleToggle(schedule)}
                     className={`flex h-8 w-8 items-center justify-center rounded-lg border backdrop-blur-sm transition-colors ${
                       schedule.enabled
-                        ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20"
+                        ? "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
                         : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
                     }`}
                   >
@@ -742,7 +841,10 @@ function ScheduledTasksView() {
                 )}
               </div>
             </motion.div>
-          ))}
+            ))}
+          </div>
+            );
+          })}
         </motion.div>
       )}
     </motion.div>

@@ -288,7 +288,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-amber-400" />
+          <Sparkles className="h-5 w-5 text-amber-700 dark:text-amber-400" />
           <h2 className="text-sm font-semibold">Skills</h2>
           <span className="text-xs text-muted-foreground">
             ({skills.length} {skills.length === 1 ? "skill" : "skills"})
@@ -319,7 +319,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
               setShowInstall(false);
               resetForm();
             }}
-            className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium border border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium border border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
           >
             <Store className="h-3.5 w-3.5" />
             Skill Store
@@ -471,7 +471,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Store className="h-4 w-4 text-amber-400" />
+                  <Store className="h-4 w-4 text-amber-700 dark:text-amber-400" />
                   <h3 className="text-sm font-medium">Skill Store</h3>
                   <span className="text-[11px] text-muted-foreground/60">from skills.sh</span>
                   <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
@@ -713,12 +713,12 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                   }
                 >
                   <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-amber-500/10">
-                    <Code2 className="h-4 w-4 text-amber-400" />
+                    <Code2 className="h-4 w-4 text-amber-700 dark:text-amber-400" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{skill.name}</span>
-                      <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium bg-amber-500/10 text-amber-400 border-amber-500/20">
+                      <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                         skill
                       </span>
                     </div>

@@ -9,7 +9,8 @@
  *   ORCHESTRATOR_URL - Base URL of the orchestrator (default: http://orchestrator:8000)
  *   AGENT_ID         - ID of the agent using this server
  *   AGENT_NAME       - Display name of the agent
- *   DEFAULT_MODEL    - Default model for new tasks (default: claude-sonnet-4-5-20250929)
+ *   DEFAULT_MODEL    - (nicht mehr benutzt) Das Modell eines Auftrags bestimmt der
+ *                      ZIELAGENT, nicht der Auftraggeber — siehe unten.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -27,7 +28,33 @@ const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
 function wrapData(source, content) {
   return `[EXTERNAL-DATA source="${source}"]\n${content}\n[/EXTERNAL-DATA]`;
 }
+
+// Ein blosses .substring(0, n) schneidet mitten im Wort ab, wenn ein Sub-Agent
+// erst seine Pflicht-Vorabchecks beschreibt, bevor die eigentliche Antwort
+// kommt — die Antwort sah dadurch aus, als fehle sie komplett. Schneidet
+// stattdessen an der letzten Wortgrenze vor dem Limit.
+function truncatePreservingWords(text, limit) {
+  if (text.length <= limit) return text;
+  const cut = text.lastIndexOf(" ", limit);
+  const at = cut > 0 ? cut : limit;
+  return `${text.slice(0, at).trimEnd()} […]`;
+}
+// Bewusst NICHT mehr an neue Auftraege gehaengt.
+//
+// Bis 1.254.x schickte jedes Delegier-Werkzeug `model: DEFAULT_MODEL` mit — das
+// Modell des AUFTRAGGEBERS. Ein Kollege arbeitete damit unter einem Modell, das
+// er sich nie ausgesucht hat, und der Model-Router des Zielagenten kam gar nicht
+// erst zum Zug (der Orchestrator fragt ihn nur, wenn KEIN Modell mitkam).
+//
+// Vorgabe des Nutzers am 19.08.2026: „wenn delegiert SOLL das eingestellte
+// Modell des Agent verwendet werden". Ohne Modell im Auftrag faellt der
+// Orchestrator genau darauf zurueck ("we leave it None so the agent falls back
+// to its own default"). Der Custom-LLM-Weg machte es ohnehin schon so.
+//
+// Die Variable bleibt fuer Diagnosezwecke stehen; wer sie wieder anhaengt,
+// nimmt dem Zielagenten seine Modellwahl.
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "claude-sonnet-4-6";
+void DEFAULT_MODEL;
 
 async function apiCall(path, options = {}) {
   const url = `${API}${path}`;
@@ -139,7 +166,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
               type: "object",
               properties: {
                 title: { type: "string", description: "Short task title." },
-                prompt: { type: "string", description: "Detailed instructions for this sub-task." },
+                prompt: {
+                  type: "string",
+                  description:
+                    "Detailed instructions for this sub-task. Must stand on its own: the receiver " +
+                    "has its OWN /workspace and cannot see yours. Never point at a /workspace/... " +
+                    "path of yours — copy what they need to /shared/ and name that path, or put " +
+                    "the content into this prompt.",
+                },
                 agent_id: { type: "string", description: "Agent to assign to. Leave empty for auto-assign." },
               },
               required: ["title", "prompt"],
@@ -197,9 +231,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "list_team",
       description:
-        "List the agents visible to you (your own team members plus other teams' leads) with " +
-        "their roles and current status. Use this to find someone to delegate to or message. " +
-        "For the exact roster of YOUR team — including who the lead is — use list_my_team.",
+        "SYSTEM-WIDE directory: agents visible to you across teams (your own members plus " +
+        "other teams' leads), with roles and status. Use it to FIND someone outside your team. " +
+        "\n\nThis is NOT your team. When asked 'which agents do you have / who is on your team', " +
+        "answer from list_my_team ALONE and do not merge these entries into it — an agent from " +
+        "another team is not your colleague, and naming them as such leads to work being handed " +
+        "to someone who never picks it up.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -944,6 +981,42 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["path"],
       },
     },
+    {
+      name: "restart_own_container",
+      description:
+        "Rebuild and restart MY OWN container from the current agent image/config, preserving my " +
+        "full workspace (files, git history, memory, everything on disk). This INTERRUPTS whatever " +
+        "I'm currently doing and drops my in-progress conversation turn — ALWAYS tell the user this " +
+        "is about to happen BEFORE calling it, never call it silently. Use only when explicitly " +
+        "asked to restart/rebuild myself, or when a config/instruction change needs a fresh " +
+        "container to take effect. No arguments.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "web_search",
+      description:
+        "Search the web for information. Use this when you need current data (weather, news, " +
+        "prices, facts) or don't know which URL to visit. Returns top search results with titles, " +
+        "URLs, and snippets. Uses the admin-configured provider (DuckDuckGo by default, or Brave/" +
+        "SerpApi if the admin set an API key under Admin -> Websuche).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query (e.g. 'weather Berlin today', 'Python FastAPI tutorial').",
+          },
+          max_results: {
+            type: "number",
+            description: "Number of results to return (default: 5, max: 10).",
+          },
+        },
+        required: ["query"],
+      },
+    },
   ],
 }));
 
@@ -959,7 +1032,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         prompt: args.prompt,
         priority: args.priority || 5,
         agent_id: targetAgent,
-        model: DEFAULT_MODEL,
       };
       // Track delegation: if creating task for another agent, record who delegated
       if (targetAgent !== AGENT_ID) {
@@ -986,7 +1058,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         prompt: t.prompt,
         priority: t.priority || 5,
         agent_id: t.agent_id || null,
-        model: DEFAULT_MODEL,
       }));
       const batch = await apiCall("/tasks/batch", {
         method: "POST",
@@ -1013,17 +1084,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const pending = taskIds.filter((id) => !results[id]);
       const lines = taskIds.map((id) => {
         const r = results[id];
-        if (!r) return `  #${id}: ⏳ still running (timed out)`;
-        const icon = r.status === "completed" ? "✅" : "❌";
-        return `${icon} #${id} "${r.title}"\n${r.result}`;
+        if (!r) return `  #${id}: still running (timed out)`;
+        return `[${r.status}] #${id} "${r.title}"\n${r.result}`;
       });
+      // Die Rueckgabe muss sagen, dass das Warten VORBEI ist. Ein Team-Lead hat
+      // am 2026-08-13 aus einem fertigen Ergebnis ein "wurde angestossen, laeuft
+      // jetzt" gemacht; der Mensch wartete 18 Minuten auf etwas, das schon fertig
+      // war. Ohne Emojis — harte Vorgabe fuer nutzersichtbaren Text.
+      const done = Object.keys(results).length;
+      const head = pending.length === 0
+        ? `FERTIG: alle ${taskIds.length} Auftraege sind abgeschlossen. Das hier ist ` +
+          `das ENDERGEBNIS, kein Zwischenstand. Gib es dem Menschen wieder und sage ` +
+          `ausdruecklich, dass die Arbeit erledigt ist. Schreibe NICHT, dass etwas ` +
+          `"angestossen" wurde oder "jetzt laeuft".`
+        : `TEILWEISE FERTIG: ${done} von ${taskIds.length} Auftraegen sind zurueck, ` +
+          `${pending.length} laufen noch. Berichte beides getrennt.`;
       return {
         content: [{
           type: "text",
-          text:
-            `Delegated ${taskIds.length} tasks. ` +
-            `${Object.keys(results).length} finished, ${pending.length} timed out.\n\n` +
-            wrapData("subtask-results", lines.join("\n\n---\n\n")),
+          text: `${head}\n\n` + wrapData("subtask-results", lines.join("\n\n---\n\n")),
         }],
       };
     }
@@ -1034,9 +1113,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         ids.map((id) => apiCall(`/tasks/${id}`).catch(() => ({ id, status: "error", result: "not found" })))
       );
       const lines = statuses.map((t) => {
-        const icon = t.status === "completed" ? "✅" : t.status === "failed" ? "❌" : t.status === "running" ? "🔄" : "⏳";
-        const cost = t.cost_usd ? ` ($${t.cost_usd.toFixed(4)})` : "";
-        return `${icon} #${t.id} [${t.status}]${cost}: ${t.title || ""}${t.result ? `\n  → ${t.result.substring(0, 300)}` : ""}`;
+        const cost = t.cost_usd ? ` (${t.cost_usd.toFixed(4)} USD)` : "";
+        return `#${t.id} [${t.status}]${cost}: ${t.title || ""}${t.result ? `\n  -> ${truncatePreservingWords(t.result, 1000)}` : ""}`;
       });
       return {
         content: [{
@@ -1052,7 +1130,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         prompt: t.prompt,
         priority: t.priority || 5,
         agent_id: t.agent_id || null,
-        model: DEFAULT_MODEL,
       }));
       const result = await apiCall("/tasks/batch", {
         method: "POST",
@@ -1430,7 +1507,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         name: args.name,
         prompt: args.prompt,
         agent_id: AGENT_ID,
-        model: DEFAULT_MODEL,
       };
       if (args.run_in_seconds) {
         body.run_in_seconds = args.run_in_seconds;  // one-shot; backend sets interval 0 + disables after firing
@@ -1832,6 +1908,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const conts = (result.containers || []).length;
       const url = result.url ? ` Link für den User: ${result.url}` : "";
       return { content: [{ type: "text", text: `App „${args.path}" neu gebaut und gestartet (${conts} Container, ${result.status}).${url}` }] };
+    }
+
+    case "restart_own_container": {
+      await apiCall(`/agent-apps/restart-self`, { method: "POST" });
+      return { content: [{ type: "text", text: "Mein Container wird gerade neu gebaut und startet gleich neu. Mein Workspace bleibt erhalten." }] };
+    }
+
+    case "web_search": {
+      const query = (args.query || "").trim();
+      if (!query) {
+        return { content: [{ type: "text", text: "Error: query cannot be empty" }] };
+      }
+      const maxResults = Math.min(Number(args.max_results) || 5, 10);
+      const result = await apiCall(`/agent-search/web`, {
+        method: "POST",
+        body: JSON.stringify({ query, max_results: maxResults }),
+      });
+      const items = result.results || [];
+      if (items.length === 0) {
+        return { content: [{ type: "text", text: `No results found for '${query}'. Try different search terms.` }] };
+      }
+      const blocks = items.map((r) => `**${r.title || ""}**\n${r.url || ""}\n${r.snippet || ""}`);
+      return { content: [{ type: "text", text: `Search results for '${query}':\n\n${blocks.join("\n\n---\n\n")}` }] };
     }
 
     default:

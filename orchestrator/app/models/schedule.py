@@ -31,3 +31,8 @@ class Schedule(Base, TimestampMixin):
     total_runs: Mapped[int] = mapped_column(Integer, default=0)
     success_count: Mapped[int] = mapped_column(Integer, default=0)
     fail_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Escalated run LINEAGES in a row (resets on any success, NOT the same as
+    # fail_count — a lineage that self-heals through 2 retries before failing
+    # is still just one). At the threshold the schedule auto-disables instead
+    # of escalating hourly forever — see task_router._escalate_exhausted_task.
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)

@@ -82,10 +82,14 @@ async def provision_pack(
 
     await db.commit()
 
-    # 2. Seed knowledge entries (skip titles that already exist — title is unique).
+    # 2. Seed knowledge entries (skip titles the owner already has — Titel sind je
+    #    Besitzer eindeutig, ein fremder Vault darf das Seeding nicht verhindern).
     for entry in pack.get("knowledge_entries", []):
         title = entry["title"]
-        exists = await db.scalar(select(KnowledgeEntry).where(KnowledgeEntry.title == title))
+        exists = await db.scalar(select(KnowledgeEntry).where(
+            KnowledgeEntry.title == title,
+            KnowledgeEntry.user_id == user_id,
+        ))
         if exists:
             continue
         db.add(KnowledgeEntry(

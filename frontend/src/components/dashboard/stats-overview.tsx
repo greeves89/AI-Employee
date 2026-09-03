@@ -31,7 +31,7 @@ const statConfig = [
     key: "running",
     label: "In Queue",
     icon: Clock,
-    color: "text-amber-400",
+    color: "text-amber-700 dark:text-amber-400",
     gradient: "from-amber-500/20 via-amber-500/5 to-transparent",
     iconBg: "bg-amber-500/10",
   },

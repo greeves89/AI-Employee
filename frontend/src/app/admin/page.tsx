@@ -6,7 +6,7 @@ import {
   Users,
   Cpu,
   Container,
-  Shield,
+  Shield, ShieldAlert,
   ShieldCheck,
   ShieldX,
   Trash2,
@@ -24,6 +24,9 @@ import {
   Bug,
   Lightbulb,
   TrendingUp,
+  Camera,
+  ThumbsUp,
+  ThumbsDown,
   ChevronDown,
   DollarSign,
   AlertTriangle,
@@ -35,6 +38,9 @@ import {
   HeartPulse,
   ScrollText,
   Brain,
+  AppWindow,
+  Search,
+  Download,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 
@@ -45,6 +51,8 @@ import { SecretsView } from "@/app/secrets/view";
 import { HealthView } from "@/app/health/view";
 import { AuditView } from "@/app/audit/view";
 import { DlpView } from "@/app/admin/dlp-view";
+import { WebSearchView } from "@/app/admin/web-search-view";
+import { MasterRulesView } from "@/app/admin/master-rules-view";
 import { cn, timeAgo, formatCost } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
@@ -52,18 +60,35 @@ import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { MountPermissionsModal } from "@/components/admin/mount-permissions-modal";
+import { ResetPasswordModal } from "@/components/admin/reset-password-modal";
+import { FeedbackDetailModal } from "@/components/admin/feedback-detail-modal";
 import { RolesPanel } from "@/components/admin/roles-panel";
+import { PagesPanel } from "@/components/admin/pages-panel";
+import { SsoGroupsPanel } from "@/components/admin/sso-groups-panel";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 import { formatMoney } from "@/lib/money";
 
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
-  | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit" | "dlp";
+  | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit" | "dlp"
+  | "master-rules" | "web-search"
+  | "pages" | "sso-groups";
 
 // Tabs whose content is a full embedded page component (rendered without
 // their own <Header>). They don't depend on the admin page's own data load.
-const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp"];
+const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules", "web-search"];
+
+// Das Menüband ist zweistufig: oben die Themengruppe, darunter deren Unterreiter.
+// So bleiben alle Bereiche sichtbar, ohne dass 13 Reiter in einer Zeile scrollen.
+const TAB_GROUPS: { id: string; label: string; icon: typeof Users; tabs: Tab[] }[] = [
+  { id: "people", label: "Nutzer & Rollen", icon: Users, tabs: ["users", "roles", "sso-groups"] },
+  { id: "agents", label: "Agenten", icon: Cpu, tabs: ["agents", "assignments"] },
+  { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains", "web-search"] },
+  { id: "security", label: "Sicherheit", icon: Shield, tabs: ["master-rules", "secrets", "dlp", "audit"] },
+  { id: "ops", label: "Betrieb", icon: HeartPulse, tabs: ["health", "budget", "feedback"] },
+  { id: "system", label: "System", icon: SettingsIcon, tabs: ["settings", "pages"] },
+];
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-500",
@@ -80,6 +105,7 @@ export default function AdminPage() {
   const toast = useToast();
   const user = useAuthStore((s) => s.user);
   const [mountUserId, setMountUserId] = useState<string | null>(null);
+  const [resetPasswordResult, setResetPasswordResult] = useState<{ email: string; tempPassword: string } | null>(null);
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
@@ -229,6 +255,26 @@ export default function AdminPage() {
     }
   };
 
+  const handleResetPassword = async (u: AdminUser) => {
+    if (u.id === user?.id) return;
+    const ok = await confirm({
+      title: `Passwort für "${u.name}" zurücksetzen?`,
+      message: `${u.email} — das bisherige Passwort wird sofort ungültig.`,
+      variant: "destructive",
+      confirmLabel: "Zurücksetzen",
+    });
+    if (!ok) return;
+    setActionLoading(u.id);
+    try {
+      const res = await api.resetUserPassword(u.id);
+      setResetPasswordResult({ email: res.email, tempPassword: res.temp_password });
+    } catch (e) {
+      toast.error("Passwort-Reset fehlgeschlagen", e instanceof Error ? e.message : undefined);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleStopAgent = async (id: string) => {
     setActionLoading(id);
     try {
@@ -371,21 +417,30 @@ export default function AdminPage() {
     }
   };
 
+  const pendingFeedback = feedbackItems.filter((f) => f.status === "pending").length;
+
   const tabs: { id: Tab; label: string; icon: typeof Users; count?: number }[] = [
     { id: "users", label: "Users", icon: Users, count: users.length },
-    { id: "agents", label: "All Agents", icon: Cpu, count: agents.length },
+    { id: "agents", label: "Alle Agenten", icon: Cpu, count: agents.length },
     { id: "assignments", label: "Zuweisungen", icon: UserCog, count: assignments.length || undefined },
-    { id: "roles", label: "Rollen", icon: Shield },
-    { id: "feedback", label: "Feedback", icon: MessageSquare, count: feedbackItems.filter((f) => f.status === "pending").length || undefined },
+    { id: "roles", label: "Rollen", icon: Shield, count: customRoles.length || undefined },
+    { id: "feedback", label: "Feedback", icon: MessageSquare, count: pendingFeedback || undefined },
     { id: "budget", label: "Budget", icon: DollarSign },
-    { id: "settings", label: "Settings", icon: SettingsIcon },
+    { id: "settings", label: "Einstellungen", icon: SettingsIcon },
     { id: "ai-accounts", label: "AI-Accounts", icon: Cpu },
     { id: "second-brains", label: "Second Brains", icon: Brain },
+    { id: "web-search", label: "Websuche", icon: Search },
     { id: "secrets", label: "Key Management", icon: KeyRound },
     { id: "health", label: "Health", icon: HeartPulse },
     { id: "audit", label: "Audit Log", icon: ScrollText },
     { id: "dlp", label: "DLP-Filter", icon: Shield },
+    { id: "master-rules", label: "Master-Regeln", icon: ShieldAlert },
+    { id: "pages", label: "Seiten & Links", icon: AppWindow },
+    { id: "sso-groups", label: "SSO-Gruppen", icon: KeyRound },
   ];
+
+  const tabById = new Map(tabs.map((t) => [t.id, t]));
+  const activeGroup = TAB_GROUPS.find((g) => g.tabs.includes(tab)) ?? TAB_GROUPS[0];
 
   return (
     <div>
@@ -400,34 +455,64 @@ export default function AdminPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {/* Tabs — horizontally scrollable so they never wrap, fits any width */}
-        <div className="mb-6 flex gap-1 overflow-x-auto rounded-xl border border-border/50 bg-card/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {tabs.map((t) => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={cn(
-                  "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all",
-                  tab === t.id
-                    ? "bg-accent text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {t.label}
-                {t.count != null && t.count > 0 && (
-                  <span className={cn(
-                    "ml-1 px-1.5 py-0.5 rounded text-[10px]",
-                    t.id === "feedback" ? "bg-amber-500/20 text-amber-400" : "bg-foreground/10"
-                  )}>
-                    {t.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* Menüband, zweistufig: Themengruppe oben, Unterreiter darunter */}
+        <div className="mb-5">
+          <div className="flex gap-1 overflow-x-auto rounded-xl border border-border/50 bg-card/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {TAB_GROUPS.map((g) => {
+              const Icon = g.icon;
+              const active = activeGroup.id === g.id;
+              const alert = g.tabs.includes("feedback") && pendingFeedback > 0;
+              return (
+                <button
+                  key={g.id}
+                  onClick={() => { if (!g.tabs.includes(tab)) setTab(g.tabs[0]); }}
+                  className={cn(
+                    "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-all",
+                    active
+                      ? "bg-accent text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {g.label}
+                  {alert && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />}
+                </button>
+              );
+            })}
+          </div>
+
+          {activeGroup.tabs.length > 1 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
+              {activeGroup.tabs.map((id) => {
+                const t = tabById.get(id);
+                if (!t) return null;
+                const Icon = t.icon;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setTab(id)}
+                    className={cn(
+                      "flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all",
+                      tab === id
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-transparent text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {t.label}
+                    {t.count != null && t.count > 0 && (
+                      <span className={cn(
+                        "rounded px-1.5 py-0.5 text-[10px]",
+                        id === "feedback" ? "bg-amber-500/20 text-amber-700 dark:text-amber-400" : "bg-foreground/10"
+                      )}>
+                        {t.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {EMBEDDED_TABS.includes(tab) ? (
@@ -435,10 +520,12 @@ export default function AdminPage() {
             {tab === "settings" && <SettingsView embedded />}
             {tab === "ai-accounts" && <AIAccountsView embedded />}
             {tab === "second-brains" && <SecondBrainsView embedded />}
+            {tab === "web-search" && <WebSearchView embedded />}
             {tab === "secrets" && <SecretsView embedded />}
             {tab === "health" && <HealthView embedded />}
             {tab === "audit" && <AuditView embedded />}
             {tab === "dlp" && <DlpView embedded />}
+            {tab === "master-rules" && <MasterRulesView />}
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center py-20">
@@ -509,7 +596,7 @@ export default function AdminPage() {
                         {formatCost(u.monthly_cost_usd ?? 0)} diesen Monat
                       </p>
                       {u.approved === false && (
-                        <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-400">
+                        <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400">
                           Wartet auf Freischaltung
                         </span>
                       )}
@@ -522,7 +609,7 @@ export default function AdminPage() {
                         u.role === "admin"   ? "bg-amber-500/10 text-amber-500" :
                         u.role === "manager" ? "bg-purple-500/10 text-purple-400" :
                         u.role === "viewer"  ? "bg-zinc-500/10 text-zinc-400" :
-                        u.role === "unassigned" ? "bg-amber-500/10 text-amber-400" :
+                        u.role === "unassigned" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" :
                                                "bg-blue-500/10 text-blue-500"
                       )}
                     >
@@ -577,6 +664,13 @@ export default function AdminPage() {
                               title="Mount-Permissions"
                             >
                               <Box className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleResetPassword(u)}
+                              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                              title="Passwort zurücksetzen"
+                            >
+                              <KeyRound className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteUser(u)}
@@ -694,7 +788,7 @@ export default function AdminPage() {
                           ) : (
                             <button
                               onClick={() => handleStopAgent(agent.id)}
-                              className="p-2 rounded-lg text-muted-foreground hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                              className="p-2 rounded-lg text-muted-foreground hover:text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
                               title="Stop"
                             >
                               <Container className="h-4 w-4" />
@@ -922,7 +1016,7 @@ export default function AdminPage() {
                           <div className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] p-3 text-[12px] space-y-0.5">
                             <p className="text-emerald-400 font-medium">{distResult.created_count} Kopie(n) erstellt</p>
                             {distResult.created.map((c) => <div key={c.agent_id} className="text-muted-foreground">✓ {c.user_name} → {c.agent_name}</div>)}
-                            {distResult.skipped_count > 0 && <p className="text-amber-400 font-medium mt-1">{distResult.skipped_count} übersprungen</p>}
+                            {distResult.skipped_count > 0 && <p className="text-amber-700 dark:text-amber-400 font-medium mt-1">{distResult.skipped_count} übersprungen</p>}
                             {distResult.skipped.map((s, i) => <div key={i} className="text-muted-foreground/70">– {s.user_name || s.user_id || "?"}: {s.reason}</div>)}
                           </div>
                         )}
@@ -977,8 +1071,13 @@ export default function AdminPage() {
                     prev.map((u) => u.id === userId ? { ...u, custom_role_id: customRoleId } : u)
                   );
                 }}
+                onRolesChanged={setCustomRoles}
               />
             )}
+
+            {tab === "pages" && <PagesPanel />}
+
+            {tab === "sso-groups" && <SsoGroupsPanel />}
 
             {tab === "budget" && (
               <BudgetTab
@@ -1112,6 +1211,14 @@ export default function AdminPage() {
           userId={mountUserId}
           userName={users.find((u) => u.id === mountUserId)?.name}
           onClose={() => setMountUserId(null)}
+        />
+      )}
+
+      {resetPasswordResult && (
+        <ResetPasswordModal
+          email={resetPasswordResult.email}
+          tempPassword={resetPasswordResult.tempPassword}
+          onClose={() => setResetPasswordResult(null)}
         />
       )}
     </div>
@@ -1281,7 +1388,7 @@ function BudgetTab({
             : "border-foreground/[0.06] bg-card/80"
         )}>
           <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Nahe am Limit</p>
-          <p className={cn("text-2xl font-bold", agentsNearBudget.length > 0 ? "text-amber-400" : "text-foreground")}>
+          <p className={cn("text-2xl font-bold", agentsNearBudget.length > 0 ? "text-amber-700 dark:text-amber-400" : "text-foreground")}>
             {agentsNearBudget.length}
           </p>
           <p className="text-[10px] text-muted-foreground/50 mt-0.5">&gt;75% verbraucht</p>
@@ -1314,7 +1421,7 @@ function BudgetTab({
                   {isOver ? (
                     <AlertTriangle className="h-4 w-4 text-red-400" />
                   ) : isNear ? (
-                    <AlertTriangle className="h-4 w-4 text-amber-400" />
+                    <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400" />
                   ) : limit != null ? (
                     <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                   ) : (
@@ -1432,7 +1539,7 @@ function BudgetTab({
 // --- Feedback Tab Component ---
 
 const STATUS_OPTIONS: { value: FeedbackStatus; label: string; color: string }[] = [
-  { value: "pending", label: "Pending", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+  { value: "pending", label: "Pending", color: "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/20" },
   { value: "reviewed", label: "Reviewed", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
   { value: "in_progress", label: "In Progress", color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
   { value: "closed", label: "Closed", color: "text-zinc-400 bg-zinc-500/10 border-zinc-500/20" },
@@ -1447,9 +1554,16 @@ const CATEGORY_ICONS: Record<string, typeof Bug> = {
 
 const CATEGORY_COLORS: Record<string, string> = {
   bug: "text-red-400",
-  feature: "text-amber-400",
+  feature: "text-amber-700 dark:text-amber-400",
   improvement: "text-blue-400",
   general: "text-zinc-400",
+};
+
+// Sentiment aus dem Feedback-Widget (leer bei Alt-Einträgen aus dem Modal).
+const SENTIMENTS: Record<string, { label: string; icon: typeof ThumbsUp; color: string }> = {
+  positiv: { label: "Gefällt mir", icon: ThumbsUp, color: "text-emerald-400" },
+  negativ: { label: "Stört mich", icon: ThumbsDown, color: "text-orange-400" },
+  wunsch: { label: "Wunsch", icon: Lightbulb, color: "text-amber-700 dark:text-amber-400" },
 };
 
 function FeedbackTab({
@@ -1471,6 +1585,19 @@ function FeedbackTab({
   const [expandedNotes, setExpandedNotes] = useState<number | null>(null);
   const [noteText, setNoteText] = useState("");
   const [githubConnected, setGithubConnected] = useState<boolean | null>(null);
+  const [detailFeedback, setDetailFeedback] = useState<Feedback | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await api.exportFeedback();
+    } catch (e) {
+      toast.error("Export fehlgeschlagen", e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     api.getIntegrations().then((data) => {
@@ -1562,10 +1689,23 @@ function FeedbackTab({
 
   return (
     <div className="space-y-3">
+      {items.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            Als ZIP exportieren
+          </button>
+        </div>
+      )}
       {items.map((f, i) => {
         const CatIcon = CATEGORY_ICONS[f.category] || MessageSquare;
         const catColor = CATEGORY_COLORS[f.category] || "text-zinc-400";
         const statusCfg = STATUS_OPTIONS.find((s) => s.value === f.status) || STATUS_OPTIONS[0];
+        const sentiment = f.sentiment ? SENTIMENTS[f.sentiment] : undefined;
         const isExpanded = expandedNotes === f.id;
 
         return (
@@ -1584,9 +1724,12 @@ function FeedbackTab({
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 min-w-0">
+                <div
+                  className="flex-1 min-w-0 cursor-pointer"
+                  onClick={() => setDetailFeedback(f)}
+                >
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="text-sm font-medium truncate">{f.title}</h4>
+                    <h4 className="text-sm font-medium truncate hover:underline">{f.title}</h4>
                     <span className={cn(
                       "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
                       statusCfg.color
@@ -1594,6 +1737,12 @@ function FeedbackTab({
                       {statusCfg.label}
                     </span>
                     <span className="text-[10px] text-muted-foreground/50 capitalize">{f.category}</span>
+                    {sentiment && (
+                      <span className={cn("inline-flex items-center gap-1 text-[10px]", sentiment.color)}>
+                        <sentiment.icon className="h-3 w-3" />
+                        {sentiment.label}
+                      </span>
+                    )}
                   </div>
                   {f.description && (
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{f.description}</p>
@@ -1601,6 +1750,23 @@ function FeedbackTab({
                   <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground/50">
                     <span>{f.user_name || f.user_id}</span>
                     <span>{new Date(f.created_at).toLocaleString("de-DE")}</span>
+                    {f.page && <span className="font-mono">{f.page}</span>}
+                    {f.element_label && (
+                      <span className="truncate max-w-[180px]" title={f.selector || undefined}>
+                        Element: {f.element_label}
+                      </span>
+                    )}
+                    {f.screenshot_file && f.md_file && (
+                      <a
+                        href={api.feedbackImageUrl(f.md_file.replace(/\.md$/, ""))}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        <Camera className="h-3 w-3" />
+                        Screenshot
+                      </a>
+                    )}
                     {f.github_issue_url && (
                       <a
                         href={f.github_issue_url}
@@ -1730,6 +1896,10 @@ function FeedbackTab({
           <p className="text-sm">Noch kein Feedback erhalten</p>
           <p className="text-xs text-muted-foreground/50 mt-1">Feedback wird hier angezeigt, sobald User welches senden.</p>
         </div>
+      )}
+
+      {detailFeedback && (
+        <FeedbackDetailModal feedback={detailFeedback} onClose={() => setDetailFeedback(null)} />
       )}
     </div>
   );

@@ -2,17 +2,38 @@
 # PyInstaller spec for macOS .app bundle
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_all, collect_data_files
+
 block_cipher = None
 bridge_version = Path('../VERSION').read_text().strip()
+
+# Playwright bringt einen Node-Treiber als DATEN mit, nicht nur Python-Module —
+# `hiddenimports` allein wuerde ihn nicht einpacken, und die Browser-Steuerung
+# waere im ausgelieferten Programm tot. Faellt die Abhaengigkeit (noch) nicht
+# vorhanden aus, bleibt der Build trotzdem gruen: die Bridge meldet dann zur
+# Laufzeit sauber, dass Playwright fehlt.
+try:
+    pw_datas, pw_binaries, pw_hidden = collect_all('playwright')
+except Exception:
+    pw_datas, pw_binaries, pw_hidden = [], [], []
+
+# certifi's cacert.pem — a frozen build has no OpenSSL default cert directory
+# to fall back on, so without this even a legitimate, CA-signed certificate
+# fails verification (see bridge.py::_default_ssl_context, diagnosed 2026-08-27
+# against a real Cloudflare cert on agents.future-app.de). This is NOT
+# optional the way playwright is — if it's missing, TLS trust is silently
+# broken for every host, not just one feature, so a bare Exception here is
+# left uncaught: a build without a CA bundle should fail loudly, not ship.
+certifi_datas = collect_data_files('certifi')
 
 a = Analysis(
     ['tray_app.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=pw_binaries,
     datas=[
         ('bridge.py', '.'),   # bundle bridge.py next to executable
         ('_version.py', '.'),
-    ],
+    ] + pw_datas + certifi_datas,
     hiddenimports=[
         'rumps',
         'pyautogui',
@@ -21,15 +42,20 @@ a = Analysis(
         'PIL.ImageDraw',
         'pyscreeze',
         'websockets',
-        'edge_tts',
-        'edge_tts.communicate',
         'aiohttp',
         'ApplicationServices',
         'AVFoundation',
         'AppKit',
         'Quartz',
         'tkinter',
-    ],
+        # Fehlten bisher — Replay-Modus und Mikrofon waren im ausgelieferten
+        # Programm still tot, weil der Import abgefangen wird.
+        'pynput',
+        'pynput.mouse',
+        'pynput.keyboard',
+        'sounddevice',
+        'numpy',
+    ] + pw_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

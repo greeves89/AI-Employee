@@ -1,7 +1,8 @@
-"""Gespräche verzweigen, zurückspulen, zusammenfassen und benennen (#538).
+"""Gespräche verzweigen, zurückspulen, zusammenfassen, verdichten, beschneiden und
+benennen (#538).
 
-Vier Dinge, die im Chat fehlten, und alle vier greifen auf denselben Gedanken zu:
-**„die Nachrichten bis hierher"**. Deshalb liegen sie zusammen statt in vier Ecken.
+Sechs Dinge, die im Chat fehlten, und alle greifen auf denselben Gedanken zu:
+**„die Nachrichten bis hierher"**. Deshalb liegen sie zusammen statt in eigenen Ecken.
 
 * **Verzweigen** — ab einer Nachricht in einem neuen Gespräch weiterreden, ohne den
   bisherigen Verlauf zu verlieren. Das Original bleibt unangetastet.
@@ -9,6 +10,12 @@ Vier Dinge, die im Chat fehlten, und alle vier greifen auf denselben Gedanken zu
   **löscht** das; deshalb gibt es einen Rückweg (siehe ``rewind``).
 * **Zusammenfassen** — ein langes Gespräch als kurzen Stand in ein frisches
   übernehmen. Der Verlauf bleibt, wo er ist.
+* **Verdichten** (``compact_session``) — den Verlauf im selben Gespräch falten,
+  ohne etwas zu löschen.
+* **Beschneiden** (``set_context_exclusion``, Punkt 4) — eine einzelne Nachricht
+  oder nur ihre Werkzeug-Ausgabe von Hand aus dem Kontext nehmen, jederzeit
+  umkehrbar. Der Unterschied zum Verdichten: gezielt statt pauschal, eine
+  Nachricht statt ein ganzer Abschnitt.
 * **Titel** — die Liste zeigte die rohe letzte Nachricht auf 80 Zeichen gekürzt.
   Aus dem ersten Austausch lässt sich eine Überschrift bilden, die man wiedererkennt.
 """
@@ -99,6 +106,30 @@ def split_at(messages: list[ChatMessage], message_id: str) -> tuple[list, list]:
     return messages, []
 
 
+def excluded_from_model(msg) -> bool:
+    """Ob eine Nachricht dem Modell vorenthalten wird — verdichtet (Punkt 5,
+    ``compact_session``) oder von Hand aus dem Kontext genommen (Punkt 4,
+    ``set_context_exclusion``). Fuer Menschen bleibt sie im Verlauf sichtbar;
+    nur wer den Kontext fuers Modell baut, ueberspringt sie."""
+    meta = msg.meta or {}
+    return bool(meta.get("compacted") or meta.get("context_excluded"))
+
+
+def tool_output_excluded(msg) -> bool:
+    """Ob nur die Werkzeug-Ausgabe/der Anhang geloest wurde — der Gespraechstext
+    bleibt und geht weiter ans Modell (#538 Punkt 4, ``scope="tool_output"``)."""
+    return bool((msg.meta or {}).get("tool_output_excluded"))
+
+
+async def _reasoning_of(db: AsyncSession, agent_id: str, session_id: str) -> str | None:
+    """Gewählte Denktiefe eines Gesprächs — ``None``, wenn nie eine gesetzt wurde."""
+    return (await db.execute(
+        select(ChatSession.reasoning_level).where(
+            ChatSession.agent_id == agent_id, ChatSession.session_id == session_id
+        )
+    )).scalar_one_or_none()
+
+
 async def ensure_title(db: AsyncSession, agent_id: str, session_id: str) -> str | None:
     """Einem Gespräch einen Titel geben, falls es noch keinen hat.
 
@@ -169,6 +200,8 @@ async def fork(db: AsyncSession, agent_id: str, session_id: str,
     db.add(ChatSession(
         agent_id=agent_id, session_id=target,
         title=f"Abzweig: {source_title}"[:TITLE_MAX] if source_title else "Abzweig",
+        # Wer im Original gruendlich denken liess, will das im Abzweig nicht neu waehlen.
+        reasoning_level=await _reasoning_of(db, agent_id, session_id),
     ))
     await db.flush()
     logger.info("[Chat] %s ab %s nach %s verzweigt (%d Nachrichten)",
@@ -255,7 +288,7 @@ async def compact_session(db: AsyncSession, agent_id: str, session_id: str) -> d
     -Ausgabe (Pfade, Kennungen, Werte) ist zusammengefasst wertlos.
     """
     messages = await messages_of(db, agent_id, session_id)
-    live = [m for m in messages if not (m.meta or {}).get("compacted")]
+    live = [m for m in messages if not excluded_from_model(m)]
     if len(live) < SUMMARY_MIN_MESSAGES:
         return {"ok": False,
                 "reason": f"Zu kurz — erst ab {SUMMARY_MIN_MESSAGES} Nachrichten sinnvoll"}
@@ -288,6 +321,47 @@ async def compact_session(db: AsyncSession, agent_id: str, session_id: str) -> d
     return {"ok": True, "folded": len(fold), "kept": len(keep)}
 
 
+CONTEXT_EXCLUDE_SCOPES = ("message", "tool_output")
+
+
+async def set_context_exclusion(db: AsyncSession, agent_id: str, session_id: str,
+                                message_id: str, *, scope: str, excluded: bool) -> dict:
+    """Eine einzelne Nachricht von Hand aus dem Kontext nehmen — oder wieder rein
+    (#538 Punkt 4). Anders als ``rewind`` wird NICHTS geloescht, nur nicht mehr
+    ans Modell geschickt; fuer Menschen bleibt die Nachricht im Verlauf sichtbar.
+    Jederzeit umkehrbar per Haekchen an/aus, deshalb keine Sicherung noetig — die
+    gleiche Ueberlegung wie bei ``compact_session``, nur fuer eine einzelne
+    Nachricht statt einen ganzen Abschnitt.
+
+    Zwei Koernungen, weil der Ballast meist aus Werkzeug-Ausgaben/Anhaengen kommt:
+
+    * ``scope="tool_output"`` — nur die Werkzeug-Ausgabe loesen, der
+      Gespraechstext bleibt. Das ist meist der Loewenanteil des Verbrauchs.
+    * ``scope="message"`` — die ganze Nachricht, fuer Ballast ohne Werkzeugbezug.
+    """
+    if scope not in CONTEXT_EXCLUDE_SCOPES:
+        return {"ok": False, "reason": f"Unbekannter Bereich: {scope}"}
+
+    messages = await messages_of(db, agent_id, session_id)
+    msg = next((m for m in messages if m.message_id == message_id), None)
+    if msg is None:
+        return {"ok": False, "reason": "Nachricht nicht gefunden"}
+    if scope == "tool_output" and not msg.tool_calls:
+        return {"ok": False, "reason": "Nachricht hat keine Werkzeug-Ausgabe"}
+
+    key = "tool_output_excluded" if scope == "tool_output" else "context_excluded"
+    meta = {**(msg.meta or {})}
+    if excluded:
+        meta[key] = True
+    else:
+        meta.pop(key, None)
+    msg.meta = meta
+    await db.flush()
+    logger.info("[Chat] %s: %s -> %s=%s",
+                scrub_log(session_id), scrub_log(message_id), key, excluded)
+    return {"ok": True, "message_id": message_id, "scope": scope, "excluded": excluded}
+
+
 async def summarize_to_new_session(db: AsyncSession, agent_id: str,
                                    session_id: str) -> dict:
     """Ein langes Gespräch als kurzen Stand in ein frisches übernehmen.
@@ -315,6 +389,8 @@ async def summarize_to_new_session(db: AsyncSession, agent_id: str,
     db.add(ChatSession(
         agent_id=agent_id, session_id=target,
         title=f"Fortsetzung: {source_title}"[:TITLE_MAX] if source_title else "Fortsetzung",
+        # Die Fortsetzung ist dasselbe Gespraech in kurz — gleiche Denktiefe.
+        reasoning_level=await _reasoning_of(db, agent_id, session_id),
     ))
     await db.flush()
     logger.info("[Chat] %s als Stand nach %s uebernommen", scrub_log(session_id), scrub_log(target))

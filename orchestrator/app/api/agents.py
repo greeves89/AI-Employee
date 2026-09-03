@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_agent_version, settings
@@ -67,6 +67,26 @@ async def _check_owner(agent_id: str, user, db: AsyncSession) -> None:
     """Verify user has access to the agent. Raises 403 if not."""
     from app.dependencies import require_agent_access
     await require_agent_access(agent_id, user, db)
+
+
+async def _check_owner_or_self(agent_id: str, user, db: AsyncSession) -> None:
+    """Wie ``_check_owner`` — laesst zusaetzlich den Agenten SELBST durch.
+
+    ``require_agent_access`` vergleicht ``agent.user_id`` mit ``user.id``. Bei
+    einem Agenten-Token ist ``user.id`` die Agentenkennung, also schlaegt der
+    Vergleich immer fehl: der Agent kam an seine eigenen Daten nicht heran.
+    Genau daran scheiterte am 18.08.2026 schon das Loeschen eigener
+    Erinnerungen (401), und aus demselben Grund konnte ein Agent seinen eigenen
+    Gespraechsverlauf nicht nachladen.
+
+    Fremde Agenten bleiben draussen — die Kennung muss uebereinstimmen.
+    """
+    from app.dependencies import is_agent_principal
+    if is_agent_principal(user):
+        if user.id != agent_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        return
+    await _check_owner(agent_id, user, db)
 
 
 @router.get("/permissions")
@@ -242,9 +262,25 @@ async def get_team_directory(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
         )
         accessible_ids = {row[0] for row in access_result.all()}
+        # „Ohne Besitzer" ist KEINE Freigabe.
+        #
+        # Bis 2026-08-15 galt hier ``a.user_id is None`` als „gehoert allen": ein
+        # Agent ohne Besitzer war fuer JEDEN Nutzer sichtbar. Aufgefallen, als ein
+        # frisch angelegter Testnutzer einen fremden Agenten in seiner Liste
+        # vorfand. Besitzlos wird ein Agent aber nicht durch eine Entscheidung,
+        # sondern durch ein Versehen: ein Skript ohne ``user_id``, ein geloeschter
+        # Nutzer, eine Migration. Ein Versehen darf keine Freigabe ausloesen.
+        #
+        # Fuers Teilen gibt es einen ausdruecklichen Weg (``AgentAccess``, und fuer
+        # Besprechungsraeume ``shared_for_rooms``). Zwei Freigabewege
+        # nebeneinander — einer davon still — sind genau die Doppel-Logik, die an
+        # anderer Stelle in dieser Anlage schon Schaden angerichtet hat.
+        #
+        # Administratoren sehen besitzlose Agenten weiterhin (Admin-Konsole,
+        # ``scope=all``) und koennen sie zuweisen.
         agents = [
             a for a in agents
-            if a.user_id is None or a.user_id == user.id or a.id in accessible_ids
+            if a.user_id == user.id or a.id in accessible_ids
         ]
     directory = []
     for agent in agents:
@@ -302,6 +338,20 @@ async def get_agent_messages(
     result = await db.execute(query)
     messages = result.scalars().all()
 
+    # Both sides of a connection need a name even when one agent was deleted
+    # since — the network view otherwise falls back to the raw ID, which reads
+    # as "Unknown" to a user scrolling through it. Resolve once against the
+    # agents actually still on record; anything missing gets a label that says
+    # what happened instead of leaking a UUID.
+    referenced_ids = {aid for msg in messages for aid in (msg.from_agent_id, msg.to_agent_id)}
+    name_by_id: dict[str, str] = {}
+    if referenced_ids:
+        agents_res = await db.execute(select(Agent).where(Agent.id.in_(referenced_ids)))
+        name_by_id = {a.id: a.name for a in agents_res.scalars().all()}
+
+    def _display_name(agent_id: str) -> str:
+        return name_by_id.get(agent_id, "Gelöschter Agent")
+
     connections: dict[str, dict] = {}
     recent_bubbles: list[dict] = []
 
@@ -312,6 +362,8 @@ async def get_agent_messages(
             connections[key] = {
                 "from": pair[0],
                 "to": pair[1],
+                "from_name": _display_name(pair[0]),
+                "to_name": _display_name(pair[1]),
                 "count": 0,
                 "last_at": msg.timestamp.isoformat(),
             }
@@ -527,7 +579,7 @@ async def list_agents(
 
     agents = await manager.list_agents()
     # Personal view (default): everyone — INCLUDING admins — sees only their own
-    # agents (+ unowned + shared). The global "all agents" view is the Admin-Konsole,
+    # agents (+ explizit geteilte). The global "all agents" view is the Admin-Konsole,
     # which passes scope=all (admins only). room_pool=true additionally surfaces the
     # admin-curated agents (shared_for_rooms) to EVERY user — used by the Meeting-Room
     # agent picker so users don't each need to provision their own agents.
@@ -538,9 +590,14 @@ async def list_agents(
             select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
         )
         accessible_ids = {row[0] for row in access_result.all()}
+        # Siehe oben: besitzlos ist keine Freigabe. Das Teilen fuer
+        # Besprechungsraeume bleibt — es ist eine bewusste Entscheidung.
+        # is_platform_agent (2026-08-27) ist die EINZIGE andere Weise, wie ein
+        # Agent "allen gehoert" — eine bewusste Admin-Markierung, kein NULL.
         agents = [
             a for a in agents
-            if a.user_id is None or a.user_id == user.id or a.id in accessible_ids
+            if a.user_id == user.id or a.id in accessible_ids
+            or getattr(a, "is_platform_agent", False)
             or (room_pool and getattr(a, "shared_for_rooms", False))
         ]
 
@@ -588,6 +645,7 @@ async def list_agents(
                 autonomy_level=agent.autonomy_level or "l3",
                 webhook_enabled=agent.webhook_enabled,
                 webhook_token=agent.webhook_token,
+                favorite=agent.favorite,
                 total_cost_usd=config.get("total_cost_usd", 0.0),
                 user_id=agent.user_id,
                 created_at=agent.created_at,
@@ -631,12 +689,38 @@ async def create_agent(
     try:
         account_provider_type = None
 
-        # Validate: custom_llm mode requires an inline llm_config OR an AI account
-        if data.mode == "custom_llm" and not data.llm_config and not data.ai_account_id:
-            raise HTTPException(
-                status_code=422,
-                detail="custom_llm mode requires either llm_config or ai_account_id",
-            )
+        # Ein Agent bekommt sein Modell aus GENAU ZWEI Quellen: einem vom
+        # Administrator freigegebenen KI-Konto, oder dem eigenen Abo des Nutzers
+        # (Claude/Codex, siehe /me/ai-credentials). Beides ist verwaltet,
+        # widerrufbar und ueberlebt das Neuerstellen eines Agenten.
+        #
+        # Der dritte Weg — Endpunkt und Schluessel direkt am Agenten eintippen —
+        # ist genau das, was eine einheitliche Nutzung verhindert: der Zugang
+        # gehoert dann niemandem, taucht in keiner Uebersicht auf, laesst sich
+        # nicht entziehen, und beim naechsten Neuerstellen ist er weg (die
+        # Zugangsdaten stehen nur in den Umgebungsvariablen des Containers).
+        # Genau das ist am 2026-08-15 passiert.
+        #
+        # Administratoren duerfen ihn weiterhin gehen — fuer Sonderfaelle und
+        # zum Erproben eines neuen Anbieters, bevor daraus ein Konto wird.
+        if data.mode == "custom_llm" and not data.ai_account_id:
+            from app.models.user import UserRole as _Rolle
+
+            _ist_admin = getattr(user, "role", None) == _Rolle.ADMIN
+            if not data.llm_config:
+                raise HTTPException(
+                    status_code=422,
+                    detail=("Kein Modell zugewiesen. Waehle ein freigegebenes "
+                            "KI-Konto — oder verbinde dein eigenes Claude-/"
+                            "Codex-Abo unter Einstellungen."),
+                )
+            if not _ist_admin:
+                raise HTTPException(
+                    status_code=403,
+                    detail=("Zugangsdaten koennen nicht direkt am Agenten "
+                            "hinterlegt werden. Waehle ein freigegebenes "
+                            "KI-Konto oder verbinde dein eigenes Abo."),
+                )
 
         # An AI account drives the harness: Anthropic -> Claude Code,
         # OpenAI -> Codex CLI, local/other APIs -> custom harness.
@@ -650,11 +734,17 @@ async def create_agent(
             if not account.models:
                 raise HTTPException(status_code=422, detail="AI account has no models configured")
             account_provider_type = account.provider_type
-            _model_names = [m.get("name") if isinstance(m, dict) else m for m in account.models]
+            from app.api.ai_accounts import enabled_model_names
+            _model_names = enabled_model_names(account.models)
+            if not _model_names:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Dieser AI-Account hat keine freigegebenen Modelle — der Administrator muss zuerst Modelle freischalten.",
+                )
             if data.model and data.model not in _model_names:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Model '{data.model}' is not offered by this AI account",
+                    detail=f"Modell '{data.model}' ist auf diesem AI-Account nicht freigegeben.",
                 )
 
         # Role-based permission checks (skip for setup-mode anonymous user)
@@ -667,8 +757,29 @@ async def create_agent(
             from sqlalchemy import select, func
             from app.models.agent import Agent as _Agent
 
+            # 0) License-wide agent limit — separate from the per-user/role cap
+            # below. This is how many AI-Mitarbeiter the customer's license
+            # covers in total, across all users on this instance.
+            from app.core.license import get_current_license
+            lic = get_current_license()
+            if lic.instance_limit and lic.instance_limit > 0:
+                total_count = (await db.execute(select(func.count(_Agent.id)))).scalar() or 0
+                if total_count >= lic.instance_limit:
+                    raise HTTPException(
+                        status_code=402,
+                        detail={
+                            "error": "agent_limit_reached",
+                            "message": (
+                                f"Lizenz-Limit erreicht ({lic.instance_limit} AI-Mitarbeiter). "
+                                "Bitte einen bestehenden AI-Mitarbeiter löschen oder die Lizenz upgraden."
+                            ),
+                            "current_tier": lic.tier,
+                            "agent_limit": lic.instance_limit,
+                        },
+                    )
+
             perms = await get_effective_permissions(user, db)
-            # 1) Max agents
+            # 1) Max agents (per user/role — independent of the license-wide cap above)
             max_agents = perms.get("max_agents")
             if max_agents is not None:
                 count = (await db.execute(
@@ -1005,6 +1116,66 @@ async def set_room_sharing(
     return {"id": agent.id, "shared_for_rooms": agent.shared_for_rooms}
 
 
+@router.patch("/{agent_id}/platform-agent")
+async def set_platform_agent(
+    agent_id: str,
+    is_platform_agent: bool = Body(..., embed=True),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin-only: mark an agent as deliberately platform-wide — visible to
+    every user in tasks/notifications/evals/schedules, not just the owner.
+    This is now the ONLY way an agent becomes "everyone's" (2026-08-27) — a
+    NULL user_id alone used to be read the same way, which meant an agent
+    made ownerless by accident (deleted user, a script that forgot
+    user_id) leaked across every user/department, not just intentionally
+    shared ones. Same data-leak guard as room-sharing: a personally-owned
+    agent carries its owner's memory/knowledge and cannot be pooled."""
+    from app.models.user import UserRole
+    if getattr(user, "role", None) != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="admin only")
+    agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if is_platform_agent and agent.user_id and str(agent.user_id) != str(user.id):
+        raise HTTPException(
+            status_code=400,
+            detail="Nur Standard-Agenten (ohne persönlichen Besitzer) können als "
+                   "Plattform-Agent markiert werden. Ein persönlich erstellter Agent "
+                   "trägt das Wissen seines Erstellers und darf nicht für alle "
+                   "freigegeben werden.",
+        )
+    agent.is_platform_agent = bool(is_platform_agent)
+    await db.commit()
+    return {"id": agent.id, "is_platform_agent": agent.is_platform_agent}
+
+
+@router.patch("/{agent_id}/favorite")
+async def set_favorite(
+    agent_id: str,
+    favorite: bool = Body(..., embed=True),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pin (or unpin) the ONE agent that should be front-and-center on the
+    owner's iOS home dashboard. At most one favorite per owner: setting a new
+    one silently clears whichever agent held it before — a radio button, not
+    a checkbox — so the dashboard always has exactly one clear card to show."""
+    await _check_owner(agent_id, user, db)
+    agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if favorite and agent.user_id:
+        await db.execute(
+            update(Agent)
+            .where(Agent.user_id == agent.user_id, Agent.id != agent.id, Agent.favorite.is_(True))
+            .values(favorite=False)
+        )
+    agent.favorite = bool(favorite)
+    await db.commit()
+    return {"id": agent.id, "favorite": agent.favorite}
+
+
 @router.patch("/{agent_id}/llm-config")
 async def update_llm_config(
     agent_id: str,
@@ -1209,12 +1380,18 @@ async def update_agent_ai_account(
         raise HTTPException(status_code=422, detail="AI account is inactive")
     if not account.models:
         raise HTTPException(status_code=422, detail="AI account has no models configured")
-    _model_names = [m.get("name") if isinstance(m, dict) else m for m in account.models]
+    from app.api.ai_accounts import enabled_model_names
+    _model_names = enabled_model_names(account.models)
+    if not _model_names:
+        raise HTTPException(
+            status_code=422,
+            detail="Dieser AI-Account hat keine freigegebenen Modelle — der Administrator muss zuerst Modelle freischalten.",
+        )
     chosen_model = body.model or _model_names[0]
     if chosen_model not in _model_names:
         raise HTTPException(
             status_code=422,
-            detail=f"Model '{chosen_model}' is not offered by this AI account",
+            detail=f"Modell '{chosen_model}' ist auf diesem AI-Account nicht freigegeben.",
         )
     try:
         agent = await manager._get_agent(agent_id)
@@ -1291,6 +1468,55 @@ async def update_agent_idle_stop(
         flag_modified(agent, "config")
         await db.commit()
         return {"agent_id": agent_id, "idle_stop_minutes": minutes if minutes > 0 else None}
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
+@router.patch("/{agent_id}/default-reasoning")
+async def update_agent_default_reasoning(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Standard-Denktiefe des Agenten setzen (Kundenwunsch: nicht mehr pro Chat
+    von Hand, sondern einmal am Agenten — gilt fuer Aufgaben, Zeitplaene,
+    delegierte Auftraege, Agent-zu-Agent-Nachrichten und Chats ohne gewaehlte
+    Stufe; eine im Chat gewaehlte Stufe gewinnt weiterhin).
+
+    Body: {"default_reasoning": "off"|"low"|"medium"|"high"|"max"|""|null}
+    ""/null → Auto (die Laufzeit entscheidet, wie bisher).
+
+    Wirkung: der Wert faehrt als DEFAULT_REASONING in den Container und
+    greift daher ab dem naechsten Neuerstellen/Update des Agenten vollstaendig.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.models.chat_session import REASONING_LEVELS
+
+    raw = body.get("default_reasoning")
+    level = (str(raw).strip().lower() if raw is not None else "")
+    if level and level not in REASONING_LEVELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"default_reasoning muss leer sein oder eines von: {', '.join(REASONING_LEVELS)}",
+        )
+    try:
+        agent = await manager._get_agent(agent_id)
+        cfg = dict(agent.config or {})
+        if not level:
+            cfg.pop("default_reasoning", None)
+        else:
+            cfg["default_reasoning"] = level
+        agent.config = cfg
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+        return {
+            "agent_id": agent_id,
+            "default_reasoning": level or "",
+            "applies_after": "recreate",
+        }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -1749,6 +1975,94 @@ async def download_file(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+class DateiInhalt(BaseModel):
+    """Rumpf zum Speichern einer bearbeiteten Datei."""
+    path: str
+    content: str
+
+
+@router.put("/{agent_id}/files/content")
+async def save_file_content(
+    agent_id: str,
+    body: DateiInhalt,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    file_mgr: FileManager = Depends(_get_file_manager),
+):
+    """Eine Textdatei im Arbeitsbereich ueberschreiben.
+
+    Bis hierher war die Dateiansicht rein lesend: eine ``.env`` liess sich
+    oeffnen, aber nicht aendern. Wer eine Zeile korrigieren wollte, musste
+    herunterladen, lokal bearbeiten und wieder hochladen — beim Kunden am
+    18.08.2026 als Aergernis genannt.
+
+    Die Absicherung des Pfades liegt in ``FileManager.write_file``, also an
+    derselben Stelle wie beim Lesen und Hochladen.
+    """
+    await _check_owner(agent_id, user, db)
+    agent = await manager._get_agent(agent_id)
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="Agent has no container")
+    try:
+        geschrieben = file_mgr.write_file(agent.container_id, body.path, body.content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"path": body.path, "bytes": geschrieben}
+
+
+@router.get("/{agent_id}/files/download-folder")
+async def download_folder(
+    agent_id: str,
+    path: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    file_mgr: FileManager = Depends(_get_file_manager),
+):
+    """Einen ganzen Ordner aus dem Arbeitsbereich als ZIP herunterladen.
+
+    Gewuenscht am 21.08.2026 an zwei Stellen: in der App-Uebersicht (das
+    Verzeichnis einer App mitnehmen) und im Dateibaum (irgendeinen Ordner).
+    Beide benutzen diesen Endpunkt — zwei Wege mit eigener Logik waeren die
+    naechste Stelle, die auseinanderlaeuft.
+    """
+    from fastapi.responses import Response
+
+    from app.core.file_manager import ExportZuGross
+
+    await _check_owner(agent_id, user, db)
+    agent = await manager._get_agent(agent_id)
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="Agent has no container")
+    try:
+        daten, anzahl = await asyncio.to_thread(
+            file_mgr.export_folder_zip, agent.container_id, path
+        )
+    except ExportZuGross as e:
+        raise HTTPException(status_code=413, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001 — ein fehlender Ordner ist kein Serverfehler
+        logger.warning("[Dateien] Export fehlgeschlagen agent=%s: %s",
+                       scrub_log(agent_id), scrub_log(e))
+        raise HTTPException(status_code=404, detail="Ordner nicht gefunden oder nicht lesbar")
+
+    name = (path.rstrip("/").split("/")[-1] or "workspace") + ".zip"
+    return Response(
+        content=daten,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            # Damit die Oberflaeche sagen kann, WIE VIEL drin ist — ein leeres
+            # ZIP sieht sonst aus wie ein erfolgreicher Export.
+            "X-Export-Files": str(anzahl),
+        },
+    )
+
+
 @router.delete("/{agent_id}/files")
 async def delete_file(
     agent_id: str,
@@ -1800,6 +2114,40 @@ def _is_busy_with_task(status: dict) -> bool:
     if state != "working":
         return False
     return bool(current_task) and not current_task.startswith(("chat:", "msg:"))
+
+
+async def _session_of_message(db: AsyncSession, message_id: str | None) -> str | None:
+    """Der Gespraechsfaden, aus dem die urspruengliche Frage stammt.
+
+    Bewusst NICHT „der zuletzt benutzte Faden": bei mehreren parallelen
+    Gespraechen schrieb dieser Auffangweg die Antwort in ein FREMDES Gespraech.
+    Lieber keine Einspeisung als eine im falschen Faden — die Kachel und der
+    Verlauf zeigen den Stand ohnehin.
+    """
+    if not message_id:
+        return None
+    try:
+        from app.models.agent_message import AgentMessage as _AM
+        from app.models.chat_message import ChatMessage as _CM
+
+        frage = (await db.execute(
+            select(_AM).where(_AM.message_id == message_id)
+        )).scalar_one_or_none()
+        if frage is None or not frage.from_agent_id:
+            return None
+        # Der Faden, in dem der Frager zum Zeitpunkt der Frage gearbeitet hat.
+        return (await db.execute(
+            select(_CM.session_id)
+            .where(
+                _CM.agent_id == frage.from_agent_id,
+                _CM.session_id.isnot(None),
+                _CM.timestamp <= frage.timestamp,
+            )
+            .order_by(_CM.timestamp.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+    except Exception:  # noqa: BLE001
+        return None
 
 
 @router.post("/{agent_id}/message")
@@ -1864,6 +2212,13 @@ async def send_message_to_agent(
             "message_type": body.message_type or "message",
             "reply_to": body.reply_to,
         })
+        # Erst wecken, dann zustellen. Die Warteschlange wird nur gelesen, solange
+        # der Container laeuft — einem idle ausgestiegenen Agenten etwas
+        # hineinzulegen sieht nach Erfolg aus und bleibt ohne Antwort. Genau so
+        # blieben am 2026-08-12 sieben „Hallo Welt" des Team-Leads unbeantwortet.
+        from app.core.agent_wakeup import ensure_agent_running
+
+        await ensure_agent_running(agent_id, manager.docker, redis)
         await redis.client.lpush(f"agent:{agent_id}:messages", message_payload)
 
         # Persist in DB for history/visualization
@@ -1879,6 +2234,74 @@ async def send_message_to_agent(
         )
         db.add(db_msg)
         await db.commit()
+
+        # Kachel im Chat des ABSENDERS. Bisher gab es sie nur fuer delegierte
+        # Auftraege — eine Nachricht an einen Kollegen verschwand dagegen
+        # spurlos, obwohl sie fuer den Menschen dasselbe bedeutet: "ich habe
+        # jemanden angesprochen und warte auf Antwort".
+        #
+        # Kommt die Nachricht selbst als ANTWORT (reply_to gesetzt), wird nicht
+        # eine zweite Kachel erzeugt, sondern die des Absenders geschlossen.
+        try:
+            if is_agent_principal(user) and body.from_agent_id:
+                if body.reply_to:
+                    # Eine Antwort ist eingetroffen. Der urspruengliche Frager
+                    # erfaehrt davon sonst NIE von selbst: er muesste pollen oder
+                    # der Mensch muesste nachfragen. Am 2026-08-13 kam die Antwort
+                    # 90 Sekunden nach der Frage — der Lead hatte da schon
+                    # "noch nicht geantwortet" gemeldet und blieb dabei, bis der
+                    # Nutzer "und?" schrieb.
+                    _cb_id = uuid.uuid4().hex[:12]
+                    _origin = await _session_of_message(db, body.reply_to)
+                    if _origin:
+                        await redis.client.setex(
+                            f"chat:msg:{_cb_id}:session", 3600, _origin
+                        )
+                    await redis.client.lpush(
+                        f"agent:{agent_id}:chat",
+                        json.dumps({
+                            "id": _cb_id,
+                            "chat_session_id": _origin,
+                            "text": (
+                                f"[Rueckmeldung] {sender} hat auf deine Frage "
+                                f"geantwortet:\n\n{body.text[:1500]}\n\n"
+                                "Berichte dem Menschen kurz, was daraus folgt."
+                            ),
+                            "source": "webapp",
+                        }),
+                    )
+                    await redis.client.publish(
+                        f"agent:{agent_id}:chat:response",
+                        json.dumps({
+                            "type": "task_card",
+                            "agent_id": agent_id,
+                            "data": {
+                                "task_id": f"msg-{body.reply_to}",
+                                "phase": "done",
+                                "status": "completed",
+                                "result_preview": body.text[:400],
+                            },
+                        }),
+                    )
+                else:
+                    await redis.client.publish(
+                        f"agent:{body.from_agent_id}:chat:response",
+                        json.dumps({
+                            "type": "task_card",
+                            "agent_id": body.from_agent_id,
+                            "data": {
+                                "task_id": f"msg-{message_id}",
+                                "title": body.text[:120],
+                                "phase": "queued",
+                                "status": "sent",
+                                "kind": "message",
+                                "assigned_agent_id": agent_id,
+                                "assigned_agent_name": agent.name,
+                            },
+                        }),
+                    )
+        except Exception:  # noqa: BLE001 — eine Anzeige haelt keine Zustellung auf
+            logger.debug("[Kachel] Nachricht nicht angezeigt", exc_info=True)
 
         # Publish event for real-time frontend updates
         await redis.client.publish("agent:messages", json.dumps({
@@ -1989,18 +2412,20 @@ async def get_chat_sessions(
     if not valid_sessions:
         valid_sessions = list(sessions)
 
-    # Merge in per-session metadata (custom title + pin). A session without a
-    # row keeps its derived preview and is unpinned — nothing breaks pre-feature.
+    # Merge in per-session metadata (custom title + pin + reasoning level). A
+    # session without a row keeps its derived preview, is unpinned and thinks at
+    # the harness default — nothing breaks pre-feature.
     from app.models.chat_session import ChatSession
     meta_rows = (await db.execute(
-        select(ChatSession.session_id, ChatSession.title, ChatSession.pinned)
+        select(ChatSession.session_id, ChatSession.title, ChatSession.pinned,
+               ChatSession.reasoning_level)
         .where(ChatSession.agent_id == agent_id)
     )).all()
-    meta = {m.session_id: (m.title, m.pinned) for m in meta_rows}
+    meta = {m.session_id: (m.title, m.pinned, m.reasoning_level) for m in meta_rows}
 
     out = []
     for s in valid_sessions:
-        title, pinned = meta.get(s.session_id, (None, False))
+        title, pinned, reasoning_level = meta.get(s.session_id, (None, False, None))
         out.append({
             "id": s.session_id,
             "started_at": s.started_at.isoformat() if s.started_at else None,
@@ -2009,6 +2434,7 @@ async def get_chat_sessions(
             "preview": previews.get(s.session_id, ""),
             "title": title,
             "pinned": bool(pinned),
+            "reasoning": reasoning_level or "",
         })
     # Pinned first, then keep the existing recency order (query already desc).
     out.sort(key=lambda x: 0 if x["pinned"] else 1)
@@ -2021,11 +2447,25 @@ async def get_chat_history(
     session_id: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     before_id: int | None = Query(None),
-    user=Depends(require_auth),
+    # Auch der Agent selbst: er holt sich hierueber seinen Gespraechsverlauf
+    # zurueck, wenn sein Prozess neu gestartet ist. Siehe _check_owner_or_self.
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get chat history for an agent, optionally filtered by session."""
-    await _check_owner(agent_id, user, db)
+    """Get chat history for an agent, optionally filtered by session.
+
+    Zwei Adressaten, zwei Sichten: der MENSCH in der Oberflaeche bekommt alles,
+    unveraendert — verdichtete und aus dem Kontext genommene Nachrichten bleiben
+    sichtbar, sonst koennte er sie nie wieder anschalten. Der AGENT SELBST, der
+    sich hierueber seinen Verlauf zurueckholt (siehe ``_check_owner_or_self``),
+    bekommt genau das, was auch ans Modell gehen soll: verdichtete und von Hand
+    ausgeschlossene Nachrichten (#538 Punkt 4/5) fehlen ganz, geloeste
+    Werkzeug-Ausgaben fehlen nur teilweise (der Gespraechstext bleibt).
+    """
+    from app.dependencies import is_agent_principal
+
+    await _check_owner_or_self(agent_id, user, db)
+    for_model = is_agent_principal(user)
     query = select(ChatMessage).where(ChatMessage.agent_id == agent_id)
     if session_id is not None:
         query = query.where(ChatMessage.session_id == session_id)
@@ -2048,6 +2488,10 @@ async def get_chat_history(
             continue
         seen.add(key)
         deduped.append(msg)
+
+    if for_model:
+        from app.core.chat_history import excluded_from_model, tool_output_excluded
+        deduped = [m for m in deduped if not excluded_from_model(m)]
 
     def _normalise_tool_calls(tool_calls):
         if not isinstance(tool_calls, list):
@@ -2075,7 +2519,10 @@ async def get_chat_history(
                 "role": msg.role,
                 "content": msg.content,
                 "timestamp": msg.timestamp.isoformat(),
-                "toolCalls": _normalise_tool_calls(msg.tool_calls),
+                "toolCalls": (
+                    None if for_model and tool_output_excluded(msg)
+                    else _normalise_tool_calls(msg.tool_calls)
+                ),
                 "meta": msg.meta,
                 "sessionId": msg.session_id,
             }
@@ -2150,10 +2597,16 @@ async def delete_all_chat_sessions(
 class ChatSessionUpdate(BaseModel):
     title: str | None = None   # non-empty → set custom title; "" / null → clear to derived preview
     pinned: bool | None = None
+    reasoning: str | None = None  # one of REASONING_LEVELS; "" → back to Auto; null → untouched
 
 
 class ForkRequest(BaseModel):
     message_id: str
+
+
+class ContextExclusionRequest(BaseModel):
+    scope: str = "tool_output"  # "tool_output" (nur Werkzeug-Ausgabe) | "message" (ganze Nachricht)
+    excluded: bool = True
 
 
 @router.post("/{agent_id}/chat/sessions/{session_id}/fork")
@@ -2222,6 +2675,33 @@ async def summarize_chat_session(
     return result
 
 
+@router.post("/{agent_id}/chat/sessions/{session_id}/messages/{message_id}/context")
+async def set_message_context_exclusion(
+    agent_id: str,
+    session_id: str,
+    message_id: str,
+    body: ContextExclusionRequest,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Eine Nachricht (oder nur ihre Werkzeug-Ausgabe) von Hand aus dem Kontext
+    nehmen oder wieder aufnehmen (#538 Punkt 4).
+
+    Anders als ``rewind`` wird nichts geloescht — die Nachricht bleibt im Verlauf
+    sichtbar, geht nur nicht mehr ans Modell. Jederzeit umkehrbar.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.core.chat_history import set_context_exclusion
+
+    result = await set_context_exclusion(
+        db, agent_id, session_id, message_id, scope=body.scope, excluded=body.excluded
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("reason", "Nicht moeglich"))
+    await db.commit()
+    return result
+
+
 @router.get("/{agent_id}/chat/sessions/{session_id}/context")
 async def chat_session_context(
     agent_id: str,
@@ -2238,7 +2718,10 @@ async def chat_session_context(
     wäre schlechter als eine, der man ansieht, dass sie gerundet ist.
     """
     from app.core.agent_toolset import context_window_for
-    from app.core.chat_history import KEEP_VERBATIM, SUMMARY_MIN_MESSAGES, messages_of
+    from app.core.chat_history import (
+        KEEP_VERBATIM, SUMMARY_MIN_MESSAGES, excluded_from_model, messages_of,
+        tool_output_excluded,
+    )
 
     await _check_owner(agent_id, user, db)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
@@ -2246,8 +2729,13 @@ async def chat_session_context(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     messages = await messages_of(db, agent_id, session_id)
-    live = [m for m in messages if not (m.meta or {}).get("compacted")]
-    chars = sum(len(m.content or "") for m in live)
+    live = [m for m in messages if not excluded_from_model(m)]
+    # Werkzeug-Ausgaben, die geloest wurden, zaehlen nicht mehr mit — genau das
+    # war der Zweck (#538 Punkt 4), sonst bliebe die Anzeige unveraendert.
+    chars = sum(
+        len(m.content or "") + (0 if tool_output_excluded(m) else len(str(m.tool_calls or "")))
+        for m in live
+    )
     used = chars // 4
     window = context_window_for(agent.model)
 
@@ -2259,6 +2747,8 @@ async def chat_session_context(
         "percent": round(min(100.0, used / window * 100), 1) if window else None,
         "messages": len(live),
         "compacted": len(messages) - len(live),
+        "context_excluded": sum(1 for m in messages if (m.meta or {}).get("context_excluded")),
+        "tool_output_excluded": sum(1 for m in messages if tool_output_excluded(m)),
         "keeps_verbatim": KEEP_VERBATIM,
         # Verdichten lohnt erst, wenn ueberhaupt etwas zu falten ist.
         "can_compact": len(live) >= SUMMARY_MIN_MESSAGES and len(live) > KEEP_VERBATIM,
@@ -2350,7 +2840,9 @@ async def update_chat_session(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Rename and/or pin a chat session. Upserts the metadata row lazily."""
+    """Rename, pin and/or set the reasoning level of a chat session.
+
+    Upserts the metadata row lazily."""
     await _check_owner(agent_id, user, db)
     from app.models.chat_session import ChatSession
     row = (await db.execute(
@@ -2367,11 +2859,18 @@ async def update_chat_session(
         row.title = cleaned or None
     if body.pinned is not None:
         row.pinned = body.pinned
+    if body.reasoning is not None:
+        from app.models.chat_session import REASONING_LEVELS
+        lvl = body.reasoning.strip().lower()
+        if lvl and lvl not in REASONING_LEVELS:
+            raise HTTPException(status_code=422, detail="Unbekanntes Reasoning-Level")
+        row.reasoning_level = lvl or None
     await db.commit()
     return {
         "id": session_id,
         "title": row.title,
         "pinned": bool(row.pinned),
+        "reasoning": row.reasoning_level or "",
     }
 
 
@@ -3247,6 +3746,49 @@ async def remove_agent_telegram(
 
 class TelegramSendMessage(BaseModel):
     message: str
+
+
+class AiCredentialStatusReport(BaseModel):
+    status: str
+
+
+@router.post("/{agent_id}/ai-credential-status")
+async def report_ai_credential_status(
+    agent_id: str,
+    body: AiCredentialStatusReport,
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    agent_auth: dict = Depends(verify_agent_token),
+):
+    """Let an agent report the real status of its owner's personal AI credential."""
+    if agent_auth["agent_id"] != agent_id:
+        raise HTTPException(status_code=403, detail="Agent token does not match target agent")
+    if body.status not in {"ok", "auth_failed"}:
+        raise HTTPException(status_code=422, detail="status must be ok or auth_failed")
+
+    try:
+        agent = await manager._get_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    config = agent.config or {}
+    mode = agent.mode or "claude_code"
+    provider = config.get("model_provider")
+    if not provider:
+        provider = _model_provider_for_agent_mode(
+            mode,
+            (agent.llm_config or {}).get("provider_type") if isinstance(agent.llm_config, dict) else None,
+        )
+
+    from app.core.agent_credentials import harness_of
+    from app.api.my_ai_credentials import mark_status
+
+    harness = harness_of(mode, provider)
+    if not agent.user_id or not harness:
+        return {"status": "ignored"}
+
+    await mark_status(db, str(agent.user_id), harness, body.status)
+    return {"status": body.status, "harness": harness}
 
 
 @router.post("/{agent_id}/telegram/send")

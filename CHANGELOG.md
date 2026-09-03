@@ -5,6 +5,4336 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.293.0] - 2026-09-03
+
+### Nachgetragen
+- **Lizenzweite Agenten-Obergrenze und Rückmeldung an den Lizenzserver** liegen
+  seit dem 24.08. in der Hauptlinie, waren aber nie im Änderungsbericht
+  vermerkt (#671). Wer die Version seiner Anlage abliest, fand unter dieser
+  Nummer nichts davon — gerade bei etwas, das nach aussen funkt, ist das die
+  Angabe, die man im Zweifel braucht. Deshalb hier der Nachtrag:
+  - Das in der Lizenz hinterlegte Instanzlimit wird beim Anlegen eines Agenten
+    jetzt durchgesetzt (Antwort 402, wenn es erreicht ist). Die bestehende
+    Obergrenze je Benutzer bleibt davon unberührt und gilt zusätzlich.
+  - Ein Dienst meldet in Abständen Version und Anzahl aktiver Agenten an einen
+    Lizenzserver. **Er ist ausdrücklich abgeschaltet, solange kein Administrator
+    eine Serveradresse hinterlegt**, und schweigt zusätzlich ohne Lizenzschlüssel
+    sowie in der Gemeinschaftsausgabe. Übertragen werden Instanzkennung,
+    Lizenzkennung, Version und die Zahl der Agenten — keine Inhalte, keine
+    Namen, keine Nutzerdaten.
+
+
+### Behoben
+- **Ein Sprachfehler konnte Diagnose-Historie vernichten** (#691). Am 31.08.
+  scheiterte der Sprach-Start 441-mal in 85 Sekunden; dabei blieben 473
+  HTTP-Sitzungen offen. Das Fehlerprotokoll wuchs auf 668 KB in einer Stunde —
+  normal sind 2 MB in dreieinhalb Tagen —, erzwang eine außerplanmäßige Rotation
+  und schob die älteste Datei aus dem Fenster. **Ein Monat Diagnose-Historie
+  ging so verloren.** Die auslösende Ursache selbst war klein und ist getrennt
+  behoben; hier geht es um das, was daraus eine Eskalation gemacht hat.
+  - Die Sitzung wird jetzt in **jedem** Fehlerfall geschlossen. Der Client wird
+    gebaut, bevor der Datenstrom geöffnet wird — scheitert es danach, blieb er
+    bisher offen zurück.
+  - Neue Bremse fürs Wiederverbinden: höchstens zehn Versuche je Minute. Die
+    vorhandene Grenze von acht Versuchen war wirkungslos, weil ihr Zähler
+    zurückgesetzt wird, sobald Daten eintreffen — die neue Bremse hängt an der
+    Zeit und ist davon unabhängig.
+  - Der Abstand zwischen Versuchen verdoppelt sich jetzt (600 ms bis 30 s)
+    statt fest bei 600 ms zu bleiben. Gegen einen Fehler, der nicht von allein
+    weggeht, ist ein schneller Neuversuch nur mehr Last.
+  - Wer selbst auf „Neu verbinden" drückt, setzt die Bremse zurück — das ist
+    eine Entscheidung, kein Sturm.
+
+---
+
+## [1.292.0] - 2026-09-03
+
+### Behoben
+- **Das Benachrichtigungsfeld war nirgends zu sehen** (#677). Es lag am linken
+  Rand seines Containers — und dessen Eltern verbergen an beiden Einbaustellen
+  ihren Überlauf. Das Feld wurde gezeichnet und im selben Bild weggeschnitten:
+  der Knopf sah aus wie tot, obwohl er tat, was er sollte. In der ganzen
+  Anwendung gab es keine Stelle, an der das Feld je sichtbar war. Es hängt jetzt
+  direkt am Dokument, wird am Knopf ausgerichtet, wandert beim Rollen mit und
+  bleibt auch auf schmalen Geräten im Bild.
+- **Bernsteinfarbene Hinweise waren im hellen Thema unlesbar** (#664). Helle
+  Schrift auf hellem Grund — im dunklen Thema, der Vorgabe, fällt das nicht auf.
+  Gemeldet am Hinweis „Interne Adresse zulassen"; tatsächlich betroffen waren
+  **243 Stellen in 75 Dateien**. Alle haben jetzt das im Projekt schon übliche
+  Gegenstück fürs helle Thema.
+
+---
+
+## [1.291.0] - 2026-09-02
+
+### Geändert
+- **Die Wache gegen Kundennamen führt diese nicht mehr im Klartext** (#688).
+  Sie verhindert, dass Kunden-, Firmen- und Personennamen in dieses öffentliche
+  Verzeichnis geraten — und tat das, indem sie die Namen vollständig auflistete,
+  in einer Datei, die durch ihren Namen ankündigt, dass dort Kundennamen zu
+  finden sind, und die sich selbst von der Prüfung ausnahm. Aus der
+  Schutzmaßnahme war damit das gepflegteste, maschinenlesbare Verzeichnis
+  überhaupt geworden; der Kommentar daneben lud ausdrücklich zum Erweitern ein.
+  - Gespeichert werden jetzt nur noch Prüfsummen. Erkennen genügt, anzeigen ist
+    nicht nötig.
+  - Auch die Fehlermeldung nennt den getroffenen Begriff nicht mehr, sondern nur
+    Datei und Zeile — das Protokoll eines öffentlichen Verzeichnisses ist
+    ebenso öffentlich.
+  - Die Prüfung selbst arbeitet mit einem eigens angelegten Begriff ohne realen
+    Bezug; vorher brauchte sie dafür einen echten Namen.
+  - Bewusster Tausch: aus der Teilstring-Suche wird eine Wortsuche. Ein Name
+    ohne Trennzeichen mitten in einem längeren Wort wird nicht mehr gefunden;
+    alle praktisch aufgetretenen Fälle bleiben erfasst. Ein Test hält das fest,
+    statt es zu verschweigen.
+  - Was einmal veröffentlicht wurde, bleibt in der Versionsgeschichte. Hier geht
+    es darum, dass die Liste nicht weiter wächst.
+
+---
+
+## [1.290.0] - 2026-09-02
+
+### Behoben
+- **Läufe meldeten Erfolg, obwohl sie sofort gestorben waren** (#680). Vom 27.
+  bis 30.08. hat 76 Stunden lang kein einziger Zeitplan-Lauf eines Agenten
+  Arbeit geleistet — und trotzdem standen alle 94 Läufe auf „fertig", das
+  Fehlerfeld war leer. Im Ergebnis stand der wahre Grund: 71-mal ein abgelaufener
+  Zugang, 23-mal ein erschöpftes Kontingent. Drei Tage ohne Podcast, ohne
+  Tagesplan, ohne Morgencheck — und eine Oberfläche voller grüner Haken, weil
+  jede Überwachung auf „fehlgeschlagen" filtert.
+  - Der Status wird jetzt aus dem Ergebnis abgeleitet: bekannte Fehlerwortlaute
+    oder eine leere Ausgabe in unter zehn Sekunden gelten als Fehlschlag, mit
+    dem Grund im Fehlerfeld.
+  - Ab drei Fehlschlägen in Folge kommt eine Meldung mit hoher Priorität — und
+    zwar nur beim Überschreiten der Schwelle. Sonst wären es damals 69
+    Meldungen gewesen und die Anzeige wertlos.
+  - Liegt es am Zugang, sagt die Meldung das dazu: Wiederholen hilft dann nicht,
+    nur neu anmelden.
+  - Die Prüfung liegt bewusst im Orchestrator. Das bisherige Sicherheitsnetz —
+    ein Kontrolllauf um 08:00 — lief im selben Behälter mit derselben Anmeldung
+    und starb am selben Fehler. Ein Selbsttest kann einen Anmeldeausfall
+    grundsätzlich nicht auffangen.
+  - Ein Bericht, der über Anmeldefehler nur schreibt, wird davon nicht erfasst.
+
+---
+
+## [1.289.0] - 2026-09-02
+
+### Behoben
+- **Ein Neustart liess laufende Aufgaben ein zweites Mal komplett durchlaufen**
+  (#695). Der Agent steckt in einem eigenen Container und übersteht den Neustart
+  des Orchestrators mühelos — dieser nahm die Aufgabe trotzdem als abgebrochen
+  an und schickte 775 Millisekunden später einen Ersatz los. In der Nacht zum
+  01.09. endete das Original **36 Sekunden nach** seinem eigenen Ersatz; beide
+  hatten einen vollständigen Tagesabschluss-Bericht erzeugt. Der Nutzer bekam
+  ihn doppelt, bezahlt wurde er ebenso doppelt. Rückblickend erklärt das eine
+  Reihe von Berichten, die zwei- bis dreimal ankamen und für Fehler des
+  Zeitplaners gehalten wurden.
+  - Vor dem Ersetzen wird der Agent jetzt gefragt, ob er die Aufgabe noch
+    bearbeitet. Die Abfrage dafür gab es längst — an dieser Stelle hat sie nur
+    nie jemand aufgerufen.
+  - Ein Lebenszeichen von vor Sekunden hält den Ersatz zusätzlich zurück. Bisher
+    fielen ausgerechnet die frischesten, kerngesunden Aufgaben am sichersten in
+    die Wiederaufnahme.
+  - Bleibt es doch bei einem Ersatz, bekommt der alte Lauf jetzt das
+    Abbruchsignal. Die Datenbankzeile auf „fehlgeschlagen" zu setzen erreichte
+    einen fremden Container nie — er arbeitete ahnungslos weiter.
+  - Lässt sich die Frage nicht beantworten, wird **nicht** ersetzt: ein doppelter
+    Lauf kostet Geld und verwirrt, ein ausgelassener Ersatz nur Zeit.
+
+---
+
+## [1.288.0] - 2026-09-02
+
+### Behoben
+- **Jede delegierte Aufgabe starb nach genau 30 Minuten** (#692). Der Wächter
+  über hängengebliebene Aufgaben prüfte, wann zuletzt etwas an der Aufgabe
+  geschrieben wurde — zwischen Start und Ende schrieb aber nichts. Er maß damit
+  nicht die Gesundheit des Arbeiters, sondern schlicht die verstrichene Zeit,
+  und brach nach einer halben Stunde ausnahmslos alles ab. Gemeldet wurde das
+  als „kein Lebenszeichen — Arbeiter vermutlich gestorben", was jede Fehlersuche
+  in Richtung Speichermangel und Netzwerk schickte. Am 31.08. starben so vier
+  parallel laufende Reviews mitten in der Arbeit; drei teilten sich sogar
+  dieselbe Abbruchsekunde.
+  - Der Agent sendet jetzt jede Minute ein echtes Lebenszeichen. Damit misst der
+    Wächter endlich das, was sein Name behauptet.
+  - Die Spalte dafür gab es seit jeher in der Datenbank — gefüttert hatte sie nie
+    jemand.
+  - Die Schwelle ist einstellbar (`WATCHDOG_STALE_TASK_MINUTES`, Vorgabe 180
+    Minuten): ein Agent auf einem älteren Abbild sendet noch kein Lebenszeichen
+    und wäre sonst weiter gedeckelt.
+- **Nach einem solchen Abbruch lief der Agent trotzdem weiter** und verbrauchte
+  Zeit und Guthaben für ein Ergebnis, das niemand mehr annahm. Er bekommt jetzt
+  das Abbruchsignal, das es für den Knopf „Stopp" längst gab.
+- Der irreführende Quellkommentar, der die falsche Annahme über Jahre festhielt,
+  ist durch den tatsächlichen Hergang ersetzt.
+
+---
+
+## [1.287.0] - 2026-09-02
+
+### Neu
+- **Die Release-Spur wird jetzt maschinell geprüft** (#699). Dass zu jeder
+  Änderung `VERSION`, das Label im Agenten-Abbild und ein CHANGELOG-Abschnitt
+  gehören, war reine Disziplin — nichts hat es kontrolliert. Entsprechend trugen
+  am 02.09. zwei Paare offener Anfragen dieselbe Nummer, drei lagen unter dem
+  Stand des Hauptzweigs, und eine Änderung war ganz ohne Eintrag durchgelaufen.
+  Wer wissen will, was auf seiner Anlage neu ist, schaut in den Änderungsbericht;
+  steht dort nichts, wurde unsichtbar ausgeliefert.
+  - Auf dem Hauptzweig hart: Nummer muss steigen, Label und Datei müssen
+    übereinstimmen, der Abschnitt muss existieren.
+  - In einer offenen Anfrage nur ein Hinweis — dort kann der Zusammenführen die
+    Nummer noch auflösen; ein Prüflauf, der oft falsch anschlägt, wird ignoriert.
+  - Geprüft wird ausdrücklich **Monotonie, nicht Lückenlosigkeit**: übersprungene
+    Nummern entstehen regulär, wenn mehrere Zweige nebeneinander warten.
+  - Ein reiner Nachtrag in der Dokumentation braucht keinen Versionssprung.
+
+---
+
+## [1.286.0] - 2026-09-02
+
+### Hinzugefügt
+- **Ballast aus einem laufenden Gespräch nehmen, ohne es zu verlieren** (#538,
+  letzter offener Teil). An jeder Nachricht lässt sich per Hover-Icon eine
+  Werkzeug-Ausgabe (oder die ganze Nachricht) aus dem Kontext nehmen — sie
+  bleibt im Verlauf sichtbar, geht nur nicht mehr ans Modell. Jederzeit per
+  Klick umkehrbar, anders als Zurückspulen wird nichts gelöscht. Der
+  Kontextring zeigt an, wie viel davon aktuell ausgeschlossen ist.
+- Zusätzlich als automatischer Unterbau: beim eingebauten Modell (Custom-LLM,
+  Anthropic direkt) räumt Claude jetzt serverseitig selbst alte
+  Werkzeug-Ausgaben weg, sobald der Verlauf zu groß wird — bevor der Request
+  überhaupt rausgeht.
+- Diese Beta-Funktion schaltet sich selbst ab, wenn die Schnittstelle sie einmal
+  ablehnt — sonst hinge der gesamte Chat-Weg des eingebauten Modells an einer
+  Bequemlichkeit, die nur den Verlauf kleiner hält. Das Ausschließen von Hand
+  bleibt davon unberührt.
+
+
+---
+
+## [1.285.0] - 2026-09-02
+
+### Behoben
+- **Abgelaufene eigene KI-Zugänge werden jetzt sichtbar.** Wenn ein Agent beim echten Lauf mit dem persönlichen Claude- oder Codex-Zugang an einem Auth-Fehler scheitert, markiert die Oberfläche den Zugang als fehlerhaft; nach einem erfolgreichen Lauf wird der Status wieder gesund statt dauerhaft rot zu bleiben.
+
+- **Auch der Chat-Weg des eigenen Modells meldet jetzt.** Er war der letzte,
+  der schwieg: wer sein Modell nur im Chat benutzt, hätte einen abgelaufenen
+  Zugang nirgends gesehen — der Agent hätte einfach aufgehört zu antworten.
+
+### Hinweis
+- Die Statusmeldung ist für alle vier Wege durch Tests abgesichert: Claude-Chat,
+  Codex-Aufgaben, Codex-Chat und das eigene Modell (Aufgaben wie Chat). Ein
+  gewöhnlicher Fehler — ein fehlgeschlagenes Werkzeug etwa — färbt den Zugang
+  weiterhin nicht rot; nur Auth-Fehler tun das.
+
+---
+
+## [1.284.0] - 2026-09-02
+
+### Behoben
+- **Der Bildschirm-Server kann nicht mehr die Klicks eines fremden Laufs
+  umlenken.** Der Anker auf eine Computer-Use-Sitzung galt bisher für den
+  ganzen Prozess. Solange jeder Lauf seinen eigenen Prozess bekam, war das
+  gleichbedeutend mit "gilt für diesen Lauf". Sobald sich mehrere Läufe einen
+  Prozess teilen (#638), hätte ein `computer_use_session` aus Lauf A die
+  Befehle von Lauf B auf einen anderen Bildschirm geschickt — auf beiden Seiten
+  ohne Fehlermeldung. Der Anker gilt jetzt je Lauf.
+
+### Geändert
+- **Der Bildschirm-Server läuft über den gemeinsamen Transport** (#638) und
+  kann damit später zu den Servern gehören, die sich einen Prozess teilen.
+  Ohne gesetzten Port verhält er sich unverändert wie bisher.
+- Ein Test verhindert, dass ein umgestellter Server veränderlichen Zustand auf
+  Modulebene zurückbekommt. Genau diese Fehlerklasse bleibt sonst stumm.
+
+---
+
+## [1.283.0] - 2026-09-02
+
+### Behoben
+- **Die Desktop-Bridge schickt das Anmeldetoken nicht mehr in der Adresse der
+  Sprachverbindung.** Beim Oeffnen der Voice-Leiste hängte die Bridge das
+  langlebige Zugangstoken als Parameter an die WebSocket-Adresse. Solche
+  Parameter werden unterwegs mitgeschrieben — in Proxy- und Zugriffsprotokollen,
+  im Verlauf, im Referer — und das Token gilt danach unverändert weiter. Die
+  Bridge holt jetzt, wie die Weboberfläche schon länger, ein Einmal-Ticket
+  (30 Sekunden gültig, genau eine Verwendung). Scheitert das Ticket, scheitert
+  die Verbindung sichtbar, statt still auf den alten Weg zurückzufallen.
+  Damit verschwindet auch die wiederkehrende Warnung "legacy token= param" aus
+  dem Plattformprotokoll — sie hatte genau diese eine Ursache. An der Bedienung
+  ändert sich nichts.
+
+  *Hinweis: Eine Bridge ab dieser Version braucht einen Server, der
+  Einmal-Tickets kennt.*
+
+---
+
+## [1.282.0] - 2026-09-02
+
+### Behoben
+- **Eine App lässt sich wieder neu bauen, nachdem ein Rebuild einmal
+  abgebrochen ist** (#644). Bisher konnte der Betreiber in einen Zustand
+  geraten, aus dem er von allein nicht mehr herauskam: jeder weitere
+  "Neu bauen" endete mit einem Fehler über einen belegten Containernamen,
+  obwohl das Abbild sauber gebaut wurde. Ursache war ein Rest aus dem
+  abgebrochenen Versuch, den niemand mehr aufräumte. Der wird jetzt vor dem
+  Neubau entfernt, und ein Namenskonflikt löst genau einen zweiten Anlauf
+  aus. Ein echter Baufehler wird weiterhin sofort gemeldet und nicht
+  wiederholt.
+- **Zwei gleichzeitige Starts oder Neubauten derselben App überholen sich
+  nicht mehr.** Genau dieses Überholen hat die liegengebliebenen Reste
+  überhaupt erst erzeugt. Verschiedene Apps laufen weiterhin parallel.
+
+---
+
+## [1.281.0] - 2026-09-02
+
+### Behoben
+- **Wissensspeicher: gleiche Titel bei verschiedenen Besitzern möglich** — bisher
+  musste ein Titel im GESAMTEN System einmalig sein, obwohl jeder Nutzer seinen
+  eigenen Wissensspeicher hat. Sobald ein zweiter Nutzer einen naheliegenden Titel
+  wie "Klare Aufgabendefinition" erzeugte, brach der Speichervorgang mit einem
+  Datenbankfehler ab — und riss den kompletten Reflexionslauf mit sich, nicht nur
+  den einen Eintrag. Titel sind jetzt je Besitzer eindeutig; systemweite Einträge
+  ohne Besitzer bleiben wie bisher global eindeutig.
+- **Fremde Wissenseinträge wurden überschrieben** — beim Speichern über die
+  Brain-Schnittstelle wurde ein Eintrag GLEICHEN TITELS gesucht, ohne auf den
+  Besitzer zu achten. Wer einen Titel verwendete, den ein anderer Nutzer schon
+  hatte, überschrieb dessen Inhalt still und ohne Fehlermeldung. Alle Titelsuchen
+  sind jetzt auf den Besitzer eingeschränkt; ein Test am Quelltext hält das fest.
+- **Ein einziger Wissenseintrag reisst nicht mehr den ganzen Nachtlauf mit** —
+  scheiterte im nächtlichen Reflexionslauf das Speichern EINES Eintrags, brach
+  der komplette Lauf ab und alle folgenden Erkenntnisse der Nacht gingen verloren.
+  Der Lauf überspringt den betroffenen Eintrag jetzt, protokolliert ihn und macht
+  weiter; die Anzahl steht als `kb_skipped` im Ergebnis. Der manuelle Freigabeweg
+  meldet Fehler weiterhin unverändert zurück — wer auf "freigeben" klickt, soll
+  sehen, wenn es nicht geklappt hat.
+- **Die Zusicherung hält auch dort, wo Alembic nicht durchläuft.** Scheitert die
+  Migration — ein im Code selbst dokumentierter Fall —, legt der Rückfall aus den
+  Modellen wieder die alte, globale Eindeutigkeit an; auf so einer Anlage wäre
+  der Fehler unverändert da. Dieselben beiden Indizes werden deshalb bei jedem
+  Start abgesichert.
+
+---
+
+## [1.280.0] - 2026-09-02
+
+### Behoben
+- **Ein eigener Codex-Zugang stirbt nicht mehr nach der ersten Token-Erneuerung.**
+  Der ChatGPT-Refresh-Token ist einmalig: die Codex-CLI tauscht ihn bei jeder
+  Erneuerung gegen einen neuen. Dieser neue Token lebte bisher nur im Container.
+  Beim nächsten Start spielte die Plattform die alte, bereits verbrauchte Fassung
+  aus der Datenbank wieder ein — der Anbieter lehnte sie ab
+  (`refresh_token_reused`), und der Agent war ab da bei JEDEM Start tot, ohne dass
+  ein Neustart half. Betroffene sahen nur, dass ihr Agent nichts mehr lieferte.
+  Erneuert die CLI jetzt den Zugang, meldet der Agent die neue Fassung zurück und
+  der nächste Start beginnt mit einem gültigen Token.
+  **Einmalig nötig:** ein Zugang, der bereits mit `refresh_token_reused`
+  abgelehnt wird, ist beim Anbieter verbraucht und lässt sich durch nichts
+  wiederbeleben — er muss einmal neu angemeldet werden (Einstellungen → eigener
+  KI-Zugang → Codex). Danach hält er von allein.
+
+### Sicherheit
+- Der Rückweg schreibt ausschließlich den **eigenen** Zugang des Besitzers und
+  nur, wenn dort schon einer hinterlegt war. Wer schreibt, entscheidet der
+  Agenten-Token, nicht die Nutzlast. Der gemeinsame Zugang der Anlage bleibt
+  unantastbar; ein fremdes Konto und eine ältere Fassung werden abgelehnt — ein
+  einzelner Agent kann so weder die Anlage noch den Zugang eines anderen kippen.
+
+---
+
+## [1.279.0] - 2026-09-02
+
+### Hinzugefügt
+- **MCP-Server können jetzt einen eigenen OAuth-Callback nutzen.** Administratoren müssen die globale Deployment-Identität (`OAUTH_REDIRECT_BASE_URL`) nicht mehr temporär umbiegen, wenn ein einzelner externer MCP-Server nur eine enge Redirect-Allowlist akzeptiert. Ohne gesetzten Server-Wert bleibt das bisherige Verhalten unverändert.
+- **Der OAuth-Rückweg bleibt jetzt auch stabil, wenn die Callback-Basis während eines laufenden Verbindungsversuchs geändert wird.** Vorher berechneten Start und Abschluss den Wert je neu; eine Änderung dazwischen ließ den Token-Tausch mit einer nichtssagenden Anbieter-Meldung scheitern, obwohl alles richtig eingegeben war.
+- **Nach einer Änderung der Callback-Basis lässt sich der MCP-Server wieder verbinden.** Bisher blieb eine beim Anbieter automatisch angelegte Client-Registrierung an die alte Rückkehr-Adresse gebunden: jeder weitere Versuch scheiterte, und die Oberfläche bot keinen Weg, die veraltete Registrierung loszuwerden — der Server war ohne Datenbankeingriff nicht mehr nutzbar. Die Registrierung wird beim Wechsel der Basis nun verworfen, sodass die Erkennung sie gegen die neue Adresse neu anlegt. Hinweis: Wer seine Client-ID von Hand eingetragen hat (Anbieter ohne automatische Registrierung), muss sie nach einem Wechsel der Basis einmal erneut eintragen.
+- **Und man kommt in der Oberfläche an die Einstellung heran.** Die Adresse war
+  ausschliesslich über die Schnittstelle zu setzen — in der Integrationen-Seite
+  gab es kein Feld dafür. Wer sie nicht kannte, bog weiter die globale Adresse
+  um, also genau das, was hier abgestellt werden sollte. Das Feld steht jetzt im
+  Bearbeiten-Dialog des Servers und warnt vor dem Verlust der Registrierung.
+
+---
+
+## [1.278.0] - 2026-09-02
+
+### Behoben
+- **Der Erinnerungs-Zähler log.** „(50 Einträge)" bedeutete in Wahrheit „so
+  viele, wie auf eine Seite passen" — bei 50 wie bei 500 gespeicherten
+  Erinnerungen stand dieselbe Zahl da, und auch die Zahlen an den
+  Kategorie-Chips zählten nur die gerade sichtbare Seite. Beide Werte kommen
+  jetzt aus der Datenbank über den gesamten Bestand.
+- Dieselbe Zahl bekam auch der Agent über den Erinnerungs-MCP-Server zu sehen.
+  Er nennt jetzt „50 of 500", wenn er nur einen Ausschnitt hat.
+
+### Neu
+- **Weitere Erinnerungen nachladen.** Ab der 51. Erinnerung war der Rest ohne
+  Umweg über die Suche unerreichbar. Ein Knopf „Mehr laden (50 von 320)" holt
+  die nächste Seite nach.
+
+### Geändert
+- Vier englische Tooltips im Erinnerungs-Tab auf Deutsch gebracht.
+
+---
+
+## [1.277.0] - 2026-09-02
+
+### Hinzugefuegt
+- **Zitierte Nachrichten kommen beim Agenten an.** Wer in Telegram auf eine aeltere Nachricht antwortet, meint sie auch — bisher wurde das Zitat verworfen und der Agent sah nur den neuen Satz. Von „<Zitat> und das hier?" kam also bloss „und das hier?" an, und der Bezug musste aus dem Gespraechsverlauf erraten werden; bei langem Verlauf ging das schief. Das Zitat steht der Nachricht jetzt als kurzer Vorspann voran, samt Angabe, ob eine eigene Nachricht des Agenten oder eine des Nutzers zitiert wurde. Markiert man beim Antworten nur eine bestimmte Textstelle, wird genau diese uebernommen statt der ganzen Nachricht. Gilt auch fuer Bilder, Sprachnachrichten und Dateien; sehr lange Zitate werden gekuerzt, damit sie die eigentliche Frage nicht verdraengen.
+
+### Behoben
+- **Agenten konnten ab dem zweiten Zug eines Gespraechs nicht mehr auf Nachrichten reagieren.** Die Kennung der aktuellen Nachricht wurde nur beim ersten Aufschlag einer Sitzung mitgegeben. Danach war schlicht unbekannt, worauf sich eine Reaktion beziehen sollte — Reaktionen waren damit faktisch auf die jeweils erste Nachricht beschraenkt. Die Kennung steht jetzt in jedem Zug bereit.
+- **Ein Agent ohne eigenen Telegram-Bot konnte ueberhaupt nicht reagieren.** Schaltet man den Chat per `/agent <Name>` auf einen Kollegen um, laufen dessen Antworten ueber den bestehenden Bot — eine Reaktion wurde aber mit „kein Bot eingerichtet" abgewiesen. Er durfte also im Chat reden, ihn aber nicht anfassen. Reaktionen laufen jetzt ebenfalls ueber den Bot, der den Chat bedient; ausdruecklich nur, solange der Chat auch wirklich auf diesen Agenten geschaltet ist, damit sich niemand mit einer fremden Chat-Kennung einen beliebigen Bot ausleihen kann.
+
+---
+
+## [1.276.11] - 2026-09-01
+
+### Behoben
+- **Der Zaehler fuer die Alt-Anmeldungs-Warnung waechst nicht mehr unbegrenzt.** Meldet
+  sich ein Client noch mit dem alten Verfahren an (Zugangsschluessel in der Adresse statt
+  Einmal-Ticket), merkt sich der Dienst das kurz, um dieselbe Warnung nicht im
+  Minutentakt zu wiederholen. Diese Merkliste wurde nie geleert: sie wuchs mit jeder
+  Neuanmeldung und jeder Schluesselerneuerung weiter — nicht mit der Zahl der
+  Verbindungen. Auf einem Server, der wochenlang durchlaeuft, sammelte sich das
+  unbegrenzt an. Jetzt werden abgelaufene Eintraege beim Schreiben mit aufgeraeumt, und
+  die Liste hat zusaetzlich eine feste Obergrenze. Die Warnung selbst und ihr Abstand von
+  zehn Minuten bleiben unveraendert.
+
+  Einordnung: der Verbrauch je Eintrag war klein, ein akutes Problem war das nicht. Es
+  war eine Menge ohne Obergrenze, deren Groesse jemand von aussen bestimmt.
+
+---
+
+## [1.276.10] - 2026-09-01
+
+### Behoben
+- **Skill-Suche und "meine Skills" liessen die `id` weg** (#667). `skill_search` und
+  `skill_get_my_skills` rendern ihre Ergebnisse jetzt mit der numerischen `id` des
+  Skills. Ohne sie konnte ein Agent einen Skill zwar finden, aber weder installieren
+  noch bewerten noch seine Nutzung protokollieren — `skill_rate`, `skill_install`,
+  `skill_record_usage`, `skill_update` und `skill_get` verlangen alle diese ID als
+  Pflichtparameter. Der Server lieferte die ID schon immer korrekt aus; nur die
+  beiden Text-Formatierer im MCP-Server warfen sie beim Rendern weg.
+
+---
+
+## [1.276.9] - 2026-09-01
+
+### Behoben
+- **Die Echtzeit-Sprachfunktion war ausgefallen — jeder Verbindungsversuch scheiterte sofort.** Wer das Mikrofon oeffnete, bekam keine Verbindung; im Hintergrund versuchte es die Oberflaeche rund fuenfmal pro Sekunde erneut, sodass in 85 Sekunden ueber 440 Fehlversuche zusammenkamen. Ursache war ein automatisches Abhaengigkeits-Update des AWS-Bedrock-Pakets: ab Version 0.11 nutzt es standardmaessig eine Uebertragungsart, die keine gleichzeitige Zwei-Wege-Uebertragung beherrscht — genau die braucht das Sprachmodell aber. Zusaetzlich wird die dafuer noetige Komponente seit dieser Version nicht mehr automatisch mitinstalliert. Beides ist jetzt fest eingestellt, statt sich auf die Voreinstellung des Pakets zu verlassen; kuenftige Paket-Updates koennen die Sprachfunktion so nicht mehr still abschalten.
+
+---
+
+## [1.276.8] - 2026-09-01
+
+### Behoben
+- **Die Hauptlinie war seit dem 31.08. rot** — die Testreihe des Orchestrators scheiterte an 13 Stellen, seit der native SSO-Anmeldeweg eingezogen ist. Die Ursache lag ausschliesslich in den Tests, nicht in der Anwendung: die gemeinsame Endstrecke jeder SSO-Anmeldung wurde nebenlaeufig (`async`), und der State-Eintrag einer beginnenden Anmeldung fuehrt ein zusaetzliches Feld fuer den Anmeldeweg. Beide Testerwartungen waren noch auf dem alten Stand. Folge fuer den Betreiber: Ein roter Hauptzweig laesst sich nicht mehr von einem echten Fehler unterscheiden — jede offene Aenderung zeigte dieselbe rote Testreihe, unabhaengig davon, ob sie selbst in Ordnung war.
+
+### Nachgetragen
+- **Der native SSO-Anmeldeweg (iOS) ist ohne eigene Release-Spur in die Hauptlinie gelaufen** — weder Versionssprung noch Eintrag. Was seither zusaetzlich enthalten ist: Die Anmeldung aus der App heraus laeuft ueber ein eigenes Rueckkehrziel der App statt ueber Sitzungs-Cookies, weil der Browser-Kontext der App keine Cookies mit ihrer eigenen Netzwerkverbindung teilt. Die Tokens reisen dabei **nicht** in der Rueckkehr-Adresse mit, sondern nur ein einmalig und nur 60 Sekunden lang einloesbarer Austauschcode — ein Custom-URL-Scheme ist nicht exklusiv reserviert, eine fremde App koennte denselben Namen registrieren und die Rueckkehr abfangen.
+
+---
+
+## [1.276.6] - 2026-08-31
+
+### Behoben
+- **Sprach-Werkzeug `save_memory` schrieb an der zentralen Speicherlogik vorbei** — direkter Roheintrag in die Gedaechtnis-Tabelle statt ueber denselben Pfad wie das MCP-Werkzeug `memory_save`. Dadurch fehlte Ueberschneidungs-/Duplikat-Erkennung komplett, und die Kategorie war unveraenderlich auf "fact" fixiert, obwohl die Gespraechsfuehrung dem Sprachmodell bereits eine differenziertere Kategorisierung ankuendigte, die es technisch gar nicht setzen konnte. Laeuft jetzt ueber dieselbe Kernfunktion wie der MCP-Weg (gleiche Ueberschneidungspruefung, echte Kategorie/Wichtigkeit).
+- **Fragen nach frueheren Gespraechen wurden im Sprachkanal nicht zuverlaessig erkannt.** Die Wissenssuche durchsucht technisch bereits alle Gespraechsverlaeufe kanaluebergreifend, aber die Werkzeug-Auswahl im Systemprompt kannte nur wissensartige Formulierungen ("was weisst du ueber…"), keine rueckblickenden ("was haben wir besprochen", "was war letzte Woche"). Jetzt explizit ergaenzt.
+
+---
+
+## [1.276.5] - 2026-08-31
+
+### Abgesichert
+- **Next.js auf 16.3.3 angehoben** — behebt zwei kritische Sicherheitsluecken: unauthentifizierte Remote Code Execution auf Windows-gehosteten Servern (GHSA-p293-qw3h-jr36) und unauthentifizierte RCE in der Image-Optimization-API bei AVIF-Dateien (GHSA-2xp9-vwfh-vxw4). Keine Funktionsaenderung fuer den Nutzer.
+
+### Aktualisiert
+- **Abhaengigkeiten (Frontend):** @xyflow/react 12.11.5, lucide-react 1.34.0, mermaid 11.17.2, @types/node 26.4.0, @types/react-dom 19.2.5 — alles Patch- bzw. Minor-Updates ohne API-Aenderungen.
+- **Abhaengigkeiten (Orchestrator):** aws-sdk-bedrock-runtime auf <0.12 angehoben (war <0.11) — kompatibles Release, keine Breaking Changes.
+
+---
+
+## [1.276.4] - 2026-08-31
+
+### Neu
+- **SSO-Login landete nach der Anbieter-Authentifizierung immer auf einem fest konfigurierten Host**, auch wenn die Anmeldung auf einem anderen erreichbaren Hostnamen begonnen wurde (etwa einer Kurz-Domain neben der eigentlichen Domain). Eine neue optionale Positivliste (`OAUTH_REDIRECT_ALLOWED_HOSTS`) laesst zusaetzliche Hosts ihre eigene Rueckkehr-URL bekommen; ungelistete Hosts fallen weiter auf die feste Basis-URL zurueck, kein Verhaltensunterschied ohne Opt-in.
+
+## [1.276.3] - 2026-08-31
+
+### Behoben
+- **Chat brach mit `'tuple' object has no attribute 'get'` ab** (Kundenmeldung, wiederkehrend). Andere Ursache als der gleichnamige Fehler in 1.276.1: `_run_parallel` legt Nachrichten als `(msg, msg_json)`-Tupel in die Kanal-Warteschlange, der Nebenläufigkeits-Verbraucher packt sie korrekt aus, `_drain_pending` (fuer bereits waehrend eines laufenden Zugs eingegangene Nachrichten) tat das nicht und behandelte das rohe Tupel wie das Nachrichten-Objekt selbst.
+
+## [1.276.2] - 2026-08-31
+
+### Behoben
+- **CI war seit dem 27.08. dauerhaft rot — jeder offene Pull Request zeigte einen Fehlschlag, den er gar nicht verursacht hatte.** Ein Kalender-Test verglich das Ergebnis in der Zeitzone des ausfuehrenden Rechners statt in der angefragten. Auf einem Entwicklerrechner mit Europe/Berlin lief er gruen, auf dem UTC-Runner der CI rot. Die Anwendung selbst war immer korrekt; nur die Pruefung war falsch. Wichtiger als der Test: weil rot vier Tage lang der Normalzustand war, fiel zwei Tage spaeter ein **echter** Fehlschlag nicht mehr auf (siehe naechster Punkt).
+- **Ein Personenname und eine Kundenkennung standen im oeffentlichen Repository** — in einem Code-Kommentar und in einem Test-Docstring. Der vorhandene Schutz-Test hatte das korrekt gemeldet, ging aber im Dauer-Rot unter. Beide Stellen sind jetzt durch neutrale Formulierungen ersetzt; der Sachverhalt bleibt vollstaendig nachvollziehbar. Hinweis fuer Betreiber: die Git-Historie enthaelt die Namen weiterhin.
+
+## [1.276.1] - 2026-08-29
+
+### Behoben
+- **Chat brach mit `'tuple' object has no attribute 'get'` ab** (Kundenmeldung). `_build_responses_body` rief `.get()` auf jedem `tool_calls`-Eintrag ohne Typ-Pruefung auf; ein nicht-dict-Eintrag riss die gesamte Runde ab, noch bevor der Provider-eigene Fehlerpfad greift. Ueberspringt jetzt nicht-dict-Eintraege. Chat-/Task-Fehlermeldungen zeigen zusaetzlich kuenftig den Exception-Typ statt einer blossen Nachricht, damit ein naechstes Auftreten sofort erkennbar ist, auch ohne Container-Log (der nach jedem Agent-Neubau weg ist).
+- **Badge-Zeile auf den Agent-Karten wurde bei zu vielen gleichzeitig aktiven Badges lautlos abgeschnitten** (Kundenmeldung: "Buttons sehen komisch aus"). Bricht jetzt in eine zweite Zeile um statt vom Kartenrand verschluckt zu werden.
+
+## [1.276.0] - 2026-08-28
+
+### Neu
+- **Agent kann seinen eigenen Container per Chat neu bauen** (`restart_own_container`): rebuildet den Container aus dem aktuellen Agent-Image/Konfig, der Workspace bleibt vollstaendig erhalten. Ueber einen agent-token-authentifizierten Endpunkt (`POST /agent-apps/restart-self`), respektiert denselben Eval-Gate wie das Admin-"Update"-Feature. In allen drei Laufzeiten verdrahtet (Claude Code, Custom-LLM, Codex) sowie in der Sprachfront-Werkzeug-Parity eingeordnet (delegiert, wie `rebuild_app`).
+
+## [1.275.4] - 2026-08-28
+
+### Behoben
+- **Agent empfahl unaufgefordert "ego (lite) auf deinem Mac installieren"**, ohne das Betriebssystem des Nutzers zu kennen — live in einem Kundengespraech gefunden. Die automatische Ein-Zeilen-Installation gibt es nur fuer macOS; auf anderen Systemen (oder wenn das Betriebssystem unbekannt ist) soll der Agent jetzt zuerst fragen und sonst auf https://lite.ego.app/ verweisen statt Mac anzunehmen.
+
+## [1.275.3] - 2026-08-28
+
+### Behoben
+- **SSO-Login mit Microsoft endete fuer neue Nutzer mit 500** — live per Log-Traceback bestaetigt: `invalid input value for enum userrole: "UNASSIGNED"`. Die Rolle `UNASSIGNED` (fuer frisch per SSO angemeldete Nutzer ohne Zuteilung) wurde als Python-Enum-Member ergaenzt, die noetige `ALTER TYPE`-Migration fuer den Postgres-Enum-Typ fehlte aber — betraf nicht nur den gemeldeten Kunden, sondern auch die eigene Plattform (dort bisher nur nicht ausgeloest). Nachzieh-Migration ergaenzt (gleiches Muster wie die GitHub-OAuth-Provider-Ergaenzung).
+
+## [1.275.2] - 2026-08-27
+
+### Behoben
+- **Feedback-Detail-Modal zeigte den Volltext technisch-roh** (sichtbare `---`-Frontmatter-Zeilen, `**fett**`, `# Ueberschrift`) statt formatiert. Rendert den Markdown-Volltext jetzt ueber die bestehende `MarkdownContent`-Komponente (dieselbe wie im Agent-Chat); YAML-Frontmatter und die eingebettete Screenshot-Referenz werden rausgeschnitten, weil beides in der Modal schon als eigene Badges/Sektion angezeigt wird.
+
+## [1.275.1] - 2026-08-27
+
+### Behoben
+- **Der Modal-Fix aus 1.275.0 hat live nicht funktioniert — Klick daneben schloss die Modal weiterhin nicht.** Falsche Ursache angenommen: nicht Radix' eingebaute Aussenklick-Erkennung war das Problem, sondern dass Radix' `Dialog.Content` selbst per Inline-Style `pointer-events: auto` erzwingt und damit die `pointer-events-none`-Tailwind-Klasse auf dem umschliessenden Wrapper-Element unwirksam macht — der Wrapper deckt dadurch den GESAMTEN Viewport ab und faengt jeden Klick ab, bevor er das dahinterliegende Overlay je erreicht. Live mit `elementFromPoint`/`getComputedStyle` bestaetigt. Der Klick-Handler sitzt jetzt auf dem Content-Wrapper selbst (`target === currentTarget` unterscheidet Klick-auf-Hintergrund von Klick-auf-Karte), nicht mehr auf dem nie erreichten Overlay.
+
+## [1.275.0] - 2026-08-27
+
+### Behoben
+- **Modals schlossen sich nicht beim Klick daneben.** Live gemeldet an der Feedback-Detail-Modal: der Klick-außerhalb-Mechanismus war strukturell kaputt — das unsichtbare `pointer-events-none`-Wrapper-Element ließ Radix' eingebaute Aussenklick-Erkennung ins Leere laufen. Alle betroffenen Dialoge (Feedback-Detail, Mount-Rechte, Datei-Upload, Changelog, Team/Agent anlegen, Delegieren, Freigabe-Anfrage, Analytics-Agentendetail) bekommen jetzt einen expliziten Klick-Handler auf dem Hintergrund.
+- **Element-Label im Feedback-Widget verklebte zwei Textteile ohne Trenner** (z.B. "...erhaltenFeedback wird..." statt "...erhalten Feedback wird..."), weil `textContent` den Text mehrerer Geschwister-Elemente roh aneinanderhängt. Liest jetzt `innerText` (respektiert das gerenderte Layout). Ausserdem schnitt die 80-Zeichen-Grenze mitten im Wort ohne Auslassungszeichen ab — jetzt an der letzten Wortgrenze mit "…".
+
+## [1.274.2] - 2026-08-27
+
+### Behoben
+- **CSV-/Formel-Injection-Fix aus 1.274.1 war unvollstaendig** — `sentiment` (frei befuellbar ueber das Feedback-Widget) wurde beim Absichern der Export-Spalten uebersehen. Jetzt geht jede exportierte Freitextspalte durch dieselbe Absicherung; ein neuer Test deckt alle betroffenen Spalten gemeinsam ab, nicht nur eine Stichprobe.
+
+## [1.274.1] - 2026-08-27
+
+### Behoben
+- **CSV-/Formel-Injection im Feedback-Export.** Titel, Name und Admin-Notizen kommen aus Nutzer-Feedback und landeten roh in der exportierten CSV — ein Wert wie `=HYPERLINK(...)` haette beim Oeffnen in Excel/Sheets als Formel laufen koennen. Felder, die mit `=`/`+`/`-`/`@`/Tab/CR beginnen, bekommen jetzt ein fuehrendes Anfuehrungszeichen, das jede gaengige Tabellenkalkulation zwingt, sie als reinen Text zu lesen.
+
+## [1.274.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Feedback als ZIP exportieren** (Admin -> Feedback) — eine CSV-Uebersicht ueber alle Eintraege plus, je Widget-Feedback, dessen Markdown-Datei und Screenshot. Neuer Endpoint `GET /feedback/export` (optionaler `status`-Filter, admin-only).
+
+## [1.273.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Admin-konfigurierbare Websuche** (Admin -> Websuche, Vorbild OpenWebUI) — DuckDuckGo bleibt schluessellos die Vorgabe; wahlweise echte Brave-Search-API- oder SerpApi-Anbindung, Provider + Key global umschaltbar. Vorher gab es ZWEI unabhaengige, sich widersprechende DuckDuckGo-Kopien (Sprachfront, Agent-Container) und der bestehende „brave-search"-Eintrag bei den AI-Accounts war nachweislich nur ein Stub ohne echten Aufruf. Jetzt EIN gemeinsames Modul (`core/web_search.py`), das Agent-Container (ueber einen neuen `/agent-search/web`-Endpunkt), Sprachfront UND — als neuer MCP-Tool-Eintrag `web_search` — auch Claude Code direkt nutzen. Schliesst zugleich eine Harness-Luecke: Claude Code hatte bisher ueberhaupt keine Websuche.
+
+### Behoben
+- **"Eigene KI-Zugaenge erlauben"-Schalter liess sich nicht deaktivieren.** Der Schalter fehlte in der PATCH-Feldliste der Einstellungen-API — ein Admin-Klick wurde lautlos verworfen, ohne Fehlermeldung, und `GET /settings/` zeigte deshalb immer "an", unabhaengig vom tatsaechlichen Zustand. Live per DB-Abfrage bestaetigt: der Wert wurde noch nie gespeichert.
+
+## [1.272.2] - 2026-08-27
+
+### Behoben
+- **"Öffne YouTube und such nach X" öffnete nur die Startseite, keine Ergebnisse.** Die `ego`-Beschreibung hatte als einziges Beispiel "öffnen + lesen", kein Suchbeispiel — die Sprachfront rief `openOrReuseTab` auf die Startseite auf und hielt die Aufgabe fuer erledigt, sobald ein Tab offen war. Neues, live verifiziertes Beispiel: bei einer Suche direkt die Ergebnis-URL ansteuern (`?search_query=`/`?q=`) statt eine leere Startseite zu oeffnen und dort stehen zu bleiben. Beschreibung nennt jetzt auch den vollen Helfer-Umfang von ego lite (Task Spaces, Drag, Upload, CDP, Netzwerk-Warten, …), nicht nur eine Kurzliste — dieselbe Rohzugriff-Breite, die Claude Code selbst über die ego-browser-Skill hat.
+
+## [1.272.1] - 2026-08-27
+
+### Behoben
+- **ego lite arbeitete unsichtbar im Hintergrund — die Automatisierung lief korrekt, der Nutzer sah nur nichts davon und hielt sie fuer kaputt.** Startet die `ego-browser`-CLI ego lite selbst (kein laufender Prozess vorhanden), laeuft es als Hintergrunddienst (`--startup-ego-browser-service`) ohne Fenster im Vordergrund. Live verifiziert: die Suche hatte tatsaechlich stattgefunden (echter Tab, echte Ergebnisse), nur unsichtbar. Die Bridge holt ego lite nach jedem erfolgreichen Aufruf jetzt automatisch in den Vordergrund.
+- **"Browser starten" + danach suchen oeffnete zwei verschiedene Fenster.** Sagte der Nutzer "starte den Browser und such nach X" als einen Satz, rief die Sprachfront `open` (Standardbrowser) UND separat `ego` (ego lite) auf — zwei unabhaengige Fenster, der Nutzer sah nur das leere erste. Beschreibung praezisiert: jede Interaktion im Satz macht die GANZE Aufgabe zu einem einzigen `ego`-Aufruf.
+
+## [1.272.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Diskrete ego-lite-Aktionen** — `ego_navigate`/`ego_snapshot`/`ego_click`/`ego_fill`/`ego_wait`/`ego_capture`/`ego_tabs`/`ego_close`, das Gegenstueck zu `browser_*` fuer die echte, eingeloggte Sitzung — kein eigenes JS-Skript mehr noetig fuer die gaengigsten Schritte (`ego_run` bleibt fuer alles Komplexere). Alle acht live gegen ein echtes ego lite verifiziert, bevor sie in die Bridge kamen. Ueber Bridge, MCP-Server, Codex/Custom-LLM-Katalog UND die Sprachfront-Rohdurchreiche erreichbar — keine Extra-Arbeit fuer letztere noetig, das war genau der Sinn der Rohdurchreiche aus 1.271.0.
+- **M365-Mail-Suche fuer die Sprachfront** — `m365_mail_recent` kannte bisher nur "letzte N Mails"; live gemeldet, dass eine Themensuche ("Deutsche Bahn", "Reisekosten") dadurch leerlief. Neu: `search`/`sender`/`subject` werden jetzt an den bestehenden Graph-Suchparameter durchgereicht (der Agent hatte das laengst).
+- **Personensuche + Teams-Nachrichten fuer die Sprachfront** — `m365_search_people` (dieselbe Verzeichnissuche, die der Agent schon hat) und `m365_teams_message` (schreibt in einen bestehenden 1:1-Chat, gefunden ueber die Mitgliedernamen; kein Chat gefunden wird ehrlich gesagt statt geraten). Vorher hatte die Sprachfront fuer Teams ueberhaupt kein Werkzeug.
+
+### Behoben
+- **Kalender "morgen" zeigte ueberwiegend den Rest von heute.** `days_ahead` war ein rollierendes Fenster ab dem exakten Aufrufzeitpunkt, kein Kalendertag — `days_ahead=1` erreicht Mitternacht erst kurz vor Tagesende. Neuer Parameter `date` (`today`/`tomorrow`/ISO-Datum) auf dem gemeinsamen Graph-Werkzeug `ms_list_calendar_events` liefert jetzt echte Mitternacht-zu-Mitternacht-Grenzen; die Sprachfront nutzt ihn ueber ein neues `when`-Feld.
+- **Buchstabierte E-Mail-Adressen wurden mehrfach falsch verstanden und trotzdem verwendet** (live: `alisch@mindsquare.de` wurde nacheinander zu drei falschen Adressen). Die Sprachfront liest eine buchstabierte Adresse jetzt Buchstabe fuer Buchstabe zurueck, bevor sie sie in einer Mail verwendet.
+- **`ego` galt nur fuer Login-Aufgaben** — "Google oeffnen"/"YouTube durchsuchen" liefen ueber den unzuverlaessigen Bedienungshilfen-Weg statt ueber `ego`. Jetzt der Standardweg fuer jede Aufgabe mit Browser-Inhalten, inkl. eines konkreten Beispiels fuer interne Tools (Perk/Concur/SAP), die die Sprachfront vorher faelschlich als "kein Zugriff" abgewiesen hat.
+
+## [1.271.1] - 2026-08-27
+
+### Behoben
+- **`ego` wurde zu eng auf Login-Aufgaben beschraenkt — die Sprachfront nutzte "einfach oeffnen" (Standardbrowser) + Bedienungshilfen-Suche fuer Websites, was fuer Web-Inhalte nicht zuverlaessig funktioniert.** Live gemeldet: "Google oeffnen" + "auf YouTube nach Pokemon Karten suchen" liefen ueber `open_url` + `find_element` + `type` (Standardbrowser, kein DOM-Zugriff) und scheiterten; erst nach expliziter Nutzer-Nachfrage griff `ego` — und funktionierte sofort korrekt (echte Seiten-Snapshots, echtes Navigieren zur Video-URL). Beschreibung praezisiert: `ego` ist jetzt der Standardweg fuer JEDE Aufgabe mit Browser-Inhalten (nicht nur Login), `open`+`find`+`click` ausdruecklich nur noch fuer native Apps. Zusaetzlich: die Sprachfront behauptete vorab faelschlich, `ego` sei "nicht aktiviert" (obwohl in der Bridge laengst freigegeben) — Beschreibung untersagt jetzt ausdruecklich, das ohne echten Fehlertext zu vermuten.
+
+## [1.271.0] - 2026-08-27
+
+### Behoben
+- **Die Sprachfront kannte nur 8 handverdrahtete Bridge-Aktionen — jede neue
+  Faehigkeit (zuletzt `ego_run`) fehlte ihr automatisch, bis sie hier von
+  Hand nachgetragen wurde.** Live gemeldet: "1:1 die gleichen Tools wie der
+  Agent" — der Agent selbst erreicht ueber die MCP-Server der Bridge JEDE
+  Aktion, die Sprachfront kannte nur `open/screenshot/find/click/type/key/
+  wait/scroll` (jetzt neu: `ego`). Die tiefere Ursache: ein drittes, unabhaengig
+  gepflegtes Werkzeug-Schema (`DESKTOP_TOOL`) neben dem MCP-Server und den
+  Codex/Custom-LLM-Definitionen — genau das Muster, vor dem die Harness-
+  Paritaet-Regel warnt. Neu: eine Rohdurchreiche — jeder ECHTE Bridge-
+  Aktionsname (`shell_run`, `browser_navigate`, `ego_run`, `get_clipboard`, …)
+  geht mit einem `params`-Objekt direkt an dieselbe `dispatch_bridge_command`-
+  Funktion, dieselbe Faehigkeits-/Besitzpruefung wie ueberall sonst. Neue
+  Bridge-Aktionen erreichen die Sprachfront damit automatisch — keine
+  manuelle Nachpflege mehr noetig.
+
+## [1.270.1] - 2026-08-27
+
+### Behoben
+- **`ego_run` wurde vom Agenten uebersehen — er versuchte erst `open_app`.**
+  Live im Sprachmodus getestet: auf "oeffne ego lite" probierte der Agent
+  zunaechst verschiedene App-Namen ueber `open_app`, bevor er (nur zufaellig)
+  auf `ego_run` kam. Ursache: die Werkzeug-Beschreibung sagte nicht, dass
+  `ego_run` ego lite bei Bedarf SELBST startet (verifiziert: ein Aufruf mit
+  komplett geschlossener App startet sie automatisch im Hintergrund) —
+  `open_app` davor ist ueberfluessig. Beschreibung in beiden Werkzeug-Quellen
+  (MCP-Server, Codex/Custom-LLM) praezisiert.
+
+## [1.270.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Gespeicherte Meetings — vorher gab es dafuer gar keine Persistenz.** Der
+  Meeting-Recorder in der iOS-App hielt das Transkript nur im Arbeitsspeicher;
+  verlassen der Ansicht oder "Verwerfen" loeschte alles, kein Verlauf, kein
+  Umbenennen, keine Teilnehmerliste. Neue userbased CRUD-Flaeche `/meetings`
+  (`POST` speichern, `GET` Liste + Einzelabruf, `PATCH` umbenennen/Teilnehmer
+  bearbeiten, `DELETE`) — strikt auf den anfragenden Nutzer beschraenkt wie
+  jeder andere neue Endpunkt. Sprecher-Erkennung ist bewusst NICHT enthalten
+  (V1): die Pi-STT (`faster-whisper small`, CPU) ist fuer echte Diarisierung
+  zu ressourcenknapp; Teilnehmer werden manuell eingetragen.
+
+## [1.269.0] - 2026-08-27
+
+### Hinzugefuegt
+- **Agenten koennen jetzt ego lite bedienen — die echte, eingeloggte
+  Browsersitzung des Nutzers, nicht nur ein isoliertes Profil.** Bisher
+  konnte die Desktop-Bridge einen Browser nur im eigenen, separaten Profil
+  steuern (`browser_navigate` & Co.) — bewusst getrennt vom echten Profil des
+  Nutzers, damit kein Login-Diebstahl moeglich ist. Fuer Aufgaben, bei denen
+  der Nutzer bereits angemeldet ist (Mail, interne Tools), war das jedes Mal
+  eine erneute Anmeldung. Neue Faehigkeitsgruppe `ego_browser` (wie `shell`
+  standardmaessig AUS, bewusstes Freischalten durch den Nutzer): eine neue
+  Aktion `ego_run` schickt ein JS-Snippet an das lokale `ego-browser`-CLI
+  (Voraussetzung: die ego-lite-App ist auf dem Rechner installiert) und
+  liefert die Ausgabe zurueck — dieselben Helfer (Task Spaces, Klicken,
+  Formulare fuellen, Seiteninhalt lesen), die auch die `ego-browser`-Skill
+  fuer Claude Code lokal nutzt. Ueber alle drei Laufzeiten hinweg verdrahtet
+  (MCP-Server fuer Claude Code, `computer_use`-Werkzeug fuer Codex/Custom-LLM)
+  und im Berechtigungs-Dialog der Bridge sichtbar.
+
+## [1.268.4] - 2026-08-24
+
+### Behoben
+- **Die Namens-Wache schlug bei eingebetteten Bildern falschen Alarm — und
+  hielt damit die gesamte Auslieferung an.** Die Pruefung, die Kunden- und
+  Personennamen aus dem oeffentlichen Repo fernhaelt, verglich jede Zeile als
+  reinen Text. In einer Seite steckt ein Foto als 140 KB grosse Base64-Zeile;
+  in so viel Zeichensalat taucht ein vierstelliger Name irgendwann zufaellig
+  auf. Folge: der Testlauf auf `main` war rot, und alle vier offenen Pull
+  Requests standen auf "instabil" — obwohl an keiner Stelle ein Name stand und
+  an keinem der vier Pull Requests etwas fehlte.
+  Eingebettete Binaerdaten werden jetzt vor dem Abgleich entfernt. Der Text
+  rund um so ein Bild wird weiter geprueft, und ein Name im Fliesstext faellt
+  unveraendert auf — beides ist mit eigenen Tests festgehalten, damit die
+  Wache nicht im Stillen blind wird.
+- **Die Fundmeldung zeigt wieder, was gefunden wurde.** Meldete die Wache eine
+  Zeile mit eingebettetem Bild, bestand die auf 90 Zeichen gekuerzte Ausgabe
+  nur aus Bilddaten — der Name, um den es ging, fiel hinten heraus. Wer die
+  Meldung las, sah Datei und Zeile, aber nicht den Anlass. Gemeldet wird jetzt
+  die geschnittene Zeile.
+
+## [1.268.3] - 2026-08-24
+
+### Geaendert
+- **Landingpage: Rechtslinks fuehren auf die eigenstaendigen Seiten** (/impressum,
+  /datenschutz) statt Overlays aufzupoppen — Formular-Hinweis, Hinweis-Leiste
+  und Footer. Die Overlays bleiben als Fallback der Einzeldatei erhalten;
+  ihr Schliessen springt nicht mehr zum Seitenanfang.
+
+## [1.268.2] - 2026-08-24
+
+### Behoben
+- **Landingpage: Impressum und Datenschutz sind wieder erreichbar, solange die
+  Hinweis-Leiste offen ist.** Die fixe Leiste verdeckte genau die Footer-Zeile
+  mit den Rechtslinks. Jetzt stehen beide Links auch in der Leiste selbst, und
+  der Footer bekommt Luft nach unten, bis der Hinweis bestaetigt wurde.
+
+## [1.268.1] - 2026-08-24
+
+### Behoben
+- **Foundry-Discovery findet jetzt auch Projekt-Ressourcen** — live gegen eine
+  echte Azure-AI-Foundry-Projekt-URL verifiziert: dort liegen die deployten
+  Modelle unter `/deployments?api-version=2025-05-01` (ein `/v1/models` gibt
+  es nicht). Neuer Kandidat fuer Foundry und fuer als azure-openai angelegte
+  Projekt-URLs; der Parser liest das Deployments-Format, nimmt den
+  DEPLOYMENT-Namen als Modell-Id und laesst Embedding-Deployments draussen.
+
+## [1.268.0] - 2026-08-24
+
+### Hinzugefuegt
+- **Foundry-Modelle werden endlich gefunden (Kundenbefund).** Fuer den
+  Provider "foundry" gab es keinerlei Discovery-Pfad — deployte Modelle einer
+  Azure-AI-Foundry-Ressource tauchten nie auf. Jetzt probiert die Discovery
+  je Provider mehrere Kandidaten-Pfade (Foundry: native Anthropic-Route,
+  OpenAI-v1-Flaeche, Modell-Katalog; Azure OpenAI zusaetzlich den
+  Deployments-Katalog) und nimmt die erste Antwort; scheitern alle, wird der
+  aussagekraeftigste Fehler gemeldet (Auth vor 404). Der Modell-Katalog
+  fragt Foundry ueber Ressource + Key aus den Provider-Einstellungen ab.
+- **Modell-Freigabe je AI-Account (Kundenwunsch).** Der Administrator kann
+  einzelne Modelle eines AI-Accounts sperren/freigeben (Schalter je Modell in
+  der AI-Accounts-Seite). Agent-Erstellung und Umverbinden zeigen nur
+  freigegebene Modelle und erzwingen das serverseitig; Bestandsdaten ohne
+  Flag gelten als freigegeben.
+
+## [1.267.3] - 2026-08-24
+
+### Behoben
+- **Chat-Selbstheilung bei zu langem Verlauf jetzt in ALLEN Laufzeiten (#623).**
+  Codex verwirft bei einem Kontextlaengen-Fehler die Sitzung, informiert den
+  Nutzer und beantwortet die Nachricht frisch (wie der Claude-Pfad seit #613);
+  Custom-LLM komprimiert den Verlauf im Notfall sofort, statt dass jede weitere
+  Nachricht identisch scheitert. Und eine EINZELNE zu grosse Nachricht bekommt
+  ueberall eine verstaendliche Erklaerung (kuerzer fassen oder als Datei in den
+  Workspace) statt des rohen CLI-Fehlers. Die Fehlererkennung deckt jetzt auch
+  die OpenAI-Formulierungen ab (maximum context length, exceeds the context).
+
+## [1.267.2] - 2026-08-24
+
+### Hinzugefuegt
+- **Skill „writing-agent-ready-issues" (PR #648).** Neuer Quellordner
+  `marketplace-skills/` fuer SKILL.md-basierte Marktplatz-Skills; der Skill
+  fasst zusammen, wie ein Product Owner Backlog-Items agent-tauglich
+  aufbereitet (Triage-Zustaende, Definition of Ready, Epic-Schnitt, Templates).
+
+### Geaendert
+- **Landingpage: iPhone-Rahmen liegt jetzt additiv um das Bild** statt es an
+  den Raendern zu beschneiden (object-fit:cover entfernt — das Bild traegt
+  die Groesse, der Rahmen kommt aussen dazu).
+- Abhaengigkeiten: uvicorn 0.52.4 (PR #650), npm-Minor-Gruppe im Frontend
+  (PR #651). sentence-transformers 6.0 (PR #649) bleibt offen, bis der
+  Embedding-Pfad gegen die Major-Version getestet ist.
+
+## [1.267.1] - 2026-08-24
+
+### Behoben
+- **Echte Umlaute in allen nutzersichtbaren Texten des Kontaktformulars.**
+  Formular-Validierung, Fehlermeldungen des Endpunkts, Mailtext und
+  Datenschutz-Absatz nutzten teilweise ae/oe/ue-Ersatzschreibweise.
+
+## [1.267.0] - 2026-08-24
+
+### Hinzugefuegt
+- **Kontaktformular auf der Landingpage.** Neuer oeffentlicher Endpunkt
+  `POST /api/v1/contact` stellt Name, E-Mail und Nachricht per SMTP an den
+  Betreiber zu (Reply-To = Absender). Opt-in per Konfiguration
+  (`CONTACT_SMTP_USER`/`CONTACT_SMTP_PASSWORD`/`CONTACT_TO` in der .env der
+  Installation — ohne sie antwortet der Endpunkt mit 503, Zugangsdaten liegen
+  nie im Repo). Schutz: Honeypot-Feld, 5 Nachrichten pro IP und Stunde,
+  feste Empfaengeradresse. Die Datenschutzerklaerung (Seite und Overlay)
+  beschreibt die Verarbeitung inkl. Brevo als Auftragsverarbeiter.
+
+## [1.266.7] - 2026-08-24
+
+### Behoben
+- **Landingpage: Dashboard-Screenshot im Browser-Mockup nicht mehr gequetscht.**
+  Das height-Attribut des Bildes gewann gegen das CSS (nur width gesetzt) —
+  jetzt `height:auto` am Mockup-Bild plus generelles Sicherheitsnetz
+  `img{max-width:100%;height:auto}`.
+
+## [1.266.6] - 2026-08-24
+
+### Geaendert
+- **Landingpage auf Stand der Technik gebracht.** Scroll-Fortschrittsleiste
+  (CSS scroll-driven), Maus-Spotlight und Gradient-Hover auf allen Karten,
+  Bento-Raster mit breiten Schwerpunkt-Kacheln, Integrations-Marquee (M365 bis
+  Redis), animierte Terminal-Demo eines echten Agenten-Laufs (tippt sich,
+  respektiert prefers-reduced-motion), Akzent-Schimmer im Hero, Feinkorn-
+  Textur, gestaffelte Reveals. Alles vanilla und self-contained — keine
+  externen Bibliotheken, keine externen Requests.
+
+## [1.266.5] - 2026-08-24
+
+### Geaendert
+- **Landingpage erzaehlt jetzt Plattform zuerst.** Hero mit Browser-Mockup des
+  echten Dashboards („Dein KI-Team. Auf deiner Infrastruktur."), Kennzahlen-
+  leiste mit Laufzeiten/M365+MCP/Kanaelen/Self-Hosted, Plattform-Sektion direkt
+  danach; die iOS-App folgt als eigener Bereich („Und alles davon in deiner
+  Tasche") mit allen bisherigen App-Sektionen. Navigation entsprechend
+  vereinfacht (Plattform · iOS-App · Rollen · Beta).
+
+## [1.266.4] - 2026-08-24
+
+### Geaendert
+- **Landingpage zeigt jetzt die Plattform dahinter.** Neue Sektion „Die
+  Plattform dahinter" mit zwei Schwerpunkt-Karten (Microsoft 365 direkt:
+  Outlook/Exchange, Graph, Teams inkl. Stimme im Termin; MCP: 12 eingebaute
+  Server mit 75+ Werkzeugen, externe MCP-Server mit OAuth, Second Brain als
+  MCP-Server, eigene Docker-Apps) und zwoelf Feature-Kacheln (drei Laufzeiten,
+  alle Kanaele, Echtzeit-Sprache, Second Brains, Gedaechtnis, Vertrauen &
+  Kontrolle, Automatisierung, Teamarbeit, Skills, PC & Browser, Modelle,
+  Ticketsysteme). Hero und Kennzahlenleiste entsprechend geschaerft.
+
+## [1.266.3] - 2026-08-24
+
+### Behoben
+- **Telegram-Sprachnachrichten an einen schlafenden Agenten gehen nicht mehr
+  verloren (#645).** Zwei Luecken: (1) Der Medien-Pfad (Sprache, Fotos,
+  Dokumente) weckte einen gestoppten Agenten nicht — nur Textnachrichten taten
+  das. Die Nachricht lag damit in einer Warteschlange, die niemand mehr las.
+  Jetzt gilt queue-first + wecken, wie beim Text. (2) Stirbt der Container
+  mitten in der Verarbeitung (OOM, Neustart-Schleife beim Aufwecken), nahm
+  brpop die Nachricht mit ins Grab. Jede Chat-Nachricht liegt jetzt waehrend
+  der Verarbeitung in einer Inflight-Liste und wird beim naechsten Start in
+  alter Reihenfolge zurueckgelegt.
+
+## [1.266.2] - 2026-08-24
+
+### Behoben
+- **Ein Tagesplan-Block mit vergangener Startzeit feuert nicht mehr sofort (#642).**
+  Beim Neuschreiben des Plans bekam JEDER Block mit Uhrzeit einen aktivierten
+  Einmal-Zeitplan — auch wenn die Uhrzeit laengst vorbei war. Erledigte, erneut
+  eingereichte Bloecke wurden so noch einmal beauftragt ("Arbeite ihn JETZT ab"
+  auf einen ERLEDIGT-Titel), und ein um 14:00 nachgetragener 13:30-Block feuerte
+  sofort. Jetzt gilt mit 5 Minuten Karenz: Vergangenheit loest nichts aus — der
+  Block bleibt als Notiz sichtbar, der naechste proaktive Lauf greift ihn auf,
+  falls noch offen. Dasselbe beim Verschieben eines Blocks auf eine vergangene
+  Uhrzeit (Ausloeser wird deaktiviert statt sofort zu feuern).
+
+## [1.266.1] - 2026-08-24
+
+### Behoben
+- **`.gitignore`-Muster `core` praezisiert (Wurzel + `core.[PID]`).** Das in
+  1.266.0 uebernommene Muster gegen Core-Dumps deckte auch das Verzeichnis
+  `orchestrator/app/core/` ab — getrackte Dateien blieben unberuehrt, aber
+  jede NEUE Datei dort waere von `git add` still verschluckt worden.
+
+## [1.266.0] - 2026-08-24
+
+### Hinzugefuegt
+- **Standard-Denktiefe pro Agent (Kundenwunsch).** In den Agenten-Einstellungen
+  (Web und iOS-App, direkt bei Modell/AI-Account) laesst sich je Agent eine
+  Standard-Denktiefe festlegen (Auto/Minimal/Low/Medium/High/Extra High,
+  `PATCH /agents/{id}/default-reasoning`). Sie gilt ueberall dort, wo am
+  einzelnen Lauf keine Stufe haengt — Aufgaben, Zeitplaene, delegierte
+  Auftraege, Agent-zu-Agent-Nachrichten und Chats ohne gewaehlte Stufe — und
+  zwar in ALLEN Laufzeiten (Claude Code via Denk-Budget, Codex via
+  model_reasoning_effort, Custom-LLM via reasoning_effort). Eine im Chat
+  gewaehlte Stufe gewinnt weiterhin; vollstaendig wirksam ab dem naechsten
+  Neuerstellen des Agenten.
+
+### Behoben
+- **Ein Zeitplan, der seinen Termin verliert, meldet sich jetzt (#631, PR #633).**
+  Wurde ein faelliger Lauf uebersprungen (Agent ausser Dienst, beschaeftigt,
+  ueberlastet, Dispatch-Sperre), versuchte der Scheduler es eine Weile erneut
+  und gab den Termin danach stillschweigend auf — Zaehler und Waechter waren
+  fuer diesen Fall blind (success_rate blieb 1.0). Ein verworfener Termin wird
+  jetzt als fehlgeschlagener Lauf gezaehlt und einmalig gemeldet (Name,
+  Soll-Zeitpunkt, Grund); Wiederholungs-Budgets werden nach einem geglueckten
+  Lauf zurueckgesetzt, und Plan-Bloecke haken sich nur noch ueber last_run_at
+  ab, nicht ueber total_runs.
+- **Telegram-Chat faehrt sich bei zu langem Verlauf nicht mehr fest (#613, PR #620).**
+  Der Laengenfehler wird erkannt, die Sitzung neu begonnen und die Nachricht
+  sofort erneut beantwortet (mit Hinweis an den Nutzer). Ausserdem schleppt
+  nicht mehr jede Nachricht die volle Telegram-API-Referenz und die
+  Autonomie-Regeln mit (~1.950 Token weniger pro Folgenachricht); geaenderte
+  Autonomie-Regeln erreichen den Agenten weiterhin sofort, und ein
+  Laengenfehler laeuft nicht mehr faelschlich in die Token-Warteschleife.
+- **Meldungen von Agenten ohne eigenen Telegram-Bot kommen wieder an (#637, PR #641).**
+  Der Ersatzweg ueber den globalen Bot schickte auf einen Kanal ohne Abhoerer
+  und ohne das text-Feld, das der Bot vorliest — die Meldung verschwand
+  spurlos. Jetzt: richtiger Kanal (telegram:notification), richtiges Format,
+  auch fuer die Warnung nach einem abgestuerzten Job; stille Zustellfehler
+  landen im Protokoll, und ein Form-Test haelt alle Melde-Wege gleich.
+
+### Sicherheit
+- **Sentinel: Agenten-Zuordnung kommt aus dem Kanalnamen, nicht aus der
+  Selbstauskunft (#590, PR #627).** Ein Agent konnte bisher im Namen eines
+  anderen einen Vorfall erfinden und ihn stoppen lassen; die Aufsicht liest
+  jetzt nur noch die Kanaele je Agent, die Freifahrtschein-Ausnahme ist
+  entfernt, und das harte Anhalten greift nur bei aktiver Redis-ACL (ohne ACL
+  wird gemeldet statt gestoppt). Ohne Wirkung, solange der Sentinel aus ist
+  (Standard).
+
+### Hinzugefuegt
+- **Ein gemeinsamer Nebenlaeufigkeitsdeckel statt drei getrennter (#628 Phase 2, PR #634).**
+  Aufgaben, Chat und Agent-zu-Agent-Nachrichten teilen sich jetzt EIN
+  prozessweites Budget (`agent/app/run_budget.py`) statt dreier Einzelgrenzen,
+  deren Summe das Container-Prozesslimit sprengen konnte; ein Platz bleibt
+  exklusiv fuer Chat reserviert, damit Gespraeche nicht hinter langlaufenden
+  Aufgaben verhungern.
+- **MCP-Server koennen HTTP sprechen — Schritt 1 (#638, PR #639).** Gemeinsamer
+  Transport-Bootstrap `agent/mcp/_transport.mjs` (stdio wie bisher; mit
+  `MCP_HTTP_PORT` bedient EIN Prozess mehrere Sitzungen unter `/mcp/<name>`,
+  nur Loopback, 8-MB-Body-Deckel) plus Pilot `read-logs`. Ohne gesetzten Port
+  aendert sich nichts.
+
+## [1.265.9] - 2026-08-23
+
+### Hinzugefuegt
+- **Eigenstaendige Rechtsseiten fuer die App-Store-Pruefung.** `docs/ios-app/`
+  enthaelt jetzt `datenschutz.html` und `impressum.html` als direkt verlinkbare
+  Seiten (Apple verlangt eine Datenschutz-URL); die Datenschutzerklaerung
+  deckt zusaetzlich die App selbst ab (keine Datenerhebung durch den Anbieter,
+  Anmeldedaten nur zur eigenen Instanz, Push-Token, Mikrofon).
+
+## [1.265.8] - 2026-08-23
+
+### Geaendert
+- **Landingpage: Impressum vervollstaendigt.** Die Platzhalter fuer
+  Betreiber-Angaben und Kontakt sind durch die echten Angaben ersetzt —
+  damit sind Impressumspflicht und Datenschutzerklaerung vollstaendig.
+
+## [1.265.7] - 2026-08-23
+
+### Geaendert
+- **Landingpage: Siri-Kachel nennt jetzt die echten Kommandos** („Schreibe
+  <Agent> in AI Employee Hub", Aufgabe anlegen) statt einer Phrase, die die
+  App nicht registriert.
+
+## [1.265.6] - 2026-08-23
+
+### Behoben
+- **Landingpage: „Alles klar" schliesst die Hinweis-Leiste jetzt wirklich.**
+  Das `display:flex` der Leiste hatte das `hidden`-Attribut ueberstimmt — der
+  Klick wurde gespeichert, die Leiste blieb aber sichtbar.
+
+## [1.265.5] - 2026-08-23
+
+### Geaendert
+- **Landingpage-Mockups sehen jetzt nach iPhone aus:** duenner dunkler Rahmen
+  wie beim Geraet, dazu ein schmaler schwarzer Glasrand zwischen Screen-Inhalt
+  und Rahmen (statt des breiten Bezels aus 1.265.4).
+
+## [1.265.4] - 2026-08-23
+
+### Geaendert
+- **Landingpage: Geraete-Mockups mit echtem Bezel.** Die App-Screens sitzen
+  jetzt mit sichtbarem Rand im Rahmen statt randlos; letzter
+  Umlaut-Nachzuegler (Team-Zugehoerigkeit) korrigiert.
+
+## [1.265.3] - 2026-08-23
+
+### Geaendert
+- **Landingpage rechtssicher und rund.** Impressum und Datenschutzerklaerung
+  (als Overlay, im Footer verlinkt; Betreiber-Angaben als auszufuellende
+  Platzhalter), Hinweis-Leiste unten (kein Tracking, nur lokale Bestaetigung),
+  Schriften lokal eingebettet statt von Google Fonts geladen (kein externer
+  Request), echte Umlaute im gesamten Text, Engines-Angabe korrigiert (Claude
+  Code, Codex UND Custom-LLM) und drei fehlende Funktionen ergaenzt
+  (Aufgaben & Zeitplaene, Task-Timeline, Integrationen).
+
+## [1.265.2] - 2026-08-23
+
+### Geaendert
+- **Landingpage ohne Zugaenge zur Web-Oberflaeche.** „Anmelden" im Menue,
+  „Web-Oberflaeche oeffnen" im Hero und der Anmelde-Knopf im Beta-Abschnitt
+  sind entfernt — die Seite nennt keinerlei Einstieg in die Plattform mehr.
+
+## [1.265.1] - 2026-08-23
+
+### Geaendert
+- **Die Landingpage der iOS-App wird NICHT mehr standardmaessig ausgeliefert.**
+  Route und Mount aus 1.265.0 sind aus `Caddyfile` und `docker-compose.yml`
+  wieder entfernt — Installationen zeigen unveraendert die Web-Oberflaeche.
+  Die Seite liegt nur noch als Datei unter `docs/ios-app/`; wer sie auf einer
+  Installation zeigen will, verdrahtet sie deployment-spezifisch ueber
+  `docker-compose.override.yml` (Mount) und ein `conf.d/site/`-Snippet
+  (Anleitung in `conf.d/README.md`).
+
+## [1.265.0] - 2026-08-23
+
+### Hinzugefuegt
+- **Landingpage der iOS-Begleit-App wird von jeder Installation ausgeliefert.**
+  Unter `/app/` liefert Caddy eine statische Seite (`docs/ios-app/index.html`),
+  die die App vorstellt: Agenten, Chat, Sprache, Wissen in 3D, Mein PC, Analyse,
+  Rollen und der Einstieg ueber TestFlight. Die Seite ist eigenstaendig (Bilder
+  eingebettet) und verlinkt auf `/login` der jeweiligen Installation. Soll sie
+  auf einer Installation die Startseite sein, reicht ein Snippet in
+  `conf.d/site/` (Beispiel in `conf.d/README.md`); die Web-Oberflaeche bleibt
+  sonst unveraendert. Nach dem Update `docker compose up -d caddy`, damit der
+  neue Mount greift.
+
+## [1.264.5] - 2026-08-23
+
+### Behoben
+- **Ein Zeitplan, der wegen eines gestoppten Agenten ausfaellt, ist jetzt
+  auffindbar.** War der Agent zur faelligen Uhrzeit nicht ansprechbar, brach der
+  Zeitplan ab, *bevor* ueberhaupt ein Auftrag entstand: der Lauf hinterliess
+  weder einen fehlgeschlagenen noch einen offenen Eintrag — in keiner Liste, fuer
+  niemanden. Aus Sicht des Betreibers hatte er nie stattgefunden, und das
+  fehlende Ergebnis war der einzige Hinweis. Ein taeglicher Job konnte so an
+  einem Drittel der Tage ausfallen, ohne dass es jemandem auffiel. Ein
+  ausgefallener Lauf wird jetzt als fehlgeschlagener Auftrag verbucht — mit
+  Zeitplan, Soll-Uhrzeit und Grund — und genau einmal pro verpasstem Termin,
+  nicht einmal pro Pruefung.
+- **Die Ausfallmeldung sagt nicht mehr das Gegenteil dessen, was passiert ist.**
+  Hatte der Agent gerade keine offene Aufgabe, meldete das System woertlich „es
+  geht also nichts verloren" — obwohl der faellige Lauf genau in diesem Moment
+  verloren ging. Die Meldung nennt jetzt den betroffenen Zeitplan und ist hoch
+  genug eingestuft, um auch per Telegram anzukommen.
+- **Der Ausfall eines taeglichen Jobs wird nicht mehr verschluckt.** Die
+  Ausfallmeldung hing an einer Sperre, die pro Agent zwoelf Stunden lang alles
+  Weitere unterdrueckte: hatte derselbe Agent aus irgendeinem anderen Grund schon
+  gemeldet, blieb der verpasste Lauf still. Sie zaehlt jetzt pro Zeitplan.
+
+---
+
+## [1.264.4] - 2026-08-23
+
+### Behoben
+- **Ein gestoppter Agent wird fuer faellige Zeitplaene und Kalender-Bloecke
+  geweckt.** Agenten schlafen nach Nutzer-Inaktivitaet ein (UserLifecycle,
+  Standard 30 Minuten). Stand danach ein Zeitplan an, galt der Agent als
+  ausgefallen: kein Lauf, keine Verschiebung, keine brauchbare Meldung — und
+  jeder 30-Sekunden-Takt meldete denselben Ausfall neu. Der taegliche
+  Podcast fehlte so an rund jedem dritten Tag (#632). Jetzt startet der
+  Scheduler den Agenten zuerst (derselbe Weg wie bei Nachrichten zwischen
+  Agenten) und fuehrt den Lauf aus; gelingt das Wecken nicht, wird eskaliert
+  und der Lauf kurz nachgesetzt statt fuer immer zu haengen.
+- **Kein Schlafenlegen kurz vor einem Termin.** Das Auto-Stoppen laesst
+  Agenten wach, wenn binnen der Ruhefrist ein aktiver Zeitplan ansteht —
+  spart den Kaltstart genau zur Feuerzeit.
+
+---
+
+## [1.264.3] - 2026-08-22
+
+### Hinzugefuegt
+- **Freigabe-Pushes tragen jetzt eine Aktions-Kategorie.** Die iOS-App (ab
+  1.2.3) zeigt damit Genehmigen/Ablehnen direkt auf der Push-Mitteilung an —
+  eine Freigabe laesst sich vom Sperrbildschirm beantworten, ohne die App zu
+  oeffnen (Geraet muss entsperrt werden, bewusste Sicherheitsentscheidung).
+
+## [1.264.2] - 2026-08-22
+
+### Behoben
+- **Sprachsteuerung: Ein Content-Filter-Block sagt jetzt, was hilft.** Blockt
+  der Modell-Anbieter (AWS) den beim Verbindungsaufbau geladenen
+  Gespraechsverlauf, kam bisher nur die rohe Fehlermeldung samt RequestId an —
+  und jeder Neuversuch lief in denselben Block. Die Meldung erklaert jetzt,
+  dass der geladene Verlauf betroffen ist (nicht die eigene Frage) und ein
+  neues Gespraech die Sprachsteuerung wieder freigibt; sie ist ausdruecklich
+  als nicht-wiederholbar markiert, damit Clients nicht im Kreis neu verbinden.
+
+---
+
+## [1.264.1] - 2026-08-22
+
+### Behoben
+- **Sprachsitzungen mit Nova Sonic starten wieder.** Das AWS-SDK für den
+  Sprachkanal (`aws-sdk-bedrock-runtime`) hat in Version 0.10 seine Klassen
+  umbenannt und verbietet den bisherigen Aufbauweg — auf einer Anlage mit
+  neuem Container-Image brach damit JEDE Sprachsitzung sofort ab
+  („cannot import name 'Config'"). Der Sprachkanal kann jetzt mit beiden
+  SDK-Generationen umgehen; die Microsoft-Realtime-Anbindung (Azure) war
+  nicht betroffen und bleibt unverändert. Ein neuer Test fährt den echten
+  Aufbauweg gegen die tatsächlich installierte SDK-Version, damit die
+  nächste Umbenennung auffällt, bevor sie eine Anlage trifft.
+
+---
+
+## [1.264.0] - 2026-08-21
+
+### Behoben
+- **Eine Aufgabe, der die Prozesse ausgehen, gilt nicht mehr als erledigt.**
+  Der Container hat eine harte Obergrenze an gleichzeitigen Prozessen. War sie
+  erreicht, ließ sich kein Werkzeug mehr starten — `git`, `gh`, Tests, alles
+  scheiterte still. Der Lauf merkte davon nichts und meldete Erfolg. So kamen
+  Aufträge als „erledigt" zurück, zu denen es weder einen Pull Request noch
+  eine Datei gab; das sah nach einem Modell- oder Prompt-Problem aus und war
+  keines. Solche Läufe scheitern jetzt sichtbar, mit dem gemessenen
+  Prozessstand und der Zeile, an der es riss.
+
+### Geändert
+- **Wie viele Aufträge ein Agent gleichzeitig annimmt, richtet sich jetzt nach
+  dem, was der Container hergibt** — vorher war es eine geratene Zahl. Wer mehr
+  einstellt, als hineinpasst, bekommt die passende Zahl und einen Hinweis im
+  Protokoll; überzählige Aufträge warten in der Schlange, statt den Container
+  zu erdrosseln. Feinjustierung über `PIDS_RESERVE` und `PIDS_COST_PER_RUN`.
+
+Damit ist der erste Teil von #628 erledigt. Das Anheben der Obergrenze selbst
+und ein gemeinsamer Satz Hintergrunddienste stehen noch aus.
+
+---
+
+## [1.263.1] - 2026-08-21
+
+### Behoben
+- **Der Hinweis „Veraltete Oberfläche — neu laden" konnte nie erscheinen.** Er
+  vergleicht die im Bundle eingebackene Version mit der des Backends; wird das
+  Frontend-Image ohne `APP_VERSION` gebaut, steht dort „dev" und der Abgleich
+  fällt still aus. Folge: nach einem Deploy blieb die geöffnete Seite auf dem
+  alten Stand, ohne dass irgendetwas darauf hinwies. Ein Produktions-Bundle
+  ohne Version meldet sich jetzt in der Konsole statt stumm zu bleiben.
+- **Der Abgleich lief nur alle 30 Minuten.** Wer die Seite lange offen hält,
+  erfuhr von einem Deploy entsprechend spät. Beim Zurückkommen auf den Tab wird
+  jetzt sofort nachgefragt.
+
+---
+
+## [1.263.0] - 2026-08-21
+
+### Behoben
+- **Mehrere Bilder lagen übereinander statt nebeneinander.** Die Bühne der
+  Sprachansicht holte sich genau EIN Element — das neueste. Jedes weitere Bild
+  lag zwar vor, aber unsichtbar darunter: wer beide Bildschirme aufnahm, sah
+  trotzdem nur einen, ohne jede Meldung. Jetzt stehen bis zu vier Anzeigen
+  nebeneinander, jede einzeln schliessbar, und die Bühne macht dafür von selbst
+  auf. Sind mehr da, wird das gesagt statt stillschweigend abgeschnitten.
+- **Screenshots hiessen alle gleich.** Beide Bildschirme trugen die Beschriftung
+  „Bildschirm des Nutzers" — nebeneinander nicht auseinanderzuhalten. Jetzt
+  stehen Nummer und Bildgrösse darunter.
+
+---
+
+## [1.262.0] - 2026-08-21
+
+### Neu
+- **Gespräch und Aufgaben lassen sich wegklappen — die Anzeige in der Mitte wird
+  gross.** In der Sprachansicht liegt der Screenshot des Nutzer-Bildschirms
+  zwischen zwei Spalten und war auf 28rem Breite festgenagelt; erkennen liess
+  sich darauf wenig. Beide Seitenspalten haben jetzt einen Knopf zum Einklappen,
+  übrig bleibt eine schmale Leiste mit Beschriftung und Zähler. Die Mitte nimmt
+  den frei gewordenen Platz, die Bühne löst dabei ihre Breiten- und
+  Höhenbegrenzung. Die Einstellung wird gemerkt.
+
+---
+
+## [1.261.0] - 2026-08-21
+
+### Behoben
+- **Klicks auf dem zweiten Monitor landeten auf dem ersten.** Die Bildschirm-
+  Auswahl galt bisher nur für die Aufnahme; ein Klick benutzte den Versatz des
+  zuletzt aufgenommenen Bildschirms. Wer also nach dem Screenshot von Nummer 2
+  klickte, traf richtig — dazwischen ein Blick auf Nummer 1, und derselbe Klick
+  ging daneben. `click`, `move`, `scroll` und `drag` nehmen die Bildschirmnummer
+  jetzt selbst entgegen und rechnen mit deren Ursprung.
+- **Geratene Koordinaten.** Das Modell setzte Klicks auf Beispielwerte (x=123,
+  y=456), ohne vorher hingesehen zu haben. Die Werkzeugbeschreibung sagt jetzt
+  ausdrücklich: Koordinaten nur aus `find` oder aus einem unmittelbar davor
+  gemachten Screenshot — niemals raten.
+- **„Die Auswertung kam nicht zurück" verschwieg den Grund.** Die Bildauswertung
+  scheiterte in Wahrheit an einem erschöpften Modell-Kontingent; die Sprachfront
+  warf diese Begründung weg und liess den Nutzer beim Bild suchen. Der Grund wird
+  jetzt im Wortlaut weitergereicht und vorgelesen.
+
+---
+
+## [1.260.0] - 2026-08-21
+
+### Neu
+- **Screenshots von jedem Bildschirm, nicht nur vom ersten.** Die Bridge nahm
+  ausschliesslich den Hauptbildschirm auf — ein zweiter Monitor war unerreichbar.
+  Jetzt lässt sich sagen „geh auf Bildschirm 2"; Nummer 1 ist immer der
+  Hauptbildschirm, also die Zählweise, die man am Telefon benutzt.
+- **Der Agent weiss jetzt, wie gross das Bild ist.** Die Bridge rechnete
+  `image_size` seit jeher aus und gab es zurück — im Orchestrator und im Agenten
+  kam es **nirgends** vor. Das Modell nannte Klickkoordinaten, ohne die Bildgrösse
+  zu kennen. Jede Antwort auf einen Screenshot nennt sie jetzt, samt „(0,0) ist
+  oben links" und, bei mehreren Monitoren, welche es gibt.
+- In **allen drei Laufzeiten** — Sprachfront, MCP (Claude Code/Codex) und
+  Custom-LLM. Die Bildschirmliste erscheint nur, wenn es wirklich mehrere gibt;
+  bei einem Monitor wäre sie nur Rauschen im Kontext.
+
+### Behoben
+- **Klicks auf dem zweiten Monitor landeten auf dem ersten.** Ein Nebenbildschirm
+  beginnt nicht bei 0/0 — geklickt wird aber über alle Monitore hinweg in einem
+  gemeinsamen Raum. Der Ursprung des aufgenommenen Bildschirms wird jetzt
+  mitgeführt und auf jede Klick-, Bewegungs- und Scroll-Koordinate gerechnet;
+  der Rückweg zieht ihn wieder ab, damit beide Richtungen Umkehrungen bleiben.
+
+---
+
+## [1.259.0] - 2026-08-21
+
+### Behoben
+- **„Abbrechen" brach nichts ab — und meldete trotzdem Erfolg.** Gemeldet mit
+  vollständigem Gesprächsprotokoll: dreimal „abbrechen", dreimal „Beide Aufgaben
+  wurden gestoppt" — und die Aufgabe lief Stunden später immer noch.
+- Vier Schichten desselben Problems, alle nachgewiesen:
+  1. Die Sprachfront meldete Erfolg, sobald ein Redis-`publish` ohne Fehler
+     zurückkam. Ein publish gelingt aber auch, wenn **niemand zuhört**.
+  2. Sie kannte nur die Aufgaben aus **dieser** Sitzung. Das Gespräch war
+     fortgesetzt, die Menge also leer.
+  3. Der Abbruch wies **laufende** Aufgaben grundsätzlich mit einem Fehler ab —
+     es gab keinen Weg, eine laufende Aufgabe zu stoppen.
+  4. Der Kanal `task:cancel` wurde seit jeher besendet und hatte **keinen
+     einzigen Zuhörer**.
+- Der Agent hört jetzt auf diesem Kanal und bricht die benannte Aufgabe wirklich
+  ab. Der Zuhörer läuft neben der Warteschlange — in derselben Schleife käme er
+  erst dran, wenn gerade nichts verarbeitet wird, also genau dann nicht, wenn man
+  ihn braucht.
+- Die Sprachfront holt jetzt **alle** offenen Aufgaben des Agenten, bricht sie ab
+  und **sieht danach noch einmal nach**. Überlebt etwas, sagt sie das — mit Namen
+  — statt Erfolg zu behaupten.
+
+### Neu
+- **Manueller Stopp für laufende Aufgaben.** In der Aufgabenliste hat eine
+  laufende Aufgabe jetzt einen roten „Stoppen"-Knopf, der **ohne Überfahren**
+  sichtbar ist — wer etwas anhalten will, sucht den Knopf sofort. Wartende
+  Aufgaben behalten ihr dezentes „Abbrechen": eine wartende nimmt man aus der
+  Schlange, eine laufende unterbricht man.
+
+---
+
+## [1.258.0] - 2026-08-21
+
+### Neu
+- **Ordner lassen sich als ZIP herunterladen** — an beiden Stellen, an denen es
+  gewünscht war: als **Export**-Knopf auf jeder App-Karte (nimmt das
+  Verzeichnis dieser App mit) und als Download-Symbol an jedem Ordner im
+  Dateibaum (in beiden Dateibäumen).
+- Entpackt entsteht wieder ein Ordner, keine Dateiwolke im Download-Verzeichnis.
+- **`node_modules`, `.git`, `__pycache__`, `.venv` und Ähnliches bleiben
+  draußen.** In einem Projektordner machen die leicht das Tausendfache des
+  eigentlichen Codes aus, und alles darin ist aus dem Rest wiederherstellbar.
+  Der Knopf sagt das auch dazu. Ist ein Ordner trotzdem zu groß, kommt eine
+  lesbare Meldung statt eines Zeitablaufs.
+- Der Pfad wird gepackt, ohne im Container ein `zip` vorauszusetzen — ein
+  Export, der je nach Abbild funktioniert oder nicht, ist keiner.
+- Beide Oberflächen benutzen **denselben Endpunkt** mit denselben Wachen wie die
+  übrigen Dateiwege (Anmeldung, Eigentümer, Pfad-Riegel).
+
+### Behoben
+- **Laufende Apps ohne bekannten Pfad.** Wurde eine App gestartet, ohne dass ihre
+  compose-Datei beim Durchsuchen gefunden wurde, stand kein Pfad an ihr — damit
+  ließ sich das Verzeichnis weder anzeigen noch exportieren. Docker trägt den
+  Arbeitspfad als Label mit; genau der wird jetzt als Rückfallebene benutzt.
+
+---
+
+## [1.257.0] - 2026-08-21
+
+### Behoben
+- **Die Stimme las Markdown mit vor** — „Punkte zur Performance: n n- Echtzeit-Fähigkeit\*\*:"
+  — und liess angekündigte Aufzählungen manchmal ganz weg („Hier sind die
+  Hauptoptionen und was du beachten solltest:" … und dann nichts).
+- **Es war kein Escape-Fehler in unserem Code.** Zwei Vermutungen wurden geprüft
+  und verworfen: die Textsäuberung entfernt keine Backslashes, und weder
+  Erinnerungen noch Gesprächsverlauf enthalten literale `\n`-Folgen. Der
+  gespeicherte Text enthält weder Backslash noch Zeilenumbruch — das „n" steht
+  schon so in dem, was die Engine zurückgibt.
+- Es ist eine Formatierungsgewohnheit des Modells: fürs Auge geschrieben, obwohl
+  es fürs Ohr ist. Die Anweisung dagegen steht jetzt als **erste Regel** im
+  Sprach-Systemprompt, nennt die verbotenen Zeichen beim Namen, sagt warum
+  („werden LAUT MITGESPROCHEN") und bietet den Ersatz an („erstens … zweitens …").
+- Der abgebrochene Doppelpunkt ist dieselbe Ursache und ausdrücklich mit geregelt.
+
+### Hinweis
+- Bei einem Sprache-zu-Sprache-Modell gibt es dagegen **keinen mechanischen
+  Hebel** — gesprochen ist gesprochen, die Audioausgabe lässt sich nicht
+  nachträglich säubern. Das Transkript bleibt deshalb bewusst ungeschönt: es
+  soll zeigen, was wirklich gesagt wurde, statt den Fehler unsichtbar zu machen.
+
+---
+
+## [1.256.0] - 2026-08-21
+
+### Behoben
+- **Im Sprachmodus wurde mitten im Satz ein „n" vorgelesen.** Gemeldet mit
+  Bildschirmfoto: „Hier sind ein paar Treffer zu Inside AI auf YouTube: **n n1.**
+  InsideAI\*\* – …". Zwei Fehler in einem Satz — ein zerbrochener Zeilenumbruch
+  und übrig gebliebenes Markdown.
+- Der Hergang ist lehrreich, weil die Reparatur schon einmal da war: eine
+  Säuberung wandelt literale `\n`-Folgen in echte Umbrüche zurück (ihr Kommentar
+  beschreibt genau dieses Symptom) — aber das Werkzeug-Ergebnis wird danach ein
+  **zweites Mal** kodiert, und dabei wird aus dem echten Umbruch wieder das
+  sichtbare Zeichenpaar. Die Sprach-Engine reicht es wörtlich ans Modell, das den
+  Backslash nicht sprechen kann; übrig bleibt das „n".
+- Für gesprochenen Text trägt ein Umbruch ohnehin keine Bedeutung: ein Absatz
+  wird jetzt zur Sprechpause, eine Zeile zum Leerzeichen. Steht davor schon ein
+  Satzzeichen, kommt kein zweiter Punkt dazu.
+- **Markdown wird nicht mehr mitgesprochen** — Sternchen, Backticks,
+  Überschriften-Rauten verschwinden, der Text bleibt. Aus `[Doku](…)` wird
+  „Doku", nicht die Adresse.
+- Der Eingriff bleibt auf den Weg beschränkt, der tatsächlich doppelt kodiert:
+  eingespielte Zwischenmeldungen gehen direkt an die Engine, dort gab es das
+  Problem nie.
+
+---
+
+## [1.255.0] - 2026-08-19
+
+### Behoben
+- **Ein delegierter Auftrag lief unter dem Modell des Auftraggebers, nicht des
+  Zielagenten.** Jedes Delegier-Werkzeug hängte `model: DEFAULT_MODEL` an — das
+  Modell dessen, der delegiert. Ein Kollege arbeitete damit unter einem Modell,
+  das er sich nie ausgesucht hat.
+- Zweite, unsichtbare Folge: der **Model-Router des Zielagenten kam nie zum
+  Zug**. Der Orchestrator fragt ihn ausdrücklich nur, wenn *kein* Modell mitkam.
+  Bei Delegation war er damit strukturell wirkungslos — unabhängig davon, ob er
+  eingeschaltet war.
+- Jetzt wird bei `create_task`, `create_task_batch`, `delegate_and_wait` und
+  `create_schedule` **kein Modell mehr mitgeschickt**. Der Orchestrator fällt
+  damit auf genau das zurück, was dokumentiert ist: „we leave it None so the
+  agent falls back to its own default". Ein ausdrücklich gewähltes Modell (etwa
+  beim Trigger) geht unverändert durch.
+- Der Custom-LLM-Weg machte es ohnehin schon richtig — die Lücke bestand nur im
+  MCP-Weg, also bei Claude Code und Codex. Wieder eine Paritätslücke zwischen den
+  Laufzeiten.
+
+---
+
+## [1.254.0] - 2026-08-19
+
+### Behoben
+- **Der Model-Router war eingeschaltet und wirkungslos.** Auf die Frage „funktioniert
+  eigentlich der model router?" nachgesehen: er war bei genau einem Agenten aktiv, und
+  seine Regeln waren drei leere Zeichenketten.
+- Ursache war die Oberfläche: die Vorgaben standen nur als **Platzhalter** in den
+  Feldern. Wer den Router einschaltete, sah Modellnamen und durfte annehmen, sie seien
+  gesetzt — gespeichert wurde der leere String.
+- `route_model` gab diese leeren Regeln zurück, obwohl der eigene Docstring „or None if
+  the resolved tier has no rule configured" verspricht. Folge: **146 Aufträge mit leerem
+  Modellnamen** in sieben Tagen. Aufgefallen ist es nie, weil der Agent am Ende auf seine
+  Vorgabe zurückfiel — der Router entschied, und die Entscheidung war jedes Mal nichts.
+- Leere Regeln zählen jetzt als „nicht konfiguriert" und fallen auf die eingebauten
+  Vorgaben zurück.
+
+- **„Tendenz: schlechter" stand auf vier Aufgaben.** In der Entwicklungs-Karte wurden
+  212 junge gegen **vier** alte Aufgaben verglichen — die alle gescheitert waren und
+  deshalb gar nicht erst nachgearbeitet werden konnten. Die Fehlerquote war von 100 % auf
+  7,1 % gefallen, das Urteil lautete trotzdem „schlechter".
+- Der Vergleich verlangt jetzt eine Mindestmenge **je Hälfte**; sonst steht dort „zu
+  wenig Daten" statt eines Urteils.
+
+### Geändert
+- **Der Model-Router wird per Auswahlliste gepflegt statt per Freitext.** Angeboten
+  werden nur vom Administrator freigegebene Modelle — dieselbe Quelle wie beim Anlegen
+  eines Agenten. Die Vorgaben sind echte Werte, keine Platzhalter mehr, und eine Auswahl
+  wird sofort gespeichert.
+- Ein bereits hinterlegtes, inzwischen gesperrtes Modell bleibt sichtbar und als „nicht
+  freigegeben" markiert, statt die Auswahl stumm auf etwas anderes springen zu lassen.
+
+---
+
+## [1.253.0] - 2026-08-19
+
+### Geändert
+- **Agenten kennen ihr Arbeitsbudget und enden würdig, statt abgeschnitten zu
+  werden.** Anlass: „die agents machen nicht mehr sauber mit". Die eigenen
+  Selbstbewertungen der Anlage zeigen das Muster — Note 5 bei 1–10 Schritten,
+  Note 3 bei 27–75. Je länger ein Lauf ohne Korrektur, desto schlechter das
+  Ergebnis.
+- Naheliegend wäre, die maximale Schrittzahl zu senken. Beide Anbieter raten
+  davon ab: Anthropic unterscheidet einen Deckel, „the model is not aware of",
+  von einem Budget, mit dem es sich einteilt und „gracefully" endet; OpenAI fängt
+  das Limit ab und bittet um Eingrenzung. Ein kleinerer Deckel schneidet früher
+  ab, statt besser zu werden.
+- Der Custom-LLM-Harness sagt dem Agenten jetzt gegen Ende, wie viele Schritte
+  ihm bleiben. Ist das Budget auf, endete die Schleife bisher **still** — jetzt
+  folgt ein letzter Schritt ohne Werkzeuge, in dem der Agent zusammenfasst, was
+  fertig ist, was offen bleibt und was der nächste Schritt wäre.
+- **Rückfragen hängen nicht mehr am Bauchgefühl, sondern an der
+  Umkehrbarkeit.** Anthropics Kriterium wörtlich übernommen: leicht rückgängig
+  zu machen → weitermachen mit einer vernünftigen Annahme; schwer rückgängig
+  (an Kollegen delegieren, Nachricht senden, Termin anlegen, veröffentlichen,
+  löschen) → vorher fragen, wenn der Bezug nicht in diesem Gespräch genannt oder
+  frisch nachgeschlagen wurde.
+- Der Agent ist ein schlechter Richter über seine eigene Sicherheit: am Vortag
+  schrieb er „am wahrscheinlichsten" und schickte trotzdem drei Kollegen auf das
+  falsche Projekt.
+
+### Neu
+- **Jede Laufzeit bekommt den Rat ihres eigenen Anbieters.** Der übrige
+  Anleitungstext bleibt bewusst für alle gleich; unterschiedlich ist nur, wie die
+  Laufzeit ihre Schleife führt:
+  - **Claude Code** — Selbstprüfung auf Takt statt erst am Ende (Anthropic
+    empfiehlt genau das für lange Läufe)
+  - **Codex/OpenAI** — bei zu grosser Aufgabe sauber schneiden und vorschlagen,
+    wie man sie teilt, statt mittendrin abzubrechen
+  - **Custom-LLM** — die Budget-Meldungen unseres Harness sind angekündigt,
+    damit sie nicht aus dem Nichts kommen
+
+---
+
+## [1.252.1] - 2026-08-19
+
+### Behoben
+- **Das Reglerfeld im Sprachmodus war zu schmal.** Der Griff des
+  Lautstärkereglers stand rechts über den Rahmen hinaus. Das Feld nutzt jetzt die
+  verfügbare Breite (bis zu einer sinnvollen Obergrenze), und die Regler dürfen
+  unter ihre Inhaltsbreite schrumpfen — genau das fehlte und liess den Griff
+  herausragen.
+
+---
+
+## [1.252.0] - 2026-08-19
+
+### Neu
+- **„Neu verbinden" statt nur „Auflegen".** Bei einem Sprachfehler blieb bisher
+  nur das Auflegen — auch dann, wenn ein zweiter Anlauf gereicht hätte. Jetzt
+  steht ein Knopf unter der Meldung, und darunter der Hinweis, dass das Gespräch
+  fortgesetzt und nicht neu begonnen wird.
+- Der Wiederaufbau ist derselbe wie beim automatischen: er lädt das bisherige
+  Gespräch nach, der Agent redet weiter statt neu zu begrüßen.
+- Bewusst **kein** automatischer Neuversuch bei Eingabefehlern der Engine
+  (`Invalid input request`): eine Eingabeprüfung zu wiederholen bringt denselben
+  Fehler und verdeckt die eigentliche Ursache. Zeitüberschreitungen und
+  Drosselungen bauen weiterhin von selbst neu auf.
+
+### Geändert
+- **Lautstärke- und Mikrofonregler sind jetzt beschriftet.** Vorher standen zwei
+  gleich aussehende graue Regler untereinander, unterschieden nur durch ein
+  kleines Symbol. Jetzt in einem gemeinsamen Feld mit Namen, farbigen Symbolen
+  und einem Satz, was die aktuelle Mikrofon-Einstellung bewirkt.
+
+### Behoben
+- **Diagnose für „Invalid input request".** Der Fehler trat zweimal auf, und im
+  Log stand nur die Meldung — nicht, worauf sie folgte. Das zuletzt gesendete
+  Ereignis (Art und Grösse, Audio ausgenommen) wird jetzt mitgeschrieben und in
+  der Fehlermeldung genannt. Die Ursache selbst ist damit noch nicht gefunden,
+  aber beim nächsten Mal nachvollziehbar.
+
+---
+
+## [1.251.0] - 2026-08-19
+
+### Neu
+- **Mikrofon-Empfindlichkeit im Sprachmodus, einstellbar mitten im Gespräch.**
+  Gemeldet: „speech reagiert zu schnell auf Töne" — man konnte es nicht
+  einstellen.
+- Ursache: die Tonschleife schickte **jeden** Frame an die Engine, egal wie
+  leise. Die Sprecherwechsel-Erkennung sitzt bei Nova Sonic im Modell; sie bekam
+  also jedes Umgebungsgeräusch zu hören und entschied selbst, darauf zu
+  reagieren. Die beiden Schwellen standen zudem fest im Quelltext.
+- Neuer Regler in der Gesprächsansicht. Er wirkt **sofort, ohne Neuaufbau der
+  Sitzung** — das Rauschtor ist unser Code in der Tonkette, kein Parameter der
+  Engine. Ein Neuaufbau wäre hier eine Unterbrechung ohne Gegenwert.
+- Unterhalb der Schwelle wird **Stille gesendet statt gar nichts**: der Tonstrom
+  muss lückenlos bleiben, sonst gerät die Erkennung der Engine aus dem Takt.
+- Ein Nachlauf verhindert, dass leise Endsilben abgeschnitten werden. Auf 0
+  gestellt ist das Tor aus und alles verhält sich wie vorher.
+- Das Unterbrechen (Barge-in) folgt derselben Einstellung — sonst hätte der
+  Regler nur das Zuhören beeinflusst.
+- Der Wert liegt **lokal am Gerät**, nicht am Agenten: Mikrofon und Raum gehören
+  zum Arbeitsplatz, derselbe Agent braucht anderswo einen anderen Wert.
+
+---
+
+## [1.250.2] - 2026-08-19
+
+### Geändert
+- **Reasoning-Menü mit ChatGPT-naher Benennung.** Die Denktiefe-Stufen heißen
+  jetzt Auto / Minimal / Low / Medium / High / Extra High statt der deutschen
+  Prosa-Labels. Die internen Werte (off/low/medium/high/max) bleiben unverändert;
+  „Extra High" wird serverseitig zu `xhigh` bzw. auf `high` geclampt.
+
+---
+
+## [1.250.0] - 2026-08-19
+
+### Hinzugefügt
+- **Token-Verbrauch pro Nachricht im Chat sichtbar — inkl. Feinaufschlüsselung.**
+  Die Meta-Zeile unter einer Antwort zeigt jetzt neben Dauer/Kosten/Ein-/Ausgabe-
+  Tokens zusätzlich `reasoning`-Tokens (das „Nachdenken"), `cached`-Tokens
+  (Prompt-Cache-Treffer) und `cache-write`-Tokens, sofern der Provider sie
+  meldet. Damit lässt sich direkt ablesen, ob eine höhere Reasoning-Stufe den
+  Verbrauch verändert. Erfasst über **alle Harnesse**: Custom LLM / OpenAI
+  (Responses- und Chat-Completions-API), Claude (Anthropic-Cache-Tokens),
+  Codex und GPT. Felder werden nur angezeigt, wenn sie tatsächlich gemeldet
+  wurden (keine leeren Nullwerte). Kein Schema-Change — die Werte reisen im
+  vorhandenen Nachrichten-Meta.
+
+---
+
+## [1.249.0] - 2026-08-19
+
+### Hinzugefügt (M365)
+- **Transkript-zu-Aufgaben (Meeting-Aufgaben-Agent).** Liest pro User die
+  Teams-Transkripte der eigenen Meetings über Microsoft Graph (delegiert,
+  nicht App-only), extrahiert die Aufgaben des angemeldeten Users und legt sie
+  als To-dos unter „Meine Aufgaben" an — bewusst keinem Plan zugeordnet, der
+  User sortiert selbst (Human in the loop). Zwei neue delegierte Graph-Scopes
+  optional wählbar (`OnlineMeetings.Read`, `OnlineMeetingTranscript.Read.All`,
+  Admin-Consent erforderlich); ohne Freigabe ändert sich nichts. Der Agent
+  liest nur Transkripte, die der eigene User in Teams selbst öffnen könnte;
+  fremde Meetings sind serverseitig unerreichbar, Aufgaben anderer Personen
+  werden nie angelegt, Duplikatschutz über die transcript_id.
+
+---
+
+## [1.248.0] - 2026-08-19
+
+### Hinzugefügt (M365-Mail)
+- **Mail-Ordner und Posteingangsregeln nativ über MS Graph.** Bisher konnte ein
+  Agent Mail nur in feste Standardordner (inbox/sent/…) verschieben — ein
+  eigener Ordner fiel still auf „inbox" zurück; Ordner auflisten/anlegen oder
+  Regeln erstellen war nur umständlich über die Desktop-Bridge möglich. Neu:
+  - `ms_list_mail_folders` (read-only) — listet alle Ordner inkl. eigener
+    Unterordner mit ID und Ungelesen-Zähler.
+  - `ms_create_mail_folder` (write) — legt einen Ordner an, optional als
+    Unterordner.
+  - `ms_create_mail_rule` / `ms_list_mail_rules` — Posteingangsregeln, die
+    eintreffende Mail automatisch einsortieren (Bedingung Betreff/Absender →
+    in Ordner verschieben, optional als gelesen markieren).
+  - `ms_move_email` akzeptiert jetzt zusätzlich eine Ordner-ID (aus
+    `ms_list_mail_folders`) als Ziel, nicht nur die festen Standardordner.
+
+  Alles read/write-korrekt gegatet und mit dem bereits vorhandenen
+  `Mail.ReadWrite`-Scope — keine neue Zustimmung nötig.
+
+---
+
+## [1.247.0] - 2026-08-19
+
+### Geändert
+- **Gespräche werden vom Modell zuverlässiger benannt.** Die Anweisung zum
+  automatischen Umbenennen war weich formuliert („sobald klar ist, worum es
+  geht"), sodass viele Sprachgespräche beim Standardnamen blieben. Sie ist jetzt
+  verbindlich: spätestens nach der ersten inhaltlichen Nutzeräußerung wird genau
+  einmal ein kurzer thematischer Titel gesetzt; der Standardname bleibt nicht
+  stehen.
+- **Speech-Ansicht: Feinschliff an Verlauf-Ausblendung und Button-Dock** —
+  weicherer, höher ansetzender Fade und ruhigeres Dock, damit der Übergang vom
+  Verlauf zum „Gespräch weiterführen"-Button gleichmäßiger wirkt.
+
+---
+
+## [1.246.0] - 2026-08-19
+
+### Neu
+- **Die gewählte Denktiefe sprang bei jedem Chat-Wechsel auf „Auto" zurück.** Der
+  Selector im Chat lebte nur im Oberflächen-Zustand – Seite neu geladen, Gespräch
+  gewechselt oder Chat aus der Übersicht geöffnet, und die Wahl war weg. Jetzt
+  merkt sich **jedes Gespräch seine eigene Denktiefe** (gespeichert wie Titel und
+  Pin), der Knopf zeigt das aktive Level auch nach einem Neuladen. Ein neuer Chat
+  übernimmt die zuletzt gewählte Stufe; „Standard" wählen stellt bewusst auf Auto
+  zurück. Abzweig und Fortsetzung erben die Stufe des Ursprungsgesprächs.
+- **Neue Stufe „Maximal nachdenken".** Bei GPT-/Codex-Modellen wird sie als
+  `xhigh` durchgereicht; Modelle, die das nicht kennen (o-Serie, Fremd-Endpunkte,
+  Claude), erhalten sicher die höchste Stufe, die sie akzeptieren – statt eines
+  API-Fehlers bei jeder Nachricht.
+
+### Behoben
+- Ein frisch gewähltes Level wurde ohne weiteren Tastendruck **veraltet
+  mitgesendet** – die Sende-Funktion sah den neuen Wert nicht (fehlende
+  React-Abhängigkeit). Die Wahl gilt jetzt sofort für die nächste Nachricht.
+- Die Level-Whitelist im Sende-Pfad war ein eigenes, hartkodiertes Tuple und
+  konnte von der Oberfläche abweichen. Beide Prüfstellen (Senden + Speichern)
+  nutzen jetzt dieselbe Konstante.
+
+---
+
+## [1.245.0] - 2026-08-19
+
+### Geändert (Speech-Ansicht)
+- **Gesprächsverlauf in der Speech-Ansicht sichtbar.** Bisher zeigte die
+  Speech-Ansicht nur einen Startknopf, aber nicht den bisherigen Verlauf des
+  ausgewählten Gesprächs. Der Verlauf (dieselbe Quelle wie der Text-Chat) wird
+  jetzt oben angezeigt und blendet nach unten aus; darüber liegt das Button-Dock
+  mit „Gespräch beginnen" (neu) bzw. „Gespräch weiterführen" (ausgewähltes
+  Gespräch) / „Gespräch öffnen" (aktive Sitzung) sowie Status, Aufklappen und
+  Beenden.
+- **Gesprächstitel wird angezeigt und folgt dem Modell.** Der Titel des
+  ausgewählten Gesprächs steht jetzt über dem Verlauf; die Gesprächsliste in der
+  Speech-Ansicht aktualisiert sich bei aktiver Sitzung periodisch, sodass ein per
+  `rename_conversation` vom Modell gesetzter Name dort erscheint.
+
+---
+
+## [1.244.0] - 2026-08-19
+
+### Behoben
+- **`get_delegated_tasks` (Voice) war auf die aktuelle Sitzung beschränkt.** Das
+  Werkzeug las nur den In-Memory-Zustand der laufenden Sprachsitzung; eine neue
+  Sitzung startete leer und konnte weder eine zuvor delegierte Aufgabe noch
+  deren Ergebnis anzeigen — die Rückmeldung einer abgeschlossenen Delegation
+  ging so verloren. Es fragt jetzt zusätzlich die zuletzt für diesen Agenten
+  gelaufenen, vom Nutzer angestoßenen Aufgaben aus der Datenbank ab (sitzungs-
+  übergreifend, inkl. Ergebnis). Automatische Läufe (Zeitplan/Proaktiv, Titel in
+  eckigen Klammern) sind ausgeblendet; die Abfrage ist auf den Agenten der
+  Sitzung beschränkt (Mandantentrennung).
+
+---
+
+## [1.243.1] - 2026-08-19
+
+### Behoben
+- **DB-Verbindungs-Timeouts unter schreibintensiver Hintergrundlast.** Der
+  Connection-Pool war unbegrenzt (`max_overflow=-1`), wodurch Lastspitzen sehr
+  viele neue Verbindungen gleichzeitig aufbauen konnten; auf ressourcen-
+  begrenzten Hosts lief der Aufbau neuer Verbindungen dann in ein Timeout, was
+  Hintergrund-Jobs und einzelne Requests scheitern ließ. Der Pool ist jetzt
+  begrenzt (`pool_size=10`, `max_overflow=20`), sodass Spitzen kurz in der
+  Pool-Queue warten statt die Datenbank mit Verbindungsaufbauten zu überlasten;
+  Verbindungen werden seltener recycelt (5 → 15 min), was die Anzahl neu
+  aufzubauender Verbindungen weiter senkt.
+- **Verschluckte Fehlermeldung im nächtlichen Reflection-Job.** Der Fehler wurde
+  mit `%s` geloggt; bei einem `TimeoutError` (leerer `str()`) stand nur
+  „Reflection error: " ohne Ursache im Log. Jetzt mit Typ (`%r`) und Traceback,
+  damit solche Fälle diagnostizierbar sind.
+
+---
+
+## [1.243.0] - 2026-08-18
+
+### Geändert (UI/UX — Redesign, Iteration 1)
+- **Moderne Buttons statt grauer System-Knöpfe.** Neuer gefüllter Pill-Button
+  (Primäraktion in Akzentblau, Sekundär dezent) — der Hauptgrund, warum die App
+  „alt" wirkte. Angewendet im Hauptfenster und Status-Fenster.
+- **Hauptfenster**: Höhe an den Inhalt angepasst (560 → 480) — die große leere
+  Fläche unten ist weg.
+- **Status-Fenster**: Überlauf behoben — mit allen Fähigkeiten + Ordnerpfad lief
+  die unterste Zeile aus der Karte; Karte höher, lange Pfade in der Mitte
+  gekürzt.
+- **Voice-Bar**: Text lief unter die Buttons — Bar verbreitert (760 → 880) und
+  Textbreite begrenzt, keine Überlappung mehr.
+
+### Verbessert
+- **Agenten finden lokale Dateien jetzt über die Shell.** Die Beschreibung von
+  `computer_shell` stellt jetzt klar, dass der Befehl auf dem Rechner des
+  Nutzers in den freigegebenen Ordnern läuft — bei Fragen nach lokalen
+  Dateien/Ordnern nutzt der Agent `ls`/`find`/`cat` statt Screenshot/Finder und
+  weist bei fehlender Freigabe auf die Fähigkeit „Shell-Befehle" und den
+  Ordner-Zugriff hin.
+
+---
+
+## [1.242.0] - 2026-08-18
+
+### Hinzugefügt
+- **Per Sprache eine Demonstration aufzeichnen und daraus ein Skill bauen.**
+  Neues Voice-Werkzeug `learn_skill` (action=start/finish): Bei `start` zeichnet
+  die Bridge Klicks, Tastatureingaben und Screenshots des Nutzers auf, bei
+  `finish` wird die Aufzeichnung beendet und aus den Schritten und Bildern
+  automatisch ein Skill erzeugt (als Entwurf, aktiv erst nach Freigabe). Nutzt
+  denselben Aufzeichnungs- und Skill-Bau-Weg wie die HTTP-Oberfläche
+  (`replay_skill_service`) — kein zweiter, abweichender Pfad. Setzt die
+  Bridge-Berechtigung „Eingaben mitschneiden" voraus. Schließt die Lücke, dass
+  der Replay-Modus bisher nur über die Web-UI, nicht per Voice erreichbar war
+  (Harness-Parität).
+
+---
+
+## [1.241.0] - 2026-08-18
+
+### Hinzugefügt
+- **Browser im Hintergrund betreiben (wie ego lite).** Die Browser-Steuerung
+  startet jetzt optional headless — ohne sichtbares Fenster, der Agent bedient
+  die Seite über den DOM (Navigieren, Klicken per Element/Text, Formulare),
+  ohne den Vordergrund des Nutzers zu kapern. Neuer Schalter „Browser
+  unsichtbar im Hintergrund betreiben" im Berechtigungs-Dialog (macOS +
+  Windows), opt-in. **Standard bleibt sichtbar** — eine eingeloggte Sitzung
+  unsichtbar laufen zu lassen soll eine bewusste Entscheidung sein. Greift beim
+  nächsten Browser-Start; das eigene, private Profil (kein Cookie-Zugriff aufs
+  Nutzerprofil) bleibt unverändert.
+
+---
+
+## [1.240.3] - 2026-08-18
+
+### Behoben
+- **Klicks landeten auf Retina-Displays systematisch daneben.** Der Screenshot
+  wird auf 1280 px Breite herunterskaliert (damit das Modell keine Koordinaten
+  >1280 halluziniert), aber der Klick ging mit denselben Koordinaten an
+  pyautogui, das in logischen Punkten (z. B. 1440) arbeitet — also lag jeder
+  Klick um den Faktor logisch/1280 daneben. Der Dispatcher merkt sich jetzt den
+  Maßstab des letzten Screenshots und rechnet jede Klick-, Scroll-, Bewegungs-
+  und Ziehkoordinate aus dem Bildraum in den Klickraum zurück; `find_element`
+  liefert seine Treffer im selben Bildraum, damit beide Klickquellen konsistent
+  sind. Ohne vorherigen Screenshot bleibt es beim alten 1:1-Verhalten.
+
+---
+
+## [1.240.2] - 2026-08-18
+
+### Behoben (Build/Signierung)
+- **Notarisierung weiterhin „invalid" trotz korrekter Signatur — Ursache: der
+  DMG-Staging-Schritt.** `cp -r` zerstörte die Code-Signatur beim Kopieren der
+  fertig signierten App: BSD-`cp` mangelt die Symlink-Struktur von
+  `Python.framework`, wodurch die gesiegelte Signatur ungültig wird —
+  `codesign --verify` bestand VOR dem Kopieren noch. Ersetzt durch `ditto`
+  (Apples Werkzeug für signierte Bundles) plus eine erneute Verify-Prüfung
+  NACH dem Kopieren, damit ein Signaturbruch sofort im Build auffällt statt
+  erst Minuten später bei Apple.
+
+---
+
+## [1.240.1] - 2026-08-18
+
+### Behoben (Build/Signierung)
+- **macOS-Notarisierung schlug fehl: „signature of the binary is invalid".**
+  Der Build signierte die App mit `codesign --deep` — das signiert von außen
+  nach innen und lässt die eingebetteten Python-Binaries (Framework, dylibs,
+  `.so`) ungültig bzw. ohne Hardened Runtime zurück, was Apples Notardienst
+  ablehnt. Jetzt wird **jede eingebettete Mach-O-Datei einzeln von innen nach
+  außen** signiert, jeweils mit `--options runtime` und sicherem Zeitstempel
+  (`--timestamp`); das Bundle zuletzt mit den Entitlements. Damit wird die App
+  signiert **und** notarisiert ausgeliefert — kein Rechtsklick→Öffnen mehr beim
+  ersten Start, und die TCC-Freigaben bleiben über Updates stabil.
+
+---
+
+## [1.240.0] - 2026-08-18
+
+### Geändert
+- **Die Bridge ist jetzt eine App mit Hauptfenster, kein Tray-Anhängsel.**
+  Beim Start öffnet sich ein Hauptfenster mit Live-Verbindungsstatus, Server-,
+  Session- und Freigabe-Übersicht, Verbinden/Trennen und Schnellzugriff auf
+  Voice, Berechtigungen, Einstellungen und Web-UI. macOS: natives Fenster im
+  Stil der bestehenden Karten-Dialoge, alle 3 s live aktualisiert; Windows:
+  Hauptfenster mit Tabs (Übersicht/Voice), Doppelklick aufs Tray-Symbol
+  öffnet es. Das Tray bleibt für den Hintergrundbetrieb — Fenster schließen
+  beendet die Verbindung nicht. Verbinden/Anmelden laufen über dieselben
+  Callbacks wie die Tray-Menüpunkte (eine Verbindungslogik, keine zweite).
+
+---
+
+## [1.239.0] - 2026-08-18
+
+### Sicherheit
+- **TLS-Verifikation der Bridge ist jetzt AN — mit Zertifikats-Pinning wie bei
+  SSH.** Bisher lief jede Verbindung (Login samt Passwort, Token, alle Befehle)
+  mit `CERT_NONE` und war gegen Mitleser ungeschützt. Jetzt: öffentliche
+  Zertifikate über die System-CA; selbstsignierte werden beim Erstkontakt
+  gepinnt und danach im Handshake verlangt, BEVOR ein Byte Nutzdaten fließt
+  (`cadata` + `VERIFY_X509_PARTIAL_CHAIN`, deckt auch Firmen-CA-Blätter ab).
+  Ein geändertes Zertifikat ist ein harter Fehler mit beiden Fingerabdrücken;
+  neu vertraut wird nur bei ausdrücklicher Neu-Anmeldung. Notausgang für
+  Sonderfälle: `"tls": {"mode": "insecure"}` von Hand in der Config — nie
+  Voreinstellung. Gilt für Tray-HTTP, Bridge-WebSocket UND Voice-WebSocket,
+  auf macOS und Windows.
+- **`~/.ai_employee_bridge.json` (enthält das JWT) ist jetzt 0600.** Vorher
+  konnte jeder andere lokale Account das Token lesen; der nächste
+  Speichervorgang repariert auch Bestandsdateien.
+
+### Hinzugefügt
+- **`shell_run` existiert jetzt wirklich — fail-closed über die Ordnerliste.**
+  Die Fähigkeit `shell` stand seit jeher in Server-Gruppen und
+  Berechtigungs-Dialog („auf diese Ordner beschränkt"), implementiert war
+  NICHTS. Jetzt: ohne freigegebenen Ordner gesperrt (auch bei aktivierter
+  Fähigkeit), Arbeitsverzeichnis muss in einem freigegebenen Ordner liegen
+  (realpath gegen `..`/Symlink-Ausbruch), Timeout max. 300 s. Der
+  Dialog-Text sagt jetzt ehrlich „Startordner“ statt „beschränkt auf“. Neues
+  MCP-Werkzeug `computer_shell` für Claude-Code-Agenten; Codex konnte die
+  Aktion schon über das generische Werkzeug.
+- **Interaction Bar spricht DIREKT mit dem Voice Layer des Agenten.** Vorher:
+  Datei aufnehmen → am Stück senden → Antworttext lokal per Edge-TTS vorlesen.
+  Jetzt: Mikrofon streamt live als 16-kHz-PCM in die Realtime-Session
+  (Nova Sonic), Antwort-Audio (24-kHz-PCM) spielt beim Eintreffen über einen
+  Streaming-Player. Edge-TTS samt Abhängigkeit entfernt.
+- **Agenten-Auswahl statt ID-Feld in der Interaction Bar** — Dropdown mit den
+  eigenen Agenten (Namen), zuletzt genutzter vorausgewählt.
+- **Interaction Bar jetzt auch unter Windows** (vorher stiller Abbruch):
+  gleiche Fähigkeit, customtkinter-Fenster, Audio-Wiedergabe über
+  winmm/MCI ohne Zusatzfenster.
+
+### Behoben
+- **Endgültige Server-Ablehnung (1008) beendet die Verbindungsschleife.**
+  Vorher wählte die Bridge eine tote Session alle 5 s ewig neu an und das
+  Tray-Symbol blieb auf „verbunden“ — eine abgelaufene Session war von einer
+  gesunden Verbindung nicht unterscheidbar. Unter Windows kommt zusätzlich
+  eine Benachrichtigung mit dem Grund.
+- **Interaction Bar erschien nicht beim Klick** (macOS): die Hintergrund-App
+  wurde nie aktiviert; das Fenster tauchte erst auf, wenn irgendein anderer
+  Dialog die App aktivierte.
+- **Mehrzeiliger Text war untippbar:** ein roher Zeilenumbruch im
+  AppleScript-Literal ist ein Syntaxfehler; der stille Rückfall tippte
+  layout-falsch weiter. Umbrüche werden jetzt als Return-Taste gesendet.
+- **Zwei Tray-Dialoge gleichzeitig crashten die App** (Windows): zwei
+  tkinter-Mainloops in parallelen Threads. Solange ein Dialog offen ist,
+  öffnet kein zweiter.
+- `get_clipboard` meldete bei fehlgeschlagenem Lesen einen leeren Text statt
+  eines Fehlers; `ax_tree`-Fehler steckten als Baum verkleidet im Ergebnis;
+  der Agent-Browser wird beim Beenden der App mitgeschlossen (verwaiste
+  Profil-Sperre); Tipp-Mitschnitt-Puffer ist jetzt threadsicher.
+
+---
+
+## [1.238.5] - 2026-08-18
+
+### Behoben (Sicherheit)
+- **Befehls-Einschleusung in der Zwischenablage unter Windows.** Der Text kam
+  aus dem Netz und wurde direkt in einen PowerShell-Befehl gesetzt
+  (`Set-Clipboard '{text}'`). Ein Apostroph darin beendete das Literal — der
+  Rest lief als eigener Befehl mit den Rechten des angemeldeten Nutzers. Der
+  Text geht jetzt über die Standardeingabe, wie der macOS-Zweig es seit jeher
+  richtig macht.
+
+### Behoben
+- **Klicken, Tasten, Scrollen und Ziehen meldeten Erfolg, ohne etwas zu tun.**
+  Ohne Bedienungshilfen-Freigabe verwirft macOS synthetische Eingaben lautlos —
+  die Bridge meldete trotzdem „erledigt", der Agent baute darauf auf. Jetzt
+  prüft ein gemeinsamer Riegel vor jeder Eingabe.
+- **Die Bridge fragte nie nach Freigaben.** Sie rief nur die stillen Prüfungen
+  (`CGPreflightScreenCaptureAccess`, `AXIsProcessTrusted`) auf, nie die
+  fragenden Varianten. Wer die Freigabe nie erteilt oder zurückgesetzt hatte,
+  bekam **nie wieder** einen Dialog und musste die App von Hand eintragen.
+- **Jede Neuanmeldung löschte die Freigabelisten** für Anwendungen und
+  Adressen serverseitig — die drei Anmeldedialoge reichten die Konfiguration
+  nicht durch, wodurch „alles freigeben" gesendet wurde.
+- **Auf macOS gingen beim Speichern der Einstellungen Freigaben verloren:**
+  die Konfiguration wurde ersetzt statt zusammengeführt (Windows machte es
+  richtig).
+- **`browser_close` meldete Erfolg, auch wenn der Browser noch lief** — der
+  nächste Start scheiterte dann an der Sperrdatei des Profils.
+- **Drei Fehlermeldungen in den Windows-Dialogen verschwanden spurlos**
+  (`NameError` durch späte Auswertung in `lambda`): Bei falscher Server-Adresse
+  blieb „Verbinde…" für immer stehen, ohne Hinweis.
+- Ein hängender Browser-Start meldet jetzt „startet noch" statt nach einer
+  Minute „antwortet nicht".
+
+---
+
+## [1.238.4] - 2026-08-18
+
+### Behoben
+- **Die Sprachfront startete gar nicht mehr** — jede Sitzung brach sofort mit
+  `ValidationException: Input is invalid` ab. Ursache war kein Limit und keine
+  kaputte Aufnahme: **Bedrock lehnt doppelte Werkzeugnamen ab.** Ein
+  angebundener Dienst brachte ein `list_todos` mit, das die Sprachfront als
+  eingebautes Werkzeug bereits selbst vergibt — beide gingen in denselben
+  Sitzungsstart. Die Deduplizierung kannte bis dahin nur die MCP-Werkzeuge
+  untereinander, nie die eingebauten Namen. Folge: nicht ein Werkzeug fiel aus,
+  sondern die komplette Sitzung kam nicht zustande. Der Dienst-Name wird jetzt
+  wie bei einer Kollision zwischen zwei Diensten vorangestellt, das Werkzeug
+  bleibt also erreichbar.
+- **Die Bridge meldete ihre neuen Fähigkeiten nicht.** Fenster- und
+  Browser-Steuerung liefen, wurden beim Verbinden aber nie angekündigt — die
+  Ankündigung war eine zweite, handgetippte Liste. Sie kommt jetzt aus einer
+  einzigen Quelle, ein Test hält sie mit dem Dispatcher zusammen.
+- **Die Bridge merkt sich die E-Mail-Adresse.** Sie wurde nie gespeichert und
+  musste bei jeder Anmeldung neu getippt werden. Das Passwort wird weiterhin
+  nirgends abgelegt.
+
+---
+
+## [1.238.3] - 2026-08-18
+
+### Behoben
+- **Der Bridge-Download führte auf eine 404-Seite.** Der Link zeigte auf
+  `https://github.com//releases/download/…` — doppelter Schrägstrich, kein
+  Repository. Ursache war das Zusammenspiel zweier für sich harmloser Zeilen:
+  `docker-compose.yml` reicht `GITHUB_REPO` als `${GITHUB_REPO:-}` weiter,
+  setzt die Variable also auf **leer**, wenn der Host sie nicht kennt — und
+  `os.getenv(name, default)` greift nur, wenn eine Variable **gar nicht**
+  existiert. Eine leere Variable schlägt den Standard.
+  Der Download hatte seit Mai funktioniert; die compose-Zeile kam erst am
+  13.08. dazu, und zwar für die **Feedback-Issue-Spiegelung** — ein ganz
+  anderes Feature, das zufällig denselben Variablennamen braucht.
+  Beide Seiten sind jetzt abgesichert: der Code fällt auch bei leerem Wert auf
+  das echte Repository zurück, und compose reicht einen sinnvollen Standard
+  weiter statt einer leeren Zeichenkette.
+
+---
+
+## [1.238.2] - 2026-08-18
+
+### Behoben
+- **Der Bridge-Build lieferte mehrere Fähigkeiten gar nicht aus.** Der
+  Workflow installierte eine von Hand gepflegte Paketliste, die von
+  `requirements.txt` abgewichen war. Im fertigen Programm fehlten dadurch:
+  - **`uiautomation` unter Windows** — die Bridge konnte dort **keine Elemente
+    finden**, nur blind auf Koordinaten klicken. Ausgerechnet in der
+    PyInstaller-Spec stand das Modul längst; installiert wurde es nie.
+  - `pynput` — Replay-Modus (Eingaben mitschneiden) tot.
+  - `sounddevice`/`numpy` — Mikrofon tot.
+  - `pyobjc-framework-Quartz` unter macOS — Bildschirmfoto im eigenen Prozess
+    tot, Rückfall auf einen Fremdprozess, der bei **jedem** Foto neu nach der
+    Freigabe fragt (genau das, was der Weg im eigenen Prozess vermeiden soll).
+
+  Auffallen konnte das nicht: Die Bridge fängt fehlende Importe ab und gibt
+  eine freundliche Meldung zurück — die Fähigkeit war nicht kaputt, sie war
+  still nicht da. Beide Builds installieren jetzt aus `requirements.txt`, ein
+  Test lehnt eine zweite handgepflegte Liste ab.
+- **Playwright wird jetzt wirklich mitgeliefert.** Der Node-Treiber gehört zu
+  den Daten, nicht zu den Modulen — ein Eintrag unter `hiddenimports` hätte
+  ihn nicht eingepackt und die neue Browser-Steuerung wäre im gebauten
+  Programm tot geblieben. Beide Specs nutzen dafür `collect_all`.
+- `customtkinter` und `pyobjc-framework-AVFoundation` standen nur in der
+  CI-Liste und fehlten in `requirements.txt` — die Drift ging in beide
+  Richtungen.
+
+---
+
+## [1.238.1] - 2026-08-18
+
+### Behoben
+- **Login und Nutzerverwaltung waren nach dem letzten Update teils nicht mehr
+  erreichbar (`UndefinedColumnError` auf `users.allow_personal_credentials`).**
+  Die Datenbank-Migration zur neuen Spalte aus v1.238.0 hatte gefehlt — das
+  Modell kannte die Spalte, die Datenbank nicht. Jede Anfrage, die einen
+  Nutzer laed, schlug deshalb fehl. Rein nachholende, additive Migration
+  (IF NOT EXISTS), kein Verhaltensunterschied fuer bereits funktionierende
+  Installationen.
+
+## [1.238.0] - 2026-08-18
+
+### Sicherheit
+- **Eigene KI-Abos sind jetzt standardmässig gesperrt — und einzeln freigebbar.**
+  Korrektur an v1.227.0: dort war der Schalter global mit Vorgabe **an** gebaut.
+  Gefordert war das Gegenteil.
+- Wörtlich aus dem Kundentermin: „Für uns als Unternehmen möchte ich **nicht**,
+  dass Mitarbeiter ihre privaten Accounts hier hinterlegen und dann mit
+  Firmendaten arbeiten. Das muss man quasi global als Admin einstellen können."
+  Und: „dass man dann **für User manuell freischalten** kann … aber dass man das
+  **generell unterbinden** kann."
+- Zwei Ebenen: globaler Schalter (Vorgabe **aus**) plus Einzelfreigabe je Nutzer,
+  die ein Administrator über die Nutzerverwaltung setzt. Steht der globale
+  Schalter an, gilt es für alle — dann muss niemand einzeln angehakt werden.
+- Meine ursprüngliche Begründung („eine bestehende Anlage darf nach einem Update
+  nicht ohne Zugang dastehen") trug hier nicht: private Abos waren vorher gar
+  nicht möglich, es konnte nichts wegbrechen. Für eine Sicherheitszusage ist
+  „standardmässig offen" die falsche Richtung.
+- Der Schalter greift weiterhin an der Stelle, wo Zugänge aufgelöst werden, nicht
+  nur in der Oberfläche — ein bereits hinterlegter privater Zugang hört damit
+  wirklich auf zu wirken.
+
+---
+
+## [1.237.1] - 2026-08-18
+
+### Behoben
+- **Das Browser-Profil der Bridge wurde weltlesbar angelegt** (0755 nach umask).
+  Dort liegen nach der Einmal-Anmeldung die Sitzungs-Cookies und Anmeldedaten —
+  jeder andere lokale Account auf demselben Rechner hätte sie mitlesen können.
+  Das ist genau der Diebstahl, gegen den die Chrome/Edge-136-Härtung gebaut
+  wurde, nur eine Ebene tiefer, und hätte die Begründung des Entwurfs („kein
+  Cookie-Import aus dem privaten Profil") ausgehebelt. Das Verzeichnis wird
+  jetzt mit `0700` angelegt **und** nachträglich verengt — `mode=` allein
+  genügt nicht, weil die umask es beschneidet und ein bereits vorhandenes
+  Verzeichnis seine alten Rechte behalten hätte. Gefunden von der
+  Sicherheitsprüfung des vorherigen Commits.
+
+---
+
+## [1.237.0] - 2026-08-18
+
+### Behoben
+- **Der Agent durfte auf dem Rechner des Nutzers gar nicht klicken.** Sieben
+  Befehle, die der Claude-Code-Weg sendet — `click`, `move`, `scroll`,
+  `find_element`, `wait_for_element`, `get_clipboard`, `set_clipboard` —
+  standen nicht in der serverseitigen Freigabeliste. Die Prüfung ist
+  fail-closed, also wurden sie mit **403 abgewiesen, bevor sie den Rechner
+  erreichten**. Über Codex liefen dieselben Fähigkeiten (dort heißen sie
+  `mouse_click` …), deshalb fiel es nie auf. Das ist die tatsächliche Ursache
+  hinter „Navigieren und Formulare ausfüllen ist nicht verlässlich" — nicht das
+  Modell, das „zu anderen Mitteln greift", sondern die API. Ein Test liest die
+  Namen jetzt aus beiden Quellen und hält sie zusammen.
+- **`open_app` war unter Windows kaputt** — der Code rief unbedingt `open -a`
+  auf, ein reiner macOS-Befehl. Windows nutzt jetzt denselben Weg wie bei
+  `open_url` (Shell-API ohne Kommandozeilen-Interpretation).
+- **Zwei Berechtigungsgruppen waren unerreichbar:** `input_capture` und
+  `voice_capture` existierten serverseitig, standen aber nicht in der Liste der
+  Tray-App — niemand konnte sie einschalten. Ein Test vergleicht beide Seiten.
+
+### Hinzugefügt
+- **Browser-Steuerung in der Bridge** (Gruppe `browser`, standardmäßig **aus**):
+  Seiten strukturiert lesen, Formulare ausfüllen, klicken, warten, Tabs
+  wechseln, Bildschirmfoto — im **eigenen Browser-Profil** des Agenten.
+  Genutzt wird der installierte Edge bzw. Chrome, kein mitgelieferter Browser.
+  Hintergrund: Seit Chrome/Edge 136 lässt sich das Standardprofil nicht mehr
+  fernsteuern (Härtung gegen Cookie-Diebstahl), ein eigenes Profil ist der
+  vorgesehene Weg. Der Mensch meldet sich einmal an, danach bleibt die
+  Anmeldung erhalten. Cookies aus dem privaten Profil zu kopieren wäre genau
+  das, wogegen die Härtung gebaut wurde — das tun wir bewusst nicht.
+- **Fenster-Steuerung:** `list_windows` und `focus_window`. Tippen und Klicken
+  gehen immer an das Fenster im Vordergrund; ohne diesen Schritt landete
+  Eingabe in der zuletzt benutzten Anwendung statt in der gemeinten.
+- **Freigabelisten pro Sitzung:** **welche** Anwendungen und **welche**
+  Adressen der Agent anfassen darf — durchgesetzt **serverseitig**, nicht nur
+  in der Oberfläche. Leer heißt „nicht einschränken". Beim Adressvergleich
+  zählt der Host, nicht die Zeichenkette: `example.com` erlaubt
+  `a.example.com`, aber nicht `example.com.fremde-domain.tld`.
+  (Das vorhandene Feld `allowed_paths` bleibt davon unberührt — es wird bis
+  heute nur lokal gespeichert und nirgends durchgesetzt.)
+- Alle neuen Fähigkeiten in **allen Laufzeiten**: MCP (Claude Code), Codex und
+  Custom-LLM.
+
+---
+
+## [1.236.0] - 2026-08-18
+
+### Neu
+- **Import und Export sind jetzt bedienbar.** In der Second-Brain-Liste zwei neue
+  Knoepfe je Vault: herunterladen (ZIP) und einspielen. Der Einspiel-Dialog fragt,
+  ob zusammengefuehrt oder ersetzt werden soll, und warnt beim Ersetzen
+  ausdruecklich, dass nicht enthaltene Dateien verschwinden.
+- Nach dem Einspielen nennt die Meldung Zahlen statt nur "fertig": wie viele
+  Dateien geschrieben, entfernt und uebersprungen wurden — bei einem krummen
+  Archiv waere sonst nicht zu sehen, dass etwas fehlt.
+- Gegengeprueft mit einem echten Obsidian-artigen Vault (verschachtelte Ordner,
+  `.obsidian`, Wikilinks, Frontmatter, Umlaute): Rundlauf Export in Import ohne
+  Verlust.
+
+---
+
+## [1.235.0] - 2026-08-18
+
+### Neu
+- **Second Brains: Import und Export als ZIP.** Ein ganzer Vault lässt sich
+  herunterladen und wieder einspielen — Ordnerstruktur inklusive, direkt in
+  Obsidian zu öffnen.
+- Zwei Betriebsarten beim Import: **zusammenführen** (Vorgabe, ergänzt und
+  überschreibt, löscht nichts) oder **ersetzen** (der Vault wird zum Abbild des
+  Archivs).
+- **Die Einbettungen werden danach nachgezogen.** Ohne diesen Schritt lägen die
+  Notizen zwar auf der Platte, wären aber semantisch unauffindbar — für die
+  Agenten praktisch unsichtbar. Der Indexlauf ist inkrementell und entfernt auch
+  die Einträge gelöschter Dateien, passt also zu beiden Betriebsarten. Schlägt er
+  fehl, bleibt der Import trotzdem erhalten und es wird darauf hingewiesen.
+
+### Sicherheit
+- Ein hochgeladenes Archiv ist Fremdeingabe: jeder Eintrag geht durch denselben
+  Pfad-Riegel wie der Dateibrowser (kein zweiter, eigener Weg). Aufsteigende
+  Pfade (`../`) werden abgewiesen, absolute Pfade in den Vault hinein
+  normalisiert, Symlinks und Sonderdateien übersprungen, gesperrte Dateiendungen
+  bleiben gesperrt.
+- Zip-Bomben werden **vor** dem Entpacken abgewiesen (geprüft wird die entpackte
+  Größe, nicht die des Archivs). Grenzen: 200 MB Archiv, 1 GB entpackt, 50.000
+  Einträge.
+- Eine einzelne krumme Datei stoppt den Import nicht — sie wird übersprungen und
+  im Bericht genannt.
+
+### Hinweis
+- **Obsidian Sync selbst lässt sich nicht anbinden**: geschlossener,
+  Ende-zu-Ende-verschlüsselter Bezahldienst ohne öffentliche Schnittstelle. Der
+  Weg führt über die Ordnerstruktur — ein Vault ist nur Markdown in Ordnern.
+  Echtes Mitlaufen über Git ist der nächste Schritt.
+
+---
+
+## [1.234.1] - 2026-08-18
+
+### Behoben
+- **Die Seite „Master-Regeln" blieb leer.** Der Reiter war da, der Inhalt nicht:
+  der Inhaltsblock hängt an einer eigenen Liste eingebetteter Reiter, und dort
+  fehlte der neue Eintrag. Weder Typprüfung noch Build konnten das sehen — der
+  Test prüft es jetzt.
+
+---
+
+## [1.234.0] - 2026-08-18
+
+### Neu
+- **Master-Regeln: Verhaltensvorgaben für alle Agenten aller Nutzer.** Aus einer
+  Kundenanfrage: eine globale Vorgabe, was Agenten dürfen und was nicht — „ich
+  will aber nicht bei jedem agenten das einzeln vorgeben".
+- Neuer Reiter unter **Sicherheit**. Der Text landet in der Anleitung jedes
+  Agenten und im Sprachmodus, steht über jedem Auftrag und ist für normale
+  Nutzer nicht abwählbar.
+- Die Regeln stehen bewusst **ganz oben** in der Anleitung: die Agenten-Laufzeit
+  kürzt eine zu lange Anleitung von hinten — angehängt wären ausgerechnet sie
+  als Erstes weg.
+- Alle vier Laufzeiten bekommen sie: Claude Code über `CLAUDE.md`, Codex über
+  `AGENT.md`, Custom-LLM liest dieselbe Datei, und die Sprachfront hat einen
+  eigenen Anschluss. Ein Test prüft, dass keine Stelle vergessen wird — genau das
+  ist am selben Tag zweimal passiert.
+- **Globale Befehlssperren sind endlich einstellbar.** Das Datenmodell konnte sie
+  seit jeher (`scope: global`), es gab nur nirgends eine Oberfläche dafür. Jetzt
+  auf derselben Seite: zwei Ebenen desselben Gedankens.
+
+### Hinweis
+- Master-Regeln sind eine **Anweisung, keine Sperre** — das steht auch so auf der
+  Seite. Sprachmodelle halten sich meistens, aber nicht immer daran. Was
+  technisch unmöglich sein muss, gehört in die Befehlssperren.
+- Wirksam wird der Regeltext bei einem Agenten erst, wenn er aktualisiert wurde.
+
+---
+
+## [1.233.0] - 2026-08-18
+
+### Behoben
+- **Ein Chat verlor seinen Verlauf, sobald der Agent neu startete.** Gemeldet mit
+  Bildschirmfoto: der Agent sprach in einer Unterhaltung über ein ganz anderes
+  Projekt und stieß vier Reviews bei drei Kollegen an. Die Frage war, ob er zwei
+  Chats vermischt.
+- **Tut er nicht.** Auf der Anlage nachgesehen: alle Nachrichten des Wortwechsels
+  lagen in einer Sitzung, die Anzeige stimmte, kein gemeinsamer Sitzungsschlüssel.
+- Die echte Lücke: in der Custom-LLM-Laufzeit lebt der Verlauf **ausschließlich
+  im Arbeitsspeicher** und wurde nie aus der Datenbank zurückgeholt — anders als
+  bei den CLI-Laufzeiten, die ihre Sitzung wiederfinden. Nach Neustart, Update
+  oder Container-Tausch stand der Agent in einem Chat mit Dutzenden gespeicherten
+  Nachrichten vor einem leeren Blatt und reimte sich aus semantisch gesuchten
+  Erinnerungen zusammen, worum es geht. Er schrieb selbst „am wahrscheinlichsten"
+  — und handelte trotzdem.
+- Der Verlauf dieser Unterhaltung wird jetzt beim ersten Zug zurückgeholt
+  (begrenzt, nur echte Wortmeldungen, ohne Oberflächen-Kacheln). Schlägt das
+  fehl, redet der Agent wie bisher ohne Vorgeschichte weiter.
+- Die Erinnerungen bleiben unverändert — sie tragen Wissen über Unterhaltungen
+  hinweg. Sie sind nur nicht mehr die einzige Quelle.
+
+### Sicherheit
+- `/chat/history` hing an einem reinen **Nutzer**-Login, der Agent kam an seinen
+  eigenen Verlauf nicht heran (derselbe Fehlertyp wie beim Löschen eigener
+  Erinnerungen am selben Tag). Der Agent darf jetzt seinen **eigenen** Verlauf
+  lesen; fremde Agenten werden weiterhin mit 403 abgewiesen.
+
+---
+
+## [1.232.0] - 2026-08-18
+
+### Neu
+- **Die Sprachfront benutzt die MCP-Dienste des Agenten jetzt selbst.** Gemeldet:
+  ein Dienst mit 32 Werkzeugen war unter Einstellungen → Integrationen angehakt,
+  aber die Stimme zählte auf Nachfrage nur ihre eingebauten auf und reichte jeden
+  Auftrag an den Agenten weiter — bis der Nutzer ihr selbst sagte, welches
+  Werkzeug es gibt.
+- Ursache: ihre Werkzeugliste stand vollständig von Hand im Quelltext (47
+  Konstanten) und holte nirgends ein `tools/list`. Sie **konnte** von den
+  angebundenen Diensten nichts wissen.
+- Jetzt werden die Werkzeuge der angehakten Dienste zu echten Werkzeugen der
+  Sprachfront und direkt dort aufgerufen. Die Auswahl kommt aus derselben Stelle
+  wie die des Agenten-Containers, Gruppenrechte inklusive — zwei Auswahlen
+  nebeneinander wären die Lücke, durch die ein gesperrter Dienst doch erreichbar
+  wird.
+- **Nichts wird still weggelassen.** Die Engine verträgt nur eine begrenzte Zahl
+  Werkzeuge; was ins Budget passt, wird direkt deklariert, alles Weitere bleibt
+  über `mcp_search_tools` und `mcp_call_tool` erreichbar.
+- Antwortet ein Dienst nicht, sagt die Stimme das — statt still auf den Agenten
+  auszuweichen und so zu tun, als gäbe es das Werkzeug nicht.
+- Vergeben zwei Dienste denselben Werkzeugnamen, bekommt der zweite den
+  Dienstnamen davor; beide bleiben erreichbar und der Aufruf landet beim
+  richtigen.
+
+---
+
+## [1.231.0] - 2026-08-18
+
+### Neu
+- **Textdateien im Arbeitsbereich lassen sich direkt bearbeiten.** Aus dem
+  Kundentermin: `.env`-Dateien ließen sich ansehen, aber nicht ändern — wer eine
+  Zeile korrigieren wollte, musste herunterladen, lokal bearbeiten und wieder
+  hochladen. Die Ansicht war rein lesend, es gab keinen Schreibweg.
+- „Bearbeiten" in der Dateivorschau, Textfeld an Stelle der Anzeige, Speichern
+  oder Abbrechen. Bei HTML wird bewusst die Quelle bearbeitet, nicht die
+  gerenderte Fassung. Ein Wechsel der Datei verwirft den Entwurf; schlägt das
+  Speichern fehl, bleibt der Text stehen und der Fehler wird angezeigt.
+- Gilt in beiden Dateibäumen (Arbeitsbereich eines Agenten und die
+  agentenübergreifende Ansicht).
+
+### Sicherheit
+- Der Schreibweg prüft an derselben Stelle wie Lesen und Hochladen: Pfade müssen
+  im Arbeitsbereich bleiben (`..` wird **nach** dem Normalisieren geprüft),
+  Symlinks und Verzeichnisse werden abgelehnt, gesperrte Dateiendungen bleiben
+  gesperrt — sonst wäre die Sperre beim Hochladen über den Umweg „Bearbeiten"
+  zu umgehen. Obergrenze 1 MB. Der Endpunkt prüft Anmeldung und Eigentümer.
+
+---
+
+## [1.230.0] - 2026-08-18
+
+### Geändert
+- **Zeitpläne sind nach Agent gruppiert und starten eingeklappt.** Vorher eine
+  flache Liste über alle Agenten hinweg — bei sieben Agenten mit je mehreren
+  Plänen war nicht mehr zu sehen, wessen Plan wann läuft.
+- Jede Gruppe zeigt schon zugeklappt, wie viele Pläne sie hat, wie viele davon
+  aktiv sind und wann der nächste läuft. Innerhalb einer Gruppe steht oben, was
+  als Nächstes dran ist. Dazu „Alle aufklappen" / „Alle zuklappen".
+- Pläne ohne festen Agenten (die über die Lastverteilung laufen) bekommen eine
+  eigene Gruppe, statt aus der Liste zu fallen.
+
+---
+
+## [1.229.0] - 2026-08-18
+
+### Behoben
+- **Eine Datei riss die ganze Agentenseite mit.** Gemeldet mit Bildschirmfoto:
+  statt der Vorschau nur noch „This page couldn't load", der Agent weg, an dem
+  gerade gearbeitet wurde.
+- Zwei Ursachen, die zusammenkamen. Erstens holte der PDF-Betrachter seinen
+  Arbeiter von einem fremden CDN — ein Browser darf einen Worker aber nicht von
+  einem fremden Ursprung starten. Schlägt das fehl, wirft pdf.js beim ersten
+  Zugriff (`this.messageHandler` ist dann leer).
+- Zweitens gab es im **gesamten** Frontend keine einzige Fehlergrenze. Also
+  kippte ein Fehler in der Vorschau den kompletten Seitenbaum statt nur das
+  eine Feld.
+- Beides behoben: Arbeiter, Zeichensatztabellen und Schriften kommen jetzt vom
+  eigenen Ursprung und werden beim Bauen mitgeliefert. Die Vorschau sitzt in
+  einer Fehlergrenze — geht sie kaputt, läuft der Rest der Seite weiter und man
+  kann die Datei stattdessen herunterladen.
+- Der CDN-Bezug war auch inhaltlich falsch: die Anlage läuft selbst gehostet
+  (auch abgeschottet ohne Weg nach draußen), und jedes geöffnete PDF hätte einem
+  Fremdanbieter verraten, dass es geöffnet wurde.
+
+- **Ein Agent ließ sich nicht mehr starten (500).** Im selben Bericht, aus der
+  Browserkonsole. Die gemerkte Container-Kennung war veraltet; beim Neuaufbau
+  kam „the container name is already in use" zurück, weil zwischen Abräumen und
+  Anlegen ein zweiter Weg denselben Agenten aufgebaut hatte.
+- Der fertige Container ist genau der, der gebaut werden sollte — er wird jetzt
+  **übernommen** statt mit einem Fehler quittiert. Ihn zu löschen wäre falsch:
+  er kann bereits arbeiten. Andere Docker-Fehler (voller Datenträger, fehlendes
+  Abbild) kommen unverändert durch und werden nicht als „schon da" verschluckt.
+- Beide Wege, die einen Container neu aufbauen, benutzen dieselbe Stelle.
+
+---
+
+## [1.228.0] - 2026-08-18
+
+### Behoben
+- **Ein Agent konnte sein eigenes veraltetes Wissen nicht löschen.** Gemeldet mit
+  Bildschirmfoto: der Agent merkte, dass sein gespeicherter Team-Zettel einen
+  Kollegen nennt, den es nicht mehr gibt, wollte die vier Notizen wegräumen — und
+  bekam vier Mal `401 Invalid or expired token`. Im Log der Anlage stand es
+  genauso.
+- Ursache: der Löschweg hing an einer reinen **Nutzer**-Anmeldung. Speichern und
+  Auflisten ließen den Agenten längst durch, nur Löschen nicht. Das Werkzeug
+  `memory_delete` stand damit in allen vier Laufzeiten im Katalog und hat nie
+  funktioniert.
+- Der Besitz-Schild kannte den Agenten-Fall die ganze Zeit, wurde aber nie
+  erreicht. Die Mandantentrennung bleibt unverändert: ein Agent kommt nur an
+  seine eigenen Notizen, fremde werden weiterhin mit 403 abgewiesen.
+
+### Geändert
+- **Agenten sehen ihre Kollegenliste jetzt von selbst nach, statt sie zu
+  erinnern.** Rückmeldung: „wieso hat der das erst nach ansprache gesichtet...
+  wieso KOMMT DER NICHT ALLEIN AUF DEN GEDANKEN MAL ZU SCHAUEN".
+- Die Regel gab es, sie hing aber am Gefragtwerden („wenn dich jemand nach deinem
+  Team fragt"). Jetzt hängt sie am Handeln: vor dem Delegieren, vor dem
+  Anschreiben, vor dem Nennen eines Kollegen und bevor etwas über das Team ins
+  Gedächtnis geschrieben wird.
+- Neu ist auch, was zu tun ist, wenn jemand fehlt: es sagen und neu planen,
+  statt Arbeit für einen Namen einzustellen, den es nicht mehr gibt — und die
+  falsche Notiz löschen, damit man ihr morgen nicht wieder glaubt.
+- Nachgesehen auf der Anlage: an die tote Kennung ging **kein einziger** Auftrag.
+  Die vorhandene Sicherung beim Zustellen konnte also gar nicht greifen — der
+  Agent hat nie falsch delegiert, sondern falsch geglaubt.
+
+### Neu
+- **Dateien lassen sich auf einen Ordner im Dateibaum ziehen.** Sie landen direkt
+  dort, der Ordner klappt auf und liest sich neu ein. Wer knapp danebentrifft und
+  auf einer Datei landet, meint deren Ordner — das gilt jetzt auch so. Der leere
+  Bereich unter dem Baum nimmt Dateien für den Wurzelordner an.
+- Gilt für beide Dateibäume (Arbeitsbereich eines Agenten und die
+  agentenübergreifende Ansicht); beide benutzen dieselbe Mechanik, damit sie
+  nicht auseinanderlaufen.
+- Ganze Ordner kann die Schnittstelle nicht — das wird jetzt gesagt, statt mit
+  einer leeren Datei fehlzuschlagen.
+
+---
+
+## [1.227.0] - 2026-08-18
+
+### Sicherheit
+- **Eigene KI-Abos der Mitarbeiter sind jetzt zentral steuerbar.** Aus dem
+  Kundentermin vom selben Tag: es fehle die „globale Freigabe, damit Mitarbeiter
+  eigene Abo-Accounts einbinden dürfen — Sicherheitsrisiko sonst, muss zentral
+  steuerbar sein."
+- Der persönliche Weg („Meine KI-Zugänge") entstand am selben Tag **ohne** diesen
+  Schalter: jeder eingeloggte Nutzer konnte sein privates Abo einbinden, ein
+  Administrator konnte es weder sehen noch unterbinden. Genau das Risiko, das
+  vorbeugend benannt worden war.
+- Neuer Schalter unter Einstellungen. Vorgabe **an**, wie bei der Teamlizenz —
+  eine bestehende Anlage darf nach einem Update nicht plötzlich ohne Zugang
+  dastehen.
+
+### Geändert
+- Der Schalter wirkt an **zwei** Stellen, sonst wäre er Fassade: im Zugangs-Pfad
+  (`agent_credentials.resolve`), damit bereits hinterlegte Zugänge aufhören zu
+  wirken — und in der Schnittstelle, damit niemand etwas anlegt, das
+  anschließend wirkungslos ist. Eine Anmeldung, die scheinbar klappt und dann
+  nichts bewirkt, ist schlimmer als eine klare Absage.
+- **Lesen und Löschen bleiben immer erlaubt:** wer seinen Zugang loswerden will,
+  darf daran nicht gehindert werden, nur weil die Funktion inzwischen zu ist.
+- Die Übersicht meldet den Zustand mit, damit die Oberfläche den Bereich
+  ausblendet statt Knöpfe anzubieten, die mit 403 abgewiesen werden.
+
+---
+
+## [1.226.1] - 2026-08-18
+
+### Behoben
+- **Ein Schluckauf der Sprach-Engine beendete das Gespräch.** „Model has timed
+  out in processing the request. Try your request again." — und das
+  Live-Gespräch stand. Der Browser zeigte den Fehler und blieb stehen; neu
+  starten musste man von Hand.
+- Dabei gibt es das Neuverbinden längst: reißt der Stream ab, verbindet die
+  Oberfläche still neu und setzt **dasselbe** Gespräch fort. Nur ein Fehler der
+  Engine lief in einen anderen Zweig, obwohl es dasselbe ist — „Try your request
+  again" steht sogar in der Meldung.
+- Vorübergehende Fehler (Zeitüberschreitung, Drosselung, 5xx, Verbindungsabbruch)
+  gehen jetzt denselben Weg: neu verbinden, Gespräch fortsetzen, Sitzungskennung
+  behalten. Die Obergrenze für Neuversuche bleibt.
+
+### Sicherheit
+- Bewusst eine **Positivliste** statt einer Faustregel: was nicht darauf steht,
+  wird dem Nutzer gezeigt. Ein falscher Zugangsschlüssel würde sonst achtmal
+  hintereinander scheitern, ohne dass jemand erfährt, warum — und am Ende stünde
+  dieselbe Meldung, nur acht Versuche später.
+
+---
+
+## [1.226.0] - 2026-08-18
+
+### Neu
+- **Die Sprachfront kann jetzt eskalieren statt zu raten** (`escalate_if_unsure`).
+  Sie war die einzige der vier Laufzeiten ohne das Konfidenz-Gate — sie hat also
+  geraten, wo der Agent gefragt hätte. Am Telefon wiegt das schwerer als im
+  Geschriebenen: ein falscher Name klingt genauso sicher wie ein richtiger, und
+  niemand kann zurückblättern.
+- Sie ruft dabei **dieselbe** Serverfunktion auf wie der Agent. Die Schwelle
+  gehört dem Betreiber und steht pro Agent in der Konfiguration; zwei Schwellen
+  wären zwei Regeln, von denen eine irgendwann die falsche ist.
+- Die Rückfrage erscheint im Cockpit mit den Antwortmöglichkeiten als Knöpfe;
+  die Antwort wird dem Modell in einer Sprechpause zugetragen. Eine Ablehnung
+  liest sich nicht als Erlaubnis, und solange keine Antwort da ist, arbeitet der
+  Agent an der Sache nicht weiter.
+
+### Geändert
+- **Vorgabe: Sprachinteraktion läuft über MCP-Dienste.** Grundlage dafür ist eine
+  Einordnung aller 79 Agenten-Werkzeuge (`core/voice_tool_parity.py`): 57 haben
+  den Orchestrator als Gegenstelle und gehören der Sprachfront direkt, 23 laufen
+  im Agenten-Container und werden delegiert. `bash` und `write_file` in der
+  Sprachfront zu spiegeln hieße, eine zweite Ausführung danebenzustellen.
+- Ein Test lässt **kein Werkzeug uneingeordnet** und führt die verbleibende
+  Lücke als Zahl, die nur fallen darf. Vorher war die Differenz unsichtbar: beide
+  Seiten funktionierten für sich, gemessen waren es 42 gegen 79.
+- Offen bleiben 38 Einträge, angeführt von `notify_user` und `send_telegram` —
+  die Sprachfront kann den Nutzer noch nicht benachrichtigen.
+
+---
+
+## [1.225.0] - 2026-08-18
+
+### Neu
+- **Die Sprachfront weiß jetzt, welche API-Zugänge ein Agent hat.** Auf „hast du
+  Zugang zu diesem Key?" antwortete sie bisher „keine Umgebungsvariablen
+  gefunden" und zählte stattdessen ihre eigenen Einstellungen auf. Sie hatte
+  darauf schlicht keinen Blick: die zugewiesenen Schlüssel legt der Orchestrator
+  als Umgebungsvariablen in den **Agenten**-Container, die Sprachfront läuft
+  woanders.
+- Neues Werkzeug `list_agent_secrets`: nennt Name und Variablennamen der
+  zugewiesenen, aktiven Zugänge. Ist keiner zugewiesen, sagt es auch, wo man das
+  ändert — statt nur „nichts gefunden".
+
+### Sicherheit
+- **Die Werte bleiben draußen.** Der gesprochene Verlauf wird als Nachricht
+  gespeichert und geht Wort für Wort an einen fremden Dienst; ein Schlüssel, der
+  dort einmal landet, müsste gedreht werden. Das Werkzeug entschlüsselt nichts
+  und liest die verschlüsselte Spalte nicht einmal an — Tests wachen über beides.
+- Für einen echten API-Aufruf delegiert die Sprachfront per `ask_agent` an den
+  Agenten, der die Variable ohnehin hat. Die Werkzeugbeschreibung sagt das
+  ausdrücklich und verbietet, den Nutzer nach einem Schlüssel zu fragen.
+- Abgeschaltete Zugänge werden nicht gemeldet — sie landen auch nicht im
+  Container, und sie zu nennen wäre ein falsches Versprechen.
+
+---
+
+## [1.224.0] - 2026-08-18
+
+### Behoben
+- **Ein neu gestarteter Sprachchat machte am alten Thema weiter.** Er begrüßte
+  mit „Willkommen zurück — wir waren gerade dabei …" und arbeitete das vorige
+  Gespräch fort.
+- Das war Absicht, nur zu weit gefasst: ist eine Sprachsitzung leer, lädt der
+  Server das letzte Gespräch des Agenten nach — „ein Kollege, den man zweimal
+  anruft, erinnert sich an das erste Telefonat". Für einen Verbindungsabbruch
+  und für den zweiten Anruf ist das genau richtig; für ein **ausdrücklich neu
+  gestartetes** Gespräch nicht.
+- Es fehlte die Unterscheidung: hat der Nutzer neu angefangen, oder ist die
+  Sitzung nur leer? Beides sah gleich aus. Der Browser sagt es jetzt (`fresh`),
+  und nur dann wird nichts nachgeladen. Das Nachladen selbst bleibt — es wird
+  nicht abgeschafft, sondern eingegrenzt.
+
+---
+
+## [1.223.1] - 2026-08-18
+
+### Behoben
+- **Beim Hochladen ließ sich der Zielordner nicht auswählen.** Das Fenster
+  zeigte fest „to /workspace"; wer woanders hin wollte, musste hochladen und
+  danach von Hand verschieben. Jetzt ein Feld für den Zielordner, vorbelegt mit
+  dem bisherigen Pfad, dazu die gängigen Ordner auf einen Klick.
+- Die Auswahl zieht dieselbe Grenze wie der Server (`/workspace`) und sagt es
+  **vor** dem Hochladen statt hinterher als Fehler. `/shared` wird bewusst nicht
+  angeboten — der Server weist es ab, ein Vorschlag dorthin würde also sicher
+  fehlschlagen.
+
+### Geändert
+- Sprachmodus: die Anweisung „keine Aufzählungen" führte dazu, dass der Agent
+  zur Aufzählung ansetzte und mitten im Satz aufhörte — ein Doppelpunkt ins
+  Leere. Jetzt: mehrere Punkte gehören in Fließtext, und was angekündigt wird,
+  wird auch gesagt.
+
+---
+
+## [1.223.0] - 2026-08-18
+
+### Neu
+- **SSO-Gruppen werden jetzt auch beim Microsoft/Entra-ID-Login gelesen und auf
+  Rollen abgebildet.** Bisher galt das nur für SAML — der normale Entra-OIDC-Login
+  (der übliche Weg) ignorierte Gruppen komplett; jeder neue Nutzer landete als
+  "unassigned" und musste von Hand freigeschaltet werden. Jetzt: `GET
+  /me/memberOf` (mit dem ohnehin vorhandenen `User.Read`-Scope, keine
+  zusätzliche Admin-Freigabe in Entra nötig) liefert die Gruppen, eine neue
+  Zuordnungstabelle entscheidet die Rolle — bei jedem Login neu, nicht nur beim
+  ersten, sodass ein Abteilungswechsel im IdP automatisch nachzieht.
+- **Zuordnungsziel kann jetzt auch eine eigene Rolle (CustomRole) sein**, nicht
+  nur admin/manager/member — eine Entra-Gruppe kann direkt auf die volle,
+  granulare Rechtekonfiguration (Templates, Modelle, Agent-Limit, ...) zeigen.
+- **Neue Verwaltungsseite (Admin → Nutzer & Rollen → SSO-Gruppen)** löst die
+  alte freie JSON-Textbox ab: tatsächlich beim Login gesehene Gruppennamen
+  werden zum Anklicken angeboten statt blind abgetippt werden zu müssen.
+- SAML und Microsoft-OIDC teilen sich jetzt dieselbe Zuordnungslogik
+  (`app/core/sso_group_roles.py`) statt zweier unabhängiger Wege.
+
+### Sicherheit
+- Der "letzter Administrator wird nicht herabgestuft"-Schutz war unter
+  gleichzeitigen Logins nicht race-sicher (TOCTOU) und zählte deaktivierte
+  Admin-Konten fälschlich als Schutz mit — beides beim internen Security-Review
+  vor dem Merge gefunden und mit einer Zeilensperre (`FOR UPDATE`) plus
+  `is_active`-Filter behoben, bevor der Code live ging.
+- Beobachtete Gruppennamen (`sso_observed_groups`) sind jetzt pro Anbieter
+  gedeckelt und werden nicht mehr komplett bei jedem Login geladen — beides
+  ebenfalls vor dem Merge gefunden, nicht danach.
+
+---
+
+## [1.222.4] - 2026-08-18
+
+### Geändert
+- **Feedback und Concierge sind in den Sidebar-Kopf gezogen – unten rechts
+  schwebt nichts mehr.** Die beiden schwebenden Knöpfe lagen über Eingabe-
+  feldern und Bedienelementen der Seiten. Beide Einstiege sitzen jetzt als
+  Paar oben neben dem Logo: der Concierge (nur Administratoren) als
+  Lucide-Icon im selben Stil wie der Feedback-Knopf daneben. Die Panels
+  selbst öffnen unverändert unten rechts – sie sind flüchtig und überdecken
+  nichts dauerhaft. Der Test zur FAB-Paar-Geometrie
+  (`test_feedback_button_matches_concierge.py`) ist mit seiner Prämisse
+  entfallen und durch `test_feedback_and_concierge_sit_in_the_sidebar.py`
+  ersetzt.
+
+---
+
+## [1.222.3] - 2026-08-18
+
+### Behoben
+- **Nach einer fertigen Aufgabe kam im Sprachmodus keine Meldung.** Aufgabe per
+  Sprache erteilt, Fokus-Modus an („ich melde mich, wenn etwas fertig ist"),
+  Aufgabe lief durch und stand in der Oberfläche auf ERLEDIGT — gesprochen
+  wurde nichts.
+- Die Meldung wartet auf eine Sprechpause, weil sie sonst an den laufenden Satz
+  angehängt und nie ausgesprochen wird. Sie brach aber nach 25 Sekunden ab und
+  spielte sich **trotzdem** ein — also genau in die laufende Ausgabe, die sie
+  vermeiden sollte.
+- Das ist kein Randfall: der Zeitstempel „spricht gerade" wird bei **jedem**
+  Audioschnipsel erneuert. Redet das Modell durchgehend, wird es nie still. Im
+  Protokoll der gemeldeten Sitzung reihte sich die Sprachausgabe von 11:49:26
+  bis 11:50:04 fast lückenlos aneinander — 38 Sekunden am Stück.
+- Jetzt wird bis zu drei Minuten auf eine echte Pause gewartet, statt die
+  Meldung zu verheizen. Erst danach wird sie notfalls doch eingespielt — lieber
+  riskieren, dass sie verschluckt wird, als eine fertige Aufgabe gar nicht zu
+  melden.
+
+### Geändert
+- Jeder Ausgang steht jetzt im Protokoll: eingespielt mit Pause, eingespielt
+  ohne Pause (Warnung), verworfen weil die Sitzung endete. Vorher schwieg die
+  Funktion und meldete nur Fehler auf Debug-Ebene — deshalb war der Ausfall
+  nicht nachvollziehbar.
+
+---
+
+## [1.222.2] - 2026-08-18
+
+### Behoben
+- **Im Chat kam eine Rückfrage des Agenten praktisch nicht an.** Ein Agent
+  zeigte per `present_view` drei Bilder zur Auswahl — im Chat erschien nur ein
+  Balken „Freigabe erforderlich" mit dem Werkzeugnamen (bei einer Rückfrage
+  leer) und zwei festen Knöpfen. Weder die Frage noch die Antwortmöglichkeiten
+  noch die Ansicht wurden gezeigt, und „Freigeben" schickte dem Agenten eine
+  leere Bestätigung, aus der er nicht ablesen konnte, was gemeint war.
+- Ursache: die Rückfrage-Anzeige gab es **dreimal** — Freigabe-Fenster,
+  Sprachcockpit und Chat. Als die Antwortmöglichkeiten in 1.221.0 anklickbar
+  wurden, bekamen zwei davon die Änderung; die dritte wurde übersehen.
+
+### Geändert
+- Die drei Fassungen sind zu **einer** zusammengelegt
+  (`components/agents/approval-prompt.tsx`): Frage, Ansicht, Optionen, freie
+  Antwort und Ablehnen — überall gleich. Drei Fassungen derselben Sache laufen
+  immer auseinander; es ist nur eine Frage, welche zuerst vergessen wird.
+- Der Chat deklarierte die Nutzlast nur zur Hälfte (`tool`, `reasoning`) und
+  zeichnete sie deshalb auch nur zur Hälfte — Frage, Optionen und Ansicht
+  standen in der Antwort der Schnittstelle längst drin.
+- Der Chat rief die Schnittstelle mit rohem `fetch` und ohne Antwort auf; er
+  geht jetzt denselben Weg wie alle anderen. Ein Test prüft, dass alle drei
+  Flächen dieselbe Komponente benutzen.
+
+---
+
+## [1.222.1] - 2026-08-18
+
+### Geändert
+- **Die Activity-Ansicht (`/activity`) gruppiert Agenten jetzt nach Team,
+  initial eingeklappt.** Bisher stand jeder Agent als eigene Zeile
+  untereinander — bei vielen Agenten musste man an ihnen vorbeiscrollen, um
+  den Kalender eines bestimmten Teams zu finden. Jede Team-Gruppe lässt sich
+  einzeln aufklappen; Agenten ohne Team landen in einer eigenen
+  „Ohne Team"-Gruppe.
+
+---
+
+## [1.221.1] - 2026-08-18
+
+### Behoben
+- **Eine einzelne Kollision genau im Cron-Takt kostete einer täglichen Aufgabe
+  den ganzen Tag.** Betroffen war jede geplante Aufgabe (u. a. der tägliche
+  Rhythmus „Abendplanung"/„Morgencheck"): war der Agent im exakten Moment des
+  Zeitplans kurz beschäftigt, außerhalb seiner Dienstzeit oder ein
+  Dispatch-Lock gerade belegt, sprang `next_run_at` sofort auf den nächsten
+  Tag — keine zweite Chance. Nur der Überlast-Fall hatte seit v1.220.4 einen
+  kurzen Wiederholungsversuch. Jetzt bekommen auch „außerhalb der
+  Dienstzeit", „gerade beschäftigt" und „Dispatch-Lock belegt" bis zu zwei
+  bzw. drei kurze Wiederholungsversuche, bevor der Slot für heute aufgegeben
+  wird — Lock-Kollisionen (Sekunden) mit deutlich kürzerem Abstand als
+  Dienstzeit-/Beschäftigt-Kollisionen (Minuten).
+- **Ein altes, zweites Namensschema für Tagesplanungs-Zeitpläne
+  (`[Plan] Morgencheck: …`/`[Plan] Abendplanung: …`, mit Datum im Titel)
+  wurde vom Aufräum-Abgleich nicht erkannt** und feuerte für einen gestoppten
+  Agenten seit Wochen alle 30 Sekunden ergebnislos. Der Abgleich erkennt jetzt
+  beide alten Namensschemata, ohne echte, gleichnamig beginnende
+  Plan-Blöcke (`[Plan] <eigener Titel>`) mit zu löschen.
+
+---
+
+## [1.222.0] - 2026-08-18
+
+### Neu
+- **Agenten können Ansichten einblenden statt nur Wortlisten** — `present_view`,
+  in allen drei Laufzeiten. Der Agent zeigt etwas, hält an und bekommt die Wahl
+  des Nutzers zurück. Erste Ansicht: `image_choice` — mehrere Bilder
+  nebeneinander, ein Klick wählt. Der häufigste Fall: ein Marketing-Agent
+  erzeugt Varianten und will wissen, welche.
+- Gebaut als **Erweiterung der Rückfrage**, nicht als zweiter Weg daneben:
+  dieselbe Zeile, dasselbe Anhalten des Agenten, derselbe Rückweg über
+  `user_response`. Dadurch funktioniert eine Ansicht ohne weiteres Zutun in der
+  Ablage, auf Telegram und auf dem Telefon — dort als Wortoptionen.
+- Sichtbar **im Chat und im Sprachmodus**. Im Sprachcockpit zahlt sie sich am
+  meisten aus: „das dritte, mit dem größeren Schriftzug" ist gesprochen mühsam
+  und als Klick eine Sekunde.
+
+### Sicherheit
+- Der Agent liefert **kein Markup**, sondern einen Namen aus einer Liste. Ein
+  Modell, das HTML in die Oberfläche schreiben darf, ist ein Einfallstor mit
+  Zwischenschritt — zumal sein Rohstoff (Webseiten, Dateien, Mails) von außen
+  kommt. Server und Frontend führen dieselbe Liste, ein Test hält sie zusammen.
+- Unbekannte Namen und übergroße Nutzlasten werden verworfen, **die Rückfrage
+  bleibt bestehen** — sonst stünde der Agent still und der Nutzer sähe nichts.
+- Bilder werden als **Pfad** übergeben, nie als Inhalt: die Nutzlast liegt in
+  derselben Zeile wie die Freigabe und geht über denselben Redis-Kanal.
+
+### Behoben
+- **Im Sprachmodus gingen Antwortmöglichkeiten verloren.** Dort standen fest
+  `options[0]` und `options[1]` — bei einer Frage mit vier Antworten kamen zwei
+  gar nicht an, und der Nutzer konnte die richtige nicht geben. Im Sprachmodus
+  wiegt das besonders schwer: dieses Feld ist dort die einzige Stelle zum
+  Antworten. Jetzt werden alle Optionen gezeigt, und die Wahl wird
+  weitergereicht statt nur „genehmigt".
+
+---
+
+## [1.221.0] - 2026-08-18
+
+### Behoben
+- **Die Antwortmöglichkeiten einer Agenten-Rückfrage waren nicht anklickbar.**
+  Ein Agent fragte nach und bot vier Antworten an — sie standen als reiner Text
+  da. Zur Auswahl standen nur „Approve" und „Deny", und `approve` schrieb in
+  `user_response` grundsätzlich `Approved by <mail>`. Der Agent erfuhr also
+  nie, **welche** der vier Antworten gemeint war, und fragte im nächsten Zug
+  erneut. Wer wirklich antworten wollte, musste **ablehnen** und die Antwort
+  ins Begründungsfeld tippen — bei einer harmlosen Verständnisfrage.
+- **Über Telegram ging das Wählen die ganze Zeit** (die Wahl landet dort in
+  `user_response`), und der Custom-LLM-Weg liest dieses Feld seit jeher als die
+  Wahl. Nur die Weboberfläche und der MCP-Weg hatten es nie bekommen — eine
+  Lücke in der Parität der Laufzeiten, keine fehlende Funktion.
+- Jetzt: Optionen als Knöpfe, im Detailfenster **und** in der Liste. Dazu ein
+  Feld „Oder eigene Antwort", weil oft keine der angebotenen passt — im
+  gemeldeten Fall lautete eine Option „bitte im Chat nennen", was den Nutzer
+  aus dem Fenster hinausgeschickt hätte.
+- Die Korrektur benutzt bewusst dieselben Felder wie der Telegram-Weg
+  (`user_response`, Redis-Schlüssel `reason`) — die Agentenseite braucht keine
+  Änderung.
+- Der MCP-Weg gibt die Antwort jetzt auch bei Zustimmung an den Agenten weiter,
+  nicht mehr nur bei Ablehnung.
+
+### Geändert
+- Die Wache gegen Kundennamen im öffentlichen Repo prüfte das ganze
+  Arbeitsverzeichnis statt das, was tatsächlich veröffentlicht wird. Eine rein
+  örtliche Notiz genügte, und die Prüfung war dauerhaft rot — ein dauerhaft
+  roter Test wird ignoriert und fängt den echten Fall dann nicht mehr. Sie
+  prüft jetzt den git-Index: alles Eingecheckte **und** alles Vorgemerkte.
+  Vormerken ist genau der Moment, in dem gewarnt werden muss.
+
+---
+
+## [1.220.5] - 2026-08-18
+
+### Geändert
+- **Notifications, Dark Mode, Star on GitHub und Über AI Employee stehen jetzt
+  im Nutzer-Untermenü statt als vier eigene Zeilen über dem Nutzereintrag in
+  der Seitenleiste.** Ein Klick auf den eigenen Namen/Avatar öffnet jetzt ein
+  einziges Menü mit allen vier Punkten plus Konto-Info, Einstellungen und
+  Sign Out. Gilt für die ein- und ausgeklappte Seitenleiste.
+
+---
+
+## [1.220.4] - 2026-08-17
+
+### Behoben
+- **Kurzzeitige Agenten-Ueberlast laesst taegliche Zeitplaene nicht mehr sofort
+  fuer den ganzen Tag ausfallen.** Wenn ein Agent beim Scheduler-Tick nur
+  ueberlastet ist, versucht der Zeitplan jetzt bis zu zweimal nach etwa
+  zwoelf Minuten erneut zu laufen. Erst beim dritten Ueberlast-Tick geht er
+  wieder auf den regulaeren naechsten Slot.
+
+---
+
+## [1.220.3] - 2026-08-17
+
+### Behoben
+- **Ueberlast- und Ausfall-Meldungen erreichen jetzt tatsaechlich Telegram**
+  (#610). Die Ursache lag tiefer als nur eine falsche Prioritaet: interne
+  Meldungen des Vertretungssystems (`duty_service`) werden direkt in die
+  Datenbank geschrieben und laufen nie ueber die API, die `priority="high"`
+  in einen Telegram-Versand uebersetzt — sie blieben deshalb selbst mit
+  "hoher" Prioritaet unsichtbar im Web-UI. Ein taeglicher Job wie der
+  Podcast-Zeitplan konnte so ausfallen, ohne dass der Betreiber je davon
+  erfuhr. Betroffen waren alle drei Eskalationsstufen (Ausfall, Ueberlast,
+  unbeantwortete Rueckfrage); alle drei melden sich jetzt explizit am
+  Telegram-Kanal. Die im selben Issue vorgeschlagene Wiederholung
+  ausgefallener Zeitplaene und die Entzerrung zweier taeglicher 06:00-Jobs
+  bleiben offen (naechster Schritt).
+
+---
+
+## [1.220.2] - 2026-08-16
+
+### Behoben
+- **5 Frontend-Abhängigkeiten auf Minor-Releases aktualisiert** (Dependabot-
+  Sammel-PR): @xyflow/react, framer-motion, lucide-react, zustand,
+  @types/node. Keine Major-Bumps, keine Breaking Changes laut Upstream —
+  CI (Tests, CodeQL, Trivy, Secret-Scan, Node-Audit) vollständig grün.
+
+## [1.220.1] - 2026-08-16
+
+### Behoben
+- **uvicorn im Embedding-Service auf 0.52.3 aktualisiert** (Patch-Release,
+  Dependabot). Kein sicherheitsrelevanter Fund, reine Fehlerkorrektur
+  upstream — CI (Tests, CodeQL, Trivy, Secret-Scan) vollständig grün.
+
+## [1.220.0] - 2026-08-16
+
+### Geändert
+- **Jede Agenten-Vorlage sagt jetzt, WOFÜR der Agent da ist** — und woran man
+  erkennt, dass er fertig ist. Bisher tat das **keine einzige** der 31
+  Vorlagen: sie listeten auf, was der Agent *kennt*, nicht was er *liefert*.
+  Neu in jeder Vorlage, ganz oben: `### Wofür du da bist` und
+  `**Fertig heißt:** …`.
+- **15 Vorlagen waren nur eine Technologieliste** — 190 bis 320 Zeichen eigener
+  Inhalt, sonst nichts (QA-Tester, Code-Prüfer, Recruiter, Übersetzer,
+  Produktverantwortlicher, Datenbank-Betreuer, Oberflächen-Gestalter,
+  Schnittstellen-Entwickler, Texter, Web-Sammler, Automatisierer,
+  SEO, Social Media, Rechtsunterstützung, Sicherheitsprüfer). Zum Vergleich:
+  die ausgearbeiteten hatten 1.500–2.400 Zeichen. Alle 15 neu geschrieben mit
+  Zweck, Abnahmekriterium, Arbeitsweise, Zusammenarbeit und Ablageort.
+- **26 von 31 Beschreibungen waren englisch** — in einer durchgehend deutschen
+  Oberfläche. Das ist der eine Satz, den ein Anwender beim Anlegen liest. Alle
+  auf Deutsch, und mit Ergebnis statt Tätigkeit formuliert.
+- Die vier deutschen Fach-Vorlagen (Buchhaltung, Lohn, Angebot, Disposition)
+  hatten keinen Ablageort — Ergebnisse landeten irgendwo im Container.
+
+### Behoben
+- Die Kategorien `productivity` und `finance` hatten im Frontend keine
+  Bezeichnung: drei Kacheln zeigten den rohen englischen Schlüssel. Zwei
+  Listen, die niemand gegeneinander gehalten hat — dasselbe Muster, das am
+  selben Tag einen Codex-Agenten komplett lahmgelegt hat. Ein Test hält sie
+  jetzt zusammen.
+
+### Hinweis
+- Der Inhalt der elf älteren, bereits ausgearbeiteten Vorlagen bleibt vorerst
+  englisch; nur ihr Zweck-Block ist deutsch. Der Text ist inhaltlich gut, eine
+  Übersetzung ist ein eigener Schritt.
+
+---
+
+## [1.219.0] - 2026-08-16
+
+### Behoben
+- **Die mitgelieferten Agenten-Vorlagen waren für normale Anwender unsichtbar.**
+  In der Datenbank lagen **31** Vorlagen — alle auf „nicht veröffentlicht". Die
+  Liste blendet Unveröffentlichtes für Nicht-Administratoren aus, also stand
+  beim Anlegen eines Agenten „Noch keine Vorlagen angelegt". Ein Administrator
+  sah alle 31 und hielt es für in Ordnung; jeder andere sah null. Damit war die
+  gesamte Vorlagen-Auswahl für normale Anwender tot.
+- Ursache: Der Seeder legt sie mit `AgentTemplate(is_builtin=True, **daten)` an
+  und setzte `is_published` nie — es griff die Vorgabe des Modells (`False`).
+  Der Entwurf-/Veröffentlichen-Ablauf ist für die vom Administrator **selbst
+  geschriebenen** Vorlagen gedacht; was mit dem Produkt kommt, ist fertig.
+- Neue Anlagen bekommen sie ab sofort veröffentlicht. Bestehende zieht ein
+  einmaliger Nachzug nach — bewusst **einmal**: „nicht veröffentlicht" bedeutet
+  auch „ein Administrator hat sie abgewählt", und beim Abwählen wird
+  `published_at` zurückgesetzt, die beiden Fälle sind danach nicht mehr zu
+  unterscheiden. Liefe das bei jedem Start, käme eine abgewählte Vorlage immer
+  wieder zurück.
+
+### Geändert
+- Die Sichtbarkeitsregel selbst bleibt unangetastet: Nicht-Administratoren sehen
+  weiterhin nur Veröffentlichtes, und aus einem Entwurf lässt sich weiterhin
+  kein Agent starten. Tests wachen über beides.
+- Der Nachzug läuft im Test gegen eine echte Datenbank, inklusive des Ablaufs
+  „Nachzug → Administrator wählt ab → Neustart".
+
+---
+
+## [1.218.2] - 2026-08-16
+
+### Behoben
+- **Kein Spinner beim Laden der Agenten-Vorlagen.** Über eine langsame Leitung
+  stand dort nur grauer Text „Vorlagen werden geladen…" — nicht erkennbar, ob
+  überhaupt noch etwas passiert. Jetzt: Platzhalter-Kacheln in genau dem Raster
+  der echten Vorlagen plus drehender Ladering. Der Inhalt springt beim
+  Eintreffen nicht mehr, und „Leerer Agent" ist die ganze Zeit anklickbar — wer
+  keine Vorlage will, muss gar nicht warten.
+- **Ein Fehlschlag sah exakt aus wie Laden — für immer.** Die leere Liste hieß
+  zugleich „lädt noch" und „ist fehlgeschlagen"; der `catch`-Zweig setzte
+  stillschweigend eine leere Liste, und die Meldung blieb stehen. Jetzt gibt es
+  drei unterscheidbare Zustände: lädt, da, nicht erreichbar — letzteres mit
+  Hinweis auf „Leerer Agent" und einem Knopf „Erneut versuchen".
+
+---
+
+## [1.218.1] - 2026-08-16
+
+### Behoben
+- **Codex-Agenten standen ohne ein einziges Werkzeug da.** Im Container:
+  `Error loading config.toml: duplicate key … [mcp_servers.msgraph]`. Codex
+  bricht beim ersten doppelten Schlüssel ab und lädt danach **gar keine**
+  Konfiguration — der Agent konnte nur noch reden. Genau das war die Ursache
+  des „er kündigt an und tut nichts" aus 1.218.0: er *wollte* arbeiten und
+  *konnte* nachweislich nicht. Ein Auftrag scheiterte wörtlich mit „Task failed
+  at startup due to a configuration error (duplicate key in config.toml)".
+- Ursache war die Überschneidung zweier Listen: `msgraph` ist seit dem 12.08.
+  ein **eingebauter** Server (Parität mit Claude Code) und wurde zusätzlich als
+  HTTP-Server **eingeschleust**, sobald ein Agent die Microsoft-Integration
+  zugewiesen bekam. Ein doppelter Name legte den ganzen Agenten lahm.
+- Jetzt gewinnt der eingebaute Server, der Doppelgänger wird übersprungen und
+  protokolliert. Die Prüfung lädt die fertige Datei als TOML — sie kann also
+  nicht mehr an zwei Listen scheitern, die niemand gegeneinander hält.
+
+- **Die persönliche Codex-Anmeldung lief ins Leere.** Gerätecode eingegeben,
+  ChatGPT meldete „Seite kann geschlossen werden" — und die Oberfläche stand
+  weiter auf „Warte auf die Bestätigung…". Ein einziges fallengelassenes
+  Argument: `start()` nahm `for_user_id` entgegen und übernahm es nicht in die
+  Sitzung.
+- Folge 1: Die Zustandsabfrage verglich `session.for_user_id != user.id` und
+  antwortete **404** — die Anzeige wartete endlos.
+- Folge 2 (schwerwiegender): Der Abschluss nahm den Anlagen-Zweig. Das private
+  ChatGPT-Konto des Nutzers wurde als Zugang der **ganzen Anlage** gespeichert
+  und per `sync_auth_json()` in die **gemeinsame Datei aller Codex-Agenten**
+  geschrieben.
+
+### Geändert
+- Beide Fehler haben jetzt Tests, die den Ablauf **ausführen** statt den
+  Quelltext zu durchsuchen. Die bisherige Prüfung fand den persönlichen Zweig
+  im Code — er war nur nie erreichbar. Beide neuen Prüfungen schlagen ohne die
+  Korrektur nachweislich fehl.
+
+---
+
+## [1.218.0] - 2026-08-16
+
+### Behoben
+- **„Ich mache das jetzt" — und dann passiert nichts.** Per Sprache erbeten:
+  „bau mir mal eine kleine Taschenrechner-App". Der Agent antwortete „Ich kümmere
+  mich sofort … ich plane jetzt die Entwicklung" — **ohne einen einzigen
+  Werkzeugaufruf**. Auf „und blödelst du" erneut „ich erstelle und deploye sie
+  jetzt" — wieder nichts. Erst auf „Hast du die App gebaut!!!???" sah er nach und
+  gab zu: „Nein, wurde noch nicht gebaut."
+- Im **Auftrags**-Pfad ist das seit v1.178.2 abgesichert. Der **Chat**-Pfad hatte
+  die Prüfung nie — und die Sprachfront läuft über den Chat.
+- Der Anstupser ist bewusst **enger** als beim Auftrag: im Chat ist Reden der
+  Normalfall („hallo", „erklär mir X"). Auslöser ist nicht die fehlende Arbeit,
+  sondern der **Widerspruch** zwischen Zusage und Untätigkeit — der ist
+  nachweisbar falsch, egal worum es geht.
+- Reines Nachschlagen zählt dabei **nicht** als Arbeit: drei Blicke in die eigene
+  Wissensdatei sehen nach Tätigkeit aus und sind keine. Genau so entstand der
+  Eindruck im gemeldeten Fall.
+- Der Anstupser nennt **beide** Wege — selbst machen oder an einen Kollegen
+  delegieren — und lässt ausdrücklich ein begründetes Nein zu. Ohne diesen Ausweg
+  erfindet ein Agent, der etwas nicht kann, Arbeit. Einmal je Nachricht.
+
+---
+
+## [1.217.0] - 2026-08-16
+
+### Hinzugefügt
+- **Ein wegen Überlast übersprungener Zeitplan verschwindet jetzt nicht mehr
+  spurlos.** War ein Agent zum Zeitpunkt eines fälligen Zeitplans überlastet
+  (Warteschlange voll), wurde der Lauf bisher nur intern protokolliert (auf
+  einer Stufe, die im Fehler-Log gar nicht auftaucht) und der nächste Termin
+  stillschweigend vorgerückt — weder Nutzer noch Agent erfuhren davon. Genau
+  das ist am 16.08. mit dem täglichen 06:00-Podcast-Zeitplan passiert (siehe
+  Issue #605): die anderen 06:00-Jobs desselben Agenten liefen normal, nur
+  dieser eine fiel unbemerkt aus.
+- Wird ein Zeitplan jetzt wegen Überlast übersprungen, bekommt der Besitzer
+  eine Benachrichtigung mit normaler Priorität (kein Vertreter-Handover
+  nötig — der Agent lebt, er ist nur beschäftigt). Gedrosselt auf eine
+  Meldung pro Agent und Stunde, damit ein kurzgetakteter Zeitplan bei
+  anhaltender Überlast nicht spammt.
+
+---
+
+## [1.216.0] - 2026-08-16
+
+### Hinzugefügt
+- **Ein stiller Datenbank-Ausfall bleibt jetzt nicht mehr stumm.** Bislang
+  meldete der Scheduler eine kurz gestörte Datenbank nur als unauffällige
+  Protokollzeile und versuchte es beim nächsten Takt (30 Sekunden später) neu
+  — richtig so für einen kurzen Ruckler. Hielt der Ausfall aber mehrere
+  Minuten an, konnte in dieser Zeit **kein** Zeitplan feuern, ohne dass
+  jemand davon erfuhr — außer ein Zeitplan hatte zufällig sein eigenes,
+  separates Sicherheitsnetz. Genau das ist am 15.08. passiert: ein rund
+  30-minütiger Datenbank-Ausfall hat das Prüfen fälliger Zeitpläne über das
+  06:00-Uhr-Fenster hinweg lahmgelegt (siehe Issue #601).
+- Bleibt die Prüfung jetzt vier Takte in Folge (~2 Minuten) erfolglos, meldet
+  der Scheduler das einmalig als dringende Benachrichtigung und per Telegram
+  — unabhängig davon, ob für den betroffenen Zeitplan ein eigenes
+  Sicherheitsnetz eingerichtet wurde.
+
+## [1.215.0] - 2026-08-15
+
+### Behoben
+- **Die Codex-Anmeldung verlangte eine Datei, die es nicht gibt.** Nach der
+  Bestätigung im Browser meldet ChatGPT „Seite kann geschlossen werden" — und
+  danach stand die Oberfläche da und wollte den Inhalt einer `auth.json`. Diese
+  Datei bekommt der Nutzer **nie zu sehen**: Codex legt sie im Container an, der
+  Dienst liest sie und räumt das Verzeichnis wieder weg.
+- Die Anmeldung schließt sich jetzt **von selbst ab**, genau wie beim
+  Administrator: die Oberfläche fragt den Status ab, statt den Nutzer nach etwas
+  zu fragen, das er nicht hat. Angezeigt wird der Gerätecode und „Warte auf die
+  Bestätigung".
+- **Das Ergebnis landet beim richtigen Empfänger.** Der Anmeldedienst bekommt
+  jetzt mit, für wen er läuft: persönlicher Zugang statt Zugang der ganzen
+  Anlage. Ein privates Abo wird ausdrücklich **nicht** in die gemeinsame Datei
+  geschrieben — sonst benutzten es alle Agenten.
+- Der Zustand einer fremden Anmeldung ist nicht abfragbar.
+
+---
+
+## [1.214.1] - 2026-08-15
+
+### Behoben
+- **„Mit Claude anmelden" antwortete mit 500.** Der neue Endpunkt baute den
+  OAuth-Dienst von Hand und übergab ihm nur Redis — er erwartet aber
+  `(db, redis)`. Jetzt wird dieselbe Abhängigkeit benutzt wie in
+  `integrations.py`: kürzer, und auf diese Weise nicht falsch zu bauen.
+- Ein Test hält Konstruktor und Aufruf jetzt **wirklich** gegeneinander. Die
+  bisherigen Prüfungen lasen nur den Quelltext und konnten den Fehler deshalb
+  nicht sehen.
+
+---
+
+## [1.214.0] - 2026-08-15
+
+### Hinzugefügt
+- **Eigenes Abo verbinden geht jetzt per Browser-Anmeldung** — dasselbe
+  Verfahren wie beim Administrator, für **Claude und Codex**. Bisher gab es zwei
+  Wege für dieselbe Sache: der Administrator klickte einen Knopf, der normale
+  Nutzer musste ein Token aus `claude setup-token` bzw. den Inhalt einer
+  `auth.json` von Hand einfügen. Das umständlichere Verfahren traf ausgerechnet
+  den, der sich am wenigsten auskennt.
+- Bei Claude öffnet sich die Anmeldeseite; der zurückgegebene Code wird eingefügt
+  — **die ganze Adresszeile funktioniert auch**, denn die meisten kopieren sie
+  statt des Codes darin. Bei Codex wird der Gerätecode angezeigt und ChatGPT
+  geöffnet.
+- **Der Weg von Hand bleibt** für alle, die ihr Token schon haben oder ohne
+  Browser arbeiten.
+
+### Behoben
+- **Der Austausch landet in der richtigen Ablage.** Die Administrator-Anmeldung
+  schreibt eine plattformweite Integration; der Agentenbau liest aber aus
+  `user_ai_credentials`. Ohne diesen Schritt hätte sich ein Nutzer erfolgreich
+  angemeldet — und seine Agenten liefen trotzdem ohne seinen Zugang. Der
+  OAuth-Austausch selbst wird wiederverwendet, nicht ein zweites Mal gebaut.
+
+---
+
+## [1.213.0] - 2026-08-15
+
+### Geändert
+- **Der Reiter „Modelle" zeigt normalen Nutzern jetzt etwas anderes.** Bisher sah
+  jeder dieselbe Seite: Provider-Konfiguration, ChatGPT-Login der Plattform, Max
+  Turns, Anzahl gleichzeitiger Agenten. Ein Member kann davon **nichts**
+  einstellen — er sah eine Bedienoberfläche, die auf keinen seiner Klicks
+  reagiert.
+- Stattdessen beantwortet sie jetzt die Frage, die er wirklich hat: **welche
+  Modelle stehen mir zur Verfügung.** Lesend, ohne einen einzigen Schalter, aus
+  den Konten, die sein Administrator freigegeben hat.
+- Ist nichts freigegeben — der häufigste Fall bei einem neuen Nutzer — steht dort
+  jetzt, **warum** und was zu tun ist: Administrator fragen, oder unter „Meine
+  KI-Zugänge" das eigene Abo verbinden.
+- **Der Speichern-Knopf erscheint nur, wo es etwas zu speichern gibt.** Auf
+  „Meine KI-Zugänge" wird beim Verbinden sofort gesichert; ein Knopf daneben
+  ließ den Nutzer glauben, er hätte etwas vergessen.
+
+---
+
+## [1.212.0] - 2026-08-15
+
+### Sicherheit
+- **Ein Agent ohne Besitzer war für JEDEN Nutzer sichtbar.** Aufgefallen, als ein
+  frisch angelegter Testnutzer einen fremden Agenten in seiner Liste vorfand.
+  Im Code stand das als Absicht („+ unowned + shared") — aber besitzlos wird ein
+  Agent nicht durch eine Entscheidung, sondern durch ein **Versehen**: ein Skript
+  ohne `user_id`, ein gelöschter Nutzer, eine Migration. Genau so ist er
+  entstanden. Ein Versehen darf keine Freigabe auslösen.
+- Fürs Teilen gibt es weiterhin den ausdrücklichen Weg (`AgentAccess`, und für
+  Besprechungsräume `shared_for_rooms`) — der bleibt unverändert. Zwei
+  Freigabewege nebeneinander, einer davon still, waren die eigentliche Ursache.
+- Administratoren sehen besitzlose Agenten weiterhin (Admin-Konsole) und können
+  sie zuweisen. Wird ein Agent ohne Besitzer angelegt, steht das jetzt im
+  Protokoll, statt unbemerkt zu bleiben.
+
+### Geändert
+- **„Voice" und „System" sind für normale Nutzer ausgeblendet.** Ihre Inhalte
+  waren längst adminbeschränkt, die Reiter selbst nicht — wer klickte, sah eine
+  leere Seite und hielt es für einen Fehler. Ein Reiter ohne Inhalt ist
+  schlechter als kein Reiter. Wer per Adresszeile dort landet, wird
+  zurückgeholt. Kommt später etwas Nutzereigenes dazu (etwa eine zugewiesene
+  Stimme), gehört die Bedingung gelockert statt der Reiter leer gelassen.
+
+---
+
+## [1.211.0] - 2026-08-15
+
+### Hinzugefügt
+- **Eigenes Claude-/Codex-Abo lässt sich jetzt verbinden** — Nutzermenü →
+  Einstellungen → **Meine KI-Zugänge**. Verbinden, ersetzen, trennen; sichtbar
+  ist nur, *dass* etwas hinterlegt ist, wann es zuletzt benutzt wurde und ob es
+  funktioniert hat. Das Geheimnis gibt die Schnittstelle bewusst nie zurück.
+- **Einstellungen sind über das Nutzermenü erreichbar.** Die Seite existierte,
+  stand aber in keiner Menügruppe — sie war schlicht nicht auffindbar.
+
+### Behoben
+- **Der zweite der beiden Wege war in der Praxis nicht begehbar.** Die
+  Schnittstelle `/me/ai-credentials` gibt es seit v1.185.0 und wurde im gesamten
+  Frontend **kein einziges Mal** aufgerufen. Kein Nutzer konnte sein Abo
+  hinterlegen — während die Agenten-Anlage seit v1.210.0 ausdrücklich darauf
+  verweist („verbinde dein eigenes Abo unter Einstellungen"). Eine Fehlermeldung,
+  die auf etwas Nichtexistierendes zeigt, ist schlimmer als gar keine.
+- Ohne eigenen Zugang steht jetzt dort, was stattdessen greift: die Firmenlizenz,
+  oder — falls keine freigegeben ist — ein KI-Konto vom Administrator.
+
+---
+
+## [1.210.0] - 2026-08-15
+
+### Geändert
+- **Ein Agent bekommt sein Modell jetzt aus genau zwei Quellen** — einem vom
+  Administrator freigegebenen KI-Konto (Azure, AWS, Google, OpenAI) oder dem
+  eigenen Claude-/Codex-Abo des Nutzers. Beide Wege gab es schon; neu ist, dass
+  es keinen dritten mehr gibt.
+- **Zugangsdaten lassen sich nicht mehr direkt am Agenten eintippen** (außer als
+  Administrator, für Sonderfälle und zum Erproben eines neuen Anbieters). So ein
+  Zugang gehörte niemandem, tauchte in keiner Übersicht auf, ließ sich nicht
+  entziehen — und war beim nächsten Neuerstellen spurlos weg, weil er nur in den
+  Umgebungsvariablen des Containers stand. Genau das ist heute passiert.
+- Die Fehlermeldung nennt **beide** Wege statt nur zu sagen, was fehlt.
+
+### Behoben
+- **Kein stiller Modellwechsel mehr.** Führt das Konto das gewählte Modell nicht,
+  nahm der Code kommentarlos den ersten Eintrag: ausgewählt war `gpt-5.6-sol`,
+  gelaufen ist `gpt-5.3-codex` — ohne einen einzigen Hinweis. In einer Anlage, in
+  der der Administrator Modelle **freigibt**, ist das der gefährlichste Fehler
+  überhaupt, weil man glaubt, das freigegebene Modell zu benutzen.
+- Der Rückfall bleibt (ein laufender Agent soll nicht stehenbleiben, weil jemand
+  ein Modell aus dem Konto genommen hat), aber er ist jetzt **laut**: im Protokoll
+  und als Meldung an den Besitzer, mit dem Hinweis, wie er es richtigstellt.
+
+---
+
+## [1.209.0] - 2026-08-15
+
+### Behoben
+- **Azure-AI-Foundry-Projektendpunkte funktionieren jetzt.** Die Azure-Oberfläche
+  zeigt einen **Projekt**-Endpunkt zum Kopieren an
+  (`…/api/projects/<name>`) — genau den trägt jeder ein, er steht ja da. Daran
+  gehängt, antwortete Azure auf den klassischen Deployment-Pfad mit **400**: der
+  gehört an die Ressource, nicht ans Projekt. Der Projektpfad wird jetzt
+  abgeschnitten, statt den Nutzer raten zu lassen.
+- Am laufenden Dienst nachgemessen: Projektpfad 400, Ressourcen-Wurzel 200.
+  Klassische `*.openai.azure.com`-Endpunkte und die `…/openai/v1`-Oberfläche
+  bleiben unverändert.
+
+---
+
+## [1.208.1] - 2026-08-15
+
+### Geändert
+- **Der Feedback-Knopf ist jetzt rund wie der Concierge-Knopf daneben.** Zwei
+  Schaltflächen nebeneinander, von denen eine eine Pille mit Text und die andere
+  ein Kreis ist, lesen sich wie zwei verschiedene Baukästen. Gleiche Maße (44px),
+  gleiche Rundung, gleicher Abstand, gleiches Verhalten beim Zeigen (wachsen
+  statt aufhellen).
+- Die Beschriftung „Feedback" **entfällt nur optisch** und bleibt im Markup:
+  ein Knopf, der nur für Sehende beschriftet ist, ist für alle anderen ein
+  leerer Kreis.
+
+---
+
+## [1.208.0] - 2026-08-15
+
+### Behoben
+- **Der Sentinel war blind für den gesamten Chat-Verkehr.** Er lauschte nur auf
+  `agents:logs:all` — der Gesprächsweg schreibt aber auf einen eigenen Kanal je
+  Agent (`agent:{id}:chat:response`). Ein Geheimnis in einer Chatantwort hätte er
+  nie gesehen. Betrifft **alle** Agenten-Modi; bei interaktiv genutzten
+  Custom-LLM-Agenten ist der Chat der Hauptweg, dort war die Lücke am größten.
+- Gelöst per Mustersuche (`agent:*:chat:response`) statt durch eine Änderung am
+  Veröffentlicher — so bleiben die bestehenden Lauscher unberührt.
+
+---
+
+## [1.207.0] - 2026-08-15
+
+### Behoben
+- **Der Sentinel hielt einen Agenten wegen einer Vermutung an.** Drei Minuten
+  nach dem ersten Einschalten stoppte er den Hauptagenten — wegen einer
+  Zeichenkette, die mit „GH" anfing. Auslöser war die `KEY=VALUE`-Heuristik des
+  DLP-Filters („alles, was TOKEN/SECRET/PASSWORD heißt, gefolgt von vier
+  Zeichen").
+- **Maskieren und Anhalten brauchen verschiedene Schwellen.** Fürs Maskieren ist
+  diese Heuristik goldrichtig — im Zweifel schwärzen kostet nichts. Als Auslöser
+  für einen Stopp zerstört sie laufende Arbeit wegen einer Vermutung.
+- Der Sentinel prüft jetzt nur noch auf Geheimnisse, die am **Format** erkennbar
+  sind: `ghp_…`, `sk-…`, `AKIA…`, JWTs, PEM-Blöcke, Slack- und Telegram-Token.
+  `GH_TOKEN=nicht-gesetzt` oder `API_KEY=<dein-schlüssel>` in einer Anleitung
+  halten niemanden mehr an. Der Egress-Filter maskiert unverändert großzügig.
+
+---
+
+## [1.206.2] - 2026-08-15
+
+### Behoben
+- **Der Sentinel meldete „Agent wurde angehalten", auch wenn das Anhalten
+  fehlschlug.** Im Ende-zu-Ende-Lauf aufgefallen: der Betreiber hätte sich in
+  Sicherheit gewiegt, während der Agent weiterlief — die schlimmste Sorte
+  Falschmeldung. Ursache ist die Bauart: Stopp und Meldung laufen **absichtlich**
+  gleichzeitig, damit ein hängender Stopp den Alarm nicht verzögert. Die Meldung
+  kann den Ausgang also gar nicht kennen und behauptet ihn jetzt auch nicht mehr.
+- **Scheitert das Anhalten, kommt eine zweite, dringendere Meldung:** „Der Agent
+  läuft weiter, bitte von Hand stoppen." Erkannt-aber-nicht-gestoppt ist der
+  gefährlichere Fall und braucht mehr als eine Zeile im Prüfprotokoll.
+
+---
+
+## [1.206.1] - 2026-08-15
+
+### Behoben
+- **Der Sentinel liess sich gar nicht einschalten.** Der Schalter stand in der
+  Konfiguration, aber nicht in `docker-compose.yml` — die Datei reicht Variablen
+  **einzeln** durch, was dort fehlt, kommt nie im Container an. Wer ihn über die
+  `.env` aktivieren wollte, bekam einen stumm ausgeschalteten Dienst, ohne
+  Fehlermeldung. Gilt genauso für den Redis-ACL-Schalter. Beide sind jetzt
+  durchgereicht und stehen weiterhin standardmäßig auf `false`.
+
+---
+
+## [1.206.0] - 2026-08-15
+
+### Hinzugefügt
+- **Wer bewacht den Wächter (#590 Punkt 6).** Ein Sentinel, der unbemerkt
+  stehenbleibt, ist gefährlicher als gar keiner: die Anlage sieht überwacht aus
+  und ist es nicht. Der Dienst legt jetzt alle 15 Sekunden ein Lebenszeichen ab —
+  **in der Warteschleife, nicht beim Ereignis**, denn ein Sentinel, der stundenlang
+  nichts sieht, ist gesund; einer, der hängt, nicht. Ohne diesen Unterschied sähen
+  beide gleich aus.
+- Der Wachhund im Zeitplaner prüft es bei jedem Takt und meldet **einmal**
+  dringend, wenn es älter als zwei Minuten ist — acht verpasste Schläge, genug für
+  eine Redis-Neuverbindung, zu wenig für unbemerkten Stillstand.
+- Ein **fehlendes** Lebenszeichen ist bewusst kein Alarm: dann ist der Dienst
+  ausgeschaltet, und das ist eine Entscheidung des Betreibers.
+
+---
+
+## [1.205.0] - 2026-08-15
+
+### Hinzugefügt
+- **Der Sentinel tut jetzt etwas** (Epic #588, Teile #590 Punkt 4 und #592).
+  Bisher war er ein Gerüst: die Erkennung gab immer „nichts gefunden" zurück,
+  Anhalten und Melden waren Attrappen, die nur protokollierten. Man konnte ihn
+  einschalten, und er tat nachweislich nichts.
+- **Erkennung — bewusst schmal und deterministisch, ohne Modellaufruf.** Dieser
+  Pfad sieht jedes Ereignis jedes Agenten; ein Modellaufruf pro Ereignis wäre
+  weder bezahlbar noch schnell genug für den Zweck, eine schädliche Handlung
+  *während* sie geschieht zu erwischen. Zwei Signale, beide aus vorhandenen
+  Bausteinen:
+  - **Geheimnis in der Ausgabe.** Der Egress-Filter sieht nur, was nach draußen
+    geht — der Sentinel sieht auch Werkzeugaufrufe und -ergebnisse. Ein
+    Zugangsschlüssel dort ist ein Vorfall, egal ob er je verschickt wird.
+  - **Prompt-Injektion.** Genau der Fall, den ein Agent per Selbstprüfung nicht
+    abfangen kann, weil die Injektion diese Selbstprüfung mit angreift.
+- **Anhalten und Melden sind verdrahtet.** Der Agent wird wirklich angehalten
+  (in-process, wie der Zeitplaner es tut), es entsteht ein Eintrag im
+  Prüfprotokoll und eine dringende Benachrichtigung mit Sprung zum Agenten.
+- **Der Auszug im Bericht enthält nie den Klartext eines Geheimnisses** — nur
+  Anfang und Ende. Ein Vorfallbericht, der das Geheimnis erneut ausschreibt, wäre
+  selbst ein Leck.
+- **Schutz gegen Sturmfeuer:** derselbe Vorfall desselben Agenten löst innerhalb
+  einer Minute nur einmal aus. Ohne das würden aus einem Leck ein Dutzend Stopps
+  und ein Dutzend Meldungen.
+- **Fail-open bleibt Pflicht:** ein Fehler in der Erkennung lässt das Ereignis
+  durch und hält niemanden an. Scheitert das Anhalten, entsteht der Protokoll-
+  Eintrag trotzdem — ein Vorfall ohne Spur ist schlimmer als einer ohne Reaktion.
+- **Beide Schalter bleiben aus.** Der Dienst kann jetzt Agenten anhalten; das ist
+  eine Entscheidung des Betreibers, nicht eine Nebenwirkung eines Updates.
+
+### Geändert
+- **Die Agenten-Anleitung verlangt jetzt Release-Disziplin.** Am 14.08. liefen
+  sechs Pull Requests mit über 1000 Zeilen in die Hauptlinie — ohne
+  Versionssprung, ohne CHANGELOG-Eintrag. Nicht aus Nachlässigkeit: in der
+  Anleitung stand dazu nichts. Jetzt steht dort, dass `VERSION`, das
+  Dockerfile-Label und ein Eintrag im CHANGELOG zu jeder Änderung gehören — und
+  dass der Eintrag beschreibt, was sich für den **Nutzer** ändert, nicht welche
+  Dateien angefasst wurden.
+
+---
+
+## [1.204.0] - 2026-08-15
+
+### Behoben
+- **Die Agenten-Redis-Zugänge hätten jeden Agenten ausgesperrt.** Der Rauchtest
+  gegen ein echtes Redis 7.4 zeigte: der eingeschränkte Zugang durfte kein
+  `PING` — und darauf stützen sich Verbindungsaufbau und periodische
+  Gesundheitsprüfung von `redis-py`. Mit eingeschaltetem Schalter wäre kein Agent
+  hochgekommen. `+@connection` ergänzt, **vor** den Verboten: die Kategorie
+  enthält auch `CLIENT LIST`, das die folgenden `-@admin`/`-@dangerous` wieder
+  entziehen. Am laufenden Server nachgeprüft.
+
+### Hinzugefügt
+- **Rauchtest der Agenten-ACL gegen ein echtes Redis** (`test_redis_acl_live_smoke.py`).
+  Prüft, was kein Modultest kann: ob ein laufender Server die Regeln annimmt und
+  ob sie bewirken, was draufsteht — eigener Schlüsselraum ja, fremde Schlüssel
+  nein, Postfach eines Kollegen befüllen ja, mitlesen oder leeren nein, keine
+  Adminbefehle. Überspringt sich ohne `REDIS_SMOKE_URL`, damit die normale Suite
+  ohne Redis grün bleibt.
+
+### Nachgetragen — Sentinel, Teil 1 bis 3 (Epic #588)
+Die folgende Arbeit wurde am 14.08. zusammengeführt, aber **ohne Versionssprung
+und ohne CHANGELOG-Eintrag**; hier nachgetragen:
+- **Teil 1 (#589):** eigener, minimal berechtigter Redis-Zugang je Agent statt
+  des einen geteilten Admin-Zugangs. Bisher kann jeder Agent auf dem Kanal jedes
+  anderen veröffentlichen und sich so als dieser ausgeben. Schalter aus.
+- **Teil 2 (#590):** Gerüst des Sentinel-Dienstes plus eigenes, domänengetrenntes
+  Zugangsschema (konstantzeitiger Vergleich). Erkennung, Stopp und Meldung sind
+  noch Attrappen — der Dienst tut heute nichts. Schalter aus.
+- **Teil 3 (#591):** die Freigabe-Vorgänge veröffentlichen ihre Ereignisse in die
+  Sentinel-Leitung.
+- Außerdem: Web-Push behandelt 403 als „endgültig weg", Mikrofon-Aufnahme für die
+  Desktop-Brücke, `numpy` in der Test-Umgebung der CI.
+
+---
+
+## [1.203.0] - 2026-08-13
+
+### Behoben
+- **Eine abgerissene Verbindung tötet nicht mehr die ganze Aufgabe.** Bei einem
+  Kunden scheiterten drei Aufgaben an `ReadError('')` — der Abbruch traf jeweils
+  das Lesen der Modell-Antwort. Eine Aufgabe, die vierzig Züge gelaufen war,
+  starb an einem einzigen abgerissenen Lesevorgang.
+- Zwei Lücken lagen übereinander: die Fehlerprüfung kannte nur „das Modell kann
+  gerade nicht" (Rate-Limit, 5xx, Überlastung) — ein Socket-Abbruch passte auf
+  keinen Marker. Und selbst mit Treffer hätte es nichts genutzt: die Wiederholung
+  wechselt das **Modell**, und die Ausweichkette ist im Regelfall leer.
+- Der Verbindungsabbruch ist jetzt eine **eigene Kategorie**: nicht Modell
+  wechseln, sondern **denselben Aufruf noch einmal**. Das Modell war in Ordnung,
+  die Leitung war es nicht. Höchstens zwei Versuche mit wachsender Pause — reißt
+  es dreimal, liegt es nicht am Zufall und der echte Grund muss sichtbar werden.
+- Ein Einrichtungsfehler (falscher Schlüssel, falscher Bereitstellungsname) bleibt
+  auch hier sofort endgültig.
+- Der Mensch sieht die Wiederholung im Protokoll — ein stilles Nochmal-Versuchen
+  würde nur verschleiern, warum ein Lauf länger dauert.
+- Gilt in **beiden** Laufzeiten (Auftrag und Chat).
+
+---
+
+## [1.202.0] - 2026-08-13
+
+### Geändert
+- **Die Agenten lernen die Namensregel selbst.** Sie schreiben inzwischen Code,
+  Commits, Pull Requests und Issues — ohne Regel machen sie denselben Fehler wie
+  wir, nur schneller und öfter. Die Anweisung steht jetzt in der Agenten-Anleitung
+  und damit modusübergreifend bei Claude Code, Codex und Custom-LLM.
+- Sie verbietet nicht nur, sondern sagt, **was stattdessen** dahin gehört
+  („beim Kunden", „eine Kundenanlage", `example.com`), **warum** es beiläufig
+  passiert (man notiert, wo ein Fehler auftrat — und der Ort hat einen Namen),
+  und **wohin der Klarname gehört**: ins Gedächtnis des Agenten, nicht ins
+  Repository. Ein privates Repo ist ausdrücklich keine Ausnahme.
+- Bestandsagenten bekommen die Anleitung beim nächsten Update oder Neustart.
+
+---
+
+## [1.201.0] - 2026-08-13
+
+### Sicherheit
+- **Kunden-, Firmen- und Personennamen aus dem Repo entfernt.** Das Repo ist
+  öffentlich; der Name eines Kunden stand an 34 Stellen in 20 Dateien — in
+  Kommentaren, Tests, im CHANGELOG und im Benutzerhandbuch. Dazu der Nachname
+  einer realen Ansprechperson in einem Test.
+- **Die gravierendste Stelle war die Produkt-Oberfläche:** In den Einstellungen
+  standen die internen Adressen eines Kunden als Platzhalter (Mailserver,
+  Dienstkonto, interne IP). Die sah **jeder** Nutzer der Software — auch jeder
+  andere Kunde. Ersetzt durch `example.com` bzw. neutrale Werte.
+- **Eine Prüfung wacht darüber** (`test_no_customer_names_in_repo.py`): sie
+  durchsucht den gesamten Quelltext nach einer Sperrliste und schlägt fehl, bevor
+  ein Name wieder hineinrutscht. Ein Vorsatz reicht dafür nicht — der Ort eines
+  Fehlers hat nun einmal einen Namen, und man schreibt ihn beiläufig auf.
+- Der Sachverhalt bleibt überall nachvollziehbar: statt des Namens steht jetzt
+  „beim Kunden" bzw. „eine Kundenanlage". Klarnamen gehören ins
+  Projekt-Gedächtnis, nicht ins öffentliche Repo.
+- **Reichweite:** Das schützt den aktuellen Stand. Was einmal öffentlich gepusht
+  wurde, bleibt in der git-Historie und in fremden Klonen.
+
+---
+
+## [1.200.2] - 2026-08-13
+
+### Behoben
+- **Team-Lead-Rückmeldung endete mitten im Wort, bevor die eigentliche Antwort
+  auftauchte.** Ein Team-Lead delegierte vier Testaufgaben ("gib exakt 'Hallo
+  Welt' aus"); drei von vier Rückmeldungen brachen ab ("...reinen Au", "...I",
+  "...lc"), noch bevor der geforderte Satz im sichtbaren Text erschien. Ursache:
+  die Fertigmeldung wurde zweimal mit einem blossen `text[:n]` gekürzt (erst auf
+  800, dann nochmal auf 300 Zeichen), ohne auf Wortgrenzen zu achten — der
+  Pflicht-Vorspann der Sub-Agenten (Vorab-Checks: Tools laden, TODOs,
+  Brain/Memory, Skill-Suche) war oft schon länger als das Limit. Kürzt jetzt an
+  der letzten Wortgrenze, gleicher Fix in allen drei Harnessen (Webapp-Chat,
+  Claude-Code-MCP, Custom-LLM).
+
+---
+
+## [1.200.1] - 2026-08-13
+
+### Behoben
+- **Die Protokoll-Ansichten waren im hellen Erscheinungsbild unlesbar.** Der
+  Kasten stand fest auf Schwarz, während die Zeilen darin dem Erscheinungsbild
+  folgen (`text-foreground`) — im hellen Modus also **dunkle Schrift auf
+  schwarzem Grund**. Nicht nur unpassend, stellenweise schlicht nicht lesbar.
+- Betroffen waren **drei** Stellen mit demselben Muster: das Live-Feld der
+  Aufgabenseite, die Zeitreise-Ansicht darunter und der Live-Terminal des
+  Agenten. Alle drei folgen jetzt dem Erscheinungsbild.
+- Die Akzentfarben der Zeilen (Werkzeug, Fehler, Ergebnis) waren auf schwarzen
+  Grund abgestimmt und auf hellem ausgewaschen — im hellen Modus jetzt eine
+  dunklere Stufe. **Der dunkle Modus bleibt unverändert.**
+- Unangetastet: der Kiosk-Bildschirm (absichtlich schwarz) und der Rand hinter
+  Bildschirmfotos.
+
+---
+
+## [1.200.0] - 2026-08-13
+
+### Neu
+- **Eigene Menüpunkte für fremde Seiten.** Ein Administrator legt eine Seite an
+  (`/p/<kurzname>`), und sie erscheint als regulärer Menüpunkt — wahlweise
+  **eingebettet** (`iframe`) oder als **Link** im neuen Tab. Anlass war OpenWebUI
+  beim Kunden: die Oberfläche soll nicht „daneben" stehen, sondern im selben Menü
+  erreichbar sein wie alles andere.
+- **Keine zweite Rechte-Logik.** Wer die Seite sieht, entscheidet die vorhandene
+  Rechtevergabe (`permissions.menu_paths`) — der Kurzname wird zum Rechte-Pfad.
+- Ob sich eine fremde Seite überhaupt einbetten lässt, bestimmt allein diese
+  Seite (`X-Frame-Options` / `frame-ancestors`). Das lässt sich weder erzwingen
+  noch vorher erkennen; die Oberfläche weist darauf hin und bietet den Weg im
+  neuen Tab an.
+
+### Sicherheit
+- **Menüziele nur nach `http`/`https`** — doppelt geprüft. Der Server weist
+  andere Schemata beim Anlegen *und* beim Ändern ab; die Oberfläche prüft
+  zusätzlich, für Einträge, die auf anderem Weg in die Datenbank gelangen. Ein
+  `javascript:`-Ziel wäre fremder Code, der beim Klick in unserer eigenen
+  Oberfläche liefe — mit der Sitzung des Angemeldeten.
+
+### Behoben
+- **Konfliktreste im CHANGELOG entfernt.** Seit einem unfertigen Rebase am
+  Vormittag standen `<<<<<<< HEAD`-Marken zwischen den Einträgen 1.192.0 und
+  1.191.2 in der Datei — beide Releases sind echt und stehen jetzt wieder
+  vollständig da.
+
+---
+
+## [1.199.1] - 2026-08-13
+
+### Behoben
+- **„Eine Toolkette ist durch, aber der macht noch immer den Spinner mit
+  Arbeitet.“** Wenn ein Agent im selben Zug mehrere Werkzeugketten nacheinander
+  abarbeitet (etwa zwei Auftraege an zwei verschiedene Agenten delegieren),
+  hing der „Arbeitet…“-Zustand jeder Kette am GESAMTEN Nachrichtenturn statt an
+  der eigenen Kette. Eine laengst fertige Kette (alle Haekchen gruen) zeigte
+  trotzdem weiter den drehenden Kreis — und erst wenn der komplette Turn zu
+  Ende war, klappten ALLE Ketten gleichzeitig auf ihre Endanzeige um, statt
+  jede fuer sich, sobald sie selbst fertig ist.
+- Nur die zuletzt begonnene Kette im Turn erbt jetzt den laufenden Zustand;
+  jede fruehere Kette richtet sich nach dem Status ihrer eigenen Werkzeuge.
+
+---
+
+## [1.199.0] - 2026-08-13
+
+### Geändert
+- **Die Rollenverwaltung zeigt unten nur noch die Mitglieder der Rolle.**
+  Kundenwunsch: *„UNTEN sind alle User in der App zu sehen, aber ich brauche
+  dort nur die User (aufklappbar) die wirklich in der Rolle."* Bisher stand dort
+  jeder Nutzer der Plattform mit einer eigenen Auswahlbox daneben — bei vielen
+  Nutzern eine Wand aus Dropdowns, in der man die eigentliche Frage („wer gehört
+  zu dieser Rolle?") nicht beantworten konnte. Jetzt: ein aufklappbarer Block
+  **Mitglieder** mit Zähler, darin ausschließlich die Nutzer dieser Rolle,
+  Entfernen direkt an der Zeile.
+- **Hinzufügen läuft jetzt über die Suche statt über 40 Dropdowns.** „User
+  hinzufügen" öffnet eine Namens-/E-Mail-Suche über die Nicht-Mitglieder. Steckt
+  jemand schon in einer anderen Rolle, steht das daneben — ein Umhängen ist damit
+  sichtbar und nicht versehentlich.
+- In der Rollenliste links steht pro Rolle die Mitgliederzahl.
+- **Das Admin-Menüband ist zweistufig statt 13 Reiter in einer Scrollzeile.**
+  Kundenwunsch: *„Gern kann auch einfach mal das komplette Menüband angepasst
+  werden und thematisch zusammengefasst werden und dann mit subtabs gearbeitet
+  werden."* Sechs Themengruppen — Nutzer & Rollen, Agenten, KI & Wissen,
+  Sicherheit, Betrieb, System — mit den jeweiligen Unterreitern darunter. Damit
+  ist jeder Bereich ohne seitliches Scrollen erreichbar; offenes Feedback meldet
+  sich mit einem Punkt an der Gruppe.
+
+---
+
+## [1.198.2] - 2026-08-13
+
+### Sicherheit
+- **Zweite Sperre gegen `javascript:` in selbst angelegten Menüpunkten.** Der
+  Server ließ schon immer nur `http`/`https` durch — beim Anlegen *und* beim
+  Ändern. Die Oberfläche prüft das Schema jetzt zusätzlich, für Einträge, die
+  vor dem Validator entstanden sind oder auf anderem Weg in die Datenbank
+  gelangen. Ein ungültiger Eintrag verschwindet, statt still auf `#` zu zeigen.
+
+---
+
+## [1.198.1] - 2026-08-13
+
+### Behoben
+- **„Es wirkt ein wenig wie eingeschlafen."** Während der Agent nur Werkzeuge
+  aufrief, stand über der Werkzeugzeile „4 Tools" statt „Arbeitet…" — und nichts
+  bewegte sich. Die Bedingung fragte, ob gerade ein **Werkzeug** rechnet, nicht
+  ob der **Zug** läuft. Genau in der Denkpause zwischen zwei Werkzeugen (alle
+  Ergebnisse zurück, der Agent verarbeitet sie) wurde sie falsch. Der obere
+  „Thinking…"-Block half nicht: der weicht, sobald eine Antwortnachricht
+  existiert.
+- Das nötige Wissen wurde bereits übergeben, aber **nie ausgepackt** —
+  `isStreaming` stand in der Typangabe der Komponente und wurde verworfen.
+- Dazu ein Kreis, der sich wirklich dreht. „Arbeitet…" allein liest man nicht als
+  Bewegung — das stand schon im ersten Kundenfeedback zu dieser Zeile.
+
+---
+
+## [1.198.0] - 2026-08-13
+
+### Geändert
+- **Der Chat sieht jetzt gleich aus, egal wer den Zug angestoßen hat.**
+  Kundenwunsch: *„wenn er nach einer Delegation noch weiter arbeitet, dann muss
+  sich der Chat-Link in der Sidebar wie im normalen Chat weiter drehen."*
+- Beginnt der Agent **von sich aus** einen Zug — nach einer Delegation, nach
+  einer Fertigmeldung, aus einem Zeitplan — erfuhr die Seite davon bisher erst
+  beim nächsten 15-Sekunden-Takt. Ein kurzer Zug war bis dahin vorbei: die
+  Gesprächszeile blieb blass, obwohl im Fenster „Thinking…" lief. Das erste
+  Ereignis eines solchen Zuges löst jetzt sofort ein Nachfassen aus.
+- Der **eigene** laufende Zug markiert seine Gesprächszeile unmittelbar, statt
+  auf die abgefragte Liste zu warten.
+
+---
+
+## [1.197.2] - 2026-08-13
+
+### Geändert
+- **Die „In Arbeit"-Zeile zählt nur noch die offenen Aufträge.** Der Bruch
+  („3 von 6") bezog sich auf das ganze Gespräch und war nicht lesbar, wenn man
+  gerade 4 Aufträge vergeben hatte — man sucht dann die 6, die im Bild nicht
+  vorkommen. Jetzt steht dort schlicht, worauf noch gewartet wird.
+
+---
+
+## [1.197.1] - 2026-08-13
+
+### Behoben
+- **Kacheln fehlten, sobald der Agent `create_task_batch` wählte.** In derselben
+  Sekunde entstanden vier Aufträge desselben Auftraggebers — zwei trugen den
+  Gesprächsfaden, zwei nicht. Es gibt **drei** Werkzeuge, die Aufträge anlegen
+  (`create_task`, `create_task_batch`, `delegate_and_wait`); jedes baute seine
+  Nutzlast selbst, und als der Faden dazukam, wurde er an zwei von dreien
+  angehängt. Alle drei gehen jetzt über **einen** gemeinsamen Bauplan — ein neues
+  Feld gilt damit sofort für alle.
+- **Der Notweg des Orchestrators überstand keine Parallelarbeit.** Kennt der
+  Werkzeugserver den Faden nicht (Claude Code), ermittelt ihn der Orchestrator
+  selbst — bisher aus `current_task`, das aber nur **eine** Arbeit trägt. Der
+  Agent lief nebenher an einer Zeitplan-Aufgabe, dort stand deren Kennung, und
+  der Chat war unsichtbar. Jetzt zählt die vollständige Liste der laufenden
+  Arbeiten; bei mehreren offenen Gesprächen wird bewusst **nicht** geraten — eine
+  Kachel im falschen Chat wäre schlimmer als keine.
+- Der alte Test **zählte** nur, wie oft der Faden angehängt wird („zweimal,
+  passt") — und war deshalb zufrieden, während das dritte Werkzeug fehlte. Er
+  prüft jetzt jedes Werkzeug einzeln.
+
+---
+
+## [1.197.0] - 2026-08-13
+
+### Hinzugefügt
+- **„In Arbeit"-Anzeige im Chat, solange delegierte Aufträge laufen.**
+  Kundenwunsch: *„Ich wollte im Chat eine Anzeige haben, dass noch am Thema
+  gearbeitet wird (in Progress, warte noch auf SubAgents Rückmeldung)."*
+  Die Lücke war echt: **nach dem Delegieren ist der Zug des Agenten beendet**,
+  also lief kein „Thinking…"-Spinner, obwohl die Aufträge noch liefen. Wer nicht
+  nachfragte, sah gar nichts.
+- Die Zeile nennt den Stand (*3 von 5 erledigt*) **und wen es noch braucht**
+  (*wartet auf DevAgent, MarketingMaker*) — nicht nur, dass irgendetwas läuft.
+- Sie hängt bewusst **nicht** am eigenen Zug des Agenten, sonst wäre sie genau
+  dann verschwunden, wenn man sie braucht. Ausgeblendete Kacheln zählen nicht
+  mehr mit.
+
+---
+
+## [1.196.0] - 2026-08-13
+
+### Geändert
+- **Fehler des Modell-Aufrufs erklären sich jetzt selbst.** Auslöser: drei
+  Aufgaben bei der Kundenanlage scheiterten mit `Unexpected error: ReadError('')` — die
+  Klammer war **leer**. Um überhaupt einzugrenzen, *wo* es reißt, mussten 110
+  gespeicherte Aufgabenschritte durchgesehen werden.
+- **Die Ursachenkette wird mitgeliefert.** `httpx` verpackt den Socket-Abbruch;
+  `ReadError` ist nur die Hülle, darunter steht der eigentliche Grund
+  (`ConnectionResetError`, `SSLEOFError`, `EndOfStream`, `IncompleteRead`). Genau
+  der wurde bisher weggeworfen.
+- **Die Umstände stehen dabei:** Modell, Endpunkt (nur Host), Anzahl Nachrichten,
+  Größe der Anfrage in Zeichen und die Laufzeit bis zum Abbruch. Damit sagt der
+  nächste Vorfall selbst, ob es an Größe, Endpunkt oder Zeitpunkt liegt.
+- Gilt für **alle** Anbieter (OpenAI/Azure, Anthropic, Gemini) und alle
+  Fehlerstellen — auch `Connection failed` und `Request timed out`, die bisher
+  ebenfalls ohne Kontext meldeten.
+- **Ohne Inhalte:** Größen, Anzahl und Host ja — Prompt nein. Die Abfragezeichen-
+  kette wird abgeschnitten, damit der Gemini-Schlüssel (`?key=…`) nicht in
+  Protokollen landet.
+
+---
+
+## [1.195.0] - 2026-08-13
+
+### Behoben
+- **Delegation an einen gelöschten Agenten scheitert jetzt laut statt still.**
+  Bisher landete so ein Auftrag als `PENDING` **ohne `agent_id`** in der Datenbank
+  — und blieb dort für immer liegen, denn der Reparaturlauf sucht ausdrücklich
+  nur `PENDING`-Aufträge **mit** `agent_id`. Niemand erfuhr davon, am wenigsten
+  der Auftraggeber, der auf ein Ergebnis wartete, das nicht kommen konnte. Auf dem
+  Pi lagen **13** solcher Waisen.
+- Der Fehler ist an den **Agenten** gerichtet und nennt die Kollegen, die es
+  wirklich gibt (nur die seines Teams — die Mandantentrennung gilt auch in einer
+  Fehlermeldung). Damit korrigiert er seinen Auftrag im selben Zug selbst.
+  Auslöser war ein Agent, dessen Erinnerung **korrekt** war: den Kollegen gab es
+  einmal, er wurde gelöscht, und niemand hatte es ihm gesagt.
+- Im Hintergrund reißt nichts ab: ein Workflow-Schritt auf einen gelöschten
+  Agenten lässt den Lauf **mit Begründung** scheitern statt stumm zu hängen, und
+  ein fortgesetzter Auftrag wird verworfen statt bei jedem Start erneut versucht.
+
+---
+
+## [1.194.0] - 2026-08-13
+
+### Geändert
+- **Das Onboarding ist jetzt vollständig entfernt — auch dort, wo es noch
+  nachwirkte.** Das Einrichtungsgespräch war in 1.187.x aus `knowledge.md`
+  entfernt worden, der Rest der Mechanik lief aber weiter: neue
+  `claude_code`-Agenten bekamen weiterhin `onboarding_complete: false`, und der
+  Zeitplaner blendete ihnen bei **jedem** proaktiven Lauf genau das abgeschaffte
+  Interview ein („Welche Rolle sollst du ausfüllen?"). Neue Agenten gelten jetzt
+  als eingerichtet — was sie tun sollen, steht in ihrer Vorlage.
+- **Der Zeitplaner prüft nur noch die Verantwortungsbereiche.** Der zusätzlich
+  geprüfte Einrichtungshaken war zur Falle geworden: seit das Gespräch entfällt,
+  konnte ihn nichts mehr setzen. Ein Bestandsagent mit `false` wäre für immer von
+  proaktiven Läufen ausgeschlossen gewesen.
+- **Bestandsagenten werden beim Start einmalig geradegezogen** (idempotent), damit
+  kein Agent mit einem Haken zurückbleibt, den niemand mehr setzen kann.
+- **Das Abzeichen „Nicht eingerichtet" ist von der Agentenkachel entfernt.** Es
+  hätte nur noch einen Zustand angezeigt, den man nicht mehr ändern kann. Das
+  Dreieck „Kein Auftrag — es fehlen Verantwortungsbereiche" bleibt: es ist
+  weiterhin richtig, denn ohne Bereiche werden proaktive Läufe übersprungen.
+
+---
+
+## [1.193.2] - 2026-08-13
+
+### Behoben
+- **„Agent arbeitet gerade an dieser Unterhaltung…" blitzte nach jeder eigenen
+  Antwort kurz auf.** Der Hinweis hängt an `busy && !isWaiting`, und `busy`
+  stammt aus einer Abfrage im Vier-Sekunden-Takt — unmittelbar nach dem Zugende
+  steht dort noch „beschäftigt". Bis 1.193.0 blieb `isWaiting` hängen und
+  verdeckte das zufällig; erst das korrekte Abräumen machte den veralteten
+  Messwert sichtbar. Der Hinweis wird jetzt für acht Sekunden nach dem **eigenen**
+  Zug unterdrückt. Der echte Fall — man betritt ein Gespräch, in dem gerade
+  gearbeitet wird — erscheint unverändert sofort.
+
+---
+
+## [1.193.1] - 2026-08-13
+
+### Behoben
+- **„Thinking…" blieb stehen, obwohl der Agent fertig war.** Das Chatfenster
+  rechnete *eine Nachricht = ein Zug*: beim Senden hoch, beim `done` herunter,
+  und erst bei null hörte das Warten auf. Live-Steering faltet eine nachgereichte
+  Nachricht aber in den **laufenden** Zug — die Antwort kommt unter der Kennung
+  der ersten, es gibt genau **ein** `done`. Zwei schnell hintereinander gesendete
+  Nachrichten ließen den Zähler dauerhaft auf 1 stehen: Spinner und Stop-Knopf
+  blieben für immer aktiv. `done` beendet jetzt den Zug, Punkt; ein wirklich
+  folgender Zug hebt die Anzeige über sein erstes Ereignis wieder an.
+- **Drei geöffnete Gespräche zeigten gleichzeitig „Thinking…".** Derselbe Zähler
+  gehörte dem Fenster, nicht dem Gespräch — beim Wechsel blieb er stehen, und die
+  Ereignisse des verlassenen Gesprächs werden von der Faden-Abschottung
+  verworfen, konnten ihn also nie mehr herunterzählen. Beim Gesprächswechsel wird
+  er jetzt zurückgesetzt.
+- **„Message received — steering current agent turn" blieb dauerhaft stehen**,
+  unterhalb der fertigen Antwort. Der Hinweis wurde nur entfernt, wenn für genau
+  diese Kennung eine Antwortnachricht entstand; eine gefaltete Nachricht bekommt
+  nie eine eigene. Er ist Live-Zustand und verschwindet jetzt mit dem Zug.
+- **Notbremse:** Geht ein `done` doch einmal verloren, gilt der Agent selbst als
+  Wahrheit — meldet er über mehrere Runden, dass er an diesem Faden nicht
+  arbeitet, endet die Anzeige. Bewusst träge, damit sie nie mitten im Denken
+  abbricht.
+
+### Geändert
+- **„Aktiver Chat" erscheint jetzt in ein bis zwei statt in sieben Sekunden.**
+  Die Anzeige hängt am Zustand des Agenten, den die Agentenseite nur alle 15
+  Sekunden abfragte — im Mittel wartete man 7,5 Sekunden auf den nächsten Takt.
+  Der Agent war längst dran. Nach dem Absenden und am Ende eines Zuges fasst die
+  Seite jetzt kurz nach, ohne dauerhaft häufiger abzufragen.
+
+---
+
+## [1.193.0] - 2026-08-13
+
+### Geändert
+- **Auftrags-Kacheln sind jetzt Elemente des Chatverlaufs.** Sie stehen an der
+  Stelle, an der der Auftrag vergeben wurde — alles Spätere kommt darunter.
+  Vorher hingen sie in einer eigenen Zone am Ende und rutschten bei jeder neuen
+  Nachricht mit; laufende Aufträge lagen sogar in einem getrennten Streifen über
+  dem Eingabefeld.
+  Der Zustand wechselt an Ort und Stelle: „in Arbeit" → „abgeschlossen".
+  Die beiden alten Darstellungsblöcke sind entfallen.
+
+---
+
+## [1.192.2] - 2026-08-13
+
+### Neu
+- **Kacheln lassen sich wegklicken.** Ein kleines Kreuz oben rechts (erscheint beim
+  Darüberfahren) blendet eine erledigte Kachel aus. Nur die Anzeige — der Auftrag
+  selbst bleibt bestehen und ist über die Aufgabenseite erreichbar.
+  Solange die Kacheln noch am Ende des Verlaufs kleben statt an ihrer Stelle zu
+  sitzen, ist das der schnellste Weg, sie loszuwerden, wenn man sie gesehen hat.
+
+### Weiterhin offen
+- Die Kacheln gehören an die Position im Gespräch, an der der Auftrag vergeben
+  wurde — nicht ans Ende. Siehe HANDOVER.
+
+---
+
+## [1.192.1] - 2026-08-13
+
+### Behoben
+- **Leere graue Blasen im Verlauf.** Die gespeicherten Kachel-Zeilen haben keinen
+  Text und wurden trotzdem als Nachrichten gezeichnet — vier Aufträge ergaben vier
+  leere Blasen. Ihr Inhalt steckt in `meta.task_card`; sie werden jetzt aus dem
+  Nachrichtenstrom herausgefiltert und ausschliesslich als Kachel dargestellt.
+
+### Noch offen
+- Fertige Kacheln stehen am **Ende** des Verlaufs, dadurch erscheinen neue
+  Nachrichten darüber statt darunter. Richtig wäre: jede Kachel an ihrer Stelle im
+  Gesprächsverlauf, neue Nachrichten danach.
+
+---
+
+## [1.192.0] - 2026-08-13
+
+### Neu
+- **In-App-Feedback-Widget („Feedback-Gedöns").** Feedback heftet jetzt an der
+  Stelle, an der es entsteht: schwebender Button auf jeder Seite → konkretes
+  UI-Element anpinnen → Viewport-Screenshot mit rotem Rahmen ums Element
+  (abwählbar) → Sentiment (gefällt/stört/Wunsch) + Kategorie + Freitext → das
+  LLM stellt genau EINE schärfende Requirements-Rückfrage („Direkt speichern"
+  überspringt sie, auch ohne LLM-Zugang).
+  Abgelegt wird pro Feedback eine Markdown-Datei mit Frontmatter (wer · Seite ·
+  Element · Sentiment · Zeit) plus PNG in einem eigenen Volume (`FEEDBACK_DIR`,
+  übersteht Redeploys) — zusätzlich wie bisher ein DB-Eintrag für die
+  Admin-Liste, die neue Einträge samt Seite/Element/Screenshot zeigt. Der
+  Username kommt ausschließlich aus der validierten Session, nie aus dem
+  Request. Optional wird jedes Feedback best-effort als GitHub-Issue
+  gespiegelt (`FEEDBACK_ISSUE_ENABLED`, Default aus) — ein Issue-Fehler
+  verliert nie Feedback. Der alte Feedback-Modal-Dialog ist damit ersetzt.
+
+---
+
+## [1.191.2] - 2026-08-13
+
+### Behoben
+- **Der Streifen der laufenden Aufträge lag über dem Eingabefeld.** Er war absolut
+  positioniert und überdeckte den Composer. Er steht jetzt im normalen Fluss direkt
+  darüber, mit Trennlinie — nichts überlappt mehr.
+
+---
+
+## [1.191.1] - 2026-08-13
+
+### Behoben
+- **Für Claude- und Codex-Agenten erschien gar keine Kachel mehr.** Aufträge über
+  den stdio-MCP-Server führen keinen Gesprächsfaden mit — und seit der
+  Isolations-Korrektur (1.190.1) wird ohne Faden nichts mehr angezeigt. Ergebnis:
+  vier delegierte Aufgaben, keine einzige Kachel.
+  Der Orchestrator ermittelt den Faden jetzt selbst aus dem **laufenden Zug** des
+  Agenten (`agent:{id}:status → current_task = "chat:{faden}"`) und hält ihn am
+  Auftrag fest, damit auch die spätere Fertigmeldung ihn findet.
+  Das ist ausdrücklich **nicht** der frühere Auffangweg „zuletzt benutzter Faden":
+  gefragt wird nach dem Gespräch, das in diesem Moment läuft — also genau dem, in
+  dem der Mensch gerade sitzt.
+
+---
+
+## [1.191.0] - 2026-08-13
+
+### Geändert
+- **Kacheln: laufende unten fest, fertige im Verlauf.** Bisher standen alle
+  dauerhaft am Ende, und der Chat lief oberhalb weiter — der Stand blieb im Weg,
+  auch wenn längst alles fertig war.
+  Jetzt: **laufende** Aufträge liegen als schmaler Streifen über dem Eingabefeld
+  (der Stand darf einem beim Lesen nicht wegscrollen), **fertige** wandern in den
+  Verlauf — kompakt, zu zweit nebeneinander, mitscrollend und anklickbar.
+
+### Behoben
+- **Der Agent zählte Kollegen aus fremden Teams als sein Team auf.** Er rief
+  `list_my_team` UND `list_team` und verschmolz beides. `list_team` ist aber das
+  **systemweite** Verzeichnis; bei Custom-LLM stand in der Beschreibung sogar
+  wörtlich „all agents in your team". Beide Laufzeiten sagen jetzt klar, dass es
+  nicht das eigene Team ist und die Einträge nicht hineingemischt werden dürfen.
+- **Tote Mitglieder erschienen als Kollegen.** Eine Kennung ohne Agenten (`6e4210c1`
+  im Team „AI DEV") wurde als Mitglied „ohne Rolle" ausgegeben — der Lead hätte ihr
+  Arbeit geben können, die nie jemand annimmt. Sie steht jetzt getrennt unter
+  `stale_member_ids` und nicht mehr in der Mitgliederliste.
+
+---
+
+## [1.190.1] - 2026-08-13
+
+### Behoben
+- **Kacheln erschienen in fremden Gesprächen.** Beim Kunden tauchten delegierte
+  Aufträge in Unterhaltungen auf, zu denen sie nicht gehörten. Ursache: eine Kachel
+  ohne Ursprungsfaden wurde trotzdem gespeichert und angezeigt — und gehört damit
+  in **jedes** Gespräch. Sie trägt jetzt ihren Faden mit, wird nur dort gespeichert
+  und nur dort angezeigt.
+- **Rückmeldungen landeten im falschen Gespräch.** Der in 1.186.0 eingebaute
+  Auffangweg „zuletzt benutzter Faden" war ein Rückschritt: bei mehreren parallelen
+  Unterhaltungen schrieb er die Antwort in eine fremde. Es gilt jetzt
+  ausschliesslich der Faden, in dem wirklich beauftragt bzw. gefragt wurde
+  (bei Antworten über die ursprüngliche Nachricht ermittelt).
+  Lieber keine Einspeisung als eine im falschen Faden — Kachel und Verlauf zeigen
+  den Stand ohnehin.
+
+### Bemerkung
+- Der `ruff F821`-Test hat dabei einen Fehler in meiner eigenen Änderung gefunden,
+  bevor er ausgeliefert wurde (eine Ersetzung hatte an zwei Stellen gegriffen).
+
+---
+
+## [1.190.0] - 2026-08-13
+
+### Neu
+- **Delegierte Aufträge bleiben dauerhaft im Chat.** Die Kachel lebte bisher nur im
+  Browser und war nach jedem Neuladen weg — und mit ihr die einzige Spur im
+  Gespräch, dass überhaupt jemand beauftragt wurde. Sie liegt jetzt als Zeile im
+  Chatverlauf (`meta.task_card`), genau wie angebotene Dateien und Bilder, und wird
+  beim Öffnen des Gesprächs wiederhergestellt.
+  Eine Zeile je Auftrag: beim Abschluss wird sie **aktualisiert**, nicht verdoppelt.
+
+---
+
+## [1.189.0] - 2026-08-13
+
+### Behoben
+- **Die Rückmeldung des Leads entstand, kam aber nie auf den Bildschirm.** Beim
+  Kunden wurde die Kachel grün („abgeschlossen", mit Ergebnis) — und der Lead
+  schrieb nichts mehr, obwohl er „ich sag dir Bescheid" angekündigt hatte.
+  Ursache: der Weiterleiter im WebSocket schottet Gespräche gegeneinander ab und
+  kennt nur die Nachrichtenkennungen, die **dieser Browser** gesendet hat. Eine vom
+  Orchestrator angestossene Rückmeldung (Fertigmeldung, Antwort eines Kollegen)
+  trägt eine fremde Kennung — und fiel damit genau durch die Abschottung, die
+  fremde Gespräche fernhalten soll. Die Antwort stand in `chat_messages`, aber nie
+  im Fenster; sichtbar erst nach Neuladen oder auf „und?".
+  Der Orchestrator hinterlegt jetzt beim Anstossen den Zielfaden
+  (`chat:msg:{id}:session`, eine Stunde haltbar); der Weiterleiter sieht dort nach,
+  **bevor** er verwirft, und liefert nur aus, wenn der Faden zu diesem Fenster
+  gehört. Die Abschottung bleibt damit unangetastet.
+
+### Test
+- `orchestrator/tests/test_orchestrator_replies_reach_the_screen.py`
+
+---
+
+## [1.188.2] - 2026-08-13
+
+### Geändert
+- **„Details" an der Auftrags-Kachel öffnet ein Fenster statt einer neuen Seite.**
+  Ein Seitenwechsel reisst aus dem Gespräch heraus: der Verlauf ist weg, der
+  Rückweg kostet einen Klick, und wer nur kurz nachsehen wollte, verliert den Faden.
+  Das Fenster zeigt Bearbeiter, Stand, Dauer, den Auftragstext und das Ergebnis —
+  und darunter weiterhin den Weg auf die vollständige Aufgabenseite, für alles,
+  was dort mehr steht (Zeitreise, Kosten, Schritte).
+  Läuft der Auftrag noch, sagt das Fenster das ausdrücklich, statt leer zu bleiben.
+
+---
+
+## [1.188.1] - 2026-08-13
+
+### Behoben
+- **Der Frager erfuhr nie, dass eine Antwort eingetroffen ist.** Am 2026-08-13
+  fragte ein Lead einen Kollegen, prüfte sofort und meldete korrekt „hat noch nicht
+  geantwortet" — die Antwort kam **90 Sekunden später**. Danach blieb der Lead bei
+  seiner Aussage, bis der Nutzer „und?" schrieb; erst dann sah er sie.
+  Trifft eine Antwort ein (`reply_to` gesetzt), bekommt der ursprüngliche Frager sie
+  jetzt aktiv in seinen Chat gelegt, mit der Aufforderung, dem Menschen kurz zu
+  berichten. Kein Pollen, kein Nachfragen.
+
+---
+
+## [1.188.0] - 2026-08-13
+
+### Neu
+- **Auch Nachrichten an Kollegen erscheinen als Kachel.** Bisher gab es sie nur für
+  delegierte Aufträge — eine Nachricht an einen anderen Agenten verschwand spurlos,
+  obwohl sie für den Menschen dasselbe bedeutet: „ich habe jemanden angesprochen und
+  warte auf Antwort".
+  Die Kachel zeigt „gesendet, wartet auf Antwort" und wechselt auf „beantwortet",
+  sobald die Antwort kommt (erkannt über `reply_to` — es entsteht keine zweite
+  Kachel, die vorhandene wird geschlossen).
+
+---
+
+## [1.187.2] - 2026-08-13
+
+### Behoben
+- **Die Wissens-Migration aus 1.187.1 lief nie.** Sie hing in `restart_agent`, das
+  Neuerstellen läuft aber über `update_agent` — beim Kunden stand nach dem
+  Ausrollen weiterhin „Onboarding Status: NOT COMPLETED" in der `knowledge.md`.
+  Sie liegt jetzt als `migrate_knowledge_file()` an EINER Stelle und wird von
+  **beiden** Wegen gerufen (`restart_agent` direkt, `update_agent` über
+  `refresh_instructions`). Ein Test zählt beide Aufrufe.
+
+---
+
+## [1.187.1] - 2026-08-13
+
+### Behoben
+- **Bestandsagenten trugen den Onboarding-Abschnitt weiter.** 1.187.0 hat ihn aus
+  der Standardvorlage entfernt — das half aber nur **neuen** Agenten. Die
+  `knowledge.md` liegt im Volume des Agenten und überlebt jedes Neuerstellen
+  (absichtlich, dort steht Gelerntes). Auf der Kundenanlage stand deshalb weiterhin
+  „Onboarding Status: NOT COMPLETED — I MUST conduct an onboarding interview", und
+  die Agenten hielten weiter Aufträge an, um nach ihrer Rolle zu fragen.
+  Beim Neuerstellen wird der Abschnitt jetzt entfernt. **Nur der Kopf** wird
+  ersetzt: alles ab dem ersten Abschnitt, den der Agent selbst gefüllt haben
+  könnte, bleibt Zeichen für Zeichen stehen — ein Wissensspeicher, den eine
+  Migration ausräumt, wäre teurer als das Problem.
+
+### Test
+- `orchestrator/tests/test_knowledge_migration.py` — Gelerntes überlebt wörtlich,
+  zweimal migrieren ändert nichts, und der Helfer wird auch wirklich gerufen.
+
+---
+
+## [1.187.0] - 2026-08-13
+
+### Neu
+- **Kachel im Chat für jeden delegierten Auftrag.** Sobald ein Agent delegiert,
+  erscheint im Gespräch eine Kachel mit Titel, Empfänger und Live-Stand — „in
+  Arbeit" beim Anlegen, „abgeschlossen"/„fehlgeschlagen" beim Ende, mit Dauer,
+  Ergebnisvorschau und Link auf die Aufgabe.
+  Bewusst eigener Zustand statt Chatnachricht: eine Kachel **aktualisiert sich**,
+  eine Nachricht müsste zweimal erscheinen.
+
+### Geändert
+- **Das Onboarding-Interview ist raus.** Ein Agent entsteht aus einer Vorlage —
+  Rolle, Schwerpunkte und Grenzen stehen dort bereits; sie noch einmal abzufragen
+  war überflüssig. Schädlich war es obendrein: am 2026-08-13 kam ein delegierter
+  Auftrag mit „für mich sind keine Verantwortungsbereiche hinterlegt, bitte
+  festlegen" zurück statt mit Arbeit — in einem Auftrag sitzt niemand, der
+  antwortet.
+  `create_agent` schreibt jetzt die **Vorlagenbeschreibung** in `knowledge.md`,
+  wenn eine vorliegt, statt sie mit der leeren Vorgabe zu überschreiben.
+- **Rückfragen richten sich nach dem Ort.** Im Chat mit einem Menschen: Frage
+  stellen und warten. In einem Auftrag, einer Delegation oder einem proaktiven
+  Lauf: **Antworttext liest dort niemand** — also arbeiten, die sicherste
+  vernünftige Annahme wählen, in einer Zeile sagen was fehlte. Braucht es
+  wirklich eine Entscheidung, `request_approval` — das erreicht den Menschen und
+  wartet.
+
+### Test
+- `orchestrator/tests/test_questions_reach_a_human.py`
+
+---
+
+## [1.186.1] - 2026-08-13
+
+### Behoben
+- **Ein zurückgekommenes Ergebnis wurde als „angestoßen" gemeldet.** Die Kette war
+  vollständig korrekt — nachweisbar aus den Werkzeugaufrufen des Team-Leads:
+  `list_my_team` → Projekt mit `bash`/`read_file` geprüft → `update_todos` →
+  `delegate_and_wait(agent_id=…, timeout_seconds=300)` → danach `memory_save`,
+  `rate_task`. Dass nach dem Warten noch Aufrufe kamen, beweist: der Aufruf ist
+  **mit dem Ergebnis** zurückgekehrt.
+  Trotzdem schrieb der Lead „Angestoßen: Mr. Design erstellt **jetzt** das Paket".
+  Der Mensch las „läuft" und wartete 18 Minuten auf etwas, das fertig war.
+  Die Rückgabe von `delegate_and_wait` sagt jetzt in der **ersten Zeile**, dass das
+  Warten vorbei ist („FERTIG … das ist das ENDERGEBNIS, kein Zwischenstand"), und
+  untersagt ausdrücklich die Formulierung „angestoßen"/„läuft jetzt". Teilweise
+  fertige Stapel bleiben klar als solche benannt.
+  In **beiden** Laufzeiten: Custom-LLM und stdio-MCP (Claude Code, Codex).
+
+- **Emojis aus allen MCP-Servern entfernt** — `get_tasks_status`, Brain-Server und
+  Freigabe-Server trugen sie in nutzersichtbarem Text. Der Test sucht jetzt im
+  ganzen Verzeichnis: eine Regel, die nur dort geprüft wird, wo man gerade
+  hinsieht, ist keine Regel.
+
+### Test
+- `agent/tests/test_delegation_result_is_not_a_kickoff.py`
+
+---
+
+## [1.186.0] - 2026-08-13
+
+### Behoben
+- **Nach einer Delegation kam keine Rückmeldung.** Kundenmeldung 06:22 Uhr: der Lead
+  meldet „Angestoßen", der Auftrag ist um 06:22 fertig — und im Chat passiert
+  **18 Minuten nichts**, bis der Mensch nachfragt („ist die aufgabe abgeschlossen?
+  ich sehe kein Re-Design!").
+  Der Rückmeldeweg existierte, lief aber ins Leere: die Meldung wurde mit dem
+  Schlüssel `session_id` verschickt, der Agent liest `chat_session_id`. Ohne Faden
+  landete die Antwort in `webapp:default` — einem Gespräch, das niemand ansieht.
+  Ein Auftrag führt jetzt seinen **Ursprungsfaden** mit (`chat_session_id` in den
+  Metadaten), und die Fertigmeldung geht dorthin zurück. Für Aufträge ohne Faden
+  (stdio-MCP: Claude Code, Codex) gibt es einen Auffangweg auf den zuletzt
+  benutzten Faden des Leads.
+- Die Meldung fordert den Lead jetzt ausdrücklich auf, dem Menschen zu berichten —
+  und ein unzureichendes Ergebnis als solches zu benennen.
+- **Emojis in nutzersichtbarem Text entfernt** (Chat-Rückmeldung und
+  Telegram-Meldung) — harte Vorgabe des Projekts, hier stand sie in Produktion.
+
+### Behoben (Diagnose-Blindheit)
+- **Anwendungs-Logs landeten nirgends.** `/shared/platform-errors.log` nimmt erst ab
+  WARNING an, und einen Ausgabe-Handler hatte der Wurzel-Logger gar nicht. Sichtbar
+  war nur, was mit `print` geschrieben wurde, plus das Zugriffsprotokoll von uvicorn.
+  Folge: bei genau diesem Fehler liess sich **nicht feststellen**, ob der
+  Rückmeldeweg überhaupt ausgelöst hatte — die `logger.info`-Zeile, die das
+  beantwortet hätte, existierte im Code und nirgends sonst.
+  Jetzt schreibt der Wurzel-Logger nach stdout, Stufe über `LOG_LEVEL` (Vorgabe
+  INFO), mit derselben Schwärzung wie die Datei.
+
+### Test
+- `orchestrator/tests/test_delegation_report_reaches_the_user.py`
+- `agent/tests/test_delegation_thread_is_carried.py` — inklusive der Gegenprobe:
+  ausserhalb eines Gesprächs (proaktiver Lauf) darf **kein** Faden angehängt werden.
+
+### Offen
+- 9 Fremdschlüssel-Fehler `skill_task_usages_task_id_fkey` in den Kundenlogs, aus
+  `record-usage`-Aufrufen auf bereits geräumte Aufträge. Eigener Fehler, nicht Teil
+  dieser Ursache — nachzuziehen.
+
+---
+
+## [1.185.0] - 2026-08-12
+
+### Neu
+- **Jeder Nutzer kann sein eigenes Claude- oder Codex-Abo hinterlegen.** Bisher kam
+  der Zugang aus **einer** Einstellung für die ganze Installation, und pflegen konnte
+  sie nur ein Administrator — wer die Plattform nutzte, arbeitete zwangsläufig auf
+  fremde Rechnung oder gar nicht.
+  Neue API `GET/PUT/DELETE /api/v1/me/ai-credentials`. Jeder sieht und ändert
+  **ausschliesslich seinen eigenen**; es gibt keinen Administrator-Weg auf fremde
+  Zugänge, auch nicht lesend. Das Geheimnis kommt nie wieder heraus — auch nicht an
+  den Besitzer.
+- **Reihenfolge:** eigener Zugang → Teamlizenz (nur wenn der Administrator sie über
+  `allow_team_license` freigegeben hat) → nichts. Massgeblich ist der **Besitzer des
+  Agenten**, nicht der gerade Eingeloggte: ein Agent arbeitet auch nachts weiter.
+- **Codex nimmt den eigenen Zugang entgegen** (`CODEX_AUTH_JSON`) und schreibt ihn in
+  seine `auth.json`, statt die geteilte Datei zu benutzen. Die Variable wird danach
+  aus der Umgebung entfernt, damit der Zugang nicht in jedem Prozessabbild mitläuft.
+
+### Behoben
+- **Die Grundlage von `d12ada5` war wirkungslos.** `agent_credentials.resolve()`
+  wurde von niemandem aufgerufen — Tabelle angelegt, Auflöser vorhanden, und dann
+  passierte nichts. Jetzt an **allen drei** Stellen verdrahtet, an denen ein
+  Container gebaut wird (Anlegen, Neustart, Aktualisieren). Fehlte eine, bekäme der
+  Agent beim nächsten Neustart wieder den fremden Zugang.
+
+### Warum das mehr ist als Bequemlichkeit
+Alle Codex-Agenten teilten sich **einen** rotierenden Refresh-Token. Erneuert ihn
+einer, sind die anderen tot (`refresh_token_reused`) — deshalb muss das Neuerstellen
+bis heute serialisiert werden. Getrennte Zugänge sind getrennte Token-Familien; der
+Ausfall eines Abos trifft dann genau einen Agenten.
+
+### Test
+- `orchestrator/tests/test_own_subscription_per_user.py` — prüft zuerst die
+  **Verdrahtung** (der Auflöser lag einen halben Tag ungenutzt im Baum), dann die
+  Reihenfolge, und dass das Geheimnis nie in einer Antwort auftaucht.
+
+---
+
+## [1.184.1] - 2026-08-12
+
+### Behoben
+- **Die entfernte Obergrenze wirkte noch nicht.** 1.184.0 hat nur die Vorgabe
+  geändert — die 4096 standen aber zusätzlich **gespeichert in der Konfiguration
+  jedes Agenten** und haben die neue Vorgabe überschrieben. Im laufenden Container
+  stand weiterhin `LLM_MAX_TOKENS=4096`.
+  Jetzt: die vier Stellen, die den Wert weitertrugen, sind bereinigt, und beim
+  Start wird der Altwert einmalig aus den bestehenden Agenten entfernt.
+  Bewusst **nur exakt 4096** — wer eine andere Zahl eingetragen hat, hat sich etwas
+  dabei gedacht, und die bleibt unangetastet.
+
+---
+
+## [1.184.0] - 2026-08-12
+
+### Geändert
+- **Die Obergrenze für die Antwortlänge ist raus.** `LLM_MAX_TOKENS` stand auf
+  4096 — eine Zahl aus der Zeit, als Modelle nicht mehr konnten. Für ein Review,
+  eine Spezifikation oder eine fertige Datei ist das zu wenig, und das Tückische
+  daran: die Antwort bricht **mitten im Satz** ab und sieht trotzdem aus wie ein
+  fertiges Ergebnis. Vorgabe ist jetzt 0 = keine eigene Grenze.
+  - **OpenAI/Azure und Google:** der Schlüssel wird schlicht nicht gesendet, dann
+    gilt das Maximum des Modells.
+  - **Anthropic:** dort ist `max_tokens` ein Pflichtfeld. Ohne eigene Grenze wird
+    der für die Modellfamilie erlaubte Höchstwert genommen — nicht einfach ein
+    hoher Wert, denn oberhalb des Modellmaximums antwortet die API mit 400.
+  - Eine ausdrücklich gesetzte Grenze gilt unverändert weiter.
+
+### Dokumentation
+- **Benutzerhandbuch nachgezogen** (PDF neu erzeugt), für alles, was heute
+  nutzersichtbar dazugekommen ist:
+  - neuer Abschnitt **34. Kanäle** inkl. Discord-Einrichtung — mit dem Hinweis auf
+    *Message Content Intent*, ohne den Discord jede Nachricht leer ausliefert
+  - neuer Abschnitt **35. Branchen-Pakete** (Steuerkanzlei, Handwerksbetrieb) samt
+    der Grenzen: Buchungen sind Vorschläge, Preise kommen aus der Liste
+  - neuer Abschnitt **36. Ausweichmodell**, inklusive der Fälle, in denen bewusst
+    NICHT gewechselt wird
+  - **25d Golden-Tests** um die Faktenprüfung erweitert, mit der Begründung, warum
+    eine erfundene Statustabelle eine reine Textprüfung besser besteht als die
+    ehrliche Antwort
+  - **11 Triggers**: Workflow als Ziel samt Platzhaltertabelle
+  - **13 Approvals**: Antworten ist nie freigabepflichtig
+
+### Behoben
+- Beim Umbau der Antwortlänge wäre in `_build_legacy_body` das `return` verloren
+  gegangen — die Route hätte still `None` statt eines Rumpfes geliefert. Test dafür.
+
+### Test
+- `agent/tests/test_no_output_cap_by_default.py`
+
+---
+
+## [1.183.0] - 2026-08-12
+
+### Neu
+- **Zwei Branchen-Pakete (#395):** *Steuerkanzlei* (Buchhaltung, Lohnbuchhaltung,
+  Legal Assistant) und *Handwerksbetrieb* (Angebot & Kalkulation, Disposition,
+  First-Level-Support). Beide mit Startwissen und erster Demo-Aufgabe.
+- **Vier neue Agenten-Vorlagen:** Buchhaltung, Lohnbuchhaltung, Angebot &
+  Kalkulation, Disposition.
+- Die Geld-Rollen tragen einen **Haftungshinweis**: jede Buchung ist ein Vorschlag
+  und braucht die Freigabe einer fachkundigen Person. Ein Agent, der eine Buchung
+  als geprüft ausgibt, richtet mehr Schaden an als einer, der gar nichts tut.
+- Die Kalkulationsrolle nimmt Preise **ausschliesslich** aus der hinterlegten
+  Preisliste; fehlt einer, geht die Position in die Rückfragenliste. Geschätzte
+  Preise kosten Marge, und zwar unbemerkt.
+- Die Steuerkanzlei ist bewusst **ohne DATEV** nutzbar (#393 ist pausiert):
+  Vorkontierung, Fristen und Belegprüfung stehen für sich.
+
+### Test
+- `test_vertical_packs_content.py` — prüft vor allem den stillen Fehler: ein Paket
+  verweist über Namen auf Vorlagen; stimmt ein Name nicht, wird ein Agent weniger
+  angelegt, ohne dass irgendetwas rot wird.
+
+---
+
+## [1.182.0] - 2026-08-12
+
+### Sicherheit
+- **Der DLP-Egress-Filter galt nur für Telegram.** Teams, Slack und WhatsApp
+  schickten ungeprüft hinaus — auf einer Klinikanlage genau der Fall, für den es
+  den Filter gibt. Er sitzt jetzt in `channel_gateway.send_reply`, der einen
+  Stelle, durch die alle abgefragten Kanäle senden. Damit gilt er automatisch
+  auch für jeden Kanal, der später dazukommt.
+  Blockierte Nachrichten werden nicht stillschweigend verschluckt: der Empfänger
+  bekommt denselben Hinweis wie bei Telegram, sonst wartet er auf eine Antwort,
+  die nie kommt.
+
+### Neu
+- **Discord als vierter Kanal (#195, #139).** Nach dem Muster von Slack:
+  abgefragt statt über die dauerhafte WebSocket, weil in einem Kliniknetz nur
+  ausgehendes HTTPS verlässlich erlaubt ist. Der Ablauf bleibt im
+  `channel_gateway`, der Kanal liefert nur Herkunft und Rückweg.
+  Lange Antworten werden an Absätzen geteilt statt abgeschnitten — eine halbe
+  Antwort sieht aus wie eine ganze.
+
+### Geändert
+- `test_channel_gateway` prüft die Lauscher-Liste jetzt gegen die Kanalliste statt
+  gegen eine Aufzählung. Beim nächsten Kanal schlägt er von selbst an, wenn ihn
+  jemand im Lauscher vergisst.
+
+### Test
+- `test_discord_and_dlp_per_channel.py` — der Filter greift auf allen vier
+  Kanälen, Discord ist registriert (eigenes Kennungs-Präfix, im Lauscher),
+  Nachrichten werden geteilt statt gekürzt, Bot-Nachrichten laufen nicht zurück.
+
+---
+
+## [1.181.0] - 2026-08-12
+
+### Neu
+- **Webhooks können ganze Workflow-Ketten auslösen (#392).** Motor, Zeitplan und
+  Baukasten standen bereits; es fehlte genau der Auslöser von aussen. Ein
+  `EventTrigger` mit gesetztem `workflow_id` startet jetzt einen `WorkflowRun`
+  statt eines Einzelauftrags.
+  **Bewusst über den vorhandenen Auslöser**, nicht als zweites System daneben:
+  Treffererkennung, Bedingungen, Sicherheitsprüfung der Nutzlast und Zähler gelten
+  damit für beide Ziele gleich.
+- Die Nutzlast landet unter `trigger` im Lauf-Kontext und ist über die
+  **vorhandene** Platzhalter-Ersetzung `{{trigger}}` erreichbar — dazu
+  `{{trigger_prompt}}`, `{{trigger_source}}`, `{{trigger_event}}`. Auf 8000 Zeichen
+  begrenzt, sonst wandert sie ungebremst in jeden Prompt der Kette.
+- Zeigt ein Auslöser auf einen fehlenden oder abgeschalteten Workflow, wird
+  ersatzweise ein Auftrag angelegt und das protokolliert — ein verschluckter
+  Auslöser ist die Sorte Fehler, die niemand bemerkt, bis sie teuer wird.
+
+### Behoben
+- `event.task_id = tasks_created[0]` hätte den ganzen Webhook mit einem IndexError
+  beantwortet, sobald alle Auslöser Workflows starten und kein Auftrag entsteht.
+
+### Test
+- `test_webhook_starts_workflow.py` — Lauf startet, Nutzlast kommt an und ist über
+  die vorhandene Ersetzung erreichbar, fehlender/abgeschalteter Workflow fällt
+  zurück statt zu verschwinden, Nutzlast wird begrenzt.
+
+---
+
+## [1.180.0] - 2026-08-12
+
+### Neu
+- **Modell-Fallback bei Ausfall (#200).** Antwortet das Modell nicht — Rate-Limit,
+  Zeitüberschreitung, Überlastung, Wartungsfenster einer Azure-Bereitstellung —
+  wechselt der Lauf auf das nächste Modell der Kette, statt abzubrechen. Kette je
+  Agent über `fallback_models` (Reihenfolge ist die Entscheidung des Betreibers).
+  In **beiden** Laufzeiten verdrahtet: Auftragslauf und Chat.
+- **Einrichtungsfehler weichen bewusst NICHT aus.** Falscher Schlüssel, falscher
+  Bereitstellungsname, Inhaltsablehnung: dort hilft kein zweites Modell, die Kette
+  würde denselben Fehler nur teurer wiederholen und die Ursache verdecken. Ein
+  „401 Unauthorized, please try again later" gilt deshalb als Einrichtungsfehler,
+  nicht als Kapazitätsproblem.
+- Jeder Wechsel wird sichtbar protokolliert (vorher → nachher → Grund). Ein stiller
+  Modellwechsel wäre schlimmer als keiner: andere Antwortqualität, andere Kosten,
+  kein auffindbarer Grund.
+
+### Test
+- `agent/tests/test_model_fallback.py` — beide Richtungen, inklusive der Fälle, in
+  denen NICHT gewechselt werden darf, und dass beide Laufzeiten den Schalter haben.
+
+---
+
+## [1.179.0] - 2026-08-12
+
+### Neu
+- **Golden-Tests prüfen jetzt Tatsachen, nicht Formulierungen (#193).**
+  `check_item` nimmt nachgemessene Fakten über den Lauf entgegen: welche Werkzeuge
+  wirklich liefen (`expect_tools`, `expect_no_tools`), ob überhaupt gearbeitet wurde
+  (`expect_substantive_work`), wie viele Aufträge wirklich entstanden und fertig
+  zurückkamen (`expect_delegated`, `expect_delegations_completed`).
+  `eval_service.gather_facts()` trägt sie aus `task_steps` und `tasks` zusammen —
+  `check_item` bleibt dabei rein.
+  **Warum:** Am 2026-08-12 beschrieb ein Agent seine Delegation, statt sie
+  auszuführen — samt erfundener Statustabelle, während kein Auftrag existierte.
+  Diese erfundene Antwort enthält *mehr* von dem, was man erwartet, als die
+  ehrliche. Jede Textprüfung hätte sie also **besser** bewertet.
+- **Zwei mitgelieferte Testsammlungen** (`core/eval_seeds.py`, beim Start angelegt):
+  - *Team-Grundlagen* — Team kennen, wirklich beauftragen, Ergebnisse zurückholen,
+    Fehlschläge benennen. Der Delegationsfall hätte alle fünf Ausfälle vom
+    2026-08-12 gefunden.
+  - *Angriffsfälle* — Prompt-Injection über Kollegen-Nachrichten, Webseiten,
+    Dateien, MCP-Antworten und vorgetäuschte Autorität.
+
+### Test
+- `test_eval_checks_facts_not_words.py` — hält den Originalfall fest: die erfundene
+  Statustabelle besteht eine reine Textprüfung und fällt bei der Faktenprüfung durch.
+- Der Test hat einen Fehler in der ersten Fassung der Angriffsfälle gefunden: sie
+  verlangten nur, was NICHT passieren darf. Damit hätte eine leere Antwort jeden
+  Fall bestanden — gemessen worden wäre Schweigen statt Widerstandskraft. Jeder Fall
+  hat jetzt zusätzlich eine positive Erwartung, und ein Test hält das fest.
+
+---
+
+## [1.178.5] - 2026-08-12
+
+### Behoben
+- **Wer delegiert, konnte die Ergebnisse nicht abrufen.** Der Team-Lead meldete
+  beim Kunden: "Der anschließende Statusabruf liefert für alle vier Aufträge
+  derzeit 'nicht abrufbar'. Das ist kein belastbarer Abschluss." In der Datenbank
+  standen zur selben Zeit alle vier auf COMPLETED, mit 4-10 Zügen echter Arbeit.
+  Der Abruf lief auf **403**: ein Agent darf nur seine EIGENEN Aufgaben lesen,
+  ein Lead legt aber Aufgaben für ANDERE an. `delegate_and_wait` und
+  `get_tasks_status` fragen genau diesen Endpunkt ab — beide liefen ins Leere.
+  Jetzt darf lesen, wer die Aufgabe **erzeugt** hat. Die Mandantentrennung bleibt:
+  kein Agent sieht fremde Aufgaben, nur eigene und selbst vergebene.
+
+### Geändert
+- **`/workspace` ist privat — das stand nirgends.** Jeder Agent hat sein eigenes
+  Volume (so gewollt), aber die Anleitung listete nur "Workspace: /workspace/
+  (persistent across tasks)". Der Lead verschickte deshalb seine eigenen Pfade,
+  die Empfänger fanden nichts und meldeten "keine Artefakte ermittelbar" — was
+  wie Arbeitsverweigerung aussah. Die Anleitung sagt es jetzt ausdrücklich und
+  nennt die zwei Auswege: Dateien nach `/shared/` legen und **den** Pfad
+  delegieren, oder die Aufgabe selbsttragend formulieren.
+  Der Hinweis steht zusätzlich direkt am `prompt`-Feld von `delegate_and_wait`,
+  in **beiden** Laufzeiten (Custom-LLM und stdio-MCP für Claude/Codex) — also in
+  jedem Zug vor dem Modell, nicht nur einmal beim Start.
+
+### Test
+- `test_delegator_may_read_results.py` — am echten Endpunkt: der Auftraggeber
+  bekommt das Ergebnis, ein Fremder weiterhin 403.
+- `test_workspace_is_private.py` — beide Laufzeiten tragen den Hinweis; geprüft
+  wird die Aussage, nicht die Schreibweise.
+
+---
+
+## [1.178.4] - 2026-08-12
+
+### Geändert
+- **Chat/Telegram an den eigenen Nutzer ist ab L2 frei.** Die Freigabepflicht
+  fürs Nachrichtenschicken gilt nur noch auf L1 (Nur lesen). Vorher war sie bis
+  einschließlich L3 aktiv — mit der Folge, dass ein Agent sich nicht einmal
+  traute zu antworten und delegierte Aufträge stehenblieben.
+  Handlungen mit echter Außenwirkung (E-Mail/M365, externe APIs, git push,
+  Käufe) bleiben unverändert bis L4 freigabepflichtig.
+
+### Behoben
+- **Der Sammeltopf `custom` hätte die Lockerung weit über das Gewollte
+  hinausgetragen.** `messaging` teilte sich die Alt-Kategorie mit `email_m365`,
+  `external_api` und `git_push`; ein einziges `allow` schaltet den ganzen Topf
+  frei. Chat freizugeben hätte damit auf jeder L2/L3-Anlage stillschweigend auch
+  E-Mail-Versand, ausgehende API-Aufrufe und `git push` ohne Freigabe erlaubt.
+  `messaging` bekommt die eigene Kategorie `external_communication` — die der
+  Executor für `send_telegram`/`notify_user` ohnehin schon führt und die bis
+  jetzt von keiner Fähigkeit erreichbar war, also nie freigegeben werden konnte.
+
+### Test
+- `test_autonomy_matrix.py` — der Sammeltopf bleibt zu, wenn nur Chat frei ist;
+  er öffnet weiterhin für seine echten Mitglieder.
+- `test_autonomy_reply_is_never_gated.py` — L1 fragt weiter nach, L2/L3 nicht;
+  Außenwirkung bleibt auf allen Stufen unter L4 gesperrt.
+
+---
+
+## [1.178.3] - 2026-08-12
+
+### Behoben
+- **Eine Ankündigung galt als erledigte Aufgabe.** Beim Kunden standen zwei
+  delegierte Aufträge auf `COMPLETED`, in deren Ergebnis wörtlich steht: "Ich
+  habe inhaltlich noch keine Repo-Änderungen umgesetzt (nur angekündigt)."
+  Das Abschluss-Gatter prüfte nur, ob `rate_task` gerufen wurde — nicht, ob
+  gearbeitet wurde. Ein Agent, der bloß ankündigte, wurde deshalb aufgefordert,
+  die Bewertung nachzuholen, tat das, und der Lauf endete als Erfolg. Drei Züge,
+  ein einziger Werkzeugaufruf, und das war die Bewertung selbst.
+  Das Gatter fordert jetzt **zuerst die Arbeit**; die Buchhaltung kommt danach.
+- **Antworten war faktisch freigabepflichtig.** Auf L3 steht "Chat / Telegram
+  senden" unter "Requires approval". Mr. Design dazu auf Nachfrage wörtlich:
+  "Wenn ich das streng auslege, dürfte ich ohne Approval nicht einmal
+  antworten." Er wusste, dass er Dateien schreiben und Shell nutzen darf — und
+  blieb trotzdem stehen. Der Autonomie-Block sagt jetzt ausdrücklich, dass die
+  Antwort an den eigenen Auftraggeber nie freigabepflichtig ist, und begrenzt
+  den Auffangsatz auf Wirkung **außerhalb** des Containers.
+
+### Test
+- `agent/tests/test_announcement_is_not_completion.py` — Buchhaltung allein ist
+  keine Arbeit; eine reine Lese-Prüfung dagegen schon.
+- `orchestrator/tests/test_autonomy_reply_is_never_gated.py` — die Ausnahme ist
+  da und nennt alle drei Rückwege; die Rechte selbst bleiben unverändert.
+
+---
+
+## [1.178.2] - 2026-08-12
+
+### Behoben
+- **Nachrichten an schlafende Agenten kamen nie an.** Der Team-Lead schickte
+  sieben Agenten je ein "Hallo Welt" — alle sieben stehen in der Datenbank, die
+  Zustellung meldete "sent", keine einzige Antwort. Die Empfänger waren Minuten
+  vorher idle ausgestiegen; `agent:{id}:messages` wird aber nur gelesen, solange
+  der Container läuft. Von außen sah es aus, als könnten die Agenten
+  grundsätzlich nicht miteinander reden.
+  Die Zustellung weckt den Empfänger jetzt **vor** dem Einreihen.
+
+### Geändert
+- Das Aufwecken gab es für Besprechungen längst und für Nachrichten gar nicht.
+  Statt einer zweiten Kopie liegt es jetzt einmal in
+  `orchestrator/app/core/agent_wakeup.py`; `meeting_rooms` ruft dieselbe Stelle.
+
+### Test
+- `orchestrator/tests/test_message_wakes_sleeping_agent.py` — prüft, dass ein
+  gestoppter Agent geweckt wird, ein laufender in Ruhe bleibt, ein misslungener
+  Start die Zustellung nicht abbricht, und dass die Reihenfolge stimmt:
+  erst wecken, dann einreihen.
+
+---
+
+## [1.178.1] - 2026-08-12
+
+### Behoben
+- **Der Team-Lead fand sein eigenes Team nicht.** Beim Kunden stand ein aktives
+  Team mit acht Mitgliedern in der Datenbank, der CEO-Agent als Lead. Auf die
+  Bitte, seinen Agenten eine Nachricht zu schicken, rief er `list_my_team` auf
+  und antwortete trotzdem: "Mir ist derzeit kein Agententeam zugeordnet."
+  `GET /teams/mine` liefert die Mitglieder **je Team** (`{"teams": [{..., "members": [...]}]}`),
+  gesucht wurde `members` auf der obersten Ebene — immer leer. Ohne Team gab es
+  auch nichts zu delegieren.
+- **`list_team_tasks` genauso:** `GET /teams/` führt die Mitglieder als reine
+  ID-Liste in `member_agent_ids`; gesucht wurde eine Objektliste `members`. Der
+  Lead fand sein Team nie und meldete "Kein Team zugeordnet".
+
+### Test
+- `agent/tests/test_team_tools_read_the_real_response.py` füttert die **echte
+  Antwortform** der beiden Endpunkte ein. Die bisherigen Paritätstests waren
+  grün: Werkzeug definiert, im Kernsatz, vom Executor erlaubt, Methode vorhanden
+  — und trotzdem sagte der Agent "geht nicht". Geprüft wird jetzt, was der Agent
+  am Ende zu lesen bekommt.
+
+---
+
+## [1.178.0] — 2026-08-12
+
+### Fixed
+- **Custom-LLM-Agenten konnten nicht delegieren — und erfanden es stattdessen.**
+  Der CEO-Agent eines Kunden meldete „Alle drei beauftragten Sub-Agents sind
+  aktuell aktiv" mit einer Statustabelle, während die Übersicht alle Agenten als
+  **Idle, 0 % CPU, ohne Warteschlange** zeigte. Erkennbar auch an der Fußzeile:
+  `12,5s · 2 turns` — in zwölf Sekunden wird nichts beauftragt.
+
+  Es war keine Halluzination ohne Anlass, sondern eine **fehlende Fähigkeit**:
+  `delegate_and_wait` gab es nur in `agent/mcp/orchestrator-server.mjs`, einem
+  **stdio**-MCP-Server, den ausschliesslich Claude Code startet. Der Custom-LLM-Lauf
+  holt MCP-Werkzeuge über **HTTP** und erreicht stdio-Server nie. Ein Modell ohne
+  passendes Werkzeug tut, was es kann: es **beschreibt** die Handlung.
+
+  Nachgebaut sind jetzt alle sechs Team-Werkzeuge des Orchestrator-MCP:
+
+  | Werkzeug | wofür |
+  |---|---|
+  | `delegate_and_wait` | beauftragen **und auf das Ergebnis warten** |
+  | `list_my_team` | wen habe ich überhaupt |
+  | `list_team_tasks` | woran arbeitet das Team wirklich |
+  | `get_tasks_status` | läuft mein Auftrag noch |
+  | `schedule_meeting` | Abstimmung ansetzen |
+  | `skill_update` | Skill nachziehen |
+
+  Alle vier zentralen liegen im **Kernsatz**, nicht nur im Katalog: was ein Agent
+  erst über `search_tools` finden muss, findet er in der Praxis nicht — und redet
+  dann darüber, statt es zu tun.
+
+  Zwei Details, die den Rückfall verhindern sollen: die Beschreibung von
+  `delegate_and_wait` sagt ausdrücklich, dass eine Ankündigung **ohne** Aufruf eine
+  Falschaussage ist. Und ein Auftrag, der bei Fristende noch läuft, wird als
+  **„läuft noch"** ausgewiesen statt weggelassen — das Weglassen war der Kern der
+  erfundenen Statustabelle.
+
+- **Codex-Agenten hatten kein Microsoft 365, keine Mail und kein Video.** Beim
+  vollständigen Abgleich aller drei Laufzeiten aufgefallen: Claude Code startet
+  elf stdio-MCP-Server, Codex nur sieben. Es fehlten `msgraph`, `email` und
+  `hyperframes` — zwei Listen an zwei Stellen (`main.py` und `codex_runner.py`),
+  die niemand gegeneinander geprüft hat. Nachgetragen.
+
+### Added
+- **Ein Paritätstest über alle drei Laufzeiten.** Es gab schon
+  einen „Paritätstest" — der prüft aber den Katalog für das `/`-Menü im Chat. Er
+  war grün, während sechs Team-Werkzeuge fehlten. Der neue vergleicht
+  `orchestrator-server.mjs` gegen `definitions.py` und verlangt für jede Lücke
+  einen **begründeten** Eintrag in `DELIBERATE_GAPS`. Er hat die fünf verbleibenden
+  Werkzeuge selbst gefunden, nachdem `delegate_and_wait` gebaut war.
+
+  Der zweite Test hält die **volle Matrix** fest: welche MCP-Server jede Laufzeit
+  bekommt und auf welchem Weg. Der Kern des Problems ist, dass es **drei
+  verschiedene Bezugswege** gibt — Claude Code und Codex je eine eigene stdio-Liste,
+  Custom-LLM `definitions.py` plus MCP über **HTTP**, das stdio-Server nie erreicht.
+  Jede Abweichung braucht jetzt eine Begründung im Test; eine Lücke ohne Grund ist
+  keine Entscheidung, sondern ein Versehen. Er fand die drei fehlenden
+  Codex-Server, sobald er geschrieben war.
+
+## [1.177.6] — 2026-08-12
+
+### Security
+- **Der Aufgabentext des Nutzers stand in einer URL.** Die aufgabenbezogene
+  Vorauswahl der Erinnerungen (#562) hängte bis zu 500 Zeichen echter
+  Nutzereingabe als Abfrageparameter an:
+
+  ```
+  GET /api/v1/memory/preload/{id}?task_context=Bitte+pruefe+die+Abrechnung+von+…
+  ```
+
+  uvicorn schreibt jeden Pfad **samt Abfrage** ins Zugriffsprotokoll. Damit landen
+  Bruchstücke echter Aufgaben in jedem Log, das jemand einsammelt, rotiert oder
+  weiterreicht — gegen die eigene Regel, niemals PII zu loggen. Dass der Endpunkt
+  intern ist, mindert das, hebt es nicht auf.
+
+  Der Text geht jetzt per **POST in den Rumpf**. `GET` bleibt für ältere Agenten
+  bestehen, kennt den Parameter aber **gar nicht mehr** — er kann auf diesem Weg
+  nicht wieder ins Log geraten. Beide Wege teilen dieselbe Besitzprüfung; ein
+  neuer Agent an einem älteren Orchestrator fällt bei `405` auf die Grundauswahl
+  zurück, statt ohne Erinnerungen dazustehen.
+
+### Fixed
+- **Das Linter-Gatter wäre in CI still übersprungen worden.** Der Test aus 1.177.5
+  überspringt sich selbst, wenn `ruff` fehlt — und CI installierte es nicht. Er
+  wäre grün gewesen, ohne je zu prüfen: genau die falsche Sicherheit, die den
+  `config`-Fehler fünf Tage hat überleben lassen. `ruff` ist jetzt installiert und
+  läuft als **eigener CI-Schritt**, damit ein Treffer im Protokoll steht statt in
+  einer Testmeldung zu verschwinden.
+
+- **Die Agenten-Tests liefen in CI fast gar nicht.** Der Lauf nannte **drei
+  Dateien** namentlich; alles andere lief nie. Jeder neue Agenten-Test war damit
+  ab dem Tag seiner Entstehung tot — auch die aus 1.175.0 bis 1.177.2 für
+  Kompression, Stop-Abbruch und Token-Rotation. Jetzt läuft die ganze Suite,
+  samt `trio` (ohne das Backend bricht anyio die Hälfte mit einem
+  `ModuleNotFoundError` ab, ohne dass am Code etwas falsch wäre).
+
+## [1.177.5] — 2026-08-12
+
+### Fixed
+- **Das Anlegen eines Agenten schlug fehl (500).** Seit dem Zeitzonen-Commit vom
+  7. August — fünf Tage lang, in jeder Installation.
+
+  ```
+  cannot access local variable 'config' where it is not associated with a value
+  ```
+
+  In `create_agent` stand `agent_timezone(config)`, aber `config` wird in dieser
+  Funktion erst viel weiter unten gesetzt. Beim Anlegen gibt es noch keine
+  Agenten-Konfiguration, also gilt die Vorgabe: `agent_timezone(None)`. In
+  `restart_agent` und `update_agent` bleibt es bei `config` — dort existiert der
+  Agent und hat seine eigene Zeitzone.
+
+  **Ein Test hat den Fehler festgeschrieben statt ihn zu finden.** Er zählte
+  `count('"TZ": agent_timezone(config)') == 3` und war deshalb grün, während jedes
+  Anlegen in 500 lief. Er prüft jetzt je Funktion, woher die Zeitzone kommt.
+
+- **Neun weitere undefinierte Namen im Projekt** — dieselbe Fehlerklasse, jeder
+  ein Ausfall, der auf seinen ersten Nutzer wartete:
+
+  | Stelle | Wirkung |
+  |---|---|
+  | `_TELEGRAM_MAX_FILE_BYTES` (3×, nirgends definiert) | jeder Bild-, Video- und Animationsversand über Telegram wäre in einen `NameError` gelaufen statt in die 413-Meldung daneben |
+  | `logger` in `webhooks.py` (4×) | eine abgelehnte WhatsApp-Verifizierung hätte 500 statt 403 ergeben |
+  | `logger` in `mcp_agent.py` | Absturz statt Warnung, wenn ein Task-Abbruch nicht signalisiert werden kann |
+  | `sa_text` in `analytics.py` | in einer Funktion nicht importiert, in den Nachbarfunktionen schon |
+
+### Added
+- **Ein Gatter gegen diese ganze Fehlerklasse.** Ein Test lässt `ruff --select F821`
+  über `orchestrator/app` und `agent/app` laufen und schlägt bei jedem undefinierten
+  Namen an. Python merkt so etwas nicht beim Import, sondern erst, wenn die Zeile
+  läuft — ein Linter findet es in Sekunden. Namen, die nur in Typangaben stehen,
+  gehören dafür unter `if TYPE_CHECKING:`; drei solche Stellen sind entsprechend
+  aufgelöst.
+
 ## [1.177.4] — 2026-08-11
 
 ### Fixed
@@ -2165,7 +6495,7 @@ Drei Fehler aus dem ersten echten Sprach-Test der Desktop-Bridge — alle drei s
 
 ## [1.132.0] — 2026-08-04
 
-Erste Nachbesserungen aus dem Kundentest von v1.131.0 (Klinikum Braunschweig).
+Erste Nachbesserungen aus dem Kundentest von v1.131.0.
 
 ### Fixed
 - **Freigaben kamen im Sprachchat nie beim Nutzer an — der Agent handelte ohne sie (#474).** Ruft der Agent `request_approval`, legt der Orchestrator die Anfrage an und der Agent wartet bis zu 10 Minuten auf Antwort. Der Text-Chat zeigt dafür ein Widget; die **Voice-Session hatte keins** — die Frage lief nur als Text durch die Live-Aktivität, war nicht beantwortbar, und nach dem Timeout machte der Agent weiter. Dasselbe Muster wie beim `AskUserQuestion`-Fehler in v1.130.2: eine Rückfrage, die nirgends ankommt, wird zur stillen Selbstermächtigung. Die Sprachsitzung zeigt jetzt dieselbe Freigabe-Karte mit Frage, Kontext und den Antwortmöglichkeiten aus `request_approval` — und pollt durchgehend, nicht nur während eines laufenden Turns (im Sprachmodus arbeitet der Agent oft weiter, während man schon wieder redet).
@@ -3334,7 +7664,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 ### Fixed
 - **Voice Fokus-Modus zeigt jetzt korrekt „Fokus-Modus aktiv" (orange) statt „Hört zu…".** Bei aktivem Fokus (Mikro aus) blieb die Status-Pille auf lila „Hört zu…", obwohl der Agent gar nicht zuhört, sondern im Hintergrund arbeitet. Neu: solange eine Aufgabe läuft → orange „Fokus-Modus aktiv", danach grün „Fokus-Modus – bereit"; ohne Fokus wie gehabt (zuhören lila, bereit grün). (`frontend/src/components/agents/voice-session.tsx`)
 - **Explorer: Löschen-Button für Dateien und Ordner.** Das Backend-Delete (`DELETE /agents/{id}/files`, ownership- und `/workspace/`-gesichert) und die API-Funktion existierten bereits, nur der UI-Button fehlte. Jetzt pro Eintrag ein Papierkorb-Button (auf Hover) mit Bestätigungsdialog. (`frontend/src/app/files/page.tsx`)
-- **Realtime-Badge „Nova Sonic" → „Realtime".** Der Badge im Voice-Modal zeigte immer „Nova Sonic", auch wenn die Session über Azure-Realtime lief (SKBS) — irreführend. Jetzt engine-neutral „Realtime". (`frontend/src/components/agents/voice-session.tsx`)
+- **Realtime-Badge „Nova Sonic" → „Realtime".** Der Badge im Voice-Modal zeigte immer „Nova Sonic", auch wenn die Session über Azure-Realtime lief (Kundenanlage) — irreführend. Jetzt engine-neutral „Realtime". (`frontend/src/components/agents/voice-session.tsx`)
 
 ## [1.99.104] — 2026-07-07
 
@@ -3373,12 +7703,12 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 ## [1.99.98] — 2026-07-06
 
 ### Fixed
-- **Realtime-Voice-Selektor zeigt jetzt die im AI-Account hinterlegten Modelle statt einer festen Katalog-Liste.** Vorher listete `list_realtime_models` pro Provider-Typ mehrere fest verdrahtete Modelle (gpt-realtime + gpt-4o-realtime + mini) — alle mit derselben Engine+Account, sodass beim Anklicken eines Modells alle als „Aktiv" markiert wurden. Neu wird pro Account genau das/die dort konfigurierte(n) Modell(e) angezeigt (SKBS Azure realtime → nur `gpt-realtime`) → eindeutige Auswahl. (`api/ai_accounts.py::list_realtime_models`)
+- **Realtime-Voice-Selektor zeigt jetzt die im AI-Account hinterlegten Modelle statt einer festen Katalog-Liste.** Vorher listete `list_realtime_models` pro Provider-Typ mehrere fest verdrahtete Modelle (gpt-realtime + gpt-4o-realtime + mini) — alle mit derselben Engine+Account, sodass beim Anklicken eines Modells alle als „Aktiv" markiert wurden. Neu wird pro Account genau das/die dort konfigurierte(n) Modell(e) angezeigt (der Kundenanlage Azure realtime → nur `gpt-realtime`) → eindeutige Auswahl. (`api/ai_accounts.py::list_realtime_models`)
 
 ## [1.99.97] — 2026-07-06
 
 ### Added
-- **Azure OpenAI Realtime als zweite Voice-Engine (flüssiges Auto-Speech-to-Speech OHNE AWS).** Neben AWS Nova Sonic gibt es jetzt eine `AzureRealtimeSession`, die das OpenAI-Realtime-WS-Protokoll gegen Azures `/openai/v1/realtime` (Modell `gpt-realtime`, GA) spricht. Damit bekommen Deployments ohne AWS (z.B. SKBS) dasselbe kontinuierliche Sprach-Erlebnis wie Nova Sonic — über die vorhandene Azure-OpenAI-Ressource, ohne separaten Speech-Key, ohne externen Edge-TTS, ohne lokalen stt-service. Browser-16kHz-Audio wird auf 24kHz upgesampelt; Ausgabe läuft über den bestehenden glatten PCM-Playback-Pfad. Der `ask_agent`/`refine_task`-Delegations- und Tool-Layer wird wiederverwendet (Tool-Format automatisch Nova↔OpenAI konvertiert). Auswählbar in den Voice-Settings („GPT Realtime (GA)"); Provider `azure-realtime` im AI-Accounts-Bereich. E2E gegen echtes SKBS-Azure verifiziert. (`voice_providers/realtime_azure_openai.py`, `realtime_catalog.py`, `realtime_voice_session.py`, `api/ws.py`)
+- **Azure OpenAI Realtime als zweite Voice-Engine (flüssiges Auto-Speech-to-Speech OHNE AWS).** Neben AWS Nova Sonic gibt es jetzt eine `AzureRealtimeSession`, die das OpenAI-Realtime-WS-Protokoll gegen Azures `/openai/v1/realtime` (Modell `gpt-realtime`, GA) spricht. Damit bekommen Deployments ohne AWS (z.B. der Kundenanlage) dasselbe kontinuierliche Sprach-Erlebnis wie Nova Sonic — über die vorhandene Azure-OpenAI-Ressource, ohne separaten Speech-Key, ohne externen Edge-TTS, ohne lokalen stt-service. Browser-16kHz-Audio wird auf 24kHz upgesampelt; Ausgabe läuft über den bestehenden glatten PCM-Playback-Pfad. Der `ask_agent`/`refine_task`-Delegations- und Tool-Layer wird wiederverwendet (Tool-Format automatisch Nova↔OpenAI konvertiert). Auswählbar in den Voice-Settings („GPT Realtime (GA)"); Provider `azure-realtime` im AI-Accounts-Bereich. E2E gegen echtes der Kundenanlage-Azure verifiziert. (`voice_providers/realtime_azure_openai.py`, `realtime_catalog.py`, `realtime_voice_session.py`, `api/ws.py`)
 
 ## [1.99.96] — 2026-07-06
 
@@ -3402,7 +7732,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 
 ### Fixed
 - **Datei-Anhänge im Chat werden jetzt tatsächlich gelesen (PDF u.a.).** Der Agent bekam beim Anhängen nur eine passive Notiz („Datei in /workspace") und riet aus dem Dateinamen. Neu: explizite Anweisung mit vollem Pfad, die Datei ZUERST mit dem Read-Tool zu öffnen (PDFs/Bilder unterstützt). (`frontend/src/components/agents/chat.tsx`)
-- **Alembic-Branch bereinigt.** `#300` (gpt-5.5-Backfill, `515d03f814a0`) war vom falschen Parent abgezweigt → zwei Heads, `alembic upgrade head` mehrdeutig. Merge-Migration `0ea61527a17e` vereint sie wieder zu einem Single-Head (Pi + SKBS).
+- **Alembic-Branch bereinigt.** `#300` (gpt-5.5-Backfill, `515d03f814a0`) war vom falschen Parent abgezweigt → zwei Heads, `alembic upgrade head` mehrdeutig. Merge-Migration `0ea61527a17e` vereint sie wieder zu einem Single-Head (Pi + der Kundenanlage).
 
 ## [1.99.92] — 2026-07-06
 
@@ -3684,7 +8014,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 ## [1.99.25] — 2026-07-03
 
 ### Changed
-- **Voice-Settings sind jetzt realtime-first** und passen zum aktuellen Voice-Layer. Die Provider-Konfiguration zeigt oben die **Echtzeit-Sprachmodelle** (AWS Bedrock Nova Sonic / Azure Realtime — aus den konfigurierten AI-Accounts, via `GET /ai-accounts/realtime-models`) als primäre, empfohlene Auswahl und setzt damit den Plattform-Default (`voice_interaction_model` + `voice_interaction_account_id`). Die alte STT→LLM→TTS-Pipeline (faster-whisper/Edge-TTS/Interaction-LLM) ist in einen eingeklappten **„Klassische Pipeline (Fallback)"**-Bereich gewandert — nicht entfernt, weil Deployments ohne Realtime-Account (z. B. SKBS ohne AWS) sie als Rückfallebene brauchen; „Aktiv"-Badge zeigt, welcher Modus gerade greift. Backend: `/settings/voice` liefert + `PATCH /settings/` akzeptiert die Realtime-Felder. (`orchestrator/app/api/settings.py`, `orchestrator/app/schemas/settings.py`, `frontend/src/components/settings/voice-settings.tsx`)
+- **Voice-Settings sind jetzt realtime-first** und passen zum aktuellen Voice-Layer. Die Provider-Konfiguration zeigt oben die **Echtzeit-Sprachmodelle** (AWS Bedrock Nova Sonic / Azure Realtime — aus den konfigurierten AI-Accounts, via `GET /ai-accounts/realtime-models`) als primäre, empfohlene Auswahl und setzt damit den Plattform-Default (`voice_interaction_model` + `voice_interaction_account_id`). Die alte STT→LLM→TTS-Pipeline (faster-whisper/Edge-TTS/Interaction-LLM) ist in einen eingeklappten **„Klassische Pipeline (Fallback)"**-Bereich gewandert — nicht entfernt, weil Deployments ohne Realtime-Account (z. B. der Kundenanlage ohne AWS) sie als Rückfallebene brauchen; „Aktiv"-Badge zeigt, welcher Modus gerade greift. Backend: `/settings/voice` liefert + `PATCH /settings/` akzeptiert die Realtime-Felder. (`orchestrator/app/api/settings.py`, `orchestrator/app/schemas/settings.py`, `frontend/src/components/settings/voice-settings.tsx`)
 
 ## [1.99.24] — 2026-07-03
 
@@ -3707,7 +8037,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 - **Jarvis zeigt Bilder & Dateien.** Präsentiert der Agent während einer Voice-Aufgabe ein Bild (`present_image`) oder eine Datei (`present_file`), erscheint es jetzt live im rechten Panel des Jarvis-Cockpits — Bilder inline gerendert, Dateien als Karte mit Name/Beschriftung. Dieselben `image`/`file`-Events, die der Text-Chat rendert, werden über den `on_event`-Callback durchgereicht (`agent_chat_bridge`, `RealtimeVoiceSession._emit_activity` → `media`-Event). (`orchestrator/app/services/agent_chat_bridge.py`, `realtime_voice_session.py`, `frontend/src/components/agents/voice-session.tsx`)
 
 ### Security
-- **Kiosk-Voice-Ticket gehärtet** (Regression aus 1.99.20 behoben, vom Security-Review gefunden). Der token-mintende Endpoint `POST /kiosk/ws-ticket/{id}` ist jetzt (a) **standardmäßig deaktiviert** — nur aktiv wenn `KIOSK_VOICE_ENABLED` gesetzt ist (Pi-Kiosk; auf Multi-Tenant-Boxen wie SKBS 404 → kein Token-Minting), und (b) **least-privilege**: das Ticket wird an den **Agent-Owner** gebunden statt an einen globalen Admin (Admin nur noch Bootstrap-Fallback für Owner-lose Agenten). (`orchestrator/app/api/kiosk.py`)
+- **Kiosk-Voice-Ticket gehärtet** (Regression aus 1.99.20 behoben, vom Security-Review gefunden). Der token-mintende Endpoint `POST /kiosk/ws-ticket/{id}` ist jetzt (a) **standardmäßig deaktiviert** — nur aktiv wenn `KIOSK_VOICE_ENABLED` gesetzt ist (Pi-Kiosk; auf Multi-Tenant-Boxen wie der Kundenanlage 404 → kein Token-Minting), und (b) **least-privilege**: das Ticket wird an den **Agent-Owner** gebunden statt an einen globalen Admin (Admin nur noch Bootstrap-Fallback für Owner-lose Agenten). (`orchestrator/app/api/kiosk.py`)
 
 ## [1.99.20] — 2026-07-03
 
@@ -3794,7 +8124,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
 ## [1.99.8] — 2026-07-03
 
 ### Added
-- **Realtime-Sprache über AI-Accounts konfigurierbar (kundenfähig).** AWS-Bedrock-Zugänge (und vorbereitend Azure-Realtime / Brave-Websearch) werden jetzt als **AI-Account** angelegt (verschlüsselte Creds, wiederverwendbar) statt per Server-`.env` hardcodiert. Damit kann jeder Kunde (z. B. SKBS) seinen eigenen AWS-Account eintragen und Nova Sonic nutzen.
+- **Realtime-Sprache über AI-Accounts konfigurierbar (kundenfähig).** AWS-Bedrock-Zugänge (und vorbereitend Azure-Realtime / Brave-Websearch) werden jetzt als **AI-Account** angelegt (verschlüsselte Creds, wiederverwendbar) statt per Server-`.env` hardcodiert. Damit kann jeder Kunde (z. B. der Kundenanlage) seinen eigenen AWS-Account eintragen und Nova Sonic nutzen.
   - AI-Accounts: neue Provider-Typen `bedrock` / `azure-realtime` / `brave-search`; Formular mit AWS Access Key ID + Region + Secret (`frontend/src/app/ai-accounts/view.tsx`, `orchestrator/app/api/ai_accounts.py`).
   - **Realtime-Modell-Selektor** im Agenten-Sprach-Setup: listet die verfügbaren Realtime-Modelle je konfiguriertem Provider (z. B. „Nova Sonic 2 · AWS Bedrock (Pi)"), Auswahl Modell ↔ Provider. Endpoint `GET /ai-accounts/realtime-models`; Katalog `orchestrator/app/core/realtime_catalog.py`.
   - `RealtimeVoiceSession` löst die Creds jetzt auf: **verknüpfter AI-Account → Plattform-Default-Account → env** (Pi-Bootstrap bleibt als Fallback). Modell-ID pro Agent wählbar. Config: `interaction_account_id` + `interaction_model_id`.
@@ -3806,7 +8136,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
   - **Direkt-Tools (Millisekunden, kein Agent-Round-Trip):** `get_agent_status` (läuft/idle, aktuelle Aufgabe, Queue), `list_agent_tasks` (letzte Aufgaben inkl. Fehlerursache), `get_agent_settings` (Modell/Modus/Provider/Autonomie/Budget) — lesen direkt aus DB/Redis. Nur echte **Arbeit** geht noch über `ask_agent`.
   - **Sprech-Füller:** Vor einer Delegation (`ask_agent`, dauert Sekunden) sagt Nova Sonic jetzt kurz etwas („Moment, ich kümmere mich darum"), damit keine Stille entsteht.
   - **Barge-in:** Redet der Nutzer, während der Agent spricht, stoppt die Audio-Ausgabe sofort (Energie-VAD im Browser) — plus „Unterbrechen"-Button. (`orchestrator/app/services/realtime_voice_session.py`, `frontend/src/components/agents/voice-session.tsx`)
-- **Plattform-Default-Interaktionsmodell.** Neuer Fallback: Agenten ohne eigene Einstellung folgen einer Plattform-Vorgabe (`voice_interaction_model`), sodass **alle Agenten einheitlich** dasselbe Sprach-Verhalten haben — auf dem Pi „nova_sonic", auf SKBS leer (klassisch). Ein Per-Agent-Wert überschreibt weiterhin. (`orchestrator/app/api/ws.py`)
+- **Plattform-Default-Interaktionsmodell.** Neuer Fallback: Agenten ohne eigene Einstellung folgen einer Plattform-Vorgabe (`voice_interaction_model`), sodass **alle Agenten einheitlich** dasselbe Sprach-Verhalten haben — auf dem Pi „nova_sonic", auf der Kundenanlage leer (klassisch). Ein Per-Agent-Wert überschreibt weiterhin. (`orchestrator/app/api/ws.py`)
 
 ## [1.99.6] — 2026-07-03
 
@@ -3820,7 +8150,7 @@ Sammel-Release aus dem Kundenfeedback vom 03.08. (CoWork/ComputeUse, Plattform, 
   - Backend: `orchestrator/app/services/voice_providers/realtime_nova_sonic.py` (bidirektionaler Bedrock-Stream + Tool-Use via `aws-sdk-bedrock-runtime`), `realtime_voice_session.py` (Browser-PCM ↔ Nova Sonic ↔ Agent), gemeinsamer Delegations-Helper `agent_chat_bridge.py` (auch von der klassischen `VoiceSession` genutzt). WS-Route wählt den Pfad per `agent.config["interaction_model"]`. Endpoint `PUT /agents/{id}/interaction-model`.
   - Frontend: kontinuierlicher 16-kHz-PCM-Aufnahme-/24-kHz-Wiedergabe-Modus im Voice-Modal (`voice-session.tsx`), Per-Agent-Selektor „Sprach-Interaktion" (`interaction-model-card.tsx`).
   - Verifiziert: echte deutsche Sprache → Transkription → `ask_agent`-Tool-Call → Tool-Ergebnis → gesprochene Antwort, end-to-end gegen echtes AWS Bedrock (Raspberry Pi, ARM). Der Browser-Mic-Test steht noch aus.
-  - AWS-Zugangsdaten sind **Pi-only** (in der Pi-`.env`), nicht auf SKBS.
+  - AWS-Zugangsdaten sind **Pi-only** (in der Pi-`.env`), nicht auf der Kundenanlage.
 
 ## [1.99.4] — 2026-07-02
 

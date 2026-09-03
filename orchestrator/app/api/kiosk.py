@@ -274,7 +274,7 @@ async def kiosk_ws_ticket(
     Security: minting a WS ticket is a higher-risk primitive than the rest of the
     kiosk API (the ticket is usable on the tunnel-exposed voice WS). Therefore:
       * DISABLED by default — only active when ``KIOSK_VOICE_ENABLED`` is set
-        (on the single-user Pi kiosk; NEVER on multi-tenant boxes like SKBS,
+        (on the single-user Pi kiosk; NEVER on multi-tenant boxes,
         where the endpoint 404s and cannot mint anything).
       * Least privilege — the ticket is bound to the AGENT'S OWNER, not a broad
         admin; an admin is only a bootstrap fallback for owner-less agents.

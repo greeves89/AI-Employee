@@ -28,6 +28,11 @@ export function FileUploader({
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  // Wohin die Datei soll. Der uebergebene Pfad ist nur die Vorbelegung — bis
+  // 2026-08-18 war er fest verdrahtet und im Fenster stand lediglich
+  // „to /workspace". Wer woanders hin wollte, musste die Datei hochladen und
+  // danach von Hand verschieben.
+  const [ziel, setZiel] = useState(targetPath);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = useCallback((newFiles: FileList | File[]) => {
@@ -53,10 +58,14 @@ export function FileUploader({
 
   const handleUpload = async () => {
     if (files.length === 0) return;
+    if (!zielErlaubt) {
+      setError("Der Zielordner muss unter /workspace liegen.");
+      return;
+    }
     setUploading(true);
     setError(null);
     try {
-      await api.uploadFiles(agentId, targetPath, files);
+      await api.uploadFiles(agentId, zielSauber, files);
       setDone(true);
       setFiles([]);
       onUploadComplete();
@@ -67,14 +76,30 @@ export function FileUploader({
     }
   };
 
+  // Nachlaessigkeiten abfangen, die sonst als 400 vom Server zurueckkaemen.
+  const zielSauber = (ziel.trim() || "/workspace").replace(/\/+$/, "") || "/workspace";
+  // Genau die Grenze, die der Server zieht (``file_manager.upload_files``):
+  // alles ausserhalb von /workspace wird dort mit einem Fehler abgewiesen. Hier
+  // dieselbe Regel, damit der Nutzer es VOR dem Hochladen sieht statt danach als
+  // 400. ``/shared`` gehoert bewusst NICHT dazu — es anzubieten hiesse, einen
+  // Weg vorzuschlagen, der sicher fehlschlaegt.
+  const zielErlaubt = /^\/workspace(\/|$)/.test(zielSauber);
+
+  const SCHNELLZIELE = [
+    { pfad: "/workspace", was: "Arbeitsordner" },
+    { pfad: "/workspace/transfer", was: "Ergebnisse für dich" },
+    { pfad: "/workspace/data", was: "Daten" },
+    { pfad: "/workspace/docs", was: "Dokumente" },
+    { pfad: "/workspace/projects", was: "Projekte" },
+  ];
+
   return (
     <div className="rounded-2xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-foreground/[0.06]">
         <div className="flex items-center gap-2">
           <Upload className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-semibold">Upload Files</h3>
-          <span className="text-xs text-muted-foreground/60">to {targetPath}</span>
+          <h3 className="text-sm font-semibold">Dateien hochladen</h3>
         </div>
         <button
           onClick={onClose}
@@ -82,6 +107,48 @@ export function FileUploader({
         >
           <X className="h-4 w-4 text-muted-foreground" />
         </button>
+      </div>
+
+      {/* Zielordner — waehlbar statt fest verdrahtet. */}
+      <div className="border-b border-foreground/[0.06] px-5 py-3">
+        <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground/70">
+          Zielordner
+        </label>
+        <input
+          value={ziel}
+          onChange={(e) => setZiel(e.target.value)}
+          spellCheck={false}
+          placeholder="/workspace"
+          className={`w-full rounded-lg border bg-foreground/[0.02] px-3 py-1.5 font-mono text-xs outline-none transition-all ${
+            zielErlaubt
+              ? "border-foreground/[0.08] focus:border-primary/50"
+              : "border-red-500/40 focus:border-red-500/60"
+          }`}
+        />
+        {!zielErlaubt && (
+          <p className="mt-1 text-[11px] text-red-400">
+            Muss unter <span className="font-mono">/workspace</span> liegen.
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {SCHNELLZIELE.map((z) => (
+            <button
+              key={z.pfad}
+              onClick={() => setZiel(z.pfad)}
+              title={z.was}
+              className={`rounded-md px-2 py-1 font-mono text-[10px] transition-colors ${
+                zielSauber === z.pfad
+                  ? "bg-primary/15 text-foreground"
+                  : "bg-foreground/[0.06] text-muted-foreground hover:bg-foreground/[0.1]"
+              }`}
+            >
+              {z.pfad}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-[11px] text-muted-foreground/50">
+          Der Ordner wird angelegt, falls es ihn noch nicht gibt.
+        </p>
       </div>
 
       {/* Drop Zone */}

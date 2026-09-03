@@ -41,8 +41,39 @@ def _get_task_router(
     return TaskRouter(db, redis, lb, docker_service=docker)
 
 
+def _agent_delegated_this(user, task) -> bool:
+    """Darf dieser Agent die Aufgabe sehen, weil ER sie vergeben hat?
+
+    Ein Agent sieht sonst ausschliesslich seine EIGENEN Aufgaben — ``[user.id]``.
+    Fuer einen Team-Lead heisst das: er legt per ``delegate_and_wait`` Auftraege
+    fuer seine Leute an und darf danach kein einziges Ergebnis abrufen. Genau das
+    stand am 2026-08-12 beim Kunden im Chat: vier Auftraege, alle vier in der
+    Datenbank auf COMPLETED mit 4-10 Zuegen echter Arbeit — und der Lead meldete
+    „Der anschliessende Statusabruf liefert fuer alle vier Auftraege derzeit
+    'nicht abrufbar'. Das ist kein belastbarer Abschluss."
+
+    Der Abruf lief auf 403. Die Arbeit war getan, sie kam nur nie zurueck.
+
+    Die Mandantentrennung bleibt: Zugriff hat, wer die Aufgabe **erzeugt** hat —
+    nicht jeder Agent, und nicht agentenuebergreifend.
+    """
+    return bool(
+        is_agent_principal(user)
+        and (getattr(task, "metadata_", None) or {}).get("created_by_agent") == user.id
+    )
+
+
 async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
-    """Return agent IDs owned by user, or None if admin (sees all)."""
+    """Return agent IDs owned by user, or None if admin (sees all).
+
+    Ownerless agents (user_id IS NULL) are NOT auto-included here (changed
+    2026-08-27) — they used to count as "platform agents" visible to
+    everyone, which on a multi-department customer install meant
+    every user saw every other department's tasks/costs the moment an
+    agent was created without an assigned owner (usually by accident, not
+    decision). ``is_platform_agent`` is the explicit, admin-set flag for a
+    DELIBERATELY shared agent — that one still counts as visible to all.
+    """
     from app.models.user import UserRole
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         return None
@@ -52,7 +83,7 @@ async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
     from app.models.agent_access import AgentAccess
     owned = await db.execute(
         select(Agent.id).where(
-            (Agent.user_id == user.id) | (Agent.user_id.is_(None))
+            (Agent.user_id == user.id) | (Agent.is_platform_agent.is_(True))
         )
     )
     shared = await db.execute(
@@ -125,7 +156,8 @@ async def create_task(
         model=data.model,
         parent_task_id=data.parent_task_id,
         created_by_agent=data.created_by_agent,
-        metadata=metadata or None,
+        metadata={**metadata, "chat_session_id": data.chat_session_id}
+        if data.chat_session_id else (metadata or None),
     )
     return TaskResponse.model_validate(task)
 
@@ -162,6 +194,8 @@ async def create_task_batch(
             model=task_data.model,
             parent_task_id=data.parent_task_id or task_data.parent_task_id,
             created_by_agent=data.created_by_agent or task_data.created_by_agent,
+            metadata=({"chat_session_id": task_data.chat_session_id}
+                      if task_data.chat_session_id else None),
         )
         created.append(TaskResponse.model_validate(task))
 
@@ -365,7 +399,7 @@ async def get_task(
     task = await router_.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if hasattr(user, "role"):
+    if hasattr(user, "role") and not _agent_delegated_this(user, task):
         allowed = await _get_user_agent_ids(user, db)
         if allowed is not None and task.agent_id not in allowed:
             raise HTTPException(status_code=403, detail="Access denied")
@@ -384,7 +418,7 @@ async def get_task_steps(
     task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if hasattr(user, "role"):
+    if hasattr(user, "role") and not _agent_delegated_this(user, task):
         allowed = await _get_user_agent_ids(user, db)
         if allowed is not None and task.agent_id not in allowed:
             raise HTTPException(status_code=403, detail="Access denied")

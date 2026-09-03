@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle, LayoutGrid, CalendarClock } from "lucide-react";
+import { Mic, MicOff, X, Loader2, Volume2, PhoneOff, Radio, Search, FileText, CheckCircle2, Pause, Play, ChevronDown, ChevronRight, ClipboardList, Paperclip, Globe, ExternalLink, Hand, Network, AlertTriangle, LayoutGrid, CalendarClock, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { getWsUrl, getBase } from "@/lib/config";
 import { JarvisCore } from "./jarvis-core";
 import { MeetingRecorder } from "@/components/meetings/meeting-recorder";
 import * as api from "@/lib/api";
 import type { ApprovalRequest } from "@/lib/types";
+import { ApprovalPrompt } from "@/components/agents/approval-prompt";
 import { sendMeetingTranscriptToChat, getChatHistory, uploadFiles } from "@/lib/api";
 
 // The knowledge-graph overlay (WebGL) is client-only and heavy → load on demand.
@@ -170,6 +171,16 @@ function linkify(text: string) {
       </span>
     );
   });
+}
+
+//: Wie lange das Rauschtor nach dem letzten lauten Frame offen bleibt
+//: (Frames a ~85 ms). Ohne Nachlauf verschluckt es leise Endsilben.
+const NACHLAUF_FRAMES = 8;
+
+//: Reglerwert (0-100) in eine Pegelschwelle. 0 = Tor immer offen (wie frueher),
+//: 100 = nur deutliches Sprechen kommt durch.
+function schwelleAusRegler(wert: number): number {
+  return (wert / 100) * 0.06;
 }
 
 export function VoiceSessionModal({
@@ -349,10 +360,29 @@ export function VoiceSessionModal({
   // AWS-CRT race → the server emits "done"). We keep a stable chat_session id and
   // silently reconnect, resuming the conversation, instead of dead-ending.
   const reconnectsRef = useRef(0);
+  //: Haendischer Neuaufbau. Der automatische greift nur bei Fehlern, die
+  //: wir als voruebergehend kennen — bei allen anderen stand der Nutzer
+  //: bisher vor „Auflegen" als einziger Wahl. Der Aufbau selbst ist
+  //: derselbe: er laedt das bisherige Gespraech nach (`frisch=false`),
+  //: der Agent redet also weiter, statt neu zu begruessen.
+  const neuVerbindenRef = useRef<(() => void) | null>(null);
   const closingRef = useRef(false);
   const wsReconnectTimer = useRef<number | undefined>(undefined);
   const voiceSessionRef = useRef<string>("");
   const MAX_VOICE_RECONNECTS = 8;
+  // Die Zaehler-Grenze allein hat am 31.08.2026 nicht gehalten: gemessen wurden
+  // 441 Verbindungsversuche in 85 Sekunden (#691). Der Zaehler wird
+  // zurueckgesetzt, sobald Gespraechsdaten eintreffen — kommt vom Server auch
+  // im Fehlerfall noch irgendein Ereignis, faengt das Zaehlen von vorn an und
+  // die Grenze ist wirkungslos. Deshalb zusaetzlich eine Bremse, die von
+  // KEINEM Ruecksetzen abhaengt: Versuche innerhalb eines Zeitfensters.
+  const VERSUCHSFENSTER_MS = 60_000;
+  const MAX_VERSUCHE_IM_FENSTER = 10;
+  const versucheImFenster = useRef<number[]>([]);
+  // Fester Abstand von 600 ms gegen einen Fehler, der nie von allein weggeht,
+  // ist nur ein schnelleres Scheitern. Verdoppeln, gedeckelt bei 30 s.
+  const BACKOFF_START_MS = 600;
+  const BACKOFF_DECKEL_MS = 30_000;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
@@ -390,11 +420,13 @@ export function VoiceSessionModal({
     return () => { stop = true; clearInterval(iv); };
   }, [state, agentId]);
 
-  const decideApproval = useCallback(async (approve: boolean) => {
+  // ``antwort`` ist die gewaehlte Option oder die Wahl aus einer Ansicht. Ohne
+  // sie erfuhr der Agent nur „genehmigt" und nicht, WAS gewaehlt wurde.
+  const decideApproval = useCallback(async (approve: boolean, antwort?: string) => {
     if (!pendingApproval || approvalBusy) return;
     setApprovalBusy(true);
     try {
-      if (approve) await api.approveCommand(pendingApproval.approval_id);
+      if (approve) await api.approveCommand(pendingApproval.approval_id, antwort);
       else await api.denyCommand(pendingApproval.approval_id, "Im Sprachchat abgelehnt");
       setPendingApproval(null);
     } catch { /* bleibt stehen, damit der Nutzer es erneut versuchen kann */ }
@@ -480,6 +512,28 @@ export function VoiceSessionModal({
   // Realtime (Nova Sonic) audio graph
   const inCtxRef = useRef<AudioContext | null>(null);
   const procRef = useRef<ScriptProcessorNode | null>(null);
+  //: Empfindlichkeit des Mikrofons. In einem Ref, damit der Regler MITTEN
+  //: IM GESPRAECH wirkt — die Tonschleife liest ihn bei jedem Frame neu.
+  //: Kein Neuaufbau der Sitzung noetig: das Rauschtor ist unser Code in der
+  //: Tonkette, nicht ein Parameter der Engine.
+  const empfindlichkeitRef = useRef({ schwelle: 0.02, minFrames: 2 });
+  const [empfindlichkeit, setEmpfindlichkeit] = useState(40);
+
+  // Das Mikrofon und der Raum gehoeren zum GERAET, nicht zum Agenten —
+  // deshalb liegt der Wert lokal und nicht am Agenten in der Datenbank.
+  useEffect(() => {
+    const gespeichert = Number(localStorage.getItem('voice-empfindlichkeit'));
+    if (Number.isFinite(gespeichert) && gespeichert > 0) setEmpfindlichkeit(gespeichert);
+  }, []);
+
+  useEffect(() => {
+    empfindlichkeitRef.current = {
+      schwelle: schwelleAusRegler(empfindlichkeit),
+      // Empfindlicher eingestellt heisst auch: schneller unterbrechen duerfen.
+      minFrames: empfindlichkeit >= 60 ? 3 : 2,
+    };
+    localStorage.setItem('voice-empfindlichkeit', String(empfindlichkeit));
+  }, [empfindlichkeit]);
   const srcNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const outCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -502,6 +556,23 @@ export function VoiceSessionModal({
 
     const scheduleReconnect = () => {
       if (cancelled || closingRef.current) return;
+
+      // Zeitfenster-Bremse: unabhaengig davon, was den Zaehler zurueckgesetzt
+      // hat. Sie ist es, die den Sturm vom 31.08. verhindert haette.
+      const jetzt = Date.now();
+      versucheImFenster.current = versucheImFenster.current.filter(
+        (t) => jetzt - t < VERSUCHSFENSTER_MS,
+      );
+      if (versucheImFenster.current.length >= MAX_VERSUCHE_IM_FENSTER) {
+        setState("error");
+        setError(
+          "Die Sprachverbindung scheitert wiederholt. Ich habe aufgehört, es zu "
+          + "versuchen — bitte über „Neu verbinden“ starten.",
+        );
+        return;
+      }
+      versucheImFenster.current.push(jetzt);
+
       if (reconnectsRef.current >= MAX_VOICE_RECONNECTS) {
         setState("error");
         setError("Sprachverbindung verloren. Bitte neu starten.");
@@ -509,7 +580,25 @@ export function VoiceSessionModal({
       }
       reconnectsRef.current += 1;
       setState("connecting");
-      wsReconnectTimer.current = window.setTimeout(() => { void connectWs(); }, 600);
+      // Exponentiell: 600 ms, 1.2 s, 2.4 s … bis 30 s. Gegen einen dauerhaften
+      // Fehler ist jeder schnelle Neuversuch nur mehr Last und mehr Protokoll.
+      const wartezeit = Math.min(
+        BACKOFF_DECKEL_MS,
+        BACKOFF_START_MS * 2 ** Math.max(0, reconnectsRef.current - 1),
+      );
+      wsReconnectTimer.current = window.setTimeout(() => { void connectWs(); }, wartezeit);
+    };
+
+    neuVerbindenRef.current = () => {
+      if (closingRef.current) return;
+      // Zaehler zuruecksetzen: der Nutzer hat sich bewusst entschieden, das
+      // ist kein weiterer Versuch einer kaputten Sitzung.
+      reconnectsRef.current = 1;   // >0, damit der Server das Gespraech nachlaedt
+      versucheImFenster.current = [];  // bewusste Entscheidung, kein Sturm
+      setError(null);
+      setState("connecting");
+      try { wsRef.current?.close(); } catch { /* schliesst gleich selbst */ }
+      void connectWs();
     };
 
     const connectWs = async () => {
@@ -540,7 +629,12 @@ export function VoiceSessionModal({
           }
         }
         if (cancelled || closingRef.current) return;
-        const url = `${getWsUrl()}/api/v1/ws/agents/${agentId}/voice?ticket=${ticket}&chat_session=${encodeURIComponent(voiceSessionRef.current)}`;
+        // ``fresh`` sagt dem Server: der Nutzer hat ausdruecklich ein NEUES
+        // Gespraech gestartet, also bitte NICHT das letzte nachladen. Ohne das
+        // begruesste ein frischer Sprachchat mit „wir waren gerade dabei…".
+        // Bei einem Wiederverbinden bleibt es aus — dort ist das Nachladen richtig.
+        const frisch = !resumeSessionId && reconnectsRef.current === 0;
+        const url = `${getWsUrl()}/api/v1/ws/agents/${agentId}/voice?ticket=${ticket}&chat_session=${encodeURIComponent(voiceSessionRef.current)}${frisch ? "&fresh=1" : ""}`;
         const ws = new WebSocket(url);
         wsRef.current = ws;
         ws.onopen = () => setError(null);
@@ -813,6 +907,17 @@ export function VoiceSessionModal({
         }
         break;
       case "error":
+        // Ein voruebergehender Fehler der Sprach-Engine („Model has timed out")
+        // ist dasselbe wie ein abgerissener Stream — und wurde bis 2026-08-18
+        // anders behandelt: Fehler anzeigen, Ende, von Hand neu starten. Jetzt
+        // derselbe Weg wie bei "done": neu verbinden und das Gespraech
+        // fortsetzen. Die Obergrenze fuer Neuversuche bleibt, damit ein echter
+        // Dauerfehler nicht still im Kreis laeuft, sondern sichtbar wird.
+        if (data.retryable && reconnectsRef.current < MAX_VOICE_RECONNECTS) {
+          setState("connecting");
+          try { wsRef.current?.close(); } catch { /* schliesst gleich selbst */ }
+          break;
+        }
         setError(String(data.message || "Fehler"));
         setState("error");
         break;
@@ -969,19 +1074,38 @@ export function VoiceSessionModal({
       procRef.current = proc;
       let vadHigh = 0;
       let framesSent = 0;
+      //: Nachlauf des Rauschtors in Frames. Ohne ihn wuerden Wortenden
+      //: abgeschnitten — leise Endsilben liegen unter der Schwelle.
+      let nachlauf = 0;
       proc.onaudioprocess = (e) => {
         if (wsRef.current?.readyState !== WebSocket.OPEN) return;
         const input = e.inputBuffer.getChannelData(0);
+
+        // ── Rauschtor ──────────────────────────────────────────────────────
+        // Bis hierher ging JEDER Frame raus, egal wie leise. Die Engine bekam
+        // also jedes Umgebungsgeraeusch zu hoeren und entschied selbst, darauf
+        // zu reagieren — gemeldet als „speech reagiert zu schnell auf Toene".
+        //
+        // Wir senden bewusst STILLE statt gar nichts: der Tonstrom muss
+        // lueckenlos bleiben, sonst geraet die Sprecherwechsel-Erkennung der
+        // Engine aus dem Takt. Sie hoert dann Ruhe statt Rascheln.
+        let summe = 0;
+        for (let i = 0; i < input.length; i++) summe += input[i] * input[i];
+        const pegel = Math.sqrt(summe / input.length);
+        const { schwelle, minFrames } = empfindlichkeitRef.current;
+        if (pegel >= schwelle) {
+          nachlauf = NACHLAUF_FRAMES;
+        } else if (nachlauf > 0) {
+          nachlauf--;
+        }
+        const durchlassen = schwelle <= 0 || nachlauf > 0;
         // Barge-in: if the agent is speaking and the user starts talking, stop the
         // agent's (buffered) audio immediately so the user can cut in. Echo from the
         // speakers is largely removed by echoCancellation; require a few consecutive
         // loud frames to avoid false triggers.
         if (liveSourcesRef.current.length > 0) {
-          let sum = 0;
-          for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
-          const rms = Math.sqrt(sum / input.length);
-          vadHigh = rms > 0.025 ? vadHigh + 1 : 0;
-          if (vadHigh >= 2) {
+          vadHigh = pegel > schwelle ? vadHigh + 1 : 0;
+          if (vadHigh >= minFrames) {
             beginBargeIn();
             setState("listening");
             vadHigh = 0;
@@ -989,6 +1113,7 @@ export function VoiceSessionModal({
         }
         framesSent++;
         const ds = downsample(input, ctx.sampleRate, 16000);
+        if (!durchlassen) ds.fill(0);
         const b64 = bufToBase64(floatTo16LE(ds));
         wsRef.current.send(JSON.stringify({ type: "audio_chunk", data: { b64 } }));
       };
@@ -1111,10 +1236,44 @@ export function VoiceSessionModal({
   // and fill it; as a modal we keep the compact viewport-fraction heights.
   // The newest visual the agent pushed — it gets the big stage under the orb.
   // Files stay in the right-hand activity pane (they're downloads, not visuals).
-  const stageItem = media.find((m) => m.kind === "image" || m.kind === "web");
+  // Frueher: `media.find(...)` — nur das NEUESTE Bild war zu sehen, jedes
+  // weitere legte sich unsichtbar darunter. Wer zwei Bildschirme aufnimmt, sah
+  // nur einen. Jetzt stehen sie nebeneinander; mehr als vier waeren auf einer
+  // Buehne allerdings nur noch Briefmarken, also gilt dort Schluss.
+  const alleAnzeigen = media.filter((m) => m.kind === "image" || m.kind === "web");
+  const stageItems = alleAnzeigen.slice(0, 4);
   // Groesse des Overlays: der Nutzer zieht sie sich zurecht, wir merken sie uns.
   // Vorher war das Fenster fest (max-w-6xl) — bei langen Zusammenfassungen scrollte
   // man in einer schmalen Spalte, obwohl der Bildschirm leer daneben lag.
+  // Die beiden Seitenspalten lassen sich wegklappen, damit die Buehne in der Mitte
+  // gross wird. Der Nutzer stellt sich das einmal ein — also merken wir es uns.
+  const SPALTEN_KEY = "voice-spalten-eingeklappt";
+  const [gesprAus, setGesprAus] = useState(false);
+  const [aufgabenAus, setAufgabenAus] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SPALTEN_KEY);
+      if (!raw) return;
+      const g = JSON.parse(raw) as { gespraech?: boolean; aufgaben?: boolean };
+      setGesprAus(!!g.gespraech);
+      setAufgabenAus(!!g.aufgaben);
+    } catch {
+      /* Kein gemerkter Stand ist kein Fehler — dann eben beide offen. */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        SPALTEN_KEY,
+        JSON.stringify({ gespraech: gesprAus, aufgaben: aufgabenAus }),
+      );
+    } catch {
+      /* Privater Modus o.ae. — dann gilt die Einstellung nur fuer dieses Gespraech. */
+    }
+  }, [gesprAus, aufgabenAus]);
+
   const SIZE_KEY = "voice-overlay-size";
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [maximized, setMaximized] = useState(false);
@@ -1172,6 +1331,30 @@ export function VoiceSessionModal({
     : sized
     ? "h-full min-h-0"
     : "max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh]";
+  // Eingeklappte Spalten schrumpfen auf eine schmale Leiste; was sie freigeben,
+  // bekommt die Mitte — dort liegen die Screenshots, und genau die sollen gross
+  // werden. Eine Leiste ist 2.75rem breit, das reicht fuer Knopf und Beschriftung.
+  // ACHTUNG: die Klassen muessen WOERTLICH im Quelltext stehen. Tailwind liest
+  // die Dateien als Text — ein zur Laufzeit zusammengebauter Klassenname
+  // existiert im fertigen CSS schlicht nicht, die Spalten blieben dann gleich.
+  const spalten =
+    gesprAus && aufgabenAus
+      ? "lg:grid-cols-[2.75rem_minmax(280px,3fr)_2.75rem]"
+      : gesprAus
+      ? "lg:grid-cols-[2.75rem_minmax(280px,2fr)_1fr]"
+      : aufgabenAus
+      ? "lg:grid-cols-[1fr_minmax(280px,2fr)_2.75rem]"
+      : "lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr]";
+  // Mehrere Anzeigen brauchen Breite, sonst stehen sie als Streifen untereinander.
+  // Dafuer muss der Nutzer nicht erst eine Spalte einklappen.
+  const buehneWeit = gesprAus || aufgabenAus || stageItems.length > 1;
+  // Tailwind liest die Datei als Text — die Klassen muessen woertlich dastehen.
+  const buehnenRaster =
+    stageItems.length >= 3
+      ? "grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+      : stageItems.length === 2
+      ? "grid gap-3 grid-cols-1 md:grid-cols-2"
+      : "grid gap-3 grid-cols-1";
   return (
     <div
       className={embedded
@@ -1248,37 +1431,20 @@ export function VoiceSessionModal({
           {pendingApproval && (
             <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-amber-300">Der Agent braucht deine Freigabe</p>
-                  <p className="mt-1 text-sm text-foreground/90 break-words">
-                    {pendingApproval.question
-                      || pendingApproval.reasoning
-                      || pendingApproval.tool
-                      || "Freigabe erforderlich"}
-                  </p>
-                  {pendingApproval.context && (
-                    <p className="mt-1 text-xs text-muted-foreground break-words">{pendingApproval.context}</p>
-                  )}
-                  {pendingApproval.tool && pendingApproval.question && (
-                    <p className="mt-1 text-[11px] text-amber-400/70 font-mono">{pendingApproval.tool}</p>
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      onClick={() => decideApproval(true)}
-                      disabled={approvalBusy}
-                      className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 px-3 py-1.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-50 transition-colors"
-                    >
-                      {approvalBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                      {pendingApproval.options?.[0] || "Freigeben"}
-                    </button>
-                    <button
-                      onClick={() => decideApproval(false)}
-                      disabled={approvalBusy}
-                      className="rounded-lg bg-red-500/15 px-3 py-1.5 text-sm font-medium text-red-400 hover:bg-red-500/25 disabled:opacity-50 transition-colors"
-                    >
-                      {pendingApproval.options?.[1] || "Ablehnen"}
-                    </button>
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Der Agent braucht deine Freigabe</p>
+                  {/* Frage, Optionen, Ansicht und Freitext kommen aus der
+                      gemeinsamen Komponente — bis 2026-08-18 stand das hier
+                      als eigene Fassung und ging beim Erweitern verloren. */}
+                  <div className="mt-2">
+                    <ApprovalPrompt
+                      request={{ ...pendingApproval, agent_id: agentId }}
+                      busy={approvalBusy}
+                      onAnswer={(antwort) => decideApproval(true, antwort)}
+                      onDeny={() => decideApproval(false)}
+                      compact
+                    />
                   </div>
                 </div>
               </div>
@@ -1290,8 +1456,16 @@ export function VoiceSessionModal({
           {isRealtime ? (
             /* ── Jarvis: 3-pane realtime cockpit (Gespräch | Präsenz | Aufgaben) ── */
             <>
-            <div className={`mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_minmax(280px,1.1fr)_1fr] lg:items-stretch${sized ? " min-h-0 flex-1" : ""}`}>
+            <div className={`mt-4 grid grid-cols-1 gap-4 ${spalten} lg:items-stretch${sized ? " min-h-0 flex-1" : ""}`}>
               {/* LEFT — conversation transcript, doubles as the file drop zone */}
+              {gesprAus ? (
+                <Klappleiste
+                  titel="Gespräch"
+                  seite="links"
+                  anzahl={turns.length}
+                  onOeffnen={() => setGesprAus(false)}
+                />
+              ) : (
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
@@ -1329,6 +1503,14 @@ export function VoiceSessionModal({
                     {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
                     Datei
                   </button>
+                  <button
+                    onClick={() => setGesprAus(true)}
+                    title="Gespräch einklappen — die Anzeige in der Mitte wird größer"
+                    aria-label="Gespräch einklappen"
+                    className="ml-1 rounded-md p-1 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
+                  >
+                    <PanelLeftClose className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 <div ref={transcriptRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
                   {turns.length === 0 ? (
@@ -1358,6 +1540,7 @@ export function VoiceSessionModal({
                   )}
                 </div>
               </div>
+              )}
 
               {/* CENTER — presence, quiet call controls, and the stage below */}
               <div className="order-1 flex min-w-0 flex-col items-center gap-3.5 py-2 lg:order-2">
@@ -1367,7 +1550,7 @@ export function VoiceSessionModal({
                   <p className="max-w-[240px] text-center text-xs text-muted-foreground/70">{statusMsg}</p>
                 )}
                 {paused && (
-                  <p className="max-w-[260px] text-center text-xs text-amber-400/90">
+                  <p className="max-w-[260px] text-center text-xs text-amber-700 dark:text-amber-400/90">
                     Fokus-Modus: Mikro aus — ich arbeite weiter und melde mich, wenn etwas fertig ist.
                   </p>
                 )}
@@ -1394,93 +1577,125 @@ export function VoiceSessionModal({
                   </CtrlButton>
                 </div>
 
-                {/* Playback volume — GainNode-based so it also works on iOS Safari */}
-                <div className="flex w-36 items-center gap-2 opacity-60 transition-opacity hover:opacity-100">
-                  <Volume2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={volume}
-                    onChange={(e) => changeVolume(Number(e.target.value))}
-                    aria-label="Lautstärke"
-                    className="h-0.5 flex-1 cursor-pointer accent-emerald-500"
-                  />
+                {/* Zwei Regler untereinander sahen identisch aus — grau, gleich
+                    lang, nur ein winziges Symbol als Unterschied. Jetzt mit
+                    Beschriftung, damit man sieht, woran man dreht. */}
+                <div className="w-full max-w-sm space-y-1.5 rounded-lg border border-border/60 bg-foreground/[0.02] px-3 py-2">
+                  {/* Playback volume — GainNode-based so it also works on iOS Safari */}
+                  <div className="flex items-center gap-2">
+                    <Volume2 className="h-3.5 w-3.5 shrink-0 text-emerald-400/80" />
+                    <span className="w-20 shrink-0 text-[10px] text-muted-foreground/70">Lautstärke</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={volume}
+                      onChange={(e) => changeVolume(Number(e.target.value))}
+                      aria-label="Lautstärke"
+                      className="h-1 min-w-0 flex-1 cursor-pointer accent-emerald-500"
+                    />
+                  </div>
+
+                  {/* Mikrofon-Empfindlichkeit — wirkt SOFORT, mitten im Gespräch.
+                      Kein Neuaufbau der Sitzung: das Rauschtor sitzt in unserer
+                      Tonkette, nicht in der Engine. */}
+                  <div className="flex items-center gap-2">
+                    <Mic className="h-3.5 w-3.5 shrink-0 text-sky-400/80" />
+                    <span className="w-20 shrink-0 text-[10px] text-muted-foreground/70">Mikrofon</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={empfindlichkeit}
+                      onChange={(e) => setEmpfindlichkeit(Number(e.target.value))}
+                      aria-label="Mikrofon-Empfindlichkeit"
+                      className="h-1 min-w-0 flex-1 cursor-pointer accent-sky-500"
+                    />
+                  </div>
+                  <p className="pl-[22px] text-[10px] leading-tight text-muted-foreground/50">
+                    {empfindlichkeit === 0
+                      ? "Nimmt jedes Geräusch auf"
+                      : empfindlichkeit >= 70
+                        ? "Hört erst bei deutlichem Sprechen zu"
+                        : "Ignoriert leise Hintergrundgeräusche"}
+                  </p>
                 </div>
 
                 {/* THE STAGE — whatever the agent is showing right now, big */}
-                {stageItem && (
-                  <div className="relative w-full max-w-md rounded-xl border border-border bg-foreground/[0.02] p-3">
-                    {/* Ohne das bleibt ein Screenshot bis zum Sitzungsende stehen und
-                        verdeckt alles, was danach kommt. */}
-                    <button
-                      onClick={() => setMedia((prev) => prev.filter((m) => m !== stageItem))}
-                      title="Ausblenden"
-                      aria-label="Anzeige ausblenden"
-                      className="absolute right-2 top-2 z-10 rounded-md bg-background/70 p-1 text-muted-foreground backdrop-blur hover:bg-background hover:text-foreground"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                    {stageItem.kind === "image" && stageItem.b64 ? (
-                      <>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={`data:${stageItem.media_type || "image/png"};base64,${stageItem.b64}`}
-                          alt={stageItem.caption || "Anzeige"}
-                          className="max-h-72 w-full rounded-lg bg-white/5 object-contain"
-                        />
-                        {stageItem.caption && (
-                          <p className="mt-2 text-center text-xs text-muted-foreground/70">{stageItem.caption}</p>
-                        )}
-                      </>
-                    ) : stageItem.url ? (
-                      <div className="space-y-2">
-                        <div className="flex items-start gap-2">
-                          <Globe className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
-                          <div className="min-w-0">
-                            {stageItem.caption && <p className="text-sm text-foreground/90">{stageItem.caption}</p>}
-                            <p className="truncate text-[11px] text-muted-foreground/60">{stageItem.url}</p>
-                          </div>
-                        </div>
-                        {blockedUrls.has(stageItem.url) && (
-                          <p className="text-[11px] text-amber-400/90">
-                            Dein Browser hat den Tab blockiert — hier klicken zum Öffnen.
-                          </p>
-                        )}
-                        <div className="flex flex-wrap gap-1.5">
-                          {stageItem.embeddable && (
-                            <button
-                              onClick={() => setWebModal({ url: stageItem.url!, caption: stageItem.caption })}
-                              className="rounded-md bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300 hover:bg-sky-500/20"
-                            >
-                              Im Fenster öffnen
-                            </button>
-                          )}
-                          <a
-                            href={stageItem.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-[11px] font-medium hover:bg-foreground/[0.10]"
-                          >
-                            <ExternalLink className="h-3 w-3" /> Neuer Tab
-                          </a>
-                        </div>
-                      </div>
-                    ) : null}
+                {stageItems.length > 0 && (
+                  /* Die Buehne war auf 28rem festgenagelt UND zeigte nur ein
+                     Bild. Jetzt nimmt sie den Platz, den sie hat, und stellt
+                     mehrere Anzeigen nebeneinander — zwei Bildschirme sind so
+                     endlich gleichzeitig zu sehen. */
+                  <div className={`w-full ${buehnenRaster} ${buehneWeit ? "max-w-full" : "max-w-md"}`}>
+                    {stageItems.map((item, bi) => (
+                      <Buehnenkarte
+                        key={`${item.filename || item.url || "anzeige"}-${bi}`}
+                        item={item}
+                        gross={stageItems.length === 1}
+                        weit={buehneWeit}
+                        blockiert={!!item.url && blockedUrls.has(item.url)}
+                        onAusblenden={() => setMedia((prev) => prev.filter((m) => m !== item))}
+                        onImFenster={(url, caption) => setWebModal({ url, caption })}
+                      />
+                    ))}
                   </div>
+                )}
+                {alleAnzeigen.length > stageItems.length && (
+                  /* Stillschweigend abschneiden waere gelogen — es sieht dann so
+                     aus, als haette der Agent nur vier Bilder geliefert. */
+                  <p className="text-center text-[11px] text-muted-foreground/50">
+                    {alleAnzeigen.length - stageItems.length} ältere Anzeige
+                    {alleAnzeigen.length - stageItems.length === 1 ? "" : "n"} ausgeblendet —
+                    schliesse eine, um sie zu sehen.
+                  </p>
                 )}
 
                 {uploadMsg && (
                   <div className="text-center text-xs text-emerald-400/90">{uploadMsg}</div>
                 )}
-                {error && <div className="text-center text-xs text-red-400">{error}</div>}
+                {error && (
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="text-center text-xs text-red-400">{error}</div>
+                    {/* Bis hierher blieb bei einem Fehler nur „Auflegen". Der
+                        Wiederaufbau laedt das bisherige Gespräch nach — der
+                        Agent redet weiter, statt neu zu begrüßen. */}
+                    <button
+                      onClick={() => neuVerbindenRef.current?.()}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20"
+                    >
+                      <Radio className="h-3 w-3" />
+                      Neu verbinden
+                    </button>
+                    <span className="text-[10px] text-muted-foreground/50">
+                      Das Gespräch wird fortgesetzt, nicht neu begonnen.
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* RIGHT — tasks, live activity, web results */}
+              {aufgabenAus ? (
+                <Klappleiste
+                  titel="Aufgaben"
+                  seite="rechts"
+                  anzahl={tasks.length}
+                  onOeffnen={() => setAufgabenAus(false)}
+                />
+              ) : (
               <div className={`order-3 flex ${paneHeight} min-w-0 flex-col rounded-xl border border-border bg-foreground/[0.02]`}>
-                <div className="border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
-                  Aufgaben &amp; Aktivität
+                <div className="flex items-center justify-between border-b border-border px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                  <span>Aufgaben &amp; Aktivität</span>
+                  <button
+                    onClick={() => setAufgabenAus(true)}
+                    title="Aufgaben einklappen — die Anzeige in der Mitte wird größer"
+                    aria-label="Aufgaben einklappen"
+                    className="rounded-md p-1 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
+                  >
+                    <PanelRightClose className="h-3.5 w-3.5" />
+                  </button>
                 </div>
                 <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
                   {/* Werkzeug-Spur: sichtbar machen, dass und WOMIT er gearbeitet hat. */}
@@ -1619,7 +1834,7 @@ export function VoiceSessionModal({
                       {t.done ? (
                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
                       ) : (
-                        <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-amber-400" />
+                        <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-amber-700 dark:text-amber-400" />
                       )}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start gap-1.5">
@@ -1694,7 +1909,7 @@ export function VoiceSessionModal({
                                 : a.kind === "tool"
                                 ? "text-sky-400"
                                 : a.kind === "approval"
-                                ? "text-amber-300"
+                                ? "text-amber-700 dark:text-amber-300"
                                 : "text-muted-foreground"
                             }
                           >
@@ -1706,13 +1921,13 @@ export function VoiceSessionModal({
                             )}
                             {a.kind === "tool" && (
                               <>
-                                <span className="text-amber-400">[{a.label}]</span>
+                                <span className="text-amber-700 dark:text-amber-400">[{a.label}]</span>
                                 {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
                               </>
                             )}
                             {a.kind === "approval" && (
                               <>
-                                <span className="text-amber-400">[Freigabe]</span> {a.label}
+                                <span className="text-amber-700 dark:text-amber-400">[Freigabe]</span> {a.label}
                                 {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
                               </>
                             )}
@@ -1769,6 +1984,7 @@ export function VoiceSessionModal({
                   )}
                 </div>
               </div>
+              )}
             </div>
             {webModal && (
               <WebModal url={webModal.url} caption={webModal.caption} onClose={() => setWebModal(null)} />
@@ -1925,7 +2141,7 @@ export function VoiceSessionModal({
             <div className="mb-3 mt-4 rounded-lg border border-border bg-black/40 p-3">
               <div className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/60">
                 {delegating ? (
-                  <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
+                  <Loader2 className="h-3 w-3 animate-spin text-amber-700 dark:text-amber-400" />
                 ) : (
                   <Radio className="h-3 w-3 text-emerald-400" />
                 )}
@@ -1944,7 +2160,7 @@ export function VoiceSessionModal({
                         : a.kind === "tool"
                         ? "text-sky-400"
                         : a.kind === "approval"
-                        ? "text-amber-300"
+                        ? "text-amber-700 dark:text-amber-300"
                         : "text-muted-foreground"
                     }
                   >
@@ -1956,13 +2172,13 @@ export function VoiceSessionModal({
                     )}
                     {a.kind === "tool" && (
                       <>
-                        <span className="text-amber-400">[{a.label}]</span>
+                        <span className="text-amber-700 dark:text-amber-400">[{a.label}]</span>
                         {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
                       </>
                     )}
                     {a.kind === "approval" && (
                       <>
-                        <span className="text-amber-400">[Freigabe]</span> {a.label}
+                        <span className="text-amber-700 dark:text-amber-400">[Freigabe]</span> {a.label}
                         {a.detail && <span className="text-muted-foreground/70"> {a.detail}</span>}
                       </>
                     )}
@@ -1989,6 +2205,139 @@ export function VoiceSessionModal({
 }
 
 /** Round, icon-only call control. Quiet by default so the orb + stage carry the view. */
+type Anzeige = {
+  kind: string;
+  media_type?: string;
+  b64?: string;
+  filename?: string;
+  caption?: string;
+  url?: string;
+  embeddable?: boolean;
+};
+
+/** Eine Anzeige auf der Buehne — Screenshot oder Web-Karte.
+ *  Ausgelagert, weil jetzt mehrere davon nebeneinander stehen: vorher lag der
+ *  Aufbau ein einziges Mal inline im Grundriss und liess sich nicht wiederholen. */
+function Buehnenkarte({
+  item,
+  gross,
+  weit,
+  blockiert,
+  onAusblenden,
+  onImFenster,
+}: {
+  item: Anzeige;
+  gross: boolean;
+  weit: boolean;
+  blockiert: boolean;
+  onAusblenden: () => void;
+  onImFenster: (url: string, caption?: string) => void;
+}) {
+  // Allein darf ein Bild die ganze Hoehe nehmen; zu mehreren muss es sich
+  // bescheiden, sonst scrollt man von einem Screenshot zum naechsten.
+  const hoehe = gross ? (weit ? "max-h-[62vh]" : "max-h-72") : "max-h-[34vh]";
+  return (
+    <div className="relative min-w-0 rounded-xl border border-border bg-foreground/[0.02] p-3">
+      {/* Ohne das bleibt ein Screenshot bis zum Sitzungsende stehen und
+          verdeckt alles, was danach kommt. */}
+      <button
+        onClick={onAusblenden}
+        title="Ausblenden"
+        aria-label="Anzeige ausblenden"
+        className="absolute right-2 top-2 z-10 rounded-md bg-background/70 p-1 text-muted-foreground backdrop-blur hover:bg-background hover:text-foreground"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+      {item.kind === "image" && item.b64 ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`data:${item.media_type || "image/png"};base64,${item.b64}`}
+            alt={item.caption || "Anzeige"}
+            className={`w-full rounded-lg bg-white/5 object-contain ${hoehe}`}
+          />
+          {item.caption && (
+            <p className="mt-2 text-center text-xs text-muted-foreground/70">{item.caption}</p>
+          )}
+        </>
+      ) : item.url ? (
+        <div className="space-y-2">
+          <div className="flex items-start gap-2">
+            <Globe className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
+            <div className="min-w-0">
+              {item.caption && <p className="text-sm text-foreground/90">{item.caption}</p>}
+              <p className="truncate text-[11px] text-muted-foreground/60">{item.url}</p>
+            </div>
+          </div>
+          {blockiert && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400/90">
+              Dein Browser hat den Tab blockiert — hier klicken zum Öffnen.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-1.5">
+            {item.embeddable && (
+              <button
+                onClick={() => onImFenster(item.url!, item.caption)}
+                className="rounded-md bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300 hover:bg-sky-500/20"
+              >
+                Im Fenster öffnen
+              </button>
+            )}
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.06] px-2.5 py-1 text-[11px] font-medium hover:bg-foreground/[0.10]"
+            >
+              <ExternalLink className="h-3 w-3" /> Neuer Tab
+            </a>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Rest einer eingeklappten Seitenspalte: schmale Leiste zum Wiederaufklappen.
+ *  Die Beschriftung steht senkrecht, damit man auf 2.75rem noch lesen kann,
+ *  worum es geht — ein blosser Pfeil laesst raten. */
+function Klappleiste({
+  titel,
+  seite,
+  anzahl,
+  onOeffnen,
+}: {
+  titel: string;
+  seite: "links" | "rechts";
+  anzahl?: number;
+  onOeffnen: () => void;
+}) {
+  const Symbol = seite === "links" ? PanelLeftOpen : PanelRightOpen;
+  return (
+    <button
+      onClick={onOeffnen}
+      title={`${titel} wieder einblenden`}
+      aria-label={`${titel} wieder einblenden`}
+      aria-expanded={false}
+      className={`flex min-w-0 flex-row items-center justify-center gap-2 rounded-xl border border-border bg-foreground/[0.02] py-2 text-muted-foreground/70 hover:bg-foreground/[0.05] hover:text-foreground lg:flex-col lg:gap-3 lg:py-3 ${
+        seite === "links" ? "order-2 lg:order-1" : "order-3"
+      }`}
+    >
+      <Symbol className="h-4 w-4 shrink-0" />
+      {/* Quer geschrieben passt die Beschriftung auch in die schmale Leiste;
+          auf dem Telefon ist die Leiste breit, dort bleibt sie waagerecht. */}
+      <span className="whitespace-nowrap text-[10px] uppercase tracking-wider lg:[writing-mode:vertical-rl]">
+        {titel}
+      </span>
+      {!!anzahl && (
+        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+          {anzahl}
+        </span>
+      )}
+    </button>
+  );
+}
+
 function CtrlButton({
   onClick, title, tone = "neutral", children,
 }: {
@@ -1996,7 +2345,7 @@ function CtrlButton({
 }) {
   const tones = {
     neutral: "bg-foreground/[0.05] text-muted-foreground hover:bg-foreground/[0.10] hover:text-foreground",
-    amber: "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25",
+    amber: "bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25",
     red: "bg-red-500/10 text-red-400 hover:bg-red-500/20",
   } as const;
   return (
