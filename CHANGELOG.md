@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.297.0] - 2026-09-03
+
+### Behoben
+- **Ein neuer Chat zeigte „Auto", obwohl für den Agenten eine Standard-Denktiefe
+  gesetzt war.** Gemeldet von einem Betreiber, der „Extra High" eingestellt
+  hatte und im Chat „Auto" las — er musste annehmen, seine Einstellung sei
+  wirkungslos. Sie war es nicht: die Laufzeit greift für jeden Chat ohne eigene
+  Stufe auf die Vorgabe zurück, das war immer schon so. Falsch war allein die
+  Anzeige, die nur den chat-eigenen Wert kannte. Der Knopf zeigt jetzt, was
+  tatsächlich gilt — blasser dargestellt als eine selbst gewählte Stufe, damit
+  der Unterschied sichtbar bleibt, und mit der Herkunft im Kurzhinweis. Im
+  Auswahlmenü steht bei „Auto" dazu, worauf es hinausläuft.
+- Die Erklärtexte zur Standard-Denktiefe tragen jetzt echte Umlaute.
+
+---
+
 ## [1.296.0] - 2026-09-03
 
 ### Behoben
@@ -17,8 +33,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   jeder Agent, der am Sicherheitscode arbeitet, mitten im Lauf gestoppt worden
   wäre.
   - Die Muster sind jetzt in zwei Klassen geteilt. **Ein eindeutiges genügt** —
-    „ignore all previous instructions" in einer Werkzeugausgabe ist genau der
-    Angriff, den dieser Wächter fangen soll. **Schwache brauchen Gesellschaft**:
+    ein wörtlicher Umsturzbefehl in einer Werkzeugausgabe ist genau der Angriff,
+    den dieser Wächter fangen soll. **Schwache brauchen Gesellschaft**:
     erst drei zusammen ergeben einen Befund, weil sie einzeln in gewöhnlichem
     Text zu häufig sind.
   - Ergebnis: von 26 auf 3 Treffer. Die verbleibenden drei sind Dateien, die

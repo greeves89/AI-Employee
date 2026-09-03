@@ -1880,7 +1880,7 @@ function AgentSettings({
       )}
 
       {/* Standard-Denktiefe — Kundenwunsch: einmal am Agenten statt pro Chat.
-          Gilt fuer Aufgaben, Zeitplaene, delegierte Auftraege und Chats ohne
+          Gilt für Aufgaben, Zeitpläne, delegierte Aufträge und Chats ohne
           gewaehlte Stufe; die Stufe im Chat gewinnt weiterhin. */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
         <div className="flex items-center gap-2 border-b border-foreground/[0.06] px-5 py-3">
@@ -1906,7 +1906,7 @@ function AgentSettings({
                   setReasoningSaving(true);
                   try {
                     await api.updateAgentDefaultReasoning(agentId, o.value);
-                    setMessage({ type: "success", text: o.value ? "Standard-Denktiefe gespeichert — gilt vollstaendig ab dem naechsten Neuerstellen des Agenten." : "Standard-Denktiefe auf Auto zurueckgesetzt." });
+                    setMessage({ type: "success", text: o.value ? "Standard-Denktiefe gespeichert — gilt vollständig ab dem nächsten Neuerstellen des Agenten." : "Standard-Denktiefe auf Auto zurückgesetzt." });
                   } catch {
                     setDefaultReasoning(prev);
                     setMessage({ type: "error", text: "Standard-Denktiefe konnte nicht gespeichert werden." });
@@ -1926,7 +1926,7 @@ function AgentSettings({
             ))}
           </div>
           <p className="text-[11px] text-muted-foreground/50">
-            Gilt fuer Aufgaben, Zeitplaene, delegierte Auftraege, Agent-zu-Agent-Nachrichten und Chats ohne gewaehlte Stufe. Eine im Chat gewaehlte Denktiefe gewinnt weiterhin. Vollstaendig wirksam ab dem naechsten Neuerstellen/Update des Agenten.
+            Gilt für Aufgaben, Zeitpläne, delegierte Aufträge, Agent-zu-Agent-Nachrichten und Chats ohne gewählte Stufe. Eine im Chat gewählte Denktiefe gewinnt weiterhin. Vollständig wirksam ab dem nächsten Neuerstellen/Update des Agenten.
           </p>
         </div>
       </div>

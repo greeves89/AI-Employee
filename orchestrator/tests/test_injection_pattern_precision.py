@@ -45,6 +45,9 @@ ERWARTETE_SELBSTTREFFER = {
     "orchestrator/app/security/agent_guard.py",
     "orchestrator/app/services/trend_service.py",
     "orchestrator/tests/test_sentinel_detection.py",
+    # Diese Datei selbst: sie MUSS echte Angriffsbeispiele enthalten, sonst
+    # prueft sie nicht, ob der scharfe Fall erkannt wird.
+    "orchestrator/tests/test_injection_pattern_precision.py",
 }
 
 

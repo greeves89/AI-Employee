@@ -1725,9 +1725,25 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // Der Composer zeigt das Modell an. Einmal geholt, nicht bei jeder Nachricht:
   // es aendert sich nur, wenn jemand es in den Einstellungen umstellt.
   const [agentModel, setAgentModel] = useState("");
+  // Die Standard-Denktiefe des Agenten. Sie WIRKT bereits fuer jeden Chat ohne
+  // eigene Stufe (der Agent liest sie aus seiner Umgebung) — nur zu SEHEN war
+  // sie nicht: der Knopf zeigte stur „Auto". Ein Kunde hatte „Extra High"
+  // eingestellt, sah „Auto" und musste annehmen, seine Einstellung sei
+  // wirkungslos (gemeldet 03.09.2026).
+  const [agentDefaultReasoning, setAgentDefaultReasoning] = useState<ReasoningLevel>("");
   useEffect(() => {
-    api.getAgent(agentId).then((a) => setAgentModel(a.model || "")).catch(() => {});
+    api.getAgent(agentId).then((a) => {
+      setAgentModel(a.model || "");
+      const cfg = (a as { config?: Record<string, unknown> }).config;
+      setAgentDefaultReasoning(asReasoningLevel(cfg?.default_reasoning));
+    }).catch(() => {});
   }, [agentId]);
+
+  // Was tatsaechlich gilt: die im Chat gewaehlte Stufe, sonst die Vorgabe des
+  // Agenten. Genau diese Reihenfolge wendet auch die Laufzeit an
+  // (`chat_handler.py`: `reasoning or default_reasoning`).
+  const wirksameStufe: ReasoningLevel = reasoning || agentDefaultReasoning;
+  const stufeIstGeerbt = !reasoning && !!agentDefaultReasoning;
 
   // Befehlsliste: oeffnet sich, sobald die Eingabe mit "/" beginnt und noch kein
   // Leerzeichen enthaelt — danach ist es Fliesstext, kein Befehl mehr.
@@ -2548,18 +2564,26 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               <button
                 onClick={() => setReasoningOpen((o) => !o)}
                 disabled={!isConnected}
-                title={`Denktiefe: ${REASONING_OPTIONS.find((o) => o.value === reasoning)?.label}`}
+                title={
+                  stufeIstGeerbt
+                    ? `Denktiefe: ${REASONING_OPTIONS.find((o) => o.value === agentDefaultReasoning)?.label} — Vorgabe dieses Agenten, gilt für jeden Chat ohne eigene Wahl`
+                    : `Denktiefe: ${REASONING_OPTIONS.find((o) => o.value === reasoning)?.label}`
+                }
                 className={cn(
                   "flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] transition-all disabled:opacity-40",
                   reasoning
                     ? "bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
+                    // Geerbt: sichtbar, aber blasser als eine bewusste Wahl —
+                    // sonst sieht es aus, als haette man hier etwas eingestellt.
+                    : stufeIstGeerbt
+                    ? "bg-violet-500/[0.06] text-violet-300/70 hover:bg-violet-500/15"
                     : "text-muted-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground",
                 )}
               >
                 <Brain className="h-4 w-4" />
                 <span className="font-medium">
-                  {reasoning
-                    ? REASONING_OPTIONS.find((o) => o.value === reasoning)?.short
+                  {wirksameStufe
+                    ? REASONING_OPTIONS.find((o) => o.value === wirksameStufe)?.short
                     : "Auto"}
                 </span>
               </button>
@@ -2577,7 +2601,15 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                         reasoning === opt.value ? "text-violet-300" : "text-foreground/80",
                       )}
                     >
-                      <span>{opt.label}</span>
+                      <span>
+                        {opt.label}
+                        {opt.value === "" && agentDefaultReasoning && (
+                          <span className="ml-1 text-muted-foreground/60">
+                            — Vorgabe:{" "}
+                            {REASONING_OPTIONS.find((o) => o.value === agentDefaultReasoning)?.label}
+                          </span>
+                        )}
+                      </span>
                       {reasoning === opt.value && <Check className="h-3.5 w-3.5 shrink-0" />}
                     </button>
                   ))}
