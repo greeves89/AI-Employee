@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.294.0] - 2026-09-03
+
+### Neu
+- **Selbst betriebene GitHub-Instanzen (Enterprise Server) sind anbindbar**
+  (#532, Teil 2). Bisher führte jede Git-Anbindung zwingend zu github.com — wer
+  seine Quelltexte im eigenen Haus hält, konnte die Integration nicht nutzen.
+  Beim Hinterlegen eines Zugangstokens lässt sich jetzt „Selbst betrieben"
+  ankreuzen und die eigene Adresse angeben; ohne Haken bleibt alles wie bisher.
+  Die Adresse wird serverseitig geprüft, damit sie nicht als Umweg auf interne
+  Dienste missbraucht werden kann.
+
+---
+
 ## [1.293.0] - 2026-09-03
 
 ### Nachgetragen
