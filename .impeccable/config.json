@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "ai-color-palette",
+        "value": "*",
+        "files": [
+          "frontend/src/app/kiosk/page.tsx"
+        ],
+        "createdAt": "2026-09-03T12:34:05.437Z",
+        "reason": "pre-existing Pi hardware-stats panel (Die Moehre): violet/fuchsia is a deliberate per-metric color code (cyan=CPU, violet=RAM, amber=Disk), not touched by today's icon-consistency change, not accidental AI palette drift"
+      }
+    ]
+  }
+}
