@@ -19,6 +19,17 @@
 # an empty glob is not an error in Caddy v2. See conf.d/README.md.
 import conf.d/*.caddy
 
+# Cloudflare Tunnel is the ONLY way traffic reaches this Caddy — it terminates
+# TLS itself and hands off over plain HTTP on :80, so every request Caddy sees
+# here really was HTTPS. Without this, Caddy's own X-Forwarded-Proto defaults
+# to "http" (its own listener scheme), so any automatic redirect the backend
+# builds from it (e.g. FastAPI's missing-trailing-slash redirect) points at
+# http://, not https:// — silently downgrades the scheme in the Location
+# header (found live: `GET /api/v1/agents` → 307 to `http://...`).
+(forwarded_https) {
+	header_up X-Forwarded-Proto https
+}
+
 :80 {
 	# Security headers (defence in depth — also set by FastAPI middleware)
 	header {
@@ -45,13 +56,17 @@ import conf.d/*.caddy
 	handle /api/v1/kiosk* {
 		route {
 			respond @tunnel "Not found" 404
-			reverse_proxy ai-employee-orchestrator:8000
+			reverse_proxy ai-employee-orchestrator:8000 {
+				import forwarded_https
+			}
 		}
 	}
 	handle /kiosk* {
 		route {
 			respond @tunnel "Not found" 404
-			reverse_proxy ai-employee-frontend:3000
+			reverse_proxy ai-employee-frontend:3000 {
+				import forwarded_https
+			}
 		}
 	}
 
@@ -64,37 +79,50 @@ import conf.d/*.caddy
 		request_body {
 			max_size 12MB
 		}
-		reverse_proxy ai-employee-orchestrator:8000
+		reverse_proxy ai-employee-orchestrator:8000 {
+			import forwarded_https
+		}
 	}
 
 	# API + health endpoints → orchestrator
 	handle /api/* {
-		reverse_proxy ai-employee-orchestrator:8000
+		reverse_proxy ai-employee-orchestrator:8000 {
+			import forwarded_https
+		}
 	}
 
 	# Backend healthcheck (for Docker/monitoring) → orchestrator
 	# Use /healthz to avoid conflict with frontend /health route
 	handle /healthz {
-		reverse_proxy ai-employee-orchestrator:8000
+		reverse_proxy ai-employee-orchestrator:8000 {
+			import forwarded_https
+		}
 	}
 
 	# WebSocket connections → orchestrator
 	handle /ws/* {
-		reverse_proxy ai-employee-orchestrator:8000
+		reverse_proxy ai-employee-orchestrator:8000 {
+			import forwarded_https
+		}
 	}
 
 	# OAuth discovery (RFC 8414 / 9728) for the external MCP server — must be at
 	# well-known root so MCP clients (OpenWebUI) can find the authorization server.
 	handle /.well-known/oauth-authorization-server* {
-		reverse_proxy ai-employee-orchestrator:8000
+		reverse_proxy ai-employee-orchestrator:8000 {
+			import forwarded_https
+		}
 	}
 	handle /.well-known/oauth-protected-resource* {
-		reverse_proxy ai-employee-orchestrator:8000
+		reverse_proxy ai-employee-orchestrator:8000 {
+			import forwarded_https
+		}
 	}
 
 	# Immutable hashed build assets (JS/CSS chunks) — safe to cache forever.
 	handle /_next/static/* {
 		reverse_proxy ai-employee-frontend:3000 {
+			import forwarded_https
 			header_down Cache-Control "public, max-age=31536000, immutable"
 		}
 	}
@@ -105,6 +133,7 @@ import conf.d/*.caddy
 	# overrides the upstream Cache-Control so users always get the current build.
 	handle {
 		reverse_proxy ai-employee-frontend:3000 {
+			import forwarded_https
 			header_down Cache-Control "no-cache, must-revalidate"
 		}
 	}
