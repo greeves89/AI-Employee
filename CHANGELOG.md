@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.304.0] - 2026-09-03
+
+### Behoben
+- **Auch ein Neustart von Redis allein wird jetzt geheilt.** Die Reparatur aus
+  1.303.0 greift beim Start des Orchestrators — das deckt den Neustart des
+  ganzen Rechners ab. Startet aber nur Redis neu (Aktualisierung, Absturz), läuft
+  der Orchestrator weiter, und niemand bemerkt, dass die Zugangsregeln weg sind;
+  die Agenten fallen dann nacheinander in eine Neustartschleife. Nachgestellt:
+  von acht Zugängen blieb nach einem Neustart genau einer übrig.
+  - Der Planer prüft alle fünf Minuten, ob die erwarteten Zugänge noch da sind,
+    und setzt nur die fehlenden nach.
+  - Musste er etwas richten, sagt er es. Stilles Reparieren würde verdecken,
+    dass die Zugänge überhaupt verlorengehen.
+
+---
+
 ## [1.303.0] - 2026-09-03
 
 ### Behoben

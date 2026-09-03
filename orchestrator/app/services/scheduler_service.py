@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import math
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -144,6 +145,10 @@ class SchedulerService:
                     await self._tick_sentinel_liveness()
                 except Exception as e:
                     logger.warning("[Scheduler] SentinelLiveness error: %s", e)
+                try:
+                    await self._tick_redis_acl()
+                except Exception as e:
+                    logger.warning("[Scheduler] RedisACL error: %s", e)
                 try:
                     await self._check_due_schedules()
                     if self._due_schedules_fail_streak >= _DUE_SCHEDULES_ALERT_THRESHOLD:
@@ -1586,6 +1591,65 @@ class SchedulerService:
                         logger.warning("[Scheduler] StaleTaskWatchdog publish error: %s", e)
             await db.commit()
             logger.info("[Scheduler] StaleTaskWatchdog: marked %s task(s) stale", len(stale))
+
+    #: Wie oft die Zugangsregeln nachgezogen werden. Der Aufruf ist billig
+    #: (ein `ACL SETUSER` je Agent) und wiederholbar, aber jede halbe Minute
+    #: waere trotzdem Verschwendung.
+    _ACL_PRUEFUNG_ALLE_SEKUNDEN = 300
+
+    async def _tick_redis_acl(self) -> None:
+        """Die Zugangsregeln der Agenten nachziehen, falls Redis sie verloren hat.
+
+        Beim Start des Orchestrators werden sie gesetzt — das deckt den
+        haeufigsten Fall ab, den Neustart des ganzen Hosts. Startet aber NUR
+        Redis neu (Aktualisierung, Absturz, `docker restart`), laeuft der
+        Orchestrator weiter und niemand merkt, dass die Regeln weg sind: Redis
+        haelt sie nur im Speicher. Die Agenten fallen dann einer nach dem
+        anderen in eine Neustartschleife.
+
+        Nachgestellt am 03.09.2026: nach `docker restart` von Redis blieb von
+        acht Zugaengen nur `default` uebrig.
+
+        Wiederholbar und billig — es genuegt zu pruefen, ob die erwarteten
+        Nutzer noch da sind, und nur dann neu zu setzen.
+        """
+        from app.config import settings
+
+        if not settings.redis_acl_enabled or not self.redis or not self.redis.client:
+            return
+        jetzt = time.time()
+        if jetzt - getattr(self, "_letzte_acl_pruefung", 0.0) < self._ACL_PRUEFUNG_ALLE_SEKUNDEN:
+            return
+        self._letzte_acl_pruefung = jetzt
+
+        from app.models.agent import Agent as _AgentACL
+        from app.services.redis_service import agent_acl_username
+
+        async with resilient_session() as db:
+            ids = (await db.execute(select(_AgentACL.id))).scalars().all()
+        if not ids:
+            return
+        try:
+            vorhanden = set(await self.redis.client.execute_command("ACL", "USERS"))
+        except Exception as e:  # noqa: BLE001
+            logger.debug("[Scheduler] ACL-Liste nicht lesbar: %s", e)
+            return
+
+        fehlend = [a for a in ids if agent_acl_username(a) not in vorhanden]
+        if not fehlend:
+            return
+        wieder = 0
+        for aid in fehlend:
+            try:
+                await self.redis.ensure_agent_acl_user(aid)
+                wieder += 1
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[Scheduler] Redis-ACL fuer %s nicht gesetzt: %s", aid, e)
+        logger.warning(
+            "[Scheduler] %s von %s fehlenden Redis-Zugaengen wiederhergestellt — "
+            "Redis hat sie verloren (Neustart?). Ohne das faellt jeder betroffene "
+            "Agent in eine Neustartschleife.", wieder, len(fehlend),
+        )
 
     async def _tick_sentinel_liveness(self) -> None:
         """Meldet, wenn der Sentinel verstummt ist (#590 Punkt 6).

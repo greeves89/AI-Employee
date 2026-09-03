@@ -24,6 +24,7 @@ Docstring von ``agent_acl_password`` nennt genau diesen Zweck („reconnect afte
 a Redis restart"). Es fehlte allein der Aufruf beim Start.
 """
 
+import re
 import unittest
 from pathlib import Path
 
@@ -91,3 +92,52 @@ class DasPasswortIstAbleitbarTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AuchEinReinerRedisNeustartWirdGeheiltTests(unittest.TestCase):
+    """Die Luecke, die der Startup-Fix offen liess.
+
+    Beim Start des Orchestrators werden die Zugaenge gesetzt — das deckt den
+    Neustart des ganzen Hosts ab. Startet aber NUR Redis neu (Aktualisierung,
+    Absturz, `docker restart`), laeuft der Orchestrator weiter, und niemand
+    merkt, dass die Regeln weg sind. Genau so nachgestellt am 03.09.2026: nach
+    einem `docker restart` von Redis blieb von acht Zugaengen nur `default`.
+    """
+
+    SCHED = (Path(__file__).resolve().parents[1] / "app" / "services"
+             / "scheduler_service.py").read_text()
+
+    def _block(self) -> str:
+        return self.SCHED.split("async def _tick_redis_acl", 1)[1][:2600]
+
+    def test_der_takt_prueft_es_mit(self):
+        self.assertIn("await self._tick_redis_acl()", self.SCHED)
+
+    def test_er_prueft_erst_und_setzt_dann(self):
+        """Blind jede Regel neu zu setzen waere jede Runde unnoetige Last."""
+        block = self._block()
+        self.assertIn('execute_command("ACL", "USERS")', block)
+        self.assertIn("if not fehlend:", block)
+
+    def test_er_laeuft_nicht_bei_jedem_takt(self):
+        """Der Planer tickt alle 30 Sekunden — das waere Verschwendung."""
+        block = self._block()
+        self.assertIn("_ACL_PRUEFUNG_ALLE_SEKUNDEN", block)
+        sek = int(re.search(r"_ACL_PRUEFUNG_ALLE_SEKUNDEN = (\d+)", self.SCHED).group(1))
+        self.assertGreaterEqual(sek, 60)
+
+    def test_er_meldet_wenn_er_etwas_richten_musste(self):
+        """Stilles Reparieren verdeckt, dass Redis Zugaenge verliert."""
+        self.assertIn("Redis hat sie verloren", self._block())
+
+    def test_er_ist_still_wenn_alles_stimmt(self):
+        block = self._block()
+        rueckgabe = block.index("if not fehlend:")
+        meldung = block.index("Redis hat sie verloren")
+        self.assertLess(rueckgabe, meldung)
+
+    def test_ohne_eingeschaltete_acl_tut_er_nichts(self):
+        self.assertIn("if not settings.redis_acl_enabled", self._block())
+
+    def test_ein_fehler_stoppt_den_planer_nicht(self):
+        self.assertIn("[Scheduler] RedisACL error", self.SCHED)
