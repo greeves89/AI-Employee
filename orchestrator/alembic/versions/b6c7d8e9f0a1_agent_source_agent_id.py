@@ -18,19 +18,20 @@ branch_labels = None
 depends_on = None
 
 
-def _has_column(bind, table: str, column: str) -> bool:
-    return column in {c["name"] for c in sa.inspect(bind).get_columns(table)}
-
-
 def upgrade() -> None:
-    bind = op.get_bind()
-    if not _has_column(bind, "agents", "source_agent_id"):
-        op.add_column("agents", sa.Column("source_agent_id", sa.String(), nullable=True))
-        op.create_index("ix_agents_source_agent_id", "agents", ["source_agent_id"])
+    # Offline-tauglich seit #689: die frueher hier stehende Pruefung per
+    # `inspect(bind)` braucht eine echte Verbindung und scheitert bei
+    # `alembic upgrade --sql` — was die Vorschau fuer die GANZE
+    # nachfolgende Kette blockierte. Die Datenbank kann dieselbe Pruefung
+    # selbst (PostgreSQL ist hier gesetzt).
+    op.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS source_agent_id varchar")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_agents_source_agent_id "
+        "ON agents (source_agent_id)"
+    )
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    if _has_column(bind, "agents", "source_agent_id"):
-        op.drop_index("ix_agents_source_agent_id", table_name="agents")
-        op.drop_column("agents", "source_agent_id")
+    # Symmetrisch offline-tauglich (#689).
+    op.execute("DROP INDEX IF EXISTS ix_agents_source_agent_id")
+    op.execute("ALTER TABLE agents DROP COLUMN IF EXISTS source_agent_id")

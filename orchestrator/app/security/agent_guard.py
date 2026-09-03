@@ -153,6 +153,13 @@ def eigene_musterzeilen() -> frozenset[str]:
     return _eigene_zeilen
 
 
+#: Wie viele bekannte Zeilen ein Text enthalten muss, damit die Ausnahme
+#: ueberhaupt greift. Ein gelesener Quelltext bringt immer mehrere mit; ein
+#: Angreifer, der EINE Zeile nachbaut, um sich freizustellen, kommt damit nicht
+#: durch.
+EIGENE_ZEILEN_FUER_AUSNAHME = 2
+
+
 def _ohne_eigene_zeilen(text: str) -> str:
     """Den Text ohne die Zeilen, die woertlich aus dem eigenen Quelltext stammen.
 
@@ -161,11 +168,23 @@ def _ohne_eigene_zeilen(text: str) -> str:
     das mitten im Lauf gestoppt: das Sicherheitssubsystem loeste seinen eigenen
     Detektor aus. Was daneben steht, wird weiterhin voll geprueft; nur die
     woertlich bekannten Zeilen fallen weg.
+
+    **Schwelle gegen Missbrauch:** Eine Ausnahme, die schon bei EINER passenden
+    Zeile greift, ist eine Tarnkappe — es genuegte, eine Zeile aus dem
+    Quelltext abzuschreiben, um den eigenen Text daneben freizustellen. Heute
+    stehen in der Menge nur code-artige Zeilen, bei denen das kaum traegt; das
+    kann sich mit der naechsten Ergaenzung aendern. Deshalb greift die Ausnahme
+    erst, wenn der Text mehrere bekannte Zeilen enthaelt — was fuer gelesenen
+    Quelltext immer zutrifft und fuer eine Angriffsnutzlast praktisch nie.
     """
     bekannt = eigene_musterzeilen()
     if not bekannt:
         return text
-    return "\n".join(z for z in text.splitlines() if z.strip() not in bekannt)
+    zeilen = text.splitlines()
+    treffer = sum(1 for z in zeilen if z.strip() in bekannt)
+    if treffer < EIGENE_ZEILEN_FUER_AUSNAHME:
+        return text
+    return "\n".join(z for z in zeilen if z.strip() not in bekannt)
 
 
 def bewerte_injection(text: str) -> tuple[list[str], list[str]]:

@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.300.0] - 2026-09-03
+
+### Behoben
+- **Migrationen liessen sich vor dem Aufspielen nicht mehr ansehen** (#689). Der
+  übliche Weg dafür — das SQL erzeugen lassen, ohne die Datenbank anzufassen —
+  scheiterte an einzelnen älteren Schritten, die dabei doch eine Verbindung
+  brauchten. Weil die Kette der Reihe nach abgearbeitet wird, blockierte das die
+  Vorschau für **alle** nachfolgenden Migrationen. Praktisch hiess das: jede
+  neue Migration ging ungesehen auf die Anlage, und „geht in diesem Baum nicht"
+  wurde zur stehenden Wendung in Anfragen.
+  - Sieben Schritte umgestellt: Statt erst zu lesen und dann zu entscheiden,
+    erledigt die Datenbank die Prüfung selbst.
+  - Der eine Schritt, der sich nicht umstellen lässt — ein Daten-Seed, der die
+    IDs zurückliest, die er selbst gerade angelegt hat —, steigt in der Vorschau
+    sauber aus, statt sie abzubrechen. Beim echten Aufspielen läuft er
+    unverändert.
+  - Auch die Rückbau-Richtungen sind jetzt durchgängig wiederholbar.
+  - Eine Prüfstufe hält das fest: Sie erzeugt das SQL bei jeder Änderung und
+    schlägt an, sobald wieder ein Schritt eine Verbindung verlangt. Sie braucht
+    keine Datenbank — das ist der Sinn der Sache.
+
+### Sicherheit
+- Die Selbstausnahme aus 1.299.0 greift erst, wenn ein Text **mehrere** bekannte
+  Quelltextzeilen enthält. Bei nur einer wäre sie eine Tarnkappe gewesen: eine
+  Zeile abschreiben, den eigenen Text danebensetzen — und die Prüfung fiele für
+  das Ganze aus. Gefunden im Sicherheits-Review des vorigen Commits.
+
+---
+
 ## [1.299.0] - 2026-09-03
 
 ### Behoben
@@ -26,9 +55,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ### Neu
 - **Angriffe auf Deutsch werden erkannt.** Die Muster waren durchweg englisch —
-  auf einer deutschsprachigen Anlage eine offene Flanke: „Vergiss alle
-  bisherigen Anweisungen" rutschte glatt durch, das englische Gegenstück nicht.
-  Acht Entsprechungen ergänzt, ohne einen einzigen neuen Fehltreffer.
+  auf einer deutschsprachigen Anlage eine offene Flanke: Dieselbe Aufforderung,
+  die auf Englisch sofort auffiel, rutschte auf Deutsch glatt durch. Acht
+  Entsprechungen ergänzt, ohne einen einzigen neuen Fehltreffer.
 
 ---
 

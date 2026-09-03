@@ -19,28 +19,24 @@ branch_labels = None
 depends_on = None
 
 
-def _has_column(bind, table: str, column: str) -> bool:
-    insp = sa.inspect(bind)
-    return column in {c["name"] for c in insp.get_columns(table)}
-
-
 def upgrade() -> None:
-    bind = op.get_bind()
-    if not _has_column(bind, "second_brains", "mcp_enabled"):
-        op.add_column(
-            "second_brains",
-            sa.Column("mcp_enabled", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        )
-    if not _has_column(bind, "second_brains", "mcp_token_encrypted"):
-        op.add_column(
-            "second_brains",
-            sa.Column("mcp_token_encrypted", sa.Text(), nullable=True),
-        )
+    # Offline-tauglich seit #689: die frueher hier stehende Pruefung per
+    # `inspect(bind)` braucht eine echte Verbindung und scheitert bei
+    # `alembic upgrade --sql` — was die Vorschau fuer die GANZE
+    # nachfolgende Kette blockierte. Die Datenbank kann dieselbe Pruefung
+    # selbst (PostgreSQL ist hier gesetzt).
+    op.execute(
+        "ALTER TABLE second_brains ADD COLUMN IF NOT EXISTS mcp_enabled "
+        "boolean NOT NULL DEFAULT false"
+    )
+    op.execute(
+        "ALTER TABLE second_brains ADD COLUMN IF NOT EXISTS "
+        "mcp_token_encrypted text"
+    )
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    if _has_column(bind, "second_brains", "mcp_token_encrypted"):
-        op.drop_column("second_brains", "mcp_token_encrypted")
-    if _has_column(bind, "second_brains", "mcp_enabled"):
-        op.drop_column("second_brains", "mcp_enabled")
+    # Symmetrisch offline-tauglich (#689): ein Rueckbau, der erst lesen muss,
+    # blockiert die Vorschau genauso wie der Aufbau.
+    op.execute("ALTER TABLE second_brains DROP COLUMN IF EXISTS mcp_token_encrypted")
+    op.execute("ALTER TABLE second_brains DROP COLUMN IF EXISTS mcp_enabled")

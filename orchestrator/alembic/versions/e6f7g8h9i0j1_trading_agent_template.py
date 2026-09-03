@@ -786,6 +786,15 @@ Common biases:
 
 
 def upgrade() -> None:
+    # Ein Daten-Seed laesst sich im Offline-Modus (`--sql`) nicht erzeugen: er
+    # liest die IDs zurueck, die er selbst gerade eingefuegt hat (`RETURNING id`),
+    # und ohne Verbindung gibt es nichts zurueckzulesen. Frueher scheiterte die
+    # Revision daran und blockierte die Vorschau fuer die ganze nachfolgende
+    # Kette (#689). Uebersprungen wird nur die Vorschau — beim echten Aufspielen
+    # laeuft der Seed unveraendert.
+    if op.get_context().as_sql:
+        op.execute("-- uebersprungen im Offline-Modus: Daten-Seed, siehe #689")
+        return
     conn = op.get_bind()
 
     # Insert 6 trading skills

@@ -97,6 +97,35 @@ jobs:
         working-directory: agent
         run: pytest -q
 
+  # ── Migrations-Vorschau (#689): `alembic upgrade heads --sql` erzeugt das SQL,
+  #    ohne eine Datenbank anzufassen — der uebliche Weg, eine Migration VOR dem
+  #    Aufspielen zu lesen. Eine einzige Revision, die dabei eine Verbindung
+  #    braucht (SELECT + fetchone, inspect(bind)), blockiert die Vorschau fuer
+  #    ALLE nachfolgenden. Genau das war passiert, und aus "geht in diesem Baum
+  #    nicht" wurde eine Gewohnheit: Migrationen gingen ungesehen auf die Anlage.
+  #    Der Lauf braucht keine Datenbank — das ist der Sinn des Offline-Modus. ──
+  migrations-offline:
+    name: Migrations-Vorschau (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install orchestrator
+        working-directory: orchestrator
+        run: pip install --no-cache-dir -e .
+      - name: alembic upgrade heads --sql
+        working-directory: orchestrator
+        env:
+          PYTHONPATH: .
+        run: |
+          alembic upgrade heads --sql > /tmp/migration.sql
+          zeilen=$(wc -l < /tmp/migration.sql)
+          echo "Erzeugtes SQL: $zeilen Zeilen"
+          # Ein leeres Ergebnis heisst: nichts erzeugt, aber auch nicht gescheitert.
+          [ "$zeilen" -gt 100 ] || { echo "Zu wenig SQL — vermutlich abgebrochen"; exit 1; }
+
   # ── Release-Spur (#699): VERSION, Dockerfile-Label und CHANGELOG gehoerten
   #    zusammen, wurden aber von nichts geprueft. Folge am 02.09.2026: zwei Paare
   #    offener PRs auf derselben Nummer, drei unter dem Stand von main, ein

@@ -15,9 +15,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    if "task_logs" in inspect(bind).get_table_names():
-        op.drop_table("task_logs")
+    # Offline-tauglich seit #689: die frueher hier stehende Pruefung per
+    # `inspect(bind)` braucht eine echte Verbindung und scheitert bei
+    # `alembic upgrade --sql` — was die Vorschau fuer die GANZE
+    # nachfolgende Kette blockierte. Die Datenbank kann dieselbe Pruefung
+    # selbst (PostgreSQL ist hier gesetzt).
+    op.execute("DROP TABLE IF EXISTS task_logs")
 
 
 def downgrade() -> None:
