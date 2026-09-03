@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.307.0] - 2026-09-03
+
+### Neu
+- **Geräte lassen sich abmelden** (`DELETE /notifications/register-device`).
+  Wer sich in der mobilen App abmeldet, nimmt den Geräte-Schlüssel jetzt mit.
+  Bisher blieb er beim abgemeldeten Nutzer registriert — dessen Meldungen
+  landeten weiter auf dem Sperrbildschirm dieses Geräts, obwohl dort niemand
+  mehr angemeldet war. Gelöscht wird nur ein Schlüssel, der dem anfragenden
+  Nutzer gehört; ohne diese Prüfung könnte jeder fremden Geräten die
+  Zustellung abdrehen.
+
+---
+
 ## [1.306.1] - 2026-09-03
 
 ### Behoben

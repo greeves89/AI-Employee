@@ -161,6 +161,38 @@ async def register_device(
     return {"status": "registered"}
 
 
+@router.delete("/register-device")
+async def unregister_device(
+    body: DeviceRegister,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Geraet abmelden — beim Abmelden aus der App aufzurufen.
+
+    Ohne diesen Schritt bliebe der Geraete-Schluessel beim abgemeldeten Nutzer
+    haengen: Das Geraet bekaeme dessen Meldungen weiter auf den Sperrbildschirm,
+    obwohl dort niemand mehr angemeldet ist.
+
+    Geloescht wird nur ein Schluessel, der dem anfragenden Nutzer gehoert. Sonst
+    koennte jeder mit einem fremden Schluessel dessen Zustellung abschalten.
+    """
+    from app.models.device_token import DeviceToken
+
+    row = (await db.execute(
+        select(DeviceToken).where(
+            DeviceToken.token == body.token,
+            DeviceToken.user_id == str(user.id),
+        )
+    )).scalar_one_or_none()
+    if row:
+        await db.delete(row)
+        await db.commit()
+    # Auch ohne Treffer Erfolg melden: Das Ziel — dieses Geraet bekommt keine
+    # Meldungen dieses Nutzers mehr — ist dann bereits erreicht, und ein
+    # Unterschied in der Antwort wuerde verraten, welche Schluessel es gibt.
+    return {"status": "unregistered"}
+
+
 # --- Web Push: das Browser-Gegenstueck zur Geraete-Registrierung oben ------------
 # Gleiche Idee, andere Technik: statt eines APNs-Tokens meldet der Browser einen
 # Endpunkt plus zwei Schluessel. Verschickt wird beides ueber denselben Verteilpunkt
