@@ -43,7 +43,7 @@ ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--timeout-graceful-shutdown", "3"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--timeout-graceful-shutdown", "3", "--forwarded-allow-ips", "*"]
 
 # Production target
 FROM base AS production
@@ -56,4 +56,11 @@ FROM base AS production
 # getUpdates request" with every message delivered twice (issue #319).
 # Scaling horizontally requires a cluster-wide lock per singleton first
 # (see app/telegram/bot_manager.py).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+#
+# --forwarded-allow-ips=*: this port is never reachable from the public
+# internet (compose maps it to 127.0.0.1 only / expose-only — see the
+# Port-Exposure rule), the only real peer is the Caddy reverse proxy on the
+# Docker network. Without it, uvicorn's default (trust only 127.0.0.1) drops
+# Caddy's X-Forwarded-Proto, so any redirect the app builds (e.g. FastAPI's
+# missing-trailing-slash redirect) defaults to http:// instead of https://.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--forwarded-allow-ips", "*"]
