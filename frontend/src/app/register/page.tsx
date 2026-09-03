@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, Eye, EyeOff, UserPlus } from "lucide-react";
+import { Cpu, Eye, EyeOff, UserPlus } from "lucide-react";
 import { getRegistrationStatus, getSSOProviders, register, type SSOProvider } from "@/lib/auth";
 
 import { getApiUrl } from "@/lib/config";
@@ -64,7 +64,7 @@ export default function RegisterPage() {
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="w-full max-w-sm space-y-6 text-center">
           <div className="flex h-12 w-12 mx-auto items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 shadow-lg shadow-blue-500/20">
-            <Bot className="h-6 w-6 text-white" />
+            <Cpu className="h-6 w-6 text-white" />
           </div>
           <div>
             <h1 className="text-xl font-semibold">Registration Closed</h1>
@@ -89,7 +89,7 @@ export default function RegisterPage() {
         {/* Logo */}
         <div className="flex flex-col items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 shadow-lg shadow-blue-500/20">
-            <Bot className="h-6 w-6 text-white" />
+            <Cpu className="h-6 w-6 text-white" />
           </div>
           <div className="text-center">
             <h1 className="text-xl font-semibold tracking-tight">

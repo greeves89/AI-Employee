@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Bot, Plus, MessageSquare, Search, Trash2,
+  Bot, Cpu, Plus, MessageSquare, Search, Trash2,
   LayoutDashboard, ChevronLeft, ChevronRight,
   Settings, Sparkles,
 } from "lucide-react";
@@ -197,7 +197,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
           {/* Header */}
           <div className="flex h-14 items-center gap-3 px-4 border-b border-border shrink-0">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 shadow-lg shadow-blue-500/20">
-              <Bot className="h-4 w-4 text-white" />
+              <Cpu className="h-4 w-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
               <span className="text-sm font-semibold tracking-tight">AI Employee</span>

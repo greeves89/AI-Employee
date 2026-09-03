@@ -138,7 +138,7 @@ function KioskContent() {
       <KioskStyles />
       <header className="flex items-center justify-between px-4 h-12 border-b border-white/5 bg-gradient-to-r from-[#0a1020] to-[#0a0f1a] shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-400 to-violet-500 grid place-items-center kiosk-glow"><Bot className="w-4 h-4 text-white" /></div>
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-400 to-violet-500 grid place-items-center kiosk-glow"><Cpu className="w-4 h-4 text-white" /></div>
           <div className="text-[13px] font-semibold tracking-wide">AI EMPLOYEE</div>
           <div className="text-[9px] uppercase tracking-[0.2em] text-cyan-400/60 hidden sm:block">Mission Control</div>
         </div>

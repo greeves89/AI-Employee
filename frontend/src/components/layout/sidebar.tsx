@@ -14,7 +14,6 @@ import {
   Shield,
   ScrollText,
   Workflow,
-  Bot,
   LifeBuoy,
   MessageSquarePlus,
   ShieldCheck,
@@ -305,7 +304,7 @@ export function Sidebar() {
         effectiveCollapsed ? "justify-center px-0" : "gap-3 px-5"
       )}>
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 shadow-lg shadow-blue-500/20">
-          <Bot className="h-4 w-4 text-white" />
+          <Cpu className="h-4 w-4 text-white" />
         </div>
         {!effectiveCollapsed && (
           <>
