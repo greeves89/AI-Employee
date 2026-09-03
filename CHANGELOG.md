@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.301.0] - 2026-09-03
+
+### Behoben
+- **Ein stummes Mikrofon sah aus wie ein Serverproblem** (#679). Die
+  Sprachsitzung verbindet, der Agent begrüsst hörbar, der Zustand steht auf
+  „Hört zu …" — und dann passiert nichts mehr. Keine Meldung, kein Hinweis. Ein
+  Betreiber hat daraufhin tagelang am Reverse-Proxy und am Netz gesucht; die
+  Ursache lag im Browser: als Eingabegerät war ein virtuelles Gerät ausgewählt,
+  wie es Videokonferenz-Software beim Installieren anlegt und oft gleich als
+  Vorgabe setzt. Es liefert brav Daten — lauter Nullen.
+  - Beide bisherigen Schutznetze konnten das nicht sehen: Das eine prüft, **ob**
+    Daten ankommen (sie kommen), das andere füllt zu leise Stellen bewusst mit
+    Stille, damit der Tonstrom nicht abreisst. Eine stumme Quelle ist davon
+    nicht zu unterscheiden.
+  - Jetzt wird der Pegel **vor** dieser Verarbeitung gemessen. Bleibt er vier
+    Sekunden praktisch bei null, erscheint ein Hinweis — **mit dem Namen des
+    Geräts**. Der ist der entscheidende Teil: „… Audio Device (Virtual)" erklärt
+    den Fehler auf einen Blick.
+
+### Neu
+- **Pegelanzeige neben dem Mikrofon-Regler**, mit einem Strich an der Stelle, ab
+  der der Agent zuhört. Bisher liess sich nicht unterscheiden, ob der Regler zu
+  streng steht oder das Gerät nichts liefert — beides sah gleich aus, und der
+  Regler war Raterei. Kommt gar kein Signal, steht das direkt daneben.
+
+---
+
 ## [1.300.0] - 2026-09-03
 
 ### Behoben

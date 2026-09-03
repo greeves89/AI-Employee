@@ -518,6 +518,11 @@ export function VoiceSessionModal({
   //: Tonkette, nicht ein Parameter der Engine.
   const empfindlichkeitRef = useRef({ schwelle: 0.02, minFrames: 2 });
   const [empfindlichkeit, setEmpfindlichkeit] = useState(40);
+  //: Roher Eingangspegel (0-1) fuer die Anzeige neben dem Regler.
+  const [pegel, setPegel] = useState(0);
+  //: Name des Eingabegeraets — der entscheidende Teil der Meldung, wenn nichts
+  //: ankommt: er zeigt sofort, dass ein virtuelles Geraet aktiv ist.
+  const [eingabeGeraet, setEingabeGeraet] = useState("");
 
   // Das Mikrofon und der Raum gehoeren zum GERAET, nicht zum Agenten —
   // deshalb liegt der Wert lokal und nicht am Agenten in der Datenbank.
@@ -1055,6 +1060,10 @@ export function VoiceSessionModal({
         }
       }
       streamRef.current = stream;
+      // Den Geraetenamen merken: Kommt gleich kein Signal, ist er die Antwort
+      // auf das „warum" — „… Audio Device (Virtual)" erklaert den Fehler auf
+      // einen Blick, waehrend man sonst am Netz und am Server sucht (#679).
+      setEingabeGeraet(stream.getAudioTracks()[0]?.label || "");
       const ctx = new AudioContext();
       inCtxRef.current = ctx;
       // Chrome startet einen AudioContext ohne Nutzergeste als "suspended". Dann
@@ -1074,6 +1083,19 @@ export function VoiceSessionModal({
       procRef.current = proc;
       let vadHigh = 0;
       let framesSent = 0;
+      //: Hoechster ROHPEGEL seit Beginn — vor dem Rauschtor gemessen. Genau
+      //: dieser Wert fehlte: Der Wachhund unten prueft nur, OB Blöcke kommen.
+      //: Ein virtuelles Eingabegeraet (Videokonferenz-Software legt so etwas
+      //: beim Installieren an und setzt es oft als Vorgabe) liefert brav Blöcke
+      //: — nur lauter Nullen. Frames fliessen, der Server sieht einen intakten
+      //: Tonstrom, und die Sprach-Engine wartet auf ein Sprechende, das nie
+      //: kommt. Aus Nutzersicht: „Hört zu …", dauerhaft, ohne Fehler. Ein
+      //: Betroffener hat tagelang am Reverse-Proxy und am Netz gesucht.
+      let rohSpitze = 0;
+      //: Pegel fuer die Anzeige (0-1). Ohne sie ist ein geschlossenes Rauschtor
+      //: von einer stummen Quelle nicht zu unterscheiden — beides sieht gleich
+      //: aus, und der Empfindlichkeitsregler bleibt Raterei.
+      let letzteAnzeige = 0;
       //: Nachlauf des Rauschtors in Frames. Ohne ihn wuerden Wortenden
       //: abgeschnitten — leise Endsilben liegen unter der Schwelle.
       let nachlauf = 0;
@@ -1092,6 +1114,14 @@ export function VoiceSessionModal({
         let summe = 0;
         for (let i = 0; i < input.length; i++) summe += input[i] * input[i];
         const pegel = Math.sqrt(summe / input.length);
+        if (pegel > rohSpitze) rohSpitze = pegel;
+        // Anzeige gedrosselt: 128 Blöcke je Sekunde in den Zustand zu schreiben
+        // wuerde die Oberflaeche mehr beschaeftigen als die Aufnahme.
+        const jetzt = performance.now();
+        if (jetzt - letzteAnzeige > 100) {
+          letzteAnzeige = jetzt;
+          setPegel(pegel);
+        }
         const { schwelle, minFrames } = empfindlichkeitRef.current;
         if (pegel >= schwelle) {
           nachlauf = NACHLAUF_FRAMES;
@@ -1121,6 +1151,27 @@ export function VoiceSessionModal({
       proc.connect(ctx.destination); // required for onaudioprocess to fire
       setLive(true);
       setState("listening");
+      // Zweiter Wachhund (#679): Blöcke kommen, aber sie enthalten nichts. Der
+      // andere prueft nur, OB etwas kommt — eine stumme Quelle liefert fleissig
+      // Nullen und bleibt ihm damit unsichtbar. Der Nutzer sah „Hört zu …",
+      // dauerhaft, ohne Fehler, und suchte tagelang am Reverse-Proxy.
+      // Vier Sekunden trennen „noch nichts gesagt" von „liefert nichts": ein
+      // echtes Mikrofon zeigt auch in Ruhe Grundrauschen weit ueber diesem Wert.
+      const STUMM_EPSILON = 0.0005;
+      window.setTimeout(() => {
+        if (inCtxRef.current !== ctx || framesSent === 0) return;
+        if (rohSpitze < STUMM_EPSILON) {
+          setError(
+            (eingabeGeraet
+              ? `Das Eingabegerät „${eingabeGeraet}" liefert kein Signal.`
+              : "Das gewählte Eingabegerät liefert kein Signal.")
+            + " Es kommen Daten an, aber sie sind leer — typisch für virtuelle"
+            + " Mikrofone, die Videokonferenz-Software anlegt und als Vorgabe"
+            + " setzt. Wähle in den Browser-Einstellungen ein echtes Mikrofon.",
+          );
+        }
+      }, 4000);
+
       // Wachhund: kommt nach zweieinhalb Sekunden kein einziger Block, liegt es nicht
       // am leisen Sprechen — dann laeuft die Aufnahme gar nicht. Das gehoert gesagt,
       // samt Zustand des AudioContext, sonst sucht man an der falschen Stelle.
@@ -1614,12 +1665,38 @@ export function VoiceSessionModal({
                       className="h-1 min-w-0 flex-1 cursor-pointer accent-sky-500"
                     />
                   </div>
+                  {/* Pegelanzeige mit Schwellenmarke (#679). Ohne sie ist ein
+                      geschlossenes Rauschtor von einer stummen Quelle nicht zu
+                      unterscheiden — beides sieht identisch aus, und der Regler
+                      bleibt Raterei. Der Strich zeigt, wo das Tor aufgeht. */}
+                  <div className="relative ml-[22px] mt-1 h-1 overflow-hidden rounded-full bg-foreground/[0.08]">
+                    <div
+                      className={`h-full rounded-full transition-[width] duration-75 ${
+                        pegel >= schwelleAusRegler(empfindlichkeit)
+                          ? "bg-emerald-500"
+                          : "bg-sky-500/40"
+                      }`}
+                      style={{ width: `${Math.min(100, (pegel / 0.06) * 100)}%` }}
+                    />
+                    {empfindlichkeit > 0 && (
+                      <div
+                        className="absolute top-0 h-full w-px bg-foreground/40"
+                        style={{ left: `${Math.min(100, (schwelleAusRegler(empfindlichkeit) / 0.06) * 100)}%` }}
+                        title="Ab hier hört der Agent zu"
+                      />
+                    )}
+                  </div>
                   <p className="pl-[22px] text-[10px] leading-tight text-muted-foreground/50">
                     {empfindlichkeit === 0
                       ? "Nimmt jedes Geräusch auf"
                       : empfindlichkeit >= 70
                         ? "Hört erst bei deutlichem Sprechen zu"
                         : "Ignoriert leise Hintergrundgeräusche"}
+                    {live && pegel < 0.0005 && (
+                      <span className="ml-1 text-amber-700 dark:text-amber-400/90">
+                        — kein Signal vom Mikrofon
+                      </span>
+                    )}
                   </p>
                 </div>
 
