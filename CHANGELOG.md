@@ -5,6 +5,46 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.316.0] - 2026-09-05
+
+### Hinzugefuegt
+- **Standort, Kontakt, Umfrage, Sticker und Wuerfel kommen endlich an.** Wer eines davon
+  schickte, bekam bisher ueberhaupt keine Antwort: die Nachricht passte durch keinen
+  Filter und wurde stillschweigend verworfen — von aussen nicht von einem haengenden
+  Agenten zu unterscheiden. Solche Inhalte haben keine Datei zum Abholen, deshalb
+  beschreibt der Agent sie jetzt knapp („[Standort: …]", „[Kontakt: …]", „[Umfrage: Frage
+  — Optionen]") und antwortet darauf wie auf Text. Eine Ortsangabe mit Namen wird mit
+  ihrem Namen genannt statt mit blossen Koordinaten.
+- **GIFs und Videokreise werden als solche erkannt.** Beide liefen bisher durch keinen
+  Filter. Ein GIF fuellt bei Telegram zusaetzlich das Dateifeld — es waere sonst als
+  gewoehnliche Datei durchgereicht worden.
+- **Weitergeleitete Nachrichten sagen jetzt, von wem sie stammen.** Ohne diesen Hinweis
+  las der Agent fremde Worte als Aussage des Nutzers und antwortete an der Absicht
+  vorbei. Ein Vorspann nennt Person oder Kanal; wer seine Weiterleitungen verbirgt, wird
+  mit seinem Anzeigenamen genannt, und notfalls steht wenigstens da, dass es eine
+  Weiterleitung ist.
+- **Korrigierte Nachrichten werden als Korrektur behandelt.** Bearbeitet man eine bereits
+  gesendete Nachricht, hatte das bisher keinerlei Wirkung — Telegram wurde gar nicht erst
+  gebeten, Korrekturen zu schicken. Jetzt kommen sie an und sind ausdruecklich als
+  ersetzte Fassung gekennzeichnet, damit der Agent nicht zweimal auf dieselbe Sache
+  antwortet.
+- **Reaktionen des Nutzers werden gesehen.** Agenten konnten Reaktionen schon setzen, aber
+  nicht wahrnehmen; ein Daumen hoch auf eine Antwort ist Rueckmeldung und ging verloren.
+  Sie loesen bewusst keinen eigenen Lauf aus, sondern werden der naechsten Nachricht
+  vorangestellt — reagiert jemand und schreibt nie wieder, bleibt es entsprechend
+  ungesehen.
+
+### Behoben
+- **Eine bearbeitete Nachricht haette den Empfang zum Absturz gebracht.** Bei einer
+  Korrektur liefert Telegram die Nachricht in einem anderen Feld; der bisherige Zugriff
+  wuerde ins Leere greifen.
+
+### Bekannte Grenze
+- Alben (mehrere Bilder in einem Zug) kommen weiterhin als Einzelbilder an. Das braucht
+  eine kurze Sammelphase und wird getrennt nachgereicht.
+
+---
+
 ## [1.313.2] - 2026-09-04
 
 ### Behoben

@@ -16,6 +16,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
+    MessageReactionHandler,
     ContextTypes,
     filters,
 )
@@ -44,6 +45,7 @@ def _strip_markdown(text: str) -> str:
 
 
 _QUOTE_MAX_CHARS = 500
+_REACTION_BUFFER_MAX = 5
 
 
 def _quoted_context(message) -> str:
@@ -72,6 +74,54 @@ def _quoted_context(message) -> str:
     wer = ("einer deiner eigenen Nachrichten" if getattr(author, "is_bot", False)
            else f"{getattr(author, 'first_name', '') or 'dem Nutzer'}")
     return f"[Zitat aus {wer}]\n> {body}\n\n"
+
+
+def _forward_context(message) -> str:
+    """Vorspann, wenn die Nachricht weitergeleitet wurde.
+
+    Wer etwas weiterleitet, schickt fremde Worte — steht das nicht dabei, liest der
+    Agent sie als Aussage des Nutzers und antwortet an der Absicht vorbei.
+    """
+    origin = getattr(message, "forward_origin", None)
+    if origin is None:
+        return ""
+    # Je nach Herkunft fuellt Telegram ein anderes Feld; wer seine Weiterleitungen
+    # in den Einstellungen verbirgt, hinterlaesst nur einen Anzeigenamen.
+    sender = getattr(origin, "sender_user", None)
+    kanal = getattr(origin, "sender_chat", None) or getattr(origin, "chat", None)
+    wer = (getattr(sender, "first_name", None)
+           or getattr(origin, "sender_user_name", None)
+           or getattr(kanal, "title", None))
+    return f"[Weitergeleitet von {wer}]\n" if wer else "[Weitergeleitet]\n"
+
+
+def _sonderinhalt(message) -> str:
+    """Beschreibung fuer Inhalte, die keine Datei zum Abholen haben.
+
+    Standort, Kontakt, Umfrage, Sticker und Wuerfel passten bisher durch keinen
+    Filter: die Nachricht wurde stillschweigend verworfen und der Nutzer bekam
+    ueberhaupt keine Antwort. Eine knappe Beschreibung ist besser als Schweigen.
+
+    `venue` vor `location`, weil eine Ortsangabe mit Namen beide Felder fuellt und
+    der Name die nuetzlichere Information ist.
+    """
+    if (treffpunkt := getattr(message, "venue", None)) is not None:
+        adresse = getattr(treffpunkt, "address", "") or ""
+        return f"[Ort: {getattr(treffpunkt, 'title', '')} — {adresse}]".replace(" — ]", "]")
+    if (ort := getattr(message, "location", None)) is not None:
+        return f"[Standort: {ort.latitude}, {ort.longitude}]"
+    if (person := getattr(message, "contact", None)) is not None:
+        name = " ".join(x for x in (person.first_name, getattr(person, "last_name", None)) if x)
+        return f"[Kontakt: {name}, {person.phone_number}]"
+    if (frage := getattr(message, "poll", None)) is not None:
+        optionen = " / ".join(o.text for o in frage.options)
+        return f"[Umfrage: {frage.question} — {optionen}]"
+    if (aufkleber := getattr(message, "sticker", None)) is not None:
+        zeichen = getattr(aufkleber, "emoji", None) or getattr(aufkleber, "set_name", None)
+        return f"[Sticker {zeichen}]" if zeichen else "[Sticker]"
+    if (wuerfel := getattr(message, "dice", None)) is not None:
+        return f"[{wuerfel.emoji} gewuerfelt: {wuerfel.value}]"
+    return ""
 
 
 logger = logging.getLogger(__name__)
@@ -177,6 +227,10 @@ class TelegramAgentBot:
         # und der laeuft, bevor der Antwort-Lauscher je gestartet wurde.
         self._live: dict = {}
         self._last_user_msg: dict = {}
+        # Reaktionen des Nutzers reisen mit der naechsten Nachricht mit, statt je
+        # Daumen einen eigenen Modelllauf auszuloesen. Preis dieser Wahl: reagiert
+        # jemand und schreibt nie wieder, sieht der Agent es nicht.
+        self._pending_reactions: dict[int, list[str]] = {}
         self._telegram_send_listener: asyncio.Task | None = None
 
     async def start(self) -> None:
@@ -190,23 +244,38 @@ class TelegramAgentBot:
         self.app.add_handler(CommandHandler("agent", self._cmd_agent))
         self.app.add_handler(CommandHandler("stop", self._cmd_stop))
         self.app.add_handler(CommandHandler("status", self._cmd_status))
+        # Inhalte ohne Datei zum Abholen (Standort, Kontakt, Umfrage, Sticker,
+        # Wuerfel) liefen bisher durch jeden Filter hindurch ins Leere. Sie gehen
+        # denselben Weg wie Text — `_sonderinhalt` beschreibt sie.
         self.app.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
+            MessageHandler(
+                (filters.TEXT | filters.LOCATION | filters.VENUE | filters.CONTACT
+                 | filters.POLL | filters.Sticker.ALL | filters.Dice.ALL)
+                & ~filters.COMMAND,
+                self._handle_message,
+            )
         )
         self.app.add_handler(
             MessageHandler(
-                (filters.PHOTO | filters.Document.ALL | filters.VOICE | filters.AUDIO | filters.VIDEO)
+                (filters.PHOTO | filters.Document.ALL | filters.VOICE | filters.AUDIO
+                 | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE)
                 & ~filters.COMMAND,
                 self._handle_media,
             )
         )
         self.app.add_handler(CallbackQueryHandler(self._handle_callback))
+        self.app.add_handler(MessageReactionHandler(self._handle_reaction))
 
         await self.app.initialize()
         await self.app.start()
         await self.app.updater.start_polling(
             drop_pending_updates=True,
-            allowed_updates=["message", "callback_query"],
+            # Telegram schickt ausschliesslich die hier genannten Arten. Korrekturen
+            # und Reaktionen fehlten in dieser Liste — sie kamen also nicht etwa an
+            # und wurden verworfen, sie wurden nie gesendet.
+            allowed_updates=[
+                "message", "edited_message", "callback_query", "message_reaction",
+            ],
         )
         self._started = True
         # Listen for agent-initiated `send_telegram` tool calls (proactive pushes)
@@ -395,20 +464,31 @@ class TelegramAgentBot:
 
     async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id = update.effective_chat.id
+        # `effective_message` deckt neue UND nachtraeglich bearbeitete Nachrichten ab.
+        nachricht = update.effective_message
 
         if not await self._is_authorized(chat_id):
-            await update.message.reply_text(
+            await nachricht.reply_text(
                 "Autorisiere dich zuerst mit /auth <KEY>"
             )
             return
 
-        text = _quoted_context(update.message) + (update.message.text or "")
+        # Eine Korrektur ersetzt die fruehere Aussage. Ohne den Hinweis liest der
+        # Agent sie als zweite, zusaetzliche Nachricht und antwortet doppelt.
+        korrektur = "[Korrigierte Fassung dieser Nachricht]\n" if update.edited_message else ""
+        text = (
+            self._reaction_context(chat_id)
+            + korrektur
+            + _forward_context(nachricht)
+            + _quoted_context(nachricht)
+            + (nachricht.text or _sonderinhalt(nachricht))
+        )
         user = update.effective_user
 
         target_agent_id = await self._active_target_agent_id(chat_id)
         print(
             f"[Telegram] inbound text chat={chat_id} gateway={self.agent_id} "
-            f"target={target_agent_id} message={update.message.message_id}"
+            f"target={target_agent_id} message={nachricht.message_id}"
         )
 
         # Merken, welche Nachricht gerade bearbeitet wird — der Agent kann darauf
@@ -416,7 +496,7 @@ class TelegramAgentBot:
         # JEDER Nachricht wirkt mechanisch. Abgesichert, weil Beiwerk die Zustellung
         # niemals verhindern darf (genau das ist am 2026-08-06 passiert).
         try:
-            self._last_user_msg[chat_id] = update.message.message_id
+            self._last_user_msg[chat_id] = nachricht.message_id
         except Exception as e:  # noqa: BLE001
             logger.warning("[Telegram] bookkeeping failed chat=%s: %s", chat_id, e)
 
@@ -429,7 +509,7 @@ class TelegramAgentBot:
             "gateway_agent_id": self.agent_id,
             "target_agent_id": target_agent_id,
             "chat_id": chat_id,
-            "message_id": update.message.message_id,
+            "message_id": nachricht.message_id,
             "user_id": user.id if user else None,
             "username": user.username if user else None,
             "first_name": user.first_name if user else None,
@@ -454,7 +534,7 @@ class TelegramAgentBot:
                 text=text,
                 channel=gw.CHANNEL_TELEGRAM,
                 conversation_id=str(chat_id),
-                message_id=str(update.message.message_id),
+                message_id=str(nachricht.message_id),
                 context=tg_context,
                 sender_name=(user.first_name if user else "") or "",
             )
@@ -463,9 +543,45 @@ class TelegramAgentBot:
 
             await update.effective_chat.send_action("typing")
             if woke_up:
-                await update.message.reply_text("✅ Agent hochgefahren!")
+                await nachricht.reply_text("✅ Agent hochgefahren!")
         except Exception as e:
-            await update.message.reply_text(f"Fehler beim Senden: {e}")
+            await nachricht.reply_text(f"Fehler beim Senden: {e}")
+
+    def _reaction_context(self, chat_id: int) -> str:
+        """Gesammelte Reaktionen des Nutzers abholen und den Puffer leeren."""
+        gesammelt = self._pending_reactions.pop(chat_id, [])
+        if not gesammelt:
+            return ""
+        return "[" + ", ".join(gesammelt) + "]\n"
+
+    async def _handle_reaction(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Der Nutzer hat auf eine Nachricht reagiert.
+
+        Wir konnten Reaktionen bisher setzen, aber nicht sehen — ein Daumen hoch auf
+        eine Antwort ist Rueckmeldung, und die ging verloren. Sie loest bewusst
+        KEINEN eigenen Modelllauf aus, sondern reist mit der naechsten Nachricht mit.
+        """
+        reaktion = update.message_reaction
+        if reaktion is None:
+            return
+        chat_id = reaktion.chat.id
+        if not await self._is_authorized(chat_id):
+            return
+
+        zeichen = [getattr(r, "emoji", None) for r in (reaktion.new_reaction or [])]
+        zeichen = [z for z in zeichen if z]
+        # Welche Nachricht gemeint ist, kann nur die Kennung sagen: die eigenen
+        # gesendeten Kennungen fuehrt der Bot nirgends mit, und eine geratene
+        # Zuordnung waere schlimmer als gar keine.
+        worauf = f"Nachricht {reaktion.message_id}"
+        eintrag = (f"Der Nutzer hat auf {worauf} mit {' '.join(zeichen)} reagiert"
+                   if zeichen else f"Der Nutzer hat seine Reaktion auf {worauf} entfernt")
+
+        puffer = self._pending_reactions.setdefault(chat_id, [])
+        puffer.append(eintrag)
+        # Begrenzt, weil die Zahl der Reaktionen von aussen bestimmt wird und
+        # niemand garantiert, dass je wieder eine Nachricht kommt, die sie abholt.
+        del puffer[:-_REACTION_BUFFER_MAX]
 
     async def _active_target_agent_id(self, chat_id: int) -> str:
         """Return the agent Telegram replies should currently go to.
@@ -572,6 +688,14 @@ class TelegramAgentBot:
             media_type = "photo"
             file_id = update.message.photo[-1].file_id  # Highest resolution
             image_file_id = file_id
+        # Vor `document` pruefen: Telegram fuellt bei einem GIF beide Felder, und der
+        # Dokument-Zweig wuerde es als Datei mit Dateinamen ausgeben statt als GIF.
+        elif update.message.animation:
+            media_type = "animation"
+            file_id = update.message.animation.file_id
+        elif update.message.video_note:
+            media_type = "video_note"
+            file_id = update.message.video_note.file_id
         elif update.message.document:
             media_type = "document"
             file_id = update.message.document.file_id
@@ -604,9 +728,12 @@ class TelegramAgentBot:
             "file_id": file_id,
         }
 
-        text = _quoted_context(update.message) + (
-            f"[Telegram {media_type}] {caption}".strip() if caption
-            else f"[Telegram {media_type} received, file_id: {file_id}]"
+        text = (
+            self._reaction_context(chat_id)
+            + _forward_context(update.message)
+            + _quoted_context(update.message)
+            + (f"[Telegram {media_type}] {caption}".strip() if caption
+               else f"[Telegram {media_type} received, file_id: {file_id}]")
         )
 
         # Photos (and image documents) are downloaded here and handed to the
