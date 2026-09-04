@@ -748,7 +748,7 @@ async def _init_db_from_models() -> None:
             await conn.execute(_sql_text(
                 "CREATE TABLE IF NOT EXISTS platform_settings ("
                 " key varchar PRIMARY KEY, value text NOT NULL DEFAULT '',"
-                " is_secret boolean DEFAULT false)"
+                " is_secret boolean NOT NULL DEFAULT false)"
             ))
             _marke = (await conn.execute(_sql_text(
                 "SELECT value FROM platform_settings WHERE key = 'reasoning_max_split_done'"
@@ -763,9 +763,11 @@ async def _init_db_from_models() -> None:
                     "  config::jsonb, '{default_reasoning}', '\"xhigh\"'::jsonb, true"
                     ")::json WHERE config->>'default_reasoning' = 'max'"
                 ))
+                # is_secret ist NOT NULL — ohne den Wert kippt der Einfuegevorgang
+                # und mit ihm (eine Transaktion) auch die Umschreibung oben.
                 await conn.execute(_sql_text(
-                    "INSERT INTO platform_settings (key, value) "
-                    "VALUES ('reasoning_max_split_done', '1') "
+                    "INSERT INTO platform_settings (key, value, is_secret) "
+                    "VALUES ('reasoning_max_split_done', '1', false) "
                     "ON CONFLICT (key) DO NOTHING"
                 ))
                 logger.info(

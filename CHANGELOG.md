@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.313.1] - 2026-09-04
+
+### Behoben
+- Die einmalige Umschreibung der Denkstufen aus 1.313.0 scheiterte an einer
+  Pflichtspalte und wurde dadurch (eine Transaktion) vollständig zurückgerollt —
+  die Stufen blieben unverändert, es entstand kein halber Zustand. Nachgezogen.
+
+---
+
 ## [1.313.0] - 2026-09-04
 
 ### Neu
