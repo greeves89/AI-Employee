@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.313.3] - 2026-09-05
+
+### Behoben
+- **Zwei Bauvorgänge derselben Datei konnten unterschiedliche Bibliotheken
+  enthalten.** Der Einbettungsdienst legte nur `sentence-transformers` fest.
+  Dessen eigene Grenze erlaubt aber alles unterhalb `transformers` 6 — die
+  darunterliegenden Bibliotheken sind so längst über ihre Hauptversion
+  gewandert, ohne dass sich irgendeine Zeile im Projekt geändert hätte. Ein
+  heute gebautes Abbild war damit nicht dasselbe wie ein gestern gebautes, und
+  ein Fehler wäre nicht nachstellbar gewesen. `transformers`,
+  `huggingface-hub` und `tokenizers` sind jetzt ausdrücklich festgelegt.
+  - Gemessen und übernommen wurden die Versionen, die ein heutiger Bauvorgang
+    ohnehin installiert — der laufende Dienst verhält sich also unverändert.
+  - Der Kniff, `torch` schlank in der reinen Prozessor-Variante zu
+    installieren, bleibt erhalten (nachgemessen: keine einzige zusätzliche
+    Grafikkarten-Bibliothek).
+- **Eine Abfrage im Einbettungsdienst benutzte einen abgekündigten Namen.** Die
+  Methode zur Ermittlung der Vektorgrösse wurde umbenannt und warnt seit
+  `sentence-transformers` 5.7 bei jeder Nutzung; in einer künftigen
+  Hauptversion fällt sie weg. Der Dienst nutzt jetzt den neuen Namen. Gleicher
+  Rückgabewert, keine Verhaltensänderung.
+
+---
+
 ## [1.313.2] - 2026-09-04
 
 ### Behoben

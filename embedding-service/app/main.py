@@ -40,7 +40,7 @@ async def lifespan(_: FastAPI):
     _load_time_seconds = time.monotonic() - start
     logger.info(
         f"Model loaded in {_load_time_seconds:.1f}s. "
-        f"Dimension: {_model.get_sentence_embedding_dimension()}"
+        f"Dimension: {_model.get_embedding_dimension()}"
     )
     yield
     logger.info("Shutting down embedding service")
@@ -85,7 +85,7 @@ async def healthz():
     return {
         "status": "ok",
         "model": MODEL_NAME,
-        "dimension": _model.get_sentence_embedding_dimension(),
+        "dimension": _model.get_embedding_dimension(),
         "load_time_seconds": round(_load_time_seconds, 2),
     }
 
@@ -97,7 +97,7 @@ async def info():
         raise HTTPException(503, "Model still loading")
     return {
         "model": MODEL_NAME,
-        "dimension": _model.get_sentence_embedding_dimension(),
+        "dimension": _model.get_embedding_dimension(),
         "max_input_length_chars": MAX_INPUT_LENGTH,
         "max_batch_size": MAX_BATCH_SIZE,
     }

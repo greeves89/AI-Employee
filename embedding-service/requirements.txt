@@ -2,6 +2,13 @@ fastapi==0.141.1
 uvicorn[standard]==0.52.4
 sentence-transformers==5.7.0
 pydantic==2.13.4
+
+# Transitive deps of sentence-transformers, pinned explicitly: its own bound is
+# transformers<6.0.0, so an unpinned build floats across major versions and two
+# builds of this same file can ship different transformers majors.
+transformers==5.16.1
+huggingface-hub==1.30.0
+tokenizers==0.23.2
 # NOTE: torch is installed separately in the Dockerfile from the CPU-only
 # PyTorch index — the default PyPI wheel bundles ~2 GB of NVIDIA CUDA
 # libraries this service never uses (it runs CPU inference only).
