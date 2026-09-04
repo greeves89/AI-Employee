@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.315.0] - 2026-09-05
+
+### Hinzugefuegt
+- **Die Desktop-Bridge zeigt jetzt an, wenn das Mikrofon aktiv ist.** Bisher
+  liess sich das nur ueber ein Polling von `voice_capture.active` aus einem
+  fremden Thread herausfinden — fuer eine Bedienoberflaeche keine brauchbare
+  Grundlage. Ein neuer Rueckruf (`on_active_change`, nach demselben Muster wie
+  der bestehende Verbindungsstatus-Rueckruf) meldet Start/Stop der
+  Mikrofonaufnahme sofort weiter. Beide Tray-Varianten nutzen ihn: macOS zeigt
+  ein 🎙-Symbol in der Menueleiste, Windows/Linux einen roten Punkt auf dem
+  Tray-Icon.
+  - Wirksam beim naechsten Start der Bridge.
+
+---
+
 ## [1.313.2] - 2026-09-04
 
 ### Behoben

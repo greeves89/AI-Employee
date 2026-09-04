@@ -715,8 +715,11 @@ class VoiceCapture:
     CHANNELS = 1
     CHUNK_MS = 100  # small enough for low latency, large enough not to flood the WS
 
-    def __init__(self, emit) -> None:
+    def __init__(self, emit, on_active_change=None) -> None:
         self._emit = emit          # called with one {chunk_b64, ...} dict per chunk
+        # Optional GUI callback: on_active_change(True|False) — lets a tray icon
+        # show a mic-status indicator (issue #478 phase 3) without polling.
+        self._on_active_change = on_active_change
         self._stream = None
         self.active = False
 
@@ -759,6 +762,7 @@ class VoiceCapture:
             "VOICE CAPTURE STARTED — microphone audio is being streamed until you stop it."
         )
         self.active = True
+        self._notify_active_change()
         return {"ok": True}
 
     def stop(self) -> dict:
@@ -773,7 +777,16 @@ class VoiceCapture:
             self._stream = None
         self.active = False
         log.warning("VOICE CAPTURE STOPPED — no longer streaming microphone audio.")
+        self._notify_active_change()
         return {"ok": True}
+
+    def _notify_active_change(self) -> None:
+        if self._on_active_change is None:
+            return
+        try:
+            self._on_active_change(self.active)
+        except Exception:  # noqa: BLE001 — a broken GUI callback must not break capture
+            log.debug("voice capture on_active_change callback failed", exc_info=True)
 
 
 def _applescript_string_literal(value: str) -> str:
@@ -2354,6 +2367,7 @@ class Bridge:
         session_id: str | None = None,
         extra_headers: dict[str, str] | None = None,
         on_state=None,
+        on_voice_state=None,
     ):
         self.ws_url = ws_url
         self.token = token
@@ -2365,6 +2379,9 @@ class Bridge:
         self.extra_headers: dict[str, str] = dict(extra_headers or {})
         # Optional GUI callback: on_state("connected"|"reconnecting"|"rejected", detail)
         self.on_state = on_state
+        # Optional GUI callback: on_voice_state(True|False) — mic capture on/off
+        # (issue #478 phase 3, tray mic-status indicator).
+        self.on_voice_state = on_voice_state
         self.dispatcher: CommandDispatcher | None = None
         self._running = False
         # Human-capture events are produced on pynput's own threads, so they
@@ -2380,7 +2397,8 @@ class Bridge:
             log.info("Initializing desktop control")
             self.dispatcher = CommandDispatcher()
             self.dispatcher.input_recorder = InputRecorder(self._queue_input_event)
-            self.dispatcher.voice_capture = VoiceCapture(self._queue_voice_event)
+            self.dispatcher.voice_capture = VoiceCapture(
+                self._queue_voice_event, on_active_change=self.on_voice_state)
             log.info("Desktop control ready")
         return self.dispatcher
 
@@ -2703,6 +2721,7 @@ async def run(
     stop_event: threading.Event | None = None,
     extra_headers: dict[str, str] | None = None,
     on_state=None,
+    on_voice_state=None,
 ) -> None:
     """Async entry point for use as a library (e.g. from tray_app).
 
@@ -2710,11 +2729,16 @@ async def run(
     the real state. Without it the tray had no way to learn that the handshake
     succeeded — connect() never returns while the bridge is up — and therefore
     displayed "Verbinde…" forever, even on a perfectly healthy connection.
+
+    ``on_voice_state(active)`` mirrors that for the microphone (issue #478
+    phase 3): called with True/False whenever capture starts/stops, so a tray
+    icon can show a mic indicator without polling.
     """
     ws_url = url.rstrip("/").replace("http://", "ws://").replace("https://", "wss://")
     if extra_headers is None:
         extra_headers = collect_extra_headers(None)
-    bridge = Bridge(ws_url, token, session_id, extra_headers=extra_headers, on_state=on_state)
+    bridge = Bridge(ws_url, token, session_id, extra_headers=extra_headers,
+                     on_state=on_state, on_voice_state=on_voice_state)
     if stop_event:
         async def _watch_stop():
             while not stop_event.is_set():

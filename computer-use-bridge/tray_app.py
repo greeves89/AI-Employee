@@ -419,6 +419,22 @@ _bridge_thread = None
 _bridge_stop   = threading.Event()
 _bridge_lock   = threading.Lock()
 _status        = "disconnected"
+# Set via bridge.py's on_voice_state callback whenever mic capture starts/stops
+# (issue #478 phase 3) — read by both tray implementations to show a mic
+# indicator without polling the bridge's dispatcher from another thread.
+_mic_active    = False
+
+
+def _on_voice_state(active: bool) -> None:
+    global _mic_active
+    _mic_active = bool(active)
+
+
+def status_symbol(connected: bool, connecting: bool, mic_active: bool) -> str:
+    """Pure glyph decision for the macOS menu-bar title — kept free of rumps so
+    it can be unit-tested without the native dependency installed."""
+    base = "●" if connected else "◐" if connecting else "○"
+    return base + " 🎙" if (connected and mic_active) else base
 
 
 def start_bridge(cfg):
@@ -488,7 +504,7 @@ def _run_bridge_thread(url, token, session_id):
 
         asyncio.run(bridge_module.run(url=url, token=token,
                                       session_id=session_id, stop_event=_bridge_stop,
-                                      on_state=_on_state))
+                                      on_state=_on_state, on_voice_state=_on_voice_state))
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             _status = "error: neu anmelden"
@@ -2476,12 +2492,11 @@ def run_macos(cfg: dict) -> None:
             show_main_window(self.cfg)
 
         def _update_icon(self):
-            if is_running():
-                self.title = "●"
-            elif _status == "connecting" or self._connecting:
-                self.title = "◐"
-            else:
-                self.title = "○"
+            self.title = status_symbol(
+                connected=is_running(),
+                connecting=(_status == "connecting" or self._connecting),
+                mic_active=_mic_active,
+            )
             self._sync_menu()
 
         def _sync_menu(self):
@@ -2489,12 +2504,15 @@ def run_macos(cfg: dict) -> None:
             connecting = _status == "connecting" or self._connecting
             configured = bool(self.cfg.get("url") and self.cfg.get("token") and self.cfg.get("session"))
             try:
-                self.menu["Status:"] = "Status: " + (
+                label = (
                     "verbunden" if connected else
                     "verbinde..." if connecting else
                     _status.replace("error: ", "") if _status != "disconnected" else
                     "nicht verbunden"
                 )
+                if connected and _mic_active:
+                    label += " · 🎙 Mikrofon aktiv"
+                self.menu["Status:"] = "Status: " + label
             except Exception:
                 pass
             for title, enabled in {
@@ -2606,9 +2624,14 @@ def run_tray(cfg: dict) -> None:
     except ImportError:
         sys.exit(1)
 
-    def make_icon(connected):
+    def make_icon(connected, mic_active=False):
         img = Image.new("RGBA", (64, 64), (0,0,0,0))
-        ImageDraw.Draw(img).ellipse([8,8,56,56], fill=(34,197,94) if connected else (156,163,175))
+        draw = ImageDraw.Draw(img)
+        draw.ellipse([8,8,56,56], fill=(34,197,94) if connected else (156,163,175))
+        if connected and mic_active:
+            # Small red dot, bottom-right — mirrors the macOS "● 🎙" indicator
+            # (issue #478 phase 3): a mic-active overlay on the connected icon.
+            draw.ellipse([38,38,60,60], fill=(220,38,38))
         return img
 
     def on_connect(icon, item):
@@ -2685,7 +2708,9 @@ def run_tray(cfg: dict) -> None:
     def on_quit(icon, item): stop_bridge(); icon.stop()
     def refresh(icon):
         import time
-        while True: icon.icon = make_icon(is_running()); time.sleep(3)
+        while True:
+            icon.icon = make_icon(is_running(), _mic_active)
+            time.sleep(3)
 
     icon = pystray.Icon("AI-Employee Bridge", make_icon(False), menu=pystray.Menu(
         # default=True: Doppelklick aufs Tray-Symbol oeffnet das Hauptfenster.
