@@ -51,22 +51,27 @@ def _chat_image_parts(images: list[dict]) -> list[dict]:
 # Azure deployments named accordingly) is served via /responses.
 _RESPONSES_API_PATTERNS = ("codex", "gpt-5", "gpt5")
 
-#: Modelle, die "xhigh" nachweislich abgelehnt haben. Wird zur Laufzeit
+#: Paare (Modell, Stufe), die nachweislich abgelehnt wurden. Wird zur Laufzeit
 #: gefuellt, nicht gepflegt — eine handgeschriebene Liste war genau das
 #: Problem (siehe _effective_reasoning_effort). Prozessweit, weil ein Modell
 #: sich nicht je Provider-Instanz anders verhaelt.
-_XHIGH_ABGELEHNT: set[str] = set()
+_STUFE_ABGELEHNT: set[tuple[str, str]] = set()
+
+#: Eine Stufe tiefer, wenn das Modell die gewuenschte nicht kennt. Nicht direkt
+#: auf "high" durchfallen: Wer "max" gewaehlt hat, will bei einem Modell ohne
+#: "max" das naechstbeste — nicht zwei Stufen weniger.
+_NAECHSTTIEFER = {"max": "xhigh", "xhigh": "high"}
 
 
-def _lehnt_xhigh_ab(error_text: str) -> bool:
-    """Sagt der Fehler, dass die Stufe „xhigh" nicht zulaessig ist?
+def _lehnt_stufe_ab(error_text: str, stufe: str) -> bool:
+    """Sagt der Fehler, dass DIESE Denkstufe nicht zulaessig ist?
 
     Absichtlich eng: ein beliebiger 400 darf die Stufe nicht dauerhaft
     herabsetzen — sonst verliert ein Betreiber seine Einstellung wegen eines
     unabhaengigen Fehlers, und zwar still.
     """
     t = (error_text or "").lower()
-    if "xhigh" in t:
+    if stufe and stufe in t:
         return True
     return ("effort" in t and
             any(w in t for w in ("invalid", "unsupported", "not supported",
@@ -142,9 +147,16 @@ class OpenAIProvider(BaseLLMProvider):
         ``temperature`` und den Namen des Token-Feldes: ausprobieren statt eine
         Modellliste pflegen, die niemand aktuell haelt.
         """
-        if self.reasoning_effort == "xhigh" and self.model_name in _XHIGH_ABGELEHNT:
-            return "high"
-        return self.reasoning_effort
+        stufe = self.reasoning_effort
+        # Kette abwaerts: Ein Modell kann "max" ablehnen und "xhigh" koennen.
+        # Die Schleife endet spaetestens bei "high", das nicht mehr in
+        # _NAECHSTTIEFER steht.
+        while stufe and (self.model_name, stufe) in _STUFE_ABGELEHNT:
+            tiefer = _NAECHSTTIEFER.get(stufe)
+            if not tiefer:
+                break
+            stufe = tiefer
+        return stufe
 
     @staticmethod
     def _parse_function_arguments(arguments_json: str, final_arguments: str | None = None) -> dict:
@@ -290,13 +302,15 @@ class OpenAIProvider(BaseLLMProvider):
                     # wiederholen und es fuer die Zukunft merken — statt jede
                     # Anfrage vorsorglich herabzustufen (siehe
                     # _effective_reasoning_effort).
+                    _gesendete_stufe = (body.get("reasoning") or {}).get("effort") or ""
                     if (response.status_code == 400
-                            and (body.get("reasoning") or {}).get("effort") == "xhigh"
-                            and _lehnt_xhigh_ab(error_text)):
-                        _XHIGH_ABGELEHNT.add(self.model_name)
+                            and _gesendete_stufe in _NAECHSTTIEFER
+                            and _lehnt_stufe_ab(error_text, _gesendete_stufe)):
+                        _STUFE_ABGELEHNT.add((self.model_name, _gesendete_stufe))
                         logger.info(
-                            "[OpenAI] %s nimmt kein xhigh — einmalig auf high "
+                            "[OpenAI] %s nimmt kein %s — einmalig auf %s "
                             "zurueck und ab jetzt gemerkt", self.model_name,
+                            _gesendete_stufe, _NAECHSTTIEFER[_gesendete_stufe],
                         )
                         # Erneut aufrufen statt den Koerper von Hand umzubauen:
                         # `_build_responses_body` fragt `_effective_reasoning_effort`,
@@ -566,14 +580,17 @@ class OpenAIProvider(BaseLLMProvider):
                         return
                     # Dasselbe fuer die Denkstufe: senden, und nur bei echter
                     # Ablehnung herabsetzen — nicht vorsorglich.
-                    if body.get("reasoning_effort") == "xhigh" and _lehnt_xhigh_ab(error_text):
-                        _XHIGH_ABGELEHNT.add(self.model_name)
+                    _stufe = body.get("reasoning_effort") or ""
+                    if _stufe in _NAECHSTTIEFER and _lehnt_stufe_ab(error_text, _stufe):
+                        _STUFE_ABGELEHNT.add((self.model_name, _stufe))
                         logger.info(
-                            "[OpenAI] %s nimmt kein xhigh — einmalig auf high "
+                            "[OpenAI] %s nimmt kein %s — einmalig auf %s "
                             "zurueck und ab jetzt gemerkt", self.model_name,
+                            _stufe, _NAECHSTTIEFER[_stufe],
                         )
                         retry_body = dict(body)
-                        retry_body["reasoning_effort"] = "high"
+                        # Eine Stufe tiefer, nicht gleich bis "high" durch.
+                        retry_body["reasoning_effort"] = _NAECHSTTIEFER[_stufe]
                         async for event in self._stream_chat_with_body(url, headers, retry_body):
                             yield event
                         return

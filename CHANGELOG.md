@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.313.0] - 2026-09-04
+
+### Neu
+- **Denkstufe "Max"** (Kundenwunsch). Bis hierher war die oberste Stufe "Extra
+  High" — sie hiess intern zwar schon "max", meinte aber das, was die Anbieter
+  `xhigh` nennen. Die GPT-5.6-Familie kennt darüber hinaus ein echtes `max`;
+  am Endpunkt geprüft, alle drei dort verfügbaren Modelle nehmen es an. Beide
+  Stufen sind jetzt getrennt wählbar, im Chat wie als Standard am Agenten.
+  - **Bestehende Einstellungen behalten ihre Bedeutung**: Wer bisher die
+    höchste Stufe gewählt hatte, steht nach dem Update auf "Extra High" — nicht
+    ungefragt auf der neuen, teureren. Die Umschreibung läuft einmalig beim
+    Start und ist als erledigt vermerkt, damit sie eine spätere Wahl von "Max"
+    nicht wieder überschreibt.
+  - Kennt ein Modell die gewählte Stufe nicht, fällt der Aufruf **eine** Stufe
+    zurück (max → xhigh → high) statt gleich auf "high" durchzufallen, und
+    merkt sich das je Modell und Stufe.
+  - Codex kennt oberhalb von `xhigh` nichts — dort bleibt "Max" wirkungsgleich
+    mit "Extra High". Claude Code läuft in beiden Fällen gegen die
+    Ultrathink-Obergrenze.
+
+### Geändert
+- Die Zuordnung der Denkstufen lag als Kopie an drei Stellen und liegt jetzt
+  zentral (`agent/app/config.py:reasoning_fuer`). Beim Ergänzen einer Stufe
+  liess sich vorher leicht eine davon übersehen; eine Prüfstufe wacht darüber.
+
+---
+
 ## [1.312.0] - 2026-09-04
 
 ### Behoben

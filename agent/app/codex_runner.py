@@ -202,9 +202,11 @@ class CodexAgentRunner:
         # _run_codex bedient Chat UND Aufgaben, damit gilt sie fuer beide.
         _reasoning = getattr(self, "_reasoning", "") or settings.default_reasoning
         if _reasoning:
-            # Codex calls the extremes differently: no thinking is "minimal",
-            # the top level is "xhigh".
-            effort = {"off": "minimal", "max": "xhigh"}.get(_reasoning, _reasoning)
+            # Codex benennt die Extreme anders (kein Denken = "minimal") und
+            # kennt oberhalb von "xhigh" nichts. Die Zuordnung liegt zentral in
+            # config.reasoning_fuer.
+            from app.config import reasoning_fuer
+            effort = reasoning_fuer("codex", _reasoning)
             common += ["-c", f'model_reasoning_effort="{effort}"']
         if resume:
             cmd = ["codex", "exec", "resume"] + common + ["--last", "-"]

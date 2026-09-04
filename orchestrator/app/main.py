@@ -734,6 +734,48 @@ async def _init_db_from_models() -> None:
     except Exception as e:
         logger.warning(f"Could not ensure second_brains git columns: {e}")
 
+    # Denkstufen: "max" bedeutete bis 1.312.x das, was die Anbieter "xhigh"
+    # nennen. Seit 1.313.0 gibt es BEIDE Stufen getrennt, weil die GPT-5.6-Familie
+    # oberhalb von xhigh noch ein echtes "max" kennt (am Endpunkt geprueft).
+    # Bestandswerte muessen deshalb einmalig auf "xhigh" umgeschrieben werden —
+    # sonst landet jeder, der frueher die hoechste Stufe gewaehlt hat, ungefragt
+    # auf der neuen, teureren.
+    #
+    # NUR EINMAL: Ohne die Marke liefe das bei jedem Start und niemand koennte
+    # "max" jemals einstellen — die Einstellung waere beim naechsten Neustart weg.
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(_sql_text(
+                "CREATE TABLE IF NOT EXISTS platform_settings ("
+                " key varchar PRIMARY KEY, value text NOT NULL DEFAULT '',"
+                " is_secret boolean DEFAULT false)"
+            ))
+            _marke = (await conn.execute(_sql_text(
+                "SELECT value FROM platform_settings WHERE key = 'reasoning_max_split_done'"
+            ))).scalar()
+            if not _marke:
+                _s = await conn.execute(_sql_text(
+                    "UPDATE chat_sessions SET reasoning_level = 'xhigh' "
+                    "WHERE reasoning_level = 'max'"
+                ))
+                _a = await conn.execute(_sql_text(
+                    "UPDATE agents SET config = jsonb_set("
+                    "  config::jsonb, '{default_reasoning}', '\"xhigh\"'::jsonb, true"
+                    ")::json WHERE config->>'default_reasoning' = 'max'"
+                ))
+                await conn.execute(_sql_text(
+                    "INSERT INTO platform_settings (key, value) "
+                    "VALUES ('reasoning_max_split_done', '1') "
+                    "ON CONFLICT (key) DO NOTHING"
+                ))
+                logger.info(
+                    "Denkstufen getrennt: %s Gespraeche und %s Agenten von 'max' "
+                    "auf 'xhigh' umgeschrieben (unveraenderte Bedeutung)",
+                    _s.rowcount, _a.rowcount,
+                )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Konnte Denkstufen nicht trennen: %s", e)
+
     # Agent clone origin: distributed copies of a "trained" source agent track it
     # via agents.source_agent_id. Ensure idempotently (create_all never ALTERs).
     try:

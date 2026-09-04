@@ -17,7 +17,12 @@ from app.models.base import Base, TimestampMixin
 # The only reasoning levels that may ever be stored or forwarded to an agent.
 # Single source of truth — ws.py (per-message whitelist) and agents.py (PATCH
 # validation) import this so the two gates can't drift apart.
-REASONING_LEVELS = ("off", "low", "medium", "high", "max")
+# "xhigh" und "max" sind ZWEI Stufen, nicht eine: Die GPT-5.6-Familie kennt
+# oberhalb von xhigh noch max (am Endpunkt geprueft, alle drei Modelle nehmen es
+# an). Vor 1.313.0 hiess die oberste Stufe "max" und MEINTE xhigh — bestehende
+# Einstellungen werden deshalb einmalig auf "xhigh" umgeschrieben, sonst waeren
+# alle Nutzer ungefragt auf der neuen, teureren Stufe gelandet.
+REASONING_LEVELS = ("off", "low", "medium", "high", "xhigh", "max")
 
 
 class ChatSession(Base, TimestampMixin):

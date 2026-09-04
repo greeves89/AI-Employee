@@ -1485,7 +1485,7 @@ async def update_agent_default_reasoning(
     delegierte Auftraege, Agent-zu-Agent-Nachrichten und Chats ohne gewaehlte
     Stufe; eine im Chat gewaehlte Stufe gewinnt weiterhin).
 
-    Body: {"default_reasoning": "off"|"low"|"medium"|"high"|"max"|""|null}
+    Body: {"default_reasoning": "off"|"low"|"medium"|"high"|"xhigh"|"max"|""|null}
     ""/null → Auto (die Laufzeit entscheidet, wie bisher).
 
     Wirkung: der Wert faehrt als DEFAULT_REASONING in den Container und

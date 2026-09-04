@@ -128,7 +128,32 @@ def get_oauth_token() -> str:
 # Denk-Budget je Stufe fuer Claude (MAX_THINKING_TOKENS) — Chat UND Aufgaben
 # nutzen dieselbe Tabelle. "max" ist bewusst ein Alias fuer "high": 31999 ist
 # die Ultrathink-Obergrenze von Claude Code.
-CLAUDE_THINKING_BUDGET = {"low": "4000", "medium": "10000", "high": "31999", "max": "31999"}
+CLAUDE_THINKING_BUDGET = {
+    "low": "4000", "medium": "10000", "high": "31999",
+    # Claude Code hat oberhalb von Ultrathink nichts mehr — beide oberen Stufen
+    # laufen deshalb gegen dieselbe Obergrenze.
+    "xhigh": "31999", "max": "31999",
+}
+
+#: Denkstufen der Oberflaeche, uebersetzt in das, was der jeweilige Harness
+#: versteht. EINE Tabelle statt verstreuter dict-Literale: Die Zuordnung stand
+#: an drei Stellen (hier, codex_runner, llm_chat_handler), und beim Ergaenzen
+#: einer Stufe haette man leicht eine davon uebersehen.
+_STUFEN_LLM = {"off": ""}                          # Rest unveraendert
+_STUFEN_CODEX = {"off": "minimal", "max": "xhigh"}  # Codex kennt "max" nicht
+
+
+def reasoning_fuer(harness: str, level: str) -> str:
+    """Chat-Stufe in die Schreibweise des Harness uebersetzen.
+
+    ``harness``: "codex" fuer die Codex-Kommandozeile, sonst der LLM-Weg.
+    Leere Eingabe bleibt leer — das heisst "nichts erzwingen".
+    """
+    level = (level or "").strip().lower()
+    if not level:
+        return ""
+    tabelle = _STUFEN_CODEX if harness == "codex" else _STUFEN_LLM
+    return tabelle.get(level, level)
 
 
 def llm_default_reasoning_effort() -> str:
@@ -137,10 +162,10 @@ def llm_default_reasoning_effort() -> str:
     Die Standard-Denktiefe des Agenten (default_reasoning, Chat-Stufennamen)
     gewinnt vor dem Provider-Feinknopf llm_reasoning_effort — sie ist die
     Einstellung, die der Besitzer sichtbar am Agenten gesetzt hat. Namen werden
-    uebersetzt: "off" -> "" (API-Standard ohne Denken), "max" -> "xhigh".
+    uebersetzt ueber ``reasoning_fuer`` ("off" -> "" = API-Standard ohne Denken).
     """
     level = (settings.default_reasoning or "").strip().lower()
     if level:
-        return {"off": "", "max": "xhigh"}.get(level, level)
+        return reasoning_fuer("llm", level)
     return settings.llm_reasoning_effort
 

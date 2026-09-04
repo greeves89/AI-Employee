@@ -29,7 +29,11 @@ class LlmEffortFallbackTests(unittest.TestCase):
 
     def test_chat_level_names_are_translated_for_openai(self):
         with patch.object(settings, "llm_reasoning_effort", "low"):
+            # Seit der Trennung von xhigh und max geht "max" als "max" raus —
+            # die Stufe war vorher gar nicht erreichbar.
             with patch.object(settings, "default_reasoning", "max"):
+                self.assertEqual(llm_default_reasoning_effort(), "max")
+            with patch.object(settings, "default_reasoning", "xhigh"):
                 self.assertEqual(llm_default_reasoning_effort(), "xhigh")
             with patch.object(settings, "default_reasoning", "off"):
                 # "off" heisst: ausdruecklich OHNE Denken — nicht auf den

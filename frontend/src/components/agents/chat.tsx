@@ -32,18 +32,20 @@ import { useSimpleMode } from "@/hooks/use-simple-mode";
  *  agent's harness is configured with; the rest is an explicit override that is
  *  persisted per chat session. `short` is what's shown next to the icon once a
  *  level is picked. */
-type ReasoningLevel = "" | "off" | "low" | "medium" | "high" | "max";
+type ReasoningLevel = "" | "off" | "low" | "medium" | "high" | "xhigh" | "max";
 
-// ChatGPT-nahe Bezeichnungen (Wunsch Christian): Low / Medium / High / Extra
-// High statt deutscher Prosa. Der Wert bleibt intern gleich (off/low/medium/
-// high/max); "max" wird serverseitig zu "xhigh" bzw. auf "high" geclampt.
+// Bezeichnungen wie bei den Anbietern: Low / Medium / High / Extra High / Max
+// statt deutscher Prosa. "xhigh" und "max" sind ZWEI Stufen — die GPT-5.6-Familie
+// kennt oberhalb von xhigh noch max (am Endpunkt geprueft). Kennt ein Modell die
+// gewaehlte Stufe nicht, faellt der Provider eine Stufe tiefer zurueck.
 const REASONING_OPTIONS: { value: ReasoningLevel; label: string; short: string }[] = [
   { value: "", label: "Auto", short: "auto" },
   { value: "off", label: "Minimal", short: "min" },
   { value: "low", label: "Low", short: "low" },
   { value: "medium", label: "Medium", short: "med" },
   { value: "high", label: "High", short: "high" },
-  { value: "max", label: "Extra High", short: "xhigh" },
+  { value: "xhigh", label: "Extra High", short: "xhigh" },
+  { value: "max", label: "Max", short: "max" },
 ];
 
 /** Stored levels come from the DB — anything unknown falls back to Auto so the

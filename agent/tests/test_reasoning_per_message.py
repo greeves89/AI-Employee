@@ -129,12 +129,12 @@ class OpenAIProviderReasoningTests(unittest.TestCase):
         from app.providers import openai_provider as op
         p = self._provider(model="gpt-5.5")
         p.reasoning_effort = "xhigh"
-        op._XHIGH_ABGELEHNT.add("gpt-5.5")
+        op._STUFE_ABGELEHNT.add(("gpt-5.5", "xhigh"))
         try:
             self.assertEqual(p._build_responses_body([], None).get("reasoning"),
                              {"effort": "high"})
         finally:
-            op._XHIGH_ABGELEHNT.discard("gpt-5.5")
+            op._STUFE_ABGELEHNT.discard(("gpt-5.5", "xhigh"))
 
 
 class WsWhitelistTests(unittest.TestCase):

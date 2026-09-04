@@ -18,8 +18,12 @@ ORCH = REPO / "orchestrator"
 
 class LevelsTests(unittest.TestCase):
     def test_the_canonical_levels(self):
-        """Genau diese fuenf — „max" kam mit v1.234.0 dazu."""
-        self.assertEqual(REASONING_LEVELS, ("off", "low", "medium", "high", "max"))
+        """Genau diese sechs. „max" kam mit v1.234.0 dazu und MEINTE bis
+        1.312.x das, was die Anbieter „xhigh" nennen; seit 1.313.0 sind es zwei
+        getrennte Stufen, weil die GPT-5.6-Familie oberhalb von xhigh noch ein
+        echtes „max" kennt."""
+        self.assertEqual(REASONING_LEVELS,
+                         ("off", "low", "medium", "high", "xhigh", "max"))
 
     def test_ws_whitelist_uses_the_shared_constant(self):
         """Die Whitelist in ws.py war frueher ein eigenes Tuple — genau so ging
