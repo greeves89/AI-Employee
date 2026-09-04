@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.311.0] - 2026-09-04
+
+### Behoben
+- **Gespräche der Handy-App vermischten sich.** Der Wegweiser für eingehende
+  Nachrichten gab für die Handy-App nur den Kanalnamen zurück, ohne die
+  Sitzung. Alle Gespräche eines Geräts landeten damit beim selben Bearbeiter —
+  und der hält den Gesprächsverlauf. Wer zwischen zwei Chats wechselte, bekam
+  den Verlauf des anderen mit. Historisch war das richtig: Als der Wegweiser
+  entstand, hatte die App genau ein Gespräch. Sie verwaltet längst Sitzungen und
+  sendet die Kennung auch mit, hier wurde sie nur verworfen.
+  - Wirksam beim nächsten Neuerstellen eines Agenten.
+  - Einmalig verlieren laufende Gespräche der Handy-App ihren Faden, weil der
+    gespeicherte Verweis nun je Sitzung abgelegt wird.
+- **Antwort stand über der Frage, die sie beantwortet.** Ruft jemand mitten in
+  einen laufenden Zug hinein (Zwischenruf), wuchs die Antwort weiter in der
+  Blase oberhalb seiner Nachricht — sichtbar war eine Antwort über der Frage.
+  Jetzt wird die laufende Blase abgeschlossen und unterhalb des Zwischenrufs
+  eine neue begonnen. Betraf nur die Live-Ansicht; gespeichert war die
+  Reihenfolge immer korrekt, nach dem Neuladen stimmte sie.
+
+---
+
 ## [1.310.0] - 2026-09-03
 
 ### Behoben

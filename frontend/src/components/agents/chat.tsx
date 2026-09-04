@@ -1041,9 +1041,36 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
 
     setMessages((prev) => {
       const msgs = [...prev];
-      let assistantIdx = msgs.findIndex(
-        (m) => (m.id === `response-${message_id}` || m.id === message_id) && m.role === "assistant"
-      );
+      // Ein Zug kann MEHRERE Blasen haben: Ruft der Nutzer mitten hinein
+      // (Live-Steering), wird die laufende Blase abgeschlossen und unterhalb
+      // seiner Nachricht eine neue begonnen. Deshalb die LETZTE Blase dieses
+      // Zuges suchen, nicht die erste.
+      const gehoertZumZug = (m: ChatMessage) =>
+        m.role === "assistant" &&
+        (m.id === `response-${message_id}` ||
+          m.id === message_id ||
+          m.id.startsWith(`response-${message_id}#`));
+
+      let assistantIdx = -1;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (gehoertZumZug(msgs[i])) {
+          assistantIdx = i;
+          break;
+        }
+      }
+
+      // Kam seit dem letzten Schreiben eine Nutzernachricht dazu, waechst die
+      // Antwort sonst OBERHALB der Frage weiter, auf die sie gerade antwortet:
+      // Der Nutzer sieht seinen Zwischenruf unter einer Antwort stehen, die
+      // ihn schon beantwortet. Genau so gemeldet. Also hier abschliessen und
+      // unten neu ansetzen.
+      if (
+        assistantIdx !== -1 &&
+        msgs.slice(assistantIdx + 1).some((m) => m.role === "user")
+      ) {
+        msgs[assistantIdx] = { ...msgs[assistantIdx], isStreaming: false };
+        assistantIdx = -1;
+      }
 
       // Create assistant message if it doesn't exist yet
       if (assistantIdx === -1 && (type === "text" || type === "tool_call" || type === "tool_result" || type === "image" || type === "file")) {
@@ -1053,8 +1080,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         msgs.length = 0;
         msgs.push(...withoutQueued);
 
+        // Fortsetzungen bekommen eine eigene Kennung, damit die vorige Blase
+        // erhalten bleibt statt ueberschrieben zu werden.
+        const bisher = msgs.filter(gehoertZumZug).length;
         msgs.push({
-          id: `response-${message_id}`,
+          id: bisher === 0 ? `response-${message_id}` : `response-${message_id}#${bisher}`,
           agentId,
           role: "assistant",
           content: "",

@@ -382,7 +382,13 @@ class ChatConsumer:
         if telegram_ctx:
             return f"telegram:{telegram_ctx.get('chat_id', 'unknown')}"
         if source in ("ios", "iphone", "ipad"):
-            return "ios"
+            # Frueher hatte die Handy-App genau EIN Gespraech, da genuegte der
+            # Kanalname. Inzwischen verwaltet sie Sitzungen wie die Weboberflaeche
+            # — ohne die Sitzung im Schluessel teilten sich ALLE Gespraeche eines
+            # Handys einen Handler und damit einen Verlauf: Wer zwischen zwei
+            # Chats wechselte, bekam sie vermischt. Die App sendet die Sitzung
+            # laengst mit, hier wurde sie nur weggeworfen.
+            return f"ios:{chat_session_id or 'default'}"
         if source in ("webapp_voice", "voice"):
             return f"voice:{chat_session_id or 'default'}"
         if source == "scheduler":
