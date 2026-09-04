@@ -152,6 +152,10 @@ def _start_combined_mcp(port: int) -> bool:
         with socket.socket() as s:
             s.settimeout(0.2)
             if s.connect_ex(("127.0.0.1", port)) == 0:
+                # Der Codex-Pfad schreibt seine eigene Konfiguration und kann
+                # nicht sehen, ob der Start hier geklappt hat. Nur wenn der Port
+                # wirklich antwortet, darf er auf HTTP-Adressen umstellen.
+                os.environ["MCP_HTTP_ACTIVE"] = "1"
                 print(f"[Agent] MCP-Server gemeinsam auf 127.0.0.1:{port}")
                 return True
         _t.sleep(0.1)
@@ -722,6 +726,15 @@ async def main() -> None:
     elif mode == "codex_cli":
         setup_github_credentials()
         setup_codex_auth()
+        # Ein Prozess statt elf, auch fuer Codex (#638 Phase 3). Ohne
+        # MCP_HTTP_PORT und bei jedem Fehlschlag bleibt es bei den bisherigen
+        # stdio-Prozessen, die codex_runner selbst startet.
+        try:
+            _codex_port = int(os.environ.get("MCP_HTTP_PORT") or 0)
+        except ValueError:
+            _codex_port = 0
+        if _codex_port:
+            _start_combined_mcp(_codex_port)
         print(f"[Agent {agent_id}] Codex CLI mode configured")
     else:
         # Claude Code mode: full setup (MCP servers, credentials, etc.)

@@ -443,6 +443,64 @@ def _codex_env() -> dict[str, str]:
 
 _SAFE_MCP_NAME_RE = __import__("re").compile(r"^[A-Za-z0-9_]+$")
 
+# Abschnittsname in der config.toml -> Pfad im gemeinsamen MCP-Prozess (#638).
+# Die beiden Namen sind NICHT dieselben: der Abschnittsname ist zugleich das
+# Praefix, das der Agent vor jedem Werkzeug sieht (``read_logs`` bleibt also
+# ``read_logs``), waehrend _all.mjs nur Kleinbuchstaben und Bindestriche als
+# Route zulaesst. Wer hier den Abschnittsnamen anfasst, benennt fuer den Agenten
+# jedes Werkzeug um.
+_MCP_HTTP_ROUTEN = {
+    "brain": "brain",
+    "skill": "skills",
+    "memory": "memory",
+    "notification": "notifications",
+    "orchestrator": "orchestrator",
+    "desktop": "desktop",
+    "read_logs": "read-logs",
+    "email": "email",
+    "hyperframes": "hyperframes",
+    # msgraph meldet _all.mjs nur bei MSGRAPH_ENABLED=true an. Diese Bedingung
+    # wird hier NICHT nachgebaut — welche Route es gibt, sagt der Prozess selbst.
+    "msgraph": "msgraph",
+}
+
+
+def _mcp_http_angebot(env: dict) -> tuple[int, set[str]]:
+    """Port und die Routen, die der gemeinsame Prozess GERADE JETZT anbietet.
+
+    Nicht bloss „war beim Hochfahren erreichbar": der Prozess kann seither
+    gestorben sein (bei knappem Speicher der Regelfall, #653), und _all.mjs laedt
+    jeden Server einzeln — ein einzelner fehlgeschlagener Import nimmt genau eine
+    Route weg, ohne dass der Port das merken liesse. Beides endet sonst in einem
+    Abschnitt, der gesund aussieht und beim ersten Werkzeugaufruf ins Leere
+    laeuft. Codex schreibt diese Datei bei jedem Lauf neu, also wird hier bei
+    jedem Lauf neu nachgesehen.
+
+    Leere Menge heisst immer: alles bleibt beim bisherigen stdio-Weg.
+    """
+    if env.get("MCP_HTTP_ACTIVE") != "1":
+        return 0, set()
+    try:
+        port = int(env.get("MCP_HTTP_PORT") or 0)
+    except (TypeError, ValueError):
+        return 0, set()
+    if port <= 0:
+        return 0, set()
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/health", timeout=2
+        ) as antwort:
+            daten = json.loads(antwort.read())
+        return port, {str(n) for n in daten.get("servers") or []}
+    except Exception as fehler:
+        logger.warning(
+            "Gemeinsamer MCP-Prozess auf Port %s antwortet nicht (%s) — "
+            "Codex startet die Server wie bisher einzeln", port, fehler,
+        )
+        return 0, set()
+
 
 def _toml_escape(value: str) -> str:
     """Escape a value for embedding in a TOML double-quoted string."""
@@ -507,12 +565,26 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
     # steht ohne jedes Werkzeug da und kann nur noch reden.
     geschrieben: set[str] = set()
 
+    http_port, http_routen = _mcp_http_angebot(env)
+
     # Stdio built-in servers
     for name, script in builtin_servers.items():
         if not os.path.exists(script):
             continue
         if name == "desktop":
             desktop_mcp_active = True
+        route = _MCP_HTTP_ROUTEN.get(name)
+        if route and route in http_routen:
+            # Der gemeinsame Prozess laeuft bereits im Container und hat die
+            # Umgebung des Agenten geerbt — ein [env]-Block waere hier wirkungslos
+            # und wuerde nur den AGENT_TOKEN ein zweites Mal auf die Platte legen.
+            geschrieben.add(name)
+            lines += [
+                f"[mcp_servers.{name}]",
+                f'url = "http://127.0.0.1:{http_port}/mcp/{route}"',
+                "",
+            ]
+            continue
         # Codex only exposes the env vars declared in this [env] block to the
         # MCP server — it does NOT inherit the agent container's environment.
         # The built-in servers authenticate to the orchestrator with the agent

@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.314.0] - 2026-09-04
+
+### Geändert
+- Agenten in der Codex-Betriebsart brauchen deutlich weniger Speicher. Sie
+  starteten bisher für jedes Werkzeugpaket einen eigenen Hintergrundprozess —
+  gemessen elf Stück mit rund 691 MB, also mehr als das Doppelte des eigentlichen
+  Modellprozesses. Auf Anlagen mit knappem Speicher war das der Grund, warum
+  Aufträge mitten im Lauf abbrachen und warum nur wenige Agenten gleichzeitig
+  arbeiten konnten. Jetzt teilen sie sich einen Prozess (gemessen 82 MB), wie es
+  in der anderen Betriebsart bereits der Fall ist. An den Werkzeugen selbst
+  ändert sich nichts: gleiche Namen, gleiches Verhalten.
+- Der gemeinsame Prozess wird bei jedem Lauf neu befragt, welche Werkzeugpakete
+  er gerade wirklich anbietet. Antwortet er nicht oder fehlt eines, startet der
+  Agent genau dieses wieder einzeln. Ein Agent, der mehr Speicher braucht, ist
+  besser als einer, der wortreich zusagt und dann nichts tun kann, weil seine
+  Werkzeuge ins Leere zeigen.
+
+---
+
 ## [1.313.2] - 2026-09-04
 
 ### Behoben
