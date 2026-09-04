@@ -652,6 +652,49 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         }
         setTaskCards(wiederhergestellt);
 
+        // Die Kacheln stammen aus dem gespeicherten Verlauf und tragen den
+        // Stand von DAMALS. Wurde ein Auftrag seither fertig — oder gibt es ihn
+        // gar nicht mehr —, stand hier bis zum naechsten Live-Ereignis fuer
+        // immer "laeuft noch": Der Nutzer wartet auf einen Agenten, bei dem
+        // nichts mehr passiert, und hat keine Moeglichkeit, das zu erkennen.
+        // Genau so gemeldet. Deshalb den echten Stand einmal nachziehen.
+        const offeneKacheln = Object.values(wiederhergestellt).filter(
+          (k) => k.phase !== "done",
+        );
+        if (offeneKacheln.length > 0) {
+          const erledigt = await Promise.all(
+            offeneKacheln.map(async (k) => {
+              try {
+                const t = await api.getTask(k.task_id);
+                const s = String(t.status || "").toLowerCase();
+                return ["completed", "failed", "cancelled"].includes(s)
+                  ? { id: k.task_id, status: s }
+                  : null;
+              } catch {
+                // Nicht mehr auffindbar — dann gibt es auch nichts, worauf man
+                // noch warten koennte.
+                return { id: k.task_id, status: "cancelled" };
+              }
+            }),
+          );
+          const abzuschliessen = erledigt.filter(
+            (e): e is { id: string; status: string } => e !== null,
+          );
+          if (abzuschliessen.length > 0) {
+            setTaskCards((prev) => {
+              const next = { ...prev };
+              for (const e of abzuschliessen) {
+                // Ein zwischenzeitlich eingetroffenes Live-Ereignis ist frischer
+                // als diese Abfrage und darf nicht ueberschrieben werden.
+                if (next[e.id] && next[e.id].phase !== "done") {
+                  next[e.id] = { ...next[e.id], phase: "done", status: e.status };
+                }
+              }
+              return next;
+            });
+          }
+        }
+
         // Die Kachel-Zeilen selbst gehoeren NICHT in den Nachrichtenstrom — sie
         // haben keinen Text und wurden sonst als leere graue Blasen gezeichnet.
         // Ihr Inhalt steckt in ``meta.task_card`` und wird als Kachel gerendert.

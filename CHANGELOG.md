@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.312.0] - 2026-09-04
+
+### Behoben
+- **"Wartet auf ..." blieb stehen, obwohl der Auftrag längst durch war.** Die
+  Auftrags-Kacheln im Gespräch werden beim Öffnen aus dem gespeicherten Verlauf
+  wiederhergestellt — und trugen damit den Stand von damals. Wurde ein Auftrag
+  danach fertig, abgebrochen oder gelöscht, meldete die Zeile bis zum nächsten
+  Live-Ereignis unverändert "läuft noch": Man wartete auf einen Agenten, bei dem
+  sichtbar nichts mehr passierte, ohne die Möglichkeit, das zu erkennen. Der
+  tatsächliche Stand wird jetzt einmal nachgezogen; ein zwischenzeitlich
+  eingetroffenes Live-Ereignis behält Vorrang.
+
+---
+
 ## [1.311.0] - 2026-09-04
 
 ### Behoben
