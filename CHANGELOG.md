@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.313.2] - 2026-09-04
+
+### Behoben
+- Die Umschreibung der Denkstufen scheiterte weiterhin: In der
+  Einstellungstabelle sind ALLE Spalten pflichtig, ihre Standardwerte liegen nur
+  im Datenmodell, nicht in der Datenbank. Jetzt werden alle gesetzt. Die Stufen
+  blieben bis dahin unverändert — die Umschreibung lief in einer Transaktion.
+
+---
+
 ## [1.313.1] - 2026-09-04
 
 ### Behoben
