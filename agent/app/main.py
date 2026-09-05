@@ -4,6 +4,8 @@ import os
 import re
 import signal
 import subprocess
+import sys
+import threading
 
 from app.config import settings
 from app.health import start_health_server
@@ -117,6 +119,61 @@ def _auth_header_args(name: str, auth: dict, headers: dict) -> list[str]:
     return [f"{k}: {v}" for k, v in _auth_headers_for(name, auth, headers).items()]
 
 
+#: Wie `_LOG_CONTROL_CHARS` in der Log-Schwaerzung des Orchestrators: C0/C1 ohne
+#: Tabulator, dazu U+2028/U+2029, die manche Log-Betrachter als Zeilenumbruch
+#: lesen. CR/LF ersetzt der Aufrufer vorher gesondert — das ist die Schranke,
+#: die CodeQL als Schutz gegen gefaelschte Logzeilen erkennt.
+_LOG_STEUERZEICHEN = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029]")
+
+
+def _log_zeile(text: str) -> str:
+    """Fremden Text so entschaerfen, dass er eine Logzeile nicht faelschen kann."""
+    return _LOG_STEUERZEICHEN.sub(" ", text.replace("\n", " ").replace("\r", " "))
+
+
+def _drain_stderr(proc: subprocess.Popen) -> None:
+    """stderr des langlebigen MCP-Prozesses mitlesen — sonst steht er irgendwann.
+
+    Eine Pipe ohne Leser fasst rund 64 KB. Ist sie voll, blockiert der naechste
+    stderr-Schreibvorgang des node-Prozesses fuer immer — und mit ihm jeder
+    Werkzeugaufruf, den er gerade bedient. Der Agent haengt dann, ohne dass
+    irgendwo ein Fehler auftaucht.
+
+    Weil die Serverdateien zusammen nur rund ein Dutzend `console.error` kennen,
+    faellt das erst nach Stunden Laufzeit auf — oder sofort, wenn ein Fehler in
+    einer Schleife haengt.
+
+    Der Verdacht, der Aufraeumer koenne den Stream nach `return True` schliessen
+    und node an EPIPE sterben lassen, hat sich NACHGEMESSEN NICHT bestaetigt:
+    `Popen.__del__` haengt sich bei noch laufendem Kind in `subprocess._active`
+    und haelt sich damit selbst am Leben (CPython 3.12). Es gibt genau einen
+    Ausfallweg, die volle Pipe — wer hier aufraeumt, sollte nicht die falsche
+    Begruendung widerlegen und den Mitleser fuer entbehrlich halten.
+
+    Nebeneffekt mit Absicht: die Meldungen der MCP-Server landen im Containerlog
+    und sind ueber `read_logs` sichtbar. Bricht der Strom ab, ist das Kind tot —
+    und dieser Thread ist die einzige Stelle, die das ueberhaupt bemerkt.
+    """
+    def _lesen() -> None:
+        try:
+            for zeile in proc.stderr:
+                # Steuerzeichen raus: eine MCP-Meldung, die fremden Text
+                # weiterreicht (Betreff, Webhook-Nutzlast), koennte sonst per
+                # \r oder U+2028 eigene "[Agent] ..."-Zeilen ins Log faelschen.
+                sys.stdout.write(f"[MCP] {_log_zeile(zeile)}\n")
+                sys.stdout.flush()
+        except Exception as e:
+            # Der Thread darf nie hochkommen — aber still sterben auch nicht:
+            # danach liest niemand mehr mit, und der Ausfall waere wieder stumm.
+            print(f"[Agent] WARN: Mitlesen von MCP-stderr abgebrochen: {_log_zeile(str(e))}",
+                  flush=True)
+        else:
+            print(f"[Agent] WARN: gemeinsamer MCP-Prozess beendet (rc={proc.wait()}) — "
+                  "die HTTP-Werkzeuge antworten ab jetzt nicht mehr", flush=True)
+
+    threading.Thread(target=_lesen, name="mcp-stderr", daemon=True).start()
+
+
 def _start_combined_mcp(port: int) -> bool:
     """Die eingebauten MCP-Server in EINEM Prozess hochfahren (#638, Phase 3).
 
@@ -141,22 +198,43 @@ def _start_combined_mcp(port: int) -> bool:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
+        # Ohne `errors` decodiert der Stream streng. EIN ungueltiges Byte auf
+        # stderr — aus einer Bibliothek, einem abgeschnittenen Puffer — wuerde
+        # den Mitleser unten mit UnicodeDecodeError beenden, und die Pipe waere
+        # wieder ohne Leser. Genau der Ausfall, den er verhindern soll.
+        encoding="utf-8",
+        errors="replace",
     )
     # Warten, bis der Port wirklich antwortet. Ohne das registriert Claude Code
     # Adressen, die es noch nicht gibt, und der erste Werkzeugaufruf scheitert.
     for _ in range(50):  # bis 5 Sekunden
         if proc.poll() is not None:
-            fehler = (proc.stderr.read() or "")[-300:] if proc.stderr else ""
+            fehler = _log_zeile((proc.stderr.read() or "")[-300:]) if proc.stderr else ""
             print(f"[Agent] WARN: gemeinsamer MCP-Prozess beendet sich sofort: {fehler}")
             return False
         with socket.socket() as s:
             s.settimeout(0.2)
             if s.connect_ex(("127.0.0.1", port)) == 0:
                 print(f"[Agent] MCP-Server gemeinsam auf 127.0.0.1:{port}")
+                # Erst hier, damit der Fehlerpfad oben `proc.stderr.read()`
+                # ungestoert benutzen kann.
+                _drain_stderr(proc)
                 return True
         _t.sleep(0.1)
-    print("[Agent] WARN: gemeinsamer MCP-Prozess antwortet nicht — nutze Einzelprozesse")
     proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        # Ein ueberlebender node haelt den Port besetzt, waehrend der Aufrufer
+        # auf elf Einzelprozesse zurueckfaellt — also genau die Speicherlast
+        # (#653), die diese Funktion vermeiden soll.
+        proc.kill()
+        proc.wait(timeout=5)
+    # Der Grund, warum er den Port nie geoeffnet hat, steht in der Pipe. Ohne
+    # diese Zeile wird er weggeworfen und die Warnung sagt nichts Brauchbares.
+    fehler = _log_zeile((proc.stderr.read() or "")[-300:]) if proc.stderr else ""
+    print("[Agent] WARN: gemeinsamer MCP-Prozess antwortet nicht — "
+          f"nutze Einzelprozesse: {fehler}")
     return False
 
 

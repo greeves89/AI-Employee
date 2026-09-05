@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.315.1] - 2026-09-05
+
+### Behoben
+- **Ein Agent konnte mitten in der Arbeit stehenbleiben, ohne eine einzige
+  Fehlermeldung.** Die eingebauten Werkzeug-Server laufen in einem gemeinsamen
+  Hintergrundprozess, der so lange lebt wie der Behaelter — seine Fehlerausgabe
+  las jedoch niemand mit. Ein solcher Kanal fasst rund 64 KB; ist er voll,
+  blockiert der Prozess beim naechsten Schreibversuch dauerhaft, und mit ihm der
+  Werkzeugaufruf, den er gerade bedient. Von aussen war das nicht von einem
+  Agenten zu unterscheiden, der einfach nicht mehr antwortet. Ein Mitleser leert
+  den Kanal jetzt und schreibt die Meldungen ins Behaelter-Protokoll, wo sie
+  ueber die Protokollansicht sichtbar werden.
+  - Stirbt der gemeinsame Prozess, wird das jetzt gemeldet. Bisher blieben
+    danach saemtliche Werkzeug-Zugaenge still tot.
+  - Startet er nicht rechtzeitig, wird er zuverlaessig beendet und der Grund
+    aus seiner Fehlerausgabe mit ausgegeben. Bisher belegte ein ueberlebender
+    Prozess den Port weiter, waehrend der Aufrufer auf viele Einzelprozesse
+    zurueckfiel — also genau die Speicherlast, die der gemeinsame Prozess
+    vermeiden soll.
+  - Wirksam beim naechsten Start des Agenten.
+
+---
+
 ## [1.313.2] - 2026-09-04
 
 ### Behoben

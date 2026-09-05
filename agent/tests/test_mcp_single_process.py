@@ -23,8 +23,15 @@ Zwei Dinge, die der Umbau beachten musste:
   Dienst auf demselben Port oeffnen.
 """
 
+import contextlib
+import io
 import os
 import re
+import socket
+import subprocess
+import sys
+import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -131,10 +138,6 @@ class DieUmstellungIstAbschaltbarTests(unittest.TestCase):
         self.assertIn("proc.poll() is not None", block)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class DieProzessgrenzeSteigtMitTests(unittest.TestCase):
     """Der Punkt, an dem der Umbau ueberhaupt erst wirkt.
 
@@ -236,3 +239,156 @@ class EigeneAdressenDesBetreibersGewinnenTests(unittest.TestCase):
         darf nicht den ganzen Agenten kosten."""
         block = _MAIN.split("_custom_namen = set(", 1)[1][:300]
         self.assertIn("except (ValueError, TypeError)", block)
+
+
+#: Ein Kind, das sich wie der gemeinsame MCP-Prozess verhaelt: es oeffnet den
+#: Port und redet danach viel auf stderr. Die rund 500 KB sind mit Bedacht
+#: gewaehlt — eine Pipe fasst rund 64 KB, das Kind kommt ohne Leser also keine
+#: zehn Prozent weit. Erst wer bis zum Ende durchkommt, legt die Marker-Datei an.
+_KIND = r"""
+import socket, sys
+port = int(sys.argv[1]); marker = sys.argv[2]
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", port)); s.listen(5)
+for _ in range(250):
+    sys.stderr.write("x" * 1999 + "\n")
+sys.stderr.flush()
+open(marker, "w").write("fertig")
+"""
+
+#: Dasselbe, aber die erste Zeile enthaelt ein Byte, das kein gueltiges UTF-8 ist.
+#: Bei strenger Decodierung stirbt der Mitleser genau hier — und ab da liest
+#: wieder niemand mit.
+_KIND_KAPUTTES_BYTE = r"""
+import socket, sys
+port = int(sys.argv[1]); marker = sys.argv[2]
+s = socket.socket()
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("127.0.0.1", port)); s.listen(5)
+sys.stderr.buffer.write(b"\xff\xfe kaputt\n"); sys.stderr.buffer.flush()
+for _ in range(250):
+    sys.stderr.write("x" * 1999 + "\n")
+sys.stderr.flush()
+open(marker, "w").write("fertig")
+"""
+
+
+class StderrDarfNichtVollaufenTests(unittest.TestCase):
+    """Der gemeinsame MCP-Prozess laeuft mit `stderr=PIPE` und lebt so lange wie
+    der Container. Las niemand mit, lief die Pipe voll: sie fasst rund 64 KB, und
+    voll heisst, der naechste stderr-Schreibvorgang von node blockiert fuer immer
+    — mit ihm der Werkzeugaufruf, den er gerade bedient. Der Agent haengt, ohne
+    dass irgendwo ein Fehler auftaucht.
+
+    Nicht bestaetigt hat sich der naheliegende zweite Verdacht, `proc` sei als
+    lokale Variable nach `return True` weggeraeumt worden und node an EPIPE
+    gestorben: `Popen.__del__` traegt ein noch laufendes Kind in
+    `subprocess._active` ein und haelt sich selbst am Leben (nachgemessen auf
+    CPython 3.12). Steht hier, damit es niemand ein zweites Mal vermutet.
+
+    Diese Tests pruefen Verhalten, nicht Wortlaut: ohne Mitleser kommt das Kind
+    nie bis zu seiner Marker-Datei.
+    """
+
+    def setUp(self):
+        self._kinder = []
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.addCleanup(self._aufraeumen)
+
+    def _aufraeumen(self):
+        for p in self._kinder:
+            try:
+                p.kill()
+                p.wait(timeout=5)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _freier_port() -> int:
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+
+    def _lauf(self, quelle: str):
+        """Startet `_start_combined_mcp` gegen ein Ersatzkind und wartet auf die
+        Marker-Datei. Gibt (Marker-Pfad, mitgelesene Ausgabe) zurueck."""
+        from app import main as app_main
+
+        port = self._freier_port()
+        marker = Path(self._tmp.name) / "fertig.txt"
+        echtes_popen = subprocess.Popen
+
+        def fake_popen(argv, **kwargs):
+            p = echtes_popen(
+                [sys.executable, "-c", quelle, str(port), str(marker)], **kwargs
+            )
+            self._kinder.append(p)
+            return p
+
+        mitgelesen = io.StringIO()
+        original = app_main.subprocess.Popen
+        app_main.subprocess.Popen = fake_popen
+        try:
+            with contextlib.redirect_stdout(mitgelesen):
+                self.assertTrue(
+                    app_main._start_combined_mcp(port),
+                    "Der Port wurde nicht als offen erkannt — Test ist nicht "
+                    "aussagekraeftig (fremder Lauscher auf dem Port?).",
+                )
+                frist = time.time() + 20
+                while time.time() < frist and not marker.exists():
+                    time.sleep(0.05)
+        finally:
+            app_main.subprocess.Popen = original
+        return marker, mitgelesen.getvalue()
+
+    def test_das_kind_kommt_durch_obwohl_es_viel_auf_stderr_schreibt(self):
+        marker, ausgabe = self._lauf(_KIND)
+        self.assertTrue(
+            marker.exists(),
+            "Kind blieb an der vollen stderr-Pipe haengen — der Mitleser fehlt.",
+        )
+        self.assertEqual(self._kinder[0].wait(timeout=5), 0,
+                         "Kind lief nicht sauber zu Ende")
+        self.assertIn("[MCP] ", ausgabe,
+                      "stderr des MCP-Prozesses taucht nirgends im Log auf")
+
+    def test_ein_ungueltiges_byte_beendet_den_mitleser_nicht(self):
+        """Mit strenger Decodierung reisst EIN kaputtes Byte den Thread ab — und
+        danach ist der Zustand wieder der alte, nur schwerer zu finden, weil ein
+        Teil der Meldungen vorher noch ankam."""
+        marker, _ = self._lauf(_KIND_KAPUTTES_BYTE)
+        self.assertTrue(
+            marker.exists(),
+            "Ein ungueltiges Byte hat den Mitleser beendet — die Pipe lief voll.",
+        )
+
+
+class FremderTextDarfKeineLogzeileFaelschenTests(unittest.TestCase):
+    """Die MCP-Server geben Text weiter, den sie von aussen bekommen haben — einen
+    Mailbetreff, eine Webhook-Nutzlast. Landet der roh im Log, kann er mit einem
+    Zeilenumbruch eine eigene, erfundene "[Agent] ..."-Zeile setzen. Wer das Log
+    spaeter liest, kann echte und erfundene Zeilen nicht mehr unterscheiden.
+    """
+
+    def test_zeilenumbrueche_kommen_nicht_durch(self):
+        from app.main import _log_zeile
+
+        boese = "Betreff\r\n[Agent] alles in Ordnung\u2028[Agent] wirklich"
+        sauber = _log_zeile(boese)
+        for zeichen in ("\n", "\r", "\u2028", "\u2029"):
+            self.assertNotIn(zeichen, sauber)
+        self.assertIn("Betreff", sauber)
+
+    def test_tabulator_bleibt_erhalten(self):
+        """Tabulatoren gliedern Stacktraces — sie zu schlucken kostet Lesbarkeit,
+        ohne etwas zu gewinnen."""
+        from app.main import _log_zeile
+
+        self.assertEqual(_log_zeile("a\tb"), "a\tb")
+
+
+if __name__ == "__main__":
+    unittest.main()
