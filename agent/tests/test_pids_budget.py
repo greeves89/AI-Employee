@@ -13,8 +13,10 @@ Kommentar oder eine Datei existierte.
 import unittest
 
 from app.pids_budget import (
+    COST_PER_RUN_GEMEINSAM,
     DEFAULT_COST_PER_RUN,
     DEFAULT_RESERVE,
+    RESERVE_GEMEINSAMER_MCP,
     FALLBACK_MAX_CONCURRENT,
     exhaustion_message,
     find_fork_exhaustion,
@@ -23,6 +25,23 @@ from app.pids_budget import (
 
 
 class TheBudgetIsMeasuredNotGuessedTests(unittest.TestCase):
+    """Die Zahlen hier gelten fuer EINZELN laufende MCP-Server.
+
+    Ohne das Pinnen unten liest ``max_concurrent_runs`` ``MCP_HTTP_PORT`` aus der
+    Umgebung des Testlaufs. Im Agent-Container ist die Variable gesetzt, also
+    rechnet die Funktion mit 8 statt 88 Threads und liefert 47 statt 4 — auf dem
+    CI-Runner, wo sie fehlt, bleibt derselbe Test gruen. Ein Test, dessen
+    Ergebnis davon abhaengt, WO er laeuft, misst nicht den Code.
+    """
+
+    def setUp(self):
+        import os
+        from unittest import mock
+
+        patcher = mock.patch.dict(os.environ, {"MCP_HTTP_PORT": "0"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_the_measured_container_allows_four_runs(self):
         """(512-120)/88 = 4,45 -> 4. Nicht die 5, bei denen es riss.
 
@@ -48,6 +67,22 @@ class TheBudgetIsMeasuredNotGuessedTests(unittest.TestCase):
     def test_the_defaults_are_the_measured_ones(self):
         self.assertEqual(DEFAULT_RESERVE, 120)
         self.assertEqual(DEFAULT_COST_PER_RUN, 88)
+
+    def test_gemeinsame_server_machen_aus_vier_laeufen_siebenundvierzig(self):
+        """Der Sprung, um den es bei #638 ging — und der Grund fuer das Pinnen.
+
+        Laufen die eingebauten Server in EINEM Prozess, gehoeren sie zur
+        Grundlast statt zu jedem Lauf: (512-130)/8 = 47.
+        """
+        import os
+        from unittest import mock
+
+        with mock.patch.dict(os.environ, {"MCP_HTTP_PORT": "8790"}):
+            self.assertEqual(max_concurrent_runs(512), 47)
+        self.assertEqual(
+            (512 - DEFAULT_RESERVE - RESERVE_GEMEINSAMER_MCP) // COST_PER_RUN_GEMEINSAM,
+            47,
+        )
 
     def test_an_unreadable_limit_falls_back_instead_of_crashing(self):
         """Kein Linux, cgroup v1 ohne die Datei, keine Rechte — alles moeglich."""

@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.316.1] - 2026-09-05
+
+### Behoben
+- Zwei Tests des pids-Budgets schlugen im Agent-Container fehl, waehrend
+  dieselben Tests auf dem CI-Runner gruen blieben. Sie lasen `MCP_HTTP_PORT`
+  aus der Umgebung des Testlaufs mit: ist die Variable gesetzt, rechnet das
+  Budget mit gemeinsam laufenden MCP-Servern (8 statt 88 Threads pro Lauf) und
+  liefert 47 statt 4 gleichzeitige Laeufe. Wer die Testsuite im Container
+  laufen liess, sah zwei rote Tests und suchte den Fehler im eigenen Zweig.
+  Die Tests pinnen die Variable jetzt; der gemeinsame Modus hat eine eigene
+  Probe bekommen, damit die 47 belegt statt ueberraschend ist.
+
+---
+
 ## [1.313.2] - 2026-09-04
 
 ### Behoben
