@@ -49,7 +49,31 @@ def _chat_image_parts(images: list[dict]) -> list[dict]:
 # Model-name substrings that require the Responses API instead of
 # Chat Completions. The GPT-5.x family ("gpt-5", "gpt-5.4", "gpt-5.4-mini",
 # Azure deployments named accordingly) is served via /responses.
-_RESPONSES_API_PATTERNS = ("codex", "gpt-5", "gpt5")
+#
+# Eine Namensliste veraltet mit jedem neuen Modell — am 06.09.2026 fehlte
+# "gpt-6": Das Modell landete auf /chat/completions und antwortete dort mit 400
+# ("Function tools with reasoning_effort are not supported ... use /v1/responses").
+# Deshalb ist die Liste nur noch der SCHNELLE Weg; der sichere ist die
+# Laufzeit-Erkennung unten, die genau diese Antwort liest.
+_RESPONSES_API_PATTERNS = ("codex", "gpt-5", "gpt5", "gpt-6", "gpt6")
+
+#: Modelle, die zur Laufzeit selbst gesagt haben, dass sie ueber /v1/responses
+#: bedient werden wollen. Prozessweit, wie die anderen Merklisten hier.
+_BRAUCHT_RESPONSES: set[str] = set()
+
+
+class _ResponsesWegNoetig(Exception):
+    """Der Chat-Weg hat gesagt: dieses Modell gehoert auf /v1/responses."""
+
+
+def _verlangt_responses_weg(error_text: str) -> bool:
+    """Sagt der 400er, dass dieses Modell den Responses-Weg braucht?
+
+    Die Meldung nennt den Weg beim Namen ("use /v1/responses"). Absichtlich
+    eng — ein beliebiger 400 darf kein Modell dauerhaft umleiten.
+    """
+    t = (error_text or "").lower()
+    return "/v1/responses" in t or "use /responses" in t
 
 #: Paare (Modell, Stufe), die nachweislich abgelehnt wurden. Wird zur Laufzeit
 #: gefuellt, nicht gepflegt — eine handgeschriebene Liste war genau das
@@ -101,7 +125,13 @@ class OpenAIProvider(BaseLLMProvider):
         super().__init__(**kwargs)
 
     def _is_responses_model(self) -> bool:
-        """Check if the model requires the Responses API."""
+        """Check if the model requires the Responses API.
+
+        Zuerst das, was das Modell selbst gesagt hat (Laufzeit), dann die
+        Namensliste. So greift die Umleitung auch fuer Modelle, die es beim
+        Schreiben der Liste noch nicht gab."""
+        if self.model_name in _BRAUCHT_RESPONSES:
+            return True
         model_lower = self.model_name.lower()
         return any(p in model_lower for p in _RESPONSES_API_PATTERNS)
 
@@ -531,8 +561,22 @@ class OpenAIProvider(BaseLLMProvider):
         """Stream via the Chat Completions API."""
         body = self._build_chat_body(messages, tools)
         headers = self._headers()
-        async for event in self._stream_chat_with_body(url, headers, body):
-            yield event
+        try:
+            async for event in self._stream_chat_with_body(url, headers, body):
+                yield event
+        except _ResponsesWegNoetig:
+            # Das Modell hat sich gemeldet (siehe _stream_chat_with_body) und ist
+            # jetzt in _BRAUCHT_RESPONSES — _resolve_url waehlt daher den anderen
+            # Weg. Liefert sie trotzdem "chat" (klassisches Azure ohne
+            # Responses-Route), gibt es keinen zweiten Weg: dann nicht im Kreis
+            # laufen, sondern den Fehler wie bisher melden.
+            neue_url, fmt = self._resolve_url()
+            if fmt != "responses":
+                raise
+            logger.info("[OpenAI] %s will /v1/responses — einmalig umgeleitet "
+                        "und ab jetzt gemerkt", self.model_name)
+            async for event in self._stream_responses(neue_url, messages, tools):
+                yield event
 
     async def _stream_chat_with_body(
         self, url: str, headers: dict, body: dict
@@ -563,6 +607,13 @@ class OpenAIProvider(BaseLLMProvider):
                 if response.status_code == 400:
                     error_body = await response.aread()
                     error_text = error_body.decode("utf-8", errors="replace")
+                    # Das Modell verlangt den Responses-Weg (GPT-6-Familie mit
+                    # Werkzeugen). Hier fehlen messages/tools fuer den Neuanlauf,
+                    # also nach oben an _stream_chat melden. Noch kein Ereignis
+                    # geliefert — der Aufrufer kann sauber neu ansetzen.
+                    if _verlangt_responses_weg(error_text):
+                        _BRAUCHT_RESPONSES.add(self.model_name)
+                        raise _ResponsesWegNoetig(error_text)
                     if "stream_options" in error_text:
                         async for event in self._stream_chat_with_body(
                             url, headers, self._without_stream_options(body)

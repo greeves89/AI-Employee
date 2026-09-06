@@ -297,6 +297,7 @@ CONTEXT_WINDOWS: dict[str, int] = {
     "gpt-4": 8_192,
     "gpt-3.5-turbo": 16_385,
     "gpt-5": 1_000_000,
+    "gpt-6": 1_000_000,
     "o1-mini": 128_000,
     "o1": 200_000,
     "o3-mini": 200_000,

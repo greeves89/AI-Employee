@@ -21,6 +21,9 @@ _MODELS: dict[str, tuple[int, float | None, float | None]] = {
     "gpt-4": (8_192, 30.00, 60.00),
     "gpt-3.5-turbo": (16_385, 0.50, 1.50),
     "gpt-5": (1_000_000, 1.25, 10.00),
+    # GPT-6 (Astra, Sol, ...): Fenster wie die 5er-Familie. Preis noch nicht
+    # verifiziert — lieber "unbekannt" als eine erfundene Zahl.
+    "gpt-6": (1_000_000, None, None),
     "o1-mini": (128_000, 3.00, 12.00),
     "o1": (200_000, 15.00, 60.00),
     "o3-mini": (200_000, 1.10, 4.40),

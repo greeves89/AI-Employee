@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.314.0] - 2026-09-06
+
+### Neu
+- **GPT-6-Modelle (Astra, Sol, ...) lassen sich einbinden.** Bisher schlug der
+  erste Aufruf mit Werkzeugen fehl: "Function tools with reasoning_effort are
+  not supported ... use /v1/responses". Die Weiche zwischen den beiden
+  OpenAI-Schnittstellen kannte nur die 5er-Familie und schickte GPT-6 auf den
+  alten Weg — dort denkt das Modell standardmässig, und mit Werkzeugen geht das
+  nur über `/v1/responses`. Jetzt kennt die Weiche GPT-6, und das Kontextfenster
+  (1M) ist hinterlegt, damit die Kompaktierung nicht zu früh greift.
+  - **Zusätzlich liest der Provider die Antwort des Modells:** Verlangt ein
+    Modell den Responses-Weg, wird einmalig umgeleitet und das gemerkt — damit
+    hängt das nächste neue Modell nicht wieder an einer Namensliste.
+  - Offen: Der Listenpreis für GPT-6 ist noch nicht hinterlegt; die
+    Kostenanzeige weist ihn als unbekannt aus statt eine Zahl zu erfinden.
+
+---
+
 ## [1.313.2] - 2026-09-04
 
 ### Behoben
