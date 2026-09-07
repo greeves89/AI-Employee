@@ -11,6 +11,7 @@ from app.loop_detector import LoopDetector
 from app.config import llm_default_reasoning_effort, settings
 from app.log_publisher import LogPublisher
 from app.providers import create_provider
+from app.task_evidence import BOOKKEEPING_TOOLS, UNVERIFIED, verdict as task_verdict
 from app.providers.base import BaseLLMProvider, ChatMessage, LLMEvent, format_exception
 from app.runner_hooks import (
     MULTIMODAL_CAPABILITY_NOTE,
@@ -117,13 +118,9 @@ class LLMRunner:
         return self._context_window
 
     #: Werkzeuge, die zum Abschluss-Ritual gehoeren oder nur den eigenen Kopf
-    #: befragen. Keines davon veraendert etwas an der Aufgabe.
-    _BOOKKEEPING_TOOLS = frozenset({
-        "rate_task", "skill_rate", "memory_save", "memory_search", "memory_list",
-        "memory_delete", "brain_search", "brain_related", "skill_search",
-        "list_todos", "update_todos", "search_tools", "notify_user",
-        "escalate_if_unsure", "request_approval", "check_approval",
-    })
+    #: befragen. Keines davon veraendert etwas an der Aufgabe. Die Liste steht
+    #: in ``task_evidence``, damit Anstupser und Befund nie auseinanderlaufen.
+    _BOOKKEEPING_TOOLS = BOOKKEEPING_TOOLS
 
     @classmethod
     def _did_substantive_work(cls, tools_called: set[str]) -> bool:
@@ -396,6 +393,7 @@ class LLMRunner:
         full_text = ""
         accumulated_tool_calls: list[dict] = []
         tools_called: set[str] = set()      # every tool name used this task
+        tools_failed: set[str] = set()      # davon die, die in einen Fehler liefen
         compliance_nudges = 0               # bounded: nudge missing closing steps once
         empty_turns = 0                     # bounded: retry empty LLM responses, then fail visibly
         loop_detector = LoopDetector()
@@ -603,7 +601,14 @@ class LLMRunner:
                         return_exceptions=True,
                     )
                     for tc, res in zip(concurrent, parallel_results):
-                        results_map[tc["id"]] = str(res) if isinstance(res, Exception) else res
+                        if isinstance(res, Exception):
+                            # Gleich hier festhalten — zwei Zeilen weiter ist aus
+                            # der Ausnahme ein Text geworden und der Ausgang des
+                            # Aufrufs nicht mehr erkennbar (#705).
+                            tools_failed.add(tc["name"])
+                            results_map[tc["id"]] = str(res)
+                        else:
+                            results_map[tc["id"]] = res
 
                 # Run other/write tools sequentially
                 for tc in other_ops + write_ops:
@@ -700,8 +705,25 @@ class LLMRunner:
 
         self.is_running = False
         await report_result_status({"status": "completed"})
+        # Der Anstupser oben (``_compliance_gaps``) FORDERT Nacharbeit, erzwingt
+        # sie aber nicht: wer ihn ignoriert, landet trotzdem hier. Der Befund
+        # haelt deshalb fest, was am Ende tatsaechlich vorlag (#705).
+        #
+        # Schwaechere Beweisstufe als im Claude-Code-Pfad: erkennbar sind nur
+        # Aufrufe, die als Ausnahme zurueckkamen. Ein Werkzeug, das brav einen
+        # Fehlertext LIEFERT, zaehlt hier noch als gelaufen.
+        befund = task_verdict(
+            status="completed",
+            succeeded=tools_called - tools_failed,
+            failed=tools_failed,
+            lightweight=lightweight,
+        )
+        if befund["verdict"] == UNVERIFIED:
+            logger.warning("Task %s: %s", task_id, befund["reason"])
         return {
             "status": "completed",
+            "evidence": befund,
+            "verified": befund["verified"],
             "result": full_text,
             "duration_ms": duration_ms,
             "num_turns": num_turns,

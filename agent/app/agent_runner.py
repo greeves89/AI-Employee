@@ -9,6 +9,7 @@ from app.config import get_oauth_token, settings
 from app.ai_credential_status import is_auth_error, report_result_status
 from app.log_publisher import LogPublisher
 from app.pids_budget import exhaustion_message, find_fork_exhaustion
+from app.task_evidence import UNVERIFIED, EvidenceLedger
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
     compose_prompt_bundle,
@@ -134,6 +135,9 @@ class AgentRunner:
         # Belegzeilen fuer ein erschoepftes pids-Budget. Sie entstehen dort, wo ein
         # Werkzeug startet — in stderr des CLI und in den Ergebnissen der Werkzeuge.
         fork_evidence: list[str] = []
+        # Mitschrift dessen, was der Lauf WIRKLICH getan hat (#705). Sie
+        # entscheidet nichts, sie bezeugt nur — der Status bleibt der Status.
+        ledger = EvidenceLedger()
         text_output: list[str] = []
         presented_files: list[dict] = []
         seen_file_paths: set[str] = set()
@@ -174,6 +178,7 @@ class AgentRunner:
                 await self._process_event(task_id, event)
 
                 fork_evidence.extend(self._fork_evidence_from_event(event))
+                self._record_evidence(ledger, event)
 
                 for payload in self._present_file_payloads_from_event(event):
                     path = str(payload.get("path") or "")
@@ -238,6 +243,17 @@ class AgentRunner:
                     "result": result_data.get("result", ""),
                 }
                 await self.log_publisher.publish(task_id, "error", {"message": reason})
+
+            befund = ledger.verdict(
+                str(result_data.get("status", "unknown")), lightweight=lightweight
+            )
+            result_data["evidence"] = befund
+            result_data["verified"] = befund["verified"]
+            if befund["verdict"] == UNVERIFIED:
+                logger.warning("Task %s: %s", task_id, befund["reason"])
+                await self.log_publisher.publish(
+                    task_id, "system", {"message": f"Ohne Beleg: {befund['reason']}"}
+                )
 
         except asyncio.CancelledError:
             await self.interrupt()
@@ -378,6 +394,31 @@ class AgentRunner:
                 return None
             return payload if isinstance(payload, dict) else None
         return None
+
+    @staticmethod
+    def _record_evidence(ledger: EvidenceLedger, event: dict) -> None:
+        """Werkzeugaufrufe und ihren Ausgang in die Mitschrift eintragen.
+
+        Ergebnisse kommen in zwei Formen zurueck — als eigenes ``tool_result``-
+        Ereignis und als ``user``-Nachricht mit ``tool_result``-Bloecken. Beide
+        Formen muessen hier ankommen, sonst bliebe die Haelfte aller Aufrufe
+        ohne Ausgang und ein arbeitender Lauf staende ohne Beleg da.
+        """
+        typ = event.get("type")
+        if typ == "assistant":
+            for block in event.get("message", {}).get("content", []) or []:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    ledger.record_call(block.get("id"), block.get("name"))
+        elif typ == "tool_result":
+            ledger.record_result(
+                event.get("tool_use_id"), bool(event.get("is_error"))
+            )
+        elif typ == "user":
+            for block in event.get("message", {}).get("content", []) or []:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    ledger.record_result(
+                        block.get("tool_use_id"), bool(block.get("is_error"))
+                    )
 
     @staticmethod
     def _fork_evidence_from_event(event: dict) -> list[str]:

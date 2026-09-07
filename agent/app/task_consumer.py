@@ -201,8 +201,18 @@ class TaskConsumer:
             duration = result_data.get("duration_ms", 0)
             turns = result_data.get("num_turns", 0)
             if status == "completed":
+                # „completed" ist die Selbstauskunft des Laufs. Der Befund
+                # daneben sagt, ob er die Sache angefasst hat (#705) — ohne
+                # Beleg steht das jetzt IM Protokoll statt nirgends.
+                befund = result_data.get("evidence") or {}
+                beleg = "" if befund.get("verified", True) else (
+                    f" — ohne Beleg: {befund.get('reason', 'kein Werkzeug an der Sache')}"
+                )
                 await self._log_publisher.publish(task_id, "system", {
-                    "message": f"Task completed (${cost:.4f}, {duration}ms, {turns} turns)"
+                    "message": (
+                        f"Task completed (${cost:.4f}, {duration}ms, {turns} turns)"
+                        f"{beleg}"
+                    )
                 })
             else:
                 error = result_data.get("error", "Unknown error")[:100]
