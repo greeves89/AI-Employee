@@ -26,6 +26,13 @@ KeyKind = Literal["single", "multi"]
 KEY_SCHEMA: dict[str, KeyKind] = {
     # --- Agent state / identity (single-value) ---
     "current_goal": "single",
+    # "current_task" fehlte hier, obwohl der Reflexions-Prompt es den Agenten seit jeher
+    # als „single-value — auto-supersedes the old one" ankuendigt und der Kopf dieser Datei
+    # „current task" als Musterfall nennt. Unbekannte Schluessel fallen auf "multi" zurueck,
+    # also loeste nie etwas ab: bei einem Agenten im Betrieb lagen am 07.09.2026 1.327
+    # current_task-Zeilen (519 davon aktiv, ueber 205 Raeume) — der mit Abstand groesste
+    # Schluessel seines Gedaechtnisses und ein Treiber des ueberlaufenden Preloads.
+    "current_task": "single",
     "current_task_id": "single",
     "current_mode": "single",
     "assigned_agent_type": "single",
@@ -39,6 +46,11 @@ KEY_SCHEMA: dict[str, KeyKind] = {
     "anti_pattern": "multi",
     "lesson_learned": "multi",
     "decision_rationale": "multi",
+    # Vom Reflexions-Prompt als Mehrfach-Schluessel angekuendigt. Sie standen bisher nur
+    # nicht in der Tabelle und lagen allein durch den "multi"-Rueckfall richtig — was das
+    # Versprechen dieser Datei, einzige Quelle der Wahrheit zu sein, stillschweigend brach.
+    "capability_gained": "multi",
+    "working_pipeline": "multi",
 
     # --- Project context (multi-value) ---
     "touched_file": "multi",

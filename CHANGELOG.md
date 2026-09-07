@@ -23,6 +23,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - **Zugangsdaten bleiben ungekürzt.** Ein abgeschnittener Schlüssel wäre nicht
   etwas weniger Kontext, sondern ein falscher Schlüssel — der Agent hätte sich
   damit angemeldet und über die 401 gerätselt.
+- **`current_task` löste seinen Vorgänger nie ab.** Den Agenten wird seit jeher
+  angesagt, dieser Schlüssel sei einfach belegt und ersetze den alten Wert
+  automatisch — im Schlüsselverzeichnis fehlte er aber, und unbekannte Schlüssel
+  fallen auf „mehrfach" zurück. Statt eines aktuellen Standes je Raum sammelten
+  sich so bei einem Agenten 1.327 Laufprotokoll-Zeilen an, der mit Abstand
+  größte Schlüssel seines Gedächtnisses und ein Treiber ebendieses überlaufenden
+  Preloads. Zusätzlich sind die Schlüssel `capability_gained` und
+  `working_pipeline` jetzt ausdrücklich verzeichnet, statt nur zufällig über den
+  Rückfall richtig zu liegen; ein Test hält Prompt und Verzeichnis künftig
+  zusammen.
 
 ---
 
