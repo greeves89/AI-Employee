@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.315.3] - 2026-09-07
+
+### Behoben
+- **Füllstand überlebt ein Neuladen.** Nach 1.315.2 fiel der Ring beim
+  Neuladen auf die Schätzung zurück, bis der nächste Zug lief — obwohl sich
+  am Kontext des Agenten durch ein Neuladen nichts ändert. Der Server legt den
+  letzten Aufruf jetzt in der Nachrichten-Meta ab, die Oberfläche nimmt beim
+  Laden den jüngsten gespeicherten Stand.
+
+---
+
 ## [1.315.2] - 2026-09-07
 
 ### Behoben

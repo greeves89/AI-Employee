@@ -509,6 +509,12 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                        if edata.get("reasoning_tokens") else {}),
                     **({"cached_tokens": edata["cached_tokens"]}
                        if edata.get("cached_tokens") else {}),
+                    # Fuellstand des Fensters nach diesem Zug (letzter Aufruf,
+                    # nicht die Summe). Gespeichert, damit der Ring nach einem
+                    # Neuladen den Stand zeigt, den der Agent wirklich hat —
+                    # ein Neuladen aendert am Kontext des Agenten nichts.
+                    **({"context_tokens": edata["context_tokens"]}
+                       if edata.get("context_tokens") else {}),
                     **({"cache_write_tokens": edata["cache_write_tokens"]}
                        if edata.get("cache_write_tokens") else {}),
                 }

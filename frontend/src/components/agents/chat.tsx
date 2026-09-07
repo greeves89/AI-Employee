@@ -94,7 +94,7 @@ interface ChatMessage {
   toolCalls?: { tool: string; input: string }[];
   /** Verweist auf eine Auftrags-Kachel; die Zeile wird dann als Kachel gezeichnet. */
   taskCardId?: string;
-  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; presented_files?: ChatFile[]; context_excluded?: boolean; tool_output_excluded?: boolean };
+  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; context_tokens?: number; presented_files?: ChatFile[]; context_excluded?: boolean; tool_output_excluded?: boolean };
   images?: ChatImage[];
   files?: ChatFile[];
 }
@@ -657,10 +657,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         }
         setTaskCards(wiederhergestellt);
 
-        // Kein gespeicherter Wert taugt als Fuellstand (meta.input_tokens ist
-        // die Summe aller Aufrufe eines Zuges). Bis der naechste Zug einen
-        // echten Wert liefert, bleibt es bei der Schaetzung.
-        setLiveContextTokens(null);
+        // Letzter gespeicherter Fuellstand dieser Sitzung (meta.context_tokens,
+        // der letzte Aufruf — NICHT input_tokens, das ist die Summe des Zuges).
+        // Ein Neuladen aendert am Kontext des Agenten nichts, also darf der
+        // Ring danach nicht auf die Schaetzung zurueckfallen.
+        const letzteMitStand = [...history].reverse().find(
+          (m) => (m as { meta?: { context_tokens?: number } }).meta?.context_tokens,
+        ) as { meta?: { context_tokens?: number } } | undefined;
+        setLiveContextTokens(letzteMitStand?.meta?.context_tokens ?? null);
 
         // Die Kacheln stammen aus dem gespeicherten Verlauf und tragen den
         // Stand von DAMALS. Wurde ein Auftrag seither fertig — oder gibt es ihn
