@@ -773,7 +773,13 @@ async def _assert_agent_access(agent_id: str, user, db) -> None:
 async def update_memory(
     memory_id: int,
     body: MemoryUpdate,
-    user=Depends(require_auth),
+    # Gleiche Bug-Klasse wie beim DELETE-Endpunkt darunter: `require_auth` laesst
+    # nur Nutzer-Logins durch, ein Agenten-Token bekam hier immer 401. Damit
+    # konnte ein Agent eine veraltete Erinnerung zwar loeschen, aber nicht
+    # herabstufen/korrigieren (Issue #704) — er musste sie loeschen und neu
+    # anlegen, was den Eintrags-Deckel unnoetig fuellte. `_assert_agent_access`
+    # kennt den Agenten-Fall bereits, er kam nur nie hier an.
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a memory entry (from UI)."""
