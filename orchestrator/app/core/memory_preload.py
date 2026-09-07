@@ -34,19 +34,32 @@ TASK_RELEVANT_LIMIT = 5
 # nur der naechste Eintrag nach. Wirksam ist allein ein Deckel je Eintrag.
 # Der Sprachweg (``as_prompt_block``) kuerzt aus demselben Grund seit jeher auf 300 Zeichen.
 MAX_CONTENT_CHARS = 600
+
+# Zugangsdaten sind vom Deckel ausgenommen — ein abgeschnittener Schluessel ist nicht
+# „etwas weniger Kontext", sondern ein falscher Schluessel. Eine Ausnahme ohne jede Grenze
+# waere aber genau das Loch, das dieser Commit zumacht: ein einziges als "credentials"
+# abgelegtes Dienstkonto-JSON haette den Prompt wieder gesprengt. Darum eine WEITE Grenze,
+# unter der jedes echte Geheimnis bequem bleibt und nur ein ganzes Dokument anschlaegt.
+MAX_CREDENTIAL_CHARS = 4000
+
 _TRUNCATION_MARKER = " […gekuerzt — Volltext via memory_search]"
 
 
-def _clip(content: str | None) -> str:
-    """Auf ``MAX_CONTENT_CHARS`` kuerzen und die Kuerzung sichtbar machen.
+def _clip(content: str | None, limit: int = MAX_CONTENT_CHARS) -> str:
+    """Auf ``limit`` kuerzen und die Kuerzung sichtbar machen.
 
     Der Hinweis ist kein Schmuck: ohne ihn haelt das Modell den abgeschnittenen Text fuer
     die ganze Erinnerung und zieht Schluesse aus einem halben Satz.
     """
     text = str(content or "")
-    if len(text) <= MAX_CONTENT_CHARS:
+    if len(text) <= limit:
         return text
-    return text[: MAX_CONTENT_CHARS - len(_TRUNCATION_MARKER)].rstrip() + _TRUNCATION_MARKER
+    return text[: limit - len(_TRUNCATION_MARKER)].rstrip() + _TRUNCATION_MARKER
+
+
+def _clip_for(category: str | None, content: str | None) -> str:
+    limit = MAX_CREDENTIAL_CHARS if category in CREDENTIAL_CATEGORIES else MAX_CONTENT_CHARS
+    return _clip(content, limit)
 
 
 def _rank_task_relevant(rows: list[dict], seen: set[int], *, query_room: str | None,
@@ -81,7 +94,7 @@ def _rank_task_relevant(rows: list[dict], seen: set[int], *, query_room: str | N
         out.append({
             "key": r["key"],
             "category": r["category"],
-            "content": r["content"] if r["category"] in CREDENTIAL_CATEGORIES else _clip(r["content"]),
+            "content": _clip_for(r["category"], r["content"]),
             "importance": r["importance"],
             "room": r.get("room"),
             "score": round(score, 4),
@@ -142,7 +155,16 @@ async def collect_preload(
     async def _rows(stmt):
         return list((await db.execute(stmt)).scalars().all())
 
-    base = select(AgentMemory).where(AgentMemory.agent_id == agent_id)
+    # ``superseded_by IS NULL`` ist hier nicht Kosmetik, sondern notwendig: eine Zeile
+    # abzuloesen SETZT ``superseded_by`` per ORM — und weil ``updated_at`` ein ``onupdate``
+    # hat, bekommt die tote Zeile dabei einen frischen Zeitstempel und rutscht in einer
+    # Sortierung nach ``updated_at DESC`` ganz nach OBEN. Ohne diesen Filter verdraengt
+    # also ausgerechnet der ueberholte Stand den gueltigen. Die semantische Abfrage in
+    # ``_task_relevant_rows`` filtert das laengst — der statische Teil zog nur nie nach.
+    base = select(AgentMemory).where(
+        AgentMemory.agent_id == agent_id,
+        AgentMemory.superseded_by.is_(None),
+    )
 
     # Kritisch (5) ohne Kompromiss, wichtig (4) die 20 juengsten.
     high_imp = await _rows(
@@ -171,9 +193,7 @@ async def collect_preload(
             out.append({
                 "key": m.key,
                 "category": m.category,
-                # Zugangsdaten NIE kuerzen: ein abgeschnittener Schluessel ist nicht
-                # „etwas weniger Kontext", sondern ein falscher Schluessel.
-                "content": m.content if m.category in CREDENTIAL_CATEGORIES else _clip(m.content),
+                "content": _clip_for(m.category, m.content),
                 "importance": m.importance,
             })
         return out

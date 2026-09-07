@@ -12,6 +12,7 @@ import pytest
 
 from app.core.memory_preload import (
     MAX_CONTENT_CHARS,
+    MAX_CREDENTIAL_CHARS,
     _clip,
     collect_preload,
 )
@@ -69,13 +70,60 @@ async def test_recent_learnings_are_clipped():
 
 
 @pytest.mark.asyncio
-async def test_credentials_are_never_clipped():
+@pytest.mark.parametrize("category", ["credentials", "api_key", "secret", "auth"])
+async def test_credentials_are_not_clipped_at_the_normal_cap(category):
     # Ein abgeschnittener Schluessel ist nicht weniger Kontext, sondern ein falscher
     # Schluessel — der Agent wuerde sich damit anmelden und raetseln, warum es 401 gibt.
-    secret = "k" * 4000
-    db = _db_with(creds=[_mem(3, secret, category="credentials")])
+    secret = "k" * (MAX_CONTENT_CHARS * 3)
+    db = _db_with(creds=[_mem(3, secret, category=category)])
     out = await collect_preload(db, "agent-1")
     assert out["credentials"][0]["content"] == secret
+
+
+@pytest.mark.asyncio
+async def test_a_credential_bucket_cannot_blow_the_prompt_either():
+    # Die Ausnahme darf kein Loch sein: ein ganzes Dienstkonto-JSON unter "credentials"
+    # haette sonst genau den Fehler zurueckgebracht, den dieser Commit behebt.
+    db = _db_with(creds=[_mem(4, "k" * 50_000, category="credentials")])
+    out = await collect_preload(db, "agent-1")
+    assert len(out["credentials"][0]["content"]) <= MAX_CREDENTIAL_CHARS
+
+
+@pytest.mark.asyncio
+async def test_a_credential_in_the_critical_bucket_is_also_spared():
+    # Zugangsdaten mit Wichtigkeit 5 landen im critical-Eimer, nicht im credentials-Eimer.
+    # Der Deckel darf sie auch dort nicht anfassen.
+    secret = "k" * (MAX_CONTENT_CHARS * 3)
+    db = _db_with(high_imp=[_mem(5, secret, category="api_key", importance=5)])
+    out = await collect_preload(db, "agent-1")
+    assert out["critical"][0]["content"] == secret
+
+
+@pytest.mark.asyncio
+async def test_every_static_query_excludes_superseded_rows():
+    """Ohne diesen Filter verdraengt der ueberholte Stand den gueltigen.
+
+    Eine Zeile abzuloesen setzt ``superseded_by`` per ORM, und ``updated_at`` hat ein
+    ``onupdate`` — die tote Zeile bekommt also einen frischen Zeitstempel und steht in
+    einer Sortierung nach ``updated_at DESC`` ganz oben. Der Stub fuehrt kein SQL aus,
+    darum wird hier die uebersetzte Abfrage gelesen.
+    """
+    seen_sql = []
+
+    db = MagicMock()
+
+    async def execute(stmt, *a, **kw):
+        seen_sql.append(str(stmt.compile(compile_kwargs={"literal_binds": True})))
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        return result
+
+    db.execute = AsyncMock(side_effect=execute)
+    await collect_preload(db, "agent-1")
+
+    assert seen_sql, "keine Abfrage abgesetzt"
+    for sql in seen_sql:
+        assert "superseded_by IS NULL" in sql
 
 
 @pytest.mark.asyncio
