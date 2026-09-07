@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.315.4] - 2026-09-07
+
+### Behoben
+- **Ein überholter Gedächtnis-Eintrag konnte den gültigen aus dem Preload
+  verdrängen.** Wird ein Eintrag abgelöst, setzt der Server `superseded_by` —
+  und weil `updated_at` automatisch mitläuft, bekam die tote Zeile dabei einen
+  frischen Zeitstempel und stand in der nach Aktualität sortierten Auswahl ganz
+  oben. Der Preload filterte abgelöste Zeilen nicht heraus (die semantische
+  Suche tat es längst), also wäre ausgerechnet der veraltete Stand bevorzugt
+  geladen worden. Fällt erst auf, seit Einträge überhaupt regelmäßig abgelöst
+  werden — gefunden in der Durchsicht vor dem Zusammenführen.
+- **Die Ausnahme für Zugangsdaten ist keine offene Tür mehr.** Schlüssel bleiben
+  ungekürzt, aber nicht mehr unbegrenzt: ein einzelnes als Zugangsdatum
+  abgelegtes Dienstkonto-Dokument hätte den Prompt sonst weiterhin sprengen
+  können. Die Grenze liegt so weit oben, dass jedes echte Geheimnis bequem
+  darunter bleibt. Zugangsdaten werden jetzt außerdem auch dann verschont, wenn
+  sie über den Wichtigkeits-Eimer statt über den Zugangsdaten-Eimer kommen.
+
+---
+
 ## [1.315.3] - 2026-09-07
 
 ### Behoben
