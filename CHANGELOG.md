@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.315.0] - 2026-09-07
+
+### Behoben
+- **Kontext-Füllstand blieb nach einer Verdichtung stehen** ("bleibt dauerhaft
+  bei 7 %"). Der Ring im Eingabefeld rechnete den sichtbaren Text durch vier —
+  ohne Werkzeug-Ausgaben, Systemprompt und Schemata, und unberührt von einer
+  Verdichtung im Agenten, die den Text im Browser ja nicht ändert. Jetzt zeigt
+  er den echten Wert: was die API beim letzten Aufruf abgerechnet hat, und nach
+  einer Verdichtung sofort den neuen Stand, den der Agent jetzt zusätzlich als
+  Zahl meldet. Die Schätzung bleibt nur als Rückfall, solange noch kein Zug
+  gelaufen ist.
+
+---
+
 ## [1.314.1] - 2026-09-07
 
 ### Neu

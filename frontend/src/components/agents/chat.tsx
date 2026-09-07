@@ -406,6 +406,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // Delegierte Auftraege dieses Gespraechs, nach Auftragskennung.
   const [taskCards, setTaskCards] = useState<Record<string, TaskCard>>({});
+  // Echter Kontext-Fuellstand laut Agent (done.input_tokens / context.tokens);
+  // null = noch kein Wert, dann schaetzt der Ring aus dem sichtbaren Text.
+  const [liveContextTokens, setLiveContextTokens] = useState<number | null>(null);
   // Stand aller delegierten Auftraege dieses Gespraechs — die Grundlage der
   // Sammelanzeige „In Arbeit". Nur was noch nicht fertig ist zaehlt als offen;
   // ein ausgeblendetes Kaertchen (Kreuz) verschwindet hier automatisch mit, weil
@@ -653,6 +656,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           }
         }
         setTaskCards(wiederhergestellt);
+
+        // Letzter echter Fuellstand dieser Sitzung; sonst faellt der Ring auf
+        // die Schaetzung zurueck, bis der naechste Zug einen Wert liefert.
+        const letzteMitTokens = [...history].reverse().find(
+          (m) => (m as { meta?: { input_tokens?: number } }).meta?.input_tokens,
+        ) as { meta?: { input_tokens?: number } } | undefined;
+        setLiveContextTokens(letzteMitTokens?.meta?.input_tokens ?? null);
 
         // Die Kacheln stammen aus dem gespeicherten Verlauf und tragen den
         // Stand von DAMALS. Wurde ein Auftrag seither fertig — oder gibt es ihn
@@ -1275,7 +1285,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         }
         pendingCountRef.current = 0;
         setIsWaiting(false);
+      } else if (type === "context") {
+        // Verdichtung im Agenten — sofort den neuen Stand zeigen, nicht erst
+        // nach dem naechsten Zug.
+        const tokens = Number(data.tokens || 0);
+        if (tokens > 0) setLiveContextTokens(tokens);
       } else if (type === "done") {
+        const inTok = Number(data.input_tokens || 0);
+        if (inTok > 0) setLiveContextTokens(inTok);
         if (assistantIdx !== -1) {
           const meta = {
             cost_usd: Number(data.cost_usd || 0),
@@ -1788,7 +1805,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     return () => { alive = false; };
   }, [agentId, activeSessionId]);
 
-  const estimatedTokens = messages.reduce((sum, m) => sum + Math.ceil((m.content?.length || 0) / 4), 0);
+  // Der ECHTE Fuellstand, wie ihn der Agent kennt: was die API beim letzten
+  // Aufruf abgerechnet hat (done.input_tokens) bzw. was nach einer Verdichtung
+  // uebrig ist (context.tokens). Die Schaetzung darunter zaehlt nur sichtbaren
+  // Text durch vier — ohne Werkzeug-Ausgaben, Systemprompt und Schemata — und
+  // aendert sich bei einer Verdichtung im Agenten gar nicht: Der Ring stand
+  // nach "151k → 65k" unveraendert bei 7 %.
+  const estimatedTokens = liveContextTokens
+    ?? messages.reduce((sum, m) => sum + Math.ceil((m.content?.length || 0) / 4), 0);
   // Die ECHTE Fenstergroesse des Modells, nicht mehr fest verdrahtete 200k. Der
   // Ring rechnete bisher jedes Modell gegen 200.000 — auf einem 1M-Modell zeigte
   // er dadurch das Fuenffache und stand im Widerspruch zur /compact-Tafel, die

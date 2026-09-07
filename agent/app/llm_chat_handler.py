@@ -354,6 +354,13 @@ class LLMChatHandler:
                 message_id, "text",
                 {"text": f"\n\n`[Kontext verdichtet: {before // 1000}k → {after // 1000}k Token]`\n\n"},
             )
+            # Den neuen Stand auch als Zahl melden. Der Text oben ist fuer den
+            # Menschen; die Fuellstandsanzeige kann ihn nicht lesen und blieb
+            # nach dem Verdichten auf dem alten Wert stehen — sichtbar
+            # gemeldet: "bleibt dauerhaft bei 7 %".
+            await self.log_publisher.publish_chat(
+                message_id, "context", {"tokens": after, "before": before},
+            )
         else:
             logger.info(f"[Context] compaction had no effect at {after:,} tokens")
 
