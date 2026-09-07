@@ -657,12 +657,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         }
         setTaskCards(wiederhergestellt);
 
-        // Letzter echter Fuellstand dieser Sitzung; sonst faellt der Ring auf
-        // die Schaetzung zurueck, bis der naechste Zug einen Wert liefert.
-        const letzteMitTokens = [...history].reverse().find(
-          (m) => (m as { meta?: { input_tokens?: number } }).meta?.input_tokens,
-        ) as { meta?: { input_tokens?: number } } | undefined;
-        setLiveContextTokens(letzteMitTokens?.meta?.input_tokens ?? null);
+        // Kein gespeicherter Wert taugt als Fuellstand (meta.input_tokens ist
+        // die Summe aller Aufrufe eines Zuges). Bis der naechste Zug einen
+        // echten Wert liefert, bleibt es bei der Schaetzung.
+        setLiveContextTokens(null);
 
         // Die Kacheln stammen aus dem gespeicherten Verlauf und tragen den
         // Stand von DAMALS. Wurde ein Auftrag seither fertig — oder gibt es ihn
@@ -1291,8 +1289,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         const tokens = Number(data.tokens || 0);
         if (tokens > 0) setLiveContextTokens(tokens);
       } else if (type === "done") {
-        const inTok = Number(data.input_tokens || 0);
-        if (inTok > 0) setLiveContextTokens(inTok);
+        // context_tokens = letzter Aufruf (Fuellstand). input_tokens ist die
+        // Summe aller Aufrufe des Zuges und taugt nur fuer die Kostenzeile.
+        const ctxTok = Number(data.context_tokens || 0);
+        if (ctxTok > 0) setLiveContextTokens(ctxTok);
         if (assistantIdx !== -1) {
           const meta = {
             cost_usd: Number(data.cost_usd || 0),

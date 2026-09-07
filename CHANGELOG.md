@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.315.2] - 2026-09-07
+
+### Behoben
+- **Füllstand nahm die falsche Zahl.** 1.315.0 speiste den Ring aus
+  `input_tokens` des `done`-Ereignisses — das ist die Summe aller
+  Modellaufrufe eines Zuges (richtig für die Kosten), bei fünf Werkzeug-Runden
+  also das Fünffache des Fensters. Der Agent meldet jetzt zusätzlich den
+  letzten Aufruf (`context_tokens`), und nur der speist den Ring. Vor dem
+  ersten Zug einer Sitzung bleibt es bei der Schätzung.
+
+---
+
 ## [1.315.1] - 2026-09-07
 
 ### Behoben

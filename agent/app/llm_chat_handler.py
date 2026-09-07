@@ -1019,6 +1019,11 @@ class LLMChatHandler:
             "cached_tokens": total_cached_tokens,
             "cache_write_tokens": total_cache_write_tokens,
             "tool_calls": accumulated_tool_calls or None,
+            # Fuellstand des Fensters = der LETZTE Aufruf, nicht die Summe.
+            # input_tokens oben addiert alle Aufrufe des Zuges (richtig fuer
+            # die Kosten); fuer die Anzeige "wie voll ist der Kontext" waere
+            # das bei fuenf Werkzeug-Runden das Fuenffache.
+            "context_tokens": self._last_input_tokens,
         }
 
         self.is_running = False
