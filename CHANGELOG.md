@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.315.2] - 2026-09-07
+
+### Behoben
+- **Läufe starben an „Prompt is too long", bevor sie die erste Zeile Arbeit
+  getan hatten.** Der Gedächtnis-Preload war nach ZEILEN gedeckelt (50 kritische
+  + 20 wichtige Einträge), nach ZEICHEN dagegen nie. Bei einem Agenten im
+  Betrieb waren das 98.754 Zeichen — rund 24.700 Token, die in jedem einzelnen
+  Lauf verbraucht sind, ehe die Aufgabe überhaupt gelesen wird; fünf Läufe
+  zwischen dem 04. und 07.09. sind daran gescheitert. Einträge zu löschen half
+  nicht: die Auswahl füllt sich auf ihre feste Zeilenzahl auf, es rückt nur der
+  nächste Eintrag nach. Jetzt ist jeder Eintrag auf 600 Zeichen gedeckelt — beim
+  gemessenen Agenten halbiert das den Preload auf ~11.400 Token und gibt rund
+  13.200 Token pro Lauf für die eigentliche Arbeit frei. Gekürzte Einträge sind
+  als gekürzt markiert und per `memory_search` weiterhin vollständig lesbar; der
+  Sprachweg kürzt aus demselben Grund seit jeher auf 300 Zeichen.
+- **Zugangsdaten bleiben ungekürzt.** Ein abgeschnittener Schlüssel wäre nicht
+  etwas weniger Kontext, sondern ein falscher Schlüssel — der Agent hätte sich
+  damit angemeldet und über die 401 gerätselt.
+
+---
+
 ## [1.315.1] - 2026-09-07
 
 ### Behoben
