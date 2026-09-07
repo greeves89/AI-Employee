@@ -42,14 +42,17 @@ class MemorySave(BaseModel):
     content: str
     importance: int = 3
     # --- Issue #24 additions ---
-    room: str | None = None
+    # max_length mirrors the DB columns (AgentMemory.room/source in
+    # models/memory.py) - without it an over-long value passed Pydantic
+    # and only failed at the DB layer as an unhandled 500 (Issue #706).
+    room: str | None = Field(default=None, max_length=500)
     confidence: float = 1.0
     tag_type: str = TAG_TYPE_PERMANENT  # "transient" | "permanent"
     tags: list[str] = []
     override: bool = False  # confirm supersede on contradiction
     links: list[dict] = []  # [{"target_id": int, "relation": "uses"}]
     # Provenance: agent | user | conversation | reflection | improvement | compaction
-    source: str | None = None
+    source: str | None = Field(default=None, max_length=30)
 
 
 class MemoryUpdate(BaseModel):
