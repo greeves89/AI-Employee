@@ -1,0 +1,10 @@
+[Unit]
+Description=WLAN-Watchdog alle 2 Minuten (erst 3 Minuten nach dem Start, damit das Netz Zeit hat)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=20s
+
+[Install]
+WantedBy=timers.target

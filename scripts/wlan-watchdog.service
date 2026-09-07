@@ -1,0 +1,7 @@
+[Unit]
+Description=WLAN-Watchdog: Netz pruefen, bei Ausfall neu verbinden oder neu starten
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/wlan-watchdog.sh

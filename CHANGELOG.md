@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.314.1] - 2026-09-07
+
+### Neu
+- **WLAN-Watchdog für Geräte ohne Tastatur** (`scripts/wlan-watchdog.*`). Ein
+  Raspberry Pi verliert gelegentlich still das WLAN: Er läuft weiter, ist aber
+  von aussen weg — Tunnel, App und SSH tot, bemerkt erst Stunden später, und
+  ohne Tastatur hilft nur der Stecker. Der Watchdog pingt alle zwei Minuten den
+  Router, verbindet bei Ausfall die WLAN-Schnittstelle neu und startet nach drei
+  Fehlschlägen in Folge neu. Gateway und Schnittstelle werden ermittelt, nicht
+  eingetragen. Installation: Skript nach `/usr/local/bin`, Unit und Timer nach
+  `/etc/systemd/system`, Timer aktivieren.
+
+---
+
 ## [1.314.0] - 2026-09-06
 
 ### Neu
