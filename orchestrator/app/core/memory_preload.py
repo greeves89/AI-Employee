@@ -27,6 +27,27 @@ CREDENTIAL_CATEGORIES = ["credentials", "api_key", "secret", "auth"]
 # zum statischen Kritisch-Set injiziert werden — hart begrenzt gegen Prompt-Bloat.
 TASK_RELEVANT_LIMIT = 5
 
+# Die Zeilenzahl war gedeckelt, die Zeichenzahl nie: gemessen am 07.09.2026 lieferte der
+# Preload eines einzigen Agenten 98.754 Zeichen (~24.700 Token) in JEDEN Lauf, 70 Eintraege
+# mit im Mittel 1.238 Zeichen. Fuenf Laeufe sind daran mit „Prompt is too long" gestorben.
+# Eintraege wegzunehmen half nicht — die Auswahl ist auf feste 70 Zeilen gefuellt, es rueckt
+# nur der naechste Eintrag nach. Wirksam ist allein ein Deckel je Eintrag.
+# Der Sprachweg (``as_prompt_block``) kuerzt aus demselben Grund seit jeher auf 300 Zeichen.
+MAX_CONTENT_CHARS = 600
+_TRUNCATION_MARKER = " […gekuerzt — Volltext via memory_search]"
+
+
+def _clip(content: str | None) -> str:
+    """Auf ``MAX_CONTENT_CHARS`` kuerzen und die Kuerzung sichtbar machen.
+
+    Der Hinweis ist kein Schmuck: ohne ihn haelt das Modell den abgeschnittenen Text fuer
+    die ganze Erinnerung und zieht Schluesse aus einem halben Satz.
+    """
+    text = str(content or "")
+    if len(text) <= MAX_CONTENT_CHARS:
+        return text
+    return text[: MAX_CONTENT_CHARS - len(_TRUNCATION_MARKER)].rstrip() + _TRUNCATION_MARKER
+
 
 def _rank_task_relevant(rows: list[dict], seen: set[int], *, query_room: str | None,
                          limit: int = TASK_RELEVANT_LIMIT, now: datetime | None = None) -> list[dict]:
@@ -60,7 +81,7 @@ def _rank_task_relevant(rows: list[dict], seen: set[int], *, query_room: str | N
         out.append({
             "key": r["key"],
             "category": r["category"],
-            "content": r["content"],
+            "content": r["content"] if r["category"] in CREDENTIAL_CATEGORIES else _clip(r["content"]),
             "importance": r["importance"],
             "room": r.get("room"),
             "score": round(score, 4),
@@ -150,7 +171,9 @@ async def collect_preload(
             out.append({
                 "key": m.key,
                 "category": m.category,
-                "content": m.content,
+                # Zugangsdaten NIE kuerzen: ein abgeschnittener Schluessel ist nicht
+                # „etwas weniger Kontext", sondern ein falscher Schluessel.
+                "content": m.content if m.category in CREDENTIAL_CATEGORIES else _clip(m.content),
                 "importance": m.importance,
             })
         return out
