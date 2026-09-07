@@ -103,7 +103,7 @@ interface ChatEvent {
   agent_id: string;
   message_id: string;
   session_id?: string;  // owning session (set by the server) — used to isolate chat tabs
-  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card";
+  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card" | "context";
   data: Record<string, unknown>;
   timestamp: string;
 }

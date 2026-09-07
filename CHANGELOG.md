@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.315.1] - 2026-09-07
+
+### Behoben
+- Der Frontend-Build von 1.315.0 scheiterte an der Typprüfung: Der neue
+  Ereignistyp `context` fehlte in der Ereignis-Vereinigung. Nachgezogen.
+
+---
+
 ## [1.315.0] - 2026-09-07
 
 ### Behoben
