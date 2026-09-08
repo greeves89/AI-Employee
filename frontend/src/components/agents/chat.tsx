@@ -1001,6 +1001,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             // Only adopt new session if we don't have one yet
             // (this happens on first-ever message or after /reset)
             if (!activeSessionIdRef.current) {
+              // Den Ref sofort setzen: Der Effekt, der ihn sonst nachzieht,
+              // laeuft erst nach dem naechsten Render — in der Zwischenzeit
+              // wuerde der Filter oben die Sitzung noch nicht kennen.
+              activeSessionIdRef.current = sid;
               setActiveSessionId(sid);
             }
             // A brand-new session inherits the currently selected thinking depth
@@ -1035,7 +1039,18 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     // server tags each response with its owning session_id; anything from a
     // different session (another tab, a background task, a voice delegation)
     // must NOT bleed into this view.
-    if (event.session_id && activeSessionIdRef.current && event.session_id !== activeSessionIdRef.current) {
+    const aktiveSitzung = activeSessionIdRef.current || currentWsSessionId.current;
+    if (event.session_id && aktiveSitzung && event.session_id !== aktiveSitzung) {
+      return;
+    }
+    // Neuer Chat, noch ohne Kennung: Bis der Server sie vergibt, ist KEIN
+    // Ereignis mit Sitzung unseres — es gehoert zum Zug, der gerade in einem
+    // anderen Gespraech laeuft. Vorher liess dieses Fenster alles durch: Bei
+    // einem Zug mit vielen Schritten rutschte regelmaessig ein Stueck davon in
+    // die frische Ansicht und blieb dort bis zum Neuladen stehen. Gemeldet:
+    // "die Nachricht des einen Chats taucht im anderen auf und verschwindet,
+    // wenn der Agent fertig ist."
+    if (event.session_id && !aktiveSitzung) {
       return;
     }
 

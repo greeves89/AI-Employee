@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.316.1] - 2026-09-08
+
+### Behoben
+- **Nachrichten eines laufenden Chats tauchten in einem neu angelegten Chat
+  auf** und verschwanden wieder, sobald der erste Zug fertig war. Ein neuer
+  Chat hat kurz keine Sitzungskennung — bis der Server sie vergibt und die
+  Oberfläche sie übernommen hat. In diesem Fenster war der Sitzungsfilter
+  wirkungslos; bei einem Zug mit vielen Schritten rutschte regelmäßig ein
+  Ereignis hindurch, legte eine Blase an, und die blieb bis zum Neuladen
+  stehen. Jetzt verwirft der Filter ohne eigene Kennung alles Fremde, und die
+  neue Kennung wird sofort wirksam statt erst nach dem nächsten Render.
+
+---
+
 ## [1.316.0] - 2026-09-08
 
 ### Neu
