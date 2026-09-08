@@ -605,7 +605,44 @@ async def list_pending_approvals(
     result = await db.execute(query)
     approvals = result.scalars().all()
 
-    return {"approvals": [_approval_to_dict(a) for a in approvals], "count": len(approvals)}
+    # Die zugehoerige Meldung mitgeben. Die Freigabe-Karte im Chat der mobilen
+    # App antwortet ueber die Meldungs-ID; ohne sie konnte die App wartende
+    # Freigaben beim Oeffnen eines Chats nicht als Karte zeigen — nur live,
+    # waehrend der Chat gerade offen war. Gemeldet: "in der App kein Hinweis".
+    notif_ids = await _notification_ids_for(db, [str(a.id) for a in approvals])
+    eintraege = []
+    for a in approvals:
+        d = _approval_to_dict(a)
+        d["notification_id"] = notif_ids.get(str(a.id))
+        eintraege.append(d)
+    return {"approvals": eintraege, "count": len(approvals)}
+
+
+async def _notification_ids_for(db: AsyncSession, approval_ids: list[str]) -> dict[str, str]:
+    """approval_id -> notification_id, in EINER Abfrage statt einer je Freigabe.
+
+    Der Abgleich passiert in Python, nicht in SQL: ``meta.approval_id`` steht
+    als Zahl in der JSON-Spalte, und ob ein JSON-Textvergleich eine Zahl
+    trifft, haengt vom Datenbankdialekt ab (PostgreSQL ja, SQLite nein). Ein
+    Verhalten, das nur zufaellig auf der Produktivdatenbank stimmt, ist keins.
+    """
+    if not approval_ids:
+        return {}
+    gesucht = set(approval_ids)
+    rows = await db.execute(
+        select(Notification.id, Notification.meta)
+        .where(Notification.type == "approval")
+        .order_by(Notification.id.desc())
+        .limit(2000)
+    )
+    out: dict[str, str] = {}
+    for nid, meta in rows.all():
+        aid = str((meta or {}).get("approval_id") or "")
+        if aid in gesucht and aid not in out:
+            out[aid] = str(nid)
+        if len(out) == len(gesucht):
+            break
+    return out
 
 
 async def _visible_agent_ids(user, db: AsyncSession) -> list[str] | None:

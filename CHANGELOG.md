@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.316.0] - 2026-09-08
+
+### Neu
+- **Wartende Freigaben tragen ihre Meldungs-ID** (`/approvals/pending`). Die
+  Freigabe-Karte im Chat der mobilen App antwortet über die Meldung; ohne die
+  ID konnte die App beim Öffnen eines Chats keine wartende Freigabe zeigen —
+  nur live, während der Chat gerade offen war. Gemeldet: "in der App kein
+  Hinweis, etwas freizugeben." Die Zuordnung läuft in einer Abfrage und wird
+  in Python abgeglichen, weil der JSON-Textvergleich einer Zahl je nach
+  Datenbank anders ausfällt.
+
+---
+
 ## [1.315.3] - 2026-09-07
 
 ### Behoben
