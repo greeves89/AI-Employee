@@ -34,7 +34,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.model_catalog import (
     MODEL_CATALOG,
-    is_model_allowed_for_mode,
     model_family,
 )
 from app.services.settings_service import SettingsService
@@ -46,6 +45,10 @@ CACHE_KEY = "model_discovery_cache"
 OVERRIDES_KEY = "model_enabled_overrides"
 
 _ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models"
+# _OPENAI_MODELS_URL: nicht mehr benutzt, seit _discover_openai() ein
+# bewusster Leerlauf ist (siehe dort). Absichtlich stehen gelassen als
+# Beleg, wo die Abfrage hin muesste, faende sich ein sicherer Weg,
+# gegen das ChatGPT-Konto statt gegen den API-Schluessel zu pruefen.
 _OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 _HTTP_TIMEOUT = 15.0
 
@@ -250,42 +253,26 @@ async def _discover_anthropic() -> list[dict]:
 
 
 async def _discover_openai() -> list[dict]:
-    if not settings.openai_api_key:
-        return []
-    headers = {"Authorization": f"Bearer {settings.openai_api_key}"}
-    out: list[dict] = []
-    try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            resp = await client.get(_OPENAI_MODELS_URL, headers=headers)
-            resp.raise_for_status()
-            for m in resp.json().get("data", []):
-                mid = m.get("id", "")
-                # The codex_cli harness authenticates via a ChatGPT account and
-                # runs the plain dotted GPT-5 line only (gpt-5.5, gpt-5.4, …) —
-                # NOT the API-only variants an OpenAI key also lists (-codex,
-                # -pro, -mini, -nano, -chat-latest, dated snapshots, codenames),
-                # which the ChatGPT-account harness rejects at runtime. Match
-                # exactly "gpt-5.<digits>" so the next clean gpt-5.x surfaces
-                # without flooding the UI.
-                if not (mid.startswith("gpt-5.") and mid[len("gpt-5."):].isdigit()):
-                    continue
-                if model_family(mid) != "codex_cli":
-                    continue
-                if not is_model_allowed_for_mode("codex_cli", mid):
-                    continue
-                out.append(
-                    {
-                        "mode": "codex_cli",
-                        "provider": "codex",
-                        "value": mid,
-                        "label": mid,
-                        "tier": "Discovered",
-                        "source": "discovered",
-                    }
-                )
-    except Exception as e:  # noqa: BLE001 — discovery is best-effort
-        logger.warning("OpenAI model discovery failed: %s", e)
-    return out
+    """Bislang ausschliesslich codex_cli-Entdeckung ueber den API-Schluessel —
+    und genau das ist das Problem, nicht nur Details davon.
+
+    codex_cli laeuft ueber ein ChatGPT-Konto, nicht ueber den API-Schluessel:
+    zwei getrennte Zugangswege mit je eigener Modell-Freigabe, die sich nur
+    zufaellig in der Schreibweise ueberschneiden. Am 08.09.2026 listete die
+    API-Schluessel-Uebersicht (``/v1/models``) "gpt-5.5" und "gpt-5.4" als
+    vorhanden, waehrend das ChatGPT-Konto beide mit 400 „not supported when
+    using Codex with a ChatGPT account" ablehnte — codex_cli meldete das als
+    Verbindungsabbruch mit Wiederholungsversuchen, was wie ein Anmeldeproblem
+    aussah, tatsaechlich aber ein aus dieser Entdeckung stammendes, laengst
+    totes Modell war. Eine Musterregel ("gpt-5.<Ziffern>") kann diesen
+    Unterschied nicht erkennen, nur ein echter Aufruf gegen das ChatGPT-Konto
+    koennte es — den hat diese Funktion nicht und soll sie auch nicht
+    nachbilden (das waere ein echter Codex-Lauf je Entdeckungsdurchlauf).
+    Der Katalog fuer codex_cli bleibt deshalb kuratiert in
+    ``app.core.model_catalog``, nicht entdeckt — diese Funktion ist bis auf
+    Weiteres ein bewusster Leerlauf.
+    """
+    return []
 
 
 async def _discover_foundry() -> list[dict]:
@@ -333,7 +320,10 @@ async def discover(db: AsyncSession) -> dict:
     enables them.
     """
     anthropic_queried = bool(await _anthropic_auth_headers())
-    openai_queried = bool(settings.openai_api_key)
+    # _discover_openai() ist bewusst ein Leerlauf (siehe dort) — als "abgefragt"
+    # zu melden waere falsch: ein API-Schluessel ist gesetzt, aber niemand hat
+    # ihn dafuer benutzt.
+    openai_queried = False
     foundry_queried = bool(settings.foundry_api_key and settings.foundry_resource)
     anthropic = await _discover_anthropic()
     openai = await _discover_openai()

@@ -1115,13 +1115,14 @@ SET_MODEL_TOOL = {
             "Change MY language model when the user asks (e.g. 'nimm Opus', 'wechsle auf "
             "Sonnet', 'benutz Haiku'). Provide the exact model id. For a Claude-based me: "
             "'claude-opus-4-8' (strongest), 'claude-sonnet-4-6' (balanced), 'claude-haiku-4-5' "
-            "(fast). For a Codex-based me: 'gpt-5.4', 'o3'. I can only switch models within my "
+            "(fast). For a Codex-based me: 'gpt-6-astra' (currently the only supported "
+            "ChatGPT-account model). I can only switch models within my "
             "current harness — I canNOT switch the harness itself (Claude<->Codex) by voice; if "
             "asked for that, say it must be changed in the settings."
         ),
         "inputSchema": {"json": json.dumps({
             "type": "object",
-            "properties": {"model": {"type": "string", "description": "Exact model id, e.g. claude-opus-4-8 or gpt-5.4."}},
+            "properties": {"model": {"type": "string", "description": "Exact model id, e.g. claude-opus-4-8 or gpt-6-astra."}},
             "required": ["model"],
         })},
     }

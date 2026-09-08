@@ -62,9 +62,15 @@ _CLAUDE_MODELS: dict[str, list[dict]] = {
 }
 
 _CODEX_MODELS: dict[str, list[dict]] = {
+    # Am Endpunkt geprueft (08.09.2026, ChatGPT-Kontoauthentifizierung): "gpt-5.5"
+    # und "gpt-5.4" existieren nicht mehr (400 „not supported when using Codex
+    # with a ChatGPT account"). "gpt-6-astra" ist der einzige Wert, den der
+    # Dienst derzeit annimmt — die CLI faellt genau darauf zurueck, wenn man ihr
+    # gar kein Modell vorgibt. Codex meldet einen ungueltigen Modellnamen als
+    # Verbindungsfehler mit Wiederholungsversuchen; das sah aus wie ein
+    # Anmeldeproblem, war aber ein totes Modell (Kundenmeldung 08.09.2026).
     "codex": [
-        {"value": "gpt-5.5", "label": "GPT-5.5 (Latest)", "tier": "Most Powerful"},
-        {"value": "gpt-5.4", "label": "GPT-5.4", "tier": "Balanced"},
+        {"value": "gpt-6-astra", "label": "GPT-6 Astra (Latest)", "tier": "Most Powerful"},
     ],
 }
 
@@ -81,7 +87,7 @@ MODEL_CATALOG: dict[str, dict] = {
         "label": "Codex CLI",
         "providers": _CODEX_MODELS,
         "default_provider": "codex",
-        "default_model": "gpt-5.5",
+        "default_model": "gpt-6-astra",
     },
 }
 

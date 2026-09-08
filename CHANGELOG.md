@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.316.2] - 2026-09-08
+
+### Behoben
+- **Codex-Agenten meldeten "Verbindungsproblem" — es war ein totes Modell.**
+  "GPT-5.5" und "GPT-5.4" existieren für Codex mit ChatGPT-Kontoanmeldung nicht
+  mehr (am echten Endpunkt geprüft: 400 „not supported when using Codex with a
+  ChatGPT account"). Die Codex-CLI meldet einen ungültigen Modellnamen als
+  Wiederholungsversuche mit Verbindungsfehler statt als klaren
+  Konfigurationsfehler — deshalb sah es wie ein Anmelde-/Verbindungsproblem
+  aus, und eine erneute Anmeldung konnte es nicht beheben. Standard und Liste
+  zeigen jetzt auf "GPT-6 Astra", den einzigen Wert, den der Dienst derzeit
+  annimmt.
+  - Betroffene Bestandsagenten wurden umgestellt.
+- Die automatische Modell-Erkennung schlug "GPT-5.5"/"GPT-5.4" als „gefunden"
+  vor, obwohl sie für Codex tot waren — sie fragte die allgemeine
+  API-Schlüssel-Übersicht ab, einen anderen Zugangsweg als das ChatGPT-Konto,
+  mit dem Codex tatsächlich läuft. Der Codex-Katalog bleibt jetzt kuratiert
+  statt (irreführend) automatisch entdeckt.
+- Der Sprachassistent nannte bei einem Modellwechsel per Stimme ebenfalls
+  "GPT-5.4" als Beispiel — auf "GPT-6 Astra" korrigiert.
+
+---
+
 ## [1.316.1] - 2026-09-08
 
 ### Behoben
