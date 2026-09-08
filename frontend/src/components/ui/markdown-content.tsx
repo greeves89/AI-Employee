@@ -29,7 +29,13 @@ export const MarkdownContent = memo(function MarkdownContent({
         "[&_ol]:my-1.5 [&_ol]:pl-4 [&_ol]:space-y-0.5",
         "[&_li]:text-sm [&_li]:text-foreground/80",
         "[&_strong]:font-semibold [&_strong]:text-foreground",
-        "[&_code]:rounded [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-muted [&_code]:text-amber-600 dark:[&_code]:text-amber-700 dark:text-amber-300",
+        // Bernstein NUR fuer <code>-Elemente — die dunkle Variante hier stand
+        // frueher ohne das [&_code]:-Praefix und faerbte dadurch im Dunkelmodus den
+        // GESAMTEN Nachrichtentext bernstein statt nur Code-Schnipsel; der Container
+        // hat mit text-foreground/80 + dark:prose-invert bereits die richtige
+        // Grundfarbe, die durch die verirrte Klasse ueberschrieben wurde
+        // (Regression aus 501950e6, das eigentlich Lesbarkeit reparieren sollte).
+        "[&_code]:rounded [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:bg-muted [&_code]:text-amber-600 dark:[&_code]:text-amber-300",
         "[&_pre]:rounded-md [&_pre]:p-3 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:text-xs [&_pre]:bg-muted/80 dark:[&_pre]:bg-muted/40 [&_pre]:border [&_pre]:border-border",
         "[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-muted-foreground",
         "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:my-2 [&_blockquote]:text-muted-foreground",

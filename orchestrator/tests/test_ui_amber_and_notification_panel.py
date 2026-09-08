@@ -23,6 +23,15 @@ _GLOCKE = (_FRONTEND / "components" / "layout" / "notification-bell.tsx").read_t
 #: Helle Bernsteintoene ohne Gegenstueck fuers helle Thema.
 _OHNE_HELLVARIANTE = re.compile(r"(?<!dark:)\btext-amber-[1-4]00\b")
 
+#: Eine Dunkel-Variante liegt auch vor, wenn zwischen "dark:" und "text-amber"
+#: noch ein Tailwind-Selektorpraefix steht, z.B. "dark:[&_code]:text-amber-300".
+#: Die reine Teilstring-Pruefung "dark:text-amber" uebersieht genau das — und
+#: genau diese Luecke liess einen automatischen Sweep (#664, Commit 501950e6)
+#: eine bereits korrekte Zeile in markdown-content.tsx faelschlich "reparieren":
+#: er haengte ein zusaetzliches, unskopiertes dark:text-amber-300 an, das dann
+#: im Dunkelmodus den GESAMTEN Nachrichtentext faerbte statt nur <code>.
+_HAT_DUNKELVARIANTE = re.compile(r"dark:(\[[^\]\s]*\]:)*text-amber")
+
 
 def _tsx_dateien():
     return [p for p in _FRONTEND.rglob("*.tsx")]
@@ -33,7 +42,7 @@ class BernsteinTexteSindInBeidenThemenLesbarTests(unittest.TestCase):
         funde = []
         for p in _tsx_dateien():
             for nr, zeile in enumerate(p.read_text().splitlines(), 1):
-                if "dark:text-amber" in zeile:
+                if _HAT_DUNKELVARIANTE.search(zeile):
                     continue
                 if _OHNE_HELLVARIANTE.search(zeile):
                     funde.append(f"{p.relative_to(_FRONTEND)}:{nr}")
@@ -48,6 +57,27 @@ class BernsteinTexteSindInBeidenThemenLesbarTests(unittest.TestCase):
         treffer = sum(p.read_text().count("text-amber-700 dark:text-amber-")
                       for p in _tsx_dateien())
         self.assertGreater(treffer, 200, "Die Umstellung fehlt weitgehend")
+
+    def test_ein_skopierter_selektor_zaehlt_als_dunkelvariante(self):
+        """Der Regressionsfall selbst: 'dark:[&_code]:text-amber-300' hat eine
+        Dunkel-Variante, auch wenn 'dark:' und 'text-amber' nicht direkt
+        nebeneinander stehen."""
+        self.assertTrue(_HAT_DUNKELVARIANTE.search("dark:[&_code]:text-amber-300"))
+        self.assertTrue(_HAT_DUNKELVARIANTE.search("dark:text-amber-400"))
+        self.assertFalse(_HAT_DUNKELVARIANTE.search("text-amber-300"))
+
+    def test_markdown_code_faerbt_nicht_den_ganzen_text(self):
+        """Der eigentliche Bug: ein verirrtes dark:text-amber-300 ohne
+        [&_code]:-Praefix faerbte im Dunkelmodus den kompletten Nachrichtentext
+        bernstein statt nur Code-Schnipsel — die Klasse gehoert zum Container,
+        nicht zu einer Regel fuer <code>."""
+        pfad = _FRONTEND / "components" / "ui" / "markdown-content.tsx"
+        for nr, zeile in enumerate(pfad.read_text().splitlines(), 1):
+            if re.search(r"(?<!\])\bdark:text-amber-\d{3}\b", zeile):
+                self.fail(
+                    f"markdown-content.tsx:{nr} faerbt mehr als <code> bernstein: "
+                    f"{zeile.strip()!r}"
+                )
 
 
 class DasBenachrichtigungsfeldWirdNichtMehrWeggeschnittenTests(unittest.TestCase):

@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.316.4] - 2026-09-08
+
+### Behoben
+- **Antworttext komplett bernstein statt weiß im Dunkelmodus.** Der Commit vom
+  03.09. (#664), der eigentlich Lesbarkeit reparieren sollte, führte hier
+  selbst einen Fehler ein: `dark:text-amber-300` verlor sein
+  `[&_code]:`-Präfix und färbte dadurch den GESAMTEN Nachrichtentext bernstein
+  statt nur Code-Schnipsel — der Container hatte mit `text-foreground/80` +
+  `dark:prose-invert` längst die richtige Grundfarbe, die überschrieben wurde.
+  Zusätzlich: Der automatisierte Test, der Lesbarkeitsprobleme verhindern soll,
+  hatte dieselbe Lücke — seine Prüfung erkannte `dark:[&_code]:text-amber-300`
+  nicht als vorhandene Dunkel-Variante (weil ein Selektor-Präfix dazwischen
+  stand) und verlangte deshalb sogar den fehlerhaften Zustand. Beide Lücken
+  behoben, zwei Regressionstests ergänzt.
+
+---
+
 ## [1.316.3] - 2026-09-08
 
 ### Behoben
