@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.316.3] - 2026-09-08
+
+### Behoben
+- Emojis aus den Performance-Trend-Statuslabels entfernt (harte Vorgabe: keine
+  Emojis in nutzersichtbarem Text). Sie landeten unverändert im
+  Benachrichtigungstitel.
+
+---
+
 ## [1.316.2] - 2026-09-08
 
 ### Behoben

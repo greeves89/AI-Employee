@@ -707,13 +707,15 @@ async def _send_trend_notification(
     improvement: dict,
 ) -> None:
     """Send a notification when an agent's performance status changes."""
+    # Keine Emojis in nutzersichtbarem Text (harte Vorgabe) — vorher standen
+    # hier welche und landeten unveraendert im Meldungstitel der mobilen App.
     status_labels = {
-        "excellent": "🌟 Exzellent",
-        "good": "✅ Gut",
-        "improving": "📈 Verbessernd",
-        "average": "➡️ Durchschnittlich",
-        "declining": "📉 Rückläufig",
-        "needs_attention": "⚠️ Braucht Aufmerksamkeit",
+        "excellent": "Exzellent",
+        "good": "Gut",
+        "improving": "Verbessernd",
+        "average": "Durchschnittlich",
+        "declining": "Rückläufig",
+        "needs_attention": "Braucht Aufmerksamkeit",
     }
 
     old_label = status_labels.get(old_status, old_status)
