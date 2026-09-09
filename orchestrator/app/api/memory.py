@@ -12,6 +12,7 @@ Memory system upgrade (issue #24):
 """
 
 from datetime import datetime, timezone
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -42,13 +43,14 @@ class MemorySave(BaseModel):
     content: str
     importance: int = 3
     # --- Issue #24 additions ---
-    # max_length mirrors the DB columns (AgentMemory.room/source in
-    # models/memory.py) - without it an over-long value passed Pydantic
-    # and only failed at the DB layer as an unhandled 500 (Issue #706).
+    # max_length mirrors the DB columns (AgentMemory.room/source and
+    # AgentMemoryTag.tag in models/memory.py) - without it an over-long value
+    # passed Pydantic and only failed at the DB layer as an unhandled 500
+    # (Issue #706). Tags live in a separate table, so they need their own bound.
     room: str | None = Field(default=None, max_length=500)
     confidence: float = 1.0
     tag_type: str = TAG_TYPE_PERMANENT  # "transient" | "permanent"
-    tags: list[str] = []
+    tags: list[Annotated[str, Field(max_length=100)]] = []
     override: bool = False  # confirm supersede on contradiction
     links: list[dict] = []  # [{"target_id": int, "relation": "uses"}]
     # Provenance: agent | user | conversation | reflection | improvement | compaction
