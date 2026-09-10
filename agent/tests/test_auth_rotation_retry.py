@@ -130,6 +130,20 @@ class RecreateOrderTests(unittest.TestCase):
             ast.get_source_segment(src, k) for k in ast.walk(ast.parse(src))
             if isinstance(k, ast.AsyncFunctionDef) and k.name == "update_agent"
         )
+        # Kommentare tilgen (per tokenize, nicht per '#'-Suche — ein '#' in
+        # einer Zeichenkette ist kein Kommentar): ein auskommentierter
+        # Refresh ist keiner und darf das assertLess nicht bestehen.
+        import io
+        import textwrap
+        import tokenize
+
+        block = textwrap.dedent(block)
+        zeilen = block.splitlines(keepends=True)
+        for tok in tokenize.generate_tokens(io.StringIO(block).readline):
+            if tok.type == tokenize.COMMENT:
+                (zeile, von), (_, bis) = tok.start, tok.end
+                zeilen[zeile - 1] = zeilen[zeile - 1][:von] + zeilen[zeile - 1][bis:]
+        block = "".join(zeilen)
         refresh = block.find("refresh_access_token")
         stop = block.find("stop_container")
         self.assertGreater(stop, -1, "update_agent stoppt den alten Container nicht mehr?")

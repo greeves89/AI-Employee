@@ -26,11 +26,34 @@ VIEW = (ROOT / "frontend/src/app/settings/view.tsx").read_text()
 MENUE = (ROOT / "frontend/src/components/layout/user-menu.tsx").read_text()
 
 
+def _ohne_kommentare(block: str) -> str:
+    """Kommentare aus einem Quelltextblock tilgen.
+
+    `ast.get_source_segment` liefert den Block MIT Kommentaren — ein
+    auskommentierter Aufruf stuende also weiterhin drin und bestuende jedes
+    `assertIn`. Genau das ist die Blindstelle aus #726; deshalb werden die
+    COMMENT-Token hier ausgeblendet, bevor der Block geprueft wird."""
+    import io
+    import textwrap
+    import tokenize
+
+    text = textwrap.dedent(block)
+    zeilen = text.splitlines(keepends=True)
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.COMMENT:
+                (zeile, von), (_, bis) = tok.start, tok.end
+                zeilen[zeile - 1] = zeilen[zeile - 1][:von] + zeilen[zeile - 1][bis:]
+    except tokenize.TokenError as e:  # unvollstaendiger Block — lieber laut
+        raise AssertionError(f"Block nicht tokenisierbar: {e}")
+    return "".join(zeilen)
+
+
 def _rumpf(src: str, name: str) -> str:
     """Die ganze Funktion, wie Python sie abgrenzt — nicht 400 Zeichen dahinter."""
     for knoten in ast.walk(ast.parse(src)):
         if isinstance(knoten, (ast.FunctionDef, ast.AsyncFunctionDef)) and knoten.name == name:
-            return ast.get_source_segment(src, knoten) or ""
+            return _ohne_kommentare(ast.get_source_segment(src, knoten) or "")
     raise AssertionError(f"{name} nicht gefunden")
 
 
@@ -43,7 +66,7 @@ def _if_zweig(src: str, bedingung: str) -> tuple[str, str]:
             dann = "".join(zeilen[knoten.body[0].lineno - 1:knoten.body[-1].end_lineno])
             sonst = ("".join(zeilen[knoten.orelse[0].lineno - 1:knoten.orelse[-1].end_lineno])
                      if knoten.orelse else "")
-            return dann, sonst
+            return _ohne_kommentare(dann), _ohne_kommentare(sonst)
     raise AssertionError(f"if {bedingung}: nicht gefunden")
 
 

@@ -41,6 +41,29 @@ _REDIS = (Path(__file__).resolve().parents[1] / "app" / "services"
           / "redis_service.py").read_text()
 
 
+def _ohne_kommentare(block: str) -> str:
+    """Kommentare aus einem Quelltextblock tilgen.
+
+    `ast.get_source_segment` liefert den Block MIT Kommentaren — ein
+    auskommentierter Aufruf stuende also weiterhin drin und bestuende jedes
+    `assertIn`. Genau das ist die Blindstelle aus #726; deshalb werden die
+    COMMENT-Token hier ausgeblendet, bevor der Block geprueft wird."""
+    import io
+    import textwrap
+    import tokenize
+
+    text = textwrap.dedent(block)
+    zeilen = text.splitlines(keepends=True)
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.COMMENT:
+                (zeile, von), (_, bis) = tok.start, tok.end
+                zeilen[zeile - 1] = zeilen[zeile - 1][:von] + zeilen[zeile - 1][bis:]
+    except tokenize.TokenError as e:  # unvollstaendiger Block — lieber laut
+        raise AssertionError(f"Block nicht tokenisierbar: {e}")
+    return "".join(zeilen)
+
+
 def _block() -> str:
     """Der `if settings.redis_acl_enabled:`-Zweig HINTER dem Kommentar — als
     syntaktischer Block, nicht als 2200 Zeichen ab dem Kommentar. Ein laengerer
@@ -52,13 +75,15 @@ def _block() -> str:
     for knoten in ast.walk(ast.parse(_MAIN)):
         if (isinstance(knoten, ast.If) and knoten.lineno > ab
                 and ast.get_source_segment(_MAIN, knoten.test) == "settings.redis_acl_enabled"):
-            return ast.get_source_segment(_MAIN, knoten) or ""
+            return _ohne_kommentare(ast.get_source_segment(_MAIN, knoten) or "")
     raise AssertionError("if settings.redis_acl_enabled: nach dem Kommentar nicht gefunden")
 
 
 class DieAclWirdBeimStartWiederhergestelltTests(unittest.TestCase):
     def test_es_gibt_den_aufruf_ueberhaupt(self):
-        self.assertIn("ensure_agent_acl_user(_aid)", _MAIN)
+        # Im kommentarfreien if-Block, nicht in der ganzen Datei: dort bestuende
+        # auch ein auskommentierter Aufruf.
+        self.assertIn("await app.state.redis.ensure_agent_acl_user(_aid)", _block())
 
     def test_er_laeuft_nach_der_redis_verbindung(self):
         """Vorher gibt es keine Verbindung, ueber die man Regeln setzen koennte."""
