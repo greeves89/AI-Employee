@@ -93,25 +93,10 @@ class TheBuilderAlwaysAttachesTheThreadTests(unittest.TestCase):
         self.assertEqual(eintrag["model"], "gpt-5")
 
 
-class TheFallbackSurvivesParallelWorkTests(unittest.TestCase):
-    """Der Orchestrator kann den Faden notfalls selbst ermitteln — der
-    MCP-Werkzeugserver (Claude Code) kennt ihn naemlich gar nicht.
-
-    Bisher las er ``current_task``, und das traegt nur EINE Arbeit. Der Agent
-    lief am 2026-08-13 nebenher an einer Zeitplan-Aufgabe; dort stand deren
-    Kennung, und der Chat war unsichtbar.
-    """
-
-    ROUTER = (ROOT / "orchestrator/app/core/task_router.py").read_text()
-
-    def test_it_also_looks_at_all_running_work(self):
-        block = self.ROUTER.split("async def _session_of_running_turn", 1)[1][:2200]
-        self.assertIn("active_sessions", block)
-
-    def test_it_refuses_to_guess_between_several_chats(self):
-        """Eine Kachel im falschen Gespraech ist schlimmer als keine."""
-        block = self.ROUTER.split("async def _session_of_running_turn", 1)[1][:2200]
-        self.assertIn("if len(faeden) == 1 else None", block)
+# Den Auffangweg des Orchestrators (``_session_of_running_turn``) pruefte hier
+# einmal eine Textsuche in einem 2200-Zeichen-Fenster — mit 27 Zeichen Luft.
+# Er wird jetzt im Ablauf gefahren, dort wo der Code liegt und sqlalchemy
+# vorhanden ist: orchestrator/tests/test_the_thread_of_the_running_turn.py.
 
 
 if __name__ == "__main__":
