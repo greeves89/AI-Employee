@@ -31,6 +31,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Anlage laufen ließ, sah einen Fehlschlag, den niemand nachvollziehen
   konnte. Die Variable wird jetzt im Test gesetzt statt geerbt.
 
+### Hinweis zur Nummer
+- Auf 1.316.4 folgt hier 1.316.7, weil 1.316.5 und 1.316.6 bereits in zwei
+  offenen Änderungen vergeben sind (Alembic-Doppelkopf und Aufgaben-Zähler).
+  Zwei Zweige mit derselben Nummer würden sich lautlos zusammenführen lassen
+  und die Release-Spur zerstören; verschiedene Nummern erzwingen stattdessen
+  einen sichtbaren Konflikt. Sobald jene beiden zusammengeführt sind, ist die
+  Reihe wieder lückenlos.
+
 ---
 
 ## [1.316.4] - 2026-09-08

@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import llm_chat_handler  # noqa: E402
 from app.llm_chat_handler import LLMChatHandler  # noqa: E402
+from app.loop_detector import LoopDetector  # noqa: E402
 
 
 class _Mitschrift:
@@ -54,6 +55,9 @@ class VerdichtungMeldetZahlTests(unittest.IsolatedAsyncioTestCase):
         vorher, Zwischenstand (entscheidet ueber Schicht 4), nachher.
         """
         h = _handler(_Mitschrift())
+        # Der Zwischenstand liegt unter der Zielmarke, damit Schicht 4
+        # (Zusammenfassen durch das Modell) NICHT laeuft — deshalb genuegt hier
+        # ein Platzhalter als Anbieter.
         h._get_provider = lambda: object()
         h._get_context_window = lambda: 200_000
         h._estimate_tokens = unittest.mock.Mock(side_effect=list(staende))
@@ -65,6 +69,10 @@ class VerdichtungMeldetZahlTests(unittest.IsolatedAsyncioTestCase):
             return_value=(h._history, []),
         ):
             await h._compact_history("m1")
+        # Verrutscht die Zahl der Messungen, waeren die Werte oben anderen
+        # Stellen zugeordnet — das soll hier scheitern und nicht stumm etwas
+        # anderes pruefen.
+        self.assertEqual(h._estimate_tokens.call_count, len(staende))
         return h
 
     async def test_die_zahl_geht_mit_dem_text_zusammen_raus(self):
@@ -92,9 +100,7 @@ class DoneMeldetDenLetztenAufrufTests(unittest.IsolatedAsyncioTestCase):
         h = _handler(_Mitschrift())
         h.is_running = False
         h._stopping = False
-        h._loop_detector = SimpleNamespace(reset=lambda: None,
-                                           record=lambda *a: None,
-                                           is_looping=lambda: False)
+        h._loop_detector = LoopDetector()
         h._connection_retries = 0
         h._models_tried = set()
         h.pending_drain = None

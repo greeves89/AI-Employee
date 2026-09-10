@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app import ai_credential_status  # noqa: E402
 from app import llm_chat_handler  # noqa: E402
 from app.llm_chat_handler import LLMChatHandler  # noqa: E402
+from app.loop_detector import LoopDetector  # noqa: E402
 
 
 class _Mitschrift:
@@ -72,9 +73,7 @@ class DieMeldungIstAnAllenDreiEndenVerdrahtetTests(unittest.IsolatedAsyncioTestC
         h.is_running = False
         h._stopping = False
         h._history = [llm_chat_handler.ChatMessage(role="system", content="x")]
-        h._loop_detector = SimpleNamespace(reset=lambda: None,
-                                           check=lambda *a, **k: None,
-                                           record=lambda *a, **k: None)
+        h._loop_detector = LoopDetector()
         h._last_input_tokens = 0
         h._overhead_tokens = 0
         h._compaction_floor = 0
@@ -99,13 +98,21 @@ class DieMeldungIstAnAllenDreiEndenVerdrahtetTests(unittest.IsolatedAsyncioTestC
             ergebnis = await h.handle_message("m1", "hallo")
         return ergebnis, gemeldet
 
-    def _pruefe(self, gemeldet, erwarteter_status):
+    def _pruefe(self, gemeldet, erwarteter_status, kennzeichen=None):
+        """``kennzeichen`` belegt, dass die Meldung aus dem GEMEINTEN Zweig kam.
+
+        Ohne das genuegt jeder beliebige Absturz: der allgemeine
+        Ausnahme-Zweig liefert ``status="error"`` frei Haus, und ein Test, der
+        nur darauf schaut, bleibt gruen, obwohl der Aufruf in SEINEM Zweig
+        fehlt."""
         self.assertEqual(len(gemeldet), 1, "genau eine Meldung erwartet")
         result, vor_wie_vielen = gemeldet[0]
         self.assertEqual(result.get("status"), erwarteter_status)
+        if kennzeichen is not None:
+            self.assertIn(kennzeichen, result.get("error") or "")
         self.assertIn("done", self.mitschrift.ereignisse)
-        self.assertLess(vor_wie_vielen, self.mitschrift.ereignisse.index("done") + 1,
-                        "die Meldung kam erst nach dem Abschluss")
+        self.assertLessEqual(vor_wie_vielen, self.mitschrift.ereignisse.index("done"),
+                             "die Meldung kam erst nach dem Abschluss")
 
     async def test_der_erfolgsfall_meldet(self):
         """Ohne das bliebe ein einmal rot markierter Zugang fuer immer rot."""
@@ -119,11 +126,11 @@ class DieMeldungIstAnAllenDreiEndenVerdrahtetTests(unittest.IsolatedAsyncioTestC
         _, gemeldet = await self._zug(_Modell([
             _ereignis("error", text="OAuth token_expired"),
         ]))
-        self._pruefe(gemeldet, "error")
+        self._pruefe(gemeldet, "error", "OAuth token_expired")
 
     async def test_der_ausnahmefall_meldet(self):
         _, gemeldet = await self._zug(_Modell(ausnahme=RuntimeError("Netz weg")))
-        self._pruefe(gemeldet, "error")
+        self._pruefe(gemeldet, "error", "Netz weg")
 
 
 class WasGemeldetWirdTests(unittest.IsolatedAsyncioTestCase):
