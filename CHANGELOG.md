@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.318.0] - 2026-09-10
+
+### Geändert
+- **Admin-Bereich in der Seitenleiste heißt jetzt "Compliance"** statt "Admin".
+  Direkter Sprung zu "Rechte" (Rollen-Reiter der Admin-Konsole) ergänzt, neben
+  dem bestehenden Audit-Log-Link — Platz für weitere Compliance-Bausteine ist
+  bewusst da. Ein Klick auf "Rechte" markiert jetzt auch korrekt nur diesen
+  Eintrag als aktiv statt immer "Admin-Konsole".
+
+---
+
 ## [1.317.0] - 2026-09-10
 
 ### Neu

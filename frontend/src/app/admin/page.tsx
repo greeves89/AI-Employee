@@ -56,7 +56,7 @@ import { MasterRulesView } from "@/app/admin/master-rules-view";
 import { cn, timeAgo, formatCost } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import * as api from "@/lib/api";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { MountPermissionsModal } from "@/components/admin/mount-permissions-modal";
@@ -78,6 +78,12 @@ type Tab =
 // Tabs whose content is a full embedded page component (rendered without
 // their own <Header>). They don't depend on the admin page's own data load.
 const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules", "web-search"];
+
+const ALLE_TABS: Tab[] = [
+  "users", "agents", "assignments", "roles", "feedback", "budget",
+  "settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp",
+  "master-rules", "web-search", "pages", "sso-groups",
+];
 
 // Das Menüband ist zweistufig: oben die Themengruppe, darunter deren Unterreiter.
 // So bleiben alle Bereiche sichtbar, ohne dass 13 Reiter in einer Zeile scrollen.
@@ -101,12 +107,20 @@ const stateColors: Record<string, string> = {
 
 export default function AdminPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const confirm = useConfirm();
   const toast = useToast();
   const user = useAuthStore((s) => s.user);
   const [mountUserId, setMountUserId] = useState<string | null>(null);
   const [resetPasswordResult, setResetPasswordResult] = useState<{ email: string; tempPassword: string } | null>(null);
-  const [tab, setTab] = useState<Tab>("users");
+  // Direkt in einen Reiter springen koennen (z.B. von der Seitenleiste aus
+  // "Rechte" -> Rollen), statt immer erst auf der Nutzerliste zu landen.
+  // Ein fremder/kaputter Query-Parameter darf keinen unbekannten Reiter setzen.
+  const angefragterReiter = searchParams.get("tab");
+  const initialTab = (ALLE_TABS.includes(angefragterReiter as Tab)
+    ? (angefragterReiter as Tab)
+    : "users");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [agents, setAgents] = useState<Agent[]>([]);

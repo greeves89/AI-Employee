@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   Activity,
@@ -23,6 +23,7 @@ import {
   Zap,
   ClipboardCheck,
   Users,
+  UserCog,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -165,14 +166,16 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: "Admin",
+    label: "Compliance",
     key: "admin",
     adminOnly: true,
     items: [
       // Settings, AI-Accounts, Key Management, Health are tabs inside the
-      // Admin-Konsole — one entry instead of six. Audit Log is surfaced directly
-      // here for quick access to the compliance trail.
+      // Admin-Konsole — one entry instead of six. Rechte und Audit Log sind
+      // direkt hier verlinkt statt erst hinter einem Reiter versteckt — Platz
+      // fuer weitere Compliance-Bausteine (z.B. Gesetzestexte) ist bewusst da.
       { href: "/admin", label: "Admin-Konsole", icon: Shield, simpleVisible: false },
+      { href: "/admin?tab=roles", label: "Rechte", icon: UserCog, simpleVisible: false },
       { href: "/audit", label: "Audit Log", icon: ScrollText, simpleVisible: false },
     ],
   },
@@ -180,6 +183,7 @@ const navGroups: NavGroup[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
   const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebarCollapsed();
@@ -282,8 +286,17 @@ export function Sidebar() {
   // Genauer Pfad oder ein Unterpfad davon — nicht blosses startsWith. Sonst
   // faerbte /p/kunde auch /p/kunden-portal mit ein, sobald zwei angelegte Seiten
   // mit demselben Wortanfang beginnen. Nach draussen fuehrende Punkte sind nie aktiv.
-  const isItemActive = (item: NavItem) =>
-    !item.external && (pathname === item.href || pathname.startsWith(`${item.href}/`));
+  const isItemActive = (item: NavItem) => {
+    if (item.external) return false;
+    const [zielPfad, zielQuery] = item.href.split("?");
+    if (pathname !== zielPfad && !pathname.startsWith(`${zielPfad}/`)) return false;
+    // Ein Eintrag mit Query-Parameter (z.B. "/admin?tab=roles") ist nur aktiv,
+    // wenn genau dieser Reiter offen ist — sonst waere "Rechte" nie markiert
+    // (der Pfad allein reicht nicht) und "Admin-Konsole" bei JEDEM Reiter aktiv.
+    if (!zielQuery) return true;
+    const zielParams = new URLSearchParams(zielQuery);
+    return Array.from(zielParams.entries()).every(([k, v]) => searchParams.get(k) === v);
+  };
 
   // Check if any item in a group is active
   const isGroupActive = (group: NavGroup) => group.items.some(isItemActive);
