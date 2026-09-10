@@ -7,58 +7,123 @@ gesehen — der Agent haette einfach nicht mehr geantwortet. Die Harness-Paritae
 ist hier keine Kosmetik, sondern der Unterschied zwischen einem sichtbaren und
 einem unsichtbaren Ausfall.
 
-Geprueft wird die ECHTE Meldefunktion mit einem Doppel fuer den Netzweg.
+Geprueft wird die ECHTE Meldefunktion mit einem Doppel fuer den Netzweg — und
+der echte Chat-Zug mit einem Doppel fuer das Modell. Frueher stand hier
+stattdessen eine Quelltext-Suche in einem festen Zeichenfenster. Die hat
+zweierlei nicht gemerkt: ein fehlendes `await` (die Meldung wird nie
+abgeschickt) und einen auskommentierten Aufruf (der Text steht ja noch da).
+Ausserdem wurde sie rot, sobald dem Ergebnis ein Feld hinzukam.
 """
 
-import asyncio
 import sys
 import unittest
 import unittest.mock
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app import ai_credential_status  # noqa: E402
-
-_QUELLE = (Path(__file__).resolve().parents[1] / "app" / "llm_chat_handler.py").read_text()
-
-_ABSCHLUSS = 'publish_chat(message_id, "done"'
+from app import llm_chat_handler  # noqa: E402
+from app.llm_chat_handler import LLMChatHandler  # noqa: E402
 
 
-def _block_bis_abschluss(anker: str) -> str:
-    """Der Ausschnitt vom Anker bis zum Abschluss des Zuges.
+class _Mitschrift:
+    """Haelt fest, was in welcher Reihenfolge nach draussen ging."""
 
-    Ein festes Zeichenfenster waere hier falsch: es laeuft ueber, sobald dem
-    Ergebnis-Woerterbuch ein Feld hinzukommt, und der Test wird rot, ohne dass
-    die Verdrahtung kaputt ist — genau so geschehen, als context_tokens dazukam.
-    """
-    teile = _QUELLE.split(anker, 1)
-    if len(teile) != 2:
-        raise AssertionError("Anker nicht mehr im Quelltext: " + anker)
-    rest = teile[1]
-    ende = rest.find(_ABSCHLUSS)
-    if ende < 0:
-        raise AssertionError("Kein Abschluss nach dem Anker: " + anker)
-    return rest[:ende]
+    def __init__(self):
+        self.ereignisse: list[str] = []
+
+    async def publish_chat(self, message_id, typ, daten=None):
+        self.ereignisse.append(typ)
 
 
-class DieMeldungIstAnAllenDreiEndenVerdrahtetTests(unittest.TestCase):
-    """Der Ausschnitt endet am `done` — wer hier gefunden wird, meldet also
-    zwangslaeufig VOR dem Abschluss. Nach `done` beendet der Aufrufer die
-    Sitzung; eine Meldung danach koennte je nach Ablauf verlorengehen."""
+def _ereignis(typ, **felder):
+    vorgabe = dict(type=typ, text="", tool_id=None, tool_name=None,
+                   tool_input=None, input_tokens=0, output_tokens=0)
+    return SimpleNamespace(**{**vorgabe, **felder})
 
-    def test_der_erfolgsfall_meldet(self):
+
+class _Modell:
+    """Doppel fuer den Anbieter: gibt die vorgegebenen Ereignisse aus — oder
+    fliegt, wenn eine Ausnahme vorgegeben ist."""
+
+    def __init__(self, ereignisse=(), ausnahme=None):
+        self._ereignisse = list(ereignisse)
+        self._ausnahme = ausnahme
+        self.reasoning_effort = None
+
+    async def stream_completion(self, verlauf, werkzeuge):
+        if self._ausnahme is not None:
+            raise self._ausnahme
+        for e in self._ereignisse:
+            yield e
+
+
+class DieMeldungIstAnAllenDreiEndenVerdrahtetTests(unittest.IsolatedAsyncioTestCase):
+    """Ein echter Zug wird durchgefahren; geprueft wird, ob die Meldung
+    tatsaechlich ABGESCHICKT wurde und ob sie VOR dem `done` kam. Nach `done`
+    beendet der Aufrufer die Sitzung — eine Meldung danach koennte je nach
+    Ablauf verlorengehen."""
+
+    async def _zug(self, modell):
+        h = LLMChatHandler.__new__(LLMChatHandler)
+        h.log_publisher = self.mitschrift = _Mitschrift()
+        h.is_running = False
+        h._stopping = False
+        h._history = [llm_chat_handler.ChatMessage(role="system", content="x")]
+        h._loop_detector = SimpleNamespace(reset=lambda: None,
+                                           check=lambda *a, **k: None,
+                                           record=lambda *a, **k: None)
+        h._last_input_tokens = 0
+        h._overhead_tokens = 0
+        h._compaction_floor = 0
+        h._connection_retries = 0
+        h._models_tried = set()
+        h.pending_drain = None
+        h._get_provider = lambda: modell
+        h._get_tools = unittest.mock.AsyncMock(return_value=[])
+        h._needs_compaction = lambda: False
+        h._heal_after_context_overflow = unittest.mock.AsyncMock()
+        h._retry_after_connection_glitch = unittest.mock.AsyncMock(return_value=False)
+        h._switch_to_fallback = unittest.mock.AsyncMock(return_value=False)
+
+        # Der Merker haelt fest, WAS gemeldet wurde und WIE VIELE Ereignisse zu
+        # dem Zeitpunkt schon draussen waren — daraus faellt die Reihenfolge ab.
+        gemeldet: list[tuple[dict, int]] = []
+
+        async def merker(result):
+            gemeldet.append((result, len(self.mitschrift.ereignisse)))
+
+        with unittest.mock.patch.object(llm_chat_handler, "report_result_status", merker):
+            ergebnis = await h.handle_message("m1", "hallo")
+        return ergebnis, gemeldet
+
+    def _pruefe(self, gemeldet, erwarteter_status):
+        self.assertEqual(len(gemeldet), 1, "genau eine Meldung erwartet")
+        result, vor_wie_vielen = gemeldet[0]
+        self.assertEqual(result.get("status"), erwarteter_status)
+        self.assertIn("done", self.mitschrift.ereignisse)
+        self.assertLess(vor_wie_vielen, self.mitschrift.ereignisse.index("done") + 1,
+                        "die Meldung kam erst nach dem Abschluss")
+
+    async def test_der_erfolgsfall_meldet(self):
         """Ohne das bliebe ein einmal rot markierter Zugang fuer immer rot."""
-        block = _block_bis_abschluss('"status": "completed",')
-        self.assertIn("report_result_status(result)", block)
+        _, gemeldet = await self._zug(_Modell([
+            _ereignis("text_delta", text="hallo"),
+            _ereignis("done", input_tokens=10, output_tokens=3),
+        ]))
+        self._pruefe(gemeldet, "completed")
 
-    def test_der_fehlerfall_im_zug_meldet(self):
-        block = _block_bis_abschluss("_heal_after_context_overflow(message_id, event.text)")
-        self.assertIn("report_result_status(result)", block)
+    async def test_der_fehlerfall_im_zug_meldet(self):
+        _, gemeldet = await self._zug(_Modell([
+            _ereignis("error", text="OAuth token_expired"),
+        ]))
+        self._pruefe(gemeldet, "error")
 
-    def test_der_ausnahmefall_meldet(self):
-        block = _block_bis_abschluss("_heal_after_context_overflow(message_id, failure_text)")
-        self.assertIn("report_result_status(result)", block)
+    async def test_der_ausnahmefall_meldet(self):
+        _, gemeldet = await self._zug(_Modell(ausnahme=RuntimeError("Netz weg")))
+        self._pruefe(gemeldet, "error")
 
 
 class WasGemeldetWirdTests(unittest.IsolatedAsyncioTestCase):

@@ -14,20 +14,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   eines Chat-Zuges neue Felder hinzukamen (Kontext-Füllstand, Zwischenspeicher),
   rutschte die gesuchte Zeile aus diesem Fenster — der Test wurde rot, obwohl
   die Meldung nach wie vor an der richtigen Stelle steht. Jede Änderung im
-  gesamten Projekt lief seitdem gegen eine rote Prüfung. Die Fenster sind
-  jetzt an einer Struktur-Marke begrenzt statt an einer Zeichenzahl; damit
-  prüfen sie sogar strenger als vorher und melden sich laut, wenn eine
-  Textmarke verschwindet, statt still durchzugehen. Dieselbe Stelle im
-  Verdichtungs-Test hatte noch 291 Zeichen Luft und wäre als Nächstes gerissen
-  — sie ist mitrepariert.
+  gesamten Projekt lief seitdem gegen eine rote Prüfung.
+- **Derselbe Test hätte drei echte Fehler nicht bemerkt.** Wer Quelltext nach
+  Zeichenketten absucht, sieht nur, dass etwas *dasteht* — nicht, dass es
+  *passiert*. Ein vergessenes `await` (die Meldung wird nie abgeschickt), ein
+  auskommentierter Aufruf und eine Meldung nach statt vor dem Abschluss gingen
+  alle drei durch. Geprüft wird jetzt der tatsächliche Ablauf: ein echter
+  Chat-Zug mit einem Doppel für das Modell, und nachgesehen wird, ob die
+  Meldung wirklich rausging und wann. Alle drei Fehler fallen damit auf.
+  Dasselbe gilt für den Verdichtungs-Test, der nun ebenfalls den echten
+  Ablauf fährt statt den Quelltext zu lesen.
 - **Zwei Tests des Prozess-Budgets schlugen im Agent-Container fehl, in der
   CI nicht.** Sie hingen an einer Umgebungsvariablen (`MCP_HTTP_PORT`), die
   auf einer laufenden Anlage gesetzt ist und in der CI fehlt — dieselbe
   Rechnung ergab dort vier, hier 47 Plätze. Wer die Tests auf einer echten
   Anlage laufen ließ, sah einen Fehlschlag, den niemand nachvollziehen
-  konnte. Die Variable wird jetzt im Test gesetzt statt geerbt. Der
-  sparsamere Modus mit gemeinsamem MCP-Prozess war dabei überhaupt nicht
-  geprüft; er ist jetzt abgedeckt.
+  konnte. Die Variable wird jetzt im Test gesetzt statt geerbt.
 
 ---
 
