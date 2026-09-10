@@ -69,6 +69,29 @@ MUTATIONEN = [
     ("refresh-nach-stop", "orchestrator/app/core/agent_manager.py",
      None, None, "agent",
      "tests/test_auth_rotation_retry.py::RecreateOrderTests::test_update_agent_refreshes_before_it_recreates"),
+    # --- Auskommentierte Aufrufe: der Gegenleser fand, dass ast.get_source_segment
+    # Kommentare mitliefert und diese fuenf vor dem Kommentar-Tilgen GRUEN blieben.
+    ("auskommentiert-encrypt", "orchestrator/app/services/codex_device_auth_service.py",
+     "                    row.secret_encrypted = encrypt_token(auth_json)\n",
+     "                    # row.secret_encrypted = encrypt_token(auth_json)\n", "orchestrator",
+     O + "test_my_ai_credentials_ui.py::TheCodexLoginCompletesByItselfTests::test_a_personal_login_lands_in_the_personal_store"),
+    ("auskommentiert-last-status", "orchestrator/app/api/my_ai_credentials.py",
+     '        "last_status": row.last_status,\n', '        # "last_status": row.last_status,\n', "orchestrator",
+     O + "test_my_ai_credentials_ui.py::TheSecretIsNeverShownTests::test_the_api_returns_everything_except_the_secret"),
+    ("auskommentiert-lead", "orchestrator/app/api/agents.py",
+     "lead_id = await team_lead_for(_db, agent_id)", "lead_id = None  # await team_lead_for(_db, agent_id)", "orchestrator",
+     O + "test_telegram_chat_hijack.py::TeamLeadIsTheWayTests::test_the_answer_names_the_actual_lead"),
+    ("auskommentiert-chat-add", "orchestrator/app/api/agents.py",
+     None, None, "orchestrator",
+     O + "test_telegram_chat_hijack.py::NoBorrowingAtAllTests::test_the_message_is_still_delivered_via_the_chat"),
+    ("auskommentiert-acl-start", "orchestrator/app/main.py",
+     "                    await app.state.redis.ensure_agent_acl_user(_aid)\n",
+     "                    pass  # await app.state.redis.ensure_agent_acl_user(_aid)\n", "orchestrator",
+     O + "test_redis_acl_survives_restart.py::DieAclWirdBeimStartWiederhergestelltTests::test_es_gibt_den_aufruf_ueberhaupt"),
+    ("auskommentiert-refresh", "orchestrator/app/core/agent_manager.py",
+     "            await ClaudeTokenService().refresh_access_token()\n",
+     "            pass  # await ClaudeTokenService().refresh_access_token()\n", "agent",
+     "tests/test_auth_rotation_retry.py::RecreateOrderTests::test_update_agent_refreshes_before_it_recreates"),
 ]
 
 
@@ -77,10 +100,16 @@ def sha(p: Path) -> str:
 
 
 def pytest(suite: str, test: str) -> int:
+    """0 = gruen, 1 = der Test ist ROT, 2 = gar nicht gelaufen (Sammel-/Syntaxfehler).
+
+    Eine Mutation, die den Import zerbricht, darf nicht als 'erkannt' zaehlen —
+    dann hat der Test nichts geprueft."""
     pfad = test if suite == "agent" else test.replace("orchestrator/", "", 1)
     r = subprocess.run([PY, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", pfad],
                        cwd=ROOT / suite, capture_output=True, text=True, timeout=300)
-    return r.returncode
+    if r.returncode == 0:
+        return 0
+    return 1 if " failed" in r.stdout else 2
 
 
 def sonderfall(label: str, text: str) -> str:
@@ -93,6 +122,10 @@ def sonderfall(label: str, text: str) -> str:
         kopf = text.index("async def delete_my_credential(")
         doppelpunkt = text.index("):\n", kopf) + 3
         return text[:doppelpunkt] + "    _eigene_zugaenge_erlaubt(user)\n" + text[doppelpunkt:]
+    if label == "auskommentiert-chat-add":
+        a = text.index("                _db.add(_CM(\n")
+        b = text.index("                ))\n", a) + len("                ))\n")
+        return text[:a] + "".join("                # " + z.lstrip() for z in text[a:b].splitlines(True)) + text[b:]
     if label == "refresh-nach-stop":
         kopf = text.index("async def update_agent(")
         a = text.index("refresh_access_token", kopf)
@@ -126,8 +159,10 @@ def main() -> int:
                 rc = pytest(suite, test)
             finally:
                 p.write_bytes(orig[p])
-            ergebnis.append((label, rc != 0))
-            print(f"  {'ROT (erwartet)' if rc != 0 else 'STILL -- Test sieht die Mutation NICHT'} {label}")
+            ergebnis.append((label, rc == 1))
+            wort = {0: "STILL -- Test sieht die Mutation NICHT", 1: "ROT (erwartet)",
+                    2: "NICHT GELAUFEN (Sammelfehler) -- zaehlt nicht"}[rc]
+            print(f"  {wort} {label}")
     finally:
         for p, inhalt in orig.items():
             p.write_bytes(inhalt)
