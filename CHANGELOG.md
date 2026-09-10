@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.317.0] - 2026-09-10
+
+### Neu
+- **Auftrags-Kacheln zeigen den Aktivitätsverlauf des Agenten** (Kundenwunsch).
+  Bisher stand in der Kachel nur "in Arbeit" ohne jeden Hinweis, was der Agent
+  gerade tut. Jetzt steht schon eingeklappt Zeitstempel und Kurzfassung des
+  letzten Schritts direkt in der Kachel; ein Pfeil klappt den vollständigen
+  Verlauf (Werkzeugaufrufe, Textantworten, Ergebnisse) auf. Der Verlauf wird
+  alle 4 Sekunden nachgezogen, solange der Auftrag läuft, und noch einmal beim
+  Abschluss — dieselbe Datenquelle, die bereits die Task-Replay-Ansicht nutzt.
+
+---
+
 ## [1.316.4] - 2026-09-08
 
 ### Behoben

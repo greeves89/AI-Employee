@@ -409,6 +409,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // Echter Kontext-Fuellstand laut Agent (done.input_tokens / context.tokens);
   // null = noch kein Wert, dann schaetzt der Ring aus dem sichtbaren Text.
   const [liveContextTokens, setLiveContextTokens] = useState<number | null>(null);
+  // Aktivitaetsverlauf je Auftrags-Kachel (Kundenwunsch): in der Kachel selbst
+  // sofort sichtbar, welcher Schritt zuletzt lief und wann — nicht erst nach
+  // einem Klick. Aufklappbar fuer den vollen Verlauf.
+  const [taskActivity, setTaskActivity] = useState<Record<string, api.TaskStep[]>>({});
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   // Stand aller delegierten Auftraege dieses Gespraechs — die Grundlage der
   // Sammelanzeige „In Arbeit". Nur was noch nicht fertig ist zaehlt als offen;
   // ein ausgeblendetes Kaertchen (Kreuz) verschwindet hier automatisch mit, weil
@@ -418,6 +423,63 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     () => alleAuftraege.filter((k) => k.phase !== "done"),
     [alleAuftraege],
   );
+
+  // Aktivitaet der laufenden Auftraege nachziehen: alle paar Sekunden den
+  // Schrittverlauf abrufen, damit "letzter Eintrag" in der Kachel aktuell
+  // bleibt, waehrend der Agent arbeitet. Ein fertiger Auftrag bekommt noch
+  // EINEN Abruf (der letzte Schritt fehlte sonst, wenn er genau zwischen zwei
+  // Takten fertig wurde), danach ist Ruhe.
+  const abgerufeneEndstaende = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const laufend = offeneAuftraege.map((k) => k.task_id);
+    const geradeFertig = alleAuftraege
+      .filter((k) => k.phase === "done" && !abgerufeneEndstaende.current.has(k.task_id))
+      .map((k) => k.task_id);
+    const zuHolen = [...laufend, ...geradeFertig];
+    if (zuHolen.length === 0) return;
+
+    let lebendig = true;
+    const holen = async () => {
+      for (const taskId of zuHolen) {
+        try {
+          const resp = await api.getTaskSteps(taskId);
+          if (!lebendig) return;
+          setTaskActivity((prev) => ({ ...prev, [taskId]: resp.steps }));
+        } catch {
+          // Kein Abbruch der Kachel wegen eines einzelnen fehlgeschlagenen
+          // Abrufs — der naechste Takt versucht es erneut.
+        }
+      }
+      for (const taskId of geradeFertig) abgerufeneEndstaende.current.add(taskId);
+    };
+    holen();
+    if (laufend.length === 0) return;
+    const intervall = setInterval(holen, 4000);
+    return () => { lebendig = false; clearInterval(intervall); };
+  }, [offeneAuftraege, alleAuftraege]);
+
+  /** Ein Schritt aus dem Aktivitaetsverlauf in eine kurze Zeile fassen — dieselben
+   *  Feldnamen wie im Live-Strom des Chats (data.tool/data.text), weil ein
+   *  Auftragsschritt aus demselben Ereignis-Wortschatz stammt. */
+  const schrittZusammenfassen = useCallback((schritt: api.TaskStep): string => {
+    const d = (schritt.data || {}) as Record<string, unknown>;
+    switch (schritt.type) {
+      case "tool_call":
+        return `Werkzeug: ${String(d.tool || "?")}`;
+      case "tool_result":
+        return `Ergebnis von ${String(d.tool || "Werkzeug")}`;
+      case "text": {
+        const roh = String(d.text || "").replace(/\s+/g, " ").trim();
+        return roh.length > 90 ? roh.slice(0, 90) + "…" : roh || "Antworttext";
+      }
+      case "result":
+        return "Auftrag abgeschlossen";
+      case "error":
+        return `Fehler: ${String(d.message || d.error || "unbekannt").slice(0, 80)}`;
+      default:
+        return schritt.type;
+    }
+  }, []);
   const auftraegeGesamt = alleAuftraege.length;
   // Aufgabe, deren Einzelheiten gerade im Fenster stehen (null = zu).
   const [cardDetail, setCardDetail] = useState<TaskCard | null>(null);
@@ -2171,6 +2233,52 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                       {karte.duration_ms ? ` · ${Math.round(karte.duration_ms / 1000)} s` : ""}
                     </div>
                   </button>
+                  {(() => {
+                    const schritte = taskActivity[karte.task_id];
+                    if (!schritte || schritte.length === 0) return null;
+                    const letzter = schritte[schritte.length - 1];
+                    const eingeklappt = !expandedCards.has(karte.task_id);
+                    return (
+                      <div className="mt-1 pl-5 pr-4 border-t border-current/10 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedCards((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(karte.task_id)) next.delete(karte.task_id);
+                            else next.add(karte.task_id);
+                            return next;
+                          })}
+                          className="flex w-full items-center gap-1 text-left text-[11px] text-muted-foreground hover:text-foreground"
+                        >
+                          <ChevronRight
+                            className={`h-3 w-3 shrink-0 transition-transform ${eingeklappt ? "" : "rotate-90"}`}
+                          />
+                          {eingeklappt && letzter.timestamp && (
+                            <span className="shrink-0 tabular-nums text-muted-foreground/70">
+                              {new Date(letzter.timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            </span>
+                          )}
+                          <span className="min-w-0 flex-1 truncate">
+                            {eingeklappt ? schrittZusammenfassen(letzter) : `Verlauf (${schritte.length} Schritte)`}
+                          </span>
+                        </button>
+                        {!eingeklappt && (
+                          <div className="mt-1 max-h-48 space-y-0.5 overflow-y-auto">
+                            {schritte.map((s) => (
+                              <div key={s.sequence} className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                                {s.timestamp && (
+                                  <span className="shrink-0 tabular-nums text-muted-foreground/70">
+                                    {new Date(s.timestamp).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                  </span>
+                                )}
+                                <span className="min-w-0 flex-1 break-words">{schrittZusammenfassen(s)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <span
                     role="button"
                     tabIndex={0}
