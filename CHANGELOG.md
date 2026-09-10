@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.316.5] - 2026-09-10
+
+### Behoben
+- Orchestrator-Start konnte an einer verzweigten DB-Migration scheitern. Die drei offenen Migrationszweige sind jetzt zusammengeführt, sodass die ausstehenden DB-Migrationen wieder ausgeführt werden können.
+
+---
+
 ## [1.316.4] - 2026-09-08
 
 ### Behoben
