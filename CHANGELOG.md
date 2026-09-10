@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.318.1] - 2026-09-10
+
+### Behoben
+- **"Admin-Konsole" leuchtete zusammen mit "Rechte" gleichzeitig auf.** Ein
+  Eintrag ohne eigenen Query-Parameter galt bei passendem Pfad immer als aktiv,
+  unabhängig vom offenen Reiter — beim Live-Test auf der Kundenanlage sofort
+  aufgefallen. Jetzt gewinnt der genauere Eintrag (mit `?tab=roles`).
+
+---
+
 ## [1.318.0] - 2026-09-10
 
 ### Geändert

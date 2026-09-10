@@ -286,16 +286,29 @@ export function Sidebar() {
   // Genauer Pfad oder ein Unterpfad davon — nicht blosses startsWith. Sonst
   // faerbte /p/kunde auch /p/kunden-portal mit ein, sobald zwei angelegte Seiten
   // mit demselben Wortanfang beginnen. Nach draussen fuehrende Punkte sind nie aktiv.
+  const passtQuery = (query: string) => {
+    const params = new URLSearchParams(query);
+    return Array.from(params.entries()).every(([k, v]) => searchParams.get(k) === v);
+  };
+
   const isItemActive = (item: NavItem) => {
     if (item.external) return false;
     const [zielPfad, zielQuery] = item.href.split("?");
     if (pathname !== zielPfad && !pathname.startsWith(`${zielPfad}/`)) return false;
     // Ein Eintrag mit Query-Parameter (z.B. "/admin?tab=roles") ist nur aktiv,
     // wenn genau dieser Reiter offen ist — sonst waere "Rechte" nie markiert
-    // (der Pfad allein reicht nicht) und "Admin-Konsole" bei JEDEM Reiter aktiv.
-    if (!zielQuery) return true;
-    const zielParams = new URLSearchParams(zielQuery);
-    return Array.from(zielParams.entries()).every(([k, v]) => searchParams.get(k) === v);
+    // (der Pfad allein reicht nicht).
+    if (zielQuery) return passtQuery(zielQuery);
+    // Eintrag OHNE Query (z.B. "/admin"): nicht blind bei jedem passenden Pfad
+    // aktiv setzen, sonst leuchtet "Admin-Konsole" gleichzeitig mit "Rechte"
+    // mit, sobald ?tab=roles in der URL steht. Nur aktiv, wenn kein anderer
+    // Eintrag mit demselben Basispfad UND eigenem Query gerade genauer passt.
+    const spezifischererEintragPasst = allItems.some((other) => {
+      if (other === item || other.external || !other.href.includes("?")) return false;
+      const [otherPfad, otherQuery] = other.href.split("?");
+      return otherPfad === zielPfad && passtQuery(otherQuery);
+    });
+    return !spezifischererEintragPasst;
   };
 
   // Check if any item in a group is active
