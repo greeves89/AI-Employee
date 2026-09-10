@@ -30,13 +30,16 @@ import re
 #: eng gehalten: jede Signatur hier stammt aus einem echten Vorfall. Zu breit
 #: gefasst wuerde ein Lauf rot, der ueber einen 401 nur BERICHTET — etwa ein
 #: Bericht ueber Anmeldefehler.
-_SIGNATUREN: tuple[tuple[str, re.Pattern[str]], ...] = (
+_SIGNATUREN: tuple[tuple[str, re.Pattern[str], int | None], ...] = (
     ("Zugang abgelaufen", re.compile(
-        r"(OAuth access token has expired|Failed to authenticate\.?\s*API Error:\s*401)", re.I)),
+        r"(OAuth access token has expired|Failed to authenticate\.?\s*API Error:\s*401)", re.I), None),
     ("Kontingent erschoepft", re.compile(
-        r"(You'?ve hit your limit|rate.?limit(ed)? exceeded|429 Too Many Requests)", re.I)),
+        r"(You'?ve hit your limit|rate.?limit(ed)? exceeded|429 Too Many Requests)", re.I), None),
     ("Zugang abgelehnt", re.compile(
-        r"(invalid_grant|refresh_token_reused|credit balance is too low)", re.I)),
+        r"(invalid_grant|refresh_token_reused|credit balance is too low)", re.I), None),
+    ("Kontextgrenze erreicht", re.compile(
+        r"(prompt is too long|prompt too long|context (window|length) exceeded"
+        r"|maximum context length)", re.I), 100),
 )
 
 #: Ein leeres Ergebnis ist nur dann verdaechtig, wenn der Lauf gar keine Zeit
@@ -53,7 +56,11 @@ def warum_kein_erfolg(ergebnis: str | None, dauer_ms: int | None) -> str | None:
     """
     text = (ergebnis or "").strip()
 
-    for grund, muster in _SIGNATUREN:
+    # Die optionale exklusive Laengengrenze schuetzt Berichte, die einen
+    # Kontextfehler nur erwaehnen. Bestehende Signaturen bleiben unveraendert.
+    for grund, muster, max_laenge in _SIGNATUREN:
+        if max_laenge is not None and len(text) >= max_laenge:
+            continue
         if muster.search(text):
             return grund
 

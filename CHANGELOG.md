@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.316.5] - 2026-09-10
+
+### Behoben
+- Abgebrochene Laeufe wegen zu grossem Kontext wurden faelschlich als erfolgreich gemeldet; jetzt werden kurze Kontextlimit-Meldungen korrekt als Fehler erkannt. Lange Berichte ueber diese Meldungen bleiben erfolgreiche Ergebnisse (#722).
+
+---
+
 ## [1.316.4] - 2026-09-08
 
 ### Behoben
