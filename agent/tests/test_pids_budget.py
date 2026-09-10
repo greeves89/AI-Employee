@@ -10,12 +10,16 @@ delegierte Aufgaben kamen so als ``completed`` zurueck, ohne dass ein PR, ein
 Kommentar oder eine Datei existierte.
 """
 
+import os
 import unittest
+from unittest import mock
 
 from app.pids_budget import (
+    COST_PER_RUN_GEMEINSAM,
     DEFAULT_COST_PER_RUN,
     DEFAULT_RESERVE,
     FALLBACK_MAX_CONCURRENT,
+    RESERVE_GEMEINSAMER_MCP,
     exhaustion_message,
     find_fork_exhaustion,
     max_concurrent_runs,
@@ -23,6 +27,16 @@ from app.pids_budget import (
 
 
 class TheBudgetIsMeasuredNotGuessedTests(unittest.TestCase):
+    """Die Vorgabewerte haengen an ``MCP_HTTP_PORT`` — also wird die Variable
+    hier gesetzt statt geerbt. Ungepinnt rechnen dieselben Tests je nach
+    Umgebung zwei verschiedene Ergebnisse aus: im Agent-Container, wo die
+    Variable gesetzt ist, waren sie rot — in der CI, wo sie fehlt, gruen."""
+
+    def setUp(self):
+        einzeln = mock.patch.dict(os.environ, {"MCP_HTTP_PORT": "0"})
+        einzeln.start()
+        self.addCleanup(einzeln.stop)
+
     def test_the_measured_container_allows_four_runs(self):
         """(512-120)/88 = 4,45 -> 4. Nicht die 5, bei denen es riss.
 
@@ -58,6 +72,28 @@ class TheBudgetIsMeasuredNotGuessedTests(unittest.TestCase):
 
     def test_a_nonsense_cost_does_not_divide_by_zero(self):
         self.assertEqual(max_concurrent_runs(512, cost_per_run=0), FALLBACK_MAX_CONCURRENT)
+
+
+class TheSharedMcpModeIsCheaperTests(unittest.TestCase):
+    """Laufen die eingebauten Server gemeinsam (#638), gehoeren sie zur
+    Grundlast statt zu jedem Lauf — der Sprung von vier auf 47 Plaetze."""
+
+    def _bei(self, port: str) -> int:
+        with mock.patch.dict(os.environ, {"MCP_HTTP_PORT": port}):
+            return max_concurrent_runs(512)
+
+    def test_the_shared_process_lifts_the_ceiling(self):
+        self.assertEqual(self._bei("8790"), 47)
+        self.assertEqual((512 - DEFAULT_RESERVE - RESERVE_GEMEINSAMER_MCP)
+                         // COST_PER_RUN_GEMEINSAM, 47)
+
+    def test_without_the_port_the_expensive_assumption_holds(self):
+        """Zu billig gerechnet, waehrend die Server einzeln laufen, erstickt
+        der Container — die teure Annahme ist die sichere Vorgabe."""
+        self.assertEqual(self._bei("0"), 4)
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MCP_HTTP_PORT", None)
+            self.assertEqual(max_concurrent_runs(512), 4)
 
 
 class TheKernelMessagesAreRecognisedTests(unittest.TestCase):

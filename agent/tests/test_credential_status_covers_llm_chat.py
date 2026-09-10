@@ -22,29 +22,43 @@ from app import ai_credential_status  # noqa: E402
 
 _QUELLE = (Path(__file__).resolve().parents[1] / "app" / "llm_chat_handler.py").read_text()
 
+_ABSCHLUSS = 'publish_chat(message_id, "done"'
+
+
+def _block_bis_abschluss(anker: str) -> str:
+    """Der Ausschnitt vom Anker bis zum Abschluss des Zuges.
+
+    Ein festes Zeichenfenster waere hier falsch: es laeuft ueber, sobald dem
+    Ergebnis-Woerterbuch ein Feld hinzukommt, und der Test wird rot, ohne dass
+    die Verdrahtung kaputt ist — genau so geschehen, als context_tokens dazukam.
+    """
+    teile = _QUELLE.split(anker, 1)
+    if len(teile) != 2:
+        raise AssertionError("Anker nicht mehr im Quelltext: " + anker)
+    rest = teile[1]
+    ende = rest.find(_ABSCHLUSS)
+    if ende < 0:
+        raise AssertionError("Kein Abschluss nach dem Anker: " + anker)
+    return rest[:ende]
+
 
 class DieMeldungIstAnAllenDreiEndenVerdrahtetTests(unittest.TestCase):
+    """Der Ausschnitt endet am `done` — wer hier gefunden wird, meldet also
+    zwangslaeufig VOR dem Abschluss. Nach `done` beendet der Aufrufer die
+    Sitzung; eine Meldung danach koennte je nach Ablauf verlorengehen."""
+
     def test_der_erfolgsfall_meldet(self):
         """Ohne das bliebe ein einmal rot markierter Zugang fuer immer rot."""
-        block = _QUELLE.split('"status": "completed",', 1)[1][:900]
+        block = _block_bis_abschluss('"status": "completed",')
         self.assertIn("report_result_status(result)", block)
 
     def test_der_fehlerfall_im_zug_meldet(self):
-        block = _QUELLE.split("_heal_after_context_overflow(message_id, event.text)", 1)[1][:600]
+        block = _block_bis_abschluss("_heal_after_context_overflow(message_id, event.text)")
         self.assertIn("report_result_status(result)", block)
 
     def test_der_ausnahmefall_meldet(self):
-        block = _QUELLE.split("_heal_after_context_overflow(message_id, failure_text)", 1)[1][:400]
+        block = _block_bis_abschluss("_heal_after_context_overflow(message_id, failure_text)")
         self.assertIn("report_result_status(result)", block)
-
-    def test_gemeldet_wird_vor_dem_abschluss(self):
-        """Nach `done` beendet der Aufrufer die Sitzung — eine Meldung danach
-        koennte je nach Ablauf verlorengehen."""
-        for anker in ("event.text)", "failure_text)"):
-            block = _QUELLE.split("_heal_after_context_overflow(message_id, " + anker, 1)[1][:600]
-            melden = block.index("report_result_status(result)")
-            fertig = block.index('publish_chat(message_id, "done"')
-            self.assertLess(melden, fertig)
 
 
 class WasGemeldetWirdTests(unittest.IsolatedAsyncioTestCase):

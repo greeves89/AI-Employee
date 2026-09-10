@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.316.7] - 2026-09-10
+
+### Behoben
+- **Die Hauptlinie war rot, ohne dass etwas kaputt war.** Ein Test prüfte, ob
+  der Zustand des KI-Zugangs gemeldet wird, indem er im Quelltext ein festes
+  Fenster von 900 Zeichen hinter einer Textmarke absuchte. Als dem Ergebnis
+  eines Chat-Zuges neue Felder hinzukamen (Kontext-Füllstand, Zwischenspeicher),
+  rutschte die gesuchte Zeile aus diesem Fenster — der Test wurde rot, obwohl
+  die Meldung nach wie vor an der richtigen Stelle steht. Jede Änderung im
+  gesamten Projekt lief seitdem gegen eine rote Prüfung. Die Fenster sind
+  jetzt an einer Struktur-Marke begrenzt statt an einer Zeichenzahl; damit
+  prüfen sie sogar strenger als vorher und melden sich laut, wenn eine
+  Textmarke verschwindet, statt still durchzugehen. Dieselbe Stelle im
+  Verdichtungs-Test hatte noch 291 Zeichen Luft und wäre als Nächstes gerissen
+  — sie ist mitrepariert.
+- **Zwei Tests des Prozess-Budgets schlugen im Agent-Container fehl, in der
+  CI nicht.** Sie hingen an einer Umgebungsvariablen (`MCP_HTTP_PORT`), die
+  auf einer laufenden Anlage gesetzt ist und in der CI fehlt — dieselbe
+  Rechnung ergab dort vier, hier 47 Plätze. Wer die Tests auf einer echten
+  Anlage laufen ließ, sah einen Fehlschlag, den niemand nachvollziehen
+  konnte. Die Variable wird jetzt im Test gesetzt statt geerbt. Der
+  sparsamere Modus mit gemeinsamem MCP-Prozess war dabei überhaupt nicht
+  geprüft; er ist jetzt abgedeckt.
+
+---
+
 ## [1.316.4] - 2026-09-08
 
 ### Behoben
