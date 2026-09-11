@@ -835,7 +835,11 @@ class LLMChatHandler:
                         if extra:
                             for t in extra:
                                 self._history.append(ChatMessage(role="user", content=t))
-                                full_text += f"\n\n[Neue Nachricht aufgenommen]\n"
+                                # The bare tag alone (no text) is what a SKBS
+                                # customer saw stacked five times in a row with
+                                # nothing between them — confusing, and it hid
+                                # what they had actually typed. Show it.
+                                full_text += f"\n\n---\n*Zwischenzeitlich erhalten:* {t}\n\n"
                             await self.log_publisher.publish_chat(
                                 message_id, "system",
                                 {"message": f"{len(extra)} neue Nachricht(en) aufgenommen — wird mitverarbeitet."},
@@ -957,7 +961,7 @@ class LLMChatHandler:
                     if extra:
                         for t in extra:
                             self._history.append(ChatMessage(role="user", content=t))
-                            full_text += "\n\n[Neue Nachricht aufgenommen]\n"
+                            full_text += f"\n\n---\n*Zwischenzeitlich erhalten:* {t}\n\n"
                         await self.log_publisher.publish_chat(
                             message_id, "system",
                             {"message": f"{len(extra)} neue Nachricht(en) aufgenommen — wird sofort mitverarbeitet."},

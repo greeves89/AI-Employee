@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.318.3] - 2026-09-11
+
+### Behoben
+- **Nachrichten, die während einer laufenden Custom-LLM-Chat-Antwort eintrafen
+  (GPT-Modelle), zeigten im Verlauf nur einen leeren Platzhalter statt des
+  tatsächlich Geschriebenen.** Beim Kunden stapelten sich fünf identische
+  "[Neue Nachricht aufgenommen]"-Zeilen ohne jeden Inhalt hintereinander — für
+  ihn nicht nachvollziehbar, was er selbst geschrieben hatte, obwohl der Agent
+  es korrekt verarbeitet hatte. Die eingefaltete Nachricht steht jetzt sichtbar
+  im Verlauf. Betraf den Custom-LLM-Chat-Pfad; Claude Code und Codex nutzen ein
+  anderes Faltverfahren ohne diesen Platzhalter und waren nicht betroffen.
+
+---
+
 ## [1.318.2] - 2026-09-11
 
 ### Behoben
