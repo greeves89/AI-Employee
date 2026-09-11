@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.320.1] - 2026-09-11
+
+### Behoben
+- **EU-Recht (AI Act, DSGVO) crawlte erst NACH dem vollständigen
+  Bundesrechts-Durchlauf** — bei jedem Neustart standen die eigentlich
+  vorrangigen Normen minutenlang hinter 6000+ Bundesnormen an. Reihenfolge
+  getauscht: EU zuerst (Sekunden), danach Bundesrecht im Hintergrund.
+
+---
+
 ## [1.320.0] - 2026-09-11
 
 ### Neu

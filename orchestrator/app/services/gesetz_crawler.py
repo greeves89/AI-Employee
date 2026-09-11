@@ -208,16 +208,21 @@ class GesetzCrawlerService:
         self.eu_law_count: int = 0
 
     async def run(self) -> None:
-        """Background loop — crawl both sources on startup, then daily."""
+        """Background loop — EU first (fast, higher priority), then the full
+        DE crawl (slow), then daily."""
         while True:
-            try:
-                await self.crawl()
-            except Exception as e:
-                logger.error("Gesetz crawler (DE) error: %s", e, exc_info=True)
+            # EU zuerst: eine Handvoll kuratierter Normen, in Sekunden fertig
+            # — genau das, was der Kunde als aktuelle Prioritaet nannte (EU AI
+            # Act, DSGVO). Das volle Bundesrecht (6000+ Normen, mehrere
+            # Minuten) waere sonst bei jedem Neustart im Weg.
             try:
                 await self.crawl_eu()
             except Exception as e:
                 logger.error("Gesetz crawler (EU) error: %s", e, exc_info=True)
+            try:
+                await self.crawl()
+            except Exception as e:
+                logger.error("Gesetz crawler (DE) error: %s", e, exc_info=True)
             await asyncio.sleep(CRAWL_INTERVAL)
 
     async def _fetch_toc(self, client: httpx.AsyncClient) -> list[tuple[str, str]]:
