@@ -65,6 +65,14 @@ Der Unterschied zu einem Assistenten: Ein Assistent antwortet. Ein Mitarbeiter *
 
 **Daily Doings, die wegfallen:** Kollegen nach dem Ablageort fragen · Wiki durchklicken · Wissen geht mit Urlaub oder Kündigung verloren.
 
+**Compliance — Gesetze immer aktuell zur Hand:** Dasselbe Prinzip gilt für
+Recht: das komplette deutsche Bundesrecht wird täglich gecrawlt und
+semantisch durchsuchbar gehalten, mit eigenem Reiter im Compliance-Bereich
+und einem Werkzeug, das JEDER Agent nutzen kann — mit Fundstelle (Gesetz +
+Paragraph), nie aus dem Gedächtnis geraten. Zwei darauf spezialisierte
+Vorlagen: **Jura** (Rechtsauskunft mit Normzitat) und **Presse**
+(Presse-/Kommunikationsarbeit nach Pressekodex und Kommunikationskodex).
+
 ---
 
 ## 5. Gedächtnis — er lernt den Betrieb

@@ -51,6 +51,7 @@ import { SecretsView } from "@/app/secrets/view";
 import { HealthView } from "@/app/health/view";
 import { AuditView } from "@/app/audit/view";
 import { DlpView } from "@/app/admin/dlp-view";
+import { GesetzeView } from "@/app/admin/gesetze-view";
 import { WebSearchView } from "@/app/admin/web-search-view";
 import { MasterRulesView } from "@/app/admin/master-rules-view";
 import { cn, timeAgo, formatCost } from "@/lib/utils";
@@ -72,17 +73,17 @@ import { formatMoney } from "@/lib/money";
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
   | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit" | "dlp"
-  | "master-rules" | "web-search"
+  | "master-rules" | "web-search" | "gesetze"
   | "pages" | "sso-groups";
 
 // Tabs whose content is a full embedded page component (rendered without
 // their own <Header>). They don't depend on the admin page's own data load.
-const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules", "web-search"];
+const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules", "web-search", "gesetze"];
 
 const ALLE_TABS: Tab[] = [
   "users", "agents", "assignments", "roles", "feedback", "budget",
   "settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp",
-  "master-rules", "web-search", "pages", "sso-groups",
+  "master-rules", "web-search", "gesetze", "pages", "sso-groups",
 ];
 
 // Das Menüband ist zweistufig: oben die Themengruppe, darunter deren Unterreiter.
@@ -91,7 +92,7 @@ const TAB_GROUPS: { id: string; label: string; icon: typeof Users; tabs: Tab[] }
   { id: "people", label: "Nutzer & Rollen", icon: Users, tabs: ["users", "roles", "sso-groups"] },
   { id: "agents", label: "Agenten", icon: Cpu, tabs: ["agents", "assignments"] },
   { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains", "web-search"] },
-  { id: "security", label: "Sicherheit", icon: Shield, tabs: ["master-rules", "secrets", "dlp", "audit"] },
+  { id: "security", label: "Compliance", icon: Shield, tabs: ["master-rules", "secrets", "dlp", "audit", "gesetze"] },
   { id: "ops", label: "Betrieb", icon: HeartPulse, tabs: ["health", "budget", "feedback"] },
   { id: "system", label: "System", icon: SettingsIcon, tabs: ["settings", "pages"] },
 ];
@@ -540,6 +541,7 @@ export default function AdminPage() {
             {tab === "audit" && <AuditView embedded />}
             {tab === "dlp" && <DlpView embedded />}
             {tab === "master-rules" && <MasterRulesView />}
+            {tab === "gesetze" && <GesetzeView embedded />}
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center py-20">

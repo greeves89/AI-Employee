@@ -407,6 +407,28 @@ LOCAL_TOOLS.extend(get_skill_tool_definitions())
 # ── Orchestrator API Tools (replicate MCP server functionality) ──
 
 ORCHESTRATOR_TOOLS: list[dict] = [
+    # ── Compliance: Gesetze (semantische Suche, taeglich gecrawlt) ──
+    {
+        "type": "function",
+        "function": {
+            "name": "gesetze_search",
+            "description": (
+                "Semantic search over German federal law (all statutes/regulations "
+                "from gesetze-im-internet.de, crawled and re-indexed daily). Returns "
+                "matching passages with their law name and paragraph (§). Use this "
+                "BEFORE answering any question about German statutory law — cite the "
+                "law and paragraph you found, never invent one. Not legal advice."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Legal question or topic, in German or English."},
+                    "limit": {"type": "number", "description": "Max results (default 10, max 50)."},
+                },
+                "required": ["query"],
+            },
+        },
+    },
     # ── Ticketsystem (Matrix42 o.a.) ──
     # Ein Werkzeug mit action-Parameter statt vier; siehe browser/computer_use.
     # Schliessen und Loeschen fehlen bewusst: ein Agent, der ein Ticket eigenmaechtig

@@ -142,6 +142,25 @@ export function buildServer() {
         },
       },
       {
+        // Compliance: German federal law, crawled+embedded daily from
+        // gesetze-im-internet.de (app.services.gesetz_crawler). Lives in this
+        // file (not a new MCP server) because it's already registered for
+        // BOTH Claude Code and Codex — one addition instead of a third file.
+        name: "gesetze_search",
+        description:
+          "Semantic search over German federal law (all statutes/regulations from gesetze-im-internet.de, crawled and re-indexed daily). " +
+          "Returns matching passages with their law name and paragraph (§). Use this BEFORE answering any question about German statutory law — " +
+          "cite the law and paragraph you found, never invent one. Not legal advice.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Legal question or topic, in German or English." },
+            limit: { type: "number", description: "Max results (default 10, max 50)." },
+          },
+          required: ["query"],
+        },
+      },
+      {
         name: "brain_related",
         description: "Neighbors of a brain node: LINKED = explicit [[wikilinks]] (exactly the edges the knowledge graph draws — use this for 'what is this connected to?'), plus SIMILAR = semantically close entries for discovery. Returns both.",
         inputSchema: {
@@ -286,6 +305,21 @@ export function buildServer() {
         if (!related.length) text += "(no semantic neighbors yet — embedding may be missing)\n";
 
         text += "\nUse brain_get(id) to read any of them in full.\n";
+        return { content: [{ type: "text", text }] };
+      }
+
+      if (name === "gesetze_search") {
+        const query = args.query || "";
+        const params = new URLSearchParams({ q: query, limit: args.limit || 10 });
+        const result = await apiCall(`/compliance/gesetze/search?${params}`);
+        const hits = result.results || [];
+        let text = "";
+        for (const h of hits) {
+          for (const snip of h.snippets || []) {
+            text += `- ${snip}\n`;
+          }
+        }
+        if (!text) text = `Keine Treffer für '${query}'.`;
         return { content: [{ type: "text", text }] };
       }
 

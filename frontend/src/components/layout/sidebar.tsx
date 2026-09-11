@@ -24,6 +24,7 @@ import {
   ClipboardCheck,
   Users,
   UserCog,
+  Scale,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -177,6 +178,7 @@ const navGroups: NavGroup[] = [
       { href: "/admin", label: "Admin-Konsole", icon: Shield, simpleVisible: false },
       { href: "/admin?tab=roles", label: "Rechte", icon: UserCog, simpleVisible: false },
       { href: "/audit", label: "Audit Log", icon: ScrollText, simpleVisible: false },
+      { href: "/admin?tab=gesetze", label: "Gesetze", icon: Scale, simpleVisible: false },
     ],
   },
 ];

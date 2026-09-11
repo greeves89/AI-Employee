@@ -2312,6 +2312,13 @@ clean Markdown; you don't need to commit.
     app.state.skill_crawler = skill_crawler
     skill_crawler_task = asyncio.create_task(skill_crawler.run())
 
+    # Start Gesetze crawler (daily gesetze-im-internet.de crawl, Compliance feature)
+    from app.services.gesetz_crawler import GesetzCrawlerService
+
+    gesetz_crawler = GesetzCrawlerService()
+    app.state.gesetz_crawler = gesetz_crawler
+    gesetz_crawler_task = asyncio.create_task(gesetz_crawler.run())
+
     # On startup: import skills from all running agent containers into DB
     asyncio.create_task(_import_container_skills(app.state.docker))
 
@@ -2394,6 +2401,7 @@ clean Markdown; you don't need to commit.
         sentinel.stop()
         sentinel_task.cancel()
     skill_crawler_task.cancel()
+    gesetz_crawler_task.cancel()
     improvement_task.cancel()
     self_test_task.cancel()
     user_lifecycle.stop()

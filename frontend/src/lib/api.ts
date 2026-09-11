@@ -3261,6 +3261,16 @@ export async function testDlpScan(text: string): Promise<{ classes: Record<strin
   return fetchJSON(`${getBase()}/dlp/test`, { method: "POST", body: JSON.stringify({ text }) });
 }
 
+// Compliance: Gesetze (semantische Gesetzessuche, taeglich gecrawlt)
+export interface GesetzeTreffer { path: string; score: number; snippets: string[] }
+export interface GesetzeStatus { last_crawled_at: string | null; law_count: number }
+export async function searchGesetze(q: string, limit = 10): Promise<{ query: string; results: GesetzeTreffer[] }> {
+  return fetchJSON(`${getBase()}/compliance/gesetze/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+}
+export async function getGesetzeStatus(): Promise<GesetzeStatus> {
+  return fetchJSON(`${getBase()}/compliance/gesetze/status`);
+}
+
 // Computer-Use Bridge Sessions
 export interface ComputerUseSession {
   session_id: string;

@@ -40,6 +40,8 @@ DIREKT = frozenset({
     "brain_search", "brain_get", "brain_list", "brain_related",
     "brain_contribute", "brain_update", "brain_delete",
     "secondbrain_search", "secondbrain_read", "secondbrain_write", "secondbrain_list",
+    # Compliance: deutsches Bundesrecht, taeglich gecrawlt und embedded
+    "gesetze_search",
     # Aufgaben und Zusammenarbeit
     "create_task", "create_task_batch", "delegate_and_wait", "list_tasks",
     "get_tasks_status", "rate_task", "send_message", "send_message_and_wait",
@@ -111,6 +113,7 @@ NOCH_OFFEN = frozenset({
     "memory_list", "memory_delete",
     "brain_list", "brain_update", "brain_delete",
     "secondbrain_list", "secondbrain_read", "secondbrain_write", "secondbrain_search",
+    "gesetze_search",
     "list_team", "list_my_team", "list_team_tasks", "list_agent_messages",
     "get_agent_conversation", "send_message", "send_message_and_wait",
     "schedule_meeting", "rate_task",

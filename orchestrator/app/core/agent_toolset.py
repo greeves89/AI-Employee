@@ -41,7 +41,10 @@ CLAUDE_CODE_OWN_COMMANDS = [
 MCP_SERVER_TOOLS: dict[str, list[str]] = {
     "brain": [
         "brain_contribute", "brain_delete", "brain_get", "brain_list",
-        "brain_related", "brain_search", "brain_update"
+        "brain_related", "brain_search", "brain_update",
+        # Compliance: taeglich gecrawltes deutsches Bundesrecht (semantische
+        # Suche) — siehe app.services.gesetz_crawler.
+        "gesetze_search",
     ],
     "computer-use": [
         # Browser im eigenen Profil der Bridge — der verlaessliche Weg fuer
@@ -129,6 +132,7 @@ DEFINITION_TOOLS = [
     "delegate_and_wait",
     "edit_file",
     "escalate_if_unsure",
+    "gesetze_search",
     "get_agent_conversation",
     "get_day_plan",
     "get_tasks_status",

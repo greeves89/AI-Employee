@@ -49,6 +49,10 @@ dependencies = [
     # Authentifizierungs-Bypass. python3-saml setzt auf xmlsec auf (Systempaket
     # libxmlsec1, siehe Dockerfile).
     "python3-saml>=1.16",
+    # Gesetze-Crawler parst XML von einer externen Quelle (gesetze-im-internet.de) —
+    # stdlib xml.etree ist gegen XXE/Billion-Laughs verwundbar, defusedxml haertet
+    # denselben Aufruf minimal-invasiv ab.
+    "defusedxml>=0.7",
 ]
 
 [build-system]

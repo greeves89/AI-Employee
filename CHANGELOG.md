@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.319.0] - 2026-09-11
+
+### Neu
+- **Compliance-Bereich: Gesetze crawlen, semantisch durchsuchen, jedem Agenten
+  zugänglich machen.** Kundenwunsch aus einem Kundentermin. Ein neuer
+  Hintergrund-Dienst crawlt täglich den kompletten Index des deutschen
+  Bundesrechts (gesetze-im-internet.de) und indiziert jede Norm über dieselbe
+  Chunk+Embedding-Pipeline wie die Second-Brain-Vaults — echte semantische
+  Suche (pgvector), nicht nur Volltextsuche. Neuer Reiter „Gesetze" im
+  Compliance-Bereich der Admin-Konsole (bisher „Sicherheit", jetzt mit Audit
+  Log, DLP-Filter, Autonomie-Regeln und Gesetzen an einem Ort). Neues
+  Werkzeug `gesetze_search` für JEDEN Agenten — Custom-LLM, Claude Code und
+  Codex gleichermaßen (Harness-Parität von Anfang an).
+- **Zwei neue Agenten-Vorlagen: „Jura" und „Presse".** Jura beantwortet
+  Rechtsfragen ausschließlich über `gesetze_search` mit Fundstelle (Gesetz +
+  Paragraph), nie aus dem Gedächtnis. Presse ist an den Deutschen Pressekodex
+  (Stand 19.03.2025) und den Deutschen Kommunikationskodex (DRPR, seit
+  29.11.2012) gebunden — beide Kodizes real recherchiert und mit ihren
+  tatsächlichen Grundsätzen ins Systemprompt übernommen, nicht paraphrasiert.
+
+---
+
 ## [1.318.5] - 2026-09-11
 
 ### Sonstiges

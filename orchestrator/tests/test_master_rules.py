@@ -135,7 +135,9 @@ class TheAdminCanSetThemTests(unittest.TestCase):
         self.assertIn('"master_rules_enabled"', self.SETTINGS)
 
     def test_the_tab_sits_under_security(self):
-        block = self.SEITE.split('label: "Sicherheit"', 1)[1][:160]
+        # Umbenannt zu "Compliance" (Kundenwunsch: Audit Log/DLP/Gesetze in
+        # einem Bereich buendeln) — derselbe Tab-Reiter, neues Anzeige-Label.
+        block = self.SEITE.split('label: "Compliance"', 1)[1][:160]
         self.assertIn("master-rules", block)
 
     def test_the_tab_actually_renders_something(self):

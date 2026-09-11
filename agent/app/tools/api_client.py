@@ -154,6 +154,26 @@ class OrchestratorAPIClient:
             lines.append(f"- {a.get('name', '?')} (id: {a.get('id')}, role: {a.get('role', 'none')}, status: {status})")
         return "\n".join(lines)
 
+    async def gesetze_search(self, params: dict) -> str:
+        """Semantic search over the crawled German federal laws (Compliance)."""
+        query = (params.get("query") or "").strip()
+        if not query:
+            return "Error: 'query' is required"
+        limit = params.get("limit") or 10
+        result = await self._request(
+            "GET", "/compliance/gesetze/search", params={"q": query, "limit": limit}
+        )
+        if isinstance(result, str):
+            return result
+        hits = result.get("results", [])
+        if not hits:
+            return f"Keine Treffer für '{query}'."
+        lines = []
+        for h in hits:
+            for snip in h.get("snippets", []):
+                lines.append(f"- {snip}")
+        return "\n".join(lines) if lines else f"Keine Treffer für '{query}'."
+
     async def tickets(self, params: dict) -> str:
         """Ticketsystem der Firma. Ein Werkzeug, vier Aktionen.
 
