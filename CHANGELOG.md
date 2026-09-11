@@ -5,7 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.319.2] - 2026-09-11
+## [1.320.0] - 2026-09-11
+
+### Neu
+- **Kuratiertes EU-Recht im Gesetze-Bereich: EU AI Act, DSGVO, DSA und Data
+  Act.** Kundenwunsch, den vollständigen deutschen Bundesrechts-Crawl gezielt
+  um KI-/Agenten-relevantes EU-Recht zu ergänzen. EUR-Lex selbst blockt
+  automatisierte Abrufe hinter einer Bot-Schutz-Schranke — der tatsächliche
+  Weg läuft über die dafür vorgesehene CELLAR-Schnittstelle
+  (publications.europa.eu), die den vollständigen deutschen Normtext liefert.
+  Suche und Agenten-Werkzeug (`gesetze_search`) durchsuchen jetzt Bundesrecht
+  und EU-Recht gemeinsam, nach Relevanz gemischt und mit Kennzeichnung
+  ("Bund"/"EU") je Treffer.
+- **Durchklickbare Liste im Gesetze-Reiter.** Die kuratierte EU-Rechts-Liste
+  ist jetzt vollständig browsbar (Klick auf einen Eintrag startet direkt die
+  passende Suche) — vorher gab es nur ein blindes Suchfeld. Das umfangreiche
+  Bundesrecht (6000+ Normen) bleibt bewusst suchbasiert, dafür wäre eine
+  Liste nicht mehr sinnvoll durchblätterbar.
 
 ### Geändert
 - **Compliance-Bereich in der Seitenleiste auf einen einzigen Einstieg

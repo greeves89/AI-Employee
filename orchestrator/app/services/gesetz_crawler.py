@@ -1,19 +1,34 @@
-"""Gesetze-Crawler — holt deutsches Bundesrecht taeglich und haelt es semantisch
-durchsuchbar (Kundenwunsch aus einem Kundentermin: Gesetze crawlen, aktuell halten,
-JEDEM Agenten via MCP zugaenglich machen).
+"""Gesetze-Crawler — haelt deutsches Bundesrecht UND kuratiertes EU-Recht
+taeglich aktuell und semantisch durchsuchbar (Kundenwunsch: Gesetze crawlen,
+aktuell halten, JEDEM Agenten via MCP zugaenglich machen — mit explizitem
+Schwerpunkt auf KI-/Agenten-relevantes Recht: EU AI Act, DSGVO und
+angrenzendes EU-Digitalrecht).
 
-Quelle: gesetze-im-internet.de/gii-toc.xml — der offizielle, maschinenlesbare
-Gesamtindex des Bundesministeriums der Justiz. Jeder Eintrag verlinkt ein
-xml.zip mit dem vollstaendigen Normtext (Schema: <dokumente><norm>...).
+**Deutsches Bundesrecht:** gesetze-im-internet.de/gii-toc.xml — der offizielle,
+maschinenlesbare Gesamtindex des Bundesministeriums der Justiz. Jeder Eintrag
+verlinkt ein xml.zip mit dem vollstaendigen Normtext (Schema:
+<dokumente><norm>...). Brain-Label ``__gesetze_de__``.
 
-Schreibt jede Norm als eine Markdown-Datei unter /shared/gesetze/de/ (derselbe,
-von Orchestrator UND Agenten gemeinsam gemountete Pfad wie die Second-Brain-
-Vaults) und indiziert sie ueber dieselbe Chunk+Embed-Pipeline wie ein Second
-Brain (vault_indexer.index_file), unter dem reservierten Brain-Label
-__gesetze_de__ — ``brain_label`` ist ein reiner String ohne FK, es braucht
-keine begleitende SecondBrain-DB-Zeile. Die Suche laeuft ueber genau denselben
-vault_search.hybrid_search-Pfad (echtes pgvector-Semantik + Keyword, keine
-reine Grep-Suche).
+**EU-Recht (kuratiert, nicht vollstaendig):** eur-lex.europa.eu selbst blockt
+automatisierte Abrufe hinter einer AWS-WAF-JS-Challenge (getestet, 202 ohne
+Inhalt). Der tatsaechliche Weg ist die CELLAR-RESTful-Schnittstelle unter
+``publications.europa.eu`` — ein separater, fuer maschinellen Zugriff gedachter
+Host ohne diese Sperre: ``http://publications.europa.eu/resource/celex/<CELEX>``
+mit ``Accept: application/xhtml+xml`` + ``Accept-Language: deu`` liefert den
+vollstaendigen deutschen Normtext als valides XHTML (ELI-Struktur,
+``<div id="art_N">`` pro Artikel). Ein vollstaendiger EUR-Lex-Crawl (wie beim
+Bundesrecht) waere ein eigenes, deutlich groesseres Projekt (CELLAR-SPARQL-
+Discovery, mehrsprachige Dokumenttypen) — deshalb hier bewusst eine kuratierte,
+von Hand gepflegte Liste statt eines automatischen Gesamtindex. Brain-Label
+``__gesetze_eu__``.
+
+Beide Quellen schreiben ihre Normen als Markdown-Dateien unter /shared/gesetze/
+(derselbe, von Orchestrator UND Agenten gemeinsam gemountete Pfad wie die
+Second-Brain-Vaults) und indizieren sie ueber dieselbe Chunk+Embed-Pipeline wie
+ein Second Brain (vault_indexer.index_file) — ``brain_label`` ist ein reiner
+String ohne FK, es braucht keine begleitende SecondBrain-DB-Zeile. Die Suche
+laeuft ueber genau denselben vault_search.hybrid_search-Pfad (echtes
+pgvector-Semantik + Keyword, keine reine Grep-Suche).
 """
 from __future__ import annotations
 
@@ -40,6 +55,22 @@ HOST_PATH = "/shared/gesetze/de"
 CRAWL_INTERVAL = 86400  # taeglich — Gesetzesaenderungen sind selten, aber es soll "aktuell" bleiben
 _REQUEST_TIMEOUT = 30.0
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+EU_BRAIN_LABEL = "__gesetze_eu__"
+EU_HOST_PATH = "/shared/gesetze/eu"
+EU_CELLAR_URL = "http://publications.europa.eu/resource/celex/{celex}"
+_EU_XHTML_NS = "{http://www.w3.org/1999/xhtml}"
+
+#: Kuratiert statt automatisch entdeckt (siehe Moduldoc) — bewusst genau das,
+#: was der Kunde nannte: EU AI Act, DSGVO, und das unmittelbar angrenzende
+#: EU-Digitalrecht mit klarem KI-/Agenten-Bezug (Plattformpflichten, Datenzugang).
+#: (celex, kurzname) — kurzname wird zur Dateikennung und zum jurabk-Fallback.
+EU_CURATED_LAWS: list[tuple[str, str]] = [
+    ("32024R1689", "EU-AI-Act"),
+    ("32016R0679", "DSGVO"),
+    ("32022R2065", "DSA"),
+    ("32023R2854", "Data-Act"),
+]
 
 
 def _slug_from_link(link: str) -> str | None:
@@ -104,6 +135,54 @@ def parse_norm_xml(xml_bytes: bytes) -> dict | None:
     return {"jurabk": jurabk, "title": title, "paragraphs": paragraphs}
 
 
+def parse_eu_regulation_xhtml(xhtml_bytes: bytes, fallback_name: str) -> dict | None:
+    """Parse one EUR-Lex/CELLAR ELI-XHTML regulation into the same shape
+    ``parse_norm_xml`` returns, so ``render_markdown`` needs no EU-specific
+    branch. Articles are ``<div id="art_N">`` (never "art_N.tit_1" — that id
+    suffix belongs to the article's own title, not a separate article).
+    """
+    root = ElementTree.fromstring(xhtml_bytes)
+    ns = _EU_XHTML_NS
+
+    title_parts: list[str] = []
+    for div in root.iter(f"{ns}div"):
+        if div.get("class") == "eli-main-title":
+            for p in div.iter(f"{ns}p"):
+                t = " ".join("".join(p.itertext()).split())
+                if t:
+                    title_parts.append(t)
+            break
+    title = " ".join(title_parts) or fallback_name
+
+    paragraphs: list[dict] = []
+    for div in root.iter(f"{ns}div"):
+        did = div.get("id", "")
+        if not did.startswith("art_") or "." in did:
+            continue  # only the article itself, not its nested "art_N.tit_1" title div
+        num_p = div.find(f"{ns}p")
+        enbez = " ".join("".join(num_p.itertext()).split()) if num_p is not None else did
+        titel = ""
+        title_div = div.find(f"{ns}div[@class='eli-title']")
+        if title_div is not None:
+            tp = title_div.find(f"{ns}p")
+            if tp is not None:
+                titel = " ".join("".join(tp.itertext()).split())
+        texts: list[str] = []
+        for p in div.iter(f"{ns}p"):
+            if p.get("class") in ("oj-ti-art", "oj-sti-art"):
+                continue
+            t = " ".join("".join(p.itertext()).split())
+            if t:
+                texts.append(t)
+        text = "\n\n".join(texts)
+        if enbez and text:
+            paragraphs.append({"enbez": enbez, "titel": titel, "text": text})
+
+    if not paragraphs:
+        return None
+    return {"jurabk": fallback_name, "title": title, "paragraphs": paragraphs}
+
+
 def render_markdown(law: dict) -> str:
     """One law -> one Markdown file, headings per §-Norm so chunk_markdown
     (heading-based passage splitting) naturally produces one chunk per
@@ -119,19 +198,26 @@ def render_markdown(law: dict) -> str:
 
 
 class GesetzCrawlerService:
-    """Crawls gesetze-im-internet.de daily and indexes into vault_chunks."""
+    """Crawls gesetze-im-internet.de (DE) and the curated EU-law list daily,
+    indexing both into vault_chunks under their own brain_label."""
 
     def __init__(self):
         self.last_crawled_at: str | None = None
         self.law_count: int = 0
+        self.eu_last_crawled_at: str | None = None
+        self.eu_law_count: int = 0
 
     async def run(self) -> None:
-        """Background loop — crawl on startup, then daily."""
+        """Background loop — crawl both sources on startup, then daily."""
         while True:
             try:
                 await self.crawl()
             except Exception as e:
-                logger.error("Gesetz crawler error: %s", e, exc_info=True)
+                logger.error("Gesetz crawler (DE) error: %s", e, exc_info=True)
+            try:
+                await self.crawl_eu()
+            except Exception as e:
+                logger.error("Gesetz crawler (EU) error: %s", e, exc_info=True)
             await asyncio.sleep(CRAWL_INTERVAL)
 
     async def _fetch_toc(self, client: httpx.AsyncClient) -> list[tuple[str, str]]:
@@ -190,4 +276,44 @@ class GesetzCrawlerService:
         self.last_crawled_at = datetime.now(UTC).isoformat()
         self.law_count = written
         logger.info("Gesetz crawler: %d Normen indiziert", written)
+        return written
+
+    async def crawl_eu(self) -> int:
+        """Fetch the curated EU-law list, index every one, return the count
+        actually written. Small, fixed list — no discovery/pagination needed."""
+        from app.core import vault
+        from app.db.session import resilient_session
+        from app.services import vault_indexer
+
+        headers = {"User-Agent": "Mozilla/5.0", "Accept-Language": "deu"}
+        written = 0
+        async with httpx.AsyncClient(
+            timeout=_REQUEST_TIMEOUT, headers=headers, follow_redirects=True
+        ) as client:
+            for celex, kurzname in EU_CURATED_LAWS:
+                try:
+                    resp = await client.get(
+                        EU_CELLAR_URL.format(celex=celex),
+                        headers={"Accept": "application/xhtml+xml"},
+                    )
+                    if resp.status_code != 200:
+                        logger.debug("Gesetz crawler (EU): %s -> HTTP %s", celex, resp.status_code)
+                        continue
+                    law = parse_eu_regulation_xhtml(resp.content, kurzname)
+                    if not law:
+                        continue
+                    md = render_markdown(law)
+                    rel_path = f"{celex}.md"
+                    vault.write_file(EU_HOST_PATH, rel_path, md)
+                    async with resilient_session() as db:
+                        await vault_indexer.index_file(db, EU_BRAIN_LABEL, EU_HOST_PATH, rel_path)
+                    written += 1
+                except Exception as e:
+                    logger.debug("Gesetz crawler (EU): %s (%s) failed: %s", celex, kurzname, e)
+
+        from datetime import datetime
+
+        self.eu_last_crawled_at = datetime.now(UTC).isoformat()
+        self.eu_law_count = written
+        logger.info("Gesetz crawler (EU): %d Normen indiziert", written)
         return written

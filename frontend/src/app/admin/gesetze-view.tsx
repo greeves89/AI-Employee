@@ -1,10 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Scale, Loader2, Search } from "lucide-react";
+import { Scale, Loader2, Search, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/dialog-provider";
 import * as api from "@/lib/api";
+
+function quellenZeile(bez: string, q: api.GesetzeQuelle | undefined) {
+  if (!q || q.law_count === 0) {
+    return `${bez}: erster Crawl-Lauf steht noch aus`;
+  }
+  const stand = q.last_crawled_at
+    ? new Date(q.last_crawled_at).toLocaleString("de-DE")
+    : "läuft gerade";
+  return `${bez}: ${q.law_count} Normen indiziert · Stand: ${stand}`;
+}
 
 export function GesetzeView({ embedded = false }: { embedded?: boolean }) {
   const toast = useToast();
@@ -13,16 +23,23 @@ export function GesetzeView({ embedded = false }: { embedded?: boolean }) {
   const [results, setResults] = useState<api.GesetzeTreffer[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [euListe, setEuListe] = useState<api.GesetzeListEintrag[]>([]);
+  const [euListeOffen, setEuListeOffen] = useState(true);
 
-  const loadStatus = useCallback(async () => {
+  const laden = useCallback(async () => {
     try {
-      setStatus(await api.getGesetzeStatus());
+      const [s, l] = await Promise.all([
+        api.getGesetzeStatus(),
+        api.listGesetze("eu", 50),
+      ]);
+      setStatus(s);
+      setEuListe(l.items);
     } catch {
-      // Status ist rein informativ — kein Fehler-Toast fuer einen Nebenwert.
+      // Status/Liste sind Nebenwerte — kein Fehler-Toast, die Suche bleibt nutzbar.
     }
   }, []);
 
-  useEffect(() => { loadStatus(); }, [loadStatus]);
+  useEffect(() => { laden(); }, [laden]);
 
   const runSearch = async () => {
     const q = query.trim();
@@ -46,18 +63,17 @@ export function GesetzeView({ embedded = false }: { embedded?: boolean }) {
         <div className="flex-1">
           <h3 className="text-sm font-semibold">Gesetze</h3>
           <p className="mt-1 text-xs text-muted-foreground/70">
-            Semantische Suche über das deutsche Bundesrecht (gesetze-im-internet.de),
-            täglich neu gecrawlt und indiziert. Auch jeder Agent kann diese Quelle
-            über das Werkzeug <code className="rounded bg-foreground/[0.06] px-1">gesetze_search</code> abfragen.
+            Semantische Suche über deutsches Bundesrecht (gesetze-im-internet.de,
+            vollständig) und ausgewähltes EU-Recht mit KI-/Agenten-Bezug (EU AI Act,
+            DSGVO, DSA, Data Act) — täglich neu gecrawlt und indiziert. Auch jeder
+            Agent kann diese Quelle über das Werkzeug{" "}
+            <code className="rounded bg-foreground/[0.06] px-1">gesetze_search</code> abfragen.
           </p>
           {status && (
-            <p className="mt-1.5 text-[11px] text-muted-foreground/50">
-              {status.law_count > 0
-                ? `${status.law_count} Normen indiziert · zuletzt aktualisiert: ${
-                    status.last_crawled_at ? new Date(status.last_crawled_at).toLocaleString("de-DE") : "unbekannt"
-                  }`
-                : "Erster Crawl-Lauf steht noch aus."}
-            </p>
+            <div className="mt-1.5 space-y-0.5 text-[11px] text-muted-foreground/50">
+              <p>{quellenZeile("EU-Recht", status.eu)}</p>
+              <p>{quellenZeile("Bundesrecht", status.de)}</p>
+            </div>
           )}
         </div>
       </div>
@@ -68,7 +84,7 @@ export function GesetzeView({ embedded = false }: { embedded?: boolean }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runSearch()}
-            placeholder="z. B. Kündigungsfrist, DSGVO Löschfrist, Mindestlohn…"
+            placeholder="z. B. Kündigungsfrist, DSGVO Löschfrist, Hochrisiko-KI-System…"
             className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-2.5 py-1.5 text-[13px] focus:border-primary/30 focus:outline-none"
           />
           <button
@@ -88,7 +104,15 @@ export function GesetzeView({ embedded = false }: { embedded?: boolean }) {
             )}
             {results.map((r) => (
               <div key={r.path} className="rounded-lg border border-foreground/[0.05] bg-foreground/[0.02] p-3">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/50">{r.path}</p>
+                <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/50">
+                  <span className={cn(
+                    "rounded px-1.5 py-0.5 text-[10px] normal-case",
+                    r.jurisdiction === "eu" ? "bg-blue-500/15 text-blue-400" : "bg-foreground/10",
+                  )}>
+                    {r.jurisdiction === "eu" ? "EU" : "Bund"}
+                  </span>
+                  {r.path}
+                </p>
                 {r.snippets.map((s, i) => (
                   <p key={i} className="mt-1 text-[12px] leading-relaxed text-foreground/80">{s}</p>
                 ))}
@@ -96,6 +120,41 @@ export function GesetzeView({ embedded = false }: { embedded?: boolean }) {
             ))}
           </div>
         )}
+      </div>
+
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/60 p-4">
+        <button
+          type="button"
+          onClick={() => setEuListeOffen((o) => !o)}
+          className="flex w-full items-center gap-1.5 text-left"
+        >
+          <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 transition-transform", euListeOffen && "rotate-90")} />
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+            EU-Recht — vollständige Liste ({euListe.length})
+          </p>
+        </button>
+        {euListeOffen && (
+          <div className="mt-2 space-y-1.5">
+            {euListe.length === 0 && (
+              <p className="text-[12px] text-muted-foreground/60">Noch nicht indiziert.</p>
+            )}
+            {euListe.map((e) => (
+              <button
+                key={e.path}
+                type="button"
+                onClick={() => { setQuery(e.title.split(" — ")[0]); runSearch(); }}
+                className="block w-full rounded-lg border border-foreground/[0.05] bg-foreground/[0.02] p-2.5 text-left text-[12px] text-foreground/80 hover:bg-foreground/[0.05] transition-colors"
+                title="Klicken, um danach zu suchen"
+              >
+                {e.title}
+              </button>
+            ))}
+          </div>
+        )}
+        <p className="mt-3 text-[11px] text-muted-foreground/50">
+          Bundesrecht (6000+ Normen) ist bewusst nur über die Suche oben erreichbar,
+          nicht als Liste — dafür ist es zu viel, um sinnvoll durchzublättern.
+        </p>
       </div>
     </div>
   );

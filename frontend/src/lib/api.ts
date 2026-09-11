@@ -3261,14 +3261,19 @@ export async function testDlpScan(text: string): Promise<{ classes: Record<strin
   return fetchJSON(`${getBase()}/dlp/test`, { method: "POST", body: JSON.stringify({ text }) });
 }
 
-// Compliance: Gesetze (semantische Gesetzessuche, taeglich gecrawlt)
-export interface GesetzeTreffer { path: string; score: number; snippets: string[] }
-export interface GesetzeStatus { last_crawled_at: string | null; law_count: number }
+// Compliance: Gesetze (semantische Gesetzessuche, taeglich gecrawlt) — Bundesrecht + kuratiertes EU-Recht
+export interface GesetzeTreffer { path: string; score: number; snippets: string[]; jurisdiction: "de" | "eu" }
+export interface GesetzeQuelle { last_crawled_at: string | null; law_count: number }
+export interface GesetzeStatus { de: GesetzeQuelle; eu: GesetzeQuelle }
+export interface GesetzeListEintrag { path: string; title: string }
 export async function searchGesetze(q: string, limit = 10): Promise<{ query: string; results: GesetzeTreffer[] }> {
   return fetchJSON(`${getBase()}/compliance/gesetze/search?q=${encodeURIComponent(q)}&limit=${limit}`);
 }
 export async function getGesetzeStatus(): Promise<GesetzeStatus> {
   return fetchJSON(`${getBase()}/compliance/gesetze/status`);
+}
+export async function listGesetze(jurisdiction: "de" | "eu", limit = 50): Promise<{ jurisdiction: string; items: GesetzeListEintrag[] }> {
+  return fetchJSON(`${getBase()}/compliance/gesetze/list?jurisdiction=${jurisdiction}&limit=${limit}`);
 }
 
 // Computer-Use Bridge Sessions

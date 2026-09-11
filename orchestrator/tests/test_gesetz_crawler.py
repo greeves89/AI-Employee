@@ -13,6 +13,7 @@ import unittest
 
 from app.services.gesetz_crawler import (
     _slug_from_link,
+    parse_eu_regulation_xhtml,
     parse_norm_xml,
     render_markdown,
 )
@@ -95,6 +96,89 @@ class RenderingToMarkdownTests(unittest.TestCase):
         law = parse_norm_xml(BEISPIEL_XML.encode())
         md = render_markdown(law)
         self.assertIn("Dieses Gesetz regelt die Sache.", md)
+
+
+
+# Gekuerztes, aber strukturell echtes Beispiel der EUR-Lex/CELLAR-ELI-XHTML-
+# Struktur — verifiziert gegen den echten deutschen Text des EU AI Act,
+# der DSGVO, des DSA und des Data Act (je 50-113 Artikel, dieselbe Form).
+# Wichtig: "art_1.tit_1" ist die TITEL-Unterebene von Artikel 1, kein
+# eigener Artikel — genau die Verwechslung, die der Praefix-Filter verhindert.
+EU_BEISPIEL_XHTML = """<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<body>
+<div class="eli-main-title" id="tit_1">
+<p class="oj-doc-ti">VERORDNUNG (EU) 9999/1 DES EUROPÄISCHEN PARLAMENTS UND DES RATES</p>
+<p class="oj-doc-ti">vom 1. Januar 2099</p>
+<p class="oj-doc-ti">zur Regelung der Testsache</p>
+</div>
+<div class="eli-subdivision" id="art_1">
+<p class="oj-ti-art">Artikel 1</p>
+<div class="eli-title" id="art_1.tit_1"><p class="oj-sti-art">Gegenstand</p></div>
+<div id="001.001"><p class="oj-normal">Dieser Artikel regelt die Testsache.</p></div>
+</div>
+<div class="eli-subdivision" id="art_2">
+<p class="oj-ti-art">Artikel 2</p>
+<div class="eli-title" id="art_2.tit_1"><p class="oj-sti-art">Begriffsbestimmungen</p></div>
+<div id="002.001"><p class="oj-normal">(1) „Test“ bezeichnet diesen Testfall.</p></div>
+<div id="002.002"><p class="oj-normal">(2) „Sache“ bezeichnet den Gegenstand.</p></div>
+</div>
+</body>
+</html>"""
+
+EU_LEER_XHTML = """<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<body>
+<div class="eli-main-title" id="tit_1"><p class="oj-doc-ti">Leere Verordnung</p></div>
+</body>
+</html>"""
+
+
+class ParsingTheEuEliSchemaTests(unittest.TestCase):
+    def test_the_title_is_assembled_from_all_lines(self):
+        law = parse_eu_regulation_xhtml(EU_BEISPIEL_XHTML.encode(), "TestVO")
+        self.assertIn("zur Regelung der Testsache", law["title"])
+
+    def test_the_nested_article_title_div_is_not_a_second_article(self):
+        """'art_1.tit_1' traegt einen Punkt im Id — genau das unterscheidet
+        die Titel-Unterebene vom eigentlichen Artikel-Div."""
+        law = parse_eu_regulation_xhtml(EU_BEISPIEL_XHTML.encode(), "TestVO")
+        self.assertEqual(len(law["paragraphs"]), 2)
+        self.assertEqual(law["paragraphs"][0]["enbez"], "Artikel 1")
+        self.assertEqual(law["paragraphs"][1]["enbez"], "Artikel 2")
+
+    def test_the_article_title_is_captured_separately(self):
+        law = parse_eu_regulation_xhtml(EU_BEISPIEL_XHTML.encode(), "TestVO")
+        self.assertEqual(law["paragraphs"][1]["titel"], "Begriffsbestimmungen")
+
+    def test_multiple_absaetze_are_joined(self):
+        law = parse_eu_regulation_xhtml(EU_BEISPIEL_XHTML.encode(), "TestVO")
+        text = law["paragraphs"][1]["text"]
+        self.assertIn("„Test“", text)
+        self.assertIn("„Sache“", text)
+
+    def test_the_heading_text_itself_is_not_duplicated_into_the_body(self):
+        """oj-ti-art/oj-sti-art sind die Artikelnummer und ihr Titel — beide
+        stehen schon in enbez/titel und duerfen nicht nochmal im Fliesstext
+        auftauchen."""
+        law = parse_eu_regulation_xhtml(EU_BEISPIEL_XHTML.encode(), "TestVO")
+        self.assertNotIn("Artikel 1", law["paragraphs"][0]["text"])
+        self.assertNotIn("Gegenstand", law["paragraphs"][0]["text"])
+
+    def test_reuses_the_same_markdown_renderer(self):
+        """Kein EU-eigener Renderer noetig — dieselbe Form wie parse_norm_xml."""
+        law = parse_eu_regulation_xhtml(EU_BEISPIEL_XHTML.encode(), "TestVO")
+        md = render_markdown(law)
+        self.assertIn("## Artikel 2 Begriffsbestimmungen", md)
+
+    def test_a_regulation_with_no_articles_yields_nothing(self):
+        self.assertIsNone(parse_eu_regulation_xhtml(EU_LEER_XHTML.encode(), "LeerVO"))
+
+    def test_the_fallback_name_is_the_jurabk(self):
+        """Kein offizielles 'jurabk' in EUR-Lex-Dokumenten — der kuratierte
+        Kurzname (z. B. 'EU-AI-Act') uebernimmt diese Rolle."""
+        law = parse_eu_regulation_xhtml(EU_BEISPIEL_XHTML.encode(), "TestVO")
+        self.assertEqual(law["jurabk"], "TestVO")
 
 
 class SlugExtractionTests(unittest.TestCase):
