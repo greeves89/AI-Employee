@@ -10,16 +10,31 @@ delegierte Aufgaben kamen so als ``completed`` zurueck, ohne dass ein PR, ein
 Kommentar oder eine Datei existierte.
 """
 
+import os
 import unittest
+from unittest import mock
 
 from app.pids_budget import (
+    COST_PER_RUN_GEMEINSAM,
     DEFAULT_COST_PER_RUN,
     DEFAULT_RESERVE,
     FALLBACK_MAX_CONCURRENT,
+    RESERVE_GEMEINSAMER_MCP,
     exhaustion_message,
     find_fork_exhaustion,
     max_concurrent_runs,
 )
+
+
+def _modus(*, gemeinsam: bool):
+    """Den MCP-Modus fuer die Dauer des Tests festnageln.
+
+    ``max_concurrent_runs`` liest ohne ausdrueckliche Werte ``MCP_HTTP_PORT``
+    aus der UMGEBUNG. Die Variable ist im laufenden Agent-Container gesetzt —
+    ohne diese Klammer haengt das Ergebnis also daran, wo der Test gerade
+    laeuft, und die Erwartungen fuer den Einzelprozess-Modus fielen dort um.
+    """
+    return mock.patch.dict(os.environ, {"MCP_HTTP_PORT": "8790" if gemeinsam else ""})
 
 
 class TheBudgetIsMeasuredNotGuessedTests(unittest.TestCase):
@@ -31,11 +46,22 @@ class TheBudgetIsMeasuredNotGuessedTests(unittest.TestCase):
         kosten 352, die Grundlast 40 — bleiben 120 frei, also genau die
         Reserve, die fuer ``gh``/``git``/``pytest`` gedacht war.
         """
-        self.assertEqual(max_concurrent_runs(512), 4)
+        with _modus(gemeinsam=False):
+            self.assertEqual(max_concurrent_runs(512), 4)
         self.assertLessEqual(4 * DEFAULT_COST_PER_RUN + 40, 512 - DEFAULT_RESERVE + 40)
 
     def test_a_bigger_limit_allows_more(self):
-        self.assertEqual(max_concurrent_runs(2048), 21)
+        with _modus(gemeinsam=False):
+            self.assertEqual(max_concurrent_runs(2048), 21)
+
+    def test_der_gemeinsame_modus_erlaubt_ein_vielfaches(self):
+        """Der Sprung, um den es bei #638 ging — und der Gegenzweig zu den
+        beiden Tests oben, damit der MCP-Modus nicht nur in eine Richtung
+        geprueft ist."""
+        with _modus(gemeinsam=True):
+            erwartet = (512 - DEFAULT_RESERVE - RESERVE_GEMEINSAMER_MCP) // COST_PER_RUN_GEMEINSAM
+            self.assertEqual(max_concurrent_runs(512), erwartet)
+            self.assertGreater(erwartet, 10 * 4)
 
     def test_it_never_returns_zero(self):
         """Ein Agent, der gar nichts mehr startet, ist schlimmer als ein enger."""

@@ -25,15 +25,46 @@ Zwei Dinge, die der Umbau beachten musste:
 
 import os
 import re
+import socket
+import subprocess
+import sys
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from app import main
 from app.pids_budget import DEFAULT_COST_PER_RUN, DEFAULT_RESERVE, max_concurrent_runs
 
 _MCP = Path(__file__).resolve().parents[1] / "mcp"
 _MAIN = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
 _TRANSPORT = (_MCP / "_transport.mjs").read_text()
 _ALL = (_MCP / "_all.mjs").read_text()
+
+
+def _free_port() -> int:
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+#: `main.subprocess` ist dasselbe Modulobjekt wie das hier importierte. Ein
+#: `mock.patch.object(main.subprocess, "Popen", ...)` trifft deshalb auch den
+#: Aufruf INNERHALB des Ersatzes — ohne diesen festgehaltenen Originalverweis
+#: ruft der Ersatz sich selbst auf (RecursionError statt Testergebnis).
+_ECHTES_POPEN = subprocess.Popen
+
+
+def _fake_popen(script: str):
+    """Ersetzt den echten `node _all.mjs`-Aufruf durch ein Python-Skript, das
+    dasselbe Verhalten zeigt (Port oeffnen/sofort sterben) — ohne node oder das
+    eigentliche MCP-Bundle zu brauchen."""
+    return lambda *a, **kw: _ECHTES_POPEN(
+        [sys.executable, "-c", script], stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE, text=True,
+    )
 
 #: Die eingebauten Server. `hyperframes-server-http` ist die alte HTTP-Referenz
 #: und keine eigene Serverdatei im Sinne dieser Umstellung.
@@ -109,10 +140,21 @@ class DieUmstellungIstAbschaltbarTests(unittest.TestCase):
 
     def test_ein_fehlschlag_faellt_auf_einzelprozesse_zurueck(self):
         """Ein Agent ohne Werkzeuge waere schlimmer als einer, der mehr
-        Speicher braucht."""
-        block = _MAIN.split("def _start_combined_mcp", 1)[1][:2200]
-        self.assertIn("return False", block)
-        self.assertIn("_einzeln = True", _MAIN)
+        Speicher braucht — echter Fallback, nicht nur die Textstelle."""
+        calls = []
+        with mock.patch.object(main, "_start_combined_mcp", return_value=False), \
+                mock.patch.object(main, "_run_mcp_add", side_effect=lambda a: calls.append(a) or True), \
+                mock.patch.object(main, "_write_mcp_json_fallback", lambda: None), \
+                mock.patch.dict(os.environ, {
+                    "MCP_HTTP_PORT": str(_free_port()),
+                    "MSGRAPH_ENABLED": "", "COMPUTER_USE_BROWSER": "",
+                    "COMPUTER_USE_BRIDGE_MCP_URL": "", "CUSTOM_MCP_SERVERS": "",
+                }, clear=False):
+            main.register_mcp_servers()
+        # Trotz Port-Umgebungsvariable wurden die einzelnen stdio-Server
+        # angemeldet — der gemeinsame Prozess ist NICHT gestartet.
+        self.assertTrue(any("bash-approval-server.mjs" in " ".join(a) for a in calls))
+        self.assertFalse(any("127.0.0.1" in " ".join(a) for a in calls))
 
     def test_im_gemeinsamen_modus_keine_doppelregistrierung(self):
         """Dieselben Server zweimal anzumelden — einmal als Adresse, einmal als
@@ -122,13 +164,33 @@ class DieUmstellungIstAbschaltbarTests(unittest.TestCase):
 
     def test_er_wartet_bis_der_dienst_antwortet(self):
         """Sonst meldet Claude Code Adressen an, die es noch nicht gibt, und der
-        erste Werkzeugaufruf scheitert."""
-        block = _MAIN.split("def _start_combined_mcp", 1)[1][:2200]
-        self.assertIn("connect_ex", block)
+        erste Werkzeugaufruf scheitert. Der Fake-Prozess oeffnet den Port erst
+        nach einer Verzoegerung — ein sofortiges `return True` waere zu frueh."""
+        port = _free_port()
+        script = (
+            "import socket, time\n"
+            "time.sleep(0.3)\n"
+            "s = socket.socket(); s.bind(('127.0.0.1', %d)); s.listen(1)\n"
+            "time.sleep(2)\n" % port
+        )
+        with mock.patch.object(main.subprocess, "Popen", _fake_popen(script)):
+            begin = time.monotonic()
+            ok = main._start_combined_mcp(port)
+            dauer = time.monotonic() - begin
+        self.assertTrue(ok)
+        self.assertGreaterEqual(dauer, 0.25)
 
     def test_er_merkt_wenn_der_prozess_sofort_stirbt(self):
-        block = _MAIN.split("def _start_combined_mcp", 1)[1][:2200]
-        self.assertIn("proc.poll() is not None", block)
+        """Stirbt der Prozess sofort, darf die volle 5-Sekunden-Wartezeit nicht
+        ausgeschoepft werden — sonst haengt jeder Lauf ohne Grund."""
+        port = _free_port()
+        script = "import sys; sys.exit(1)"
+        with mock.patch.object(main.subprocess, "Popen", _fake_popen(script)):
+            begin = time.monotonic()
+            ok = main._start_combined_mcp(port)
+            dauer = time.monotonic() - begin
+        self.assertFalse(ok)
+        self.assertLess(dauer, 3.0)
 
 
 if __name__ == "__main__":
@@ -220,19 +282,55 @@ class EigeneAdressenDesBetreibersGewinnenTests(unittest.TestCase):
     ueberschrieb damit die vom Betreiber eingerichtete Adresse. Sichtbar wurde
     es nur an einer Warnung („already exists"), die leicht als Kosmetik
     durchgegangen waere.
+
+    Statt eines Zeichenfensters auf `_namen = [` (297/336 Zeichen Luft, #726)
+    ruft dieser Block `register_mcp_servers()` wirklich auf und liest aus den
+    tatsaechlichen `_run_mcp_add`-Aufrufen ab, ob msgraph LOKAL (ueber die
+    gemeinsame 127.0.0.1-Adresse) registriert wurde.
     """
 
+    def _lauf(self, *, msgraph_enabled: bool, custom_mcp_servers: str):
+        calls = []
+        port = _free_port()
+        with mock.patch.object(main, "_start_combined_mcp", return_value=True), \
+                mock.patch.object(main, "_run_mcp_add", side_effect=lambda a: calls.append(a) or True), \
+                mock.patch.object(main, "_write_mcp_json_fallback", lambda: None), \
+                mock.patch.dict(os.environ, {
+                    "MCP_HTTP_PORT": str(port),
+                    "MSGRAPH_ENABLED": "true" if msgraph_enabled else "",
+                    "CUSTOM_MCP_SERVERS": custom_mcp_servers,
+                    "COMPUTER_USE_BROWSER": "", "COMPUTER_USE_BRIDGE_MCP_URL": "",
+                }, clear=False):
+            main.register_mcp_servers()
+        lokale_adresse = f"127.0.0.1:{port}/mcp/msgraph"
+        lokal_registriert = any(lokale_adresse in " ".join(a) for a in calls)
+        return calls, lokal_registriert
+
     def test_msgraph_wird_uebersprungen_wenn_er_woanders_herkommt(self):
-        block = _MAIN.split("_namen = [", 1)[1][:1200]
-        self.assertIn('"msgraph" not in _custom_namen', block)
+        calls, lokal = self._lauf(
+            msgraph_enabled=True,
+            custom_mcp_servers='{"msgraph": "https://betreiber.example.invalid/mcp"}',
+        )
+        self.assertFalse(lokal, "msgraph wurde trotz eigener Betreiber-Adresse lokal angemeldet")
+        # Die eigene Adresse des Betreibers wird stattdessen ueber den
+        # separaten Custom-Server-Weg registriert.
+        self.assertTrue(any("betreiber.example.invalid" in " ".join(a) for a in calls))
 
     def test_ohne_eigene_adresse_laeuft_er_weiterhin_lokal(self):
-        block = _MAIN.split("_namen = [", 1)[1][:1200]
-        self.assertIn('MSGRAPH_ENABLED", "").lower() == "true"', block)
-        self.assertIn('_namen.append("msgraph")', block)
+        _, lokal = self._lauf(msgraph_enabled=True, custom_mcp_servers="")
+        self.assertTrue(lokal, "msgraph haette ohne Betreiber-Adresse lokal laufen muessen")
+
+    def test_ohne_msgraph_enabled_wird_er_gar_nicht_registriert(self):
+        _, lokal = self._lauf(msgraph_enabled=False, custom_mcp_servers="")
+        self.assertFalse(lokal)
 
     def test_eine_kaputte_liste_legt_den_start_nicht_lahm(self):
         """CUSTOM_MCP_SERVERS kommt als Text aus der Umgebung — ein Tippfehler
-        darf nicht den ganzen Agenten kosten."""
-        block = _MAIN.split("_custom_namen = set(", 1)[1][:300]
-        self.assertIn("except (ValueError, TypeError)", block)
+        darf nicht den ganzen Agenten kosten. Die kaputte Liste faellt auf eine
+        leere Menge zurueck, msgraph gilt dann als nicht fremdvergeben und
+        laeuft weiterhin lokal — der Fehler wird geschluckt, nicht der Start."""
+        try:
+            _, lokal = self._lauf(msgraph_enabled=True, custom_mcp_servers="{kaputt")
+        except Exception as exc:  # pragma: no cover - Beweis, dass es NICHT passiert
+            self.fail(f"register_mcp_servers ist an der kaputten Liste gescheitert: {exc}")
+        self.assertTrue(lokal)

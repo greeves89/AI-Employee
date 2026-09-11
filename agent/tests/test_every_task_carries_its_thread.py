@@ -50,9 +50,13 @@ class EveryToolUsesTheOneBuilderTests(unittest.TestCase):
 
 
 class TheBuilderAlwaysAttachesTheThreadTests(unittest.TestCase):
-    def test_the_thread_is_part_of_the_builder(self):
-        self.assertIn("**_session_field()", _rumpf("create_task").split(
-            "_task_payload", 1)[0] + SRC.split("def _task_payload", 1)[1][:1600])
+    # Frueher stand hier eine 1600-Zeichen-Fenstersuche nach "**_session_field()"
+    # (437 Zeichen Luft, #726). Ueberfluessig: dass jedes Werkzeug ueber
+    # _task_payload baut, sichert test_all_three_build_through_it oben bereits
+    # per AST zu, und dass _task_payload den Faden WIRKLICH anhaengt, beweist
+    # test_the_builder_carries_the_thread_into_a_batch_entry unten am echten
+    # Rueckgabewert — nicht am Quelltext. Zusammen decken beide genau das ab,
+    # was das Fenster nur indirekt behauptete.
 
     def test_outside_a_conversation_nothing_is_attached(self):
         """Ein Zeitplan-Lauf hat keinen Faden — dann darf auch keiner
