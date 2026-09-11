@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.321.0] - 2026-09-11
+
+### Neu
+- **Selbstpruefung erkennt falsches "Fertig" — bevor der Mensch oder der
+  delegierende Agent benachrichtigt werden.** Der bestehende Reflection-
+  Richter (bisher nur Sterne-Bewertung anhand Dauer/Kosten/Turns) bekommt
+  jetzt zusätzlich den ursprünglichen Auftrag und das tatsächliche Ergebnis
+  und urteilt separat, ob der Auftrag inhaltlich erfüllt ist. Hält er ihn
+  trotz Status "completed" für nicht erfüllt, tragen Push-Benachrichtigung,
+  Telegram und die Chat-Rückmeldung an delegierende/übergeordnete Agenten
+  jetzt eine sichtbare Warnung statt eines glatten "Erledigt".
+- **Proaktive Fertig-Meldung trägt den echten Inhalt.** Die Benachrichtigung
+  nach jedem abgeschlossenen Auftrag zeigte bisher nur "Wie war das
+  Ergebnis?" ohne jeden Inhalt — Menschen mussten nachfragen, um zu erfahren,
+  was passiert ist. Notification und Telegram-Nachricht zeigen jetzt einen
+  Ausschnitt des tatsächlichen Ergebnisses.
+- **Subtask-Delegation (`sub_task`) auf denselben Stand wie
+  `delegate_and_wait` gehoben.** Der Eltern-Agent bekam bisher nur eine
+  stille Nachricht in seiner Warteschlange, keine Chat-Rückmeldung mit der
+  Aufforderung, dem Menschen zu berichten — anders als beim anderen
+  Delegationsweg. Beide Wege verhalten sich jetzt gleich.
+
+### Technisch
+- `task_ratings` hat zwei neue Spalten (`fulfilled`, `gap`); `fulfilled` ist
+  nullable — `NULL` heißt „kein Urteil möglich", nie „nicht erfüllt".
+
+---
+
 ## [1.320.1] - 2026-09-11
 
 ### Behoben

@@ -100,14 +100,20 @@ def _compute_formula_rating(task: "Task") -> int:  # noqa: F821
     return max(1, min(5, score))
 
 
-def _parse_reflection_stdout(stdout: bytes, stderr: bytes, returncode: "int | None") -> tuple[int, str]:
-    """Parse `claude -p --output-format json` output into (rating, reflection).
+def _parse_reflection_stdout(
+    stdout: bytes, stderr: bytes, returncode: "int | None"
+) -> tuple[int, str, bool | None, str]:
+    """Parse `claude -p --output-format json` output into (rating, reflection, fulfilled, gap).
 
     Pure and import-free so it is unit-testable without the app or a live subprocess.
     Raises ValueError with a descriptive message on any unusable output — empty stdout,
     a non-JSON envelope, an error envelope, or an empty/non-JSON `result`. Previously the
     unguarded json.loads(result) raised the generic "Expecting value: line 1 column 1",
     which masked the real cause (auth/quota failure) in the platform log (#272).
+
+    `fulfilled`/`gap` are best-effort: older prompts (or a model that ignores the new
+    field) omit them, so a missing `fulfilled` parses to ``None`` ("kein Urteil"), not
+    ``False`` — a missing field must never read as a false-completion warning.
     """
     if not stdout.strip():
         excerpt = stderr.decode(errors="replace")[:300].strip() if stderr else ""
@@ -141,48 +147,73 @@ def _parse_reflection_stdout(stdout: bytes, stderr: bytes, returncode: "int | No
     parsed = json.loads(text)
     rating = max(1, min(5, int(parsed["rating"])))
     reflection = str(parsed.get("reflection", ""))[:500]
-    return rating, reflection
+    raw_fulfilled = parsed.get("fulfilled")
+    fulfilled = bool(raw_fulfilled) if isinstance(raw_fulfilled, bool) else None
+    gap = str(parsed.get("gap") or "")[:500] if fulfilled is False else ""
+    return rating, reflection, fulfilled, gap
 
 
 def _build_reflection_prompt(
-    title: str, status: str, duration_s: float, num_turns: int, cost_usd: float, error: str
+    title: str,
+    status: str,
+    duration_s: float,
+    num_turns: int,
+    cost_usd: float,
+    error: str,
+    prompt_text: str,
+    result_preview: str,
 ) -> str:
     """Build the claude-CLI reflection prompt. Pure/import-free so it is unit-testable.
 
-    The metrics below are the ONLY context the rater gets, so the prompt must forbid the
-    model from asking for more (it otherwise replies with prose like "I don't have enough
-    context to rate this task fairly", which has no JSON object and forces a formula
-    fallback — the LLM rating then never runs). We give an explicit scoring rubric and
-    demand a bare JSON object so a best-guess rating is always produced from the metrics.
+    Ursprünglich bekam der Richter NUR die Metriken (Titel/Status/Dauer/Turns/Kosten/
+    Fehler) — er konnte damit strukturell nicht beurteilen, ob der Auftrag inhaltlich
+    erfüllt wurde, nur ob der Lauf "billig und schnell" war. `prompt_text`/
+    `result_preview` geben ihm jetzt den tatsächlichen Auftrag und das tatsächliche
+    Ergebnis, damit die neue `fulfilled`/`gap`-Frage nicht geraten werden muss.
+
+    Der Rest der Warnung gilt weiter: die Eingaben sind die vollständige Grundlage, der
+    Prompt muss verbieten nachzufragen (sonst kommt Prosa statt JSON zurück und der
+    Formel-Fallback greift), und ein knappes, erzwungenes JSON-Objekt liefert immer eine
+    Bestwertung aus den gegebenen Daten.
     """
     return (
         "You are an automated task-quality rater. Rate the AI agent task below 1-5 stars "
-        "using ONLY the metrics provided — they are the complete context. Do NOT ask for "
+        "using ONLY the information provided — it is the complete context. Do NOT ask for "
         "more information and do NOT write any prose outside the JSON.\n\n"
         f"Task: {title or 'Untitled'}\n"
+        f"Original request: {prompt_text or '(none)'}\n"
         f"Status: {status}\n"
         f"Duration: {duration_s}s | Turns: {num_turns or 0} | Cost: ${cost_usd or 0:.4f}\n"
-        f"Error: {error or 'none'}\n\n"
+        f"Error: {error or 'none'}\n"
+        f"Actual result delivered: {result_preview or '(empty)'}\n\n"
         "Scoring guide: completed with no error and reasonable cost/turns = 4-5; "
         "completed but slow, costly, or many turns = 3; failed or errored = 1-2.\n"
+        "Also judge separately whether the actual result genuinely fulfills the original "
+        "request — not just whether the run finished without error. A run can be "
+        "'completed' and still fail this: e.g. the agent only promised to do the work, "
+        "delivered something unrelated, or left the core ask undone.\n"
         'Output ONLY this JSON object and nothing else: '
-        '{"rating": <1-5>, "reflection": "<one sentence>"}'
+        '{"rating": <1-5>, "reflection": "<one sentence>", '
+        '"fulfilled": <true|false>, "gap": "<one sentence, empty string if fulfilled>"}'
     )
 
 
-async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
-    """Ask Claude CLI to self-reflect on a completed task and return (rating, reflection).
+async def _llm_reflect_on_task(task: "Task") -> tuple[int, str, bool | None, str]:  # noqa: F821
+    """Ask Claude CLI to self-reflect on a completed task and return
+    (rating, reflection, fulfilled, gap).
 
     Uses `claude -p` subprocess so it works with both API key and OAuth token.
-    Falls back to formula rating if the call fails.
+    Falls back to formula rating if the call fails — the formula fallback cannot judge
+    fulfillment, so it returns fulfilled=None (honest "no verdict", not a guess).
     """
     import asyncio, os, shutil
     from app.config import settings
 
     if not shutil.which("claude"):
-        return _compute_formula_rating(task), "auto-rated (claude CLI not found)"
+        return _compute_formula_rating(task), "auto-rated (claude CLI not found)", None, ""
 
     duration_s = round((task.duration_ms or 0) / 1000, 1)
+    result_preview = truncate_preserving_words(task.result or task.error or "", 1500)
     prompt = _build_reflection_prompt(
         title=task.title or "",
         status=task.status.value,
@@ -190,6 +221,8 @@ async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
         num_turns=task.num_turns or 0,
         cost_usd=task.cost_usd or 0,
         error=task.error or "",
+        prompt_text=truncate_preserving_words(task.prompt or "", 1500),
+        result_preview=result_preview,
     )
 
     try:
@@ -212,7 +245,7 @@ async def _llm_reflect_on_task(task: "Task") -> tuple[int, str]:  # noqa: F821
         return _parse_reflection_stdout(stdout, stderr_bytes, proc.returncode)
     except Exception as exc:
         logger.warning(f"LLM self-reflection failed for task {task.id}, falling back to formula: {exc}")
-        return _compute_formula_rating(task), "auto-rated (formula fallback)"
+        return _compute_formula_rating(task), "auto-rated (formula fallback)", None, ""
 
 
 async def _build_approval_rules_prefix(db: AsyncSession, agent_id: str) -> str:
@@ -696,8 +729,10 @@ class TaskRouter:
             except Exception as e:  # noqa: BLE001 — ein Test darf nichts anhalten
                 logger.warning("[Eval] Antwort nicht bewertet: %s", scrub_log(e))
 
-        # Auto-rate the task based on outcome metrics
-        await self._auto_rate_task(task)
+        # Auto-rate the task based on outcome metrics — the (fulfilled, gap) verdict
+        # runs BEFORE every notification below, so a false "fertig" can carry a
+        # visible warning instead of reaching the human/delegator as a clean success.
+        fulfilled, gap = await self._auto_rate_task(task)
 
         # Track skill usage for installed skills on this agent
         if agent_id and task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
@@ -710,7 +745,7 @@ class TaskRouter:
 
         # Subtask completion callback: notify the parent task's agent
         if task.parent_task_id:
-            await self._notify_parent_agent(task)
+            await self._notify_parent_agent(task, fulfilled, gap)
 
         # Delegation callback: notify the agent that created/delegated this task
         delegator_id = (task.metadata_ or {}).get("created_by_agent")
@@ -722,11 +757,11 @@ class TaskRouter:
             # Erst die Kachel aktualisieren (sofort sichtbar), dann den Lead
             # anstossen (der braucht einen ganzen Zug).
             await self.publish_task_card(task, "done")
-            await self._notify_delegating_agent(task, delegator_id)
+            await self._notify_delegating_agent(task, delegator_id, fulfilled, gap)
 
         # Request user rating via notification + Telegram inline keyboard
         if task.status == TaskStatus.COMPLETED:
-            await self._request_task_rating(task, agent_id)
+            await self._request_task_rating(task, agent_id, fulfilled, gap)
         elif task.status == TaskStatus.FAILED:
             # Selbstheilung zuerst (#390): ist ein neuer Versuch geplant, wird der
             # Mensch NICHT benachrichtigt — sonst piept es dreimal fuer einen
@@ -1440,26 +1475,36 @@ class TaskRouter:
 
         return recovered
 
-    async def _auto_rate_task(self, task: Task) -> None:
+    async def _auto_rate_task(self, task: Task) -> tuple[bool | None, str]:
         """Self-reflect on a completed/failed task via LLM and persist the rating.
 
-        Sends task metadata to claude-haiku for a 1-5 star rating + one-sentence
-        reflection. Falls back to the formula-based rating if the LLM call fails.
+        Sends task metadata (now including the original request + actual result, see
+        _build_reflection_prompt) to claude-haiku for a 1-5 star rating + one-sentence
+        reflection, plus a separate fulfilled/gap verdict. Falls back to the
+        formula-based rating if the LLM call fails.
+
+        Returns (fulfilled, gap) so the caller — handle_task_completion, BEFORE any of
+        the human/delegator-facing notifications fire — can surface a false-completion
+        warning instead of a clean "Erledigt". ``fulfilled=None`` means no verdict was
+        possible (CLI unavailable, call failed, task never rated) and must be treated
+        like "unknown", never like "not fulfilled".
         """
         if task.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED):
-            return
+            return None, ""
         if not task.agent_id:
-            return
+            return None, ""
         try:
             from app.models.task_rating import TaskRating
 
-            rating, reflection = await _llm_reflect_on_task(task)
+            rating, reflection, fulfilled, gap = await _llm_reflect_on_task(task)
             task_rating = TaskRating(
                 task_id=task.id,
                 agent_id=task.agent_id,
                 user_id=None,  # system-generated
                 rating=rating,
                 comment=reflection,
+                fulfilled=fulfilled,
+                gap=gap or None,
                 task_cost_usd=task.cost_usd,
                 task_duration_ms=task.duration_ms,
                 task_num_turns=task.num_turns,
@@ -1469,13 +1514,16 @@ class TaskRouter:
             logger.info(
                 f"Self-reflected task {task.id} → {rating}/5: {reflection!r} "
                 f"(status={task.status.value}, duration_ms={task.duration_ms}, "
-                f"num_turns={task.num_turns}, cost_usd={task.cost_usd})"
+                f"num_turns={task.num_turns}, cost_usd={task.cost_usd}, "
+                f"fulfilled={fulfilled}, gap={gap!r})"
             )
 
             # Trigger improvement engine every 10th completed task per agent
             await self._maybe_trigger_improvement(task.agent_id)
+            return fulfilled, gap
         except Exception as e:
             logger.warning(f"Could not auto-rate task {task.id}: {e}")
+            return None, ""
 
     async def _record_skill_usages(self, task: Task, agent_id: str) -> None:
         """Backfill timing data on SkillTaskUsage rows created by explicit skill_rate calls.
@@ -1737,17 +1785,36 @@ class TaskRouter:
         except Exception as e:
             logger.warning(f"Could not create budget notification: {e}")
 
-    async def _request_task_rating(self, task: Task, agent_id: str | None) -> None:
-        """Send a rating request via Telegram inline keyboard after task completion."""
+    async def _request_task_rating(
+        self, task: Task, agent_id: str | None, fulfilled: bool | None = None, gap: str = ""
+    ) -> None:
+        """Send the proactive completion notification (+ Telegram rating keyboard).
+
+        This fires for EVERY completed task, including background/schedule runs with
+        no open chat — it is therefore the one reliably proactive channel that reaches
+        the human without depending on an agent choosing to relay anything. It used to
+        carry only "Wie war das Ergebnis?" with no actual content, forcing the human to
+        open the task to find out what happened — exactly the "reaktiv nachfragen"
+        complaint. It now carries a preview of the real result, and — if the self-
+        reflection judge (_auto_rate_task) found the result does not actually fulfill
+        the request — a visible warning instead of a clean "erledigt".
+        """
         try:
             from app.models.notification import Notification
+
+            result_preview = truncate_preserving_words(
+                task.result or task.error or "(kein Ergebnistext)", 300
+            )
+            message = f"\"{task.title}\": {result_preview}"
+            if fulfilled is False:
+                message = f"Selbstpruefung unsicher: {gap}\n\n{message}"
 
             # Create UI notification with rating action
             notif = Notification(
                 agent_id=agent_id or "system",
-                type="info",
+                type="warning" if fulfilled is False else "info",
                 title="Task abgeschlossen — Bewertung?",
-                message=f"Task \"{task.title}\" ist fertig. Wie war das Ergebnis?",
+                message=message,
                 priority="normal",
                 action_url=f"/tasks/{task.id}",
                 meta={"type": "rating_request", "task_id": task.id},
@@ -1759,7 +1826,7 @@ class TaskRouter:
             await self._push_notification_to_agent_user(notif, agent_id)
 
             # Send Telegram inline keyboard with star ratings
-            await self._send_rating_keyboard(task)
+            await self._send_rating_keyboard(task, fulfilled, gap)
         except Exception as e:
             logger.warning(f"Could not send rating request for task {task.id}: {e}")
 
@@ -1909,12 +1976,23 @@ class TaskRouter:
                 f"Increase PLATFORM_BUDGET_USD or wait for next month."
             )
 
-    async def _notify_parent_agent(self, subtask: Task) -> None:
+    async def _notify_parent_agent(
+        self, subtask: Task, fulfilled: bool | None = None, gap: str = ""
+    ) -> None:
         """When a subtask completes, notify the parent task's agent via message queue.
 
         Sends two types of notifications:
         1. Per-subtask: immediate notification with this subtask's result
         2. Batch-complete: when ALL sibling subtasks are done, sends an aggregated summary
+
+        Until now this only pushed to the parent's raw ``:messages`` queue — unlike
+        ``_notify_delegating_agent`` (the other delegation path, for delegate_and_wait/
+        created_by_agent), it never wrote into the parent's ``:chat`` queue with an
+        explicit "tell the human" instruction. That is the exact reliability gap
+        ``_notify_delegating_agent`` closed in v1.186.0, left unfixed on this second
+        path. Fixed here on the batch-complete branch only (not per subtask) — mirrors
+        that _notify_delegating_agent also fires once per completed task, not on every
+        intermediate signal, and avoids chat-spamming one notification per subtask.
         """
         try:
             parent = await self.db.execute(
@@ -1973,7 +2051,21 @@ class TaskRouter:
                 failed = sum(1 for s in all_siblings if s.status == TaskStatus.FAILED)
                 total_cost = sum(s.cost_usd or 0 for s in all_siblings)
 
+                # Fulfilled-Urteile der Geschwister nachladen (nicht nur des zuletzt
+                # fertigen Subtasks) — _auto_rate_task persistiert sie bereits je Task,
+                # bevor diese Methode ueberhaupt aufgerufen wird.
+                from app.models.task_rating import TaskRating
+
+                sibling_ids = [s.id for s in all_siblings]
+                rating_rows = (await self.db.execute(
+                    select(TaskRating.task_id, TaskRating.fulfilled, TaskRating.gap).where(
+                        TaskRating.task_id.in_(sibling_ids)
+                    )
+                )).all()
+                fulfilled_by_task = {r[0]: (r[1], r[2]) for r in rating_rows}
+
                 summaries = []
+                unfulfilled = []
                 for s in all_siblings:
                     s_status = "completed" if s.status == TaskStatus.COMPLETED else "failed"
                     s_preview = (s.result or s.error or "")[:200]
@@ -1981,6 +2073,9 @@ class TaskRouter:
                         "id": s.id, "title": s.title,
                         "status": s_status, "result_preview": s_preview,
                     })
+                    s_fulfilled, s_gap = fulfilled_by_task.get(s.id, (None, None))
+                    if s_fulfilled is False:
+                        unfulfilled.append((s.title, s_gap or ""))
 
                 batch_message = json.dumps({
                     "type": "all_subtasks_completed",
@@ -2000,6 +2095,42 @@ class TaskRouter:
                         f"ALL {len(all_siblings)} subtasks done for parent {parent_task.id} "
                         f"→ sent aggregated summary to agent {parent_task.agent_id} "
                         f"({completed} OK, {failed} failed)"
+                    )
+
+                    # Auch in die Chat-Warteschlange, damit der Elternagent die
+                    # Fertigmeldung aufgreift und dem Menschen berichtet — gleiches
+                    # Muster wie _notify_delegating_agent (Faden-Zuordnung inklusive).
+                    callback_id = uuid.uuid4().hex[:12]
+                    origin_session = (parent_task.metadata_ or {}).get("chat_session_id")
+                    warnung = ""
+                    if unfulfilled:
+                        punkte = "; ".join(f"'{t}': {g}" for t, g in unfulfilled)
+                        warnung = (
+                            f"\n\nACHTUNG: Die automatische Selbstpruefung haelt "
+                            f"{len(unfulfilled)} von {len(all_siblings)} Teilauftraegen "
+                            f"fuer NICHT erfuellt ({punkte}). Melde das dem Menschen als "
+                            f"Vorbehalt, nicht als glatten Erfolg."
+                        )
+                    chat_notification = json.dumps({
+                        "id": callback_id,
+                        "text": (
+                            f"[Rueckmeldung: Erledigt] Alle {len(all_siblings)} "
+                            f"Teilauftraege von '{parent_task.title}' (#{parent_task.id}) "
+                            f"sind abgeschlossen ({completed} erfolgreich, {failed} "
+                            f"fehlgeschlagen).\n"
+                            "Berichte dem Menschen kurz, was dabei herausgekommen ist. "
+                            "Wenn ein Ergebnis die Aufgabe nicht erfuellt, sage das "
+                            f"deutlich.{warnung}"
+                        ),
+                        "chat_session_id": origin_session,
+                        "source": "webapp",
+                    })
+                    if origin_session:
+                        await self.redis.client.setex(
+                            f"chat:msg:{callback_id}:session", 3600, origin_session
+                        )
+                    await self.redis.client.lpush(
+                        f"agent:{parent_task.agent_id}:chat", chat_notification
                     )
         except Exception as e:
             logger.warning(f"Could not notify parent agent for subtask {subtask.id}: {e}")
@@ -2183,12 +2314,24 @@ class TaskRouter:
             logger.debug("Letzten Gespraechsfaden nicht ermittelbar", exc_info=True)
             return None
 
-    async def _notify_delegating_agent(self, task: Task, delegator_agent_id: str) -> None:
+    async def _notify_delegating_agent(
+        self,
+        task: Task,
+        delegator_agent_id: str,
+        fulfilled: bool | None = None,
+        gap: str = "",
+    ) -> None:
         """When a delegated task completes, notify the agent that created it.
 
         Pushes a structured message to the delegating agent's chat queue so it
         sees the result in its next chat session or proactive run. Also sends
         a Telegram notification to the user for immediate visibility.
+
+        ``fulfilled``/``gap`` come from the self-reflection judge (_auto_rate_task,
+        which runs before this). If it found the result does NOT actually fulfill the
+        request despite status=completed, the delegator gets an explicit warning
+        alongside the result — it must not relay a false "erledigt" upward just
+        because the run finished without a technical error.
         """
         try:
             status = "completed" if task.status == TaskStatus.COMPLETED else "failed"
@@ -2248,6 +2391,12 @@ class TaskRouter:
                 # FREMDES Gespraech geschrieben — schlimmer als gar keine.
                 origin_session = (task.metadata_ or {}).get("chat_session_id")
                 marker = "Erledigt" if status == "completed" else "Fehlgeschlagen"
+                warnung = (
+                    f"\n\nACHTUNG: Die automatische Selbstpruefung haelt den Auftrag "
+                    f"fuer NICHT erfuellt ({gap}). Melde das dem Menschen als "
+                    f"Vorbehalt, nicht als glatten Erfolg."
+                    if fulfilled is False else ""
+                )
                 chat_notification = json.dumps({
                     "id": callback_id,
                     "text": (
@@ -2256,6 +2405,7 @@ class TaskRouter:
                         f"Ergebnis: {result_preview}\n\n"
                         "Berichte dem Menschen kurz, was dabei herausgekommen ist. "
                         "Wenn das Ergebnis die Aufgabe nicht erfuellt, sage das deutlich."
+                        f"{warnung}"
                     ),
                     # In DEN Faden, in dem die Delegation beauftragt wurde.
                     "chat_session_id": origin_session,
@@ -2286,6 +2436,8 @@ class TaskRouter:
                 telegram_text = (
                     f"[{marker}] Delegierter Auftrag: {title}{cost_info}"
                 )
+                if fulfilled is False:
+                    telegram_text += f"\nACHTUNG Selbstpruefung unsicher: {gap}"
                 if self.redis.client and delegator_agent_id:
                     await self.redis.client.publish(
                         f"agent:{delegator_agent_id}:telegram:send",
@@ -2300,13 +2452,21 @@ class TaskRouter:
                 f"for task {task.id}: {e}"
             )
 
-    async def _send_rating_keyboard(self, task: Task) -> None:
-        """Send Telegram inline keyboard with ⭐1-5 rating buttons."""
+    async def _send_rating_keyboard(
+        self, task: Task, fulfilled: bool | None = None, gap: str = ""
+    ) -> None:
+        """Send Telegram inline keyboard with 1-5 rating buttons."""
         try:
             import json
             title = (task.title or "Task")[:50]
             cost_info = f" (${task.cost_usd:.3f})" if task.cost_usd else ""
-            text = f"✅ Task erledigt: {title}{cost_info}\nWie bewertest du das Ergebnis?"
+            result_preview = truncate_preserving_words(
+                task.result or task.error or "(kein Ergebnistext)", 300
+            )
+            text = f"Task erledigt: {title}{cost_info}\n{result_preview}"
+            if fulfilled is False:
+                text = f"ACHTUNG — Selbstpruefung unsicher: {gap}\n\n{text}"
+            text += "\nWie bewertest du das Ergebnis?"
             keyboard = {
                 "inline_keyboard": [[
                     {"text": "⭐1", "callback_data": f"rate:{task.id}:1"},
