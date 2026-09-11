@@ -857,6 +857,15 @@ class LLMChatHandler:
                     # sondern der WIDERSPRUCH zwischen Zusage und Untaetigkeit.
                     # Genau einmal je Zug — ein zweiter Anstupser waere
                     # Bevormundung, wenn der Agent begruendet ablehnt.
+                    #
+                    # ``ansporn_offen = False`` ist NICHT nur Hoeflichkeit: es
+                    # ist die einzige Abbruchbedingung dieses Zweigs. Er hebt
+                    # unten sein eigenes Budget an (max_turns = num_turns + 4),
+                    # also fuettert sich die Schleife ohne das Flag selbst —
+                    # Zusage, Anstupser, Budget, Zusage. Gemessen: 5,4 GB in
+                    # 2,5 min. Die beiden anderen Budget-Anhebungen haengen an
+                    # pending_drain(), also an ECHTER neuer Nutzereingabe, und
+                    # sind dadurch von aussen begrenzt. Diese hier nicht.
                     if ansporn_offen and announcement_guard.promises_but_does_nothing(
                         turn_text, tools_dieser_zug
                     ):

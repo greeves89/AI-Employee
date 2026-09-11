@@ -23,8 +23,10 @@ nachweisbar falsch, egal worum es geht.
 """
 
 import unittest
+import unittest.mock
 
 from app.announcement_guard import NUDGE, promises_but_does_nothing
+from app.providers.base import LLMEvent
 
 
 class TheRealCaseIsCaughtTests(unittest.TestCase):
@@ -117,33 +119,119 @@ class TheNudgeItselfTests(unittest.TestCase):
                 self.assertNotIn(wort, NUDGE)
 
 
-class ItIsWiredIntoTheChatTurnTests(unittest.TestCase):
-    """Eine Pruefung, die niemand aufruft, aendert nichts."""
+class _Publisher:
+    async def publish_chat(self, message_id, kind, payload):
+        pass
 
-    import pathlib
 
-    SRC = (pathlib.Path(__file__).resolve().parents[1]
-           / "app/llm_chat_handler.py").read_text()
+class _Anbieter:
+    """Antwortet je Zug mit einem festen Text und meldet den Zug als fertig.
 
-    def test_the_chat_handler_uses_it(self):
-        self.assertIn("announcement_guard.promises_but_does_nothing(", self.SRC)
+    Ohne Werkzeugaufruf — genau die Lage aus dem Bericht: der Agent SAGT etwas
+    und tut nichts.
+    """
 
-    def test_it_fires_before_the_turn_ends(self):
-        """Nach ``break`` waere es wirkungslos."""
-        block = self.SRC.split("if not has_tool_calls:", 1)[1].split("break", 1)[0]
-        self.assertIn("promises_but_does_nothing", block)
+    # Der Anstupser-Zweig hebt sein eigenes Zugbudget an (max_turns =
+    # num_turns + 4). Bliebe ``ansporn_offen`` stehen, fuettert sich die
+    # Schleife selbst: Zusage -> Anstupser -> Budget -> Zusage. Gemessen am
+    # 11.09.2026 waren das 5,4 GB in 2,5 Minuten. Ohne diese Bremse HAENGT
+    # der Test dann, statt rot zu werden — und eine Gegenprobe, die haengt,
+    # belegt nichts.
+    MAX_AUFRUFE = 12
 
-    def test_only_once_per_human_message(self):
+    def __init__(self, *texte):
+        self.texte = list(texte)
+        self.aufrufe = 0
+        self.reasoning_effort = ""
+
+    def stream_completion(self, messages, tools=None):
+        if self.aufrufe >= self.MAX_AUFRUFE:
+            raise AssertionError(
+                f"Zug lief ueber {self.MAX_AUFRUFE} Anbieter-Aufrufe hinaus — "
+                "die Schleife beendet sich nicht mehr selbst."
+            )
+        text = self.texte[min(self.aufrufe, len(self.texte) - 1)]
+        self.aufrufe += 1
+
+        async def gen():
+            yield LLMEvent(type="text_delta", text=text)
+            yield LLMEvent(type="done")
+
+        return gen()
+
+    async def close(self):
+        pass
+
+
+class ItIsWiredIntoTheChatTurnTests(unittest.IsolatedAsyncioTestCase):
+    """Eine Pruefung, die niemand aufruft, aendert nichts.
+
+    Vorher stand das hier als Textsuche im Quelltext des Chat-Handlers, zuletzt
+    in einem 400-Zeichen-Fenster mit 111 Zeichen Luft. Ein Fenster misst
+    Abstand, gemeint war Wirkung — siehe Issue #726. Jetzt laeuft der Zug.
+    """
+
+    ZUSAGE = ("Alles klar, ich kümmere mich sofort um die Taschenrechner-App. "
+              "Ich erstelle sie komplett und deploye sie für dich.")
+
+    def _handler(self):
+        from app.llm_chat_handler import LLMChatHandler
+        from app.providers.base import ChatMessage
+
+        h = LLMChatHandler(log_publisher=_Publisher())
+        h._context_window = 1_000_000
+        # Vorbelegt, damit kein Systemprompt gebaut wird — der liest /workspace
+        # und ist hier nicht die Frage.
+        h._history = [ChatMessage(role="system", content="S")]
+        return h
+
+    async def _fahre(self, anbieter, *, budget=None):
+        from app.config import settings
+
+        h = self._handler()
+        with unittest.mock.patch.object(h, "_get_provider", return_value=anbieter), \
+             unittest.mock.patch.object(
+                 h, "_get_tools", new=unittest.mock.AsyncMock(return_value=None)), \
+             unittest.mock.patch.object(settings, "max_turns", budget or 20):
+            ergebnis = await h.handle_message("m1", "bau mir eine App")
+        return h, ergebnis
+
+    def _anstupser(self, handler) -> int:
+        return [m.content for m in handler._history].count(NUDGE)
+
+    async def test_an_empty_promise_is_nudged(self):
+        h, _ = await self._fahre(_Anbieter(self.ZUSAGE, "Ist erledigt."))
+
+        self.assertEqual(self._anstupser(h), 1)
+
+    async def test_the_agent_gets_a_turn_to_follow_it(self):
+        """Ein Anstupser, nach dem der Zug endet, erreicht niemanden."""
+        _, ergebnis = await self._fahre(_Anbieter(self.ZUSAGE, "Ist erledigt."))
+
+        self.assertGreaterEqual(ergebnis["num_turns"], 2)
+
+    async def test_ordinary_talk_is_left_alone(self):
+        """Gegenstueck: im Chat ist Reden der Normalfall. Wuerde jeder
+        werkzeuglose Zug angestupst, waere der Anstupser wertlos."""
+        h, ergebnis = await self._fahre(_Anbieter("Hallo! Wie kann ich helfen?"))
+
+        self.assertEqual(self._anstupser(h), 0)
+        self.assertEqual(ergebnis["num_turns"], 1)
+
+    async def test_only_once_per_human_message(self):
         """Ein zweiter Anstupser waere Bevormundung, wenn der Agent begruendet
         ablehnt."""
-        self.assertIn("ansporn_offen = True", self.SRC)
-        self.assertIn("ansporn_offen = False", self.SRC)
+        h, _ = await self._fahre(_Anbieter(self.ZUSAGE, self.ZUSAGE, self.ZUSAGE))
 
-    def test_the_turn_budget_is_extended(self):
+        self.assertEqual(self._anstupser(h), 1)
+
+    async def test_the_turn_budget_is_extended(self):
         """Ohne zusaetzliche Zuege koennte der Agent den Anstupser gar nicht
-        mehr befolgen."""
-        block = self.SRC.split("ansporn_offen = False", 1)[1][:400]
-        self.assertIn("max_turns = num_turns + 4", block)
+        mehr befolgen: das Budget ist in dem Moment schon aufgebraucht."""
+        _, ergebnis = await self._fahre(
+            _Anbieter(self.ZUSAGE, "Ist erledigt."), budget=1)
+
+        self.assertGreaterEqual(ergebnis["num_turns"], 2)
 
 
 if __name__ == "__main__":
