@@ -5,7 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.319.1] - 2026-09-11
+## [1.319.2] - 2026-09-11
+
+### Geändert
+- **Compliance-Bereich in der Seitenleiste auf einen einzigen Einstieg
+  reduziert.** Die einzelnen Deep-Links (Rechte, Audit Log, Gesetze) machten
+  die Seitenleiste unübersichtlich, ohne einen echten Vorteil gegenüber der
+  Reiterleiste zu bieten, die innerhalb der Admin-Konsole bereits genau
+  dieselben Bereiche zeigt. Ein Klick auf "Admin-Konsole" reicht jetzt.
 
 ### Behoben
 - **Der neue "Gesetze"-Reiter fehlte in der eigentlichen Reiterleiste des

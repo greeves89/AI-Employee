@@ -12,7 +12,6 @@ import {
   FolderOpen,
   Plug,
   Shield,
-  ScrollText,
   Workflow,
   LifeBuoy,
   MessageSquarePlus,
@@ -23,8 +22,6 @@ import {
   Zap,
   ClipboardCheck,
   Users,
-  UserCog,
-  Scale,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -171,14 +168,12 @@ const navGroups: NavGroup[] = [
     key: "admin",
     adminOnly: true,
     items: [
-      // Settings, AI-Accounts, Key Management, Health are tabs inside the
-      // Admin-Konsole — one entry instead of six. Rechte und Audit Log sind
-      // direkt hier verlinkt statt erst hinter einem Reiter versteckt — Platz
-      // fuer weitere Compliance-Bausteine (z.B. Gesetzestexte) ist bewusst da.
+      // EIN Einstieg — Rechte, Audit Log, DLP, Master-Regeln und Gesetze
+      // liegen als Reiter INNERHALB der Admin-Konsole (Gruppe "Compliance"),
+      // nicht als eigene Sidebar-Eintraege. Mehrere Deep-Links hier machten
+      // die Seitenleiste unuebersichtlich, ohne einen echten Vorteil
+      // gegenueber der Reiterleiste in der Ansicht selbst.
       { href: "/admin", label: "Admin-Konsole", icon: Shield, simpleVisible: false },
-      { href: "/admin?tab=roles", label: "Rechte", icon: UserCog, simpleVisible: false },
-      { href: "/audit", label: "Audit Log", icon: ScrollText, simpleVisible: false },
-      { href: "/admin?tab=gesetze", label: "Gesetze", icon: Scale, simpleVisible: false },
     ],
   },
 ];
