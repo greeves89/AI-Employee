@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.318.5] - 2026-09-11
+
+### Sonstiges
+- Interne Code-Kommentare bereinigt (keine funktionale Änderung).
+
+---
+
 ## [1.318.4] - 2026-09-11
 
 ### Behoben
