@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.318.2] - 2026-09-11
+
+### Behoben
+- **Custom-LLM-Aufträge (GPT-Modelle) zersplitterten in hunderte Ein-Wort-Schritte.**
+  Beim Live-Test im Chat fielen der Task-Karten-Aktivitätsanzeige (v1.317.0) 246
+  unlesbare Mini-Einträge für eine einzige Wetterauskunft auf — jedes rohe
+  Streaming-Token wurde als eigener Verlaufsschritt gespeichert. Der Custom-LLM-
+  Runner puffert Textfragmente jetzt bis zum nächsten Werkzeugaufruf oder
+  Antwortende, genau wie Claude Code und Codex es bereits tun. Betrifft sowohl
+  die Task-Karten-Aktivitätsanzeige als auch die Replay-Ansicht. Bereits
+  gelaufene Aufträge bleiben mit den alten, fragmentierten Daten — nur neue
+  Aufträge nach diesem Update sind sauber.
+
+---
+
 ## [1.318.1] - 2026-09-10
 
 ### Behoben

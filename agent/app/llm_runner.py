@@ -415,17 +415,27 @@ class LLMRunner:
                 turn_text = ""
                 turn_tool_calls: list[dict] = []
                 switched_model = False
+                # Buffers text_delta chunks between flush points (a tool call, an
+                # error/retry, or the end of the turn's stream) so the persisted
+                # step log holds one coherent text block instead of one row per
+                # raw provider token — a GPT-via-Custom-LLM response streamed
+                # word-fragment by word-fragment turned a single answer into 246
+                # unreadable one-word "steps" in the task-card activity log.
+                pending_text = ""
                 tools = await self._get_tools()  # re-fetch each turn: picks up search_tools activations
 
                 async for event in provider.stream_completion(messages, tools):
                     if event.type == "text_delta":
                         turn_text += event.text
                         full_text += event.text
-                        await self.log_publisher.publish(
-                            task_id, "text", {"text": event.text}
-                        )
+                        pending_text += event.text
 
                     elif event.type == "tool_call":
+                        if pending_text:
+                            await self.log_publisher.publish(
+                                task_id, "text", {"text": pending_text}
+                            )
+                            pending_text = ""
                         has_tool_calls = True
                         turn_tool_calls.append({
                             "id": event.tool_id,
@@ -463,6 +473,11 @@ class LLMRunner:
                         # hilft DERSELBE Aufruf noch einmal — ein Modellwechsel
                         # waere die falsche Antwort und ohne gefuellte Kette
                         # ohnehin wirkungslos.
+                        if pending_text:
+                            await self.log_publisher.publish(
+                                task_id, "text", {"text": pending_text}
+                            )
+                            pending_text = ""
                         if await self._retry_after_connection_glitch(task_id, event.text):
                             switched_model = True   # Merker heisst „Zug wiederholen"
                             provider = self._get_provider()
@@ -482,6 +497,12 @@ class LLMRunner:
                             "error": event.text,
                             "num_turns": num_turns,
                         }
+
+                if pending_text:
+                    await self.log_publisher.publish(
+                        task_id, "text", {"text": pending_text}
+                    )
+                    pending_text = ""
 
                 if switched_model:
                     # Zug wiederholen — entweder mit anderem Modell oder, nach
