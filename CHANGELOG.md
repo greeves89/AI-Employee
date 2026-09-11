@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.319.1] - 2026-09-11
+
+### Behoben
+- **Der neue "Gesetze"-Reiter fehlte in der eigentlichen Reiterleiste des
+  Compliance-Bereichs** — nur der Direktlink aus der Seitenleiste führte
+  hin, der eigentliche Inhalt funktionierte, aber die Reiterleiste selbst
+  zeigte ihn nicht an. Ursache: eine zweite, getrennte Liste (`tabs` in
+  `admin/page.tsx`, Quelle für Beschriftung/Symbol jedes Reiters) kannte
+  `gesetze` nicht, obwohl die Gruppen-Zuordnung dafür längst stand — exakt
+  das wiederkehrende Muster "zwei Listen, die auseinanderlaufen".
+
+---
+
 ## [1.319.0] - 2026-09-11
 
 ### Neu

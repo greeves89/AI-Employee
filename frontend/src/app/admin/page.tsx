@@ -41,6 +41,7 @@ import {
   AppWindow,
   Search,
   Download,
+  Scale,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 
@@ -450,6 +451,7 @@ export default function AdminPage() {
     { id: "audit", label: "Audit Log", icon: ScrollText },
     { id: "dlp", label: "DLP-Filter", icon: Shield },
     { id: "master-rules", label: "Master-Regeln", icon: ShieldAlert },
+    { id: "gesetze", label: "Gesetze", icon: Scale },
     { id: "pages", label: "Seiten & Links", icon: AppWindow },
     { id: "sso-groups", label: "SSO-Gruppen", icon: KeyRound },
   ];
