@@ -920,6 +920,17 @@ class ChatConsumer:
                     "Chat turn %s aborted — no activity for %ss (agent appears stuck)",
                     message_id, idle_limit,
                 )
+                # `turn.cancel()` only SCHEDULES the CancelledError — it lands
+                # inside handle_message at its next await point, asynchronously.
+                # Calling stop_current() (and its history repair, see there)
+                # without waiting for that to actually happen would race a still-
+                # running turn: it could still be mid-way through appending a
+                # tool_calls message when the repair runs, or append it right
+                # after. Wait for the cancellation to actually settle first.
+                try:
+                    await turn
+                except BaseException:  # noqa: BLE001 — CancelledError is not an Exception
+                    pass
                 try:
                     if hasattr(handler, "stop_current"):
                         await handler.stop_current()

@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.318.4] - 2026-09-11
+
+### Behoben
+- **Ein abgebrochener Chat-Zug machte jede weitere Nachricht der Sitzung
+  kaputt.** Live beim Kunden aufgetreten: eine "status?"-Nachricht scheiterte
+  mit `API error 400: No tool output found for function call ...`. Ursache:
+  der 600s-Leerlauf-Wächter bricht einen hängenden Zug ab — landet das genau
+  zwischen "Werkzeugaufruf im Verlauf vermerkt" und "Werkzeugergebnis
+  angehängt" (der Zug hing MITTEN in einem Werkzeugaufruf), blieb die
+  Gesprächshistorie für den Rest des laufenden Prozesses ungültig: jede
+  weitere Anfrage an Azure/OpenAI schlug mit demselben 400 fehl, bis der
+  Container neu startete. Der Abbruch-Pfad schließt jetzt jeden verwaisten
+  Werkzeugaufruf mit einem synthetischen Ergebnis ab, bevor die Sitzung
+  weiterläuft — und wartet dafür korrekt, bis der abgebrochene Zug wirklich
+  beendet ist, statt gegen ihn zu laufen.
+
+---
+
 ## [1.318.3] - 2026-09-11
 
 ### Behoben

@@ -1059,6 +1059,35 @@ class LLMChatHandler:
         if self._provider:
             await self._provider.close()
             self._provider = None
+        self._repair_dangling_tool_calls()
+
+    def _repair_dangling_tool_calls(self) -> None:
+        """Close out an assistant tool-call message left without its results.
+
+        The idle-timeout watchdog (``chat_consumer.py``) cancels a stuck turn
+        via ``asyncio.Task.cancel()``. If that lands between appending the
+        assistant's tool_calls message and appending the matching tool-result
+        messages — i.e. while a tool is still running — ``self._history`` (kept
+        in memory for this runtime; see ``_verlauf_nachladen``) is left with an
+        assistant message whose tool_calls have no answer. Every later request
+        on this same session then fails with the provider's hard "no tool
+        output found for function call" 400, permanently — until the process
+        restarts. A customer hit exactly this on 2026-09-11 after a stuck turn
+        aborted. Close the gap: one synthetic result per orphaned call.
+        """
+        if not self._history:
+            return
+        last = self._history[-1]
+        if last.role != "assistant" or not last.tool_calls:
+            return
+        for tc in last.tool_calls:
+            call_id = tc.get("id") if isinstance(tc, dict) else None
+            name = (tc.get("function") or {}).get("name", "") if isinstance(tc, dict) else ""
+            if call_id:
+                self._history.append(multimodal.tool_message(
+                    "[Abgebrochen — der Agent hat auf dieses Werkzeugergebnis nicht mehr reagiert.]",
+                    call_id, name,
+                ))
 
     async def reset_session(self) -> None:
         """Reset conversation history."""
