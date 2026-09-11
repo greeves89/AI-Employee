@@ -1,4 +1,4 @@
-"""Ein Auftrag wurde zu 246 Ein-Wort-Schritten statt einer Antwort (SKBS, 2026-09-11).
+"""Ein Auftrag wurde zu 246 Ein-Wort-Schritten statt einer Antwort (beim Kunden, 2026-09-11).
 
 Der Custom-LLM-Runner (GPT-Modelle) verarbeitet einen rohen Token-Stream vom
 Provider. Fuer jedes einzelne ``text_delta``-Fragment ging bisher SOFORT ein

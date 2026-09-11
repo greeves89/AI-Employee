@@ -835,7 +835,7 @@ class LLMChatHandler:
                         if extra:
                             for t in extra:
                                 self._history.append(ChatMessage(role="user", content=t))
-                                # The bare tag alone (no text) is what a SKBS
+                                # The bare tag alone (no text) is what a
                                 # customer saw stacked five times in a row with
                                 # nothing between them — confusing, and it hid
                                 # what they had actually typed. Show it.

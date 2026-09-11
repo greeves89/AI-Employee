@@ -1,4 +1,4 @@
-"""Fuenf identische, leere Platzhalter statt der eigenen Nachrichten (SKBS).
+"""Fuenf identische, leere Platzhalter statt der eigenen Nachrichten (beim Kunden).
 
 Ein Kunde schrieb waehrend eines laufenden Custom-LLM-Chat-Zugs (GPT ueber den
 Custom-LLM-Harness) mehrere kurze Folgenachrichten. Jede wurde korrekt in die

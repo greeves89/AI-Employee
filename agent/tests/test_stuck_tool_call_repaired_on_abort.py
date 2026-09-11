@@ -1,4 +1,4 @@
-"""Ein abgebrochener Zug machte jede weitere Nachricht der Sitzung kaputt (SKBS, 2026-09-11).
+"""Ein abgebrochener Zug machte jede weitere Nachricht der Sitzung kaputt (beim Kunden, 2026-09-11).
 
 Der 600s-Leerlauf-Wächter (``chat_consumer.py``) bricht einen haengenden Zug per
 ``asyncio.Task.cancel()`` ab. Landet das WAEHREND ein Werkzeug noch laeuft — also
