@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.321.2] - 2026-09-12
+
+### Behoben
+- **VERSION und das Docker-Label liefen wieder auseinander** (VERSION 1.321.1,
+  `agent/Dockerfile`-Label noch 1.319.0) — die Release-Spur-Pruefung in der CI
+  hat main dadurch seit dem 07.09. durchgehend rot gehalten. Label
+  nachgezogen; Hauptlinie damit wieder release-spur-vollstaendig.
+- **Zeichenfenster-Fehlalarm in `test_credential_status_covers_llm_chat.py`**
+  (Issue #726): der Test schnitt die Quelle mit `[:900]` ab und brach bei
+  jeder harmlosen Aenderung oberhalb dieser Marke, ohne dass sich am
+  gepruefter Verhalten etwas geaendert hatte. Durch einen Verhaltenstest
+  ersetzt, der direkt zusichert, dass `report_result_status(result)` nach
+  jedem Chat-Aufruf ausgefuehrt wird — unabhaengig von umliegenden
+  Kommentaren oder Zeilenverschiebungen.
+
 ## [1.321.1] - 2026-09-12
 
 ### Behoben
