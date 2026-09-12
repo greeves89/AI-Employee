@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.321.3] - 2026-09-12
+
+### Behoben
+- **Ein Aufgabenplatz blieb stundenlang belegt, obwohl laengst niemand mehr
+  arbeitete.** Beobachtet an einem Lauf, der 344 Minuten einen Platz hielt —
+  davon waren 18 Minuten echte Arbeit, der Rest ein Phantom. Freigegeben wurde
+  der Platz erst durch einen Neustart von aussen. In der Zwischenzeit warteten
+  nachfolgende Aufgaben auf einen Arbeiter, den es nicht mehr gab.
+
+  Ursache war das Lebenszeichen selbst: es meldete „ich lebe noch", solange der
+  Aufgabenablauf als solcher existierte — und der existiert auch dann noch
+  prima, wenn er in einem haengenden Werkzeugaufruf feststeckt. Die Aufsicht
+  bekam also ein Signal, das im Klemmfall nie altern konnte, und griff deshalb
+  nie ein. Ein groesserer oder kleinerer Zeitschwellwert haette daran nichts
+  geaendert.
+
+  Jetzt bezeugt das Lebenszeichen die ARBEIT statt nur den Arbeitsablauf: es
+  wird von jedem Schritt der Aufgabe erneuert (Antworttext, Werkzeugaufruf,
+  Werkzeugergebnis). Kommt ueber laengere Zeit nichts mehr, verstummt es — die
+  bestehende Aufsicht bemerkt den Stillstand und gibt den Platz frei. Lange,
+  aber lebendige Aufgaben laufen unveraendert weiter; die Grenze ist bewusst
+  grosszuegig gewaehlt, damit ein einzelner langer Build oder Testlauf nicht
+  faelschlich als Stillstand gilt. Betreiber koennen sie ueber
+  `STILLSTAND_GRENZE_SEKUNDEN` anpassen.
+
 ## [1.321.1] - 2026-09-12
 
 ### Behoben
