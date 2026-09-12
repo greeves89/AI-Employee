@@ -12,8 +12,34 @@ class LogPublisher:
         self.redis = redis
         self.agent_id = agent_id
         self.last_activity_at = time.monotonic()
+        #: Letzter Fortschritt JE AUFGABE. Absichtlich kein einzelner Wert wie
+        #: ``last_activity_at``: bei ``MAX_PARALLEL_TASKS>1`` teilen sich alle
+        #: Aufgaben EINEN LogPublisher. Ein gemeinsamer Zeitstempel hiesse, dass
+        #: eine fleissige Aufgabe den Herzschlag einer laengst klemmenden am
+        #: Leben haelt — genau die Blindstelle, die #730 beseitigen soll.
+        self.last_activity_by_task: dict[str, float] = {}
+
+    def notiere_fortschritt(self, task_id: str | None) -> None:
+        """Haelt fest, dass an dieser Aufgabe gerade wirklich etwas passiert ist."""
+        if task_id:
+            self.last_activity_by_task[task_id] = time.monotonic()
+
+    def vergiss_aufgabe(self, task_id: str | None) -> None:
+        """Nach Ende der Aufgabe aufraeumen — sonst waechst die Zuordnung endlos."""
+        if task_id:
+            self.last_activity_by_task.pop(task_id, None)
+
+    def stillstand_seit(self, task_id: str | None) -> float:
+        """Sekunden seit dem letzten echten Fortschritt dieser Aufgabe."""
+        if not task_id or task_id not in self.last_activity_by_task:
+            return 0.0
+        return time.monotonic() - self.last_activity_by_task[task_id]
 
     async def publish(self, task_id: str, event_type: str, data: dict | str) -> None:
+        # Jedes Ereignis einer Aufgabe ist ein Fortschrittsbeleg: der Runner
+        # veroeffentlicht hier jeden Textblock, jeden Werkzeugaufruf und jedes
+        # Werkzeugergebnis. Bleibt das aus, arbeitet niemand mehr.
+        self.notiere_fortschritt(task_id)
         message = json.dumps(
             {
                 "agent_id": self.agent_id,

@@ -53,6 +53,18 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+#: Nach so vielen Sekunden ohne jeden Fortschritt gilt eine Aufgabe als klemmend
+#: und der Herzschlag verstummt. Bewusst grosszuegig: ein einzelner Werkzeugaufruf
+#: darf lange dauern (ein Build, ein langer Testlauf), und ein Fehlalarm kostet
+#: hier nichts Sofortiges — der Waechter im Orchestrator laesst danach noch
+#: ``watchdog_stale_task_minutes`` (180) verstreichen, bevor er wirklich aufraeumt.
+STILLSTAND_GRENZE_SEKUNDEN = 900
+
+
+def _stillstand_grenze() -> int:
+    return max(60, _env_int("STILLSTAND_GRENZE_SEKUNDEN", STILLSTAND_GRENZE_SEKUNDEN))
+
+
 class TaskConsumer:
     """Consumes tasks from a Redis queue and executes them via AgentRunner or LLMRunner.
 
@@ -181,6 +193,10 @@ class TaskConsumer:
             # harte 30-Minuten-Obergrenze fuer jede delegierte Aufgabe: am
             # 31.08.2026 starben vier parallele Reviews nach 30.3 Minuten mit
             # "Worker still gestorben", obwohl sie kerngesund arbeiteten.
+            # Stillstandsuhr AUSDRUECKLICH starten: ohne Eintrag meldet
+            # `stillstand_seit` 0 Sekunden — ein Herzschlag, der nie altern
+            # kann, waere wieder die fail-open Ueberwachung aus #730.
+            self._log_publisher.notiere_fortschritt(task_id)
             herzschlag = asyncio.create_task(self._herzschlag(task_id))
 
             is_lightweight = task.get("lightweight", False)
@@ -233,6 +249,7 @@ class TaskConsumer:
         finally:
             if herzschlag is not None:
                 herzschlag.cancel()
+            self._log_publisher.vergiss_aufgabe(task_id)
             self._active_runners.discard(runner)
             if task_id:
                 self._runner_by_task.pop(task_id, None)
@@ -257,21 +274,50 @@ class TaskConsumer:
     HERZSCHLAG_SEKUNDEN = 60
 
     async def _herzschlag(self, task_id: str | None) -> None:
-        """Meldet, solange die Aufgabe laeuft: „ich lebe noch".
+        """Meldet „ich arbeite noch" — aber NUR solange wirklich gearbeitet wird.
 
         Der Waechter im Orchestrator (#211) prueft, wann an der Aufgabe zuletzt
         etwas geschrieben wurde. Zwischen `task:started` und `task:completions`
         schreibt aber nichts — der Waechter mass damit nicht die Gesundheit des
         Arbeiters, sondern schlicht die verstrichene Zeit (#692).
 
+        Der erste Herzschlag war ein unbedingtes ``while True``. Er bezeugte
+        damit, dass die COROUTINE lebt, nicht dass ARBEIT stattfindet — und eine
+        Coroutine, die in einem haengenden Werkzeugaufruf klemmt, lebt prima.
+        Der Waechter mass eine Groesse, die im Klemmfall per Konstruktion nie
+        altert: die Ueberwachung war fail-open. Am 11.09.2026 belegt an Lauf
+        tccxfej99 — 344 Minuten belegter Platz, davon 18,4 Minuten echte Arbeit
+        und 5h26 Phantom-Schwanz, beendet erst durch einen fremden Neustart
+        (#730).
+
+        Deshalb schlaegt der Herzschlag nur weiter, solange seit dem letzten
+        Fortschritt hoechstens ``STILLSTAND_GRENZE_SEKUNDEN`` vergangen sind.
+        Fortschritt ist jedes veroeffentlichte Ereignis der Aufgabe: ein
+        Textblock, ein Werkzeugaufruf, ein Werkzeugergebnis. Bleibt alles aus,
+        VERSTUMMT der Herzschlag, `Task.updated_at` altert wieder, und der
+        Waechter raeumt auf. Ein zu grosszuegiger Schwellwert war nie die
+        Ursache — deshalb wird hier auch keiner nachgezogen.
+
         Ein Fehler hier darf die Aufgabe nie mitreissen: schlaegt das Senden
         fehl, wird es beim naechsten Schlag erneut versucht.
         """
         if not task_id:
             return
+        grenze = _stillstand_grenze()
         while True:
             try:
                 await asyncio.sleep(self.HERZSCHLAG_SEKUNDEN)
+                # Absichtlich VOR dem Senden: ein Schlag, der den Stillstand
+                # nicht prueft, ist genau der alte fail-open Zustand.
+                still = self._log_publisher.stillstand_seit(task_id) if self._log_publisher else 0.0
+                if still > grenze:
+                    logger.warning(
+                        "Herzschlag fuer %s verstummt: seit %.0fs kein Fortschritt "
+                        "(Grenze %.0fs). Die Aufgabe klemmt — der Waechter raeumt sie "
+                        "jetzt auf, statt den Platz endlos belegt zu lassen (#730).",
+                        task_id, still, grenze,
+                    )
+                    return
                 if self.redis:
                     await self.redis.publish(
                         "task:heartbeat",
