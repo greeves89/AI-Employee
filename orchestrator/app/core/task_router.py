@@ -1493,6 +1493,13 @@ class TaskRouter:
             return None, ""
         if not task.agent_id:
             return None, ""
+        # Captured up front, plain Python values: after a failed flush below,
+        # SQLAlchemy expires every object still attached to the session, and
+        # referencing task.id again (e.g. in the except-block's log line)
+        # would itself try to reload it — which fails a second time because
+        # the session needs rollback() first. A local string sidesteps that
+        # entirely instead of ordering around it.
+        task_id_for_log = task.id
         try:
             from app.models.task_rating import TaskRating
 
@@ -1522,7 +1529,31 @@ class TaskRouter:
             await self._maybe_trigger_improvement(task.agent_id)
             return fulfilled, gap
         except Exception as e:
-            logger.warning(f"Could not auto-rate task {task.id}: {e}")
+            # Roll back BEFORE logging: a failed flush/commit (observed live —
+            # a schema-drift window where code shipped fractionally ahead of
+            # its own migration) leaves the session unusable until rolled
+            # back, and every later step in handle_task_completion (skill-
+            # usage tracking, the MCP callback, both notification paths)
+            # shares this SAME session — they would otherwise cascade-fail
+            # right behind it with "transaction has been rolled back due to a
+            # previous exception during flush". That defeats the entire point
+            # of this method: a hiccup here must not silently take the real
+            # notifications down with it.
+            try:
+                await self.db.rollback()
+                # rollback() expires every object already attached to this
+                # session — including `task` itself, which the REST of
+                # handle_task_completion keeps reading attributes off of
+                # after this method returns. An expired attribute access
+                # outside an explicit await (e.g. plain `task.status` a few
+                # lines down) raises MissingGreenlet on AsyncSession instead
+                # of transparently reloading — so refresh it back to a live,
+                # fully-loaded state now, while we're still safely inside an
+                # await.
+                await self.db.refresh(task)
+            except Exception:
+                pass
+            logger.warning(f"Could not auto-rate task {task_id_for_log}: {e}")
             return None, ""
 
     async def _record_skill_usages(self, task: Task, agent_id: str) -> None:

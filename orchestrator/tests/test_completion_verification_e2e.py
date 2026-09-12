@@ -183,6 +183,48 @@ class CompletionVerificationE2E(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("Selbstpruefung unsicher", rating_notifs[0].message)
             self.assertEqual(rating_notifs[0].type, "info")
 
+    async def test_a_failed_auto_rate_commit_does_not_poison_the_rest_of_completion(self):
+        """Live bei einer Kundenanlage beobachtet (2026-09-12, Schema-Drift-Fenster: Code lief
+        knapp vor seiner eigenen Migration): der TaskRating-Commit in
+        _auto_rate_task schlug fehl, und OHNE Rollback blieb die Session
+        kaputt — die direkt danach laufende Rating-Notification (gleiche
+        Session!) scheiterte reihum mit 'transaction has been rolled back due
+        to a previous exception during flush'. Der Rollback im except-Zweig
+        muss genau das verhindern.
+
+        Ausgeloest hier ueber eine ECHTE Constraint-Verletzung (rating ist
+        NOT NULL) statt eines gemockten Commits — damit durchlaeuft der Test
+        denselben echten Flush/Rollback-Pfad wie die Produktion, statt
+        SQLAlchemys Greenlet-Async-Bruecke mit einem kuenstlichen Fehler zu
+        verwirren."""
+        async with self.Session() as db:
+            await self._seed_agent(db)
+            task = Task(
+                id="t1", title="x", prompt="y", status=TaskStatus.RUNNING, agent_id="a1",
+            )
+            db.add(task)
+            await db.commit()
+
+            broken_mock = self._reflect_mock(True)
+            broken_mock.return_value = (None, "ok", True, "")  # rating=None verletzt NOT NULL
+
+            with patch("app.core.task_router._llm_reflect_on_task", new=broken_mock):
+                await self._router(db).handle_task_completion({
+                    "task_id": "t1", "agent_id": "a1", "status": "completed", "result": "fertig",
+                })
+
+            # Kein TaskRating (der eine Commit, der fehlschlug) — aber die
+            # Notification danach (ein SPAETERER Commit derselben Session)
+            # muss trotzdem angekommen sein.
+            ratings = (await db.execute(select(TaskRating))).scalars().all()
+            self.assertEqual(ratings, [])
+            notifs = (await db.execute(select(Notification))).scalars().all()
+            rating_notifs = [n for n in notifs if (n.meta or {}).get("type") == "rating_request"]
+            self.assertEqual(
+                len(rating_notifs), 1,
+                "Die Fertig-Notification muss den Session-Fehler ueberleben",
+            )
+
     # ── 2. TaskRating persistiert fulfilled/gap (Befund 2) ──────────────────
 
     async def test_fulfilled_and_gap_are_persisted_on_the_rating(self):

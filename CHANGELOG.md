@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.321.1] - 2026-09-12
+
+### Behoben
+- **Ein fehlgeschlagenes Selbstpruefungs-Urteil konnte die restliche
+  Fertig-Verarbeitung mitreissen.** Beim Rollout von v1.321.0 lief die neue
+  Selbstpruefung auf einer Kundenanlage kurz vor ihrer eigenen Migration —
+  der TaskRating-Commit schlug erwartungsgemaess fehl, aber ohne
+  Rollback blieb die Datenbank-Sitzung defekt: Skill-Tracking, MCP-Rueckruf
+  und die eigentliche Fertig-Meldung fielen im selben Zug mit aus. Jetzt wird
+  bei einem solchen Fehler zurueckgerollt UND der Auftrag neu geladen, bevor
+  mit den Benachrichtigungen fortgefahren wird — ein Ausrutscher bei der
+  Selbstpruefung darf die eigentliche Meldung nie mit sich reissen.
+
+---
+
 ## [1.321.0] - 2026-09-11
 
 ### Neu
