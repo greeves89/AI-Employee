@@ -10,13 +10,63 @@ frueher ``config.get("permissions")`` selbst gelesen haben, daran vorbeigeht.
 """
 
 import re
+import sys
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 from app.core import autonomy_matrix as am
 
 REPO = Path(__file__).resolve().parents[2]
 ORCH = REPO / "orchestrator"
+
+# Das Docker-SDK liegt nur im Container-Image, nicht im lokalen Lauf — stubben,
+# damit sich die API-Schicht importieren laesst (Muster aus test_voice_save_memory.py).
+_docker_stub = types.ModuleType("docker")
+_docker_stub.from_env = lambda: None
+_docker_errors_stub = types.ModuleType("docker.errors")
+_docker_errors_stub.NotFound = type("NotFound", (Exception,), {})
+_docker_errors_stub.APIError = type("APIError", (Exception,), {})
+_docker_stub.errors = _docker_errors_stub
+_docker_models_stub = types.ModuleType("docker.models")
+_docker_containers_stub = types.ModuleType("docker.models.containers")
+_docker_containers_stub.Container = type("Container", (), {})
+_docker_models_stub.containers = _docker_containers_stub
+_docker_stub.models = _docker_models_stub
+sys.modules.setdefault("docker", _docker_stub)
+sys.modules.setdefault("docker.errors", _docker_errors_stub)
+sys.modules.setdefault("docker.models", _docker_models_stub)
+sys.modules.setdefault("docker.models.containers", _docker_containers_stub)
+
+from app.services import realtime_voice_session as rvs  # noqa: E402
+
+
+class _FakeManager:
+    def __init__(self, db, docker, redis):
+        self.docker = docker
+
+
+class _FakeDB:
+    async def __aenter__(self):
+        db = types.SimpleNamespace()
+
+        async def get(modell, kennung):
+            return types.SimpleNamespace(id=kennung, role="admin")
+
+        db.get = get
+        return db
+
+    async def __aexit__(self, *a):
+        return False
+
+
+def _voice(agent_id="a1", user_id="u1"):
+    s = rvs.RealtimeVoiceSession.__new__(rvs.RealtimeVoiceSession)
+    s.agent_id = agent_id
+    s.user_id = user_id
+    s.redis = None
+    return s
 
 
 class DeriveTests(unittest.TestCase):
@@ -132,12 +182,54 @@ class NoBypassTests(unittest.TestCase):
         endpoint = src.split("async def update_autonomy_matrix")[1].split("\nasync def ")[0]
         self.assertIn("_sync_container_sudo", endpoint)
 
-    def test_voice_path_has_it_too(self):
-        """Harness-Paritaet: die Sprachfront kann die Stufe auch setzen."""
-        src = (REPO / "orchestrator/app/services/realtime_voice_session.py").read_text()
-        call = src.split("change_autonomy_level(db, user, self.agent_id, lvl")[1][:20]
-        self.assertIn("manager", call,
-                      "Sprachfront setzt die Stufe ohne Manager — sudo bliebe alt.")
+
+class VoicePathHandsOverTheManagerTests(unittest.IsolatedAsyncioTestCase):
+    """Harness-Paritaet: die Sprachfront kann die Stufe auch setzen — mit Manager.
+
+    Ohne den Manager traegt niemand die neue sudo-Gewaehrung in den LAUFENDEN
+    Container: der Agent glaubt, er stehe auf L4, die Kiste bleibt auf L1. Genau die
+    Luecke, die diese Datei ueberall sonst zumauert — nur ueber die Sprache hinein.
+    """
+
+    async def _set(self, level, docker=object()):
+        with patch("app.db.session.async_session_factory", lambda: _FakeDB()), \
+             patch("app.api.ws._docker", docker), \
+             patch("app.core.agent_manager.AgentManager", _FakeManager), \
+             patch("app.services.agent_settings.change_autonomy_level",
+                   new=AsyncMock(return_value={"autonomy_level": level})) as ruf:
+            antwort = await _voice()._set_autonomy(level)
+        return ruf, antwort
+
+    def _manager(self, ruf):
+        """Das 5. Argument — mit lesbarer Meldung statt IndexError, wenn es fehlt."""
+        args = ruf.await_args.args
+        self.assertEqual(
+            len(args), 5,
+            "Sprachfront ruft change_autonomy_level ohne Manager-Argument auf — "
+            f"uebergeben wurden {len(args)} Argumente. Die neue sudo-Gewaehrung "
+            "erreicht den laufenden Container damit nie.")
+        return args[4]
+
+    async def test_the_manager_is_handed_over(self):
+        ruf, antwort = await self._set("l4")
+        self.assertIsInstance(
+            self._manager(ruf), _FakeManager,
+            "Sprachfront setzt die Stufe ohne Manager — sudo bliebe alt.")
+        self.assertEqual(ruf.await_args.args[2:4], ("a1", "l4"))
+        self.assertIn("L4", antwort)
+
+    async def test_without_docker_it_still_switches(self):
+        """Kein Docker-Griff heisst: beim naechsten Start — nicht: gar nicht."""
+        ruf, antwort = await self._set("l3", docker=None)
+        self.assertIsNone(self._manager(ruf))
+        self.assertIn("L3", antwort)
+
+    async def test_an_invalid_level_never_reaches_the_switch(self):
+        # Die Sitzungsfabrik wird MITgestubbt: faellt die Pruefung weg, soll der Test
+        # sauber "wurde doch aufgerufen" melden statt in einen Netzfehler zu laufen.
+        ruf, antwort = await self._set("root")
+        ruf.assert_not_awaited()
+        self.assertIn("gültige Autonomiestufe", antwort)
 
 
 class UiTests(unittest.TestCase):
