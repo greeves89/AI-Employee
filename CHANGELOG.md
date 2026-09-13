@@ -114,6 +114,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Patch-Schritt nachgezogen, Docker-Label mitgezogen; Hauptlinie damit
   wieder release-spur-vollstaendig.
 
+### Hinzugefuegt
+- **Eine Sperre gegen neue Zeichenfenster.** Die Bestandsaufnahme hat 210
+  solcher Stellen in 74 Testdateien gefunden — zu viele fuer einen Zug, und
+  jede Woche kamen neue dazu. Der Bestand ist jetzt festgehalten: bestehende
+  Dateien duerfen nur noch weniger werden, eine neue Stelle laesst die Tests
+  rot werden und nennt den Grund samt Vorbild, wie es stattdessen geht. Damit
+  hoert das Problem auf zu wachsen, waehrend es abgetragen wird.
+
 ## [1.321.2] - 2026-09-12
 
 ### Behoben
