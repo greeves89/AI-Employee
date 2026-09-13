@@ -18,6 +18,7 @@ from app.config import settings
 from app.ai_credential_status import report_result_status
 from app.log_publisher import LogPublisher
 from app.llm_chat_handler import DESKTOP_MCP_ACTIVE_ENV
+from app.pids_budget import gemeinsame_mcp_routen
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
     compose_prompt_bundle,
@@ -458,6 +459,24 @@ def _valid_http_url(url: str) -> bool:
         return False
 
 
+#: Codex-Servername -> Route des gemeinsamen MCP-Prozesses (``/opt/mcp/_all.mjs``).
+#: Die Namen LINKS bleiben unveraendert: der Werkzeug-Namensraum eines
+#: Codex-Agenten haengt daran (``mcp__orchestrator.list_todos``). Wer hier
+#: umbenennt, nimmt dem Agenten seine Werkzeuge, ohne dass ein Fehler entsteht.
+GEMEINSAME_MCP_ROUTEN = {
+    "brain": "brain",
+    "skill": "skills",
+    "memory": "memory",
+    "notification": "notifications",
+    "orchestrator": "orchestrator",
+    "desktop": "desktop",
+    "read_logs": "read-logs",
+    "msgraph": "msgraph",
+    "email": "email",
+    "hyperframes": "hyperframes",
+}
+
+
 def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
     """Write ~/.codex/config.toml with built-in + custom MCP servers.
 
@@ -507,12 +526,36 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
     # steht ohne jedes Werkzeug da und kann nur noch reden.
     geschrieben: set[str] = set()
 
-    # Stdio built-in servers
+    # Laeuft der Sammelprozess (#638), holt Codex dieselben Server ueber HTTP,
+    # statt je Aufruf zehn node-Prozesse zu forken (#325). Das war bis hierher
+    # nur fuer Claude Code verdrahtet — ein Codex-Agent zahlte weiter den vollen
+    # Preis und lief damit als erster in die pids-Grenze.
+    gemeinsam_port, bediente_routen = gemeinsame_mcp_routen()
+
+    # Built-in servers — gemeinsam ueber HTTP, sonst wie bisher ueber stdio.
+    # Die Entscheidung faellt PRO SERVER: was der Sammelprozess nicht geladen
+    # hat, bekommt weiterhin seinen eigenen Prozess. Damit kann dieser Umbau
+    # keinem Agenten ein Werkzeug nehmen, sondern hoechstens Prozesse sparen.
     for name, script in builtin_servers.items():
         if not os.path.exists(script):
             continue
         if name == "desktop":
             desktop_mcp_active = True
+
+        route = GEMEINSAME_MCP_ROUTEN.get(name)
+        if route not in bediente_routen:
+            route = None
+        if route:
+            geschrieben.add(name)
+            # Kein [env]-Block: der Sammelprozess erbt ORCHESTRATOR_URL,
+            # AGENT_ID und AGENT_TOKEN beim Start aus der Container-Umgebung.
+            lines += [
+                f"[mcp_servers.{name}]",
+                f'url = "http://127.0.0.1:{gemeinsam_port}/mcp/{route}"',
+                "",
+            ]
+            continue
+
         # Codex only exposes the env vars declared in this [env] block to the
         # MCP server — it does NOT inherit the agent container's environment.
         # The built-in servers authenticate to the orchestrator with the agent

@@ -47,7 +47,12 @@ def _config(custom: dict, auth: dict | None = None) -> str:
     heim = tempfile.mkdtemp(prefix="codex-home-")
     # Im Test gibt es die .mjs-Dateien nicht — ohne das hier waere die Schleife
     # ueber die eingebauten Server leer und der Zusammenstoss traete nie auf.
-    with patch("os.path.exists", return_value=True):
+    # Und der Einzelprozess-Modus wird festgenagelt: im Agent-Container laeuft
+    # der Sammelprozess (#638/#325), auf dem CI-Runner nicht — die Form der
+    # Abschnitte darf nicht davon abhaengen, WO der Test laeuft.
+    with patch("os.path.exists", return_value=True), \
+            patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("MCP_HTTP_PORT", None)
         _ensure_codex_mcp_config(heim, env)
     with open(os.path.join(heim, "config.toml")) as f:
         return f.read()

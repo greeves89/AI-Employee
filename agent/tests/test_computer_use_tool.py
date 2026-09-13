@@ -146,6 +146,11 @@ async def test_computer_use_screenshot_without_image_is_error(monkeypatch):
 
 def test_codex_config_includes_desktop_mcp(tmp_path, monkeypatch):
     monkeypatch.setattr(codex_runner.os.path, "exists", lambda path: True)
+    # Den Einzelprozess-Modus festnageln. Ohne das haengt die erwartete Form an
+    # der Umgebung: im Agent-Container laeuft der Sammelprozess (#638/#325) und
+    # der Abschnitt traegt eine Adresse statt eines Befehls, auf dem CI-Runner
+    # nicht. Derselbe Test waere hier rot und dort gruen.
+    monkeypatch.delenv("MCP_HTTP_PORT", raising=False)
     env = {
         "ORCHESTRATOR_URL": "http://orchestrator:8000",
         "AGENT_ID": "agent-1",

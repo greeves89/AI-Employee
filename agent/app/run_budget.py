@@ -22,9 +22,8 @@ der Agent im Gespraech scheinbar taub.
 import asyncio
 import contextlib
 import logging
-import os
 
-from app.pids_budget import DEFAULT_COST_PER_RUN, DEFAULT_RESERVE, max_concurrent_runs
+from app.pids_budget import max_concurrent_runs
 
 logger = logging.getLogger(__name__)
 
@@ -101,22 +100,15 @@ class RunBudget:
 _budget: RunBudget | None = None
 
 
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
-        return default
-
-
 def get_run_budget() -> RunBudget:
     """Der EINE prozessweite ``RunBudget`` — beim ersten Zugriff gebaut,
     danach von allen drei Consumern wiederverwendet."""
     global _budget
     if _budget is None:
-        total = max_concurrent_runs(
-            reserve=_env_int("PIDS_RESERVE", DEFAULT_RESERVE),
-            cost_per_run=_env_int("PIDS_COST_PER_RUN", DEFAULT_COST_PER_RUN),
-        )
+        # OHNE Argumente — siehe ``task_consumer._max_parallel_tasks``. Wer hier
+        # Vorgabewerte durchreicht, liefert nie ``None`` und schaltet damit die
+        # Auto-Erkennung des gemeinsamen MCP-Modus ab (#326).
+        total = max_concurrent_runs()
         _budget = RunBudget(total)
     return _budget
 

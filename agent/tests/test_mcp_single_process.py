@@ -28,6 +28,8 @@ import re
 import unittest
 from pathlib import Path
 
+from tests._mcp_umgebung import mcp_modus
+
 from app.pids_budget import DEFAULT_COST_PER_RUN, DEFAULT_RESERVE, max_concurrent_runs
 
 _MCP = Path(__file__).resolve().parents[1] / "mcp"
@@ -145,21 +147,24 @@ class DieProzessgrenzeSteigtMitTests(unittest.TestCase):
     """
 
     def setUp(self):
-        self._alt = os.environ.get("MCP_HTTP_PORT")
-
-    def tearDown(self):
-        if self._alt is None:
-            os.environ.pop("MCP_HTTP_PORT", None)
-        else:
-            os.environ["MCP_HTTP_PORT"] = self._alt
+        # Nicht nur ``MCP_HTTP_PORT`` zuruecksetzen: seit der Reparatur zu #326
+        # liest ``max_concurrent_runs`` auch ``PIDS_RESERVE`` und
+        # ``PIDS_COST_PER_RUN`` selbst, und eine gesetzte Vorgabe schlaegt die
+        # Erkennung. Ohne das Pinnen waere diese Klasse je nach Umgebung rot.
+        umgebung = mcp_modus(False)
+        umgebung.__enter__()
+        self.addCleanup(umgebung.__exit__, None, None, None)
 
     def test_einzeln_bleibt_es_bei_der_alten_rechnung(self):
         os.environ.pop("MCP_HTTP_PORT", None)
         self.assertEqual(max_concurrent_runs(pids_max=512), 4)
 
     def test_gemeinsam_steigt_sie_deutlich(self):
-        os.environ["MCP_HTTP_PORT"] = "8899"
-        self.assertGreaterEqual(max_concurrent_runs(pids_max=512), 40)
+        # Ein LAUFENDER Sammelprozess, nicht nur die Variable: die Erkennung
+        # fragt ``/health``, weil ein gescheiterter Start die Variable gesetzt
+        # zuruecklaesst und sonst zu billig gerechnet wuerde.
+        with mcp_modus(True):
+            self.assertGreaterEqual(max_concurrent_runs(pids_max=512), 40)
 
     def test_die_teure_annahme_ist_die_vorgabe(self):
         """Zu billig gerechnet, waehrend die Server doch einzeln laufen, erstickt
@@ -176,12 +181,13 @@ class DieProzessgrenzeSteigtMitTests(unittest.TestCase):
     def test_ausdrueckliche_werte_gewinnen_weiterhin(self):
         """Die Aufrufer, die eigene Zahlen uebergeben, duerfen sich nicht
         ploetzlich anders verhalten."""
-        os.environ["MCP_HTTP_PORT"] = "8899"
-        self.assertEqual(max_concurrent_runs(pids_max=512, reserve=120, cost_per_run=88), 4)
+        with mcp_modus(True):
+            self.assertEqual(
+                max_concurrent_runs(pids_max=512, reserve=120, cost_per_run=88), 4)
 
     def test_mindestens_ein_lauf_bleibt_immer(self):
-        os.environ["MCP_HTTP_PORT"] = "8899"
-        self.assertGreaterEqual(max_concurrent_runs(pids_max=100), 1)
+        with mcp_modus(True):
+            self.assertGreaterEqual(max_concurrent_runs(pids_max=100), 1)
 
 
 class DerSchalterKommtVomOrchestratorTests(unittest.TestCase):

@@ -42,15 +42,84 @@ COST_PER_RUN_GEMEINSAM = 8
 RESERVE_GEMEINSAMER_MCP = 10
 
 
-def _gemeinsamer_mcp_modus() -> bool:
-    """Laufen die eingebauten Server in EINEM Prozess?
+def _env_override(name: str) -> int | None:
+    """Ein AUSDRUECKLICH gesetzter Wert aus der Umgebung — sonst ``None``.
 
-    Die Umschaltung haengt an derselben Variablen wie der Start selbst
-    (``agent/app/main.py``). Wird hier zu billig gerechnet, waehrend die Server
-    doch einzeln laufen, erstickt der Container am pids-Limit — deshalb ist die
-    Vorgabe die teure Annahme.
+    Das ``None`` ist der eigentliche Zweck. Es unterscheidet "der Betreiber hat
+    eine Zahl vorgegeben" von "hier steht nichts, rechne selbst". Genau diese
+    Unterscheidung fehlte und hat die Auto-Erkennung unwirksam gemacht (#326):
+    die Aufrufer reichten einen VORGABEWERT durch, nie ``None``, und damit war
+    der Zweig, der den gemeinsamen MCP-Modus erkennt, in der Produktion tot —
+    gerechnet wurde immer mit 88 statt mit 8, also mit 4 Laeufen statt 47.
     """
-    return bool(int(os.environ.get("MCP_HTTP_PORT") or 0))
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("%s=%r ist keine Zahl — wird ignoriert", name, raw)
+        return None
+
+
+def gemeinsame_mcp_routen() -> tuple[int, set[str]]:
+    """Port UND die Routen, die der Sammelprozess GERADE bedient.
+
+    Drei Stufen, und jede war noetig:
+
+    ``MCP_HTTP_PORT`` sagt nur, dass beim Start einmal ein Sammelprozess
+    gemeint war. Ein offener Port sagt nur, dass irgendetwas lauscht. Beides
+    genuegt nicht, denn ``_all.mjs`` laedt jeden Server EINZELN und laeuft
+    bewusst weiter, wenn einer ausfaellt — lieber ein Werkzeug weniger als gar
+    keins.
+
+    ``/health`` nennt die tatsaechlich geladenen Namen. Danach wird gefragt.
+    Bei jedem Zweifel kommt eine leere Menge zurueck, und der Aufrufer bleibt
+    beim bisherigen Weg.
+    """
+    import json
+    import urllib.request
+
+    try:
+        port = int(os.environ.get("MCP_HTTP_PORT") or 0)
+    except (TypeError, ValueError):
+        return 0, set()
+    if port <= 0:
+        return 0, set()
+
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/health", timeout=2
+        ) as antwort:
+            daten = json.loads(antwort.read().decode("utf-8", "replace"))
+        routen = {str(n) for n in daten.get("servers") or []}
+    except Exception as e:
+        logger.warning(
+            "MCP_HTTP_PORT=%d gesetzt, aber /health antwortet nicht (%s) — "
+            "es gilt der Einzelprozess-Modus", port, e,
+        )
+        return 0, set()
+
+    if not routen:
+        return 0, set()
+    return port, routen
+
+
+def _gemeinsamer_mcp_modus() -> bool:
+    """Laufen die eingebauten Server GERADE in EINEM Prozess?
+
+    Gefragt wird die Anlage, nicht die Umgebungsvariable. ``MCP_HTTP_PORT`` ist
+    eine Absicht von frueher: ``_start_combined_mcp`` (``agent/app/main.py``)
+    faellt bei einem Fehlschlag auf Einzelprozesse zurueck, LAESST die Variable
+    aber gesetzt. Wer ihr glaubt, rechnet dann mit 8 Threads je Lauf, waehrend
+    real 88 anfallen — 47 zugelassene Laeufe gegen ein 512er-Budget. Ab da
+    scheitert jedes ``gh``/``git`` mit ``EAGAIN``, und der Lauf meldet trotzdem
+    Erfolg.
+
+    Wird hier zu billig gerechnet, erstickt der Container am pids-Limit —
+    deshalb ist bei jedem Zweifel die teure Annahme die richtige.
+    """
+    return bool(gemeinsame_mcp_routen()[1])
 
 # Ist das Budget nicht lesbar (kein Linux, cgroup v1 ohne die Datei, keine
 # Rechte), gilt serielle Ausfuehrung. Lieber langsam als erdrosselt.
@@ -107,6 +176,12 @@ def max_concurrent_runs(
 ) -> int:
     """Wie viele Laeufe gleichzeitig ins pids-Budget passen — mindestens einer.
 
+    OHNE Argumente aufrufen. Die Vorgaben aus ``PIDS_RESERVE`` und
+    ``PIDS_COST_PER_RUN`` liest die Funktion selbst; wer sie stattdessen als
+    Argument durchreicht, liefert nie ``None`` und schaltet damit die
+    Auto-Erkennung unten ab. Die Argumente sind fuer Tests da, die einen
+    bestimmten Fall festnageln wollen.
+
     ``(pids_max - reserve) / cost_per_run``. Ist ``pids_max`` unbekannt, gilt
     ``FALLBACK_MAX_CONCURRENT``; abstuerzen waere hier das Schlechteste, weil
     der Agent dann gar nicht mehr arbeitet.
@@ -116,6 +191,10 @@ def max_concurrent_runs(
     sind das rund 47 gleichzeitige Laeufe statt vier — der Sprung, um den es bei
     dem Umbau ging.
     """
+    if reserve is None:
+        reserve = _env_override("PIDS_RESERVE")
+    if cost_per_run is None:
+        cost_per_run = _env_override("PIDS_COST_PER_RUN")
     if cost_per_run is None or reserve is None:
         gemeinsam = _gemeinsamer_mcp_modus()
         if cost_per_run is None:

@@ -7,12 +7,7 @@ import redis.asyncio as aioredis
 
 from app.config import settings
 from app.log_publisher import LogPublisher
-from app.pids_budget import (
-    DEFAULT_COST_PER_RUN,
-    DEFAULT_RESERVE,
-    max_concurrent_runs,
-    read_pids_limits,
-)
+from app.pids_budget import max_concurrent_runs, read_pids_limits
 from app.run_budget import get_run_budget
 
 logger = logging.getLogger(__name__)
@@ -32,10 +27,15 @@ def _max_parallel_tasks() -> int:
     except (TypeError, ValueError):
         wanted = 1
 
-    budget = max_concurrent_runs(
-        reserve=_env_int("PIDS_RESERVE", DEFAULT_RESERVE),
-        cost_per_run=_env_int("PIDS_COST_PER_RUN", DEFAULT_COST_PER_RUN),
-    )
+    # OHNE Argumente — und das ist der Punkt. Hier standen
+    # ``_env_int("PIDS_RESERVE", DEFAULT_RESERVE)`` und sein Gegenstueck, also
+    # immer eine Zahl, nie ``None``. Damit lief die Auto-Erkennung des
+    # gemeinsamen MCP-Modus in der Produktion nie an (#326/#638): gerechnet
+    # wurde mit 88 Threads je Lauf, obwohl ein Lauf im gemeinsamen Modus nur 8
+    # kostet — 4 statt 47 gleichzeitiger Laeufe. Die Vorgaben aus der Umgebung
+    # liest ``max_concurrent_runs`` jetzt selbst, damit Produktion und Tests
+    # dieselbe Aufrufform benutzen.
+    budget = max_concurrent_runs()
     if wanted > budget:
         logger.warning(
             "MAX_PARALLEL_TASKS=%d passt nicht ins pids-Budget des Containers — "

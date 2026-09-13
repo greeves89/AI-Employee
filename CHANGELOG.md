@@ -5,6 +5,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.321.3] - 2026-09-13
+
+### Behoben
+- **Der Agent rechnete weiter mit vier gleichzeitigen Laeufen, obwohl er
+  siebenundvierzig vertragen haette** (#326, #638). Seit die eingebauten
+  MCP-Server in EINEM Prozess laufen, kostet ein Lauf nur noch den
+  Modell-Prozess statt zusaetzlich elf Server. Die Erkennung dieses Modus war
+  eingebaut — aber unerreichbar: beide Stellen, die das Budget berechnen,
+  reichten einen Vorgabewert durch, wo die Erkennung "nichts vorgegeben"
+  erwartet hatte. Gerechnet wurde deshalb immer mit dem teuren Fall. Fuer den
+  Betreiber heisst das: derselbe Behaelter nimmt jetzt ein Vielfaches an
+  parallelen Aufgaben an, ohne dass sich an der Anlage etwas aendert.
+  Ausdrueckliche Vorgaben ueber `PIDS_RESERVE` und `PIDS_COST_PER_RUN` gelten
+  unveraendert und schlagen die Erkennung weiterhin.
+- **Codex-Agenten starteten je Aufruf zehn eigene MCP-Server** (#325). Die
+  Umstellung auf den gemeinsamen Prozess war nur fuer den Claude-Weg
+  verdrahtet; ein Codex-Agent zahlte den vollen Preis und lief als erster in
+  die Prozessgrenze des Behaelters — ab da scheitern Werkzeuge still, und der
+  Lauf meldet trotzdem Erfolg. Codex holt die Server jetzt ueber denselben
+  gemeinsamen Prozess. Laeuft der nicht oder antwortet er nicht, faellt alles
+  automatisch auf den bisherigen Weg zurueck: ein Agent ohne Werkzeuge waere
+  schlimmer als einer, der mehr Speicher braucht.
+- **Das Budget glaubte einer Absicht von frueher statt nachzusehen.** Scheitert
+  der Start des gemeinsamen Prozesses, arbeitet der Agent korrekt mit einzelnen
+  Servern weiter — die Umschaltvariable bleibt dabei aber gesetzt. Gerechnet
+  wurde daraufhin mit dem billigen Fall, waehrend real der teure eintrat: der
+  Behaelter haette ein Vielfaches dessen angenommen, was er tragen kann, und ab
+  der Prozessgrenze scheitert jedes Werkzeug still, ohne dass der Lauf es
+  meldet. Solange die Erkennung unerreichbar war, blieb das folgenlos; mit der
+  Reparatur oben waere es scharf geworden. Der Agent fragt jetzt den
+  Sammelprozess, was er GERADE bedient, und bleibt bei jedem Zweifel bei der
+  teuren Annahme.
+- **Zwei Tests waren im Agent-Behaelter rot und auf dem Bau-Rechner gruen** —
+  sie erbten den MCP-Modus aus der Umgebung, statt ihn festzulegen. Genau das
+  hat den Fehler oben jahrelang verdeckt: ein gruener Lauf bewies nichts.
+
+> Einstufung bewusst als Patch, obwohl der Codex-Teil auch als neue Faehigkeit
+> gelesen werden kann — er erweitert einen bereits ausgelieferten Umbau auf die
+> zweite Laufzeit, ohne dem Nutzer etwas Neues anzubieten.
+
+---
+
 ## [1.321.2] - 2026-09-12
 
 ### Behoben

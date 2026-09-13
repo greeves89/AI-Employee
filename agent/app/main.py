@@ -722,6 +722,14 @@ async def main() -> None:
     elif mode == "codex_cli":
         setup_github_credentials()
         setup_codex_auth()
+        # Der Sammelprozess (#638) wurde bisher NUR im Claude-Zweig hochgefahren.
+        # Ein Codex-Agent startete deshalb je Aufruf zehn einzelne node-Server
+        # (#325) — und lief als erster in die pids-Grenze. Das Anmelden der
+        # Adressen entfaellt hier: Codex liest sie aus der config.toml, die
+        # ``codex_runner`` vor jedem Aufruf schreibt.
+        _codex_port = int(os.environ.get("MCP_HTTP_PORT") or 0)
+        if _codex_port and _start_combined_mcp(_codex_port):
+            print(f"[Agent {agent_id}] MCP-Server gemeinsam fuer Codex")
         print(f"[Agent {agent_id}] Codex CLI mode configured")
     else:
         # Claude Code mode: full setup (MCP servers, credentials, etc.)
