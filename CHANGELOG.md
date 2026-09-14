@@ -5,7 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.322.1] - 2026-09-14
+## [1.322.2] - 2026-09-14
+
+### Behoben
+- **Modell-Auswahl bot Provider-Tabs (Amazon/Google/Azure) an, fuer die auf
+  der jeweiligen Installation gar nichts hinterlegt ist** — Klick darauf
+  liess den Agenten ohne funktionierenden Zugang zurueck. `GET /agents/models`
+  blendet fuer `claude_code` jetzt bedrock/vertex/foundry aus, solange kein
+  aktives AI-Konto dieses Typs (bzw. bei Foundry keine Ressource+Key in den
+  Provider-Einstellungen) existiert. Anthropic Direct bleibt immer sichtbar
+  (Standardpfad, auch auf einer frischen Installation ohne Zugang). Der volle
+  Admin-Katalog (Modelle freischalten) zeigt weiterhin alles — Admins muessen
+  unkonfigurierte Provider sehen koennen, um sie einzurichten.
+
+
 
 ### Behoben
 - **Claude 5 (Opus 5, Sonnet 5) tauchte in keiner Modell-Auswahl auf, obwohl

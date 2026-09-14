@@ -126,18 +126,59 @@ async def _all_records(db: AsyncSession) -> tuple[list[dict], dict[str, bool], s
     return merged, overrides, cache.get("discovered_at")
 
 
-def _payload_from_records(records: list[dict], enabled_only: bool, overrides: dict[str, bool]) -> dict:
+async def _configured_claude_providers(db: AsyncSession) -> set[str]:
+    """Which claude_code providers actually have credentials behind them here.
+
+    "anthropic" (direct API/OAuth) is always offered -- it's the platform's
+    baseline path, shown even on a fresh install with nothing connected yet.
+    bedrock/vertex/foundry are optional alternate hosting backends; showing
+    their tab when nothing is configured for them just gives an agent a
+    Provider button that can never actually run (picking it leaves the agent
+    without a working credential, exactly the trap this whole picker exists
+    to prevent). foundry can be configured two ways: the platform-wide
+    Provider-Einstellungen key/resource (same check as its discovery, see
+    ``_discover_foundry``), or a linked AI-Account of that type.
+    """
+    configured = {"anthropic"}
+    if settings.foundry_api_key and settings.foundry_resource:
+        configured.add("foundry")
+    try:
+        from sqlalchemy import select
+        from app.models.ai_account import AIAccount
+        rows = (await db.execute(
+            select(AIAccount.provider_type).where(AIAccount.is_active.is_(True))
+        )).scalars().all()
+        configured.update(p for p in rows if p in ("bedrock", "vertex", "foundry"))
+    except Exception:  # noqa: BLE001 -- never let this block the model list
+        pass
+    return configured
+
+
+def _payload_from_records(
+    records: list[dict],
+    enabled_only: bool,
+    overrides: dict[str, bool],
+    configured_providers: set[str] | None = None,
+) -> dict:
     """Group flat records into the catalog_payload() shape.
 
     default_model per mode = the seed default if it is enabled, else the first
     enabled model of that mode (keeps the UI's default sane when an admin turns
     the seed default off). Guards still coerce to a safe value at runtime.
+
+    ``configured_providers``, when given, additionally drops claude_code
+    provider tabs (bedrock/vertex/foundry) that have no real credential behind
+    them on this install -- see ``_configured_claude_providers``. Only applied
+    to claude_code: codex_cli has exactly one provider, custom_llm isn't in
+    MODEL_CATALOG at all.
     """
     modes_out = []
     for mode, entry in MODEL_CATALOG.items():
         mode_recs = [r for r in records if r["mode"] == mode]
         if enabled_only:
             mode_recs = [r for r in mode_recs if _is_enabled(r, overrides)]
+        if configured_providers is not None and mode == "claude_code":
+            mode_recs = [r for r in mode_recs if r["provider"] in configured_providers]
 
         providers: dict[str, list[dict]] = {}
         for r in mode_recs:
@@ -171,9 +212,11 @@ def _payload_from_records(records: list[dict], enabled_only: bool, overrides: di
 
 
 async def get_effective_payload(db: AsyncSession) -> dict:
-    """catalog_payload() shape, but only ENABLED models (what the UI offers)."""
+    """catalog_payload() shape, but only ENABLED models (what the UI offers),
+    and only claude_code providers actually configured on this install."""
     records, overrides, _ = await _all_records(db)
-    return _payload_from_records(records, enabled_only=True, overrides=overrides)
+    configured = await _configured_claude_providers(db)
+    return _payload_from_records(records, enabled_only=True, overrides=overrides, configured_providers=configured)
 
 
 async def get_admin_catalog(db: AsyncSession) -> dict:
