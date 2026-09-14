@@ -1011,6 +1011,19 @@ class SchedulerService:
         """
         client = getattr(self.redis, "client", None)
         if client is None:
+            # Ohne Redis gibt es kein Wiederholungs-Budget zu fuehren — der Slot
+            # ist damit sofort und endgueltig verloren, nicht nur verschoben.
+            # Das verdient dieselbe Buchung wie ein aufgebrauchtes Budget (#631),
+            # sonst verschwindet der Ausfall spurlos: kein Task, keine Meldung,
+            # `fail_count`/`success_rate` bleiben "gesund", und `next_run_at`
+            # wandert in die Zukunft, wo der Verpasst-Waechter nicht hinschaut.
+            logger.warning(
+                "[Scheduler] %s: kein Redis verfuegbar, Slot %s wird verworfen (%s)",
+                schedule.name, as_utc(schedule.next_run_at).isoformat(), reason,
+            )
+            await self._report_dropped_slot(
+                schedule, as_utc(schedule.next_run_at), reason=reason, attempts=0,
+            )
             return _calc_next_run(schedule, now)
 
         key = f"schedule:retry:{reason}:{schedule.id}"
@@ -1021,7 +1034,13 @@ class SchedulerService:
             if attempt == 1:
                 await client.expire(key, _OVERLOAD_RETRY_TTL_SECONDS)
         except Exception:  # noqa: BLE001
-            logger.debug("[Scheduler] Retry-Zaehler (%s) nicht verfuegbar", reason, exc_info=True)
+            # Dieselbe Buchung wie oben: der Zaehler ist weg, also gibt es kein
+            # Budget mehr zu pruefen — der Slot ist verloren, nicht nur verzoegert.
+            logger.warning(
+                "[Scheduler] Retry-Zaehler (%s) nicht verfuegbar, Slot %s wird verworfen",
+                reason, slot.isoformat(), exc_info=True,
+            )
+            await self._report_dropped_slot(schedule, slot, reason=reason, attempts=0)
             return _calc_next_run(schedule, now)
 
         # Den urspruenglichen Soll-Slot merken, sonst meldet das Aufgeben spaeter
