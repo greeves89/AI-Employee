@@ -365,8 +365,30 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [licenseBusy, setLicenseBusy] = useState(false);
   const [licenseError, setLicenseError] = useState("");
 
+  // Provider/model catalog from the backend (single source of truth, live
+  // Anthropic/OpenAI discovery + admin-freigeschaltete Zusatzmodelle) — statt
+  // der frueher hier fest eingetragenen Liste, die beim naechsten neuen
+  // Anthropic-Modell sofort wieder veraltet waere. MODEL_OPTIONS bleibt nur als
+  // Fallback, waehrend der Katalog laedt oder falls der Aufruf fehlschlaegt.
+  const [liveCatalog, setLiveCatalog] = useState<Record<string, { value: string; label: string; tier: string }[]> | null>(null);
+  useEffect(() => {
+    api.getModelCatalog().then((data) => {
+      const map: Record<string, { value: string; label: string; tier: string }[]> = {};
+      for (const mode of data.modes) {
+        for (const p of mode.providers) {
+          map[p.provider] = p.models;
+        }
+      }
+      setLiveCatalog(map);
+    }).catch(() => setLiveCatalog(null));
+  }, []);
+  const effectiveModelOptions = liveCatalog || MODEL_OPTIONS;
+
   // Available models for current provider
-  const modelOptions = useMemo(() => MODEL_OPTIONS[provider] || MODEL_OPTIONS.anthropic, [provider]);
+  const modelOptions = useMemo(
+    () => effectiveModelOptions[provider] || effectiveModelOptions.anthropic || [],
+    [provider, effectiveModelOptions]
+  );
 
   const loadLicense = async () => {
     try {
@@ -473,11 +495,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
 
   // When provider changes, reset model to first option if current is invalid
   useEffect(() => {
-    const valid = MODEL_OPTIONS[provider]?.some((m) => m.value === defaultModel);
-    if (!valid && MODEL_OPTIONS[provider]?.length) {
-      setDefaultModel(MODEL_OPTIONS[provider][0].value);
+    const options = effectiveModelOptions[provider];
+    const valid = options?.some((m) => m.value === defaultModel);
+    if (!valid && options?.length) {
+      setDefaultModel(options[0].value);
     }
-  }, [provider, defaultModel]);
+  }, [provider, defaultModel, effectiveModelOptions]);
 
   useEffect(() => {
     if (!codexLoginOpen || !codexDeviceSessionId || codexDeviceStatus !== "pending") return;

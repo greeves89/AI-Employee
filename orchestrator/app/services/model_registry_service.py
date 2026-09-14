@@ -195,13 +195,20 @@ async def set_enabled_bulk(db: AsyncSession, overrides_in: dict[str, bool]) -> d
     return await get_admin_catalog(db)
 
 
-async def _anthropic_auth_headers() -> dict | None:
+async def _anthropic_auth_headers(db: AsyncSession | None = None, user_id: str | None = None) -> dict | None:
     """Auth headers for the Anthropic models endpoint.
 
     Prefers an explicit API key (x-api-key). Falls back to the bot's OAuth token
-    (Claude Pro/Team login) as a Bearer with the oauth beta header — best-effort:
-    if that token isn't accepted for /v1/models the caller logs and skips, and
-    the seed list + manual freischaltung still work.
+    (Claude Pro/Team login) as a Bearer with the oauth beta header. Both of those
+    are a PLATFORM-WIDE slot that, in this app's actual usage pattern, is almost
+    always empty — Claude access here is normally the admin's OWN personal
+    credential (``UserAiCredential``, harness ``claude_code``), the same one
+    every agent run already falls back to (see ``agent_credentials.py``). So as
+    a last resort, try the calling admin's personal credential too — without it,
+    "Discover" silently found nothing on any install where nobody ever filled in
+    the platform-wide key, which is the common case, not the exception.
+    Best-effort throughout: if none of these are accepted for ``/v1/models`` the
+    caller logs and skips, and the seed list + manual freischaltung still work.
     """
     if settings.anthropic_api_key:
         return {
@@ -215,7 +222,18 @@ async def _anthropic_auth_headers() -> dict | None:
     except Exception:  # noqa: BLE001
         oauth = None
     oauth = oauth or (settings.claude_code_oauth_token or None)
+    if not oauth and db is not None and user_id:
+        try:
+            from app.core.agent_credentials import personal_credential
+            oauth = await personal_credential(db, user_id, "claude_code")
+        except Exception:  # noqa: BLE001
+            oauth = None
     if oauth:
+        # The personal credential can be either an API key (``sk-ant-…``, saved
+        # verbatim by the user) or an OAuth token from ``claude setup-token`` /
+        # the browser login — same field, no separate flag. Route by shape.
+        if oauth.startswith("sk-ant-"):
+            return {"x-api-key": oauth, "anthropic-version": "2023-06-01"}
         return {
             "authorization": f"Bearer {oauth}",
             "anthropic-version": "2023-06-01",
@@ -224,8 +242,8 @@ async def _anthropic_auth_headers() -> dict | None:
     return None
 
 
-async def _discover_anthropic() -> list[dict]:
-    headers = await _anthropic_auth_headers()
+async def _discover_anthropic(db: AsyncSession | None = None, user_id: str | None = None) -> list[dict]:
+    headers = await _anthropic_auth_headers(db, user_id)
     if not headers:
         return []
     out: list[dict] = []
@@ -312,20 +330,24 @@ async def _discover_foundry() -> list[dict]:
     return out
 
 
-async def discover(db: AsyncSession) -> dict:
+async def discover(db: AsyncSession, user_id: str | None = None) -> dict:
     """Query provider APIs, store the non-seed extras, return an admin catalog.
+
+    ``user_id`` is the calling admin — used only as a last-resort credential
+    fallback (see ``_anthropic_auth_headers``) when no platform-wide key/OAuth
+    token is configured.
 
     Only models NOT already in the seed are cached (the seed is authoritative
     for its own strings). Newly discovered models stay DISABLED until an admin
     enables them.
     """
-    anthropic_queried = bool(await _anthropic_auth_headers())
+    anthropic_queried = bool(await _anthropic_auth_headers(db, user_id))
     # _discover_openai() ist bewusst ein Leerlauf (siehe dort) — als "abgefragt"
     # zu melden waere falsch: ein API-Schluessel ist gesetzt, aber niemand hat
     # ihn dafuer benutzt.
     openai_queried = False
     foundry_queried = bool(settings.foundry_api_key and settings.foundry_resource)
-    anthropic = await _discover_anthropic()
+    anthropic = await _discover_anthropic(db, user_id)
     openai = await _discover_openai()
     foundry = await _discover_foundry()
     found = anthropic + openai + foundry

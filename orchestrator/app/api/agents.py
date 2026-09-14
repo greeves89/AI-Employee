@@ -138,7 +138,7 @@ async def discover_models(user=Depends(require_admin), db: AsyncSession = Depend
     """Query the provider APIs (Anthropic/OpenAI) for available models and cache
     any new ones (default disabled → admin enables). Returns the admin catalog."""
     from app.services.model_registry_service import discover
-    return await discover(db)
+    return await discover(db, user_id=user.id)
 
 
 @router.put("/models/enabled")

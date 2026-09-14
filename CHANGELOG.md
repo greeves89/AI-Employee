@@ -5,7 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.321.4] - 2026-09-14
+## [1.321.5] - 2026-09-14
+
+### Behoben
+- **Modell-Auswahl in den Settings zeigte eine fest eingetragene, veraltete
+  Claude-Liste** — anders als die Agenten-Anlage und die Pro-Agent-Modellwahl,
+  die schon den Katalog-Endpunkt `GET /agents/models` nutzten, griff die
+  allgemeine Settings-Seite noch auf eine lokale, hartcodierte Liste zu. Zeigt
+  jetzt denselben Live-Katalog wie der Rest der App (Seed + admin-freigeschaltete
+  entdeckte Modelle), mit der alten Liste nur noch als Fallback waehrend des
+  Ladens.
+- **Modell-Discovery ("Entdecken" im Admin-Katalog) fand nie etwas, wenn kein
+  plattformweiter Anthropic-API-Key/OAuth-Token hinterlegt war** — genau der
+  Normalfall hier, wo Claude-Zugang ueblicherweise als PERSOENLICHER Zugang des
+  jeweiligen Nutzers hinterlegt ist (`UserAiCredential`), nicht platformweit.
+  Discovery versucht jetzt zusaetzlich den eigenen Zugang des auslösenden
+  Admins, bevor sie aufgibt.
+
+
 
 ### Behoben
 - **Ein Agent, ausdruecklich mit der Harness "Claude" angelegt, lief bei
