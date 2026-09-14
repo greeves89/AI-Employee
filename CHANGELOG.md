@@ -5,7 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.322.2] - 2026-09-14
+## [1.322.3] - 2026-09-15
+
+### Behoben
+- **Pro-Agent-Modellauswahl sprang beim ersten Laden manchmal still auf
+  Opus 4.8 zurueck, auch wenn der Agent auf ein neueres Modell gestellt
+  war.** Ursache: der Live-Katalog laedt asynchron; bevor er ankommt, nutzt
+  die Seite eine kleine, gelegentlich veraltete Fallback-Liste, um das
+  aktuelle Modell zu pruefen — kannte diese ein neueres Modell (z. B. Opus 5)
+  noch nicht, wurde die Auswahl auf den ersten Fallback-Eintrag
+  "korrigiert", bevor der echte Katalog ueberhaupt geladen war. Die
+  Korrektur-Pruefung laeuft jetzt erst, nachdem der echte Katalog da ist.
+
+
 
 ### Behoben
 - **Modell-Auswahl bot Provider-Tabs (Amazon/Google/Azure) an, fuer die auf

@@ -1500,7 +1500,18 @@ function AgentSettings({
   };
 
   // When the provider set or selection changes, keep the chosen model valid.
+  // Gated on catalogForMode being loaded: the CLAUDE_MODELS fallback above is
+  // a small, occasionally-stale placeholder (e.g. it doesn't know about a
+  // model added to the backend catalog after this file last got a matching
+  // update). Running this check against that fallback could "correct" a
+  // perfectly valid agent.model into the fallback's first entry before the
+  // real catalog has even arrived -- and since that wrong value then also
+  // happens to be valid in the real catalog, it never gets corrected back.
+  // Bit us directly: an agent already set to a newer model flashed the
+  // fallback list for one render and got silently downgraded to its first
+  // (older) entry, permanently.
   useEffect(() => {
+    if (!catalogForMode) return;
     if (modelOptions.length && !modelOptions.some((m) => m.value === agentModel)) {
       setAgentModel(modelOptions[0].value);
     }
