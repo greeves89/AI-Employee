@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 # Version label - change this to trigger update detection for running agents
-LABEL ai-employee.version="1.321.6"
+LABEL ai-employee.version="1.322.0"
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     python3-venv \
     sudo \
+    gosu \
     ripgrep \
     ffmpeg \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -26,10 +27,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code CLI globally (pin version for reproducibility)
+# Install Claude Code CLI globally. This version is only the BUILD-TIME
+# baseline for a fresh image -- entrypoint.sh re-installs "@latest" on every
+# container start (i.e. every agent "Update"), so an image rebuild is no
+# longer required just to pick up a newer CLI release.
 RUN npm install -g @anthropic-ai/claude-code@2.1.270
 
-# Install OpenAI Codex CLI for ChatGPT-subscription backed agents
+# Install OpenAI Codex CLI for ChatGPT-subscription backed agents. Same as
+# above: entrypoint.sh keeps this current on every container start.
 RUN npm install -g @openai/codex
 
 # Install Hyperframes CLI for agent video rendering
@@ -106,8 +111,11 @@ ENV PYTHONUNBUFFERED=1
 ENV MPLBACKEND=Agg
 ENV MPLCONFIGDIR=/tmp/mpl
 
-# Run as non-root user
-USER agent
+# entrypoint.sh runs as root (npm install -g needs it, the global prefix is
+# root-owned) and drops to the unprivileged "agent" user itself via gosu
+# before exec'ing the app -- so no Dockerfile-level USER switch here.
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-ENTRYPOINT ["tini", "--"]
+ENTRYPOINT ["tini", "--", "/entrypoint.sh"]
 CMD ["python", "-m", "app.main"]

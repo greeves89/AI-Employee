@@ -5,7 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.321.6] - 2026-09-14
+## [1.322.0] - 2026-09-14
+
+### Hinzugefügt
+- **Agent-"Update" hält Claude-Code- und Codex-CLI jetzt automatisch aktuell.**
+  Bisher war die CLI-Version im Agent-Image eingefroren (siehe v1.321.6 —
+  genau das hat Claude 5 lange unsichtbar gemacht) und brauchte einen
+  manuellen Dockerfile-Bump + Image-Rebuild fuer jede neue CLI-Version. Ein
+  neuer `entrypoint.sh` laeuft jetzt bei jedem Container-Start (also bei
+  jedem "Update") kurz als root, zieht `@anthropic-ai/claude-code@latest`
+  und `@openai/codex@latest` nach (best-effort, blockiert den Start nicht
+  bei Netzwerkfehlern) und wechselt danach per `gosu` in den normalen
+  unprivilegierten `agent`-Nutzer, bevor der eigentliche Agent-Prozess
+  startet. Container laufen wie zuvor als `agent`, nur der User-Wechsel
+  passiert jetzt zur Laufzeit statt beim Image-Bau.
+
+
 
 ### Behoben
 - **Claude-Code-CLI im Agent-Image war auf `2.1.144` eingefroren** (aktuell:
