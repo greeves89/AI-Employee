@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.321.3] - 2026-09-14
+
+### Behoben
+- **VERSION stand nach einem Dependabot-Merge (pydantic 2.13.4→2.13.5 im
+  Embedding-Service, PR #711) still, waehrend die Release-Spur-Pruefung
+  Monotonie verlangt** — Bot-PRs kennen die VERSION/CHANGELOG-Pflicht nicht
+  und umgehen sie beim automatischen Merge vollstaendig. Nummer auf einen
+  Patch-Schritt nachgezogen, Docker-Label mitgezogen; Hauptlinie damit
+  wieder release-spur-vollstaendig.
+
 ## [1.321.2] - 2026-09-12
 
 ### Behoben
