@@ -493,9 +493,14 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           setCodexDeviceSessionId("");
           setCodexDeviceUrl("");
           setCodexDeviceCode("");
-          await api.updateSettings({ model_provider: "codex", default_model: defaultModel });
-          setProvider("codex");
-          setMessage("Codex Login erfolgreich! Bot nutzt jetzt die ChatGPT/Codex-Session.");
+          // Verbinden macht Codex NUR verfuegbar — es setzt nicht mehr still den
+          // globalen Default-Provider. Der hat plattformweite Wirkung: jeder
+          // "claude_code"-Agent ohne eigenes verknuepftes AI-Konto laeuft dann
+          // ueber die Codex-CLI statt Claude Code (agent_manager.py, harness_of()
+          // in agent_credentials.py) — unabhaengig davon, was beim Agenten-Anlegen
+          // explizit als Harness gewaehlt wurde. Wer Codex als Default will, stellt
+          // das bewusst ueber die Provider-Auswahl + "Speichern" ein.
+          setMessage("Codex Login erfolgreich! Codex ist jetzt als Konto verfuegbar.");
           const s = await api.getSettings();
           setSettings(s);
         } else if (status.status === "error" || status.status === "expired" || status.status === "cancelled") {
@@ -685,11 +690,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     setCodexLoginError("");
     try {
       await api.saveAuthJson("codex", codexAuthJson.trim());
-      await api.updateSettings({ model_provider: "codex", default_model: defaultModel });
-      setProvider("codex");
+      // Siehe Kommentar im Device-Login-Handler oben: Verbinden setzt bewusst
+      // NICHT mehr automatisch den globalen Default-Provider.
       setCodexLoginOpen(false);
       setCodexAuthJson("");
-      setMessage("Codex Login erfolgreich! Bot nutzt jetzt die ChatGPT/Codex-Session.");
+      setMessage("Codex Login erfolgreich! Codex ist jetzt als Konto verfuegbar.");
       const s = await api.getSettings();
       setSettings(s);
     } catch (e) {

@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.321.4] - 2026-09-14
+
+### Behoben
+- **Ein Agent, ausdruecklich mit der Harness "Claude" angelegt, lief bei
+  geplanten/proaktiven Laeufen ueber die Codex-CLI und scheiterte dort
+  ("Codex CLI exited with code 1").** Ursache: das Verbinden eines
+  Codex/ChatGPT-Kontos in den Einstellungen setzte als stillen Nebeneffekt
+  den GLOBALEN Standard-Provider auf `"codex"` — und jeder `claude_code`-Agent
+  ohne eigenes verknuepftes AI-Konto wird bei Anlage *und* bei jedem
+  Neustart serverseitig auf Codex umgeschrieben (`agent_manager.py`,
+  `agent_credentials.py::harness_of()` — bewusstes, dokumentiertes
+  Verhalten). Das Verbinden von Codex macht das Konto jetzt nur noch
+  *verfuegbar*, ohne den plattformweiten Default zu veraendern; wer Codex
+  wirklich als Default will, stellt das bewusst ueber Settings → Provider
+  → Speichern ein.
+- **"Wird konfiguriert mit" in der Agent-Anlage zeigte immer das
+  Template-Default-Modell** — unabhaengig davon, welche Harness-Karte
+  (Claude/Codex/AI-Konto/Custom) tatsaechlich ausgewaehlt war. Zeigt jetzt
+  zusaetzlich die gewaehlte Harness und das Modell, das beim Klick auf
+  "Agent erstellen" tatsaechlich verwendet wird.
+
 ## [1.321.3] - 2026-09-14
 
 ### Behoben
