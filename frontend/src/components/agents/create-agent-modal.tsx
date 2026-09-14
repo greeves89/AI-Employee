@@ -510,6 +510,23 @@ export function CreateAgentModal({
     }
   };
 
+  // "Wird konfiguriert mit" zeigte bisher IMMER das Template-Default-Modell an —
+  // auch nachdem man auf eine andere Harness-Karte (Codex, ein AI-Konto, Custom)
+  // umgeschaltet hatte. Das spiegelt hier exakt die Modell-Zweige aus handleCreate
+  // wider, damit die Anzeige zeigt, was beim Klick auf "Agent erstellen" tatsaechlich
+  // verwendet wird.
+  const effectiveHarnessLabel =
+    accountOptions.find((o) => o.id === selectedAccountKey)?.harness
+    ?? (mode === "codex_cli" ? "Codex CLI" : mode === "custom_llm" ? "Custom Harness" : "Claude Code");
+  const effectiveModelLabel =
+    aiAccountId !== null
+      ? aiAccountModel || "Konto-Standardmodell"
+      : mode === "codex_cli"
+        ? "gpt-5.5"
+        : mode === "custom_llm"
+          ? llmModelName || "eigenes Modell"
+          : selectedTemplate?.model || "Standardmodell";
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <AnimatePresence>
@@ -1262,8 +1279,11 @@ export function CreateAgentModal({
                         <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-1.5">
                           <p className="text-xs font-medium text-muted-foreground">Wird konfiguriert mit:</p>
                           <div className="flex flex-wrap gap-1.5">
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-violet-500/10 text-violet-400">
+                              {effectiveHarnessLabel}
+                            </span>
                             <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400">
-                              {selectedTemplate.model.split("-").slice(0, 2).join(" ")}
+                              {effectiveModelLabel.split("-").slice(0, 2).join(" ")}
                             </span>
                             {selectedTemplate.permissions.map((p) => (
                               <span key={p} className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">
