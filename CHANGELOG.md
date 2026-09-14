@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.321.3] - 2026-09-14
+
+### Geaendert
+- **pydantic 2.13.4 → 2.13.5** im Embedding-Service (Dependabot-PATCH-Update,
+  PR #711). Reiner Patch-Bump, CI gruen. Diese Version schliesst die
+  Release-Spur fuer den Merge nach, der ohne VERSION-Sprung durchgelaufen war
+  und main dadurch rot gehalten hat.
+
 ## [1.321.2] - 2026-09-12
 
 ### Behoben
