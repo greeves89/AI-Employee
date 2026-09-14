@@ -155,10 +155,21 @@ async def collect_preload(
             })
         return out
 
+    # Issue #715: Zugangsdaten (auch mit importance >= 5) MUESSEN vor "critical"
+    # dedupliziert werden. Sonst gewinnt der ungefilterte critical-Eimer das
+    # Wettrennen um den gemeinsamen ``seen``-Satz, ein Geheimnis mit Wichtigkeit 5
+    # landet in "critical" statt "credentials" — und runner_hooks.get_memory_preload
+    # ueberspringt es dort als vermeintliche Dublette ("already listed above"),
+    # obwohl es nirgendwo sonst auftaucht. Ergebnis: das Geheimnis verschwindet
+    # komplett aus dem Prompt.
+    credentials_dedup = _dedupe(creds)
+    critical_dedup = _dedupe(high_imp)
+    learnings_dedup = _dedupe(learnings)
+
     result = {
-        "critical": _dedupe(high_imp),
-        "credentials": _dedupe(creds),
-        "recent_learnings": _dedupe(learnings),
+        "critical": critical_dedup,
+        "credentials": credentials_dedup,
+        "recent_learnings": learnings_dedup,
         "task_relevant": [],
     }
 
