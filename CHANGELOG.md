@@ -5,7 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.321.5] - 2026-09-14
+## [1.321.6] - 2026-09-14
+
+### Behoben
+- **Claude-Code-CLI im Agent-Image war auf `2.1.144` eingefroren** (aktuell:
+  `2.1.270`) — deshalb bot die Modell-Auswahl nirgendwo die Claude-5-Familie
+  an, unabhängig von Zugang/API-Key/Discovery: die CLI selbst kannte diese
+  Modelle schlicht noch nicht. Auf `2.1.270` gehoben. Bestehende Agenten
+  laufen bis zum naechsten "Update"/Neuerstellen weiter auf der alten CLI —
+  Rollout siehe Betriebs-Hinweis.
+
+
 
 ### Behoben
 - **Modell-Auswahl in den Settings zeigte eine fest eingetragene, veraltete
