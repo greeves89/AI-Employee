@@ -168,6 +168,34 @@ class DroppedSlotAlertTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(self.redis.client.values, {})
 
+    async def test_redis_client_missing_still_drops_and_reports(self):
+        """#720: without a redis client there is no retry budget to consult, so
+        the very first skip must be booked as a dropped slot — not silently
+        pushed into the future with fail_count/total_runs untouched."""
+        self.redis.client = None
+
+        with self.assertLogs("app.services.scheduler_service", level="WARNING") as cm:
+            await self._execute_once()
+
+        self.assertEqual(self.schedule.total_runs, 1)
+        self.assertEqual(self.schedule.fail_count, 1)
+        self.assertIsNone(self.schedule.last_run_at)
+        self.assertTrue(any("verworfen" in line for line in cm.output))
+
+    async def test_redis_incr_failure_still_drops_and_reports(self):
+        """#720: a broken retry counter (incr raising) must not be treated as a
+        free pass that silently advances next_run_at — it has to be booked as
+        a dropped slot exactly like an exhausted retry budget."""
+        self.redis.client.incr = AsyncMock(side_effect=RuntimeError("redis down"))
+
+        with self.assertLogs("app.services.scheduler_service", level="WARNING") as cm:
+            await self._execute_once()
+
+        self.assertEqual(self.schedule.total_runs, 1)
+        self.assertEqual(self.schedule.fail_count, 1)
+        self.assertIsNone(self.schedule.last_run_at)
+        self.assertTrue(any("verworfen" in line for line in cm.output))
+
     async def test_one_shot_schedule_loses_nothing_and_stays_silent(self):
         """Ein Einmal-Lauf (Plan-Block) behaelt seinen Auftrag und versucht es in 60
         Sekunden wieder — er verliert keinen Termin und darf keinen melden."""
