@@ -5,7 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.322.0] - 2026-09-14
+## [1.322.1] - 2026-09-14
+
+### Behoben
+- **Claude 5 (Opus 5, Sonnet 5) tauchte in keiner Modell-Auswahl auf, obwohl
+  die CLI sie seit v1.322.0 laengst konnte.** Grund: die Modell-Auswahl in
+  der UI kommt aus einer separaten, kuratierten Liste (`model_catalog.py`),
+  nicht aus der CLI selbst — die war noch nicht nachgezogen. Live gegen die
+  direkte Anthropic-API verifiziert (`claude -p ... --model claude-sonnet-5`
+  bzw. `claude-opus-5`, beide mit echter, abgerechneter Antwort und
+  `canonicalModel` in der Ausgabe) und in die Liste aufgenommen.
+
+
 
 ### Hinzugefügt
 - **Agent-"Update" hält Claude-Code- und Codex-CLI jetzt automatisch aktuell.**

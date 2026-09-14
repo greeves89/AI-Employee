@@ -27,10 +27,18 @@ from __future__ import annotations
 # regresses. Ordered newest-first; the first anthropic/codex entry is the
 # natural default for its harness.
 _CLAUDE_MODELS: dict[str, list[dict]] = {
+    # "claude-opus-5"/"claude-sonnet-5" live-verifiziert (14.09.2026): ein echter
+    # `claude -p ... --model claude-sonnet-5` Lauf gegen die direkte Anthropic-API
+    # lief durch, Antwort trug "modelUsage":{"claude-sonnet-5":...} -- kein Alias-
+    # Rateversuch. Erfordert CLI >= 2.1.270 (siehe agent/Dockerfile; aeltere CLIs
+    # kennen die Namen schlicht nicht, das war lange der eigentliche Grund, warum
+    # hier "nichts Neues" auftauchte).
     "anthropic": [
-        {"value": "claude-opus-4-8", "label": "Opus 4.8 (Latest)", "tier": "Most Powerful"},
-        {"value": "claude-sonnet-4-6", "label": "Sonnet 4.6", "tier": "Balanced"},
+        {"value": "claude-opus-5", "label": "Opus 5 (Latest)", "tier": "Most Powerful"},
+        {"value": "claude-sonnet-5", "label": "Sonnet 5", "tier": "Balanced"},
         {"value": "claude-haiku-4-5", "label": "Haiku 4.5", "tier": "Fast"},
+        {"value": "claude-opus-4-8", "label": "Opus 4.8", "tier": "Legacy"},
+        {"value": "claude-sonnet-4-6", "label": "Sonnet 4.6", "tier": "Legacy"},
         {"value": "claude-opus-4-7", "label": "Opus 4.7", "tier": "Legacy"},
         {"value": "claude-opus-4-6", "label": "Opus 4.6", "tier": "Legacy"},
         {"value": "claude-sonnet-4-5", "label": "Sonnet 4.5", "tier": "Legacy"},
@@ -81,7 +89,7 @@ MODEL_CATALOG: dict[str, dict] = {
         "label": "Claude Code",
         "providers": _CLAUDE_MODELS,
         "default_provider": "anthropic",
-        "default_model": "claude-sonnet-4-6",
+        "default_model": "claude-sonnet-5",
     },
     "codex_cli": {
         "label": "Codex CLI",
