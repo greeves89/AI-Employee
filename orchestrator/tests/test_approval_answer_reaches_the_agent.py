@@ -46,6 +46,25 @@ def _admin():
     return SimpleNamespace(id="u1", role=UserRole.ADMIN, email="admin@example.test")
 
 
+def _bracket_close(text: str, open_idx: int) -> int:
+    """Index, der die bei ``open_idx`` geoeffnete Klammer schliesst.
+
+    Behandelt ``()``/``[]``/``{}`` als EINE Verschachtelungsebene — fuer
+    echten, syntaktisch gueltigen Quelltext reicht das. Ein fest gewaehltes
+    Zeichenfenster beweist nur NAEHE zu einem Stichwort, nicht Zugehoerigkeit
+    zu genau dem Block, den das Stichwort einleitet.
+    """
+    tiefe = 0
+    for i in range(open_idx, len(text)):
+        if text[i] in "([{":
+            tiefe += 1
+        elif text[i] in ")]}":
+            tiefe -= 1
+            if tiefe == 0:
+                return i
+    raise ValueError(f"unbalancierte Klammer ab Position {open_idx}")
+
+
 class AnsweringAQuestionTests(unittest.IsolatedAsyncioTestCase):
     #: Woertlich die Frage und die Antwortmoeglichkeiten aus dem Bericht,
     #: ohne den Projektnamen.
@@ -174,14 +193,18 @@ class TheUiCanActuallyAnswerTests(unittest.TestCase):
     PROMPT = (ROOT / "frontend/src/components/agents/approval-prompt.tsx").read_text()
 
     def test_the_options_are_buttons(self):
-        block = self.PROMPT.split("optionen.map(", 1)[1][:600]
+        """Der eigentliche `.map(...)`-Aufruf ist die Klammer, die zaehlt —
+        nicht ein geschaetztes Vielfaches seiner ueblichen Laenge."""
+        open_idx = self.PROMPT.index("optionen.map(") + len("optionen.map")
+        block = self.PROMPT[open_idx:_bracket_close(self.PROMPT, open_idx) + 1]
         self.assertIn("<button", block)
         self.assertIn("antworten(opt)", block)
 
     def test_the_list_renders_them_as_buttons_too(self):
         """Zwei Ansichten derselben Frage, von denen nur eine antworten kann,
         waeren die naechste Beschwerde."""
-        block = self.SEITE.split("approval.options.map(", 1)[1][:500]
+        open_idx = self.SEITE.index("approval.options.map(") + len("approval.options.map")
+        block = self.SEITE[open_idx:_bracket_close(self.SEITE, open_idx) + 1]
         self.assertIn("<button", block)
         self.assertIn("handleAnswerInline(", block)
 
@@ -192,15 +215,31 @@ class TheUiCanActuallyAnswerTests(unittest.TestCase):
         self.assertIn("<ApprovalPrompt", self.MODAL)
 
     def test_the_answer_is_sent_to_the_server(self):
-        block = self.API.split("export async function approveCommand", 1)[1][:400]
-        self.assertIn("answer", block)
+        """Der Funktionskoerper, nicht 400 Zeichen ab der Signatur — die
+        Rueckgabetyp-Annotation `Promise<{ ... }>` traegt selbst eine
+        geschweifte Klammer, die ein Zeichenfenster nicht von der echten
+        Funktionsklammer unterscheiden kann."""
+        start = self.API.index("export async function approveCommand")
+        koerper_marker = "): Promise<{ approval_id: string; status: string }> {"
+        open_idx = self.API.index(koerper_marker, start) + len(koerper_marker) - 1
+        block = self.API[start:_bracket_close(self.API, open_idx) + 1]
+        # Nicht nur "answer" (das steht auch schon im Parameter der Signatur,
+        # egal ob der Wert je den Server erreicht) — die tatsaechliche
+        # Weitergabe im JSON-Rumpf.
+        self.assertIn("answer: answer", block)
 
     def test_the_mcp_runtime_passes_the_answer_to_the_agent(self):
         """Der Custom-LLM-Weg las ``user_response`` schon immer; der MCP-Weg gab
         ihn nur bei Ablehnung weiter — dieselbe Faehigkeit muss in allen
         Laufzeiten vorhanden sein."""
-        block = self.MCP.split("const approved = decision.status", 1)[1][:900]
-        self.assertIn("user_response", block)
+        marker = "if (decision) {"
+        start = self.MCP.index(marker)
+        open_idx = start + len(marker) - 1
+        block = self.MCP[start:_bracket_close(self.MCP, open_idx) + 1]
+        # Nicht nur "user_response" (das Wort steht auch in einem
+        # erklaerenden Kommentar direkt daneben, egal ob die Zeile darunter
+        # den Wert noch liest) — der tatsaechliche Feldzugriff.
+        self.assertIn("decision.user_response", block)
         self.assertIn("APPROVED", block)
 
 
