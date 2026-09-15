@@ -119,13 +119,20 @@ class RecreateOrderTests(unittest.TestCase):
     """Beim Neuerstellen zuerst den Token erneuern, dann den Container starten."""
 
     def test_update_agent_refreshes_before_it_recreates(self):
+        import ast
         from pathlib import Path
 
         src = (Path(__file__).resolve().parents[2]
                / "orchestrator/app/core/agent_manager.py").read_text()
-        block = src.split("async def update_agent")[1][:3000]
+        # Die ganze Methode, wie Python sie abgrenzt — 3000 Zeichen ab dem
+        # Namen enden bei einem laengeren Docstring vor dem stop_container.
+        block = next(
+            ast.get_source_segment(src, k) for k in ast.walk(ast.parse(src))
+            if isinstance(k, ast.AsyncFunctionDef) and k.name == "update_agent"
+        )
         refresh = block.find("refresh_access_token")
         stop = block.find("stop_container")
+        self.assertGreater(stop, -1, "update_agent stoppt den alten Container nicht mehr?")
         self.assertGreater(refresh, -1, "Kein Token-Refresh vor dem Neuerstellen")
         self.assertLess(refresh, stop,
                         "Der Refresh muss VOR dem Stoppen des alten Containers stehen")
