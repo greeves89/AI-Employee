@@ -168,6 +168,38 @@ class DroppedSlotAlertTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(self.redis.client.values, {})
 
+    async def test_redis_client_missing_still_drops_and_reports(self):
+        """#720: without a redis client there is no retry budget to consult, so
+        the very first skip must be booked as a dropped slot — not silently
+        pushed into the future with fail_count/total_runs untouched."""
+        self.redis.client = None
+
+        with self.assertLogs("app.services.scheduler_service", level="WARNING") as cm:
+            await self._execute_once()
+
+        self.assertEqual(self.schedule.total_runs, 1)
+        self.assertEqual(self.schedule.fail_count, 1)
+        self.assertIsNone(self.schedule.last_run_at)
+        self.assertTrue(any("verworfen" in line for line in cm.output))
+        # Der heutige Slot ist weg: der Termin springt auf den naechsten Cron-Tick.
+        self.assertEqual(self.schedule.next_run_at, datetime(2026, 8, 21, 7, 0, tzinfo=timezone.utc))
+
+    async def test_redis_incr_failure_still_drops_and_reports(self):
+        """#720: a broken retry counter (incr raising) must not be treated as a
+        free pass that silently advances next_run_at — it has to be booked as
+        a dropped slot exactly like an exhausted retry budget."""
+        self.redis.client.incr = AsyncMock(side_effect=RuntimeError("redis down"))
+
+        with self.assertLogs("app.services.scheduler_service", level="WARNING") as cm:
+            await self._execute_once()
+
+        self.assertEqual(self.schedule.total_runs, 1)
+        self.assertEqual(self.schedule.fail_count, 1)
+        self.assertIsNone(self.schedule.last_run_at)
+        self.assertTrue(any("verworfen" in line for line in cm.output))
+        # Der heutige Slot ist weg: der Termin springt auf den naechsten Cron-Tick.
+        self.assertEqual(self.schedule.next_run_at, datetime(2026, 8, 21, 7, 0, tzinfo=timezone.utc))
+
     async def test_one_shot_schedule_loses_nothing_and_stays_silent(self):
         """Ein Einmal-Lauf (Plan-Block) behaelt seinen Auftrag und versucht es in 60
         Sekunden wieder — er verliert keinen Termin und darf keinen melden."""
@@ -180,6 +212,47 @@ class DroppedSlotAlertTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.schedule.total_runs, 0)
         self.assertEqual(self.schedule.fail_count, 0)
         self.assertEqual(self.redis.client.published, [])
+        # ... und der eine Auftrag steht in 60 Sekunden wieder an.
+        self.assertEqual(self.schedule.next_run_at, self.now + timedelta(seconds=60))
+
+    async def test_one_shot_without_redis_client_is_retried_not_dropped(self):
+        """#720-Review: Der Redis-Ausfallzweig darf einen Einmal-Lauf nicht als
+        verworfen melden — er verliert nichts, er wird in 60 Sekunden erneut
+        versucht. Jeder Tagesplan-Block ist so ein Einmal-Lauf; die Falschwarnung
+        traefe also bei jedem Redis-Ausfall jeden Block, jede Minute."""
+        self.schedule.cron_expression = None
+        self.schedule.interval_seconds = 0
+        self.redis.client = None
+
+        with self.assertLogs("app.services.scheduler_service", level="INFO") as cm:
+            await self._execute_once()
+
+        self.assertEqual(self.schedule.total_runs, 0)
+        self.assertEqual(self.schedule.fail_count, 0)
+        self.assertEqual(self.schedule.next_run_at, self.now + timedelta(seconds=60))
+        self.assertFalse(
+            any("verworfen" in line for line in cm.output),
+            "Einmal-Lauf als verworfen gemeldet: %s" % cm.output,
+        )
+        self.assertTrue(any("erneut" in line for line in cm.output), cm.output)
+
+    async def test_one_shot_with_broken_retry_counter_is_retried_not_dropped(self):
+        """Dasselbe fuer den zweiten Redis-Ausfallzweig (incr wirft)."""
+        self.schedule.cron_expression = None
+        self.schedule.interval_seconds = 0
+        self.redis.client.incr = AsyncMock(side_effect=RuntimeError("redis down"))
+
+        with self.assertLogs("app.services.scheduler_service", level="INFO") as cm:
+            await self._execute_once()
+
+        self.assertEqual(self.schedule.total_runs, 0)
+        self.assertEqual(self.schedule.fail_count, 0)
+        self.assertEqual(self.schedule.next_run_at, self.now + timedelta(seconds=60))
+        self.assertFalse(
+            any("verworfen" in line for line in cm.output),
+            "Einmal-Lauf als verworfen gemeldet: %s" % cm.output,
+        )
+        self.assertTrue(any("erneut" in line for line in cm.output), cm.output)
 
 
 if __name__ == "__main__":
