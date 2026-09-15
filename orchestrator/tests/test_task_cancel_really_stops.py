@@ -39,6 +39,12 @@ WURZEL = Path(__file__).resolve().parents[2]
 SEITE = (WURZEL / "frontend/src/app/tasks/page.tsx").read_text()
 
 
+def _ohne_zeilenkommentare(tsx: str) -> str:
+    """TSX ohne `//`-Zeilenkommentare — sonst besteht ein auskommentierter
+    Ausdruck jede Teilstringsuche. `https://` bleibt stehen (Doppelpunkt davor)."""
+    return "\n".join(re.sub(r"(?<!:)//.*$", "", z) for z in tsx.splitlines())
+
+
 def _bracket_close(text: str, open_idx: int) -> int:
     """Index, der die bei ``open_idx`` geoeffnete Klammer schliesst.
 
@@ -81,11 +87,14 @@ class ARunningTaskCanBeStoppedTests(unittest.IsolatedAsyncioTestCase):
     async def test_the_router_no_longer_refuses_running_tasks(self):
         task = _aufgabe(TaskStatus.RUNNING)
         router, db, _ = _router_mit(task)
+        beim_commit = []
+        db.commit = AsyncMock(side_effect=lambda: beim_commit.append(task.status))
         zurueck = await router.cancel_task(task.id)
         self.assertIs(zurueck, task)
         self.assertEqual(task.status, TaskStatus.CANCELLED)
         self.assertIsNotNone(task.completed_at)
-        db.commit.assert_awaited()
+        # Ein Commit VOR dem Statuswechsel schriebe RUNNING in die Datenbank.
+        self.assertEqual(beim_commit, [TaskStatus.CANCELLED])
 
     async def test_it_signals_the_agent_for_a_running_task(self):
         """Der Kanal MUSS zum Zuhoerer passen — und die Nutzlast die rohe
@@ -129,12 +138,18 @@ class ARunningTaskCanBeStoppedTests(unittest.IsolatedAsyncioTestCase):
 # ---------------------------------------------------------------------------
 
 class _Sitzung:
-    """Eine Datenbank-Sitzung, die fuer die `_offene()`-Abfrage die gestellte
-    Liste liefert und die Abfrage selbst festhaelt."""
+    """Eine Datenbank-Sitzung, die fuer die `_offene()`-Abfrage antwortet wie
+    eine echte: die erste Abfrage liefert `vorher`; jede weitere liefert die
+    gestellten Ueberlebenden (`nachher`, Runner die den Abbruch ignorieren)
+    PLUS alles aus `vorher`, das zum Zeitpunkt der Abfrage noch NICHT
+    abgebrochen war. Eine Fassung, die vor dem Abbrechen nachsieht, sieht so
+    alles noch laufen — ein festes zweites Ergebnis koennte das nicht zeigen."""
 
-    def __init__(self, antworten, gesehen):
-        self._antworten = antworten
+    def __init__(self, vorher, nachher, gesehen, abgebrochen):
+        self._vorher = list(vorher)
+        self._nachher = list(nachher)
         self._gesehen = gesehen
+        self._abgebrochen = abgebrochen
 
     async def __aenter__(self):
         return self
@@ -144,16 +159,19 @@ class _Sitzung:
 
     async def execute(self, stmt):
         self._gesehen.append(stmt)
-        return list(self._antworten.pop(0))
+        if len(self._gesehen) == 1:
+            return list(self._vorher)
+        noch_nicht = [t for t in self._vorher
+                      if t[0] not in self._abgebrochen and t not in self._nachher]
+        return list(self._nachher) + noch_nicht
 
 
 class TheVoiceTellsTheTruthTests(unittest.IsolatedAsyncioTestCase):
-    def _front(self, vorher, nachher):
+    def _front(self, vorher, nachher, werfend=()):
         sitzung = rvs.RealtimeVoiceSession.__new__(rvs.RealtimeVoiceSession)
         sitzung.agent_id = "agent-7"
         sitzung.redis = SimpleNamespace(client=SimpleNamespace(publish=AsyncMock()))
         sitzung._planned = {tid: object() for tid, _ in vorher}
-        antworten = [vorher, nachher]
         abfragen: list = []
         abgebrochen: list = []
 
@@ -162,19 +180,21 @@ class TheVoiceTellsTheTruthTests(unittest.IsolatedAsyncioTestCase):
                 pass
 
             async def cancel_task(self, tid):
+                if tid in werfend:
+                    raise ValueError(f"Cannot cancel a task with status 'completed' ({tid})")
                 abgebrochen.append(tid)
 
         patches = [
             patch("app.db.session.async_session_factory",
-                  side_effect=lambda: _Sitzung(antworten, abfragen)),
+                  side_effect=lambda: _Sitzung(vorher, nachher, abfragen, abgebrochen)),
             patch("app.core.task_router.TaskRouter", _Router),
             patch("app.core.load_balancer.LoadBalancer", MagicMock()),
             patch.object(rvs.asyncio, "sleep", AsyncMock()),
         ]
         return sitzung, patches, abfragen, abgebrochen
 
-    async def _sagen(self, vorher, nachher):
-        sitzung, patches, abfragen, abgebrochen = self._front(vorher, nachher)
+    async def _sagen(self, vorher, nachher, werfend=()):
+        sitzung, patches, abfragen, abgebrochen = self._front(vorher, nachher, werfend)
         for p in patches:
             p.start()
         try:
@@ -212,9 +232,11 @@ class TheVoiceTellsTheTruthTests(unittest.IsolatedAsyncioTestCase):
     async def test_it_checks_again_afterwards(self):
         """Der eigentliche Fix: nachsehen statt behaupten — die Abfrage laeuft
         VOR und NACH dem Abbruch."""
-        _, abfragen, abgebrochen, _ = await self._sagen([("t1", "A"), ("t2", "B")], [])
+        antwort, abfragen, abgebrochen, _ = await self._sagen([("t1", "A"), ("t2", "B")], [])
         self.assertEqual(len(abfragen), 2)
         self.assertEqual(abgebrochen, ["t1", "t2"])
+        # Saehe sie VOR dem Abbruch nach, liefe fuer sie noch alles.
+        self.assertEqual(antwort, "Ich habe 2 Aufgabe(n) gestoppt. Es läuft nichts mehr.")
 
     async def test_it_says_so_when_something_survived(self):
         antwort, _, _, _ = await self._sagen([("t1", "A"), ("t2", "B")], [("t2", "B")])
@@ -233,9 +255,25 @@ class TheVoiceTellsTheTruthTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("t1", sitzung._planned)
 
     async def test_nothing_open_is_not_an_error(self):
-        antwort, _, abgebrochen, _ = await self._sagen([], [])
-        self.assertIn("nichts", antwort)
+        """Der Fruehausstieg — nicht der regulaere Pfad, der ebenfalls
+        „nichts" sagt (deshalb der exakte Wortlaut und EINE Abfrage)."""
+        antwort, abfragen, abgebrochen, _ = await self._sagen([], [])
+        self.assertEqual(antwort, "Es lief gerade nichts, was ich abbrechen könnte.")
+        self.assertEqual(len(abfragen), 1)
         self.assertEqual(abgebrochen, [])
+
+    async def test_one_that_just_finished_does_not_stop_the_others(self):
+        """Der Router lehnt eine inzwischen beendete Aufgabe mit ValueError ab
+        — das darf die Schleife nicht abbrechen: t2 muss trotzdem gestoppt
+        werden, und der Fehler nicht bis zum Sprecher durchschlagen."""
+        antwort, abfragen, abgebrochen, _ = await self._sagen(
+            [("t1", "A"), ("t2", "B")], [], werfend={"t1"})
+        self.assertEqual(abgebrochen, ["t2"])
+        self.assertEqual(len(abfragen), 2)
+        # t1 gilt fuer die Datenbank als weiterhin offen (die Attrappe hat es
+        # nicht abgebrochen) — die Antwort darf also nicht „alles gestoppt" sagen.
+        self.assertIn("läuft/laufen noch", antwort)
+        self.assertIn("A", antwort)
 
 
 # ---------------------------------------------------------------------------
@@ -247,8 +285,13 @@ class TheUiHasAManualStopTests(unittest.TestCase):
     stop haben"."""
 
     def test_a_running_task_can_be_stopped_from_the_list(self):
-        self.assertIn('const laeuft = task.status === "running"', SEITE)
-        self.assertIn("const canCancel = laeuft ||", SEITE)
+        """Ganze Anweisungen im Code, nicht Wortfetzen irgendwo: ein
+        `const laeuft = false; // const laeuft = task.status === "running"`
+        bestuende eine Teilstringsuche auf der ungefilterten Datei."""
+        code = _ohne_zeilenkommentare(SEITE)
+        self.assertIn('const laeuft = task.status === "running";', code)
+        self.assertIn('const canCancel = laeuft || task.status === "queued" || task.status === "pending";',
+                      code)
 
     def test_the_stop_button_is_visible_without_hovering(self):
         """Wer eine laufende Aufgabe stoppen will, sucht den Knopf sofort —
@@ -274,8 +317,11 @@ class TheUiHasAManualStopTests(unittest.TestCase):
     def test_the_words_distinguish_the_two_cases(self):
         """Eine wartende Aufgabe nimmt man aus der Schlange, eine laufende
         unterbricht man — das sind zwei verschiedene Dinge."""
-        self.assertIn('"Stoppen"', SEITE)
-        self.assertIn('"Abbrechen"', SEITE)
+        code = _ohne_zeilenkommentare(SEITE)
+        self.assertIn('{laeuft ? "Stoppen" : "Abbrechen"}', code)
+        self.assertNotIn('{laeuft ? "Abbrechen" : "Stoppen"}', code)
+        self.assertIn('? "Laufende Aufgabe stoppen', code)
+        self.assertIn(': "Wartende Aufgabe aus der Warteschlange nehmen"', code)
 
 
 if __name__ == "__main__":
