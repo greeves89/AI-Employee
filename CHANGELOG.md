@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.5] - 2026-09-15
+
+### Behoben
+- **Ein Redis-Ausfall liess einen taeglichen Zeitplan seinen Termin restlos
+  spurlos verlieren** (Issue #720, Punkte 1 und 2). Fiel Redis genau dann aus,
+  wenn ein faelliger Lauf kurz uebersprungen werden musste (Agent ausserhalb
+  der Dienstzeit, kurz beschaeftigt), schob der Zeitplaner den Termin still in
+  die Zukunft: kein Task, keine Zeile im Fehlerprotokoll, `fail_count` 0,
+  `success_rate` 1.0 — und der Verpasst-Waechter sucht nur in der
+  Vergangenheit. Ein Tageszeitplan konnte so tagelang ausfallen und perfekte
+  Quote melden. Beide Redis-Ausfallzweige verbuchen den verlorenen Termin
+  jetzt wie ein aufgebrauchtes Wiederholungs-Budget (Zaehler, WARNING im
+  Protokoll, gedrosselte Telegram-Meldung).
+  Einmal-Laeufe (Tagesplan-Bloecke) sind davon bewusst ausgenommen: sie
+  verlieren nichts, sondern stehen in 60 Sekunden wieder an — und werden
+  deshalb auch nicht faelschlich als "verworfen" gemeldet. Ohne diese
+  Ausnahme haette jeder Redis-Ausfall fuer jeden Plan-Block im Minutentakt
+  eine Falschwarnung erzeugt.
+  Offen bleibt Punkt 3 des Issues (Verpasst-Waechter unabhaengig von Redis
+  plus Abgleich mit dem tatsaechlich faelligen Cron-Slot).
+
+
+
 ## [1.322.3] - 2026-09-15
 
 ### Behoben
