@@ -35,8 +35,6 @@
   "orchestrator/tests/test_run_outcome_green_but_empty.py": 4,
   "orchestrator/tests/test_screens_and_click_space.py": 9,
   "orchestrator/tests/test_sentinel_liveness.py": 2,
-  "orchestrator/tests/test_task_cancel_really_stops.py": 10,
-  "orchestrator/tests/test_task_heartbeat_watchdog.py": 9,
   "orchestrator/tests/test_tickets.py": 2,
   "orchestrator/tests/test_ui_amber_and_notification_panel.py": 3,
   "orchestrator/tests/test_vault_import_export.py": 2,
