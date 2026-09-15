@@ -15,76 +15,232 @@ Vier Schichten desselben Problems, alle belegt:
 3. ``TaskRouter.cancel_task`` wies laufende Aufgaben mit einem Fehler ab.
 4. Der Kanal ``agent:{id}:task:cancel`` wurde seit jeher besendet — und hatte
    keinen einzigen Zuhoerer.
+
+Seit #726 werden die Schichten am VERHALTEN geprueft, nicht am Quelltext:
+der Router wird mit einer Datenbank-Attrappe aufgerufen, die Sprachfront mit
+gestellten Aufgabenlisten; der Zuhoerer im Agenten (Schicht 4) liegt in
+``agent/tests/test_task_cancel_listener.py`` und wird dort mit einem
+Redis-Doppel gefuettert. Ein festes Zeichenfenster hinter ``async def cancel_task``
+haette einen laengeren Kommentar fuer einen Regressionsbruch gehalten — und
+einen auskommentierten Aufruf fuer vorhanden.
 """
 
+import re
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from app.core.task_router import TaskRouter
+from app.models.task import TaskStatus
+from app.services import realtime_voice_session as rvs
 
 WURZEL = Path(__file__).resolve().parents[2]
-ROUTER = (WURZEL / "orchestrator/app/core/task_router.py").read_text()
-VOICE = (WURZEL / "orchestrator/app/services/realtime_voice_session.py").read_text()
-CONSUMER = (WURZEL / "agent/app/task_consumer.py").read_text()
 SEITE = (WURZEL / "frontend/src/app/tasks/page.tsx").read_text()
 
 
-class ARunningTaskCanBeStoppedTests(unittest.TestCase):
-    def test_the_router_no_longer_refuses_running_tasks(self):
-        block = ROUTER.split("async def cancel_task", 1)[1][:1800]
-        self.assertIn("TaskStatus.RUNNING", block)
-        # Abgelehnt wird nur noch, was wirklich vorbei ist.
-        self.assertIn("TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED", block)
+def _bracket_close(text: str, open_idx: int) -> int:
+    """Index, der die bei ``open_idx`` geoeffnete Klammer schliesst.
 
-    def test_it_signals_the_agent_for_a_running_task(self):
-        block = ROUTER.split("async def cancel_task", 1)[1][:1800]
-        self.assertIn("task:cancel", block)
-
-    def test_the_agent_now_listens_on_that_channel(self):
-        """Der Kanal existierte, aber niemand hoerte zu — das war der Kern."""
-        self.assertIn("_cancel_listener", CONSUMER)
-        block = CONSUMER.split("async def _cancel_listener", 1)[1][:1800]
-        self.assertIn('f"agent:{self.agent_id}:task:cancel"', block)
-
-    def test_the_listener_runs_alongside_the_queue(self):
-        """Liefe er in derselben Schleife, kaeme er erst dran, wenn gerade
-        keine Aufgabe verarbeitet wird — also genau dann nicht, wenn man ihn
-        braucht."""
-        self.assertIn("asyncio.create_task(self._cancel_listener())", CONSUMER)
-
-    def test_it_can_stop_one_task_not_only_everything(self):
-        self.assertIn("_runner_by_task", CONSUMER)
-        block = CONSUMER.split("async def _cancel_listener", 1)[1][:1800]
-        self.assertIn("runner.interrupt()", block)
-
-    def test_the_mapping_is_cleaned_up_afterwards(self):
-        """Sonst waechst sie mit jeder Aufgabe und zeigt auf tote Runner."""
-        self.assertIn("self._runner_by_task.pop(task_id, None)", CONSUMER)
+    Behandelt ``()``/``[]``/``{}`` als EINE Verschachtelungsebene — fuer
+    echten, syntaktisch gueltigen Quelltext reicht das. Ein fest gewaehltes
+    Zeichenfenster beweist nur NAEHE zu einem Stichwort, nicht Zugehoerigkeit
+    zu genau dem Block, den das Stichwort einleitet.
+    """
+    tiefe = 0
+    for i in range(open_idx, len(text)):
+        if text[i] in "([{":
+            tiefe += 1
+        elif text[i] in ")]}":
+            tiefe -= 1
+            if tiefe == 0:
+                return i
+    raise ValueError(f"unbalancierte Klammer ab Position {open_idx}")
 
 
-class TheVoiceTellsTheTruthTests(unittest.TestCase):
-    def test_it_no_longer_reports_success_from_a_bare_publish(self):
-        """Das war die Luege: `publish` gelingt auch ohne Zuhoerer."""
-        block = VOICE.split("async def _cancel_task", 1)[1][:3200]
-        self.assertNotIn("stopped = True", block)
+# ---------------------------------------------------------------------------
+# Schicht 3: der Router lehnt laufende Aufgaben nicht mehr ab, sondern ruft.
+# ---------------------------------------------------------------------------
 
-    def test_it_looks_at_all_open_tasks_not_only_this_session(self):
-        block = VOICE.split("async def _cancel_task", 1)[1][:3200]
-        self.assertIn("Task.agent_id == self.agent_id", block)
-        self.assertIn("Task.status.in_(OFFEN)", block)
+def _router_mit(task):
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = task
+    db.execute = AsyncMock(return_value=result)
+    redis = SimpleNamespace(client=SimpleNamespace(publish=AsyncMock()))
+    router = TaskRouter(db=db, redis=redis, load_balancer=MagicMock(), docker_service=None)
+    router._remove_from_queue = AsyncMock()
+    return router, db, redis.client.publish
 
-    def test_it_checks_again_afterwards(self):
-        """Der eigentliche Fix: nachsehen statt behaupten."""
-        block = VOICE.split("async def _cancel_task", 1)[1][:3200]
-        self.assertIn("uebrig = await _offene()", block)
 
-    def test_it_says_so_when_something_survived(self):
-        block = VOICE.split("async def _cancel_task", 1)[1][:3200]
-        self.assertIn("läuft/laufen noch", block)
+def _aufgabe(status, agent_id="agent-7", task_id="tu7hsco5e"):
+    return SimpleNamespace(id=task_id, status=status, agent_id=agent_id, completed_at=None)
 
-    def test_it_names_what_is_still_running(self):
+
+class ARunningTaskCanBeStoppedTests(unittest.IsolatedAsyncioTestCase):
+    async def test_the_router_no_longer_refuses_running_tasks(self):
+        task = _aufgabe(TaskStatus.RUNNING)
+        router, db, _ = _router_mit(task)
+        zurueck = await router.cancel_task(task.id)
+        self.assertIs(zurueck, task)
+        self.assertEqual(task.status, TaskStatus.CANCELLED)
+        self.assertIsNotNone(task.completed_at)
+        db.commit.assert_awaited()
+
+    async def test_it_signals_the_agent_for_a_running_task(self):
+        """Der Kanal MUSS zum Zuhoerer passen — und die Nutzlast die rohe
+        Kennung sein, kein JSON (der Zuhoerer liest sie als ID)."""
+        task = _aufgabe(TaskStatus.RUNNING, agent_id="agent-7")
+        router, _, publish = _router_mit(task)
+        await router.cancel_task(task.id)
+        publish.assert_awaited_once_with("agent:agent-7:task:cancel", task.id)
+
+    async def test_a_waiting_task_is_removed_without_a_signal(self):
+        """Wer noch nicht laeuft, kann nicht unterbrochen werden — nur aus
+        der Schlange genommen."""
+        task = _aufgabe(TaskStatus.QUEUED, agent_id="agent-7")
+        router, _, publish = _router_mit(task)
+        await router.cancel_task(task.id)
+        publish.assert_not_awaited()
+        router._remove_from_queue.assert_awaited_once_with("agent-7", task.id)
+        self.assertEqual(task.status, TaskStatus.CANCELLED)
+
+    async def test_only_what_is_really_over_is_refused(self):
+        """Abgelehnt wird nur noch, was wirklich vorbei ist."""
+        for status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
+            with self.subTest(status=status):
+                task = _aufgabe(status)
+                router, db, publish = _router_mit(task)
+                with self.assertRaises(ValueError):
+                    await router.cancel_task(task.id)
+                publish.assert_not_awaited()
+                db.commit.assert_not_awaited()
+
+    async def test_an_unknown_task_is_none_not_an_error(self):
+        router, _, _ = _router_mit(None)
+        self.assertIsNone(await router.cancel_task("gibt-es-nicht"))
+
+
+# Schicht 4 (der Zuhoerer im Agenten) liegt in agent/tests/test_task_cancel_listener.py —
+# dort ist `app` das Agentenpaket, und der Zuhoerer laesst sich echt fuettern.
+
+# ---------------------------------------------------------------------------
+# Schichten 1+2: die Sprachfront sagt, was der Fall ist — und sieht alles.
+# ---------------------------------------------------------------------------
+
+class _Sitzung:
+    """Eine Datenbank-Sitzung, die fuer die `_offene()`-Abfrage die gestellte
+    Liste liefert und die Abfrage selbst festhaelt."""
+
+    def __init__(self, antworten, gesehen):
+        self._antworten = antworten
+        self._gesehen = gesehen
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def execute(self, stmt):
+        self._gesehen.append(stmt)
+        return list(self._antworten.pop(0))
+
+
+class TheVoiceTellsTheTruthTests(unittest.IsolatedAsyncioTestCase):
+    def _front(self, vorher, nachher):
+        sitzung = rvs.RealtimeVoiceSession.__new__(rvs.RealtimeVoiceSession)
+        sitzung.agent_id = "agent-7"
+        sitzung.redis = SimpleNamespace(client=SimpleNamespace(publish=AsyncMock()))
+        sitzung._planned = {tid: object() for tid, _ in vorher}
+        antworten = [vorher, nachher]
+        abfragen: list = []
+        abgebrochen: list = []
+
+        class _Router:
+            def __init__(self, *a, **kw):
+                pass
+
+            async def cancel_task(self, tid):
+                abgebrochen.append(tid)
+
+        patches = [
+            patch("app.db.session.async_session_factory",
+                  side_effect=lambda: _Sitzung(antworten, abfragen)),
+            patch("app.core.task_router.TaskRouter", _Router),
+            patch("app.core.load_balancer.LoadBalancer", MagicMock()),
+            patch.object(rvs.asyncio, "sleep", AsyncMock()),
+        ]
+        return sitzung, patches, abfragen, abgebrochen
+
+    async def _sagen(self, vorher, nachher):
+        sitzung, patches, abfragen, abgebrochen = self._front(vorher, nachher)
+        for p in patches:
+            p.start()
+        try:
+            antwort = await sitzung._cancel_task()
+        finally:
+            for p in patches:
+                p.stop()
+        return antwort, abfragen, abgebrochen, sitzung
+
+    async def test_it_no_longer_reports_success_from_a_bare_publish(self):
+        """Das war die Luege: `publish` gelingt auch ohne Zuhoerer. Ueberlebt
+        eine Aufgabe den Abbruch, darf die Antwort keinen Erfolg melden."""
+        antwort, _, _, _ = await self._sagen([("t1", "Excel-Analyse")], [("t1", "Excel-Analyse")])
+        self.assertNotIn("Es läuft nichts mehr", antwort)
+        self.assertIn("läuft/laufen noch", antwort)
+
+    async def test_it_looks_at_all_open_tasks_not_only_this_session(self):
+        """Die Menge kommt aus der Datenbank, gefiltert auf DIESEN Agenten und
+        die offenen Zustaende — nicht aus `self._planned`."""
+        sitzung, patches, abfragen, _ = self._front([("t-fremd", "aus anderer Sitzung")], [])
+        sitzung._planned = {}                     # fortgesetztes Gespraech: leer
+        for p in patches:
+            p.start()
+        try:
+            antwort = await sitzung._cancel_task()
+        finally:
+            for p in patches:
+                p.stop()
+        self.assertIn("1 Aufgabe(n) gestoppt", antwort)
+        params = abfragen[0].compile().params
+        self.assertEqual(params.get("agent_id_1"), "agent-7")
+        offen = {s for s in params.get("status_1", [])}
+        self.assertEqual(offen, {TaskStatus.QUEUED, TaskStatus.PENDING, TaskStatus.RUNNING})
+
+    async def test_it_checks_again_afterwards(self):
+        """Der eigentliche Fix: nachsehen statt behaupten — die Abfrage laeuft
+        VOR und NACH dem Abbruch."""
+        _, abfragen, abgebrochen, _ = await self._sagen([("t1", "A"), ("t2", "B")], [])
+        self.assertEqual(len(abfragen), 2)
+        self.assertEqual(abgebrochen, ["t1", "t2"])
+
+    async def test_it_says_so_when_something_survived(self):
+        antwort, _, _, _ = await self._sagen([("t1", "A"), ("t2", "B")], [("t2", "B")])
+        self.assertIn("1 Aufgabe(n) gestoppt", antwort)
+        self.assertIn("1 läuft/laufen noch", antwort)
+
+    async def test_it_names_what_is_still_running(self):
         """„Etwas laeuft noch" ohne Namen zwingt zur naechsten Rueckfrage."""
-        block = VOICE.split("async def _cancel_task", 1)[1][:3200]
-        self.assertIn("namen", block)
+        antwort, _, _, _ = await self._sagen(
+            [("t1", "Analyse der Excel-Testrechnung")], [("t1", "Analyse der Excel-Testrechnung")])
+        self.assertIn("Analyse der Excel-Testrechnung", antwort)
 
+    async def test_when_everything_stopped_it_says_that_too(self):
+        antwort, _, _, sitzung = await self._sagen([("t1", "A")], [])
+        self.assertEqual(antwort, "Ich habe 1 Aufgabe(n) gestoppt. Es läuft nichts mehr.")
+        self.assertNotIn("t1", sitzung._planned)
+
+    async def test_nothing_open_is_not_an_error(self):
+        antwort, _, abgebrochen, _ = await self._sagen([], [])
+        self.assertIn("nichts", antwort)
+        self.assertEqual(abgebrochen, [])
+
+
+# ---------------------------------------------------------------------------
+# Oberflaeche: ein Knopf, der laufende Aufgaben stoppt.
+# ---------------------------------------------------------------------------
 
 class TheUiHasAManualStopTests(unittest.TestCase):
     """Ausdruecklicher Wunsch: „ich will bei aufgaben auch noch einen Manuellen
@@ -96,12 +252,24 @@ class TheUiHasAManualStopTests(unittest.TestCase):
 
     def test_the_stop_button_is_visible_without_hovering(self):
         """Wer eine laufende Aufgabe stoppen will, sucht den Knopf sofort —
-        nicht erst, wenn er zufaellig darueberfaehrt."""
-        block = SEITE.split("{canCancel && (", 1)[1][:1400]
-        self.assertIn("laeuft", block)
-        # Der Verstecken-Stil gilt nur noch fuer wartende Aufgaben.
-        vor_dem_doppelpunkt = block.split("opacity-0 group-hover:opacity-100")[0]
-        self.assertIn("?", vor_dem_doppelpunkt)
+        nicht erst, wenn er zufaellig darueberfaehrt. Geprueft wird der
+        JSX-Block hinter `canCancel && (` bis zu SEINER schliessenden Klammer,
+        nicht 1400 Zeichen dahinter."""
+        auf = SEITE.index("{canCancel && (") + len("{canCancel && ")
+        block = SEITE[auf:_bracket_close(SEITE, auf) + 1]
+        # Der Verstecken-Stil gilt nur noch fuer wartende Aufgaben: im
+        # Dann-Zweig des `laeuft ? ... : ...` darf er nicht stehen, im
+        # Sonst-Zweig muss er. („Ein ? steht davor" waere in JEDEM Ternaer
+        # wahr — genau so eine Zusicherung hat die Gegenprobe still gelassen.)
+        ternaer = block.index("laeuft")
+        dann_ab = block.index("?", ternaer)
+        # Der Ternaer-Doppelpunkt beginnt eine Zeile — Tailwind-Klassen wie
+        # `hover:bg-...` tragen selbst Doppelpunkte, die zaehlen nicht.
+        sonst_ab = re.compile(r"\n\s*:").search(block, dann_ab).start()
+        sonst_bis = block.index("\n", sonst_ab + 1)
+        dann, sonst = block[dann_ab:sonst_ab], block[sonst_ab:sonst_bis]
+        self.assertNotIn("opacity-0 group-hover:opacity-100", dann)
+        self.assertIn("opacity-0 group-hover:opacity-100", sonst)
 
     def test_the_words_distinguish_the_two_cases(self):
         """Eine wartende Aufgabe nimmt man aus der Schlange, eine laufende
