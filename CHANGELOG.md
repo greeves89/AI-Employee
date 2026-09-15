@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.4] - 2026-09-15
+
+### Behoben
+- **Grosse Dateien im Wissensspeicher blieben dauerhaft ohne Vektoren, die
+  semantische Suche fiel dort still auf Stichwortsuche zurueck** (Issue #740).
+  Faellt der lokale Einbettungsdienst aus, uebernimmt der OpenAI-Rueckfall —
+  dieser reichte die Anfrage des Aufrufers aber ungestueckelt weiter. Der
+  Indexer uebergibt alle Abschnitte einer Datei auf einmal, womit die harte
+  Grenze der Schnittstelle von 300.000 Token gerissen wurde (beobachtet bis
+  479.065). Die Schnittstelle lehnte die komplette Anfrage mit HTTP 400 ab,
+  alle Vektoren der Stapelverarbeitung blieben leer. Weil der Indexer Dateien
+  ohne Vektor beim naechsten Lauf erneut aufgreift, wiederholte sich das
+  taeglich — an vier aufeinanderfolgenden Tagen 67 Mal.
+  Der Rueckfall stueckelt die Anfrage nun so, dass beide harten Grenzen der
+  Schnittstelle eingehalten werden: hoechstens 2.048 Eingaben je Anfrage und
+  ein Budget in UTF-8-Bytes, das die Tokenzahl nachweisbar nach oben
+  abschaetzt. Ein Zeichenbudget genuegte dafuer nicht — bei chinesischem Text
+  ergaben 500.000 Zeichen rund 500.000 Token und rissen die Grenze weiterhin.
+  Zugleich schadet eine abgelehnte Teilmenge nicht mehr den uebrigen: bisher
+  machte ein einziger Fehlschlag den gesamten Stapel leer.
+
+
+
 ## [1.322.3] - 2026-09-15
 
 ### Behoben
