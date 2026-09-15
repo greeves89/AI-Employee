@@ -151,3 +151,36 @@ async def test_credential_with_importance_5_lands_in_credentials_not_critical():
     )
     # Sanity: the unrelated importance=5 memory is unaffected and stays critical.
     assert "likes-short-replies" in critical_keys
+
+
+@pytest.mark.asyncio
+async def test_credential_older_than_newest_30_still_lands_in_credentials():
+    """Issue #715, Grenzfall aus dem Review: die Zugangsdaten-Abfrage laedt nur
+    die 30 juengsten Eintraege, die Wichtigkeits-Abfrage bis zu 50. Ein Geheimnis,
+    das aelter als die 30 juengsten Zugangsdaten ist, aber noch unter den 50
+    wichtigsten liegt, kommt deshalb NUR ueber ``high_imp`` herein — es darf
+    trotzdem nicht in ``critical`` landen, denn dort ueberspringt der Konsument
+    jede Zugangsdaten-Kategorie als "already listed above". Sonst verschwindet
+    das Geheimnis komplett aus dem Prompt: genau das Symptom des Issues, nur
+    ueber die zweite Tuer.
+    """
+    old_secret = _memory(201, category="secret", importance=5, key="legacy-db-password")
+    other_critical = _memory(202, category="decision", importance=5, key="keep-postgres")
+
+    # creds=[] bildet nach: die 30 juengsten Zugangsdaten sind andere Eintraege,
+    # dieses Geheimnis liegt dahinter und wird nur von der Wichtigkeits-Abfrage
+    # geliefert.
+    db = _db_with(high_imp=[old_secret, other_critical], creds=[])
+
+    out = await collect_preload(db, "agent-1")
+
+    credential_keys = [m["key"] for m in out["credentials"]]
+    critical_keys = [m["key"] for m in out["critical"]]
+
+    assert "legacy-db-password" in credential_keys, (
+        "a credential the importance query knows about must be surfaced as a credential"
+    )
+    assert "legacy-db-password" not in critical_keys, (
+        "in critical the consumer would skip it as 'already listed above'"
+    )
+    assert "keep-postgres" in critical_keys
