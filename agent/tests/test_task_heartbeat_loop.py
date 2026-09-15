@@ -72,7 +72,15 @@ class DerAgentSendetEinLebenszeichenTests(unittest.IsolatedAsyncioTestCase):
                          {"task_id": "t-1", "agent_id": "agent-7"})
 
     async def test_ohne_kennung_schlaegt_nichts(self):
-        await self.consumer._herzschlag(None)          # kehrt sofort zurueck
+        """Kehrt sofort zurueck. Faellt der Fruehausstieg weg, liefe die
+        Schleife mit echtem 60-s-Schlaf endlos — deshalb ist `sleep` hier
+        scharf gestellt und `wait_for` begrenzt: der Test wird ROT, nicht
+        haengend."""
+        async def tick(_sek):
+            raise asyncio.CancelledError
+
+        with patch.object(tc.asyncio, "sleep", tick):
+            await asyncio.wait_for(self.consumer._herzschlag(None), timeout=1)
         self.assertEqual(self.redis.gesendet, [])
 
     async def test_der_takt_liegt_deutlich_unter_der_schwelle(self):

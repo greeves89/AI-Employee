@@ -18,6 +18,7 @@ Agenten-Seite (die Herzschlag-Schleife selbst) liegt in
 ``agent/tests/test_task_heartbeat_loop.py``.
 """
 
+import asyncio
 import json
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -33,8 +34,6 @@ from app.services.redis_service import _AGENT_ACL_CHANNEL_PATTERNS
 from app.services.scheduler_service import SchedulerService
 
 _WURZEL = Path(__file__).resolve().parents[2]
-_MAIN = (_WURZEL / "orchestrator" / "app" / "main.py").read_text()
-_SCHED = (_WURZEL / "orchestrator" / "app" / "services" / "scheduler_service.py").read_text()
 
 
 class _Aufgabe:
@@ -54,12 +53,65 @@ class DerOrchestratorNimmtEsEntgegenTests(unittest.IsolatedAsyncioTestCase):
         """Ohne Eintrag in der Kanalliste sperrt die Redis-ACL ihn aus."""
         self.assertIn("task:heartbeat", _AGENT_ACL_CHANNEL_PATTERNS)
 
-    def test_er_wird_abonniert(self):
-        self.assertIn('await pubsub.subscribe("task:heartbeat")', _MAIN)
+    async def _schleife_mit(self, nachrichten):
+        """`_listen_task_events` einmal mit gestellten Nachrichten fahren und
+        abgreifen, was abonniert und welchem Handler zugestellt wurde.
 
-    def test_und_einem_handler_zugeordnet(self):
-        self.assertIn('elif channel == "task:heartbeat":', _MAIN)
-        self.assertIn("handle_task_heartbeat(data)", _MAIN)
+        Die Schleife ist endlos; das Doppel beendet sie nach der letzten
+        Nachricht mit CancelledError — genau so, wie der Orchestrator sie beim
+        Herunterfahren beendet. Ein `pass  # await pubsub.subscribe(...)` im
+        Quelltext liesse hier `abonniert` leer, ein auskommentierter
+        Handler-Aufruf `router.handle_task_heartbeat` unberuehrt."""
+        import app.main as hauptmodul
+
+        pubsub = MagicMock()
+        pubsub.subscribe = AsyncMock()
+        vorrat = list(nachrichten)
+
+        async def get_message(ignore_subscribe_messages=True, timeout=1.0):
+            if vorrat:
+                return vorrat.pop(0)
+            raise asyncio.CancelledError
+
+        pubsub.get_message = get_message
+        redis = MagicMock()
+        redis.client = object()
+        redis.subscribe = AsyncMock(return_value=pubsub)
+
+        router = MagicMock()
+        for name in ("handle_task_start", "handle_task_heartbeat", "handle_task_completion"):
+            setattr(router, name, AsyncMock())
+
+        class _Sitzung:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+        with patch("app.core.task_router.TaskRouter", return_value=router), \
+             patch("app.core.load_balancer.LoadBalancer"), \
+             patch("app.db.session.async_session_factory", _Sitzung), \
+             self.assertRaises(asyncio.CancelledError):
+            await asyncio.wait_for(hauptmodul._listen_task_events(redis), timeout=5)
+        return redis, pubsub, router
+
+    async def test_er_wird_abonniert(self):
+        redis, pubsub, _ = await self._schleife_mit([])
+        redis.subscribe.assert_awaited_once_with("task:completions")
+        zusaetzlich = [c.args[0] for c in pubsub.subscribe.await_args_list]
+        self.assertIn("task:heartbeat", zusaetzlich)
+
+    async def test_und_einem_handler_zugeordnet(self):
+        """Der Schlag landet beim Herzschlag-Handler — und NICHT beim
+        Abschluss-Handler, der die Aufgabe als beendet verbuchen wuerde."""
+        nutzlast = {"task_id": "t-1", "agent_id": "agent-7"}
+        _, _, router = await self._schleife_mit([
+            {"type": "message", "channel": b"task:heartbeat", "data": json.dumps(nutzlast)},
+        ])
+        router.handle_task_heartbeat.assert_awaited_once_with(nutzlast)
+        router.handle_task_completion.assert_not_awaited()
+        router.handle_task_start.assert_not_awaited()
 
     def _router(self, task):
         db = AsyncMock()
@@ -72,10 +124,14 @@ class DerOrchestratorNimmtEsEntgegenTests(unittest.IsolatedAsyncioTestCase):
         alt = datetime.now(timezone.utc) - timedelta(hours=2)
         aufgabe = _Aufgabe(TaskStatus.RUNNING, alt)
         router, db = self._router(aufgabe)
+        beim_commit = []
+        db.commit = AsyncMock(side_effect=lambda: beim_commit.append(aufgabe.updated_at))
         with patch("app.services.job_state.checkpoint", AsyncMock()):
             await router.handle_task_heartbeat({"task_id": "t-1"})
         self.assertGreater(aufgabe.updated_at, alt + timedelta(hours=1))
-        db.commit.assert_awaited()
+        # Ein Commit VOR dem Fortschreiben schriebe den alten Wert in die Datenbank.
+        self.assertEqual(len(beim_commit), 1)
+        self.assertGreater(beim_commit[0], alt + timedelta(hours=1))
 
     async def test_nur_fuer_eine_laufende_aufgabe(self):
         """Ein spaeter Schlag darf eine bereits beendete Aufgabe nicht
@@ -115,14 +171,6 @@ class DerOrchestratorNimmtEsEntgegenTests(unittest.IsolatedAsyncioTestCase):
 
 
 class DieSchwelleIstEinstellbarTests(unittest.TestCase):
-    def test_der_waechter_liest_sie_aus_der_einstellung(self):
-        self.assertIn("watchdog_stale_task_minutes", _SCHED)
-
-    def test_die_meldung_nennt_die_wirkliche_schwelle(self):
-        """Fest verdrahtete „30min" wuerden bei angehobener Schwelle luegen."""
-        self.assertIn("minuten = int(schwelle.total_seconds() // 60)", _SCHED)
-        self.assertNotIn("seit über 30min kein", _SCHED)
-
     def test_mark_task_stale_nimmt_die_schwelle_entgegen(self):
         aufgabe = _Aufgabe(TaskStatus.RUNNING, datetime.now(timezone.utc))
         watchdog.mark_task_stale(aufgabe, datetime.now(timezone.utc), timedelta(minutes=180))
@@ -156,13 +204,19 @@ class DerAgentWirdWirklichGestopptTests(unittest.IsolatedAsyncioTestCase):
     """Sonst arbeitet der Agent nach dem Abbruch weiter und verbrennt Zeit
     und Token fuer ein Ergebnis, das niemand mehr annimmt (#692 Punkt C)."""
 
+    SCHWELLE_MIN = 45     # bewusst weder der alte 30er noch der neue 180er Standard
+
     def _tick(self, stale):
+        from app.config import settings as einstellungen
+
         redis = SimpleNamespace(client=SimpleNamespace(publish=AsyncMock()))
         svc = SchedulerService(redis=redis)
         db = _Db()
+        self.suche = AsyncMock(return_value=stale)
         patches = [
             patch.object(scheduler_service, "resilient_session", lambda: db),
-            patch.object(scheduler_service, "find_stale_tasks", AsyncMock(return_value=stale)),
+            patch.object(scheduler_service, "find_stale_tasks", self.suche),
+            patch.object(einstellungen, "watchdog_stale_task_minutes", self.SCHWELLE_MIN, create=True),
         ]
         return svc, db, redis.client.publish, patches
 
@@ -176,6 +230,26 @@ class DerAgentWirdWirklichGestopptTests(unittest.IsolatedAsyncioTestCase):
             for p in patches:
                 p.stop()
         return db, publish
+
+    async def test_der_waechter_liest_die_schwelle_aus_der_einstellung(self):
+        """Eine fest verdrahtete Schwelle (`_td(minutes=30)`) saehe hier
+        30 statt 45 — egal, was in der Einstellung steht."""
+        await self._laufen([])
+        self.suche.assert_awaited_once()
+        self.assertEqual(self.suche.await_args.args[2], timedelta(minutes=self.SCHWELLE_MIN))
+
+    async def test_die_meldung_nennt_die_wirkliche_schwelle(self):
+        """Fest verdrahtete „30min" wuerden bei angehobener Schwelle luegen."""
+        aufgabe = _Aufgabe(TaskStatus.RUNNING, datetime.now(timezone.utc) - timedelta(hours=4),
+                           task_id="t-stale", agent_id="agent-7")
+        db, publish = await self._laufen([aufgabe])
+        meldung = db.hinzugefuegt[0].message
+        self.assertIn(f"über {self.SCHWELLE_MIN} min", meldung)
+        self.assertNotIn("30", meldung)
+        self.assertIn(str(self.SCHWELLE_MIN), aufgabe.error)
+        telegram = [c.args[1] for c in publish.await_args_list if c.args[0] != "agent:agent-7:task:cancel"]
+        self.assertTrue(telegram, "die Telegram-Meldung fehlt")
+        self.assertIn(f">{self.SCHWELLE_MIN} min", telegram[0])
 
     async def test_beim_abraeumen_wird_abgebrochen(self):
         aufgabe = _Aufgabe(TaskStatus.RUNNING, datetime.now(timezone.utc) - timedelta(hours=4),

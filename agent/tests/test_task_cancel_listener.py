@@ -46,7 +46,11 @@ class _PubSub:
 
     async def get_message(self, ignore_subscribe_messages=True, timeout=1.0):
         if self._nachrichten:
-            return {"type": "message", "data": self._nachrichten.pop(0)}
+            eintrag = self._nachrichten.pop(0)
+            # Eine Zeichenkette ist eine Abbruch-Nachricht; ein Dict wird roh
+            # durchgereicht — so kann das Doppel auch eine Abonnement-
+            # Bestaetigung liefern, die der Zuhoerer NICHT als Kennung lesen darf.
+            return eintrag if isinstance(eintrag, dict) else {"type": "message", "data": eintrag}
         self._danach()
         return None
 
@@ -80,9 +84,21 @@ def _zuhoerer(nachrichten, runner):
     return consumer, pubsub, _Verbindung(pubsub)
 
 
+_echtes_sleep = asyncio.sleep
+
+
+async def _kurz_abgeben(_sekunden):
+    """Ersatz fuer `asyncio.sleep`, der an die Schleife ABGIBT statt nur
+    sofort zurueckzukehren: ein `AsyncMock()` gibt nie ab, und eine Mutation
+    `while self.running` -> `while True` haette dann eine Endlosschleife ohne
+    Yield erzeugt, an der `wait_for` nichts ausrichten kann — der Test HAENGT
+    statt rot zu werden."""
+    await _echtes_sleep(0)
+
+
 async def _laufen_lassen(consumer, verbindung):
     with patch.object(tc.aioredis, "from_url", return_value=verbindung), \
-         patch.object(tc.asyncio, "sleep", AsyncMock()):
+         patch.object(tc.asyncio, "sleep", _kurz_abgeben):
         await asyncio.wait_for(consumer._cancel_listener(), timeout=5)
 
 
@@ -98,6 +114,19 @@ class TheAgentListensOnTheChannelTheRouterSendsOnTests(unittest.IsolatedAsyncioT
         await _laufen_lassen(consumer, verbindung)
         self.assertEqual(eine.unterbrochen, 1)
         self.assertEqual(andere.unterbrochen, 0)
+
+    async def test_a_subscribe_confirmation_is_not_read_as_a_task_id(self):
+        """redis liefert nach dem Abonnieren `{"type": "subscribe", "data": 1}`.
+        Ohne den Typ-Filter wuerde `1` als Kennung gelesen — oder, bei
+        `data == "all"`-Vergleich auf einem int, der Zuhoerer stuerbe."""
+        alle = _Runner()
+        consumer, _, verbindung = _zuhoerer(
+            [{"type": "subscribe", "data": 1}, {"type": "subscribe", "data": "all"}, "t-alle"],
+            {"t-alle": alle, "t-andere": _Runner()})
+        await _laufen_lassen(consumer, verbindung)
+        # Nur die echte Nachricht wirkt: genau EIN Runner, genau EINMAL.
+        self.assertEqual(alle.unterbrochen, 1)
+        self.assertEqual(consumer._runner_by_task["t-andere"].unterbrochen, 0)
 
     async def test_all_stops_everything_that_runs(self):
         eine, andere = _Runner(), _Runner()

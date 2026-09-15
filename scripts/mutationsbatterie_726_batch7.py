@@ -26,6 +26,7 @@ SCHED = "orchestrator/app/services/scheduler_service.py"
 WATCH = "orchestrator/app/services/watchdog.py"
 CONSUMER = "agent/app/task_consumer.py"
 SEITE = "frontend/src/app/tasks/page.tsx"
+MAIN = "orchestrator/app/main.py"
 
 CANCEL = O + "test_task_cancel_really_stops.py::"
 HEART = O + "test_task_heartbeat_watchdog.py::"
@@ -164,6 +165,68 @@ MUTATIONEN = [
      "            if herzschlag is not None:\n                herzschlag.cancel()\n",
      "            pass\n",
      "agent", LOOP + "DieSchleifeLebtGenauSoLangeWieDieAufgabeTests::test_sie_wird_am_ende_beendet"),
+    # --- Gegenleser-Funde (15.09.2026): 12 stille Faelle + 2 Haenger gegen die
+    #     erste Fassung dieser Tests. Jeder davon bleibt hier als Wache stehen.
+    ("gl-main-subscribe-auskommentiert", MAIN,
+     '            await pubsub.subscribe("task:heartbeat")\n',
+     '            pass  # await pubsub.subscribe("task:heartbeat")\n',
+     "orchestrator", HEART + "DerOrchestratorNimmtEsEntgegenTests::test_er_wird_abonniert"),
+    ("gl-main-handler-auskommentiert", MAIN,
+     '                        await router.handle_task_heartbeat(data)\n',
+     '                        pass  # await router.handle_task_heartbeat(data)\n',
+     "orchestrator", HEART + "DerOrchestratorNimmtEsEntgegenTests::test_und_einem_handler_zugeordnet"),
+    ("gl-main-handler-vertauscht", MAIN,
+     '                        await router.handle_task_heartbeat(data)\n',
+     '                        await router.handle_task_completion(data)\n',
+     "orchestrator", HEART + "DerOrchestratorNimmtEsEntgegenTests::test_und_einem_handler_zugeordnet"),
+    ("gl-schwelle-fest-verdrahtet", SCHED,
+     'schwelle = _td(minutes=max(1, int(getattr(_cfg, "watchdog_stale_task_minutes", 180))))',
+     'schwelle = _td(minutes=30)  # watchdog_stale_task_minutes',
+     "orchestrator", HEART + "DerAgentWirdWirklichGestopptTests::test_der_waechter_liest_die_schwelle_aus_der_einstellung"),
+    ("gl-meldung-feste-minuten", SCHED,
+     "            minuten = int(schwelle.total_seconds() // 60)\n",
+     "            minuten = 30  # int(schwelle.total_seconds() // 60)\n",
+     "orchestrator", HEART + "DerAgentWirdWirklichGestopptTests::test_die_meldung_nennt_die_wirkliche_schwelle"),
+    ("gl-handler-commit-vor-fortschreiben", ROUTER,
+     "        task.updated_at = datetime.now(timezone.utc)\n        await self.db.commit()\n",
+     "        await self.db.commit()\n        task.updated_at = datetime.now(timezone.utc)\n",
+     "orchestrator", HEART + "DerOrchestratorNimmtEsEntgegenTests::test_der_handler_schiebt_die_zeile_weiter"),
+    ("gl-router-commit-vor-status", ROUTER,
+     "        task.status = TaskStatus.CANCELLED\n        task.completed_at = datetime.now(timezone.utc)\n        await self.db.commit()\n",
+     "        await self.db.commit()\n        task.status = TaskStatus.CANCELLED\n        task.completed_at = datetime.now(timezone.utc)\n",
+     "orchestrator", CANCEL + "ARunningTaskCanBeStoppedTests::test_the_router_no_longer_refuses_running_tasks"),
+    ("gl-voice-nachsehen-vor-abbruch", VOICE, None, None,
+     "orchestrator", CANCEL + "TheVoiceTellsTheTruthTests::test_it_checks_again_afterwards"),
+    ("gl-voice-fruehausstieg-weg", VOICE,
+     "        if not vorher:\n", "        if False:\n",
+     "orchestrator", CANCEL + "TheVoiceTellsTheTruthTests::test_nothing_open_is_not_an_error"),
+    ("gl-voice-fehler-reisst-schleife", VOICE,
+     '                logger.info("[Sprache] %s nicht abbrechbar: %s", tid, e)\n',
+     '                raise\n',
+     "orchestrator", CANCEL + "TheVoiceTellsTheTruthTests::test_one_that_just_finished_does_not_stop_the_others"),
+    ("gl-ui-woerter-vertauscht", SEITE,
+     '{laeuft ? "Stoppen" : "Abbrechen"}', '{laeuft ? "Abbrechen" : "Stoppen"}',
+     "orchestrator", CANCEL + "TheUiHasAManualStopTests::test_the_words_distinguish_the_two_cases"),
+    ("gl-ui-cancancel-verkuerzt", SEITE,
+     'const canCancel = laeuft || task.status === "queued" || task.status === "pending";',
+     'const canCancel = laeuft || false; // const canCancel = laeuft || task.status === "queued" || task.status === "pending";',
+     "orchestrator", CANCEL + "TheUiHasAManualStopTests::test_a_running_task_can_be_stopped_from_the_list"),
+    ("gl-ui-laeuft-auskommentiert", SEITE,
+     'const laeuft = task.status === "running";',
+     'const laeuft = false; // const laeuft = task.status === "running";',
+     "orchestrator", CANCEL + "TheUiHasAManualStopTests::test_a_running_task_can_be_stopped_from_the_list"),
+    ("gl-listener-endlos", CONSUMER,
+     "            while self.running:\n                nachricht = await pubsub.get_message(",
+     "            while True:\n                nachricht = await pubsub.get_message(",
+     "agent", LISTENER + "TheAgentListensOnTheChannelTheRouterSendsOnTests::test_it_subscribes_to_exactly_that_channel"),
+    ("gl-listener-typfilter-weg", CONSUMER,
+     '                if not nachricht or nachricht.get("type") != "message":\n',
+     '                if not nachricht:\n',
+     "agent", LISTENER + "TheAgentListensOnTheChannelTheRouterSendsOnTests::test_a_subscribe_confirmation_is_not_read_as_a_task_id"),
+    ("gl-herzschlag-fruehausstieg-weg", CONSUMER,
+     "        if not task_id:\n            return\n",
+     "        if False:\n            return\n",
+     "agent", LOOP + "DerAgentSendetEinLebenszeichenTests::test_ohne_kennung_schlaegt_nichts"),
 ]
 
 
@@ -216,6 +279,13 @@ def sonderfall(label: str, text: str) -> str:
         a = text.index(zeile)
         text = text[:a] + text[a + len(zeile):]
         marke = "            status = result_data.get(\"status\", \"unknown\")\n"
+        b = text.index(marke)
+        return text[:b] + zeile + text[b:]
+    if label == "gl-voice-nachsehen-vor-abbruch":
+        zeile = "        uebrig = await _offene()\n"
+        a = text.index(zeile)
+        text = text[:a] + text[a + len(zeile):]
+        marke = "        for tid, _titel in vorher:\n"
         b = text.index(marke)
         return text[:b] + zeile + text[b:]
     raise KeyError(label)
