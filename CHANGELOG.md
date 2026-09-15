@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.6] - 2026-09-15
+
+### Behoben
+- **Zugangsdaten mit Wichtigkeit 5 verschwanden aus dem automatisch geladenen
+  Gedaechtnis-Vorspann eines Agenten** (Issue #715). Ein Geheimnis, das der
+  Agent — wie angewiesen — mit Wichtigkeit 5 gespeichert hatte, passte auf zwei
+  Abfragen zugleich (Wichtigkeit und Zugangsdaten-Kategorie); die gemeinsame
+  Dublettenpruefung sortierte es in die Gruppe "kritisch" ein, und der Vorspann
+  ueberspringt dort jede Zugangsdaten-Kategorie als "steht schon oben". Es
+  stand aber nirgends: der Agent kannte sein eigenes Passwort nicht mehr.
+  Zugangsdaten werden jetzt zuerst und vollstaendig in die Zugangsdaten-Gruppe
+  einsortiert — auch die, die hinter den 30 juengsten Zugangsdaten liegen und
+  nur ueber die Wichtigkeits-Abfrage hereinkommen.
+
+
+
 ## [1.322.3] - 2026-09-15
 
 ### Behoben
