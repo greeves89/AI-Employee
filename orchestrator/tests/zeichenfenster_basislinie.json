@@ -54,15 +54,13 @@
   "orchestrator/tests/test_voice_tool_parity.py": 4,
   "orchestrator/tests/test_voice_tool_transparency.py": 3,
   "orchestrator/tests/test_workspace_file_editing.py": 2,
-  "agent/tests/test_announcement_guard.py": 1,
   "agent/tests/test_chat_turn_idle_watchdog.py": 4,
   "agent/tests/test_compaction_reports_context.py": 2,
   "agent/tests/test_connection_glitch_is_retried.py": 1,
   "agent/tests/test_context_editing_beta_guard.py": 2,
   "agent/tests/test_delegation_result_is_not_a_kickoff.py": 1,
-  "agent/tests/test_every_task_carries_its_thread.py": 1,
   "agent/tests/test_gpt6_responses_routing.py": 2,
   "agent/tests/test_harness_capability_parity.py": 1,
-  "agent/tests/test_mcp_single_process.py": 7,
+  "agent/tests/test_mcp_single_process.py": 1,
   "agent/tests/test_xhigh_not_clamped_by_name.py": 4
 }
