@@ -15,6 +15,7 @@ langsam, flatterhaft und in der CI nicht immer moeglich.
 
 import importlib.util
 import unittest
+import unittest.mock
 from pathlib import Path
 
 _PFAD = Path(__file__).resolve().parents[2] / "scripts" / "check_github_customer_names.py"
@@ -61,23 +62,70 @@ class EsBenutztDIESELBEErkennungTests(unittest.TestCase):
 class DieMeldungVerraetDenBegriffNichtTests(unittest.TestCase):
     def test_gemeldet_wird_nur_der_ort(self):
         """Sonst stuende der Name im CI-Protokoll — bei einem oeffentlichen
-        Repo ebenso oeffentlich wie im Text selbst (#688)."""
-        block = _QUELLE.split("def pruefe", 1)[1]
-        self.assertIn('funde.append(f"{art} #{e[\'number\']}")', block)
+        Repo ebenso oeffentlich wie im Text selbst (#688). `pruefe` wird mit
+        einer gh-Attrappe gefahren, die den Pruefbegriff in einem Issue und
+        einem Kommentar liefert; die Funde duerfen ihn nicht enthalten."""
+        w = _mod._wache()
+        begriff = w.PRUEFBEGRIFF
+
+        def gh(args):
+            if args[1] == "list":
+                return [{"number": 7, "title": f"Rueckmeldung {begriff}", "body": "",
+                         "updatedAt": "2026-09-01T00:00:00Z"},
+                        {"number": 8, "title": "harmlos", "body": "", "updatedAt": ""}]
+            if "issues/comments" in args[1]:
+                return [{"id": 99, "body": f"siehe {begriff}",
+                         "issue_url": "https://example.invalid/issues/3"}]
+            return []
+
+        with unittest.mock.patch.object(_mod, "_gh_json", gh):
+            funde = _mod.pruefe()
+        self.assertEqual(funde, ["issue #7", "pr #7", "Kommentar 99 an #3"])
+        for f in funde:
+            self.assertNotIn(begriff, f)
         self.assertIn("Der getroffene Begriff steht hier bewusst nicht.", _QUELLE)
 
 
 class EsScheitertNichtAmFehlendenZugangTests(unittest.TestCase):
+    """`main()` wird wirklich gefahren — mit einer Attrappe fuer `pruefe`, damit
+    kein `gh` laeuft. Was zaehlt, ist der Rueckgabewert, nicht der Quelltext."""
+
+    def _main(self, pruefe):
+        import contextlib
+        import io
+        import unittest.mock
+        ausgabe = io.StringIO()
+        with unittest.mock.patch.object(_mod, "pruefe", pruefe), \
+                unittest.mock.patch.object(_mod.sys, "argv", ["check_github_customer_names.py"]), \
+                contextlib.redirect_stdout(ausgabe):
+            rc = _mod.main()
+        return rc, ausgabe.getvalue()
+
     def test_ohne_gh_gibt_es_keinen_fehlalarm(self):
         """Kein GitHub-Zugang ist kein Fund — sonst waere der Lauf ueberall
         rot, wo kein Token liegt, und wuerde bald ignoriert."""
-        self.assertIn("except (subprocess.CalledProcessError, FileNotFoundError)", _QUELLE)
-        block = _QUELLE.split("GitHub nicht erreichbar", 1)[1][:200]
-        self.assertIn("return 0", block)
+        for fehler in (FileNotFoundError("gh"),
+                       _mod.subprocess.CalledProcessError(1, ["gh"])):
+            with self.subTest(type(fehler).__name__):
+                rc, text = self._main(unittest.mock.Mock(side_effect=fehler))
+                self.assertEqual(rc, 0)
+                self.assertIn("uebersprungen", text)
+
+    def test_ein_programmfehler_wird_nicht_als_kein_zugang_verbucht(self):
+        """Die Ausnahme-Liste darf nicht zu `except Exception` werden: ein
+        KeyError in `pruefe` waere dann ein gruener Lauf."""
+        with self.assertRaises(KeyError):
+            self._main(unittest.mock.Mock(side_effect=KeyError("number")))
 
     def test_ein_fund_scheitert_hart(self):
-        block = _QUELLE.split("if funde:", 1)[1][:600]
-        self.assertIn("return 1", block)
+        rc, text = self._main(lambda tage=None: ["issue #4711"])
+        self.assertEqual(rc, 1)
+        self.assertIn("issue #4711", text)
+
+    def test_ohne_fund_ist_der_lauf_gruen(self):
+        """Die Gegenprobe: `return 1` darf nicht bedingungslos sein."""
+        rc, _text = self._main(lambda tage=None: [])
+        self.assertEqual(rc, 0)
 
 
 class DieSeitenweiseAbfrageIstRichtigGebautTests(unittest.TestCase):
