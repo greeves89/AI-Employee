@@ -23,6 +23,7 @@ import argparse
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 WURZEL = Path(__file__).resolve().parents[1]
@@ -123,6 +124,68 @@ def doppelt_vergeben(meine: str, fremde_versionen: dict[str, str]) -> list[str]:
             if v.strip() == meine.strip()]
 
 
+def kollisionen_in_warteschlange(versionen: dict[str, str]) -> list[str]:
+    """Welche Versionsnummern auf mehr als einem Branch vergeben sind.
+
+    Anders als `doppelt_vergeben` (meine Version gegen die anderer offener
+    PRs) sieht das hier die GESAMTE Warteschlange auf einmal — inklusive
+    Branches OHNE offenen PR, die `pruefe_pull_request` strukturell nie zu
+    Gesicht bekommt (Folgefund zu #699, siehe #707: git loest identische
+    VERSION-Werte beim Merge lautlos auf, kein Konflikt entsteht, nur
+    CHANGELOG.md kollidiert und wird oft so aufgeloest, dass zwei
+    verschiedene Staende unter derselben Nummer landen).
+    """
+    nach_version: dict[str, list[str]] = {}
+    for branch, v in versionen.items():
+        nach_version.setdefault(v.strip(), []).append(branch)
+    return [
+        f"{v} ist auf {len(branches)} Branches vergeben: {', '.join(sorted(branches))}"
+        for v, branches in sorted(nach_version.items())
+        if len(branches) > 1
+    ]
+
+
+#: Ein Branch ohne Aktivitaet seit so vielen Tagen zaehlt nicht mehr zur
+#: Warteschlange, sondern zu liegengelassenem Bestand. Ohne diese Grenze
+#: waere der Lauf ab dem ersten Tag dauerrot: der Ist-Zustand dieses Repos
+#: (16.09.2026) hat allein 13 Kollisionsgruppen unter monatealten Branches
+#: mit Versionen weit hinter main — und genau ein Check, der oft falsch
+#: anschlaegt, wird bald ignoriert (siehe Moduldocstring).
+WARTESCHLANGE_TAGE = 21
+
+
+def branch_versionen(basis_kurzname: str = "main", tage: int = WARTESCHLANGE_TAGE) -> dict[str, str]:
+    """VERSION-Datei jedes kuerzlich aktiven Remote-Branches.
+
+    Ausgenommen: main/HEAD, Dependabot-Branches (kennen die VERSION-Pflicht
+    nicht, tragen immer den Stand, von dem sie abzweigten — eine
+    strukturelle Dauerkollision, keine echte) und alles ohne Commit in den
+    letzten `tage` Tagen. Ein Monate alter, liegengelassener Branch ist keine
+    WARTENDE Aenderung mehr, seine Versionsnummer sagt nichts mehr ueber
+    einen bevorstehenden Merge aus.
+    """
+    grenze = time.time() - tage * 86400
+    zeilen = git("for-each-ref", "--format=%(refname:short)", "refs/remotes/origin").splitlines()
+    ergebnis: dict[str, str] = {}
+    for ref in zeilen:
+        name = ref.removeprefix("origin/")
+        if name in (basis_kurzname, "HEAD") or name.startswith("dependabot/"):
+            continue
+        try:
+            letzter_commit = int(git("log", "-1", "--format=%ct", ref))
+        except (subprocess.CalledProcessError, ValueError):
+            continue
+        if letzter_commit < grenze:
+            continue
+        try:
+            wert = git("show", f"{ref}:VERSION").strip()
+        except subprocess.CalledProcessError:
+            continue  # Branch ohne VERSION-Datei (z. B. sehr alt) -> nichts zu vergleichen
+        if wert:
+            ergebnis[name] = wert
+    return ergebnis
+
+
 def pruefe_pull_request(basis: str, fremde_versionen: dict[str, str]) -> list[str]:
     """Weiche Warnungen fuer einen offenen PR — der Merge kann sie noch aufloesen."""
     warnungen: list[str] = []
@@ -146,12 +209,29 @@ def pruefe_pull_request(basis: str, fremde_versionen: dict[str, str]) -> list[st
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("modus", choices=["push", "pr"])
+    p.add_argument("modus", choices=["push", "pr", "warteschlange"])
     p.add_argument("--vorher", help="Vergleichs-Commit (push: der vorherige Stand)")
     p.add_argument("--basis", default="origin/main", help="Basis-Ref (pr)")
     p.add_argument("--fremde", default="",
                    help="pr: 'nr=version,nr=version' der anderen offenen PRs")
     args = p.parse_args()
+
+    if args.modus == "warteschlange":
+        # Ueberblick ueber ALLE wartenden Branches, nicht nur die mit offenem
+        # PR (#707) — darf im Gegensatz zum PR-Lauf tatsaechlich scheitern,
+        # weil er nie einen einzelnen Beitrag blockiert, sondern nur meldet.
+        versionen = branch_versionen()
+        kollisionen = kollisionen_in_warteschlange(versionen)
+        if kollisionen:
+            print("Doppelt vergebene Versionsnummern in der Warteschlange:\n")
+            for k in kollisionen:
+                print(f"  - {k}")
+            print("\nWer zuerst merged, entwertet die Nummer des anderen — die "
+                  "spaeter zusammengefuehrten Branches sollten vorher neu "
+                  "nummeriert werden. Hintergrund: #707")
+            return 1
+        print(f"Warteschlange in Ordnung ({len(versionen)} Branches geprueft, keine Kollision)")
+        return 0
 
     if args.modus == "push":
         vorher = args.vorher or "HEAD^"

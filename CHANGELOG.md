@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.16] - 2026-09-16
+
+### Hinzugefuegt
+- **Ein taeglicher Ueberblick ueber die ganze Release-Warteschlange** (Issue
+  #707, Folgefund zu #699). Die bisherige PR-Pruefung sieht Kollisionen nur
+  zwischen offenen PRs — ein Branch ohne PR (z. B. waehrend einer PR-Sperre)
+  bleibt fuer sie unsichtbar. Zwei solche Branches mit identischer VERSION
+  loesen sich beim Merge lautlos auf (git meldet keinen Konflikt), nur
+  CHANGELOG.md kollidiert — bemerkbar wird es erst beim ZWEITEN Merge, main
+  ist dann schon rot. Der neue Lauf (`release_track_check.py warteschlange`,
+  taeglich per Zeitplan + manuell ausloesbar) liest die Versionsnummer JEDES
+  kuerzlich aktiven Remote-Branches und meldet jede doppelt vergebene Nummer
+  — anders als der PR-Lauf darf er tatsaechlich scheitern, weil er nie einen
+  einzelnen Beitrag blockiert. Liegengelassene Branches (aelter als 21 Tage)
+  zaehlen bewusst nicht mit: ohne diesen Filter waere der Lauf ab Tag eins
+  dauerrot gewesen — 13 Kollisionsgruppen allein unter monatealten Branches
+  dieses Repos, ein Check, der immer rot ist, wird ignoriert.
+
 ## [1.322.15] - 2026-09-16
 
 ### Behoben
