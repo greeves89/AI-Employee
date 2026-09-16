@@ -152,6 +152,29 @@ MUTATIONEN = [
     ("provider_nutzer_ohne_anleitung", PROV,
      '                                 "schick die Nachricht einfach nochmal.",\n',
      '                                 "",  # MUTATION\n'),
+    # --- zweite Gegenlese-Runde ---
+    # Unbedingter Koeder VOR der Aenderungserkennung, die echten drei unter if.
+    ("agent_koeder_unbedingt_echte_unter_cli", AMAIN, [
+        ('        servers = data.get("servers") or {}\n',
+         '        os.environ["CUSTOM_MCP_AUTH"] = "{}"  # MUTATION Koeder\n'
+         '        servers = data.get("servers") or {}\n'),
+        ('        os.environ["CUSTOM_MCP_AUTH"] = json.dumps(auth)\n'
+         '        os.environ["CUSTOM_MCP_HEADERS"] = json.dumps(headers)\n'
+         '        os.environ["CUSTOM_MCP_SERVERS"] = json.dumps(servers)\n',
+         '        if register_via_cli:  # MUTATION\n'
+         '            os.environ["CUSTOM_MCP_AUTH"] = json.dumps(auth)\n'
+         '            os.environ["CUSTOM_MCP_HEADERS"] = json.dumps(headers)\n'
+         '            os.environ["CUSTOM_MCP_SERVERS"] = json.dumps(servers)\n'),
+    ], None),
+    # Koeder-AUTH hinter SERVERS: die erste AUTH steht zwar vor SERVERS, die
+    # letzte nicht — Ordnung muss fuer ALLE gelten.
+    ("agent_zweite_auth_nach_servers", AMAIN,
+     '        os.environ["CUSTOM_MCP_SERVERS"] = json.dumps(servers)\n',
+     '        os.environ["CUSTOM_MCP_SERVERS"] = json.dumps(servers)\n'
+     '        os.environ["CUSTOM_MCP_AUTH"] = json.dumps(auth)  # MUTATION\n'),
+    ("gh_hinweissatz_nur_im_kommentar", GH,
+     '              "Der getroffene Begriff steht hier bewusst nicht.")',
+     '              )  # Der getroffene Begriff steht hier bewusst nicht. — MUTATION'),
 ]
 
 # Harmlose Aenderungen (Kommentar-Einfuegungen) — hier MUSS alles gruen bleiben.
@@ -172,6 +195,10 @@ HARMLOS = [
     ("harmlos_kommentar_vor_return_0", GH,
      "        return 0  # kein Zugang ist kein Fund\n",
      "        # return 1 waere hier falsch\n        return 0  # kein Zugang ist kein Fund\n"),
+    ("harmlos_logger_debug_im_done_zweig", WS,
+     '                resp = _streaming_responses.pop(mid, {})\n',
+     '                resp = _streaming_responses.pop(mid, {})\n'
+     '                logger.debug("done %s", mid)\n'),
     ("harmlos_kommentar_im_beta_block", PROV,
      '        if not _CONTEXT_EDITING_AUS:\n',
      '        if not _CONTEXT_EDITING_AUS:\n'
@@ -210,8 +237,19 @@ def sha(rel: str) -> str:
     return hashlib.sha256((REPO / rel).read_bytes()).hexdigest()
 
 
+def _anwenden(original: str, suche, ersatz) -> str | None:
+    """Ersetzung(en) anwenden; None, wenn ein Muster nicht genau einmal vorkommt."""
+    paare = suche if isinstance(suche, list) else [(suche, ersatz)]
+    text = original
+    for such, ers in paare:
+        if text.count(such) != 1:
+            return None
+        text = text.replace(such, ers, 1)
+    return text
+
+
 def main() -> int:
-    dateien = {rel: (REPO / rel).read_text() for _, rel, _, _ in MUTATIONEN}
+    dateien = {rel: (REPO / rel).read_text() for _, rel, _, _ in MUTATIONEN + HARMLOS}
     hashes = {rel: sha(rel) for rel in dateien}
     ergebnis: dict[str, dict] = {}
     try:
@@ -223,11 +261,12 @@ def main() -> int:
 
         for name, rel, suche, ersatz in MUTATIONEN:
             original = dateien[rel]
-            if original.count(suche) != 1:
-                print(f"  {name}: MUSTER {original.count(suche)}x GEFUNDEN — nicht angewandt!")
+            mutiert = _anwenden(original, suche, ersatz)
+            if mutiert is None:
+                print(f"  {name}: MUSTER NICHT GENAU 1x GEFUNDEN — nicht angewandt!")
                 ergebnis[name] = {"erkannt": None, "rot": []}
                 continue
-            (REPO / rel).write_text(original.replace(suche, ersatz, 1))
+            (REPO / rel).write_text(mutiert)
             try:
                 erkannt, rot = laufe_tests()
             finally:
@@ -239,11 +278,12 @@ def main() -> int:
         print("\n--- Harmlose Aenderungen (muessen gruen bleiben) ---")
         for name, rel, suche, ersatz in HARMLOS:
             original = dateien[rel]
-            if original.count(suche) != 1:
-                print(f"  {name}: MUSTER {original.count(suche)}x GEFUNDEN — nicht angewandt!")
+            mutiert = _anwenden(original, suche, ersatz)
+            if mutiert is None:
+                print(f"  {name}: MUSTER NICHT GENAU 1x GEFUNDEN — nicht angewandt!")
                 ergebnis[name] = {"erkannt": None, "rot": [], "harmlos": True}
                 continue
-            (REPO / rel).write_text(original.replace(suche, ersatz, 1))
+            (REPO / rel).write_text(mutiert)
             try:
                 erkannt, rot = laufe_tests()
             finally:

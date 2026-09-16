@@ -14,6 +14,7 @@ import ast
 import builtins
 import dis
 import json
+import logging
 import re
 import textwrap
 import types
@@ -38,7 +39,7 @@ def _process_event_double():
     zeilen = WS.splitlines(keepends=True)
     quelle = textwrap.dedent("".join(zeilen[knoten.lineno - 1:knoten.end_lineno]))
     huelle = (
-        "def _huelle(json, _auto_presented_files_from_text,\n"
+        "def _huelle(json, logger, _auto_presented_files_from_text,\n"
         "            _auto_presented_files_from_tool_calls):\n"
         "    _streaming_responses, _seen_tool_ids, _pending_message_ids = {}, set(), set()\n"
         + textwrap.indent(quelle, "    ")
@@ -46,7 +47,8 @@ def _process_event_double():
     )
     ns: dict = {}
     exec(huelle, ns)
-    verarbeite = ns["_huelle"](json, lambda content: [], lambda tool_calls: [])
+    verarbeite = ns["_huelle"](json, logging.getLogger("ws-test"),
+                               lambda content: [], lambda tool_calls: [])
     # Ein neuer globaler Name in ws.py (z. B. `logger`) wuerde in der Huelle zu
     # einem NameError, den `except Exception: pass` in _process_event schluckt —
     # der Test wuerde rot mit einer irrefuehrenden Meldung. Deshalb laut:

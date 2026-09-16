@@ -83,7 +83,6 @@ class DieMeldungVerraetDenBegriffNichtTests(unittest.TestCase):
         self.assertEqual(funde, ["issue #7", "pr #7", "Kommentar 99 an #3"])
         for f in funde:
             self.assertNotIn(begriff, f)
-        self.assertIn("Der getroffene Begriff steht hier bewusst nicht.", _QUELLE)
 
 
 class EsScheitertNichtAmFehlendenZugangTests(unittest.TestCase):
@@ -121,6 +120,9 @@ class EsScheitertNichtAmFehlendenZugangTests(unittest.TestCase):
         rc, text = self._main(lambda tage=None: ["issue #4711"])
         self.assertEqual(rc, 1)
         self.assertIn("issue #4711", text)
+        # Die Meldung sagt dem Leser, dass der Begriff absichtlich fehlt —
+        # in der AUSGABE, nicht bloss irgendwo im Quelltext.
+        self.assertIn("Der getroffene Begriff steht hier bewusst nicht.", text)
 
     def test_ohne_fund_ist_der_lauf_gruen(self):
         """Die Gegenprobe: `return 1` darf nicht bedingungslos sein."""

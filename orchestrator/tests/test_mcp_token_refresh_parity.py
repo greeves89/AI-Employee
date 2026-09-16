@@ -63,31 +63,34 @@ def _funktionsrumpf(src: str, name: str) -> str:
     raise AssertionError(f"def {name}: nicht gefunden")
 
 
-def _bedingungen_ueber(src: str, name: str, ziel: str) -> list[str]:
-    """Die `if`-Bedingungen, unter denen die Zuweisung an `ziel` in der Funktion
-    `name` steht — leer heisst: sie laeuft auf JEDEM Weg durch den Rumpf.
-    Eine Zuweisung, die unter `if register_via_cli:` rutscht, stuende weiterhin
-    im Rumpf; erst der Blick auf die Ahnen macht das sichtbar."""
+def _zuweisungen(src: str, name: str, ziel: str) -> list[tuple[int, str, list[str]]]:
+    """ALLE Zuweisungen an `ziel` in der Funktion `name`, je als
+    (Zeile, ganze Anweisung, `if`-Bedingungen der Ahnen). Nur den ersten Treffer
+    zu nehmen liesse eine unbedingte Koeder-Zuweisung durch, hinter der die
+    echte unter `if register_via_cli:` rutscht — deshalb die ganze Liste."""
     for fn in ast.walk(ast.parse(src)):
         if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name == name:
             break
     else:
         raise AssertionError(f"def {name}: nicht gefunden")
 
+    gefunden: list[tuple[int, str, list[str]]] = []
+
     def suche(knoten, ahnen):
         for kind in ast.iter_child_nodes(knoten):
             if (isinstance(kind, ast.Assign)
                     and any(ast.get_source_segment(src, t) == ziel for t in kind.targets)):
-                return [ast.get_source_segment(src, a.test) for a in ahnen if isinstance(a, ast.If)]
-            gefunden = suche(kind, ahnen + [kind])
-            if gefunden is not None:
-                return gefunden
-        return None
+                gefunden.append((
+                    kind.lineno,
+                    ast.get_source_segment(src, kind) or "",
+                    [ast.get_source_segment(src, a.test) for a in ahnen if isinstance(a, ast.If)],
+                ))
+            suche(kind, ahnen + [kind])
 
-    bedingungen = suche(fn, [])
-    if bedingungen is None:
+    suche(fn, [])
+    if not gefunden:
         raise AssertionError(f"{ziel} = ... nicht in {name} gefunden")
-    return bedingungen
+    return gefunden
 
 
 def _schleifenstart(src: str) -> tuple[str, str]:
@@ -158,12 +161,14 @@ class AgentSideTests(unittest.TestCase):
     def test_env_is_updated_for_every_mode(self):
         """Das Auffrischen der Umgebung ist der Teil, von dem Codex lebt — es
         darf nicht unter `if register_via_cli:` (fuer Codex aus) rutschen."""
-        block = _funktionsrumpf(self.SRC, "refresh_mcp_credentials_loop")
-        self.assertIn('os.environ["CUSTOM_MCP_AUTH"] = json.dumps(auth)', block)
-        for ziel in ('os.environ["CUSTOM_MCP_AUTH"]', 'os.environ["CUSTOM_MCP_SERVERS"]'):
+        for ziel, wert in (('os.environ["CUSTOM_MCP_AUTH"]', "auth"),
+                           ('os.environ["CUSTOM_MCP_SERVERS"]', "servers")):
             with self.subTest(ziel):
-                bedingungen = _bedingungen_ueber(self.SRC, "refresh_mcp_credentials_loop", ziel)
-                self.assertEqual(bedingungen, [], f"{ziel} steht unter if {bedingungen}")
+                alle = _zuweisungen(self.SRC, "refresh_mcp_credentials_loop", ziel)
+                self.assertIn(f"{ziel} = json.dumps({wert})", [anw for _, anw, _ in alle])
+                for zeile, anweisung, bedingungen in alle:
+                    self.assertEqual(bedingungen, [],
+                                     f"Zeile {zeile}: `{anweisung}` steht unter if {bedingungen}")
 
 
 class CodexReadsTheEnvTests(unittest.TestCase):
@@ -190,10 +195,15 @@ class OrderingTests(unittest.TestCase):
         """#502: Jeder Leser nimmt zuerst CUSTOM_MCP_SERVERS und sucht dann die
         passenden Zugangsdaten. Neue Server vor neuen Tokens zu schreiben ergaebe
         einen 401 aus einem halb gelesenen Zustand."""
-        block = _funktionsrumpf((AGENT / "app/main.py").read_text(), "refresh_mcp_credentials_loop")
-        auth_at = block.index('os.environ["CUSTOM_MCP_AUTH"] = ')
-        servers_at = block.index('os.environ["CUSTOM_MCP_SERVERS"] = ')
-        self.assertLess(auth_at, servers_at)
+        src = (AGENT / "app/main.py").read_text()
+        auth = _zuweisungen(src, "refresh_mcp_credentials_loop", 'os.environ["CUSTOM_MCP_AUTH"]')
+        servers = _zuweisungen(src, "refresh_mcp_credentials_loop", 'os.environ["CUSTOM_MCP_SERVERS"]')
+        # JEDE AUTH-Zuweisung vor JEDER SERVERS-Zuweisung — nicht nur die erste
+        # gefundene, sonst deckt ein unbedingter Koeder die echte Reihenfolge zu.
+        letzte_auth = max(zeile for zeile, _, _ in auth)
+        erste_servers = min(zeile for zeile, _, _ in servers)
+        self.assertLess(letzte_auth, erste_servers,
+                        f"AUTH-Zeilen {[z for z, _, _ in auth]} vs. SERVERS-Zeilen {[z for z, _, _ in servers]}")
 
 
 if __name__ == "__main__":
