@@ -1011,6 +1011,31 @@ class SchedulerService:
         """
         client = getattr(self.redis, "client", None)
         if client is None:
+            # Ohne Redis gibt es kein Wiederholungs-Budget zu fuehren — der Slot
+            # ist damit sofort und endgueltig verloren, nicht nur verschoben.
+            # Das verdient dieselbe Buchung wie ein aufgebrauchtes Budget (#631),
+            # sonst verschwindet der Ausfall spurlos: kein Task, keine Meldung,
+            # `fail_count`/`success_rate` bleiben "gesund", und `next_run_at`
+            # wandert in die Zukunft, wo der Verpasst-Waechter nicht hinschaut.
+            if _is_one_shot(schedule):
+                # Ein Einmal-Lauf (Tagesplan-Block) verliert dabei nichts: er
+                # behaelt seinen einen Auftrag und steht in 60 Sekunden wieder
+                # an. "Verworfen" waere hier eine Falschmeldung — und weil jeder
+                # Plan-Block so ein Einmal-Lauf ist, kaeme sie bei jedem
+                # Redis-Ausfall fuer jeden Block im Minutentakt.
+                logger.info(
+                    "[Scheduler] %s: kein Redis verfuegbar (%s), Einmal-Lauf wird "
+                    "in 60 s erneut versucht",
+                    schedule.name, reason,
+                )
+                return _calc_next_run(schedule, now)
+            logger.warning(
+                "[Scheduler] %s: kein Redis verfuegbar, Slot %s wird verworfen (%s)",
+                schedule.name, as_utc(schedule.next_run_at).isoformat(), reason,
+            )
+            await self._report_dropped_slot(
+                schedule, as_utc(schedule.next_run_at), reason=reason, attempts=0,
+            )
             return _calc_next_run(schedule, now)
 
         key = f"schedule:retry:{reason}:{schedule.id}"
@@ -1021,7 +1046,22 @@ class SchedulerService:
             if attempt == 1:
                 await client.expire(key, _OVERLOAD_RETRY_TTL_SECONDS)
         except Exception:  # noqa: BLE001
-            logger.debug("[Scheduler] Retry-Zaehler (%s) nicht verfuegbar", reason, exc_info=True)
+            # Dieselbe Buchung wie oben: der Zaehler ist weg, also gibt es kein
+            # Budget mehr zu pruefen — der Slot ist verloren, nicht nur verzoegert.
+            if _is_one_shot(schedule):
+                # Siehe oben: Einmal-Laeufe verlieren nichts, nur wiederkehrende
+                # Zeitplaene verlieren den Termin von heute.
+                logger.info(
+                    "[Scheduler] %s: Retry-Zaehler (%s) nicht verfuegbar, Einmal-Lauf "
+                    "wird in 60 s erneut versucht",
+                    schedule.name, reason,
+                )
+                return _calc_next_run(schedule, now)
+            logger.warning(
+                "[Scheduler] Retry-Zaehler (%s) nicht verfuegbar, Slot %s wird verworfen",
+                reason, slot.isoformat(), exc_info=True,
+            )
+            await self._report_dropped_slot(schedule, slot, reason=reason, attempts=0)
             return _calc_next_run(schedule, now)
 
         # Den urspruenglichen Soll-Slot merken, sonst meldet das Aufgeben spaeter
@@ -1081,7 +1121,7 @@ class SchedulerService:
         # Einmal-Laeufe (Plan-Bloecke) verlieren nichts: sie behalten ihren
         # einen Auftrag und versuchen es in 60 Sekunden wieder. Nur wer eine
         # feste Wiederkehr hat, verliert wirklich den Termin von heute.
-        if not schedule.cron_expression and not schedule.interval_seconds:
+        if _is_one_shot(schedule):
             return
 
         schedule.total_runs += 1
@@ -1963,6 +2003,16 @@ def _contact_hours_note(proactive_config: dict) -> str:
         f"Erreichbar {start}–{end} ({tz}). Außerhalb dieses Fensters gilt STEP 4 "
         "(Day/Night-Regel) als Off-Hours."
     )
+
+
+def _is_one_shot(schedule: "Schedule") -> bool:
+    """Einmal-Lauf (Tagesplan-Block): kein Cron, ``interval_seconds == 0``.
+
+    Solche Zeitplaene schalten sich nach dem einen Lauf selbst ab und haben
+    keinen "Termin von heute", der verloren gehen koennte — ein Ueberspringen
+    verschiebt sie nur um 60 Sekunden (``_calc_next_run``).
+    """
+    return not schedule.cron_expression and not schedule.interval_seconds
 
 
 def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
