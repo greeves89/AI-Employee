@@ -119,13 +119,34 @@ class RecreateOrderTests(unittest.TestCase):
     """Beim Neuerstellen zuerst den Token erneuern, dann den Container starten."""
 
     def test_update_agent_refreshes_before_it_recreates(self):
+        import ast
         from pathlib import Path
 
         src = (Path(__file__).resolve().parents[2]
                / "orchestrator/app/core/agent_manager.py").read_text()
-        block = src.split("async def update_agent")[1][:3000]
+        # Die ganze Methode, wie Python sie abgrenzt — 3000 Zeichen ab dem
+        # Namen enden bei einem laengeren Docstring vor dem stop_container.
+        block = next(
+            ast.get_source_segment(src, k) for k in ast.walk(ast.parse(src))
+            if isinstance(k, ast.AsyncFunctionDef) and k.name == "update_agent"
+        )
+        # Kommentare tilgen (per tokenize, nicht per '#'-Suche — ein '#' in
+        # einer Zeichenkette ist kein Kommentar): ein auskommentierter
+        # Refresh ist keiner und darf das assertLess nicht bestehen.
+        import io
+        import textwrap
+        import tokenize
+
+        block = textwrap.dedent(block)
+        zeilen = block.splitlines(keepends=True)
+        for tok in tokenize.generate_tokens(io.StringIO(block).readline):
+            if tok.type == tokenize.COMMENT:
+                (zeile, von), (_, bis) = tok.start, tok.end
+                zeilen[zeile - 1] = zeilen[zeile - 1][:von] + zeilen[zeile - 1][bis:]
+        block = "".join(zeilen)
         refresh = block.find("refresh_access_token")
         stop = block.find("stop_container")
+        self.assertGreater(stop, -1, "update_agent stoppt den alten Container nicht mehr?")
         self.assertGreater(refresh, -1, "Kein Token-Refresh vor dem Neuerstellen")
         self.assertLess(refresh, stop,
                         "Der Refresh muss VOR dem Stoppen des alten Containers stehen")

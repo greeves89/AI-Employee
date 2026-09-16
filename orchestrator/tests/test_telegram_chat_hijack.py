@@ -10,12 +10,48 @@ seitdem stand im Log `gateway=9349c967 target=6e4210c1`. Der Nutzer schrieb an J
 und bekam nichts zurueck.
 """
 
+import ast
 import unittest
 from pathlib import Path
 
 ORCH = Path(__file__).resolve().parents[1]
 AGENTS_API = (ORCH / "app/api/agents.py").read_text()
 BOT = (ORCH / "app/telegram/agent_bot.py").read_text()
+
+
+def _ohne_kommentare(block: str) -> str:
+    """Kommentare aus einem Quelltextblock tilgen.
+
+    `ast.get_source_segment` liefert den Block MIT Kommentaren — ein
+    auskommentierter Aufruf stuende also weiterhin drin und bestuende jedes
+    `assertIn`. Genau das ist die Blindstelle aus #726; deshalb werden die
+    COMMENT-Token hier ausgeblendet, bevor der Block geprueft wird."""
+    import io
+    import textwrap
+    import tokenize
+
+    text = textwrap.dedent(block)
+    zeilen = text.splitlines(keepends=True)
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.COMMENT:
+                (zeile, von), (_, bis) = tok.start, tok.end
+                zeilen[zeile - 1] = zeilen[zeile - 1][:von] + zeilen[zeile - 1][bis:]
+    except tokenize.TokenError as e:  # unvollstaendiger Block — lieber laut
+        raise AssertionError(f"Block nicht tokenisierbar: {e}")
+    return "".join(zeilen)
+
+
+def _if_block(src: str, bedingung: str) -> str:
+    """Der `if <bedingung>:`-Knoten als syntaktischer Block statt als 3500-Zeichen-
+    Fenster: ein laengerer Kommentar davor verschiebt das Fenster, den Knoten
+    nicht — und ein Aufruf HINTER dem if-Block zaehlt nicht mehr als drin.
+    Kommentare werden getilgt: ein auskommentierter Aufruf ist keiner."""
+    for knoten in ast.walk(ast.parse(src)):
+        if isinstance(knoten, ast.If) and ast.get_source_segment(src, knoten.test) == bedingung:
+            return _ohne_kommentare(ast.get_source_segment(src, knoten) or "")
+    raise AssertionError(f"if {bedingung}: nicht gefunden")
+
 
 
 class BroadcastDoesNotHijackTests(unittest.TestCase):
@@ -55,7 +91,7 @@ class NoBorrowingAtAllTests(unittest.TestCase):
 
     def test_the_message_is_still_delivered_via_the_chat(self):
         """Kein Bot heisst nicht: Meldung weg. Sie landet im Chat des Agenten."""
-        block = AGENTS_API.split("if sent_to == 0:", 1)[1][:3500]
+        block = _if_block(AGENTS_API, "sent_to == 0")
         self.assertIn('session_id="meldungen"', block)
         self.assertIn('"delivered_via": "chat"', block)
 
@@ -74,12 +110,12 @@ class TeamLeadIsTheWayTests(unittest.TestCase):
     """
 
     def test_the_answer_names_the_actual_lead(self):
-        block = AGENTS_API.split("if sent_to == 0:", 1)[1][:3500]
+        block = _if_block(AGENTS_API, "sent_to == 0")
         self.assertIn("team_lead_for(_db, agent_id)", block)
         self.assertIn("send_message", block)
 
     def test_without_a_team_it_says_what_the_channel_is(self):
-        block = AGENTS_API.split("if sent_to == 0:", 1)[1][:3500]
+        block = _if_block(AGENTS_API, "sent_to == 0")
         self.assertIn("keinen Team-Lead", block)
         self.assertIn("mehr Kanaele", block)
 

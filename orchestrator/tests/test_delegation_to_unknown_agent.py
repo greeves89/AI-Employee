@@ -17,13 +17,14 @@ Kollegen, die es wirklich gibt. Damit korrigiert er sich im selben Zug selbst,
 statt zu warten.
 """
 
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
-from app.core.task_router import UnknownAgentError
+from app.core.task_router import TaskRouter, UnknownAgentError
 
 ROOT = Path(__file__).resolve().parents[2]
-ROUTER = (ROOT / "orchestrator/app/core/task_router.py").read_text()
 
 
 class TheErrorTalksToTheAgentTests(unittest.TestCase):
@@ -50,37 +51,160 @@ class TheErrorTalksToTheAgentTests(unittest.TestCase):
         self.assertEqual(UnknownAgentError("6e4210c1").agent_id, "6e4210c1")
 
 
-class NoMoreOrphansTests(unittest.TestCase):
-    def test_the_router_raises_instead_of_filing_a_pending_task(self):
-        block = ROUTER.split("if not await self._agent_exists(agent_id):", 1)[1][:1400]
-        self.assertIn("raise UnknownAgentError(", block)
-        self.assertNotIn("self.db.add(task)", block)
+class _Ergebnis:
+    def __init__(self, zeilen):
+        self._zeilen = zeilen
 
-    def test_it_offers_the_colleagues_of_the_delegating_agent(self):
-        block = ROUTER.split("if not await self._agent_exists(agent_id):", 1)[1][:1400]
-        self.assertIn("_delegatable_agents(created_by_agent)", block)
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self._zeilen
 
 
-class TenantIsolationHoldsInErrorsTests(unittest.TestCase):
+class _FakeDB:
+    """Gerade genug Datenbank fuer ``_delegatable_agents``: erst Teams, dann Agenten.
+
+    Die Agentenzeilen werden aus den TATSAECHLICH angefragten Kennungen gebaut (aus
+    den gebundenen Parametern der Abfrage). Gaebe der Doppelgaenger stattdessen eine
+    feste Wunschantwort zurueck, pruefte der Test die Mandantentrennung gar nicht —
+    er wuerde sie nur behaupten.
+    """
+
+    def __init__(self, teams, namen, fehler=None, agent_da=False):
+        self.teams, self.namen, self.fehler = teams, namen, fehler
+        self.agent_da = agent_da
+        self.angefragt = None
+        self.aufrufe = 0
+        self.hinzugefuegt = []
+
+    async def scalar(self, stmt):
+        """``_agent_exists``: None heisst 'den Agenten gibt es nicht mehr'."""
+        return "da" if self.agent_da else None
+
+    def add(self, obj):
+        self.hinzugefuegt.append(obj)
+
+    async def commit(self):
+        pass
+
+    async def refresh(self, obj):
+        pass
+
+    async def execute(self, stmt):
+        self.aufrufe += 1
+        if self.fehler is not None:
+            raise self.fehler
+        if self.aufrufe == 1:
+            return _Ergebnis(self.teams)
+        # ``in_()`` bindet die Kennungen als EINE Liste ("expanding parameter").
+        roh = stmt.compile().params.values()
+        ids = {w for wert in roh for w in (wert if isinstance(wert, list) else [wert])
+               if isinstance(w, str)}
+        self.angefragt = ids
+        return _Ergebnis(sorted((i, self.namen[i]) for i in ids if i in self.namen))
+
+
+def _team(*mitglieder):
+    return types.SimpleNamespace(member_agent_ids=list(mitglieder))
+
+
+def _router(db):
+    r = TaskRouter.__new__(TaskRouter)
+    r.db = db
+    return r
+
+
+class NoMoreOrphansTests(unittest.IsolatedAsyncioTestCase):
+    """Der eigentliche Kundenfall, am Verhalten gefahren.
+
+    Frueher stand hier zweimal ein 1400-Zeichen-Fenster ueber dem Quelltext. Das
+    beweist, dass eine Zeile in der Naehe STEHT — nicht, dass sie LAEUFT. Genau
+    diese Luecke: ein auskommentiertes ``raise`` haette das Fenster bestanden.
+    """
+
+    NAMEN = {"b": "DevAgent", "c": "Fremd1", "d": "Fremd2"}
+
+    async def _route(self, db, created_by_agent="a"):
+        r = _router(db)
+        with patch.object(TaskRouter, "_check_platform_budget", new=AsyncMock()):
+            return await r.create_and_route_task(
+                title="Bitte pruefen", prompt="…",
+                agent_id="6e4210c1", created_by_agent=created_by_agent,
+            )
+
+    async def test_it_raises_instead_of_filing_a_pending_task(self):
+        db = _FakeDB([_team("a", "b")], self.NAMEN)
+        with self.assertRaises(UnknownAgentError):
+            await self._route(db)
+        self.assertEqual(
+            db.hinzugefuegt, [],
+            "Der Auftrag wurde trotzdem in die Datenbank gelegt — als Waise, die "
+            "der Reparaturlauf (nur PENDING MIT agent_id) nie wieder anfasst.")
+
+    async def test_the_error_offers_the_colleagues_of_the_delegating_agent(self):
+        db = _FakeDB([_team("a", "b"), _team("c", "d")], self.NAMEN)
+        with self.assertRaises(UnknownAgentError) as gefangen:
+            await self._route(db)
+        self.assertIn("DevAgent (b)", str(gefangen.exception))
+        self.assertNotIn("Fremd", str(gefangen.exception))
+
+    async def test_a_known_agent_gets_past_the_guard(self):
+        """Gegenstueck: die Sperre darf den Normalfall nicht treffen.
+
+        Statt den ganzen Zustellweg nachzubauen, wird der naechste Schritt nach der
+        Sperre angehalten — kommt DIESE Marke an, war die Sperre offen.
+        """
+        class Marke(Exception):
+            pass
+
+        db = _FakeDB([_team("a", "b")], self.NAMEN, agent_da=True)
+        with patch.object(TaskRouter, "_route_model_by_content",
+                          new=AsyncMock(side_effect=Marke)):
+            with self.assertRaises(Marke):
+                await self._route(db)
+
+
+class TenantIsolationHoldsInErrorsTests(unittest.IsolatedAsyncioTestCase):
     """Die Mandantentrennung gilt auch in einer Fehlermeldung — sonst waere sie
-    ein bequemer Weg, sich alle Agenten der Anlage auflisten zu lassen."""
+    ein bequemer Weg, sich alle Agenten der Anlage auflisten zu lassen.
 
-    def test_only_team_mates_are_listed(self):
-        src = ROUTER.split("async def _delegatable_agents", 1)[1][:1200]
-        self.assertIn("created_by_agent in mitglieder", src)
+    Frueher stand hier viermal ein 1200-Zeichen-Fenster ueber dem Quelltext. Das
+    prueft, ob eine Zeile in der Naehe steht — nicht, ob die Trennung haelt.
+    """
 
-    def test_the_caller_is_not_listed_as_its_own_colleague(self):
-        src = ROUTER.split("async def _delegatable_agents", 1)[1][:1200]
-        self.assertIn("ids.discard(created_by_agent)", src)
+    NAMEN = {"b": "DevAgent", "c": "Fremd1", "d": "Fremd2"}
 
-    def test_without_a_delegating_agent_nothing_is_revealed(self):
-        src = ROUTER.split("async def _delegatable_agents", 1)[1][:1200]
-        self.assertIn("if not created_by_agent:", src)
+    async def test_only_team_mates_are_listed(self):
+        db = _FakeDB([_team("a", "b"), _team("c", "d")], self.NAMEN)
+        self.assertEqual(await _router(db)._delegatable_agents("a"), [("b", "DevAgent")])
+        self.assertEqual(
+            db.angefragt, {"b"},
+            "Die Abfrage fragt Agenten fremder Teams mit ab — die Fehlermeldung "
+            "waere ein Verzeichnis der ganzen Anlage.")
 
-    def test_the_lookup_never_breaks_the_error(self):
+    async def test_the_caller_is_not_listed_as_its_own_colleague(self):
+        # Der Doppelgaenger MUSS den Auftraggeber liefern koennen. Mit der Namensliste
+        # ohne "a" bestand dieser Test auch dann, wenn die Produktion das discard gar
+        # nicht macht — die Gegenprobe vom 13.09. hat genau das aufgedeckt.
+        db = _FakeDB([_team("a", "b")], {**self.NAMEN, "a": "Ich selbst"})
+        got = await _router(db)._delegatable_agents("a")
+        self.assertNotIn("a", [kennung for kennung, _ in got])
+        self.assertNotIn("a", db.angefragt, "Der Auftraggeber wird erst gar nicht abgefragt.")
+
+    async def test_without_a_delegating_agent_nothing_is_revealed(self):
+        db = _FakeDB([_team("a", "b")], self.NAMEN)
+        self.assertEqual(await _router(db)._delegatable_agents(None), [])
+        self.assertEqual(db.aufrufe, 0, "Ohne Auftraggeber darf gar nicht erst gesucht werden.")
+
+    async def test_a_caller_without_a_team_gets_nobody(self):
+        db = _FakeDB([_team("c", "d")], self.NAMEN)
+        self.assertEqual(await _router(db)._delegatable_agents("a"), [])
+
+    async def test_the_lookup_never_breaks_the_error(self):
         """Eine Fehlermeldung, die selbst scheitert, verschluckt den Befund."""
-        src = ROUTER.split("async def _delegatable_agents", 1)[1][:1200]
-        self.assertIn("except Exception", src)
+        db = _FakeDB([], self.NAMEN, fehler=RuntimeError("DB weg"))
+        self.assertEqual(await _router(db)._delegatable_agents("a"), [])
 
 
 class ItReachesTheAgentTests(unittest.TestCase):

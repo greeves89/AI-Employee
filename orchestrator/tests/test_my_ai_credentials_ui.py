@@ -14,6 +14,7 @@ Geprueft wird deshalb die ganze Kette: Schnittstelle da, Aufruf da, Reiter da,
 Menueeintrag da.
 """
 
+import ast
 import unittest
 from pathlib import Path
 
@@ -23,6 +24,51 @@ CLIENT = (ROOT / "frontend/src/lib/api.ts").read_text()
 KOMPONENTE = (ROOT / "frontend/src/components/settings/my-ai-credentials.tsx").read_text()
 VIEW = (ROOT / "frontend/src/app/settings/view.tsx").read_text()
 MENUE = (ROOT / "frontend/src/components/layout/user-menu.tsx").read_text()
+
+
+def _ohne_kommentare(block: str) -> str:
+    """Kommentare aus einem Quelltextblock tilgen.
+
+    `ast.get_source_segment` liefert den Block MIT Kommentaren — ein
+    auskommentierter Aufruf stuende also weiterhin drin und bestuende jedes
+    `assertIn`. Genau das ist die Blindstelle aus #726; deshalb werden die
+    COMMENT-Token hier ausgeblendet, bevor der Block geprueft wird."""
+    import io
+    import textwrap
+    import tokenize
+
+    text = textwrap.dedent(block)
+    zeilen = text.splitlines(keepends=True)
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.COMMENT:
+                (zeile, von), (_, bis) = tok.start, tok.end
+                zeilen[zeile - 1] = zeilen[zeile - 1][:von] + zeilen[zeile - 1][bis:]
+    except tokenize.TokenError as e:  # unvollstaendiger Block — lieber laut
+        raise AssertionError(f"Block nicht tokenisierbar: {e}")
+    return "".join(zeilen)
+
+
+def _rumpf(src: str, name: str) -> str:
+    """Die ganze Funktion, wie Python sie abgrenzt — nicht 400 Zeichen dahinter."""
+    for knoten in ast.walk(ast.parse(src)):
+        if isinstance(knoten, (ast.FunctionDef, ast.AsyncFunctionDef)) and knoten.name == name:
+            return _ohne_kommentare(ast.get_source_segment(src, knoten) or "")
+    raise AssertionError(f"{name} nicht gefunden")
+
+
+def _if_zweig(src: str, bedingung: str) -> tuple[str, str]:
+    """(dann, sonst) des `if <bedingung>:`-Knotens — der Ort einer Zeile ist
+    damit eine Frage der Syntax, nicht des Zeichenabstands."""
+    zeilen = src.splitlines(keepends=True)
+    for knoten in ast.walk(ast.parse(src)):
+        if isinstance(knoten, ast.If) and ast.get_source_segment(src, knoten.test) == bedingung:
+            dann = "".join(zeilen[knoten.body[0].lineno - 1:knoten.body[-1].end_lineno])
+            sonst = ("".join(zeilen[knoten.orelse[0].lineno - 1:knoten.orelse[-1].end_lineno])
+                     if knoten.orelse else "")
+            return _ohne_kommentare(dann), _ohne_kommentare(sonst)
+    raise AssertionError(f"if {bedingung}: nicht gefunden")
+
 
 
 class TheChainIsCompleteTests(unittest.TestCase):
@@ -69,7 +115,7 @@ class TheSecretIsNeverShownTests(unittest.TestCase):
     also gar nicht erst so tun, als koenne sie es anzeigen."""
 
     def test_the_api_returns_everything_except_the_secret(self):
-        block = API.split("def _to_response", 1)[1][:400]
+        block = _rumpf(API, "_to_response")
         self.assertNotIn("secret", block)
         self.assertIn("last_status", block)
 
@@ -219,7 +265,7 @@ class TheCodexLoginCompletesByItselfTests(unittest.TestCase):
         self.assertIn("for_user_id: str | None = None", self.DIENST)
 
     def test_a_personal_login_lands_in_the_personal_store(self):
-        block = self.DIENST.split("if session.for_user_id:", 1)[1][:1800]
+        block, _ = _if_zweig(self.DIENST, "session.for_user_id")
         self.assertIn("UserAiCredential(user_id=session.for_user_id", block)
         self.assertIn('harness="codex"', block)
         self.assertIn("encrypt_token(auth_json)", block)
@@ -231,9 +277,9 @@ class TheCodexLoginCompletesByItselfTests(unittest.TestCase):
     def test_the_shared_file_stays_platform_only(self):
         """``sync_auth_json`` schreibt die gemeinsame Datei — ein persoenliches
         Abo darf dort nicht landen, sonst benutzen ihn alle Agenten."""
-        block = self.DIENST.split("if session.for_user_id:", 1)[1]
-        vor_else = block.split("else:", 1)[0]
-        self.assertNotIn("sync_auth_json", vor_else)
+        dann, sonst = _if_zweig(self.DIENST, "session.for_user_id")
+        self.assertNotIn("sync_auth_json", dann)
+        self.assertIn("sync_auth_json", sonst, "der Anlagen-Zweig schreibt die gemeinsame Datei")
 
     def test_the_ui_asks_the_server_instead_of_the_user(self):
         self.assertIn("getMyCodexLoginStatus", KOMPONENTE)

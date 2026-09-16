@@ -52,26 +52,53 @@ class TheToolItselfWarnsTests(unittest.TestCase):
     steht in JEDEM Zug vor ihm. Der Hinweis gehört an beide Stellen — und in
     beide Laufzeiten, sonst hat eine davon ihn nicht."""
 
-    def _prompt_field(self, path: Path, marker: str) -> str:
-        """Der Text, wie das MODELL ihn sieht — nicht wie er im Quelltext steht.
+    @staticmethod
+    def _werkzeug_python(name: str) -> str:
+        """Die Werkzeugdefinition, wie das MODELL sie bekommt: die Liste wird
+        als Literal ausgewertet (Python fuegt gestueckelte Zeichenketten dabei
+        zusammen), das Werkzeug ueber seinen Namen gewaehlt und als JSON
+        ausgegeben — die ganze Definition, nicht 2500 Zeichen ab dem Namen."""
+        import ast
+        import json
 
-        Beide Beschreibungen sind über mehrere Zeilen zusammengesetzt; ein
-        naives ``assertIn`` scheitert am Umbruch, obwohl der Satz da ist. Genau
-        so entstehen Tests, die die Schreibweise prüfen statt die Aussage.
-        """
+        baum = ast.parse(DEFINITIONS.read_text())
+        for knoten in baum.body:
+            ziel = getattr(knoten, "target", None) or (knoten.targets[0] if isinstance(knoten, ast.Assign) else None)
+            if isinstance(ziel, ast.Name) and ziel.id in ("LOCAL_TOOLS", "ORCHESTRATOR_TOOLS"):
+                for werkzeug in ast.literal_eval(knoten.value):
+                    if werkzeug["function"]["name"] == name:
+                        return json.dumps(werkzeug)
+        raise AssertionError(f"Werkzeug {name} nicht in definitions.py")
+
+    @staticmethod
+    def _werkzeug_mcp(name: str) -> str:
+        """Das Objekt-Literal `{ name: "<name>", ... }` bis zur schliessenden
+        Klammer — Klammertiefe zaehlen statt Zeichen. Umbrueche und die
+        `" + "`-Stueckelung werden wie bei der Python-Seite aufgehoben."""
         import re
 
-        block = path.read_text().split(marker)[1][:2500]
-        joined = re.sub(r'"\s*\+?\s*\n\s*"', "", block)   # Stückelung aufheben
+        text = MCP_SERVER.read_text()
+        anker = text.index(f'name: "{name}"')
+        auf = text.rindex("{", 0, anker)
+        tiefe, i = 0, auf
+        for i in range(auf, len(text)):
+            if text[i] in "{[(":
+                tiefe += 1
+            elif text[i] in "}])":
+                tiefe -= 1
+                if tiefe == 0:
+                    break
+        block = text[auf:i + 1]
+        joined = re.sub(r'"\s*\+?\s*\n\s*"', "", block)   # Stueckelung aufheben
         return re.sub(r"\s+", " ", joined)
 
     def test_custom_llm_definition_warns(self):
-        block = self._prompt_field(DEFINITIONS, '"name": "delegate_and_wait"')
+        block = self._werkzeug_python("delegate_and_wait")
         self.assertIn("cannot see yours", block)
         self.assertIn("/shared/", block)
 
     def test_the_mcp_server_warns_identically(self):
-        block = self._prompt_field(MCP_SERVER, 'name: "delegate_and_wait"')
+        block = self._werkzeug_mcp("delegate_and_wait")
         self.assertIn("cannot see yours", block)
         self.assertIn("/shared/", block)
 

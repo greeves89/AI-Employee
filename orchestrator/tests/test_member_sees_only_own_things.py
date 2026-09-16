@@ -82,12 +82,42 @@ class UnownedIsNotSharedTests(unittest.TestCase):
         self.assertIn("OHNE Besitzer", MANAGER)
 
 
+def _bracket_close(text: str, open_idx: int) -> int:
+    """Index, der die bei ``open_idx`` geoeffnete Klammer schliesst.
+
+    Behandelt ``()``/``[]``/``{}`` als EINE Verschachtelungsebene — fuer echten,
+    syntaktisch gueltigen Quelltext reicht das, ohne Strings/Kommentare
+    eigens auszuklammern.
+    """
+    tiefe = 0
+    for i in range(open_idx, len(text)):
+        if text[i] in "([{":
+            tiefe += 1
+        elif text[i] in ")]}":
+            tiefe -= 1
+            if tiefe == 0:
+                return i
+    raise ValueError(f"unbalancierte Klammer ab Position {open_idx}")
+
+
 class EmptyTabsAreHiddenTests(unittest.TestCase):
     def test_voice_and_system_are_admin_only(self):
-        self.assertIn("...(isAdmin ? [", VIEW)
-        block = VIEW.split("...(isAdmin ? [", 1)[1][:300]
-        self.assertIn('id: "voice"', block)
-        self.assertIn('id: "system"', block)
+        """Ein 300-Zeichen-Fenster beweist nur NAEHE, nicht Mitgliedschaft: es
+        haette auch bestanden, wenn Voice/System zufaellig AUSSERHALB der
+        isAdmin-Klammer gestanden haetten, solange sie im Fenster liegen.
+        Stattdessen die Klammer selbst per Tiefenzaehlung abgrenzen und
+        pruefen, WO die beiden IDs wirklich stehen — und wo ausdruecklich
+        nicht (davor, im immer sichtbaren Teil der Liste)."""
+        marker = "...(isAdmin ? ["
+        marker_idx = VIEW.index(marker)
+        open_idx = marker_idx + len(marker) - 1  # Index des '[' selbst
+        admin_block = VIEW[open_idx:_bracket_close(VIEW, open_idx) + 1]
+        immer_sichtbar = VIEW[:marker_idx]
+
+        for tab_id in ('id: "voice"', 'id: "system"'):
+            with self.subTest(tab_id):
+                self.assertIn(tab_id, admin_block)
+                self.assertNotIn(tab_id, immer_sichtbar)
 
     def test_the_user_owned_tab_stays_visible(self):
         """„Meine KI-Zugaenge" gehoert JEDEM — sonst kann niemand sein eigenes

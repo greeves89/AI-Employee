@@ -109,12 +109,31 @@ class TheApiRefusesToStoreSomethingUselessTests(unittest.TestCase):
             api._eigene_zugaenge_erlaubt(None)   # darf nicht werfen
 
     def test_every_creating_endpoint_is_guarded(self):
-        quelle = inspect.getsource(api)
-        for name in ("upsert_my_credential", "start_anthropic_login",
-                     "exchange_anthropic_login", "start_codex_login"):
-            with self.subTest(endpunkt=name):
-                block = quelle.split(f"async def {name}(", 1)[1][:900]
-                self.assertIn("_eigene_zugaenge_erlaubt(user)", block)
+        """Den Endpunkt WIRKLICH aufrufen, bei zugedrehtem Schalter: er muss mit
+        403 abweisen, BEVOR er irgendetwas anfasst — deshalb bekommen Body, DB
+        und Dienst hier nur Attrappen, die bei jeder Beruehrung werfen.
+        Ein auskommentierter Aufruf des Waechters bestand die alte Quelltext-
+        pruefung klaglos; diesen Test besteht er nicht."""
+        import asyncio
+        from fastapi import HTTPException
+
+        class _Unberuehrbar:
+            def __getattr__(self, name):
+                raise AssertionError(f"Zugriff auf .{name} VOR der Freigabepruefung")
+
+        aufrufe = {
+            "upsert_my_credential": dict(body=_Unberuehrbar(), user=None, db=_Unberuehrbar()),
+            "start_anthropic_login": dict(user=None, service=_Unberuehrbar()),
+            "exchange_anthropic_login": dict(body=_Unberuehrbar(), user=None,
+                                             db=_Unberuehrbar(), service=_Unberuehrbar()),
+            "start_codex_login": dict(user=None),
+        }
+        with patch.object(creds, "personal_credentials_allowed", return_value=False):
+            for name, kwargs in aufrufe.items():
+                with self.subTest(endpunkt=name):
+                    with self.assertRaises(HTTPException) as ctx:
+                        asyncio.run(getattr(api, name)(**kwargs))
+                    self.assertEqual(ctx.exception.status_code, 403)
 
 
 class ReadingAndDeletingStayOpenTests(unittest.TestCase):
@@ -123,13 +142,35 @@ class ReadingAndDeletingStayOpenTests(unittest.TestCase):
 
     QUELLE = inspect.getsource(api)
 
+    class _BisZurDatenbank(Exception):
+        """Die Attrappe wirft beim ERSTEN Datenbankzugriff — kommt sie zu Wort,
+        hat der Endpunkt den Schalter nicht gefragt (sonst kaeme 403 zuerst).
+
+        Vorher stand hier ``assertNotIn("_eigene_zugaenge_erlaubt()", ...)`` —
+        mit LEERER Klammer, die nirgends im Quelltext vorkommt. Der Test war
+        immer gruen, auch bei einem bewachten Endpunkt."""
+
+    def _db_die_wirft(self):
+        test = self
+
+        class _Db:
+            async def execute(self_, *_):
+                raise test._BisZurDatenbank()
+        return _Db()
+
+    def _ruft_durch(self, aufruf):
+        import asyncio
+        with patch.object(creds, "personal_credentials_allowed", return_value=False):
+            with self.assertRaises(self._BisZurDatenbank):
+                asyncio.run(aufruf)
+
     def test_deleting_is_not_guarded(self):
-        block = self.QUELLE.split("async def delete_my_credential(", 1)[1][:800]
-        self.assertNotIn("_eigene_zugaenge_erlaubt()", block)
+        self._ruft_durch(api.delete_my_credential(
+            harness="codex", user=SimpleNamespace(id="u1"), db=self._db_die_wirft()))
 
     def test_listing_is_not_guarded(self):
-        block = self.QUELLE.split("async def list_my_credentials(", 1)[1][:800]
-        self.assertNotIn("_eigene_zugaenge_erlaubt()", block)
+        self._ruft_durch(api.list_my_credentials(
+            user=SimpleNamespace(id="u1"), db=self._db_die_wirft()))
 
     def test_the_listing_tells_the_ui_the_state(self):
         """Damit die Oberflaeche den Bereich ausblendet, statt Knoepfe
