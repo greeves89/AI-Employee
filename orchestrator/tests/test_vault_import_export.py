@@ -18,6 +18,9 @@ import os
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from fastapi import HTTPException
 
 from app.core import vault_transfer
 
@@ -29,6 +32,14 @@ def _zip(eintraege: dict[str, bytes]) -> zipfile.ZipFile:
             z.writestr(name, inhalt)
     puffer.seek(0)
     return zipfile.ZipFile(puffer)
+
+
+def _zip_bytes(eintraege: dict[str, bytes]) -> bytes:
+    puffer = io.BytesIO()
+    with zipfile.ZipFile(puffer, "w") as z:
+        for name, inhalt in eintraege.items():
+            z.writestr(name, inhalt)
+    return puffer.getvalue()
 
 
 class ImportingAVaultTests(unittest.TestCase):
@@ -196,33 +207,78 @@ class ExportingTests(unittest.TestCase):
             ziel.cleanup()
 
 
-class TheEmbeddingsAreRebuiltTests(unittest.TestCase):
+class TheEmbeddingsAreRebuiltTests(unittest.IsolatedAsyncioTestCase):
     """Ausdrueckliche Vorgabe des Nutzers: „wichtig ist aber dass die
     PGVectoren dann nachgezogen werden".
 
     Ohne diesen Schritt liegen die Notizen zwar auf der Platte, sind aber
     semantisch unauffindbar — fuer die Agenten also praktisch unsichtbar.
+
+    Frueher standen hier Zeichenfenster ueber dem Quelltext der Endpunkte:
+    das beweist nur, dass eine Zeile in der Naehe STEHT — ein auskommentierter
+    ``reindex_vault(``-Aufruf haette das Fenster klaglos bestanden. Jetzt
+    werden ``brain_import``/``brain_export`` wirklich aufgerufen.
     """
 
-    from pathlib import Path
-    QUELLE = (Path(__file__).resolve().parents[1] / "app/api/brains.py").read_text()
+    async def _import(self, *, host_path, reindex=None, role_admin=True, zip_bytes=None):
+        from app.api import brains
+        from app.models.user import UserRole
 
-    def test_the_import_reindexes_afterwards(self):
-        rumpf = self.QUELLE.split("async def brain_import(", 1)
-        self.assertEqual(len(rumpf), 2, "Import-Endpunkt fehlt")
-        self.assertIn("reindex_vault(", rumpf[1][:2600])
+        brain = MagicMock(host_path=host_path, slug="wissen", label="Wissen")
+        db = MagicMock()
+        db.get = AsyncMock(return_value=brain)
+        user = MagicMock(role=UserRole.ADMIN if role_admin else UserRole.MEMBER)
 
-    def test_a_failed_reindex_does_not_lose_the_import(self):
+        upload = MagicMock()
+        upload.read = AsyncMock(return_value=zip_bytes or _zip_bytes({"n.md": b"neu"}))
+
+        if isinstance(reindex, BaseException):
+            reindex_mock = AsyncMock(side_effect=reindex)
+        else:
+            reindex_mock = AsyncMock(return_value=reindex if reindex is not None else {"chunks": 1})
+
+        with patch.object(brains.vault_indexer, "reindex_vault", reindex_mock):
+            ergebnis = await brains.brain_import(1, file=upload, replace=False, user=user, db=db)
+        return ergebnis, reindex_mock
+
+    async def test_the_import_reindexes_afterwards(self):
+        with tempfile.TemporaryDirectory() as vault:
+            ergebnis, reindex_mock = await self._import(host_path=vault)
+            self.assertTrue(os.path.isfile(os.path.join(vault, "n.md")))
+        reindex_mock.assert_awaited_once()
+        self.assertNotIn("error", ergebnis["index"])
+
+    async def test_a_failed_reindex_does_not_lose_the_import(self):
         """Die Dateien liegen dann schon da — den Import deswegen scheitern zu
         lassen waere schlimmer als ein Hinweis."""
-        rumpf = self.QUELLE.split("async def brain_import(", 1)[1][:2600]
-        self.assertIn("Neuindizierung fehlgeschlagen", rumpf)
+        with tempfile.TemporaryDirectory() as vault:
+            ergebnis, _ = await self._import(host_path=vault, reindex=RuntimeError("kaputt"))
+            self.assertTrue(os.path.isfile(os.path.join(vault, "n.md")),
+                            "Ein fehlgeschlagener Reindex darf den bereits geschriebenen Import nicht wegwerfen")
+        self.assertEqual(ergebnis["index"]["error"],
+                         "Neuindizierung fehlgeschlagen — bitte manuell anstossen")
+        self.assertTrue(ergebnis["ok"])
 
-    def test_both_endpoints_are_admin_only(self):
-        for name in ("brain_import(", "brain_export("):
-            with self.subTest(endpunkt=name):
-                rumpf = self.QUELLE.split(f"async def {name}", 1)[1][:1200]
-                self.assertIn("_require_admin(user)", rumpf)
+    async def test_both_endpoints_are_admin_only(self):
+        """Die Admin-Pruefung muss VOR jeder DB-Abfrage laufen — sonst waere
+        die Reihenfolge im Quelltext richtig, aber wirkungslos. Die
+        Attrappe wirft, sobald sie ueberhaupt angefasst wird."""
+        from app.api import brains
+        from app.models.user import UserRole
+
+        user = MagicMock(role=UserRole.MEMBER)
+        db = MagicMock()
+        db.get = AsyncMock(side_effect=AssertionError("DB duerfte hier nicht angefragt werden"))
+        upload = MagicMock()
+        upload.read = AsyncMock(side_effect=AssertionError("Archiv duerfte nicht gelesen werden"))
+
+        with self.assertRaises(HTTPException) as gefangen:
+            await brains.brain_import(1, file=upload, replace=False, user=user, db=db)
+        self.assertEqual(gefangen.exception.status_code, 403)
+
+        with self.assertRaises(HTTPException) as gefangen2:
+            await brains.brain_export(1, user=user, db=db)
+        self.assertEqual(gefangen2.exception.status_code, 403)
 
 
 if __name__ == "__main__":
