@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.8] - 2026-09-16
+
+### Geändert
+- **`sentence-transformers` im Embedding-Service auf 6.0.0 angehoben** (von
+  5.7.0) — Dependabot-Update.
+
 ## [1.322.7] - 2026-09-16
 
 ### Behoben
