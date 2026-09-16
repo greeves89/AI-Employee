@@ -15,6 +15,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   nur die GANZE Meldung: ein Bericht, der den Satz zitiert oder verneint
   („0 Treffer 'Prompt is too long' in 7 Tagen"), bleibt ein Erfolg — auch wenn
   er kurz ist (#722).
+- Laeufe, die am Nutzungslimit des Codex-Zugangs endeten („You've hit your
+  usage limit …"), standen ebenfalls als „erledigt" da — die Signatur kannte
+  nur „You've hit your limit". Beide Wortlaute gelten jetzt als „Kontingent
+  erschoepft" (Geschwisterfall zu #680).
 
 ## [1.322.9] - 2026-09-16
 
