@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.13] - 2026-09-16
+
+### Behoben
+- **`test_ein_fehlschlag_reisst_die_aufgabe_nicht_mit` schlug auf main fehl**
+  — der #730-Fix (v1.322.12) verlaengerte den Docstring von `_herzschlag`, und
+  der Test prüfte ein festes 1200-Zeichen-Fenster nach der Funktionssignatur,
+  in dem die `except`-Bloecke damit nicht mehr lagen. Genau die Fensterklasse
+  aus Issue #726. Der Test schneidet jetzt bis zur naechsten Methode auf
+  gleicher Einrueckebene statt eines festen Zeichenfensters.
+
 ## [1.322.12] - 2026-09-16
 
 ### Behoben
