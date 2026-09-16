@@ -57,7 +57,12 @@ class DerAgentSendetEinLebenszeichenTests(unittest.TestCase):
         self.assertIn("HERZSCHLAG_SEKUNDEN = 60", _CONSUMER)
 
     def test_ein_fehlschlag_reisst_die_aufgabe_nicht_mit(self):
-        block = _CONSUMER.split("async def _herzschlag", 1)[1][:1200]
+        # Bis zur naechsten Methode auf derselben Einrueckebene, nicht ein
+        # festes Zeichenfenster (#730 verlaengerte den Docstring und schob die
+        # except-Bloecke aus einem frueheren 1200-Zeichen-Fenster hinaus,
+        # siehe #726: Quelltext-Fenster brechen bei jeder harmlosen Aenderung).
+        rest = _CONSUMER.split("async def _herzschlag", 1)[1]
+        block = rest.split("\n    async def ", 1)[0]
         self.assertIn("except asyncio.CancelledError:", block)
         self.assertIn("except Exception", block)
 
