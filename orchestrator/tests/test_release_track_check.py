@@ -11,6 +11,7 @@ drei lagen unter main, ein Direkt-Commit hatte gar keinen Eintrag.
 
 import importlib.util
 import unittest
+import unittest.mock
 from pathlib import Path
 
 _PFAD = Path(__file__).resolve().parents[2] / "scripts" / "release_track_check.py"
@@ -122,6 +123,137 @@ class DiePrWarnungenTrifftDieEchtenFaelleTests(unittest.TestCase):
     def test_ein_branch_unter_main(self):
         self.assertFalse(rt.steigt_streng("1.276.11", "1.269.5"))
         self.assertFalse(rt.steigt_streng("1.276.11", "1.268.4"))
+
+
+class DieWarteschlangeSiehtAuchBranchesOhnePrTests(unittest.TestCase):
+    """Folgefund zu #699 (#707): `pruefe_pull_request` bekommt Vergleichsnummern
+    nur aus offenen PRs — ein Branch ohne PR (z. B. waehrend einer PR-Sperre)
+    ist fuer sie strukturell unsichtbar. Zwei solche Branches mit derselben
+    Nummer werden erst beim ZWEITEN Merge bemerkt, main ist dann schon rot.
+    """
+
+    def test_der_reale_fall_vom_05_09(self):
+        """Beobachtet: zwei Branches ohne PR trugen beide 1.314.0."""
+        self.assertEqual(
+            rt.kollisionen_in_warteschlange({
+                "fix/a": "1.314.0", "fix/b": "1.314.0", "fix/c": "1.315.2",
+            }),
+            ["1.314.0 ist auf 2 Branches vergeben: fix/a, fix/b"],
+        )
+
+    def test_mehrere_kollidierende_gruppen_werden_alle_genannt(self):
+        self.assertEqual(
+            rt.kollisionen_in_warteschlange({
+                "a": "1.1.0", "b": "1.1.0", "c": "1.2.0", "d": "1.2.0", "e": "1.3.0",
+            }),
+            ["1.1.0 ist auf 2 Branches vergeben: a, b",
+             "1.2.0 ist auf 2 Branches vergeben: c, d"],
+        )
+
+    def test_ohne_kollision_bleibt_es_still(self):
+        self.assertEqual(
+            rt.kollisionen_in_warteschlange({"a": "1.1.0", "b": "1.2.0"}), [])
+
+    def test_ein_einzelner_branch_kollidiert_nie(self):
+        self.assertEqual(rt.kollisionen_in_warteschlange({"a": "1.1.0"}), [])
+
+    def test_eine_leere_warteschlange(self):
+        self.assertEqual(rt.kollisionen_in_warteschlange({}), [])
+
+    def test_leerzeichen_taeuschen_keine_verschiedenheit_vor(self):
+        self.assertEqual(
+            rt.kollisionen_in_warteschlange({"a": "1.1.0\n", "b": " 1.1.0 "}),
+            ["1.1.0 ist auf 2 Branches vergeben: a, b"],
+        )
+
+    def test_drei_branches_auf_derselben_nummer(self):
+        self.assertEqual(
+            rt.kollisionen_in_warteschlange({"a": "1.1.0", "b": "1.1.0", "c": "1.1.0"}),
+            ["1.1.0 ist auf 3 Branches vergeben: a, b, c"],
+        )
+
+class BranchVersionenFiltertDenEchtenBestandTests(unittest.TestCase):
+    """`branch_versionen` treibt echtes `git`, deshalb wird hier `rt.git`
+    ersetzt und das VERHALTEN geprueft — nicht der Quelltext an einer
+    Zeichenmarke (genau das waere die Fehlerklasse, die #726 abstellt).
+
+    Aufbau: vier Fern-Branches. Einer ist Dependabot (Regel: ausgeschlossen,
+    kennt die VERSION-Pflicht nicht), einer ist Monate alt (Regel:
+    ausgeschlossen, keine wartende Aenderung mehr), einer hat keine
+    VERSION-Datei (Regel: uebersprungen, nichts zu vergleichen), einer ist
+    frisch und zaehlt.
+    """
+
+    JETZT = 1_800_000_000  # fester Bezugspunkt, macht den Test zeitunabhaengig
+
+    def setUp(self):
+        self.zeit_patch = unittest.mock.patch.object(rt.time, "time", return_value=self.JETZT)
+        self.zeit_patch.start()
+        self.addCleanup(self.zeit_patch.stop)
+
+        branches = {
+            "origin/main": {"commit": self.JETZT, "version": "9.9.9"},
+            "origin/HEAD": {"commit": self.JETZT, "version": "9.9.9"},
+            "origin/dependabot/pip/foo-1.2.3": {"commit": self.JETZT, "version": "1.0.0"},
+            "origin/fix/alt-und-vergessen": {
+                "commit": self.JETZT - (rt.WARTESCHLANGE_TAGE + 5) * 86400, "version": "1.0.0",
+            },
+            "origin/fix/ohne-version-datei": {"commit": self.JETZT, "version": None},
+            "origin/fix/frisch": {"commit": self.JETZT - 3600, "version": "1.5.0"},
+        }
+
+        def fake_git(*args):
+            if args[0] == "for-each-ref":
+                return "\n".join(branches)
+            if args[0] == "log":
+                return str(branches[args[3]]["commit"])
+            if args[0] == "show":
+                ref = args[1].split(":", 1)[0]
+                version = branches[ref]["version"]
+                if version is None:
+                    raise rt.subprocess.CalledProcessError(1, "git show")
+                return version
+            raise AssertionError(f"unerwarteter git-Aufruf: {args}")
+
+        self.git_patch = unittest.mock.patch.object(rt, "git", side_effect=fake_git)
+        self.git_patch.start()
+        self.addCleanup(self.git_patch.stop)
+
+    def test_dependabot_wird_ausgeschlossen(self):
+        self.assertNotIn("dependabot/pip/foo-1.2.3", rt.branch_versionen())
+
+    def test_main_und_head_werden_ausgeschlossen(self):
+        ergebnis = rt.branch_versionen()
+        self.assertNotIn("main", ergebnis)
+        self.assertNotIn("HEAD", ergebnis)
+
+    def test_ein_monatealter_branch_zaehlt_nicht_mehr_zur_warteschlange(self):
+        self.assertNotIn("fix/alt-und-vergessen", rt.branch_versionen())
+
+    def test_ein_branch_ohne_version_datei_wird_uebersprungen_statt_zu_krachen(self):
+        self.assertNotIn("fix/ohne-version-datei", rt.branch_versionen())
+
+    def test_ein_frischer_branch_mit_version_zaehlt(self):
+        self.assertEqual(rt.branch_versionen(), {"fix/frisch": "1.5.0"})
+
+
+class DerNeueModusHaengtWirklichInDerCiTests(unittest.TestCase):
+    """Ein Skript, das keine CI aufruft, prueft gar nichts (siehe #699)."""
+
+    WORKFLOWS = (Path(__file__).resolve().parents[2] / ".github" / "workflows")
+
+    def test_es_gibt_einen_eigenen_lauf(self):
+        dateien = list(self.WORKFLOWS.glob("*.yml"))
+        treffer = [d for d in dateien if "release_track_check.py warteschlange" in d.read_text()]
+        self.assertTrue(treffer, "kein Workflow ruft den warteschlange-Modus auf")
+
+    def test_der_lauf_darf_tatsaechlich_scheitern(self):
+        """Anders als der PR-Lauf blockiert dieser niemanden einzelnen — er darf
+        deshalb rot werden, statt nur zu warnen."""
+        dateien = list(self.WORKFLOWS.glob("*.yml"))
+        treffer = [d for d in dateien if "release_track_check.py warteschlange" in d.read_text()]
+        for d in treffer:
+            self.assertNotIn("continue-on-error: true", d.read_text())
 
 
 class DerCheckBlockiertNiemalsEinenPullRequestTests(unittest.TestCase):

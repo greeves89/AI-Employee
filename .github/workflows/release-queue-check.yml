@@ -1,0 +1,34 @@
+name: Release-Warteschlange
+
+# Ueberblick ueber ALLE wartenden Branches, nicht nur die mit offenem PR
+# (#707, Folgefund zu #699). Der PR-Lauf in ci.yml sieht strukturell immer
+# nur EINEN Branch gegen die anderen offenen PRs — ein Branch ohne PR (z. B.
+# waehrend einer PR-Sperre) ist fuer ihn unsichtbar. git meldet eine
+# identische VERSION beim Merge nicht als Konflikt, nur CHANGELOG.md
+# kollidiert, und die naheliegende Aufloesung fuehrt dazu, dass zwei
+# verschiedene Staende unter derselben Nummer ausgeliefert werden. Bemerkbar
+# wird es erst beim ZWEITEN Merge, wenn main schon rot ist.
+#
+# Dieser Lauf darf im Gegensatz zum PR-Lauf tatsaechlich scheitern — er
+# blockiert nie einen einzelnen Beitrag, sondern meldet nur den Gesamtstand.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warteschlange:
+    name: Doppelvergabe in der Warteschlange
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Alle wartenden Branches auf Versions-Kollisionen pruefen
+        run: python scripts/release_track_check.py warteschlange
