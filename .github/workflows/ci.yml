@@ -57,7 +57,12 @@ jobs:
         working-directory: orchestrator
         run: |
           pip install --no-cache-dir -e .
-          pip install --no-cache-dir pytest pytest-asyncio aiosqlite ruff numpy
+          # tiktoken ist reine TESTabhaengigkeit und bewusst nicht in
+          # pyproject.toml: der OpenAI-Pfad ist nur ein Rueckfall, und tiktoken
+          # laedt beim ersten Aufruf BPE-Dateien aus dem Netz. Im Test zaehlt es
+          # die Token unabhaengig von der Schaetzung des Produktionscodes —
+          # sonst prueft der Test nur, ob der Code mit sich selbst uebereinstimmt.
+          pip install --no-cache-dir pytest pytest-asyncio aiosqlite ruff numpy tiktoken
       # Undefinierte Namen sind zur Laufzeit ein NameError, aber beim Import
       # unsichtbar. Genau so lief das Anlegen eines Agenten fuenf Tage lang in
       # einen 500 ("cannot access local variable 'config'"), waehrend die Tests

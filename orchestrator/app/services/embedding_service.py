@@ -29,6 +29,41 @@ MAX_INPUT_LENGTH = 8000
 _AVAILABILITY_TTL = 30.0  # seconds — re-check service health every 30s
 _HEALTH_TIMEOUT = 5.0  # bge-m3 boot takes ~10s, give it a chance
 
+# OpenAI rejects any /embeddings request that breaks one of its hard limits
+# outright: 300k tokens in total, and 2048 entries in the input array.
+#
+# The token budget is expressed in UTF-8 bytes rather than characters because
+# bytes are a guaranteed upper bound on tokens: cl100k_base is a byte-level BPE
+# whose vocabulary contains all 256 single-byte tokens, and every merge replaces
+# two tokens with one, so encoding can only ever shrink the count. A character
+# budget carries no such guarantee — Chinese text reaches roughly one token per
+# character, so 500k characters can be 500k tokens and still blow the limit.
+_OPENAI_MAX_INPUTS_PER_REQUEST = 2_048
+_OPENAI_MAX_BYTES_PER_REQUEST = 290_000
+
+
+def split_for_openai_request(
+    texts: list[str],
+    max_bytes: int = _OPENAI_MAX_BYTES_PER_REQUEST,
+    max_inputs: int = _OPENAI_MAX_INPUTS_PER_REQUEST,
+) -> list[list[str]]:
+    """Split ``texts`` into consecutive groups that respect both OpenAI request
+    limits. Order is preserved and every text appears exactly once. A text
+    exceeding ``max_bytes`` on its own is emitted alone rather than dropped."""
+    groups: list[list[str]] = []
+    current: list[str] = []
+    current_bytes = 0
+    for t in texts:
+        size = len(t.encode("utf-8"))
+        if current and (current_bytes + size > max_bytes or len(current) >= max_inputs):
+            groups.append(current)
+            current, current_bytes = [], 0
+        current.append(t)
+        current_bytes += size
+    if current:
+        groups.append(current)
+    return groups
+
 
 class EmbeddingService:
     """Generates vector embeddings. Thread-safe, reusable.
@@ -118,9 +153,23 @@ class EmbeddingService:
         """Cloud fallback: OpenAI text-embedding-3-small, forced to EMBEDDING_DIM
         (1024) via the ``dimensions`` param so the vector fits the existing pgvector
         column (that constraint is why the old fallback was a no-op). Returns vectors
-        aligned to ``texts``, or all-None if the key is unset / the call fails."""
+        aligned to ``texts``, or all-None if the key is unset / the call fails.
+
+        Callers may hand over an unbounded list (the vault indexer passes every
+        chunk of a file at once), so the batch is split to stay under the API's
+        per-request token and input-count limits. Splitting also contains the
+        blast radius: a rejected group no longer nulls out the vectors of every
+        other group."""
         if not settings.openai_api_key or not texts:
             return [None] * len(texts)
+        out: list[Optional[list[float]]] = []
+        for group in split_for_openai_request(texts):
+            out.extend(await self._openai_embed_request(group))
+        return out
+
+    async def _openai_embed_request(self, texts: list[str]) -> list[Optional[list[float]]]:
+        """A single POST to /embeddings. The caller guarantees ``texts`` fits the
+        per-request limit."""
         try:
             client = await self._get_openai_client()
             resp = await client.post("/embeddings", json={
