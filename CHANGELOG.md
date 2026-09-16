@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.31] - 2026-09-17
+
+### Behoben
+- **Weitere Tests mit festem Zeichenfenster umgestellt** (Nachtrag zu
+  Issue #726, Batch 9) — sechs weitere Testdateien pruefen jetzt Verhalten
+  statt Zeichenabstand im Quelltext: Roster-Pruefung vor Delegation und
+  Gedaechtnis, Delegation an unbekannte Kollegen, Sichtbarkeit von
+  Host-Gedaechtnis, Fragen an einen Menschen, Vault-Import/-Export und
+  Dateibearbeitung im Arbeitsbereich. Fuer Frontend-Quelltext prueft ein
+  Klammerblock-Helfer den umschliessenden Zweig (ohne verschachtelte
+  Bloecke, ohne Kommentare) statt der naechsten 200 Zeichen. Die
+  Regressions-Sperre schrumpft von 58 Dateien / 156 Fenstern auf 52 / 143.
+  Mutationsbatterie (`scripts/mutationsbatterie_726_batch9.py`): 49/49
+  Mutationen am Produktivcode erkannt, 10/10 harmlose Aenderungen gruen.
+
 ## [1.322.30] - 2026-09-17
 
 ### Behoben
