@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.10] - 2026-09-16
+
+### Behoben
+- Ein Lauf, der am Kontextlimit starb, stand bisher als „erledigt" in der
+  Oberflaeche — sein Ergebnis war nur der Satz „Prompt is too long", und keine
+  Ueberwachung, die auf Fehlschlaege filtert, sah ihn. Solche Laeufe werden
+  jetzt als Fehlschlag „Kontextgrenze erreicht" gefuehrt. Gezaehlt wird dabei
+  nur die GANZE Meldung: ein Bericht, der den Satz zitiert oder verneint
+  („0 Treffer 'Prompt is too long' in 7 Tagen"), bleibt ein Erfolg — auch wenn
+  er kurz ist (#722).
+- Laeufe, die am Nutzungslimit des Codex-Zugangs endeten („You've hit your
+  usage limit …"), standen ebenfalls als „erledigt" da — die Signatur kannte
+  nur „You've hit your limit". Beide Wortlaute gelten jetzt als „Kontingent
+  erschoepft" (Geschwisterfall zu #680).
+
 ## [1.322.9] - 2026-09-16
 
 ### Behoben

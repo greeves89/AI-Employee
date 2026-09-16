@@ -34,10 +34,33 @@ _SIGNATUREN: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Zugang abgelaufen", re.compile(
         r"(OAuth access token has expired|Failed to authenticate\.?\s*API Error:\s*401)", re.I)),
     ("Kontingent erschoepft", re.compile(
-        r"(You'?ve hit your limit|rate.?limit(ed)? exceeded|429 Too Many Requests)", re.I)),
+        r"(You'?ve hit your (usage )?limit|rate.?limit(ed)? exceeded|429 Too Many Requests)", re.I)),
     ("Zugang abgelehnt", re.compile(
         r"(invalid_grant|refresh_token_reused|credit balance is too low)", re.I)),
 )
+
+#: Wortlaute, die nur als GANZE Meldung zaehlen (#722). Ein Lauf, der am
+#: Kontextlimit stirbt, hinterlaesst exakt „Prompt is too long" — 18 Zeichen,
+#: nichts davor, nichts danach (so an 11 Laeufen in 7 Tagen gemessen). Der
+#: Satz steht aber auch staendig in ERFOLGREICHEN Berichten: der Agent, der
+#: diese Fehlerklasse zaehlt, zitiert ihn („0 Treffer 'Prompt is too long' in
+#: 7 Tagen."). Eine Teilstring-Suche mit Laengengrenze — die erste Fassung —
+#: machte aus jedem kurzen Bericht ueber die Meldung einen Fehlschlag. Deshalb
+#: Gleichheit nach Normalisierung; die einzige erlaubte Ergaenzung ist der
+#: Zahlen-Nachsatz der API selbst („: 213462 tokens > 200000 maximum").
+_GANZE_MELDUNGEN: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("Kontextgrenze erreicht", re.compile(
+        r"(prompt (is )?too long(: \d[\d.,]* tokens? > \d[\d.,]* maximum)?"
+        r"|context (window|length) exceeded"
+        r"|maximum context length( exceeded)?)")),
+)
+
+
+def _normalisiert(text: str) -> str:
+    """Kleinbuchstaben, Whitespace zusammengezogen, Satzzeichen am Ende weg —
+    damit „  PROMPT IS TOO LONG.\n" und „Prompt is too long" dieselbe Meldung sind."""
+    return re.sub(r"\s+", " ", text.strip().lower()).rstrip(" .!")
+
 
 #: Ein leeres Ergebnis ist nur dann verdaechtig, wenn der Lauf gar keine Zeit
 #: hatte, etwas zu tun. Ein langer Lauf ohne Text kann echte Arbeit gewesen sein
@@ -55,6 +78,13 @@ def warum_kein_erfolg(ergebnis: str | None, dauer_ms: int | None) -> str | None:
 
     for grund, muster in _SIGNATUREN:
         if muster.search(text):
+            return grund
+
+    # Ganze Meldung, nicht Teilstring: ein Bericht, der die Meldung zitiert
+    # oder verneint, ist Arbeit, kein Abbruch (#722).
+    kern = _normalisiert(text)
+    for grund, muster in _GANZE_MELDUNGEN:
+        if muster.fullmatch(kern):
             return grund
 
     if not text and dauer_ms is not None and 0 <= dauer_ms < _ZU_SCHNELL_MS:

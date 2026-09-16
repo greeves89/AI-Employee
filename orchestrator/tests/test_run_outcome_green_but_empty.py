@@ -53,6 +53,75 @@ class DieEchtenVorfaelleWerdenErkanntTests(unittest.TestCase):
                          "Leeres Ergebnis nach weniger als 10 Sekunden")
 
 
+class KontextgrenzeTests(unittest.TestCase):
+    """#722: Ein Lauf, der am Kontextlimit stirbt, hinterlaesst EXAKT
+    „Prompt is too long" (18 Zeichen, so an 11 Laeufen in 7 Tagen gemessen) —
+    nichts davor, nichts danach. Die Regel prueft deshalb die GANZE Meldung
+    nach Normalisierung, nicht einen Teilstring: der Agent, der diese
+    Fehlerklasse zaehlt und darueber berichtet, zitiert den Satz staendig."""
+
+    def test_abbruch_mitten_im_lauf(self):
+        for dauer in (420_000, 960_000, None):
+            with self.subTest(dauer=dauer):
+                self.assertEqual(warum_kein_erfolg("Prompt is too long", dauer),
+                                 "Kontextgrenze erreicht")
+
+    def test_verwandte_wortlaute_als_ganze_meldung(self):
+        for text in ("prompt too long", "context window exceeded",
+                     "context length exceeded", "maximum context length",
+                     "maximum context length exceeded",
+                     "  PROMPT IS TOO LONG\n", "Prompt is too long.",
+                     "Prompt  is too\nlong",
+                     "prompt is too long: 213462 tokens > 200000 maximum"):
+            with self.subTest(text=text):
+                self.assertEqual(warum_kein_erfolg(text, 900_000),
+                                 "Kontextgrenze erreicht")
+
+    def test_kurzer_erfolgsbericht_der_die_meldung_zitiert_bleibt_gruen(self):
+        """Der Fehler der ersten Fassung: eine Laengengrenze (<100 Zeichen) mit
+        Teilstring-Suche machte aus jedem kurzen Bericht UEBER die Meldung
+        einen Fehlschlag — und der Orchestrator setzte COMPLETED auf FAILED."""
+        for text in ("Behoben: Prompt is too long tritt nicht mehr auf.",
+                     "Kein Fehler: context window exceeded wurde behoben.",
+                     "0 Treffer 'Prompt is too long' in 7 Tagen.",
+                     "not Prompt is too long",
+                     "Prompt is too long: " + "x" * 79):
+            with self.subTest(text=text):
+                self.assertLess(len(text), 100)
+                self.assertIsNone(warum_kein_erfolg(text, 900_000))
+
+    def test_langer_bericht_ueber_kontextfehler_bleibt_erfolgreich(self):
+        bericht = ("Die Meldung prompt is too long wurde untersucht. "
+                   + "Die Untersuchung ist abgeschlossen und dokumentiert. " * 20)
+        self.assertGreater(len(bericht), 900)
+        self.assertIsNone(warum_kein_erfolg(bericht, 900_000))
+
+    def test_die_alten_signaturen_bleiben_teilstring(self):
+        """Die 401-/Kontingent-Wortlaute stehen im Betrieb mit Vor- und Nachsatz
+        („401 OAuth access token has expired. Re-authenticate to continue.") —
+        deren Erkennung darf die neue Regel nicht verengen."""
+        self.assertEqual(warum_kein_erfolg(
+            "401 OAuth access token has expired. Re-authenticate to continue.", 3000),
+            "Zugang abgelaufen")
+
+
+class KontingentWortlauteTests(unittest.TestCase):
+    """16.09.2026: zwei delegierte Laeufe endeten mit „You've hit your usage
+    limit. Upgrade to Pro …" und standen trotzdem auf completed — die Signatur
+    kannte nur „You've hit your limit". Jeder Anbieter-Wortlaut, der einmal
+    einen Lauf still hat sterben lassen, gehoert hier hinein."""
+
+    def test_codex_wortlaut_mit_usage(self):
+        text = ("Ich pruefe zuerst den Head.\n"
+                "You've hit your usage limit. Upgrade to Pro (https://example.com/pro), "
+                "visit https://example.com/usage to purchase more credits or try again at 5:21 PM.")
+        self.assertEqual(warum_kein_erfolg(text, 180_000), "Kontingent erschoepft")
+
+    def test_bisheriger_wortlaut_bleibt(self):
+        self.assertEqual(warum_kein_erfolg(
+            "You've hit your limit - resets 1pm (Europe/Berlin)", 2000), "Kontingent erschoepft")
+
+
 class EchteArbeitBleibtGruenTests(unittest.TestCase):
     """Wichtiger als das Erkennen: NICHT falsch anschlagen. Ein Check, der
     gesunde Laeufe rot faerbt, wird abgeschaltet."""
