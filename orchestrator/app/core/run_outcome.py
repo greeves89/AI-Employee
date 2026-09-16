@@ -34,7 +34,7 @@ _SIGNATUREN: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Zugang abgelaufen", re.compile(
         r"(OAuth access token has expired|Failed to authenticate\.?\s*API Error:\s*401)", re.I)),
     ("Kontingent erschoepft", re.compile(
-        r"(You'?ve hit your limit|rate.?limit(ed)? exceeded|429 Too Many Requests)", re.I)),
+        r"(You'?ve hit your (usage )?limit|rate.?limit(ed)? exceeded|429 Too Many Requests)", re.I)),
     ("Zugang abgelehnt", re.compile(
         r"(invalid_grant|refresh_token_reused|credit balance is too low)", re.I)),
 )

@@ -105,6 +105,23 @@ class KontextgrenzeTests(unittest.TestCase):
             "Zugang abgelaufen")
 
 
+class KontingentWortlauteTests(unittest.TestCase):
+    """16.09.2026: zwei delegierte Laeufe endeten mit „You've hit your usage
+    limit. Upgrade to Pro …" und standen trotzdem auf completed — die Signatur
+    kannte nur „You've hit your limit". Jeder Anbieter-Wortlaut, der einmal
+    einen Lauf still hat sterben lassen, gehoert hier hinein."""
+
+    def test_codex_wortlaut_mit_usage(self):
+        text = ("Ich pruefe zuerst den Head.\n"
+                "You've hit your usage limit. Upgrade to Pro (https://example.com/pro), "
+                "visit https://example.com/usage to purchase more credits or try again at 5:21 PM.")
+        self.assertEqual(warum_kein_erfolg(text, 180_000), "Kontingent erschoepft")
+
+    def test_bisheriger_wortlaut_bleibt(self):
+        self.assertEqual(warum_kein_erfolg(
+            "You've hit your limit - resets 1pm (Europe/Berlin)", 2000), "Kontingent erschoepft")
+
+
 class EchteArbeitBleibtGruenTests(unittest.TestCase):
     """Wichtiger als das Erkennen: NICHT falsch anschlagen. Ein Check, der
     gesunde Laeufe rot faerbt, wird abgeschaltet."""
