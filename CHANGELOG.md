@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.4] - 2026-09-16
+
+### Behoben
+- **Release-Spur nachgezogen** — der vorherige Commit (CI: Bridge-Build nicht
+  mehr bei reinem VERSION-Bump auslösen) war selbst kein Release, hat aber
+  gegen die eigene Regel "jeder Push auf main bumpt VERSION" verstoßen und
+  die Release-Spur-Prüfung rot laufen lassen. Kein Ausnahme-Fall, wie im
+  Moment gedacht — die Regel gilt ausnahmslos, auch für reine CI-Änderungen.
+
 ## [1.322.3] - 2026-09-15
 
 ### Behoben
