@@ -155,10 +155,30 @@ async def collect_preload(
             })
         return out
 
+    # Issue #715: Zugangsdaten (auch mit importance >= 5) MUESSEN vor "critical"
+    # dedupliziert werden. Sonst gewinnt der ungefilterte critical-Eimer das
+    # Wettrennen um den gemeinsamen ``seen``-Satz, ein Geheimnis mit Wichtigkeit 5
+    # landet in "critical" statt "credentials" — und runner_hooks.get_memory_preload
+    # ueberspringt es dort als vermeintliche Dublette ("already listed above"),
+    # obwohl es nirgendwo sonst auftaucht. Ergebnis: das Geheimnis verschwindet
+    # komplett aus dem Prompt.
+    # Zweite Tuer desselben Fehlers: die Zugangsdaten-Abfrage ist auf die 30
+    # juengsten begrenzt, die Wichtigkeits-Abfrage auf 50. Ein Geheimnis hinter
+    # den 30 juengsten Zugangsdaten, aber noch unter den 50 wichtigsten, kommt
+    # NUR ueber ``high_imp`` herein und wuerde in "critical" landen — wo der
+    # Konsument es als Zugangsdaten-Kategorie ueberspringt. Deshalb wandert
+    # jeder Zugangsdaten-Eintrag, den der Preload ueberhaupt kennt, in den
+    # Zugangsdaten-Eimer; "critical" enthaelt nie eine Zugangsdaten-Kategorie.
+    creds = creds + [m for m in high_imp if m.category in CREDENTIAL_CATEGORIES]
+
+    credentials_dedup = _dedupe(creds)
+    critical_dedup = _dedupe(high_imp)
+    learnings_dedup = _dedupe(learnings)
+
     result = {
-        "critical": _dedupe(high_imp),
-        "credentials": _dedupe(creds),
-        "recent_learnings": _dedupe(learnings),
+        "critical": critical_dedup,
+        "credentials": credentials_dedup,
+        "recent_learnings": learnings_dedup,
         "task_relevant": [],
     }
 

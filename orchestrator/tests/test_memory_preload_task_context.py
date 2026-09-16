@@ -106,3 +106,81 @@ async def test_task_relevant_never_raises_on_embedding_failure():
     # Static buckets must still come back — a broken embedding call must not
     # take down the whole preload.
     assert "critical" in out and "credentials" in out and "recent_learnings" in out
+
+
+def _memory(id_, category, importance, key=None):
+    """Fake ``AgentMemory`` row: only the attributes ``_dedupe`` reads."""
+    m = MagicMock()
+    m.id = id_
+    m.key = key or f"mem-{id_}"
+    m.category = category
+    m.content = f"content-{id_}"
+    m.importance = importance
+    return m
+
+
+@pytest.mark.asyncio
+async def test_credential_with_importance_5_lands_in_credentials_not_critical():
+    """Issue #715: the overlap case that single-bucket tests can't see.
+
+    A secret stored with importance=5 (exactly what agents are told to use for
+    credentials/API keys) matches BOTH the ``critical`` query (importance >= 5,
+    no category filter) and the ``credentials`` query (category filter). With a
+    shared ``seen`` dedupe set, whichever bucket is deduped FIRST wins the item.
+    It must be "credentials" — runner_hooks.get_memory_preload relies on that to
+    avoid silently dropping the secret via its "already listed above" skip.
+    """
+    secret = _memory(101, category="api_key", importance=5, key="prod-api-key")
+    other_critical = _memory(102, category="preference", importance=5, key="likes-short-replies")
+
+    # The same row object is returned by BOTH the high-importance query and the
+    # credentials-category query — exactly like the real overlapping WHERE
+    # clauses would both match one row with importance=5 AND category="api_key".
+    db = _db_with(high_imp=[secret, other_critical], creds=[secret])
+
+    out = await collect_preload(db, "agent-1")
+
+    credential_keys = [m["key"] for m in out["credentials"]]
+    critical_keys = [m["key"] for m in out["critical"]]
+
+    assert "prod-api-key" in credential_keys, "secret must be categorized as a credential"
+    assert "prod-api-key" not in critical_keys, (
+        "secret must NOT also/instead land in critical — runner_hooks skips "
+        "items there whose category looks like a credential, assuming they are "
+        "'already listed above' in the credentials bucket"
+    )
+    # Sanity: the unrelated importance=5 memory is unaffected and stays critical.
+    assert "likes-short-replies" in critical_keys
+
+
+@pytest.mark.asyncio
+async def test_credential_older_than_newest_30_still_lands_in_credentials():
+    """Issue #715, Grenzfall aus dem Review: die Zugangsdaten-Abfrage laedt nur
+    die 30 juengsten Eintraege, die Wichtigkeits-Abfrage bis zu 50. Ein Geheimnis,
+    das aelter als die 30 juengsten Zugangsdaten ist, aber noch unter den 50
+    wichtigsten liegt, kommt deshalb NUR ueber ``high_imp`` herein — es darf
+    trotzdem nicht in ``critical`` landen, denn dort ueberspringt der Konsument
+    jede Zugangsdaten-Kategorie als "already listed above". Sonst verschwindet
+    das Geheimnis komplett aus dem Prompt: genau das Symptom des Issues, nur
+    ueber die zweite Tuer.
+    """
+    old_secret = _memory(201, category="secret", importance=5, key="legacy-db-password")
+    other_critical = _memory(202, category="decision", importance=5, key="keep-postgres")
+
+    # creds=[] bildet nach: die 30 juengsten Zugangsdaten sind andere Eintraege,
+    # dieses Geheimnis liegt dahinter und wird nur von der Wichtigkeits-Abfrage
+    # geliefert.
+    db = _db_with(high_imp=[old_secret, other_critical], creds=[])
+
+    out = await collect_preload(db, "agent-1")
+
+    credential_keys = [m["key"] for m in out["credentials"]]
+    critical_keys = [m["key"] for m in out["critical"]]
+
+    assert "legacy-db-password" in credential_keys, (
+        "a credential the importance query knows about must be surfaced as a credential"
+    )
+    assert "legacy-db-password" not in critical_keys, (
+        "in critical the consumer would skip it as 'already listed above'"
+    )
+    assert "keep-postgres" in critical_keys
