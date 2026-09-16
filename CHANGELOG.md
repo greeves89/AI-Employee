@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.14] - 2026-09-16
+
+### Behoben
+- **`PUT /api/v1/memory/{id}` liess einen Agenten nie an seine eigene
+  Erinnerung heran (401)** — teilweise Behebung von Issue #704. Die gleiche
+  Korrektur, die `DELETE /memory/{id}` laengst auf `require_auth_or_agent`
+  umgestellt hatte, fehlte bei `PUT`. Ein Agent konnte eine veraltete
+  Erinnerung damit nur loeschen, nie entschaerfen/korrigieren — die einzige
+  verfuegbare Selbstpflege war die unumkehrbare. `_assert_agent_access`
+  darunter kennt den Agentenfall bereits identisch zu `DELETE`.
+  Der zweite Teil des Issues (Vorspann-Deckel zaehlt Eintraege statt Zeichen,
+  `collect_preload` in `memory_preload.py`) ist davon unberuehrt und bleibt
+  offen.
+
 ## [1.322.13] - 2026-09-16
 
 ### Behoben
