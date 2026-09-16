@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.11] - 2026-09-16
+
+### Behoben
+- **`POST /api/v1/memory/save` antwortete mit 500 statt 422, sobald `source`
+  laenger als 30, `room` laenger als 500 oder ein Tag laenger als 100 Zeichen
+  war** (Issue #706). `MemorySave` kannte die DB-Spaltengrenzen
+  (`models/memory.py`: `AgentMemory.room`/`source`, `AgentMemoryTag.tag`)
+  nicht — der zu lange Wert ging ungeprueft ins INSERT und liess Postgres mit
+  einem nirgends abgefangenen `DataError` sterben, von aussen nicht von einem
+  Ausfall des Gedaechtnisses zu unterscheiden. Alle drei Felder tragen jetzt
+  `Field(max_length=...)`, FastAPI liefert dafuer eine sprechende 422. Test
+  liest die Grenzen direkt aus den DB-Spalten, statt sie hart zu codieren.
+
 ## [1.322.10] - 2026-09-16
 
 ### Behoben
