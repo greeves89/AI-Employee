@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.15] - 2026-09-16
+
+### Behoben
+- **Tests mit festem Zeichenfenster auf Quelltext** (Issue #726) — eine
+  Pruefung misst *Abstand* im Quelltext, gemeint ist aber *Reihenfolge*: 21
+  harmlos hinzugefuegte Zeilen genuegten, um eine korrekte Codebasis rot
+  laufen zu lassen. Die urspruenglich gefundenen 24 Stellen (9 Testdateien)
+  sowie in weiteren Batches gefundene Faelle in `test_task_cancel_*`,
+  `test_task_heartbeat_*`, Zugangs-/ACL-Pfaden, Autonomie-/Delegationspfad,
+  Freigaben-/Mandantentrennung, Kundennamen-Wache und MCP-Start/Auffrischung
+  sind auf echte Verhaltenstests umgestellt (DB-/Redis-Attrappen statt
+  Quelltext-Textsuche). Mutationsbatterien (Batch 5-8) belegen, dass die neuen
+  Tests echte Regressionen tatsaechlich faengen.
+
+### Hinzugefuegt
+- **Eine Sperre gegen neue Zeichenfenster.** Die Bestandsaufnahme hat 210
+  solcher Stellen in 74 Testdateien gefunden — zu viele fuer einen Zug, und
+  jede Woche kamen neue dazu. Der Bestand ist jetzt festgehalten
+  (`zeichenfenster_basislinie.json`): bestehende Dateien duerfen nur noch
+  weniger werden, eine neue Stelle laesst die Tests rot werden und nennt den
+  Grund samt Vorbild, wie es stattdessen geht. Damit hoert das Problem auf zu
+  wachsen, waehrend es abgetragen wird.
+
 ## [1.322.14] - 2026-09-16
 
 ### Behoben
@@ -269,14 +292,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   und umgehen sie beim automatischen Merge vollstaendig. Nummer auf einen
   Patch-Schritt nachgezogen, Docker-Label mitgezogen; Hauptlinie damit
   wieder release-spur-vollstaendig.
-
-### Hinzugefuegt
-- **Eine Sperre gegen neue Zeichenfenster.** Die Bestandsaufnahme hat 210
-  solcher Stellen in 74 Testdateien gefunden — zu viele fuer einen Zug, und
-  jede Woche kamen neue dazu. Der Bestand ist jetzt festgehalten: bestehende
-  Dateien duerfen nur noch weniger werden, eine neue Stelle laesst die Tests
-  rot werden und nennt den Grund samt Vorbild, wie es stattdessen geht. Damit
-  hoert das Problem auf zu wachsen, waehrend es abgetragen wird.
 
 ## [1.321.2] - 2026-09-12
 
