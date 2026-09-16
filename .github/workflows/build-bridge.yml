@@ -8,7 +8,14 @@ on:
     paths:
       - "computer-use-bridge/**"
       - ".github/workflows/build-bridge.yml"
-      - "VERSION"
+  # Every real release already fires this via `release: published` below (the
+  # project's own versioning rule ties every VERSION bump to a git tag +
+  # GitHub release, see workflows/versioning-principle). "VERSION" was in the
+  # paths filter above too, so a bump-only push (no bridge code touched) ran
+  # this full macOS+Windows sign/notarize build for nothing -- macOS minutes
+  # count 10x against the account's Actions quota, and there were a lot of
+  # bump-only pushes (found while diagnosing a maxed-out free-tier quota,
+  # 2026-09-16).
   release:
     types: [published]
   workflow_dispatch:
