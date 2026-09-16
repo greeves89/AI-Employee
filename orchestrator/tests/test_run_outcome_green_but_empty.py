@@ -53,6 +53,35 @@ class DieEchtenVorfaelleWerdenErkanntTests(unittest.TestCase):
                          "Leeres Ergebnis nach weniger als 10 Sekunden")
 
 
+class KontextgrenzeTests(unittest.TestCase):
+    def test_abbruch_mitten_im_lauf(self):
+        for dauer in (420_000, 960_000, None):
+            with self.subTest(dauer=dauer):
+                self.assertEqual(warum_kein_erfolg("Prompt is too long", dauer),
+                                 "Kontextgrenze erreicht")
+
+    def test_verwandte_wortlaute(self):
+        for text in ("prompt too long", "context window exceeded",
+                     "context length exceeded", "maximum context length",
+                     "  PROMPT IS TOO LONG\n"):
+            with self.subTest(text=text):
+                self.assertEqual(warum_kein_erfolg(text, 900_000),
+                                 "Kontextgrenze erreicht")
+
+    def test_langer_bericht_ueber_kontextfehler_bleibt_erfolgreich(self):
+        bericht = ("Die Meldung prompt is too long wurde untersucht. "
+                   + "Die Untersuchung ist abgeschlossen und dokumentiert. " * 20)
+        self.assertGreater(len(bericht), 900)
+        self.assertIsNone(warum_kein_erfolg(bericht, 900_000))
+
+    def test_exklusive_laengengrenze(self):
+        for laenge, erwartet in ((99, "Kontextgrenze erreicht"), (100, None)):
+            with self.subTest(laenge=laenge):
+                text = "Prompt is too long: " + "x" * (laenge - 20)
+                self.assertEqual(len(text), laenge)
+                self.assertEqual(warum_kein_erfolg(text, 900_000), erwartet)
+
+
 class EchteArbeitBleibtGruenTests(unittest.TestCase):
     """Wichtiger als das Erkennen: NICHT falsch anschlagen. Ein Check, der
     gesunde Laeufe rot faerbt, wird abgeschaltet."""
