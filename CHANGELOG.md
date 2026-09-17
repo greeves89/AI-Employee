@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.19] - 2026-09-17
+
+### Behoben
+- **`codex_cli`-Fehlschlaege lieferten ein leeres `result` und ein
+  generisches `Codex CLI exited with code 1` — ohne stderr, ohne Exit-Code
+  als eigenes Feld** (Issue #710). Gemessen am 06.09.2026: 16 von 16 Laeufen
+  eines Agenten scheiterten so, jedes Mal identisch — kein transienter
+  Aussetzer. Drei Aenderungen:
+  1. **Anmeldedaten-Vorpruefung vor dem CLI-Start.** `~/.codex/auth.json`
+     wird jetzt auf Vorhandensein, Lesbarkeit und Token-Ablauf geprueft,
+     BEVOR die CLI ueberhaupt startet — genau die Klasse, die am
+     wahrscheinlichsten vorlag: die CLI schreibt bei abgelaufenen
+     Anmeldedaten manchmal nichts auf stderr, sodass die Ursache aus der
+     Plattform heraus nicht ermittelbar war.
+  2. **Exit-Code als stabiles Praefix** (`[codex_exit=N] ...`) statt
+     versteckt im Freitext — danach filterbar.
+  3. **Ein Teilergebnis vor dem Abbruch geht nicht mehr verloren.** Der
+     Fehlerpfad ersetzte bisher das gesamte Ergebnis-Objekt; hatte die CLI
+     vor dem Scheitern bereits Text ausgegeben, verschwand er.
+  Der zweite Punkt aus dem Issue (eine Gesundheitspruefung, die 40h Stillstand
+  faelschlich als "gesund" meldet) ist davon unberuehrt und bleibt offen.
+
 ## [1.322.18] - 2026-09-17
 
 ### Behoben
