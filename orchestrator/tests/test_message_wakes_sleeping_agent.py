@@ -22,13 +22,19 @@ from app.core import agent_wakeup
 
 
 class _Docker:
+    """Simuliert einen Status-Wechsel: die ERSTE Abfrage (vor dem Wecken)
+    liefert den konstruierten Status, jede weitere (nach ``start_agent``,
+    #714) "running" — wie ein wirklich erfolgreicher Start es taete."""
+
     def __init__(self, status: str):
         self._status = status
         self.asked: list[str] = []
 
     def get_container_status(self, container_id: str) -> str:
         self.asked.append(container_id)
-        return self._status
+        if len(self.asked) == 1:
+            return self._status
+        return "running"
 
 
 class _Manager:
@@ -41,7 +47,7 @@ class _Manager:
 
     async def start_agent(self, agent_id: str):
         _Manager.started.append(agent_id)
-        return SimpleNamespace(id=agent_id)
+        return SimpleNamespace(id=agent_id, container_id="c1")
 
 
 class _Session:
@@ -110,6 +116,36 @@ class EnsureAgentRunningTests(unittest.IsolatedAsyncioTestCase):
         finally:
             _restore(orig[0], orig[1])
         self.assertFalse(ok)
+
+    async def test_start_agent_returns_normally_but_stays_stopped(self):
+        """#714: ein Disk-Quota-Stopp laesst ``start_agent`` OHNE Exception
+        zurueckkehren, aber der Container laeuft trotzdem nicht (die
+        automatische Aufraeumung reichte nicht). ``ensure_agent_running``
+        darf hier NICHT blind True melden — sonst denkt jeder Zusteller
+        (Nachricht, Zeitplan, Besprechung), die Zustellung sei angekommen."""
+        class _StaysStopped(_Manager):
+            async def start_agent(self, agent_id):
+                _Manager.started.append(agent_id)
+                return SimpleNamespace(id=agent_id, container_id="c1")
+
+        import app.core.agent_manager as am_mod
+
+        agent = SimpleNamespace(id="a1", container_id="c1")
+        orig = _patch(agent, "exited")
+        am_mod.AgentManager = _StaysStopped
+        docker = orig[2]
+        docker._status = "exited"
+        # Container bleibt auch NACH dem Weckversuch "exited" (weiterhin
+        # ueber Quote) — im Unterschied zum Standard-_Docker-Fake, der ab dem
+        # zweiten Aufruf "running" simuliert.
+        docker.get_container_status = lambda cid: "exited"
+        try:
+            ok = await agent_wakeup.ensure_agent_running("a1", docker, redis=None)
+        finally:
+            _restore(orig[0], orig[1])
+        self.assertFalse(ok, "Agent blieb angehalten — die Zustellung darf "
+                              "das nicht als Erfolg melden")
+        self.assertEqual(_Manager.started, ["a1"])
 
     async def test_a_failed_start_does_not_break_delivery(self):
         """Die Nachricht soll trotzdem in die Warteschlange — sie wird beim

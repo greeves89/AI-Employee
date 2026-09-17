@@ -52,8 +52,24 @@ async def ensure_agent_running(agent_id: str, docker, redis) -> bool:
                 "[Aufwecken] Agent %s schlaeft — wird fuer die Zustellung gestartet",
                 agent_id,
             )
-            await AgentManager(db, docker, redis).start_agent(agent_id)
-            return True
+            gestartet = await AgentManager(db, docker, redis).start_agent(agent_id)
+            # start_agent wirft NICHT mehr bei jedem Fehlschlag — ein Agent, der
+            # wegen ueberschrittener Speicherquote bleibt, kommt normal zurueck,
+            # nur mit state=STOPPED (#714). Den Container-Status statt den
+            # gemerkten Objektzustand pruefen: er kann sich seit dem Aufruf
+            # innerhalb von start_agent nochmal geaendert haben.
+            laeuft_jetzt = (
+                bool(gestartet.container_id)
+                and docker.get_container_status(gestartet.container_id) == "running"
+            )
+            if not laeuft_jetzt:
+                logger.warning(
+                    "[Aufwecken] Agent %s bleibt angehalten (z. B. Speicherquote "
+                    "weiterhin ueberschritten) — Zustellung liegt in der "
+                    "Warteschlange fuer den naechsten erfolgreichen Start",
+                    agent_id,
+                )
+            return laeuft_jetzt
     except Exception:  # noqa: BLE001
         # Ein misslungenes Aufwecken darf die Zustellung nicht abbrechen: die
         # Nachricht bleibt in der Warteschlange und wird beim naechsten Start

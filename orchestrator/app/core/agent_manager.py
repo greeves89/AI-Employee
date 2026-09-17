@@ -2018,25 +2018,39 @@ class AgentManager:
         Aufgabe anzunehmen, die ohnehin sofort wieder verhungert.
 
         Gibt zurueck, ob die Quote danach wieder unter der Stopp-Schwelle liegt.
+
+        Der Container LAEUFT an dieser Stelle bereits (``docker.start_container``
+        lief im Aufrufer, bevor diese Markierung geprueft wurde) — jeder
+        Fehlschlag hier (Exec wirft, Quote reicht nicht) muss ihn deshalb aktiv
+        wieder stoppen UND die Markierung stehen lassen bzw. neu setzen. Sonst
+        sieht der naechste ``ensure_agent_running``-Aufruf per
+        ``get_container_status`` faelschlich "running", raeumt nie wieder auf,
+        und der Agent bleibt fuer immer unbeaufsichtigt auf voller Platte.
         """
         from app.services.disk_monitor import _STOP_THRESHOLD
 
-        config = dict(agent.config or {})
-        config.pop("disk_quota_stopped", None)
-        agent.config = config
         try:
-            self.docker.exec_in_container(
+            exit_code, _out = self.docker.exec_in_container(
                 agent.container_id,
                 ["sh", "-c",
                  "rm -rf /workspace/data/cache /workspace/tmp; "
                  "find /workspace -maxdepth 4 -name '*.log' -delete"],
             )
+            if exit_code:
+                # Kein Abbruch — die anschliessende Messung ist die eigentliche
+                # Instanz, die entscheidet, ob genug frei wurde. Aber sichtbar
+                # machen, falls ein Teil der Aufraeumung (z. B. Rechteproblem)
+                # gar nicht griff.
+                logger.warning(
+                    "Automatische Aufraeumung fuer Agent %s: Exit-Code %s",
+                    scrub_log(agent.id), exit_code,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Automatische Aufraeumung fuer Agent %s fehlgeschlagen: %s",
                 scrub_log(agent.id), scrub_log(exc),
             )
-            return False
+            return self._re_stop_over_quota_agent(agent)
 
         limit_gb = (
             float(agent.config.get("workspace_size_gb") or settings.agent_workspace_size_gb)
@@ -2053,21 +2067,32 @@ class AgentManager:
                 "Container wird sofort wieder angehalten statt eine Aufgabe anzunehmen",
                 scrub_log(agent.id), stats["disk_percent"],
             )
-            try:
-                self.docker.stop_container(agent.container_id)
-            except Exception:  # noqa: BLE001
-                pass
-            agent.state = AgentState.STOPPED
-            config = dict(agent.config or {})
-            config["disk_quota_stopped"] = True
-            agent.config = config
-            return False
+            return self._re_stop_over_quota_agent(agent)
 
+        # Erst JETZT, nach bestaetigtem Erfolg, die Markierung loeschen — vorher
+        # wuerde ein Fehlschlag zwischen Exec und Messung sie unwiederbringlich
+        # verlieren, obwohl der Container weiterhin ueber Quote liegt.
+        config = dict(agent.config or {})
+        config.pop("disk_quota_stopped", None)
+        agent.config = config
         logger.info(
             "Agent %s: automatische Aufraeumung nach Disk-Quota-Stopp erfolgreich (#714)",
             scrub_log(agent.id),
         )
         return True
+
+    def _re_stop_over_quota_agent(self, agent: Agent) -> bool:
+        """Der Container laeuft bereits — reicht die Aufraeumung nicht oder
+        schlaegt sie fehl, MUSS er sofort wieder angehalten werden (#714)."""
+        try:
+            self.docker.stop_container(agent.container_id)
+        except Exception:  # noqa: BLE001
+            pass
+        agent.state = AgentState.STOPPED
+        config = dict(agent.config or {})
+        config["disk_quota_stopped"] = True
+        agent.config = config
+        return False
 
     async def migrate_knowledge_file(self, container_id: str, agent_id: str) -> bool:
         """Den entfallenen Onboarding-Abschnitt aus der Wissensdatei nehmen.

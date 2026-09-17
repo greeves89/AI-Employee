@@ -176,6 +176,27 @@ class ADerAutomatischeAufraeumSchritt(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(ok)
         docker.get_workspace_disk_usage.assert_not_called()
 
+    async def test_ein_fehlschlagender_exec_stoppt_den_bereits_laufenden_container(self):
+        """Kritischer Fall: ``docker.start_container`` lief bereits im Aufrufer,
+        BEVOR diese Methode aufgerufen wird. Wirft der Exec-Versuch, darf die
+        Markierung nicht verlorengehen und der (physisch laufende) Container
+        muss aktiv wieder gestoppt werden — sonst sieht der naechste
+        ``ensure_agent_running``-Aufruf per Status-Abfrage "running" und
+        raeumt nie wieder auf, obwohl die Platte unveraendert voll ist."""
+        docker = MagicMock()
+        docker.exec_in_container.side_effect = RuntimeError("Container weg")
+        manager = _agent_manager(docker)
+        agent = self._agent()
+
+        ok = await manager._auto_cleanup_after_disk_quota_stop(agent)
+
+        self.assertFalse(ok)
+        docker.stop_container.assert_called_once_with("c1")
+        self.assertEqual(agent.state, AgentState.STOPPED)
+        self.assertTrue(agent.config.get("disk_quota_stopped"),
+                         "Markierung ging beim Exec-Fehler verloren — der Agent "
+                         "wird nie wieder aufgeraeumt")
+
 
 class BStartAgentRuftDieAufraeumungAuf(unittest.IsolatedAsyncioTestCase):
     """Teil 2b: ``start_agent`` selbst verdrahtet die Aufraeumung korrekt."""
