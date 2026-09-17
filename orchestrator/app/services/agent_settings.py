@@ -136,7 +136,7 @@ async def change_autonomy_level(db: AsyncSession, user, agent_id: str, level: st
     previous_level = agent.autonomy_level
     agent.autonomy_level = level
     from app.core import autonomy_matrix as am
-    agent.config = {**(agent.config or {}), "autonomy_matrix": am.matrix_for_level(level)}
+    agent.access_policy = {**(agent.access_policy or {}), "autonomy_matrix": am.matrix_for_level(level)}
     await db.commit()
 
     from app.api.approval_rules import apply_autonomy_preset
@@ -173,4 +173,4 @@ async def change_autonomy_level(db: AsyncSession, user, agent_id: str, level: st
 def autonomy_matrix_permissions(agent) -> list[str]:
     """Effective sudo packages without touching Docker (no manager at hand)."""
     from app.core import autonomy_matrix as am
-    return am.effective_permissions(agent.config or {}, agent.autonomy_level or "l3")
+    return am.effective_permissions(agent.access_policy or {}, agent.autonomy_level or "l3")

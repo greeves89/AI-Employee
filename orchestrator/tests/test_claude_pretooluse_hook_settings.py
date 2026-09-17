@@ -46,10 +46,13 @@ class ClaudePreToolUseSettingsTests(unittest.TestCase):
         # Rein lokal -- sollte nie lange dauern; ein kurzes Timeout verhindert
         # ein haengendes Werkzeug, falls doch einmal etwas schiefgeht (faellt
         # dann per Claude-Code-eigenem Verhalten auf "nicht blockierend"
-        # zurueck, nicht auf einen haengenden Zug).
+        # zurueck, nicht auf einen haengenden Zug). 12s statt urspruenglich 5s
+        # seit Issue #787 Punkt 1: decide_async() haengt einen zweiten
+        # sequenziellen Netzwerk-Call (Command-Policy-Abfrage) an, zwei kalte
+        # 10s-Caches ergeben bis zu ~6s -- knapp am alten Limit.
         cfg = json.loads(_CLAUDE_PRETOOLUSE_SETTINGS_JSON)
         hook = cfg["hooks"]["PreToolUse"][0]["hooks"][0]
-        self.assertLessEqual(hook["timeout"], 10)
+        self.assertLessEqual(hook["timeout"], 15)
 
 
 if __name__ == "__main__":

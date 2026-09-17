@@ -609,13 +609,13 @@ async def list_agents(
             # Derived from the autonomy matrix, same as the full response — the lite
             # list must not report a different sudo grant than the detail view.
             eff_permissions = autonomy_matrix.effective_permissions(
-                config, agent.autonomy_level or "l3"
+                agent.access_policy, agent.autonomy_level or "l3"
             )
             safe_config = {
                 "role": config.get("role", ""),
                 "integrations": config.get("integrations", []),
                 "permissions": eff_permissions,
-                "permissions_mode": config.get("permissions_mode") or "auto",
+                "permissions_mode": (agent.access_policy or {}).get("permissions_mode") or "auto",
                 "proactive": config.get("proactive"),
                 # Aussehen und Schlagwort gehoeren in die Kurzfassung: die Uebersicht
                 # laedt genau diese Liste und zeichnet daraus Sinnbild, Farbe und
@@ -917,7 +917,7 @@ async def get_autonomy_matrix(
     await _check_owner(agent_id, user, db)
     from app.core import autonomy_matrix as am
     agent = (await db.execute(
-        select(Agent.autonomy_level, Agent.config).where(Agent.id == agent_id)
+        select(Agent.autonomy_level, Agent.access_policy).where(Agent.id == agent_id)
     )).first()
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -955,7 +955,7 @@ async def update_autonomy_matrix(
     # If the edited matrix still equals a preset, keep that level label; else custom.
     matched = next((lvl for lvl in ("l1", "l2", "l3", "l4")
                     if am.matrix_for_level(lvl) == matrix), None)
-    agent.config = {**(agent.config or {}), "autonomy_matrix": matrix}
+    agent.access_policy = {**(agent.access_policy or {}), "autonomy_matrix": matrix}
     if matched:
         agent.autonomy_level = matched
     elif agent.autonomy_level in ("l1", "l2", "l3", "l4"):
@@ -980,7 +980,7 @@ async def _sync_container_sudo(agent: Agent, manager: AgentManager) -> list[str]
     container is not an error here, it picks the grant up when it next starts.
     """
     permissions = autonomy_matrix.effective_permissions(
-        agent.config or {}, agent.autonomy_level or "l3"
+        agent.access_policy or {}, agent.autonomy_level or "l3"
     )
     if agent.container_id:
         try:
@@ -992,6 +992,152 @@ async def _sync_container_sudo(agent: Agent, manager: AgentManager) -> list[str]
                 "Could not sync sudo for agent %s: %s", scrub_log(agent.id), scrub_log(str(e))
             )
     return permissions
+
+
+class AccessPolicyUpdate(BaseModel):
+    matrix: dict[str, str] | None = None
+    permissions_mode: str | None = None
+    permissions: list[str] | None = None
+    computer_use_default_capabilities: list[str] | None = None
+
+
+@router.get("/{agent_id}/access-policy")
+async def get_access_policy(
+    agent_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alles, was die "Zugriff & Rechte"-Oberflaeche fuer einen Agenten
+    braucht, in einem Aufruf: Autonomie-Matrix, daraus abgeleitete
+    Sudo-Pakete, dauerhafter Computer-Use-Default und die anwendbaren
+    Command Policies. Read-through, kein Merge -- command_policies bleibt
+    eine eigene Tabelle mit eigener Form (Liste von Regex-Regeln statt
+    fixer Schluessel) und gated eine andere Ebene (den Befehlsinhalt, nicht
+    die Werkzeug-Kategorie). Siehe Issue #787 Punkt 1.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.api.command_policies import policies_for_agent
+    from app.api.computer_use import CAPABILITY_GROUPS, DEFAULT_ALLOWED_CAPABILITIES
+
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    level = (agent.autonomy_level or "l3").lower()
+    access_policy = agent.access_policy or {}
+    matrix = autonomy_matrix.normalize_matrix(access_policy.get("autonomy_matrix"), level)
+    cu_default = autonomy_matrix.computer_use_default_capabilities(access_policy)
+    policies = await policies_for_agent(db, agent_id)
+
+    return {
+        "agent_id": agent_id,
+        "autonomy_level": agent.autonomy_level,
+        "matrix": matrix,
+        "taxonomy": autonomy_matrix.taxonomy_payload(),
+        "permissions": autonomy_matrix.effective_permissions(access_policy, level),
+        "permissions_mode": access_policy.get("permissions_mode") or "auto",
+        "computer_use_default_capabilities": (
+            cu_default if cu_default is not None else sorted(DEFAULT_ALLOWED_CAPABILITIES)
+        ),
+        "computer_use_capability_groups": [
+            {"id": gid, "actions": actions, "default": gid in DEFAULT_ALLOWED_CAPABILITIES}
+            for gid, actions in CAPABILITY_GROUPS.items()
+        ],
+        "command_policies": [
+            {
+                "id": p.id, "name": p.name, "pattern": p.pattern, "effect": p.effect,
+                "scope": p.scope, "description": p.description, "sort_order": p.sort_order,
+            }
+            for p in policies
+        ],
+    }
+
+
+@router.put("/{agent_id}/access-policy")
+async def update_access_policy(
+    agent_id: str,
+    body: AccessPolicyUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Teil-Update: nur uebergebene Felder aendern sich. Ersetzt drei getrennte
+    Aufrufe (PUT autonomy-matrix, PATCH permissions, und den bisher gar nicht
+    vorhandenen Computer-Use-Default-Schreibweg) durch einen -- inklusive
+    Sudoers-Sync in den laufenden Container.
+    """
+    await _check_owner(agent_id, user, db)
+    from sqlalchemy.orm.attributes import flag_modified
+    from app.core.agent_manager import PERMISSION_PACKAGES
+
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    level = (agent.autonomy_level or "l3").lower()
+    access_policy = dict(agent.access_policy or {})
+
+    if body.matrix is not None:
+        matrix = autonomy_matrix.normalize_matrix(body.matrix, level)
+        access_policy["autonomy_matrix"] = matrix
+        # Matrix entspricht noch einem Preset -> dessen Stufen-Etikett behalten,
+        # sonst "custom" (identisch zur bisherigen Logik in update_autonomy_matrix).
+        matched = next((lvl for lvl in ("l1", "l2", "l3", "l4")
+                        if autonomy_matrix.matrix_for_level(lvl) == matrix), None)
+        if matched:
+            agent.autonomy_level = matched
+        elif agent.autonomy_level in ("l1", "l2", "l3", "l4"):
+            agent.autonomy_level = "custom"
+
+    if body.permissions_mode is not None:
+        mode = body.permissions_mode.lower()
+        if mode not in ("auto", "manual"):
+            raise HTTPException(status_code=400, detail="permissions_mode must be 'auto' or 'manual'")
+        access_policy["permissions_mode"] = mode
+
+    if body.permissions is not None:
+        for perm in body.permissions:
+            if perm not in PERMISSION_PACKAGES:
+                raise HTTPException(status_code=400, detail=f"Unknown permission package: {perm}")
+        access_policy["permissions"] = body.permissions
+        # Eine Paketliste OHNE mitgeschickten Modus darf niemals "permissions_mode"
+        # unausgefuellt lassen: effective_permissions() hat einen Grossvater-Zweig
+        # fuer Alt-Agenten (mode is None + gespeichertes full-access -> gilt
+        # trotzdem), der genau dafuer gedacht war, ALTE Grants zu erhalten -- nicht
+        # als heimlicher zweiter Schreibweg fuer NEUE full-access-Grants ueber
+        # diesen Endpunkt. Der bestehende PATCH /agents/{id}/permissions setzt
+        # deshalb IMMER "manual" als Default; dieselbe Regel gilt hier.
+        if body.permissions_mode is None:
+            access_policy["permissions_mode"] = "manual"
+
+    if body.computer_use_default_capabilities is not None:
+        from app.api.computer_use import CAPABILITY_GROUPS
+        for cap in body.computer_use_default_capabilities:
+            if cap not in CAPABILITY_GROUPS:
+                raise HTTPException(status_code=400, detail=f"Unknown capability group: {cap}")
+        access_policy["computer_use_default_capabilities"] = body.computer_use_default_capabilities
+
+    agent.access_policy = access_policy
+    flag_modified(agent, "access_policy")
+    await db.commit()
+
+    # Matrix/Permissions wirken sofort auf den laufenden Container, nicht erst
+    # beim naechsten Recreate -- dieselbe Erwartung wie bei den bisherigen
+    # Einzel-Endpunkten (update_autonomy_matrix, update_agent_permissions).
+    permissions = await _sync_container_sudo(agent, manager)
+
+    return {
+        "agent_id": agent_id,
+        "autonomy_level": agent.autonomy_level,
+        "matrix": autonomy_matrix.normalize_matrix(
+            access_policy.get("autonomy_matrix"), agent.autonomy_level or level
+        ),
+        "permissions": permissions,
+        "permissions_mode": access_policy.get("permissions_mode") or "auto",
+        "computer_use_default_capabilities": autonomy_matrix.computer_use_default_capabilities(
+            access_policy
+        ),
+    }
 
 
 @router.post("/{agent_id}/stop")
@@ -2924,16 +3070,16 @@ async def update_agent_permissions(
 
     try:
         agent = await manager._get_agent(agent_id)
-        config = agent.config or {}
-        config["permissions_mode"] = mode
+        access_policy = agent.access_policy or {}
+        access_policy["permissions_mode"] = mode
         if mode == "manual":
-            config["permissions"] = body.permissions
-        agent.config = config
-        flag_modified(agent, "config")
+            access_policy["permissions"] = body.permissions
+        agent.access_policy = access_policy
+        flag_modified(agent, "access_policy")
         await db.commit()
 
         # In auto mode the matrix decides — never the list that came in.
-        effective = autonomy_matrix.effective_permissions(config, agent.autonomy_level or "l3")
+        effective = autonomy_matrix.effective_permissions(access_policy, agent.autonomy_level or "l3")
 
         # Apply to running container
         if agent.container_id:

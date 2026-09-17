@@ -6,7 +6,7 @@ The L1–L4 levels are just PRESETS that fill the matrix; after applying one the
 user can fine-tune individual cells (→ "custom").
 
 The matrix is the authoritative config: it is stored on the agent
-(``agent.config["autonomy_matrix"]``) and rendered into the per-task prompt via
+(``agent.access_policy["autonomy_matrix"]``) and rendered into the per-task prompt via
 ``matrix_to_prompt`` — the platform's approval enforcement is prompt-driven, and
 ``request_approval`` / bash-approval remain the server-side gates for asks.
 """
@@ -227,6 +227,24 @@ def effective_permissions(config: dict | None, level: str = "l3") -> list[str]:
     if mode is None and stored and PKG_FULL_ACCESS in stored:
         return list(stored)
     return derive_permissions(normalize_matrix(cfg.get("autonomy_matrix"), level))
+
+
+# ──────────────────────────────────────────────
+# Computer-Use default — durable per-agent cap, sessions may only shrink it
+# ──────────────────────────────────────────────
+# Vorher gab es dafuer gar keinen dauerhaften Wert: jede Desktop-Session startete
+# immer mit demselben Plattform-Default, unabhaengig davon, ob der Agent laut
+# Matrix ueberhaupt Shell/System-Aktionen ausfuehren darf. ``None`` bedeutet
+# "kein eigener Wert gesetzt" -- der Aufrufer (computer_use.py) faellt dann auf
+# seinen eigenen Plattform-Default zurueck, genau wie eine fehlende
+# autonomy_matrix auf das L-Preset zurueckfaellt.
+
+
+def computer_use_default_capabilities(access_policy: dict | None) -> list[str] | None:
+    """Der dauerhafte Computer-Use-Default dieses Agenten, oder ``None`` (=
+    Plattform-Default gilt)."""
+    caps = (access_policy or {}).get("computer_use_default_capabilities")
+    return list(caps) if isinstance(caps, list) else None
 
 
 def taxonomy_payload() -> dict:

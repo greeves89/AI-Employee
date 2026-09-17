@@ -198,6 +198,22 @@ async def delete_policy(
     return {"status": "deleted"}
 
 
+async def policies_for_agent(db: AsyncSession, agent_id: str) -> list[CommandPolicy]:
+    """Active global + agent-specific policies, ordered like the agent-facing
+    endpoint below — shared so the unified access-policy settings endpoint
+    (``agents.py``) can read-through the same rows instead of re-querying."""
+    result = await db.execute(
+        select(CommandPolicy)
+        .where(CommandPolicy.is_active.is_(True))
+        .where(or_(
+            CommandPolicy.scope == "global",
+            (CommandPolicy.scope == "agent") & (CommandPolicy.agent_id == agent_id),
+        ))
+        .order_by(CommandPolicy.sort_order, CommandPolicy.id)
+    )
+    return list(result.scalars().all())
+
+
 @router.get("/for-agent/{agent_id}")
 async def get_policies_for_agent(
     agent_id: str,
@@ -221,15 +237,7 @@ async def get_policies_for_agent(
     if agent_auth["agent_id"] != agent_id:
         raise HTTPException(status_code=403, detail="Agent token does not match requested agent")
 
-    result = await db.execute(
-        select(CommandPolicy)
-        .where(CommandPolicy.is_active.is_(True))
-        .where(or_(
-            CommandPolicy.scope == "global",
-            (CommandPolicy.scope == "agent") & (CommandPolicy.agent_id == agent_id),
-        ))
-        .order_by(CommandPolicy.sort_order, CommandPolicy.id)
-    )
+    policies = await policies_for_agent(db, agent_id)
     return {
         "policies": [
             {
@@ -241,6 +249,6 @@ async def get_policies_for_agent(
                 "description": policy.description,
                 "sort_order": policy.sort_order,
             }
-            for policy in result.scalars().all()
+            for policy in policies
         ]
     }

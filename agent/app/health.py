@@ -53,8 +53,8 @@ async def pretooluse_hook_handler(request: web.Request) -> web.Response:
         return web.json_response(_deny_malformed())
     tool_name = body.get("tool_name") or ""
     tool_input = body.get("tool_input") or {}
-    from app.tools.pretooluse_hook import decide
-    return web.json_response(decide(tool_name, tool_input))
+    from app.tools.pretooluse_hook import decide_async
+    return web.json_response(await decide_async(tool_name, tool_input))
 
 
 def _deny_malformed() -> dict:

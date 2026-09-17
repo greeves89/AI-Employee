@@ -24,10 +24,31 @@ SAME set of capabilities (``test_harness_capability_parity.py`` enforces
 this), so one classification, applied twice with two small naming
 translations (native Claude Code names, and the ``mcp__<server>__<name>``
 prefix), stays in sync by construction instead of by habit.
+
+``decide_async()`` (issue #787 Punkt 1) additionally reuses
+``executor.py::_evaluate_command_policy`` for the native ``Bash`` tool —
+command_policies (regex blocked/high/medium/allow rules) used to only ever
+run for ``mode=custom_llm``, never for this runtime's own Bash. Caution:
+Claude Code's HTTP PreToolUse hook is fail-OPEN on timeout by documented
+design ("A timed-out hook doesn't block the tool call") — a second
+sequential network call here makes hitting that timeout more likely on a
+cold cache, which is why the hook's configured timeout was raised alongside
+this change (see ``agent_manager.py::_CLAUDE_PRETOOLUSE_SETTINGS_JSON``).
+Separately, ``executor.py::_get_command_policies`` is ALSO fail-open on any
+fetch error, not just slowness ("transient orchestrator outages should not
+brick agents") — this is a pre-existing, deliberate tradeoff for the
+custom_llm runtime, now inherited here by reuse. Accepted knowingly: making
+Bash fail-closed during an orchestrator outage would brick every agent's
+shell entirely, a worse outcome than the rare window this trades for.
 """
 from __future__ import annotations
 
-from app.tools.executor import ALWAYS_ALLOWED_TOOLS, TOOL_CATEGORY_MAP, _get_allowed_categories
+from app.tools.executor import (
+    ALWAYS_ALLOWED_TOOLS,
+    TOOL_CATEGORY_MAP,
+    _evaluate_command_policy,
+    _get_allowed_categories,
+)
 
 # Claude Code's OWN built-in tool names (capitalized, distinct from the
 # lowercase snake_case names ``definitions.py``/``executor.py`` use for the
@@ -125,6 +146,38 @@ def decide(tool_name: str, tool_input: dict | None = None) -> dict:
         f"Unbekanntes Werkzeug '{tool_name}' — nicht in der Autonomie-Zuordnung "
         "verzeichnet. Bitte `request_approval` verwenden."
     )
+
+
+async def decide_async(tool_name: str, tool_input: dict | None = None) -> dict:
+    """Same category gate as ``decide()``, plus the regex command-policy layer
+    for Bash (issue #787 Punkt 1).
+
+    Before this, ``command_policies`` (blocked/high/medium/allow regex rules)
+    only ever ran for ``mode=custom_llm`` (``executor.py::_tool_bash``) — a
+    Claude Code agent's OWN native ``Bash`` tool bypassed it completely, even
+    though the category gate above already treated ``Bash`` the same as any
+    other shell_exec call. ``decide()`` itself stays untouched and synchronous
+    (60+ existing tests call it directly) — this wraps it instead of changing
+    it, and only adds the extra check for ``Bash``.
+    """
+    base = decide(tool_name, tool_input)
+    if base["hookSpecificOutput"]["permissionDecision"] == "deny":
+        return base  # category gate already said no — nothing finer to check
+    if tool_name != "Bash":
+        return base
+    command = (tool_input or {}).get("command") or ""
+    if not command:
+        return base
+    effect, reason = await _evaluate_command_policy(command)
+    if effect == "blocked":
+        return _deny(f"[COMMAND BLOCKED] Policy: {reason or 'Blocked by command policy'}")
+    if effect in {"high", "medium"}:
+        return _deny(
+            f"Befehl entspricht einer Command Policy ({effect}): {reason}. "
+            "`request_approval` zuerst aufrufen und auf Freigabe warten, dann "
+            "erneut versuchen."
+        )
+    return base  # None or "allow" → category decision stands
 
 
 def _allow() -> dict:

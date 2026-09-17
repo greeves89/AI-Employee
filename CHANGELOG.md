@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.42] - 2026-09-17
+
+### Sicherheit
+- **Claude Codes natives `Bash`-Werkzeug umging Command Policies vollstaendig**
+  (Issue #787 Punkt 1). Die Regex-Regeln (`blockiert`/`hohe Freigabe`/
+  `mittlere Freigabe`/`erlaubt`) griffen bisher nur fuer die Custom-LLM-
+  Laufzeit (`executor.py::_tool_bash`) — der PreToolUse-Hook aus #197 Teil 2
+  kannte nur die groebere Werkzeug-Kategorie ("Shell erlaubt?"), nie den
+  Befehlsinhalt selbst. Ein per Regel gesperrter Befehl lief also durch,
+  sobald die Kategorie `shell_exec` freigegeben war. Jetzt prueft der Hook
+  denselben Regelsatz zusaetzlich, bevor er ein natives `Bash` durchlaesst.
+  Achtung: Claude Code ist bei einem Hook-Timeout dokumentiert fail-open —
+  das Zeit-Limit des Hooks wurde deshalb von 5s auf 12s angehoben, damit ein
+  kalter Regel-Cache die Pruefung nicht regelmaessig verpasst.
+
+### Geaendert
+- **Autonomie-Matrix und Sudo-Pakete liegen jetzt in einer eigenen Spalte**
+  (`agents.access_policy`) statt als Schluessel im Allzweck-`config`-Blob —
+  Vorarbeit fuer die Vereinheitlichung der vier ueberlappenden Autonomie-/
+  Berechtigungs-Oberflaechen (Issue #787). Reine Datenverschiebung, kein
+  Verhaltenswechsel; bestehende Endpunkte bleiben funktionsfaehig.
+- **Neuer gebuendelter Endpunkt** `GET/PUT /agents/{id}/access-policy`:
+  liefert Autonomie-Matrix, abgeleitete Sudo-Pakete, den neuen dauerhaften
+  Computer-Use-Default und die anwendbaren Command Policies in einem Aufruf.
+- **Computer-Use-Sessions bekommen erstmals einen dauerhaften Pro-Agent-
+  Default.** Vorher startete jede Session immer mit demselben Plattform-
+  Default, unabhaengig davon, ob der zugewiesene Agent laut Autonomie-Matrix
+  ueberhaupt Shell-/System-Aktionen ausfuehren darf. Eine Session darf jetzt
+  nie mehr Faehigkeiten haben als der zugewiesene Agent erlaubt — sowohl bei
+  der Zuweisung als auch bei jeder spaeteren Anfrage.
+
 ## [1.322.41] - 2026-09-17
 
 ### Behoben
