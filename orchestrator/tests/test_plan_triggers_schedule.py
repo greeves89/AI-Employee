@@ -102,10 +102,26 @@ class StatusFeedbackTests(unittest.TestCase):
     """
 
     def test_firing_marks_the_block_as_running(self):
-        self.assertIn('schedule.name.startswith("[Plan] ")', SCHED)
-        block = SCHED.split('schedule.name.startswith("[Plan] ")', 1)[1][:500]
+        # Zwei Stellen pruefen inzwischen "[Plan] " (die andere ist die
+        # #748-Abwehr GEGEN ein bereits erledigtes Feuern, siehe unten) — der
+        # eindeutige Anker ist der Kommentar direkt vor der Stelle, die NACH
+        # dem erfolgreichen Dispatch running setzt.
+        marker = "Plan-Block: der Kalender soll zeigen"
+        self.assertIn(marker, SCHED)
+        block = SCHED.split(marker, 1)[1].split("\n\n", 1)[0]
         self.assertIn('block.status = "running"', block)
         self.assertIn("block.task_id = task.id", block)
+
+    def test_a_done_block_is_never_fired_again(self):
+        """#748: ein vor der Startzeit abgehakter Block darf keine neue
+        Aufgabe mehr dispatchen, selbst wenn sein Zeitplan noch aktiviert
+        waere."""
+        marker = "Defensiv gegen einen Plan-Block, der abgehakt wurde"
+        self.assertIn(marker, SCHED)
+        block = SCHED.split(marker, 1)[1].split("\n\n", 1)[0]
+        self.assertIn('block.status == "done"', block)
+        self.assertIn("schedule.enabled = False", block)
+        self.assertIn("return", block)
 
     def test_finished_tasks_settle_the_block(self):
         block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]

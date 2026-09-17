@@ -26,7 +26,7 @@
   "orchestrator/tests/test_model_router_and_trend.py": 3,
   "orchestrator/tests/test_onboarding.py": 1,
   "orchestrator/tests/test_orchestrator_replies_reach_the_screen.py": 1,
-  "orchestrator/tests/test_plan_triggers_schedule.py": 2,
+  "orchestrator/tests/test_plan_triggers_schedule.py": 1,
   "orchestrator/tests/test_questions_reach_a_human.py": 2,
   "orchestrator/tests/test_resume_does_not_duplicate.py": 6,
   "orchestrator/tests/test_run_outcome_green_but_empty.py": 4,
