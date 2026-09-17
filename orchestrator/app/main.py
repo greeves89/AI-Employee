@@ -2351,7 +2351,7 @@ clean Markdown; you don't need to commit.
     from app.services.disk_monitor import DiskMonitorService
     from app.db.session import async_session_factory as _sf_disk
 
-    disk_monitor = DiskMonitorService(_sf_disk, app.state.docker)
+    disk_monitor = DiskMonitorService(_sf_disk, app.state.docker, redis=app.state.redis)
     disk_monitor_task = asyncio.create_task(disk_monitor.run())
     app.state.disk_monitor = disk_monitor
 

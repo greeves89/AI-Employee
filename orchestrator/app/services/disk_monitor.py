@@ -7,9 +7,9 @@ and stops the agent if usage exceeds 95 % of the quota.
 
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.agent import Agent, AgentState
@@ -19,12 +19,17 @@ logger = logging.getLogger(__name__)
 _CHECK_INTERVAL = 300  # 5 minutes
 _WARN_THRESHOLD = 80.0
 _STOP_THRESHOLD = 95.0
+# Gleiche Aufbewahrungsfrist wie der normale Abschlusspfad
+# (task_router.TASK_EVICT_GRACE_SECONDS) — hier nicht importiert, um den
+# Monitor nicht an den Router zu koppeln.
+_TASK_EVICT_GRACE = timedelta(days=7)
 
 
 class DiskMonitorService:
-    def __init__(self, session_factory, docker_service) -> None:
+    def __init__(self, session_factory, docker_service, redis=None) -> None:
         self._sf = session_factory
         self.docker = docker_service
+        self._redis = redis
         self._running = True
 
     async def run(self) -> None:
@@ -118,7 +123,83 @@ class DiskMonitorService:
         try:
             # Write a final warning before stopping so the user sees why
             self._write_warning(agent.container_id, stats)
+            # Vor dem Stopp: laufende Aufgaben explizit als fehlgeschlagen
+            # verbuchen und den Betreiber alarmieren (#714). Der Container wird
+            # gleich unter ihnen weggezogen; ohne das hier verbucht der
+            # normale Abschlusspfad das dann noch Verfuegbare (leer/mitten im
+            # Satz abgeschnitten) als "completed" — ein toter Agent meldet
+            # damit erledigte Arbeit, die nie fertig wurde.
+            await self._fail_running_tasks_and_alert(agent, stats)
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self.docker.stop_container, agent.container_id)
         except Exception as exc:
             logger.error("Failed to stop disk-full agent %s: %s", agent.id, exc)
+
+    async def _fail_running_tasks_and_alert(self, agent: Agent, stats: dict) -> None:
+        """Verbucht laufende Aufgaben als fehlgeschlagen und alarmiert den Betreiber.
+
+        Ohne dies faellt ein Disk-Quota-Stopp nur ins Fehlerlog — der Agent
+        ist danach dauerhaft tot (Aufraeumen braucht einen laufenden
+        Container, genau den verhindert der Zustand), aber ``completed``
+        Aufgaben sehen von aussen wie erledigte Arbeit aus. Tagelang
+        unbemerkt geblieben (Issue #714).
+        """
+        from app.db.session import resilient_session
+        from app.models.notification import Notification
+        from app.models.task import Task, TaskStatus
+
+        grund = (
+            f"Container wegen Speicherquote gestoppt "
+            f"({stats['disk_usage_mb']:.0f}/{stats['disk_limit_mb']:.0f} MB, "
+            f">= {_STOP_THRESHOLD:.0f}%)."
+        )
+        anzahl = 0
+        async with resilient_session(session_factory=self._sf) as db:
+            result = await db.execute(
+                select(Task).where(Task.agent_id == agent.id, Task.status == TaskStatus.RUNNING)
+            )
+            for task in result.scalars().all():
+                task.status = TaskStatus.FAILED
+                task.error = grund
+                task.completed_at = datetime.now(timezone.utc)
+                task.notified = True
+                task.evict_after = datetime.now(timezone.utc) + _TASK_EVICT_GRACE
+                anzahl += 1
+
+            titel = f"{agent.name}: Speicherquote erreicht, Agent angehalten"
+            nachricht = grund
+            if anzahl:
+                nachricht += f" {anzahl} laufende Aufgabe(n) als fehlgeschlagen verbucht."
+            nachricht += (
+                " Der Agent kann sich nicht selbst befreien (Aufraeumen braucht "
+                "einen laufenden Container) — Speicherplatz manuell freigeben, "
+                "dann den Agenten neu starten."
+            )
+            notif = Notification(
+                agent_id=agent.id,
+                type="error",
+                title=titel,
+                message=nachricht[:240],
+                priority="high",
+                action_url=f"/agents/{agent.id}",
+                meta={"type": "disk_quota_stop", "agent_id": agent.id, "tasks_failed": anzahl},
+            )
+            db.add(notif)
+            await db.commit()
+
+        if anzahl:
+            logger.warning(
+                "Agent %s: %d laufende Aufgabe(n) wegen Disk-Quota-Stopp als fehlgeschlagen verbucht",
+                agent.id, anzahl,
+            )
+
+        # DB-Notification allein erreicht den Betreiber nicht zuverlaessig —
+        # priority="high" wird nur ueber POST /notifications/ zu einem
+        # Telegram-Push, ein direktes db.add() geht daran vorbei (#610). Der
+        # dortige Helfer publiziert unabhaengig vom Web-UI.
+        if self._redis and getattr(self._redis, "client", None):
+            try:
+                from app.services.duty_service import _publish_telegram
+                await _publish_telegram(self._redis, titel, nachricht)
+            except Exception:
+                logger.debug("Disk-Quota-Telegram-Alarm nicht zugestellt", exc_info=True)

@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.20] - 2026-09-17
+
+### Behoben
+- **Ein Disk-Quota-Stopp liess laufende Aufgaben als `completed` zurueck,
+  obwohl der Agent danach dauerhaft tot war** (Issue #714). Ein Agent steckte
+  seit 04.09.2026 fest — der Behaelter wird bei ≥95% Quota gestoppt, aber
+  Aufraeumen braucht genau den laufenden Behaelter, den der Zustand
+  verhindert: eine Verklemmung ohne Weg zurueck. Die davon unterbrochenen
+  Aufgaben liefen dabei bis zur Sekunde des Stopps und wurden trotzdem als
+  erledigt verbucht — mit leerem oder mitten im Satz abgeschnittenem
+  Ergebnis. Delegierte Arbeit galt so als erledigt, ohne dass ein Artefakt
+  existierte, und der Stopp selbst stand nur im Fehlerlog.
+  Vor dem eigentlichen Stopp werden laufende Aufgaben jetzt explizit auf
+  `failed` gesetzt (Grund: Speicherquote), und der Betreiber wird per
+  hochprioritaerer Notification + Telegram alarmiert (eine reine
+  DB-Notification erreicht ihn sonst nicht zuverlaessig, siehe #610).
+  Die eigentliche Verklemmung (kein Weg zurueck ohne manuelles Aufraeumen)
+  ist davon unberuehrt und bleibt offen.
+
 ## [1.322.19] - 2026-09-17
 
 ### Behoben
