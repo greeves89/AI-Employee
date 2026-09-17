@@ -43,7 +43,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("visible_agent_ids", self.src)
 
     def test_status_values_are_validated(self):
-        self.assertIn('VALID_STATUS = ("planned", "running", "done", "dropped")', self.src)
+        self.assertIn('VALID_STATUS = ("planned", "running", "done", "failed", "dropped")', self.src)
         self.assertIn("Unbekannter Status", self.src)
 
     def test_plan_size_is_capped(self):

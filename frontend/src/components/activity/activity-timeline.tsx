@@ -17,6 +17,7 @@ import { CalendarClock, Repeat, RotateCw, X } from "lucide-react";
 function statusLabel(status: string): string {
   if (status === "running") return "läuft";
   if (status === "done") return "erledigt";
+  if (status === "failed") return "fehlgeschlagen";
   if (status === "dropped") return "gestrichen";
   return "geplant";
 }
@@ -644,6 +645,7 @@ function DayAgenda({
               MIN_BLOCK_PX
             );
             const dropped = item.status === "dropped";
+            const failed = item.status === "failed";
             return (
               <div
                 key={`plan-${item.id}`}
@@ -660,12 +662,13 @@ function DayAgenda({
                 }
                 className={cn(
                   "group absolute left-0 cursor-pointer overflow-hidden rounded-md border px-2 py-1 hover:opacity-80",
-                  item.status === "done" ? "border-solid" : "border-dashed",
+                  item.status === "done" || failed ? "border-solid" : "border-dashed",
                   item.status === "running" && "animate-pulse",
                   dropped
                     ? "border-foreground/15 bg-foreground/[0.02] opacity-50"
                     : "border-sky-400/40 bg-sky-400/[0.07]",
-                  item.status === "done" && "border-emerald-400/40 bg-emerald-400/[0.07]"
+                  item.status === "done" && "border-emerald-400/40 bg-emerald-400/[0.07]",
+                  failed && "border-red-400/40 bg-red-400/[0.07]"
                 )}
                 style={{ top, height, width: `${PLAN_COL_PCT}%` }}
               >

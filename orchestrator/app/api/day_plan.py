@@ -29,7 +29,10 @@ router = APIRouter(tags=["day-plan"])
 # (und die Kalenderansicht) im Rahmen.
 MAX_PLAN_ITEMS = 40
 VALID_SOURCES = ("responsibility", "todo", "self", "user")
-VALID_STATUS = ("planned", "running", "done", "dropped")
+# "failed" ergaenzt (#733): davor kannte der Blockstatus keinen Fehlschlag —
+# eine gescheiterte/abgebrochene Aufgabe wurde genau wie eine erfolgreiche
+# als "done" verbucht, die Planung sah keinen Unterschied.
+VALID_STATUS = ("planned", "running", "done", "failed", "dropped")
 
 
 # Reihenfolge bei gleicher (oder fehlender) Uhrzeit: hoch vor normal vor niedrig.
@@ -195,14 +198,14 @@ async def patch_plan_item(
     # stuende im Kalender ein Titel, unter dem etwas anderes gelaufen ist. notes
     # ist aber das einzige Feld, in dem das ERGEBNIS stehen kann; ohne Ausnahme
     # gab es dafuer nie ein Zeitfenster (vor dem Start gibt es noch kein Ergebnis,
-    # ab running/done griff dieselbe Sperre).
+    # ab running/done/failed griff dieselbe Sperre).
     inhalt_geaendert = any(
         v is not None for v in (body.planned_start, body.estimated_minutes, body.title)
     )
-    if inhalt_geaendert and row.status in ("running", "done"):
+    if inhalt_geaendert and row.status in ("running", "done", "failed"):
         raise HTTPException(
             status_code=409,
-            detail="Der Block läuft bereits oder ist erledigt — er lässt sich nicht mehr ändern.",
+            detail="Der Block läuft bereits oder ist abgeschlossen — er lässt sich nicht mehr ändern.",
         )
 
     if body.status is not None:
@@ -226,7 +229,7 @@ async def patch_plan_item(
         row.title = title[:200]
     if body.notes is not None:
         neue_notiz = body.notes.strip()[:2000]
-        if row.status in ("running", "done") and row.notes:
+        if row.status in ("running", "done", "failed") and row.notes:
             # Das Ergebnis kommt UNTER die urspruengliche Absicht, nicht an
             # ihre Stelle — sonst geht verloren, wozu der Block beansprucht
             # wurde (#717).

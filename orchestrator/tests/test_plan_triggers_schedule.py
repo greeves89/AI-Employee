@@ -110,8 +110,13 @@ class StatusFeedbackTests(unittest.TestCase):
     def test_finished_tasks_settle_the_block(self):
         block = SCHED.split("async def _arm_plan_blocks", 1)[1].split("async def _stale_task_count", 1)[0]
         self.assertIn('AgentPlanItem.status == "running"', block)
-        self.assertIn('("completed", "failed", "cancelled")', block)
+        self.assertIn('state == "completed"', block)
         self.assertIn('item.status = "done"', block)
+        # #733: failed/cancelled duerfen NICHT als "done" durchgehen — eigener
+        # Endzustand, sonst ist gescheiterte Arbeit von erledigter nicht zu
+        # unterscheiden.
+        self.assertIn('state in ("failed", "cancelled")', block)
+        self.assertIn('item.status = "failed"', block)
 
     def test_calendar_shows_the_real_state(self):
         tl = (Path(__file__).resolve().parents[2]
