@@ -155,6 +155,15 @@ class DiskMonitorService:
         )
         anzahl = 0
         async with resilient_session(session_factory=self._sf) as db:
+            # Markieren, WARUM der Agent steht: die naechste Aufgabenzustellung
+            # weckt ihn ueber AgentManager.start_agent trotzdem (#632) — ohne
+            # dieses Merkzeichen wuerde er sofort wieder mit voller Quote in
+            # eine Aufgabe laufen und mitten im Satz sterben (#714 Punkt 1).
+            db_agent = await db.get(Agent, agent.id)
+            if db_agent is not None:
+                config = dict(db_agent.config or {})
+                config["disk_quota_stopped"] = True
+                db_agent.config = config
             result = await db.execute(
                 select(Task).where(Task.agent_id == agent.id, Task.status == TaskStatus.RUNNING)
             )

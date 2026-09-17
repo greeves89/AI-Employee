@@ -1987,11 +1987,87 @@ class AgentManager:
         except NotFound:
             logger.warning(f"Container {scrub_log(agent.container_id)} not found for agent {scrub_log(agent_id)} — recreating")
             return await self.update_agent(agent_id)
+        if agent.config and agent.config.get("disk_quota_stopped"):
+            # Der Container stand wegen Speicherquote (disk_monitor, #714),
+            # nicht weil ihn jemand bewusst angehalten hat. Ohne Aufraeumung
+            # wuerde er die naechste Aufgabe sofort wieder mitten im Satz
+            # sterben lassen — die Quote hat sich waehrend des Stopps nicht
+            # von selbst geaendert.
+            if not await self._auto_cleanup_after_disk_quota_stop(agent):
+                await self.db.commit()
+                await self._publish_event(
+                    agent_id, "system",
+                    "Agent weiterhin ueber Speicherquote — automatische "
+                    "Aufraeumung reichte nicht, manuelles Eingreifen noetig",
+                )
+                return agent
         await self.refresh_instructions(agent)
         agent.state = AgentState.RUNNING
         await self.db.commit()
         await self._publish_event(agent_id, "system", "Agent started")
         return agent
+
+    async def _auto_cleanup_after_disk_quota_stop(self, agent: Agent) -> bool:
+        """Vor der ersten neuen Aufgabe nach einem Quota-Stopp aufraeumen (#714).
+
+        Bewusst nur die Pfade, die die eigene Warnung (``disk_monitor._write_warning``)
+        dem Agenten sonst manuell empfiehlt — reiner Cache/Tmp/Log-Abraum, kein
+        Ruecken an Repos oder ungesicherter Arbeit. Reicht das nicht (der
+        Loewenanteil beim urspruenglichen Vorfall waren verwaiste Review-
+        Checkouts, keine Caches), bleibt der Agent angehalten statt eine
+        Aufgabe anzunehmen, die ohnehin sofort wieder verhungert.
+
+        Gibt zurueck, ob die Quote danach wieder unter der Stopp-Schwelle liegt.
+        """
+        from app.services.disk_monitor import _STOP_THRESHOLD
+
+        config = dict(agent.config or {})
+        config.pop("disk_quota_stopped", None)
+        agent.config = config
+        try:
+            self.docker.exec_in_container(
+                agent.container_id,
+                ["sh", "-c",
+                 "rm -rf /workspace/data/cache /workspace/tmp; "
+                 "find /workspace -maxdepth 4 -name '*.log' -delete"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Automatische Aufraeumung fuer Agent %s fehlgeschlagen: %s",
+                scrub_log(agent.id), scrub_log(exc),
+            )
+            return False
+
+        limit_gb = (
+            float(agent.config.get("workspace_size_gb") or settings.agent_workspace_size_gb)
+            if agent.config else settings.agent_workspace_size_gb
+        )
+        try:
+            stats = self.docker.get_workspace_disk_usage(agent.container_id, limit_gb)
+        except Exception:  # noqa: BLE001
+            stats = None
+
+        if stats and stats["disk_percent"] >= _STOP_THRESHOLD:
+            logger.warning(
+                "Agent %s: automatische Aufraeumung reichte nicht (%.1f%%) — "
+                "Container wird sofort wieder angehalten statt eine Aufgabe anzunehmen",
+                scrub_log(agent.id), stats["disk_percent"],
+            )
+            try:
+                self.docker.stop_container(agent.container_id)
+            except Exception:  # noqa: BLE001
+                pass
+            agent.state = AgentState.STOPPED
+            config = dict(agent.config or {})
+            config["disk_quota_stopped"] = True
+            agent.config = config
+            return False
+
+        logger.info(
+            "Agent %s: automatische Aufraeumung nach Disk-Quota-Stopp erfolgreich (#714)",
+            scrub_log(agent.id),
+        )
+        return True
 
     async def migrate_knowledge_file(self, container_id: str, agent_id: str) -> bool:
         """Den entfallenen Onboarding-Abschnitt aus der Wissensdatei nehmen.
