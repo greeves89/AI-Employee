@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.25] - 2026-09-17
+
+### Behoben
+- **Intervall-Zeitplaene drifteten unbegrenzt und hungerten Cron-Zeitplaene
+  aus** (Issue #718, Wiederkehr von #631). `_calc_next_run` verankerte den
+  naechsten Lauf an `now` (dem tatsaechlichen Dispatch-Zeitpunkt) statt am
+  urspruenglichen Soll-Slot — jede Tick-Latenz, jede Retry-Wartezeit, jede
+  Sperre trug die Phase dauerhaft weiter (nur nach vorn, nie zurueck). Belegt
+  ueber sechs Tage: ein 2h-Intervall-Zeitplan wanderte von :55 auf :58 vor
+  jeder vollen Stunde — nah genug, dass er zu JEDEM `0 * * * *`-Cron-Tick
+  aktiv war und den Agenten belegte; betroffene Cron-Zeitplaene (u. a. der
+  taegliche 23:00-Bericht) fielen zwei Tage in Folge ersatzlos aus, mit
+  `fail_count = 0`, weil `next_run_at` nur verschoben, nie als Fehlschlag
+  gezaehlt wurde.
+  Der naechste Lauf wird jetzt in ganzen Schritten vom URSPRUENGLICHEN Anker
+  aus berechnet (dieselbe Ganzzahl-Arithmetik wie `schedule_occurrences`) —
+  die Phase eines Intervall-Zeitplans bleibt damit fest, egal wie lange ein
+  einzelner Lauf braucht.
+  Nebenbefund behoben: `MissedScheduleWatchdog`-Fehler wurden mit leerem Text
+  geloggt (`str()` von `TimeoutError()`/`CancelledError()` ist leer) — jetzt
+  `repr(e)`.
+  Offen aus dem Issue: Punkt 2 (Phase neuer Intervall-Zeitplaene bewusst
+  zwischen die ueblichen Cron-Zeiten legen, z. B. :20 statt :55) und Punkt 3
+  (ein aus dem Cron-Raster geschobenes `next_run_at` genauso sichtbar machen
+  wie ein verworfener Slot) sind eigene, groessere Bauten und bleiben offen.
+
 ## [1.322.24] - 2026-09-17
 
 ### Behoben

@@ -151,7 +151,11 @@ class SchedulerService:
                 try:
                     await self._tick_missed_schedule_watchdog()
                 except Exception as e:
-                    logger.warning("[Scheduler] MissedScheduleWatchdog error: %s", e)
+                    # repr(e) statt %s (#718 Nebenbefund): bei Timeouts/
+                    # CancelledError ist str(e) oft leer, die Meldung sagte
+                    # dann nichts -- der haeufigste Waechter-Fehler der
+                    # Plattform war so nicht diagnostizierbar.
+                    logger.warning("[Scheduler] MissedScheduleWatchdog error: %r", e)
                 try:
                     await self._tick_sentinel_liveness()
                 except Exception as e:
@@ -2098,7 +2102,8 @@ def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
     If cron_expression is set and croniter is available, the expression is
     evaluated in the schedule's IANA timezone so "0 6 * * *" fires at 06:00
     wall-clock time year-round (DST-aware), then converted back to UTC.
-    Otherwise fall back to interval_seconds.
+    Otherwise fall back to interval_seconds, anchored to the schedule's own
+    phase (see below) rather than to `now`.
     """
     if schedule.cron_expression and _CRONITER_AVAILABLE:
         try:
@@ -2116,7 +2121,29 @@ def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
                 "[Scheduler] Invalid cron expression '%s': %s — falling back to interval",
                 scrub_log(schedule.cron_expression), scrub_log(e),
             )
-    return now + timedelta(seconds=max(schedule.interval_seconds, 60))
+    step_s = max(schedule.interval_seconds, 60)
+    # getattr, nicht schedule.next_run_at direkt: beim Neuanlegen (siehe
+    # app/api/schedules.py::create_schedule) ist `schedule` noch das
+    # Pydantic-Eingabemodell (ScheduleCreate), das dieses Feld gar nicht
+    # kennt — nur die bereits bestehende ORM-Instanz hat einen Anker.
+    anchor = getattr(schedule, "next_run_at", None)
+    if anchor is None:
+        return now + timedelta(seconds=step_s)
+    if anchor.tzinfo is None:  # SQLite drops tzinfo on round-trip; Postgres never does
+        anchor = anchor.replace(tzinfo=timezone.utc)
+    # Ganzzahlige Schritte vom URSPRUENGLICHEN Soll-Slot aus statt von `now`
+    # (#718): der Aufrufer haelt `schedule.next_run_at` zu diesem Zeitpunkt
+    # noch auf dem Slot, der gerade gefeuert hat (wird erst NACH diesem
+    # Aufruf ueberschrieben) -- das ist der Anker. Mit `now + interval` traegt
+    # die Phase jede Dispatch-Verzoegerung, jede Retry-Wartezeit und jede
+    # Sperre dauerhaft weiter (kann nur nach vorn wandern, nie zurueck); ueber
+    # Tage wanderte ein 2h-Intervall so bis auf ~100s vor jede volle Stunde
+    # und hungerte dort JEDEN Cron-Zeitplan aus (busy bei jedem Tick).
+    # Dieselbe Ganzzahl-Arithmetik wie schedule_occurrences() weiter unten,
+    # nur fuer "den naechsten Slot nach now" statt "alle Slots in einem
+    # Fenster".
+    steps = math.floor((now - anchor).total_seconds() / step_s) + 1
+    return anchor + timedelta(seconds=steps * step_s)
 
 
 # Generous cap on enumerated fire times per schedule per call — protects against
