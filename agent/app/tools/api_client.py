@@ -383,6 +383,14 @@ class OrchestratorAPIClient:
         result = await self._request("POST", f"/agents/{target_id}/message", json=body)
         if isinstance(result, str):
             return result
+        # #774: siehe send_message_and_wait — "sent" an einen Agenten, der
+        # nicht laeuft, waere eine Luege; der Mensch soll es erfahren.
+        if isinstance(result, dict) and result.get("target_running") is False:
+            return (
+                f"Message queued for agent {target_id}, but the agent could not be started "
+                f"and is NOT running. It will only read the message on its next start — "
+                f"do not expect a reply now; tell the human."
+            )
         return f"Message sent to agent {target_id}"
 
     # ── Einrichtung (onboarding.py) ──
@@ -1291,6 +1299,14 @@ class OrchestratorAPIClient:
             "message_type": params.get("message_type", "question"),
         }
         send_result = await self._request("POST", f"/agents/{target_id}/message", json=body)
+        # #774: Empfaenger konnte nicht geweckt werden — nicht 45 s auf eine
+        # Antwort warten, die nicht kommen kann, sondern es ehrlich sagen.
+        if isinstance(send_result, dict) and send_result.get("target_running") is False:
+            return (
+                f"Message queued for agent {target_id}, but the agent could not be started "
+                f"and is NOT running. It will only read the message on its next start — "
+                f"no reply is coming now; tell the human. message_id: {send_result.get('message_id')}"
+            )
         if isinstance(send_result, dict) and send_result.get("will_reply_later"):
             current_task = send_result.get("target_current_task")
             task_note = f" (current task: {current_task})" if current_task else ""

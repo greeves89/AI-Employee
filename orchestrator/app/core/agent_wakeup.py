@@ -52,8 +52,24 @@ async def ensure_agent_running(agent_id: str, docker, redis) -> bool:
                 "[Aufwecken] Agent %s schlaeft — wird fuer die Zustellung gestartet",
                 agent_id,
             )
-            await AgentManager(db, docker, redis).start_agent(agent_id)
-            return True
+            started = await AgentManager(db, docker, redis).start_agent(agent_id)
+            # #774: nicht "gestartet" zurueckmelden, sondern NACHMESSEN. Ein
+            # Container kann nach dem Start sofort wieder stehen (Quota-Stopp
+            # des disk_monitor, #714) oder gar nicht hochkommen — dann laege
+            # die Zustellung wieder in einer Warteschlange, die niemand liest,
+            # und der Aufrufer haette "laeuft" geglaubt.
+            container_id = getattr(started, "container_id", None) or agent.container_id
+            running_now = (
+                bool(container_id)
+                and docker.get_container_status(container_id) == "running"
+            )
+            if not running_now:
+                logger.warning(
+                    "[Aufwecken] Agent %s laeuft nach dem Weckversuch nicht "
+                    "(Container %s) — Zustellung bleibt bis zum naechsten Start liegen",
+                    agent_id, container_id or "-",
+                )
+            return running_now
     except Exception:  # noqa: BLE001
         # Ein misslungenes Aufwecken darf die Zustellung nicht abbrechen: die
         # Nachricht bleibt in der Warteschlange und wird beim naechsten Start

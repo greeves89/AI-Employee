@@ -1057,7 +1057,7 @@ def _clean_meeting_response(text: str | None) -> str | None:
     return "\n".join(out).strip()
 
 
-async def _ensure_agent_running(agent_id: str, docker, redis) -> None:
+async def _ensure_agent_running(agent_id: str, docker, redis) -> bool:
     """Wake an idle-exited participant so it can take its meeting turn.
 
     Meeting turns are pushed straight to the agent's redis queue, which is ONLY consumed
@@ -1066,10 +1066,21 @@ async def _ensure_agent_running(agent_id: str, docker, redis) -> None:
     '[Agent hat nicht geantwortet]'.
 
     Same problem, same cure as for inter-agent messages — so it lives in one place
-    now: :func:`app.core.agent_wakeup.ensure_agent_running`."""
+    now: :func:`app.core.agent_wakeup.ensure_agent_running`.
+
+    Gibt zurueck, ob der Agent am Ende laeuft (#774). Die Aufrufer stellen
+    trotzdem zu — die Warteschlange ueberlebt bis zum naechsten Start —,
+    aber sie schweigen nicht mehr darueber, dass niemand zuhoert."""
     from app.core.agent_wakeup import ensure_agent_running
 
-    await ensure_agent_running(agent_id, docker, redis)
+    running = await ensure_agent_running(agent_id, docker, redis)
+    if not running:
+        logger.warning(
+            "[Meeting] Agent %s laeuft nach dem Weckversuch nicht — "
+            "sein Beitrag bleibt in der Warteschlange liegen",
+            scrub_log(agent_id),
+        )
+    return running
 
 
 async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, docker=None) -> None:
@@ -1277,7 +1288,7 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
 
                 # Wake the agent if it idle-exited since its last turn, otherwise the
                 # message sits in a queue nobody consumes → "hat nicht geantwortet".
-                await _ensure_agent_running(current_agent_id, docker, redis)
+                woke_up = await _ensure_agent_running(current_agent_id, docker, redis)
 
                 # Send to agent queue
                 await redis.client.rpush(
@@ -1299,7 +1310,15 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
 
                 response = _clean_meeting_response(response)
                 if not response:
-                    response = f"[{agent_name_map.get(current_agent_id, current_agent_id)} hat nicht geantwortet]"
+                    # #774: "hat nicht geantwortet" und "konnte nicht geweckt
+                    # werden" sind zwei verschiedene Befunde — der zweite ist
+                    # ein Infrastrukturproblem, kein schweigsamer Agent.
+                    _name = agent_name_map.get(current_agent_id, current_agent_id)
+                    response = (
+                        f"[{_name} hat nicht geantwortet]"
+                        if woke_up
+                        else f"[{_name} hat nicht geantwortet — Agent konnte nicht gestartet werden]"
+                    )
 
                 new_msg = {
                     "role": "agent",

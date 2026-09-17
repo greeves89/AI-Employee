@@ -1314,6 +1314,22 @@ export function buildServer() {
         });
         const typeLabel = args.message_type ? ` [${args.message_type}]` : "";
         const replyLabel = args.reply_to ? ` (reply to: ${args.reply_to})` : "";
+        // #774: target_running === false heisst, der Empfaenger konnte nicht
+        // geweckt werden. Die Nachricht liegt in seiner Warteschlange, gelesen
+        // wird sie erst beim naechsten Start — "sent" waere hier eine Luege.
+        if (sendResult.target_running === false) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `Message QUEUED for agent ${args.agent_id}${typeLabel}${replyLabel}, but the agent ` +
+                  `could not be started and is NOT running. It will only read the message on its next ` +
+                  `start — do not expect a reply now; tell the human. message_id: ${sendResult.message_id}`,
+              },
+            ],
+          };
+        }
         return {
           content: [
             {
@@ -1341,6 +1357,20 @@ export function buildServer() {
             message_type: args.message_type || "question",
           }),
         });
+
+        // #774: ein Empfaenger, der nicht laeuft, antwortet nicht — 45 s Polling
+        // waeren reine Wartezeit, und "busy" waere die falsche Erklaerung.
+        if (sendResult.target_running === false) {
+          return {
+            content: [{
+              type: "text",
+              text:
+                `Message queued for agent ${args.agent_id}, but the agent could not be started ` +
+                `and is NOT running. It will only read the message on its next start — ` +
+                `no reply is coming now; tell the human. message_id: ${sendResult.message_id}`,
+            }],
+          };
+        }
 
         if (sendResult.will_reply_later) {
           const task = sendResult.target_current_task
