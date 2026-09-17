@@ -6,6 +6,7 @@ the orchestrator into /shared/.codex/auth.json.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import time
 import logging
@@ -146,6 +147,41 @@ def _extract_tool_result(event: dict) -> tuple[str, str] | None:
     return None
 
 
+def _codex_auth_problem() -> str | None:
+    """Diagnostic message if auth.json is missing/unreadable/malformed/expired.
+
+    ``None`` means it's fine to proceed. Checked BEFORE spawning the CLI
+    (#710): on 06.09.2026, 16/16 runs failed with a bare "Codex CLI exited
+    with code 1" and zero stderr output — the actual cause (auth.json) never
+    reaches the operator, because the CLI can exit before printing anything
+    useful when the credential itself is the problem. Same JWT-expiry logic
+    as ``orchestrator/app/services/codex_auth_service.py::_access_token_exp``
+    (duplicated deliberately: agent and orchestrator are separate containers).
+    """
+    path = codex_auth_sync.auth_path()
+    if not os.path.exists(path):
+        return f"Codex-Anmeldedaten fehlen ({path} nicht vorhanden) — bitte neu anmelden."
+    try:
+        with open(path) as f:
+            parsed = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        return f"Codex-Anmeldedaten nicht lesbar ({path}): {e}"
+
+    tok = (parsed.get("tokens") or {}).get("access_token", "")
+    if not isinstance(tok, str) or tok.count(".") != 2:
+        return "Codex-Anmeldedaten unvollstaendig (kein gueltiger Access-Token in auth.json) — bitte neu anmelden."
+    try:
+        payload = tok.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        exp = json.loads(base64.urlsafe_b64decode(payload)).get("exp")
+    except Exception:  # noqa: BLE001 — malformed token -> treat expiry as unknown
+        exp = None
+    if isinstance(exp, (int, float)) and exp < time.time():
+        seit = int(time.time() - exp)
+        return f"Codex-Anmeldedaten seit {seit}s abgelaufen — bitte neu anmelden (Device-Auth)."
+    return None
+
+
 class CodexAgentRunner:
     """Executes tasks through `codex exec --json`."""
 
@@ -183,6 +219,12 @@ class CodexAgentRunner:
 
     async def _run_codex(self, target_id: str, prompt: str, model: str, stream: str, resume: bool = False) -> dict:
         self._interrupted = False  # set by interrupt() when a steering message cuts this turn short
+
+        auth_problem = _codex_auth_problem()
+        if auth_problem:
+            await _publish(self.log_publisher, stream, target_id, "error", {"message": auth_problem})
+            return {"status": "error", "error": auth_problem}
+
         # Prompt via STDIN ("-") not argv → avoids E2BIG ("Argument list too long")
         # on large prompts (PR diffs etc.), same reason the claude path pipes stdin.
         # resume=True → `codex exec resume --last` continues the just-run session so a
@@ -312,8 +354,19 @@ class CodexAgentRunner:
                 # neither a completion nor any output.
                 benign_stdin = "reading additional input from stdin" in stderr_text.lower()
                 if not (completed_seen or (benign_stdin and final_text.strip())):
-                    error = stderr_text or f"Codex CLI exited with code {returncode}"
-                    result_data = {"status": "error", "error": error}
+                    # Exit-Code als stabiles Praefix statt versteckt im
+                    # Freitext, damit sich danach filtern laesst (#710). Nie
+                    # ein leeres "no output on stderr" ausliefern, ohne den
+                    # Grund dafuer zu nennen — genau das war am 06.09.2026
+                    # 16/16 Mal der Fall (Codex schrieb bei abgelaufenen
+                    # Anmeldedaten nichts auf stderr). result/text bleiben
+                    # erhalten statt hier verworfen zu werden: ein Lauf, der
+                    # etwas ausgegeben hat, bevor er scheiterte, soll das
+                    # Teilergebnis nicht verlieren.
+                    grund = stderr_text or "keine Ausgabe auf stderr"
+                    error = f"[codex_exit={returncode}] {grund}"
+                    result_data["status"] = "error"
+                    result_data["error"] = error
                     await _publish(self.log_publisher, stream, target_id, "error", {"message": error})
         except asyncio.CancelledError:
             await self.interrupt()
