@@ -21,6 +21,7 @@ from telegram.ext import (
 )
 
 from app.config import settings
+from app.core.log_redaction import redact_logs
 
 import re as _re
 
@@ -389,7 +390,7 @@ class TelegramAgentBot:
                     parse_mode="Markdown",
                 )
         except Exception as e:
-            await update.message.reply_text(f"Fehler: {e}")
+            await update.message.reply_text(redact_logs(f"Fehler: {e}"))
 
     # --- Message handling ---
 
@@ -465,7 +466,7 @@ class TelegramAgentBot:
             if woke_up:
                 await update.message.reply_text("✅ Agent hochgefahren!")
         except Exception as e:
-            await update.message.reply_text(f"Fehler beim Senden: {e}")
+            await update.message.reply_text(redact_logs(f"Fehler beim Senden: {e}"))
 
     async def _active_target_agent_id(self, chat_id: int) -> str:
         """Return the agent Telegram replies should currently go to.
@@ -677,7 +678,7 @@ class TelegramAgentBot:
             await self._ensure_agent_running(update, target_agent_id)
             await update.effective_chat.send_action("typing")
         except Exception as e:
-            await update.message.reply_text(f"Fehler beim Senden: {e}")
+            await update.message.reply_text(redact_logs(f"Fehler beim Senden: {e}"))
 
     async def _handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Forward inline keyboard button presses to the agent."""
@@ -739,7 +740,7 @@ class TelegramAgentBot:
                 await query.edit_message_reply_markup(reply_markup=None)
                 await query.message.reply_text(f"✓ Deine Wahl: *{choice}*", parse_mode="Markdown")
             except Exception as e:
-                await query.answer(f"Fehler: {e}")
+                await query.answer(redact_logs(f"Fehler: {e}"))
             return
 
         user = query.from_user
@@ -773,7 +774,7 @@ class TelegramAgentBot:
             # Acknowledge the callback (prevents loading spinner)
             await query.answer()
         except Exception as e:
-            await query.answer(f"Fehler: {e}")
+            await query.answer(redact_logs(f"Fehler: {e}"))
 
     # --- Response listener ---
 
@@ -829,11 +830,11 @@ class TelegramAgentBot:
                 try:
                     await self._deliver_telegram_send(json.loads(message["data"]))
                 except Exception as e:
-                    print(f"[Telegram] send_telegram delivery failed: {e}")
+                    print(redact_logs(f"[Telegram] send_telegram delivery failed: {e}"))
         except asyncio.CancelledError:
             return
         except Exception as e:
-            print(f"[Telegram] telegram:send listener error: {e}")
+            print(redact_logs(f"[Telegram] telegram:send listener error: {e}"))
         finally:
             try:
                 await pubsub.aclose()
@@ -878,7 +879,7 @@ class TelegramAgentBot:
                 elif text:
                     await self._send_chunked(cid_int, text)
             except Exception as e:
-                print(f"[Telegram] send_telegram → chat {cid} failed: {e}")
+                print(redact_logs(f"[Telegram] send_telegram → chat {cid} failed: {e}"))
 
     async def _listen_responses(self, chat_id: int, listen_agent_id: str | None = None) -> None:
         """Listen to agent chat responses and forward to Telegram with streaming.
