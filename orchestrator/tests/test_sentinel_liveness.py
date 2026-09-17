@@ -108,15 +108,10 @@ class TheWatchdogIsWiredTests(unittest.TestCase):
     def test_the_scheduler_checks_it_every_tick(self):
         self.assertIn("await self._tick_sentinel_liveness()", self.SRC)
 
-    def test_it_alerts_only_once(self):
-        """Alle 30 Sekunden dieselbe Meldung waere Laerm, kein Alarm."""
-        block = self.SRC.split("async def _tick_sentinel_liveness", 1)[1][:2400]
-        self.assertIn("if self._sentinel_alerted:", block)
-        self.assertIn("self._sentinel_alerted = False", block)
-
-    def test_the_alert_says_what_it_means_for_the_operator(self):
-        block = self.SRC.split("async def _tick_sentinel_liveness", 1)[1][:2400]
-        self.assertIn("unbeaufsichtigt", block)
+    # „Nur einmal melden", „Merker faellt beim frischen Schlag" und „der Alarm
+    # sagt, was er fuer den Betreiber bedeutet" waren hier Zeichenfenster-Tests
+    # ([:2400] hinter dem Funktionskopf, #726). Sie liegen jetzt als
+    # Verhaltenstests mit Redis-/DB-Doppel in test_sentinel_alert_entwarnung.py.
 
     def test_a_broken_check_does_not_kill_the_scheduler(self):
         self.assertIn("SentinelLiveness error", self.SRC)

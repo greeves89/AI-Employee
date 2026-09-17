@@ -116,6 +116,9 @@ class SchedulerService:
         self._watchdog_alerted: dict[str, int] = {}
         # Einmal melden, wenn der Sentinel verstummt — nicht alle 30 Sekunden.
         self._sentinel_alerted: bool = False
+        # Letztes Lebenszeichen VOR dem Alarm (Unix-Sekunden), damit die
+        # Entwarnung die Luecke beziffern kann (#746 Punkt 3).
+        self._sentinel_stumm_seit: float | None = None
         # Per-schedule missed slot (next_run_at iso) already alerted; prevents
         # re-alerting the same missed window every 30s tick.
         self._missed_alerted: dict[str, str] = {}
@@ -1765,7 +1768,8 @@ class SchedulerService:
         )
 
     async def _tick_sentinel_liveness(self) -> None:
-        """Meldet, wenn der Sentinel verstummt ist (#590 Punkt 6).
+        """Meldet, wenn der Sentinel verstummt ist (#590 Punkt 6) — und entwarnt,
+        wenn er sich wieder meldet (#746 Punkt 3).
 
         Ein Waechter, der unbemerkt stehenbleibt, ist gefaehrlicher als gar
         keiner: die Anlage sieht ueberwacht aus und ist es nicht. Deshalb
@@ -1774,7 +1778,14 @@ class SchedulerService:
         Ein FEHLENDES Lebenszeichen ist kein Alarm — dann ist der Dienst schlicht
         aus, und das ist ein bewusster Zustand. Gemeldet wird nur, wer einmal
         gelebt hat und dann verstummt.
+
+        Der Alarm sagt dazu, ob im selben Zeitraum DNS-/Redis-/DB-Fehler im
+        Protokoll standen: am 15.09.2026 verstummte der Sentinel, weil Redis
+        wegen eines DNS-Aussetzers 13 Minuten unerreichbar war — der Leser
+        bekam ``urgent`` „Agenten laufen unbeaufsichtigt" und nie eine
+        Entwarnung. Beides holt dieser Tick jetzt nach.
         """
+        from app.core.infra_error_window import IGNORIEREN_MARKER, ursachen_hinweis
         from app.models.notification import Notification
         from app.services.sentinel_service import SENTINEL_HEARTBEAT_KEY
 
@@ -1789,12 +1800,24 @@ class SchedulerService:
 
         now = datetime.now(timezone.utc)
         if not is_sentinel_stale(schlag, now):
-            self._sentinel_alerted = False
+            if self._sentinel_alerted and schlag not in (None, ""):
+                # Ein VERSCHWUNDENER Schluessel ist kein frisches Lebenszeichen
+                # (is_sentinel_stale sagt dazu bewusst „nicht stale": Dienst aus).
+                # Entwarnt wird nur, wer wieder schreibt.
+                await self._sentinel_entwarnung(schlag, now)
             return
         if self._sentinel_alerted:
             return          # einmal melden, nicht alle 30 Sekunden
         self._sentinel_alerted = True
-        logger.error("[Scheduler] Sentinel verstummt — letztes Lebenszeichen: %s", schlag)
+        try:
+            self._sentinel_stumm_seit = float(schlag)
+        except (TypeError, ValueError):
+            self._sentinel_stumm_seit = None
+        hinweis = ursachen_hinweis()
+        # Der Hinweis zitiert das Fehlerfenster („1x Redis-…") — diese Zeile darf
+        # sich nicht selbst als Redis-Fehler in dasselbe Fenster zaehlen.
+        logger.error("[Scheduler] Sentinel verstummt — letztes Lebenszeichen: %s. %s",
+                     schlag, hinweis, extra={IGNORIEREN_MARKER: True})
         async with resilient_session() as db:
             db.add(Notification(
                 agent_id="system",
@@ -1804,11 +1827,51 @@ class SchedulerService:
                     "Die Verhaltensueberwachung hat sich seit ueber zwei Minuten "
                     "nicht gemeldet. Sie laeuft also nicht mehr, waehrend die "
                     "Oberflaeche sie als aktiv fuehrt — Agenten laufen derzeit "
-                    "unbeaufsichtigt. Orchestrator-Protokoll pruefen."
+                    "unbeaufsichtigt. Orchestrator-Protokoll pruefen. "
+                    + hinweis
                 ),
                 priority="urgent",
             ))
             await db.commit()
+
+    async def _sentinel_entwarnung(self, schlag: str | float | None, now: datetime) -> None:
+        """Entwarnung nach einem Sentinel-Alarm: Lebenszeichen ist wieder frisch.
+
+        Die Luecke wird vom letzten ALTEN Lebenszeichen bis zum ersten NEUEN
+        gerechnet — das ist die Zeit, in der wirklich niemand hingesehen hat.
+        Der Alarm ging per ``urgent`` nach Telegram; die Entwarnung geht per
+        ``high`` denselben Weg, sonst bleibt der Alarm dort fuer immer stehen.
+
+        Der Merker faellt erst NACH dem gelungenen Schreiben: scheitert die
+        DB (sie war im DNS-Fenster selbst wacklig), versucht es der naechste
+        Tick erneut, statt die Entwarnung still zu verlieren.
+        """
+        from app.models.notification import Notification
+
+        luecke = "Dauer unbekannt"
+        if self._sentinel_stumm_seit is not None:
+            try:
+                neu = float(schlag)
+            except (TypeError, ValueError):
+                neu = now.timestamp()
+            minuten = max(0, round((neu - self._sentinel_stumm_seit) / 60))
+            luecke = f"Luecke {minuten} Minuten"
+        logger.warning("[Scheduler] Sentinel meldet sich wieder — %s", luecke)
+        async with resilient_session() as db:
+            db.add(Notification(
+                agent_id="system",
+                type="success",
+                title="Sentinel meldet sich wieder",
+                message=(
+                    "Die Verhaltensueberwachung schreibt wieder Lebenszeichen "
+                    f"({luecke}). Der vorherige Alarm ist damit aufgehoben; "
+                    "Agenten laufen wieder beaufsichtigt."
+                ),
+                priority="high",
+            ))
+            await db.commit()
+        self._sentinel_alerted = False
+        self._sentinel_stumm_seit = None
 
     async def _alert_due_schedules_down(
         self, streak: int, first_fail_at: datetime | None = None,

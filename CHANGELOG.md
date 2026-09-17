@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.32] - 2026-09-17
+
+### Behoben
+- **Der Sentinel-Alarm sagt jetzt, was gleichzeitig im Protokoll stand — und
+  entwarnt sich wieder** (Issue #746, Punkt 3). Bisher kam bei einem kurzen
+  DNS-Aussetzer ein dringender Alarm "Sentinel antwortet nicht mehr", ohne
+  Hinweis, dass im selben Zeitraum DNS-/Redis-/DB-Fehler protokolliert wurden,
+  und ohne jede Nachricht, wenn das Lebenszeichen Minuten spaeter wieder frisch
+  war. Der Betreiber musste selbst nachforschen, ob die Ueberwachung ausgefallen
+  oder nur die Infrastruktur kurz weg war. Jetzt traegt der Alarm den Satz
+  "Im selben Zeitraum protokolliert: Nx DNS-Aussetzer, ..." (oder "KEINE
+  Redis-/DNS-/DB-Fehler"), und sobald der Sentinel wieder antwortet, folgt eine
+  Entwarnung mit der Dauer der Luecke. Die Alarmzeile selbst zaehlt dabei nicht
+  als Infrastrukturfehler (sie zitiert die Klassennamen nur), und ein
+  verschwundener Redis-Schluessel gilt nicht als Genesung.
+- Zwei Tests mit festem Zeichenfenster auf Quelltext durch Verhaltenstests
+  ersetzt (#726); Basislinie entsprechend verkleinert.
+
 ## [1.322.31] - 2026-09-17
 
 ### Behoben

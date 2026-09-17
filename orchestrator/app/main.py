@@ -921,6 +921,11 @@ async def lifespan(app: FastAPI):
     if setup_platform_error_log():
         logger.info("Platform error log active -> /shared/platform-errors.log (secret-redacted)")
 
+    # Kurzzeitgedaechtnis fuer DNS-/Redis-/DB-Fehler, damit Alarme sagen koennen,
+    # ob gleichzeitig die Infrastruktur wackelte (#746 Punkt 3).
+    from app.core.infra_error_window import setup_infra_error_window
+    setup_infra_error_window()
+
     # Einmal beim Start sagen, ob der Host ueberhaupt Speicherlimits durchsetzen
     # kann (#653). Fehlt der Controller, sterben Laeufe unter Last spurlos und
     # melden nur "Connection closed by server" — die Suche danach lief bisher
