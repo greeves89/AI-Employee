@@ -50,6 +50,12 @@ class Agent(Base, TimestampMixin):
         Integer, ForeignKey("ai_accounts.id", ondelete="SET NULL"), nullable=True, index=True
     )
     config: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Buendelt, was frueher als config["autonomy_matrix"]/["permissions"]/
+    # ["permissions_mode"] im Allzweck-config-Blob lag, plus den neuen
+    # dauerhaften Computer-Use-Default -- eigene Spalte statt weiterer
+    # config-Schluessel, damit "die Zugriffsrechte dieses Agenten" ein
+    # eigenstaendiger, auditierbarer Begriff bleibt (Issue #787 Punkt 1).
+    access_policy: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited; monthly cap
     # What to do when the monthly budget is exhausted:
     #   "haiku" = downgrade all tasks to the cheap fallback model

@@ -911,6 +911,15 @@ def instructions_path(mode: str | None) -> str:
 # (Claude-Code-Doku, gegengeprueft vor dieser Aenderung). Ruft dieselbe
 # Auswertung wie der Custom-LLM-Executor auf — nur lokal im selben Container,
 # ueber den ohnehin schon laufenden Gesundheits-Server (agent/app/health.py).
+#
+# Timeout 5 -> 12 (Issue #787 Punkt 1): decide_async() haengt seit dieser
+# Aenderung einen ZWEITEN sequenziellen Netzwerk-Call an (Command-Policy-
+# Abfrage, eigener 10s-Cache) hinter den bestehenden Kategorie-Abruf. Beide
+# Caches kalt (Container-Start, oder der unguenstige Moment kurz nachdem ein
+# 10s-Fenster ablaeuft) ergibt bis zu ~6s — knapp am alten 5s-Limit. Claude
+# Code ist bei einem Hook-Timeout dokumentiert FAIL-OPEN ("A timed-out hook
+# doesn't block the tool call") — ein zu knappes Limit wuerde die gerade
+# geschlossene Luecke bei jedem kalten Cache-Fenster wieder aufreissen.
 _CLAUDE_PRETOOLUSE_SETTINGS_JSON = """{
   "hooks": {
     "PreToolUse": [
@@ -920,7 +929,7 @@ _CLAUDE_PRETOOLUSE_SETTINGS_JSON = """{
           {
             "type": "http",
             "url": "http://localhost:8080/hooks/pretooluse",
-            "timeout": 5
+            "timeout": 12
           }
         ]
       }
@@ -1702,10 +1711,12 @@ class AgentManager:
                 "onboarding_complete": True,
                 "model_provider": self._model_provider_for_mode(mode, effective_llm),
                 "integrations": integrations or [],
-                "permissions": agent_permissions,
-                "permissions_mode": permissions_mode,
                 "agent_version": get_agent_version(),
                 "metrics": {"total": 0, "success": 0, "fail": 0, "success_rate": 0.0},
+            },
+            access_policy={
+                "permissions": agent_permissions,
+                "permissions_mode": permissions_mode,
             },
         )
         self.db.add(agent)
@@ -1896,7 +1907,7 @@ class AgentManager:
 
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(
-            config, agent.autonomy_level or "l3"
+            agent.access_policy, agent.autonomy_level or "l3"
         )
         needs_sudo = len(agent_permissions) > 0
         from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
@@ -2221,7 +2232,7 @@ class AgentManager:
 
         # 3. Create new container with same volumes + any assigned bind mounts
         agent_permissions = autonomy_matrix.effective_permissions(
-            config, agent.autonomy_level or "l3"
+            agent.access_policy, agent.autonomy_level or "l3"
         )
         needs_sudo = len(agent_permissions) > 0
         from app.core.mounts import get_effective_catalog, resolve_agent_mounts, mounts_to_docker_volumes
@@ -2535,9 +2546,9 @@ class AgentManager:
             # What the container will actually get on the next (re)create — not the
             # stale stored list, otherwise the UI shows a grant the box no longer has.
             "permissions": autonomy_matrix.effective_permissions(
-                config, agent.autonomy_level or "l3"
+                agent.access_policy, agent.autonomy_level or "l3"
             ),
-            "permissions_mode": config.get("permissions_mode") or "auto",
+            "permissions_mode": (agent.access_policy or {}).get("permissions_mode") or "auto",
             "update_available": update_available,
             "image_outdated": image_outdated,
             "budget_usd": agent.budget_usd,

@@ -63,7 +63,7 @@ async def test_custom_matrix_yields_nonempty_whitelist(db):
         "git_push": "ask", "purchases": "deny",
     }
     db.add(Agent(id="cust1234", name="A", autonomy_level="custom",
-                 config={"autonomy_matrix": matrix}))
+                 access_policy={"autonomy_matrix": matrix}))
     await db.commit()
 
     rules = await get_active_rules_for_agent(db, "cust1234")
@@ -80,7 +80,7 @@ async def test_custom_all_denied_still_nonempty(db):
               ("file_read", "file_write", "shell_exec", "system_config", "web",
                "email_m365", "external_api", "messaging", "git_push", "purchases")}
     db.add(Agent(id="deny5678", name="B", autonomy_level="custom",
-                 config={"autonomy_matrix": matrix}))
+                 access_policy={"autonomy_matrix": matrix}))
     await db.commit()
 
     rules = await get_active_rules_for_agent(db, "deny5678")

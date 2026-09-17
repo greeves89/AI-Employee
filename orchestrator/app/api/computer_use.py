@@ -157,6 +157,33 @@ _ACTION_TO_GROUP: dict[str, str] = {
 }
 
 
+def _default_caps_from_policy(access_policy: dict | None) -> set[str]:
+    """Pure helper so callers that already hold a loaded ``Agent`` (e.g.
+    ``assign_agent``'s ownership check) don't need a second DB round-trip."""
+    from app.core import autonomy_matrix as am
+
+    caps = am.computer_use_default_capabilities(access_policy)
+    return set(caps) if caps is not None else set(DEFAULT_ALLOWED_CAPABILITIES)
+
+
+async def _agent_default_capabilities(agent_id: str, db: AsyncSession) -> set[str]:
+    """Der dauerhafte Computer-Use-Default dieses Agenten (Issue #787 Punkt 1).
+
+    Vorher gab es dafuer gar keinen dauerhaften Wert -- jede Session startete
+    immer mit demselben Plattform-Default, egal ob der Agent laut Autonomie-
+    Matrix ueberhaupt Shell-/System-Aktionen ausfuehren darf. Fehlt der Agent
+    oder hat er keinen eigenen Wert gesetzt, gilt weiterhin der Plattform-
+    Default -- unveraendertes Verhalten fuer jeden Agenten ohne diese neue
+    Einstellung.
+    """
+    from app.models.agent import Agent
+
+    agent = await db.get(Agent, agent_id)
+    if not agent:
+        return set(DEFAULT_ALLOWED_CAPABILITIES)
+    return _default_caps_from_policy(agent.access_policy)
+
+
 def _action_allowed(action: str, allowed: set[str]) -> bool:
     """Return True if the action is covered by at least one allowed capability group."""
     group = _ACTION_TO_GROUP.get(action)
@@ -462,13 +489,24 @@ class SessionCreateResponse(BaseModel):
 
 
 @router.post("/sessions", response_model=SessionCreateResponse)
-async def create_session(user=Depends(require_auth), reuse: bool = True):
+async def create_session(
+    user=Depends(require_auth),
+    reuse: bool = True,
+    agent_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
     """Create a bridge session — or hand back the user's existing one.
 
     ``reuse`` (default on) returns the caller's most recent live session instead
     of minting a new id. Without it every visit to the Computer-Use tab produced
     a fresh id and the bridge had to be reconfigured by hand each time; with it
     the bridge keeps working across restarts and page reloads.
+
+    ``agent_id``, when given, seeds the session with the INTERSECTION of the
+    platform default and that agent's durable Computer-Use default (Issue
+    #787 Punkt 1) instead of the bare platform default — a read-only agent
+    never starts a session with mouse/keyboard just because the platform
+    default includes them.
     """
     if reuse:
         existing = await _find_user_session(str(user.id))
@@ -481,8 +519,17 @@ async def create_session(user=Depends(require_auth), reuse: bool = True):
                 "allowed_capabilities": sorted(sess.get("allowed_capabilities") or []),
             }
 
+    if agent_id:
+        from sqlalchemy import select
+        from app.models.agent import Agent
+        owned_agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+        if not owned_agent or str(owned_agent.user_id) != str(user.id):
+            raise HTTPException(status_code=404, detail="Agent not found or not yours")
+
     session_id = uuid.uuid4().hex[:12]
     allowed = set(DEFAULT_ALLOWED_CAPABILITIES)
+    if agent_id:
+        allowed &= _default_caps_from_policy(owned_agent.access_policy)
     _sessions[session_id] = {
         "user_id": str(user.id),
         "created_at": time.time(),
@@ -500,7 +547,7 @@ async def create_session(user=Depends(require_auth), reuse: bool = True):
         "last_disconnected_at": None,
         "bridge_last_seen_at": None,
         "bridge_host": None,
-        "agent_id": None,
+        "agent_id": agent_id,
         # Replay-Modus: while recording, every screen-changing action is
         # captured as a step (action + params + a screenshot taken right
         # after it) — see /recording/start|stop below.
@@ -587,8 +634,15 @@ async def update_capabilities(
     session_id: str,
     req: CapabilityUpdate,
     user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Update which capability groups are allowed for this session."""
+    """Update which capability groups are allowed for this session.
+
+    When an agent is assigned to this session, the requested set may never
+    exceed that agent's durable Computer-Use default (Issue #787 Punkt 1) —
+    makes "Session ⊆ Agenten-Default" an enforced invariant, not just a
+    seeding convenience honored only at session creation.
+    """
     session = await _get_session(session_id)
     if not session or session["user_id"] != str(user.id):
         raise HTTPException(status_code=404, detail="Session not found")
@@ -596,6 +650,19 @@ async def update_capabilities(
     unknown = set(req.allowed_capabilities) - set(CAPABILITY_GROUPS.keys())
     if unknown:
         raise HTTPException(status_code=422, detail=f"Unknown capability groups: {sorted(unknown)}")
+
+    if session.get("agent_id"):
+        agent_default = await _agent_default_capabilities(session["agent_id"], db)
+        over_cap = set(req.allowed_capabilities) - agent_default
+        if over_cap:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Faehigkeiten ausserhalb des Agenten-Defaults: {sorted(over_cap)}. "
+                    "Der zugewiesene Agent erlaubt hoechstens "
+                    f"{sorted(agent_default)}."
+                ),
+            )
 
     session["allowed_capabilities"] = set(req.allowed_capabilities)
     if req.clear_app_scope:
@@ -628,7 +695,14 @@ async def assign_agent(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Assign (or unassign) an agent to this session. Only that agent may then send commands."""
+    """Assign (or unassign) an agent to this session. Only that agent may then send commands.
+
+    Assigning an agent also caps this session's ``allowed_capabilities`` down
+    to that agent's durable Computer-Use default (Issue #787 Punkt 1) — a
+    session created before any agent was attached (today's usual flow) may
+    otherwise carry the bare platform default, wider than what this agent
+    should ever get.
+    """
     session = await _get_session(session_id)
     if not session or session["user_id"] != str(user.id):
         raise HTTPException(status_code=404, detail="Session not found")
@@ -639,9 +713,12 @@ async def assign_agent(
         agent = await db.scalar(select(Agent).where(Agent.id == req.agent_id))
         if not agent or str(agent.user_id) != str(user.id):
             raise HTTPException(status_code=404, detail="Agent not found or not yours")
+        agent_default = _default_caps_from_policy(agent.access_policy)
+        session["allowed_capabilities"] = set(session.get("allowed_capabilities") or []) & agent_default
 
     session["agent_id"] = req.agent_id
     logger.info(f"Session {scrub_log(session_id)}: agent_id set to {scrub_log(req.agent_id)}")
+    await _persist_session(session_id)
     return _session_view(session_id, session)
 
 

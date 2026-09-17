@@ -337,7 +337,7 @@ async def get_active_rules_for_agent(db: AsyncSession, agent_id: str) -> list[Ap
         from app.models.agent import Agent as _Agent
         from app.core import autonomy_matrix as am
         row = (await db.execute(
-            select(_Agent.autonomy_level, _Agent.config).where(_Agent.id == agent_id)
+            select(_Agent.autonomy_level, _Agent.access_policy).where(_Agent.id == agent_id)
         )).first()
         level = ((row[0] if row else None) or "l3").lower()
         cfg = (row[1] if row else None) or {}
@@ -566,7 +566,7 @@ async def get_rules_for_agent(
     from app.core import autonomy_matrix as am
     rules = await get_active_rules_for_agent(db, agent_id)
     agent = (await db.execute(
-        select(Agent.autonomy_level, Agent.config).where(Agent.id == agent_id)
+        select(Agent.autonomy_level, Agent.access_policy).where(Agent.id == agent_id)
     )).first()
     level = ((agent[0] if agent else None) or "l3").lower()
     cfg = (agent[1] if agent else None) or {}
