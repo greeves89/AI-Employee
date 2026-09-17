@@ -11,7 +11,7 @@ aktiv, ueber 205 Raeume) statt einer je Raum.
 """
 import pytest
 
-from app.core.memory_key_schema import KEY_SCHEMA, classify_key
+from app.core.memory_key_schema import KEY_SCHEMA, classify_key, is_run_state_key
 
 #: Der kanonische Satz aus dem Reflexions-Prompt, mit der dort zugesagten Art.
 #: Aendert sich der Prompt, gehoert diese Liste mitgeaendert — dann faellt beim
@@ -46,3 +46,26 @@ def test_prompt_and_table_agree(key, kind):
 def test_unknown_key_still_defaults_to_multi():
     # Der Rueckfall bleibt die nicht-zerstoerende Wahl.
     assert classify_key("voellig_unbekannter_schluessel") == "multi"
+
+
+# --- Issue #716: run-state exemption from the hybrid-mode approval gate ----
+
+@pytest.mark.parametrize("key", ["current_task", "current_task_id", "current_mode"])
+def test_run_state_keys_are_flagged(key):
+    assert is_run_state_key(key)
+    # Ein Laufzustand-Schluessel ist immer auch "single" — die Ausnahme in
+    # save_memory_core greift nur im single-Zweig.
+    assert classify_key(key) == "single"
+
+
+@pytest.mark.parametrize("key", ["current_goal", "assigned_agent_type", "preferred_style"])
+def test_other_single_keys_are_not_run_state(key):
+    # Diese Schluessel sind ebenfalls "single", tragen aber eine echte
+    # Entscheidung — eine Ablosung soll im Hybridmodus weiterhin Freigabe
+    # brauchen, deshalb duerfen sie NICHT in RUN_STATE_KEYS landen.
+    assert classify_key(key) == "single"
+    assert not is_run_state_key(key)
+
+
+def test_unknown_key_is_not_run_state():
+    assert not is_run_state_key("voellig_unbekannter_schluessel")

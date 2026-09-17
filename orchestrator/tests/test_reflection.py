@@ -144,6 +144,31 @@ class SaveMemoryCoreMatrixTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(superseded_id, existing.id)
 
+    async def test_a_run_state_key_supersedes_even_when_blocked(self):
+        # Issue #716: current_task is the agent's own run status, not a fact a
+        # human should vote on — a hybrid-mode agent superseding its own
+        # previous value must not raise MemoryConflict.
+        existing = _existing_memory(key="current_task", content="alt")
+        with patch("app.api.memory.classify_key", return_value="single"):
+            db = _fake_db(single_existing=existing)
+            mem, superseded_id = await save_memory_core(
+                db, _body(key="current_task", content="neu"), allow_supersede=False
+            )
+        self.assertEqual(superseded_id, existing.id)
+
+    async def test_a_non_run_state_single_key_still_conflicts_when_blocked(self):
+        # The exemption must stay narrow: an ordinary single-key preference
+        # change still needs approval in hybrid mode (regression guard for the
+        # #716 fix — see test_single_key_change_conflicts_when_blocked above).
+        existing = _existing_memory(key="preferred_style", content="alt")
+        with patch("app.api.memory.classify_key", return_value="single"):
+            db = _fake_db(single_existing=existing)
+            with self.assertRaises(MemoryConflict) as ctx:
+                await save_memory_core(
+                    db, _body(key="preferred_style", content="neu"), allow_supersede=False
+                )
+        self.assertEqual(ctx.exception.kind, "supersede")
+
     async def test_source_is_persisted_on_new_memory(self):
         with patch("app.api.memory._find_similar_memory",
                    new=AsyncMock(return_value=(None, 0.0))), \
