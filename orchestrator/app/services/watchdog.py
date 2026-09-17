@@ -7,8 +7,15 @@ alerting; this module owns the "is it stale / missed?" decision.
 """
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
+
+try:
+    from croniter import croniter
+    _CRONITER_AVAILABLE = True
+except ImportError:
+    _CRONITER_AVAILABLE = False
 
 from app.models.schedule import Schedule
 from app.models.task import Task, TaskStatus
@@ -109,6 +116,52 @@ def is_schedule_missed(
     return (now - nra) > grace
 
 
+def is_schedule_silently_advanced(
+    schedule: Schedule, now: datetime, grace: timedelta = _MISSED_SCHEDULE_GRACE
+) -> bool:
+    """A cron schedule that skipped a due slot without ever running for it (#720).
+
+    `_retry_or_advance` gives up on a slot it cannot retry (no Redis, no retry
+    budget) by calling `_calc_next_run`, which ALWAYS pushes `next_run_at`
+    into the future — the same call a genuine, healthy run makes. Every other
+    signal (`fail_count`, `success_rate`, `next_run_at` itself, `enabled`)
+    therefore reads "healthy" even though a slot was dropped; `is_schedule_missed`
+    above is blind to it by construction, since it only ever looks for
+    `next_run_at` stuck in the PAST.
+
+    The only tell is `last_run_at` trailing behind what the cron rule says
+    should already have fired: a daily 21:00 report last seen two days ago,
+    while `next_run_at` innocently points at tomorrow 21:00, proves at least
+    one slot fired the cron tick and produced nothing.
+    """
+    if not schedule.enabled or not schedule.cron_expression or not _CRONITER_AVAILABLE:
+        return False
+    try:
+        tz_name = getattr(schedule, "timezone", None) or "UTC"
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = timezone.utc
+        letzter_faelliger_slot = croniter(
+            schedule.cron_expression, now.astimezone(tz)
+        ).get_prev(datetime).astimezone(timezone.utc)
+    except Exception:
+        return False  # eine kaputte Cron-Regel ist Sache von _calc_next_run, nicht hier
+    letzter_lauf = as_utc(schedule.last_run_at)
+    if letzter_lauf is None:
+        # Nie gelaufen: der rein mathematische "letzte faellige Slot laut
+        # Cron-Regel" kann in der Vergangenheit liegen, obwohl der Zeitplan
+        # zu dem Zeitpunkt noch gar nicht EXISTIERTE (die Regel kennt keine
+        # Anlage-Historie). Existiert eine created_at, gilt sie als untere
+        # Schranke — sonst meldete jeder frisch angelegte taegliche Zeitplan
+        # sich faelschlich schon vor seiner allerersten Feuerung als verloren.
+        erstellt = as_utc(getattr(schedule, "created_at", None))
+        if erstellt is not None and erstellt > letzter_faelliger_slot:
+            return False
+        return (now - letzter_faelliger_slot) > grace
+    return letzter_lauf < (letzter_faelliger_slot - grace)
+
+
 def mark_task_stale(
     task: Task, now: datetime, threshold: timedelta = _STALE_TASK_THRESHOLD
 ) -> Task:
@@ -152,3 +205,22 @@ async def find_missed_schedules(
         )
     )
     return [s for s in result.scalars().all() if is_schedule_missed(s, now, grace)]
+
+
+async def find_silently_advanced_schedules(
+    db, now: datetime, grace: timedelta = _MISSED_SCHEDULE_GRACE
+) -> list[Schedule]:
+    """Return enabled cron schedules that skipped a due slot without a run for
+    it (#720) — see is_schedule_silently_advanced for why next_run_at alone
+    (what find_missed_schedules queries on) cannot see this class at all: the
+    give-up path always pushes it into the future, same as a healthy run.
+    Fetches every enabled cron schedule rather than filtering in SQL, since
+    the actual test needs the cron rule evaluated in Python (croniter).
+    """
+    result = await db.execute(
+        select(Schedule).where(
+            Schedule.enabled == True,  # noqa: E712
+            Schedule.cron_expression.isnot(None),
+        )
+    )
+    return [s for s in result.scalars().all() if is_schedule_silently_advanced(s, now, grace)]
