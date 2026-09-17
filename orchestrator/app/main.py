@@ -2255,7 +2255,7 @@ clean Markdown; you don't need to commit.
                 logger.warning(f"[Startup] Job {job.id} ({job.kind}) crashed across restart — no heartbeat")
                 try:
                     from app.services.watchdog import md_escape
-                    await app.state.redis.publish(
+                    await app.state.redis.client.publish(
                         "telegram:notification",
                         json.dumps({
                             "text": (

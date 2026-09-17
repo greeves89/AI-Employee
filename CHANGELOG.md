@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.36] - 2026-09-17
+
+### Behoben
+- **Der "Job nach Neustart abgestuerzt"-Alarm alarmierte niemanden.** Beim
+  Pi-Deploy von v1.322.35 live gefunden: jeder Container-Neustart, der einen
+  Job ohne Heartbeat zurueckliess, versuchte den Betreiber per Telegram zu
+  warnen — und scheiterte dabei jedes Mal mit `AttributeError: 'RedisService'
+  object has no attribute 'publish'`. `RedisService` hat kein eigenes
+  `publish()`, nur `self.client.publish()` (der eigentliche aioredis-Client);
+  die Startup-Alarmierung in `app/main.py`'s Lifespan rief faelschlich
+  `app.state.redis.publish(...)` direkt auf. Der Fehler wurde zwar mit
+  `exc_info=True` geloggt, aber Container-Logs haben eine begrenzte
+  Aufbewahrungsfrist — der eigentliche Alarm erreichte niemanden. Neuer
+  Quelltext-Waechter (`test_redis_service_publish_via_client.py`) haelt
+  diese Fehlerklasse kuenftig fest.
+
 ## [1.322.35] - 2026-09-17
 
 ### Behoben
