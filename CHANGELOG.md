@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.31] - 2026-09-17
+
+### Behoben
+- **Ein wegen Speicherquote gestoppter Agent konnte sich nie wieder selbst
+  befreien** (Issue #714, Punkt 1). Aufraeumen braucht einen laufenden
+  Container, genau den verhinderte der Zustand — die naechste zugestellte
+  Aufgabe weckte den Agenten trotzdem und liess ihn mit unveraendert voller
+  Platte sofort wieder mitten im Satz sterben. Der Agent versucht beim
+  naechsten Wecken jetzt zuerst eine begrenzte, unbedenkliche Aufraeumung
+  (Cache/Tmp/Logs); reicht sie nicht, bleibt er angehalten statt eine
+  Aufgabe anzunehmen, die ohnehin sofort wieder verhungert.
+
 ## [1.322.30] - 2026-09-17
 
 ### Behoben
