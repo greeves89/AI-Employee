@@ -347,6 +347,26 @@ export async function updateAgentPermissions(agentId: string, permissions: strin
   });
 }
 
+// Dauerhafter Computer-Use-Default je Agent (Issue #787 Punkt 1) — jede Session
+// dieses Agenten wird auf diese Fähigkeiten begrenzt, egal was der Plattform-
+// Default sonst erlaubt. Nutzt den neuen gebündelten Endpunkt nur für dieses
+// Feld; Matrix/Sudo-Pakete laufen vorerst weiter über ihre eigenen Endpunkte.
+export async function getComputerUseDefault(agentId: string): Promise<{
+  computer_use_default_capabilities: string[];
+  computer_use_capability_groups: { id: string; actions: string[]; default: boolean }[];
+}> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/access-policy`);
+}
+
+export async function updateComputerUseDefault(agentId: string, capabilities: string[]): Promise<{
+  computer_use_default_capabilities: string[];
+}> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/access-policy`, {
+    method: "PUT",
+    body: JSON.stringify({ computer_use_default_capabilities: capabilities }),
+  });
+}
+
 export async function updateAgentBrowserMode(agentId: string, browserMode: boolean): Promise<{ browser_mode: boolean }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/browser-mode`, {
     method: "PATCH",

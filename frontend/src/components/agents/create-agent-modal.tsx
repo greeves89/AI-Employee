@@ -8,10 +8,7 @@ import {
   Plus,
   Loader2,
   RefreshCw,
-  Package,
   Settings,
-  ShieldOff,
-  Check,
   ArrowLeft,
   Bot,
   Code2,
@@ -48,14 +45,9 @@ import * as api from "@/lib/api";
 import type { AgentMode, AgentTemplate, AIAccount, AIAccountProviderType, LLMConfig, LLMProviderType, PermissionPackage, Settings as AppSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AppearancePicker } from "@/components/agents/appearance-picker";
+import { PermissionPackagesPanel } from "@/components/agents/permission-packages-panel";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { useAuthStore } from "@/lib/auth";
-
-const PERMISSION_ICON_MAP: Record<string, React.ElementType> = {
-  package: Package,
-  settings: Settings,
-  "shield-off": ShieldOff,
-};
 
 const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
   Bot,
@@ -1111,115 +1103,15 @@ export function CreateAgentModal({
                           </div>
 
                           {/* Permission Packages — folgen standardmaessig der Autonomiestufe */}
-                          <div>
-                            <div className="mb-2.5 flex items-center justify-between gap-3">
-                              <label className="block text-xs font-medium text-muted-foreground">
-                                Berechtigungen (Sudo-Pakete)
-                              </label>
-                              <button
-                                type="button"
-                                onClick={() => setPermissionsMode(permissionsMode === "auto" ? "manual" : "auto")}
-                                className="text-[11px] text-primary hover:underline"
-                              >
-                                {permissionsMode === "auto" ? "Selbst festlegen" : "Wieder an Stufe koppeln"}
-                              </button>
-                            </div>
-
-                            {permissionsMode === "auto" && (
-                              <div className="mb-2.5 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
-                                <p className="text-[11px] text-muted-foreground">
-                                  Folgt der Autonomiestufe {autonomyLevel.toUpperCase()}.{" "}
-                                  {(derivedPermissions[autonomyLevel] || []).length === 0
-                                    ? "Der Container bekommt keine sudo-Rechte."
-                                    : `Der Container bekommt: ${(derivedPermissions[autonomyLevel] || [])
-                                        .map((id) => packages.find((p) => p.id === id)?.label || id)
-                                        .join(", ")}.`}
-                                </p>
-                              </div>
-                            )}
-
-                            <div className={cn("space-y-2", permissionsMode === "auto" && "pointer-events-none opacity-40")}>
-                              {packages.map((pkg) => {
-                                const Icon = PERMISSION_ICON_MAP[pkg.icon] || Package;
-                                const isSelected = permissionsMode === "auto"
-                                  ? (derivedPermissions[autonomyLevel] || []).includes(pkg.id)
-                                  : selectedPermissions.includes(pkg.id);
-                                const isFullAccess = pkg.id === "full-access";
-
-                                return (
-                                  <button
-                                    key={pkg.id}
-                                    type="button"
-                                    disabled={permissionsMode === "auto"}
-                                    onClick={() => togglePermission(pkg.id)}
-                                    className={cn(
-                                      "w-full flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all duration-200",
-                                      isSelected
-                                        ? isFullAccess
-                                          ? "border-amber-500/40 bg-amber-500/[0.08]"
-                                          : "border-primary/40 bg-primary/[0.08]"
-                                        : "border-foreground/[0.06] bg-foreground/[0.02] hover:bg-foreground/[0.04]"
-                                    )}
-                                  >
-                                    <div
-                                      className={cn(
-                                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
-                                        isSelected
-                                          ? isFullAccess
-                                            ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
-                                            : "bg-primary/20 text-primary"
-                                          : "bg-foreground/[0.06] text-muted-foreground"
-                                      )}
-                                    >
-                                      <Icon className="h-4 w-4" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span
-                                          className={cn(
-                                            "text-sm font-medium",
-                                            isSelected ? "text-foreground" : "text-muted-foreground"
-                                          )}
-                                        >
-                                          {pkg.label}
-                                        </span>
-                                        {pkg.default && !isFullAccess && (
-                                          <span className="text-[10px] font-medium uppercase tracking-wider text-primary/60 bg-primary/10 px-1.5 py-0.5 rounded">
-                                            Default
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-muted-foreground/70 mt-0.5">
-                                        {pkg.description}
-                                      </p>
-                                    </div>
-                                    <div
-                                      className={cn(
-                                        "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all mt-0.5",
-                                        isSelected
-                                          ? isFullAccess
-                                            ? "border-amber-500 bg-amber-500 text-white"
-                                            : "border-primary bg-primary text-white"
-                                          : "border-foreground/20"
-                                      )}
-                                    >
-                                      {isSelected && <Check className="h-3 w-3" />}
-                                    </div>
-                                  </button>
-                                );
-                              })}
-
-                              {packages.length === 0 && (
-                                <p className="text-xs text-muted-foreground/50 text-center py-3">
-                                  Berechtigungspakete werden geladen...
-                                </p>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-muted-foreground/50 mt-2">
-                              Ohne Auswahl: nur pip/npm install (kein sudo). Basis-Tools
-                              (git, curl, node) sind immer verfuegbar.
-                            </p>
-                          </div>
+                          <PermissionPackagesPanel
+                            packages={packages}
+                            autonomyLevel={autonomyLevel}
+                            derivedPermissions={derivedPermissions}
+                            permissionsMode={permissionsMode}
+                            onPermissionsModeChange={setPermissionsMode}
+                            selected={selectedPermissions}
+                            onTogglePermission={togglePermission}
+                          />
                         </>
                       )}
 
