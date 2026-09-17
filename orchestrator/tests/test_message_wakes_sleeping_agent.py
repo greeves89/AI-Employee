@@ -22,26 +22,36 @@ from app.core import agent_wakeup
 
 
 class _Docker:
-    def __init__(self, status: str):
+    """Ein Container, der nach dem Start WIRKLICH laeuft (``after_start``) —
+    oder eben nicht (#774: Quota-Stopp, Startfehler). Das Double muss beides
+    koennen, sonst beweist der Test nur, dass ``start_agent`` gerufen wurde."""
+
+    def __init__(self, status: str, after_start: str = "running"):
         self._status = status
+        self._after_start = after_start
         self.asked: list[str] = []
 
     def get_container_status(self, container_id: str) -> str:
         self.asked.append(container_id)
         return self._status
 
+    def started(self) -> None:
+        self._status = self._after_start
+
 
 class _Manager:
-    """Statt eines echten AgentManager — merkt sich nur, wer gestartet wurde."""
+    """Statt eines echten AgentManager — merkt sich, wer gestartet wurde, und
+    laesst den Container-Double in seinen Nach-Start-Zustand wechseln."""
 
     started: list[str] = []
 
     def __init__(self, db, docker, redis):
-        pass
+        self._docker = docker
 
     async def start_agent(self, agent_id: str):
         _Manager.started.append(agent_id)
-        return SimpleNamespace(id=agent_id)
+        self._docker.started()
+        return SimpleNamespace(id=agent_id, container_id="c1")
 
 
 class _Session:
@@ -58,7 +68,7 @@ class _Session:
         return self._agent
 
 
-def _patch(monkey_agent, docker_status: str):
+def _patch(monkey_agent, docker_status: str, after_start: str = "running"):
     """Haengt die Fremdteile (DB, AgentManager) an Fakes."""
     import app.core.agent_manager as am_mod
     import app.db.session as sess_mod
@@ -68,7 +78,7 @@ def _patch(monkey_agent, docker_status: str):
     orig_factory = sess_mod.async_session_factory
     am_mod.AgentManager = _Manager
     sess_mod.async_session_factory = lambda: _Session(monkey_agent)
-    return orig_mgr, orig_factory, _Docker(docker_status)
+    return orig_mgr, orig_factory, _Docker(docker_status, after_start)
 
 
 def _restore(orig_mgr, orig_factory):
@@ -110,6 +120,22 @@ class EnsureAgentRunningTests(unittest.IsolatedAsyncioTestCase):
         finally:
             _restore(orig[0], orig[1])
         self.assertFalse(ok)
+
+    async def test_a_start_that_leaves_the_container_stopped_is_reported_as_not_running(self):
+        """#774: ``start_agent`` kam ohne Fehler zurueck, der Container steht
+        trotzdem (Quota-Stopp des disk_monitor, #714; oder er kam nie hoch).
+        Die alte Fassung gab hier True zurueck — der Aufrufer stellte zu und
+        glaubte, jemand liest mit."""
+        agent = SimpleNamespace(id="a1", container_id="c1")
+        orig = _patch(agent, "exited", after_start="exited")
+        try:
+            ok = await agent_wakeup.ensure_agent_running("a1", orig[2], redis=None)
+        finally:
+            _restore(orig[0], orig[1])
+        self.assertEqual(_Manager.started, ["a1"])  # geweckt wurde durchaus
+        self.assertFalse(ok, "Der Container steht nach dem Start — 'laeuft' waere gelogen")
+        # Nachgemessen, nicht angenommen: nach dem Start wurde der Status erneut abgefragt.
+        self.assertEqual(orig[2].asked, ["c1", "c1"])
 
     async def test_a_failed_start_does_not_break_delivery(self):
         """Die Nachricht soll trotzdem in die Warteschlange — sie wird beim
@@ -197,6 +223,107 @@ class OrderOfOperationsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(order, ["wecken", "einreihen"],
                          "Erst wecken, dann zustellen — andersherum liest die "
                          "Nachricht im Zweifel niemand")
+
+
+class HonestDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    """#774: Scheitert das Wecken, wird trotzdem eingereiht — aber der
+    Absender erfaehrt es, statt ein "sent" zu bekommen und 45 s auf eine
+    Antwort zu warten, die nicht kommen kann."""
+
+    async def _send(self, wake_result: bool):
+        from app.api import agents as api
+
+        order: list[str] = []
+
+        async def _fake_wake(agent_id, docker, redis):
+            order.append("wecken")
+            return wake_result
+
+        class _RedisClient:
+            async def hgetall(self, _key):
+                return {}
+
+            async def lpush(self, _key, _payload):
+                order.append("einreihen")
+
+            async def publish(self, *_a):
+                pass
+
+            async def incr(self, _k):
+                return 1
+
+            async def expire(self, *_a):
+                pass
+
+        class _Redis:
+            client = _RedisClient()
+
+        class _Db:
+            def add(self, _obj):
+                pass
+
+            async def commit(self):
+                pass
+
+        class _Mgr:
+            docker = object()
+
+            async def _get_agent(self, _id):
+                return SimpleNamespace(id="a2", container_id="c2")
+
+        import app.core.agent_wakeup as wake_mod
+
+        orig_wake = wake_mod.ensure_agent_running
+        wake_mod.ensure_agent_running = _fake_wake
+        try:
+            result = await api.send_message_to_agent(
+                agent_id="a2",
+                body=SimpleNamespace(text="Hallo Welt", from_agent_id="lead",
+                                     from_name="Lead", message_type="message",
+                                     reply_to=None),
+                user=SimpleNamespace(id="lead", principal_type="agent"),
+                db=_Db(),
+                manager=_Mgr(),
+                redis=_Redis(),
+            )
+        finally:
+            wake_mod.ensure_agent_running = orig_wake
+        return result, order
+
+    async def test_wake_failure_is_visible_to_the_sender_but_the_message_is_still_queued(self):
+        result, order = await self._send(wake_result=False)
+        self.assertIn("einreihen", order, "Die Nachricht gehoert trotzdem in die Warteschlange")
+        self.assertIs(result["target_running"], False,
+                      "Der Absender muss erfahren, dass niemand zuhoert")
+        # Nicht als 'busy' verkleidet — das waere die falsche Erklaerung.
+        self.assertFalse(result["will_reply_later"])
+
+    async def test_a_running_target_is_reported_as_running(self):
+        result, _order = await self._send(wake_result=True)
+        self.assertIs(result["target_running"], True)
+
+
+class MeetingWakeTests(unittest.IsolatedAsyncioTestCase):
+    """#774: der Besprechungs-Wrapper verschluckt den Rueckgabewert nicht mehr."""
+
+    async def test_wrapper_passes_the_result_through(self):
+        from app.api import meeting_rooms as mr
+        import app.core.agent_wakeup as wake_mod
+
+        async def _asleep(agent_id, docker, redis):
+            return False
+
+        async def _awake(agent_id, docker, redis):
+            return True
+
+        orig_wake = wake_mod.ensure_agent_running
+        try:
+            wake_mod.ensure_agent_running = _asleep
+            self.assertIs(await mr._ensure_agent_running("a1", object(), None), False)
+            wake_mod.ensure_agent_running = _awake
+            self.assertIs(await mr._ensure_agent_running("a1", object(), None), True)
+        finally:
+            wake_mod.ensure_agent_running = orig_wake
 
 
 if __name__ == "__main__":

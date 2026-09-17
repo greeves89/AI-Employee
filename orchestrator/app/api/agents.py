@@ -2218,7 +2218,17 @@ async def send_message_to_agent(
         # blieben am 2026-08-12 sieben „Hallo Welt" des Team-Leads unbeantwortet.
         from app.core.agent_wakeup import ensure_agent_running
 
-        await ensure_agent_running(agent_id, manager.docker, redis)
+        # #774: der Rueckgabewert sagt, ob der Empfaenger am Ende LAEUFT. Die
+        # Nachricht wird auch sonst eingereiht (sie wird beim naechsten Start
+        # gelesen) — aber der Absender bekommt das ehrlich gesagt, statt
+        # eines "sent", auf das er 45 s lang vergeblich eine Antwort erwartet.
+        target_running = await ensure_agent_running(agent_id, manager.docker, redis)
+        if not target_running:
+            logger.warning(
+                "[Aufwecken] Nachricht %s von %s an Agent %s eingereiht, obwohl der "
+                "Empfaenger nicht laeuft — sie wird erst beim naechsten Start gelesen",
+                message_id, from_id, agent_id,
+            )
         await redis.client.lpush(f"agent:{agent_id}:messages", message_payload)
 
         # Persist in DB for history/visualization
@@ -2319,6 +2329,11 @@ async def send_message_to_agent(
             "target_state": target_status.get("state"),
             "target_current_task": target_status.get("current_task"),
             "will_reply_later": target_busy,
+            # #774: False = der Empfaenger konnte nicht geweckt werden; die
+            # Nachricht liegt in seiner Warteschlange und wird erst beim
+            # naechsten Start gelesen. Absender sollen dann nicht auf eine
+            # Antwort warten, sondern das dem Menschen sagen.
+            "target_running": target_running,
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")

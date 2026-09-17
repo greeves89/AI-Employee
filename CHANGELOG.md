@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.41] - 2026-09-17
+
+### Behoben
+- **Zustellung an einen Agenten, der nicht geweckt werden konnte, sah aus wie
+  Erfolg** (Issue #774). `ensure_agent_running` meldete nach `start_agent`
+  pauschal "laeuft", ohne nachzusehen — steht der Container gleich wieder
+  (Quota-Stopp des disk_monitor, #714) oder kommt er nicht hoch, lag die
+  Nachricht in einer Warteschlange, die niemand liest. Und die Aufrufer
+  (Nachricht an einen Agenten, Besprechungs-Beitraege) warfen den
+  Rueckgabewert ohnehin weg: der Absender bekam "sent", wartete 45 s auf
+  eine Antwort und meldete dem Menschen "keine Rueckmeldung" — genau der
+  Vorfall vom 2026-08-12, nur mit anderer Ursache. Jetzt wird nach dem
+  Weckversuch der Containerstatus NACHGEMESSEN; die Nachricht wird weiterhin
+  eingereiht (sie wird beim naechsten Start gelesen), aber die Antwort traegt
+  `target_running: false`, die Werkzeuge `send_message` /
+  `send_message_and_wait` sagen dem Absender klar, dass der Empfaenger nicht
+  laeuft und keine Antwort kommt (statt 45 s zu warten), und in Besprechungen
+  heisst der Platzhalter "konnte nicht gestartet werden" statt "hat nicht
+  geantwortet" — ein Infrastrukturbefund, kein schweigsamer Agent. Jeder
+  Fall steht als Warnung im Orchestrator-Log.
+
 ## [1.322.40] - 2026-09-17
 
 ### Behoben
