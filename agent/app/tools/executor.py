@@ -21,7 +21,15 @@ logger = logging.getLogger(__name__)
 MAX_OUTPUT_CHARS = 30000
 
 # Maps tool name → autonomy category (must match DB category strings exactly)
-# Tools NOT listed here are always allowed (read-only / meta tools).
+# Tools NOT listed here AND not in ALWAYS_ALLOWED_TOOLS are, as of #197,
+# unreachable at runtime — see test_tool_autonomy_coverage.py's contract
+# test. Before that test existed, an uncategorized tool fell through BOTH
+# checks and silently ran ungated: 32 of the platform's 80 tools (including
+# computer_use — full control of the USER'S REAL DESKTOP — and browser,
+# restart_own_container, rebuild/start/stop_app, create_skill/skill_update)
+# had ZERO enforcement despite the autonomy matrix/command policies claiming
+# to gate them. Every NEW tool must be added to one of these two sets, or
+# the coverage test fails the build instead of silently reopening the hole.
 TOOL_CATEGORY_MAP: dict[str, str] = {
     # Shell execution (matches L3 DB category "shell_exec")
     "bash": "shell_exec",
@@ -32,12 +40,28 @@ TOOL_CATEGORY_MAP: dict[str, str] = {
     # External communication
     "send_telegram": "external_communication",
     "notify_user": "external_communication",
+    "send_voice": "external_communication",
     # Second Brain mutations (write category covers contribute/update/delete)
     "brain_contribute": "knowledge_write",
     "brain_update": "knowledge_write",
     "brain_delete": "knowledge_write",
-    # Package installation
+    # Package installation / container & app lifecycle — all change what
+    # code runs, in or alongside the agent's own container.
     "install_package": "system_config",
+    "restart_own_container": "system_config",
+    "rebuild_app": "system_config",
+    "start_app": "system_config",
+    "stop_app": "system_config",
+    # Modifies the behavior of an already-installed, already-running skill.
+    # create_skill/skill_propose only SAVE a draft for review — no immediate
+    # effect, same risk class as the already-always-allowed skill_install.
+    "skill_update": "system_config",
+    # Reaches outside the platform to a real external system/desktop, same
+    # legacy bucket as email/M365/external-API/git-push (#197's own
+    # docstring already documents this shared-bucket tradeoff).
+    "computer_use": "custom",
+    "browser": "custom",
+    "tickets": "custom",
 }
 
 # These are ALWAYS allowed regardless of whitelist
@@ -61,6 +85,27 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "skill_search", "skill_get_my_skills", "skill_install", "skill_rate",
     "send_message", "create_task", "delegate_and_wait",
     "list_my_team", "list_team_tasks", "get_tasks_status",
+    # Read-only / informational — same risk class as the group above.
+    "app_logs", "check_approval", "get_agent_conversation", "get_day_plan",
+    "list_agent_messages", "list_apps", "gesetze_search",
+    # Presents something TO the user — same class as present_view, no effect
+    # beyond display.
+    "present_file", "present_image",
+    # Self-bookkeeping (todos, onboarding, the agent's own visible day plan) —
+    # no external effect, nothing a human needs to approve.
+    "complete_onboarding", "complete_todo", "update_todos", "plan_day",
+    # Same risk class as the already-allowed create_task/send_message: agent-
+    # to-agent/self orchestration, not an external effect.
+    "create_task_batch", "send_message_and_wait", "schedule_meeting",
+    # Self-scheduling. Re-gated at FIRE time — whatever a schedule/trigger
+    # eventually runs goes back through this same enforcement, so allowing
+    # the setup itself does not bypass anything. Core proactive-agent
+    # capability ("use this instead of sleeping/waiting").
+    "create_schedule", "manage_schedule",
+    "trigger_create", "trigger_delete", "trigger_toggle",
+    # Saves/proposes a skill as a DRAFT for review — no immediate effect,
+    # same risk class as the already-allowed skill_install.
+    "create_skill", "skill_propose",
 })
 
 

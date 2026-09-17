@@ -902,6 +902,41 @@ def instructions_path(mode: str | None) -> str:
     return instructions_paths(mode)[0]
 
 
+# Issue #197, Teil 2: Claude-Code-Agenten liefen mit --dangerously-skip-
+# permissions und ohne echten Hook — das parallele bash-approval-server.mjs-
+# Werkzeug war nur eine OPTIONALE zweite Bash, das native blieb unbeschraenkt
+# verfuegbar. Ein PreToolUse-Hook vom Typ "http" feuert dagegen fuer JEDEN
+# Werkzeugaufruf (eingebaut UND MCP), wird von --dangerously-skip-permissions
+# NICHT umgangen, und kann per permissionDecision:"deny" wirklich blockieren
+# (Claude-Code-Doku, gegengeprueft vor dieser Aenderung). Ruft dieselbe
+# Auswertung wie der Custom-LLM-Executor auf — nur lokal im selben Container,
+# ueber den ohnehin schon laufenden Gesundheits-Server (agent/app/health.py).
+_CLAUDE_PRETOOLUSE_SETTINGS_JSON = """{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://localhost:8080/hooks/pretooluse",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+"""
+
+
+def claude_pretooluse_settings_path() -> str:
+    """Projekt-Settings, relativ zum Arbeitsverzeichnis (cwd=/workspace), in
+    dem Claude Code laeuft — dort, nicht in ~/.claude, sucht Claude Code
+    zuerst (agent_runner.py startet die CLI mit cwd=settings.workspace_dir)."""
+    return "/workspace/.claude/settings.json"
+
+
 def _identity_line(name: str, role: str) -> str:
     """The one sentence that tells an agent who it is.
 
@@ -1607,6 +1642,10 @@ class AgentManager:
         try:
             for _path in instructions_paths(mode):
                 self.docker.write_file_in_container(container.id, _path, claude_md)
+            if mode == "claude_code":
+                self.docker.write_file_in_container(
+                    container.id, claude_pretooluse_settings_path(), _CLAUDE_PRETOOLUSE_SETTINGS_JSON,
+                )
             # Kommt der Agent aus einer Vorlage, gilt DEREN Beschreibung. Die
             # leere Vorgabe wuerde sie ueberschreiben — und genau deshalb stand
             # bei jedem Vorlagen-Agenten "Onboarding NOT COMPLETED", obwohl Rolle,
@@ -1915,6 +1954,10 @@ class AgentManager:
             )
             for target_file in instructions_paths(mode):
                 self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
+            if mode == "claude_code":
+                self.docker.write_file_in_container(
+                    container.id, claude_pretooluse_settings_path(), _CLAUDE_PRETOOLUSE_SETTINGS_JSON,
+                )
             await self.migrate_knowledge_file(container.id, agent_id)
 
             # Clean up old CLAUDE.md if this is now a custom_llm agent (one-time migration)
@@ -2043,6 +2086,10 @@ class AgentManager:
             )
             for path in instructions_paths(mode):
                 self.docker.write_file_in_container(agent.container_id, path, rendered)
+            if mode == "claude_code":
+                self.docker.write_file_in_container(
+                    agent.container_id, claude_pretooluse_settings_path(), _CLAUDE_PRETOOLUSE_SETTINGS_JSON,
+                )
             # Wissensdatei mitziehen — sie liegt im Volume und ueberlebt sonst
             # jede Aenderung an der Vorlage.
             await self.migrate_knowledge_file(agent.container_id, agent.id)
