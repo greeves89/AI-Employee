@@ -118,10 +118,21 @@ class SchedulerService:
         # Per-schedule missed slot (next_run_at iso) already alerted; prevents
         # re-alerting the same missed window every 30s tick.
         self._missed_alerted: dict[str, str] = {}
-        # Consecutive failed DueSchedules ticks + whether we've already told the
-        # user about the current outage (reset on the first successful tick).
+        # Consecutive failed DueSchedules ticks + the wall-clock time of the
+        # first failed tick in the current outage (reset on the first
+        # successful tick). Duration was previously guessed as streak*30s —
+        # under DB errors the loop itself runs far slower than 30s per tick
+        # (every subsystem in the same iteration serially waits out its own
+        # connection timeout), so a 7.6h outage was reported as "~2.0 min"
+        # (#719). Measuring the real elapsed time fixes that regardless of
+        # how slow a tick actually is.
         self._due_schedules_fail_streak = 0
-        self._due_schedules_db_alerted = False
+        self._due_schedules_first_fail_at: datetime | None = None
+        # Naechste Streak-Schwelle, bei der erneut eskaliert wird — verdoppelt
+        # sich nach jeder Eskalation (4, 8, 16, 32, ...), statt nur einmal pro
+        # Episode zu melden (#719): ein Ausfall, der laenger dauert, soll MEHR
+        # Aufmerksamkeit bekommen, nicht nach der ersten Meldung verstummen.
+        self._due_schedules_next_alert_streak = _DUE_SCHEDULES_ALERT_THRESHOLD
 
     async def run(self) -> None:
         """Main loop - checks every 30s. Runs schedules always, GC every 60s,
@@ -157,21 +168,28 @@ class SchedulerService:
                             self._due_schedules_fail_streak,
                         )
                     self._due_schedules_fail_streak = 0
-                    self._due_schedules_db_alerted = False
+                    self._due_schedules_first_fail_at = None
+                    self._due_schedules_next_alert_streak = _DUE_SCHEDULES_ALERT_THRESHOLD
                 except _TRANSIENT_DB_ERRORS as e:
                     self._due_schedules_fail_streak += 1
+                    if self._due_schedules_first_fail_at is None:
+                        self._due_schedules_first_fail_at = datetime.now(timezone.utc)
+                    # #719: type(e).__name__ statt str(e) -- ConnectionError()/
+                    # TimeoutError() ohne Argument geben "" zurueck, jede
+                    # WARNING-Zeile endete bisher auf ": " und dann nichts. Aus
+                    # dem Log war nicht zu erkennen, ob der Pool ausgelaufen,
+                    # die Verbindung abgewiesen oder DNS haengengeblieben war.
                     logger.warning(
                         "[Scheduler] DueSchedules DB unavailable (transient, "
-                        "retrying next tick, %s consecutive): %s",
-                        self._due_schedules_fail_streak, e,
+                        "retrying next tick, %s consecutive): %s: %s",
+                        self._due_schedules_fail_streak, type(e).__name__, e,
                     )
-                    if (
-                        self._due_schedules_fail_streak >= _DUE_SCHEDULES_ALERT_THRESHOLD
-                        and not self._due_schedules_db_alerted
-                    ):
-                        self._due_schedules_db_alerted = True
+                    if self._due_schedules_fail_streak >= self._due_schedules_next_alert_streak:
+                        self._due_schedules_next_alert_streak = self._due_schedules_fail_streak * 2
                         try:
-                            await self._alert_due_schedules_down(self._due_schedules_fail_streak)
+                            await self._alert_due_schedules_down(
+                                self._due_schedules_fail_streak, self._due_schedules_first_fail_at,
+                            )
                         except Exception as alert_err:
                             logger.warning(
                                 "[Scheduler] DueSchedules alert error: %s", alert_err,
@@ -1782,8 +1800,10 @@ class SchedulerService:
             ))
             await db.commit()
 
-    async def _alert_due_schedules_down(self, streak: int) -> None:
-        """Escalate once a DB outage has blocked schedule-checking for a while.
+    async def _alert_due_schedules_down(
+        self, streak: int, first_fail_at: datetime | None = None,
+    ) -> None:
+        """Escalate while a DB outage keeps blocking schedule-checking.
 
         A single failed tick is a harmless blip and self-heals on its own —
         see _TRANSIENT_DB_ERRORS above. But if the DB stays unreachable for
@@ -1791,8 +1811,20 @@ class SchedulerService:
         included), and until now nothing told the user unless a schedule
         happened to have its own separate safety-net job. Root-caused via
         issue #601 on 2026-08-15.
+
+        Re-escalates as the outage doubles in length (see the caller) instead
+        of once per episode — a longer outage deserves MORE attention, not
+        silence after the first message (#719).
         """
-        outage_min = round(streak * 30 / 60, 1)
+        # Gemessene Wanduhrzeit seit dem ersten fehlgeschlagenen Tick statt
+        # streak*30s (#719): unter DB-Fehlern wartet jedes Subsystem im selben
+        # Schleifendurchlauf seriell seinen eigenen Verbindungs-Timeout ab,
+        # ein Tick dauert dann eher 8-9 Minuten als 30 Sekunden. Eine 7,6h
+        # lange Episode wurde dadurch als "~2.0 min" gemeldet.
+        if first_fail_at is not None:
+            outage_min = round((datetime.now(timezone.utc) - first_fail_at).total_seconds() / 60, 1)
+        else:
+            outage_min = round(streak * 30 / 60, 1)
         logger.error(
             "[Scheduler] DueSchedules DB unreachable for %s consecutive ticks "
             "(~%s min) — schedules may be missed", streak, outage_min,
