@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.26] - 2026-09-17
+
+### Behoben
+- **Die Zeichenkappung je Einzeltext beim OpenAI-Einbettungs-Rueckfall
+  garantierte die 8.192-Token-Grenze nicht** (Issue #743). `embed()`/
+  `embed_batch()` kappten bisher auf 32.000 ZEICHEN — eine ~4-Zeichen-je-
+  Token-Annahme, die nur fuer englische Prosa haelt. Gemessen mit dem echten
+  Tokenizer bei 32.000 Zeichen: Englisch blieb bei 7.112 Token darunter,
+  Deutsch (11.389), Russisch (10.355), Arabisch (22.710) und Chinesisch
+  (31.998) rissen die Grenze — das Produkt ist deutschsprachig, kein
+  Randfall. Ein einzelner langer deutscher Text lief in eine HTTP-400-
+  Ablehnung, blieb ohne Vektor, die semantische Suche fiel dort still auf
+  Stichwortsuche zurueck.
+  Kappung jetzt nach UTF-8-BYTES statt Zeichen (8.192 Bytes, eine nachweisbare
+  Obergrenze fuer Token bei Byte-BPE), ohne mitten in ein Mehrbyte-Zeichen zu
+  schneiden. Nebeneffekt: der bevorzugte lokale Dienst kappt ohnehin schon
+  bei 8.192 Zeichen — beide Pfade liefern jetzt vergleichbaren Umfang statt
+  unterschiedlicher Vektoren je nach Backend.
+
 ## [1.322.25] - 2026-09-17
 
 ### Behoben

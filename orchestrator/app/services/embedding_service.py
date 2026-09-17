@@ -40,6 +40,15 @@ _HEALTH_TIMEOUT = 5.0  # bge-m3 boot takes ~10s, give it a chance
 # character, so 500k characters can be 500k tokens and still blow the limit.
 _OPENAI_MAX_INPUTS_PER_REQUEST = 2_048
 _OPENAI_MAX_BYTES_PER_REQUEST = 290_000
+# The per-INPUT counterpart to the per-request budget above: OpenAI rejects
+# any single input exceeding 8,192 tokens. `embed()`/`embed_batch()` used to
+# cap at MAX_INPUT_LENGTH * 4 = 32,000 CHARACTERS, assuming ~4 chars/token —
+# that only holds for English prose. Measured with the real tokenizer
+# (tiktoken, text-embedding-3-small) at 32,000 characters: German (11,389
+# tokens), Russian (10,355), Arabic (22,710) and Chinese (31,998) all blow
+# past the limit; only ASCII English (7,112) stayed under it. The product is
+# German-language, so this was not an edge case (#743).
+_OPENAI_MAX_BYTES_PER_INPUT = 8_192
 
 
 def split_for_openai_request(
@@ -63,6 +72,21 @@ def split_for_openai_request(
     if current:
         groups.append(current)
     return groups
+
+
+def truncate_for_openai_input(text: str, max_bytes: int = _OPENAI_MAX_BYTES_PER_INPUT) -> str:
+    """Truncate ``text`` to at most ``max_bytes`` UTF-8 bytes, never cutting a
+    multi-byte character in half (#743).
+
+    Bytes are a safe upper bound on tokens for the same reason as
+    ``split_for_openai_request`` above (byte-level BPE, every merge can only
+    shrink the token count) — unlike a character budget, which silently
+    breaks for any language that isn't mostly ASCII.
+    """
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
 class EmbeddingService:
@@ -197,7 +221,7 @@ class EmbeddingService:
         """
         if not text or not text.strip():
             return None
-        text = text[:MAX_INPUT_LENGTH * 4]
+        text = truncate_for_openai_input(text)
 
         # 1. Try local service
         if await self._check_local_available():
@@ -225,7 +249,7 @@ class EmbeddingService:
         cleaned: list[tuple[int, str]] = []
         for i, t in enumerate(texts):
             if t and t.strip():
-                cleaned.append((i, t[:MAX_INPUT_LENGTH * 4]))
+                cleaned.append((i, truncate_for_openai_input(t)))
         if not cleaned:
             return [None] * len(texts)
 
