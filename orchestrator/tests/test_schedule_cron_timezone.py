@@ -96,8 +96,18 @@ def test_missing_timezone_attr_defaults_utc():
 
 
 def test_interval_schedule_unaffected():
-    """Interval schedules ignore timezone entirely."""
-    sched = _Sched(cron_expression=None, timezone="Europe/Berlin", interval_seconds=3600)
+    """Interval schedules ignore timezone entirely.
+
+    Uses an ALREADY-anchored schedule (next_run_at set) so the assertion is
+    about timezone-independence specifically — a brand-new, still-unanchored
+    hourly-or-longer schedule instead gets its first phase deliberately
+    placed away from :00/:30 (#718 Punkt 2, see the dedicated tests below),
+    which would make a bare `now + interval` assertion here incidental to
+    that unrelated behavior rather than to the timezone claim this test makes.
+    """
+    anchor = datetime(2026, 7, 1, 11, 0, tzinfo=timezone.utc)
+    sched = _Sched(cron_expression=None, timezone="Europe/Berlin", interval_seconds=3600,
+                    next_run_at=anchor)
     now = datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
 
     nxt = _calc_next_run(sched, now)
@@ -142,25 +152,29 @@ def test_the_phase_never_drifts_across_many_delayed_cycles():
 def test_a_schedule_without_a_next_run_at_attribute_falls_back_to_now():
     """Creating a NEW interval schedule calls _calc_next_run on the request
     body (ScheduleCreate), which has no `next_run_at` field at all — must not
-    raise AttributeError."""
+    raise AttributeError.
+
+    interval_seconds is deliberately BELOW the #718-Punkt-2 threshold (see
+    below) so this stays about the attribute-safety net, not about the
+    flexible-phase placement of long background schedules."""
     class _BareInterval:
         cron_expression = None
-        interval_seconds = 3600
+        interval_seconds = 1800
         # deliberately no next_run_at attribute
 
     now = datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
     nxt = _calc_next_run(_BareInterval(), now)
 
-    assert nxt == datetime(2026, 7, 1, 13, 0, tzinfo=timezone.utc)
+    assert nxt == datetime(2026, 7, 1, 12, 30, tzinfo=timezone.utc)
 
 
 def test_a_schedule_with_next_run_at_none_also_falls_back_to_now():
-    sched = _Sched(interval_seconds=3600, next_run_at=None)
+    sched = _Sched(interval_seconds=1800, next_run_at=None)
     now = datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
 
     nxt = _calc_next_run(sched, now)
 
-    assert nxt == datetime(2026, 7, 1, 13, 0, tzinfo=timezone.utc)
+    assert nxt == datetime(2026, 7, 1, 12, 30, tzinfo=timezone.utc)
 
 
 def test_a_naive_anchor_is_treated_as_utc():
@@ -172,3 +186,57 @@ def test_a_naive_anchor_is_treated_as_utc():
     nxt = _calc_next_run(sched, now)
 
     assert nxt == datetime(2026, 9, 1, 12, 55, tzinfo=timezone.utc)
+
+
+# Issue #718 Punkt 2: the very FIRST anchor of a new, unbefristeten (no cron)
+# interval schedule used to land on whatever second `now` happened to be —
+# and the Punkt-1 anchor-fix above then holds that phase fixed FOREVER. The
+# real incident anchored a 2h background schedule at :55 and it drifted to
+# :58, starving out every hourly cron tick sharing the agent. Placing the
+# first phase deliberately at :20 keeps long background schedules away from
+# the usual :00/:30 cron ticks from the very start.
+
+def test_a_new_long_interval_schedule_anchors_away_from_the_full_hour():
+    sched = _Sched(cron_expression=None, interval_seconds=7200, next_run_at=None)
+    now = datetime(2026, 9, 1, 10, 47, tzinfo=timezone.utc)
+
+    nxt = _calc_next_run(sched, now)
+
+    # now + 7200s = 12:47 -> naechste :20 danach ist 12:20? Nein, 12:20 < 12:47,
+    # also die Stunde danach: 13:20.
+    assert nxt == datetime(2026, 9, 1, 13, 20, tzinfo=timezone.utc)
+
+
+def test_the_flexible_phase_is_still_at_least_one_full_interval_ahead():
+    """The snap must never fire the FIRST run sooner than a plain now+interval
+    would — only reposition it within roughly the same window."""
+    sched = _Sched(cron_expression=None, interval_seconds=3600, next_run_at=None)
+    now = datetime(2026, 9, 1, 10, 5, tzinfo=timezone.utc)  # now+1h = 11:05
+
+    nxt = _calc_next_run(sched, now)
+
+    assert nxt >= now + timedelta(seconds=3600)
+    assert nxt.minute == 20
+
+
+def test_a_cron_schedule_is_never_snapped_even_when_anchor_is_missing():
+    """The flexible-phase snap is only for pure interval schedules — a cron
+    schedule that (via a broken expression) falls through to the interval
+    branch must keep the plain now+step fallback."""
+    sched = _Sched(cron_expression="not a valid cron", interval_seconds=7200, next_run_at=None)
+    now = datetime(2026, 9, 1, 10, 47, tzinfo=timezone.utc)
+
+    nxt = _calc_next_run(sched, now)
+
+    assert nxt == now + timedelta(seconds=7200)
+
+
+def test_short_interval_schedules_are_not_snapped():
+    """Below the #718 threshold, a schedule fires often enough that a fixed
+    target minute would only delay the first run without helping anything."""
+    sched = _Sched(cron_expression=None, interval_seconds=1800, next_run_at=None)
+    now = datetime(2026, 9, 1, 10, 47, tzinfo=timezone.utc)
+
+    nxt = _calc_next_run(sched, now)
+
+    assert nxt == now + timedelta(seconds=1800)

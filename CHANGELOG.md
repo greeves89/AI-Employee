@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.34] - 2026-09-17
+
+### Behoben
+- **Ein neuer, unbefristeter Intervall-Zeitplan konnte seine Phase kurz vor
+  eine volle Stunde legen und dort jeden Cron-Zeitplan aushungern** (Issue
+  #718, Punkt 2). Der Punkt-1-Fix (v1.322.25) haelt die einmal gesetzte
+  Phase fest — der ERSTE Anker landete aber weiter auf einer beliebigen
+  Sekunde von `now`. Genau das fuehrte zum gemeldeten Vorfall: ein 2h-
+  Hintergrundzeitplan wanderte über sechs Tage auf ~100s vor jede volle
+  Stunde und liess dort JEDEN `0 * * * *`-Zeitplan an "busy" scheitern.
+  Ein frischer, unbefristeter Intervall-Zeitplan ab einer Stunde Laenge
+  bekommt seine erste Faelligkeit jetzt bewusst auf Minute 20 gelegt — weg
+  von den ueblichen :00/:30-Cron-Ticks. Kuerzere Intervalle bleiben
+  unangetastet, sie ueberstreichen durch ihre eigene Frequenz ohnehin
+  laufend jede Minute.
+- **Ein Zeitplan, der einen faelligen Slot lautlos verwarf, meldete
+  weiterhin eine perfekte Erfolgsquote** (Issue #718, Punkt 3). Die #720-
+  Erkennung alarmiert den Betreiber bereits per Telegram, wenn `last_run_at`
+  hinter dem letzten faelligen Cron-Slot zurueckbleibt — die Zaehler
+  `total_runs`/`fail_count` des Zeitplans selbst blieben dabei aber
+  unberuehrt, sodass ein zwei Tage toter Tagesbericht in seiner eigenen
+  Statistik weiter "gesund" aussah. Zaehlt den Verlust jetzt genauso wie ein
+  aktiv verworfener Slot — einmal je neu erkanntem `last_run_at`, nicht bei
+  jedem Tick erneut.
+
 ## [1.322.33] - 2026-09-17
 
 ### Behoben
@@ -20,6 +45,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   automatisch neu und der Betreiber wird per Notification/Telegram
   informiert; reicht es nicht, bleibt er gestoppt (die Erstalarmierung aus
   #714, Punkte 2+3, hat den Betreiber ohnehin schon erreicht).
+
+## [1.322.32] - 2026-09-17
 
 ### Behoben
 - **Der Sentinel-Alarm sagt jetzt, was gleichzeitig im Protokoll stand — und

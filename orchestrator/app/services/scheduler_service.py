@@ -1999,6 +1999,16 @@ class SchedulerService:
                     "[Scheduler] %s: mindestens ein faelliger Cron-Slot lautlos "
                     "verworfen (last_run_at=%s)", s.name, marker,
                 )
+                # #718 Punkt 3: Verschieben genauso sichtbar machen wie
+                # Verwerfen. Der Alarm oben erreicht den Betreiber, aber
+                # fail_count/success_rate des Zeitplans selbst blieben "gesund"
+                # -- genau die Meldung, die einen zwei Tage toten Tageszeitplan
+                # zwei Tage lang unbemerkt liess. Einmal je neu erkanntem
+                # last_run_at (derselbe Marker wie oben verhindert Doppelzaehlung
+                # bei jedem Tick, solange kein neuer echter Lauf dazwischenkam).
+                s.total_runs += 1
+                s.fail_count += 1
+                await db.commit()
                 if not self.redis or not self.redis.client:
                     continue
                 payload = {
@@ -2210,6 +2220,31 @@ def _is_one_shot(schedule: "Schedule") -> bool:
     return not schedule.cron_expression and not schedule.interval_seconds
 
 
+# #718 Punkt 2: die Minute, auf die die ERSTE Phase eines langen, unbefristeten
+# Intervall-Zeitplans gelegt wird — bewusst zwischen den ueblichen vollen und
+# halben Cron-Stunden (:00/:30), nicht kurz davor.
+_FLEXIBLE_PHASE_MINUTE = 20
+# Nur Intervalle >= 1h bekommen die Phasen-Verlegung: kuerzere ueberstreichen
+# durch ihre eigene Feuerfrequenz ohnehin laufend jede Minute, eine feste
+# Zielminute wuerde sie nur unnoetig verzoegern.
+_FLEXIBLE_PHASE_MIN_STEP = 3600
+
+
+def _erste_flexible_phase(now: datetime, step_s: int) -> datetime:
+    """Erste Faelligkeit eines neuen, unbefristeten Intervall-Zeitplans.
+
+    Legt sie auf die naechste Minute ``_FLEXIBLE_PHASE_MINUTE`` NACH Ablauf
+    von ``step_s`` — mindestens eine volle Interval-Laenge in der Zukunft,
+    wie der bisherige ``now + step_s``-Rueckfall, nur mit einer bewusst
+    gewaehlten Phase statt der zufaelligen Sekunde von ``now``.
+    """
+    kandidat = now + timedelta(seconds=step_s)
+    ziel = kandidat.replace(minute=_FLEXIBLE_PHASE_MINUTE, second=0, microsecond=0)
+    if ziel < kandidat:
+        ziel += timedelta(hours=1)
+    return ziel
+
+
 def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
     """Return the next fire time (UTC) for a schedule.
 
@@ -2242,6 +2277,16 @@ def _calc_next_run(schedule: "Schedule", now: datetime) -> datetime:
     # kennt — nur die bereits bestehende ORM-Instanz hat einen Anker.
     anchor = getattr(schedule, "next_run_at", None)
     if anchor is None:
+        if not schedule.cron_expression and step_s >= _FLEXIBLE_PHASE_MIN_STEP:
+            # #718 Punkt 2: der ERSTE Anker eines langen, unbefristeten
+            # Intervall-Zeitplans legt seine Phase fuer immer fest (Punkt-1-
+            # Fix oben haelt sie danach fest). Ohne dies landet sie auf einer
+            # beliebigen Sekunde von `now` — und wanderte im Vorfall vom
+            # 07.09.2026 ueber Tage bis auf ~100s vor jede volle Stunde,
+            # wo sie JEDEN Cron-Zeitplan zur vollen Stunde aushungerte (busy
+            # bei jedem Tick). Stattdessen bewusst zwischen die ueblichen
+            # Cron-Zeiten legen.
+            return _erste_flexible_phase(now, step_s)
         return now + timedelta(seconds=step_s)
     if anchor.tzinfo is None:  # SQLite drops tzinfo on round-trip; Postgres never does
         anchor = anchor.replace(tzinfo=timezone.utc)
