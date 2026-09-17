@@ -5,6 +5,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.29] - 2026-09-17
+
+### Behoben
+- **Läufe starben an „Prompt is too long", bevor sie die erste Zeile Arbeit
+  getan hatten.** Der Gedächtnis-Preload war nach ZEILEN gedeckelt (50 kritische
+  + 20 wichtige Einträge), nach ZEICHEN dagegen nie. Bei einem Agenten im
+  Betrieb waren das 98.754 Zeichen — rund 24.700 Token, die in jedem einzelnen
+  Lauf verbraucht sind, ehe die Aufgabe überhaupt gelesen wird; fünf Läufe
+  zwischen dem 04. und 07.09. sind daran gescheitert. Einträge zu löschen half
+  nicht: die Auswahl füllt sich auf ihre feste Zeilenzahl auf, es rückt nur der
+  nächste Eintrag nach. Jetzt ist jeder Eintrag auf 600 Zeichen gedeckelt — beim
+  gemessenen Agenten halbiert das den Preload auf ~11.400 Token und gibt rund
+  13.200 Token pro Lauf für die eigentliche Arbeit frei. Gekürzte Einträge sind
+  als gekürzt markiert und per `memory_search` weiterhin vollständig lesbar; der
+  Sprachweg kürzt aus demselben Grund seit jeher auf 300 Zeichen.
+- **Zugangsdaten bleiben ungekürzt.** Ein abgeschnittener Schlüssel wäre nicht
+  etwas weniger Kontext, sondern ein falscher Schlüssel — der Agent hätte sich
+  damit angemeldet und über die 401 gerätselt.
+- **`current_task` löste seinen Vorgänger nie ab.** Den Agenten wird seit jeher
+  angesagt, dieser Schlüssel sei einfach belegt und ersetze den alten Wert
+  automatisch — im Schlüsselverzeichnis fehlte er aber, und unbekannte Schlüssel
+  fallen auf „mehrfach" zurück. Statt eines aktuellen Standes je Raum sammelten
+  sich so bei einem Agenten 1.327 Laufprotokoll-Zeilen an, der mit Abstand
+  größte Schlüssel seines Gedächtnisses und ein Treiber ebendieses überlaufenden
+  Preloads. Zusätzlich sind die Schlüssel `capability_gained` und
+  `working_pipeline` jetzt ebenfalls ausdrücklich als „einfach" verzeichnet —
+  sie lagen bisher nur über den Mehrfach-Rückfall zufällig richtig. Ablösen ist
+  nicht zerstörend: die alte Zeile bleibt, `superseded_by` wird gesetzt
+  (Vorarbeit für Issue #716).
+- **Ein überholter Gedächtnis-Eintrag konnte den gültigen aus dem Preload
+  verdrängen.** Wird ein Eintrag abgelöst, setzt der Server `superseded_by` —
+  und weil `updated_at` automatisch mitläuft, bekam die tote Zeile dabei einen
+  frischen Zeitstempel und stand in der nach Aktualität sortierten Auswahl ganz
+  oben. Der Preload filterte abgelöste Zeilen nicht heraus (die semantische
+  Suche tat es längst), also wäre ausgerechnet der veraltete Stand bevorzugt
+  geladen worden. Fällt erst auf, seit Einträge überhaupt regelmäßig abgelöst
+  werden — gefunden in der Durchsicht vor dem Zusammenführen.
+- **Die Ausnahme für Zugangsdaten ist keine offene Tür mehr.** Schlüssel bleiben
+  ungekürzt, aber nicht mehr unbegrenzt: ein einzelnes als Zugangsdatum
+  abgelegtes Dienstkonto-Dokument hätte den Prompt sonst weiterhin sprengen
+  können. Die Grenze liegt so weit oben, dass jedes echte Geheimnis bequem
+  darunter bleibt. Zugangsdaten werden jetzt außerdem auch dann verschont, wenn
+  sie über den Wichtigkeits-Eimer statt über den Zugangsdaten-Eimer kommen.
+
 ## [1.322.28] - 2026-09-17
 
 ### Behoben
