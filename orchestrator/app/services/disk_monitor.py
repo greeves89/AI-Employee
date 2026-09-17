@@ -132,17 +132,88 @@ class DiskMonitorService:
             await self._fail_running_tasks_and_alert(agent, stats)
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self.docker.stop_container, agent.container_id)
+            await self._cleanup_and_maybe_restart(agent, stats)
         except Exception as exc:
             logger.error("Failed to stop disk-full agent %s: %s", agent.id, exc)
+
+    async def _cleanup_and_maybe_restart(self, agent: Agent, stats: dict) -> None:
+        """Raeumt das Volume des gestoppten Agenten auf und startet ihn neu,
+        wenn das reicht (Issue #714, Punkt 1 — die eigentliche Verklemmung).
+
+        Vorher gab es keinen Weg zurueck: Aufraeumen setzte einen laufenden
+        Behaelter voraus, und genau den verhinderte der Zustand, der
+        aufgeraeumt werden musste. Ein kurzlebiger Helfer-Container, der NUR
+        das Volume mountet (gleiches Muster wie ``copy_workspace_volume``),
+        braucht den Agenten-Container selbst nicht — Aufraeumen ist also auch
+        im gestoppten Zustand moeglich. Reicht es, startet der Agent
+        automatisch neu; reicht es nicht, bleibt er gestoppt (der Betreiber
+        wurde bereits ueber ``_fail_running_tasks_and_alert`` alarmiert und
+        raeumt danach manuell auf, wie der Alarmtext es vorschlaegt).
+        """
+        if not agent.volume_name:
+            logger.warning(
+                "Agent %s hat kein volume_name verzeichnet — Aufraeumlauf uebersprungen",
+                agent.id,
+            )
+            return
+        loop = asyncio.get_running_loop()
+        used_mb = await loop.run_in_executor(
+            None, self.docker.cleanup_workspace_volume, agent.volume_name
+        )
+        if used_mb is None:
+            return
+        limit_mb = stats["disk_limit_mb"]
+        percent = round(min(used_mb / limit_mb * 100, 100), 2) if limit_mb else 100.0
+        if percent >= _STOP_THRESHOLD:
+            logger.warning(
+                "Agent %s: Aufraeumlauf senkte Belegung nur auf %.1f%% (weiterhin >= %.0f%%) — "
+                "bleibt gestoppt, manuelles Aufraeumen noetig",
+                agent.id, percent, _STOP_THRESHOLD,
+            )
+            return
+        await loop.run_in_executor(None, self.docker.start_container, agent.container_id)
+        logger.warning(
+            "Agent %s: Aufraeumlauf senkte Belegung auf %.1f%% (< %.0f%%) — Container automatisch neu gestartet",
+            agent.id, percent, _STOP_THRESHOLD,
+        )
+        await self._notify_recovered(agent, used_mb, limit_mb, percent)
+
+    async def _notify_recovered(self, agent: Agent, used_mb: float, limit_mb: float, percent: float) -> None:
+        from app.db.session import resilient_session
+        from app.models.notification import Notification
+
+        titel = f"{agent.name}: nach Speicherquote-Stopp automatisch aufgeraeumt und neu gestartet"
+        nachricht = (
+            f"Aufraeumlauf im Volume hat die Belegung auf {percent:.1f}% "
+            f"({used_mb:.0f}/{limit_mb:.0f} MB) gesenkt — der Agent laeuft wieder."
+        )
+        async with resilient_session(session_factory=self._sf) as db:
+            db.add(Notification(
+                agent_id=agent.id,
+                type="success",
+                title=titel,
+                message=nachricht[:240],
+                priority="normal",
+                action_url=f"/agents/{agent.id}",
+                meta={"type": "disk_quota_auto_recovered", "agent_id": agent.id, "disk_percent": percent},
+            ))
+            await db.commit()
+
+        if self._redis and getattr(self._redis, "client", None):
+            try:
+                from app.services.duty_service import _publish_telegram
+                await _publish_telegram(self._redis, titel, nachricht)
+            except Exception:
+                logger.debug("Disk-Quota-Erholungs-Alarm nicht zugestellt", exc_info=True)
 
     async def _fail_running_tasks_and_alert(self, agent: Agent, stats: dict) -> None:
         """Verbucht laufende Aufgaben als fehlgeschlagen und alarmiert den Betreiber.
 
-        Ohne dies faellt ein Disk-Quota-Stopp nur ins Fehlerlog — der Agent
-        ist danach dauerhaft tot (Aufraeumen braucht einen laufenden
-        Container, genau den verhindert der Zustand), aber ``completed``
-        Aufgaben sehen von aussen wie erledigte Arbeit aus. Tagelang
-        unbemerkt geblieben (Issue #714).
+        Ohne dies faellt ein Disk-Quota-Stopp nur ins Fehlerlog. Bis
+        ``_cleanup_and_maybe_restart`` (Punkt 1) den Behaelter automatisch
+        wieder hochfaehrt, bleibt der Agent gestoppt — und ``completed``
+        Aufgaben saehen in der Zwischenzeit von aussen wie erledigte Arbeit
+        aus. Tagelang unbemerkt geblieben (Issue #714).
         """
         from app.db.session import resilient_session
         from app.models.notification import Notification

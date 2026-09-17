@@ -5,7 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.322.32] - 2026-09-17
+## [1.322.33] - 2026-09-17
+
+### Behoben
+- **Ein Disk-Quota-Stopp war eine echte Verklemmung — es gab keinen Weg
+  zurueck** (Issue #714, Punkt 1). Aufraeumen brauchte einen laufenden
+  Container, und genau den verhinderte der Stopp, der aufgeraeumt werden
+  musste; ein Agent blieb so ab dem Erreichen der Quote fuer immer tot, bis
+  jemand von Hand eingriff. Neu: `DockerService.cleanup_workspace_volume`
+  mountet nur das VOLUME (gleiches Helfer-Container-Muster wie
+  `copy_workspace_volume`) und raeumt Caches/tmp/Logs auf, ohne den
+  Agenten-Container zu brauchen — genau die Befehle, die die Warndatei dem
+  Agenten schon vorher selbst vorschlug. Reicht das, startet der Agent
+  automatisch neu und der Betreiber wird per Notification/Telegram
+  informiert; reicht es nicht, bleibt er gestoppt (die Erstalarmierung aus
+  #714, Punkte 2+3, hat den Betreiber ohnehin schon erreicht).
 
 ### Behoben
 - **Der Sentinel-Alarm sagt jetzt, was gleichzeitig im Protokoll stand — und
