@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.24] - 2026-09-17
+
+### Behoben
+- **Ein stundenlanger DB-Ausfall des Schedulers wurde als "~2.0 Minuten"
+  gemeldet, und der Alarm eskalierte nur einmal pro Ausfall** (Issue #719).
+  Belegt am 06./07.09.2026: eine 7,6-Stunden-Episode (alle vier
+  Morgen-Zeitplaene betroffen) erzeugte genau eine ERROR-Zeile mit "~2.0
+  min" — eine Meldung, die man zu Recht ignoriert. Drei Ursachen:
+  1. Die Ausfalldauer wurde als `streak * 30s` GESCHAETZT statt gemessen.
+     Unter DB-Fehlern wartet jedes Subsystem im selben Schleifendurchlauf
+     seriell seinen eigenen Verbindungs-Timeout ab — ein Tick dauert dann
+     eher 8-9 Minuten statt 30 Sekunden. Gemessen wird jetzt die echte
+     Wanduhrzeit seit dem ersten fehlgeschlagenen Tick.
+  2. Eskaliert wurde GENAU EINMAL pro Episode; ein laenger dauernder
+     Ausfall bekam dadurch weniger Aufmerksamkeit als ein kurzer. Eskaliert
+     jetzt erneut, sobald sich die Ausfalldauer verdoppelt (4, 8, 16, 32
+     Ticks, ...).
+  3. `ConnectionError()`/`TimeoutError()` ohne Argument geben bei `str()`
+     nichts zurueck — jede der ~445 Warnzeilen endete auf „: " und dann
+     nichts. `type(e).__name__` wird jetzt mitgeloggt, damit erkennbar ist,
+     ob der Pool ausgelaufen, die Verbindung abgewiesen oder DNS
+     haengengeblieben ist.
+
 ## [1.322.23] - 2026-09-17
 
 ### Behoben
