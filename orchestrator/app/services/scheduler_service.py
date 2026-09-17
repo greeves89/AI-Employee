@@ -27,6 +27,7 @@ from app.services.redis_service import RedisService
 from app.services.watchdog import (
     as_utc,
     find_missed_schedules,
+    find_silently_advanced_schedules,
     is_sentinel_stale,
     find_stale_tasks,
     mark_task_stale,
@@ -118,6 +119,11 @@ class SchedulerService:
         # Per-schedule missed slot (next_run_at iso) already alerted; prevents
         # re-alerting the same missed window every 30s tick.
         self._missed_alerted: dict[str, str] = {}
+        # Same dedup idea, separate namespace (#720): a silently-advanced cron
+        # schedule is a DIFFERENT failure class from a missed one (next_run_at
+        # looks healthy here, it's last_run_at that trails) — a schedule could
+        # in principle trip both watchdogs, so they must not share one key.
+        self._silently_advanced_alerted: dict[str, str] = {}
         # Consecutive failed DueSchedules ticks + the wall-clock time of the
         # first failed tick in the current outage (reset on the first
         # successful tick). Duration was previously guessed as streak*30s —
@@ -1870,12 +1876,19 @@ class SchedulerService:
                 logger.warning("[Scheduler] DueSchedules alert publish error: %s", e)
 
     async def _tick_missed_schedule_watchdog(self) -> None:
-        """Alert on enabled schedules whose fire window was missed (>5min late).
+        """Alert on schedules that missed their fire window, two ways.
 
-        Under normal operation the main loop fires due schedules every 30s, so
-        next_run_at is always in the future. A next_run_at that slipped well
-        into the past means the scheduler was down during the window (container
-        restart) — the run is caught up late, but the owner is told it slipped.
+        1. next_run_at slipped well into the PAST (>5min late) — under normal
+           operation the main loop fires due schedules every 30s, so this means
+           the scheduler itself was down during the window (container
+           restart). The run is caught up late, but the owner is told it
+           slipped.
+        2. A cron schedule's next_run_at looks perfectly healthy (cleanly in
+           the future) but last_run_at trails behind what the cron rule says
+           should already have fired (#720) — the give-up path in
+           _retry_or_advance always advances next_run_at, even for a slot it
+           drops entirely, so this class is invisible to check 1 by
+           construction.
         """
         import json as _json
 
@@ -1903,6 +1916,44 @@ class SchedulerService:
                     )
                 except Exception as e:
                     logger.warning("[Scheduler] MissedScheduleWatchdog publish error: %s", e)
+
+            # Zweite, unabhaengige Erkennung (#720): ein Zeitplan, der einen
+            # faelligen Slot lautlos verworfen hat (_retry_or_advance ohne
+            # Redis/Retry-Budget), sieht fuer den Verpasst-Waechter oben
+            # KERNGESUND aus -- next_run_at zeigt sauber in die Zukunft, genau
+            # wie bei einem echten Lauf. Nur last_run_at hinkt dem Cron-Plan
+            # hinterher. Die Erkennung selbst braucht kein Redis (nur der
+            # Telegram-Versand darunter) -- dieselbe Stoerung durfte bisher
+            # sowohl den Hauptpfad als auch seine Aufsicht gleichzeitig
+            # abschalten.
+            fortgeschritten = await find_silently_advanced_schedules(db, now)
+            for s in fortgeschritten:
+                marker = as_utc(s.last_run_at).isoformat() if s.last_run_at else "never"
+                if self._silently_advanced_alerted.get(s.id) == marker:
+                    continue
+                self._silently_advanced_alerted[s.id] = marker
+                logger.warning(
+                    "[Scheduler] %s: mindestens ein faelliger Cron-Slot lautlos "
+                    "verworfen (last_run_at=%s)", s.name, marker,
+                )
+                if not self.redis or not self.redis.client:
+                    continue
+                payload = {
+                    "text": (
+                        f"🔴 Schedule *{md_escape(s.name)}* hat einen faelligen "
+                        f"Termin lautlos verloren — zuletzt gelaufen: {marker}. "
+                        "next_run_at sieht gesund aus, ist es aber nicht."
+                    ),
+                    "parse_mode": "Markdown",
+                }
+                try:
+                    await self.redis.client.publish(
+                        "telegram:notification", _json.dumps(payload)
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "[Scheduler] SilentlyAdvancedWatchdog publish error: %s", e,
+                    )
 
     async def _stop_idle_agents(self) -> int:
         """Stop agents that have been idle longer than their configured limit.

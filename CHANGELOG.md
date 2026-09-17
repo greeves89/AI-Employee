@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.27] - 2026-09-17
+
+### Hinzugefuegt
+- **Zweite, von Redis unabhaengige Erkennung fuer lautlos verlorene
+  Cron-Termine** (Issue #720, Punkt 3 — Punkte 1+2 waren bereits in v1.322.7
+  behoben). Gibt `_retry_or_advance` einen faelligen Slot ohne Redis/Retry-
+  Budget auf, schiebt `_calc_next_run` `next_run_at` GENAUSO in die Zukunft
+  wie ein echter erfolgreicher Lauf — der bestehende Verpasst-Waechter sucht
+  aber ausdruecklich nach `next_run_at` in der Vergangenheit und ist fuer
+  diese Klasse strukturell blind. `fail_count`, `success_rate`, `enabled`
+  und `next_run_at` sehen alle "gesund" aus, waehrend ein taeglicher Bericht
+  zwei Tage in Folge ausfiel.
+  Neue Erkennung prueft stattdessen `last_run_at` gegen den letzten laut
+  Cron-Regel faelligen Slot — braucht kein Redis (nur der Telegram-Versand
+  darunter), lief also bisher genau dann NICHT, wenn die Hauptstoerung selbst
+  Redis betraf. 10 neue Tests, u. a. Zeitzone, Kulanzfrist, Anlage-Zeitpunkt
+  (ein frisch erstellter Zeitplan vor seiner allerersten Feuerung darf nicht
+  faelschlich als verloren gelten).
+
 ## [1.322.26] - 2026-09-17
 
 ### Behoben
