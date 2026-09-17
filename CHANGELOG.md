@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.43] - 2026-09-18
+
+### Geaendert
+- **Sudo-Pakete-Oberflaeche war doppelt gebaut** (Erstellungs-Dialog +
+  Agent-Settings-Seite, fast Byte-fuer-Byte-Kopie) — jetzt eine gemeinsame
+  Komponente (`PermissionPackagesPanel`), die beide Stellen einbinden.
+  Konnte vorher schon auseinanderlaufen; kann es jetzt nicht mehr.
+- **Neuer Bereich „Computer-Use-Standard"** in den Agent-Settings: der
+  dauerhafte Pro-Agent-Deckel aus 1.322.42 (Issue #787 Punkt 1) ist jetzt
+  auch einstellbar, nicht nur serverseitig erzwungen.
+- **Command Policies zeigten englische Labels** ("Block", "High Approval",
+  "Medium Approval", "Allow") mitten in einer deutschen Oberflaeche — jetzt
+  "Blockiert"/"Hohe Freigabe"/"Mittlere Freigabe"/"Erlaubt".
+
 ## [1.322.42] - 2026-09-17
 
 ### Sicherheit

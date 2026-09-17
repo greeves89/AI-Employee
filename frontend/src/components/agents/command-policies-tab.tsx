@@ -23,10 +23,10 @@ import {
 import type { CommandPolicy, CommandPolicyEffect, CommandPolicyScope } from "@/lib/api";
 
 const effectConfig: Record<CommandPolicyEffect, { icon: typeof ShieldAlert; color: string; bg: string; label: string }> = {
-  blocked: { icon: ShieldAlert, color: "text-red-400", bg: "bg-red-500/10", label: "Block" },
-  high: { icon: AlertCircle, color: "text-orange-400", bg: "bg-orange-500/10", label: "High Approval" },
-  medium: { icon: AlertTriangle, color: "text-amber-700 dark:text-amber-400", bg: "bg-amber-500/10", label: "Medium Approval" },
-  allow: { icon: ShieldCheck, color: "text-emerald-400", bg: "bg-emerald-500/10", label: "Allow" },
+  blocked: { icon: ShieldAlert, color: "text-red-400", bg: "bg-red-500/10", label: "Blockiert" },
+  high: { icon: AlertCircle, color: "text-orange-400", bg: "bg-orange-500/10", label: "Hohe Freigabe" },
+  medium: { icon: AlertTriangle, color: "text-amber-700 dark:text-amber-400", bg: "bg-amber-500/10", label: "Mittlere Freigabe" },
+  allow: { icon: ShieldCheck, color: "text-emerald-400", bg: "bg-emerald-500/10", label: "Erlaubt" },
 };
 
 type Draft = {
@@ -240,10 +240,10 @@ export function CommandPoliciesTab({ agentId }: Props) {
               onChange={(event) => setDraft({ ...draft, effect: event.target.value as CommandPolicyEffect })}
               className="rounded-xl border border-foreground/[0.08] bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary/40"
             >
-              <option value="allow">Allow - explizit erlauben</option>
-              <option value="medium">Medium - Approval anfordern</option>
-              <option value="high">High - Approval anfordern</option>
-              <option value="blocked">Blocked - nie ausfuehren</option>
+              <option value="allow">Erlaubt - explizit erlauben</option>
+              <option value="medium">Mittel - Freigabe anfordern</option>
+              <option value="high">Hoch - Freigabe anfordern</option>
+              <option value="blocked">Blockiert - nie ausfuehren</option>
             </select>
             <input
               value={draft.sort_order}

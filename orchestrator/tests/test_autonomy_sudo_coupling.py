@@ -241,6 +241,10 @@ class UiTests(unittest.TestCase):
 
     MODAL = "frontend/src/components/agents/create-agent-modal.tsx"
     DETAIL = "frontend/src/app/agents/[id]/page.tsx"
+    # Issue #787 Punkt 1: die JSX-Kopie (Icons, Kopplungs-Knopf, Karten) ist
+    # keine Kopie mehr, sondern eine gemeinsame Komponente -- der wortgleiche
+    # Text "Wieder an Stufe koppeln" steht seitdem nur noch EINMAL im Baum.
+    SHARED_PANEL = "frontend/src/components/agents/permission-packages-panel.tsx"
 
     def test_modal_sends_nothing_in_auto_mode(self):
         src = (REPO / self.MODAL).read_text()
@@ -252,17 +256,26 @@ class UiTests(unittest.TestCase):
         src = (REPO / self.MODAL).read_text()
         self.assertIn('useState<"auto" | "manual">("auto")', src)
 
-    def test_both_surfaces_can_switch_back(self):
+    def test_both_surfaces_use_the_shared_panel_instead_of_their_own_copy(self):
         for rel in (self.MODAL, self.DETAIL):
             with self.subTest(surface=rel):
-                self.assertIn("Wieder an Stufe koppeln", (REPO / rel).read_text())
+                src = (REPO / rel).read_text()
+                self.assertIn("PermissionPackagesPanel", src,
+                              f"{rel} rendert die Sudo-Pakete nicht mehr ueber die "
+                              "gemeinsame Komponente -- droht wieder auseinanderzulaufen.")
+
+    def test_the_shared_panel_still_has_the_coupling_toggle(self):
+        src = (REPO / self.SHARED_PANEL).read_text()
+        self.assertIn("Wieder an Stufe koppeln", src)
+        self.assertIn("Selbst festlegen", src)
 
     def test_rule_is_not_reimplemented_in_typescript(self):
         """Welche Stufe welches Paket ergibt, steht NUR in Python."""
-        for rel in (self.MODAL, self.DETAIL):
+        for rel in (self.MODAL, self.DETAIL, self.SHARED_PANEL):
             src = (REPO / rel).read_text()
-            self.assertIn("derivedPermissions", src)
             self.assertNotIn('"l3" ? ["package-install"', src)
+        for rel in (self.MODAL, self.DETAIL):
+            self.assertIn("derivedPermissions", (REPO / rel).read_text())
 
     def test_endpoint_serves_the_derivation(self):
         src = (ORCH / "app/api/agents.py").read_text()
