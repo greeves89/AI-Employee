@@ -28,7 +28,18 @@ _PATTERNS: list[tuple[re.Pattern, str]] = [
     # Telegram bot tokens: <bot_id>:<secret> (e.g. from InvalidToken error text
     # "The token 123456:AA... was rejected by the server"). Not a bearer/JWT, so
     # it needs its own rule.
-    (re.compile(r"\b\d{6,}:[A-Za-z0-9_\-]{30,}"), "[REDACTED_TELEGRAM_TOKEN]"),
+    #
+    # \b was wrong here (CWE-532, reported responsibly 2026-09-17): \b only
+    # requires a transition between a word char and a non-word char, and both
+    # sides of "bot123456789:AA..." — the "t" of "bot" and the leading digit —
+    # are word characters, so there is NO boundary there and the rule silently
+    # never fired for a token embedded in a URL. Every Telegram Bot API call
+    # carries the token in the path (".../bot<token>/getUpdates"), and httpx
+    # logs the full URL at INFO — measured on a live instance at ~93% of the
+    # orchestrator's log volume, 17k+ unredacted tokens per day. A digit
+    # lookbehind only cares whether the id could extend further left, which is
+    # the actual invariant we need.
+    (re.compile(r"(?<!\d)\d{6,}:[A-Za-z0-9_\-]{30,}"), "[REDACTED_TELEGRAM_TOKEN]"),
     # KEY=VALUE / "key": "value" for anything that smells sensitive. The
     # separator swallows an optional closing quote of the key so JSON-style
     # `"password": "…"` is caught as well as env-style `PASSWORD=…`.

@@ -27,6 +27,47 @@ class _RedactingFormatter(logging.Formatter):
         return redact_logs(super().format(record))
 
 
+class _RedactingWrapperFormatter(logging.Formatter):
+    """Wraps an EXISTING formatter instance and redacts its output.
+
+    Used for uvicorn's access logger (see ``_harden_uvicorn_access_logging``),
+    whose ``AccessFormatter`` populates custom record fields (``levelprefix``,
+    colour codes) that only its own ``formatMessage`` knows how to fill in —
+    reimplementing that format string with a plain ``_RedactingFormatter``
+    would either drop the colour/level handling or raise ``KeyError`` on the
+    fields it doesn't set. Delegating to the original formatter and redacting
+    its already-rendered string keeps that logic untouched.
+    """
+
+    def __init__(self, inner: logging.Formatter):
+        super().__init__()
+        self._inner = inner
+
+    def format(self, record: logging.LogRecord) -> str:
+        return redact_logs(self._inner.format(record))
+
+
+def _harden_uvicorn_access_logging() -> None:
+    """Route uvicorn's access log through the same redacting formatter as
+    everything else (CWE-532, reported responsibly 2026-09-17).
+
+    ``uvicorn.access`` ships with ``propagate=False`` and its own handler
+    (uvicorn's default logging config, applied before this module ever
+    runs) — access log lines never reach the root logger's redacting
+    handlers above, so a token in a query string (a webhook bearer
+    fallback, the legacy WebSocket ``?token=``, the computer-use bridge's
+    ``?token=``) would be written completely in the clear. Wrapping each
+    existing handler's formatter (rather than replacing it) keeps uvicorn's
+    own field/colour handling intact; a request line with no secret in it
+    is unaffected.
+    """
+    access_logger = logging.getLogger("uvicorn.access")
+    for handler in access_logger.handlers:
+        inner = handler.formatter
+        if inner is not None and not isinstance(inner, _RedactingWrapperFormatter):
+            handler.setFormatter(_RedactingWrapperFormatter(inner))
+
+
 def setup_platform_error_log(path: str | None = None, level: int = logging.WARNING) -> bool:
     """Attach a rotating, secret-redacted WARNING+ file handler to the root logger.
 
@@ -96,4 +137,20 @@ def setup_console_logging(level: int | None = None) -> int:
     root.addHandler(handler)
     if root.level == logging.NOTSET or root.level > level:
         root.setLevel(level)
+
+    # Defense in depth (CWE-532, reported responsibly 2026-09-17): httpx logs
+    # every outbound request at INFO with the full URL, and the Telegram Bot
+    # API carries the bot token in the URL PATH, not a header — there is no
+    # way to redact "the URL" without redacting the whole line. The primary
+    # fix is the log_redaction.py regex (it must never leak regardless of
+    # logger level, since other libraries could log the same way tomorrow),
+    # but there is no reason for these two loggers' routine request/response
+    # lines to reach INFO at all — WARNING+ (connection failures etc.) still
+    # gets through. Silences most of the platform's log noise as a side
+    # effect (was ~93% of orchestrator log volume on the reporter's instance).
+    for _noisy in ("httpx", "httpcore"):
+        logging.getLogger(_noisy).setLevel(logging.WARNING)
+
+    _harden_uvicorn_access_logging()
+
     return level

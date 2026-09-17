@@ -45,6 +45,43 @@ class LogRedactionTests(unittest.TestCase):
             f"[Telegram] Failed to start bot for Bob: The token `{token}` was rejected", token
         )
 
+    def test_telegram_bot_token_redacted_inside_bot_api_url(self):
+        # CWE-532, reported responsibly 2026-09-17: the ORIGINAL \b-anchored
+        # regex never matched here. "bot<token>" has a word char ("t") right
+        # before the first digit of the token -- \b requires a transition
+        # between word/non-word chars, and word->word is not one, so the rule
+        # silently never fired. Every Bot API call carries the token in the
+        # URL PATH this way, and httpx logs the full URL at INFO -- measured
+        # at ~93% of orchestrator log volume on the reporter's own instance.
+        token = "123456789:AAHdqTcvbd1234567890ABCDEFGHIJKLMNOP"
+        self._assert_gone(
+            f'INFO httpx: HTTP Request: POST https://api.telegram.org/bot{token}/getUpdates '
+            f'"HTTP/1.1 200 OK"',
+            token,
+        )
+
+    def test_telegram_bot_token_redacted_inside_file_download_url(self):
+        # Same URL shape, the file-download variant (app/api/telegram_actions.py).
+        token = "123456789:AAHdqTcvbd1234567890ABCDEFGHIJKLMNOP"
+        self._assert_gone(
+            f"INFO httpx: HTTP Request: GET https://api.telegram.org/file/bot{token}/"
+            f'photos/file_1.jpg "HTTP/1.1 200 OK"',
+            token,
+        )
+
+    def test_benign_numeric_ids_in_urls_survive(self):
+        # The fix must not turn into a blanket "any long digit run" filter --
+        # only an ACTUAL <digits>:<30+ chars> pair is a Telegram-token shape.
+        lines = [
+            "INFO httpx: HTTP Request: GET http://ai-employee-orchestrator:8000/api/v1/health "
+            '"HTTP/1.1 200 OK"',
+            "INFO 2026-09-17 12:34:56,789 processed task t5wk89qep in 1234 ms",
+            "INFO sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        ]
+        for line in lines:
+            with self.subTest(line=line):
+                self.assertEqual(redact_logs(line), line)
+
     def test_private_key_block_redacted(self):
         block = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\n-----END RSA PRIVATE KEY-----"
         self._assert_gone(f"key:\n{block}", "MIIEowIBAAKCAQEA")

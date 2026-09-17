@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.39] - 2026-09-17
+
+### Sicherheit
+- **Telegram-Bot-Tokens landeten im Klartext im Container-Log** (CWE-532,
+  verantwortungsvoll gemeldet). Die Schwärzungsregel fuer Telegram-Tokens
+  nutzte eine Wortgrenze (`\b`) vor der Bot-ID — in `.../bot<token>/getUpdates`
+  sind aber sowohl das "t" von "bot" als auch die erste Ziffer Wortzeichen,
+  also gibt es dort gar keine Wortgrenze, und die Regel griff nie. httpx
+  protokolliert jede ausgehende Anfrage inklusive vollstaendiger URL auf
+  Stufe INFO, und der Root-Logger hatte seit v1.186.0 einen Ausgabe-Handler
+  ohne eigene Stufe fuer die httpx-/httpcore-Logger — betraf auf einer
+  produktiven Testinstanz rund 93 % des Log-Volumens. Behoben:
+  - Regel auf einen Ziffern-Lookbehind umgestellt (`(?<!\d)` statt `\b`) —
+    greift jetzt unabhaengig davon, ob vor der Bot-ID ein Wortzeichen steht.
+  - `httpx`/`httpcore` auf Stufe WARNING gedaempft (weniger Rauschen als
+    Nebeneffekt).
+  - `uvicorn.access` (eigener Handler, `propagate=False`, lief bisher an
+    jeder Schwaerzung vorbei) schwaerzt jetzt ebenfalls — schliesst denselben
+    Weg fuer Tokens in Abfrage-Parametern (Webhook-Bearer-Rueckfall, alter
+    WebSocket-`?token=`, Computer-Use-Bridge-Token).
+  - Zwei Telegram-Fehlerpfade in `agent_bot.py` gaben eine Ausnahme roh aus
+    (`print(f"...{e}")` am Logger vorbei, sowie `reply_text`/`query.answer`
+    direkt an den Nutzer im Chat) — beide jetzt ueber dieselbe Schwaerzung
+    geleitet, analog zum bereits vorhandenen Muster in `bot_manager.py`.
+  - Betreiber mit einem konfigurierten Telegram-Bot sollten den Token vorsorglich
+    ueber BotFather neu erzeugen — ein Code-Fix entfernt keine Zeilen aus
+    bereits geschriebenen Logs.
+
 ## [1.322.38] - 2026-09-17
 
 ### Behoben
