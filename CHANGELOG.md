@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.21] - 2026-09-17
+
+### Behoben
+- **Das ERGEBNIS eines Tagesplan-Blocks liess sich nie eintragen** (Issue
+  #717). `PATCH /api/v1/day-plan/{item_id}` wies jede Inhaltsaenderung ab,
+  sobald ein Block `running` oder `done` war — `notes` zaehlte mit zum
+  gesperrten Inhalt. Damit gab es kein Zeitfenster fuers Ergebnis: vor dem
+  Start existiert es noch nicht, ab `running`/`done` griff die Sperre.
+  `{"status":"done","notes":"..."}` scheiterte mit 409, nur der nackte
+  Status-Wechsel ging durch. `notes` ist jetzt von der Sperre ausgenommen und
+  wird bei `running`/`done` ANGEHAENGT statt ersetzt — die urspruengliche
+  Absicht (wieso der Block beansprucht wurde) bleibt stehen, das Ergebnis
+  kommt darunter. Titel/Zeit/Dauer bleiben wie zuvor gesperrt.
+
 ## [1.322.20] - 2026-09-17
 
 ### Behoben
