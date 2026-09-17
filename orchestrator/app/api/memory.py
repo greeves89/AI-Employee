@@ -25,6 +25,7 @@ from app.core.memory_key_schema import (
     COSINE_SOFT_WARN,
     TAG_TYPE_PERMANENT,
     classify_key,
+    is_run_state_key,
     normalize_tag,
 )
 from app.core.memory_scoring import ScoringInputs, final_score
@@ -86,7 +87,8 @@ class MemoryConflict(Exception):
     or when the two-tier cosine check detects a soft contradiction without override.
 
     kind: "contradiction" (0.88..0.92, needs override) |
-          "supersede"     (single-key replace or >=0.92 dedup, blocked by allow_supersede=False)
+          "supersede"     (single-key replace or >=0.92 dedup, blocked by allow_supersede=False —
+                           except run-state keys like "current_task", see is_run_state_key)
     """
 
     def __init__(self, kind: str, existing: AgentMemory, similarity: float = 1.0):
@@ -215,6 +217,14 @@ async def save_memory_core(
     memory into MemoryConflict("supersede") instead — used by the reflection
     job in hybrid review mode, where touching existing knowledge needs an
     admin approval first.
+
+    Exception (issue #716): keys classified via `is_run_state_key` (pure
+    agent run status, e.g. "current_task") are superseded even when
+    allow_supersede=False. A hybrid-mode agent overwriting its OWN previous
+    "what am I doing right now" is not a fact a human should be asked to
+    approve — the old `current_task` was `multi` only by accident of falling
+    back on an unknown key, and every hybrid-mode run generated a no-value
+    approval request for it until this exemption existed.
     """
     kind = classify_key(body.key)
     now = datetime.now(timezone.utc)
@@ -241,7 +251,7 @@ async def save_memory_core(
         if to_supersede and to_supersede.content == body.content:
             # Identical single-key content: no-op, keep the existing row.
             return to_supersede, None
-        if to_supersede and not allow_supersede:
+        if to_supersede and not allow_supersede and not is_run_state_key(body.key):
             raise MemoryConflict("supersede", to_supersede)
     else:
         # Multi: use semantic similarity against the same (agent, room, key).

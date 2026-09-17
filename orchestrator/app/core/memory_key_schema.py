@@ -78,6 +78,28 @@ def classify_key(key: str) -> KeyKind:
     return KEY_SCHEMA.get(key, "multi")
 
 
+# Issue #716: single-value keys that carry pure RUN STATE — what an agent is
+# doing right now — rather than a fact or preference a human might want to
+# review. Deliberately a narrow subset of the "single" keys above: "current_task"
+# is the motivating case (single-value only since this same release), and
+# "current_task_id"/"current_mode" are the same kind of transient status.
+# "current_goal", "assigned_agent_type", "preferred_style" etc. stay OUT of
+# this set on purpose — those represent an actual decision, and a hybrid-mode
+# agent superseding one is exactly the kind of change that should still need
+# approval.
+RUN_STATE_KEYS: set[str] = {"current_task", "current_task_id", "current_mode"}
+
+
+def is_run_state_key(key: str) -> bool:
+    """Whether ``key`` tracks pure run status rather than durable knowledge.
+
+    Used by ``save_memory_core`` to exempt these keys from the hybrid-mode
+    approval gate: every run superseding its own previous ``current_task`` is
+    not a conflict a human should vote on, it is simply the agent moving on.
+    """
+    return key in RUN_STATE_KEYS
+
+
 # Canonical tag taxonomy. Agents and the UI should only use these tags;
 # any legacy tag gets rewritten via TAG_MIGRATION before insert.
 CANONICAL_TAGS: set[str] = {

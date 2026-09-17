@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.30] - 2026-09-17
+
+### Behoben
+- **Der current_task-Altbestand blieb nach dem Einfach-Schluessel-Fix
+  liegen** (Issue #716, Teil 1). Der Schluesselfix wirkt nur vorwaerts und
+  loest je Schreibvorgang nur eine Zeile ab (`.limit(1)`, die juengste
+  aktive) — bei einem Agenten im Betrieb standen am 07.09.2026 dadurch
+  weiterhin 519 aktive `current_task`-Zeilen ueber 205 Raeume, statt einer
+  je Raum. Einmalige Backfill-Migration loest je `(agent_id, room)` alle
+  bis auf die juengste aktive Zeile auf `superseded_by` ab — nicht
+  destruktiv, jede Zeile bleibt ueber `memory_search` weiterhin lesbar.
+- **Jedes `current_task` eines Hybridmodus-Agenten erzeugte eine
+  Freigabeanfrage ohne Erkenntniswert** (Issue #716, Teil 2). `current_task`
+  war faktisch `multi` (unbekannter Schluessel, Rueckfall), bis vor kurzem —
+  seither loest der `single`-Zweig von `save_memory_core` bei
+  `allow_supersede=False` (Hybridmodus) JEDE Ablosung als
+  `MemoryConflict("supersede")` aus. Der aktuelle Arbeitsstand eines Agenten
+  ist aber kein Wissen, ueber das ein Mensch abstimmen sollte. Neue,
+  bewusst enge Ausnahme (`is_run_state_key`) fuer `current_task`,
+  `current_task_id` und `current_mode` — andere Einfach-Schluessel wie
+  `preferred_style` oder `current_goal` bleiben zustimmungspflichtig, weil
+  sie eine echte Entscheidung tragen statt reinen Laufzustand.
+
 ## [1.322.29] - 2026-09-17
 
 ### Behoben
