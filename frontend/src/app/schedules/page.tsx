@@ -16,6 +16,8 @@ import {
   Loader2,
   CalendarClock,
   Sparkles,
+  Languages,
+  Wand2,
 } from "lucide-react";
 import type { Schedule } from "@/lib/types";
 import * as api from "@/lib/api";
@@ -108,11 +110,24 @@ function SchedulesPageInner() {
   // Create form state
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [timingMode, setTimingMode] = useState<"interval" | "cron">("interval");
+  const [timingMode, setTimingMode] = useState<"interval" | "cron" | "natural">("interval");
   const [intervalSeconds, setIntervalSeconds] = useState(3600);
   const [cronExpression, setCronExpression] = useState("");
   const [priority, setPriority] = useState(1);
   const [agentId, setAgentId] = useState("");
+
+  // Natuerlichsprachliche Zeitangabe (#196) — "jeden Montag um 9 Uhr" statt
+  // rohem Cron-Ausdruck. Loest denselben cronExpression-State auf, den der
+  // Cron-Modus auch benutzt — es entsteht kein zweiter Weg, wie ein
+  // Zeitplan tatsaechlich angelegt wird.
+  const [naturalText, setNaturalText] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState("");
+  const [parsePreview, setParsePreview] = useState<{
+    explanation: string;
+    cron_expression: string;
+    next_runs: string[];
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -138,6 +153,27 @@ function SchedulesPageInner() {
     highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [highlightId, schedules]);
 
+  const handleParseNatural = async () => {
+    if (!naturalText.trim()) return;
+    setParsing(true);
+    setParseError("");
+    try {
+      const result = await api.parseScheduleTiming({
+        text: naturalText.trim(),
+        agent_id: agentId || undefined,
+      });
+      setCronExpression(result.cron_expression);
+      setParsePreview(result);
+    } catch (e) {
+      setParsePreview(null);
+      setParseError(
+        e instanceof Error ? e.message.replace(/^API Error \d+:\s*/, "") : "Konnte den Zeitsatz nicht deuten."
+      );
+    } finally {
+      setParsing(false);
+    }
+  };
+
   const handleCreate = async () => {
     if (!name.trim() || !prompt.trim()) return;
     setCreating(true);
@@ -146,7 +182,7 @@ function SchedulesPageInner() {
         name: name.trim(),
         prompt: prompt.trim(),
         interval_seconds: timingMode === "interval" ? intervalSeconds : 0,
-        cron_expression: timingMode === "cron" ? cronExpression.trim() : undefined,
+        cron_expression: timingMode !== "interval" ? cronExpression.trim() : undefined,
         priority,
         agent_id: agentId || undefined,
       });
@@ -157,6 +193,9 @@ function SchedulesPageInner() {
       setCronExpression("");
       setPriority(1);
       setAgentId("");
+      setNaturalText("");
+      setParsePreview(null);
+      setParseError("");
       setShowCreate(false);
       await refresh();
     } finally {
@@ -250,22 +289,72 @@ function SchedulesPageInner() {
                 Schedule Type
               </label>
               <div className="flex gap-2 mb-3">
-                {(["interval", "cron"] as const).map((mode) => (
+                {(["interval", "natural", "cron"] as const).map((mode) => (
                   <button
                     key={mode}
-                    onClick={() => setTimingMode(mode)}
+                    onClick={() => {
+                      setTimingMode(mode);
+                      setParseError("");
+                    }}
                     className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all capitalize ${
                       timingMode === mode
                         ? "bg-primary/20 text-primary border border-primary/30"
                         : "bg-foreground/[0.04] text-muted-foreground border border-foreground/[0.06] hover:bg-foreground/[0.08]"
                     }`}
                   >
-                    {mode === "interval" ? "Every X minutes/hours" : "Cron expression"}
+                    {mode === "interval" ? "Every X minutes/hours" : mode === "natural" ? "In your own words" : "Cron expression"}
                   </button>
                 ))}
               </div>
 
-              {timingMode === "interval" ? (
+              {timingMode === "natural" ? (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      value={naturalText}
+                      onChange={(e) => {
+                        setNaturalText(e.target.value);
+                        setParsePreview(null);
+                        setParseError("");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleParseNatural();
+                        }
+                      }}
+                      placeholder="e.g. 'every Monday at 9am' or 'jeden Freitag um 17 Uhr'"
+                      className="flex-1 rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] px-4 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/25"
+                    />
+                    <button
+                      onClick={handleParseNatural}
+                      disabled={!naturalText.trim() || parsing}
+                      className="flex items-center gap-1.5 rounded-xl bg-foreground/[0.06] px-3 py-2.5 text-xs font-medium text-foreground transition-all hover:bg-foreground/[0.1] disabled:opacity-40"
+                    >
+                      {parsing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+                      Translate
+                    </button>
+                  </div>
+                  {parseError && (
+                    <p className="text-[11px] text-red-400">{parseError}</p>
+                  )}
+                  {parsePreview && (
+                    <div className="rounded-xl border border-primary/20 bg-primary/[0.04] px-4 py-3 space-y-1.5">
+                      <p className="text-xs font-medium text-primary">{parsePreview.explanation}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground/70">
+                        Cron: {parsePreview.cron_expression}
+                      </p>
+                      {parsePreview.next_runs.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground/60">
+                          Next: {parsePreview.next_runs
+                            .map((r) => new Date(r).toLocaleString())
+                            .join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : timingMode === "interval" ? (
                 <div className="flex flex-wrap gap-2">
                   {INTERVAL_PRESETS.map((preset) => (
                     <button
@@ -368,7 +457,7 @@ function SchedulesPageInner() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!name.trim() || !prompt.trim() || creating || (timingMode === "cron" && !cronExpression.trim())}
+                disabled={!name.trim() || !prompt.trim() || creating || (timingMode !== "interval" && !cronExpression.trim())}
                 className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-all hover:brightness-110 disabled:opacity-50"
               >
                 {creating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}

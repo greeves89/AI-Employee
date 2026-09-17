@@ -15,6 +15,8 @@ from app.schemas.schedule import (
     ScheduleCreate,
     ScheduleListResponse,
     ScheduleResponse,
+    ScheduleTimingParseRequest,
+    ScheduleTimingParseResponse,
     ScheduleUpdate,
 )
 
@@ -80,6 +82,48 @@ async def list_schedules(user=Depends(require_auth_or_agent), db: AsyncSession =
     return ScheduleListResponse(
         schedules=[ScheduleResponse.from_schedule(s) for s in schedules],
         total=len(schedules),
+    )
+
+
+@router.post("/parse-timing", response_model=ScheduleTimingParseResponse)
+async def parse_schedule_timing(
+    body: ScheduleTimingParseRequest, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db),
+):
+    """Uebersetzt einen freien Zeitsatz ("jeden Montag um 9 Uhr") in einen
+    cron_expression (Issue #196) — reine Vorschau, legt nichts an. Der
+    Aufrufer uebernimmt den zurueckgegebenen cron_expression danach ganz
+    normal in ``POST /schedules/``, damit es weiterhin nur einen Weg gibt,
+    wie ein Zeitplan tatsaechlich entsteht.
+    """
+    from app.core.plan_rhythm import timezone_name
+    from app.services.schedule_nl_parser import parse_natural_language_schedule
+
+    tz_name = (body.timezone or "").strip()
+    if not tz_name and body.agent_id:
+        from app.models.agent import Agent as _Agent
+        _agent = (await db.execute(
+            select(_Agent).where(_Agent.id == body.agent_id)
+        )).scalar_one_or_none()
+        tz_name = timezone_name(getattr(_agent, "config", None))
+    tz_name = tz_name or "UTC"
+
+    try:
+        result = await parse_natural_language_schedule(body.text)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    from app.models.schedule import Schedule as _ScheduleModel
+    from app.services.scheduler_service import schedule_occurrences
+    vorschau = _ScheduleModel(cron_expression=result["cron_expression"], timezone=tz_name, interval_seconds=0)
+    now = datetime.now(timezone.utc)
+    naechste = schedule_occurrences(vorschau, now, now + timedelta(days=35))[:3]
+
+    return ScheduleTimingParseResponse(
+        cron_expression=result["cron_expression"],
+        timezone=tz_name,
+        explanation=result["explanation"],
+        source=result["source"],
+        next_runs=naechste,
     )
 
 

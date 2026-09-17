@@ -938,6 +938,23 @@ export async function getSchedules(): Promise<{ schedules: Schedule[]; total: nu
   return fetchJSON(`${getBase()}/schedules/`);
 }
 
+export async function parseScheduleTiming(data: {
+  text: string;
+  agent_id?: string;
+  timezone?: string;
+}): Promise<{
+  cron_expression: string;
+  timezone: string;
+  explanation: string;
+  source: "regel" | "llm";
+  next_runs: string[];
+}> {
+  return fetchJSON(`${getBase()}/schedules/parse-timing`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function createSchedule(data: {
   name: string;
   prompt: string;
