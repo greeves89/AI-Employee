@@ -36,11 +36,43 @@ async def diag_handler(request: web.Request) -> web.Response:
     return web.json_response(body, status=200 if arg_parse_ok else 500)
 
 
+async def pretooluse_hook_handler(request: web.Request) -> web.Response:
+    """Claude Code PreToolUse HTTP hook target (issue #197, Teil 2).
+
+    Registered in the agent's own ``.claude/settings.json`` (written by
+    ``agent_manager.py`` — only for ``mode=claude_code`` agents), fired by
+    the ``claude`` CLI itself for every tool call, native and MCP alike.
+    Local-only: the hook runs inside the SAME container and calls back into
+    this same process's own health server, so no network hop leaves the box.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        # Malformed input from the hook caller is not this agent's fault to
+        # diagnose — fail closed rather than guess.
+        return web.json_response(_deny_malformed())
+    tool_name = body.get("tool_name") or ""
+    tool_input = body.get("tool_input") or {}
+    from app.tools.pretooluse_hook import decide
+    return web.json_response(decide(tool_name, tool_input))
+
+
+def _deny_malformed() -> dict:
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": "PreToolUse-Hook erhielt kein lesbares JSON.",
+        }
+    }
+
+
 async def start_health_server(agent_id: str, port: int = 8080) -> web.AppRunner:
     app = web.Application()
     app["agent_id"] = agent_id
     app.router.add_get("/health", health_handler)
     app.router.add_get("/diag", diag_handler)
+    app.router.add_post("/hooks/pretooluse", pretooluse_hook_handler)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)

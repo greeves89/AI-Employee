@@ -5,6 +5,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.38] - 2026-09-17
+
+### Behoben
+- **32 von 80 Werkzeugen der Custom-LLM-Laufzeit liefen ohne jede
+  Autonomie-Pruefung** (Issue #197, Teil 1). `ToolExecutor.execute()`
+  erzwingt die Autonomie-Matrix/Befehlsregeln nur fuer Werkzeuge, die in
+  `TOOL_CATEGORY_MAP` stehen — ein nicht eingetragenes UND nicht in
+  `ALWAYS_ALLOWED_TOOLS` gelistetes Werkzeug lief unkontrolliert durch,
+  egal was die Matrix vorgab. Betroffen u. a. `computer_use` (volle
+  Kontrolle ueber den ECHTEN Desktop des Nutzers), `browser`,
+  `restart_own_container`, `rebuild_app`/`start_app`/`stop_app`,
+  `create_skill`/`skill_update`, `tickets`. Alle 32 jetzt bewusst
+  eingeordnet (9 in neue Kategorien, 23 als informativ/selbst-bezogen
+  ausdruecklich immer erlaubt). Neuer Vertragstest
+  (`test_tool_autonomy_coverage.py`) haelt fest, dass jedes Werkzeug in
+  `definitions.py` erfasst ist — ein kuenftig vergessenes neues Werkzeug
+  bricht den Build, statt die Luecke lautlos wieder aufzureissen.
+- **Claude-Code-Agenten liefen mit komplett abgeschaltetem Berechtigungs-
+  system** (Issue #197, Teil 2). Container starten mit
+  `--dangerously-skip-permissions`; das bereits vorhandene
+  `bash-approval-server.mjs` ist dabei nur ein PARALLELES, optionales
+  `Bash`-Werkzeug — das native, unbeschraenkte blieb daneben immer
+  verfuegbar, und nichts im Prompt bevorzugte das eingeschraenkte. Die
+  Autonomie-Matrix/Befehlsregeln waren fuer diese Laufzeit damit rein
+  prompt-abhaengig, nicht code-erzwungen. Neuer echter PreToolUse-Hook
+  (`.claude/settings.json`, Typ `http`, Matcher `*`) feuert jetzt fuer JEDEN
+  Werkzeugaufruf — eingebaut UND MCP —, wird von
+  `--dangerously-skip-permissions` NICHT umgangen (gegengeprueft vor dieser
+  Aenderung) und kann per `permissionDecision:"deny"` wirklich blockieren.
+  Ruft dieselbe Auswertung wie der Custom-LLM-Executor auf, lokal im selben
+  Container ueber den ohnehin laufenden Gesundheits-Server — ein
+  unbekanntes/nicht eingeordnetes Werkzeug wird dabei abgelehnt, nicht
+  stillschweigend erlaubt.
+
 ## [1.322.37] - 2026-09-17
 
 ### Hinzugefuegt
