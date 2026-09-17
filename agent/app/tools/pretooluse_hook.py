@@ -41,12 +41,38 @@ from app.tools.executor import ALWAYS_ALLOWED_TOOLS, TOOL_CATEGORY_MAP, _get_all
 _NATIVE_ALWAYS_ALLOWED = frozenset({
     "Read", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite",
     "BashOutput", "KillShell", "Task", "SlashCommand",
+    # Die AKTUELLEN Namen derselben Werkzeuge (Claude Code hat sie umbenannt)
+    # und die seitdem dazugekommenen Meta-Werkzeuge. Am 2026-09-17 sperrte die
+    # erste Fassung mit nur `Task`/`SlashCommand` auf einer laufenden Anlage
+    # jeden Subagenten, jede Skill-Anweisung und das Nachladen zurueckgestellter
+    # Werkzeugschemata — obwohl der Agent "Alles erlaubt" (L4) hatte.
+    "Agent",       # = Task: Subagent; laeuft selbst unter genau diesem Hook
+    "Skill",       # = SlashCommand: laedt nur Anweisungen
+    "ToolSearch",  # laedt nur Schemata; jeder Aufruf danach wird einzeln geprueft
+    "ListAgents", "TaskOutput", "TaskStop",
+    "SendMessage",  # wie `send_message` in ALWAYS_ALLOWED_TOOLS
+    "Workflow",     # orchestriert Subagenten — dieselbe Klasse wie Agent
+    "ScheduleWakeup", "CronCreate", "CronList", "CronDelete",  # wie `create_schedule`
+    "ReportFindings",  # reine Ausgabe an die Oberflaeche
+    "ListMcpResourcesTool", "ReadMcpResourceTool", "ReadMcpResourceDirTool",
 })
 _NATIVE_CATEGORY_MAP: dict[str, str] = {
     "Bash": "shell_exec",
+    "Monitor": "shell_exec",  # fuehrt wiederholt ein Shell-Kommando aus
     "Write": "file_write",
     "Edit": "file_write",
     "NotebookEdit": "file_write",
+    "EnterWorktree": "file_write",  # legt einen git-Worktree im Dateisystem an
+    "ExitWorktree": "file_write",
+}
+
+# Plattform-eigene MCP-Server, deren Werkzeuge NICHT in den custom_llm-Tabellen
+# stehen (dort gibt es sie nicht): `read-logs` (eigene Containerlogs, nur
+# lesend) und der Desktop-Server, dessen Werkzeuge `computer_<aktion>` heissen
+# und in der Summe genau das sind, was `computer_use` in TOOL_CATEGORY_MAP ist.
+_MCP_BARE_ALWAYS_ALLOWED = frozenset({"read_logs"})
+_MCP_BARE_PREFIX_CATEGORY: dict[str, str] = {
+    "computer_": TOOL_CATEGORY_MAP["computer_use"],
 }
 
 
@@ -79,11 +105,22 @@ def decide(tool_name: str, tool_input: dict | None = None) -> dict:
     if tool_name.startswith("mcp__"):
         parts = tool_name.split("__", 2)
         bare = parts[2] if len(parts) == 3 else ""
-        if bare in ALWAYS_ALLOWED_TOOLS:
+        if bare in ALWAYS_ALLOWED_TOOLS or bare in _MCP_BARE_ALWAYS_ALLOWED:
             return _allow()
         if bare in TOOL_CATEGORY_MAP:
             return _decide_for(TOOL_CATEGORY_MAP[bare], label=tool_name)
+        for prefix, category in _MCP_BARE_PREFIX_CATEGORY.items():
+            if bare.startswith(prefix):
+                return _decide_for(category, label=tool_name)
 
+    # Unbekannt. Ohne Freigabeliste (keine Regeln, oder die L4-Regel "Alles
+    # erlaubt" — beides liefert None) gibt es NICHTS, wogegen ein unbekanntes
+    # Werkzeug verstossen koennte: derselbe "keine Regeln = keine
+    # Einschraenkung"-Vertrag, der oben schon Bash und Write durchlaesst. Erst
+    # eine konfigurierte Freigabeliste macht Unbekanntes zum Freigabefall —
+    # das ist die Luecke, die #197 fuer die custom_llm-Laufzeit geschlossen hat.
+    if _get_allowed_categories() is None:
+        return _allow()
     return _deny(
         f"Unbekanntes Werkzeug '{tool_name}' — nicht in der Autonomie-Zuordnung "
         "verzeichnet. Bitte `request_approval` verwenden."
