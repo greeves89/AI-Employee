@@ -83,6 +83,56 @@ def test_as_metadata_urls_invalid_issuer():
     assert oc.as_metadata_urls("not-a-url") == []
 
 
+# Issue #729: a server that advertises Protected Resource Metadata ONLY via
+# the well-known URIs (no WWW-Authenticate header at all) — the MCP spec
+# requires clients to try the resource's own path first, then the bare
+# origin.
+
+def test_prm_metadata_urls_tries_path_then_root():
+    urls = oc.prm_metadata_urls("https://mcp.ws.sonos.com/mcp")
+    assert urls == [
+        "https://mcp.ws.sonos.com/.well-known/oauth-protected-resource/mcp",
+        "https://mcp.ws.sonos.com/.well-known/oauth-protected-resource",
+    ]
+
+
+def test_prm_metadata_urls_no_path_has_a_single_candidate():
+    urls = oc.prm_metadata_urls("https://mcp.ws.sonos.com")
+    assert urls == ["https://mcp.ws.sonos.com/.well-known/oauth-protected-resource"]
+
+
+def test_prm_metadata_urls_invalid_resource():
+    assert oc.prm_metadata_urls("not-a-url") == []
+
+
+def test_resource_matches_exact():
+    assert oc.resource_matches("https://mcp.ws.sonos.com/mcp", "https://mcp.ws.sonos.com/mcp")
+
+
+def test_resource_matches_ignores_trailing_slash():
+    assert oc.resource_matches("https://mcp.ws.sonos.com/mcp/", "https://mcp.ws.sonos.com/mcp")
+
+
+def test_resource_matches_is_case_insensitive_on_host():
+    assert oc.resource_matches("https://MCP.ws.sonos.com/mcp", "https://mcp.ws.sonos.com/mcp")
+
+
+def test_resource_matches_rejects_a_different_host():
+    """A plain rejected static token must not be misread as OAuth — a document
+    at the well-known path for an unrelated resource must not count."""
+    assert not oc.resource_matches("https://other-host.test/mcp", "https://mcp.ws.sonos.com/mcp")
+
+
+def test_resource_matches_rejects_a_different_path():
+    assert not oc.resource_matches("https://mcp.ws.sonos.com/other", "https://mcp.ws.sonos.com/mcp")
+
+
+def test_resource_matches_none_or_missing():
+    assert not oc.resource_matches(None, "https://mcp.ws.sonos.com/mcp")
+    assert not oc.resource_matches("", "https://mcp.ws.sonos.com/mcp")
+    assert not oc.resource_matches(123, "https://mcp.ws.sonos.com/mcp")
+
+
 def test_select_endpoints():
     meta = {
         "issuer": "https://as",

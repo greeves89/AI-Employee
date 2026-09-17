@@ -95,6 +95,48 @@ def pick_authorization_server(prm: dict | None) -> str | None:
     return None
 
 
+def prm_metadata_urls(resource_url: str) -> list[str]:
+    """Candidate RFC 9728 Protected Resource Metadata URLs for a resource, when
+    no ``WWW-Authenticate`` challenge is available to point at one directly (#729).
+
+    The MCP spec (2025-11-25, "Protected Resource Metadata Discovery
+    Requirements") lets a server advertise PRM via the header OR the
+    well-known URIs, and requires clients falling back to the well-known URIs
+    to try the resource's OWN PATH first, then the bare origin. A server with
+    no path component (e.g. ``https://host/``) has only one candidate.
+    """
+    p = urlparse(resource_url)
+    if p.scheme not in ("http", "https") or not p.netloc:
+        return []
+    base = f"{p.scheme}://{p.netloc}"
+    path = p.path.rstrip("/")
+    out = [f"{base}/.well-known/oauth-protected-resource{path}"]
+    if path:
+        out.append(f"{base}/.well-known/oauth-protected-resource")
+    seen: set[str] = set()
+    return [u for u in out if not (u in seen or seen.add(u))]
+
+
+def resource_matches(prm_resource: str | None, resource_url: str) -> bool:
+    """Does a PRM document's ``resource`` field identify the SAME resource we probed?
+
+    Guards the well-known fallback in ``_advertises_oauth`` against reading OAuth
+    protection into an unrelated document a host happens to serve at the
+    well-known path (#729) — a plain rejected static token must keep
+    returning False. Compared case-insensitively on scheme+host, trailing
+    slashes ignored; the RFC does not mandate byte-exact matches and real
+    servers commonly normalize trailing slashes.
+    """
+    if not isinstance(prm_resource, str) or not prm_resource:
+        return False
+    a, b = urlparse(prm_resource), urlparse(resource_url)
+    return (
+        a.scheme.lower() == b.scheme.lower()
+        and a.netloc.lower() == b.netloc.lower()
+        and a.path.rstrip("/") == b.path.rstrip("/")
+    )
+
+
 def as_metadata_urls(issuer: str) -> list[str]:
     """Candidate RFC 8414 metadata URLs for an issuer.
 

@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.28] - 2026-09-17
+
+### Behoben
+- **Ein OAuth-geschuetzter MCP-Server liess sich nicht hinzufuegen, wenn er
+  seine Protected Resource Metadata nur ueber die well-known-URI meldet, ohne
+  `WWW-Authenticate`-Header auf der 401** (Issue #729). Beispiel: `mcp.ws.sonos.com`
+  antwortet mit 401 ohne jeden Header, meldet OAuth aber ueber
+  `/.well-known/oauth-protected-resource/mcp` (bzw. am Ursprung). `add_mcp_server`
+  kannte nur den Header-Pfad und verwarf die 401 als abgelehntes statisches
+  Token — kein Datensatz wurde angelegt, der Verbinden-Fluss blieb unerreichbar.
+  `_advertises_oauth` faellt jetzt wie in der MCP-Spezifikation (2025-11-25)
+  gefordert auf die well-known-URIs zurueck (erst Pfad, dann Ursprung) und
+  bestaetigt echte OAuth-Absicherung nur, wenn das Dokument tatsaechlich
+  abgerufen werden kann, einen Autorisierungsserver nennt UND seine `resource`
+  zur gepruften URL passt — sonst bliebe die Abwehr gegen ein echtes
+  abgelehntes statisches Token loechrig. `oauth_discover` (der tatsaechliche
+  Verbinden-Schritt) faellt fuer denselben Fall ebenfalls auf beide
+  well-known-URIs zurueck, sonst waere der Datensatz zwar angelegt, aber nie
+  wirklich verbindbar gewesen.
+
 ## [1.322.27] - 2026-09-17
 
 ### Hinzugefuegt
