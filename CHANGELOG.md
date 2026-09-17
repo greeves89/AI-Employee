@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.40] - 2026-09-17
+
+### Behoben
+- **Der neue PreToolUse-Hook fuer Claude-Code-Agenten (1.322.38, #197 Teil 2)
+  sperrte Subagenten, Skills und alle nachgeladenen Werkzeuge — auch bei
+  „Alles erlaubt".** Die Zuordnung kannte nur die alten Namen `Task` und
+  `SlashCommand`; die heutigen Werkzeuge `Agent`, `Skill`, `ToolSearch`
+  (laedt die Schemata der zurueckgestellten M365-/Mail-/Planner-Werkzeuge),
+  `Monitor`, `EnterWorktree`/`ExitWorktree` u. a. galten als unbekannt und
+  wurden abgelehnt. Dazu wurde ein unbekanntes Werkzeug VOR dem Blick auf die
+  Freigabeliste abgelehnt — auch ein Agent mit der L4-Regel „Alles erlaubt"
+  (oder ganz ohne Regeln) verlor damit den Desktop-Server (`computer_*`), die
+  eigenen Containerlogs (`read_logs`) und jeden vom Betreiber eingebundenen
+  MCP-Server (M365, Mail, Planner). Auf der Anlage sichtbar ab dem Deploy
+  von 1.322.38: „Unbekanntes Werkzeug 'Agent' — nicht in der
+  Autonomie-Zuordnung verzeichnet." Jetzt: die aktuellen Namen sind
+  eingeordnet (Meta-/Lese-Werkzeuge immer erlaubt, `Monitor` wie `Bash`,
+  Worktrees wie Schreiben), `computer_*` teilt die Kategorie von
+  `computer_use`, `read_logs` ist immer erlaubt, und ohne Freigabeliste
+  (keine Regeln oder „Alles erlaubt") wird Unbekanntes nicht mehr gesperrt —
+  derselbe Vertrag, der dort schon fuer `Bash` und `Write` galt. Unter einer
+  konfigurierten Freigabeliste bleibt Unbekanntes weiterhin ein Freigabefall.
+
 ## [1.322.39] - 2026-09-17
 
 ### Sicherheit
