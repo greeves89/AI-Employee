@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.17] - 2026-09-17
+
+### Geändert
+- **Bei geteiltem Telegram-Token bekommt jetzt der Agent-Bot Vorrang, nicht
+  mehr der globale Benachrichtigungs-Bot** (Issue #709, Nutzerentscheidung
+  bestaetigt). Teilte sich ein Agent den Token mit dem globalen
+  Benachrichtigungs-Bot, startete bisher NUR der globale — der routet aber
+  nur ueber eine manuelle `/chat`-Sitzung, direkte Nachrichten an den
+  Agenten-Bot liefen damit ins Leere. Per-Agent-Bots laden jetzt zuerst;
+  der globale Bot startet nur noch, wenn sein Token nicht schon von einem
+  Agenten-Bot belegt ist — sonst eine Warnung mit dem Hinweis, fuer den
+  globalen Bot einen eigenen BotFather-Token zu hinterlegen. Die
+  Token-Entdopplung zwischen mehreren Agenten bleibt unveraendert.
+
 ## [1.322.16] - 2026-09-16
 
 ### Hinzugefuegt
