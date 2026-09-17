@@ -25,6 +25,26 @@ type Zugang = {
   created_at: string | null;
 };
 
+// Issue #710 (zweiter Punkt): "ok" allein sagt nichts ueber Lebendigkeit — der
+// Status stammt vom letzten echten Lauf und kann Tage alt sein, wenn seither
+// nichts mehr gelaufen ist. Ein bewaehrter Zugang, der 40 Stunden nicht mehr
+// gebraucht wurde, zeigte bisher denselben satten gruenen Haken wie einer, der
+// vor einer Minute funktioniert hat. Relative Zeit statt nackten Datums macht
+// das Alter der Auskunft auf den ersten Blick lesbar; ab 24 Stunden wird der
+// Haken zusaetzlich blass, statt weiterhin ungetrübte Gesundheit zu behaupten.
+const ZUGANG_GILT_ALS_UNBESTAETIGT_NACH_STUNDEN = 24;
+
+function relativeZeit(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minuten = Math.round(diffMs / 60_000);
+  if (minuten < 1) return "gerade eben";
+  if (minuten < 60) return `vor ${minuten} Min.`;
+  const stunden = Math.round(minuten / 60);
+  if (stunden < 24) return `vor ${stunden} Std.`;
+  const tage = Math.round(stunden / 24);
+  return `vor ${tage} Tag${tage === 1 ? "" : "en"}`;
+}
+
 const HARNESSE: { id: string; name: string; hilfe: string }[] = [
   {
     id: "claude_code",
@@ -211,7 +231,7 @@ export function MyAiCredentials() {
                   <p className="truncate text-[11px] text-muted-foreground">
                     {verbunden
                       ? `verbunden${z?.label ? ` · ${z.label}` : ""}${
-                          z?.last_used_at ? ` · zuletzt benutzt ${new Date(z.last_used_at).toLocaleDateString()}` : ""
+                          z?.last_used_at ? ` · zuletzt benutzt ${relativeZeit(z.last_used_at)}` : ""
                         }`
                       : "nicht verbunden"}
                   </p>
@@ -222,14 +242,35 @@ export function MyAiCredentials() {
                   <>
                     {/* Der letzte Status ist die einzige ehrliche Auskunft darueber,
                         ob der Zugang noch gilt — ein Token kann ablaufen, ohne dass
-                        hier etwas passiert. */}
+                        hier etwas passiert. "ok" allein sagt aber nur, dass es beim
+                        letzten Lauf noch galt (#710) — ohne neuen Lauf seither ist
+                        das eine Auskunft ueber die Vergangenheit, nicht die Gegenwart.
+                        Ein blasser statt sattgruener Haken macht diese Alters-Luecke
+                        sichtbar, ohne einen Fehler zu behaupten, den es nicht gibt. */}
                     {z?.last_status && z.last_status !== "ok" ? (
                       <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-500">
                         {z.last_status}
                       </span>
-                    ) : (
-                      <Check className="h-4 w-4 text-emerald-500" />
-                    )}
+                    ) : (() => {
+                      const unbestaetigt = !!(
+                        z?.last_used_at &&
+                        Date.now() - new Date(z.last_used_at).getTime() >
+                          ZUGANG_GILT_ALS_UNBESTAETIGT_NACH_STUNDEN * 3_600_000
+                      );
+                      return (
+                        <span
+                          title={
+                            unbestaetigt
+                              ? `Zuletzt bestaetigt ${relativeZeit(z!.last_used_at!)} — seither ist kein Agent mehr damit gelaufen.`
+                              : undefined
+                          }
+                        >
+                          <Check
+                            className={unbestaetigt ? "h-4 w-4 text-emerald-500/40" : "h-4 w-4 text-emerald-500"}
+                          />
+                        </span>
+                      );
+                    })()}
                     <button
                       onClick={() => trennen(h.id)}
                       disabled={busy}

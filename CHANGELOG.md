@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.35] - 2026-09-17
+
+### Behoben
+- **Ein KI-Zugang zeigte einen satten gruenen Haken, auch wenn er seit Tagen
+  nicht mehr geprueft wurde** (Issue #710, zweiter Punkt). `last_status` wird
+  vom letzten ECHTEN Lauf gemeldet — "ok" heisst also nur "galt zuletzt, als
+  zuletzt etwas damit gelaufen ist", nicht "gilt jetzt". Bei einem Agenten,
+  der 40 Stunden keine Aufgabe mehr bekam, sah der Zugang in der Uebersicht
+  bis zum ersten (fehlgeschlagenen) Lauf makellos gesund aus — die Anzeige
+  mass Vergangenheit, nicht Lebendigkeit. "Meine KI-Zugaenge" zeigt "zuletzt
+  benutzt" jetzt relativ (vor X Std./Tagen statt nacktem Datum), und der Haken
+  wird blass statt satt gruen, wenn die letzte Bestaetigung laenger als 24
+  Stunden zurueckliegt — ohne einen Fehler zu behaupten, den es nicht gibt,
+  aber sichtbar genug, damit ein Betreiber die Alters-Luecke selbst beurteilen
+  kann.
+
 ## [1.322.34] - 2026-09-17
 
 ### Behoben
