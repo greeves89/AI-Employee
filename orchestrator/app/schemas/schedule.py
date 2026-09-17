@@ -159,3 +159,23 @@ class ScheduleResponse(BaseModel):
 class ScheduleListResponse(BaseModel):
     schedules: list[ScheduleResponse]
     total: int
+
+
+class ScheduleTimingParseRequest(BaseModel):
+    """Issue #196: translate a free-text timing phrase into a cron_expression.
+
+    Preview only — creates nothing. The caller passes the resolved
+    ``cron_expression`` from the response into the normal ``ScheduleCreate``
+    afterward, so there is only ever one way a schedule actually gets made.
+    """
+    text: str
+    agent_id: str | None = None
+    timezone: str | None = None
+
+
+class ScheduleTimingParseResponse(BaseModel):
+    cron_expression: str
+    timezone: str
+    explanation: str
+    source: str  # "regel" | "llm"
+    next_runs: list[datetime]

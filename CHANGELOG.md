@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.37] - 2026-09-17
+
+### Hinzugefuegt
+- **Zeitpläne in normaler Sprache anlegen** (Issue #196). Die Cron-Mechanik
+  gab es laengst — Agenten uebersetzen "jeden Montag" selbst, wenn sie den
+  Zeitplan-Werkzeugen einen Cron-Ausdruck uebergeben. Was fehlte, war der
+  Weg fuer einen MENSCHEN im "Neuer Zeitplan"-Formular: dort musste bisher
+  von Hand ein roher Cron-Ausdruck eingetippt werden. Neuer dritter Modus
+  "In your own words" — Freitext wie "every Monday at 9am" oder "jeden
+  Freitag um 17 Uhr" wird ueber `POST /schedules/parse-timing` in einen
+  Cron-Ausdruck uebersetzt, mit Vorschau (naechste drei Termine) vor dem
+  Anlegen. Zwei Stufen: eine deterministische Regel-Erkennung fuer die
+  ueblichen Formulierungen (taeglich/woechentlich/werktags/stuendlich/
+  monatlich, DE+EN, ohne LLM-Abhaengigkeit), mit LLM-Rueckfall fuer alles
+  andere, sofern ein Anthropic-Schluessel konfiguriert ist. Der bestehende
+  Weg, einen Zeitplan tatsaechlich anzulegen (`POST /schedules/`), bleibt
+  unveraendert — die Vorschau liefert nur den Cron-Ausdruck dafuer.
+
 ## [1.322.36] - 2026-09-17
 
 ### Behoben
