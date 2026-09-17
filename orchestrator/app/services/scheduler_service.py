@@ -1193,9 +1193,26 @@ class SchedulerService:
                 task = (await db.execute(
                     select(Task).where(Task.id == item.task_id)
                 )).scalar_one_or_none()
-                state = str(getattr(getattr(task, "status", ""), "value", getattr(task, "status", ""))).lower()
-                if task is None or state in ("completed", "failed", "cancelled"):
+                if task is None:
+                    # Aufgabe nicht (mehr) auffindbar — kein Ergebnis bewertbar
+                    # und definitiv NICHT "done" (#733): sonst sieht die
+                    # Planung nichts Offenes. Zurueck auf "planned"; der
+                    # Nachzieh-Zweig unten greift sie beim naechsten Tick
+                    # erneut ueber die Titel-Suche auf.
+                    item.status = "planned"
+                    item.task_id = None
+                    settled += 1
+                    continue
+                state = str(getattr(getattr(task, "status", ""), "value", task.status)).lower()
+                if state == "completed":
                     item.status = "done"
+                    settled += 1
+                elif state in ("failed", "cancelled"):
+                    # Eigener Endzustand statt "done" (#733) — sonst ist ein
+                    # mitten in der Arbeit gestorbener Block von einem sauber
+                    # erledigten nicht zu unterscheiden, und die Planung holt
+                    # verlorene Arbeit nie nach.
+                    item.status = "failed"
                     settled += 1
             # Und die Bloecke, deren Zeitplan schon gefeuert hat, ohne dass sie es
             # mitbekommen haben (Laeufe von vor dieser Rueckmeldung). Ohne das stuenden
@@ -1218,7 +1235,17 @@ class SchedulerService:
                 )).scalar_one_or_none()
                 state = str(getattr(getattr(task, "status", ""), "value", getattr(task, "status", ""))).lower()
                 item.task_id = getattr(task, "id", None)
-                item.status = "running" if state in ("pending", "queued", "running") else "done"
+                if state in ("pending", "queued", "running"):
+                    item.status = "running"
+                elif state == "completed":
+                    item.status = "done"
+                elif state in ("failed", "cancelled"):
+                    item.status = "failed"  # siehe #733 oben: eigener Endzustand statt "done"
+                else:
+                    # Titel-Suche fand nichts — bleibt "planned" statt "done",
+                    # damit der naechste Tick es erneut versucht (#733).
+                    item.status = "planned"
+                    item.task_id = None
                 settled += 1
             if settled:
                 await db.commit()

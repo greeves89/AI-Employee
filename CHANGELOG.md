@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.22] - 2026-09-17
+
+### Behoben
+- **Der Status eines Tagesplan-Blocks meldete jeden Endzustand der
+  verknuepften Aufgabe als "done"** — auch `failed`, `cancelled` und eine
+  nicht mehr auffindbare Aufgabe (Issue #733). Belegt am 12.09.2026: alle
+  fuenf Bloecke eines Tages standen auf `done`, obwohl mindestens drei davon
+  am Kontextlimit gestorben waren oder mitten in der Arbeit abgebrochen
+  wurden. Ein gestorbener Block war von einem sauber erledigten nicht zu
+  unterscheiden — die Morgen-/Abendplanung konnte gescheiterte Arbeit nicht
+  von erledigter unterscheiden und holte sie deshalb nie nach.
+  Neuer Status `failed` im Vokabular (Kalender-Anzeige, Sperre gegen
+  nachtraegliche Bearbeitung mitgezogen). `_arm_plan_blocks` reicht den
+  echten Endzustand jetzt durch: `completed` → `done`, `failed`/`cancelled`
+  → `failed`, Aufgabe nicht auffindbar → bleibt `planned` (der naechste Tick
+  versucht es erneut), statt in jedem Fall `done` einzuebnen.
+
 ## [1.322.21] - 2026-09-17
 
 ### Behoben

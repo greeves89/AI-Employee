@@ -445,7 +445,7 @@ export interface DayPlanItem {
   planned_start: string | null;
   estimated_minutes: number;
   source: "responsibility" | "todo" | "self" | "user";
-  status: "planned" | "running" | "done" | "dropped";
+  status: "planned" | "running" | "done" | "failed" | "dropped";
   todo_id: number | null;
   task_id: string | null;
 }
