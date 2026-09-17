@@ -18,9 +18,22 @@ call list_my_team". Genau das beschreibt der Bericht — er sah nach, als er
 angesprochen wurde. Hier wird geprueft, dass sie am HANDELN haengt.
 """
 
+import re
 import unittest
 
 from app.core.agent_manager import DEFAULT_CLAUDE_MD
+
+
+def _absatz(doc: str, anfang: str) -> str:
+    """Der Absatz ab ``anfang`` bis zur naechsten Aufzaehlung auf oberster
+    Ebene (eine Zeile, die mit ``- **`` beginnt, ohne Einrueckung) — als
+    tatsaechliche Grenze im Dokument, nicht als geschaetzte Zeichenzahl. Ein
+    laengerer Satz davor oder mittendrin verschiebt sie nicht; ein neuer
+    Regel-Absatz, der spaeter davorgeschoben wird, aendert nur den Anfang."""
+    i = doc.index(anfang)
+    rest = doc[i:]
+    treffer = re.search(r"\n-\s\*\*", rest[1:])
+    return rest[: treffer.start() + 1] if treffer else rest
 
 
 class TheRosterIsLookedUpNotRememberedTests(unittest.TestCase):
@@ -31,21 +44,21 @@ class TheRosterIsLookedUpNotRememberedTests(unittest.TestCase):
         )
 
     def test_looking_up_before_delegating_is_demanded(self):
-        block = DEFAULT_CLAUDE_MD.split("**Your roster is something you LOOK UP", 1)
-        self.assertEqual(len(block), 2, "Die Regel fehlt ganz")
-        regel = block[1][:900]
+        self.assertIn("**Your roster is something you LOOK UP", DEFAULT_CLAUDE_MD,
+                      "Die Regel fehlt ganz")
+        regel = _absatz(DEFAULT_CLAUDE_MD, "**Your roster is something you LOOK UP")
         for erwartet in ("before you delegate", "before you write anything about the team into memory"):
             self.assertIn(erwartet, regel)
 
     def test_it_says_what_to_do_when_a_colleague_is_gone(self):
         """Ohne diesen Satz plant er weiter mit einem Namen, den es nicht gibt."""
-        regel = DEFAULT_CLAUDE_MD.split("**Your roster is something you LOOK UP", 1)[1][:900]
+        regel = _absatz(DEFAULT_CLAUDE_MD, "**Your roster is something you LOOK UP")
         self.assertIn("do not queue work for a name that is no longer there", regel)
 
     def test_it_points_at_the_way_to_forget(self):
         """Genau das, was der Agent versucht hat und was am 401 scheiterte —
         siehe test_agent_can_forget.py."""
-        regel = DEFAULT_CLAUDE_MD.split("**Your roster is something you LOOK UP", 1)[1][:900]
+        regel = _absatz(DEFAULT_CLAUDE_MD, "**Your roster is something you LOOK UP")
         self.assertIn("memory_delete", regel)
 
     def test_the_tool_is_still_named(self):

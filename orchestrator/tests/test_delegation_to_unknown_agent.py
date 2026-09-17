@@ -17,14 +17,72 @@ Kollegen, die es wirklich gibt. Damit korrigiert er sich im selben Zug selbst,
 statt zu warten.
 """
 
+import ast
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.core.task_router import TaskRouter, UnknownAgentError
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _ohne_kommentare(block: str) -> str:
+    """Kommentare aus einem Quelltextblock tilgen (per tokenize, nicht per
+    '#'-Suche). Ein auskommentierter Aufruf stuende sonst weiterhin im Block
+    und bestuende jedes `assertIn` — die Blindstelle aus #726."""
+    import io
+    import textwrap
+    import tokenize
+
+    text = textwrap.dedent(block)
+    zeilen = text.splitlines(keepends=True)
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.COMMENT:
+                (zeile, von), (_, bis) = tok.start, tok.end
+                zeilen[zeile - 1] = zeilen[zeile - 1][:von] + zeilen[zeile - 1][bis:]
+    except tokenize.TokenError as e:  # unvollstaendiger Block — lieber laut
+        raise AssertionError(f"Block nicht tokenisierbar: {e}")
+    return "".join(zeilen)
+
+
+def _knotenquelle(src: str, knoten: ast.AST) -> str:
+    """``ast.get_source_segment`` mit korrigierter erster Zeile.
+
+    Die erste Zeile kommt OHNE ihre urspruengliche Einrueckung zurueck (sie
+    schneidet ab ``col_offset``), alle folgenden MIT voller Original-
+    Einrueckung. Bei einer Geschwister-Klausel auf derselben Spalte (``except``
+    zu ``try``) springt eine Zeile dann scheinbar auf Spalte 0 zurueck, ohne
+    dass diese Ebene je geoeffnet wurde — ``textwrap.dedent`` findet keinen
+    gemeinsamen Praefix mehr. Die fehlende Einrueckung der ersten Zeile hier
+    wieder auffuellen, bevor gekuerzt wird."""
+    text = ast.get_source_segment(src, knoten) or ""
+    return (" " * knoten.col_offset) + text
+
+
+def _except_block(src: str, funktion: str, ausnahme: str) -> str:
+    """Der ``except <ausnahme>``-Block INNERHALB von ``def <funktion>`` — als
+    kleinster umschliessender AST-Knoten, nicht als geschaetzte Zeichenzahl.
+
+    ``_resume_agent_task`` sitzt als verschachtelte Funktion tief im
+    Start-Vorgang (``lifespan``) und laesst sich nicht isoliert mit Attrappen
+    aufrufen, ohne den ganzen Start nachzubauen. Die syntaktische Blockgrenze
+    ist trotzdem die tatsaechliche Codegrenze: ein laengerer Kommentar
+    daneben verschiebt sie nicht, und Kommentare werden vor der Pruefung
+    getilgt — ein auskommentiertes ``delete_job`` faellt hier durch, anders
+    als bei einem Zeichenfenster.
+    """
+    baum = ast.parse(src)
+    for fn in ast.walk(baum):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and fn.name == funktion:
+            for knoten in ast.walk(fn):
+                if (isinstance(knoten, ast.ExceptHandler) and knoten.type is not None
+                        and ast.get_source_segment(src, knoten.type) == ausnahme):
+                    return _ohne_kommentare(_knotenquelle(src, knoten))
+            raise AssertionError(f"except {ausnahme}: nicht in {funktion} gefunden")
+    raise AssertionError(f"def {funktion}: nicht gefunden")
 
 
 class TheErrorTalksToTheAgentTests(unittest.TestCase):
@@ -207,16 +265,23 @@ class TenantIsolationHoldsInErrorsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await _router(db)._delegatable_agents("a"), [])
 
 
-class ItReachesTheAgentTests(unittest.TestCase):
+class ItReachesTheAgentTests(unittest.IsolatedAsyncioTestCase):
     """Ein Fehler, der nur im Protokoll steht, aendert am Verhalten nichts."""
 
     MAIN = (ROOT / "orchestrator/app/main.py").read_text()
 
-    def test_http_turns_it_into_a_readable_400(self):
-        self.assertIn("@app.exception_handler(UnknownAgentError)", self.MAIN)
-        block = self.MAIN.split("@app.exception_handler(UnknownAgentError)", 1)[1][:400]
-        self.assertIn("status_code=400", block)
-        self.assertIn("str(exc)", block)
+    async def test_http_turns_it_into_a_readable_400(self):
+        """Den registrierten Handler wirklich aufrufen statt Text daneben zu
+        lesen — ein auskommentierter ``status_code=400`` bestuende ein
+        Zeichenfenster klaglos, hier faellt die Antwort dann auf 500 zurueck."""
+        import json
+
+        from app.main import _unknown_agent_handler
+
+        fehler = UnknownAgentError("6e4210c1")
+        antwort = await _unknown_agent_handler(None, fehler)
+        self.assertEqual(antwort.status_code, 400)
+        self.assertEqual(json.loads(antwort.body)["detail"], str(fehler))
 
     def test_it_is_registered_once_and_centrally(self):
         """Statt in jedem der zehn Aufrufer einzeln — genau so entstehen
@@ -224,19 +289,45 @@ class ItReachesTheAgentTests(unittest.TestCase):
         self.assertEqual(self.MAIN.count("@app.exception_handler(UnknownAgentError)"), 1)
 
 
-class BackgroundPathsDoNotCrashTests(unittest.TestCase):
+class BackgroundPathsDoNotCrashTests(unittest.IsolatedAsyncioTestCase):
     """Im Hintergrund hoert niemand zu — dort darf der Fehler keinen Lauf
     abreissen, muss aber trotzdem sichtbar werden."""
 
-    def test_a_workflow_step_fails_with_the_reason_written_down(self):
-        wf = (ROOT / "orchestrator/app/services/workflow_engine.py").read_text()
-        block = wf.split("except UnknownAgentError as e:", 1)[1][:600]
-        self.assertIn('run.status = "failed"', block)
-        self.assertIn("run.error =", block)
+    async def test_a_workflow_step_fails_with_the_reason_written_down(self):
+        """``advance_run`` wirklich fahren statt den Quelltext daneben zu lesen:
+        ein auskommentiertes ``run.status = "failed"`` bestuende ein
+        1400-Zeichen-Fenster klaglos, hier bliebe der Run dann faelschlich auf
+        'running' stehen."""
+        from app.models.workflow import Workflow, WorkflowRun
+        from app.services import workflow_engine as we
+
+        wf = Workflow(id="wf1", name="t")
+        wf.definition = {"start": "s1", "steps": {
+            "s1": {"type": "agent_task", "prompt": "tu was",
+                   "agent_id": "6e4210c1", "next": None},
+        }}
+        run = WorkflowRun(id="r1", workflow_id="wf1")
+        run.status, run.context, run.current_step = "running", {}, "s1"
+        run.current_task_id, run.resume_at, run.steps_done = None, None, 0
+
+        db = MagicMock()
+        db.commit = AsyncMock()
+        router = MagicMock()
+        router.create_and_route_task = AsyncMock(side_effect=UnknownAgentError("6e4210c1"))
+
+        await we.advance_run(run, wf, db, router)
+
+        self.assertEqual(run.status, "failed")
+        self.assertIn("6e4210c1", run.error or "")
+        db.commit.assert_awaited()
 
     def test_a_resumed_job_is_dropped_instead_of_retried_forever(self):
+        """``_resume_agent_task`` steckt in ``lifespan`` und laesst sich ohne
+        den ganzen Start nicht mit Attrappen aufrufen — deshalb der echte
+        syntaktische except-Block (siehe ``_except_block``) statt eines
+        geschaetzten Zeichenfensters."""
         main = (ROOT / "orchestrator/app/main.py").read_text()
-        block = main.split("except UnknownAgentError as e:", 1)[1][:500]
+        block = _except_block(main, "_resume_agent_task", "UnknownAgentError")
         self.assertIn("delete_job(db, job.id)", block)
 
 

@@ -25,6 +25,24 @@ ROOT = Path(__file__).resolve().parents[2]
 MANAGER = (ROOT / "orchestrator/app/core/agent_manager.py").read_text()
 
 
+def _listenpunkt(doc: str, anfang: str) -> str:
+    """Ein Aufzaehlungspunkt ab ``anfang`` bis zum naechsten Punkt auf
+    DERSELBEN Einrueckungsstufe — als tatsaechliche Dokumentgrenze, nicht als
+    geschaetzte Zeichenzahl. Tiefer eingerueckte Unterpunkte darunter zaehlen
+    weiter zum Text; ein laengerer Satz daneben verschiebt die Grenze nicht."""
+    zeilen = doc.splitlines(keepends=True)
+    start = next(i for i, z in enumerate(zeilen) if anfang in z)
+    einrueckung = len(zeilen[start]) - len(zeilen[start].lstrip(" "))
+    ende = len(zeilen)
+    for i in range(start + 1, len(zeilen)):
+        z = zeilen[i]
+        fuehrend = len(z) - len(z.lstrip(" "))
+        if z.strip().startswith("-") and fuehrend <= einrueckung:
+            ende = i
+            break
+    return "".join(zeilen[start:ende])
+
+
 class ThereIsNoOnboardingInterviewAnymoreTests(unittest.TestCase):
     """Ein Agent entsteht aus einer Vorlage — Rolle, Schwerpunkte und Grenzen
     stehen dort bereits. Sie noch einmal abzufragen war ueberfluessig, und in
@@ -61,7 +79,7 @@ class QuestionsInTasksGoThroughApprovalTests(unittest.TestCase):
         self.assertIn("In a task, a delegated job, or a proactive run", MANAGER)
 
     def test_it_names_the_working_channel(self):
-        block = MANAGER.split("Asking the user something")[1][:1400]
+        block = _listenpunkt(MANAGER, "In a task, a delegated job, or a proactive run")
         self.assertIn("request_approval", block)
 
     def test_it_says_plainly_that_text_reaches_nobody(self):
@@ -70,7 +88,7 @@ class QuestionsInTasksGoThroughApprovalTests(unittest.TestCase):
     def test_the_agent_is_told_to_deliver_anyway(self):
         """Der teuerste Teil des Vorfalls war nicht die Frage, sondern dass gar
         nichts geliefert wurde."""
-        block = MANAGER.split("Asking the user something")[1][:1400]
+        block = _listenpunkt(MANAGER, "In a task, a delegated job, or a proactive run")
         self.assertIn("safest reasonable default", block)
 
 
