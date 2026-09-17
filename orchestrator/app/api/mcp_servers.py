@@ -599,23 +599,51 @@ async def list_mcp_servers(user=Depends(require_auth), db: AsyncSession = Depend
 
 
 async def _advertises_oauth(url: str) -> bool:
-    """True when the server answers the initialize probe with an RFC 9728 OAuth
-    challenge (``WWW-Authenticate: Bearer resource_metadata="…"``).
+    """True when the server is OAuth-protected per RFC 9728 / MCP 2025-11-25.
 
     Used to tell an OAuth-protected server (which SHOULD be created so the Connect
     flow becomes reachable) apart from a genuinely rejected static token. Best
     effort: any probe failure returns False so we fall back to the normal abort.
+
+    Two ways a server can advertise this, both handled:
+    1. The 401 carries a ``WWW-Authenticate: Bearer resource_metadata="…"``
+       challenge — the pointer is trusted directly, as before.
+    2. No challenge at all, only the well-known Protected Resource Metadata
+       URIs (path, then root) — required by the MCP spec, but ``add_mcp_server``
+       never tried it (#729): a server like ``mcp.ws.sonos.com`` that only
+       advertises PRM this way had every add rejected as "invalid token",
+       with nothing stored and the Connect flow unreachable. Unlike case 1,
+       deriving a well-known URL string alone proves nothing — any host could
+       404 or serve something unrelated there — so this path FETCHES the
+       document and only counts if it lists an authorization server AND its
+       own ``resource`` matches the URL we probed.
     """
     from app.services import mcp_oauth_client as oc
     try:
         www_auth = await _oauth_probe_challenge(url)
     except HTTPException:
         return False
-    # Only the challenge's own ``resource_metadata`` pointer counts. Passing the
-    # server URL as a fallback would derive a well-known path for ANY https host,
-    # so a plain rejected static token (401 with no OAuth challenge) would be
-    # misread as OAuth. RFC 9728 requires the pointer to be advertised explicitly.
-    return bool(www_auth and oc.resource_metadata_url(www_auth))
+    if www_auth:
+        # Only the challenge's own resource_metadata pointer counts here — no
+        # server_url fallback, so a plain rejected static token (401, no OAuth
+        # challenge at all) is never misread as OAuth via a guessed path.
+        return bool(oc.resource_metadata_url(www_auth))
+    for candidate in oc.prm_metadata_urls(url):
+        if await _prm_confirms_oauth(candidate, url):
+            return True
+    return False
+
+
+async def _prm_confirms_oauth(prm_url: str, resource_url: str) -> bool:
+    """Fetch prm_url and confirm it is a genuine PRM document for resource_url."""
+    from app.services import mcp_oauth_client as oc
+    try:
+        prm = await _oauth_fetch_json(prm_url)
+    except HTTPException:
+        return False
+    if not oc.pick_authorization_server(prm):
+        return False
+    return oc.resource_matches(prm.get("resource"), resource_url)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -1012,12 +1040,27 @@ async def oauth_discover(
         raise HTTPException(status_code=404, detail="MCP server not found")
 
     www_auth = await _oauth_probe_challenge(server.url)
-    prm_url = oc.resource_metadata_url(www_auth, server.url)
-    if not prm_url:
+    prm: dict | None = None
+    if www_auth:
+        prm_url = oc.resource_metadata_url(www_auth)
+        if prm_url:
+            prm = await _oauth_fetch_json(prm_url)
+    if prm is None:
+        # No challenge (or none with a usable pointer): fall back to the
+        # well-known PRM URIs, path first then root (#729) — same candidates
+        # _advertises_oauth already confirmed one of when the server got
+        # added, otherwise this route could never have been reached for it.
+        for candidate in oc.prm_metadata_urls(server.url):
+            try:
+                prm = await _oauth_fetch_json(candidate)
+                break
+            except HTTPException:
+                continue
+    if prm is None:
         raise HTTPException(status_code=400,
-                            detail="Server did not advertise OAuth (no WWW-Authenticate resource_metadata)")
+                            detail="Server did not advertise OAuth (no WWW-Authenticate resource_metadata "
+                                    "and no well-known Protected Resource Metadata)")
 
-    prm = await _oauth_fetch_json(prm_url)
     issuer = oc.pick_authorization_server(prm)
     if not issuer:
         raise HTTPException(status_code=400, detail="Protected-resource metadata lists no authorization server")
