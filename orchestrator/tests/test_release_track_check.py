@@ -193,7 +193,6 @@ class BranchVersionenFiltertDenEchtenBestandTests(unittest.TestCase):
 
         branches = {
             "origin/main": {"commit": self.JETZT, "version": "9.9.9"},
-            "origin/HEAD": {"commit": self.JETZT, "version": "9.9.9"},
             "origin/dependabot/pip/foo-1.2.3": {"commit": self.JETZT, "version": "1.0.0"},
             "origin/fix/alt-und-vergessen": {
                 "commit": self.JETZT - (rt.WARTESCHLANGE_TAGE + 5) * 86400, "version": "1.0.0",
@@ -201,10 +200,15 @@ class BranchVersionenFiltertDenEchtenBestandTests(unittest.TestCase):
             "origin/fix/ohne-version-datei": {"commit": self.JETZT, "version": None},
             "origin/fix/frisch": {"commit": self.JETZT - 3600, "version": "1.5.0"},
         }
+        # Wie git es wirklich ausgibt: refname:short des symbolischen
+        # HEAD-Zeigers ist nicht "origin/HEAD", sondern schlicht "origin" —
+        # und %(symref) ist NUR bei diesem einen Eintrag nicht-leer.
+        for_each_ref_zeilen = [f"{name}\t" for name in branches]
+        for_each_ref_zeilen.append("origin\trefs/remotes/origin/main")
 
         def fake_git(*args):
             if args[0] == "for-each-ref":
-                return "\n".join(branches)
+                return "\n".join(for_each_ref_zeilen)
             if args[0] == "log":
                 return str(branches[args[3]]["commit"])
             if args[0] == "show":
@@ -222,10 +226,15 @@ class BranchVersionenFiltertDenEchtenBestandTests(unittest.TestCase):
     def test_dependabot_wird_ausgeschlossen(self):
         self.assertNotIn("dependabot/pip/foo-1.2.3", rt.branch_versionen())
 
-    def test_main_und_head_werden_ausgeschlossen(self):
-        ergebnis = rt.branch_versionen()
-        self.assertNotIn("main", ergebnis)
-        self.assertNotIn("HEAD", ergebnis)
+    def test_main_wird_ausgeschlossen(self):
+        self.assertNotIn("main", rt.branch_versionen())
+
+    def test_der_symbolische_head_zeiger_wird_nicht_als_branch_origin_gezaehlt(self):
+        """Live gefunden (16.09.2026): git gibt fuer origin/HEAD als
+        refname:short schlicht 'origin' aus, nicht 'origin/HEAD' — ein reiner
+        Namensabgleich auf 'HEAD' liess diesen Eintrag durchrutschen. main
+        kollidierte dadurch mit sich selbst in der eigenen Warteschlange."""
+        self.assertNotIn("origin", rt.branch_versionen())
 
     def test_ein_monatealter_branch_zaehlt_nicht_mehr_zur_warteschlange(self):
         self.assertNotIn("fix/alt-und-vergessen", rt.branch_versionen())
