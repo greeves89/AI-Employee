@@ -190,9 +190,14 @@ async def patch_plan_item(
         raise HTTPException(status_code=404, detail="Plan item not found")
     await _assert_access(row.agent_id, user, db)
 
+    # notes ist bewusst ausgenommen (#717): title/planned_start/estimated_minutes
+    # beschreiben die ABSICHT und bleiben gesperrt, sobald gearbeitet wird — sonst
+    # stuende im Kalender ein Titel, unter dem etwas anderes gelaufen ist. notes
+    # ist aber das einzige Feld, in dem das ERGEBNIS stehen kann; ohne Ausnahme
+    # gab es dafuer nie ein Zeitfenster (vor dem Start gibt es noch kein Ergebnis,
+    # ab running/done griff dieselbe Sperre).
     inhalt_geaendert = any(
-        v is not None for v in (body.planned_start, body.estimated_minutes,
-                                body.title, body.notes)
+        v is not None for v in (body.planned_start, body.estimated_minutes, body.title)
     )
     if inhalt_geaendert and row.status in ("running", "done"):
         raise HTTPException(
@@ -220,7 +225,14 @@ async def patch_plan_item(
             raise HTTPException(status_code=422, detail="Titel darf nicht leer sein")
         row.title = title[:200]
     if body.notes is not None:
-        row.notes = body.notes.strip()[:2000]
+        neue_notiz = body.notes.strip()[:2000]
+        if row.status in ("running", "done") and row.notes:
+            # Das Ergebnis kommt UNTER die urspruengliche Absicht, nicht an
+            # ihre Stelle — sonst geht verloren, wozu der Block beansprucht
+            # wurde (#717).
+            row.notes = f"{row.notes}\n\n{neue_notiz}"[:2000]
+        else:
+            row.notes = neue_notiz
     # Der Ausloeser muss mitgehen: ein verschobener Block, dessen Zeitplan auf der
     # alten Uhrzeit steht, laeuft zur falschen Zeit — und ein gestrichener liefe
     # ueberhaupt noch.
