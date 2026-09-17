@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.18] - 2026-09-17
+
+### Behoben
+- **Der neue Warteschlangen-Ueberblick (#707, v1.322.16) hielt main faelschlich
+  fuer einen kollidierenden Branch seiner eigenen Warteschlange.** Ursache:
+  `git for-each-ref --format=%(refname:short)` gibt fuer den symbolischen
+  `origin/HEAD`-Zeiger nicht `origin/HEAD` aus, sondern schlicht `origin` —
+  ein reiner Namensabgleich auf `HEAD` liess ihn durchrutschen, und er trug
+  main's aktuelle Versionsnummer. Live gefunden: nach dem Merge von #709 (auch
+  v1.322.17) meldete der Lauf main als „Branch origin" in Kollision mit sich
+  selbst. Erkennung jetzt ueber `%(symref)` statt Namensabgleich — nur der
+  symbolische Zeiger hat einen nicht-leeren Wert, unabhaengig davon, wie sein
+  Kurzname zufaellig lautet.
+
 ## [1.322.17] - 2026-09-17
 
 ### Geändert

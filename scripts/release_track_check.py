@@ -165,20 +165,30 @@ def branch_versionen(basis_kurzname: str = "main", tage: int = WARTESCHLANGE_TAG
     einen bevorstehenden Merge aus.
     """
     grenze = time.time() - tage * 86400
-    zeilen = git("for-each-ref", "--format=%(refname:short)", "refs/remotes/origin").splitlines()
+    # %(symref) ist nur fuer den symbolischen HEAD-Zeiger nicht-leer. Dessen
+    # refname:short ist NICHT "origin/HEAD", sondern schlicht "origin" — ein
+    # Name-Abgleich auf "HEAD" allein liess ihn frueher durchrutschen und als
+    # Branch "origin" mit main's eigener Versionsnummer erscheinen (live
+    # gefunden: main kollidierte mit sich selbst in der eigenen Warteschlange).
+    zeilen = git(
+        "for-each-ref", "--format=%(refname:short)\t%(symref)", "refs/remotes/origin"
+    ).splitlines()
     ergebnis: dict[str, str] = {}
-    for ref in zeilen:
-        name = ref.removeprefix("origin/")
-        if name in (basis_kurzname, "HEAD") or name.startswith("dependabot/"):
+    for zeile in zeilen:
+        kurzname, _, symref = zeile.partition("\t")
+        if symref:
+            continue  # symbolischer Zeiger (origin/HEAD), kein echter Branch
+        name = kurzname.removeprefix("origin/")
+        if name == basis_kurzname or name.startswith("dependabot/"):
             continue
         try:
-            letzter_commit = int(git("log", "-1", "--format=%ct", ref))
+            letzter_commit = int(git("log", "-1", "--format=%ct", kurzname))
         except (subprocess.CalledProcessError, ValueError):
             continue
         if letzter_commit < grenze:
             continue
         try:
-            wert = git("show", f"{ref}:VERSION").strip()
+            wert = git("show", f"{kurzname}:VERSION").strip()
         except subprocess.CalledProcessError:
             continue  # Branch ohne VERSION-Datei (z. B. sehr alt) -> nichts zu vergleichen
         if wert:
