@@ -195,6 +195,43 @@ class DockerService:
             labels={"ai-employee.type": "clone-helper"},
         )
 
+    def cleanup_workspace_volume(self, volume_name: str,
+                                  image: str = "ai-employee-agent:latest") -> int | None:
+        """Clear caches/tmp/logs directly in a workspace VOLUME, without the
+        agent's own container running (issue #714, Punkt 1).
+
+        A disk-quota stop leaves an agent permanently stuck: cleanup normally
+        needs a live container, and a live container is exactly what the
+        quota-stop state prevents. The commands here mirror what the disk
+        warning already tells a still-running agent to do itself
+        (``disk_monitor._write_warning``); running them via a short-lived
+        helper container against the volume (same pattern as
+        ``copy_workspace_volume``) works whether or not the agent's own
+        container is running. Returns the workspace size in MB AFTER cleanup,
+        or ``None`` if the helper run itself failed.
+        """
+        script = (
+            "rm -rf /workspace/data/cache /workspace/tmp /workspace/.cache 2>/dev/null; "
+            "find /workspace -name '*.log' -delete 2>/dev/null; "
+            "du -sm --exclude=.cache /workspace | cut -f1"
+        )
+        try:
+            output = self.client.containers.run(
+                image=image,
+                entrypoint="",
+                command=["sh", "-c", script],
+                volumes={volume_name: {"bind": "/workspace", "mode": "rw"}},
+                remove=True,
+                detach=False,
+                labels={"ai-employee.type": "disk-cleanup-helper"},
+            )
+        except Exception:
+            logger.warning("Workspace-Aufraeumlauf fuer Volume %s fehlgeschlagen", volume_name, exc_info=True)
+            return None
+        text = output.decode("utf-8", errors="replace") if isinstance(output, (bytes, bytearray)) else str(output)
+        line = text.strip().splitlines()[-1] if text.strip() else ""
+        return int(line) if line.isdigit() else None
+
     def remove_volume(self, volume_name: str) -> None:
         try:
             volume = self.client.volumes.get(volume_name)

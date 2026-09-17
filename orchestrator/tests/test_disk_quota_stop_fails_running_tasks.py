@@ -39,7 +39,7 @@ class ADiskQuotaStopFailsRunningTasksTests(unittest.IsolatedAsyncioTestCase):
 
         async with self.Session() as db:
             db.add(Agent(id="a1", name="Voller Agent", state=AgentState.RUNNING,
-                          container_id="c1", user_id="u1", config={}))
+                          container_id="c1", volume_name="workspace-a1", user_id="u1", config={}))
             db.add(Task(id="t1", title="laufend 1", prompt="x", status=TaskStatus.RUNNING,
                         agent_id="a1"))
             db.add(Task(id="t2", title="laufend 2", prompt="x", status=TaskStatus.RUNNING,
@@ -133,10 +133,103 @@ class ADiskQuotaStopFailsRunningTasksTests(unittest.IsolatedAsyncioTestCase):
             aufruf_reihenfolge.append("stop_container")
 
         self.docker.stop_container = fake_stop
+        self.docker.cleanup_workspace_volume = MagicMock(return_value=None)
         with patch.object(self.monitor, "_fail_running_tasks_and_alert", fake_fail):
             await self.monitor._stop_agent(agent, self.STATS)
 
         self.assertEqual(aufruf_reihenfolge, ["fail_tasks", "stop_container"])
+
+
+class ADiskQuotaCleanupResolvesTheDeadlockTests(unittest.IsolatedAsyncioTestCase):
+    """Issue #714, Punkt 1: die eigentliche Verklemmung. Vorher gab es keinen
+    Weg zurueck (Aufraeumen brauchte einen laufenden Container, genau den
+    verhinderte der Stopp) — ``_cleanup_and_maybe_restart`` raeumt das Volume
+    ueber einen Helfer-Container auf und startet den Agenten neu, wenn das
+    reicht."""
+
+    STATS: ClassVar[dict] = {"disk_usage_mb": 10262.0, "disk_limit_mb": 10240.0,
+                              "disk_percent": 100.2, "disk_available_mb": 0.0}
+
+    async def asyncSetUp(self):
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            for model in (Agent, Task, Notification):
+                await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+
+        async with self.Session() as db:
+            db.add(Agent(id="a1", name="Voller Agent", state=AgentState.RUNNING,
+                          container_id="c1", volume_name="workspace-a1", user_id="u1", config={}))
+            await db.commit()
+
+        self.redis = MagicMock()
+        self.redis.client = AsyncMock()
+        self.docker = MagicMock()
+        self.monitor = DiskMonitorService(session_factory=self.Session, docker_service=self.docker,
+                                           redis=self.redis)
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+
+    async def _agent(self):
+        async with self.Session() as db:
+            return await db.get(Agent, "a1")
+
+    async def test_cleanup_reaching_below_the_threshold_restarts_the_container(self):
+        # 5000 / 10240 MB = 48.8 % — klar unter der 95%-Schwelle.
+        self.docker.cleanup_workspace_volume = MagicMock(return_value=5000)
+        agent = await self._agent()
+        await self.monitor._cleanup_and_maybe_restart(agent, self.STATS)
+        self.docker.start_container.assert_called_once_with("c1")
+
+    async def test_cleanup_still_over_the_threshold_leaves_it_stopped(self):
+        # 10100 / 10240 MB = 98.6 % — Aufraeumen half, reicht aber nicht.
+        self.docker.cleanup_workspace_volume = MagicMock(return_value=10100)
+        agent = await self._agent()
+        await self.monitor._cleanup_and_maybe_restart(agent, self.STATS)
+        self.docker.start_container.assert_not_called()
+
+    async def test_a_failed_cleanup_run_leaves_it_stopped_without_raising(self):
+        self.docker.cleanup_workspace_volume = MagicMock(return_value=None)
+        agent = await self._agent()
+        await self.monitor._cleanup_and_maybe_restart(agent, self.STATS)  # must not raise
+        self.docker.start_container.assert_not_called()
+
+    async def test_missing_volume_name_skips_cleanup_without_raising(self):
+        async with self.Session() as db:
+            agent = await db.get(Agent, "a1")
+            agent.volume_name = None
+            await db.commit()
+        agent = await self._agent()
+        await self.monitor._cleanup_and_maybe_restart(agent, self.STATS)  # must not raise
+        self.docker.cleanup_workspace_volume.assert_not_called()
+        self.docker.start_container.assert_not_called()
+
+    async def test_a_successful_recovery_is_notified(self):
+        self.docker.cleanup_workspace_volume = MagicMock(return_value=5000)
+        agent = await self._agent()
+        await self.monitor._cleanup_and_maybe_restart(agent, self.STATS)
+        async with self.Session() as db:
+            from sqlalchemy import select
+            result = await db.execute(select(Notification).where(Notification.agent_id == "a1"))
+            notif = result.scalar_one()
+        self.assertEqual(notif.priority, "normal")
+        self.assertIn("aufgeraeumt", notif.title)
+
+    async def test_a_successful_recovery_reaches_telegram(self):
+        self.docker.cleanup_workspace_volume = MagicMock(return_value=5000)
+        agent = await self._agent()
+        with patch("app.services.duty_service._publish_telegram", AsyncMock()) as telegram:
+            await self.monitor._cleanup_and_maybe_restart(agent, self.STATS)
+        telegram.assert_awaited_once()
+
+    async def test_stop_agent_runs_cleanup_after_stopping(self):
+        self.docker.cleanup_workspace_volume = MagicMock(return_value=5000)
+        agent = await self._agent()
+        with patch.object(self.monitor, "_fail_running_tasks_and_alert", AsyncMock()):
+            await self.monitor._stop_agent(agent, self.STATS)
+        self.docker.cleanup_workspace_volume.assert_called_once_with("workspace-a1")
+        self.docker.start_container.assert_called_once_with("c1")
 
 
 if __name__ == "__main__":
