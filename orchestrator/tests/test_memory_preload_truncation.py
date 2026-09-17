@@ -90,13 +90,15 @@ async def test_a_credential_bucket_cannot_blow_the_prompt_either():
 
 
 @pytest.mark.asyncio
-async def test_a_credential_in_the_critical_bucket_is_also_spared():
-    # Zugangsdaten mit Wichtigkeit 5 landen im critical-Eimer, nicht im credentials-Eimer.
-    # Der Deckel darf sie auch dort nicht anfassen.
+async def test_a_credential_reaching_the_critical_query_is_also_spared():
+    # Zugangsdaten mit Wichtigkeit 5 werden ueber high_imp gefunden, wandern aber (#715)
+    # vollstaendig in den credentials-Eimer, nie in "critical". Der Deckel darf sie auch
+    # dort nicht anfassen.
     secret = "k" * (MAX_CONTENT_CHARS * 3)
     db = _db_with(high_imp=[_mem(5, secret, category="api_key", importance=5)])
     out = await collect_preload(db, "agent-1")
-    assert out["critical"][0]["content"] == secret
+    assert out["critical"] == []
+    assert out["credentials"][0]["content"] == secret
 
 
 @pytest.mark.asyncio
