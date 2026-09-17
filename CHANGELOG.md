@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.23] - 2026-09-17
+
+### Behoben
+- **Ein vor seiner Startzeit auf `done` gesetzter Tagesplan-Block feuerte
+  trotzdem** (Issue #748). Belegt am 16.09.2026: drei im Morgencheck
+  vorgezogene Bloecke per PATCH auf `done` gesetzt — ihre `[Plan]`-Zeitplaene
+  blieben `enabled=true` und feuerten zur geplanten Uhrzeit trotzdem.
+  `dropped` deaktivierte den Zeitplan schon immer korrekt, nur `done` fiel
+  durch: die Annahme "done kommt erst nach dem Lauf" gilt fuer den
+  Scheduler-Pfad, aber der PATCH-Pfad erlaubt `done` jederzeit.
+  Doppelt abgesichert: `sync_block_schedule` (der PATCH-Pfad) deaktiviert den
+  Zeitplan jetzt, sobald `done` gesetzt wird und er noch nie gefeuert hat
+  (hat er schon gefeuert, bleibt „gelaufen ist gelaufen"). Zusaetzlich prueft
+  der Feuerpfad selbst defensiv, ob der verknuepfte Block bereits `done` ist,
+  und dispatcht in dem Fall keine Aufgabe mehr.
+
 ## [1.322.22] - 2026-09-17
 
 ### Behoben

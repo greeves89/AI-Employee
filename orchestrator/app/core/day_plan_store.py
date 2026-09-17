@@ -67,6 +67,15 @@ async def sync_block_schedule(db: AsyncSession, row: AgentPlanItem) -> None:
     if row.status == "dropped":
         schedule.enabled = False
         return
+    if row.status == "done" and not schedule.last_run_at:
+        # Abgehakt, BEVOR der Zeitplan je gefeuert hat (#748) — z. B. im
+        # Morgencheck vorgezogen und per PATCH erledigt. "done kommt erst
+        # nach dem Lauf" gilt nur fuer den Scheduler-Pfad, der PATCH-Pfad
+        # erlaubt es jederzeit. Ohne diese Abschaltung feuert der Block zur
+        # geplanten Uhrzeit trotzdem, waehrend der Kalender ihn laengst als
+        # erledigt zeigt.
+        schedule.enabled = False
+        return
     if row.status in ("running", "done"):
         return                                   # gelaufen ist gelaufen
     if not row.planned_start:

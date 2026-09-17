@@ -700,6 +700,24 @@ class SchedulerService:
         now: datetime,
     ) -> None:
         """Create a task from a schedule and advance next_run_at."""
+        # Defensiv gegen einen Plan-Block, der abgehakt wurde, BEVOR sein
+        # Einmal-Zeitplan je gefeuert hat (#748): sync_block_schedule deckt den
+        # PATCH-Pfad bereits ab, aber ein direkter DB-Schreibvorgang (Migration,
+        # Altbestand) koennte die Abschaltung umgehen. Ein "done"-Block darf
+        # nie eine Aufgabe dispatchen — er wird nur noch abgeschaltet.
+        if schedule.name.startswith("[Plan] "):
+            from app.models.agent_plan_item import AgentPlanItem
+            block = (await db.execute(
+                select(AgentPlanItem).where(AgentPlanItem.schedule_id == schedule.id)
+            )).scalar_one_or_none()
+            if block is not None and block.status == "done":
+                logger.info(
+                    "[Scheduler] %s uebersprungen — verknuepfter Block ist bereits done",
+                    schedule.name,
+                )
+                schedule.enabled = False
+                return
+
         # A STOPPED agent must not be driven. Without this check the schedule fired on
         # anyway and every run died immediately — at the customer two agents piled up
         # 337 failed runs over four weeks, one per hour, and nobody noticed. A stopped
