@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.44] - 2026-09-18
+
+### Behoben
+- **Die access_policy-Migration aus 1.322.42 brach den Orchestrator-Start.**
+  Ihre Revision-ID (`c4d5e6f7a8b9`) war bereits von einer voellig anderen,
+  laengst gemergten Migration belegt (`c4d5e6f7a8b9_meeting_deliverable.py`)
+  — `alembic upgrade head` scheiterte live mit "Multiple head revisions
+  are present", der eingebaute Fallback (`create_all`) legt aber keine
+  Spalten auf bestehenden Tabellen an, also blieb `agents.access_policy`
+  ungeschaffen und jede Anfrage schlug fehl. Umbenannt auf eine tatsaechlich
+  neu gezogene ID; lokale `alembic heads`/`history`-Pruefung zeigt jetzt
+  wieder genau einen Kopf.
+
 ## [1.322.43] - 2026-09-18
 
 ### Geaendert

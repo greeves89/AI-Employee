@@ -1,8 +1,17 @@
 """Autonomy-Matrix + Sudo-Berechtigungen in agents.access_policy buendeln (Issue #787)
 
-Revision ID: c4d5e6f7a8b9
+Revision ID: 4e7b040149c2
 Revises: 7a9c2e4f1b3d
 Create Date: 2026-09-17
+
+Ursprünglich als "c4d5e6f7a8b9" angelegt -- diese ID war bereits von
+``c4d5e6f7a8b9_meeting_deliverable.py`` belegt (anderer Zweig, anderes
+``down_revision``). Alembic akzeptierte das beim lokalen Testen scheinbar
+klaglos; erst ``alembic upgrade head`` auf einer echten DB mit BEIDEN
+Revisionen im Baum brach mit "Multiple head revisions are present" ab und
+liess den Orchestrator gar nicht mehr hochkommen (Fallback auf
+``create_all`` legt keine Spalten auf bestehenden Tabellen an). Umbenannt
+auf eine tatsaechlich neu gezogene ID.
 
 Zwei der vier ueberlappenden Autonomie/Berechtigungs-Systeme
 (Autonomy-Matrix, Sudo-Pakete) lagen bisher als ad-hoc Schluessel im
@@ -27,7 +36,7 @@ neuen Endpunkt nur mitgeliefert (Read-Through), nicht hierher verschoben.
 """
 from alembic import op
 
-revision = "c4d5e6f7a8b9"
+revision = "4e7b040149c2"
 down_revision = "7a9c2e4f1b3d"
 branch_labels = None
 depends_on = None
