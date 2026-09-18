@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.50] - 2026-09-18
+
+### Geaendert
+- **Alle fuenf Akkordeon-Abschnitte der Agent-Settings-Seite starten jetzt
+  zu**, statt drei davon offen zu zeigen — live gemeldet direkt nach dem
+  Deploy: der Sinn der Gruppierung war ein aufgeraeumter erster Blick,
+  nicht drei sofort ausgeklappte Kaesten.
+
 ## [1.322.49] - 2026-09-18
 
 ### Geaendert

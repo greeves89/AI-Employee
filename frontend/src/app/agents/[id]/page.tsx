@@ -1702,7 +1702,7 @@ function AgentSettings({
 
   return (
     <div className="space-y-6 overflow-auto h-full pb-4">
-      <SettingsAccordionSection title="Aussehen & Verhalten" icon={Sparkles} defaultOpen>
+      <SettingsAccordionSection title="Aussehen & Verhalten" icon={Sparkles}>
       {/* Aussehen / Symbol */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="mb-3">
@@ -1745,7 +1745,7 @@ function AgentSettings({
       </div>
       </SettingsAccordionSection>
 
-      <SettingsAccordionSection title="Modell & Verhalten" icon={Brain} defaultOpen>
+      <SettingsAccordionSection title="Modell & Verhalten" icon={Brain}>
       {/* Model-Router: pick a model per task from its content instead of always using one fixed model */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="flex items-center justify-between gap-4">
@@ -2485,7 +2485,7 @@ function AgentSettings({
       )}
       </SettingsAccordionSection>
 
-      <SettingsAccordionSection title="Zugriff & Rechte" icon={ShieldCheck} defaultOpen>
+      <SettingsAccordionSection title="Zugriff & Rechte" icon={ShieldCheck}>
       {/* Autonomy Level */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
