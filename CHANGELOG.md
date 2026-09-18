@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.48] - 2026-09-18
+
+### Hinzugefuegt
+- **CI-Job `frontend-build`**: Frontend-Typecheck + Production-Build laufen
+  jetzt bei jedem Push/PR in GitHub Actions, nicht mehr nur lokal. Bisher
+  wurde ein kaputter Frontend-Build erst beim manuellen `npm run build` vor
+  einem Deploy sichtbar. Oeffentliches Repo, GitHub Actions ist kostenlos.
+
 ## [1.322.47] - 2026-09-18
 
 ### Geaendert

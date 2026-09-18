@@ -194,6 +194,30 @@ jobs:
         # ueber alles kostet bei jedem Push mehrere hundert API-Aufrufe.
         run: python scripts/check_github_customer_names.py --seit 30
 
+  # ── Frontend build + typecheck (bisher nur lokal gelaufen, nie in CI — jeder
+  #    TypeScript-/Build-Fehler im Frontend wurde erst beim manuellen Build vor
+  #    einem Deploy sichtbar, nicht schon beim Push/PR. Oeffentliches Repo, GitHub
+  #    Actions ist damit kostenlos — kein Grund, das laenger nur lokal zu pruefen. ──
+  frontend-build:
+    name: Frontend build + typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Typecheck
+        working-directory: frontend
+        run: npx tsc --noEmit
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
   # ── Compose validity: would have caught a broken docker-compose.yml before deploy. ──
   compose-config:
     name: docker compose config
