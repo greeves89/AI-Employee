@@ -168,10 +168,10 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [googleClientId, setGoogleClientId] = useState("");
   const [googleClientSecret, setGoogleClientSecret] = useState("");
   const [microsoftClientId, setMicrosoftClientId] = useState("");
-  // Verzeichnis-ID (Mandant). Ohne sie laeuft die Anmeldung ueber /common, und das
-  // lehnt Entra fuer Single-Tenant-Apps ab (AADSTS50194).
+  // Verzeichnis-ID (Mandant). Ohne sie läuft die Anmeldung über /common, und das
+  // lehnt Entra für Single-Tenant-Apps ab (AADSTS50194).
   const [microsoftTenantId, setMicrosoftTenantId] = useState("");
-  // Freigegebene Graph-Rechte. Eine App-Registrierung kann weniger koennen, als wir
+  // Freigegebene Graph-Rechte. Eine App-Registrierung kann weniger können, als wir
   // maximal anfordern — dann verlangt Entra eine Administrator-Genehmigung und die
   // Anmeldung bleibt haengen. Hier abwaehlbar, damit beides zusammenpasst.
   const [msScopes, setMsScopes] = useState<Set<string>>(new Set());
@@ -283,7 +283,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const [reflMode, setReflMode] = useState<"auto" | "hybrid" | "strict">("hybrid");
   const [reflBudget, setReflBudget] = useState(200000);
   const [reflSaving, setReflSaving] = useState(false);
-  // Wochensynthese (#384) — haengt am selben Takt und teilt sich Speicherweg und
+  // Wochensynthese (#384) — hängt am selben Takt und teilt sich Speicherweg und
   // Statusendpunkt mit der Nachtschicht, deshalb hier und nicht als eigene Karte.
   const [synEnabled, setSynEnabled] = useState(false);
   const [synWeekday, setSynWeekday] = useState(0);
@@ -368,8 +368,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
 
   // Provider/model catalog from the backend (single source of truth, live
   // Anthropic/OpenAI discovery + admin-freigeschaltete Zusatzmodelle) — statt
-  // der frueher hier fest eingetragenen Liste, die beim naechsten neuen
-  // Anthropic-Modell sofort wieder veraltet waere. MODEL_OPTIONS bleibt nur als
+  // der frueher hier fest eingetragenen Liste, die beim nächsten neuen
+  // Anthropic-Modell sofort wieder veraltet wäre. MODEL_OPTIONS bleibt nur als
   // Fallback, waehrend der Katalog laedt oder falls der Aufruf fehlschlaegt.
   const [liveCatalog, setLiveCatalog] = useState<Record<string, { value: string; label: string; tier: string }[]> | null>(null);
   useEffect(() => {
@@ -433,7 +433,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   };
 
 
-  // Gespeicherte Auswahl uebernehmen. Leer bedeutet im Backend „alles" — hier ebenso,
+  // Gespeicherte Auswahl übernehmen. Leer bedeutet im Backend „alles" — hier ebenso,
   // sonst saehe der Admin ein leeres Bild, waehrend real alles angefordert wird.
   useEffect(() => {
     if (!settings || msScopesTouched) return;
@@ -519,11 +519,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           setCodexDeviceCode("");
           // Verbinden macht Codex NUR verfuegbar — es setzt nicht mehr still den
           // globalen Default-Provider. Der hat plattformweite Wirkung: jeder
-          // "claude_code"-Agent ohne eigenes verknuepftes AI-Konto laeuft dann
-          // ueber die Codex-CLI statt Claude Code (agent_manager.py, harness_of()
+          // "claude_code"-Agent ohne eigenes verknuepftes AI-Konto läuft dann
+          // über die Codex-CLI statt Claude Code (agent_manager.py, harness_of()
           // in agent_credentials.py) — unabhaengig davon, was beim Agenten-Anlegen
-          // explizit als Harness gewaehlt wurde. Wer Codex als Default will, stellt
-          // das bewusst ueber die Provider-Auswahl + "Speichern" ein.
+          // explizit als Harness gewählt wurde. Wer Codex als Default will, stellt
+          // das bewusst über die Provider-Auswahl + "Speichern" ein.
           setMessage("Codex Login erfolgreich! Codex ist jetzt als Konto verfuegbar.");
           const s = await api.getSettings();
           setSettings(s);
@@ -773,17 +773,17 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           {([
             { id: "modelle" as const, label: "Modelle", icon: Cpu },
             // Der eigene Zugang gehoert dem Nutzer, nicht der Anlage — deshalb
-            // hier und nicht in der Admin-Konsole. Sichtbar fuer JEDEN, auch
+            // hier und nicht in der Admin-Konsole. Sichtbar für JEDEN, auch
             // ohne Adminrechte: bis 2026-08-15 gab es dafuer gar keine Seite,
             // obwohl die Agenten-Anlage ausdruecklich darauf verweist.
             { id: "meine" as const, label: "Meine KI-Zugänge", icon: KeyRound },
             { id: "integrationen" as const, label: "Integrationen", icon: Plug },
             // Voice und System enthalten AUSSCHLIESSLICH adminbeschraenkte
-            // Inhalte. Fuer einen normalen Nutzer waren sie bisher zwei leere
-            // Seiten — er klickte, sah nichts und hielt es fuer einen Fehler.
+            // Inhalte. Für einen normalen Nutzer waren sie bisher zwei leere
+            // Seiten — er klickte, sah nichts und hielt es für einen Fehler.
             // Ein Reiter ohne Inhalt ist schlechter als kein Reiter.
             //
-            // Kommt spaeter etwas Nutzereigenes dazu (etwa eine zugewiesene
+            // Kommt später etwas Nutzereigenes dazu (etwa eine zugewiesene
             // Stimme), gehoert die Bedingung hier gelockert — nicht der Reiter
             // dauerhaft leer stehen gelassen.
             ...(isAdmin ? [
@@ -811,10 +811,10 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         </div>
 
         {/* ─── Tab: Modelle ─── */}
-        {/* Fuer einen Member ist in diesem Reiter NICHTS einstellbar: Provider,
+        {/* Für einen Member ist in diesem Reiter NICHTS einstellbar: Provider,
             Plattform-Login, Max Turns, gleichzeitige Agenten — alles gehoert der
             Anlage. Er bekommt deshalb die Frage beantwortet, die er wirklich
-            hat: welche Modelle stehen mir zur Verfuegung. */}
+            hat: welche Modelle stehen mir zur Verfügung. */}
         {secTab === "modelle" && !isAdmin && (
           <div className="space-y-6">
             <section>
@@ -1171,8 +1171,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
               </p>
             </div>
 
-            {/* Waehrung. Die Anbieter rechnen in USD ab, und so werden Kosten
-                auch gespeichert — hier wird ausschliesslich die ANZEIGE
+            {/* Währung. Die Anbieter rechnen in USD ab, und so werden Kosten
+                auch gespeichert — hier wird ausschließlich die ANZEIGE
                 umgerechnet. Andersherum haenge jeder Altbetrag an dem Tageskurs,
                 zu dem er zufaellig eingetragen wurde. */}
             <div className="rounded-xl border border-foreground/[0.06] bg-foreground/[0.015] p-4">
@@ -1247,8 +1247,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         {secTab === "integrationen" && (
         <div className="space-y-6">
         <p className="text-[11px] text-muted-foreground/50">
-          Benachrichtigungskanaele fuer DICH (E-Mail/Telegram/Teams). Externe
-          Datenquellen und MCP-Server fuer deine Agenten verbindest du unter{" "}
+          Benachrichtigungskanaele für DICH (E-Mail/Telegram/Teams). Externe
+          Datenquellen und MCP-Server für deine Agenten verbindest du unter{" "}
           <Link href="/integrations" className="text-primary hover:underline">Integrations</Link>{" "}
           in der Seitenleiste.
         </p>
@@ -1287,7 +1287,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold">Telegram Bot (dein Konto)</h3>
-                  <p className="text-[11px] text-muted-foreground/60">Fuer Benachrichtigungen an DICH — nicht zu verwechseln mit einem eigenen Bot je Agent (Agent-Einstellungen)</p>
+                  <p className="text-[11px] text-muted-foreground/60">Für Benachrichtigungen an DICH — nicht zu verwechseln mit einem eigenen Bot je Agent (Agent-Einstellungen)</p>
                 </div>
               </div>
               {settings?.has_telegram ? (
@@ -1880,7 +1880,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     </p>
                   </div>
 
-                  {/* Freigegebene Graph-Rechte — muessen zur App-Registrierung passen,
+                  {/* Freigegebene Graph-Rechte — müssen zur App-Registrierung passen,
                       sonst verlangt Entra eine Administrator-Genehmigung. */}
                   <div className="col-span-2">
                     <div className="mb-1.5 text-xs font-medium text-muted-foreground/80">

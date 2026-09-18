@@ -332,7 +332,7 @@ export function SsoGroupsPanel() {
           </div>
 
           {/* Beobachtete UND bereits zugeordnete Gruppen — Transparenz, was gerade
-              wirklich hereinkommt, auch ohne dass etwas zu tun waere. */}
+              wirklich hereinkommt, auch ohne dass etwas zu tun wäre. */}
           {observed.some((g) => g.mapped) && (
             <details className="text-[11px] text-muted-foreground/60">
               <summary className="cursor-pointer select-none">

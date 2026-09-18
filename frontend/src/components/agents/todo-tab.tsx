@@ -358,7 +358,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
           <h3 className="text-sm font-semibold mb-1">Keine TODOs</h3>
           <p className="text-xs text-muted-foreground">
             Der Agent erstellt automatisch TODOs wenn er Aufgaben bekommt.
-            Du kannst auch manuell welche hinzufuegen.
+            Du kannst auch manuell welche hinzufügen.
           </p>
         </div>
       )}
@@ -493,7 +493,7 @@ function TodoItem({
             </span>
           )}
           {/* Nur bei Erledigtem: macht die Sortierung nachvollziehbar. Bei
-              Offenem waere das Datum nur Rauschen — dort zaehlt die Reihenfolge. */}
+              Offenem wäre das Datum nur Rauschen — dort zaehlt die Reihenfolge. */}
           {isCompleted && doneAt(todo) > 0 && (
             <span className="text-[9px] text-muted-foreground/50 tabular-nums">
               {new Date(doneAt(todo)).toLocaleDateString("de-DE", {

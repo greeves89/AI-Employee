@@ -68,19 +68,19 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
 
   const handleDelete = async (team: Team) => {
     const ok = await confirm({
-      title: `Team "${team.name}" loeschen?`,
+      title: `Team "${team.name}" löschen?`,
       message: "Das Team wird entfernt. Die zugehoerigen Agents bleiben erhalten.",
       variant: "destructive",
-      confirmLabel: "Loeschen",
+      confirmLabel: "Löschen",
     });
     if (!ok) return;
     setActionLoading(team.id);
     try {
       await api.deleteTeam(team.id);
-      toast.success("Team geloescht", team.name);
+      toast.success("Team gelöscht", team.name);
       await refresh();
     } catch (e) {
-      toast.error("Loeschen fehlgeschlagen", e instanceof Error ? e.message : undefined);
+      toast.error("Löschen fehlgeschlagen", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -226,7 +226,7 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
                         <button
                           onClick={() => handleDelete(team)}
                           className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/15 transition-colors"
-                          title="Team loeschen"
+                          title="Team löschen"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>

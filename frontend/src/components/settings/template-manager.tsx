@@ -197,7 +197,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
     if (!ok) return;
     try {
       await api.deleteTemplate(id);
-      setMessage({ type: "success", text: "Template geloescht" });
+      setMessage({ type: "success", text: "Template gelöscht" });
       setExpandedId(null);
       await fetchTemplates();
     } catch (e) {
@@ -365,7 +365,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
                           onClick={() => handleDelete(t.id)}
                           className="flex items-center gap-1.5 rounded-lg bg-red-500/10 text-red-400 px-3 py-1.5 text-xs hover:bg-red-500/20 transition-colors"
                         >
-                          <Trash2 className="h-3 w-3" /> Loeschen
+                          <Trash2 className="h-3 w-3" /> Löschen
                         </button>
                       )}
                     </div>
@@ -570,13 +570,13 @@ function TemplateEditForm({
 
       {/* Verantwortungsbereiche: der Auftrag zieht mit der Vorlage mit. Ohne das musste
           JEDER neue Agent von Hand eingerichtet werden — und ein Agent ohne Bereiche
-          laeuft proaktiv ins Leere. */}
+          läuft proaktiv ins Leere. */}
       <div>
         <ResponsibilitiesEditor
           value={state.responsibilities}
           onChange={next => onChange({ ...state, responsibilities: next })}
           emptyHint="Noch keine Bereiche. Wer hier welche eintraegt, gibt jedem Agenten aus dieser Vorlage sofort einen Auftrag — er gilt damit als eingerichtet und faengt eigenstaendig an."
-          footnote="Werden beim Anlegen eines Agenten uebernommen. Aendert man sie hier, gilt das fuer NEUE Agenten — bestehende behalten ihre eigenen."
+          footnote="Werden beim Anlegen eines Agenten übernommen. Ändert man sie hier, gilt das für NEUE Agenten — bestehende behalten ihre eigenen."
         />
       </div>
 
