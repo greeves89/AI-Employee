@@ -17,6 +17,7 @@ das nicht sehen; deshalb hier Verhalten mit Doubles.
 
 import asyncio
 import sys
+import tempfile
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -266,7 +267,11 @@ class EchterProzessTests(unittest.IsolatedAsyncioTestCase):
             return await echt(sys.executable, "-c", _FAKE_CLI, **kw)
 
         runner = agent_runner.AgentRunner(log_publisher=AsyncMock())
-        with patch("app.agent_runner.asyncio.create_subprocess_exec", fake_exec), \
+        # cwd des CLI ist settings.workspace_dir (/workspace) — den gibt es in der
+        # CI nicht, und ein fehlendes cwd wird zu status=error statt zum Ereignis.
+        with tempfile.TemporaryDirectory() as arbeitsdir, \
+             patch.object(agent_runner.settings, "workspace_dir", arbeitsdir), \
+             patch("app.agent_runner.asyncio.create_subprocess_exec", fake_exec), \
              patch("app.agent_runner.compose_prompt_bundle", lambda *_a, **_k: ""):
             result = await asyncio.wait_for(
                 runner._execute_task_once("t1", "arbeite", model="m"), timeout=60)
@@ -286,7 +291,11 @@ class EchterProzessTests(unittest.IsolatedAsyncioTestCase):
             return await echt(sys.executable, "-c", _FAKE_CLI_ERRORS, **kw)
 
         runner = agent_runner.AgentRunner(log_publisher=AsyncMock())
-        with patch("app.agent_runner.asyncio.create_subprocess_exec", fake_exec), \
+        # cwd des CLI ist settings.workspace_dir (/workspace) — den gibt es in der
+        # CI nicht, und ein fehlendes cwd wird zu status=error statt zum Ereignis.
+        with tempfile.TemporaryDirectory() as arbeitsdir, \
+             patch.object(agent_runner.settings, "workspace_dir", arbeitsdir), \
+             patch("app.agent_runner.asyncio.create_subprocess_exec", fake_exec), \
              patch("app.agent_runner.compose_prompt_bundle", lambda *_a, **_k: ""):
             result = await asyncio.wait_for(
                 runner._execute_task_once("t1", "arbeite", model="m"), timeout=60)
