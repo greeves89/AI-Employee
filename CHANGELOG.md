@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.52] - 2026-09-17
+
+### Behoben
+- **Die zwei groessten Zeichenfenster-Tests umgestellt** (Nachtrag zu
+  Issue #726, Batch 10) — die Tests zu Mehrbildschirm-Screenshots und zum
+  Klick auf einen benannten Bildschirm (je 9 Fenster) pruefen jetzt den
+  echten Ablauf mit Attrappen (Bildschirmliste, Aufnahme, Eingabe-Controller)
+  statt Zeichenabstaende im Quelltext. Ein frischer Gegenleser fand dabei
+  neun Blindstellen in der ersten Fassung — Doubles mit gleichem Maszstab
+  je Achse (Achsentausch unsichtbar), nur ganzzahlige Produkte (Abschneiden
+  statt Runden unsichtbar), Screenshot ohne Nummer nie gefahren, Blocktest
+  ueber den ganzen Screenshot-Zweig statt den Groessen-Zweig — alle
+  geschlossen; der Hinweis an das Modell (Bildgroesse, Ursprung, Liste der
+  Bildschirme nur bei mehr als einem) wird nun am echten `computer_use`-Aufruf
+  geprueft. Regressions-Sperre schrumpft von 51 Dateien / 140 Fenstern auf
+  49 / 122. Mutationsbatterie (`scripts/mutationsbatterie_726_batch10.py`):
+  24/24 Mutationen erkannt, paarweise verschieden; 10/10 Gegenleser-Mutationen
+  jetzt rot.
+
 ## [1.322.50] - 2026-09-18
 
 ### Geaendert
