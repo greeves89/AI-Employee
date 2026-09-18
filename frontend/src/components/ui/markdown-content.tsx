@@ -29,7 +29,7 @@ export const MarkdownContent = memo(function MarkdownContent({
         "[&_ol]:my-1.5 [&_ol]:pl-4 [&_ol]:space-y-0.5",
         "[&_li]:text-sm [&_li]:text-foreground/80",
         "[&_strong]:font-semibold [&_strong]:text-foreground",
-        // Bernstein NUR fuer <code>-Elemente — die dunkle Variante hier stand
+        // Bernstein NUR für <code>-Elemente — die dunkle Variante hier stand
         // frueher ohne das [&_code]:-Praefix und faerbte dadurch im Dunkelmodus den
         // GESAMTEN Nachrichtentext bernstein statt nur Code-Schnipsel; der Container
         // hat mit text-foreground/80 + dark:prose-invert bereits die richtige

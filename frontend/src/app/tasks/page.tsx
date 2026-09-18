@@ -273,8 +273,8 @@ function SingleTasksView() {
             // der Server sie ab. Genau daran scheiterte das Stoppen: der Nutzer
             // hatte KEINEN Weg, eine laufende Aufgabe anzuhalten, und die
             // Sprachfront meldete trotzdem Erfolg (21.08.2026).
-            const laeuft = task.status === "running";
-            const canCancel = laeuft || task.status === "queued" || task.status === "pending";
+            const läuft = task.status === "running";
+            const canCancel = läuft || task.status === "queued" || task.status === "pending";
             return (
               <Link key={task.id} href={`/tasks/${task.id}`}>
               <motion.div
@@ -329,18 +329,18 @@ function SingleTasksView() {
                         onClick={(e) => handleCancel(e, task.id)}
                         className={cn(
                           "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors",
-                          laeuft
+                          läuft
                             // Bei einer laufenden Aufgabe NICHT erst beim Überfahren
                             // zeigen: wer sie stoppen will, sucht den Knopf sofort.
                             ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20"
                             : "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 opacity-0 group-hover:opacity-100",
                         )}
-                        title={laeuft
+                        title={läuft
                           ? "Laufende Aufgabe stoppen — der Agent bricht seine Arbeit ab"
                           : "Wartende Aufgabe aus der Warteschlange nehmen"}
                       >
                         <Ban className="h-3 w-3" />
-                        {laeuft ? "Stoppen" : "Abbrechen"}
+                        {läuft ? "Stoppen" : "Abbrechen"}
                       </button>
                     )}
                     {canDelete && (
@@ -422,7 +422,7 @@ function ScheduledTasksView() {
   const [agentId, setAgentId] = useState("");
 
   //: Nach Agent gruppiert, Gruppen alphabetisch, Zeitplaene innerhalb nach dem
-  //: naechsten Lauf — was als naechstes dran ist, steht oben.
+  //: nächsten Lauf — was als naechstes dran ist, steht oben.
   const gruppen = useMemo(() => {
     const namen = new Map(agents.map((a) => [a.id, a.name]));
     const nach = new Map<string, { id: string; name: string; plaene: Schedule[] }>();
@@ -431,7 +431,7 @@ function ScheduledTasksView() {
       if (!nach.has(id)) {
         nach.set(id, {
           id,
-          // Ein Zeitplan ohne Agenten laeuft ueber die Lastverteilung — er
+          // Ein Zeitplan ohne Agenten läuft über die Lastverteilung — er
           // gehoert trotzdem sichtbar irgendwohin, sonst faellt er unter den
           // Tisch.
           name: id ? (namen.get(id) ?? `Unbekannter Agent (${id})`) : "Ohne festen Agenten",

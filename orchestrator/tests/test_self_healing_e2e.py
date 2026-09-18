@@ -137,6 +137,26 @@ class SelfHealingE2E(unittest.IsolatedAsyncioTestCase):
             # Erster Versuch = unveraenderter Auftragstext.
             self.assertEqual(retry.prompt, task.prompt)
 
+    async def test_retry_title_does_not_stack_versuch_suffixes(self):
+        """Der fehlgeschlagene Auftrag trägt selbst schon ein "(Versuch 2)"-Suffix
+        (er ist ja bereits ein Wiederholungsversuch) — der naechste Wiederholungs-
+        auftrag darf das nicht einfach nochmal anhaengen, sonst waechst der Titel
+        bei jedem weiteren Fehlschlag ("... (Versuch 2) (Versuch 3) (Versuch 4)")."""
+        async with self.Session() as db:
+            await self._seed(db)
+            task = self._task(tid="t2", metadata={"heal_attempt": 1, "heal_of": "t1"})
+            task.title = "Monatsbericht (Versuch 2)"
+            db.add(task)
+            await db.commit()
+
+            await self._fail(db, task, "Request timed out")
+
+            retries = (await db.execute(
+                select(Task).where(Task.id.not_in(["t1", "t2"]))
+            )).scalars().all()
+            self.assertEqual(len(retries), 1)
+            self.assertEqual(retries[0].title, "Monatsbericht (Versuch 3)")
+
     async def test_no_failure_notification_while_a_retry_is_pending(self):
         """Sonst piept es dreimal fuer einen Zeitablauf, der sich von selbst
         erledigt."""

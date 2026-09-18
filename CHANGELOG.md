@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.51] - 2026-09-18
+
+### Behoben
+- **Echte deutsche Umlaute (ä/ö/ü/ß) statt ae/oe/ue-Ersatzschreibweise** in
+  nutzersichtbaren Texten über weite Teile des Frontends — gefunden bei einer
+  vollständigen Playwright-Sichtprüfung jedes Menüpunkts (Explorer, Hilfe &
+  FAQ, Integrations, Approvals u.a.).
+- **Wiederholte Aufgaben stapelten das "(Versuch N)"-Suffix im Titel** statt
+  es zu ersetzen — nach mehreren Fehlschlägen zeigte ein Task-Titel
+  "... (Versuch 2) (Versuch 3) (Versuch 4)". Der Selbstheilungs-Router baut
+  den Titel jetzt wieder aus dem unveränderten Basisnamen auf.
+- **Skill-Marktplatz zeigte "|-" statt der echten Beschreibung** bei Skills
+  mit mehrzeiligem YAML-Block-Skalar in der Frontmatter — der bisherige
+  zeilenweise ":"-Parser kannte diese YAML-Syntax nicht. Ersetzt durch echtes
+  YAML-Parsing mit Fallback auf "keine Frontmatter" bei kaputtem/fremdem YAML.
+
 ## [1.322.50] - 2026-09-18
 
 ### Geaendert

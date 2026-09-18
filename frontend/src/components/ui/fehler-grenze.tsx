@@ -18,7 +18,7 @@ interface State {
 /**
  * Faengt Fehler eines Teilbereichs ab, damit sie nicht die ganze Seite reissen.
  *
- * Anlass (18.08.2026): das Oeffnen einer Datei liess den PDF-Betrachter werfen
+ * Anlass (18.08.2026): das Öffnen einer Datei liess den PDF-Betrachter werfen
  * — und weil es im gesamten Frontend KEINE einzige Fehlergrenze gab, kippte
  * React den kompletten Baum. Der Nutzer sah nicht „Datei kaputt", sondern
  * „This page couldn't load" und war den Agenten los, an dem er gerade
@@ -34,7 +34,7 @@ export class FehlerGrenze extends React.Component<Props, State> {
   }
 
   componentDidUpdate(vorher: Props) {
-    // Neue Datei ausgewaehlt -> neuer Versuch. Ohne das bliebe die
+    // Neue Datei ausgewählt -> neuer Versuch. Ohne das bliebe die
     // Fehlermeldung stehen, bis die Seite neu geladen wird.
     if (vorher.schluessel !== this.props.schluessel && this.state.fehler) {
       this.setState({ fehler: null });
@@ -65,7 +65,7 @@ export class FehlerGrenze extends React.Component<Props, State> {
           Nochmal versuchen
         </button>
         <p className="text-[10px] text-muted-foreground/40">
-          Der Rest der Seite laeuft weiter.
+          Der Rest der Seite läuft weiter.
         </p>
       </div>
     );

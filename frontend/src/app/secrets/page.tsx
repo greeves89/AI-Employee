@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 // Key Management lebt nur noch in der Admin-Konsole (Issue #787) — siehe
-// ai-accounts/page.tsx fuer die Begruendung. Diese Standalone-Route hatte
+// ai-accounts/page.tsx für die Begruendung. Diese Standalone-Route hatte
 // zudem keine eigene Rollenpruefung — jeder eingeloggte Nutzer konnte sie
 // direkt aufrufen, obwohl derselbe Reiter in der Admin-Konsole laengst hinter
-// dem Admin-Gate liegt. Die Umleitung schliesst diese Luecke gleich mit.
+// dem Admin-Gate liegt. Die Umleitung schließt diese Luecke gleich mit.
 export default function SecretsPage() {
   const router = useRouter();
   useEffect(() => {

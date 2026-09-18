@@ -149,7 +149,7 @@ function FilePreviewInner({
   const [htmlTab, setHtmlTab] = useState<HtmlTab>("rendered");
   //: Bearbeiten direkt in der Ansicht. Bis 1.230.0 war sie rein lesend — wer
   //: eine Zeile in einer `.env` korrigieren wollte, musste herunterladen,
-  //: aendern und wieder hochladen.
+  //: ändern und wieder hochladen.
   const [entwurf, setEntwurf] = useState<string | null>(null);
   const [speichert, setSpeichert] = useState(false);
   const [speicherFehler, setSpeicherFehler] = useState<string | null>(null);
@@ -383,7 +383,7 @@ function FilePreviewInner({
   ) : null;
 
   //: Im Bearbeiten-Modus tritt das Textfeld an die Stelle der Anzeige — auch
-  //: bei HTML, wo sonst die gerenderte Fassung zu sehen waere. Man bearbeitet
+  //: bei HTML, wo sonst die gerenderte Fassung zu sehen wäre. Man bearbeitet
   //: die Quelle, nicht das Bild davon.
   const bearbeitungsFlaeche = (
     <div className="flex h-full flex-col">

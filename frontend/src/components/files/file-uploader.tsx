@@ -79,7 +79,7 @@ export function FileUploader({
   // Nachlaessigkeiten abfangen, die sonst als 400 vom Server zurueckkaemen.
   const zielSauber = (ziel.trim() || "/workspace").replace(/\/+$/, "") || "/workspace";
   // Genau die Grenze, die der Server zieht (``file_manager.upload_files``):
-  // alles ausserhalb von /workspace wird dort mit einem Fehler abgewiesen. Hier
+  // alles außerhalb von /workspace wird dort mit einem Fehler abgewiesen. Hier
   // dieselbe Regel, damit der Nutzer es VOR dem Hochladen sieht statt danach als
   // 400. ``/shared`` gehoert bewusst NICHT dazu — es anzubieten hiesse, einen
   // Weg vorzuschlagen, der sicher fehlschlaegt.
@@ -109,7 +109,7 @@ export function FileUploader({
         </button>
       </div>
 
-      {/* Zielordner — waehlbar statt fest verdrahtet. */}
+      {/* Zielordner — wählbar statt fest verdrahtet. */}
       <div className="border-b border-foreground/[0.06] px-5 py-3">
         <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground/70">
           Zielordner

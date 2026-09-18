@@ -10,7 +10,7 @@ import type { AgentTeam } from "@/lib/api";
 import type { ActivityAgentTimeline, ActivityScheduleMark, ActivityTaskBar, DayPlanItem } from "@/lib/types";
 import { CalendarClock, Repeat, RotateCw, X } from "lucide-react";
 
-// Tagesschluessel in LOKALER Zeit — toISOString() wuerde vor 02:00 MESZ auf den
+// Tagesschluessel in LOKALER Zeit — toISOString() würde vor 02:00 MESZ auf den
 // Vortag zeigen und den Plan des falschen Tages laden.
 // Was im Block steht: „geplant" war frueher fest verdrahtet — auch dann noch, wenn
 // die Arbeit laengst lief oder fertig war.
@@ -46,7 +46,7 @@ const BLOCK_GAP_PX = 3;
 // standen daneben lesbare Karten, und der Unterschied sprang sofort ins Auge.
 const MARK_CARD_PX = 34;
 // Die drei Spuren des Tages, in Prozent der Breite — an EINER Stelle, damit sie sich
-// nicht gegenseitig ueberlappen koennen. Der Plan war 26 % breit, die Aufgaben 36 %:
+// nicht gegenseitig ueberlappen können. Der Plan war 26 % breit, die Aufgaben 36 %:
 // bei drei gleichzeitigen Laeufen blieben pro Aufgabe 12 % und der Titel war nach
 // zwoelf Zeichen zu Ende („[Scheduled] SAP M…").
 const PLAN_COL_PCT = 22;
@@ -409,7 +409,7 @@ type LanedTask = ActivityTaskBar & { lane: number; laneCount: number };
 
 function layoutLanes(tasks: ActivityTaskBar[], now: Date, dayStart: Date): LanedTask[] {
   // Spuren werden auf der GEZEICHNETEN Geometrie berechnet, nicht auf den rohen
-  // Zeiten. Eine Aufgabe, die in Sekunden durch ist, waere sonst ein Strich von
+  // Zeiten. Eine Aufgabe, die in Sekunden durch ist, wäre sonst ein Strich von
   // null Höhe — bekaeme aber MIN_BLOCK_PX gezeichnet und ueberdeckte die naechste.
   // Genau das war zu sehen: zwei Titel lagen uebereinander im selben Kasten.
   const base = dayStart.getTime();
@@ -466,8 +466,8 @@ function DayAgenda({
   const undatedPlan = useMemo(() => plan.filter((p) => !p.planned_start), [plan]);
 
   // Ein Block, der noch nicht gelaufen ist, gehoert dem Nutzer: Titel, Uhrzeit und
-  // Dauer muessen aenderbar sein, ohne dass er den Agenten darum bitten muss. Sobald
-  // er laeuft oder erledigt ist, ist er Geschichte — dann nur noch ansehen.
+  // Dauer müssen aenderbar sein, ohne dass er den Agenten darum bitten muss. Sobald
+  // er läuft oder erledigt ist, ist er Geschichte — dann nur noch ansehen.
   const [editing, setEditing] = useState<DayPlanItem | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editTime, setEditTime] = useState("");
@@ -529,8 +529,8 @@ function DayAgenda({
   };
 
   const dropBlock = async (item: DayPlanItem) => {
-    // Streichen statt loeschen: der Tag bleibt nachvollziehbar, und der Agent sieht
-    // beim naechsten Lauf, dass dieser Block vom Tisch ist.
+    // Streichen statt löschen: der Tag bleibt nachvollziehbar, und der Agent sieht
+    // beim nächsten Lauf, dass dieser Block vom Tisch ist.
     const next = item.status === "dropped" ? "planned" : "dropped";
     try {
       await api.patchDayPlanItem(item.id, { status: next });
@@ -539,7 +539,7 @@ function DayAgenda({
       // stiller Fehlschlag: der naechste Load holt den echten Stand
     }
   };
-  // Ein Plan-Block laeuft ueber einen Zeitplan — der taucht sonst NOCH EINMAL als
+  // Ein Plan-Block läuft über einen Zeitplan — der taucht sonst NOCH EINMAL als
   // Balken und als Rautenmarke auf. Der Block links ist die Wahrheit; alles mit
   // '[Plan]' wird hier ausgeblendet, sonst steht dieselbe Sache dreifach im Tag.
   const ownTasks = useMemo(
@@ -555,7 +555,7 @@ function DayAgenda({
   // und ergaben einen unlesbaren Klumpen. Wer sich zeitlich beisst, kommt nebeneinander.
   // Ein gelaufener Zeitplan erscheint sonst ZWEIMAL: als Band (die Vorhersage) und
   // als Balken (der echte Lauf). Wo es den Lauf gibt, ist die Vorhersage ueberfluessig —
-  // Baender bleiben nur fuer das, was noch aussteht.
+  // Baender bleiben nur für das, was noch aussteht.
   const pendingMarks = useMemo(() => {
     const WINDOW_MS = 12 * 60_000;
     return ownMarks.filter((m) => {
@@ -688,7 +688,7 @@ function DayAgenda({
                 <button
                   type="button"
                   onClick={(e) => {
-                    e.stopPropagation();   // sonst oeffnet der Klick zusaetzlich den Editor
+                    e.stopPropagation();   // sonst öffnet der Klick zusätzlich den Editor
                     dropBlock(item);
                   }}
                   title={dropped ? "Wieder einplanen" : "Streichen — der Agent lässt es dann liegen"}
@@ -849,8 +849,8 @@ function DayAgenda({
 
       {/* Bearbeiten: solange ein Block nur GEPLANT ist, gehoert er dem Nutzer. Ohne
           das konnte er ihn nur streichen — verschieben, kuerzen oder praezisieren ging
-          nur ueber den Agenten. Die Uhrzeit ist dabei der wichtigste Teil: erst mit ihr
-          bekommt der Block einen Ausloeser und laeuft von allein. */}
+          nur über den Agenten. Die Uhrzeit ist dabei der wichtigste Teil: erst mit ihr
+          bekommt der Block einen Ausloeser und läuft von allein. */}
       {editing && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"

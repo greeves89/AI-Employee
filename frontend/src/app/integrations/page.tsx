@@ -185,7 +185,7 @@ function McpToolRunner({ serverId, tool }: { serverId: number; tool: McpTool }) 
         onClick={() => setOpen((o) => !o)}
         className="inline-flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300"
       >
-        <Play className="h-3 w-3" /> {open ? "Schliessen" : "Tool testen"}
+        <Play className="h-3 w-3" /> {open ? "Schließen" : "Tool testen"}
       </button>
       {open && (
         <div className="mt-1.5 space-y-2 rounded-md bg-foreground/[0.02] border border-foreground/[0.04] p-2.5">
@@ -218,7 +218,7 @@ function McpToolRunner({ serverId, tool }: { serverId: number; tool: McpTool }) 
             className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/15 text-violet-300 px-2.5 py-1 text-[11px] font-medium hover:bg-violet-500/25 disabled:opacity-50"
           >
             {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-            Ausfuehren
+            Ausführen
           </button>
           {error && <p className="text-[10px] text-red-400">{error}</p>}
           {result && (
@@ -624,13 +624,13 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   const [removeToken, setRemoveToken] = useState(false);
   // Der Server hat wegen einer PRIVATEN Adresse abgelehnt — erst dann ist der
   // Haken sinnvoll. Bei Loopback oder Metadatenpunkt lehnt er auch mit Haken ab;
-  // ihn dort anzubieten waere ein leeres Versprechen.
+  // ihn dort anzubieten wäre ein leeres Versprechen.
   const [privateBlocked, setPrivateBlocked] = useState(false);
   const [allowPrivate, setAllowPrivate] = useState(false);
   const [removeHeaders, setRemoveHeaders] = useState(false);
-  // Eigene Rueckkehr-Adresse fuer den OAuth-Tanz dieses einen Servers.
-  // Ohne dieses Feld waere der Wert nur per API zu setzen — die Einstellung
-  // existierte, aber niemand kaeme in der Oberflaeche an sie heran.
+  // Eigene Rueckkehr-Adresse für den OAuth-Tanz dieses einen Servers.
+  // Ohne dieses Feld wäre der Wert nur per API zu setzen — die Einstellung
+  // existierte, aber niemand kaeme in der Oberfläche an sie heran.
   const [addCallbackBase, setAddCallbackBase] = useState("");
   const [adding, setAdding] = useState(false);
   const [probing, setProbing] = useState(false);
@@ -768,7 +768,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Verbindung fehlgeschlagen";
       // Nur bei einer PRIVATEN Adresse anbieten. Loopback und Metadatenpunkt
-      // lehnt der Server auch mit Haken ab — dort waere das Angebot eine Luege.
+      // lehnt der Server auch mit Haken ab — dort wäre das Angebot eine Luege.
       if (/private address/i.test(msg)) setPrivateBlocked(true);
       onToast({ type: "error", message: msg });
     } finally {
@@ -787,8 +787,8 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
         name: addName.trim(),
         url: addUrl.trim(),
       };
-      // "" loescht den Wert, weglassen laesst ihn unveraendert (PATCH-Semantik).
-      // Deshalb nur senden, wenn er sich gegenueber dem Gespeicherten geaendert hat.
+      // "" löscht den Wert, weglassen laesst ihn unveraendert (PATCH-Semantik).
+      // Deshalb nur senden, wenn er sich gegenueber dem Gespeicherten geändert hat.
       const basisVorher = editingServer?.oauth_callback_base_url || "";
       if (addCallbackBase.trim() !== basisVorher) {
         data.oauth_callback_base_url = addCallbackBase.trim();
@@ -917,7 +917,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
           >
             <Plus className="h-3 w-3" />
-            MCP Server hinzufuegen
+            MCP Server hinzufügen
           </button>
         </div>
       </div>
@@ -927,7 +927,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
         <div className="max-w-3xl mb-4 rounded-xl border border-primary/30 bg-card/80 backdrop-blur-sm p-5">
           <div className="space-y-3">
             <p className="text-xs font-semibold text-foreground">
-              {editingId == null ? "Neuen MCP Server hinzufuegen" : `„${editingServer?.name ?? ""}" bearbeiten`}
+              {editingId == null ? "Neuen MCP Server hinzufügen" : `„${editingServer?.name ?? ""}" bearbeiten`}
             </p>
             <div>
               <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Name</label>
@@ -1113,7 +1113,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
           <Globe className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground mb-1">Keine MCP Server konfiguriert</p>
           <p className="text-xs text-muted-foreground/60">
-            Verbinde externe MCP Server, damit deine Agents deren Tools nutzen koennen.
+            Verbinde externe MCP Server, damit deine Agents deren Tools nutzen können.
           </p>
         </div>
       ) : (
@@ -1298,7 +1298,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       </div>
                     )}
                     <p className="text-[10px] text-muted-foreground/40 mt-3">
-                      Agents muessen neu gestartet werden, um neue MCP Server zu nutzen.
+                      Agents müssen neu gestartet werden, um neue MCP Server zu nutzen.
                     </p>
                   </div>
                 )}

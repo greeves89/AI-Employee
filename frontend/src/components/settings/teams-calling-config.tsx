@@ -68,7 +68,7 @@ export function TeamsCallingConfig() {
       await api.updateSettings({
         teams_calling_app_id: appId.trim(),
         teams_calling_tenant_id: tenantId.trim(),
-        // Leeres Feld heisst „nicht anfassen" — sonst loescht ein Speichern ohne
+        // Leeres Feld heisst „nicht anfassen" — sonst löscht ein Speichern ohne
         // erneutes Eintippen das Geheimnis, und der Agent bleibt Terminen fern.
         ...(secret.trim() ? { teams_calling_app_secret: secret.trim() } : {}),
       });

@@ -180,8 +180,8 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
   const roleNameById = useMemo(() => new Map(roles.map((r) => [r.id, r.name])), [roles]);
 
   // Menuepfade zum Abhaken: die eingebauten plus die selbst angelegten Seiten.
-  // Ohne den zweiten Teil waere eine neue Seite zwar da, aber in keiner Rolle
-  // freischaltbar — und damit fuer alle ausser Administratoren unsichtbar.
+  // Ohne den zweiten Teil wäre eine neue Seite zwar da, aber in keiner Rolle
+  // freischaltbar — und damit für alle ausser Administratoren unsichtbar.
   const menuOptions = useMemo(() => {
     const builtin = MENU_PATHS.map((path) => ({ path, label: path }));
     const pages = customPages.map((p) => ({
