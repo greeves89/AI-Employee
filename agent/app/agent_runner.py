@@ -7,7 +7,7 @@ from typing import AsyncIterator
 
 from app.config import get_oauth_token, settings
 from app.ai_credential_status import (
-    is_auth_error, report_result_status, zugang_verloren,
+    report_result_status, zugang_verloren,
 )
 from app.log_publisher import LogPublisher
 from app.pids_budget import exhaustion_message, find_fork_exhaustion
