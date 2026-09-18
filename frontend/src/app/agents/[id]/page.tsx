@@ -132,6 +132,7 @@ export default function AgentDetailPage() {
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const { simpleMode } = useSimpleMode();
+  const isAdminUser = useAuthStore((s) => s.user?.role) === "admin";
 
   // In simple mode keep only sub-tabs flagged simpleVisible, then drop empty groups.
   const groupsForMode = useMemo(
@@ -341,6 +342,16 @@ export default function AgentDetailPage() {
                   </span>
                 </div>
               </div>
+            )}
+            {isAdminUser && (
+              <Link
+                href={`/admin/agents/${agentId}`}
+                className="inline-flex items-center gap-1.5 rounded-full border border-foreground/[0.1] px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/[0.2] hover:bg-foreground/[0.04] transition-all"
+                title="Admin-Statistiken zu diesem Agenten (nur lesend)"
+              >
+                <Eye className="h-3 w-3" />
+                Admin-Ansicht
+              </Link>
             )}
             <button
               onClick={async () => {
@@ -1094,6 +1105,13 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
           </button>
         )}
       </div>
+      <p className="px-5 pt-3 text-[11px] text-muted-foreground/60">
+        Eigener Bot NUR fuer diesen Agenten — nicht zu verwechseln mit deinem
+        persoenlichen Telegram-Konto unter{" "}
+        <Link href="/settings" className="text-primary hover:underline">
+          Einstellungen → Integrationen
+        </Link>.
+      </p>
 
       <div className="p-5 space-y-4">
         {!hasToken ? (

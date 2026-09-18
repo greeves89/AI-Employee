@@ -287,7 +287,8 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
           <p className="text-[11px] text-muted-foreground/40 leading-relaxed">
             When your agent creates a project with a docker-compose.yml file,
             it will appear here. You can then start, stop, and monitor the app
-            directly from this panel.
+            directly from this panel. (Nur Apps DIESES Agenten — die globale
+            Uebersicht aller Agenten-Apps liegt unter "Apps" in der Seitenleiste.)
           </p>
           <button
             onClick={() => { setLoading(true); fetchApps(); }}
@@ -308,6 +309,9 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
           <Container className="h-4 w-4 text-muted-foreground/60" />
           <span className="text-sm font-medium">
             {apps.length} {apps.length === 1 ? "App" : "Apps"} found
+          </span>
+          <span className="text-[10px] text-muted-foreground/40">
+            — nur dieser Agent
           </span>
         </div>
         <button

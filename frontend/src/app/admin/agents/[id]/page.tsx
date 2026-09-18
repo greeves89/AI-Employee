@@ -90,13 +90,22 @@ export default function AdminAgentDetailPage() {
         title="Agent Statistics"
         subtitle={data?.agent.name || agentId}
         actions={
-          <button
-            onClick={() => router.push("/admin")}
-            className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Admin
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.push(`/agents/${agentId}`)}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all"
+            >
+              <Eye className="h-4 w-4" />
+              Zur vollen Agent-Seite
+            </button>
+            <button
+              onClick={() => router.push("/admin")}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Admin
+            </button>
+          </div>
         }
       />
 
