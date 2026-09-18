@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.52] - 2026-09-18
+
+### Behoben
+- **Workflow-Designer folgt jetzt dem Erscheinungsbild (Dunkel/Hell)** —
+  die Zeichenfläche hatte `colorMode="dark"` fest verdrahtet und blieb
+  dunkel, egal was im Umschalter gewählt war. Jetzt an `useTheme()`
+  gekoppelt. Zusätzlich: mehrere Akzentfarben der Bausteine (blau, zink,
+  smaragd, rot, himmelblau) waren für dunklen Grund gewählt und auf hellem
+  Grund ausgewaschen — jetzt mit heller Entsprechung, nach demselben Muster
+  wie zuvor schon bei den Protokoll-Ansichten (Commit 597ffb52).
+
 ## [1.322.51] - 2026-09-18
 
 ### Behoben
