@@ -66,10 +66,30 @@ async def report_ai_credential_status(status: str) -> None:
         logger.warning("[Zugang] Statusmeldung %s fehlgeschlagen: %s", status, exc)
 
 
+def zugang_verloren(result: dict) -> bool:
+    """Ob ein Lauf am Zugang gestorben ist — egal, in welcher Form der CLI es meldet.
+
+    Zwei Formen kommen vor: ein Fehler-Exit (``status == "error"`` mit ``error``)
+    und — bei einem 401 mitten im Lauf — ein ``result``-Ereignis mit ``is_error``
+    und dem 401-Text als ``result`` (#799). Die zweite Form ging drei Tage in
+    Folge als „completed" durch, und die Wiederholung nach Token-Rotation griff
+    nie. Ein Erfolgsbericht, der ueber einen 401 nur BERICHTET, traegt kein
+    ``is_error`` und zaehlt nicht.
+    """
+    if result.get("status") == "error":
+        return is_auth_error(str(result.get("error") or ""))
+    if result.get("is_error"):
+        # Nur der Fehlertext des Ereignisses zaehlt. ``result`` kann bei leerem
+        # CLI-Fehlertext den gesammelten Agententext tragen — und wer gerade an
+        # einem OAuth-Thema arbeitet, hat „401" und „oauth" im Text stehen.
+        return is_auth_error(str(result.get("is_error_text") or ""))
+    return False
+
+
 async def report_result_status(result: dict) -> None:
     """Report only outcomes that prove something about the credential."""
+    if zugang_verloren(result):
+        await report_ai_credential_status("auth_failed")
+        return
     if result.get("status") == "completed":
         await report_ai_credential_status("ok")
-        return
-    if result.get("status") == "error" and is_auth_error(str(result.get("error", ""))):
-        await report_ai_credential_status("auth_failed")
