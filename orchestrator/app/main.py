@@ -656,22 +656,36 @@ async def _persist_agent_messages(redis: RedisService) -> None:
             await asyncio.sleep(1)
 
 
-async def _init_db_from_models() -> None:
-    """Create all tables from SQLAlchemy models and stamp Alembic to HEAD.
+async def _init_db_from_models(*, frisch: bool) -> None:
+    """Fallback when Alembic migrations fail.
 
-    Used as fallback when Alembic migrations fail (fresh DB, broken chain).
+    ``frisch=True`` (no ``alembic_version`` yet): create all tables from the
+    SQLAlchemy models and stamp Alembic to HEAD — the case this fallback was
+    written for.
+
+    ``frisch=False`` (provisioned DB, #796): neither. ``create_all`` only
+    creates MISSING tables and never alters an existing one, so the stamp
+    would mark every pending migration as applied although none ran, and a
+    table it creates would make that migration fail with DuplicateTable on
+    the next start — both permanent. Only the idempotent ensures below run;
+    ``alembic_version`` stays truthful and ``upgrade head`` gets retried on
+    the next start. The caller decides via ``app.core.migration_guard``.
     """
     import subprocess
 
     from sqlalchemy.ext.asyncio import create_async_engine
     from sqlalchemy import text as _sql_text
 
+    from app.core.migration_guard import stderr_ende as _stderr_ende
     from app.models import Base  # noqa: F401
 
     engine = create_async_engine(settings.database_url)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Tables created from SQLAlchemy models")
+    if frisch:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Tables created from SQLAlchemy models")
+    else:
+        logger.info("create_all uebersprungen — versorgte Datenbank, offene Migration bleibt offen")
 
     # pgvector must ALWAYS be present. The embedding columns are pgvector
     # `vector(1024)` added via raw-SQL migrations, NOT in the SQLAlchemy models —
@@ -814,6 +828,10 @@ async def _init_db_from_models() -> None:
 
     await engine.dispose()
 
+    if not frisch:
+        logger.info("Alembic NOT stamped — alembic_version bleibt wahr, upgrade head laeuft beim naechsten Start erneut")
+        return
+
     result = subprocess.run(
         ["alembic", "stamp", "head"],
         cwd="/app",
@@ -824,7 +842,77 @@ async def _init_db_from_models() -> None:
     if result.returncode == 0:
         logger.info("Alembic stamped to HEAD")
     else:
-        logger.warning(f"Alembic stamp failed: {result.stderr.strip()[:200]}")
+        logger.warning(f"Alembic stamp failed: {_stderr_ende(result.stderr)}")
+
+
+async def _alembic_db_zustand() -> str | None:
+    """``FRISCH``, die Revision aus ``alembic_version`` — oder ``None``, wenn unbekannt.
+
+    ``to_regclass`` liefert NULL statt einer Ausnahme, wenn die Tabelle fehlt;
+    so bleibt eine Ausnahme hier ein ECHTES Verbindungsproblem, und das heisst
+    fuer den Aufrufer „nicht stempeln". Bewusst OHNE Schema: Alembic legt die
+    Tabelle unqualifiziert im ersten Schema des search_path an — ein
+    ``public.``-Praefix faende sie auf einer Anlage mit eigenem search_path
+    nicht und erklaerte eine versorgte Datenbank fuer frisch.
+    """
+    from sqlalchemy import text as _sql_text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.core.migration_guard import FRISCH
+
+    engine = create_async_engine(settings.database_url)
+    try:
+        async with engine.connect() as conn:
+            vorhanden = (await conn.execute(
+                _sql_text("SELECT to_regclass('alembic_version')")
+            )).scalar()
+            if vorhanden is None:
+                return FRISCH
+            revision = (await conn.execute(
+                _sql_text("SELECT version_num FROM alembic_version LIMIT 1")
+            )).scalar()
+            return revision or FRISCH
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"alembic_version nicht lesbar, gilt als versorgt: {e}")
+        return None
+    finally:
+        await engine.dispose()
+
+
+async def _migrate_or_fallback() -> None:
+    """``alembic upgrade head``; on failure the fallback decided by ``migration_guard``.
+
+    The DB state is measured BEFORE the upgrade. A fresh DB (no
+    ``alembic_version``) gets ``create_all`` + ``stamp head`` as before. A
+    provisioned one (#796) is never stamped and gets no tables from the
+    models — the failure stays loud and retryable instead of becoming
+    permanent schema drift. After a timeout nothing is stamped, ever.
+    """
+    import subprocess
+
+    from app.core.migration_guard import (
+        entscheide_rueckfall as _entscheide_rueckfall,
+        upgrade_timeout_seconds as _upgrade_timeout_seconds,
+    )
+
+    db_zustand = await _alembic_db_zustand()
+    try:
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            cwd="/app",
+            capture_output=True,
+            text=True,
+            timeout=_upgrade_timeout_seconds(),
+        )
+    except subprocess.TimeoutExpired as e:
+        rueckfall = _entscheide_rueckfall(db_zustand, timeout=True, stderr=e.stderr)
+    else:
+        if result.returncode == 0:
+            logger.info("Database migrations applied successfully")
+            return
+        rueckfall = _entscheide_rueckfall(db_zustand, timeout=False, stderr=result.stderr)
+    logger.log(rueckfall.stufe, rueckfall.meldung)
+    await _init_db_from_models(frisch=rueckfall.frisch)
 
 
 async def _import_container_skills(docker_service) -> None:
@@ -937,27 +1025,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:  # noqa: BLE001
         logger.debug("Host-Speicherpruefung nicht moeglich: %s", e)
 
-    # Run Alembic migrations to create/update tables
-    # If Alembic fails (fresh DB, broken migration chain), fall back to
-    # creating tables directly from SQLAlchemy models + stamp HEAD.
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["alembic", "upgrade", "head"],
-            cwd="/app",
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            logger.warning(f"Alembic migration failed: {result.stderr.strip()[:200]}")
-            logger.info("Falling back to direct table creation from models ...")
-            await _init_db_from_models()
-        else:
-            logger.info("Database migrations applied successfully")
-    except subprocess.TimeoutExpired:
-        logger.warning("Alembic migration timed out, falling back to direct init ...")
-        await _init_db_from_models()
+    # Run Alembic migrations to create/update tables (fallback rules: #796).
+    await _migrate_or_fallback()
 
     # Ensure the oauth_clients table (built-in MCP authorization server) exists on
     # every startup, independent of Alembic — no migration ships for it. Idempotent.

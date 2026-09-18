@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.51] - 2026-09-18
+
+### Behoben
+- **Ein fehlgeschlagenes `alembic upgrade head` beim Start stempelt eine
+  bereits versorgte Datenbank nicht mehr auf head** (Issue #796). Vorher
+  erklaerte der Rueckfall (`create_all` + `stamp head`) auf einer bestehenden
+  Anlage alle offenen Migrationen fuer erledigt, obwohl keine gelaufen war;
+  beim naechsten Start gab es nichts mehr zu migrieren, die Spalten fehlten
+  weiter und die Anwendung startete dauerhaft nicht — auch nachdem die
+  eigentliche Ursache behoben war. Jetzt wird nur eine frische Datenbank
+  (ohne `alembic_version`) aus den Modellen angelegt und gestempelt; auf einer
+  versorgten Anlage bleibt die Revision wahr, es werden keine Tabellen aus den
+  Modellen angelegt, und der naechste Start versucht das Upgrade erneut.
+  Ist der Zustand nicht feststellbar, gilt „versorgt".
+- **Nach einem Timeout des Upgrades wird nie gestempelt** — eine halb
+  gelaufene Datenmigration galt sonst als fertig. Der Timeout ist ueber
+  `ALEMBIC_UPGRADE_TIMEOUT_SECONDS` einstellbar (Standard 300 s statt 30 s),
+  weil Backfills auf grossen Tabellen legitim Minuten brauchen.
+- **Das Protokoll zeigt jetzt das Ende der Alembic-Ausgabe**, nicht die ersten
+  200 Zeichen: dort standen ausnahmslos INFO-Zeilen, die eigentliche
+  Fehlermeldung war abgeschnitten und die Ursache nicht auffindbar.
+
 ## [1.322.50] - 2026-09-18
 
 ### Geaendert
