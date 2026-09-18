@@ -1859,20 +1859,40 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     return () => clearInterval(interval);
   }, [isWaiting, messages, thinkingStartTime]);
 
-  // Poll for pending L3 approvals when agent is working
+  // Poll for approvals that need this chat's attention.
+  //
+  // Bug fix (live-reported 2026-09-18): this used to only poll while
+  // `isWaiting` was true and unconditionally cleared the banner the instant
+  // streaming ended — the approval itself stayed open server-side, only its
+  // on-screen indicator vanished ("wenn er fertig mit schreiben ist,
+  // verschwinden die wieder"). It also filtered only by `agent_id`, so a
+  // same-agent BACKGROUND job's approval (e.g. the nightly "Nachtschicht"
+  // reflection run writing a knowledge entry) could surface inside a
+  // completely unrelated chat conversation — there is no chat/session id on
+  // `CommandApproval` to scope by more precisely, but `reflection_change`
+  // approvals are never raised by an interactive chat turn, so excluding
+  // them here (same exclusion the dedicated Approvals page already uses to
+  // bucket them into their own tab) removes the one concrete case that
+  // actually showed up in the wrong place. Poll continuously while the chat
+  // is open instead of gating on `isWaiting`, and always trust the latest
+  // poll result rather than a local streaming flag.
   useEffect(() => {
-    if (!isWaiting) { setPendingApproval(null); return; }
-    const poll = setInterval(async () => {
+    let cancelled = false;
+    const check = async () => {
       try {
         const res = await fetch(`${getApiUrl()}/api/v1/approvals/pending`, { credentials: "include" });
-        if (!res.ok) return;
+        if (!res.ok || cancelled) return;
         const data = await res.json();
-        const agentApprovals = (data.approvals || []).filter((a: PendingApproval) => a.agent_id === agentId);
-        setPendingApproval(agentApprovals[0] || null);
+        const relevant = (data.approvals || []).filter(
+          (a: PendingApproval) => a.agent_id === agentId && a.tool !== "reflection_change"
+        );
+        setPendingApproval(relevant[0] || null);
       } catch {}
-    }, 3000);
-    return () => clearInterval(poll);
-  }, [isWaiting, agentId]);
+    };
+    check();
+    const poll = setInterval(check, 3000);
+    return () => { cancelled = true; clearInterval(poll); };
+  }, [agentId]);
 
   // Fenstergroesse fuer den Ring im Composer. Einmal je Gespraech geholt — sie
   // aendert sich nur, wenn jemand das Modell umstellt.
