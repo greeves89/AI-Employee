@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.47] - 2026-09-18
+
+### Geaendert
+- **4 der 7 Admin-Unterfunktionen existierten an zwei URLs gleichzeitig**
+  (Standalone-Seite + eingebetteter Reiter in der Admin-Konsole, zwei
+  Mount-Punkte derselben Komponente). `/ai-accounts`, `/secrets`, `/health`
+  und `/audit` leiten jetzt auf ihren jeweiligen Admin-Konsole-Reiter um —
+  nur noch ein echter Ort dafuer. (`/settings` bleibt unveraendert, da nicht
+  admin-only.) Schliesst nebenbei eine Luecke: diese vier Standalone-Seiten
+  hatten keine eigene Rollenpruefung, obwohl derselbe Reiter in der
+  Admin-Konsole laengst admin-only ist.
+- Direkte Links auf diese Seiten (Agent-Detail: KI-Account anlegen;
+  Integrationen-Reiter: Secrets verwalten) zeigen jetzt gleich auf den
+  Admin-Reiter statt ueber die Umleitung zu laufen.
+
 ## [1.322.46] - 2026-09-18
 
 ### Geaendert

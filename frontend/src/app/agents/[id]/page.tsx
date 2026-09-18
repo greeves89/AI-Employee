@@ -1983,7 +1983,7 @@ function AgentSettings({
             {aiAccounts.length === 0 ? (
               <p className="text-[12px] text-muted-foreground/70">
                 Keine AI-Accounts vorhanden.{" "}
-                <Link href="/ai-accounts" className="text-violet-400 hover:text-violet-300">
+                <Link href="/admin?tab=ai-accounts" className="text-violet-400 hover:text-violet-300">
                   Zuerst einen anlegen →
                 </Link>
               </p>
