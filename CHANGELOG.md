@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.49] - 2026-09-18
+
+### Geaendert
+- **Agent-Settings-Seite in fuenf aufklappbare Abschnitte gruppiert**
+  (Issue #787, letzter Punkt) — vorher ein 1665-Zeilen-Einzel-Scroll ohne
+  Gruppierung. Jetzt: "Aussehen & Verhalten" (offen), "Modell & Verhalten"
+  (offen), "Verbindungen" (zu, mit API-Keys/Tokens-Warnung: Telegram,
+  Webhook, MCP), "Zugriff & Rechte" (offen — Autonomie-Matrix, Sudo-Pakete
+  und Computer-Use-Standard sitzen jetzt zusammen statt an drei
+  verschiedenen Stellen der Seite), "Ressourcen & Limits" (zu).
+  Damit ist Issue #787 vollstaendig umgesetzt.
+
 ## [1.322.48] - 2026-09-18
 
 ### Hinzugefuegt

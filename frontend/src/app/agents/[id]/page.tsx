@@ -15,6 +15,7 @@ import {
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
   Layers, AudioLines, ArrowUpRight, CalendarDays,
+  ChevronDown, ShieldCheck,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { ActivityTimeline } from "@/components/activity/activity-timeline";
@@ -1211,6 +1212,53 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
 }
 
 
+// Buendelt mehrere Karten unter EINEM aufklappbaren Kopf statt sie einzeln in
+// einem langen Scroll aneinanderzureihen (Issue #787, letzter Punkt: die
+// Agent-Settings-Seite war ein 1665-Zeilen-Einzel-Scroll ohne Gruppierung).
+// Technische/Secret-tragende Gruppen starten zu und tragen eine Warnung,
+// damit ein Nutzer nicht erst an API-Tokens vorbeiscrollen muss, um zu den
+// fuer ihn relevanten Einstellungen zu kommen.
+function SettingsAccordionSection({
+  title,
+  icon: Icon,
+  defaultOpen = false,
+  secretsWarning = false,
+  children,
+}: {
+  title: string;
+  icon: React.ElementType;
+  defaultOpen?: boolean;
+  secretsWarning?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl border border-foreground/[0.06] bg-card/50 backdrop-blur-sm overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-foreground/[0.02] transition-colors"
+      >
+        <div className="flex items-center gap-2.5">
+          <Icon className={cn("h-4 w-4", secretsWarning ? "text-amber-700 dark:text-amber-400" : "text-primary")} />
+          <span className="text-sm font-semibold">{title}</span>
+          {secretsWarning && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+              API-Keys &amp; Tokens
+            </span>
+          )}
+        </div>
+        <ChevronDown className={cn("h-4 w-4 text-muted-foreground/50 transition-transform duration-150 shrink-0", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="p-4 space-y-4 border-t border-foreground/[0.06]">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AgentSettings({
   agent,
   onUpdated,
@@ -1654,6 +1702,7 @@ function AgentSettings({
 
   return (
     <div className="space-y-6 overflow-auto h-full pb-4">
+      <SettingsAccordionSection title="Aussehen & Verhalten" icon={Sparkles} defaultOpen>
       {/* Aussehen / Symbol */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="mb-3">
@@ -1694,7 +1743,9 @@ function AgentSettings({
           </button>
         </div>
       </div>
+      </SettingsAccordionSection>
 
+      <SettingsAccordionSection title="Modell & Verhalten" icon={Brain} defaultOpen>
       {/* Model-Router: pick a model per task from its content instead of always using one fixed model */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="flex items-center justify-between gap-4">
@@ -1753,28 +1804,6 @@ function AgentSettings({
             ))}
           </div>
         )}
-      </div>
-
-      {/* Autonomy Level */}
-      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
-        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4 text-amber-700 dark:text-amber-400" />
-            <span className="text-sm font-medium">Autonomie-Level</span>
-            <span className={cn(
-              "text-[10px] px-2 py-0.5 rounded-full border font-medium",
-              autonomyLevel === "l1" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
-              autonomyLevel === "l2" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-              autonomyLevel === "l3" && "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
-              autonomyLevel === "l4" && "bg-red-500/10 text-red-400 border-red-500/20",
-            )}>
-              {autonomyLevel.toUpperCase()}
-            </span>
-          </div>
-        </div>
-        <div className="p-5">
-          <AutonomyMatrix agentId={agentId} onLevelChange={setAutonomyLevel} />
-        </div>
       </div>
 
       {/* Parallele Sessions */}
@@ -2232,7 +2261,9 @@ function AgentSettings({
           </div>
         </div>
       )}
+      </SettingsAccordionSection>
 
+      <SettingsAccordionSection title="Verbindungen" icon={Plug} secretsWarning>
       {/* Telegram Bot */}
       <TelegramAgentSection agentId={agentId} />
 
@@ -2452,6 +2483,30 @@ function AgentSettings({
           </div>
         </div>
       )}
+      </SettingsAccordionSection>
+
+      <SettingsAccordionSection title="Zugriff & Rechte" icon={ShieldCheck} defaultOpen>
+      {/* Autonomy Level */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-amber-700 dark:text-amber-400" />
+            <span className="text-sm font-medium">Autonomie-Level</span>
+            <span className={cn(
+              "text-[10px] px-2 py-0.5 rounded-full border font-medium",
+              autonomyLevel === "l1" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+              autonomyLevel === "l2" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+              autonomyLevel === "l3" && "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
+              autonomyLevel === "l4" && "bg-red-500/10 text-red-400 border-red-500/20",
+            )}>
+              {autonomyLevel.toUpperCase()}
+            </span>
+          </div>
+        </div>
+        <div className="p-5">
+          <AutonomyMatrix agentId={agentId} onLevelChange={setAutonomyLevel} />
+        </div>
+      </div>
 
       {/* Permissions */}
       <PermissionPackagesPanel
@@ -2478,12 +2533,15 @@ function AgentSettings({
           jede Desktop-Session dieses Agenten erbt und nie überschreiten kann
           (Issue #787 Punkt 1) — vorher gab es dafür gar keinen Pro-Agent-Wert. */}
       <ComputerUseDefaultPanel agentId={agentId} />
+      </SettingsAccordionSection>
 
+      <SettingsAccordionSection title="Ressourcen & Limits" icon={HardDrive}>
       {/* Resource Limits */}
       <ResourceLimitsSection agentId={agentId} agent={agent} onUpdated={onUpdated} />
 
       {/* Volume Mounts */}
       <MountSelectorSection agentId={agentId} />
+      </SettingsAccordionSection>
 
       {/* Status messages */}
       {message && (
