@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.45] - 2026-09-18
+
+### Behoben
+- **Freigabe-Banner im Chat zeigte fremde Hintergrund-Freigaben und
+  verschwand beim Streaming-Ende, nicht bei tatsaechlicher Aufloesung.**
+  Live gemeldet: eine Freigabe der naechtlichen Nachtschicht-Reflexion
+  (Wissenseintrag schreiben) erschien im Banner eines voellig unbeteiligten
+  Chats, und war weg, sobald der Agent dort mit Antworten fertig war —
+  obwohl die Freigabe serverseitig weiterhin offen stand. Ursache:
+  `CommandApproval` hat kein Chat-/Session-Feld, das Banner filterte nur
+  nach `agent_id`, und wischte seinen lokalen Zustand hart bei jedem
+  Streaming-Ende. Jetzt: Nachtschicht-Freigaben (`tool ===
+  "reflection_change"`) werden im Chat-Banner ausgeschlossen (dieselbe
+  Ausnahme, die die Freigaben-Seite schon fuer ihren eigenen Reiter nutzt),
+  und die Anzeige folgt durchgehendem Polling statt dem lokalen
+  Streaming-Status.
+
 ## [1.322.44] - 2026-09-18
 
 ### Behoben
