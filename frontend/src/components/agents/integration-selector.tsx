@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   Plug, CheckCircle2, Loader2, RefreshCw, AlertCircle,
   Network, ChevronRight, Wrench, Brain, Bell, Cpu,
@@ -415,7 +416,8 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
             <Plug className="h-4 w-4 text-blue-400" />
             <span className="text-sm font-medium">Integrations</span>
             <span className="text-[10px] text-muted-foreground/60">
-              Select which services this agent can access
+              Select which services this agent can access — neue
+              Verbindungen anlegen: <Link href="/integrations" className="text-primary hover:underline">Integrations</Link> (Seitenleiste)
             </span>
           </div>
           <div className="flex items-center gap-2">

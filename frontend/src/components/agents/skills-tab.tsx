@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sparkles,
@@ -293,6 +294,12 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
           <span className="text-xs text-muted-foreground">
             ({skills.length} {skills.length === 1 ? "skill" : "skills"})
           </span>
+          <Link
+            href="/skills"
+            className="text-[10px] text-muted-foreground/50 hover:text-primary hover:underline"
+          >
+            globaler Marktplatz →
+          </Link>
         </div>
         <div className="flex items-center gap-2">
           <button

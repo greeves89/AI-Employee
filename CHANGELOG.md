@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.46] - 2026-09-18
+
+### Geaendert
+- **Namenskollisionen aus Issue #787 entschaerft** — vier Oberflaechen sahen
+  gleich aus, meinten aber unterschiedliche Dinge, ohne Hinweis darauf:
+  - Telegram-Bot: pro Agent vs. persoenliches Konto — beide Seiten
+    verweisen jetzt aufeinander, die Kontenseite heisst jetzt "Telegram Bot
+    (dein Konto)".
+  - "Integrations": globale OAuth-/MCP-Registrierung, persoenliche
+    Benachrichtigungskanaele und Pro-Agent-Freigabeliste — alle drei
+    verlinken jetzt auf die globale Registrierung.
+  - "Apps": globaler App-Marktplatz vs. Pro-Agent-Docker-Verwaltung — der
+    Agent-Tab sagt jetzt explizit "nur dieser Agent".
+  - Skill Store: globaler Marktplatz vs. Pro-Agent-Katalog — der Agent-Tab
+    verlinkt jetzt auf den globalen Marktplatz.
+- **Die drei Agent-Detail-Seiten verlinken jetzt aufeinander.** Die volle
+  Agent-Seite bekommt fuer Admins einen "Admin-Ansicht"-Link zur
+  Statistik-Seite, die Statistik-Seite einen Link zurueck zur vollen Seite
+  — vorher zwei Sackgassen ohne Verbindung.
+
 ## [1.322.45] - 2026-09-18
 
 ### Behoben

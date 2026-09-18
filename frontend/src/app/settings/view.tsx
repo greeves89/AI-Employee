@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Key, MessageSquare, Save, Loader2,
@@ -1245,6 +1246,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
 
         {secTab === "integrationen" && (
         <div className="space-y-6">
+        <p className="text-[11px] text-muted-foreground/50">
+          Benachrichtigungskanaele fuer DICH (E-Mail/Telegram/Teams). Externe
+          Datenquellen und MCP-Server fuer deine Agenten verbindest du unter{" "}
+          <Link href="/integrations" className="text-primary hover:underline">Integrations</Link>{" "}
+          in der Seitenleiste.
+        </p>
         {/* ─── Section 4: Notifications ─── */}
         <section>
           <div className="flex items-center gap-2 mb-3">
@@ -1279,8 +1286,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   <MessageSquare className="h-4 w-4 text-cyan-400" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold">Telegram Bot</h3>
-                  <p className="text-[11px] text-muted-foreground/60">Receive notifications via Telegram</p>
+                  <h3 className="text-sm font-semibold">Telegram Bot (dein Konto)</h3>
+                  <p className="text-[11px] text-muted-foreground/60">Fuer Benachrichtigungen an DICH — nicht zu verwechseln mit einem eigenen Bot je Agent (Agent-Einstellungen)</p>
                 </div>
               </div>
               {settings?.has_telegram ? (
