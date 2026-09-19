@@ -183,6 +183,15 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                 Image veraltet
               </div>
             )}
+            {agent.config?.stop_reason && (
+              <div
+                title={agent.config.stop_reason.detail}
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20"
+              >
+                <AlertTriangle className="h-3 w-3" />
+                Speicher voll
+              </div>
+            )}
             {agent.budget_usd != null && agent.budget_usd > 0 && agent.monthly_cost_usd >= agent.budget_usd && (
               <div className={cn(
                 "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium",

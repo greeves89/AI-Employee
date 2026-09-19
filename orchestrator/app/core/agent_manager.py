@@ -2043,6 +2043,14 @@ class AgentManager:
             return await self.update_agent(agent_id)
         await self.refresh_instructions(agent)
         agent.state = AgentState.RUNNING
+        if agent.config and "stop_reason" in agent.config:
+            # Manueller Start nach z.B. einem Speicherquote-Stopp — der Betreiber
+            # hat sich offenbar selbst darum gekuemmert (oder es sofort wieder
+            # versucht); der naechste Ueberwachungslauf legt den Grund neu an,
+            # wenn das Problem tatsaechlich noch besteht.
+            agent.config = dict(agent.config)
+            agent.config.pop("stop_reason", None)
+            flag_modified(agent, "config")
         await self.db.commit()
         await self._publish_event(agent_id, "system", "Agent started")
         return agent
