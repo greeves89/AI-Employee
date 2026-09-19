@@ -22,6 +22,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
     der Alarm nur an Telegram, nicht an registrierte Geräte (derselbe #610-
     Umgehungsweg, der für Telegram schon gebraucht wurde, fehlte hier).
 
+### Behoben
+- **`stop_reason` überlebte ein Agenten-Update** — `update_agent` (Update-
+  Knopf, oder Selbstheilung nach verschwundenem Container) lief nie über den
+  Aufräumpfad von `start_agent`, also blieb ein längst erledigter
+  Speicherquote-Alarm nach jedem routinemäßigen Update als Karteileiche in
+  Badge und Login-Popup stehen. Beide rufen jetzt denselben Helfer
+  (`AgentManager._clear_stale_stop_reason`).
+
 ## [1.322.52] - 2026-09-18
 
 ### Behoben

@@ -2029,6 +2029,19 @@ class AgentManager:
                 vorhandener.start()
             return vorhandener
 
+    @staticmethod
+    def _clear_stale_stop_reason(config: dict | None) -> dict:
+        """Ein (Neu-)Start macht den Agenten wieder lauffaehig — ein alter
+        Speicherquote-Stopp-Grund darf dann nicht als Karteileiche in
+        Badge/Login-Popup haengen bleiben; der naechste Ueberwachungslauf
+        legt ihn neu an, wenn das Problem tatsaechlich noch besteht. Von
+        [start_agent] UND [update_agent] gerufen — Letzteres liess ihn
+        bislang stehen, weil es nie ueber diesen Pfad lief (#807-Nachtrag).
+        """
+        config = dict(config or {})
+        config.pop("stop_reason", None)
+        return config
+
     async def start_agent(self, agent_id: str) -> Agent:
         await self._publish_event(agent_id, "system", "Agent starting...")
         agent = await self._get_agent(agent_id)
@@ -2043,14 +2056,8 @@ class AgentManager:
             return await self.update_agent(agent_id)
         await self.refresh_instructions(agent)
         agent.state = AgentState.RUNNING
-        if agent.config and "stop_reason" in agent.config:
-            # Manueller Start nach z.B. einem Speicherquote-Stopp — der Betreiber
-            # hat sich offenbar selbst darum gekuemmert (oder es sofort wieder
-            # versucht); der naechste Ueberwachungslauf legt den Grund neu an,
-            # wenn das Problem tatsaechlich noch besteht.
-            agent.config = dict(agent.config)
-            agent.config.pop("stop_reason", None)
-            flag_modified(agent, "config")
+        agent.config = self._clear_stale_stop_reason(agent.config)
+        flag_modified(agent, "config")
         await self.db.commit()
         await self._publish_event(agent_id, "system", "Agent started")
         return agent
@@ -2316,7 +2323,7 @@ class AgentManager:
         agent.container_id = container.id
         agent.state = AgentState.RUNNING
         config["agent_version"] = get_agent_version()
-        agent.config = config
+        agent.config = self._clear_stale_stop_reason(config)
         flag_modified(agent, "config")
         await self.db.commit()
         await self.db.refresh(agent)

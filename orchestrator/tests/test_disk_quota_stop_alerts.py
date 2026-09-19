@@ -143,6 +143,31 @@ class DiskQuotaStopAlertsTest(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("stop_reason", refreshed.config)
             self.assertEqual(refreshed.state, AgentState.RUNNING)
 
+    def test_clear_stale_stop_reason_helper_drops_only_that_key(self):
+        """update_agent (Update-Knopf, oder Selbstheilung nach verschwundenem
+        Container) lief bisher NICHT ueber denselben Pfad wie start_agent und
+        liess einen alten Alarm als Karteileiche stehen — jedes routinemaessige
+        Update zeigte dann ein laengst erledigtes 'Speicher voll' weiter an.
+        Beide rufen jetzt denselben Helfer; hier direkt gegen die Dict-Logik
+        getestet statt gegen die ganze Container-Neubau-Pipeline gemockt."""
+        original = {
+            "stop_reason": {"type": "disk_quota", "message": "x"},
+            "role": "Marketing",
+            "mounts": ["brain"],
+        }
+        cleared = AgentManager._clear_stale_stop_reason(original)
+
+        self.assertNotIn("stop_reason", cleared)
+        self.assertEqual(cleared["role"], "Marketing")
+        self.assertEqual(cleared["mounts"], ["brain"])
+        # Eingabe bleibt unangetastet (die Aufrufer verlassen sich darauf,
+        # z.B. um "config" danach noch fuer agent_version etc. weiterzunutzen).
+        self.assertIn("stop_reason", original)
+
+    def test_clear_stale_stop_reason_helper_is_noop_without_one(self):
+        self.assertEqual(AgentManager._clear_stale_stop_reason({"role": "Dev"}), {"role": "Dev"})
+        self.assertEqual(AgentManager._clear_stale_stop_reason(None), {})
+
 
 if __name__ == "__main__":
     unittest.main()
