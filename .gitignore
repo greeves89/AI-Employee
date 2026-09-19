@@ -130,3 +130,11 @@ core.[0-9]*
 .env.*
 !.env.example
 !.env.community.example
+
+# Lokale Entwickler-Werkzeuge, kein Projekt-Quellcode: eine MCP-Server-
+# Konfiguration mit absoluten Pfaden zur lokalen Maschine (.mcp.json) und der
+# ProjectAtlas-Arbeitsordner (SQLite-DB inkl. WAL/SHM, Lock-Datei, generierte
+# Karten). Rutschte einmal per `git add -A` versehentlich in einen Merge-
+# Commit — siehe PR #806.
+/.mcp.json
+/.projectatlas/
