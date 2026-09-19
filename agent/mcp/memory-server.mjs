@@ -12,6 +12,7 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { startServer } from "./_transport.mjs";
+import { checkToolPermission } from "./_tool_gate.mjs";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -212,188 +213,201 @@ export function buildServer() {
   }));
 
   // --- Handle tool calls ---
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
+  server.setRequestHandler(CallToolRequestSchema, handleCallTool);
 
-    switch (name) {
-      case "memory_save": {
-        // Forward the upgrade fields only when explicitly provided so we
-        // stay backwards-compatible with older callers.
-        const body = {
-          agent_id: AGENT_ID,
-          category: args.category,
-          key: args.key,
-          content: args.content,
-          importance: args.importance || 3,
-        };
-        if (args.room) body.room = args.room;
-        if (args.tag_type === "transient" || args.tag_type === "permanent") {
-          body.tag_type = args.tag_type;
+  return server;
+}
+
+// Eigenstaendig exportiert (statt nur als Inline-Callback), damit Tests den
+// Handler direkt aufrufen koennen, ohne Transport-Mechanik nachzubauen
+// (Issue #781 PR 1).
+export async function handleCallTool(request) {
+  const { name, arguments: args } = request.params;
+
+  // Autonomie-Gate zuerst, vor jeder Seitenwirkung (Issue #781) — Codex hat
+  // fuer dieses Werkzeug keine native Entsprechung, dieser lokale Hook-Aufruf
+  // ist der einzige echte Abfangpunkt.
+  const gate = await checkToolPermission("memory", name, args);
+  if (!gate.allowed) {
+    return { content: [{ type: "text", text: gate.reason }], isError: true };
+  }
+
+  switch (name) {
+    case "memory_save": {
+      // Forward the upgrade fields only when explicitly provided so we
+      // stay backwards-compatible with older callers.
+      const body = {
+        agent_id: AGENT_ID,
+        category: args.category,
+        key: args.key,
+        content: args.content,
+        importance: args.importance || 3,
+      };
+      if (args.room) body.room = args.room;
+      if (args.tag_type === "transient" || args.tag_type === "permanent") {
+        body.tag_type = args.tag_type;
+      }
+      if (Array.isArray(args.tags) && args.tags.length > 0) body.tags = args.tags;
+      if (args.override === true) body.override = true;
+      if (typeof args.confidence === "number") body.confidence = args.confidence;
+
+      try {
+        const result = await apiCall("/memory/save", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        const extras = [];
+        if (result.room) extras.push(`room=${result.room}`);
+        if (result.tag_type && result.tag_type !== "permanent") {
+          extras.push(`tag_type=${result.tag_type}`);
         }
-        if (Array.isArray(args.tags) && args.tags.length > 0) body.tags = args.tags;
-        if (args.override === true) body.override = true;
-        if (typeof args.confidence === "number") body.confidence = args.confidence;
-
-        try {
-          const result = await apiCall("/memory/save", {
-            method: "POST",
-            body: JSON.stringify(body),
-          });
-          const extras = [];
-          if (result.room) extras.push(`room=${result.room}`);
-          if (result.tag_type && result.tag_type !== "permanent") {
-            extras.push(`tag_type=${result.tag_type}`);
-          }
-          const extrasStr = extras.length > 0 ? ` (${extras.join(", ")})` : "";
+        const extrasStr = extras.length > 0 ? ` (${extras.join(", ")})` : "";
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Saved memory [${result.category}] "${result.key}" (id: ${result.id}, importance: ${result.importance})${extrasStr}`,
+            },
+          ],
+        };
+      } catch (e) {
+        // Detect 409 contradiction warning — surface the hint to the agent
+        // so it can decide whether to re-call with override=true.
+        const msg = String(e.message || e);
+        if (msg.includes("409") || msg.toLowerCase().includes("contradiction")) {
           return {
             content: [
               {
                 type: "text",
-                text: `Saved memory [${result.category}] "${result.key}" (id: ${result.id}, importance: ${result.importance})${extrasStr}`,
+                text:
+                  `⚠️ Contradiction warning: a very similar memory already exists in this ` +
+                  `(agent, room, key) bucket. Review it via memory_search first. ` +
+                  `If you're sure the new content should replace it, re-call memory_save ` +
+                  `with the exact same fields PLUS override=true.\n\nDetail: ${msg}`,
               },
             ],
           };
-        } catch (e) {
-          // Detect 409 contradiction warning — surface the hint to the agent
-          // so it can decide whether to re-call with override=true.
-          const msg = String(e.message || e);
-          if (msg.includes("409") || msg.toLowerCase().includes("contradiction")) {
+        }
+        throw e;
+      }
+    }
+
+    case "memory_search": {
+      // Prefer semantic search (if query is non-empty and no specific category filter)
+      if (args.query && !args.category) {
+        try {
+          const semParams = new URLSearchParams({
+            agent_id: AGENT_ID,
+            q: args.query,
+            limit: "10",
+          });
+          if (args.room) semParams.set("room", args.room);
+          const semResult = await apiCall(`/memory/semantic-search?${semParams}`);
+          if (semResult.memories && semResult.memories.length > 0) {
+            // The orchestrator returns `semantic_reranked` on success and
+            // `keyword_fallback` only when the embedding service is disabled.
+            const isSemantic = typeof semResult.mode === "string"
+              && semResult.mode.startsWith("semantic");
+            const modeLabel = isSemantic
+              ? "🧠 semantic (vector-based, understanding meaning)"
+              : "🔤 keyword (exact substring match — semantic unavailable)";
+            const lines = semResult.memories.map(
+              (m) => {
+                const sim = m.similarity != null
+                  ? ` [${(m.similarity * 100).toFixed(0)}% match]`
+                  : "";
+                return `[${m.category}] ${m.key}${sim} (id:${m.id}, importance:${m.importance})\n  ${m.content}`;
+              }
+            );
             return {
               content: [
                 {
                   type: "text",
-                  text:
-                    `⚠️ Contradiction warning: a very similar memory already exists in this ` +
-                    `(agent, room, key) bucket. Review it via memory_search first. ` +
-                    `If you're sure the new content should replace it, re-call memory_save ` +
-                    `with the exact same fields PLUS override=true.\n\nDetail: ${msg}`,
+                  text: `Found ${semResult.memories.length} memories via ${modeLabel}:\n\n${wrapData("memory", lines.join("\n\n"))}`,
                 },
               ],
             };
           }
-          throw e;
+          // semResult returned 0 results — fall through to keyword search below
+        } catch (e) {
+          // Fall through to keyword search
         }
       }
 
-      case "memory_search": {
-        // Prefer semantic search (if query is non-empty and no specific category filter)
-        if (args.query && !args.category) {
-          try {
-            const semParams = new URLSearchParams({
-              agent_id: AGENT_ID,
-              q: args.query,
-              limit: "10",
-            });
-            if (args.room) semParams.set("room", args.room);
-            const semResult = await apiCall(`/memory/semantic-search?${semParams}`);
-            if (semResult.memories && semResult.memories.length > 0) {
-              // The orchestrator returns `semantic_reranked` on success and
-              // `keyword_fallback` only when the embedding service is disabled.
-              const isSemantic = typeof semResult.mode === "string"
-                && semResult.mode.startsWith("semantic");
-              const modeLabel = isSemantic
-                ? "🧠 semantic (vector-based, understanding meaning)"
-                : "🔤 keyword (exact substring match — semantic unavailable)";
-              const lines = semResult.memories.map(
-                (m) => {
-                  const sim = m.similarity != null
-                    ? ` [${(m.similarity * 100).toFixed(0)}% match]`
-                    : "";
-                  return `[${m.category}] ${m.key}${sim} (id:${m.id}, importance:${m.importance})\n  ${m.content}`;
-                }
-              );
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: `Found ${semResult.memories.length} memories via ${modeLabel}:\n\n${wrapData("memory", lines.join("\n\n"))}`,
-                  },
-                ],
-              };
-            }
-            // semResult returned 0 results — fall through to keyword search below
-          } catch (e) {
-            // Fall through to keyword search
-          }
-        }
+      // Keyword fallback / category-filtered search
+      const params = new URLSearchParams({ agent_id: AGENT_ID });
+      if (args.query) params.set("q", args.query);
+      if (args.category) params.set("category", args.category);
 
-        // Keyword fallback / category-filtered search
-        const params = new URLSearchParams({ agent_id: AGENT_ID });
-        if (args.query) params.set("q", args.query);
-        if (args.category) params.set("category", args.category);
-
-        const result = await apiCall(`/memory/search?${params}`);
-        if (result.memories.length === 0) {
-          return {
-            content: [{
-              type: "text",
-              text: `No memories found for query "${args.query || "(empty)"}"${args.category ? ` in category ${args.category}` : ""}.`,
-            }],
-          };
-        }
-        const lines = result.memories.map(
-          (m) =>
-            `[${m.category}] ${m.key} (id:${m.id}, importance:${m.importance})\n  ${m.content}`
-        );
-        const modeLabel = args.category
-          ? "🔤 keyword (category-filtered)"
-          : "🔤 keyword (exact substring match)";
+      const result = await apiCall(`/memory/search?${params}`);
+      if (result.memories.length === 0) {
         return {
-          content: [
-            {
-              type: "text",
-              text: `Found ${result.total} memories via ${modeLabel}:\n\n${wrapData("memory", lines.join("\n\n"))}`,
-            },
-          ],
+          content: [{
+            type: "text",
+            text: `No memories found for query "${args.query || "(empty)"}"${args.category ? ` in category ${args.category}` : ""}.`,
+          }],
         };
       }
-
-      case "memory_list": {
-        const params = new URLSearchParams();
-        if (args.category) params.set("category", args.category);
-        const result = await apiCall(`/memory/agents/${AGENT_ID}?${params}`);
-        if (result.memories.length === 0) {
-          return {
-            content: [{ type: "text", text: "No memories stored yet." }],
-          };
-        }
-        const catSummary = Object.entries(result.categories)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join(", ");
-        const shown =
-          result.has_more || result.memories.length < (result.total ?? 0)
-            ? `${result.memories.length} of ${result.total}`
-            : `${result.total ?? result.memories.length}`;
-        const lines = result.memories.map(
-          (m) =>
-            `[${m.category}] ${m.key} (id:${m.id}, importance:${m.importance}, accessed:${m.access_count}x)\n  ${m.content}`
-        );
-        return {
-          content: [
-            {
-              type: "text",
-              // `total` ist seit v1.278 die ECHTE Gesamtzahl, nicht die Seitengroesse.
-              // Ohne den Zusatz laese der Agent "500 memories" und darunter 50 —
-              // und wuesste nicht, dass er den Rest per offset nachholen kann.
-              text: `${shown} memories (${catSummary}):\n\n${wrapData("memory", lines.join("\n\n"))}`,
-            },
-          ],
-        };
-      }
-
-      case "memory_delete": {
-        await apiCall(`/memory/${args.memory_id}`, { method: "DELETE" });
-        return {
-          content: [{ type: "text", text: `Deleted memory ${args.memory_id}.` }],
-        };
-      }
-
-      default:
-        throw new Error(`Unknown tool: ${name}`);
+      const lines = result.memories.map(
+        (m) =>
+          `[${m.category}] ${m.key} (id:${m.id}, importance:${m.importance})\n  ${m.content}`
+      );
+      const modeLabel = args.category
+        ? "🔤 keyword (category-filtered)"
+        : "🔤 keyword (exact substring match)";
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Found ${result.total} memories via ${modeLabel}:\n\n${wrapData("memory", lines.join("\n\n"))}`,
+          },
+        ],
+      };
     }
-  });
 
-  return server;
+    case "memory_list": {
+      const params = new URLSearchParams();
+      if (args.category) params.set("category", args.category);
+      const result = await apiCall(`/memory/agents/${AGENT_ID}?${params}`);
+      if (result.memories.length === 0) {
+        return {
+          content: [{ type: "text", text: "No memories stored yet." }],
+        };
+      }
+      const catSummary = Object.entries(result.categories)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(", ");
+      const shown =
+        result.has_more || result.memories.length < (result.total ?? 0)
+          ? `${result.memories.length} of ${result.total}`
+          : `${result.total ?? result.memories.length}`;
+      const lines = result.memories.map(
+        (m) =>
+          `[${m.category}] ${m.key} (id:${m.id}, importance:${m.importance}, accessed:${m.access_count}x)\n  ${m.content}`
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            // `total` ist seit v1.278 die ECHTE Gesamtzahl, nicht die Seitengroesse.
+            // Ohne den Zusatz laese der Agent "500 memories" und darunter 50 —
+            // und wuesste nicht, dass er den Rest per offset nachholen kann.
+            text: `${shown} memories (${catSummary}):\n\n${wrapData("memory", lines.join("\n\n"))}`,
+          },
+        ],
+      };
+    }
+
+    case "memory_delete": {
+      await apiCall(`/memory/${args.memory_id}`, { method: "DELETE" });
+      return {
+        content: [{ type: "text", text: `Deleted memory ${args.memory_id}.` }],
+      };
+    }
+
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
 }
 
 
