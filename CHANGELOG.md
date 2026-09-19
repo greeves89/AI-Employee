@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.57] - 2026-09-19
+
+### Hinzugefügt
+- **Speicherquote-Stopp ist jetzt sichtbar, nicht nur ein Backend-Log-Eintrag** —
+  ausgelöst durch einen Agenten, der wiederholt in einer Stopp-Start-Schleife
+  hing, weil sein Workspace bei 99,8% des Kontingents lag. Vier Teile:
+  - `agent.config.stop_reason` — durabler Zustand, gesetzt beim Stopp, gelöscht
+    bei Erholung oder manuellem Neustart.
+  - Rotes "Speicher voll"-Badge auf der Agentenkarte + Login-Popup (einmal pro
+    Sitzung) in der Weboberfläche.
+  - Der Agent selbst liest `/workspace/.disk_warning` jetzt bei jedem
+    Sitzungsstart (Chat & Task) und bekommt einen unübersehbaren Prompt-Block —
+    vorher reine Bring-Schuld ("falls er zufällig hinschaut"), jetzt Hol-Schuld.
+  - iOS/Web-Push: `disk_monitor.py` ruft jetzt `push_to_user()` — vorher ging
+    der Alarm nur an Telegram, nicht an registrierte Geräte (derselbe #610-
+    Umgehungsweg, der für Telegram schon gebraucht wurde, fehlte hier).
+
+### Behoben
+- **`stop_reason` überlebte ein Agenten-Update** — `update_agent` (Update-
+  Knopf, oder Selbstheilung nach verschwundenem Container) lief nie über den
+  Aufräumpfad von `start_agent`, also blieb ein längst erledigter
+  Speicherquote-Alarm nach jedem routinemäßigen Update als Karteileiche in
+  Badge und Login-Popup stehen. Beide rufen jetzt denselben Helfer
+  (`AgentManager._clear_stale_stop_reason`).
+
 ## [1.322.56] - 2026-09-19
 
 ### Behoben

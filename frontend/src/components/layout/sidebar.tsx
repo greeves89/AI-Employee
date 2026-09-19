@@ -29,6 +29,7 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { UpdateBanner } from "./update-banner";
+import { StopReasonAlert } from "./stop-reason-alert";
 import { UserMenu } from "./user-menu";
 import { useAuthStore } from "@/lib/auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
@@ -475,6 +476,8 @@ export function Sidebar() {
 
       {/* Update Banner (only when expanded) */}
       {!effectiveCollapsed && <UpdateBanner />}
+      {/* Speicherquote-Stopp-Popup — Portal-Modal, unabhaengig vom Ein-/Ausklappen */}
+      <StopReasonAlert />
 
       {/* Bottom */}
       <div className={cn(
