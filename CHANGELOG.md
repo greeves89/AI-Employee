@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.322.54] - 2026-09-19
+
+### Behoben
+- **Scheduler-Wache meldete gesunde Zeitpläne täglich als „lautlos
+  verworfen"** (#803). Seit der Erkennung aus #720 bekam der Betreiber für
+  jeden täglichen oder stündlichen Zeitplan Sekunden nach der Fälligkeit ein
+  rotes Telegram „hat einen fälligen Termin lautlos verloren", obwohl der
+  Lauf im selben Augenblick regulär startete — und jede dieser Meldungen
+  zählte als Fehlschlag in die Erfolgsquote des Zeitplans (29 von 77
+  Meldungen in zwei Tagen). Ursache: die 5-Minuten-Karenz für die
+  Dispatch-Latenz saß am Slot statt an der Uhr. Die Wache wartet jetzt die
+  Karenz ab und prüft solange den Slot davor, damit auch kurze Takte
+  (`*/5`) weiter erkannt werden. Außerdem gilt ein Zeitplan nicht mehr als
+  verloren, solange der Scheduler für ihn noch einen Termin hält
+  (Wiederholung nach kurzem Aussetzer, Nachholen nach Stillstand), und ein
+  bereits ordentlich gemeldeter Verlust wird nicht ein zweites Mal gezählt.
+- **Nach jedem Neustart wiederholte die Wache alle alten Verlust-Meldungen**
+  und buchte sie erneut (48 der 77 Meldungen). Die „schon gemeldet"-Marke
+  lag nur im Arbeitsspeicher; sie liegt jetzt zusätzlich in Redis (30 Tage)
+  und überlebt Deploys — ohne Redis bleibt das bisherige Verhalten, die
+  Erkennung selbst braucht Redis weiterhin nicht.
+
 ## [1.322.53] - 2026-09-18
 
 ### Behoben

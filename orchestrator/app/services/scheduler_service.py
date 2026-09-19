@@ -28,6 +28,7 @@ from app.services.watchdog import (
     as_utc,
     find_missed_schedules,
     find_silently_advanced_schedules,
+    silently_advanced_marker,
     is_sentinel_stale,
     find_stale_tasks,
     mark_task_stale,
@@ -57,6 +58,16 @@ _APPROVAL_TTL_HOURS = 24
 # unrelated 06:30 safety-net schedule set up separately for those two jobs.
 # Schedules without such a safety net would simply have stayed silent.
 _DUE_SCHEDULES_ALERT_THRESHOLD = 4
+
+# #803: Dedup-Marke der "lautlos verworfen"-Erkennung ueberlebt den Neustart in
+# Redis. 30 Tage reichen: ein Zeitplan, der so lange keinen neuen Lauf hat,
+# ist entweder deaktiviert oder laengst auf anderem Weg aufgefallen -- und
+# geloeschte Zeitplaene hinterlassen keinen Schluessel fuer immer.
+_SILENTLY_ADVANCED_MARKER_TTL_S = 30 * 24 * 3600
+
+
+def _silently_advanced_marker_key(schedule_id: str) -> str:
+    return f"scheduler:silently_advanced_alerted:{schedule_id}"
 
 # OVERLOADED is usually a short-lived queue spike. Do not lose a daily cron slot
 # immediately, but also do not keep a schedule in a retry loop forever.
@@ -1175,6 +1186,11 @@ class SchedulerService:
 
         schedule.total_runs += 1
         schedule.fail_count += 1
+        # Dieselbe Marke wie der Waechter in _tick_missed_schedule_watchdog
+        # (#803): der Verlust ist hiermit gebucht, die zweite Erkennung
+        # (last_run_at hinkt der Cron-Regel hinterher) darf ihn nicht
+        # nochmal zaehlen und nochmal melden.
+        await self._remember_silently_advanced(schedule.id, silently_advanced_marker(schedule))
 
         logger.warning(
             "[Scheduler] %s: Slot %s nach %s Versuchen (%s) verworfen",
@@ -1938,6 +1954,44 @@ class SchedulerService:
             except Exception as e:
                 logger.warning("[Scheduler] DueSchedules alert publish error: %s", e)
 
+    async def _silently_advanced_already_booked(self, schedule_id: str, marker: str) -> bool:
+        """Wurde dieser Verlust (Zeitplan + last_run_at) schon gebucht?
+
+        Erst der Prozessspeicher, dann Redis (#803): die Marke nur im
+        Speicher zu halten hiess, dass jeder Neustart -- bei uns jeder
+        Merge, weil er deployt -- saemtliche Zeitplaene mit zurueckliegendem
+        last_run_at ERNEUT meldete und den Verlust ein zweites Mal in
+        fail_count buchte. Ohne Redis bleibt der Speicher-Fallback: die
+        Erkennung selbst darf nicht an Redis haengen (#720).
+        """
+        if self._silently_advanced_alerted.get(schedule_id) == marker:
+            return True
+        if not self.redis or not self.redis.client:
+            return False
+        try:
+            gespeichert = await self.redis.client.get(_silently_advanced_marker_key(schedule_id))
+        except Exception:  # noqa: BLE001 -- ohne Redis lieber einmal zu viel melden als nie
+            logger.debug("[Scheduler] SilentlyAdvanced-Marke nicht lesbar", exc_info=True)
+            return False
+        if isinstance(gespeichert, bytes):
+            gespeichert = gespeichert.decode("utf-8", errors="replace")
+        if gespeichert == marker:
+            self._silently_advanced_alerted[schedule_id] = marker
+            return True
+        return False
+
+    async def _remember_silently_advanced(self, schedule_id: str, marker: str) -> None:
+        self._silently_advanced_alerted[schedule_id] = marker
+        if not self.redis or not self.redis.client:
+            return
+        try:
+            await self.redis.client.set(
+                _silently_advanced_marker_key(schedule_id), marker,
+                ex=_SILENTLY_ADVANCED_MARKER_TTL_S,
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("[Scheduler] SilentlyAdvanced-Marke nicht speicherbar", exc_info=True)
+
     async def _tick_missed_schedule_watchdog(self) -> None:
         """Alert on schedules that missed their fire window, two ways.
 
@@ -1991,10 +2045,10 @@ class SchedulerService:
             # abschalten.
             fortgeschritten = await find_silently_advanced_schedules(db, now)
             for s in fortgeschritten:
-                marker = as_utc(s.last_run_at).isoformat() if s.last_run_at else "never"
-                if self._silently_advanced_alerted.get(s.id) == marker:
+                marker = silently_advanced_marker(s)
+                if await self._silently_advanced_already_booked(s.id, marker):
                     continue
-                self._silently_advanced_alerted[s.id] = marker
+                await self._remember_silently_advanced(s.id, marker)
                 logger.warning(
                     "[Scheduler] %s: mindestens ein faelliger Cron-Slot lautlos "
                     "verworfen (last_run_at=%s)", s.name, marker,
