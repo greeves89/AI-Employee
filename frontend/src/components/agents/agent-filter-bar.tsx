@@ -70,7 +70,7 @@ export function AgentFilterBar({
             <button
               key={t}
               // Nochmal auf dasselbe Schlagwort hebt den Filter auf — sonst gibt es
-              // keinen Weg zurueck ausser einem zusaetzlichen „alle"-Knopf.
+              // keinen Weg zurück ausser einem zusaetzlichen „alle"-Knopf.
               onClick={() => onTagFilter(tagFilter === t ? null : t)}
               className={cn(
                 "rounded-full border px-2.5 py-1 text-[11px] transition-colors",

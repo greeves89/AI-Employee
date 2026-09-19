@@ -352,7 +352,7 @@ export default function FilesPage() {
                     >
                       {mode === "name" && <><Hash className="h-2.5 w-2.5" /> Name</>}
                       {mode === "date" && <><Clock className="h-2.5 w-2.5" /> Datum</>}
-                      {mode === "size" && <><ArrowUpDown className="h-2.5 w-2.5" /> Groesse</>}
+                      {mode === "size" && <><ArrowUpDown className="h-2.5 w-2.5" /> Größe</>}
                     </button>
                   ))}
                   <span className="text-[10px] text-muted-foreground/30 ml-auto">

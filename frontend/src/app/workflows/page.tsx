@@ -154,9 +154,9 @@ export default function WorkflowsPage() {
           </div>
           {folders.map((f) => (
             <div key={f.id} className="group flex items-center">
-              <RailItem active={sel === f.id} icon={<Folder className={cn("h-4 w-4", f.shared && "text-sky-400")} />} label={f.name} count={workflows.filter((w) => w.folder_id === f.id).length} onClick={() => setSel(f.id)} />
+              <RailItem active={sel === f.id} icon={<Folder className={cn("h-4 w-4", f.shared && "text-sky-700 dark:text-sky-400")} />} label={f.name} count={workflows.filter((w) => w.folder_id === f.id).length} onClick={() => setSel(f.id)} />
               {!f.shared && (
-                <button onClick={() => removeFolder(f.id, f.name)} className="ml-1 shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground/40 hover:!text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+                <button onClick={() => removeFolder(f.id, f.name)} className="ml-1 shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground/40 hover:!text-red-700 dark:hover:!text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
             </div>
           ))}
@@ -185,14 +185,14 @@ export default function WorkflowsPage() {
                           <p className="truncate font-medium">{wf.name}</p>
                           <p className="text-[11px] text-muted-foreground/60">
                             {stepCount} Schritt{stepCount === 1 ? "" : "e"}
-                            {!isOwner && <span className="ml-1 rounded bg-sky-500/10 px-1 text-sky-400">{ROLE_LABEL[wf.role ?? "viewer"]}</span>}
+                            {!isOwner && <span className="ml-1 rounded bg-sky-500/10 px-1 text-sky-700 dark:text-sky-400">{ROLE_LABEL[wf.role ?? "viewer"]}</span>}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
                         <button onClick={() => exportWorkflow(wf)} title="Als Datei exportieren" className="text-muted-foreground/30 hover:text-primary"><Download className="h-4 w-4" /></button>
                         {isOwner && <button onClick={() => setShareFor(wf)} title="Teilen" className="text-muted-foreground/30 hover:text-primary"><Share2 className="h-4 w-4" /></button>}
-                        {isOwner && <button onClick={() => removeWorkflow(wf)} title="Löschen" className="text-muted-foreground/30 hover:text-red-400"><Trash2 className="h-4 w-4" /></button>}
+                        {isOwner && <button onClick={() => removeWorkflow(wf)} title="Löschen" className="text-muted-foreground/30 hover:text-red-700 dark:hover:text-red-400"><Trash2 className="h-4 w-4" /></button>}
                       </div>
                     </div>
                     {isOwner && folders.filter((f) => !f.shared).length > 0 && (
@@ -285,7 +285,7 @@ function ShareDialog({ workflow, onClose }: { workflow: api.Workflow; onClose: (
             <div key={s.id} className="flex items-center gap-2 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-2.5 py-1.5 text-[13px]">
               <span className="flex-1 truncate">{s.user_name || s.user_id}</span>
               <span className="text-[11px] text-muted-foreground/60">{ROLE_LABEL[s.role] ?? s.role}</span>
-              <button onClick={() => revoke(s.id)} className="text-muted-foreground/30 hover:text-red-400"><X className="h-3.5 w-3.5" /></button>
+              <button onClick={() => revoke(s.id)} className="text-muted-foreground/30 hover:text-red-700 dark:hover:text-red-400"><X className="h-3.5 w-3.5" /></button>
             </div>
           ))}
         </div>

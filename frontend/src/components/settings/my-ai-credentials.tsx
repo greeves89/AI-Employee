@@ -2,14 +2,14 @@
 
 // Mein eigenes Claude-/Codex-Abo verbinden.
 //
-// Die Schnittstelle dafuer gibt es seit v1.185.0 — die Oberflaeche nicht. Kein
+// Die Schnittstelle dafuer gibt es seit v1.185.0 — die Oberfläche nicht. Kein
 // Nutzer konnte sein Abo hinterlegen, obwohl die Plattform es an drei Stellen
 // voraussetzt (Agenten-Anlage, Fehlermeldung „verbinde dein eigenes Abo",
 // Rueckfall-Kette in agent_credentials). Aufgefallen am 2026-08-15, als die
 // Agenten-Anlage genau darauf verwies.
 //
 // Bewusst KEINE Anzeige des Geheimnisses: die Schnittstelle gibt es nicht
-// zurueck, und das soll auch so bleiben. Man sieht, DASS etwas hinterlegt ist,
+// zurück, und das soll auch so bleiben. Man sieht, DASS etwas hinterlegt ist,
 // wann es zuletzt benutzt wurde und ob es funktioniert hat — mehr braucht man
 // nicht, um es zu verwalten.
 
@@ -25,13 +25,13 @@ type Zugang = {
   created_at: string | null;
 };
 
-// Issue #710 (zweiter Punkt): "ok" allein sagt nichts ueber Lebendigkeit — der
+// Issue #710 (zweiter Punkt): "ok" allein sagt nichts über Lebendigkeit — der
 // Status stammt vom letzten echten Lauf und kann Tage alt sein, wenn seither
 // nichts mehr gelaufen ist. Ein bewaehrter Zugang, der 40 Stunden nicht mehr
 // gebraucht wurde, zeigte bisher denselben satten gruenen Haken wie einer, der
 // vor einer Minute funktioniert hat. Relative Zeit statt nackten Datums macht
 // das Alter der Auskunft auf den ersten Blick lesbar; ab 24 Stunden wird der
-// Haken zusaetzlich blass, statt weiterhin ungetrübte Gesundheit zu behaupten.
+// Haken zusätzlich blass, statt weiterhin ungetrübte Gesundheit zu behaupten.
 const ZUGANG_GILT_ALS_UNBESTAETIGT_NACH_STUNDEN = 24;
 
 function relativeZeit(iso: string): string {
@@ -244,7 +244,7 @@ export function MyAiCredentials() {
                         ob der Zugang noch gilt — ein Token kann ablaufen, ohne dass
                         hier etwas passiert. "ok" allein sagt aber nur, dass es beim
                         letzten Lauf noch galt (#710) — ohne neuen Lauf seither ist
-                        das eine Auskunft ueber die Vergangenheit, nicht die Gegenwart.
+                        das eine Auskunft über die Vergangenheit, nicht die Gegenwart.
                         Ein blasser statt sattgruener Haken macht diese Alters-Luecke
                         sichtbar, ohne einen Fehler zu behaupten, den es nicht gibt. */}
                     {z?.last_status && z.last_status !== "ok" ? (
@@ -290,7 +290,7 @@ export function MyAiCredentials() {
                 </button>
                 {/* Der Weg von Hand bleibt: wer sein Token schon hat (oder in
                     einer Umgebung ohne Browser arbeitet), soll nicht durch die
-                    Anmeldung muessen. */}
+                    Anmeldung müssen. */}
                 <button
                   onClick={() => { setAnmeldung(null); setOffen(offen === h.id ? null : h.id); setFehler(""); }}
                   title="Zugang von Hand einfügen"

@@ -22,7 +22,7 @@ export interface PermissionPackagesPanelProps {
   onPermissionsModeChange: (mode: "auto" | "manual") => void;
   selected: string[];
   onTogglePermission: (id: string) => void;
-  /** Zusaetzliche Kopfzeilen-Aktion (z.B. ein Speichern-Button) — der
+  /** Zusätzliche Kopfzeilen-Aktion (z.B. ein Speichern-Button) — der
    * Aufrufer verwaltet den eigenen Speicher-Zustand, diese Komponente nicht. */
   headerActions?: React.ReactNode;
 }

@@ -116,6 +116,16 @@ def is_schedule_missed(
     return (now - nra) > grace
 
 
+def silently_advanced_marker(schedule: Schedule) -> str:
+    """Dedup-Marke eines gemeldeten Verlusts: der last_run_at, der beim
+    Erkennen galt. Aendert er sich, lief der Zeitplan wieder -- ein neuer
+    Verlust danach zaehlt erneut. Eine Funktion, damit Waechter und
+    _report_dropped_slot dieselbe Marke setzen (#803: sonst buchte der
+    Waechter jeden ordentlich gemeldeten Verlust ein zweites Mal)."""
+    letzter_lauf = as_utc(schedule.last_run_at)
+    return letzter_lauf.isoformat() if letzter_lauf else "never"
+
+
 def is_schedule_silently_advanced(
     schedule: Schedule, now: datetime, grace: timedelta = _MISSED_SCHEDULE_GRACE
 ) -> bool:
@@ -133,6 +143,18 @@ def is_schedule_silently_advanced(
     should already have fired: a daily 21:00 report last seen two days ago,
     while `next_run_at` innocently points at tomorrow 21:00, proves at least
     one slot fired the cron tick and produced nothing.
+
+    Drei Faelle sehen genauso aus, sind aber KEIN Verlust (#803):
+    * Dispatch-Latenz: der Waechter-Tick laeuft in `run()` bewusst VOR
+      `_check_due_schedules`; Sekunden nach der Faelligkeit steht
+      `last_run_at` noch auf dem vorigen Slot. Der juengste Slot bekommt
+      deshalb `grace` Zeit -- geprueft wird dann der Slot davor, damit
+      Zeitplaene mit kurzer Periode (`*/5`) nicht blind werden.
+    * Ein Lauf steht noch an: `next_run_at` liegt VOR dem naechsten
+      regulaeren Slot (Wiederholung nach transientem Skip, Nachholen nach
+      Scheduler-Stillstand -- letzteres meldet `is_schedule_missed`).
+    * Der Verlust ist schon gebucht (`_report_dropped_slot`) -- das regelt
+      die Marke, siehe `silently_advanced_marker`.
     """
     if not schedule.enabled or not schedule.cron_expression or not _CRONITER_AVAILABLE:
         return False
@@ -142,11 +164,23 @@ def is_schedule_silently_advanced(
             tz = ZoneInfo(tz_name)
         except Exception:
             tz = timezone.utc
-        letzter_faelliger_slot = croniter(
-            schedule.cron_expression, now.astimezone(tz)
-        ).get_prev(datetime).astimezone(timezone.utc)
+        cron = croniter(schedule.cron_expression, now.astimezone(tz))
+        naechster_slot = cron.get_next(datetime).astimezone(timezone.utc)
+        cron = croniter(schedule.cron_expression, now.astimezone(tz))
+        letzter_faelliger_slot = cron.get_prev(datetime).astimezone(timezone.utc)
+        if (now - letzter_faelliger_slot) <= grace:
+            # Juengster Slot noch in der Dispatch-Karenz -> der davor muss
+            # gelaufen sein. Die Karenz gehoert auf die Jetzt-Seite; als
+            # Abzug am Slot verschob sie nur die Schwelle und liess genau
+            # diesen Fall taeglich fuer jeden gesunden Zeitplan anschlagen.
+            letzter_faelliger_slot = cron.get_prev(datetime).astimezone(timezone.utc)
     except Exception:
         return False  # eine kaputte Cron-Regel ist Sache von _calc_next_run, nicht hier
+    naechster_lauf = as_utc(getattr(schedule, "next_run_at", None))
+    if naechster_lauf is not None and naechster_lauf < naechster_slot:
+        # Noch nicht "advanced": der Scheduler haelt fuer diesen Slot einen
+        # Termin (Retry in 12 min, oder der Slot selbst nach Stillstand).
+        return False
     letzter_lauf = as_utc(schedule.last_run_at)
     if letzter_lauf is None:
         # Nie gelaufen: der rein mathematische "letzte faellige Slot laut
@@ -158,8 +192,8 @@ def is_schedule_silently_advanced(
         erstellt = as_utc(getattr(schedule, "created_at", None))
         if erstellt is not None and erstellt > letzter_faelliger_slot:
             return False
-        return (now - letzter_faelliger_slot) > grace
-    return letzter_lauf < (letzter_faelliger_slot - grace)
+        return True
+    return letzter_lauf < letzter_faelliger_slot
 
 
 def mark_task_stale(

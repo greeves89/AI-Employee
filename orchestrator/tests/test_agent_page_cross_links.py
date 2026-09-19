@@ -18,7 +18,7 @@ class TelegramCrossLinkTests(unittest.TestCase):
     def test_per_agent_section_points_at_the_personal_settings(self):
         src = (FRONTEND / "app/agents/[id]/page.tsx").read_text()
         self.assertIn('href="/settings"', src)
-        self.assertIn("NUR fuer diesen Agenten", src)
+        self.assertIn("NUR für diesen Agenten", src)
 
     def test_global_settings_clarifies_it_is_the_personal_bot(self):
         src = (FRONTEND / "app/settings/view.tsx").read_text()

@@ -29,9 +29,9 @@ const BUNDLE_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "";
 const SEMVER = /^\d+\.\d+\.\d+/;
 
 // Wurde das Image ohne APP_VERSION gebaut (`docker compose build frontend` von
-// Hand statt ueber scripts/update.sh), steht hier "dev" — und der Abgleich
+// Hand statt über scripts/update.sh), steht hier "dev" — und der Abgleich
 // unten faellt still aus. Genau das ist am 21.08.2026 passiert: nach dem Deploy
-// hielt der Browser stundenlang die alte Oberflaeche und NICHTS sagte es.
+// hielt der Browser stundenlang die alte Oberfläche und NICHTS sagte es.
 // Im Produktionsbuild ist "dev" immer ein unvollstaendiger Deploy.
 if (typeof window !== "undefined"
     && process.env.NODE_ENV === "production"
@@ -39,7 +39,7 @@ if (typeof window !== "undefined"
   console.warn(
     "[AI-Employee] Dieses Frontend-Bundle kennt seine eigene Version nicht "
     + `(NEXT_PUBLIC_APP_VERSION="${BUNDLE_VERSION}"). Der Hinweis auf eine `
-    + "veraltete Oberflaeche kann deshalb nicht erscheinen. Beim Bauen "
+    + "veraltete Oberfläche kann deshalb nicht erscheinen. Beim Bauen "
     + "APP_VERSION setzen — scripts/update.sh tut das.",
   );
 }
@@ -72,7 +72,7 @@ export function UpdateBanner() {
     const interval = setInterval(checkVersion, CHECK_INTERVAL);
     // Alle 30 Minuten ist zu traege, wenn jemand stundenlang dieselbe Seite
     // offen haelt und zwischendurch deployed wird: er sieht dann eine alte
-    // Oberflaeche und haelt sie fuer den neuen Stand. Beim Zurueckkommen auf
+    // Oberfläche und haelt sie für den neuen Stand. Beim Zurueckkommen auf
     // den Tab fragen wir deshalb sofort nach.
     const beiRueckkehr = () => {
       if (document.visibilityState === "visible") checkVersion();

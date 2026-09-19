@@ -22,9 +22,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     initAuth();
   }, []);
 
-  // Waehrung und Kurs EINMAL laden, sobald jemand angemeldet ist. Muss vor der
+  // Währung und Kurs EINMAL laden, sobald jemand angemeldet ist. Muss vor der
   // ersten Geldzahl stehen: sonst rendert eine Seite erst in Dollar und springt
-  // gleich darauf auf Euro. Faellt beim Fehlschlag auf USD zurueck — nie auf
+  // gleich darauf auf Euro. Faellt beim Fehlschlag auf USD zurück — nie auf
   // einen geratenen Kurs.
   useEffect(() => {
     if (!user) return;
@@ -84,7 +84,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   //
   // Ohne Seitenleiste, ohne Inhalt, ohne Umleitung — jede Seite endet hier. Die
   // Sperre selbst sitzt im Orchestrator (jede Anfrage bekaeme 403); das hier ist
-  // die Erklaerung dazu. Eine leere Oberflaeche ohne Begruendung waere schlimmer
+  // die Erklaerung dazu. Eine leere Oberfläche ohne Begruendung wäre schlimmer
   // als eine Fehlermeldung.
   if (user.role === "unassigned") {
     return <NoRoleNotice email={user.email} />;

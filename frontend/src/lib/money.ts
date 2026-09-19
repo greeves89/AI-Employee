@@ -2,7 +2,7 @@
  * Geldbeträge — EINE Stelle für die Anzeige.
  *
  * Abgerechnet wird bei den Anbietern in USD, und so werden Kosten auch
- * gespeichert. Umgerechnet wird ausschliesslich hier, beim Anzeigen. Andersherum
+ * gespeichert. Umgerechnet wird ausschließlich hier, beim Anzeigen. Andersherum
  * — der Bestand in EUR — hinge jeder alte Betrag an dem Tageskurs, zu dem er
  * zufällig eingetragen wurde, und liesse sich nie wieder geradeziehen.
  *
@@ -26,7 +26,7 @@ export const DEFAULT_MONEY: MoneyConfig = { currency: "USD", rate: 1 };
 
 let cached: Promise<MoneyConfig> | null = null;
 
-/** Zuletzt geladener Stand — für Hilfsfunktionen ausserhalb von Komponenten,
+/** Zuletzt geladener Stand — für Hilfsfunktionen außerhalb von Komponenten,
  *  die keinen Hook aufrufen können. */
 let current: MoneyConfig = DEFAULT_MONEY;
 

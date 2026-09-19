@@ -144,3 +144,179 @@ async def test_the_alert_still_fires_alongside_the_counter_bump():
     assert channel == "telegram:notification"
     payload = json.loads(raw)
     assert "lautlos" in payload["text"]
+
+
+# --- #803 Klasse B: die Dedup-Marke muss einen Neustart ueberleben ---------
+#
+# _silently_advanced_alerted lebte nur im Prozessspeicher. Jeder Neustart
+# (bei uns: jeder Merge = Deploy) meldete alle Zeitplaene mit zurueckliegendem
+# last_run_at ERNEUT und buchte den Verlust ein zweites Mal (48 von 77
+# Meldungen in zwei Tagen). Redis traegt die Marke ueber den Neustart; ohne
+# Redis bleibt der Speicher-Fallback, damit die Erkennung selbst (wie in #720
+# gefordert) weiter ohne Redis funktioniert.
+
+
+def _marker_key(schedule_id: str) -> str:
+    from app.services.scheduler_service import _silently_advanced_marker_key
+    return _silently_advanced_marker_key(schedule_id)
+
+
+@pytest.mark.asyncio
+async def test_the_marker_is_persisted_to_redis_when_a_loss_is_booked():
+    svc = _make_service()
+    schedule = _FakeSchedule()
+    session = _FakeSession()
+
+    p1, p2, p3 = _patched(svc, [schedule], session)
+    with p1, p2, p3:
+        await svc._tick_missed_schedule_watchdog()
+
+    svc.redis.client.set.assert_awaited_once()
+    key, value = svc.redis.client.set.await_args.args[:2]
+    assert key == _marker_key("s1")
+    assert value == schedule.last_run_at.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_a_restarted_service_does_not_book_the_same_loss_again():
+    """Frischer Prozess (leeres Dict), aber Redis kennt die Marke schon:
+    kein zweiter Aufschlag, kein zweites Telegram."""
+    schedule = _FakeSchedule()
+    session = _FakeSession()
+
+    svc_before_restart = _make_service()
+    p1, p2, p3 = _patched(svc_before_restart, [schedule], session)
+    with p1, p2, p3:
+        await svc_before_restart._tick_missed_schedule_watchdog()
+    assert schedule.fail_count == 1
+    _, persisted = svc_before_restart.redis.client.set.await_args.args[:2]
+
+    svc_after_restart = _make_service()  # _silently_advanced_alerted == {}
+    svc_after_restart.redis.client.get = AsyncMock(return_value=persisted)
+    p1, p2, p3 = _patched(svc_after_restart, [schedule], session)
+    with p1, p2, p3:
+        await svc_after_restart._tick_missed_schedule_watchdog()
+
+    assert schedule.fail_count == 1
+    assert schedule.total_runs == 28
+    svc_after_restart.redis.client.publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_bytes_marker_from_redis_is_recognised():
+    """redis-py liefert ohne decode_responses Bytes — die Marke muss trotzdem
+    als bekannt gelten."""
+    schedule = _FakeSchedule()
+    session = _FakeSession()
+    svc = _make_service()
+    svc.redis.client.get = AsyncMock(
+        return_value=schedule.last_run_at.isoformat().encode()
+    )
+    p1, p2, p3 = _patched(svc, [schedule], session)
+    with p1, p2, p3:
+        await svc._tick_missed_schedule_watchdog()
+
+    assert schedule.fail_count == 0
+    svc.redis.client.publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_new_loss_after_a_real_run_is_booked_despite_an_old_redis_marker():
+    """Redis kennt die Marke fuer den ALTEN last_run_at; inzwischen lief der
+    Zeitplan wieder und verlor einen NEUEN Slot — das muss zaehlen."""
+    schedule = _FakeSchedule()
+    session = _FakeSession()
+    svc = _make_service()
+    old_marker = datetime(2026, 9, 4, 21, 0, 2, tzinfo=timezone.utc).isoformat()
+    svc.redis.client.get = AsyncMock(return_value=old_marker)
+    p1, p2, p3 = _patched(svc, [schedule], session)
+    with p1, p2, p3:
+        await svc._tick_missed_schedule_watchdog()
+
+    assert schedule.fail_count == 1
+    svc.redis.client.publish.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_without_redis_the_in_memory_fallback_still_books_exactly_once():
+    """#720-Anforderung bleibt: die Erkennung braucht kein Redis. Ohne Redis
+    zaehlt der Verlust genau einmal je Prozess (Speicher-Fallback)."""
+    svc = _make_service(with_redis=False)
+    schedule = _FakeSchedule()
+    session = _FakeSession()
+
+    p1, p2, p3 = _patched(svc, [schedule], session)
+    with p1, p2, p3:
+        await svc._tick_missed_schedule_watchdog()
+        await svc._tick_missed_schedule_watchdog()
+
+    assert schedule.fail_count == 1
+    assert schedule.total_runs == 28
+
+
+@pytest.mark.asyncio
+async def test_a_failing_redis_lookup_falls_back_to_memory_and_still_alerts():
+    svc = _make_service()
+    svc.redis.client.get = AsyncMock(side_effect=ConnectionError("redis weg"))
+    svc.redis.client.set = AsyncMock(side_effect=ConnectionError("redis weg"))
+    schedule = _FakeSchedule()
+    session = _FakeSession()
+
+    p1, p2, p3 = _patched(svc, [schedule], session)
+    with p1, p2, p3:
+        await svc._tick_missed_schedule_watchdog()
+        await svc._tick_missed_schedule_watchdog()
+
+    assert schedule.fail_count == 1
+    svc.redis.client.publish.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_the_redis_key_is_per_schedule_and_the_ttl_is_set():
+    """Gegenleser-Befund: ein Schluessel ohne Zeitplan-ID liesse alle
+    Zeitplaene eine Marke teilen -- der zweite Verlust des Tages waere
+    unsichtbar. Und ohne TTL blieben Marken geloeschter Zeitplaene ewig."""
+    svc = _make_service()
+    a = _FakeSchedule(id="a1", name="A")
+    b = _FakeSchedule(id="b2", name="B")
+    session = _FakeSession()
+
+    p1, p2, p3 = _patched(svc, [a, b], session)
+    with p1, p2, p3:
+        await svc._tick_missed_schedule_watchdog()
+
+    calls = svc.redis.client.set.await_args_list
+    keys = [c.args[0] for c in calls]
+    assert keys == [
+        "scheduler:silently_advanced_alerted:a1",
+        "scheduler:silently_advanced_alerted:b2",
+    ]
+    assert all(c.kwargs.get("ex") == 30 * 24 * 3600 for c in calls)
+    assert a.fail_count == 1 and b.fail_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_loss_already_booked_by_report_dropped_slot_is_not_booked_twice():
+    """_report_dropped_slot (#631) zaehlt einen endgueltig verworfenen Slot
+    selbst und laesst last_run_at stehen -- danach sieht der Waechter genau
+    das Bild eines lautlosen Verlusts. Ohne gemeinsame Marke zaehlte jeder
+    ordentlich gemeldete Verlust doppelt."""
+    svc = _make_service()
+    schedule = _FakeSchedule()
+    schedule.cron_expression = "0 21 * * *"
+    schedule.interval_seconds = 0
+    session = _FakeSession()
+
+    await svc._report_dropped_slot(
+        schedule, datetime(2026, 9, 7, 21, 0, tzinfo=timezone.utc),
+        reason="agent_busy", attempts=3,
+    )
+    assert schedule.fail_count == 1 and schedule.total_runs == 28
+
+    p1, p2, p3 = _patched(svc, [schedule], session)
+    with p1, p2, p3:
+        await svc._tick_missed_schedule_watchdog()
+
+    assert schedule.fail_count == 1
+    assert schedule.total_runs == 28
+    session.commit.assert_not_awaited()

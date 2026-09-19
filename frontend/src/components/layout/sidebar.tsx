@@ -47,17 +47,17 @@ type NavItem = {
   icon: React.ElementType;
   simpleVisible: boolean;
   /** Gesetzt bei selbst angelegten Menuepunkten der Art "Link": der Eintrag
-   *  oeffnet die Adresse direkt in einem neuen Tab, statt erst unsere Seite zu
+   *  öffnet die Adresse direkt in einem neuen Tab, statt erst unsere Seite zu
    *  laden, die nur einen Knopf dorthin zeigt. */
   external?: string;
 };
 
 /** Nur echte Webadressen taugen als Ziel eines Menuepunkts.
  *
- *  Alles andere — allen voran ``javascript:`` — waere fremder Code, der beim
- *  Klick in unserer eigenen Oberflaeche liefe, mit der Sitzung des Angemeldeten.
+ *  Alles andere — allen voran ``javascript:`` — wäre fremder Code, der beim
+ *  Klick in unserer eigenen Oberfläche liefe, mit der Sitzung des Angemeldeten.
  *  Der Server prueft das bereits beim Anlegen und Aendern; hier steht die zweite
- *  Sperre fuer Eintraege, die auf anderem Weg in die Datenbank gelangt sind.
+ *  Sperre für Eintraege, die auf anderem Weg in die Datenbank gelangt sind.
  *  Ein ungueltiger Eintrag verschwindet lieber, als still auf ``#`` zu zeigen —
  *  ein Menuepunkt, der nichts tut, sieht aus wie ein Fehler und wird gemeldet. */
 function nurWebAdresse(url: string | undefined): string | undefined {
@@ -85,7 +85,7 @@ function NavShell({
     // Zweites Schloss. Der Server laesst beim Anlegen und Aendern nur http/https
     // durch (custom_pages._validate_url) — aber Zeilen aus der Zeit davor oder
     // aus einem direkten Datenbankzugriff kaemen daran vorbei, und ein
-    // ``javascript:``-Wert im ``href`` waere fremder Code in unserer Oberflaeche.
+    // ``javascript:``-Wert im ``href`` wäre fremder Code in unserer Oberfläche.
     return (
       <a
         href={item.external}
@@ -293,7 +293,7 @@ export function Sidebar() {
     const [zielPfad, zielQuery] = item.href.split("?");
     if (pathname !== zielPfad && !pathname.startsWith(`${zielPfad}/`)) return false;
     // Ein Eintrag mit Query-Parameter (z.B. "/admin?tab=roles") ist nur aktiv,
-    // wenn genau dieser Reiter offen ist — sonst waere "Rechte" nie markiert
+    // wenn genau dieser Reiter offen ist — sonst wäre "Rechte" nie markiert
     // (der Pfad allein reicht nicht).
     if (zielQuery) return passtQuery(zielQuery);
     // Eintrag OHNE Query (z.B. "/admin"): nicht blind bei jedem passenden Pfad
@@ -394,7 +394,7 @@ export function Sidebar() {
               >
                 <span className="relative">
                   <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "")} />
-                  {/* Eingeklappt ist kein Platz fuer eine Zahl — der Punkt sagt
+                  {/* Eingeklappt ist kein Platz für eine Zahl — der Punkt sagt
                       trotzdem, dass dort etwas wartet. */}
                   {item.href === "/approvals" && pendingApprovals > 0 && (
                     <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-400" />

@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.322.51] - 2026-09-18
+## [1.322.55] - 2026-09-19
 
 ### Behoben
 - **Ein fehlgeschlagenes `alembic upgrade head` beim Start stempelt eine
@@ -26,6 +26,71 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - **Das Protokoll zeigt jetzt das Ende der Alembic-Ausgabe**, nicht die ersten
   200 Zeichen: dort standen ausnahmslos INFO-Zeilen, die eigentliche
   Fehlermeldung war abgeschnitten und die Ursache nicht auffindbar.
+
+## [1.322.54] - 2026-09-19
+
+### Behoben
+- **Scheduler-Wache meldete gesunde Zeitpläne täglich als „lautlos
+  verworfen"** (#803). Seit der Erkennung aus #720 bekam der Betreiber für
+  jeden täglichen oder stündlichen Zeitplan Sekunden nach der Fälligkeit ein
+  rotes Telegram „hat einen fälligen Termin lautlos verloren", obwohl der
+  Lauf im selben Augenblick regulär startete — und jede dieser Meldungen
+  zählte als Fehlschlag in die Erfolgsquote des Zeitplans (29 von 77
+  Meldungen in zwei Tagen). Ursache: die 5-Minuten-Karenz für die
+  Dispatch-Latenz saß am Slot statt an der Uhr. Die Wache wartet jetzt die
+  Karenz ab und prüft solange den Slot davor, damit auch kurze Takte
+  (`*/5`) weiter erkannt werden. Außerdem gilt ein Zeitplan nicht mehr als
+  verloren, solange der Scheduler für ihn noch einen Termin hält
+  (Wiederholung nach kurzem Aussetzer, Nachholen nach Stillstand), und ein
+  bereits ordentlich gemeldeter Verlust wird nicht ein zweites Mal gezählt.
+- **Nach jedem Neustart wiederholte die Wache alle alten Verlust-Meldungen**
+  und buchte sie erneut (48 der 77 Meldungen). Die „schon gemeldet"-Marke
+  lag nur im Arbeitsspeicher; sie liegt jetzt zusätzlich in Redis (30 Tage)
+  und überlebt Deploys — ohne Redis bleibt das bisherige Verhalten, die
+  Erkennung selbst braucht Redis weiterhin nicht.
+
+## [1.322.53] - 2026-09-18
+
+### Behoben
+- **Eine Token-Erneuerung mitten in einer laufenden Aufgabe kostet den Lauf
+  nicht mehr** (Issue #799). Die Wiederholung nach einer Rotation des
+  Zugangstokens gab es im Aufgaben-Pfad zwar, sie griff aber nie: der
+  Claude-CLI meldet den 401 nicht als Fehler-Exit, sondern als Ergebnis mit
+  Fehlerkennzeichen, und das ging als „fertig" durch. Folge im Betrieb: der
+  Lauf ueber dem taeglichen Erneuerungszeitpunkt starb drei Tage in Folge
+  nach ~26 Minuten, der automatische zweite Versuch begann von vorn. Jetzt
+  wartet der Agent auf den neuen Token und wiederholt die Aufgabe selbst;
+  was er dem Orchestrator meldet, bleibt unveraendert (Serien-Alarm und
+  Selbstheilung greifen wie bisher, falls auch die Wiederholung scheitert).
+- Der Zugangsstatus eines solchen Laufs wird als „auth_failed" statt „ok"
+  gemeldet.
+
+## [1.322.52] - 2026-09-18
+
+### Behoben
+- **Workflow-Designer folgt jetzt dem Erscheinungsbild (Dunkel/Hell)** —
+  die Zeichenfläche hatte `colorMode="dark"` fest verdrahtet und blieb
+  dunkel, egal was im Umschalter gewählt war. Jetzt an `useTheme()`
+  gekoppelt. Zusätzlich: mehrere Akzentfarben der Bausteine (blau, zink,
+  smaragd, rot, himmelblau) waren für dunklen Grund gewählt und auf hellem
+  Grund ausgewaschen — jetzt mit heller Entsprechung, nach demselben Muster
+  wie zuvor schon bei den Protokoll-Ansichten (Commit 597ffb52).
+
+## [1.322.51] - 2026-09-18
+
+### Behoben
+- **Echte deutsche Umlaute (ä/ö/ü/ß) statt ae/oe/ue-Ersatzschreibweise** in
+  nutzersichtbaren Texten über weite Teile des Frontends — gefunden bei einer
+  vollständigen Playwright-Sichtprüfung jedes Menüpunkts (Explorer, Hilfe &
+  FAQ, Integrations, Approvals u.a.).
+- **Wiederholte Aufgaben stapelten das "(Versuch N)"-Suffix im Titel** statt
+  es zu ersetzen — nach mehreren Fehlschlägen zeigte ein Task-Titel
+  "... (Versuch 2) (Versuch 3) (Versuch 4)". Der Selbstheilungs-Router baut
+  den Titel jetzt wieder aus dem unveränderten Basisnamen auf.
+- **Skill-Marktplatz zeigte "|-" statt der echten Beschreibung** bei Skills
+  mit mehrzeiligem YAML-Block-Skalar in der Frontmatter — der bisherige
+  zeilenweise ":"-Parser kannte diese YAML-Syntax nicht. Ersetzt durch echtes
+  YAML-Parsing mit Fallback auf "keine Frontmatter" bei kaputtem/fremdem YAML.
 
 ## [1.322.50] - 2026-09-18
 

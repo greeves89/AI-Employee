@@ -4,7 +4,7 @@
  *
  *  Wer eine Seite sehen darf, wird NICHT hier entschieden, sondern in den Rollen
  *  unter „Menüpfade" — der angelegte Punkt taucht dort als ``/p/<kurzname>`` auf.
- *  Damit gibt es weiterhin genau eine Stelle fuer Menue-Rechte statt zweier, die
+ *  Damit gibt es weiterhin genau eine Stelle für Menue-Rechte statt zweier, die
  *  sich widersprechen koennten.
  */
 
