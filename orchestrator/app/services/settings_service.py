@@ -192,6 +192,8 @@ ALLOWED_KEYS = SECRET_KEYS | {
     # Der Key ist zusaetzlich in SECRET_KEYS — nur fuer brave/serp gebraucht.
     "web_search_provider",
     "web_search_api_key",
+    # Nur fuer brave_news: pd | pw | pm | py oder YYYY-MM-DDtoYYYY-MM-DD.
+    "web_search_freshness",
 }
 
 

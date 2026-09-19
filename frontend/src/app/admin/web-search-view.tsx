@@ -6,17 +6,28 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/dialog-provider";
 import * as api from "@/lib/api";
 
-type Provider = "duckduckgo" | "brave" | "serp";
+type Provider = "duckduckgo" | "brave" | "brave_news" | "serp";
+type Freshness = "" | "pd" | "pw" | "pm" | "py";
 
 const PROVIDER_LABEL: Record<Provider, string> = {
   duckduckgo: "DuckDuckGo (integriert)",
   brave: "Brave Search API",
+  brave_news: "Brave News API",
   serp: "SerpApi (Google)",
 };
 const PROVIDER_HINT: Record<Provider, string> = {
   duckduckgo: "Ohne API-Key, sofort einsatzbereit — Standard für alle Agenten und die Sprachfront.",
   brave: "Braucht einen API-Key von api.search.brave.com.",
+  brave_news: "Nachrichtenindex statt Websuche — Treffer bringen Datum und Herausgeber mit. Gleicher Key wie Brave Search.",
   serp: "Braucht einen API-Key von serpapi.com.",
+};
+
+const FRESHNESS_LABEL: Record<Freshness, string> = {
+  "": "Ohne Einschränkung",
+  pd: "Letzte 24 Stunden",
+  pw: "Letzte 7 Tage",
+  pm: "Letzte 31 Tage",
+  py: "Letztes Jahr",
 };
 
 export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
@@ -25,6 +36,7 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
   const [provider, setProvider] = useState<Provider>("duckduckgo");
   const [hasKey, setHasKey] = useState(false);
   const [apiKey, setApiKey] = useState("");
+  const [freshness, setFreshness] = useState<Freshness>("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -32,6 +44,7 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
       const s = await api.getSettings();
       setProvider((s.web_search_provider as Provider) || "duckduckgo");
       setHasKey(!!s.has_web_search_api_key);
+      setFreshness((s.web_search_freshness || "") as Freshness);
     } catch {
       toast.error("Websuche-Einstellungen konnten nicht geladen werden.");
     } finally {
@@ -46,6 +59,7 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
     try {
       const data: Record<string, unknown> = { web_search_provider: provider };
       if (apiKey.trim()) data.web_search_api_key = apiKey.trim();
+      if (provider === "brave_news") data.web_search_freshness = freshness;
       await api.updateSettings(data);
       if (apiKey.trim()) setHasKey(true);
       setApiKey("");
@@ -105,6 +119,26 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
             ))}
           </div>
         </div>
+
+        {provider === "brave_news" && (
+          <div>
+            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
+              Aktualität
+            </p>
+            <select
+              value={freshness}
+              onChange={(e) => setFreshness(e.target.value as Freshness)}
+              className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[13px] focus:border-primary/30 focus:outline-none"
+            >
+              {(Object.keys(FRESHNESS_LABEL) as Freshness[]).map((f) => (
+                <option key={f} value={f}>{FRESHNESS_LABEL[f]}</option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[11px] text-muted-foreground/60">
+              Begrenzt Treffer auf einen Zeitraum. Für Agenten, die über aktuelle Ereignisse schreiben, empfiehlt sich „Letzte 7 Tage“.
+            </p>
+          </div>
+        )}
 
         {needsKey && (
           <div>

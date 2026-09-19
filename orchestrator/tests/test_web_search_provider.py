@@ -57,7 +57,15 @@ class ProviderDispatchTests(unittest.IsolatedAsyncioTestCase):
             out = await web_search("pokemon karten", 5, provider="brave", api_key="bk")
         self.assertEqual(client.get.call_args.args[0], "https://api.search.brave.com/res/v1/web/search")
         self.assertEqual(client.get.call_args.kwargs["headers"]["X-Subscription-Token"], "bk")
-        self.assertEqual(out, [{"title": "Pokemon Karten kaufen", "url": "https://example.test/p", "snippet": "Sammelkarten"}])
+        # ``age`` kommt seit der Brave-News-Erweiterung mit: die Websuche liefert
+        # ``page_age``, das vorher stillschweigend verworfen wurde. Hier ist es
+        # leer, weil die Testantwort kein Datum enthaelt.
+        self.assertEqual(out, [{
+            "title": "Pokemon Karten kaufen",
+            "url": "https://example.test/p",
+            "snippet": "Sammelkarten",
+            "age": "",
+        }])
 
     async def test_serp_provider_calls_serpapi_with_the_key_param(self):
         payload = {"organic_results": [
@@ -211,6 +219,90 @@ class VoiceWebSearchUsesTheConfiguredProviderTests(unittest.IsolatedAsyncioTestC
         self.assertEqual(client.get.call_args.args[0], "https://api.search.brave.com/res/v1/web/search")
         self.assertIn("Pokemon Karten", out)
         v._emit.assert_awaited_once()
+
+
+class BraveNewsProviderTests(unittest.IsolatedAsyncioTestCase):
+    """Brave News — eigener Index, liefert Datum und Herausgeber mit.
+
+    Ohne Datum kann ein Agent, der ueber aktuelle Ereignisse schreibt, einen
+    zwei Jahre alten Artikel nicht von der Meldung von heute unterscheiden.
+    Genau deshalb gibt es diesen Provider zusaetzlich zur Websuche.
+    """
+
+    async def test_hits_the_news_endpoint_and_keeps_age_and_publisher(self):
+        payload = {
+            "results": [
+                {
+                    "title": "Gold hits record",
+                    "url": "https://example.test/gold",
+                    "description": "Spot gold rose.",
+                    "age": "3 hours ago",
+                    "meta_url": {"hostname": "reuters.com"},
+                }
+            ]
+        }
+        ctx, client = _client_returning(payload)
+        with patch("httpx.AsyncClient", return_value=ctx):
+            out = await web_search("gold", 5, provider="brave_news", api_key="bk")
+
+        self.assertIn("news/search", client.get.call_args.args[0])
+        self.assertEqual(client.get.call_args.kwargs["headers"]["X-Subscription-Token"], "bk")
+        self.assertEqual(out[0]["age"], "3 hours ago")
+        self.assertEqual(out[0]["publisher"], "reuters.com")
+        self.assertEqual(out[0]["url"], "https://example.test/gold")
+
+    async def test_valid_freshness_is_passed_through(self):
+        ctx, client = _client_returning({"results": []})
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search("gold", 5, provider="brave_news", api_key="bk", freshness="pw")
+        self.assertEqual(client.get.call_args.kwargs["params"]["freshness"], "pw")
+
+    async def test_invalid_freshness_is_dropped_not_forwarded(self):
+        """Ein Tippfehler darf nicht die ganze Anfrage mit 422 scheitern lassen."""
+        ctx, client = _client_returning({"results": []})
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search("gold", 5, provider="brave_news", api_key="bk", freshness="letzte-woche")
+        self.assertNotIn("freshness", client.get.call_args.kwargs["params"])
+
+    async def test_date_range_freshness_is_accepted(self):
+        ctx, client = _client_returning({"results": []})
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search(
+                "gold", 5, provider="brave_news", api_key="bk",
+                freshness="2026-01-01to2026-02-01",
+            )
+        self.assertEqual(
+            client.get.call_args.kwargs["params"]["freshness"], "2026-01-01to2026-02-01",
+        )
+
+    async def test_without_key_it_falls_back_instead_of_returning_nothing(self):
+        ctx, client = _client_returning({}, status=200)
+        client.post.return_value.text = ""
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search("gold", 5, provider="brave_news", api_key=None)
+        self.assertTrue(client.post.called, "ohne Key wird auf DuckDuckGo zurueckgefallen")
+
+
+class BraveWebSearchAgeTests(unittest.IsolatedAsyncioTestCase):
+    """Die Websuche lieferte ``page_age`` schon immer mit — es wurde nur verworfen."""
+
+    async def test_page_age_is_no_longer_dropped(self):
+        payload = {
+            "web": {
+                "results": [
+                    {
+                        "title": "Gold",
+                        "url": "https://example.test/g",
+                        "description": "d",
+                        "page_age": "2026-09-18T10:00:00",
+                    }
+                ]
+            }
+        }
+        ctx, _ = _client_returning(payload)
+        with patch("httpx.AsyncClient", return_value=ctx):
+            out = await web_search("gold", 5, provider="brave", api_key="bk")
+        self.assertEqual(out[0]["age"], "2026-09-18T10:00:00")
 
 
 if __name__ == "__main__":

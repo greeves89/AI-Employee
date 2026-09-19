@@ -26,11 +26,13 @@ logger = logging.getLogger(__name__)
 _DDG_URL = "https://html.duckduckgo.com/html/"
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 _BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
+_BRAVE_NEWS_URL = "https://api.search.brave.com/res/v1/news/search"
 _SERP_URL = "https://serpapi.com/search"
 
 
 async def web_search(
     query: str, max_results: int = 5, provider: str = "duckduckgo", api_key: str | None = None,
+    freshness: str | None = None,
 ) -> list[dict]:
     """Return up to ``max_results`` results as ``[{title, url, snippet}]``.
 
@@ -46,6 +48,8 @@ async def web_search(
     max_results = max(1, min(int(max_results or 5), 10))
 
     provider = (provider or "duckduckgo").strip().lower()
+    if provider == "brave_news" and api_key:
+        return await _search_brave_news(query, max_results, api_key, freshness)
     if provider == "brave" and api_key:
         return await _search_brave(query, max_results, api_key)
     if provider == "serp" and api_key:
@@ -102,7 +106,74 @@ async def _search_brave(query: str, max_results: int, api_key: str) -> list[dict
         return []
     items = (data.get("web") or {}).get("results") or []
     return [
-        {"title": it.get("title", ""), "url": it.get("url", ""), "snippet": it.get("description", "")}
+        {
+            "title": it.get("title", ""),
+            "url": it.get("url", ""),
+            "snippet": it.get("description", ""),
+            # Brave liefert das Alter mit; vorher ging es verloren. Aufrufer,
+            # die nur title/url/snippet lesen, merken davon nichts.
+            "age": it.get("page_age") or it.get("age") or "",
+        }
+        for it in items[:max_results]
+    ]
+
+
+_BRAVE_FRESHNESS = ("pd", "pw", "pm", "py")
+
+
+def _valid_freshness(freshness: str | None) -> str | None:
+    """``pd``/``pw``/``pm``/``py`` oder ein Bereich ``YYYY-MM-DDtoYYYY-MM-DD``.
+
+    Alles andere wird verworfen statt durchgereicht — ein ungueltiger Wert
+    laesst Brave sonst die ganze Anfrage mit 422 abweisen, und der Agent saehe
+    nur "nichts gefunden".
+    """
+    if not freshness:
+        return None
+    f = freshness.strip().lower()
+    if f in _BRAVE_FRESHNESS:
+        return f
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}to\d{4}-\d{2}-\d{2}", f):
+        return f
+    logger.warning("Ungueltiger freshness-Wert %r — wird ignoriert", freshness)
+    return None
+
+
+async def _search_brave_news(
+    query: str, max_results: int, api_key: str, freshness: str | None = None,
+) -> list[dict]:
+    """Brave News Search — wie ``_search_brave``, aber gegen den News-Index.
+
+    Liefert zusaetzlich ``age`` (z.B. "3 hours ago") und ``publisher``. Fuer
+    Agenten, die ueber aktuelle Ereignisse schreiben, ist beides wesentlich:
+    ohne Datum laesst sich ein zwei Jahre alter Artikel nicht von einer
+    Meldung von heute unterscheiden.
+    """
+    params: dict = {"q": query, "count": max_results}
+    fresh = _valid_freshness(freshness)
+    if fresh:
+        params["freshness"] = fresh
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                _BRAVE_NEWS_URL,
+                params=params,
+                headers={"Accept": "application/json", "X-Subscription-Token": api_key},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception:  # noqa: BLE001
+        logger.warning("Brave-News-Suche fehlgeschlagen", exc_info=True)
+        return []
+    items = data.get("results") or []
+    return [
+        {
+            "title": it.get("title", ""),
+            "url": it.get("url", ""),
+            "snippet": it.get("description", ""),
+            "age": it.get("age") or it.get("page_age") or "",
+            "publisher": ((it.get("meta_url") or {}).get("hostname") or ""),
+        }
         for it in items[:max_results]
     ]
 
@@ -136,4 +207,7 @@ async def web_search_with_settings(query: str, max_results: int, db) -> list[dic
     svc = SettingsService(db)
     provider = (await svc.get("web_search_provider")) or "duckduckgo"
     api_key = await svc.get("web_search_api_key")
-    return await web_search(query, max_results, provider=provider, api_key=api_key)
+    freshness = await svc.get("web_search_freshness")
+    return await web_search(
+        query, max_results, provider=provider, api_key=api_key, freshness=freshness,
+    )
