@@ -59,7 +59,11 @@ export function WebSearchView({ embedded = false }: { embedded?: boolean }) {
     try {
       const data: Record<string, unknown> = { web_search_provider: provider };
       if (apiKey.trim()) data.web_search_api_key = apiKey.trim();
-      if (provider === "brave_news") data.web_search_freshness = freshness;
+      // Immer mitsenden (nicht nur bei brave_news): sonst bleibt ein alter
+      // Filterwert in der DB stehen, wenn man zu einem anderen Provider
+      // wechselt — funktional harmlos (wird nur für brave_news gelesen),
+      // aber verwirrend beim nächsten Zurückwechseln.
+      data.web_search_freshness = provider === "brave_news" ? freshness : "";
       await api.updateSettings(data);
       if (apiKey.trim()) setHasKey(true);
       setApiKey("");
