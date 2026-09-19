@@ -48,7 +48,7 @@ SECRET_KEYS = {
     "exchange_service_account_password",
     # SMTP relay auth password (optional) — secret
     "smtp_relay_password",
-    # Websuche: nur gebraucht wenn Provider brave/serp gewaehlt ist.
+    # Websuche: nur gebraucht wenn Provider brave/brave_news/serp gewaehlt ist.
     "web_search_api_key",
 }
 
@@ -188,10 +188,12 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "model_enabled_overrides",     # JSON {model_value: bool} — admin freischaltung
     # DLP egress filter (#388): scan outbound text for PII/secrets before sending
     "dlp_enabled",                 # "true" | "false" (default off — opt-in)
-    # Websuche-Provider (Vorbild OpenWebUI): "duckduckgo" (default, keylos) | "brave" | "serp".
-    # Der Key ist zusaetzlich in SECRET_KEYS — nur fuer brave/serp gebraucht.
+    # Websuche-Provider (Vorbild OpenWebUI): "duckduckgo" (default, keylos) | "brave" | "brave_news" | "serp".
+    # Der Key ist zusaetzlich in SECRET_KEYS — nur fuer brave/brave_news/serp gebraucht.
     "web_search_provider",
     "web_search_api_key",
+    # Nur fuer brave_news: pd | pw | pm | py oder YYYY-MM-DDtoYYYY-MM-DD.
+    "web_search_freshness",
 }
 
 

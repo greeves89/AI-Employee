@@ -57,7 +57,15 @@ class ProviderDispatchTests(unittest.IsolatedAsyncioTestCase):
             out = await web_search("pokemon karten", 5, provider="brave", api_key="bk")
         self.assertEqual(client.get.call_args.args[0], "https://api.search.brave.com/res/v1/web/search")
         self.assertEqual(client.get.call_args.kwargs["headers"]["X-Subscription-Token"], "bk")
-        self.assertEqual(out, [{"title": "Pokemon Karten kaufen", "url": "https://example.test/p", "snippet": "Sammelkarten"}])
+        # ``age`` kommt seit der Brave-News-Erweiterung mit: die Websuche liefert
+        # ``page_age``, das vorher stillschweigend verworfen wurde. Hier ist es
+        # leer, weil die Testantwort kein Datum enthaelt.
+        self.assertEqual(out, [{
+            "title": "Pokemon Karten kaufen",
+            "url": "https://example.test/p",
+            "snippet": "Sammelkarten",
+            "age": "",
+        }])
 
     async def test_serp_provider_calls_serpapi_with_the_key_param(self):
         payload = {"organic_results": [
@@ -126,6 +134,24 @@ class WebSearchWithSettingsTests(unittest.IsolatedAsyncioTestCase):
                 await web_search_with_settings("pokemon karten", 5, db)
         client.post.assert_called_once()
 
+    async def test_persisted_freshness_reaches_the_brave_news_provider(self):
+        """Die eigentliche Luecke aus dem Review: zwei stille Mutationen (hier
+        entfernt: das Weiterreichen von freshness in web_search_with_settings,
+        und in SettingsRoundtripTests: das Speichern von web_search_freshness)
+        blieben ohne diesen End-zu-End-Test unbemerkt gruen."""
+        async with self.Session() as db:
+            svc = SettingsService(db)
+            await svc.set("web_search_provider", "brave_news")
+            await svc.set("web_search_api_key", "bk")
+            await svc.set("web_search_freshness", "pw")
+            await db.commit()
+
+        ctx, client = _client_returning({"results": []})
+        async with self.Session() as db:
+            with patch("httpx.AsyncClient", return_value=ctx):
+                await web_search_with_settings("pokemon karten", 5, db)
+        self.assertEqual(client.get.call_args.kwargs["params"]["freshness"], "pw")
+
 
 class SettingsRoundtripTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -174,6 +200,34 @@ class SettingsRoundtripTests(unittest.IsolatedAsyncioTestCase):
                 )
         self.assertEqual(cm.exception.status_code, 422)
 
+    async def test_freshness_is_persisted_and_read_back(self):
+        async with self.Session() as db:
+            await update_settings(
+                SettingsUpdate(web_search_provider="brave_news", web_search_freshness="pm"),
+                user=_admin(), db=db,
+            )
+        async with self.Session() as db:
+            resp = await get_settings(user=_admin(), db=db)
+        self.assertEqual(resp.web_search_freshness, "pm")
+
+    async def test_an_invalid_freshness_is_rejected_at_write_time_not_silently_stored(self):
+        """Vorher wurde ein ungueltiger Wert klaglos gespeichert und erst beim
+        naechsten Suchaufruf verworfen — sichtbar nur im Server-Log, nicht fuer
+        den Admin, der ihn eingetragen hat."""
+        from fastapi import HTTPException
+        async with self.Session() as db:
+            with self.assertRaises(HTTPException) as cm:
+                await update_settings(
+                    SettingsUpdate(web_search_freshness="letzte-woche"), user=_admin(), db=db,
+                )
+        self.assertEqual(cm.exception.status_code, 422)
+
+    async def test_clearing_freshness_with_an_empty_string_is_allowed(self):
+        async with self.Session() as db:
+            await update_settings(
+                SettingsUpdate(web_search_freshness=""), user=_admin(), db=db,
+            )
+
 
 class VoiceWebSearchUsesTheConfiguredProviderTests(unittest.IsolatedAsyncioTestCase):
     """Die Sprachfront hatte DuckDuckGo fest verdrahtet — ``_web_search`` liest
@@ -211,6 +265,136 @@ class VoiceWebSearchUsesTheConfiguredProviderTests(unittest.IsolatedAsyncioTestC
         self.assertEqual(client.get.call_args.args[0], "https://api.search.brave.com/res/v1/web/search")
         self.assertIn("Pokemon Karten", out)
         v._emit.assert_awaited_once()
+
+
+class BraveNewsProviderTests(unittest.IsolatedAsyncioTestCase):
+    """Brave News — eigener Index, liefert Datum und Herausgeber mit.
+
+    Ohne Datum kann ein Agent, der ueber aktuelle Ereignisse schreibt, einen
+    zwei Jahre alten Artikel nicht von der Meldung von heute unterscheiden.
+    Genau deshalb gibt es diesen Provider zusaetzlich zur Websuche.
+    """
+
+    async def test_hits_the_news_endpoint_and_keeps_age_and_publisher(self):
+        payload = {
+            "results": [
+                {
+                    "title": "Gold hits record",
+                    "url": "https://example.test/gold",
+                    "description": "Spot gold rose.",
+                    "age": "3 hours ago",
+                    "meta_url": {"hostname": "reuters.com"},
+                }
+            ]
+        }
+        ctx, client = _client_returning(payload)
+        with patch("httpx.AsyncClient", return_value=ctx):
+            out = await web_search("gold", 5, provider="brave_news", api_key="bk")
+
+        self.assertIn("news/search", client.get.call_args.args[0])
+        self.assertEqual(client.get.call_args.kwargs["headers"]["X-Subscription-Token"], "bk")
+        self.assertEqual(out[0]["age"], "3 hours ago")
+        self.assertEqual(out[0]["publisher"], "reuters.com")
+        self.assertEqual(out[0]["url"], "https://example.test/gold")
+
+    async def test_valid_freshness_is_passed_through(self):
+        ctx, client = _client_returning({"results": []})
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search("gold", 5, provider="brave_news", api_key="bk", freshness="pw")
+        self.assertEqual(client.get.call_args.kwargs["params"]["freshness"], "pw")
+
+    async def test_invalid_freshness_is_dropped_not_forwarded(self):
+        """Ein Tippfehler darf nicht die ganze Anfrage mit 422 scheitern lassen."""
+        ctx, client = _client_returning({"results": []})
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search("gold", 5, provider="brave_news", api_key="bk", freshness="letzte-woche")
+        self.assertNotIn("freshness", client.get.call_args.kwargs["params"])
+
+    async def test_date_range_freshness_is_accepted(self):
+        ctx, client = _client_returning({"results": []})
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search(
+                "gold", 5, provider="brave_news", api_key="bk",
+                freshness="2026-01-01to2026-02-01",
+            )
+        self.assertEqual(
+            client.get.call_args.kwargs["params"]["freshness"], "2026-01-01to2026-02-01",
+        )
+
+    async def test_without_key_it_falls_back_instead_of_returning_nothing(self):
+        ctx, client = _client_returning({}, status=200)
+        client.post.return_value.text = ""
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search("gold", 5, provider="brave_news", api_key=None)
+        self.assertTrue(client.post.called, "ohne Key wird auf DuckDuckGo zurueckgefallen")
+
+    async def test_nonexistent_calendar_date_is_rejected(self):
+        """Der Regex allein akzeptierte 2026-02-30 (den 30. Februar) — das
+        Format stimmt, das Datum existiert nicht."""
+        ctx, client = _client_returning({"results": []})
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search("gold", 5, provider="brave_news", api_key="bk", freshness="2026-02-30to2026-03-01")
+        self.assertNotIn("freshness", client.get.call_args.kwargs["params"])
+
+    async def test_a_range_ending_before_it_starts_is_rejected(self):
+        ctx, client = _client_returning({"results": []})
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search("gold", 5, provider="brave_news", api_key="bk", freshness="2026-12-31to2026-01-01")
+        self.assertNotIn("freshness", client.get.call_args.kwargs["params"])
+
+    async def test_a_range_of_equal_start_and_end_is_accepted(self):
+        """Start == Ende ist ein gueltiger Ein-Tages-Bereich, keine Grenzfall-Ablehnung."""
+        ctx, client = _client_returning({"results": []})
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search("gold", 5, provider="brave_news", api_key="bk", freshness="2026-01-01to2026-01-01")
+        self.assertEqual(client.get.call_args.kwargs["params"]["freshness"], "2026-01-01to2026-01-01")
+
+    async def test_unicode_digits_are_rejected_not_silently_normalised(self):
+        """``re.fullmatch(r"\\d")`` matcht ohne re.ASCII auch Unicode-Ziffern
+        (z.B. Devanagari) — date.fromisoformat wuerde daran ohnehin scheitern,
+        aber das Format soll erst gar nicht als "syntaktisch gueltig" gelten."""
+        ctx, client = _client_returning({"results": []})
+        unicode_range = "२०२६-01-01to2026-02-01"  # führende Ziffern in Devanagari
+        with patch("httpx.AsyncClient", return_value=ctx):
+            await web_search("gold", 5, provider="brave_news", api_key="bk", freshness=unicode_range)
+        self.assertNotIn("freshness", client.get.call_args.kwargs["params"])
+
+    async def test_malformed_json_shape_yields_empty_list_not_a_crash(self):
+        """{"results": [null]} und eine Antwort ohne meta_url duerfen keinen
+        AttributeError werfen — "Never raises" gilt auch fuer kaputte/fremde
+        API-Antworten, nicht nur fuer Netzwerkfehler."""
+        ctx, client = _client_returning({"results": [None, {"title": "x", "url": "u"}]})
+        with patch("httpx.AsyncClient", return_value=ctx):
+            out = await web_search("gold", 5, provider="brave_news", api_key="bk")
+        self.assertEqual(out, [{"title": "x", "url": "u", "snippet": "", "age": "", "publisher": ""}])
+
+    async def test_response_that_is_not_an_object_yields_empty_list(self):
+        ctx, client = _client_returning(["not", "an", "object"])
+        with patch("httpx.AsyncClient", return_value=ctx):
+            out = await web_search("gold", 5, provider="brave_news", api_key="bk")
+        self.assertEqual(out, [])
+
+
+class BraveWebSearchAgeTests(unittest.IsolatedAsyncioTestCase):
+    """Die Websuche lieferte ``page_age`` schon immer mit — es wurde nur verworfen."""
+
+    async def test_page_age_is_no_longer_dropped(self):
+        payload = {
+            "web": {
+                "results": [
+                    {
+                        "title": "Gold",
+                        "url": "https://example.test/g",
+                        "description": "d",
+                        "page_age": "2026-09-18T10:00:00",
+                    }
+                ]
+            }
+        }
+        ctx, _ = _client_returning(payload)
+        with patch("httpx.AsyncClient", return_value=ctx):
+            out = await web_search("gold", 5, provider="brave", api_key="bk")
+        self.assertEqual(out[0]["age"], "2026-09-18T10:00:00")
 
 
 if __name__ == "__main__":

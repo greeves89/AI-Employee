@@ -3392,10 +3392,14 @@ class RealtimeVoiceSession:
             await self._emit({"type": "web_results", "data": {"query": query, "results": results}})
         except Exception:  # noqa: BLE001
             pass
-        lines = [
-            f"{i}. {r.get('title') or r.get('url')}: {(r.get('snippet') or '')[:200]}"
-            for i, r in enumerate(results, 1)
-        ]
+        # Alter/Herausgeber (nur beim brave_news-Provider gefuellt) mit in den
+        # gesprochenen Satz — ohne Datum kann der Nutzer eine Alt-Meldung nicht
+        # von einer aktuellen unterscheiden, genau das Ziel dieses Providers.
+        lines = []
+        for i, r in enumerate(results, 1):
+            age = r.get("age") or ""
+            suffix = f" ({age})" if age else ""
+            lines.append(f"{i}. {r.get('title') or r.get('url')}{suffix}: {(r.get('snippet') or '')[:200]}")
         return f"Web-Ergebnisse zu „{query}“:\n" + "\n".join(lines)
 
     async def _learn_skill(self, action: str, goal: str = "") -> str:

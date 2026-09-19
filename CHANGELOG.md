@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.323.0] - 2026-09-19
+
+### Hinzugefügt
+- **Vierter Websuche-Provider `brave_news`** (Admin -> Websuche) — eigener
+  Brave-News-Index statt der normalen Websuche, liefert zusätzlich
+  Veröffentlichungsalter und Herausgeber mit. Agenten, die über aktuelle
+  Ereignisse schreiben, können damit einen zwei Jahre alten Artikel von
+  einer Meldung von heute unterscheiden — beide Felder erreichen jetzt auch
+  tatsächlich den Agenten-Container und die Sprachfront, nicht nur die
+  Websuche-Funktion selbst. Optionaler Aktualitäts-Filter (`pd`/`pw`/`pm`/
+  `py` oder ein Datumsbereich) im Admin-Select, serverseitig validiert
+  (echte Kalenderdaten, Start ≤ Ende, keine Unicode-Ziffern) sowohl beim
+  Speichern als auch beim Suchen.
+- Die normale Brave-Websuche liefert `page_age` jetzt ebenfalls mit
+  (vorher stillschweigend verworfen).
+
+### Behoben
+- Eine unerwartete JSON-Antwortform (`{"results":[null]}`, fehlendes
+  `meta_url`) beim Brave-News-Provider führte zu einem unbehandelten
+  `AttributeError` statt eines kontrollierten leeren Ergebnisses.
+
 ## [1.322.57] - 2026-09-19
 
 ### Hinzugefügt

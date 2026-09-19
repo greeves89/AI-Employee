@@ -120,9 +120,10 @@ class SettingsUpdate(BaseModel):
     teams_calling_app_secret: str | None = None
     teams_calling_tenant_id: str | None = None
     teams_calling_enabled: str | None = None
-    # Websuche-Provider (Admin -> Websuche): "duckduckgo" (Vorgabe) | "brave" | "serp"
+    # Websuche-Provider (Admin -> Websuche): "duckduckgo" (Vorgabe) | "brave" | "brave_news" | "serp"
     web_search_provider: str | None = None
-    web_search_api_key: str | None = None  # nur fuer brave/serp, secret
+    web_search_api_key: str | None = None  # nur fuer brave/brave_news/serp, secret
+    web_search_freshness: str | None = None  # nur brave_news: pd|pw|pm|py oder Zeitraum
 
 
 class VoiceSettings(BaseModel):
@@ -222,3 +223,4 @@ class SettingsResponse(BaseModel):
     # Websuche-Provider — API-Key ist SECRET_KEYS und wird nie zurueckgegeben.
     web_search_provider: str = "duckduckgo"
     has_web_search_api_key: bool = False
+    web_search_freshness: str = ""

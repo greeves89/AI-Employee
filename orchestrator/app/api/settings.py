@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.web_search import _valid_freshness
 from app.db.session import get_db
 from app.dependencies import require_admin, require_auth
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
@@ -115,6 +116,7 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         smtp_allowed_recipient_domains=(await svc.get("smtp_allowed_recipient_domains") or "") if admin else "",
         web_search_provider=await svc.get("web_search_provider") or "duckduckgo",
         has_web_search_api_key=bool(await svc.get("web_search_api_key")),
+        web_search_freshness=await svc.get("web_search_freshness") or "",
         # SAML: Einrichtungsangaben sind interne Infrastruktur → nur fuer Admins.
         # `saml_configured` darf jeder sehen, denn genau das entscheidet, ob die
         # Anmeldeseite den Knopf zeigt.
@@ -201,8 +203,21 @@ async def update_settings(
         )
     if data.display_currency is not None and data.display_currency not in ("EUR", "USD"):
         raise HTTPException(status_code=422, detail="Anzeigewährung: EUR oder USD.")
-    if data.web_search_provider is not None and data.web_search_provider not in ("duckduckgo", "brave", "serp"):
-        raise HTTPException(status_code=422, detail="Websuche-Provider: duckduckgo, brave oder serp.")
+    if data.web_search_provider is not None and data.web_search_provider not in (
+        "duckduckgo", "brave", "brave_news", "serp",
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Websuche-Provider: duckduckgo, brave, brave_news oder serp.",
+        )
+    # Ohne diese Pruefung landet ein ungueltiger Wert unbesehen in der DB —
+    # _valid_freshness() verwirft ihn erst beim naechsten Suchaufruf still,
+    # das Frontend-Select schuetzt nur den UI-Weg, nicht die API direkt.
+    if data.web_search_freshness not in (None, "") and _valid_freshness(data.web_search_freshness) is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Aktualität: pd, pw, pm, py oder YYYY-MM-DDtoYYYY-MM-DD.",
+        )
 
     # Handle simple mapped fields
     for field_name, config_attr in _FIELD_MAP.items():
@@ -321,7 +336,7 @@ async def update_settings(
             await svc.set(field_name, str(value))
 
     # Websuche-Provider — DB-only, gelesen von orchestrator/app/core/web_search.py
-    for field_name in ("web_search_provider", "web_search_api_key"):
+    for field_name in ("web_search_provider", "web_search_api_key", "web_search_freshness"):
         value = getattr(data, field_name, None)
         if value is not None:
             await svc.set(field_name, str(value))
