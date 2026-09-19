@@ -27,6 +27,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   und überlebt Deploys — ohne Redis bleibt das bisherige Verhalten, die
   Erkennung selbst braucht Redis weiterhin nicht.
 
+## [1.322.53] - 2026-09-18
+
+### Behoben
+- **Eine Token-Erneuerung mitten in einer laufenden Aufgabe kostet den Lauf
+  nicht mehr** (Issue #799). Die Wiederholung nach einer Rotation des
+  Zugangstokens gab es im Aufgaben-Pfad zwar, sie griff aber nie: der
+  Claude-CLI meldet den 401 nicht als Fehler-Exit, sondern als Ergebnis mit
+  Fehlerkennzeichen, und das ging als „fertig" durch. Folge im Betrieb: der
+  Lauf ueber dem taeglichen Erneuerungszeitpunkt starb drei Tage in Folge
+  nach ~26 Minuten, der automatische zweite Versuch begann von vorn. Jetzt
+  wartet der Agent auf den neuen Token und wiederholt die Aufgabe selbst;
+  was er dem Orchestrator meldet, bleibt unveraendert (Serien-Alarm und
+  Selbstheilung greifen wie bisher, falls auch die Wiederholung scheitert).
+- Der Zugangsstatus eines solchen Laufs wird als „auth_failed" statt „ok"
+  gemeldet.
+
 ## [1.322.52] - 2026-09-18
 
 ### Behoben
