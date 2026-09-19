@@ -6,7 +6,9 @@ import signal
 from typing import AsyncIterator
 
 from app.config import get_oauth_token, settings
-from app.ai_credential_status import is_auth_error, report_result_status
+from app.ai_credential_status import (
+    report_result_status, zugang_verloren,
+)
 from app.log_publisher import LogPublisher
 from app.pids_budget import exhaustion_message, find_fork_exhaustion
 from app.runner_hooks import (
@@ -16,6 +18,15 @@ from app.runner_hooks import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _fehlertext(event: dict) -> str:
+    """Der Fehlertext eines ``result``-Ereignisses mit ``is_error`` — wie im Chat-Pfad:
+    das ``errors``-Feld, sonst ``result``. Bewusst nichts aus dem Agententext."""
+    fehler = event.get("errors") or []
+    if fehler:
+        return "; ".join(str(f) for f in fehler)
+    return str(event.get("result") or "")
 
 
 class AgentRunner:
@@ -50,8 +61,8 @@ class AgentRunner:
         token_before = get_oauth_token()
         result = await self._execute_task_once(task_id, prompt, model, lightweight)
 
-        error_text = str(result.get("error", "")).lower()
-        if result.get("status") == "error" and is_auth_error(error_text):
+        if zugang_verloren(result):
+            error_text = str(result.get("error") or result.get("is_error_text") or "")
             logger.warning("[Auth] Aufgabe %s scheiterte am Zugang — warte auf neuen "
                            "Token und wiederhole: %s", task_id, error_text[:120])
             await self.log_publisher.publish(
@@ -61,6 +72,12 @@ class AgentRunner:
             await wait_for_new_oauth_token(token_before)
             result = await self._execute_task_once(task_id, prompt, model, lightweight)
         await report_result_status(result)
+        # Nur fuer die Entscheidung oben gedacht — nach aussen bleibt der Vertrag
+        # unveraendert: der Orchestrator erkennt den 401-Text im ``result`` selbst
+        # (Serien-Alarm #680) und stuft die rohe Meldung als dauerhaft ein; ein
+        # zusaetzliches Feld hat dort nichts zu suchen.
+        result.pop("is_error", None)
+        result.pop("is_error_text", None)
         return result
 
     async def _execute_task_once(
@@ -203,6 +220,17 @@ class AgentRunner:
                         "input_tokens": usage.get("input_tokens"),
                         "output_tokens": usage.get("output_tokens"),
                         "result": result_text,
+                        # Ein 401 mitten im Lauf kommt NICHT als Fehler-Exit, sondern
+                        # genau so: als result mit is_error und dem 401-Text (#799) —
+                        # im Betrieb mit subtype='success', also zaehlt nur is_error.
+                        # Ohne dieses Kennzeichen sah execute_task nur „completed"
+                        # und die Wiederholung nach Token-Rotation griff nie.
+                        "is_error": bool(event.get("is_error")),
+                        # Der Fehlertext NUR aus dem Ereignis, nie aus dem gesammelten
+                        # Agententext: ein Agent, der gerade an einem OAuth-Thema
+                        # arbeitet und an etwas anderem stirbt, darf nicht als
+                        # Zugangsverlust gelten (und umgekehrt).
+                        "is_error_text": _fehlertext(event) if event.get("is_error") else "",
                     }
 
             returncode = await self._process.wait()
