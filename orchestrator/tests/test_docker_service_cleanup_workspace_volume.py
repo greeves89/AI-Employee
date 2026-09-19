@@ -50,7 +50,9 @@ def test_mounts_only_the_volume_not_the_agent_container():
 def test_the_cleanup_script_clears_caches_tmp_and_logs():
     svc = _service()
     svc.cleanup_workspace_volume("workspace-a1")
-    script = svc.client.containers.run_calls[0]["command"][-1]
+    # Zwei Helfer-Laeufe jetzt (#830): zuerst das Worktree-Aufraeumen
+    # (Python), danach dieser Cache/Log-Lauf (sh) — die letzte Ausfuehrung.
+    script = svc.client.containers.run_calls[-1]["command"][-1]
     assert "/workspace/data/cache" in script
     assert "/workspace/tmp" in script
     assert "*.log" in script

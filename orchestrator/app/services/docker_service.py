@@ -38,6 +38,71 @@ def _session_bind_path(environment: dict | None) -> str:
     return "/home/agent/.claude"
 
 
+# Belegt einen guten Teil des Workspace-Kontingents oft nicht Caches, sondern
+# liegengebliebene Git-Worktrees aus abgeschlossener Arbeit (Issue #830:
+# 2.3 GB in 9 Worktrees, waehrend der eingebaute Aufraeumlauf nur data/cache,
+# tmp und Logs kennt und die Belegung dabei nur von 99.8% auf 96.2% senkte —
+# unter der 95%-Schwelle blieb der Agent trotzdem gestoppt).
+#
+# Sicherheitskriterium, identisch zu dem, das man von Hand pruefen wuerde:
+# eine Worktree wird NUR entfernt, wenn sie (a) sauber ist (kein `git status
+# --short`-Ausschlag) UND (b) ihr HEAD exakt dem HEAD der gleichnamigen
+# Fernzweig-Branch entspricht (`git ls-remote origin <branch>`) — die Arbeit
+# ist also vollstaendig gesichert, bevor der lokale Checkout verschwindet.
+# Worktrees ohne gleichnamigen Fernzweig (z. B. Claude Codes eigene
+# `.claude/worktrees/agent-*`-Sitzungen) werden bewusst NICHT angefasst, weil
+# fuer sie kein Fernabgleich moeglich ist.
+WORKTREE_PRUNE_SCRIPT = r"""
+import os, subprocess
+
+def sh(cmd, cwd=None):
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+
+# Ueberschreibbar fuers Testen (echte Git-Repos in einem Temp-Verzeichnis statt
+# /workspace) -- der Helfer-Container selbst setzt sie nie, Default bleibt also
+# im Betrieb unveraendert.
+root_dir = os.environ.get("WORKTREE_PRUNE_ROOT", "/workspace")
+
+pruned = []
+for root, dirs, files in os.walk(root_dir):
+    if ".git" in dirs:
+        repo = root
+        sh(["git", "config", "--global", "--add", "safe.directory", repo])
+        listing = sh(["git", "worktree", "list", "--porcelain"], repo)
+        entries, current = [], {}
+        for line in listing.stdout.splitlines():
+            if line.startswith("worktree "):
+                if current:
+                    entries.append(current)
+                current = {"path": line[len("worktree "):]}
+            elif line.startswith("branch "):
+                current["branch"] = line[len("branch "):]
+        if current:
+            entries.append(current)
+        for entry in entries:
+            wt = entry["path"]
+            if wt == repo:
+                continue
+            branch = entry.get("branch", "").replace("refs/heads/", "")
+            if not branch:
+                continue
+            sh(["git", "config", "--global", "--add", "safe.directory", wt])
+            status = sh(["git", "status", "--short"], wt)
+            if status.returncode != 0 or status.stdout.strip():
+                continue  # dirty or unreadable -- keep
+            head = sh(["git", "rev-parse", "HEAD"], wt).stdout.strip()
+            remote_line = sh(["git", "ls-remote", "origin", branch], repo).stdout
+            remote_head = remote_line.split("\t")[0].strip() if remote_line else ""
+            if remote_head and head and head == remote_head:
+                result = sh(["git", "worktree", "remove", wt, "--force"], repo)
+                if result.returncode == 0:
+                    pruned.append(wt)
+    dirs[:] = [d for d in dirs if d not in (".git", "node_modules", ".venv", "__pycache__")]
+
+print(f"PRUNED {len(pruned)}: {pruned}")
+"""
+
+
 class DockerService:
     """Wraps Docker SDK for container management.
 
@@ -197,8 +262,9 @@ class DockerService:
 
     def cleanup_workspace_volume(self, volume_name: str,
                                   image: str = "ai-employee-agent:latest") -> int | None:
-        """Clear caches/tmp/logs directly in a workspace VOLUME, without the
-        agent's own container running (issue #714, Punkt 1).
+        """Clear caches/tmp/logs/stale worktrees directly in a workspace
+        VOLUME, without the agent's own container running (issue #714,
+        Punkt 1; worktree-Anteil issue #830).
 
         A disk-quota stop leaves an agent permanently stuck: cleanup normally
         needs a live container, and a live container is exactly what the
@@ -210,6 +276,26 @@ class DockerService:
         container is running. Returns the workspace size in MB AFTER cleanup,
         or ``None`` if the helper run itself failed.
         """
+        try:
+            prune_output = self.client.containers.run(
+                image=image,
+                entrypoint="",
+                command=["python3", "-c", WORKTREE_PRUNE_SCRIPT],
+                volumes={volume_name: {"bind": "/workspace", "mode": "rw"}},
+                remove=True,
+                detach=False,
+                labels={"ai-employee.type": "disk-cleanup-helper"},
+            )
+        except Exception:
+            # Best effort — verwaiste Worktrees sind ein Bonus, kein Muss. Der
+            # naechste Schritt (Caches/Logs) soll trotzdem laufen.
+            logger.warning("Worktree-Aufraeumlauf fuer Volume %s fehlgeschlagen", volume_name, exc_info=True)
+        else:
+            text = prune_output.decode("utf-8", errors="replace") if isinstance(prune_output, (bytes, bytearray)) else str(prune_output)
+            for line in text.strip().splitlines():
+                if line.startswith("PRUNED"):
+                    logger.info("Workspace-Aufraeumlauf Volume %s: %s", volume_name, line)
+
         script = (
             "rm -rf /workspace/data/cache /workspace/tmp /workspace/.cache 2>/dev/null; "
             "find /workspace -name '*.log' -delete 2>/dev/null; "
