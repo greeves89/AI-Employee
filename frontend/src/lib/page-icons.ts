@@ -1,9 +1,9 @@
-/** Auswaehlbare Symbole fuer eigene Menuepunkte.
+/** Auswaehlbare Symbole für eigene Menuepunkte.
  *
  *  Bewusst eine feste Liste statt des ganzen lucide-Pakets: ein dynamischer
  *  Zugriff auf alle Symbole zoege beim Bauen jedes einzelne ins Bundle, und der
  *  Administrator muesste Namen raten. Steht ein gespeicherter Name nicht drin,
- *  faellt die Anzeige auf ``Globe`` zurueck — ein unbekanntes Symbol darf den
+ *  faellt die Anzeige auf ``Globe`` zurück — ein unbekanntes Symbol darf den
  *  Menuepunkt nicht verschlucken.
  */
 import type React from "react";
@@ -75,7 +75,7 @@ export function pageIcon(name: string | null | undefined): React.ElementType {
 
 /** Menuegruppen der Seitenleiste — Schluessel wie in ``navGroups`` dort und in
  *  ``GROUP_KEYS`` im Server. Weicht eine Seite davon ab, faende der Menuepunkt
- *  keine Gruppe und waere unsichtbar. */
+ *  keine Gruppe und wäre unsichtbar. */
 export const PAGE_GROUPS: { key: string; label: string }[] = [
   { key: "overview", label: "Übersicht" },
   { key: "collab", label: "Zusammenarbeit" },

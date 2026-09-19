@@ -205,7 +205,7 @@ PLATFORM_COMMANDS = [
     ("planen", "Nur den Weg beschreiben, nichts ausführen"),
     ("zusammenfassen", "In frischem Gespräch weiterreden"),
     ("verzweigen", "Ab der letzten Nachricht abzweigen"),
-    ("zurueckspulen", "Auf die letzte Nachricht zurücksetzen"),
+    ("zurückspulen", "Auf die letzte Nachricht zurücksetzen"),
     ("tools", "Werkzeuge dieses Agenten zeigen"),
 ]
 

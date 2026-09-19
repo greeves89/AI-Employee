@@ -5,6 +5,221 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.323.0] - 2026-09-19
+
+### Hinzugefügt
+- **Vierter Websuche-Provider `brave_news`** (Admin -> Websuche) — eigener
+  Brave-News-Index statt der normalen Websuche, liefert zusätzlich
+  Veröffentlichungsalter und Herausgeber mit. Agenten, die über aktuelle
+  Ereignisse schreiben, können damit einen zwei Jahre alten Artikel von
+  einer Meldung von heute unterscheiden — beide Felder erreichen jetzt auch
+  tatsächlich den Agenten-Container und die Sprachfront, nicht nur die
+  Websuche-Funktion selbst. Optionaler Aktualitäts-Filter (`pd`/`pw`/`pm`/
+  `py` oder ein Datumsbereich) im Admin-Select, serverseitig validiert
+  (echte Kalenderdaten, Start ≤ Ende, keine Unicode-Ziffern) sowohl beim
+  Speichern als auch beim Suchen.
+- Die normale Brave-Websuche liefert `page_age` jetzt ebenfalls mit
+  (vorher stillschweigend verworfen).
+
+### Behoben
+- Eine unerwartete JSON-Antwortform (`{"results":[null]}`, fehlendes
+  `meta_url`) beim Brave-News-Provider führte zu einem unbehandelten
+  `AttributeError` statt eines kontrollierten leeren Ergebnisses.
+
+## [1.322.57] - 2026-09-19
+
+### Hinzugefügt
+- **Speicherquote-Stopp ist jetzt sichtbar, nicht nur ein Backend-Log-Eintrag** —
+  ausgelöst durch einen Agenten, der wiederholt in einer Stopp-Start-Schleife
+  hing, weil sein Workspace bei 99,8% des Kontingents lag. Vier Teile:
+  - `agent.config.stop_reason` — durabler Zustand, gesetzt beim Stopp, gelöscht
+    bei Erholung oder manuellem Neustart.
+  - Rotes "Speicher voll"-Badge auf der Agentenkarte + Login-Popup (einmal pro
+    Sitzung) in der Weboberfläche.
+  - Der Agent selbst liest `/workspace/.disk_warning` jetzt bei jedem
+    Sitzungsstart (Chat & Task) und bekommt einen unübersehbaren Prompt-Block —
+    vorher reine Bring-Schuld ("falls er zufällig hinschaut"), jetzt Hol-Schuld.
+  - iOS/Web-Push: `disk_monitor.py` ruft jetzt `push_to_user()` — vorher ging
+    der Alarm nur an Telegram, nicht an registrierte Geräte (derselbe #610-
+    Umgehungsweg, der für Telegram schon gebraucht wurde, fehlte hier).
+
+### Behoben
+- **`stop_reason` überlebte ein Agenten-Update** — `update_agent` (Update-
+  Knopf, oder Selbstheilung nach verschwundenem Container) lief nie über den
+  Aufräumpfad von `start_agent`, also blieb ein längst erledigter
+  Speicherquote-Alarm nach jedem routinemäßigen Update als Karteileiche in
+  Badge und Login-Popup stehen. Beide rufen jetzt denselben Helfer
+  (`AgentManager._clear_stale_stop_reason`).
+
+## [1.322.56] - 2026-09-19
+
+### Behoben
+- **Die zwei groessten Zeichenfenster-Tests umgestellt** (Nachtrag zu
+  Issue #726, Batch 10) — die Tests zu Mehrbildschirm-Screenshots und zum
+  Klick auf einen benannten Bildschirm (je 9 Fenster) pruefen jetzt den
+  echten Ablauf mit Attrappen (Bildschirmliste, Aufnahme, Eingabe-Controller)
+  statt Zeichenabstaende im Quelltext. Ein frischer Gegenleser fand dabei
+  neun Blindstellen in der ersten Fassung — Doubles mit gleichem Maszstab
+  je Achse (Achsentausch unsichtbar), nur ganzzahlige Produkte (Abschneiden
+  statt Runden unsichtbar), Screenshot ohne Nummer nie gefahren, Blocktest
+  ueber den ganzen Screenshot-Zweig statt den Groessen-Zweig — alle
+  geschlossen; der Hinweis an das Modell (Bildgroesse, Ursprung, Liste der
+  Bildschirme nur bei mehr als einem) wird nun am echten `computer_use`-Aufruf
+  geprueft. Regressions-Sperre schrumpft von 51 Dateien / 140 Fenstern auf
+  49 / 122. Mutationsbatterie (`scripts/mutationsbatterie_726_batch10.py`):
+  24/24 Mutationen erkannt, paarweise verschieden; 10/10 Gegenleser-Mutationen
+  jetzt rot.
+
+## [1.322.55] - 2026-09-19
+
+### Behoben
+- **Ein fehlgeschlagenes `alembic upgrade head` beim Start stempelt eine
+  bereits versorgte Datenbank nicht mehr auf head** (Issue #796). Vorher
+  erklaerte der Rueckfall (`create_all` + `stamp head`) auf einer bestehenden
+  Anlage alle offenen Migrationen fuer erledigt, obwohl keine gelaufen war;
+  beim naechsten Start gab es nichts mehr zu migrieren, die Spalten fehlten
+  weiter und die Anwendung startete dauerhaft nicht — auch nachdem die
+  eigentliche Ursache behoben war. Jetzt wird nur eine frische Datenbank
+  (ohne `alembic_version`) aus den Modellen angelegt und gestempelt; auf einer
+  versorgten Anlage bleibt die Revision wahr, es werden keine Tabellen aus den
+  Modellen angelegt, und der naechste Start versucht das Upgrade erneut.
+  Ist der Zustand nicht feststellbar, gilt „versorgt".
+- **Nach einem Timeout des Upgrades wird nie gestempelt** — eine halb
+  gelaufene Datenmigration galt sonst als fertig. Der Timeout ist ueber
+  `ALEMBIC_UPGRADE_TIMEOUT_SECONDS` einstellbar (Standard 300 s statt 30 s),
+  weil Backfills auf grossen Tabellen legitim Minuten brauchen.
+- **Das Protokoll zeigt jetzt das Ende der Alembic-Ausgabe**, nicht die ersten
+  200 Zeichen: dort standen ausnahmslos INFO-Zeilen, die eigentliche
+  Fehlermeldung war abgeschnitten und die Ursache nicht auffindbar.
+
+## [1.322.54] - 2026-09-19
+
+### Behoben
+- **Scheduler-Wache meldete gesunde Zeitpläne täglich als „lautlos
+  verworfen"** (#803). Seit der Erkennung aus #720 bekam der Betreiber für
+  jeden täglichen oder stündlichen Zeitplan Sekunden nach der Fälligkeit ein
+  rotes Telegram „hat einen fälligen Termin lautlos verloren", obwohl der
+  Lauf im selben Augenblick regulär startete — und jede dieser Meldungen
+  zählte als Fehlschlag in die Erfolgsquote des Zeitplans (29 von 77
+  Meldungen in zwei Tagen). Ursache: die 5-Minuten-Karenz für die
+  Dispatch-Latenz saß am Slot statt an der Uhr. Die Wache wartet jetzt die
+  Karenz ab und prüft solange den Slot davor, damit auch kurze Takte
+  (`*/5`) weiter erkannt werden. Außerdem gilt ein Zeitplan nicht mehr als
+  verloren, solange der Scheduler für ihn noch einen Termin hält
+  (Wiederholung nach kurzem Aussetzer, Nachholen nach Stillstand), und ein
+  bereits ordentlich gemeldeter Verlust wird nicht ein zweites Mal gezählt.
+- **Nach jedem Neustart wiederholte die Wache alle alten Verlust-Meldungen**
+  und buchte sie erneut (48 der 77 Meldungen). Die „schon gemeldet"-Marke
+  lag nur im Arbeitsspeicher; sie liegt jetzt zusätzlich in Redis (30 Tage)
+  und überlebt Deploys — ohne Redis bleibt das bisherige Verhalten, die
+  Erkennung selbst braucht Redis weiterhin nicht.
+
+## [1.322.53] - 2026-09-18
+
+### Behoben
+- **Eine Token-Erneuerung mitten in einer laufenden Aufgabe kostet den Lauf
+  nicht mehr** (Issue #799). Die Wiederholung nach einer Rotation des
+  Zugangstokens gab es im Aufgaben-Pfad zwar, sie griff aber nie: der
+  Claude-CLI meldet den 401 nicht als Fehler-Exit, sondern als Ergebnis mit
+  Fehlerkennzeichen, und das ging als „fertig" durch. Folge im Betrieb: der
+  Lauf ueber dem taeglichen Erneuerungszeitpunkt starb drei Tage in Folge
+  nach ~26 Minuten, der automatische zweite Versuch begann von vorn. Jetzt
+  wartet der Agent auf den neuen Token und wiederholt die Aufgabe selbst;
+  was er dem Orchestrator meldet, bleibt unveraendert (Serien-Alarm und
+  Selbstheilung greifen wie bisher, falls auch die Wiederholung scheitert).
+- Der Zugangsstatus eines solchen Laufs wird als „auth_failed" statt „ok"
+  gemeldet.
+
+## [1.322.52] - 2026-09-18
+
+### Behoben
+- **Workflow-Designer folgt jetzt dem Erscheinungsbild (Dunkel/Hell)** —
+  die Zeichenfläche hatte `colorMode="dark"` fest verdrahtet und blieb
+  dunkel, egal was im Umschalter gewählt war. Jetzt an `useTheme()`
+  gekoppelt. Zusätzlich: mehrere Akzentfarben der Bausteine (blau, zink,
+  smaragd, rot, himmelblau) waren für dunklen Grund gewählt und auf hellem
+  Grund ausgewaschen — jetzt mit heller Entsprechung, nach demselben Muster
+  wie zuvor schon bei den Protokoll-Ansichten (Commit 597ffb52).
+
+## [1.322.51] - 2026-09-18
+
+### Behoben
+- **Echte deutsche Umlaute (ä/ö/ü/ß) statt ae/oe/ue-Ersatzschreibweise** in
+  nutzersichtbaren Texten über weite Teile des Frontends — gefunden bei einer
+  vollständigen Playwright-Sichtprüfung jedes Menüpunkts (Explorer, Hilfe &
+  FAQ, Integrations, Approvals u.a.).
+- **Wiederholte Aufgaben stapelten das "(Versuch N)"-Suffix im Titel** statt
+  es zu ersetzen — nach mehreren Fehlschlägen zeigte ein Task-Titel
+  "... (Versuch 2) (Versuch 3) (Versuch 4)". Der Selbstheilungs-Router baut
+  den Titel jetzt wieder aus dem unveränderten Basisnamen auf.
+- **Skill-Marktplatz zeigte "|-" statt der echten Beschreibung** bei Skills
+  mit mehrzeiligem YAML-Block-Skalar in der Frontmatter — der bisherige
+  zeilenweise ":"-Parser kannte diese YAML-Syntax nicht. Ersetzt durch echtes
+  YAML-Parsing mit Fallback auf "keine Frontmatter" bei kaputtem/fremdem YAML.
+
+## [1.322.50] - 2026-09-18
+
+### Geaendert
+- **Alle fuenf Akkordeon-Abschnitte der Agent-Settings-Seite starten jetzt
+  zu**, statt drei davon offen zu zeigen — live gemeldet direkt nach dem
+  Deploy: der Sinn der Gruppierung war ein aufgeraeumter erster Blick,
+  nicht drei sofort ausgeklappte Kaesten.
+
+## [1.322.49] - 2026-09-18
+
+### Geaendert
+- **Agent-Settings-Seite in fuenf aufklappbare Abschnitte gruppiert**
+  (Issue #787, letzter Punkt) — vorher ein 1665-Zeilen-Einzel-Scroll ohne
+  Gruppierung. Jetzt: "Aussehen & Verhalten" (offen), "Modell & Verhalten"
+  (offen), "Verbindungen" (zu, mit API-Keys/Tokens-Warnung: Telegram,
+  Webhook, MCP), "Zugriff & Rechte" (offen — Autonomie-Matrix, Sudo-Pakete
+  und Computer-Use-Standard sitzen jetzt zusammen statt an drei
+  verschiedenen Stellen der Seite), "Ressourcen & Limits" (zu).
+  Damit ist Issue #787 vollstaendig umgesetzt.
+
+## [1.322.48] - 2026-09-18
+
+### Hinzugefuegt
+- **CI-Job `frontend-build`**: Frontend-Typecheck + Production-Build laufen
+  jetzt bei jedem Push/PR in GitHub Actions, nicht mehr nur lokal. Bisher
+  wurde ein kaputter Frontend-Build erst beim manuellen `npm run build` vor
+  einem Deploy sichtbar. Oeffentliches Repo, GitHub Actions ist kostenlos.
+
+## [1.322.47] - 2026-09-18
+
+### Geaendert
+- **4 der 7 Admin-Unterfunktionen existierten an zwei URLs gleichzeitig**
+  (Standalone-Seite + eingebetteter Reiter in der Admin-Konsole, zwei
+  Mount-Punkte derselben Komponente). `/ai-accounts`, `/secrets`, `/health`
+  und `/audit` leiten jetzt auf ihren jeweiligen Admin-Konsole-Reiter um —
+  nur noch ein echter Ort dafuer. (`/settings` bleibt unveraendert, da nicht
+  admin-only.) Schliesst nebenbei eine Luecke: diese vier Standalone-Seiten
+  hatten keine eigene Rollenpruefung, obwohl derselbe Reiter in der
+  Admin-Konsole laengst admin-only ist.
+- Direkte Links auf diese Seiten (Agent-Detail: KI-Account anlegen;
+  Integrationen-Reiter: Secrets verwalten) zeigen jetzt gleich auf den
+  Admin-Reiter statt ueber die Umleitung zu laufen.
+
+## [1.322.46] - 2026-09-18
+
+### Geaendert
+- **Namenskollisionen aus Issue #787 entschaerft** — vier Oberflaechen sahen
+  gleich aus, meinten aber unterschiedliche Dinge, ohne Hinweis darauf:
+  - Telegram-Bot: pro Agent vs. persoenliches Konto — beide Seiten
+    verweisen jetzt aufeinander, die Kontenseite heisst jetzt "Telegram Bot
+    (dein Konto)".
+  - "Integrations": globale OAuth-/MCP-Registrierung, persoenliche
+    Benachrichtigungskanaele und Pro-Agent-Freigabeliste — alle drei
+    verlinken jetzt auf die globale Registrierung.
+  - "Apps": globaler App-Marktplatz vs. Pro-Agent-Docker-Verwaltung — der
+    Agent-Tab sagt jetzt explizit "nur dieser Agent".
+  - Skill Store: globaler Marktplatz vs. Pro-Agent-Katalog — der Agent-Tab
+    verlinkt jetzt auf den globalen Marktplatz.
+- **Die drei Agent-Detail-Seiten verlinken jetzt aufeinander.** Die volle
+  Agent-Seite bekommt fuer Admins einen "Admin-Ansicht"-Link zur
+  Statistik-Seite, die Statistik-Seite einen Link zurueck zur vollen Seite
+  — vorher zwei Sackgassen ohne Verbindung.
+
 ## [1.322.45] - 2026-09-18
 
 ### Behoben

@@ -149,7 +149,7 @@ interface Props {
  *
  *  Der Agent nennt Adressen im Fliesstext („du kannst sie unter https://… aufrufen"),
  *  bisher standen sie tot da — abtippen war die einzige Option. Bewusst hier an EINER
- *  Stelle statt als Sonderfall fuer App-Links: gilt damit fuer jede Adresse, die er
+ *  Stelle statt als Sonderfall für App-Links: gilt damit für jede Adresse, die er
  *  jemals nennt. Satzzeichen am Ende gehoeren nicht zur Adresse. */
 function linkify(text: string) {
   const parts = String(text ?? "").split(/(https?:\/\/[^\s<>"']+)/g);
@@ -205,12 +205,12 @@ export function VoiceSessionModal({
   // Each delegated task is its own card with its own status — several run in parallel,
   // so we track them individually instead of one shared "delegating" flag.
   const [tasks, setTasks] = useState<{ id: string; instruction: string; done: boolean; result?: string }[]>([]);
-  // Aufgeklappte Ergebnisse. Fertige Karten sind standardmaessig zu — ein Ergebnis
+  // Aufgeklappte Ergebnisse. Fertige Karten sind standardmäßig zu — ein Ergebnis
   // kann seitenlang sein und haette sonst das ganze Panel gefuellt.
   const [openTasks, setOpenTasks] = useState<Set<string>>(new Set());
   // Schritte einer aufgeklappten LAUFENDEN Aufgabe. Sie liegen bereits in der
   // Datenbank (dieselbe Quelle wie die Task-Detailansicht) — bisher holte sie im
-  // Sprach-Panel nur niemand ab, also stand dort „laeuft" und sonst nichts.
+  // Sprach-Panel nur niemand ab, also stand dort „läuft" und sonst nichts.
   const [taskSteps, setTaskSteps] = useState<Record<string, string[]>>({});
   const delegating = tasks.some((t) => !t.done); // any task still running
   const activityRef = useRef<HTMLDivElement>(null);
@@ -374,7 +374,7 @@ export function VoiceSessionModal({
   // 441 Verbindungsversuche in 85 Sekunden (#691). Der Zaehler wird
   // zurueckgesetzt, sobald Gespraechsdaten eintreffen — kommt vom Server auch
   // im Fehlerfall noch irgendein Ereignis, faengt das Zaehlen von vorn an und
-  // die Grenze ist wirkungslos. Deshalb zusaetzlich eine Bremse, die von
+  // die Grenze ist wirkungslos. Deshalb zusätzlich eine Bremse, die von
   // KEINEM Ruecksetzen abhaengt: Versuche innerhalb eines Zeitfensters.
   const VERSUCHSFENSTER_MS = 60_000;
   const MAX_VERSUCHE_IM_FENSTER = 10;
@@ -389,7 +389,7 @@ export function VoiceSessionModal({
 
   // Solange die Sprachsitzung steht, auf Freigaben dieses Agenten horchen. Anders als
   // im Text-Chat NICHT an einen "arbeitet gerade"-Zustand gekoppelt: im Sprachmodus
-  // laeuft die Arbeit oft im Hintergrund weiter, waehrend der Nutzer schon wieder redet.
+  // läuft die Arbeit oft im Hintergrund weiter, waehrend der Nutzer schon wieder redet.
   useEffect(() => {
     if (state === "connecting" || state === "error") {
       setPendingApproval(null);
@@ -421,7 +421,7 @@ export function VoiceSessionModal({
   }, [state, agentId]);
 
   // ``antwort`` ist die gewaehlte Option oder die Wahl aus einer Ansicht. Ohne
-  // sie erfuhr der Agent nur „genehmigt" und nicht, WAS gewaehlt wurde.
+  // sie erfuhr der Agent nur „genehmigt" und nicht, WAS gewählt wurde.
   const decideApproval = useCallback(async (approve: boolean, antwort?: string) => {
     if (!pendingApproval || approvalBusy) return;
     setApprovalBusy(true);
@@ -518,7 +518,7 @@ export function VoiceSessionModal({
   //: Tonkette, nicht ein Parameter der Engine.
   const empfindlichkeitRef = useRef({ schwelle: 0.02, minFrames: 2 });
   const [empfindlichkeit, setEmpfindlichkeit] = useState(40);
-  //: Roher Eingangspegel (0-1) fuer die Anzeige neben dem Regler.
+  //: Roher Eingangspegel (0-1) für die Anzeige neben dem Regler.
   const [pegel, setPegel] = useState(0);
   //: Name des Eingabegeraets — der entscheidende Teil der Meldung, wenn nichts
   //: ankommt: er zeigt sofort, dass ein virtuelles Geraet aktiv ist.
@@ -596,13 +596,13 @@ export function VoiceSessionModal({
 
     neuVerbindenRef.current = () => {
       if (closingRef.current) return;
-      // Zaehler zuruecksetzen: der Nutzer hat sich bewusst entschieden, das
+      // Zaehler zurücksetzen: der Nutzer hat sich bewusst entschieden, das
       // ist kein weiterer Versuch einer kaputten Sitzung.
       reconnectsRef.current = 1;   // >0, damit der Server das Gespraech nachlaedt
       versucheImFenster.current = [];  // bewusste Entscheidung, kein Sturm
       setError(null);
       setState("connecting");
-      try { wsRef.current?.close(); } catch { /* schliesst gleich selbst */ }
+      try { wsRef.current?.close(); } catch { /* schließt gleich selbst */ }
       void connectWs();
     };
 
@@ -665,7 +665,7 @@ export function VoiceSessionModal({
   }, [agentId]);
 
 
-  // Nur fuer aufgeklappte, noch laufende Aufgaben nachladen — zugeklappt oder fertig
+  // Nur für aufgeklappte, noch laufende Aufgaben nachladen — zugeklappt oder fertig
   // kostet es nichts. Ende der Aufgabe beendet das Nachladen von selbst.
   useEffect(() => {
     const live = tasks.filter((t) => !t.done && t.id && openTasks.has(t.id));
@@ -916,11 +916,11 @@ export function VoiceSessionModal({
         // ist dasselbe wie ein abgerissener Stream — und wurde bis 2026-08-18
         // anders behandelt: Fehler anzeigen, Ende, von Hand neu starten. Jetzt
         // derselbe Weg wie bei "done": neu verbinden und das Gespraech
-        // fortsetzen. Die Obergrenze fuer Neuversuche bleibt, damit ein echter
-        // Dauerfehler nicht still im Kreis laeuft, sondern sichtbar wird.
+        // fortsetzen. Die Obergrenze für Neuversuche bleibt, damit ein echter
+        // Dauerfehler nicht still im Kreis läuft, sondern sichtbar wird.
         if (data.retryable && reconnectsRef.current < MAX_VOICE_RECONNECTS) {
           setState("connecting");
-          try { wsRef.current?.close(); } catch { /* schliesst gleich selbst */ }
+          try { wsRef.current?.close(); } catch { /* schließt gleich selbst */ }
           break;
         }
         setError(String(data.message || "Fehler"));
@@ -967,7 +967,7 @@ export function VoiceSessionModal({
       nextPlayRef.current = 0;
     }
     // Chrome haelt einen AudioContext ohne Nutzergeste "suspended". Die Bloecke werden
-    // dann brav eingeplant und NIE hoerbar: in der Oberflaeche steht „Spricht…", aus dem
+    // dann brav eingeplant und NIE hoerbar: in der Oberfläche steht „Spricht…", aus dem
     // Lautsprecher kommt nichts. Deshalb bei jedem Block nachsehen — resume() auf einem
     // laufenden Kontext kostet nichts.
     if (outCtxRef.current.state === "suspended") {
@@ -1092,7 +1092,7 @@ export function VoiceSessionModal({
       //: kommt. Aus Nutzersicht: „Hört zu …", dauerhaft, ohne Fehler. Ein
       //: Betroffener hat tagelang am Reverse-Proxy und am Netz gesucht.
       let rohSpitze = 0;
-      //: Pegel fuer die Anzeige (0-1). Ohne sie ist ein geschlossenes Rauschtor
+      //: Pegel für die Anzeige (0-1). Ohne sie ist ein geschlossenes Rauschtor
       //: von einer stummen Quelle nicht zu unterscheiden — beides sieht gleich
       //: aus, und der Empfindlichkeitsregler bleibt Raterei.
       let letzteAnzeige = 0;
@@ -1116,7 +1116,7 @@ export function VoiceSessionModal({
         const pegel = Math.sqrt(summe / input.length);
         if (pegel > rohSpitze) rohSpitze = pegel;
         // Anzeige gedrosselt: 128 Blöcke je Sekunde in den Zustand zu schreiben
-        // wuerde die Oberflaeche mehr beschaeftigen als die Aufnahme.
+        // würde die Oberfläche mehr beschaeftigen als die Aufnahme.
         const jetzt = performance.now();
         if (jetzt - letzteAnzeige > 100) {
           letzteAnzeige = jetzt;
@@ -1156,7 +1156,7 @@ export function VoiceSessionModal({
       // Nullen und bleibt ihm damit unsichtbar. Der Nutzer sah „Hört zu …",
       // dauerhaft, ohne Fehler, und suchte tagelang am Reverse-Proxy.
       // Vier Sekunden trennen „noch nichts gesagt" von „liefert nichts": ein
-      // echtes Mikrofon zeigt auch in Ruhe Grundrauschen weit ueber diesem Wert.
+      // echtes Mikrofon zeigt auch in Ruhe Grundrauschen weit über diesem Wert.
       const STUMM_EPSILON = 0.0005;
       window.setTimeout(() => {
         if (inCtxRef.current !== ctx || framesSent === 0) return;
@@ -1173,7 +1173,7 @@ export function VoiceSessionModal({
       }, 4000);
 
       // Wachhund: kommt nach zweieinhalb Sekunden kein einziger Block, liegt es nicht
-      // am leisen Sprechen — dann laeuft die Aufnahme gar nicht. Das gehoert gesagt,
+      // am leisen Sprechen — dann läuft die Aufnahme gar nicht. Das gehoert gesagt,
       // samt Zustand des AudioContext, sonst sucht man an der falschen Stelle.
       window.setTimeout(() => {
         if (framesSent === 0 && inCtxRef.current === ctx) {
@@ -1293,7 +1293,7 @@ export function VoiceSessionModal({
   // Buehne allerdings nur noch Briefmarken, also gilt dort Schluss.
   const alleAnzeigen = media.filter((m) => m.kind === "image" || m.kind === "web");
   const stageItems = alleAnzeigen.slice(0, 4);
-  // Groesse des Overlays: der Nutzer zieht sie sich zurecht, wir merken sie uns.
+  // Größe des Overlays: der Nutzer zieht sie sich zurecht, wir merken sie uns.
   // Vorher war das Fenster fest (max-w-6xl) — bei langen Zusammenfassungen scrollte
   // man in einer schmalen Spalte, obwohl der Bildschirm leer daneben lag.
   // Die beiden Seitenspalten lassen sich wegklappen, damit die Buehne in der Mitte
@@ -1321,7 +1321,7 @@ export function VoiceSessionModal({
         JSON.stringify({ gespraech: gesprAus, aufgaben: aufgabenAus }),
       );
     } catch {
-      /* Privater Modus o.ae. — dann gilt die Einstellung nur fuer dieses Gespraech. */
+      /* Privater Modus o.ae. — dann gilt die Einstellung nur für dieses Gespraech. */
     }
   }, [gesprAus, aufgabenAus]);
 
@@ -1372,7 +1372,7 @@ export function VoiceSessionModal({
     window.addEventListener("mouseup", onUp);
   };
 
-  // Sobald der Nutzer die Groesse selbst gesetzt hat, duerfen die Spalten NICHT mehr
+  // Sobald der Nutzer die Größe selbst gesetzt hat, duerfen die Spalten NICHT mehr
   // an Bildschirmprozenten haengen — sonst waechst der Rahmen und der Inhalt bleibt
   // oben kleben, mit einer leeren Flaeche darunter.
   const sized = !embedded && (maximized || !!size);
@@ -1384,8 +1384,8 @@ export function VoiceSessionModal({
     : "max-h-[42vh] min-h-[26vh] lg:max-h-[60vh] lg:min-h-[48vh]";
   // Eingeklappte Spalten schrumpfen auf eine schmale Leiste; was sie freigeben,
   // bekommt die Mitte — dort liegen die Screenshots, und genau die sollen gross
-  // werden. Eine Leiste ist 2.75rem breit, das reicht fuer Knopf und Beschriftung.
-  // ACHTUNG: die Klassen muessen WOERTLICH im Quelltext stehen. Tailwind liest
+  // werden. Eine Leiste ist 2.75rem breit, das reicht für Knopf und Beschriftung.
+  // ACHTUNG: die Klassen müssen WOERTLICH im Quelltext stehen. Tailwind liest
   // die Dateien als Text — ein zur Laufzeit zusammengebauter Klassenname
   // existiert im fertigen CSS schlicht nicht, die Spalten blieben dann gleich.
   const spalten =
@@ -1399,7 +1399,7 @@ export function VoiceSessionModal({
   // Mehrere Anzeigen brauchen Breite, sonst stehen sie als Streifen untereinander.
   // Dafuer muss der Nutzer nicht erst eine Spalte einklappen.
   const buehneWeit = gesprAus || aufgabenAus || stageItems.length > 1;
-  // Tailwind liest die Datei als Text — die Klassen muessen woertlich dastehen.
+  // Tailwind liest die Datei als Text — die Klassen müssen woertlich dastehen.
   const buehnenRaster =
     stageItems.length >= 3
       ? "grid gap-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
@@ -1477,7 +1477,7 @@ export function VoiceSessionModal({
             )}
           </div>
 
-          {/* Freigabe-Anfrage (#474) — ueber beiden Modi, damit sie im Sprachchat
+          {/* Freigabe-Anfrage (#474) — über beiden Modi, damit sie im Sprachchat
               nicht in der durchlaufenden Live-Aktivitaet untergeht. */}
           {pendingApproval && (
             <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
@@ -1721,7 +1721,7 @@ export function VoiceSessionModal({
                   </div>
                 )}
                 {alleAnzeigen.length > stageItems.length && (
-                  /* Stillschweigend abschneiden waere gelogen — es sieht dann so
+                  /* Stillschweigend abschneiden wäre gelogen — es sieht dann so
                      aus, als haette der Agent nur vier Bilder geliefert. */
                   <p className="text-center text-[11px] text-muted-foreground/50">
                     {alleAnzeigen.length - stageItems.length} ältere Anzeige
@@ -2311,7 +2311,7 @@ function Buehnenkarte({
   onImFenster: (url: string, caption?: string) => void;
 }) {
   // Allein darf ein Bild die ganze Hoehe nehmen; zu mehreren muss es sich
-  // bescheiden, sonst scrollt man von einem Screenshot zum naechsten.
+  // bescheiden, sonst scrollt man von einem Screenshot zum nächsten.
   const hoehe = gross ? (weit ? "max-h-[62vh]" : "max-h-72") : "max-h-[34vh]";
   return (
     <div className="relative min-w-0 rounded-xl border border-border bg-foreground/[0.02] p-3">

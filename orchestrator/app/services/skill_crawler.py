@@ -12,6 +12,7 @@ import re
 from datetime import datetime, timezone
 
 import httpx
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -81,15 +82,31 @@ def _guess_category(name: str, description: str) -> str:
 
 
 def _parse_frontmatter(content: str) -> dict:
-    """Parse YAML-like frontmatter from SKILL.md content."""
+    """Parse the YAML frontmatter of a SKILL.md file.
+
+    Real YAML, not a line-by-line ":"-split: a block-scalar description
+    (``description: |-`` followed by indented lines, common in hand-written
+    SKILL.md files) left the old naive parser with the literal ``"|-"`` as the
+    description — that string then surfaced straight in the marketplace UI.
+    Untrusted external repos can ship malformed or non-mapping YAML, so a
+    parse failure (or a non-dict/non-scalar result) falls back to "no
+    frontmatter" instead of raising.
+    """
     match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
     if not match:
         return {}
+    try:
+        parsed = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
     frontmatter = {}
-    for line in match.group(1).strip().split("\n"):
-        if ":" in line:
-            key, _, value = line.partition(":")
-            frontmatter[key.strip()] = value.strip().strip('"').strip("'")
+    for key, value in parsed.items():
+        if isinstance(value, str):
+            frontmatter[str(key).strip()] = value.strip()
+        elif value is not None and not isinstance(value, (dict, list)):
+            frontmatter[str(key).strip()] = str(value).strip()
     return frontmatter
 
 

@@ -15,8 +15,8 @@ import {
 import { cn } from "@/lib/utils";
 
 // --- Hilfe-Index: alles was als Hilfe/Help identifizierbar ist -------------------
-// Eine Quelle fuer FAQ + Funktions-How-Tos + Deep-Links. Die Suche filtert client-
-// seitig (kein Backend, keine zusaetzliche Dependency) ueber title/body/keywords.
+// Eine Quelle für FAQ + Funktions-How-Tos + Deep-Links. Die Suche filtert client-
+// seitig (kein Backend, keine zusaetzliche Dependency) über title/body/keywords.
 type HelpTopic = {
   id: string;
   category: string;
@@ -33,7 +33,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "begriffe",
     category: "Erste Schritte",
     title: "Agent, Chat, Task, Workspace — was ist was?",
-    body: "Agent = dein KI-Mitarbeiter (eigener Container + Gedaechtnis). Chat = unterhalten (Hin und Her). Task = beauftragen (autonom, auch im Hintergrund). Workspace = privater Dateibereich des Agenten (/workspace), bleibt ueber Updates erhalten.",
+    body: "Agent = dein KI-Mitarbeiter (eigener Container + Gedaechtnis). Chat = unterhalten (Hin und Her). Task = beauftragen (autonom, auch im Hintergrund). Workspace = privater Dateibereich des Agenten (/workspace), bleibt über Updates erhalten.",
     keywords: ["agent", "chat", "task", "workspace", "begriffe", "grundlagen"],
     href: "/onboarding",
     hrefLabel: "Onboarding starten",
@@ -42,7 +42,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "onboarding",
     category: "Erste Schritte",
     title: "Schnellstart mit einem Branchen-Paket (Onboarding)",
-    body: "Ueber den Onboarding-Wizard ein vorkonfiguriertes Paket waehlen (z. B. Entwickler-Team, Content-Studio, Support-Desk) — die passenden Agenten werden automatisch angelegt.",
+    body: "Über den Onboarding-Wizard ein vorkonfiguriertes Paket wählen (z. B. Entwickler-Team, Content-Studio, Support-Desk) — die passenden Agenten werden automatisch angelegt.",
     keywords: ["onboarding", "wizard", "start", "paket", "branche", "einrichten"],
     href: "/onboarding",
     hrefLabel: "Zum Onboarding",
@@ -52,7 +52,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "agent-erstellen",
     category: "Agenten",
     title: "Neuen Agenten erstellen",
-    body: "Auf der Agents-Seite oben rechts einen neuen Agenten anlegen: Name, Symbol (Icon + Farbe), Harness/Modus und Modell waehlen. Es werden nur freigegebene Modelle/Accounts angezeigt.",
+    body: "Auf der Agents-Seite oben rechts einen neuen Agenten anlegen: Name, Symbol (Icon + Farbe), Harness/Modus und Modell wählen. Es werden nur freigegebene Modelle/Accounts angezeigt.",
     keywords: ["agent", "erstellen", "anlegen", "neu", "modell", "harness"],
     href: "/agents",
     hrefLabel: "Zu den Agents",
@@ -60,8 +60,8 @@ const HELP_TOPICS: HelpTopic[] = [
   {
     id: "agent-symbol",
     category: "Agenten",
-    title: "Agent-Symbol (Icon + Farbe) aendern",
-    body: "Das Symbol eines Agenten laesst sich beim Erstellen UND nachtraeglich anpassen: Agent oeffnen, Einstellungen, Bereich 'Symbol', Icon und Farbe waehlen (wird sofort gespeichert und auf den Karten angezeigt).",
+    title: "Agent-Symbol (Icon + Farbe) ändern",
+    body: "Das Symbol eines Agenten lässt sich beim Erstellen UND nachträglich anpassen: Agent öffnen, Einstellungen, Bereich 'Symbol', Icon und Farbe wählen (wird sofort gespeichert und auf den Karten angezeigt).",
     keywords: ["symbol", "icon", "avatar", "farbe", "bild", "aussehen", "agent"],
     href: "/agents",
     hrefLabel: "Zu den Agents",
@@ -70,7 +70,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "voice",
     category: "Agenten",
     title: "Mit einem Agenten sprechen (Voice-Live-Session)",
-    body: "Im Agenten-Chat die Sprach-/Voice-Funktion starten und sprechen — der Agent antwortet per Sprache. Spracherkennung/-ausgabe (inkl. Microsoft/Azure-Stimmen) ist in den Einstellungen waehlbar.",
+    body: "Im Agenten-Chat die Sprach-/Voice-Funktion starten und sprechen — der Agent antwortet per Sprache. Spracherkennung/-ausgabe (inkl. Microsoft/Azure-Stimmen) ist in den Einstellungen wählbar.",
     keywords: ["voice", "sprache", "sprechen", "mikrofon", "stt", "tts", "live"],
     href: "/agents",
     hrefLabel: "Zu den Agents",
@@ -89,8 +89,8 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "skills-install",
     category: "Funktionen",
     title: "Skill in einen Agenten installieren",
-    body: "Im Skill Store zuerst oben einen Agenten auswaehlen, dann beim gewuenschten Skill auf 'Installieren' klicken. Ohne ausgewaehlten Agenten weist ein Hinweis darauf hin; Fehler werden angezeigt statt verschluckt.",
-    keywords: ["skill", "installieren", "hinzufuegen", "agent"],
+    body: "Im Skill Store zuerst oben einen Agenten auswaehlen, dann beim gewünschten Skill auf 'Installieren' klicken. Ohne ausgewählten Agenten weist ein Hinweis darauf hin; Fehler werden angezeigt statt verschluckt.",
+    keywords: ["skill", "installieren", "hinzufügen", "agent"],
     href: "/skills",
     hrefLabel: "Zum Skill Marketplace",
   },
@@ -98,7 +98,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "meeting-planner",
     category: "Funktionen",
     title: "Meeting-Transkription zu MS Planner",
-    body: "Aus Meeting-Aufzeichnungen erkannte Aufgaben (Action-Items) werden automatisch in einen MS-Planner-Plan gespiegelt — ueber das M365-Konto des Meeting-Owners. Voraussetzung: Admin hat die Planner-Plan-ID hinterlegt.",
+    body: "Aus Meeting-Aufzeichnungen erkannte Aufgaben (Action-Items) werden automatisch in einen MS-Planner-Plan gespiegelt — über das M365-Konto des Meeting-Owners. Voraussetzung: Admin hat die Planner-Plan-ID hinterlegt.",
     keywords: ["meeting", "transkription", "planner", "aufgaben", "action items", "protokoll"],
     href: "/meeting-rooms",
     hrefLabel: "Zu den Meeting Rooms",
@@ -106,8 +106,8 @@ const HELP_TOPICS: HelpTopic[] = [
   {
     id: "notification-task",
     category: "Funktionen",
-    title: "Benachrichtigung zu Task-Details oeffnen",
-    body: "Ein Klick auf eine Benachrichtigung (Glocke oben) oeffnet ein zentriertes Fenster mit allen Task-Details: Status, Ergebnis, Kosten, Dauer, Tokens und ggf. Fehlermeldung.",
+    title: "Benachrichtigung zu Task-Details öffnen",
+    body: "Ein Klick auf eine Benachrichtigung (Glocke oben) öffnet ein zentriertes Fenster mit allen Task-Details: Status, Ergebnis, Kosten, Dauer, Tokens und ggf. Fehlermeldung.",
     keywords: ["benachrichtigung", "notification", "glocke", "task", "details", "ergebnis"],
     href: "/tasks",
     hrefLabel: "Zu den Tasks",
@@ -116,7 +116,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "tasks-vs-chat",
     category: "Funktionen",
     title: "Task vs. Chat — wann was?",
-    body: "Frag den Agenten im Chat (schnelle Fragen, Hin und Her). Beauftrage ihn als Task (klar umrissener Auftrag, laeuft autonom, auch im Hintergrund; Ergebnis spaeter abholen/bewerten).",
+    body: "Frag den Agenten im Chat (schnelle Fragen, Hin und Her). Beauftrage ihn als Task (klar umrissener Auftrag, läuft autonom, auch im Hintergrund; Ergebnis später abholen/bewerten).",
     keywords: ["task", "chat", "unterschied", "auftrag", "hintergrund"],
     href: "/tasks",
     hrefLabel: "Zu den Tasks",
@@ -135,7 +135,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "azure-voice",
     category: "Admin",
     title: "Microsoft-/Azure-Stimmen (Speech) aktivieren",
-    body: "Admin: Einstellungen, Voice, Azure-Speech-Key + Region eintragen. Danach sind Azure-STT/TTS als Sprach-Option waehlbar (Standard bleibt sonst faster-whisper/Edge).",
+    body: "Admin: Einstellungen, Voice, Azure-Speech-Key + Region eintragen. Danach sind Azure-STT/TTS als Sprach-Option wählbar (Standard bleibt sonst faster-whisper/Edge).",
     keywords: ["azure", "speech", "stimme", "voice", "microsoft", "stt", "tts", "admin"],
     href: "/admin",
     hrefLabel: "Zur Admin-Konsole",
@@ -144,7 +144,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "dreaming",
     category: "Admin",
     title: "Dreaming-Memory (adaptives Nutzerprofil)",
-    body: "Admin-Funktion (standardmaessig aus): Der Scheduler frischt periodisch das adaptive Nutzerprofil aus den Memories auf. Aktivierbar ueber die Automatisierungs-Einstellungen in der Admin-Konsole.",
+    body: "Admin-Funktion (standardmäßig aus): Der Scheduler frischt periodisch das adaptive Nutzerprofil aus den Memories auf. Aktivierbar über die Automatisierungs-Einstellungen in der Admin-Konsole.",
     keywords: ["dreaming", "memory", "profil", "gedaechtnis", "automatisierung", "admin"],
     href: "/admin",
     hrefLabel: "Zur Admin-Konsole",
@@ -153,7 +153,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "rollen",
     category: "Admin",
     title: "Modelle/Accounts/Tools per Rolle freigeben",
-    body: "Es werden nur freigegebene Optionen angezeigt. Admin legt einen AI-Account an und gibt ihn per Rolle (Rechtebuendel) frei — erst dann ist er fuer Benutzer waehlbar.",
+    body: "Es werden nur freigegebene Optionen angezeigt. Admin legt einen AI-Account an und gibt ihn per Rolle (Rechtebuendel) frei — erst dann ist er für Benutzer wählbar.",
     keywords: ["rolle", "freigabe", "rechte", "ai-account", "modell", "admin", "gruppe"],
     href: "/admin",
     hrefLabel: "Zur Admin-Konsole",
@@ -163,24 +163,24 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "faq-keine-agenten",
     category: "Problemloesung (FAQ)",
     title: "Ich sehe keinen Agenten",
-    body: "Auf der Agents-Seite siehst du nur deine eigenen Agenten. Admins: Admin-Konsole, All Agents fuer alle.",
+    body: "Auf der Agents-Seite siehst du nur deine eigenen Agenten. Admins: Admin-Konsole, All Agents für alle.",
     keywords: ["agent", "leer", "sehe nichts", "faq"],
     href: "/agents",
     hrefLabel: "Zu den Agents",
   },
   {
-    id: "faq-modell-nicht-waehlbar",
+    id: "faq-modell-nicht-wählbar",
     category: "Problemloesung (FAQ)",
-    title: "Modell/Account nicht waehlbar",
+    title: "Modell/Account nicht wählbar",
     body: "Es werden nur freigegebene Optionen angezeigt. Der Admin muss den AI-Account anlegen und per Rolle freigeben.",
-    keywords: ["modell", "account", "waehlbar", "freigabe", "faq"],
+    keywords: ["modell", "account", "wählbar", "freigabe", "faq"],
   },
   {
-    id: "faq-agent-haengt",
+    id: "faq-agent-hängt",
     category: "Problemloesung (FAQ)",
     title: "Agent reagiert nicht / arbeitet ewig",
     body: "Status auf der Detailseite pruefen; bei Bedarf Restart. Lange Aufgaben (Render/Build) brauchen Zeit.",
-    keywords: ["agent", "haengt", "reagiert nicht", "restart", "faq"],
+    keywords: ["agent", "hängt", "reagiert nicht", "restart", "faq"],
     href: "/agents",
     hrefLabel: "Zu den Agents",
   },
@@ -195,7 +195,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "faq-approval",
     category: "Problemloesung (FAQ)",
     title: "Freigabe-Anfrage blockiert den Agenten",
-    body: "Unter Approvals bzw. in der Benachrichtigung eine Option waehlen — erst dann macht der Agent weiter.",
+    body: "Unter Approvals bzw. in der Benachrichtigung eine Option wählen — erst dann macht der Agent weiter.",
     keywords: ["approval", "freigabe", "blockiert", "genehmigung", "faq"],
     href: "/approvals",
     hrefLabel: "Zu den Approvals",
@@ -270,7 +270,7 @@ export default function HelpPage() {
             <div className="text-sm font-medium flex items-center gap-1.5">
               Benutzerhandbuch <Download className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
-            <div className="text-xs text-muted-foreground truncate">Klick-fuer-Klick-Anleitung (PDF)</div>
+            <div className="text-xs text-muted-foreground truncate">Klick-für-Klick-Anleitung (PDF)</div>
           </div>
         </a>
         <Link
@@ -280,7 +280,7 @@ export default function HelpPage() {
           <Rocket className="h-5 w-5 text-primary shrink-0" />
           <div className="min-w-0">
             <div className="text-sm font-medium">Schnellstart</div>
-            <div className="text-xs text-muted-foreground truncate">Onboarding-Wizard oeffnen</div>
+            <div className="text-xs text-muted-foreground truncate">Onboarding-Wizard öffnen</div>
           </div>
         </Link>
         <a
@@ -323,7 +323,7 @@ export default function HelpPage() {
         {byCategory.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/60">
             <Search className="h-8 w-8 mb-2" />
-            <p className="text-sm">Kein Treffer fuer diese Suche.</p>
+            <p className="text-sm">Kein Treffer für diese Suche.</p>
           </div>
         )}
         {byCategory.map(([category, topics]) => (
@@ -356,7 +356,7 @@ export default function HelpPage() {
                             href={t.href}
                             className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
                           >
-                            {t.hrefLabel || "Oeffnen"} <ExternalLink className="h-3 w-3" />
+                            {t.hrefLabel || "Öffnen"} <ExternalLink className="h-3 w-3" />
                           </Link>
                         )}
                       </div>

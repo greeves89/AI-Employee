@@ -9,7 +9,7 @@ import type {
 } from "@/lib/types";
 
 // Spiegelt die serverseitigen Grenzen (agents.py / templates.py) — hier nur, damit die
-// UI gar nicht erst in ein 422 laeuft.
+// UI gar nicht erst in ein 422 läuft.
 export const MAX_RESPONSIBILITIES = 20;
 
 export const RHYTHMS: { value: ResponsibilityRhythm; label: string }[] = [
@@ -26,12 +26,12 @@ export const PRIORITIES: { value: ResponsibilityPriority; label: string }[] = [
 ];
 
 /**
- * Verantwortungsbereiche bearbeiten — EIN Editor fuer Agent und Vorlage.
+ * Verantwortungsbereiche bearbeiten — EIN Editor für Agent und Vorlage.
  *
  * Der Editor stand nur an einem Agenten. Vorlagen konnten seit dem Backend zwar
  * Bereiche tragen, aber niemand konnte sie eintragen: jeder neue Agent musste von
  * Hand eingerichtet werden. Statt einer zweiten, leicht abweichenden Fassung liegt
- * er hier — wer eine Regel aendert (Grenze, Takt, Prioritaet), aendert sie fuer beide.
+ * er hier — wer eine Regel aendert (Grenze, Takt, Prioritaet), aendert sie für beide.
  */
 export function ResponsibilitiesEditor({
   value,
@@ -76,7 +76,7 @@ export function ResponsibilitiesEditor({
       {value.length === 0 ? (
         <div className="rounded-lg border border-dashed border-foreground/[0.08] p-2.5 text-[10px] leading-relaxed text-muted-foreground/50">
           {emptyHint ??
-            "Noch keine Bereiche. Ohne sie plant der Agent nur, was jemand als Todo angelegt hat — mit ihnen weiss er, wofuer er dauerhaft zustaendig ist, und baut sich daraus selbst den Tag."}
+            "Noch keine Bereiche. Ohne sie plant der Agent nur, was jemand als Todo angelegt hat — mit ihnen weiss er, wofuer er dauerhaft zuständig ist, und baut sich daraus selbst den Tag."}
         </div>
       ) : (
         <div className="space-y-1.5">

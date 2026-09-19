@@ -2,13 +2,13 @@
 
 // Was DIESER Nutzer benutzen darf — die Member-Sicht auf „Modelle".
 //
-// Der Reiter zeigte bis 2026-08-15 fuer jeden dieselbe Seite: Provider-
+// Der Reiter zeigte bis 2026-08-15 für jeden dieselbe Seite: Provider-
 // Konfiguration, ChatGPT-Login der Plattform, Max Turns, Anzahl gleichzeitiger
-// Agenten. Fuer einen Member ist dort **nichts** einstellbar — alles davon
+// Agenten. Für einen Member ist dort **nichts** einstellbar — alles davon
 // gehoert der Anlage, nicht ihm. Er sah eine Bedienoberflaeche, die auf keinen
 // seiner Knopfdruecke reagiert.
 //
-// Seine Frage ist eine andere: „welche Modelle stehen mir zur Verfuegung?"
+// Seine Frage ist eine andere: „welche Modelle stehen mir zur Verfügung?"
 // Genau das steht hier — lesend, ohne einen einzigen Schalter.
 //
 // Die Liste kommt ungefiltert aus der Schnittstelle: ``/ai-accounts`` liefert

@@ -268,7 +268,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
 
       // Die Zahlen SAGEN, nicht nur „fertig": bei einem krummen Archiv
 
-      // waere sonst nicht zu sehen, dass Dateien uebersprungen wurden.
+      // wäre sonst nicht zu sehen, dass Dateien uebersprungen wurden.
 
       const teile = [`${r.written} Dateien eingespielt`];
 

@@ -51,7 +51,7 @@ export default function RootLayout({
           <DialogProvider>
             <AuthGuard>
               {children}
-              {/* Nur fuer Administratoren; blendet sich sonst selbst aus. */}
+              {/* Nur für Administratoren; blendet sich sonst selbst aus. */}
               <ConciergeWidget />
               {/* Feedback-Gedöns: auf jeder Route, blendet sich ohne Session aus. */}
               <FeedbackWidget />

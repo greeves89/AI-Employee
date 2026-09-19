@@ -305,8 +305,8 @@ export default function ApprovalsPage() {
     await loadApprovals();
   };
 
-  // Direkt aus der Liste antworten, ohne das Fenster zu oeffnen. Nutzt denselben
-  // Weg wie das Fenster — eine zweite Mechanik daneben waere die naechste
+  // Direkt aus der Liste antworten, ohne das Fenster zu öffnen. Nutzt denselben
+  // Weg wie das Fenster — eine zweite Mechanik daneben wäre die naechste
   // Baustelle.
   const handleAnswerInline = async (approvalId: string, answer: string) => {
     setBusyApprovalId(approvalId);
@@ -751,8 +751,8 @@ export default function ApprovalsPage() {
                               Nachtschicht
                             </span>
                           ) : isEscalation(approval) ? (
-                            // Eskalation: der Mensch MUSS uebernehmen. Das als
-                            // gewoehnliche Freigabe zu zeigen, waere untertrieben.
+                            // Eskalation: der Mensch MUSS übernehmen. Das als
+                            // gewoehnliche Freigabe zu zeigen, wäre untertrieben.
                             <span className="inline-flex items-center gap-1 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-400">
                               <Siren className="h-2.5 w-2.5" />
                               {escalationLabel(approval)}

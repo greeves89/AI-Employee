@@ -197,6 +197,12 @@ class DiskMonitorService:
                 action_url=f"/agents/{agent.id}",
                 meta={"type": "disk_quota_auto_recovered", "agent_id": agent.id, "disk_percent": percent},
             ))
+            db_agent = await db.get(Agent, agent.id)
+            if db_agent is not None and db_agent.config and "stop_reason" in db_agent.config:
+                from sqlalchemy.orm.attributes import flag_modified
+                db_agent.config = dict(db_agent.config)
+                db_agent.config.pop("stop_reason", None)
+                flag_modified(db_agent, "config")
             await db.commit()
 
         if self._redis and getattr(self._redis, "client", None):
@@ -215,6 +221,8 @@ class DiskMonitorService:
         Aufgaben saehen in der Zwischenzeit von aussen wie erledigte Arbeit
         aus. Tagelang unbemerkt geblieben (Issue #714).
         """
+        from sqlalchemy.orm.attributes import flag_modified
+
         from app.db.session import resilient_session
         from app.models.notification import Notification
         from app.models.task import Task, TaskStatus
@@ -256,6 +264,23 @@ class DiskMonitorService:
                 meta={"type": "disk_quota_stop", "agent_id": agent.id, "tasks_failed": anzahl},
             )
             db.add(notif)
+
+            # Durabler Zustand auf dem Agenten selbst (nicht nur eine
+            # Benachrichtigung, die man wegklicken kann) — die Uebersichtsseite
+            # und das Login-Popup lesen das ohne Extra-Abfrage; wird geloescht,
+            # sobald der Agent wieder unter die Warnschwelle faellt oder
+            # jemand ihn manuell neu startet (siehe agent_manager.start_agent).
+            db_agent = await db.get(Agent, agent.id)
+            if db_agent is not None:
+                db_agent.config = dict(db_agent.config or {})
+                db_agent.config["stop_reason"] = {
+                    "type": "disk_quota",
+                    "message": titel,
+                    "detail": nachricht,
+                    "disk_percent": round(stats["disk_percent"], 1),
+                    "at": datetime.now(timezone.utc).isoformat(),
+                }
+                flag_modified(db_agent, "config")
             await db.commit()
 
         if anzahl:
@@ -274,3 +299,17 @@ class DiskMonitorService:
                 await _publish_telegram(self._redis, titel, nachricht)
             except Exception:
                 logger.debug("Disk-Quota-Telegram-Alarm nicht zugestellt", exc_info=True)
+
+        # Derselbe #610-Umgehungsweg gilt fuer iOS/Web-Push: push_to_user ist
+        # NICHT automatisch an jede Notification gekoppelt (siehe core/push.py),
+        # jede Aufrufstelle muss selbst schicken. Best effort, wirft nie.
+        if agent.user_id:
+            try:
+                from app.core.push import push_to_user
+                async with resilient_session(session_factory=self._sf) as push_db:
+                    await push_to_user(
+                        push_db, agent.user_id, titel, nachricht,
+                        data={"type": "disk_quota_stop", "agent_id": agent.id},
+                    )
+            except Exception:
+                logger.debug("Disk-Quota-Push nicht zugestellt", exc_info=True)

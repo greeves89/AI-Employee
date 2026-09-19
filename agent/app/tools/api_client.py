@@ -50,6 +50,19 @@ def _truncate_preserving_words(text: str, limit: int) -> str:
     return text[:at].rstrip() + " […]"
 
 
+def _format_web_search_result(r: dict) -> str:
+    """Ein Treffer als Textblock — inkl. Alter/Herausgeber, wenn der Provider
+    sie liefert (aktuell nur ``brave_news``; DuckDuckGo/Brave/SerpApi liefern
+    leere Strings, das Format bleibt fuer sie unveraendert). Ohne Datum kann
+    der Agent einen zwei Jahre alten Artikel nicht von einer Meldung von
+    heute unterscheiden — genau das Ziel des brave_news-Providers."""
+    title = r.get("title", "")
+    age = r.get("age") or ""
+    publisher = r.get("publisher") or ""
+    suffix = (f" ({age})" if age else "") + (f" — {publisher}" if publisher else "")
+    return f"**{title}**{suffix}\n{r.get('url', '')}\n{r.get('snippet', '')}"
+
+
 class OrchestratorAPIClient:
     """HTTP client for orchestrator API - same endpoints used by MCP servers."""
 
@@ -1641,10 +1654,7 @@ class OrchestratorAPIClient:
         items = result.get("results") or []
         if not items:
             return f"No results found for '{query}'. Try different search terms."
-        blocks = [
-            f"**{r.get('title', '')}**\n{r.get('url', '')}\n{r.get('snippet', '')}"
-            for r in items
-        ]
+        blocks = [_format_web_search_result(r) for r in items]
         return f"Search results for '{query}':\n\n" + "\n\n---\n\n".join(blocks)
 
     async def close(self) -> None:

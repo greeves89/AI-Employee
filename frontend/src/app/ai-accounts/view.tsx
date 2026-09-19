@@ -358,7 +358,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                             ? "border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-400 hover:bg-emerald-500/[0.15]"
                             : "border-foreground/[0.12] bg-foreground/[0.04] text-muted-foreground hover:text-foreground"
                         )}
-                        title={m.enabled !== false ? "Fuer Agenten freigegeben — klicken zum Sperren" : "Gesperrt — klicken zum Freigeben"}
+                        title={m.enabled !== false ? "Für Agenten freigegeben — klicken zum Sperren" : "Gesperrt — klicken zum Freigeben"}
                       >
                         {m.enabled !== false ? "freigegeben" : "gesperrt"}
                       </button>

@@ -1,6 +1,7 @@
 import json
 import logging
 import random
+import re
 import string
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -35,6 +36,11 @@ _REFLECTION_MODEL = "claude-haiku-4-5-20251001"
 BUDGET_FALLBACK_MODEL = "claude-haiku-4-5-20251001"
 
 _ID_ALPHABET = string.digits + string.ascii_lowercase
+
+# Ein Retry-Titel hängt am Titel des VORGÄNGER-Versuchs (der bei Versuch 2
+# schon selbst ein "(Versuch 2)"-Suffix trug) — ohne diese Bereinigung stapeln
+# sich die Suffixe bei jedem weiteren Fehlschlag ("(Versuch 2) (Versuch 3) (Versuch 4)").
+_RETRY_TITLE_SUFFIX_RE = re.compile(r"\s*\(Versuch \d+\)\s*$")
 
 
 class UnknownAgentError(Exception):
@@ -858,9 +864,10 @@ class TaskRouter:
         # ein zweites Mal auszuloesen wuerde denselben Vorgang doppelt melden.
         meta.pop("rating_requested", None)
 
+        base_title = _RETRY_TITLE_SUFFIX_RE.sub("", task.title or "")
         retry = Task(
             id=retry_id,
-            title=f"{task.title} (Versuch {plan['attempt'] + 1})"[:200],
+            title=f"{base_title} (Versuch {plan['attempt'] + 1})"[:200],
             prompt=self_healing.build_retry_prompt(base_prompt, plan["strategy"], task.error),
             status=TaskStatus.PENDING,
             priority=task.priority,

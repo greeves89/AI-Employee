@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   Plug, CheckCircle2, Loader2, RefreshCw, AlertCircle,
   Network, ChevronRight, Wrench, Brain, Bell, Cpu,
@@ -415,7 +416,8 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
             <Plug className="h-4 w-4 text-blue-400" />
             <span className="text-sm font-medium">Integrations</span>
             <span className="text-[10px] text-muted-foreground/60">
-              Select which services this agent can access
+              Select which services this agent can access — neue
+              Verbindungen anlegen: <Link href="/integrations" className="text-primary hover:underline">Integrations</Link> (Seitenleiste)
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -707,7 +709,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
             </div>
           </div>
           <a
-            href="/secrets"
+            href="/admin?tab=secrets"
             target="_blank"
             className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
           >
@@ -720,7 +722,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           <div className="px-5 py-6 text-center">
             <KeyRound className="h-6 w-6 mx-auto mb-2 text-muted-foreground/30" />
             <p className="text-[11px] text-muted-foreground/50">No secrets configured yet.</p>
-            <a href="/secrets" target="_blank" className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors mt-1 inline-block">
+            <a href="/admin?tab=secrets" target="_blank" className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors mt-1 inline-block">
               Create your first secret →
             </a>
           </div>

@@ -130,6 +130,41 @@ async def test_computer_use_screenshot_returns_presentable_image(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_computer_use_screenshot_note_tells_size_origin_and_displays(monkeypatch):
+    """Die Bridge liefert Groesse und Bildschirmliste; beides muss in der
+    ``note`` ankommen — die Liste nur bei mehr als einem Monitor, sonst ist
+    sie Rauschen im Kontext."""
+    client = OrchestratorAPIClient()
+    bildschirme = [
+        {"number": 1, "primary": True, "width": 1440, "height": 900},
+        {"number": 2, "primary": False, "width": 1920, "height": 1080},
+    ]
+    antwort = {}
+
+    async def fake_request(method, path, json=None, params=None):
+        return {"result": antwort}
+
+    monkeypatch.setattr(client, "_request", fake_request)
+
+    antwort.update({
+        "screenshot_b64": "abc123", "image_size": {"w": 1280, "h": 720},
+        "display": 2, "displays": bildschirme,
+    })
+    note = multimodal.parse_image_result(
+        await client.computer_use({"action": "screenshot", "session_id": "s1"}))["note"]
+    assert "1280x720" in note
+    assert "top left" in note
+    assert "2 displays" in note and "1 (primary): 1440x900" in note and "2: 1920x1080" in note
+    assert "this is number 2" in note and "params.display=N" in note
+
+    antwort.update({"display": 1, "displays": bildschirme[:1]})
+    note = multimodal.parse_image_result(
+        await client.computer_use({"action": "screenshot", "session_id": "s1"}))["note"]
+    assert "1280x720" in note and "top left" in note
+    assert "displays" not in note and "params.display" not in note
+
+
+@pytest.mark.asyncio
 async def test_computer_use_screenshot_without_image_is_error(monkeypatch):
     client = OrchestratorAPIClient()
 

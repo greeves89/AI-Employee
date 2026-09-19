@@ -10,7 +10,7 @@ import type { CommandPolicy, CommandPolicyEffect } from "@/lib/api";
 /**
  * Master-Regeln + globale Befehlssperren.
  *
- * Wunsch des Kunden: Verhaltensvorgaben, die fuer ALLE Agenten aller Nutzer
+ * Wunsch des Kunden: Verhaltensvorgaben, die für ALLE Agenten aller Nutzer
  * gelten und die ein normaler Nutzer nicht abwaehlen kann — „ich will aber
  * nicht bei jedem agenten das einzeln vorgeben".
  *

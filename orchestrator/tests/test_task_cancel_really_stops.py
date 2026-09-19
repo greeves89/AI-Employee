@@ -289,8 +289,8 @@ class TheUiHasAManualStopTests(unittest.TestCase):
         `const laeuft = false; // const laeuft = task.status === "running"`
         bestuende eine Teilstringsuche auf der ungefilterten Datei."""
         code = _ohne_zeilenkommentare(SEITE)
-        self.assertIn('const laeuft = task.status === "running";', code)
-        self.assertIn('const canCancel = laeuft || task.status === "queued" || task.status === "pending";',
+        self.assertIn('const läuft = task.status === "running";', code)
+        self.assertIn('const canCancel = läuft || task.status === "queued" || task.status === "pending";',
                       code)
 
     def test_the_stop_button_is_visible_without_hovering(self):
@@ -304,7 +304,7 @@ class TheUiHasAManualStopTests(unittest.TestCase):
         # Dann-Zweig des `laeuft ? ... : ...` darf er nicht stehen, im
         # Sonst-Zweig muss er. („Ein ? steht davor" waere in JEDEM Ternaer
         # wahr — genau so eine Zusicherung hat die Gegenprobe still gelassen.)
-        ternaer = block.index("laeuft")
+        ternaer = block.index("läuft")
         dann_ab = block.index("?", ternaer)
         # Der Ternaer-Doppelpunkt beginnt eine Zeile — Tailwind-Klassen wie
         # `hover:bg-...` tragen selbst Doppelpunkte, die zaehlen nicht.
@@ -318,8 +318,8 @@ class TheUiHasAManualStopTests(unittest.TestCase):
         """Eine wartende Aufgabe nimmt man aus der Schlange, eine laufende
         unterbricht man — das sind zwei verschiedene Dinge."""
         code = _ohne_zeilenkommentare(SEITE)
-        self.assertIn('{laeuft ? "Stoppen" : "Abbrechen"}', code)
-        self.assertNotIn('{laeuft ? "Abbrechen" : "Stoppen"}', code)
+        self.assertIn('{läuft ? "Stoppen" : "Abbrechen"}', code)
+        self.assertNotIn('{läuft ? "Abbrechen" : "Stoppen"}', code)
         self.assertIn('? "Laufende Aufgabe stoppen', code)
         self.assertIn(': "Wartende Aufgabe aus der Warteschlange nehmen"', code)
 

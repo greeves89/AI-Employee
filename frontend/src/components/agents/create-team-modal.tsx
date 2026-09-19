@@ -162,7 +162,7 @@ export function CreateTeamModal({
                       <textarea
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Wofuer ist dieses Team zustaendig?"
+                        placeholder="Wofuer ist dieses Team zuständig?"
                         rows={2}
                         className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none"
                       />

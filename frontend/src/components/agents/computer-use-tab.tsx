@@ -230,7 +230,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
   }, []);
 
   // Ausdruecklicher Klick auf „Neue Session" -> forceNew. Ohne das gab der Server
-  // die bestehende Session zurueck, und der Knopf tat sichtbar nichts.
+  // die bestehende Session zurück, und der Knopf tat sichtbar nichts.
   const handleCreate = async () => {
     setCreating(true);
     try {

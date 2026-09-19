@@ -75,8 +75,8 @@ export default function AgentsPage() {
 
   // Update one agent: spin its card, then refresh so its "Update" badge clears.
   //
-  // Blockiert das Golden-Test-Gatter (#391), kommt ein 409 zurueck. Das muss man
-  // sehen UND ueberstimmen koennen: ein Gatter ohne Notausgang wird beim ersten
+  // Blockiert das Golden-Test-Gatter (#391), kommt ein 409 zurück. Das muss man
+  // sehen UND ueberstimmen können: ein Gatter ohne Notausgang wird beim ersten
   // dringenden Fall umgangen, und dann dauerhaft abgeschaltet.
   const updateOne = async (id: string) => {
     markUpdating(id, true);

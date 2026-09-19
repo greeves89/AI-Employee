@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.web_search import _valid_freshness
 from app.db.session import get_db
 from app.dependencies import require_admin, require_auth
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
@@ -208,6 +209,14 @@ async def update_settings(
         raise HTTPException(
             status_code=422,
             detail="Websuche-Provider: duckduckgo, brave, brave_news oder serp.",
+        )
+    # Ohne diese Pruefung landet ein ungueltiger Wert unbesehen in der DB —
+    # _valid_freshness() verwirft ihn erst beim naechsten Suchaufruf still,
+    # das Frontend-Select schuetzt nur den UI-Weg, nicht die API direkt.
+    if data.web_search_freshness not in (None, "") and _valid_freshness(data.web_search_freshness) is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Aktualität: pd, pw, pm, py oder YYYY-MM-DDtoYYYY-MM-DD.",
         )
 
     # Handle simple mapped fields

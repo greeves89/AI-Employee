@@ -15,6 +15,7 @@ import {
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
   Layers, AudioLines, ArrowUpRight, CalendarDays,
+  ChevronDown, ShieldCheck,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { ActivityTimeline } from "@/components/activity/activity-timeline";
@@ -132,6 +133,7 @@ export default function AgentDetailPage() {
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const { simpleMode } = useSimpleMode();
+  const isAdminUser = useAuthStore((s) => s.user?.role) === "admin";
 
   // In simple mode keep only sub-tabs flagged simpleVisible, then drop empty groups.
   const groupsForMode = useMemo(
@@ -184,7 +186,7 @@ export default function AgentDetailPage() {
   }, [ladeAgent]);
 
   // Nach dem Absenden einer Chatnachricht kurz nachfassen. Die „Aktiver
-  // Chat"-Anzeige haengt an `current_task` des Agenten; der Takt oben liegt bei
+  // Chat"-Anzeige hängt an `current_task` des Agenten; der Takt oben liegt bei
   // 15 Sekunden, im Mittel wartete man also 7,5 Sekunden auf die Anzeige — genau
   // die vom Kunden gemessenen sieben. Der Agent selbst war da laengst dran.
   // Ein kurzer Stoss trifft den Moment, in dem er den Auftrag aufnimmt, ohne
@@ -341,6 +343,16 @@ export default function AgentDetailPage() {
                   </span>
                 </div>
               </div>
+            )}
+            {isAdminUser && (
+              <Link
+                href={`/admin/agents/${agentId}`}
+                className="inline-flex items-center gap-1.5 rounded-full border border-foreground/[0.1] px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/[0.2] hover:bg-foreground/[0.04] transition-all"
+                title="Admin-Statistiken zu diesem Agenten (nur lesend)"
+              >
+                <Eye className="h-3 w-3" />
+                Admin-Ansicht
+              </Link>
             )}
             <button
               onClick={async () => {
@@ -1094,6 +1106,13 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
           </button>
         )}
       </div>
+      <p className="px-5 pt-3 text-[11px] text-muted-foreground/60">
+        Eigener Bot NUR für diesen Agenten — nicht zu verwechseln mit deinem
+        persoenlichen Telegram-Konto unter{" "}
+        <Link href="/settings" className="text-primary hover:underline">
+          Einstellungen → Integrationen
+        </Link>.
+      </p>
 
       <div className="p-5 space-y-4">
         {!hasToken ? (
@@ -1101,7 +1120,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
             <p className="text-xs text-muted-foreground/70">
               Erstelle einen Bot bei{" "}
               <span className="text-sky-400 font-medium">@BotFather</span> auf Telegram
-              und gib hier den Token ein. Nutzer muessen sich mit einem Auth-Key autorisieren.
+              und gib hier den Token ein. Nutzer müssen sich mit einem Auth-Key autorisieren.
             </p>
             <div className="flex gap-2">
               <input
@@ -1160,7 +1179,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
             {/* Change token */}
             <div>
               <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
-                Bot Token aendern
+                Bot Token ändern
               </label>
               <div className="flex gap-2">
                 <input
@@ -1193,6 +1212,53 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
 }
 
 
+// Buendelt mehrere Karten unter EINEM aufklappbaren Kopf statt sie einzeln in
+// einem langen Scroll aneinanderzureihen (Issue #787, letzter Punkt: die
+// Agent-Settings-Seite war ein 1665-Zeilen-Einzel-Scroll ohne Gruppierung).
+// Technische/Secret-tragende Gruppen starten zu und tragen eine Warnung,
+// damit ein Nutzer nicht erst an API-Tokens vorbeiscrollen muss, um zu den
+// für ihn relevanten Einstellungen zu kommen.
+function SettingsAccordionSection({
+  title,
+  icon: Icon,
+  defaultOpen = false,
+  secretsWarning = false,
+  children,
+}: {
+  title: string;
+  icon: React.ElementType;
+  defaultOpen?: boolean;
+  secretsWarning?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl border border-foreground/[0.06] bg-card/50 backdrop-blur-sm overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-3 px-5 py-3.5 hover:bg-foreground/[0.02] transition-colors"
+      >
+        <div className="flex items-center gap-2.5">
+          <Icon className={cn("h-4 w-4", secretsWarning ? "text-amber-700 dark:text-amber-400" : "text-primary")} />
+          <span className="text-sm font-semibold">{title}</span>
+          {secretsWarning && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+              API-Keys &amp; Tokens
+            </span>
+          )}
+        </div>
+        <ChevronDown className={cn("h-4 w-4 text-muted-foreground/50 transition-transform duration-150 shrink-0", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="p-4 space-y-4 border-t border-foreground/[0.06]">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AgentSettings({
   agent,
   onUpdated,
@@ -1206,7 +1272,7 @@ function AgentSettings({
   const [packages, setPackages] = useState<PermissionPackage[]>([]);
   const [selected, setSelected] = useState<string[]>(currentPermissions);
   // Standardmaessig folgen die sudo-Pakete der Autonomiestufe. Wer hier selbst
-  // waehlt, koppelt den Agenten bewusst davon ab.
+  // wählt, koppelt den Agenten bewusst davon ab.
   const [permissionsMode, setPermissionsMode] = useState<"auto" | "manual">(
     agent.permissions_mode ?? "auto"
   );
@@ -1270,7 +1336,7 @@ function AgentSettings({
     complex: existingRouterCfg?.rules?.complex || ROUTER_VORGABEN.complex,
   });
   //: Nur freigegebene Modelle — dieselbe Quelle wie beim Anlegen eines Agenten,
-  //: damit hier nichts waehlbar ist, was der Administrator gesperrt hat.
+  //: damit hier nichts wählbar ist, was der Administrator gesperrt hat.
   const [routerModelle, setRouterModelle] = useState<api.ModelCatalogProvider[]>([]);
   useEffect(() => {
     if (!routerEnabled || routerModelle.length) return;
@@ -1409,7 +1475,7 @@ function AgentSettings({
 
   // Claude Code model selection state
   const [agentModel, setAgentModel] = useState(agent.model);
-  // Standard-Denktiefe des Agenten (config.default_reasoning) — gilt fuer
+  // Standard-Denktiefe des Agenten (config.default_reasoning) — gilt für
   // Aufgaben, Zeitplaene, Delegationen und Chats ohne gewaehlte Stufe.
   const [defaultReasoning, setDefaultReasoning] = useState<string>(
     String((agent.config as Record<string, unknown> | null)?.default_reasoning ?? "")
@@ -1636,6 +1702,7 @@ function AgentSettings({
 
   return (
     <div className="space-y-6 overflow-auto h-full pb-4">
+      <SettingsAccordionSection title="Aussehen & Verhalten" icon={Sparkles}>
       {/* Aussehen / Symbol */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="mb-3">
@@ -1676,14 +1743,16 @@ function AgentSettings({
           </button>
         </div>
       </div>
+      </SettingsAccordionSection>
 
+      <SettingsAccordionSection title="Modell & Verhalten" icon={Brain}>
       {/* Model-Router: pick a model per task from its content instead of always using one fixed model */}
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="text-sm font-medium">Model-Router</div>
             <div className="text-[11px] text-muted-foreground/60">
-              Waehlt pro Task automatisch ein Modell anhand des Prompt-Inhalts (einfach / normal / komplex) statt immer dasselbe Modell zu nutzen. Budget-Downgrade hat weiterhin Vorrang.
+              Wählt pro Task automatisch ein Modell anhand des Prompt-Inhalts (einfach / normal / komplex) statt immer dasselbe Modell zu nutzen. Budget-Downgrade hat weiterhin Vorrang.
             </div>
           </div>
           <button
@@ -1715,9 +1784,9 @@ function AgentSettings({
                   }}
                   className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-xs outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
                 >
-                  {/* Der gespeicherte Wert muss waehlbar bleiben, auch wenn ein
+                  {/* Der gespeicherte Wert muss wählbar bleiben, auch wenn ein
                       Administrator das Modell inzwischen gesperrt hat — sonst
-                      springt die Auswahl beim Oeffnen stumm auf etwas anderes. */}
+                      springt die Auswahl beim Öffnen stumm auf etwas anderes. */}
                   {routerModelle.every((pr) => pr.models.every((m) => m.value !== routerRules[tier])) && (
                     <option value={routerRules[tier]}>{routerRules[tier]} (nicht freigegeben)</option>
                   )}
@@ -1735,28 +1804,6 @@ function AgentSettings({
             ))}
           </div>
         )}
-      </div>
-
-      {/* Autonomy Level */}
-      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
-        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4 text-amber-700 dark:text-amber-400" />
-            <span className="text-sm font-medium">Autonomie-Level</span>
-            <span className={cn(
-              "text-[10px] px-2 py-0.5 rounded-full border font-medium",
-              autonomyLevel === "l1" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
-              autonomyLevel === "l2" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-              autonomyLevel === "l3" && "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
-              autonomyLevel === "l4" && "bg-red-500/10 text-red-400 border-red-500/20",
-            )}>
-              {autonomyLevel.toUpperCase()}
-            </span>
-          </div>
-        </div>
-        <div className="p-5">
-          <AutonomyMatrix agentId={agentId} onLevelChange={setAutonomyLevel} />
-        </div>
       </div>
 
       {/* Parallele Sessions */}
@@ -1965,7 +2012,7 @@ function AgentSettings({
             {aiAccounts.length === 0 ? (
               <p className="text-[12px] text-muted-foreground/70">
                 Keine AI-Accounts vorhanden.{" "}
-                <Link href="/ai-accounts" className="text-violet-400 hover:text-violet-300">
+                <Link href="/admin?tab=ai-accounts" className="text-violet-400 hover:text-violet-300">
                   Zuerst einen anlegen →
                 </Link>
               </p>
@@ -2214,7 +2261,9 @@ function AgentSettings({
           </div>
         </div>
       )}
+      </SettingsAccordionSection>
 
+      <SettingsAccordionSection title="Verbindungen" icon={Plug} secretsWarning>
       {/* Telegram Bot */}
       <TelegramAgentSection agentId={agentId} />
 
@@ -2434,6 +2483,30 @@ function AgentSettings({
           </div>
         </div>
       )}
+      </SettingsAccordionSection>
+
+      <SettingsAccordionSection title="Zugriff & Rechte" icon={ShieldCheck}>
+      {/* Autonomy Level */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
+        <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-amber-700 dark:text-amber-400" />
+            <span className="text-sm font-medium">Autonomie-Level</span>
+            <span className={cn(
+              "text-[10px] px-2 py-0.5 rounded-full border font-medium",
+              autonomyLevel === "l1" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+              autonomyLevel === "l2" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+              autonomyLevel === "l3" && "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
+              autonomyLevel === "l4" && "bg-red-500/10 text-red-400 border-red-500/20",
+            )}>
+              {autonomyLevel.toUpperCase()}
+            </span>
+          </div>
+        </div>
+        <div className="p-5">
+          <AutonomyMatrix agentId={agentId} onLevelChange={setAutonomyLevel} />
+        </div>
+      </div>
 
       {/* Permissions */}
       <PermissionPackagesPanel
@@ -2460,12 +2533,15 @@ function AgentSettings({
           jede Desktop-Session dieses Agenten erbt und nie überschreiten kann
           (Issue #787 Punkt 1) — vorher gab es dafür gar keinen Pro-Agent-Wert. */}
       <ComputerUseDefaultPanel agentId={agentId} />
+      </SettingsAccordionSection>
 
+      <SettingsAccordionSection title="Ressourcen & Limits" icon={HardDrive}>
       {/* Resource Limits */}
       <ResourceLimitsSection agentId={agentId} agent={agent} onUpdated={onUpdated} />
 
       {/* Volume Mounts */}
       <MountSelectorSection agentId={agentId} />
+      </SettingsAccordionSection>
 
       {/* Status messages */}
       {message && (
@@ -3065,7 +3141,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
               >
                 {mode === "name" && <><Hash className="h-2.5 w-2.5" /> Name</>}
                 {mode === "date" && <><Clock className="h-2.5 w-2.5" /> Datum</>}
-                {mode === "size" && <><ArrowUpDown className="h-2.5 w-2.5" /> Groesse</>}
+                {mode === "size" && <><ArrowUpDown className="h-2.5 w-2.5" /> Größe</>}
               </button>
             ))}
           </div>
@@ -3073,7 +3149,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
 
         {/* Tree content */}
         {/* Der Rahmen selbst nimmt Dateien ebenfalls an: wer in den leeren Raum
-            unter dem Baum faellt, meint den Wurzelordner. Ohne das waere der
+            unter dem Baum faellt, meint den Wurzelordner. Ohne das wäre der
             grosse leere Bereich die einzige Flaeche, auf der nichts passiert. */}
         <div
           className={cn(

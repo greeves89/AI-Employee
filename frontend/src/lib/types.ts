@@ -46,7 +46,7 @@ export interface AIModel {
   name: string;                       // model / Azure deployment name
   provider_type: AIAccountProviderType; // which API the model speaks
   api_endpoint: string;               // the endpoint/surface for this model
-  enabled?: boolean;                  // Freigabe fuer Agenten (fehlt = freigegeben)
+  enabled?: boolean;                  // Freigabe für Agenten (fehlt = freigegeben)
 }
 
 export interface AIAccount {
@@ -128,10 +128,20 @@ export interface Agent {
   disk_limit_mb: number | null;
   disk_percent: number | null;
   queue_depth: number | null;
-  config?: Record<string, unknown> | null;
+  config?: (Record<string, unknown> & { stop_reason?: AgentStopReason | null }) | null;
 }
 
-/** "unassigned" = angemeldet, aber noch nichts zugeteilt. Sperrt die Oberflaeche,
+/** Warum der Agent zuletzt automatisch angehalten wurde (agent.config.stop_reason) —
+ * bleibt stehen bis Aufraeumen die Ursache behebt oder jemand ihn neu startet. */
+export interface AgentStopReason {
+  type: "disk_quota";
+  message: string;
+  detail: string;
+  disk_percent: number;
+  at: string;
+}
+
+/** "unassigned" = angemeldet, aber noch nichts zugeteilt. Sperrt die Oberfläche,
  *  NICHT angebundene Dienste wie den M365-MCP — genau das ist der Zweck. */
 export type UserRole = "admin" | "manager" | "member" | "viewer" | "unassigned";
 
@@ -278,7 +288,7 @@ export interface Settings {
   sso_only_login?: boolean;
   /** Duerfen Mitarbeiter ihr eigenes Claude-/ChatGPT-Abo einbinden? */
   allow_personal_credentials?: boolean;
-  /** Master-Regeln: Verhaltensvorgaben fuer ALLE Agenten aller Nutzer. */
+  /** Master-Regeln: Verhaltensvorgaben für ALLE Agenten aller Nutzer. */
   master_rules?: string;
   master_rules_enabled?: boolean;
   require_user_approval?: boolean;
@@ -298,7 +308,7 @@ export interface Settings {
   smtp_relay_verify_tls?: boolean;
   smtp_relay_user?: string;
   smtp_allowed_recipient_domains?: string;
-  // SAML 2.0 — Einrichtungsangaben (nur fuer Admins gefuellt); `saml_configured`
+  // SAML 2.0 — Einrichtungsangaben (nur für Admins gefuellt); `saml_configured`
   // entscheidet, ob die Anmeldeseite den Knopf zeigt.
   saml_display_name?: string;
   saml_idp_entity_id?: string;
@@ -309,7 +319,7 @@ export interface Settings {
   saml_group_attribute?: string;
   saml_configured?: boolean;
   // Websuche-Provider (Admin -> Websuche): "duckduckgo" (Vorgabe) | "brave" |
-  // "brave_news" | "serp". Der API-Key selbst kommt nie zurueck, nur ob einer
+  // "brave_news" | "serp". Der API-Key selbst kommt nie zurück, nur ob einer
   // hinterlegt ist.
   web_search_provider?: string;
   has_web_search_api_key?: boolean;

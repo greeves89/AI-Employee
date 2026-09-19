@@ -7,8 +7,8 @@ ist jetzt die EINZIGE Quelle: der Agent-Container ruft sie per HTTP auf
 (``POST /api/v1/web-search``, siehe ``orchestrator/app/api/web_search.py``)
 statt eine eigene Kopie zu pflegen.
 
-Provider: ``duckduckgo`` (keyless, Standard) | ``brave`` | ``serp`` — Auswahl
-+ API-Key liegen in den PlatformSettings (``web_search_provider``/
+Provider: ``duckduckgo`` (keyless, Standard) | ``brave`` | ``brave_news`` | ``serp``
+— Auswahl + API-Key liegen in den PlatformSettings (``web_search_provider``/
 ``web_search_api_key``, siehe ``settings_service.py``), nicht hier fest
 verdrahtet.
 """
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import date
 from urllib.parse import unquote
 
 import httpx
@@ -54,7 +55,7 @@ async def web_search(
         return await _search_brave(query, max_results, api_key)
     if provider == "serp" and api_key:
         return await _search_serp(query, max_results, api_key)
-    if provider in ("brave", "serp") and not api_key:
+    if provider in ("brave", "brave_news", "serp") and not api_key:
         logger.warning("web_search: provider=%s ohne API-Key konfiguriert, falle auf DuckDuckGo zurueck", provider)
     return await _search_duckduckgo(query, max_results)
 
@@ -126,15 +127,28 @@ def _valid_freshness(freshness: str | None) -> str | None:
 
     Alles andere wird verworfen statt durchgereicht — ein ungueltiger Wert
     laesst Brave sonst die ganze Anfrage mit 422 abweisen, und der Agent saehe
-    nur "nichts gefunden".
+    nur "nichts gefunden". Der Regex allein prueft nur die Form: er liess
+    Kalendertage wie 2026-02-30, "0000-01-01" und rueckwaerts laufende
+    Bereiche (Ende vor Start) durch. Echte Kalenderdaten + Reihenfolge werden
+    jetzt zusaetzlich geprueft, bevor der Wert an Brave geht.
     """
     if not freshness:
         return None
     f = freshness.strip().lower()
     if f in _BRAVE_FRESHNESS:
         return f
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}to\d{4}-\d{2}-\d{2}", f):
-        return f
+    m = re.fullmatch(r"(\d{4}-\d{2}-\d{2})to(\d{4}-\d{2}-\d{2})", f, flags=re.ASCII)
+    if m:
+        try:
+            start = date.fromisoformat(m.group(1))
+            end = date.fromisoformat(m.group(2))
+        except ValueError:
+            logger.warning("Ungueltiger freshness-Datumsbereich %r — wird ignoriert", freshness)
+            return None
+        if start <= end:
+            return f
+        logger.warning("Ungueltiger freshness-Datumsbereich %r (Ende vor Start) — wird ignoriert", freshness)
+        return None
     logger.warning("Ungueltiger freshness-Wert %r — wird ignoriert", freshness)
     return None
 
@@ -165,17 +179,27 @@ async def _search_brave_news(
     except Exception:  # noqa: BLE001
         logger.warning("Brave-News-Suche fehlgeschlagen", exc_info=True)
         return []
+    # Eine unerwartete JSON-Form (kein Objekt, oder Eintraege wie `null` statt
+    # eines Treffer-Objekts) darf hier nicht als AttributeError durchschlagen
+    # — "Never raises" gilt auch fuer kaputte/fremde API-Antworten, nicht nur
+    # fuer Netzwerkfehler.
+    if not isinstance(data, dict):
+        logger.warning("Brave-News-Suche: unerwartete Antwortform (kein Objekt)")
+        return []
     items = data.get("results") or []
-    return [
-        {
+    results = []
+    for it in items[:max_results]:
+        if not isinstance(it, dict):
+            continue
+        meta_url = it.get("meta_url")
+        results.append({
             "title": it.get("title", ""),
             "url": it.get("url", ""),
             "snippet": it.get("description", ""),
             "age": it.get("age") or it.get("page_age") or "",
-            "publisher": ((it.get("meta_url") or {}).get("hostname") or ""),
-        }
-        for it in items[:max_results]
-    ]
+            "publisher": (meta_url.get("hostname") or "") if isinstance(meta_url, dict) else "",
+        })
+    return results
 
 
 async def _search_serp(query: str, max_results: int, api_key: str) -> list[dict]:

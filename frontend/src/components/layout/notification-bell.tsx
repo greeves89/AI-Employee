@@ -52,7 +52,7 @@ export function NotificationBell({
   const [taskModalId, setTaskModalId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
-  // Das Feld haengt nicht mehr im Seitenstreifen, sondern direkt am Dokument
+  // Das Feld hängt nicht mehr im Seitenstreifen, sondern direkt am Dokument
   // (Portal). Vorher lag es `absolute left-full` in einem Container, dessen
   // Eltern allesamt ihren Ueberlauf verbergen — an BEIDEN Einbaustellen. Es
   // wurde also gezeichnet und im selben Bild weggeschnitten; der Knopf sah aus
@@ -66,7 +66,7 @@ export function NotificationBell({
     if (!anker) return;
     const r = anker.getBoundingClientRect();
     // Auf schmalen Geraeten summieren sich Streifenbreite und Versatz, bis das
-    // Feld aus dem Bild laeuft. Dort nimmt es die volle Breite minus Rand und
+    // Feld aus dem Bild läuft. Dort nimmt es die volle Breite minus Rand und
     // rueckt an den linken Rand.
     const rand = 8;
     const breite = Math.min(360, window.innerWidth - 2 * rand);
@@ -189,8 +189,8 @@ export function NotificationBell({
     const handler = (e: MouseEvent) => {
       const ziel = e.target as Node;
       const imKnopf = panelRef.current?.contains(ziel);
-      // Ohne diese zweite Pruefung wuerde jeder Klick INS Feld als „ausserhalb"
-      // gelten und es schliessen — es haengt seit dem Portal nicht mehr im
+      // Ohne diese zweite Pruefung würde jeder Klick INS Feld als „außerhalb"
+      // gelten und es schließen — es hängt seit dem Portal nicht mehr im
       // selben Teilbaum wie der Knopf.
       const imFeld = feldRef.current?.contains(ziel);
       if (!imKnopf && !imFeld) {

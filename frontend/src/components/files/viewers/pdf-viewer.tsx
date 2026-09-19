@@ -19,7 +19,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-//: Ausserhalb der Komponente, sonst entsteht bei jedem Zeichnen ein neues
+//: Außerhalb der Komponente, sonst entsteht bei jedem Zeichnen ein neues
 //: Objekt und react-pdf laedt das Dokument erneut. Die Pfade zeigen auf den
 //: eigenen Ursprung, siehe scripts/copy-pdf-assets.mjs.
 const PDF_OPTIONEN = {
