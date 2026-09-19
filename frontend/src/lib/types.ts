@@ -128,7 +128,17 @@ export interface Agent {
   disk_limit_mb: number | null;
   disk_percent: number | null;
   queue_depth: number | null;
-  config?: Record<string, unknown> | null;
+  config?: (Record<string, unknown> & { stop_reason?: AgentStopReason | null }) | null;
+}
+
+/** Warum der Agent zuletzt automatisch angehalten wurde (agent.config.stop_reason) —
+ * bleibt stehen bis Aufraeumen die Ursache behebt oder jemand ihn neu startet. */
+export interface AgentStopReason {
+  type: "disk_quota";
+  message: string;
+  detail: string;
+  disk_percent: number;
+  at: string;
 }
 
 /** "unassigned" = angemeldet, aber noch nichts zugeteilt. Sperrt die Oberfläche,

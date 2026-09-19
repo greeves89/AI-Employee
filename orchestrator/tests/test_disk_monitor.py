@@ -59,5 +59,38 @@ class TestWriteWarningContract(unittest.TestCase):
         self.assertEqual(put_archive.call_args.args[0], "/workspace")
 
 
+class TestCleanupWorkspaceVolumeRunsBothSteps(unittest.TestCase):
+    """#830: der eingebaute Aufraeumlauf kannte nur Caches/Logs, nicht
+    liegengebliebene Worktrees. Der Worktree-Lauf ist Best-Effort — schlaegt
+    ER fehl, muss der bestehende Cache/Log-Lauf trotzdem stattfinden."""
+
+    def _docker(self, run_side_effect):
+        svc = DockerService.__new__(DockerService)
+        client = MagicMock()
+        client.containers.run.side_effect = run_side_effect
+        svc.client = client
+        return svc
+
+    def test_both_helper_runs_happen_in_order(self):
+        docker = self._docker([b"PRUNED 2: ['/workspace/wt-a', '/workspace/wt-b']\n", b"512\n"])
+        result = docker.cleanup_workspace_volume("workspace-a1")
+
+        self.assertEqual(result, 512)
+        self.assertEqual(docker.client.containers.run.call_count, 2)
+        first_call, second_call = docker.client.containers.run.call_args_list
+        self.assertIn("python3", first_call.kwargs["command"])
+        script = first_call.kwargs["command"][-1]
+        self.assertIn('"worktree", "remove"', script)
+        self.assertEqual(second_call.kwargs["command"][0], "sh")
+        self.assertIn("rm -rf /workspace/data/cache", second_call.kwargs["command"][-1])
+
+    def test_a_failed_prune_run_does_not_prevent_the_cache_cleanup(self):
+        docker = self._docker([Exception("Helfer-Container abgestuerzt"), b"9999\n"])
+        result = docker.cleanup_workspace_volume("workspace-a1")
+
+        self.assertEqual(result, 9999)
+        self.assertEqual(docker.client.containers.run.call_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

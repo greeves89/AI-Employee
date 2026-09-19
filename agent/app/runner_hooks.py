@@ -431,6 +431,39 @@ def get_onboarding_context() -> str:
     )
 
 
+def get_disk_incident_context(path: str = "/workspace/.disk_warning") -> str:
+    """Speicherquote-Warnung/-Stopp als Prompt-Block, oder "".
+
+    ``disk_monitor.py`` schreibt ``/workspace/.disk_warning`` ab 80% Belegung und
+    ein letztes Mal direkt vor einem Stopp bei 95% — und loescht sie wieder, sobald
+    die Belegung unter 80% faellt. Lokale Datei statt Orchestrator-Aufruf: der Agent
+    hat ohnehin Dateizugriff, und genau dieser Weg funktioniert auch dann noch, wenn
+    der Orchestrator selbst gerade nicht erreichbar ist. Bislang war das eine reine
+    Bring-Schuld ("wenn du zufaellig hinschaust") — nach einem automatischen
+    Neustart sah der Agent sie nie von sich aus, weil ihm dafuer keine Aufgabe
+    gestellt wurde. Jetzt eine Hol-Schuld: bei JEDEM Sitzungsstart geprueft, genau
+    wie der Einrichtungsstand oben.
+    """
+    try:
+        if not os.path.exists(path):
+            return ""
+        with open(path, encoding="utf-8") as f:
+            inhalt = f.read().strip()
+    except OSError:
+        return ""
+    if not inhalt:
+        return ""
+    return (
+        "\n=== SPEICHERPLATZ KNAPP ===\n"
+        "Dein Workspace ist fast voll — wurdest du gerade neu gestartet, war das ein\n"
+        "automatischer Stopp deswegen. Raeum ZUERST auf, bevor du mit etwas anderem\n"
+        "weitermachst (alte Worktrees, Caches, Logs, Duplikate — `du -sh /workspace/*\n"
+        "| sort -rh | head -10` zeigt die groessten Verbraucher):\n\n"
+        f"{inhalt}\n"
+        "=== ENDE ===\n"
+    )
+
+
 def get_memory_preload(task_context: str | None = None) -> str:
     """Fetch critical memories for prompt injection.
 
@@ -788,6 +821,7 @@ def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
         return (
             CHAT_STARTUP_PREFIX
             + get_onboarding_context()
+            + get_disk_incident_context()
             + get_memory_preload(task_context)
             + get_skill_preload()
             + get_skills_context()
@@ -797,6 +831,7 @@ def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
     return (
         TASK_STARTUP_PREFIX
         + get_onboarding_context()
+        + get_disk_incident_context()
         + get_memory_preload(task_context)
         + get_user_feedback()
         + get_skill_preload()
