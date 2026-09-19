@@ -93,7 +93,7 @@ export default function EvalsPage() {
 
   useEffect(() => {
     load();
-    // Solange ein Lauf noch laeuft, aendert sich der Stand von selbst — die
+    // Solange ein Lauf noch läuft, aendert sich der Stand von selbst — die
     // Aufgaben stehen in der Warteschlange des Agenten.
     const t = setInterval(load, 15000);
     return () => clearInterval(t);

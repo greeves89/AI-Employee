@@ -338,7 +338,7 @@ export async function getPermissionPackages(): Promise<{ packages: PermissionPac
   return fetchJSON(`${getBase()}/agents/permissions`);
 }
 
-// `mode: "auto"` gibt die Rechte an die Autonomiestufe zurueck — die Liste wird dann
+// `mode: "auto"` gibt die Rechte an die Autonomiestufe zurück — die Liste wird dann
 // ignoriert und der Server leitet sie aus der Matrix ab.
 export async function updateAgentPermissions(agentId: string, permissions: string[], mode: "auto" | "manual" = "manual"): Promise<{ agent_id: string; permissions: string[]; permissions_mode: "auto" | "manual"; warning?: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/permissions`, {
@@ -1542,7 +1542,7 @@ export async function getMcpServers(): Promise<{ servers: McpServerInfo[] }> {
 
 export async function addMcpServer(
   name: string, url: string, bearerToken?: string, headers?: Record<string, string>,
-  /** Private Adresse fuer DIESEN Server zulassen (Admin-Entscheidung, siehe
+  /** Private Adresse für DIESEN Server zulassen (Admin-Entscheidung, siehe
    *  Integrationen-Seite). Loopback und Metadaten-Adressen bleiben gesperrt. */
   allowPrivateHost?: boolean,
 ): Promise<McpServerInfo> {
@@ -1915,7 +1915,7 @@ export function getBrainExportUrl(brainId: number): string {
 /**
  * Vault aus einem ZIP einspielen.
  *
- * `replace=false` fuegt zusammen (loescht nichts), `replace=true` macht den
+ * `replace=false` fuegt zusammen (löscht nichts), `replace=true` macht den
  * Vault zum Abbild des Archivs. Der Server zieht danach die Einbettungen nach —
  * ohne das waeren die Notizen semantisch unauffindbar.
  */
@@ -2697,7 +2697,7 @@ export async function removeLicense(): Promise<{ status: string; tier: string }>
 
 // --- Command Approvals ---
 
-/** Nur die Zahl der offenen Freigaben — fuer das Abzeichen im Menue. */
+/** Nur die Zahl der offenen Freigaben — für das Abzeichen im Menue. */
 /** Werkzeuge und Befehle DIESES Agenten — je nach Laufzeit verschieden. */
 export interface AgentToolset {
   mode: string;
@@ -2755,7 +2755,7 @@ export async function getPendingApprovalCount(): Promise<number> {
 }
 
 /** Alle offenen Freigaben verwerfen. Sie werden als abgelehnt vermerkt, nicht
- *  geloescht — die Pruefspur muss erhalten bleiben. */
+ *  gelöscht — die Pruefspur muss erhalten bleiben. */
 export async function clearPendingApprovals(): Promise<{ cleared: number }> {
   return fetchJSON(`${getBase()}/approvals/pending`, { method: "DELETE" });
 }
@@ -3680,7 +3680,7 @@ export interface AgentDevelopment {
   };
 }
 
-// Gespraech verzweigen, zurueckspulen, zusammenfassen (#538). Alle drei arbeiten
+// Gespraech verzweigen, zurückspulen, zusammenfassen (#538). Alle drei arbeiten
 // auf "die Nachrichten bis hierher" und liefern die Kennung des neuen Gespraechs.
 export async function forkChatSession(agentId: string, sessionId: string, messageId: string) {
   return fetchJSON<{ ok: boolean; session_id: string; copied: number }>(
@@ -3704,7 +3704,7 @@ export async function summarizeChatSession(agentId: string, sessionId: string) {
 }
 
 // Nachricht (oder nur ihre Werkzeug-Ausgabe) von Hand aus dem Kontext nehmen — oder
-// wieder rein (#538 Punkt 4). Nichts wird geloescht, nur nicht mehr ans Modell geschickt.
+// wieder rein (#538 Punkt 4). Nichts wird gelöscht, nur nicht mehr ans Modell geschickt.
 export async function setMessageContextExclusion(
   agentId: string,
   sessionId: string,
@@ -4146,7 +4146,7 @@ export interface CustomPageInput {
   allow_media?: boolean;
 }
 
-/** Menuepunkte fuer den angemeldeten Nutzer (bereits nach Rolle gefiltert). */
+/** Menuepunkte für den angemeldeten Nutzer (bereits nach Rolle gefiltert). */
 export async function listMyCustomPages(): Promise<{ pages: CustomPage[] }> {
   return fetchJSON(`${getBase()}/custom-pages/mine`);
 }
@@ -4156,7 +4156,7 @@ export async function getCustomPageBySlug(slug: string): Promise<CustomPage> {
   return fetchJSON(`${getBase()}/custom-pages/by-slug/${encodeURIComponent(slug)}`);
 }
 
-/** Alle Seiten inkl. abgeschalteter — nur fuer Administratoren. */
+/** Alle Seiten inkl. abgeschalteter — nur für Administratoren. */
 export async function listCustomPages(): Promise<{ pages: CustomPage[]; groups: string[]; modes: CustomPageOpenMode[] }> {
   return fetchJSON(`${getBase()}/custom-pages/`);
 }
@@ -4175,7 +4175,7 @@ export async function deleteCustomPage(id: number): Promise<{ deleted: number; m
 
 /* ── Meine KI-Zugaenge (eigenes Claude-/Codex-Abo) ────────────────────────
    Die Schnittstelle gibt es seit v1.185.0; bis 2026-08-15 rief sie niemand auf,
-   weil die Oberflaeche dazu fehlte. Das Geheimnis kommt bewusst NIE zurueck —
+   weil die Oberfläche dazu fehlte. Das Geheimnis kommt bewusst NIE zurück —
    man sieht nur, dass etwas hinterlegt ist. */
 export async function getMyAiCredentials(): Promise<{
   credentials: {
@@ -4200,7 +4200,7 @@ export async function deleteMyAiCredential(harness: string): Promise<unknown> {
   return fetchJSON(`${getBase()}/me/ai-credentials/${harness}`, { method: "DELETE" });
 }
 
-/* Anmeldung fuer den EIGENEN Zugang — gleicher Ablauf wie beim Administrator,
+/* Anmeldung für den EIGENEN Zugang — gleicher Ablauf wie beim Administrator,
    aber das Ergebnis landet in `user_ai_credentials` statt als plattformweite
    Integration. Nur aus dieser Ablage liest der Agentenbau. */
 export async function startMyAnthropicLogin(): Promise<{ auth_url: string }> {

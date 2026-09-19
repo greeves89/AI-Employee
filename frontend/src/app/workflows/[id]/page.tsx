@@ -12,6 +12,7 @@ import {
   ArrowLeft, Save, Play, Loader2, Bot, GitBranch, Clock, Plus, Trash2, X, CheckCircle2, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/components/theme-provider";
 import { useToast } from "@/components/ui/dialog-provider";
 import * as api from "@/lib/api";
 import type { Agent } from "@/lib/types";
@@ -58,7 +59,7 @@ function AgentTaskNode({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Top} className="!bg-primary" />
-      <NodeShell selected={selected} active={d.active} color="bg-blue-500/15 text-blue-400" icon={<Bot className="h-3.5 w-3.5" />} title={d.title || "Agenten-Aufgabe"}>
+      <NodeShell selected={selected} active={d.active} color="bg-blue-500/15 text-blue-700 dark:text-blue-400" icon={<Bot className="h-3.5 w-3.5" />} title={d.title || "Agenten-Aufgabe"}>
         <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground/70">{d.prompt || "kein Prompt"}</p>
       </NodeShell>
       <Handle type="source" position={Position.Bottom} className="!bg-primary" />
@@ -78,7 +79,7 @@ function ConditionNode({ data, selected }: NodeProps) {
             ? `${d.stepTitles?.[c.step] ?? c.step} ${OPS.find((o) => o.v === c.op)?.l ?? c.op}${c.value ? ` „${c.value}"` : ""}`
             : "keine Bedingung"}
         </p>
-        <div className="mt-1 flex justify-between text-[10px]"><span className="text-emerald-400">ja ↙</span><span className="text-red-400">nein ↘</span></div>
+        <div className="mt-1 flex justify-between text-[10px]"><span className="text-emerald-700 dark:text-emerald-400">ja ↙</span><span className="text-red-700 dark:text-red-400">nein ↘</span></div>
       </NodeShell>
       <Handle id="true" type="source" position={Position.Bottom} style={{ left: "25%" }} className="!bg-emerald-400" />
       <Handle id="false" type="source" position={Position.Bottom} style={{ left: "75%" }} className="!bg-red-400" />
@@ -91,7 +92,7 @@ function WaitNode({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Top} className="!bg-zinc-400" />
-      <NodeShell selected={selected} active={d.active} color="bg-zinc-500/20 text-zinc-300" icon={<Clock className="h-3.5 w-3.5" />} title={d.title || "Warten"}>
+      <NodeShell selected={selected} active={d.active} color="bg-zinc-500/20 text-zinc-700 dark:text-zinc-300" icon={<Clock className="h-3.5 w-3.5" />} title={d.title || "Warten"}>
         <p className="mt-1 text-[11px] text-muted-foreground/70">{d.seconds ?? 0}s warten</p>
       </NodeShell>
       <Handle type="source" position={Position.Bottom} className="!bg-zinc-400" />
@@ -158,6 +159,7 @@ export default function WorkflowEditorPage() {
   const router = useRouter();
   const wfId = params.id as string;
   const toast = useToast();
+  const { theme } = useTheme();
 
   const [wf, setWf] = useState<api.Workflow | null>(null);
   const [name, setName] = useState("");
@@ -275,7 +277,7 @@ export default function WorkflowEditorPage() {
         <input value={name} onChange={(e) => setName(e.target.value)} className="rounded-lg bg-transparent px-2 py-1 text-sm font-semibold outline-none focus:bg-foreground/[0.04]" />
         <div className="ml-auto flex items-center gap-2">
           {readOnly ? (
-            <span className="rounded-lg bg-sky-500/10 px-3 py-1.5 text-[12px] text-sky-400">Nur Ansehen — geteilt</span>
+            <span className="rounded-lg bg-sky-500/10 px-3 py-1.5 text-[12px] text-sky-700 dark:text-sky-400">Nur Ansehen — geteilt</span>
           ) : (
             <>
               <div className="mr-1 flex items-center gap-1">
@@ -304,7 +306,7 @@ export default function WorkflowEditorPage() {
             onPaneClick={() => setSelectedId(null)}
             fitView
             proOptions={{ hideAttribution: true }}
-            colorMode="dark"
+            colorMode={theme}
           >
             <Background />
             <Controls />
@@ -388,7 +390,7 @@ function NodeConfig({ node, agents, stepOptions, onChange, onDelete, onClose }: 
         </>
       )}
 
-      <button onClick={onDelete} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-1.5 text-[12px] text-red-400 hover:bg-red-500/10">
+      <button onClick={onDelete} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-1.5 text-[12px] text-red-700 dark:text-red-400 hover:bg-red-500/10">
         <Trash2 className="h-3.5 w-3.5" /> Baustein löschen
       </button>
     </div>
@@ -396,7 +398,7 @@ function NodeConfig({ node, agents, stepOptions, onChange, onDelete, onClose }: 
 }
 
 function RunPanel({ run, stepTitles }: { run: api.WorkflowRun; stepTitles: Record<string, string> }) {
-  const icon = run.status === "completed" ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : run.status === "failed" ? <XCircle className="h-4 w-4 text-red-400" /> : <Loader2 className="h-4 w-4 animate-spin text-blue-400" />;
+  const icon = run.status === "completed" ? <CheckCircle2 className="h-4 w-4 text-emerald-700 dark:text-emerald-400" /> : run.status === "failed" ? <XCircle className="h-4 w-4 text-red-700 dark:text-red-400" /> : <Loader2 className="h-4 w-4 animate-spin text-blue-700 dark:text-blue-400" />;
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-sm font-medium">{icon}
@@ -405,7 +407,7 @@ function RunPanel({ run, stepTitles }: { run: api.WorkflowRun; stepTitles: Recor
       <div className="text-[12px] text-muted-foreground/70">
         Schritte erledigt: {run.steps_done}{run.current_step ? ` · aktuell: ${stepTitles[run.current_step] ?? run.current_step}` : ""}
       </div>
-      {run.error && <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2 text-[12px] text-red-400">{run.error}</div>}
+      {run.error && <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2 text-[12px] text-red-700 dark:text-red-400">{run.error}</div>}
       {Object.keys(run.context || {}).length > 0 && (
         <div className="space-y-1.5">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">Ergebnisse</p>

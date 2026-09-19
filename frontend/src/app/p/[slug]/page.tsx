@@ -4,7 +4,7 @@
  *
  *  Der Rahmen laedt die fremde Adresse direkt im Browser des Nutzers — wir
  *  reichen nichts durch. Ob sich die Seite einbetten laesst, entscheidet
- *  ausschliesslich sie selbst (``X-Frame-Options`` /
+ *  ausschließlich sie selbst (``X-Frame-Options`` /
  *  ``Content-Security-Policy: frame-ancestors``). Wird sie abgewiesen, bleibt
  *  der Rahmen weiss und der Browser verraet uns den Grund nicht: fremde Rahmen
  *  duerfen nicht ausgelesen werden. Deshalb der Hinweis nach kurzer Wartezeit
@@ -19,7 +19,7 @@ import * as api from "@/lib/api";
 import { pageIcon } from "@/lib/page-icons";
 
 // Nach dieser Zeit ohne Ladebestaetigung gehen wir davon aus, dass die Seite das
-// Einbetten verweigert. Grosszuegig gewaehlt: ein langsam startender Dienst soll
+// Einbetten verweigert. Grosszuegig gewählt: ein langsam startender Dienst soll
 // nicht als "verweigert" dastehen.
 const FRAME_HINT_AFTER_MS = 8000;
 
@@ -111,7 +111,7 @@ export default function CustomPageView() {
   const Icon = pageIcon(page.icon);
 
   // Als Link angelegt: nicht einbetten, sondern anbieten. Ein automatisches
-  // Aufpoppen wuerde der Browser blockieren und der Nutzer saehe nichts.
+  // Aufpoppen würde der Browser blockieren und der Nutzer saehe nichts.
   if (page.open_mode === "link") {
     return (
       <div className="flex min-h-screen flex-col">

@@ -186,7 +186,7 @@ export default function AgentDetailPage() {
   }, [ladeAgent]);
 
   // Nach dem Absenden einer Chatnachricht kurz nachfassen. Die „Aktiver
-  // Chat"-Anzeige haengt an `current_task` des Agenten; der Takt oben liegt bei
+  // Chat"-Anzeige hängt an `current_task` des Agenten; der Takt oben liegt bei
   // 15 Sekunden, im Mittel wartete man also 7,5 Sekunden auf die Anzeige — genau
   // die vom Kunden gemessenen sieben. Der Agent selbst war da laengst dran.
   // Ein kurzer Stoss trifft den Moment, in dem er den Auftrag aufnimmt, ohne
@@ -1107,7 +1107,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
         )}
       </div>
       <p className="px-5 pt-3 text-[11px] text-muted-foreground/60">
-        Eigener Bot NUR fuer diesen Agenten — nicht zu verwechseln mit deinem
+        Eigener Bot NUR für diesen Agenten — nicht zu verwechseln mit deinem
         persoenlichen Telegram-Konto unter{" "}
         <Link href="/settings" className="text-primary hover:underline">
           Einstellungen → Integrationen
@@ -1120,7 +1120,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
             <p className="text-xs text-muted-foreground/70">
               Erstelle einen Bot bei{" "}
               <span className="text-sky-400 font-medium">@BotFather</span> auf Telegram
-              und gib hier den Token ein. Nutzer muessen sich mit einem Auth-Key autorisieren.
+              und gib hier den Token ein. Nutzer müssen sich mit einem Auth-Key autorisieren.
             </p>
             <div className="flex gap-2">
               <input
@@ -1179,7 +1179,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
             {/* Change token */}
             <div>
               <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">
-                Bot Token aendern
+                Bot Token ändern
               </label>
               <div className="flex gap-2">
                 <input
@@ -1217,7 +1217,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
 // Agent-Settings-Seite war ein 1665-Zeilen-Einzel-Scroll ohne Gruppierung).
 // Technische/Secret-tragende Gruppen starten zu und tragen eine Warnung,
 // damit ein Nutzer nicht erst an API-Tokens vorbeiscrollen muss, um zu den
-// fuer ihn relevanten Einstellungen zu kommen.
+// für ihn relevanten Einstellungen zu kommen.
 function SettingsAccordionSection({
   title,
   icon: Icon,
@@ -1272,7 +1272,7 @@ function AgentSettings({
   const [packages, setPackages] = useState<PermissionPackage[]>([]);
   const [selected, setSelected] = useState<string[]>(currentPermissions);
   // Standardmaessig folgen die sudo-Pakete der Autonomiestufe. Wer hier selbst
-  // waehlt, koppelt den Agenten bewusst davon ab.
+  // wählt, koppelt den Agenten bewusst davon ab.
   const [permissionsMode, setPermissionsMode] = useState<"auto" | "manual">(
     agent.permissions_mode ?? "auto"
   );
@@ -1336,7 +1336,7 @@ function AgentSettings({
     complex: existingRouterCfg?.rules?.complex || ROUTER_VORGABEN.complex,
   });
   //: Nur freigegebene Modelle — dieselbe Quelle wie beim Anlegen eines Agenten,
-  //: damit hier nichts waehlbar ist, was der Administrator gesperrt hat.
+  //: damit hier nichts wählbar ist, was der Administrator gesperrt hat.
   const [routerModelle, setRouterModelle] = useState<api.ModelCatalogProvider[]>([]);
   useEffect(() => {
     if (!routerEnabled || routerModelle.length) return;
@@ -1475,7 +1475,7 @@ function AgentSettings({
 
   // Claude Code model selection state
   const [agentModel, setAgentModel] = useState(agent.model);
-  // Standard-Denktiefe des Agenten (config.default_reasoning) — gilt fuer
+  // Standard-Denktiefe des Agenten (config.default_reasoning) — gilt für
   // Aufgaben, Zeitplaene, Delegationen und Chats ohne gewaehlte Stufe.
   const [defaultReasoning, setDefaultReasoning] = useState<string>(
     String((agent.config as Record<string, unknown> | null)?.default_reasoning ?? "")
@@ -1752,7 +1752,7 @@ function AgentSettings({
           <div>
             <div className="text-sm font-medium">Model-Router</div>
             <div className="text-[11px] text-muted-foreground/60">
-              Waehlt pro Task automatisch ein Modell anhand des Prompt-Inhalts (einfach / normal / komplex) statt immer dasselbe Modell zu nutzen. Budget-Downgrade hat weiterhin Vorrang.
+              Wählt pro Task automatisch ein Modell anhand des Prompt-Inhalts (einfach / normal / komplex) statt immer dasselbe Modell zu nutzen. Budget-Downgrade hat weiterhin Vorrang.
             </div>
           </div>
           <button
@@ -1784,9 +1784,9 @@ function AgentSettings({
                   }}
                   className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-xs outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
                 >
-                  {/* Der gespeicherte Wert muss waehlbar bleiben, auch wenn ein
+                  {/* Der gespeicherte Wert muss wählbar bleiben, auch wenn ein
                       Administrator das Modell inzwischen gesperrt hat — sonst
-                      springt die Auswahl beim Oeffnen stumm auf etwas anderes. */}
+                      springt die Auswahl beim Öffnen stumm auf etwas anderes. */}
                   {routerModelle.every((pr) => pr.models.every((m) => m.value !== routerRules[tier])) && (
                     <option value={routerRules[tier]}>{routerRules[tier]} (nicht freigegeben)</option>
                   )}
@@ -3141,7 +3141,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
               >
                 {mode === "name" && <><Hash className="h-2.5 w-2.5" /> Name</>}
                 {mode === "date" && <><Clock className="h-2.5 w-2.5" /> Datum</>}
-                {mode === "size" && <><ArrowUpDown className="h-2.5 w-2.5" /> Groesse</>}
+                {mode === "size" && <><ArrowUpDown className="h-2.5 w-2.5" /> Größe</>}
               </button>
             ))}
           </div>
@@ -3149,7 +3149,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
 
         {/* Tree content */}
         {/* Der Rahmen selbst nimmt Dateien ebenfalls an: wer in den leeren Raum
-            unter dem Baum faellt, meint den Wurzelordner. Ohne das waere der
+            unter dem Baum faellt, meint den Wurzelordner. Ohne das wäre der
             grosse leere Bereich die einzige Flaeche, auf der nichts passiert. */}
         <div
           className={cn(

@@ -96,7 +96,7 @@ export function ConciergeWidget() {
   const verdict = VERDICT[data?.verdict ?? ""] ?? VERDICT["alles ruhig"];
   const VerdictIcon = verdict.Icon;
   const items = data?.items ?? [];
-  // Fallback auf die alten Felder: waere der Orchestrator noch aelter, staende hier
+  // Fallback auf die alten Felder: wäre der Orchestrator noch aelter, staende hier
   // sonst gar nichts statt wenigstens der Zahlen.
   const stats = data?.stats ?? {
     agents: data?.agents.total ?? 0,

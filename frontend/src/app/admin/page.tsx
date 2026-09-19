@@ -115,7 +115,7 @@ export default function AdminPage() {
   const user = useAuthStore((s) => s.user);
   const [mountUserId, setMountUserId] = useState<string | null>(null);
   const [resetPasswordResult, setResetPasswordResult] = useState<{ email: string; tempPassword: string } | null>(null);
-  // Direkt in einen Reiter springen koennen (z.B. von der Seitenleiste aus
+  // Direkt in einen Reiter springen können (z.B. von der Seitenleiste aus
   // "Rechte" -> Rollen), statt immer erst auf der Nutzerliste zu landen.
   // Ein fremder/kaputter Query-Parameter darf keinen unbekannten Reiter setzen.
   const angefragterReiter = searchParams.get("tab");
@@ -1867,7 +1867,7 @@ function FeedbackTab({
                   <button
                     onClick={() => handleDelete(f)}
                     className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                    title="Loeschen"
+                    title="Löschen"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>

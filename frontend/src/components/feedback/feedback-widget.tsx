@@ -67,7 +67,7 @@ function truncateLabel(s: string, limit = 80): string {
 function labelOf(el: Element): string {
   const al = el.getAttribute("aria-label") || (el as HTMLElement).title;
   if (al) return truncateLabel(al.trim());
-  // innerText statt textContent: textContent haengt den Text aller
+  // innerText statt textContent: textContent hängt den Text aller
   // Nachfahren-Knoten roh aneinander (zwei Block-Geschwister werden ohne
   // Trenner zu einem Wort verklebt, z.B. "erhaltenFeedback wird..."), waehrend
   // innerText das gerenderte Layout beruecksichtigt und zwischen Bloecken

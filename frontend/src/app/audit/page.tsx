@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 // Audit Log lebt nur noch in der Admin-Konsole (Issue #787) — siehe
-// ai-accounts/page.tsx fuer die Begruendung.
+// ai-accounts/page.tsx für die Begruendung.
 export default function AuditPage() {
   const router = useRouter();
   useEffect(() => {

@@ -274,7 +274,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
       // so nodes never stack on top of each other; ring grows with member count.
       const idxs = g.indices;
       const n = idxs.length;
-      // Der Platz bestimmt die Groesse, nicht eine feste Zahl: Zwischen zwei
+      // Der Platz bestimmt die Größe, nicht eine feste Zahl: Zwischen zwei
       // benachbarten Team-Mittelpunkten liegt 2*clusterRing*sin(pi/G) — mehr als die
       // Haelfte davon darf ein Kreis nicht beanspruchen, sonst ueberlappen sie sich
       // und die Beschriftungen liegen uebereinander (genau das war zu sehen).
@@ -410,11 +410,11 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
           className="grid h-7 w-7 place-items-center rounded text-muted-foreground/70 hover:bg-foreground/[0.08] hover:text-foreground">
           <Minus className="h-3.5 w-3.5" />
         </button>
-        <button onClick={() => setZoom(1)} title="Ansicht zuruecksetzen"
+        <button onClick={() => setZoom(1)} title="Ansicht zurücksetzen"
           className="px-1.5 text-[10px] tabular-nums text-muted-foreground/60 hover:text-foreground">
           {Math.round(zoom * 100)}%
         </button>
-        <button onClick={() => zoomBy(0.1)} title="Vergroessern"
+        <button onClick={() => zoomBy(0.1)} title="Vergrößern"
           className="grid h-7 w-7 place-items-center rounded text-muted-foreground/70 hover:bg-foreground/[0.08] hover:text-foreground">
           <Plus className="h-3.5 w-3.5" />
         </button>

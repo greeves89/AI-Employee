@@ -26,7 +26,7 @@ export function useOrdnerAbwurf(opts: {
   };
 }) {
   const { aufloesen, nachAbwurf, melden } = opts;
-  //: Ordner, ueber dem der Zeiger schwebt — nur fuer die Hervorhebung.
+  //: Ordner, über dem der Zeiger schwebt — nur für die Hervorhebung.
   const [dropZiel, setDropZiel] = useState<string | null>(null);
   //: Ordner, in den gerade hochgeladen wird.
   const [dropLaeuft, setDropLaeuft] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export function useOrdnerAbwurf(opts: {
         .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
         .filter((eintrag) => eintrag?.isDirectory);
       if (ordner.length) {
-        melden.error("Ordner koennen nicht hochgeladen werden", "Zieh die einzelnen Dateien herein.");
+        melden.error("Ordner können nicht hochgeladen werden", "Zieh die einzelnen Dateien herein.");
         return;
       }
 

@@ -5,10 +5,10 @@ import { Camera, Check, Clipboard, Eye, FolderOpen, Keyboard, Loader2, Monitor, 
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 
-// Dauerhafter Pro-Agent-Deckel fuer Computer-Use (Issue #787 Punkt 1) -- vorher
+// Dauerhafter Pro-Agent-Deckel für Computer-Use (Issue #787 Punkt 1) -- vorher
 // gab es dafuer KEINEN Wert: jede Desktop-Session startete immer mit demselben
 // Plattform-Default, unabhaengig davon, ob der Agent laut Autonomie-Matrix
-// ueberhaupt Shell-/System-Aktionen ausfuehren darf. Eine Session kann diesen
+// ueberhaupt Shell-/System-Aktionen ausführen darf. Eine Session kann diesen
 // Deckel nur noch UNTERSCHREITEN, nie ueberschreiten (serverseitig erzwungen in
 // computer_use.py, nicht nur hier angezeigt).
 const LABELS: Record<string, { label: string; icon: React.ElementType }> = {
@@ -16,7 +16,7 @@ const LABELS: Record<string, { label: string; icon: React.ElementType }> = {
   accessibility: { label: "Bedienoberflaeche lesen", icon: Eye },
   mouse: { label: "Maussteuerung", icon: MousePointer2 },
   keyboard: { label: "Tastatureingaben", icon: Keyboard },
-  apps: { label: "Programme oeffnen/schliessen", icon: FolderOpen },
+  apps: { label: "Programme öffnen/schließen", icon: FolderOpen },
   clipboard: { label: "Zwischenablage", icon: Clipboard },
   shell: { label: "Shell-Befehle", icon: Terminal },
   input_capture: { label: "Eigene Eingaben mitschneiden", icon: Keyboard },

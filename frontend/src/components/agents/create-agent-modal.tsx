@@ -183,7 +183,7 @@ export function CreateAgentModal({
   // Bis 2026-08-16 gab es diesen Zustand nicht: eine leere Liste hiess sowohl
   // „wird noch geladen" als auch „ist fehlgeschlagen". Bei einem Fehler stand
   // deshalb DAUERHAFT „Vorlagen werden geladen…" da — ohne Spinner, ohne
-  // Hinweis, ohne Weg zurueck.
+  // Hinweis, ohne Weg zurück.
   const [vorlagenZustand, setVorlagenZustand] = useState<"laedt" | "da" | "fehler">("laedt");
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
   const [name, setName] = useState("");
@@ -193,7 +193,7 @@ export function CreateAgentModal({
   const [avatarTag, setAvatarTag] = useState("");
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   // "auto" = der Container bekommt die sudo-Pakete, die die Autonomiestufe hergibt.
-  // Nur wer hier bewusst umschaltet, haengt die Rechte von der Stufe ab.
+  // Nur wer hier bewusst umschaltet, hängt die Rechte von der Stufe ab.
   const [permissionsMode, setPermissionsMode] = useState<"auto" | "manual">("auto");
   const [derivedPermissions, setDerivedPermissions] = useState<Record<string, string[]>>({});
   const [budgetUsd, setBudgetUsd] = useState<string>("");
@@ -229,7 +229,7 @@ export function CreateAgentModal({
   const [selectedAccountKey, setSelectedAccountKey] = useState<string>("oauth:claude");
 
   // Ausgelagert, damit der Knopf „Erneut versuchen" denselben Weg geht wie das
-  // Oeffnen des Fensters — sonst haette der Wiederholversuch seine eigene,
+  // Öffnen des Fensters — sonst haette der Wiederholversuch seine eigene,
   // ungetestete Zweitfassung.
   const ladeVorlagen = useCallback(() => {
     setVorlagenZustand("laedt");
@@ -406,9 +406,9 @@ export function CreateAgentModal({
     setError(null);
     try {
       const parsedBudget = budgetUsd ? parseFloat(budgetUsd) : undefined;
-      // Im Auto-Modus schickt die Oberflaeche BEWUSST nichts: erst dadurch leitet
+      // Im Auto-Modus schickt die Oberfläche BEWUSST nichts: erst dadurch leitet
       // der Server die sudo-Pakete aus der Autonomiestufe ab. Eine mitgeschickte
-      // Liste heisst "von Hand gewaehlt" und haengt den Agenten von der Stufe ab.
+      // Liste heisst "von Hand gewählt" und hängt den Agenten von der Stufe ab.
       const permissionsPayload = permissionsMode === "manual" ? selectedPermissions : undefined;
 
       let created: Awaited<ReturnType<typeof api.createAgent>> | undefined;
@@ -566,7 +566,7 @@ export function CreateAgentModal({
                       </button>
                     )}
                     <Dialog.Title className="text-lg font-semibold">
-                      {step === "template" ? "Vorlage waehlen" : simpleMode ? "Agent benennen" : "Agent konfigurieren"}
+                      {step === "template" ? "Vorlage wählen" : simpleMode ? "Agent benennen" : "Agent konfigurieren"}
                     </Dialog.Title>
                   </div>
                   <Dialog.Close className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors">
@@ -578,7 +578,7 @@ export function CreateAgentModal({
                 {step === "template" && (
                   <div className="px-6 py-5">
                     <p className="text-sm text-muted-foreground mb-4">
-                      Waehle eine Vorlage fuer den neuen Agent oder starte ohne Vorlage.
+                      Wähle eine Vorlage für den neuen Agent oder starte ohne Vorlage.
                     </p>
 
                     {/* Blank Agent Option */}
@@ -670,7 +670,7 @@ export function CreateAgentModal({
                     )}
 
                     {/* Fehlschlag sah bis 2026-08-16 exakt aus wie Laden — die
-                        Meldung blieb einfach fuer immer stehen. */}
+                        Meldung blieb einfach für immer stehen. */}
                     {vorlagenZustand === "fehler" && (
                       <div className="rounded-xl border border-border bg-card/40 px-4 py-5 text-center">
                         <p className="text-sm font-medium">Vorlagen nicht erreichbar</p>
@@ -791,14 +791,14 @@ export function CreateAgentModal({
                               <div>
                                 <p className="text-sm font-medium">Einmalig manuell</p>
                                 <p className="mt-0.5 text-[11px] text-muted-foreground/70">
-                                  Nur fuer Tests. Besser dauerhaft unter AI Accounts speichern.
+                                  Nur für Tests. Besser dauerhaft unter AI Accounts speichern.
                                 </p>
                                 <p className="mt-2 text-[10px] font-medium text-muted-foreground/60">Custom Harness</p>
                               </div>
                             </button>
                           </div>
                           <p className="mt-2 text-[11px] text-muted-foreground/55">
-                            Claude und OpenAI nutzen automatisch ihre CLI-Harnesses. Google, Ollama und LM Studio laufen aktuell ueber den Custom Harness.
+                            Claude und OpenAI nutzen automatisch ihre CLI-Harnesses. Google, Ollama und LM Studio laufen aktuell über den Custom Harness.
                           </p>
                         </div>
                       )}
@@ -951,7 +951,7 @@ export function CreateAgentModal({
                               className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all tabular-nums"
                             />
                             <p className="text-[11px] text-muted-foreground/50 mt-1">
-                              0 = praezise, 1 = kreativ. Fuer Coding: 0.2-0.5 empfohlen.
+                              0 = praezise, 1 = kreativ. Für Coding: 0.2-0.5 empfohlen.
                             </p>
                           </div>
 
@@ -970,7 +970,7 @@ export function CreateAgentModal({
                                 <option value="">Standard (API-Default)</option>
                                 <option value="low">Low — schnell, wenig Denkaufwand</option>
                                 <option value="medium">Medium</option>
-                                <option value="high">High — gruendlich, langsamer</option>
+                                <option value="high">High — gründlich, langsamer</option>
                               </select>
                               <p className="text-[11px] text-muted-foreground/50 mt-1">
                                 Wird von allen anderen Modellen ignoriert.
@@ -1098,11 +1098,11 @@ export function CreateAgentModal({
                               {autonomyLevel === "l1" && "Agent kann nur lesen und suchen — keine Aktionen."}
                               {autonomyLevel === "l2" && "Agent erstellt Empfehlungen und Entwuerfe — fuehrt nichts aus."}
                               {autonomyLevel === "l3" && "Agent fragt vor jeder Aktion um Erlaubnis (empfohlen)."}
-                              {autonomyLevel === "l4" && "Agent handelt vollstaendig eigenstnadig ohne Rueckfragen."}
+                              {autonomyLevel === "l4" && "Agent handelt vollstaendig eigenstnadig ohne Rückfragen."}
                             </p>
                           </div>
 
-                          {/* Permission Packages — folgen standardmaessig der Autonomiestufe */}
+                          {/* Permission Packages — folgen standardmäßig der Autonomiestufe */}
                           <PermissionPackagesPanel
                             packages={packages}
                             autonomyLevel={autonomyLevel}

@@ -197,7 +197,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
         <div>
           <h2 className="text-lg font-semibold">Command Policies</h2>
           <p className="mt-1 text-sm text-muted-foreground/60">
-            Regex-Regeln fuer Bash-Befehle: blockieren, erlauben oder automatisch Approval anfordern.
+            Regex-Regeln für Bash-Befehle: blockieren, erlauben oder automatisch Approval anfordern.
           </p>
         </div>
         <button
@@ -243,7 +243,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
               <option value="allow">Erlaubt - explizit erlauben</option>
               <option value="medium">Mittel - Freigabe anfordern</option>
               <option value="high">Hoch - Freigabe anfordern</option>
-              <option value="blocked">Blockiert - nie ausfuehren</option>
+              <option value="blocked">Blockiert - nie ausführen</option>
             </select>
             <input
               value={draft.sort_order}

@@ -56,7 +56,7 @@ class DroppingActuallyUploadsTests(unittest.TestCase):
         """Die Upload-Schnittstelle nimmt nur Dateien; ein Ordner kaeme als
         leere 0-Byte-Datei an und schluege unverstaendlich fehl."""
         self.assertIn("webkitGetAsEntry", HAKEN)
-        self.assertIn("Ordner koennen nicht hochgeladen werden", HAKEN)
+        self.assertIn("Ordner können nicht hochgeladen werden", HAKEN)
 
     def test_the_target_folder_is_reread_afterwards(self):
         """Sonst liegt die Datei da, ist aber nicht zu sehen."""

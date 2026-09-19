@@ -138,10 +138,10 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
   const handleSavePrompt = async () => {
     if (!data) return;
     if (!!hoursStartDraft !== !!hoursEndDraft) {
-      setSaveError("Start- und Endzeit muessen zusammen gesetzt oder beide geleert werden.");
+      setSaveError("Start- und Endzeit müssen zusammen gesetzt oder beide geleert werden.");
       return;
     }
-    // Ein Bereich ohne Titel wuerde serverseitig 422 werfen — hier abfangen, damit die
+    // Ein Bereich ohne Titel würde serverseitig 422 werfen — hier abfangen, damit die
     // Meldung am Feld steht statt als generischer Speicherfehler.
     if (dutiesDraft.some((d) => !d.title.trim())) {
       setSaveError("Jeder Verantwortungsbereich braucht einen Titel.");
@@ -381,7 +381,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                 {data?.base_prompt && (
                   <div>
                     <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
-                      Basis-Prompt — fest im System, gilt fuer alle Agenten
+                      Basis-Prompt — fest im System, gilt für alle Agenten
                     </div>
                     <pre className="max-h-44 overflow-auto whitespace-pre-wrap rounded-lg border border-foreground/[0.06] bg-background/60 p-2 text-[10px] leading-relaxed text-muted-foreground/70">
                       {data.base_prompt}
@@ -392,7 +392,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
 
                 <div>
                   <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/40">
-                    Zusaetzliche Anweisungen fuer diesen Agenten
+                    Zusätzliche Anweisungen für diesen Agenten
                   </div>
                   <textarea
                     value={customDraft}
@@ -415,13 +415,13 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                     onChange={(e) => setDeputyDraft(e.target.value)}
                     className="w-full rounded-lg border border-foreground/[0.08] bg-background/60 px-2 py-1 text-[11px] text-foreground focus:border-emerald-500/40 focus:outline-none"
                   >
-                    <option value="">— kein Vertreter (dann uebernimmt der Team-Lead) —</option>
+                    <option value="">— kein Vertreter (dann übernimmt der Team-Lead) —</option>
                     {agents.filter((a) => a.id !== agentId).map((a) => (
                       <option key={a.id} value={a.id}>{a.name}</option>
                     ))}
                   </select>
                   <div className="mt-1.5 text-[10px] text-muted-foreground/40">
-                    Haengt oder scheitert dieser Agent, gehen seine offenen Todos an den
+                    Hängt oder scheitert dieser Agent, gehen seine offenen Todos an den
                     Vertreter — und du bekommst eine Meldung. Ohne Vertreter und ohne
                     Team-Lead bleibt die Arbeit liegen.
                   </div>
@@ -456,7 +456,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                     </label>
                   </div>
                   <div className="mt-1.5 text-[10px] text-muted-foreground/40">
-                    Seine EIGENE Arbeitszeit (nicht deine). Ausserhalb laeuft kein proaktiver
+                    Seine EIGENE Arbeitszeit (nicht deine). Außerhalb läuft kein proaktiver
                     Lauf. Leer = rund um die Uhr. Zeitzone kommt aus der Erreichbarkeit unten.
                   </div>
                 </div>
@@ -485,13 +485,13 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                         onClick={() => { setAbsFrom(""); setAbsTo(""); }}
                         className="text-[10px] text-muted-foreground/50 underline-offset-2 hover:underline"
                       >
-                        loeschen
+                        löschen
                       </button>
                     )}
                   </div>
                   <div className="mt-1.5 text-[10px] text-muted-foreground/40">
-                    In diesem Zeitraum stellt der Agent keine Rueckfragen, sondern sammelt sie
-                    und legt sie dir gebuendelt vor, wenn du zurueck bist.
+                    In diesem Zeitraum stellt der Agent keine Rückfragen, sondern sammelt sie
+                    und legt sie dir gebündelt vor, wenn du zurück bist.
                   </div>
                 </div>
 
@@ -526,8 +526,8 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                     )}
                   </div>
                   <div className="mt-1.5 text-[10px] text-muted-foreground/40">
-                    Jeder proaktive Agent plant abends den naechsten Tag und sieht morgens
-                    nochmal drueber. Hier setzt du NUR eine andere Uhrzeit fuer den
+                    Jeder proaktive Agent plant abends den nächsten Tag und sieht morgens
+                    nochmal drüber. Hier setzt du NUR eine andere Uhrzeit für den
                     Morgencheck; leer = er richtet sich nach seiner Dienstzeit (sonst 07:00).
                     Zeitzone kommt aus der Erreichbarkeit darunter.
                   </div>
@@ -560,7 +560,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                     />
                   </div>
                   <div className="mt-1.5 text-[10px] text-muted-foreground/40">
-                    Ausserhalb dieses Fensters meldet sich der Agent nur bei wirklich Dringendem
+                    Außerhalb dieses Fensters meldet sich der Agent nur bei wirklich Dringendem
                     (STEP 4 der Basis-Regeln). Leer lassen = jeder Lauf gilt als Off-Hours.
                   </div>
                 </div>
