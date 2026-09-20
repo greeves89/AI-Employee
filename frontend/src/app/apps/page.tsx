@@ -858,15 +858,15 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
                 {ergebnis.befunde.map((b, i) => (
                   <div key={i} className="flex items-start gap-2 text-xs">
                     {b.art === "fehler" ? (
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-700 dark:text-red-400" />
                     ) : b.art === "warnung" ? (
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
                     ) : (
                       <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-500" />
                     )}
                     <span className={cn(
-                      b.art === "fehler" ? "text-red-400"
-                        : b.art === "warnung" ? "text-amber-400"
+                      b.art === "fehler" ? "text-red-700 dark:text-red-400"
+                        : b.art === "warnung" ? "text-amber-700 dark:text-amber-400"
                         : "text-muted-foreground",
                     )}>{b.text}</span>
                   </div>
