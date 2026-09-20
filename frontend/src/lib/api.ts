@@ -1965,16 +1965,51 @@ export async function importAppZip(
   agentId: string,
   file: File,
   path = "/workspace",
+  onFortschritt?: (geladen: number, gesamt: number) => void,
 ): Promise<AppImportErgebnis> {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await fetch(
-    `${getBase()}/agents/${agentId}/files/import-folder?path=${encodeURIComponent(path)}`,
-    { method: "POST", body: fd, credentials: "include" },
-  );
-  if (!res.ok) throw new Error((await res.text()).slice(0, 300));
-  return res.json();
+  const url = `${getBase()}/agents/${agentId}/files/import-folder?path=${encodeURIComponent(path)}`;
+
+  // Bewusst XMLHttpRequest statt fetch: fetch kennt keinen Upload-Fortschritt.
+  // Bei einem Paket von zig Megabyte ist ein Balken, der sich bewegt, der
+  // Unterschied zwischen "laedt" und "haengt".
+  return new Promise<AppImportErgebnis>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+    xhr.withCredentials = true;
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onFortschritt?.(e.loaded, e.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch {
+          reject(new Error("Antwort des Servers nicht lesbar"));
+        }
+      } else {
+        // Der Server schickt {"detail": "..."} — den Klartext herausziehen,
+        // statt dem Nutzer rohes JSON hinzulegen.
+        let text = xhr.responseText.slice(0, 300);
+        try {
+          const j = JSON.parse(xhr.responseText);
+          if (j?.detail) text = String(j.detail);
+        } catch { /* dann eben der Rohtext */ }
+        reject(new Error(text || `Fehler ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error(
+      "Verbindung abgebrochen. Bei grossen Paketen bricht meist der Reverse-Proxy ab."
+    ));
+    xhr.ontimeout = () => reject(new Error("Zeitueberschreitung beim Hochladen"));
+    xhr.send(fd);
+  });
 }
+
+/** Obergrenze fuer den App-Import, gespiegelt aus dem Backend. */
+export const MAX_APP_IMPORT_BYTES = 95 * 1024 * 1024;
 
 export async function generateBrainMcpToken(
   id: number,

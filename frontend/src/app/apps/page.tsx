@@ -636,11 +636,18 @@ function DetailModal({ app, onClose, onShowLogs }: {
  * Dockerfile? Was fehlt, kann von hier aus direkt an den Agenten gehen,
  * statt dass jemand die App erst beim Startversuch scheitern sieht.
  */
+/** Bytes als MB, eine Nachkommastelle — reicht fuer Paketgroessen. */
+function mb(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () => void }) {
   const { agents } = useAgents();
   const [agentId, setAgentId] = useState("");
   const [datei, setDatei] = useState<File | null>(null);
   const [laeuft, setLaeuft] = useState(false);
+  const [fortschritt, setFortschritt] = useState(0);   // 0..1 waehrend des Uploads
+  const [phase, setPhase] = useState<"" | "upload" | "pruefen">("");
   const [fehler, setFehler] = useState("");
   const [ergebnis, setErgebnis] = useState<api.AppImportErgebnis | null>(null);
   const [uebergeben, setUebergeben] = useState("");
@@ -650,17 +657,37 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
 
   const importieren = async () => {
     if (!agentId || !datei) return;
+    // Vor dem Hochladen pruefen statt danach: Bei einem zu grossen Paket
+    // erst minutenlang zu laden und dann abzulehnen waere die schlechteste
+    // aller Rueckmeldungen.
+    if (datei.size > api.MAX_APP_IMPORT_BYTES) {
+      setFehler(
+        `Das Paket ist ${mb(datei.size)} gross, moeglich sind ${mb(api.MAX_APP_IMPORT_BYTES)}. ` +
+        `Siehe Hinweis unten — node_modules, .git und Build-Ordner koennen raus, ` +
+        `der Import wirft sie ohnehin weg.`
+      );
+      return;
+    }
     setLaeuft(true);
     setFehler("");
     setErgebnis(null);
+    setFortschritt(0);
+    setPhase("upload");
     try {
-      const r = await api.importAppZip(agentId, datei);
+      const r = await api.importAppZip(agentId, datei, "/workspace", (geladen, gesamt) => {
+        setFortschritt(gesamt ? geladen / gesamt : 0);
+        // Sobald die Bytes draussen sind, arbeitet der Server — entpacken und
+        // pruefen dauert bei vielen Dateien spuerbar. Ein Balken, der bei 100%
+        // stehen bleibt, sieht sonst aus wie ein Haenger.
+        if (gesamt && geladen >= gesamt) setPhase("pruefen");
+      });
       setErgebnis(r);
       onFertig();
     } catch (e) {
       setFehler(String(e).replace(/^Error:\s*/, "").replace(/API Error \d+:\s*/, ""));
     } finally {
       setLaeuft(false);
+      setPhase("");
     }
   };
 
@@ -744,13 +771,46 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
                   onChange={(e) => setDatei(e.target.files?.[0] ?? null)}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-accent file:px-2 file:py-1 file:text-xs"
                 />
+                {datei && (
+                  <p className={cn(
+                    "mt-1.5 text-xs",
+                    datei.size > api.MAX_APP_IMPORT_BYTES ? "text-red-400" : "text-muted-foreground",
+                  )}>
+                    {datei.name} — {mb(datei.size)}
+                    {datei.size > api.MAX_APP_IMPORT_BYTES && " (zu gross)"}
+                  </p>
+                )}
                 <p className="mt-1 text-xs text-muted-foreground">
                   Erwartet wird ein Paket mit einem Ordner an der Wurzel — genau das,
-                  was der Export-Knopf einer App erzeugt. Hoechstens 95 MB; groessere
-                  Pakete kommen nicht durch den Reverse-Proxy.
+                  was der Export-Knopf einer App erzeugt. Hoechstens {mb(api.MAX_APP_IMPORT_BYTES)};
+                  groessere Pakete kommen nicht durch den Reverse-Proxy. Tipp:
+                  node_modules, .git und Build-Ordner koennen raus — der Import
+                  wirft sie ohnehin weg.
                 </p>
               </div>
             </>
+          )}
+
+          {laeuft && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {phase === "pruefen"
+                    ? "Entpacken und pruefen …"
+                    : `Hochladen — ${mb((datei?.size ?? 0) * fortschritt)} von ${mb(datei?.size ?? 0)}`}
+                </span>
+                <span>{phase === "pruefen" ? "" : `${Math.round(fortschritt * 100)} %`}</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-accent">
+                <div
+                  className={cn(
+                    "h-full rounded-full bg-primary transition-all",
+                    phase === "pruefen" && "animate-pulse",
+                  )}
+                  style={{ width: `${Math.max(2, fortschritt * 100)}%` }}
+                />
+              </div>
+            </div>
           )}
 
           {fehler && (
@@ -762,12 +822,24 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
 
           {ergebnis && (
             <div className="space-y-3">
-              <div className="rounded-lg bg-accent/40 p-3 text-xs">
-                <span className="font-medium">{ergebnis.ordner || "Paket"}</span> entpackt —{" "}
-                {ergebnis.geschrieben} Datei{ergebnis.geschrieben === 1 ? "" : "en"}
-                {ergebnis.uebersprungen_gesamt > 0 && (
-                  <>, {ergebnis.uebersprungen_gesamt} uebersprungen</>
-                )}
+              <div className="rounded-lg bg-accent/40 p-3 text-xs space-y-1">
+                <div className="font-medium">{ergebnis.ordner || "Paket"}</div>
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-muted-foreground">
+                  <dt>Geschrieben</dt>
+                  <dd>{ergebnis.geschrieben} Datei{ergebnis.geschrieben === 1 ? "" : "en"} · {mb(ergebnis.bytes)}</dd>
+                  {ergebnis.uebersprungen_gesamt > 0 && (
+                    <>
+                      <dt>Uebersprungen</dt>
+                      <dd>{ergebnis.uebersprungen_gesamt}</dd>
+                    </>
+                  )}
+                  <dt>Zielordner</dt>
+                  <dd className="font-mono">/workspace/{ergebnis.ordner}</dd>
+                  <dt>Agent</dt>
+                  <dd>{agent?.name ?? agentId}</dd>
+                  <dt>Startklar</dt>
+                  <dd>{ergebnis.startklar ? "ja" : "nein — siehe unten"}</dd>
+                </dl>
               </div>
 
               <div className="space-y-1.5">

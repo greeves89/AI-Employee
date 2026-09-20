@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.324.1] - 2026-09-20
+
+### Geändert
+- **Der App-Import zeigt jetzt einen Upload-Fortschritt und mehr Details.**
+  Der Upload lief über `fetch`, das grundsätzlich keinen Fortschritt kennt —
+  bei einem Paket von zig Megabyte war „lädt" von „hängt" nicht zu
+  unterscheiden. Jetzt über `XMLHttpRequest` mit Balken, Prozentangabe und
+  Byte-Anzeige, danach ein eigener Zustand „Entpacken und prüfen", damit ein
+  Balken bei 100 % nicht wie ein Hänger aussieht.
+- Die Größe wird **vor** dem Hochladen geprüft. Ein zu großes Paket erst
+  minutenlang zu laden und dann abzulehnen war die schlechteste aller
+  Rückmeldungen. Die gewählte Datei steht mit Name und Größe unter dem
+  Auswahlfeld, bei Überschreitung rot.
+- Das Ergebnis nennt jetzt Zielordner, Agent, geschriebene Bytes und ob die
+  App startklar ist — statt nur der Dateizahl.
+- Fehlermeldungen des Servers werden im Klartext gezeigt statt als rohes JSON.
+
+---
+
 ## [1.324.0] - 2026-09-20
 
 ### Hinzugefügt
