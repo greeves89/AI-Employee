@@ -85,12 +85,21 @@ EXPORT_AUSGENOMMEN = {
 #: Obergrenze fuer einen Ordner-Export (entpackt gemessen).
 MAX_EXPORT_BYTES = 500 * 1024 * 1024  # 500 MB
 
-#: Grenzen fuer den Ordner-Import. Das Archiv selbst muss durch den
-#: Reverse-Proxy passen — Cloudflare deckelt den Anfrage-Koerper bei rund
-#: 100 MB, groessere Pakete prallen dort ab, bevor sie hier ankommen. Die
-#: Grenze hier liegt bewusst knapp darunter, damit die Meldung aus unserer
-#: App kommt und nicht als nackte 413-Seite vom Proxy.
-MAX_IMPORT_ARCHIV_BYTES = 95 * 1024 * 1024   # 95 MB Archivgroesse
+#: Grenzen fuer den Ordner-Import.
+#:
+#: Die Archivgrenze ist bewusst symmetrisch zum Export (500 MB): Was die
+#: Plattform herausgibt, muss sie auch wieder hereinlassen.
+#:
+#: NICHT zu verwechseln mit der Grenze des Weges: Cloudflare deckelt den
+#: Anfrage-Koerper bei rund 100 MB, groessere Pakete prallen dort ab, bevor
+#: sie hier ankommen. Das ist eine Eigenschaft des Tunnels, keine der
+#: Plattform — ueber den lokalen Zugang (Caddy auf Port 80, ohne
+#: Begrenzung fuer /api/*) geht deutlich mehr. Die Oberflaeche warnt
+#: deshalb abhaengig davon, ueber welchen Weg sie selbst geladen wurde,
+#: statt hier hart zu deckeln.
+MAX_IMPORT_ARCHIV_BYTES = 500 * 1024 * 1024  # 500 MB, wie der Export
+#: Ab dieser Groesse kommt ein Upload nicht mehr durch Cloudflare.
+CLOUDFLARE_KOERPER_GRENZE = 95 * 1024 * 1024
 MAX_IMPORT_ENTPACKT_BYTES = 1024 * 1024 * 1024  # 1 GB entpackt (Zip-Bombe)
 MAX_IMPORT_EINTRAEGE = 50_000
 

@@ -660,11 +660,19 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
     // Vor dem Hochladen pruefen statt danach: Bei einem zu grossen Paket
     // erst minutenlang zu laden und dann abzulehnen waere die schlechteste
     // aller Rueckmeldungen.
-    if (datei.size > api.MAX_APP_IMPORT_BYTES) {
+    const grenze = api.laeuftUeberTunnel()
+      ? api.CLOUDFLARE_KOERPER_GRENZE
+      : api.MAX_APP_IMPORT_BYTES;
+    if (datei.size > grenze) {
       setFehler(
-        `Das Paket ist ${mb(datei.size)} gross, moeglich sind ${mb(api.MAX_APP_IMPORT_BYTES)}. ` +
-        `Siehe Hinweis unten — node_modules, .git und Build-Ordner koennen raus, ` +
-        `der Import wirft sie ohnehin weg.`
+        api.laeuftUeberTunnel()
+          ? `Das Paket ist ${mb(datei.size)} gross. Ueber diese Adresse sind ` +
+            `${mb(api.CLOUDFLARE_KOERPER_GRENZE)} moeglich — die Grenze setzt der Tunnel ` +
+            `davor, nicht die Plattform. Zwei Wege: das Paket schlanker packen ` +
+            `(node_modules, .git und Build-Ordner wirft der Import ohnehin weg), ` +
+            `oder die Oberflaeche im lokalen Netz direkt aufrufen, dann gelten ` +
+            `${mb(api.MAX_APP_IMPORT_BYTES)}.`
+          : `Das Paket ist ${mb(datei.size)} gross, moeglich sind ${mb(api.MAX_APP_IMPORT_BYTES)}.`
       );
       return;
     }
@@ -774,18 +782,22 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
                 {datei && (
                   <p className={cn(
                     "mt-1.5 text-xs",
-                    datei.size > api.MAX_APP_IMPORT_BYTES ? "text-red-400" : "text-muted-foreground",
+                    datei.size > (api.laeuftUeberTunnel() ? api.CLOUDFLARE_KOERPER_GRENZE : api.MAX_APP_IMPORT_BYTES)
+                      ? "text-red-400" : "text-muted-foreground",
                   )}>
                     {datei.name} — {mb(datei.size)}
-                    {datei.size > api.MAX_APP_IMPORT_BYTES && " (zu gross)"}
+                    {datei.size > (api.laeuftUeberTunnel() ? api.CLOUDFLARE_KOERPER_GRENZE : api.MAX_APP_IMPORT_BYTES) && " (zu gross)"}
                   </p>
                 )}
                 <p className="mt-1 text-xs text-muted-foreground">
                   Erwartet wird ein Paket mit einem Ordner an der Wurzel — genau das,
-                  was der Export-Knopf einer App erzeugt. Hoechstens {mb(api.MAX_APP_IMPORT_BYTES)};
-                  groessere Pakete kommen nicht durch den Reverse-Proxy. Tipp:
-                  node_modules, .git und Build-Ordner koennen raus — der Import
-                  wirft sie ohnehin weg.
+                  was der Export-Knopf einer App erzeugt. Hoechstens{" "}
+                  {mb(api.laeuftUeberTunnel() ? api.CLOUDFLARE_KOERPER_GRENZE : api.MAX_APP_IMPORT_BYTES)}
+                  {api.laeuftUeberTunnel()
+                    ? " — die Grenze setzt der Tunnel vor der Plattform. Im lokalen Netz direkt aufgerufen sind es 500 MB."
+                    : " (lokaler Zugang, ohne Tunnel)."}{" "}
+                  Tipp: node_modules, .git und Build-Ordner koennen raus — der
+                  Import wirft sie ohnehin weg.
                 </p>
               </div>
             </>

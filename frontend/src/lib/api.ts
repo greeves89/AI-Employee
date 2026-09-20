@@ -2008,8 +2008,37 @@ export async function importAppZip(
   });
 }
 
-/** Obergrenze fuer den App-Import, gespiegelt aus dem Backend. */
-export const MAX_APP_IMPORT_BYTES = 95 * 1024 * 1024;
+/** Obergrenze des Servers fuer den App-Import (wie beim Export). */
+export const MAX_APP_IMPORT_BYTES = 500 * 1024 * 1024;
+
+/**
+ * Ab hier kommt ein Upload nicht mehr durch Cloudflare.
+ *
+ * Das ist eine Eigenschaft des WEGES, nicht der Plattform: Cloudflare deckelt
+ * den Anfrage-Koerper bei rund 100 MB und weist die Anfrage an seiner Kante
+ * ab, bevor sie den Server erreicht. Ueber den lokalen Zugang (direkt auf den
+ * Host, ohne Tunnel) gilt die Grenze nicht.
+ */
+export const CLOUDFLARE_KOERPER_GRENZE = 95 * 1024 * 1024;
+
+/**
+ * Laeuft diese Seite ueber den Cloudflare-Tunnel?
+ *
+ * Eine lokale Adresse (LAN-IP, localhost, .local) geht direkt auf den Host —
+ * dort gibt es die Koerpergrenze nicht.
+ */
+export function laeuftUeberTunnel(): boolean {
+  if (typeof window === "undefined") return true;  // im Zweifel warnen
+  const h = window.location.hostname;
+  const lokal =
+    h === "localhost" ||
+    h === "127.0.0.1" ||
+    h.endsWith(".local") ||
+    /^10\./.test(h) ||
+    /^192\.168\./.test(h) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(h);
+  return !lokal;
+}
 
 export async function generateBrainMcpToken(
   id: number,

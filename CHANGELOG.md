@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.324.2] - 2026-09-20
+
+### Behoben
+- **Die Größengrenze beim App-Import war zu grob.** Sie lag pauschal bei
+  95 MB, obwohl die Beschränkung gar nicht von der Plattform kommt, sondern
+  vom Cloudflare-Tunnel davor: Der deckelt den Anfrage-Körper bei rund 100 MB
+  und weist die Anfrage an seiner Kante ab, bevor sie den Server erreicht.
+  Über den lokalen Zugang (direkt auf den Host, Caddy begrenzt `/api/*` nicht)
+  gilt diese Grenze nicht — die Oberfläche hat sie aber trotzdem durchgesetzt
+  und damit einen Weg versperrt, der offen ist.
+  - Serverseitig gilt jetzt 500 MB, symmetrisch zum Export: Was die Plattform
+    herausgibt, muss sie auch wieder hereinlassen.
+  - Die Oberfläche prüft, über welchen Weg sie selbst geladen wurde, und warnt
+    entsprechend — über den Tunnel bei 95 MB, lokal bei 500 MB. Der Hinweistext
+    nennt den Grund und den Ausweg, statt nur eine Zahl zu behaupten.
+
+---
+
 ## [1.324.1] - 2026-09-20
 
 ### Geändert
