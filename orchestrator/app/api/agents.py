@@ -2209,6 +2209,57 @@ async def download_folder(
     )
 
 
+@router.post("/{agent_id}/files/import-folder")
+async def import_folder(
+    agent_id: str,
+    path: str = "/workspace",
+    file: UploadFile = File(...),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    file_mgr: FileManager = Depends(_get_file_manager),
+):
+    """Ein App-Paket als ZIP in den Arbeitsbereich entpacken.
+
+    Gegenstueck zu ``download-folder``: was dort herausgeht, kommt hier wieder
+    herein. Direkt danach laeuft ein Schnell-Checkup — liegt eine Compose-Datei
+    bei, liegt sie flach genug, baut ein Dienst ohne Dockerfile. Das Ergebnis
+    geht als Befundliste zurueck, damit die Oberflaeche sagen kann, was noch
+    fehlt, statt die App erst beim Startversuch scheitern zu lassen.
+    """
+    await _check_owner(agent_id, user, db)
+    agent = await manager._get_agent(agent_id)
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="Agent has no container")
+
+    daten = await file.read()
+    try:
+        bericht = await asyncio.to_thread(
+            file_mgr.importiere_ordner_zip, agent.container_id, path, daten
+        )
+    except ValueError as e:
+        # Zu gross, kein ZIP, leer, zu viele Eintraege — alles Eingabefehler.
+        # Die Groessengrenze ist bewusst 413, damit die Oberflaeche sie von
+        # einem kaputten Archiv unterscheiden kann.
+        status = 413 if "groesser als" in str(e) or "zu gross" in str(e) else 400
+        raise HTTPException(status_code=status, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[Dateien] Import fehlgeschlagen agent=%s: %s",
+                       scrub_log(agent_id), scrub_log(e))
+        raise HTTPException(status_code=500, detail="Import fehlgeschlagen")
+
+    return {
+        "ok": True,
+        "ordner": bericht.ordner,
+        "geschrieben": bericht.geschrieben,
+        "bytes": bericht.bytes_geschrieben,
+        "uebersprungen": bericht.uebersprungen,
+        "uebersprungen_gesamt": bericht.uebersprungen_gesamt,
+        "startklar": bericht.startklar,
+        "befunde": [{"art": b.art, "text": b.text} for b in bericht.befunde],
+    }
+
+
 @router.delete("/{agent_id}/files")
 async def delete_file(
     agent_id: str,

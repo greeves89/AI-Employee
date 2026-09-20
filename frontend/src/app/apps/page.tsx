@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import {
   AppWindow, Play, Square, Loader2, Cpu, RefreshCw, ScrollText, Trash2, X, Flag,
   CheckCircle2, Hammer, Share2, Download, Users, Globe, UserPlus, Link2, Copy, Check,
-  AlertTriangle, ShieldCheck, Box, User,
+  AlertTriangle, ShieldCheck, Box, User, Upload, FileArchive,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
+import { useAgents } from "@/hooks/use-agents";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 
@@ -19,6 +20,7 @@ export default function AppsPage() {
   const [reporting, setReporting] = useState<Set<string>>(new Set());
   const [logsFor, setLogsFor] = useState<api.AppEntry | null>(null);
   const [detailFor, setDetailFor] = useState<api.AppEntry | null>(null);
+  const [importOffen, setImportOffen] = useState(false);
 
   const report = async (app: api.AppEntry) => {
     const err = errors[app.project];
@@ -83,12 +85,20 @@ export default function AppsPage() {
       <div className="flex-1 overflow-y-auto p-6">
         <div className="flex items-center justify-between mb-4">
           <p className="text-sm text-muted-foreground">{apps.length} App{apps.length === 1 ? "" : "s"}</p>
-          <button
-            onClick={load}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-          >
-            <RefreshCw className="h-4 w-4" /> Aktualisieren
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setImportOffen(true)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            >
+              <Upload className="h-4 w-4" /> Import
+            </button>
+            <button
+              onClick={load}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            >
+              <RefreshCw className="h-4 w-4" /> Aktualisieren
+            </button>
+          </div>
         </div>
 
         {loading && apps.length === 0 ? (
@@ -256,6 +266,9 @@ export default function AppsPage() {
       </div>
 
       {logsFor && <LogsModal app={logsFor} onClose={() => setLogsFor(null)} />}
+      {importOffen && (
+        <ImportModal onClose={() => setImportOffen(false)} onFertig={load} />
+      )}
       {detailFor && (
         <DetailModal
           app={detailFor}
@@ -606,6 +619,227 @@ function DetailModal({ app, onClose, onShowLogs }: {
                   sie öffnen — verwalten darf sie nur {detail.owner_name || `${detail.agent_name}s Besitzer`}.
                 </p>
               )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * App-Paket importieren.
+ *
+ * Gegenstueck zum Export-Knopf auf jeder Karte: dort geht ein ZIP heraus,
+ * hier kommt eines herein. Direkt nach dem Entpacken laeuft ein Schnell-
+ * Checkup — fehlt die Compose-Datei, liegt sie zu tief, baut ein Dienst ohne
+ * Dockerfile? Was fehlt, kann von hier aus direkt an den Agenten gehen,
+ * statt dass jemand die App erst beim Startversuch scheitern sieht.
+ */
+function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () => void }) {
+  const { agents } = useAgents();
+  const [agentId, setAgentId] = useState("");
+  const [datei, setDatei] = useState<File | null>(null);
+  const [laeuft, setLaeuft] = useState(false);
+  const [fehler, setFehler] = useState("");
+  const [ergebnis, setErgebnis] = useState<api.AppImportErgebnis | null>(null);
+  const [uebergeben, setUebergeben] = useState("");
+  const [uebergebe, setUebergebe] = useState(false);
+
+  const agent = agents.find((a) => a.id === agentId);
+
+  const importieren = async () => {
+    if (!agentId || !datei) return;
+    setLaeuft(true);
+    setFehler("");
+    setErgebnis(null);
+    try {
+      const r = await api.importAppZip(agentId, datei);
+      setErgebnis(r);
+      onFertig();
+    } catch (e) {
+      setFehler(String(e).replace(/^Error:\s*/, "").replace(/API Error \d+:\s*/, ""));
+    } finally {
+      setLaeuft(false);
+    }
+  };
+
+  // Was der Checkup bemaengelt hat, wandert als Auftrag an den Agenten — er
+  // hat Zugriff auf denselben Ordner und kann ergaenzen, was fehlt.
+  const anAgenten = async () => {
+    if (!ergebnis || !agentId) return;
+    setUebergebe(true);
+    try {
+      const maengel = ergebnis.befunde
+        .filter((b) => b.art !== "ok")
+        .map((b) => `- ${b.text}`)
+        .join("\n");
+      const r = await api.createTask({
+        title: `App "${ergebnis.ordner}" lauffaehig machen`,
+        prompt:
+          `Im Arbeitsbereich liegt unter /workspace/${ergebnis.ordner} eine gerade ` +
+          `importierte App. Der Checkup hat folgende Punkte gefunden:\n\n${maengel}\n\n` +
+          `Bitte ergaenze, was fehlt, damit die App auf der Plattform startet. ` +
+          `Die Plattform startet Apps ueber docker-compose.yml, compose.yml, ` +
+          `docker-compose.yaml oder compose.yaml im App-Ordner.`,
+        agent_id: agentId,
+      });
+      setUebergeben(r?.id ? (agent?.name || "Agent") : "");
+    } catch (e) {
+      setFehler(String(e).replace(/^Error:\s*/, ""));
+    } finally {
+      setUebergebe(false);
+    }
+  };
+
+  const maengel = ergebnis?.befunde.filter((b) => b.art !== "ok") ?? [];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-xl border border-border bg-card shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <FileArchive className="h-4 w-4" /> App importieren
+          </h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          {!ergebnis && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  Ziel-Agent
+                </label>
+                <select
+                  value={agentId}
+                  onChange={(e) => setAgentId(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Agent waehlen …</option>
+                  {agents.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Das Paket wird in den Arbeitsbereich dieses Agenten entpackt.
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  ZIP-Datei
+                </label>
+                <input
+                  type="file"
+                  accept=".zip,application/zip"
+                  onChange={(e) => setDatei(e.target.files?.[0] ?? null)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-accent file:px-2 file:py-1 file:text-xs"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Erwartet wird ein Paket mit einem Ordner an der Wurzel — genau das,
+                  was der Export-Knopf einer App erzeugt. Hoechstens 95 MB; groessere
+                  Pakete kommen nicht durch den Reverse-Proxy.
+                </p>
+              </div>
+            </>
+          )}
+
+          {fehler && (
+            <div className="flex items-start gap-2 rounded-lg bg-red-500/10 p-3 text-xs text-red-400">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{fehler}</span>
+            </div>
+          )}
+
+          {ergebnis && (
+            <div className="space-y-3">
+              <div className="rounded-lg bg-accent/40 p-3 text-xs">
+                <span className="font-medium">{ergebnis.ordner || "Paket"}</span> entpackt —{" "}
+                {ergebnis.geschrieben} Datei{ergebnis.geschrieben === 1 ? "" : "en"}
+                {ergebnis.uebersprungen_gesamt > 0 && (
+                  <>, {ergebnis.uebersprungen_gesamt} uebersprungen</>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                {ergebnis.befunde.map((b, i) => (
+                  <div key={i} className="flex items-start gap-2 text-xs">
+                    {b.art === "fehler" ? (
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                    ) : b.art === "warnung" ? (
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+                    ) : (
+                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-500" />
+                    )}
+                    <span className={cn(
+                      b.art === "fehler" ? "text-red-400"
+                        : b.art === "warnung" ? "text-amber-400"
+                        : "text-muted-foreground",
+                    )}>{b.text}</span>
+                  </div>
+                ))}
+              </div>
+
+              {ergebnis.uebersprungen.length > 0 && (
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer">
+                    {ergebnis.uebersprungen_gesamt} Eintrag/Eintraege uebersprungen
+                  </summary>
+                  <ul className="mt-1.5 space-y-0.5 pl-4">
+                    {ergebnis.uebersprungen.map((u, i) => <li key={i}>{u}</li>)}
+                  </ul>
+                </details>
+              )}
+
+              {uebergeben && (
+                <div className="flex items-center gap-2 rounded-lg bg-green-500/10 p-3 text-xs text-green-500">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  An {uebergeben} uebergeben — der Agent ergaenzt den Rest.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          {!ergebnis ? (
+            <>
+              <button onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
+                Abbrechen
+              </button>
+              <button
+                onClick={importieren}
+                disabled={!agentId || !datei || laeuft}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-40"
+              >
+                {laeuft ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                Importieren
+              </button>
+            </>
+          ) : (
+            <>
+              {maengel.length > 0 && !uebergeben && (
+                <button
+                  onClick={anAgenten}
+                  disabled={uebergebe}
+                  className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent/50 disabled:opacity-40"
+                >
+                  {uebergebe ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Flag className="h-3.5 w-3.5" />}
+                  An Agenten uebergeben
+                </button>
+              )}
+              <button onClick={onClose} className="rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground">
+                Fertig
+              </button>
             </>
           )}
         </div>

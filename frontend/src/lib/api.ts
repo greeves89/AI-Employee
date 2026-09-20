@@ -1937,6 +1937,45 @@ export async function importBrainZip(
   return res.json();
 }
 
+/** Ein Befund des Schnell-Checkups nach dem App-Import. */
+export interface AppImportBefund {
+  art: "fehler" | "warnung" | "ok";
+  text: string;
+}
+
+export interface AppImportErgebnis {
+  ok: boolean;
+  ordner: string;
+  geschrieben: number;
+  bytes: number;
+  uebersprungen: string[];
+  uebersprungen_gesamt: number;
+  startklar: boolean;
+  befunde: AppImportBefund[];
+}
+
+/**
+ * Ein App-Paket (ZIP) in den Arbeitsbereich eines Agenten entpacken.
+ *
+ * Gegenstueck zu `getFolderDownloadUrl` — was der Export herausgibt, kommt
+ * hier wieder herein. Die Antwort enthaelt den Schnell-Checkup: ob die App so
+ * ueberhaupt startbar ist, und was sonst auffiel.
+ */
+export async function importAppZip(
+  agentId: string,
+  file: File,
+  path = "/workspace",
+): Promise<AppImportErgebnis> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(
+    `${getBase()}/agents/${agentId}/files/import-folder?path=${encodeURIComponent(path)}`,
+    { method: "POST", body: fd, credentials: "include" },
+  );
+  if (!res.ok) throw new Error((await res.text()).slice(0, 300));
+  return res.json();
+}
+
 export async function generateBrainMcpToken(
   id: number,
 ): Promise<{ mcp_enabled: boolean; mcp_path: string; token: string }> {
