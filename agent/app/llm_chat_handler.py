@@ -369,7 +369,12 @@ class LLMChatHandler:
         SEARCHABLE set — not everything here is sent to the LLM."""
         if self._all_tools is not None:
             return self._all_tools
-        catalog = list(TOOL_DEFINITIONS)
+        # Freigabepflichtige Werkzeuge rausfiltern, BEVOR der Katalog ans Modell
+        # geht. Claude Code und Codex bekommen denselben Filter ueber den
+        # MCP-Server; ohne diese Zeile verhielte sich die Faehigkeit je nach
+        # Laufzeit anders (Harness-Paritaet).
+        from app.tools.capabilities import freigegebene_werkzeuge
+        catalog = await freigegebene_werkzeuge(list(TOOL_DEFINITIONS))
         try:
             mcp_tools = await self._mcp_client.discover_tools()
             if mcp_tools:

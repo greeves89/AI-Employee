@@ -173,7 +173,11 @@ class LLMRunner:
         """Full tool catalog (built-in + MCP), cached + searchable by search_tools."""
         if self._all_tools is not None:
             return self._all_tools
-        self._all_tools = list(TOOL_DEFINITIONS)
+        # Siehe llm_chat_handler._get_catalog: freigabepflichtige Werkzeuge
+        # gehoeren hier raus, sonst sieht Custom-LLM etwas, das Claude Code
+        # und Codex ueber den MCP-Filter gar nicht erst angeboten bekommen.
+        from app.tools.capabilities import freigegebene_werkzeuge
+        self._all_tools = await freigegebene_werkzeuge(list(TOOL_DEFINITIONS))
         try:
             mcp_tools = await self._mcp_client.discover_tools()
             if mcp_tools:

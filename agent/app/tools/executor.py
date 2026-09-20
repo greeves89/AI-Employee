@@ -78,7 +78,7 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "memory_save", "memory_search", "memory_list", "memory_delete",
     "read_file", "list_files", "glob", "grep", "view_image",
     "git_status", "git_diff",
-    "web_search", "web_fetch",
+    "web_search", "news_search", "web_fetch",
     "brain_search", "brain_get", "brain_list", "brain_related",
     "secondbrain_search", "secondbrain_read", "secondbrain_write", "secondbrain_list",
     "list_team", "list_tasks", "list_todos", "list_schedules", "trigger_list",
@@ -150,7 +150,7 @@ _get_allowed_categories._cache = (None, 0.0)
 CONCURRENT_SAFE_TOOLS = frozenset({
     "read_file", "list_files", "glob", "grep", "view_image",
     "git_status", "git_diff",
-    "web_search", "web_fetch",
+    "web_search", "news_search", "web_fetch",
     "memory_search", "brain_search", "brain_get", "brain_list", "brain_related", "list_team",
     "list_tasks", "list_todos", "list_schedules", "trigger_list",
 })
@@ -1101,6 +1101,18 @@ class ToolExecutor:
         except OSError:
             pass
         return f"Saved to Second Brain: {os.path.relpath(target, root)} ({len(content)} chars)."
+
+    async def _tool_news_search(self, params: dict) -> str:
+        """Nachrichtensuche ueber den Orchestrator. Eigenes Werkzeug statt eines
+        Schalters an ``web_search``: Der Nachrichtenindex liefert nur Meldungen
+        (mit Datum), die Websuche auch Dokumentation. Welches gebraucht wird,
+        haengt an der Aufgabe. Ob der Agent es ueberhaupt hat, entscheidet die
+        Freigabe des Admins."""
+        client = self._get_api_client()
+        try:
+            return await client.news_search(params)
+        except Exception as e:
+            return f"Error searching news for '{params.get('query', '')}': {e}"
 
     async def _tool_web_search(self, params: dict) -> str:
         """Search the web via the orchestrator's admin-configured provider

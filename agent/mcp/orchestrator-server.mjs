@@ -56,6 +56,45 @@ function truncatePreservingWords(text, limit) {
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "claude-sonnet-4-6";
 void DEFAULT_MODEL;
 
+// Ein Treffer als Textblock — mit Alter und Herausgeber, wenn der Index sie
+// liefert. Der Python-Client zeigt beides schon; hier fehlte es, und im
+// claude_code-Modus laeuft alles ueber MCP. Ohne Datum kann der Agent einen
+// alten Artikel nicht von einer aktuellen Meldung unterscheiden.
+// Eigenes Werkzeug, kein Schalter an web_search: der Nachrichtenindex liefert
+// nur Meldungen mit Datum, die Websuche auch Dokumentation. Ob der Agent es
+// bekommt, entscheidet die Freigabe des Admins (siehe sucheFreigaben()).
+const NEWS_SEARCH_TOOL = {
+    name: "news_search",
+    description:
+      "Search the news index for current events. Results carry a publication date " +
+      "and publisher, so you can tell today's report from a two-year-old article. " +
+      "Use this when recency matters — for documentation or reference material use " +
+      "web_search instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query (e.g. 'ECB rate decision', 'central bank gold reserves').",
+        },
+        max_results: {
+          type: "number",
+          description: "Number of results to return (default: 5, max: 10).",
+        },
+      },
+      required: ["query"],
+    },
+};
+
+function trefferBloecke(items) {
+  return items
+    .map((r) => {
+      const suffix = (r.age ? ` (${r.age})` : "") + (r.publisher ? ` \u2014 ${r.publisher}` : "");
+      return `**${r.title || ""}**${suffix}\n${r.url || ""}\n${r.snippet || ""}`;
+    })
+    .join("\n\n---\n\n");
+}
+
 async function apiCall(path, options = {}) {
   const url = `${API}${path}`;
   const res = await fetch(url, {
@@ -84,8 +123,21 @@ export function buildServer() {
   );
 
   // --- List available tools ---
+  // Welche Suchindizes dieser Agent nutzen darf. Der Admin gibt frei; ist der
+  // Nachrichtenindex nicht freigegeben (oder kein Schluessel hinterlegt), wird
+  // `news_search` gar nicht erst angeboten — statt es anzubieten und dann mit
+  // 403 abzuweisen. Faellt die Abfrage aus, bleibt es beim Grundbestand.
+  async function sucheFreigaben() {
+    try {
+      return await apiCall(`/agent-search/capabilities`, { method: "GET" });
+    } catch {
+      return { web: true, news: false };
+    }
+  }
+
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
+      ...((await sucheFreigaben()).news ? [NEWS_SEARCH_TOOL] : []),
       {
         name: "create_task",
         description:
@@ -1003,10 +1055,11 @@ export function buildServer() {
       {
         name: "web_search",
         description:
-          "Search the web for information. Use this when you need current data (weather, news, " +
-          "prices, facts) or don't know which URL to visit. Returns top search results with titles, " +
-          "URLs, and snippets. Uses the admin-configured provider (DuckDuckGo by default, or Brave/" +
-          "SerpApi if the admin set an API key under Admin -> Websuche).",
+          "Search the web for documentation, reference material, background and facts. Returns " +
+          "top results with titles, URLs, and snippets. Uses the admin-configured provider " +
+          "(DuckDuckGo by default, or Brave/SerpApi if the admin set an API key under " +
+          "Admin -> Websuche). For current events with a publication date use news_search, " +
+          "when it is available to you.",
         inputSchema: {
           type: "object",
           properties: {
@@ -1964,8 +2017,24 @@ export function buildServer() {
         if (items.length === 0) {
           return { content: [{ type: "text", text: `No results found for '${query}'. Try different search terms.` }] };
         }
-        const blocks = items.map((r) => `**${r.title || ""}**\n${r.url || ""}\n${r.snippet || ""}`);
-        return { content: [{ type: "text", text: `Search results for '${query}':\n\n${blocks.join("\n\n---\n\n")}` }] };
+        return { content: [{ type: "text", text: `Search results for '${query}':\n\n${trefferBloecke(items)}` }] };
+      }
+
+      case "news_search": {
+        const query = (args.query || "").trim();
+        if (!query) {
+          return { content: [{ type: "text", text: "Error: query cannot be empty" }] };
+        }
+        const maxResults = Math.min(Number(args.max_results) || 5, 10);
+        const result = await apiCall(`/agent-search/news`, {
+          method: "POST",
+          body: JSON.stringify({ query, max_results: maxResults }),
+        });
+        const items = result.results || [];
+        if (items.length === 0) {
+          return { content: [{ type: "text", text: `No news found for '${query}'. Try different terms or a wider time range.` }] };
+        }
+        return { content: [{ type: "text", text: `News results for '${query}':\n\n${trefferBloecke(items)}` }] };
       }
 
       default:

@@ -1657,6 +1657,34 @@ class OrchestratorAPIClient:
         blocks = [_format_web_search_result(r) for r in items]
         return f"Search results for '{query}':\n\n" + "\n\n---\n\n".join(blocks)
 
+    async def news_search(self, params: dict) -> str:
+        """Nachrichtensuche — Treffer mit Datum und Herausgeber.
+
+        Getrennt von ``web_search``, weil es ein anderer Index ist und nicht
+        eine andere Einstellung desselben.
+
+        Ohne Freigabe antwortet der Orchestrator mit 403. Dazu kommt es im
+        Normalfall nicht, weil das Werkzeug dann gar nicht erst angeboten
+        wird — auf allen vier Laufzeiten: Claude Code und Codex filtern im
+        MCP-Server (``sucheFreigaben()``), Custom-LLM und die Sprachfront in
+        ``app.tools.capabilities``. Die 403 bleibt die Durchsetzung; das
+        Ausblenden ist nur die Hoeflichkeit davor.
+        """
+        query = (params.get("query") or "").strip()
+        if not query:
+            return "Error: query cannot be empty"
+        max_results = min(int(params.get("max_results") or 5), 10)
+        result = await self._request(
+            "POST", "/agent-search/news", json={"query": query, "max_results": max_results}
+        )
+        if isinstance(result, str):
+            return result
+        items = result.get("results") or []
+        if not items:
+            return f"No news found for '{query}'. Try different terms or a wider time range."
+        blocks = [_format_web_search_result(r) for r in items]
+        return f"News results for '{query}':\n\n" + "\n\n---\n\n".join(blocks)
+
     async def close(self) -> None:
         """Close the HTTP client."""
         await self._client.aclose()
