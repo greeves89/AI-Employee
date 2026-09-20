@@ -3598,6 +3598,25 @@ export interface AppEntry {
   url: string | null;
   /** Set when the app is NOT mine but shared with me — then only "open" is allowed. */
   shared_with_me?: "user" | "authenticated" | null;
+  /** Vom aufrufenden Nutzer angepinnt. Rein persoenlich — verleiht keinen Zugriff. */
+  favorite?: boolean;
+}
+
+/**
+ * Eine App anpinnen oder loesen.
+ *
+ * Anpinnen geht nur bei Apps, die man ohnehin sieht (eigene oder freigegebene).
+ * Der Server prueft das gegen dieselbe Liste wie die Uebersicht und antwortet
+ * sonst mit 404 — nicht 403, damit der Endpunkt kein Orakel ueber fremde Apps
+ * wird.
+ */
+export async function setAppFavorite(project: string, favorite: boolean): Promise<{
+  ok: boolean; project: string; favorite: boolean;
+}> {
+  return fetchJSON(`${getBase()}/apps/${encodeURIComponent(project)}/favorite`, {
+    method: "PUT",
+    body: JSON.stringify({ favorite }),
+  });
 }
 
 export async function listApps(): Promise<{ apps: AppEntry[] }> {

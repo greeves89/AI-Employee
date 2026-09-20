@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.325.0] - 2026-09-20
+
+### Hinzugefügt
+- **Suche, Favoriten und getrennte Abschnitte in der App-Übersicht.**
+  - **Suche** über Name, Agent, Pfad und Besitzer. Die Zählung oben zeigt
+    „7 von 23", solange gefiltert wird.
+  - **Anpinnen** über den Stern auf jeder Kachel. Neue Tabelle `app_favorites`
+    statt einer Liste am Nutzer: Setzen und Lösen sind dann ein Einfügen bzw.
+    ein Löschen statt eines Lesen-Ändern-Schreibens mit Wettlauf. Nicht zu
+    verwechseln mit `Agent.favorite` — das ist „höchstens einer pro Nutzer"
+    und steuert das iOS-Startdashboard.
+  - **Drei Abschnitte:** Favoriten, Meine Apps, Freigegebene Apps. Freigegebene
+    waren bisher unter die eigenen gemischt — es sah aus, als besäße man Apps,
+    die einem gar nicht gehören. Leere Abschnitte erscheinen nicht.
+
+### Sicherheit
+- Der Favoriten-Endpunkt prüft die Sichtbarkeit gegen **dieselbe** Funktion,
+  die auch die Übersicht erzeugt, und antwortet sonst mit 404 statt 403. Ohne
+  diese Prüfung wäre er ein Orakel: Wer beliebige Projektnamen anpinnen könnte,
+  könnte durch Ausprobieren herausfinden, welche fremden Apps existieren.
+  Sieben Tests halten das fest, vier davon zur Mandantentrennung.
+- Ein Favorit verleiht **keinen** Zugriff. Was jemand sieht, entscheiden
+  weiterhin allein `_visible_agents()` und `shared_projects_for_user()`.
 ## [1.324.3] - 2026-09-20
 
 ### Behoben

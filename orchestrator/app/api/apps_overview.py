@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.app_favorite import AppFavorite
 from app.core.app_sharing import (
     ACCESS_AUTHENTICATED,
     ACCESS_PUBLIC,
@@ -237,7 +238,70 @@ async def list_apps(
         entry["owner_name"] = owner_name or None
         entry["owned_by_me"] = bool(owner_id) and owner_id == me
 
-    return {"apps": sorted(apps.values(), key=lambda a: (a["agent_name"], a["name"]))}
+    # Favoriten des Aufrufers anheften. Das ist reine Darstellung — ein Favorit
+    # verleiht keinen Zugriff; was hier ueberhaupt in `apps` steht, hat die
+    # Sichtbarkeitspruefung oben schon entschieden.
+    favoriten = set(
+        (await db.execute(
+            select(AppFavorite.project).where(AppFavorite.user_id == user.id)
+        )).scalars().all()
+    )
+    for eintrag in apps.values():
+        eintrag["favorite"] = eintrag["project"] in favoriten
+
+    # Favoriten nach oben, sonst wie bisher nach Agent und Name.
+    return {"apps": sorted(
+        apps.values(),
+        key=lambda a: (not a.get("favorite"), a["agent_name"], a["name"]),
+    )}
+
+
+@router.put("/{project}/favorite")
+async def set_app_favorite(
+    project: str,
+    favorite: bool = Body(..., embed=True),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    docker: DockerService = Depends(get_docker_service),
+):
+    """Eine App anpinnen oder loesen.
+
+    **Mandantentrennung:** Anpinnen darf nur, wer die App ueberhaupt sieht —
+    also ihr Besitzer oder jemand, dem sie freigegeben wurde. Sonst waere der
+    Endpunkt ein Orakel: Wer beliebige Projektnamen anpinnen koennte, koennte
+    durch Ausprobieren herausfinden, welche fremden Apps existieren. Geprueft
+    wird gegen dieselbe Liste, die auch die Uebersicht erzeugt — nicht gegen
+    eine zweite, eigene Regel, die spaeter auseinanderlaufen wuerde.
+    """
+    sichtbar = await _sichtbare_projekte(user, db, docker)
+    if project not in sichtbar:
+        raise HTTPException(status_code=404, detail="App nicht gefunden")
+
+    vorhanden = (await db.execute(
+        select(AppFavorite).where(
+            AppFavorite.user_id == user.id, AppFavorite.project == project
+        )
+    )).scalar_one_or_none()
+
+    if favorite and not vorhanden:
+        db.add(AppFavorite(user_id=user.id, project=project))
+        await db.commit()
+    elif not favorite and vorhanden:
+        await db.delete(vorhanden)
+        await db.commit()
+
+    return {"ok": True, "project": project, "favorite": favorite}
+
+
+async def _sichtbare_projekte(user, db: AsyncSession, docker: DockerService) -> set[str]:
+    """Die Projektnamen, die dieser Nutzer in der Uebersicht sieht.
+
+    Bewusst ueber dieselbe Funktion wie die Uebersicht selbst: Zwei Wege mit
+    eigener Sichtbarkeitslogik waeren die naechste Stelle, an der die
+    Mandantentrennung auseinanderlaeuft.
+    """
+    daten = await list_apps(user=user, db=db, docker=docker)
+    return {a["project"] for a in daten["apps"]}
 
 
 async def _project_containers_owned(project: str, user, db: AsyncSession, docker: DockerService):

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   AppWindow, Play, Square, Loader2, Cpu, RefreshCw, ScrollText, Trash2, X, Flag,
   CheckCircle2, Hammer, Share2, Download, Users, Globe, UserPlus, Link2, Copy, Check,
-  AlertTriangle, ShieldCheck, Box, User, Upload, FileArchive,
+  AlertTriangle, ShieldCheck, Box, User, Upload, FileArchive, Star, Search,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { useAgents } from "@/hooks/use-agents";
@@ -21,6 +21,21 @@ export default function AppsPage() {
   const [logsFor, setLogsFor] = useState<api.AppEntry | null>(null);
   const [detailFor, setDetailFor] = useState<api.AppEntry | null>(null);
   const [importOffen, setImportOffen] = useState(false);
+  const [suche, setSuche] = useState("");
+
+  // Anpinnen. Optimistisch: Der Stern reagiert sofort, die Liste zieht beim
+  // naechsten Polling nach. Schlaegt der Aufruf fehl, springt er zurueck.
+  const umschaltenFavorit = async (app: api.AppEntry) => {
+    const neu = !app.favorite;
+    setApps((liste) => liste.map((a) =>
+      a.project === app.project ? { ...a, favorite: neu } : a));
+    try {
+      await api.setAppFavorite(app.project, neu);
+    } catch {
+      setApps((liste) => liste.map((a) =>
+        a.project === app.project ? { ...a, favorite: !neu } : a));
+    }
+  };
 
   const report = async (app: api.AppEntry) => {
     const err = errors[app.project];
@@ -78,44 +93,9 @@ export default function AppsPage() {
         : api.startAppByProject(app.project),          // stopped container → start
     );
 
-  return (
-    <div className="flex flex-col h-[calc(100vh-2rem)]">
-      <Header title="Apps" subtitle="Alle Apps deiner Agenten — laufend, gestoppt und noch nicht gestartet" />
-
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-sm text-muted-foreground">{apps.length} App{apps.length === 1 ? "" : "s"}</p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setImportOffen(true)}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            >
-              <Upload className="h-4 w-4" /> Import
-            </button>
-            <button
-              onClick={load}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            >
-              <RefreshCw className="h-4 w-4" /> Aktualisieren
-            </button>
-          </div>
-        </div>
-
-        {loading && apps.length === 0 ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : apps.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card/60 p-10 text-center">
-            <AppWindow className="h-8 w-8 mx-auto text-muted-foreground/50 mb-3" />
-            <p className="text-sm text-muted-foreground">
-              Noch keine Apps. Sie erscheinen hier, sobald einer deiner Agenten ein docker-compose-Projekt hat
-              (Taskforce-Ergebnis oder Agenten-Workspace).
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {apps.map((app) => {
+  // Eine Kachel. Als Funktion herausgezogen, damit alle drei Abschnitte
+  // dieselbe Darstellung benutzen statt dreimal derselbe JSX-Block.
+  const karte = (app: api.AppEntry) => {
               const running = app.status === "running";
               const notStarted = app.status === "not_started";
               const isBusy = busy.has(app.project);
@@ -124,13 +104,28 @@ export default function AppsPage() {
               // serverseitig ohnehin ownership-gated — hier nur die ehrliche UI dazu.
               const readOnly = !!app.shared_with_me;
               return (
-                <div key={app.project} className="rounded-xl border border-border bg-card/80 p-4 flex flex-col gap-3">
+                <div key={app.project} className="relative rounded-xl border border-border bg-card/80 p-4 flex flex-col gap-3">
+                  {/* Stern oben rechts, ueber der Detail-Flaeche — sonst waere
+                      jeder Klick darauf auch ein Klick ins Detailfenster. */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); umschaltenFavorit(app); }}
+                    title={app.favorite ? "Nicht mehr anpinnen" : "Anpinnen"}
+                    aria-label={app.favorite ? "Nicht mehr anpinnen" : "Anpinnen"}
+                    className="absolute right-3 top-3 z-10 rounded-md p-1 text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors"
+                  >
+                    <Star className={cn(
+                      "h-4 w-4",
+                      // Hellthema-Gegenstueck, wie in #813 nachgezogen: ein
+                      // blankes amber-400 ist auf hellem Grund nicht lesbar.
+                      app.favorite && "fill-amber-500 text-amber-600 dark:fill-amber-400 dark:text-amber-400",
+                    )} />
+                  </button>
                   <button
                     onClick={() => setDetailFor(app)}
                     title="Details und Freigaben anzeigen"
                     className="text-left -m-1 p-1 rounded-lg hover:bg-accent/40 transition-colors"
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2 pr-7">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className={cn(
                           "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
@@ -260,7 +255,94 @@ export default function AppsPage() {
                   )}
                 </div>
               );
-            })}
+  };
+
+  // Suche ueber Name, Agent und Pfad — das sind die drei Dinge, nach denen man
+  // eine App tatsaechlich sucht.
+  const begriff = suche.trim().toLowerCase();
+  const gefiltert = begriff
+    ? apps.filter((a) =>
+        a.name.toLowerCase().includes(begriff) ||
+        a.agent_name.toLowerCase().includes(begriff) ||
+        (a.path ?? "").toLowerCase().includes(begriff) ||
+        (a.owner_name ?? "").toLowerCase().includes(begriff))
+    : apps;
+
+  // Drei Abschnitte: Angepinntes zuerst, dann die eigenen, dann das, was
+  // andere freigegeben haben. Freigegebene bewusst getrennt — sonst sieht es
+  // aus, als haette man Apps, die einem gar nicht gehoeren.
+  const favoriten = gefiltert.filter((a) => a.favorite);
+  const eigene = gefiltert.filter((a) => !a.favorite && !a.shared_with_me);
+  const freigegeben = gefiltert.filter((a) => !a.favorite && a.shared_with_me);
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-2rem)]">
+      <Header title="Apps" subtitle="Alle Apps deiner Agenten — laufend, gestoppt und noch nicht gestartet" />
+
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <p className="text-sm text-muted-foreground whitespace-nowrap">
+              {gefiltert.length === apps.length
+                ? `${apps.length} App${apps.length === 1 ? "" : "s"}`
+                : `${gefiltert.length} von ${apps.length}`}
+            </p>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={suche}
+                onChange={(e) => setSuche(e.target.value)}
+                placeholder="Suchen …"
+                className="w-40 rounded-lg border border-border bg-background py-1.5 pl-8 pr-7 text-sm focus:w-56 transition-all"
+              />
+              {suche && (
+                <button
+                  onClick={() => setSuche("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setImportOffen(true)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            >
+              <Upload className="h-4 w-4" /> Import
+            </button>
+            <button
+              onClick={load}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            >
+              <RefreshCw className="h-4 w-4" /> Aktualisieren
+            </button>
+          </div>
+        </div>
+
+        {loading && apps.length === 0 ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : apps.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card/60 p-10 text-center">
+            <AppWindow className="h-8 w-8 mx-auto text-muted-foreground/50 mb-3" />
+            <p className="text-sm text-muted-foreground">
+              Noch keine Apps. Sie erscheinen hier, sobald einer deiner Agenten ein docker-compose-Projekt hat
+              (Taskforce-Ergebnis oder Agenten-Workspace).
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {abschnitt("Favoriten", favoriten, karte)}
+            {abschnitt(eigene.length && (favoriten.length || freigegeben.length) ? "Meine Apps" : "", eigene, karte)}
+            {abschnitt("Freigegebene Apps", freigegeben, karte)}
+            {gefiltert.length === 0 && (
+              <p className="rounded-xl border border-border bg-card/60 p-8 text-center text-sm text-muted-foreground">
+                Keine App passt zu „{suche}".
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -636,6 +718,36 @@ function DetailModal({ app, onClose, onShowLogs }: {
  * Dockerfile? Was fehlt, kann von hier aus direkt an den Agenten gehen,
  * statt dass jemand die App erst beim Startversuch scheitern sieht.
  */
+/**
+ * Ein Abschnitt der Uebersicht mit Ueberschrift.
+ *
+ * Leere Abschnitte erscheinen gar nicht — eine Ueberschrift ohne Inhalt ist
+ * keine Information. Ohne Titel entfaellt nur die Ueberschrift, die Kacheln
+ * bleiben: So sieht die Seite mit nur eigenen Apps aus wie vorher.
+ */
+function abschnitt(
+  titel: string,
+  liste: api.AppEntry[],
+  karte: (app: api.AppEntry) => React.ReactNode,
+) {
+  if (liste.length === 0) return null;
+  return (
+    <div>
+      {titel && (
+        <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {titel === "Favoriten" && <Star className="h-3.5 w-3.5" />}
+          {titel === "Freigegebene Apps" && <Share2 className="h-3.5 w-3.5" />}
+          {titel}
+          <span className="font-normal normal-case tracking-normal">({liste.length})</span>
+        </h2>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {liste.map(karte)}
+      </div>
+    </div>
+  );
+}
+
 /** Bytes als MB, eine Nachkommastelle — reicht fuer Paketgroessen. */
 function mb(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
