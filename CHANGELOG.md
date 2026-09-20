@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.324.3] - 2026-09-20
+
+### Behoben
+- **Die Hauptlinie war seit 1.324.0 rot — Betreiber sahen eine Version, die es
+  so nie gab.** Das Bild-Label in `agent/Dockerfile` blieb beim Release 1.324.x
+  auf 1.323.1 stehen, während `VERSION` weiterlief; ein laufender Agent hätte
+  sich damit als 1.323.1 gemeldet. Label und `VERSION` sind wieder identisch.
+- **Prüfergebnisse beim App-Import waren im hellen Thema unlesbar.** Die
+  Fehler- und Warnzeilen der Import-Prüfung nutzten nur die hellen Rot- und
+  Bernsteintöne des dunklen Themas (helle Schrift auf hellem Grund). Sie
+  folgen jetzt dem etablierten Muster `text-*-700 dark:text-*-400`.
+
+---
+
 ## [1.324.2] - 2026-09-20
 
 ### Behoben
