@@ -14,7 +14,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.settings import get_settings, update_settings
-from app.core.web_search import web_search, web_search_with_settings
+from app.core.web_search import (
+    resolve_provider,
+    web_search,
+    web_search_for_agent,
+    web_search_with_settings,
+)
+from app.models.agent import Agent
 from app.models.oauth_integration import OAuthIntegration
 from app.models.platform_settings import PlatformSettings
 from app.schemas.settings import SettingsUpdate
@@ -395,6 +401,92 @@ class BraveWebSearchAgeTests(unittest.IsolatedAsyncioTestCase):
         with patch("httpx.AsyncClient", return_value=ctx):
             out = await web_search("gold", 5, provider="brave", api_key="bk")
         self.assertEqual(out[0]["age"], "2026-09-18T10:00:00")
+
+
+class ResolveProviderTests(unittest.TestCase):
+    """``mode`` sagt die Absicht, nicht den Anbieter — und degradiert leise.
+
+    Ohne diese Trennung muesste jeder Agent wissen, welcher Anbieter gerade
+    konfiguriert ist. Er soll aber nur sagen koennen "ich brauche Nachrichten".
+    """
+
+    def test_news_mode_switches_brave_to_the_news_index(self):
+        self.assertEqual(resolve_provider("brave", "news"), "brave_news")
+
+    def test_web_mode_switches_the_news_index_back_to_web(self):
+        self.assertEqual(resolve_provider("brave_news", "web"), "brave")
+
+    def test_no_mode_leaves_the_provider_alone(self):
+        for p in ("duckduckgo", "brave", "brave_news", "serp"):
+            self.assertEqual(resolve_provider(p, None), p)
+
+    def test_mode_degrades_instead_of_failing_when_no_index_exists(self):
+        """DuckDuckGo hat keinen Nachrichtenindex — die Suche soll trotzdem laufen."""
+        self.assertEqual(resolve_provider("duckduckgo", "news"), "duckduckgo")
+        self.assertEqual(resolve_provider("serp", "news"), "serp")
+
+    def test_an_unknown_mode_is_ignored(self):
+        self.assertEqual(resolve_provider("brave", "schlagzeilen"), "brave")
+
+
+class PerAgentProviderTests(unittest.IsolatedAsyncioTestCase):
+    """Agenten-Einstellung schlaegt Plattform-Vorgabe, ``mode`` schlaegt beide."""
+
+    async def asyncSetUp(self):
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            await conn.run_sync(PlatformSettings.metadata.create_all, tables=[PlatformSettings.__table__])
+            await conn.run_sync(Agent.metadata.create_all, tables=[Agent.__table__])
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+
+    async def _prepare(self, agent_config: dict | None):
+        async with self.Session() as db:
+            svc = SettingsService(db)
+            await svc.set("web_search_provider", "brave")
+            await svc.set("web_search_api_key", "bk")
+            db.add(Agent(id="a1", name="Test", config=agent_config or {}))
+            await db.commit()
+
+    async def _call(self, agent_id, mode=None):
+        ctx, client = _client_returning({"results": [], "web": {"results": []}})
+        async with self.Session() as db:
+            with patch("httpx.AsyncClient", return_value=ctx):
+                await web_search_for_agent("gold", 5, db, agent_id, mode)
+        return client.get.call_args.args[0], client.get.call_args.kwargs.get("params", {})
+
+    async def test_without_an_override_the_platform_setting_applies(self):
+        await self._prepare(None)
+        url, _ = await self._call("a1")
+        self.assertIn("web/search", url)
+
+    async def test_the_agent_override_wins_over_the_platform(self):
+        await self._prepare({"web_search_provider": "brave_news"})
+        url, _ = await self._call("a1")
+        self.assertIn("news/search", url)
+
+    async def test_an_empty_override_is_treated_as_inherit(self):
+        """Wichtig fuer bestehende Installationen: leer darf nichts veraendern."""
+        await self._prepare({"web_search_provider": "", "web_search_freshness": ""})
+        url, _ = await self._call("a1")
+        self.assertIn("web/search", url)
+
+    async def test_mode_beats_the_agent_setting(self):
+        await self._prepare({"web_search_provider": "brave_news"})
+        url, _ = await self._call("a1", mode="web")
+        self.assertIn("web/search", url)
+
+    async def test_the_agent_freshness_is_used(self):
+        await self._prepare({"web_search_provider": "brave_news", "web_search_freshness": "pd"})
+        _, params = await self._call("a1")
+        self.assertEqual(params.get("freshness"), "pd")
+
+    async def test_an_unknown_agent_falls_back_to_the_platform(self):
+        await self._prepare(None)
+        url, _ = await self._call("gibt-es-nicht")
+        self.assertIn("web/search", url)
 
 
 if __name__ == "__main__":

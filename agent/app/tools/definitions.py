@@ -325,6 +325,16 @@ LOCAL_TOOLS: list[dict] = [
                         "description": "Number of results to return (default: 5, max: 10)",
                         "default": 5,
                     },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["news", "web"],
+                        "description": (
+                            "What kind of search you need. 'news' for current events — "
+                            "results then carry a publication date. 'web' for reference "
+                            "material, documentation, background. Omit to use the provider "
+                            "configured for you. Ignored when no matching index is available."
+                        ),
+                    },
                 },
                 "required": ["query"],
             },

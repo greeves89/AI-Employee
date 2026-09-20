@@ -1005,8 +1005,9 @@ export function buildServer() {
         description:
           "Search the web for information. Use this when you need current data (weather, news, " +
           "prices, facts) or don't know which URL to visit. Returns top search results with titles, " +
-          "URLs, and snippets. Uses the admin-configured provider (DuckDuckGo by default, or Brave/" +
-          "SerpApi if the admin set an API key under Admin -> Websuche).",
+          "URLs, and snippets — plus publication date and publisher when the provider supplies them. " +
+          "Uses the provider configured for you, falling back to the platform default " +
+          "(Admin -> Websuche).",
         inputSchema: {
           type: "object",
           properties: {
@@ -1017,6 +1018,14 @@ export function buildServer() {
             max_results: {
               type: "number",
               description: "Number of results to return (default: 5, max: 10).",
+            },
+            mode: {
+              type: "string",
+              enum: ["news", "web"],
+              description:
+                "What kind of search you need. 'news' for current events — results then carry a " +
+                "publication date. 'web' for reference material, documentation, background. Omit " +
+                "to use the provider configured for you. Ignored when no matching index exists.",
             },
           },
           required: ["query"],
@@ -1956,15 +1965,24 @@ export function buildServer() {
           return { content: [{ type: "text", text: "Error: query cannot be empty" }] };
         }
         const maxResults = Math.min(Number(args.max_results) || 5, 10);
+        const nutzlast = { query, max_results: maxResults };
+        const mode = String(args.mode || "").trim().toLowerCase();
+        if (mode === "news" || mode === "web") nutzlast.mode = mode;
         const result = await apiCall(`/agent-search/web`, {
           method: "POST",
-          body: JSON.stringify({ query, max_results: maxResults }),
+          body: JSON.stringify(nutzlast),
         });
         const items = result.results || [];
         if (items.length === 0) {
           return { content: [{ type: "text", text: `No results found for '${query}'. Try different search terms.` }] };
         }
-        const blocks = items.map((r) => `**${r.title || ""}**\n${r.url || ""}\n${r.snippet || ""}`);
+        // Alter und Herausgeber mit ausgeben, wie der Python-Client es schon tut.
+        // Ohne Datum kann der Agent einen alten Artikel nicht von einer aktuellen
+        // Meldung unterscheiden — und im claude_code-Modus laeuft alles hierueber.
+        const blocks = items.map((r) => {
+          const suffix = (r.age ? ` (${r.age})` : "") + (r.publisher ? ` \u2014 ${r.publisher}` : "");
+          return `**${r.title || ""}**${suffix}\n${r.url || ""}\n${r.snippet || ""}`;
+        });
         return { content: [{ type: "text", text: `Search results for '${query}':\n\n${blocks.join("\n\n---\n\n")}` }] };
       }
 

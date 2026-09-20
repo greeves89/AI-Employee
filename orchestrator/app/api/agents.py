@@ -1618,6 +1618,69 @@ async def update_agent_idle_stop(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+class AgentWebSearchUpdate(BaseModel):
+    """Suchprovider fuer EINEN Agenten. Leerer String = Plattform-Vorgabe erben."""
+    provider: str = ""
+    freshness: str = ""
+
+
+@router.patch("/{agent_id}/web-search")
+async def update_agent_web_search(
+    agent_id: str,
+    body: AgentWebSearchUpdate,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Suchprovider pro Agent setzen — ueberschreibt Admin -> Websuche.
+
+    Warum das pro Agent gehoert: Der Nachrichtenindex (``brave_news``) liefert
+    ausschliesslich Meldungen. Fuer einen Redaktions-Agenten ist genau das
+    richtig; ein Entwickler-Agent, der Dokumentation sucht, bekaeme damit
+    unbrauchbare Treffer. Die Wahl beschreibt also die Rolle des Agenten, nicht
+    den Betrieb der Plattform.
+
+    Der API-Key bleibt plattformweit — er gehoert zum Anbieter-Konto des
+    Betreibers.
+    """
+    await _check_owner(agent_id, user, db)
+
+    provider = (body.provider or "").strip().lower()
+    if provider and provider not in ("duckduckgo", "brave", "brave_news", "serp"):
+        raise HTTPException(
+            status_code=422,
+            detail="Provider: duckduckgo, brave, brave_news, serp — oder leer zum Erben.",
+        )
+
+    from app.core.web_search import _valid_freshness
+    freshness = (body.freshness or "").strip().lower()
+    if freshness and _valid_freshness(freshness) is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Aktualitaet: pd, pw, pm, py oder JJJJ-MM-TTtoJJJJ-MM-TT — oder leer.",
+        )
+
+    try:
+        agent = await manager._get_agent(agent_id)
+        cfg = dict(agent.config or {})
+        for schluessel, wert in (("web_search_provider", provider), ("web_search_freshness", freshness)):
+            if wert:
+                cfg[schluessel] = wert
+            else:
+                cfg.pop(schluessel, None)
+        agent.config = cfg
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(agent, "config")
+        await db.commit()
+        return {
+            "agent_id": agent_id,
+            "web_search_provider": provider or None,
+            "web_search_freshness": freshness or None,
+        }
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+
 @router.patch("/{agent_id}/default-reasoning")
 async def update_agent_default_reasoning(
     agent_id: str,

@@ -489,6 +489,22 @@ export async function setAgentIdleStop(agentId: string, idle_stop_minutes: numbe
   });
 }
 
+/**
+ * Suchprovider fuer EINEN Agenten — ueberschreibt Admin -> Websuche.
+ * Leerer String bedeutet "Plattform-Vorgabe erben".
+ * Der API-Key bleibt plattformweit; er gehoert zum Konto des Betreibers.
+ */
+export async function setAgentWebSearch(
+  agentId: string,
+  provider: "" | "duckduckgo" | "brave" | "brave_news" | "serp",
+  freshness: "" | "pd" | "pw" | "pm" | "py" = "",
+): Promise<{ agent_id: string; web_search_provider: string | null; web_search_freshness: string | null }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/web-search`, {
+    method: "PATCH",
+    body: JSON.stringify({ provider, freshness }),
+  });
+}
+
 /** Always-on: exempt an agent from both idle sweeps (keeps running regardless of owner activity). */
 export async function setAgentAlwaysOn(agentId: string, always_on: boolean): Promise<{ agent_id: string; always_on: boolean }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/always-on`, {

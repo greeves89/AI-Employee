@@ -1646,9 +1646,11 @@ class OrchestratorAPIClient:
         if not query:
             return "Error: query cannot be empty"
         max_results = min(int(params.get("max_results") or 5), 10)
-        result = await self._request(
-            "POST", "/agent-search/web", json={"query": query, "max_results": max_results}
-        )
+        nutzlast = {"query": query, "max_results": max_results}
+        mode = (params.get("mode") or "").strip().lower()
+        if mode in ("news", "web"):
+            nutzlast["mode"] = mode
+        result = await self._request("POST", "/agent-search/web", json=nutzlast)
         if isinstance(result, str):
             return result
         items = result.get("results") or []

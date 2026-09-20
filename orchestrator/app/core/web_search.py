@@ -221,6 +221,82 @@ async def _search_serp(query: str, max_results: int, api_key: str) -> list[dict]
     ]
 
 
+# Welcher Provider gehoert zu welcher Absicht. ``mode`` sagt, WONACH gesucht
+# wird — nicht, WELCHER Anbieter das bedient. Fehlt der passende Anbieter,
+# bleibt es beim aufgeloesten Provider, statt die Suche scheitern zu lassen.
+_MODE_TO_PROVIDER = {
+    "news": {"brave": "brave_news", "brave_news": "brave_news"},
+    "web": {"brave_news": "brave", "brave": "brave"},
+}
+
+
+def resolve_provider(provider: str, mode: str | None) -> str:
+    """Den Provider an die Absicht des Aufrufers anpassen.
+
+    ``mode`` ist bewusst kein Providername: Ein Agent soll sagen koennen "ich
+    brauche Nachrichten" bzw. "ich brauche Nachschlagewerke", ohne zu wissen,
+    welcher Anbieter konfiguriert ist. Ist fuer die Absicht kein Anbieter
+    hinterlegt (z.B. DuckDuckGo ohne Nachrichtenindex), bleibt der
+    konfigurierte Provider stehen — degradieren statt verweigern.
+    """
+    if not mode:
+        return provider
+    return _MODE_TO_PROVIDER.get(mode.strip().lower(), {}).get(provider, provider)
+
+
+async def _agent_overrides(db, agent_id: str | None) -> tuple[str | None, str | None]:
+    """``(provider, freshness)`` aus der Agenten-Konfiguration, oder ``(None, None)``.
+
+    Leere Werte gelten als "erben" — eine bestehende Installation, in der kein
+    Agent etwas gesetzt hat, verhaelt sich also exakt wie vorher.
+    """
+    if not agent_id:
+        return None, None
+    from sqlalchemy import select
+    from app.models.agent import Agent
+
+    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
+    if agent is None:
+        return None, None
+    cfg = agent.config or {}
+    prov = (cfg.get("web_search_provider") or "").strip() or None
+    fresh = (cfg.get("web_search_freshness") or "").strip() or None
+    return prov, fresh
+
+
+async def web_search_for_agent(
+    query: str, max_results: int, db, agent_id: str | None, mode: str | None = None,
+) -> list[dict]:
+    """Websuche aus Sicht EINES Agenten.
+
+    Reihenfolge: ``mode`` (pro Anfrage) ueber Agenten-Einstellung ueber
+    Plattform-Vorgabe. Der Grund fuer die Agenten-Ebene: Der Nachrichtenindex
+    liefert ausschliesslich Meldungen. Fuer einen Redaktions-Agenten ist das
+    richtig, fuer einen Entwickler-Agenten, der Dokumentation sucht, waere es
+    unbrauchbar — die Wahl gehoert also an den Agenten, nicht an die Plattform.
+
+    Der API-Key bleibt plattformweit: Er gehoert zum Anbieter-Konto des
+    Betreibers, nicht zum einzelnen Agenten.
+    """
+    from app.services.settings_service import SettingsService
+
+    svc = SettingsService(db)
+    provider = (await svc.get("web_search_provider")) or "duckduckgo"
+    api_key = await svc.get("web_search_api_key")
+    freshness = await svc.get("web_search_freshness")
+
+    a_provider, a_freshness = await _agent_overrides(db, agent_id)
+    if a_provider:
+        provider = a_provider
+    if a_freshness:
+        freshness = a_freshness
+
+    provider = resolve_provider(provider, mode)
+    return await web_search(
+        query, max_results, provider=provider, api_key=api_key, freshness=freshness,
+    )
+
+
 async def web_search_with_settings(query: str, max_results: int, db) -> list[dict]:
     """Wie ``web_search``, liest Provider + Key aber selbst aus den
     PlatformSettings — der bequeme Weg fuer Aufrufer, die schon eine
