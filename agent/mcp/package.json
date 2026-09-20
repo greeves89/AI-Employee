@@ -6,7 +6,8 @@
   "scripts": {
     "memory": "node memory-server.mjs",
     "notifications": "node notification-server.mjs",
-    "orchestrator": "node orchestrator-server.mjs"
+    "orchestrator": "node orchestrator-server.mjs",
+    "test": "node --test"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.4",

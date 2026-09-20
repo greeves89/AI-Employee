@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.323.1] - 2026-09-20
+
+### Hinzugefügt
+- **Erste echte Werkzeug-Durchsetzung für Codex CLI** (#197 Teil 3, PR 1 von
+  3 — Machbarkeitsnachweis): neues Gate-Modul `agent/mcp/_tool_gate.mjs`,
+  fragt vor jedem `memory_*`-Werkzeugaufruf den bereits bestehenden lokalen
+  PreToolUse-Hook (denselben, den Claude Code seit #780 nutzt) — keine neue
+  Entscheidungslogik, reiner Relay zur bewährten `decide_async()`. Fail-open
+  bei Hook-Ausfall (laut geloggt), konsistent mit der bestehenden Autonomie-
+  Prüfung für Custom-LLM. `node --test`-Infrastruktur neu eingerichtet
+  (`agent/mcp/package.json`, `"test": "node --test"`).
+
 ## [1.323.0] - 2026-09-19
 
 ### Hinzugefügt
