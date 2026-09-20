@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.324.0] - 2026-09-20
+
+### Hinzugefügt
+- **App-Pakete lassen sich importieren** (`/apps` → Import). Bisher konnte man
+  eine App nur exportieren, nicht wieder hereinholen; wer ein Paket hatte,
+  musste es über den Chat hochladen und scheiterte bei nennenswerter Größe am
+  Reverse-Proxy (413), bevor die Anfrage überhaupt ankam.
+  - Neuer Endpunkt `POST /agents/{agent_id}/files/import-folder` als
+    Gegenstück zu `download-folder`, mit derselben Besitzprüfung. Erwartet
+    genau das Format, das der Export erzeugt.
+  - Die Abwehr folgt dem Vault-Import, der dieselben Fallen schon entschärft
+    hatte: Einträgezahl, entpackte Größe (Zip-Bombe), Symlinks und
+    Sonderdateien, gesperrte Endungen, Riegel gegen Pfadausbruch.
+    `node_modules` und Konsorten bleiben draußen, wie beim Export.
+  - **Schnell-Checkup** direkt nach dem Entpacken: Liegt eine der vier
+    Compose-Dateien bei? Liegt sie flach genug für den Verzeichnis-Scan, der
+    nur drei Ebenen tief geht? Baut ein Dienst selbst, ohne dass ein
+    Dockerfile im Paket liegt? Enthält das Paket `.env`-Dateien? Was fehlt,
+    erfährt man beim Import statt erst beim Startversuch.
+  - Was der Checkup bemängelt, lässt sich per Knopf als Aufgabe an denselben
+    Agenten übergeben — er hat Zugriff auf denselben Ordner und ergänzt den
+    Rest.
+  - Der Bericht ist bewusst ehrlich: übersprungene Einträge werden benannt
+    (erste 50) und vollständig gezählt.
+  - Grenze 95 MB, bewusst knapp unter der Schranke des Reverse-Proxys und als
+    solche gemeldet — statt einer nackten 413-Seite von außen.
+
+---
+
 ## [1.323.1] - 2026-09-20
 
 ### Hinzugefügt
