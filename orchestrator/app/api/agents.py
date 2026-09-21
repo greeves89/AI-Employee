@@ -3351,31 +3351,41 @@ async def update_agent_mcp_servers(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+_MCP_CREDENTIAL_LOOKUP_TIMEOUT = 10.0  # leave headroom for the agent's 15s HTTP timeout
+
+
 @router.get("/{agent_id}/mcp-credentials")
 async def get_agent_mcp_credentials(
     agent_id: str,
     manager: AgentManager = Depends(_get_agent_manager),
     agent_auth: dict = Depends(verify_agent_token),
 ):
-    """Return freshly-computed MCP server URLs/credentials for this agent.
+    """Return persisted MCP server URLs/credentials for this agent.
 
     Called by the agent's own periodic refresh loop (#488 Phase 2) so a
     running container can pick up a rotated OAuth token without being
-    recreated. Runs the same lookup used at container-creation time
-    (including the OAuth refresh-if-needed pass), just on demand instead
-    of once. The agent diffs the result against what it last registered
+    recreated. OAuth refresh runs in the existing background sweep; this read
+    path must not wait on its provider retries or advisory locks. The agent
+    diffs the result against what it last registered
     and only re-runs `claude mcp add` for servers whose credentials changed.
     """
     if agent_auth["agent_id"] != agent_id:
         raise HTTPException(status_code=403, detail="Agent token does not match target agent")
     try:
-        agent = await manager._get_agent(agent_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    config = agent.config or {}
-    mcp_env = await manager._get_custom_mcp_env(
-        agent_config=config, agent_id=agent_id, agent_integrations=config.get("integrations", [])
-    )
+        # Only reads are cancellable here. Never wrap a rotating token request
+        # or its commit in this deadline: losing that response can lose the grant.
+        async with asyncio.timeout(_MCP_CREDENTIAL_LOOKUP_TIMEOUT):
+            try:
+                agent = await manager._get_agent(agent_id)
+            except ValueError:
+                raise HTTPException(status_code=404, detail="Agent not found")
+            config = agent.config or {}
+            mcp_env = await manager._get_custom_mcp_env(
+                agent_config=config, agent_id=agent_id,
+                agent_integrations=config.get("integrations", []), refresh_oauth=False,
+            )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="MCP credential lookup timed out")
     return {
         "servers": json.loads(mcp_env.get("CUSTOM_MCP_SERVERS", "{}")),
         "auth": json.loads(mcp_env.get("CUSTOM_MCP_AUTH", "{}")),
