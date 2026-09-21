@@ -1237,3 +1237,124 @@ async def ws_all_logs(websocket: WebSocket, token: str | None = Query(None), tic
         await stream_manager.stream_all_logs(websocket)
     except WebSocketDisconnect:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Browser-Arbeitsflaeche (#828)
+# ---------------------------------------------------------------------------
+#
+# Der Browser laeuft IM Container des Agenten; der Bildstrom haengt dort an
+# einem WebSocket auf dem Gesundheitsport. Der Orchestrator reicht ihn durch,
+# statt ihn nach aussen zu oeffnen -- aus zwei Gruenden:
+#
+#   1. Nur hier gibt es Anmeldung und Eigentuemerpruefung. Ein Agenten-Port,
+#      den der Browser des Nutzers direkt anspraeche, waere ungeschuetzt --
+#      und wer den Strom sieht, sieht angemeldete Sitzungen des Nutzers.
+#   2. Die Agenten-Container haengen am internen Docker-Netz und haben nach
+#      aussen ueberhaupt keinen Weg. Das soll so bleiben.
+#
+# Prototyp-Stand: Geltungsbereiche und Pruefprotokoll fehlen noch (siehe #828).
+
+BROWSER_STROM_PORT = 8080
+
+
+async def _agent_container_name(agent_id: str) -> str | None:
+    """Container-Name des Agenten -- im Docker-Netz zugleich sein Rechnername."""
+    from app.core.agent_manager import _container_slug
+    from app.models.agent import Agent
+
+    async with async_session_factory() as db:
+        agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
+        if not agent or not agent.container_id:
+            return None
+        return f"ai-agent-{_container_slug(agent.name)}-{agent_id}"
+
+
+@router.websocket("/agents/{agent_id}/browser")
+async def ws_agent_browser(
+    websocket: WebSocket,
+    agent_id: str,
+    token: str | None = Query(None),
+    ticket: str | None = Query(None),
+):
+    """Bilder des Agenten-Browsers hinaus, Eingaben des Nutzers hinein."""
+    if not await _authenticate_ws(websocket, token=token, ticket=ticket):
+        return
+
+    # Eigentuemerpruefung -- gleicher Weg wie beim Gespraechskanal. Ohne sie
+    # koennte jeder Angemeldete die Browsersitzung eines fremden Agenten
+    # mitlesen, inklusive dessen angemeldeter Seiten.
+    from fastapi import HTTPException as _HTTPException
+
+    from app.dependencies import require_agent_access
+    from app.models.user import User as _User
+
+    uid = getattr(websocket.state, "user_id", None)
+    try:
+        async with async_session_factory() as db:
+            user = await db.get(_User, uid) if uid and uid != "unknown" else None
+            if user is None:
+                await websocket.close(code=4001, reason="Unauthorized")
+                return
+            await require_agent_access(agent_id, user, db)
+    except _HTTPException:
+        await websocket.close(code=4003, reason="Access denied to this agent")
+        return
+    except Exception:
+        await websocket.close(code=1011, reason="authorization error")
+        return
+
+    name = await _agent_container_name(agent_id)
+    if not name:
+        await websocket.close(code=4004, reason="Agent has no running container")
+        return
+
+    import aiohttp
+
+    ziel = f"ws://{name}:{BROWSER_STROM_PORT}/browser/stream"
+    try:
+        async with aiohttp.ClientSession() as sitzung:
+            async with sitzung.ws_connect(ziel, heartbeat=30, timeout=10) as oben:
+                await websocket.send_json({"typ": "bereit"})
+
+                async def hinaus():
+                    """Bilder vom Agenten zum Nutzer."""
+                    async for nachricht in oben:
+                        if nachricht.type == aiohttp.WSMsgType.TEXT:
+                            await websocket.send_text(nachricht.data)
+                        elif nachricht.type in (aiohttp.WSMsgType.CLOSED,
+                                                aiohttp.WSMsgType.ERROR):
+                            break
+
+                async def hinein():
+                    """Eingaben vom Nutzer zum Agenten."""
+                    while True:
+                        await oben.send_str(await websocket.receive_text())
+
+                erledigt, offen = await asyncio.wait(
+                    [asyncio.create_task(hinaus()), asyncio.create_task(hinein())],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for t in offen:
+                    t.cancel()
+    except WebSocketDisconnect:
+        pass
+    except aiohttp.ClientError as e:
+        # Benennen statt verschlucken: "Verbindung weg" ohne Grund schickt den
+        # Nutzer auf die falsche Faehrte (er vermutet sein Netz).
+        logger.warning("[Browser] Agent %s nicht erreichbar: %s", scrub_log(agent_id), e)
+        try:
+            await websocket.send_json({
+                "typ": "fehler",
+                "text": "Der Browser des Agenten antwortet nicht. Laeuft der Agent, "
+                        "und ist der Browser fuer ihn eingeschaltet?",
+            })
+            await websocket.close(code=1011, reason="agent browser unreachable")
+        except Exception:  # noqa: BLE001 — Gegenstelle womoeglich schon weg
+            pass
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[Browser] Strom fuer %s abgebrochen: %s", scrub_log(agent_id), e)
+        try:
+            await websocket.close(code=1011, reason="browser stream failed")
+        except Exception:  # noqa: BLE001
+            pass

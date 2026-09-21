@@ -1,3 +1,5 @@
+import os
+
 from aiohttp import web
 
 
@@ -73,6 +75,12 @@ async def start_health_server(agent_id: str, port: int = 8080) -> web.AppRunner:
     app.router.add_get("/health", health_handler)
     app.router.add_get("/diag", diag_handler)
     app.router.add_post("/hooks/pretooluse", pretooluse_hook_handler)
+    # Bildstrom des Agenten-Browsers (#828). Nur erreichbar, wenn der Browser
+    # ueberhaupt eingeschaltet ist -- sonst gibt es nichts zu zeigen, und eine
+    # Route, die immer scheitert, verwirrt nur.
+    if os.environ.get("COMPUTER_USE_BROWSER", "").lower() == "true":
+        from app.browser_stream import stream_handler
+        app.router.add_get("/browser/stream", stream_handler)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)

@@ -13,7 +13,7 @@ import {
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
   Settings, ShieldAlert, Check, ListTodo,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
-  Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor,
+  Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor, Globe,
   Layers, AudioLines, ArrowUpRight, CalendarDays,
   ChevronDown, ShieldCheck,
 } from "lucide-react";
@@ -42,6 +42,7 @@ import { DevelopmentCard } from "@/components/agents/development-card";
 import { DockerAppsTab } from "@/components/agents/docker-apps-tab";
 import { SkillsTab } from "@/components/agents/skills-tab";
 import { ComputerUseTab } from "@/components/agents/computer-use-tab";
+import BrowserWorkspace from "@/components/agents/browser-workspace";
 import { CommandPoliciesTab } from "@/components/agents/command-policies-tab";
 import { PermissionPackagesPanel } from "@/components/agents/permission-packages-panel";
 import { ComputerUseDefaultPanel } from "@/components/agents/computer-use-default-panel";
@@ -79,7 +80,7 @@ const agentStateConfig: Record<string, { online: boolean; label: string; badge: 
 // secondary "sub-reiter" bar when it has more than one entry.
 type SubKey =
   | "chat" | "speech" | "todos" | "terminal" | "history" | "calendar"
-  | "files" | "apps" | "computer-use"
+  | "files" | "apps" | "computer-use" | "browser"
   | "knowledge" | "memory" | "skills" | "secondbrain"
   | "settings" | "integrations" | "command-policies";
 
@@ -103,6 +104,7 @@ const tabGroups: TabGroup[] = [
     { key: "files", label: "Files", icon: FolderOpen, simpleVisible: true },
     { key: "apps", label: "Apps", icon: Container, simpleVisible: false },
     { key: "computer-use", label: "Computer-Use", icon: Monitor, simpleVisible: true },
+    { key: "browser", label: "Browser", icon: Globe, simpleVisible: true },
   ] },
   { key: "wissen", label: "Wissen", icon: Brain, subs: [
     { key: "knowledge", label: "Knowledge", icon: Brain, simpleVisible: false },
@@ -525,6 +527,15 @@ export default function AgentDetailPage() {
           {activeSub === "command-policies" && <CommandPoliciesTab agentId={agentId} />}
           {activeSub === "skills" && <SkillsTab agentId={agentId} />}
           {activeSub === "computer-use" && <ComputerUseTab agentId={agentId} browserMode={agent.browser_mode} />}
+          {activeSub === "browser" && (
+            agent.browser_mode
+              ? <div className="h-[70vh]"><BrowserWorkspace agentId={agentId} /></div>
+              : <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  Der Browser ist für diesen Agenten ausgeschaltet. Unter
+                  Computer-Use lässt er sich einschalten; danach muss der Agent
+                  einmal neu erstellt werden.
+                </p>
+          )}
           {activeSub === "settings" && <AgentSettings agent={agent} onUpdated={(a) => setAgent(a)} />}
         </div>
       </motion.div>

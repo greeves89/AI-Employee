@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.327.0] - 2026-09-21
+
+### Neu
+- **Browser-Arbeitsfläche: zusehen und übernehmen.** Neuer Reiter „Browser" am
+  Agenten. Der Agent bedient dort Seiten, der Nutzer sieht live zu und kann
+  jederzeit selbst übernehmen — per Knopf „Steuerung übernehmen", danach gehen
+  Klicks, Mausrad und Tastatur direkt in die Seite.
+  - **Der eigentliche Gewinn ist die Anmeldung.** Wer sein Passwort oder einen
+    Einmalcode hier direkt eintippt, schickt ihn weder durch den Chat noch
+    durch das Modell. Zusammen mit dem bestehenbleibenden Profil aus 1.326.0
+    heißt das: einmal selbst anmelden, danach arbeitet der Agent in derselben
+    Sitzung weiter.
+  - Technisch ein Bildstrom aus dem bereits laufenden Chromium
+    (CDP-`Page.startScreencast`) — kein X-Server, kein zweiter Container, kein
+    weiterer Dienst. Eine ruhende Seite erzeugt keine Bilder und kostet nichts.
+  - Der Strom läuft **über den Orchestrator**, nicht direkt zum Agenten: Nur
+    dort gibt es Anmeldung und Eigentümerprüfung, und die Agenten-Container
+    bleiben ohne Weg nach außen. Wer den Strom sieht, sähe angemeldete
+    Sitzungen — der Kanal ist deshalb genauso abgesichert wie das Gespräch.
+  - Elf Tests: sechs messen Bilder und Eingaben an einem echten Chromium nach,
+    fünf sichern die Zugriffstore ab (nicht angemeldet, fremder Agent, kein
+    Container) — samt einer Wache gegen Zugriffstests, die nur scheinbar
+    greifen.
+
+Prototyp-Stand zu #828: Geltungsbereiche, Berechtigungen und Prüfprotokoll
+werden als Nächstes angeklemmt; die Stellen dafür sind im Code markiert.
+
+---
+
 ## [1.326.0] - 2026-09-21
 
 ### Neu
