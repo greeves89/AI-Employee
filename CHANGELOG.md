@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.327.1] - 2026-09-21
+
+### Behoben
+- **Browser-Arbeitsfläche weckt schlafende Agenten.** Agenten steigen nach
+  ihrer Ruhezeit aus. Wer den Reiter „Browser" öffnete, bekam dann „kein
+  Container" — dabei öffnet man ihn gerade, *weil* man etwas sehen will.
+  Der Kanal weckt jetzt über denselben Weg wie Nachrichten und Besprechungen
+  (`ensure_agent_running`) und wartet danach, bis der Dienst im Container
+  wirklich antwortet, statt es bei einem einzigen Versuch zu belassen.
+
+---
+
 ## [1.327.0] - 2026-09-21
 
 ### Neu

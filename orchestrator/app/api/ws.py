@@ -1304,6 +1304,17 @@ async def ws_agent_browser(
         await websocket.close(code=1011, reason="authorization error")
         return
 
+    # Schlafende Agenten wecken — derselbe Weg wie bei Nachrichten und
+    # Besprechungen. Ohne das saehe der Nutzer "kein Container", sobald der
+    # Agent nach seiner Ruhezeit ausgestiegen ist; er haette den Reiter aber
+    # gerade deshalb geoeffnet, WEIL er etwas sehen will.
+    from app.core.agent_wakeup import ensure_agent_running
+
+    try:
+        await ensure_agent_running(agent_id, _docker, _redis)
+    except Exception as e:  # noqa: BLE001 — der Versuch darf den Kanal nicht kippen
+        logger.warning("[Browser] Wecken von %s fehlgeschlagen: %s", scrub_log(agent_id), e)
+
     name = await _agent_container_name(agent_id)
     if not name:
         await websocket.close(code=4004, reason="Agent has no running container")
@@ -1312,9 +1323,22 @@ async def ws_agent_browser(
     import aiohttp
 
     ziel = f"ws://{name}:{BROWSER_STROM_PORT}/browser/stream"
+    # Ein frisch geweckter Agent braucht ein paar Sekunden, bis sein
+    # Gesundheitsserver lauscht. Ein einziger Versuch wuerde genau dann
+    # scheitern, wenn das Wecken gerade erfolgreich war.
+    async def _verbinden(sitzung):
+        letzter = None
+        for versuch in range(10):
+            try:
+                return await sitzung.ws_connect(ziel, heartbeat=30, timeout=10)
+            except aiohttp.ClientError as e:
+                letzter = e
+                await asyncio.sleep(1.5)
+        raise letzter if letzter else aiohttp.ClientError("unerreichbar")
+
     try:
         async with aiohttp.ClientSession() as sitzung:
-            async with sitzung.ws_connect(ziel, heartbeat=30, timeout=10) as oben:
+            async with await _verbinden(sitzung) as oben:
                 await websocket.send_json({"typ": "bereit"})
 
                 async def hinaus():

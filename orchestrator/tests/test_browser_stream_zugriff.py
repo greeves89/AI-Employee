@@ -136,5 +136,52 @@ class BrowserStromZugriff(unittest.TestCase):
                          "falschen Stelle.")
 
 
+class SchlafenderAgent(unittest.TestCase):
+    """Ein schlafender Agent wird geweckt, statt den Nutzer abzuweisen.
+
+    Agenten steigen nach ihrer Ruhezeit aus. Wer den Browser-Reiter oeffnet,
+    tut das aber gerade, WEIL er etwas sehen will — eine Absage "kein
+    Container" waere die unbrauchbarste aller Antworten. Nachrichten und
+    Besprechungen wecken laengst ueber ``ensure_agent_running``; dieser Kanal
+    benutzt denselben Weg, statt einen zweiten zu bauen.
+    """
+
+    def test_es_wird_geweckt_bevor_aufgegeben_wird(self):
+        async def _angemeldet(websocket, token=None, ticket=None):
+            await websocket.accept()
+            websocket.state.user_id = "u1"
+            return True
+
+        class _Db:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def get(self, *a, **k): return _EchterNutzer()
+
+        reihenfolge = []
+
+        async def _wecken(agent_id, docker, redis):
+            reihenfolge.append("wecken")
+            return True
+
+        async def _suchen(agent_id):
+            reihenfolge.append("suchen")
+            return None
+
+        with patch.object(ws_modul, "_authenticate_ws", new=_angemeldet), \
+             patch("app.dependencies.require_agent_access", new=AsyncMock(return_value=None)), \
+             patch.object(ws_modul, "async_session_factory", new=lambda: _Db()), \
+             patch("app.core.agent_wakeup.ensure_agent_running", new=_wecken), \
+             patch.object(ws_modul, "_agent_container_name", new=_suchen):
+            with self.assertRaises(WebSocketDisconnect):
+                with TestClient(_app()).websocket_connect(BrowserStromZugriff.PFAD) as ws:
+                    ws.receive_json()
+
+        self.assertEqual(
+            reihenfolge, ["wecken", "suchen"],
+            "Erst wecken, dann nach dem Container sehen — andersherum waere der "
+            "Weckversuch wirkungslos.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
