@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.325.5] - 2026-09-21
+
+### Behoben
+- **Ein wegen voller Platte gestoppter Agent stand in der Übersicht weiter auf
+  „läuft".** Der Speicherquoten-Wächter stoppt den Container, schreibt den
+  Grund an den Agenten und alarmiert — nur der Zustand blieb auf `RUNNING`.
+  Wer auf die Übersicht schaute, sah einen laufenden Agenten, der nicht
+  antwortet, und suchte den Fehler an der falschen Stelle. Zusätzlich sucht
+  sich der Wächter seine Kandidaten über genau dieses Feld: Ein solcher Agent
+  wurde in jedem Durchlauf erneut eingesammelt; dass es nicht in einer
+  Schleife endete, lag nur daran, dass die Belegungsmessung an einem
+  beendeten Container scheitert. Jetzt wird der Zustand festgeschrieben — und
+  beim automatischen Wiederanlauf nach erfolgreichem Aufräumen wieder
+  zurückgesetzt.
+- **„Neue Version verfügbar" ging nach einem Neuaufbau nie weg.** Der
+  Neuaufbau eines Containers verwendet dasselbe Abbild wie die
+  Aktualisierung, vermerkte die Versionsnummer aber nicht. Die Oberfläche
+  verglich daher weiter gegen die alte Nummer und meldete dauerhaft ein
+  Update für einen Agenten, der bereits aktuell lief. Besonders beim
+  automatischen Neuaufbau eines verschwundenen Containers, wo niemand
+  „Aktualisieren" klickt, wäre das Abzeichen nie wieder verschwunden.
+
+---
+
 ## [1.325.4] - 2026-09-21
 
 ### Behoben

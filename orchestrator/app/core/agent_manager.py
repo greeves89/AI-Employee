@@ -1983,6 +1983,17 @@ class AgentManager:
         # 6. Update DB
         agent.container_id = container.id
         agent.state = AgentState.RUNNING
+        # Der neue Behaelter kommt aus ``settings.agent_image`` — also aus
+        # demselben Abbild, das ``update_agent`` verwendet. Ohne diesen
+        # Vermerk bliebe die alte Nummer stehen und die Oberflaeche meldete
+        # dauerhaft "Neue Version verfuegbar" fuer einen Agenten, der bereits
+        # auf dem aktuellen Stand laeuft (der Vergleich in ``get_agent_status``
+        # liest genau dieses Feld). Betrifft besonders den automatischen
+        # Neuaufbau aus ``user_lifecycle.wake_agent``: dort klickt niemand
+        # "Aktualisieren", das Abzeichen ginge nie wieder weg.
+        config["agent_version"] = get_agent_version()
+        agent.config = config
+        flag_modified(agent, "config")
         await self.db.commit()
         await self.db.refresh(agent)
 

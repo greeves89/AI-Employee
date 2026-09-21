@@ -132,9 +132,32 @@ class DiskMonitorService:
             await self._fail_running_tasks_and_alert(agent, stats)
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self.docker.stop_container, agent.container_id)
+            # Der Container ist weg — das muss auch in der Datenbank stehen.
+            # Sonst zeigt die Uebersicht einen laufenden Agenten, den es nicht
+            # gibt, und dieser Waechter sammelt ihn ueber seinen
+            # Zustandsfilter in jedem Durchlauf erneut ein.
+            await self._zustand_setzen(agent.id, AgentState.STOPPED)
             await self._cleanup_and_maybe_restart(agent, stats)
         except Exception as exc:
             logger.error("Failed to stop disk-full agent %s: %s", agent.id, exc)
+
+    async def _zustand_setzen(self, agent_id: str, state: AgentState) -> None:
+        """Zustand des Agenten festschreiben — ohne den ``stop_reason`` anzufassen.
+
+        Der Grund wird an anderer Stelle gesetzt (beim Stopp) bzw. geloescht
+        (bei der Erholung); hier geht es allein um ``state``, damit Uebersicht
+        und Kandidatensuche dieses Waechters die Wirklichkeit abbilden.
+        """
+        from app.db.session import resilient_session
+        try:
+            async with resilient_session(session_factory=self._sf) as db:
+                db_agent = await db.get(Agent, agent_id)
+                if db_agent is not None:
+                    db_agent.state = state
+                    await db.commit()
+        except Exception:
+            logger.warning("Zustand von Agent %s liess sich nicht auf %s setzen",
+                           agent_id, state, exc_info=True)
 
     async def _cleanup_and_maybe_restart(self, agent: Agent, stats: dict) -> None:
         """Raeumt das Volume des gestoppten Agenten auf und startet ihn neu,
@@ -172,6 +195,7 @@ class DiskMonitorService:
             )
             return
         await loop.run_in_executor(None, self.docker.start_container, agent.container_id)
+        await self._zustand_setzen(agent.id, AgentState.RUNNING)
         logger.warning(
             "Agent %s: Aufraeumlauf senkte Belegung auf %.1f%% (< %.0f%%) — Container automatisch neu gestartet",
             agent.id, percent, _STOP_THRESHOLD,

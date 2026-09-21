@@ -63,6 +63,28 @@ class TestAgentRecreateReconcile(unittest.TestCase):
             "container_name must be assigned before the reconciliation loop references it.",
         )
 
+    def test_restart_agent_vermerkt_die_version(self) -> None:
+        """Der Neuaufbau baut aus dem AKTUELLEN Abbild — das muss er auch vermerken.
+
+        Ohne den Vermerk vergleicht ``get_agent_status`` die alte Nummer aus
+        der Konfiguration mit der laufenden und meldet dauerhaft "Neue Version
+        verfuegbar" fuer einen Agenten, der bereits aktuell ist. Besonders
+        stoerend beim automatischen Neuaufbau aus ``user_lifecycle.wake_agent``:
+        dort klickt niemand "Aktualisieren", das Abzeichen ginge nie weg.
+        """
+        src = _func_source(self.tree, self.source, "restart_agent")
+        self.assertIn(
+            'config["agent_version"] = get_agent_version()', src,
+            "restart_agent muss die Versionsnummer mitschreiben — wie update_agent.",
+        )
+        # Der Vermerk muss auch wirklich gespeichert werden: geaenderte
+        # JSON-Spalten erkennt SQLAlchemy nur mit flag_modified.
+        stempel = src.index('config["agent_version"] = get_agent_version()')
+        self.assertIn('flag_modified(agent, "config")', src[stempel:],
+                      "Ohne flag_modified bleibt die Aenderung an der JSON-Spalte liegen.")
+        self.assertLess(stempel, src.index("await self.db.commit()", stempel),
+                        "Der Vermerk muss vor dem Speichern gesetzt werden.")
+
     def test_publish_event_guards_none_client(self) -> None:
         src = _func_source(self.tree, self.source, "_publish_event")
         self.assertIn(
