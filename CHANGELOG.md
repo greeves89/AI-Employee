@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.325.4] - 2026-09-21
+
+### Behoben
+- **Ein Agent, dessen Container verschwunden war, kam nie wieder.** Die
+  Plattform merkt das eigentlich und baut den Container automatisch neu auf.
+  Dieser Weg legte sich dafür eine eigene Redis-Verbindung an — und verband
+  sie nicht. Im Protokoll stand jede Minute erneut:
+  `Container gone for …, recreating via AgentManager` gefolgt von
+  `Could not recreate agent …: Redis not connected`.
+  - **Warum es nicht überall auffällt:** Nur bei eingeschalteten Redis-Rechten
+    (`redis_acl_enabled`) fordert der Agenten-Verwalter beim Bauen einen
+    eigenen Redis-Zugang pro Container an — und genau das scheitert an der
+    unverbundenen Verbindung. Auf Anlagen mit der Standardeinstellung bleibt
+    der Fehler unsichtbar, bis jemand die Rechte einschaltet.
+  - Alle anderen Stellen, die sich eine eigene Redis-Verbindung anlegen,
+    verbinden sie unmittelbar danach. Nur diese eine nicht.
+  - Die Verbindung wird jetzt auch wieder geschlossen — der Weckpfad läuft im
+    Minutentakt, eine offene Verbindung je Versuch hätte sich angesammelt.
+  - Vier Tests halten den Ablauf fest, inklusive des Aufräumens nach einem
+    gescheiterten Neuaufbau.
+
+---
+
 ## [1.325.3] - 2026-09-21
 
 ### Behoben

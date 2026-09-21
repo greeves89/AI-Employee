@@ -264,11 +264,20 @@ async def wake_agent(db: AsyncSession, docker_service, agent_id: str, wait: bool
 
     # Container missing or start failed — recreate via AgentManager
     logger.info(f"[UserLifecycle] Container gone for {scrub_log(agent_id)}, recreating via AgentManager")
+    from app.core.agent_manager import AgentManager
+    from app.services.redis_service import RedisService
+    from app.config import settings
+
+    # Der Neuaufbau braucht eine VERBUNDENE Redis-Verbindung: Bei
+    # eingeschaltetem ``redis_acl_enabled`` holt sich der Agenten-Verwalter
+    # fuer jeden Container einen eigenen Redis-Zugang
+    # (``_agent_redis_url`` -> ``ensure_agent_acl_user``). Ohne ``connect()``
+    # scheitert genau das mit "Redis not connected" — und ein Agent, dessen
+    # Container verschwunden ist, kommt nie wieder. Dieser Pfad laeuft im
+    # Minutentakt, deshalb wird die Verbindung hinterher wieder geschlossen.
+    redis_service = RedisService(settings.redis_url)
     try:
-        from app.core.agent_manager import AgentManager
-        from app.services.redis_service import RedisService
-        from app.config import settings
-        redis_service = RedisService(settings.redis_url)
+        await redis_service.connect()
         manager = AgentManager(db, docker_service, redis_service)
         await manager.restart_agent(agent_id)
         if wait:
@@ -283,3 +292,8 @@ async def wake_agent(db: AsyncSession, docker_service, agent_id: str, wait: bool
     except Exception as e:
         logger.warning(f"[UserLifecycle] Could not recreate agent {scrub_log(agent_id)}: {scrub_log(e)}")
         return False
+    finally:
+        try:
+            await redis_service.disconnect()
+        except Exception:  # noqa: BLE001 — Aufraeumen darf den Weckpfad nie kippen
+            logger.debug("[UserLifecycle] Redis-Verbindung liess sich nicht schliessen", exc_info=True)
