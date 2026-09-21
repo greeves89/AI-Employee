@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.325.2] - 2026-09-21
+
+### Hinzugefügt
+- **Gesundheitsprüfung für den Orchestrator-Container.** Bisher hatte er
+  keine: Er galt als gesund, solange der Prozess lief — auch dann, wenn die
+  Anwendung beim Start abgebrochen war. Genau deshalb blieb der Ausfall vom
+  21.09. tagelang unbemerkt; nichts wurde rot, der Container stand auf „Up".
+  Die Prüfung ruft `/api/v1/health` auf, das Datenbank und Redis mitprüft.
+  `start_period` deckt den Anlauf inklusive `alembic upgrade head` ab.
+- **Migrationstest gegen echtes PostgreSQL.** Er baut den Zustand einer
+  gewachsenen Anlage nach — Schema aus den Modellen, Alembic auf den Stand
+  davor gestempelt, dann nach vorn — und prüft nicht nur, dass die Migration
+  durchläuft, sondern dass die Daten wirklich umgezogen sind.
+
+### Bemerkenswert
+- Zwei Dinge, die beim Bau dieses Tests auffielen und erklären, warum der
+  Fehler so lange unentdeckt blieb:
+  - **Die Migrationskette legt das Schema nicht an.** Auf einer leeren
+    Datenbank scheitert sie sofort an `relation "agents" does not exist`. Die
+    Tabellen entstehen aus den Modellen, Migrationen ändern nur Vorhandenes.
+    Auf frischen Anlagen wird Alembic deshalb nur gestempelt — ein Fehler, der
+    ausschließlich im Migrationsschritt steckt, kann dort nie auffallen.
+  - **`alembic/env.py` überschreibt die Datenbank-Adresse** mit der aus den
+    Einstellungen. Ein Test, der sie über die Alembic-Config setzt, läuft
+    unbemerkt gegen die echte Datenbank und meldet Erfolg, ohne eine einzige
+    Migration ausgeführt zu haben. Der Test setzt sie deshalb über die
+    Umgebungsvariable in einem eigenen Prozess.
+
+---
+
 ## [1.325.1] - 2026-09-21
 
 ### Behoben

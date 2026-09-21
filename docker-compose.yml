@@ -93,6 +93,20 @@ services:
       dockerfile: Dockerfile
       target: base
     container_name: ai-employee-orchestrator
+    # Ohne diese Pruefung galt der Container als gesund, solange der Prozess
+    # lief — auch dann, wenn die Anwendung beim Start abgebrochen war. Am
+    # 21.09.2026 stand deshalb bei einer Kundenanlage tagelang die komplette
+    # API still, ohne dass irgendwo etwas rot wurde (fehlende Spalte durch
+    # eine nicht gelaufene Migration, "Application startup failed").
+    #
+    # /health prueft Datenbank und Redis mit. start_period deckt den
+    # Anlauf ab — inklusive "alembic upgrade head" beim Start.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     ports:
       # Bind to loopback only — external access goes via reverse proxy.
       # Prevents the orchestrator API being directly reachable on the public IP.
