@@ -48,9 +48,9 @@ class StartskriptTest(unittest.TestCase):
 
     def test_der_deckel_eskaliert_zu_sigkill(self):
         self.assertRegex(
-            self.skript, r"timeout\s+-k\s+\d+\s+\d+\s+npm",
+            self.skript, r"timeout\s+-k\s+\d+\s+\"?\$?\{?[A-Za-z_0-9]+\}?\"?\s+npm",
             "timeout ohne -k schickt nur SIGTERM; npm ueberlebt das und der "
-            "Agent startet nie.",
+            "Agent startet nie. (Die Frist selbst darf eine Variable sein.)",
         )
 
     def test_bash_syntax(self):

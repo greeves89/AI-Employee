@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.325.6] - 2026-09-21
+
+### Behoben
+- **Nach dem Aktualisieren eines Agenten fehlte im Chat plötzlich die CLI:**
+  `No such file or directory: claude`. Im Container lag nur noch ein halb
+  umbenanntes Paketverzeichnis, ein Reparaturversuch scheiterte an
+  `ENOTEMPTY`.
+  - **Ursache:** `npm install -g` ist **nicht atomar**. npm benennt die
+    vorhandene Installation zuerst weg und schreibt danach die neue. Wird es
+    in diesem Fenster abgebrochen — Frist abgelaufen, Netz weg, Container
+    gestoppt —, bleibt **weder die alte noch die neue** Fassung. Die Meldung
+    des Startskripts behauptete dabei, man behalte die installierte Fassung;
+    das war schlicht falsch.
+  - **Warum es erst jetzt auffiel:** Vorher griff die Frist gar nicht durch
+    (`timeout` ohne `-k` schickt nur SIGTERM, npm stirbt daran nicht) — der
+    Aufruf hing stattdessen endlos, was auf seine Weise genauso kaputt war.
+    Der Abbruch-Deckel aus 1.325.3 hat den Fehler nicht verursacht, sondern
+    sichtbar gemacht.
+  - **Jetzt:** Die neue Fassung wird zuerst vollständig in eine Zwischenablage
+    installiert und erst danach per Umbenennen eingehängt. Bis dahin bleibt
+    die laufende Installation unberührt; schlägt etwas fehl, ist schlicht
+    nichts geschehen. Danach wird geprüft, ob die eingehängte Fassung wirklich
+    startet — wenn nicht, geht es zurück auf die vorherige.
+  - Die Frist steigt von 60 auf 300 Sekunden: Auf einem Raspberry Pi gemessen
+    braucht allein die Installation von Claude Code 51 Sekunden, die alten
+    60 s trafen genau die Abbruchkante. Ein Abbruch ist jetzt folgenlos, also
+    darf die Frist großzügig sein.
+  - Fünf Tests messen das an einer npm-Attrappe nach — Abbruch, Fehlschlag,
+    Erfolg, liegengebliebener Schutt und „npm gar nicht vorhanden" — statt im
+    Skripttext nach Zeichenketten zu suchen.
+
+---
+
 ## [1.325.5] - 2026-09-21
 
 ### Behoben
