@@ -306,7 +306,7 @@ class EigeneAdressenDesBetreibersGewinnenTests(unittest.TestCase):
         port = _free_port()
         with mock.patch.object(main, "_start_combined_mcp", return_value=True), \
                 mock.patch.object(main, "_run_mcp_add", side_effect=lambda a: calls.append(a) or True), \
-                mock.patch.object(main, "_write_mcp_json_fallback", lambda: None), \
+                mock.patch.object(main, "_write_mcp_json_fallback", lambda *_: None), \
                 mock.patch.dict(os.environ, {
                     "MCP_HTTP_PORT": str(port),
                     "MSGRAPH_ENABLED": "true" if msgraph_enabled else "",
@@ -346,3 +346,60 @@ class EigeneAdressenDesBetreibersGewinnenTests(unittest.TestCase):
         except Exception as exc:  # pragma: no cover - Beweis, dass es NICHT passiert
             self.fail(f"register_mcp_servers ist an der kaputten Liste gescheitert: {exc}")
         self.assertTrue(lokal)
+
+
+class McpJsonFallbackFolgtDemModus(unittest.TestCase):
+    """`.mcp.json` im Workspace ist ein PROJEKT-Eintrag und schlaegt die
+    Nutzer-Registrierung gleichen Namens. Traegt sie im gemeinsamen Modus noch
+    die stdio-Kommandos, startet Claude Code je Server einen Einzelprozess, der
+    sich an denselben Port haengen will (EADDRINUSE) und sofort stirbt —
+    memory/orchestrator/notifications/skills melden dann "Connection closed",
+    waehrend brain/read-logs (nur per CLI angemeldet) weiter funktionieren."""
+
+    def _schreibe(self, tmp: str, port: int | None) -> dict:
+        import json as _json
+        with mock.patch.object(main.settings, "workspace_dir", tmp):
+            main._write_mcp_json_fallback(port)
+        with open(os.path.join(tmp, ".mcp.json")) as f:
+            return _json.load(f)["mcpServers"]
+
+    def test_gemeinsamer_modus_schreibt_adressen_statt_kommandos(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            server = self._schreibe(tmp, 8790)
+        for name in main._COMBINED_MCP_NAMES:
+            self.assertEqual(server[name], {"type": "http",
+                                            "url": f"http://127.0.0.1:8790/mcp/{name}"})
+        self.assertFalse(any(e.get("command") == "node" for e in server.values()))
+
+    def test_einzelmodus_schreibt_weiterhin_stdio(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            server = self._schreibe(tmp, None)
+        self.assertEqual(server["memory"]["command"], "node")
+        self.assertEqual(server["memory"]["args"], ["/opt/mcp/memory-server.mjs"])
+        self.assertNotIn("url", server["memory"])
+
+    def test_register_reicht_den_modus_durch(self):
+        """Nicht nur die Funktion, auch der Aufrufer muss den Port kennen —
+        sonst bleibt der Fehler bei unveraenderter Signatur bestehen."""
+        gesehen = []
+        with mock.patch.object(main, "_start_combined_mcp", return_value=True), \
+                mock.patch.object(main, "_run_mcp_add", return_value=True), \
+                mock.patch.object(main, "_write_mcp_json_fallback", gesehen.append), \
+                mock.patch.dict(os.environ, {
+                    "MCP_HTTP_PORT": "8790", "MSGRAPH_ENABLED": "", "COMPUTER_USE_BROWSER": "",
+                    "COMPUTER_USE_BRIDGE_MCP_URL": "", "CUSTOM_MCP_SERVERS": "",
+                }, clear=False):
+            main.register_mcp_servers()
+        self.assertEqual(gesehen, [8790])
+        gesehen.clear()
+        with mock.patch.object(main, "_start_combined_mcp", return_value=False), \
+                mock.patch.object(main, "_run_mcp_add", return_value=True), \
+                mock.patch.object(main, "_write_mcp_json_fallback", gesehen.append), \
+                mock.patch.dict(os.environ, {
+                    "MCP_HTTP_PORT": "8790", "MSGRAPH_ENABLED": "", "COMPUTER_USE_BROWSER": "",
+                    "COMPUTER_USE_BRIDGE_MCP_URL": "", "CUSTOM_MCP_SERVERS": "",
+                }, clear=False):
+            main.register_mcp_servers()
+        self.assertEqual(gesehen, [None])

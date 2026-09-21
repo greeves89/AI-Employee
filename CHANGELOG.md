@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.4] - 2026-09-21
+
+### Behoben
+- **Die eingebauten MCP-Werkzeuge (Gedächtnis, Benachrichtigungen, Orchestrator, Skills, Freigaben, Desktop) fehlten in jeder Agenten-Sitzung** (#822). Seit die Werkzeugserver in einem gemeinsamen Prozess laufen (#638), meldete Claude Code beim Start für genau diese sechs Server „Connection closed" — der Agent konnte weder Gedächtnis speichern noch Todos lesen, Freigaben anfragen oder Kollegen beauftragen und wich still auf REST-Aufrufe aus. Ursache: die im Workspace abgelegte `.mcp.json` trug weiterhin die alten Einzelprozess-Kommandos, und Claude Code bevorzugt diese Projekt-Einträge gegenüber der eigentlichen Registrierung; der so gestartete Zweitprozess wollte denselben Port belegen und starb sofort. 1.328.3 fing das Symptom bereits ab (die Zweitprozesse weichen auf stdio aus), ließ aber je Lauf sechs zusätzliche Prozesse neben dem gemeinsamen stehen — der Speichergewinn aus #638 war für sie dahin. Die Datei trägt jetzt im gemeinsamen Modus dieselben Adressen wie die Registrierung: ein Prozess, ein Codepfad. Nebenbefund im selben Zug: eigene MCP-Adressen des Betreibers standen dort ebenfalls (ohne `type`, von Claude Code still übersprungen). Sie entfallen jetzt bewusst — ein gültiger Eintrag würde die per Kommandozeile registrierte Adresse verdecken, die der Agent bei jeder Token-Rotation neu schreibt (#488); die Datei hätte nach der ersten Rotation veraltete Zugangsdaten geliefert. Die eigenen Server laufen unverändert über ihre Registrierung.
+
 ## [1.328.3] - 2026-09-21
 
 ### Behoben

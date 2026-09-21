@@ -160,6 +160,12 @@ def _start_combined_mcp(port: int) -> bool:
     return False
 
 
+#: Die eingebauten Server, die der gemeinsame Prozess (#638) unter
+#: http://127.0.0.1:<MCP_HTTP_PORT>/mcp/<name> bereitstellt.
+_COMBINED_MCP_NAMES = ("bash-approval", "memory", "notifications", "orchestrator",
+                       "skills", "desktop", "hyperframes", "email", "brain", "read-logs")
+
+
 def register_mcp_servers() -> None:
     """Register MCP servers via `claude mcp add` so Claude Code discovers them in -p mode.
 
@@ -171,8 +177,7 @@ def register_mcp_servers() -> None:
     # Hochfahren faellt automatisch auf den alten Weg zurueck.
     _http_port = int(os.environ.get("MCP_HTTP_PORT") or 0)
     if _http_port and _start_combined_mcp(_http_port):
-        _namen = ["bash-approval", "memory", "notifications", "orchestrator",
-                  "skills", "desktop", "hyperframes", "email", "brain", "read-logs"]
+        _namen = list(_COMBINED_MCP_NAMES)
         # msgraph NUR dann lokal anmelden, wenn die Anlage ihn nicht ohnehin
         # ueber eine eigene Adresse bereitstellt. Auf einer Anlage mit
         # Microsoft-Anbindung steht er in CUSTOM_MCP_SERVERS und zeigt auf den
@@ -375,41 +380,53 @@ def register_mcp_servers() -> None:
         except (json.JSONDecodeError, AttributeError) as e:
             print(f"[Agent] Warning: Could not parse CUSTOM_MCP_SERVERS: {e}")
 
-    # Also write .mcp.json as fallback / documentation
-    _write_mcp_json_fallback()
+    # Also write .mcp.json as fallback / documentation. Im gemeinsamen Modus
+    # MUSS die Datei dieselben Adressen tragen wie die CLI-Registrierung:
+    # Claude Code zieht Projekt-Eintraege (.mcp.json) den Nutzer-Eintraegen
+    # gleichen Namens vor, und ein stdio-Eintrag wuerde dann einen zweiten
+    # Einzelprozess starten, der sich an denselben Port haengen will
+    # (EADDRINUSE -> "Connection closed" fuer memory/orchestrator/...).
+    _write_mcp_json_fallback(None if _einzeln else _http_port)
 
 
-def _write_mcp_json_fallback() -> None:
-    """Write .mcp.json as fallback for interactive mode / documentation."""
+def _write_mcp_json_fallback(http_port: int | None) -> None:
+    """Write .mcp.json as fallback for interactive mode / documentation.
+
+    `http_port` gesetzt = die eingebauten Server laufen gemeinsam in einem
+    Prozess (#638); dann stehen hier ihre HTTP-Adressen, keine stdio-Kommandos.
+    Absichtlich ohne Default: ein vergessener Parameter fiele sonst still in den
+    stdio-Modus zurueck — genau der Fehler aus #822.
+    """
     mcp_config: dict = {"mcpServers": {}}
 
-    # Built-in servers (AGENT_TOKEN required for API auth)
-    for name, cmd, envs in [
-        ("bash-approval", "/opt/mcp/bash-approval-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
-        ("memory", "/opt/mcp/memory-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
-        ("notifications", "/opt/mcp/notification-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
-        ("orchestrator", "/opt/mcp/orchestrator-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_NAME": settings.agent_name or settings.agent_id, "AGENT_TOKEN": settings.agent_token, "DEFAULT_MODEL": settings.default_model}),
-        ("skills", "/opt/mcp/skill-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
-        ("desktop", "/opt/mcp/computer-use-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
-    ]:
-        # Project-scoped stdio entries must also override the parent HTTP port.
-        envs["MCP_HTTP_PORT"] = ""
-        mcp_config["mcpServers"][name] = {"command": "node", "args": [cmd], "env": envs}
+    if http_port:
+        for name in _COMBINED_MCP_NAMES:
+            mcp_config["mcpServers"][name] = {
+                "type": "http", "url": f"http://127.0.0.1:{http_port}/mcp/{name}",
+            }
 
-    # Custom servers
-    custom_mcp = os.environ.get("CUSTOM_MCP_SERVERS", "")
-    if custom_mcp:
-        auth = _load_custom_mcp_auth()
-        headers = _load_custom_mcp_headers()
-        try:
-            for name, url in json.loads(custom_mcp).items():
-                entry: dict = {"url": url}
-                hdrs = _auth_headers_for(name, auth, headers)
-                if hdrs:
-                    entry["headers"] = hdrs
-                mcp_config["mcpServers"][_sanitize_mcp_name(name)] = entry
-        except (json.JSONDecodeError, AttributeError):
-            pass
+    # Built-in servers (AGENT_TOKEN required for API auth) — nur im Einzelprozess-Modus
+    if not http_port:
+        for name, cmd, envs in [
+            ("bash-approval", "/opt/mcp/bash-approval-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
+            ("memory", "/opt/mcp/memory-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
+            ("notifications", "/opt/mcp/notification-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
+            ("orchestrator", "/opt/mcp/orchestrator-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_NAME": settings.agent_name or settings.agent_id, "AGENT_TOKEN": settings.agent_token, "DEFAULT_MODEL": settings.default_model}),
+            ("skills", "/opt/mcp/skill-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
+            ("desktop", "/opt/mcp/computer-use-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
+        ]:
+            # Project-scoped stdio entries must also override the parent HTTP port (#824).
+            envs["MCP_HTTP_PORT"] = ""
+            mcp_config["mcpServers"][name] = {"command": "node", "args": [cmd], "env": envs}
+
+    # Eigene Server des Betreibers (CUSTOM_MCP_SERVERS) stehen hier ABSICHTLICH
+    # nicht: sie sind per `claude mcp add --header ...` angemeldet, und
+    # refresh_mcp_credentials_loop() schreibt genau diese Registrierung bei
+    # jeder Token-Rotation neu (#488). Ein gueltiger Projekt-Eintrag in dieser
+    # Datei wuerde die Nutzer-Registrierung gleichen Namens schlagen — mit den
+    # Zugangsdaten vom Container-Start, die nach der ersten OAuth-Rotation
+    # 401 liefern. (Bis 1.328.x stand er ohne "type" drin und wurde von Claude
+    # Code still uebersprungen; das war Zufall, kein Schutz.)
 
     config_path = os.path.join(settings.workspace_dir, ".mcp.json")
     with open(config_path, "w") as f:
