@@ -66,8 +66,23 @@ class BrowserStromZugriff(unittest.TestCase):
 
         Alle Pruefungen unten erwarten eine Trennung. Eine Route, die es gar
         nicht gibt, trennt auch — dann pruefen sie nichts mehr.
+
+        FastAPI >=0.141 loest include_router() lazy auf: app.routes enthaelt
+        dann nur noch _IncludedRouter-Wrapper ohne .path (siehe WiringTests
+        in test_concierge.py fuer denselben Kniff). iter_route_contexts()
+        legt die Routen wieder flach — aber fuer WebSocket-Routen bleibt
+        rc.path dabei leer, der echte Pfad steckt in rc.route.path.
         """
-        pfade = [r.path for r in _app().routes if getattr(r, "path", "").endswith("/browser")]
+        try:
+            from fastapi.routing import iter_route_contexts
+
+            pfade = [
+                rc.route.path
+                for rc in iter_route_contexts(_app().routes)
+                if getattr(rc.route, "path", "").endswith("/browser")
+            ]
+        except ImportError:
+            pfade = [r.path for r in _app().routes if getattr(r, "path", "").endswith("/browser")]
         self.assertIn(self.PFAD.replace("a1", "{agent_id}"), pfade, f"Vorhandene Routen: {pfade}")
 
     # --- Tor 1: Anmeldung --------------------------------------------------

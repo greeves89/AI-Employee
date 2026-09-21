@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.2] - 2026-09-21
+
+### Behoben
+- **Hauptlinie war rot: Wachentest gegen die Browser-Route selbst falsch grün geblieben (#828).**
+  Der Regressionstest, der prüft, dass die Browser-WebSocket-Route überhaupt
+  registriert ist, las die Routenliste direkt aus `app.routes` — das liefert
+  seit dem FastAPI-Update auf 0.141 nur noch ungeöffnete Wrapper ohne Pfad,
+  weil `include_router()` seither erst bei Bedarf aufgelöst wird. Die Route
+  selbst war die ganze Zeit korrekt registriert; nur der Test sah sie nicht
+  mehr. Der Test nutzt jetzt denselben `iter_route_contexts()`-Kniff wie der
+  bestehende Concierge-Wiring-Test, inklusive der Besonderheit, dass bei
+  WebSocket-Routen der Pfad am `.route`-Attribut hängt statt direkt am
+  Kontext.
+
 ## [1.328.1] - 2026-09-21
 
 ### Behoben
