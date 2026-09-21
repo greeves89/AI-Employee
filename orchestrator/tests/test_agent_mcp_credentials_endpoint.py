@@ -48,6 +48,7 @@ class GetAgentMcpCredentialsTests(unittest.IsolatedAsyncioTestCase):
             agent_config={"integrations": ["microsoft"]},
             agent_id="agent-1",
             agent_integrations=["microsoft"],
+            refresh_oauth=False,
         )
 
     async def test_defaults_to_empty_dicts_when_no_custom_servers(self):

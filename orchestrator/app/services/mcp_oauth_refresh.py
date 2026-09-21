@@ -16,6 +16,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.encryption import decrypt_token, encrypt_token
+from app.core.oauth_retry import post_refresh_with_retry
 from app.models.mcp_server import McpServer
 from app.services import mcp_oauth_client as oc
 
@@ -29,10 +30,10 @@ _TOKEN_TIMEOUT = 15.0
 # Arbitrary fixed int4 ("mcp\0"); must stay stable across releases.
 _REFRESH_LOCK_NAMESPACE = 0x6D63_7000
 
-# Per-server in-process debounce (#503). With many agents (>20) polling
-# /mcp-credentials on a 300s cycle, ``refresh_if_needed`` runs once per agent per
-# server per tick. When a token crosses the expiry-skew threshold, every one of
-# those calls would otherwise contend on the per-server advisory lock for the same
+# Per-server in-process debounce (#503). Concurrent agent starts and background
+# sweeps can call ``refresh_if_needed`` for the same server. Credential polling
+# only reads persisted tokens (#746). When a token crosses the expiry-skew
+# threshold, those calls would otherwise contend on the per-server advisory lock for the same
 # refresh. After a server is confirmed to hold a usable (fresh or still-valid)
 # token, we remember that verdict for a short window and short-circuit subsequent
 # calls, so only one caller per window does the expiry-check / lock / token dance.
@@ -99,12 +100,17 @@ async def perform_token_request(token_endpoint: str, data: dict) -> dict:
     await _assert_mcp_url_allowed(token_endpoint)
     try:
         async with httpx.AsyncClient(timeout=_TOKEN_TIMEOUT) as client:
-            resp = await client.post(
-                token_endpoint,
-                data=data,
-                headers={"Accept": "application/json"},
-                follow_redirects=False,
-            )
+            # Authorization-code exchange is single-use; only refresh gets the
+            # bounded connect-only retry. SSRF checks above remain fail-closed.
+            kwargs = {
+                "data": data,
+                "headers": {"Accept": "application/json"},
+                "follow_redirects": False,
+            }
+            if data.get("grant_type") == "refresh_token":
+                resp = await post_refresh_with_retry(client, token_endpoint, **kwargs)
+            else:
+                resp = await client.post(token_endpoint, **kwargs)
     except httpx.RequestError as exc:
         raise OAuthTokenError(f"token endpoint unreachable: {exc}") from exc
 
@@ -244,6 +250,11 @@ async def refresh_all_oauth_servers(db: AsyncSession) -> int:
     gap, raise ``EXPIRY_SKEW_SECONDS`` above the sweep interval (so a token is always
     refreshed at least one tick before it can expire) rather than shortening the
     timer.
+
+    Credential polling (#746) reads persisted tokens without refreshing inline.
+    A running agent receives the sweep's committed token on its next poll (up to
+    another 300s); provider retries cannot hold that read request open or cause
+    it to cancel an in-flight token rotation. Agent startup still refreshes inline.
     """
     result = await db.execute(select(McpServer).where(McpServer.oauth_enabled.is_(True)))
     servers = result.scalars().all()

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.encryption import decrypt_token, encrypt_token
 from app.core.log_redaction import scrub_log
+from app.core.oauth_retry import post_refresh_with_retry
 from app.core.url_guard import check_outbound_url
 from app.core.oauth_providers import (
     PROVIDERS,
@@ -303,7 +304,8 @@ class OAuthService:
 
         async with httpx.AsyncClient() as client:
             if provider.token_exchange_method == "anthropic_oauth":
-                response = await client.post(
+                response = await post_refresh_with_retry(
+                    client,
                     apply_tenant(provider.token_url),
                     data={
                         "grant_type": "refresh_token",
@@ -316,7 +318,8 @@ class OAuthService:
                     },
                 )
             else:
-                response = await client.post(
+                response = await post_refresh_with_retry(
+                    client,
                     apply_tenant(provider.token_url),
                     data={
                         "grant_type": "refresh_token",

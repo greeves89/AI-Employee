@@ -1353,12 +1353,14 @@ class AgentManager:
         except Exception as e:  # noqa: BLE001 — best effort, never block the restart
             logger.warning(f"Could not cancel open chats for agent {scrub_log(agent_id)}: {scrub_log(e)}")
 
-    async def _get_custom_mcp_env(self, agent_config: dict | None = None, agent_id: str | None = None, agent_integrations: list[str] | None = None) -> dict[str, str]:
+    async def _get_custom_mcp_env(self, agent_config: dict | None = None, agent_id: str | None = None, agent_integrations: list[str] | None = None, *, refresh_oauth: bool = True) -> dict[str, str]:
         """Load custom MCP servers and return as env var dict.
 
         If agent_config contains 'mcp_servers' (list of IDs), only those
         servers are included. Otherwise all enabled servers are returned.
         Automatically injects the MS Graph MCP server when microsoft is connected.
+        Credential polling uses refresh_oauth=False: provider I/O and advisory
+        locks belong to the existing background sweep, outside its 15s budget.
         """
         result = await self.db.execute(
             select(McpServer).where(McpServer.enabled == True)
@@ -1398,7 +1400,7 @@ class AgentManager:
         try:
             from app.services.mcp_oauth_refresh import refresh_if_needed
             for s in servers:
-                if getattr(s, "oauth_enabled", False):
+                if refresh_oauth and getattr(s, "oauth_enabled", False):
                     await refresh_if_needed(s, self.db)
         except Exception as e:
             logger.warning(f"MCP OAuth token refresh pass failed: {e}")
