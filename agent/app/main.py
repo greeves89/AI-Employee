@@ -310,8 +310,21 @@ def register_mcp_servers() -> None:
 
     # Playwright MCP — browser automation (enabled via COMPUTER_USE_BROWSER=true)
     if os.environ.get("COMPUTER_USE_BROWSER", "").lower() == "true":
-        if _run_mcp_add(["playwright", "npx", "@playwright/mcp@latest"]):
-            print("[Agent] Registered Playwright MCP server (browser control enabled)")
+        # DASSELBE Profil wie das Browser-Werkzeug der anderen Laufzeiten
+        # (``tools/browser.py``). Ohne ``--user-data-dir`` legt der MCP sich ein
+        # eigenes an — dann bliebe ein Codex-Agent nach der Anmeldung des
+        # Nutzers angemeldet, ein Claude-Code-Agent aber nicht. Eine Faehigkeit
+        # gilt hier erst als vorhanden, wenn sie in allen Laufzeiten gleich ist.
+        #
+        # Gleichzeitig benutzen kann beide niemand: Je Agent laeuft genau eine
+        # Laufzeit, und ein Chromium-Profil ist ohnehin nur von einem Prozess
+        # zur Zeit benutzbar.
+        from app.tools.browser import PROFIL_DIR as _browser_profil
+
+        if _run_mcp_add(["playwright", "npx", "@playwright/mcp@latest",
+                         "--user-data-dir", _browser_profil]):
+            print(f"[Agent] Registered Playwright MCP server (browser control enabled, "
+                  f"profile {_browser_profil})")
         else:
             print("[Agent] WARN: Failed to register Playwright MCP server")
 

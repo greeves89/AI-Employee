@@ -468,13 +468,19 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "function": {
             "name": "browser",
             "description": (
-                "Control a headless browser INSIDE your container: open pages, click, "
+                "Control a browser INSIDE your container: open pages, click, "
                 "type, read the rendered text. Use this for public websites and web apps "
                 "that need JavaScript — `bash`/`curl` only returns raw HTML, which is "
                 "empty for most modern sites. "
                 "NOT for the user's own screen or internal company URLs: those go through "
                 "`computer_use`, which drives the user's real desktop. "
-                "Typical flow: navigate → read_text → click/type → read_text."
+                "Typical flow: navigate → read_text → click/type → read_text. "
+                "The browser KEEPS ITS PROFILE between runs: if the user signed in once, "
+                "you are still signed in later — check with read_text before asking them "
+                "to log in again. Never ask for passwords or one-time codes; the user "
+                "enters those directly in the browser. "
+                "Several tabs are possible: new_tab / list_tabs / switch_tab / close_tab. "
+                "All other actions apply to the active tab."
             ),
             "parameters": {
                 "type": "object",
@@ -483,10 +489,15 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                         "type": "string",
                         "description": (
                             "navigate | click | type | read_text | read_links | "
-                            "screenshot | wait_for | back | close"
+                            "screenshot | wait_for | back | close | "
+                            "new_tab | list_tabs | switch_tab | close_tab"
                         ),
                     },
-                    "url": {"type": "string", "description": "For navigate."},
+                    "url": {"type": "string", "description": "For navigate and new_tab."},
+                    "index": {
+                        "type": "integer",
+                        "description": "Tab number from list_tabs. For switch_tab/close_tab.",
+                    },
                     "selector": {
                         "type": "string",
                         "description": "CSS selector. For click/type/wait_for.",

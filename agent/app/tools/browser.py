@@ -17,56 +17,144 @@ soll, nimmt weiterhin ``computer_use``.
 
 import asyncio
 import logging
+import os
+import shutil
 
 logger = logging.getLogger(__name__)
 
 # Ein Browser je Agentenlauf, nicht je Aufruf: Chromium zu starten dauert ein bis zwei
 # Sekunden, und ein Ablauf besteht fast immer aus mehreren Schritten auf derselben Seite.
-_browser = None
-_page = None
+_context = None
+_pages: list = []
+_aktiv = 0
 _lock = asyncio.Lock()
 
 NAV_TIMEOUT_MS = 20_000
 # Mehr als das liest kein Modell sinnvoll, und es fuellt nur das Kontextfenster.
 MAX_TEXT_CHARS = 8_000
 
+#: Wo das Browserprofil liegt.
+#:
+#: Im Arbeitsbereich, nicht unter /tmp: Das Volume ueberlebt einen Neuaufbau des
+#: Containers, /tmp nicht. Genau darum geht es — wer sich einmal anmeldet, soll
+#: angemeldet bleiben, auch ueber ein Agenten-Update hinweg.
+#:
+#: ACHTUNG Speicherquote: Ein Chromium-Profil waechst mit Zwischenspeicher und
+#: Sitzungsdaten. Es zaehlt auf das Kontingent des Arbeitsbereichs ein
+#: (``services/disk_monitor.py``). Deshalb liegt der Zwischenspeicher bewusst
+#: NICHT im Profil, sondern unter /tmp (siehe ``--disk-cache-dir``).
+PROFIL_DIR = os.environ.get("BROWSER_PROFIL_DIR", "/workspace/.browser-profil")
+
+#: Nur fuer die Entwicklung: sichtbarer Browser. Im Betrieb immer kopflos —
+#: der Bildstrom fuer die Oberflaeche laeuft ueber CDP und braucht kein Fenster.
+_KOPFLOS = os.environ.get("BROWSER_HEADLESS", "true").lower() != "false"
+
+#: Hoechstzahl gleichzeitiger Tabs. Jeder Tab ist ein eigener Renderer-Prozess;
+#: auf kleinen Anlagen ist das die eigentliche Grenze, nicht die Logik.
+MAX_TABS = int(os.environ.get("BROWSER_MAX_TABS", "8"))
+
 ACTIONS = (
     "navigate", "click", "type", "read_text", "read_links",
     "screenshot", "wait_for", "back", "close",
+    "new_tab", "list_tabs", "switch_tab", "close_tab",
 )
 
 
-async def _ensure_page():
-    """Browser und Seite bereitstellen (einmalig je Lauf)."""
-    global _browser, _page
-    if _page is not None and not _page.is_closed():
-        return _page
+def _profil_sperre_loesen() -> None:
+    """Liegengebliebene Sperrdateien eines abgestuerzten Chromium entfernen.
+
+    Ein persistentes Profil darf nur von EINEM Chromium benutzt werden; das
+    sichert Chromium ueber ``SingletonLock`` ab. Wird der Container hart
+    gestoppt — was hier regelmaessig passiert (Inaktivitaet, Speicherquote) —
+    bleibt die Sperre liegen und der naechste Start scheitert dauerhaft an
+    einem Profil, das gar niemand mehr benutzt.
+    """
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        pfad = os.path.join(PROFIL_DIR, name)
+        try:
+            if os.path.islink(pfad) or os.path.exists(pfad):
+                os.remove(pfad)
+                logger.info("[Browser] Liegengebliebene Sperre entfernt: %s", name)
+        except OSError:
+            logger.debug("[Browser] Sperre %s nicht entfernbar", name, exc_info=True)
+
+
+async def _ensure_context():
+    """Browser-Kontext mit bestehenbleibendem Profil bereitstellen."""
+    global _context
+    if _context is not None:
+        return _context
 
     from playwright.async_api import async_playwright
+
+    os.makedirs(PROFIL_DIR, exist_ok=True)
+    _profil_sperre_loesen()
 
     pw = await async_playwright().start()
     # Kopflos und ohne Sandbox: der Container laeuft ohnehin isoliert, und mit
     # Sandbox startet Chromium als root gar nicht erst.
-    _browser = await pw.chromium.launch(
-        headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"]
-    )
-    context = await _browser.new_context(viewport={"width": 1280, "height": 900})
-    _page = await context.new_page()
-    _page.set_default_timeout(NAV_TIMEOUT_MS)
-    return _page
+    #
+    # ``launch_persistent_context`` statt ``launch`` + ``new_context``: Nur so
+    # landen Sitzungsmerkmale, Cookies und lokaler Speicher im Profil und
+    # ueberleben den naechsten Lauf. Mit ``new_context`` ist nach jedem Lauf
+    # alles wieder abgemeldet — der Grund, warum der Agent bisher keine
+    # angemeldete Seite weiterbedienen konnte.
+    argumente = [
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        # Zwischenspeicher aus dem Arbeitsbereich heraushalten, sonst frisst er
+        # still das Speicherkontingent des Agenten.
+        "--disk-cache-dir=/tmp/chromium-cache",
+    ]
+    try:
+        _context = await pw.chromium.launch_persistent_context(
+            PROFIL_DIR, headless=_KOPFLOS,
+            viewport={"width": 1280, "height": 900}, args=argumente,
+        )
+    except Exception as e:  # noqa: BLE001
+        # Zweiter Versuch mit frischem Profil: Ein beschaedigtes Profil darf den
+        # Agenten nicht dauerhaft vom Browser aussperren. Die Anmeldungen sind
+        # dann weg — besser als ein Werkzeug, das nie wieder startet.
+        logger.warning("[Browser] Profil %s nicht benutzbar (%s) — wird neu angelegt",
+                       PROFIL_DIR, e)
+        shutil.rmtree(PROFIL_DIR, ignore_errors=True)
+        os.makedirs(PROFIL_DIR, exist_ok=True)
+        _context = await pw.chromium.launch_persistent_context(
+            PROFIL_DIR, headless=_KOPFLOS,
+            viewport={"width": 1280, "height": 900}, args=argumente,
+        )
+
+    _context.set_default_timeout(NAV_TIMEOUT_MS)
+    return _context
+
+
+async def _ensure_page():
+    """Aktive Seite bereitstellen."""
+    global _pages, _aktiv
+    context = await _ensure_context()
+
+    # Ein persistenter Kontext bringt bereits eine leere Seite mit.
+    _pages = [p for p in context.pages if not p.is_closed()]
+    if not _pages:
+        _pages = [await context.new_page()]
+
+    if _aktiv >= len(_pages):
+        _aktiv = len(_pages) - 1
+    return _pages[_aktiv]
 
 
 async def close_browser() -> None:
     """Am Ende eines Laufs aufräumen — ein offener Chromium hält Speicher fest."""
-    global _browser, _page
+    global _context, _pages, _aktiv
     try:
-        if _browser is not None:
-            await _browser.close()
+        if _context is not None:
+            await _context.close()
     except Exception:  # noqa: BLE001
         pass
     finally:
-        _browser = None
-        _page = None
+        _context = None
+        _pages = []
+        _aktiv = 0
 
 
 async def run(params: dict) -> str:
@@ -93,7 +181,69 @@ async def run(params: dict) -> str:
             return f"Error: browser action '{action}' failed: {e}"
 
 
+async def _tab_uebersicht() -> str:
+    zeilen = []
+    for i, pg in enumerate(_pages):
+        try:
+            titel = (await pg.title())[:60] or "(ohne Titel)"
+        except Exception:  # noqa: BLE001 — eine Seite mitten im Laden hat noch keinen Titel
+            titel = "(laedt)"
+        marke = " <- aktiv" if i == _aktiv else ""
+        zeilen.append(f"[{i}] {titel} - {pg.url}{marke}")
+    return "\n".join(zeilen)
+
+
 async def _dispatch(page, action: str, params: dict) -> str:
+    global _pages, _aktiv
+
+    if action == "list_tabs":
+        return await _tab_uebersicht()
+
+    if action == "new_tab":
+        if len(_pages) >= MAX_TABS:
+            return (f"Error: tab limit reached ({MAX_TABS}). Close a tab first "
+                    f"(action 'close_tab').")
+        context = await _ensure_context()
+        neue = await context.new_page()
+        neue.set_default_timeout(NAV_TIMEOUT_MS)
+        _pages.append(neue)
+        _aktiv = len(_pages) - 1
+        url = (params.get("url") or "").strip()
+        if url:
+            if not url.startswith(("http://", "https://")):
+                url = "https://" + url
+            await neue.goto(url, wait_until="domcontentloaded")
+        return f"Opened tab [{_aktiv}]." + (f" At {neue.url}" if url else "")
+
+    if action == "switch_tab":
+        i = params.get("index")
+        if i is None:
+            return "Error: 'index' is required for switch_tab. Use 'list_tabs' to see them."
+        try:
+            i = int(i)
+        except (TypeError, ValueError):
+            return f"Error: 'index' must be a number, got {i!r}."
+        if not 0 <= i < len(_pages):
+            return f"Error: no tab [{i}]. Open tabs:\n{await _tab_uebersicht()}"
+        _aktiv = i
+        await _pages[i].bring_to_front()
+        return f"Switched to tab [{i}] - {_pages[i].url}"
+
+    if action == "close_tab":
+        i = params.get("index")
+        i = _aktiv if i is None else int(i)
+        if not 0 <= i < len(_pages):
+            return f"Error: no tab [{i}]."
+        if len(_pages) == 1:
+            # Den letzten Tab zu schliessen wuerde den Kontext beenden und damit
+            # die Anmeldung der laufenden Sitzung kappen. Stattdessen leeren.
+            await _pages[0].goto("about:blank")
+            return "Last tab kept and cleared (closing it would end the session)."
+        await _pages[i].close()
+        _pages.pop(i)
+        _aktiv = min(_aktiv, len(_pages) - 1)
+        return f"Closed tab [{i}]. Now active: [{_aktiv}] - {_pages[_aktiv].url}"
+
     if action == "navigate":
         url = (params.get("url") or "").strip()
         if not url:

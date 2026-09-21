@@ -25,6 +25,38 @@ class ClaudePathTests(unittest.TestCase):
         self.assertIn("COMPUTER_USE_BROWSER", src)
 
 
+class SharedProfileTests(unittest.TestCase):
+    """Die bestehenbleibende Anmeldung muss in ALLEN Laufzeiten gelten (#828).
+
+    Der Nutzer meldet sich einmal selbst an, der Agent arbeitet danach in
+    derselben Sitzung weiter. Haengt das am Profil EINER Laufzeit, gilt es
+    fuer die anderen nicht — und die Faehigkeit waere nur halb da.
+    """
+
+    def test_python_tool_uses_a_persistent_profile(self):
+        src = (AGENT / "app/tools/browser.py").read_text()
+        self.assertIn(
+            "launch_persistent_context", src,
+            "Ohne persistenten Kontext startet jeder Lauf abgemeldet.",
+        )
+
+    def test_mcp_gets_the_same_profile(self):
+        """Sonst haette Claude Code ein eigenes Profil und waere abgemeldet."""
+        src = (AGENT / "app/main.py").read_text()
+        self.assertIn("--user-data-dir", src)
+        self.assertIn("from app.tools.browser import PROFIL_DIR", src,
+                      "Der Pfad darf nicht zweimal getippt werden — sonst laufen "
+                      "die beiden Profile irgendwann auseinander.")
+
+    def test_tabs_are_declared_everywhere(self):
+        deklaration = (AGENT / "app/tools/definitions.py").read_text()
+        for aktion in ("new_tab", "list_tabs", "switch_tab", "close_tab"):
+            self.assertIn(aktion, deklaration,
+                          f"'{aktion}' fehlt in der Werkzeugbeschreibung")
+            self.assertIn(aktion, (AGENT / "app/tools/browser.py").read_text(),
+                          f"'{aktion}' ist beschrieben, aber nicht umgesetzt")
+
+
 class OtherRuntimesTests(unittest.TestCase):
     def test_tool_is_declared_for_codex_and_custom_llm(self):
         src = (AGENT / "app/tools/definitions.py").read_text()

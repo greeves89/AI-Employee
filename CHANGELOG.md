@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.326.0] - 2026-09-21
+
+### Neu
+- **Der Agenten-Browser bleibt angemeldet.** Bisher startete jeder Lauf mit
+  einem frischen, leeren Profil — wer sich anmeldete, war beim nächsten Schritt
+  wieder ausgeloggt. Jetzt liegt ein bestehenbleibendes Profil im
+  Arbeitsbereich des Agenten: Der Nutzer meldet sich **einmal selbst** an, der
+  Agent arbeitet danach in derselben Sitzung weiter. Zugangsdaten und
+  Einmalcodes laufen dabei weder durch den Chat noch durch das Modell.
+  - Gilt für **alle Laufzeiten**: Claude Code bekommt über den Playwright-MCP
+    dasselbe Profilverzeichnis wie Codex und Custom-LLM. Ohne das wäre ein
+    Agent angemeldet geblieben und ein anderer nicht.
+  - Der Zwischenspeicher liegt bewusst außerhalb des Profils, damit er nicht
+    still das Speicherkontingent des Agenten auffrisst.
+  - Ein hart gestoppter Container hinterlässt eine Chromium-Sperrdatei — die
+    wird beim nächsten Start entfernt, sonst wäre das Profil dauerhaft
+    unbenutzbar. Ein beschädigtes Profil wird notfalls neu angelegt, statt den
+    Agenten vom Browser auszusperren.
+- **Mehrere Tabs im Agenten-Browser**: `new_tab`, `list_tabs`, `switch_tab`,
+  `close_tab`. Bisher gab es genau eine Seite, ein Ablauf über mehrere Seiten
+  hinweg war damit nicht abbildbar. Der letzte Tab wird nie geschlossen — das
+  würde die Sitzung und damit die Anmeldung beenden.
+- Fünf Tests messen das an einem echten Chromium nach, ohne Netzzugriff.
+
+Erster Schritt zu #828 (Browser als sichtbare Arbeitsfläche). Die Live-Ansicht
+folgt getrennt; dieser Teil wirkt bereits für sich.
+
+---
+
 ## [1.325.8] - 2026-09-21
 
 ### Geändert
