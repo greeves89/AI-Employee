@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.327.2] - 2026-09-21
+
+### Behoben
+- **Der Browser-Schalter am Agenten wirkte nur beim Erstellen.** Die
+  Oberfläche verspricht beim Umlegen: „Agent neu starten, dann greift die
+  Änderung." Genau das stimmte nicht — `COMPUTER_USE_BROWSER` stand nur im
+  Erstellungsweg. Wer den Schalter umlegte und den Agenten neu startete oder
+  aktualisierte, bekam einen Container **ohne** Browser: keine Fehlermeldung,
+  nur keine Wirkung. Jetzt setzen alle drei Wege den Wert, und ein Test wacht
+  darüber — auch über einen vierten Weg, den jemand später ergänzt.
+- **Fehler in der Browser-Arbeitsfläche erreichen jetzt den Nutzer.** Der Kanal
+  schloss den Handschlag nicht ab, bevor er zu senden versuchte; jeder
+  Fehlerpfad endete deshalb in einem nackten Serverfehler statt in dem eigens
+  formulierten Hinweis („Läuft der Agent, und ist der Browser für ihn
+  eingeschaltet?").
+
+---
+
 ## [1.327.1] - 2026-09-21
 
 ### Behoben

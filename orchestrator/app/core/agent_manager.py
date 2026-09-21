@@ -1857,6 +1857,14 @@ class AgentManager:
             "REDIS_URL": await self._agent_redis_url(agent_id),
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
+            # Browser des Agenten. Stand bis v1.327.2 NUR im Erstellungsweg —
+            # wer den Schalter umlegte und den Agenten neu startete oder
+            # aktualisierte, bekam einen Container ohne Browser, obwohl die
+            # Oberflaeche genau das versprach ("Restart the agent for the
+            # change to take effect"). Der Wert muss in JEDEM Weg gesetzt
+            # werden, der einen Container baut.
+            "COMPUTER_USE_BROWSER": "true" if agent.browser_mode else "false",
+            "COMPUTER_USE_USER_ID": str(agent.user_id) if agent.user_id else "",
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),
@@ -2193,6 +2201,14 @@ class AgentManager:
             "REDIS_URL": await self._agent_redis_url(agent_id),
             "ORCHESTRATOR_URL": "http://ai-employee-orchestrator:8000",
             "AGENT_MODE": mode,
+            # Browser des Agenten. Stand bis v1.327.2 NUR im Erstellungsweg —
+            # wer den Schalter umlegte und den Agenten neu startete oder
+            # aktualisierte, bekam einen Container ohne Browser, obwohl die
+            # Oberflaeche genau das versprach ("Restart the agent for the
+            # change to take effect"). Der Wert muss in JEDEM Weg gesetzt
+            # werden, der einen Container baut.
+            "COMPUTER_USE_BROWSER": "true" if agent.browser_mode else "false",
+            "COMPUTER_USE_USER_ID": str(agent.user_id) if agent.user_id else "",
             # Standard-Denktiefe aus den Agenten-Einstellungen — die Laufzeit
             # nutzt sie ueberall dort, wo am Lauf keine Stufe haengt.
             "DEFAULT_REASONING": str(config.get("default_reasoning", "") or ""),

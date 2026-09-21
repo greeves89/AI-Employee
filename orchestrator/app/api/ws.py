@@ -1320,6 +1320,13 @@ async def ws_agent_browser(
         await websocket.close(code=4004, reason="Agent has no running container")
         return
 
+    # Handschlag abschliessen, BEVOR irgendetwas gesendet wird. ``_authenticate_ws``
+    # nimmt die Verbindung nicht an (das tut jeder Kanal selbst); ohne dieses
+    # accept endete jeder Fehlerpfad in "ASGI callable returned without
+    # completing handshake" und der Nutzer sah einen nackten 500 statt der
+    # Meldung, die hier eigens formuliert ist.
+    await websocket.accept()
+
     import aiohttp
 
     ziel = f"ws://{name}:{BROWSER_STROM_PORT}/browser/stream"
@@ -1330,11 +1337,15 @@ async def ws_agent_browser(
         letzter = None
         for versuch in range(10):
             try:
-                return await sitzung.ws_connect(ziel, heartbeat=30, timeout=10)
-            except aiohttp.ClientError as e:
+                # Frist ueber wait_for statt ueber den aiohttp-Parameter:
+                # dessen einfache Zahl ist abgekuendigt, und hier geht es
+                # ohnehin um die Gesamtdauer des Verbindungsversuchs.
+                return await asyncio.wait_for(
+                    sitzung.ws_connect(ziel, heartbeat=30), timeout=10)
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 letzter = e
                 await asyncio.sleep(1.5)
-        raise letzter if letzter else aiohttp.ClientError("unerreichbar")
+        raise aiohttp.ClientError(f"nicht erreichbar: {letzter}") from letzter
 
     try:
         async with aiohttp.ClientSession() as sitzung:

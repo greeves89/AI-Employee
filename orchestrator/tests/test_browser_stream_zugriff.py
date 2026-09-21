@@ -136,6 +136,38 @@ class BrowserStromZugriff(unittest.TestCase):
                          "falschen Stelle.")
 
 
+class FehlermeldungErreichtDenNutzer(unittest.TestCase):
+    """Ist der Agent nicht erreichbar, muss die Meldung ankommen — nicht ein 500.
+
+    ``_authenticate_ws`` nimmt die Verbindung NICHT an; das tut jeder Kanal
+    selbst. Wurde das vergessen, endete jeder Fehlerpfad in "ASGI callable
+    returned without completing handshake": Der Nutzer sah einen nackten
+    Serverfehler statt des Hinweises, der hier eigens formuliert ist.
+    """
+
+    def test_unerreichbarer_agent_meldet_sich_verstaendlich(self):
+        async def _angemeldet(websocket, token=None, ticket=None):
+            websocket.state.user_id = "u1"
+            return True
+
+        class _Db:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def get(self, *a, **k): return _EchterNutzer()
+
+        with patch.object(ws_modul, "_authenticate_ws", new=_angemeldet), \
+             patch("app.dependencies.require_agent_access", new=AsyncMock(return_value=None)), \
+             patch.object(ws_modul, "async_session_factory", new=lambda: _Db()), \
+             patch("app.core.agent_wakeup.ensure_agent_running", new=AsyncMock(return_value=True)), \
+             patch.object(ws_modul, "_agent_container_name",
+                          new=AsyncMock(return_value="ai-agent-gibtsnicht-a1")):
+            with TestClient(_app()).websocket_connect(BrowserStromZugriff.PFAD) as ws:
+                nachricht = ws.receive_json()
+
+        self.assertEqual(nachricht.get("typ"), "fehler", nachricht)
+        self.assertIn("Browser", nachricht["text"])
+
+
 class SchlafenderAgent(unittest.TestCase):
     """Ein schlafender Agent wird geweckt, statt den Nutzer abzuweisen.
 
