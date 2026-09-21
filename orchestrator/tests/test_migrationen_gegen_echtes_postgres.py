@@ -51,6 +51,19 @@ _REVISION_DAVOR = "7a9c2e4f1b3d"
 #: Verzeichnis mit alembic.ini (orchestrator/).
 _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+#: Tabellen, die eine Migration NACH ``_REVISION_DAVOR`` erst anlegt.
+#:
+#: ``create_all`` legt alles an, was in den Modellen steht -- auch das, was auf
+#: einer Anlage dieses Alters noch gar nicht existieren kann. Bleiben diese
+#: Tabellen stehen, scheitert ihre Migration an ``DuplicateTable``, und der
+#: Test meldete einen Fehler, den es im Betrieb nicht gibt: Der Startcode
+#: ueberspringt ``create_all`` auf versorgten Datenbanken genau deswegen
+#: bewusst (siehe ``main._init_db_from_models``, Issue #796).
+#:
+#: **Wer eine Migration ergaenzt, die eine Tabelle anlegt, traegt sie hier
+#: ein** -- sonst faellt dieser Test mit einer irrefuehrenden Meldung um.
+_TABELLEN_NACH_DER_MARKE = ("app_favorites",)
+
 
 def _postgres_da() -> bool:
     if "postgresql" not in _DB_URL:
@@ -113,6 +126,8 @@ class MigrationAufGewachsenerDatenbank(unittest.TestCase):
                 await c.run_sync(Base.metadata.create_all)
             async with e.begin() as c:
                 await c.execute(text("ALTER TABLE agents DROP COLUMN IF EXISTS access_policy"))
+                for tabelle in _TABELLEN_NACH_DER_MARKE:
+                    await c.execute(text(f"DROP TABLE IF EXISTS {tabelle} CASCADE"))
 
                 # Pflichtspalten aus dem Schema fuellen, statt sich durch
                 # NOT-NULL-Fehler zu raten.
@@ -198,6 +213,15 @@ class MigrationAufGewachsenerDatenbank(unittest.TestCase):
         # genau das Problem, das die Migration beheben soll.
         config = asyncio.run(self._lies("SELECT config::text FROM agents WHERE id='t1'"))
         self.assertNotIn("autonomy_matrix", config or "")
+
+        # Die Kette lief wirklich bis ans Ende durch: Die Tabelle aus der
+        # letzten Migration steht. Ohne diese Pruefung koennte der Lauf nach
+        # der access_policy-Migration abbrechen, ohne dass es auffiel.
+        for tabelle in _TABELLEN_NACH_DER_MARKE:
+            self.assertEqual(asyncio.run(self._lies(
+                f"SELECT count(*) FROM information_schema.tables "
+                f"WHERE table_name='{tabelle}'"
+            )), 1, f"{tabelle} fehlt — die Migrationskette lief nicht zu Ende")
 
     def test_der_operator_der_es_zerlegt_hat(self):
         """Haelt fest, WARUM die Umwandlung noetig ist.

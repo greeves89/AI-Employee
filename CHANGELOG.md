@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.325.7] - 2026-09-21
+
+### Behoben
+- **Die Hauptlinie war seit 1.325.2 rot** — der damals neu hinzugekommene
+  Migrationstest gegen echtes PostgreSQL scheiterte an
+  `relation "app_favorites" already exists`. Der Fehler lag im Test, nicht im
+  Produkt: Er baute den Zustand einer gewachsenen Anlage über
+  `create_all` nach und legte damit auch Tabellen an, die auf einer Anlage
+  dieses Alters noch gar nicht existieren können — die zugehörige Migration
+  fiel danach über ihre eigene Tabelle. Im Betrieb kann das nicht passieren,
+  weil der Startcode `create_all` auf versorgten Datenbanken genau deswegen
+  bewusst überspringt. Der Test entfernt diese Tabellen jetzt wieder und prüft
+  zusätzlich, dass die Kette wirklich bis ans Ende durchläuft.
+
+---
+
 ## [1.325.6] - 2026-09-21
 
 ### Behoben
