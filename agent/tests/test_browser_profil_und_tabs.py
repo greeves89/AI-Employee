@@ -186,5 +186,50 @@ class BrowserProfilUndTabs(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[0]", ergebnis, "Die vorhandenen Tabs muessen mitgeliefert werden.")
 
 
+class ChromiumPfad(unittest.TestCase):
+    """Welches Chromium benutzt wird.
+
+    Das Abbild bringt das System-Chromium mit; Playwrights Python-Paket sucht
+    dagegen ein selbst heruntergeladenes, das dort nie ankommt. Am 21.09.2026
+    stand deshalb beim ersten Livetest
+    ``Executable doesn't exist at .../chrome-headless-shell`` -- und daraus
+    folgte, dass dieses Werkzeug im Container noch nie gelaufen sein kann.
+
+    Braucht kein Chromium, nur Dateien -- laeuft deshalb ohne Playwright.
+    """
+
+    def setUp(self):
+        import importlib
+        import app.tools.browser as browser
+        self.browser = importlib.reload(browser)
+
+    def _mit_umgebung(self, **werte):
+        import os
+        from unittest.mock import patch
+        leer = {"BROWSER_EXECUTABLE": "", "PUPPETEER_EXECUTABLE_PATH": ""}
+        return patch.dict(os.environ, {**leer, **werte}, clear=False)
+
+    def test_gesetzter_pfad_wird_genommen(self):
+        import os
+        with tempfile.NamedTemporaryFile() as f:
+            with self._mit_umgebung(BROWSER_EXECUTABLE=f.name):
+                self.assertEqual(self.browser._chromium_pfad(), f.name)
+
+    def test_puppeteer_pfad_gilt_als_rueckfall(self):
+        """Den setzt das Abbild bereits -- er soll nicht zweimal gepflegt werden."""
+        with tempfile.NamedTemporaryFile() as f:
+            with self._mit_umgebung(PUPPETEER_EXECUTABLE_PATH=f.name):
+                self.assertEqual(self.browser._chromium_pfad(), f.name)
+
+    def test_ein_pfad_der_nicht_existiert_wird_ignoriert(self):
+        """Sonst scheitert der Start mit einer schlechteren Meldung als noetig."""
+        import os.path
+        with self._mit_umgebung(BROWSER_EXECUTABLE="/gibt/es/nicht"):
+            ergebnis = self.browser._chromium_pfad()
+        self.assertNotEqual(ergebnis, "/gibt/es/nicht")
+        if ergebnis is not None:
+            self.assertTrue(os.path.exists(ergebnis))
+
+
 if __name__ == "__main__":
     unittest.main()

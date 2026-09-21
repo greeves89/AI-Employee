@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.327.3] - 2026-09-21
+
+### Behoben
+- **Das Browser-Werkzeug der Agenten kann im Container noch nie gelaufen
+  sein.** Aufgefallen beim ersten Livetest der Arbeitsfläche: Der gesamte Weg
+  stand, und der Browser meldete
+  `Executable doesn't exist at .../chrome-headless-shell`. Das Abbild bringt
+  das System-Chromium mit, Playwrights Python-Paket sucht dagegen ein selbst
+  heruntergeladenes im Heimatverzeichnis — das dort nie ankommt. Im Browser
+  arbeiten konnte deshalb bislang nur Claude Code über den Playwright-MCP, der
+  ein eigenes Chromium mitbringt; Codex und Custom-LLM scheiterten still.
+  Jetzt wird das Chromium des Abbilds benutzt (`PUPPETEER_EXECUTABLE_PATH`,
+  das dort ohnehin gesetzt ist), lokal weiterhin das mitgelieferte.
+
+---
+
 ## [1.327.2] - 2026-09-21
 
 ### Behoben

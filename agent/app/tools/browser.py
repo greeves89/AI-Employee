@@ -49,6 +49,33 @@ PROFIL_DIR = os.environ.get("BROWSER_PROFIL_DIR", "/workspace/.browser-profil")
 #: der Bildstrom fuer die Oberflaeche laeuft ueber CDP und braucht kein Fenster.
 _KOPFLOS = os.environ.get("BROWSER_HEADLESS", "true").lower() != "false"
 
+def _chromium_pfad() -> str | None:
+    """Pfad zum Chromium des Abbilds -- oder None fuer Playwrights eigenes.
+
+    Das Agenten-Abbild bringt das System-Chromium mit (``apt chromium``) und
+    setzt ``PUPPETEER_EXECUTABLE_PATH``. Playwrights Python-Paket sucht
+    dagegen ein selbst heruntergeladenes unter
+    ``~/.cache/ms-playwright/...``, das dort nie ankommt -- schon gar nicht im
+    Heimatverzeichnis des unprivilegierten Nutzers.
+
+    Aufgefallen am 21.09.2026 beim ersten Livetest der Arbeitsflaeche: Der
+    ganze Weg stand, und der Browser meldete
+    ``Executable doesn't exist at .../chrome-headless-shell``. Daraus folgt
+    mehr als ein Pfadfehler -- dieses Werkzeug kann im Container noch NIE
+    gelaufen sein. Im Browser arbeiten konnte bis dahin nur Claude Code, weil
+    der Playwright-MCP ein eigenes, mitgeliefertes Chromium benutzt.
+
+    Lokal (Entwicklung, Tests) gibt es die Datei nicht; dann bleibt es beim
+    mitgelieferten Browser, und nichts aendert sich.
+    """
+    for kandidat in (os.environ.get("BROWSER_EXECUTABLE"),
+                     os.environ.get("PUPPETEER_EXECUTABLE_PATH"),
+                     "/usr/bin/chromium"):
+        if kandidat and os.path.exists(kandidat):
+            return kandidat
+    return None
+
+
 #: Hoechstzahl gleichzeitiger Tabs. Jeder Tab ist ein eigener Renderer-Prozess;
 #: auf kleinen Anlagen ist das die eigentliche Grenze, nicht die Logik.
 MAX_TABS = int(os.environ.get("BROWSER_MAX_TABS", "8"))
@@ -106,10 +133,12 @@ async def _ensure_context():
         # still das Speicherkontingent des Agenten.
         "--disk-cache-dir=/tmp/chromium-cache",
     ]
+    pfad = _chromium_pfad()
+    zusatz = {"executable_path": pfad} if pfad else {}
     try:
         _context = await pw.chromium.launch_persistent_context(
             PROFIL_DIR, headless=_KOPFLOS,
-            viewport={"width": 1280, "height": 900}, args=argumente,
+            viewport={"width": 1280, "height": 900}, args=argumente, **zusatz,
         )
     except Exception as e:  # noqa: BLE001
         # Zweiter Versuch mit frischem Profil: Ein beschaedigtes Profil darf den
@@ -121,7 +150,7 @@ async def _ensure_context():
         os.makedirs(PROFIL_DIR, exist_ok=True)
         _context = await pw.chromium.launch_persistent_context(
             PROFIL_DIR, headless=_KOPFLOS,
-            viewport={"width": 1280, "height": 900}, args=argumente,
+            viewport={"width": 1280, "height": 900}, args=argumente, **zusatz,
         )
 
     _context.set_default_timeout(NAV_TIMEOUT_MS)
