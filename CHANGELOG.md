@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.325.1] - 2026-09-21
+
+### Behoben
+- **Die access_policy-Migration (#787) brach auf jeder versorgten Datenbank ab
+  — und riss den Orchestrator mit.** Sie prüfte mit `config ? 'schlüssel'`, ob
+  ein Agent die alten Berechtigungs-Schlüssel trägt. Den `?`-Operator gibt es
+  in PostgreSQL aber nur für `jsonb`; `agents.config` ist `json`. Ergebnis:
+  `operator does not exist: json ? unknown`, Rollback der ganzen Migration —
+  inklusive der Spalte, die sie anlegen sollte.
+  - Auf einer frisch aufgesetzten Anlage fiel das nicht auf, weil die Tabellen
+    dort über `create_all` aus den Modellen entstehen und Alembic nur gestempelt
+    wird. Genau deshalb blieb der Fehler liegen, bis ihn eine Anlage mit
+    gewachsener Datenbank traf.
+  - **Die Folge war kein Schönheitsfehler:** Der Orchestrator fragt beim Start
+    die Agenten ab, fand die fehlende Spalte nicht und beendete sich mit
+    `Application startup failed`. Damit war die komplette API tot. Sichtbar
+    wurde das zuerst als fehlender SSO-Knopf — der hängt an einem API-Aufruf,
+    während das Anmeldeformular statisch ist und weiter erschien.
+  - Fix: `config::jsonb ? '…'` in beiden `WHERE`-Klauseln.
+
+---
+
 ## [1.325.0] - 2026-09-20
 
 ### Hinzugefügt

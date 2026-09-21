@@ -61,8 +61,8 @@ def upgrade() -> None:
                 'permissions_mode', config->'permissions_mode'
             ))
         )::json
-        WHERE config ? 'autonomy_matrix' OR config ? 'permissions'
-           OR config ? 'permissions_mode'
+        WHERE config::jsonb ? 'autonomy_matrix' OR config::jsonb ? 'permissions'
+           OR config::jsonb ? 'permissions_mode'
         """
     )
     # Alte Schluessel aus config entfernen -- sonst gibt es wieder zwei
@@ -72,8 +72,8 @@ def upgrade() -> None:
         UPDATE agents
         SET config = (to_jsonb(config) - 'autonomy_matrix' - 'permissions'
                       - 'permissions_mode')::json
-        WHERE config ? 'autonomy_matrix' OR config ? 'permissions'
-           OR config ? 'permissions_mode'
+        WHERE config::jsonb ? 'autonomy_matrix' OR config::jsonb ? 'permissions'
+           OR config::jsonb ? 'permissions_mode'
         """
     )
 
