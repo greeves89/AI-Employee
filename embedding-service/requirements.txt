@@ -1,5 +1,5 @@
 fastapi==0.141.1
-uvicorn[standard]==0.52.4
+uvicorn[standard]==0.53.0
 sentence-transformers==6.0.1
 pydantic==2.13.5
 # NOTE: torch is installed separately in the Dockerfile from the CPU-only
