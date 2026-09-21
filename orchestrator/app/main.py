@@ -991,6 +991,9 @@ async def lifespan(app: FastAPI):
     # Validate config on startup
     _validate_config()
 
+    from app.core.dns_connection_errors import install_dns_exception_handler
+    install_dns_exception_handler(asyncio.get_running_loop())
+
     # Repair /shared ownership/mode so agents (uid 1000) can write to it
     # (Docker creates the volume root:root 0755 -> agents can only read).
     from app.core.shared_volume import ensure_shared_volume_perms

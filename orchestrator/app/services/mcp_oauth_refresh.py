@@ -16,6 +16,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.encryption import decrypt_token, encrypt_token
+from app.core.oauth_retry import post_refresh_with_retry
 from app.models.mcp_server import McpServer
 from app.services import mcp_oauth_client as oc
 
@@ -99,12 +100,17 @@ async def perform_token_request(token_endpoint: str, data: dict) -> dict:
     await _assert_mcp_url_allowed(token_endpoint)
     try:
         async with httpx.AsyncClient(timeout=_TOKEN_TIMEOUT) as client:
-            resp = await client.post(
-                token_endpoint,
-                data=data,
-                headers={"Accept": "application/json"},
-                follow_redirects=False,
-            )
+            # Authorization-code exchange is single-use; only refresh gets the
+            # bounded connect-only retry. SSRF checks above remain fail-closed.
+            kwargs = {
+                "data": data,
+                "headers": {"Accept": "application/json"},
+                "follow_redirects": False,
+            }
+            if data.get("grant_type") == "refresh_token":
+                resp = await post_refresh_with_retry(client, token_endpoint, **kwargs)
+            else:
+                resp = await client.post(token_endpoint, **kwargs)
     except httpx.RequestError as exc:
         raise OAuthTokenError(f"token endpoint unreachable: {exc}") from exc
 

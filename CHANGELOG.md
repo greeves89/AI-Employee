@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.5] - 2026-09-21
+
+### Behoben
+- Nach abgebrochenem Verbindungsaufbau werden verspätete DNS-Fehler mit der bekannten uvloop-Signatur als verständliche Warnung statt als „Future exception was never retrieved“ protokolliert. Das DNS-Signal für die bestehende Infrastruktur-Erkennung und die Verbindungs-Timeouts bleiben erhalten.
+- OAuth-Token-Erneuerungen überbrücken kurze Verbindungsstörungen mit höchstens zwei Wiederholungen und begrenzter Wartezeit. Bereits gesendete Anfragen werden bei Lese-/Schreibfehlern oder Fehlerantworten nicht erneut gesendet. Die eigentliche Netzwerk-/DNS-Ursache bleibt eine Betriebsaufgabe (Refs #746).
+- MCP-Credential-Polls warten nicht mehr auf langsame OAuth-Anfragen oder Refresh-Sperren. Sie liefern gespeicherte Tokens innerhalb eines zehnsekündigen Lese-Budgets; der vorhandene Hintergrund-Refresh darf rotierende Tokens vollständig speichern. Neue Tokens kommen beim nächsten regulären Poll an; Start-Refresh und 300-Sekunden-Intervalle bleiben erhalten.
+
 ## [1.328.4] - 2026-09-21
 
 ### Behoben
