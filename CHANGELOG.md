@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.325.3] - 2026-09-21
+
+### Behoben
+- **Agenten konnten beim Start dauerhaft hängenbleiben, ohne dass es auffiel.**
+  Das Startskript aktualisiert vor dem Start die CLIs über npm. Bleibt dieser
+  Aufruf stehen, erreicht der Container `python -m app.main` nie: Port 8080
+  antwortet nicht, der Agent reagiert im Chat nicht mehr — und gilt trotzdem
+  als „Up". Genau so stand am 21.09. ein Agent still.
+  - **Ursache 1 — Node bevorzugt IPv6.** Löst die Registry nur zu
+    IPv6-Adressen auf und fehlt die IPv6-Route, läuft npm nicht in einen
+    Fehler, sondern in einen Hänger. Im betroffenen Container gemessen: IPv6
+    scheitert, IPv4 antwortet in 0,6 s. Behoben über
+    `NODE_OPTIONS=--dns-result-order=ipv4first`.
+  - **Ursache 2 — der Deckel hielt nicht.** Es stand bereits ein `timeout 60`
+    davor, der Aufruf lief trotzdem über drei Minuten: `timeout` schickt nur
+    SIGTERM, und npm stirbt daran nicht. Nachgemessen an einem Prozess, der
+    SIGTERM ignoriert: mit schlichtem `timeout 5` dauerte es 61 Sekunden, mit
+    `timeout -k 3 5` acht. Jetzt `timeout -k 10 60`.
+  - Fünf Tests halten beides fest, zwei davon messen das Verhalten wirklich
+    nach, statt es zu behaupten.
+
+---
+
 ## [1.325.2] - 2026-09-21
 
 ### Hinzugefügt
