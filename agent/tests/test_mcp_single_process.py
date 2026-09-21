@@ -23,11 +23,13 @@ Zwei Dinge, die der Umbau beachten musste:
   Dienst auf demselben Port oeffnen.
 """
 
+import json
 import os
 import re
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -142,19 +144,29 @@ class DieUmstellungIstAbschaltbarTests(unittest.TestCase):
         """Ein Agent ohne Werkzeuge waere schlimmer als einer, der mehr
         Speicher braucht — echter Fallback, nicht nur die Textstelle."""
         calls = []
-        with mock.patch.object(main, "_start_combined_mcp", return_value=False), \
+        with tempfile.TemporaryDirectory() as workspace, \
+                mock.patch.object(main.settings, "workspace_dir", workspace), \
+                mock.patch.object(main.settings, "agent_token", "test-token"), \
+                mock.patch.object(main, "_start_combined_mcp", return_value=False), \
                 mock.patch.object(main, "_run_mcp_add", side_effect=lambda a: calls.append(a) or True), \
-                mock.patch.object(main, "_write_mcp_json_fallback", lambda: None), \
                 mock.patch.dict(os.environ, {
                     "MCP_HTTP_PORT": str(_free_port()),
-                    "MSGRAPH_ENABLED": "", "COMPUTER_USE_BROWSER": "",
+                    "MSGRAPH_ENABLED": "true", "COMPUTER_USE_BROWSER": "",
                     "COMPUTER_USE_BRIDGE_MCP_URL": "", "CUSTOM_MCP_SERVERS": "",
                 }, clear=False):
             main.register_mcp_servers()
+            config = json.loads((Path(workspace) / ".mcp.json").read_text())
+            self.assertTrue(os.environ["MCP_HTTP_PORT"])
+        self.assertEqual(len(calls), 11)
+        for args in calls:
+            self.assertIn("MCP_HTTP_PORT=", args)
+        self.assertEqual(len(config["mcpServers"]), 6)
+        for entry in config["mcpServers"].values():
+            self.assertEqual(entry["env"]["MCP_HTTP_PORT"], "")
         # Trotz Port-Umgebungsvariable wurden die einzelnen stdio-Server
         # angemeldet — der gemeinsame Prozess ist NICHT gestartet.
         self.assertTrue(any("bash-approval-server.mjs" in " ".join(a) for a in calls))
-        self.assertFalse(any("127.0.0.1" in " ".join(a) for a in calls))
+        self.assertFalse(any("--transport" in a for a in calls))
 
     def test_im_gemeinsamen_modus_keine_doppelregistrierung(self):
         """Dieselben Server zweimal anzumelden — einmal als Adresse, einmal als

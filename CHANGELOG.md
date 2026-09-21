@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.3] - 2026-09-21
+
+### Behoben
+- Wenn der gemeinsame MCP-Prozess nicht startet, bleiben die eingebauten Werkzeuge
+  über den Einzelprozess-Fallback erreichbar. Die Ersatzprozesse verwenden jetzt
+  zuverlässig stdio, statt um denselben HTTP-Port zu konkurrieren (#824).
+
 ## [1.328.2] - 2026-09-21
 
 ### Behoben

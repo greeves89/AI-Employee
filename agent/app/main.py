@@ -299,6 +299,8 @@ def register_mcp_servers() -> None:
     # Server doppelt angemeldet, einmal als HTTP-Adresse und einmal als eigener
     # Prozess, und der Gewinn waere dahin.
     for name, cfg in (builtin_servers.items() if _einzeln else []):
+        # Explicitly override the inherited HTTP port: omission still inherits it.
+        cfg["env"]["MCP_HTTP_PORT"] = ""
         env_args: list[str] = []
         for k, v in cfg["env"].items():
             env_args.extend(["-e", f"{k}={v}"])
@@ -333,6 +335,7 @@ def register_mcp_servers() -> None:
     # Im gemeinsamen Prozess ist er bereits ueber seine HTTP-Adresse angemeldet.
     if _einzeln and os.environ.get("MSGRAPH_ENABLED", "").lower() == "true":
         env_args = [
+            "-e", "MCP_HTTP_PORT=",
             "-e", f"ORCHESTRATOR_URL={settings.orchestrator_url}",
             "-e", f"AGENT_ID={settings.agent_id}",
             "-e", f"AGENT_TOKEN={settings.agent_token}",
@@ -389,6 +392,8 @@ def _write_mcp_json_fallback() -> None:
         ("skills", "/opt/mcp/skill-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
         ("desktop", "/opt/mcp/computer-use-server.mjs", {"ORCHESTRATOR_URL": settings.orchestrator_url, "AGENT_ID": settings.agent_id, "AGENT_TOKEN": settings.agent_token}),
     ]:
+        # Project-scoped stdio entries must also override the parent HTTP port.
+        envs["MCP_HTTP_PORT"] = ""
         mcp_config["mcpServers"][name] = {"command": "node", "args": [cmd], "env": envs}
 
     # Custom servers
