@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Hand, Loader2, MousePointer2, Unplug } from "lucide-react";
+import { ArrowRight, Hand, Loader2, MousePointer2, Unplug } from "lucide-react";
 import { getApiUrl, getWsUrl } from "@/lib/config";
 
 type Zustand = "verbinde" | "verbunden" | "getrennt" | "fehler";
@@ -28,6 +28,8 @@ export default function BrowserWorkspace({ agentId }: Props) {
   const [zustand, setZustand] = useState<Zustand>("verbinde");
   const [meldung, setMeldung] = useState<string | null>(null);
   const [steuert, setSteuert] = useState(false);
+  const [adresse, setAdresse] = useState("");
+  const [eingabe, setEingabe] = useState("");
 
   const wsRef = useRef<WebSocket | null>(null);
   const bildRef = useRef<HTMLImageElement | null>(null);
@@ -63,6 +65,10 @@ export default function BrowserWorkspace({ agentId }: Props) {
           if (n.typ === "bild" && bildRef.current) {
             bildRef.current.src = `data:image/jpeg;base64,${n.daten}`;
             setZustand("verbunden");
+          } else if (n.typ === "adresse") {
+            setAdresse(n.url);
+            // Nur überschreiben, solange der Nutzer nicht gerade tippt.
+            setEingabe((alt) => (document.activeElement?.id === "browser-adresse" ? alt : n.url));
           } else if (n.typ === "bereit") {
             setZustand("verbunden");
           } else if (n.typ === "fehler") {
@@ -117,6 +123,12 @@ export default function BrowserWorkspace({ agentId }: Props) {
     };
   };
 
+  const aufrufen = (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = eingabe.trim();
+    if (url) senden({ art: "navigate", url });
+  };
+
   const klick = (e: React.MouseEvent<HTMLImageElement>) => {
     if (!steuertRef.current) return;
     e.preventDefault();
@@ -160,6 +172,11 @@ export default function BrowserWorkspace({ agentId }: Props) {
               <span className="text-zinc-600 dark:text-zinc-400">
                 {steuert ? "Du steuerst" : "Der Agent arbeitet"}
               </span>
+              {adresse && (
+                <span className="max-w-[28ch] truncate text-xs text-zinc-500" title={adresse}>
+                  {adresse}
+                </span>
+              )}
             </>
           )}
           {(zustand === "getrennt" || zustand === "fehler") && (
@@ -187,6 +204,30 @@ export default function BrowserWorkspace({ agentId }: Props) {
           {steuert ? "Steuerung zurückgeben" : "Steuerung übernehmen"}
         </button>
       </div>
+
+      <form onSubmit={aufrufen} className="flex items-center gap-2">
+        <input
+          id="browser-adresse"
+          value={eingabe}
+          onChange={(e) => setEingabe(e.target.value)}
+          placeholder="Adresse eingeben, z. B. example.com"
+          spellCheck={false}
+          disabled={zustand !== "verbunden"}
+          className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm
+            text-zinc-900 placeholder:text-zinc-400 disabled:opacity-50
+            dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+        />
+        <button
+          type="submit"
+          disabled={zustand !== "verbunden" || !eingabe.trim()}
+          title="Seite öffnen"
+          className="rounded-md border border-zinc-300 p-1.5 text-zinc-700 hover:bg-zinc-100
+            disabled:cursor-not-allowed disabled:opacity-50
+            dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </form>
 
       {steuert && (
         <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">

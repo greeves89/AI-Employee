@@ -148,6 +148,37 @@ class BrowserStreamTest(unittest.IsolatedAsyncioTestCase):
                         self.assertIn("quatsch", nachricht["text"])
                         return
 
+    # --- Adresse und Navigation -------------------------------------------
+
+    async def test_beim_verbinden_kommt_die_aktuelle_adresse(self):
+        """Sonst sieht der Nutzer ein Bild und weiss nicht, wo er ist."""
+        async with self.client.ws_connect("/browser/stream") as ws:
+            async with asyncio.timeout(10):
+                while True:
+                    n = await ws.receive_json()
+                    if n.get("typ") == "adresse":
+                        self.assertIn("example.com", n["url"])
+                        return
+
+    async def test_der_nutzer_kann_selbst_eine_seite_aufrufen(self):
+        """Ohne das kaeme er nie zu einer Anmeldeseite.
+
+        Zusehen und klicken reicht nicht: Der ganze Zweck ist, dass der Nutzer
+        sich SELBST anmeldet -- und das faengt damit an, die Seite zu oeffnen.
+        """
+        async with self.client.ws_connect("/browser/stream") as ws:
+            await self._bild_abwarten(ws)
+            await ws.send_json({"art": "navigate", "url": "https://beispiel.invalid/anmelden"})
+            async with asyncio.timeout(20):
+                while True:
+                    n = await ws.receive_json()
+                    if n.get("typ") == "fehler":
+                        self.fail(n["text"])
+                    if n.get("typ") == "adresse" and "anmelden" in n["url"]:
+                        break
+        seite = await self.browser._ensure_page()
+        self.assertIn("anmelden", seite.url)
+
     # --- Aufraeumen --------------------------------------------------------
 
     async def test_ohne_zuschauer_wird_der_bildstrom_beendet(self):

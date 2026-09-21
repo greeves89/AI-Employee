@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.0] - 2026-09-21
+
+### Neu
+- **Adressleiste in der Browser-Arbeitsfläche.** Bisher konnte der Nutzer
+  zusehen und klicken, aber keine Seite aufrufen — damit kam er nie zu einer
+  Anmeldeseite, und genau darum geht es bei dieser Fläche. Jetzt lässt sich
+  eine Adresse eintippen; die aktuelle Adresse steht sichtbar daneben, damit
+  erkennbar bleibt, wo man gerade ist.
+
+---
+
 ## [1.327.3] - 2026-09-21
 
 ### Behoben

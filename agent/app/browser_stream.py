@@ -114,14 +114,7 @@ class BrowserStream:
             logger.debug("[BrowserStream] Bestaetigung fehlgeschlagen", exc_info=True)
 
     async def _verteilen(self, daten: str) -> None:
-        tot = []
-        for ws in self._zuschauer:
-            try:
-                await ws.send_json({"typ": "bild", "daten": daten})
-            except Exception:  # noqa: BLE001
-                tot.append(ws)
-        for ws in tot:
-            self._zuschauer.discard(ws)
+        await self._verteilen_nachricht({"typ": "bild", "daten": daten})
 
     # --- Eingaben ----------------------------------------------------------
 
@@ -159,6 +152,16 @@ class BrowserStream:
                 "code": ereignis.get("code", ""),
                 "text": ereignis.get("text", ""),
             })
+        elif art == "navigate":
+            # Ohne das kaeme der Nutzer nie zu einer Anmeldeseite: Er kann
+            # zusehen und klicken, aber von sich aus keine Seite aufrufen --
+            # und "einmal selbst anmelden" faengt genau damit an.
+            from app.tools import browser
+
+            await browser.run({"action": "navigate", "url": ereignis.get("url", "")})
+            await self._cdp_schliessen()      # neue Seite, neue Sitzung
+            await self._cdp_sitzung()
+            await self._adresse_melden()
         elif art == "text":
             # Eingefuegter Text am Stueck -- Zeichen fuer Zeichen waere bei
             # einem langen Passwort quaelend langsam.
@@ -174,10 +177,30 @@ class BrowserStream:
             await self._cdp_sitzung()
         # Sofort etwas zeigen: Eine ruhende Seite schickt von sich aus kein
         # neues Bild, der Zuschauer saesse sonst vor Schwarz.
+        await self._adresse_melden()
         if self._letztes_bild:
             await ws.send_json({"typ": "bild", "daten": self._letztes_bild})
         else:
             await self._bild_erzwingen(ws)
+
+    async def _adresse_melden(self) -> None:
+        """Aktuelle Adresse an alle Zuschauer -- damit sie sehen, wo sie sind."""
+        try:
+            from app.tools import browser
+            seite = await browser._ensure_page()
+            await self._verteilen_nachricht({"typ": "adresse", "url": seite.url})
+        except Exception:  # noqa: BLE001
+            logger.debug("[BrowserStream] Adresse nicht ermittelbar", exc_info=True)
+
+    async def _verteilen_nachricht(self, nachricht: dict) -> None:
+        tot = []
+        for ws in self._zuschauer:
+            try:
+                await ws.send_json(nachricht)
+            except Exception:  # noqa: BLE001
+                tot.append(ws)
+        for ws in tot:
+            self._zuschauer.discard(ws)
 
     async def _bild_erzwingen(self, ws: web.WebSocketResponse) -> None:
         try:
