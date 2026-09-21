@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.1] - 2026-09-21
+
+### Behoben
+- **Browser-Automatisierung war in der Praxis in allen Laufzeiten kaputt.**
+  Das Abbild lädt beim Bauen 662 MB Playwright-Browser herunter — als `root`.
+  Der Container läuft aber als Nutzer `agent`, den es zu diesem Zeitpunkt noch
+  gar nicht gibt. Die Browser landeten damit in `/root/.cache/ms-playwright`,
+  wo der Agent sie weder findet noch lesen darf (`Permission denied`):
+  - Python-Playwright (Codex, Custom-LLM) scheiterte hart mit
+    `Executable doesn't exist at .../chrome-headless-shell`.
+  - Der Playwright-MCP (der Weg von Claude Code) musste bei jedem frischen
+    Container erneut rund 400 MB ziehen — oder blieb ohne Netz ganz aus.
+  - **Nicht architekturabhängig:** Der Download gelingt auch auf ARM. Es ist
+    ein Nutzer- und Pfadproblem und trifft jede Installation gleichermaßen.
+  Die Browser liegen jetzt unter `/opt/ms-playwright` und sind lesbar; damit
+  benutzen alle Laufzeiten dieselbe, zum Paket passende Fassung. Verifiziert:
+  Der Agenten-Nutzer startet Chromium 153 aus dem Abbild, ohne Download.
+  Die 662 MB sind damit nicht länger totes Gewicht.
+- Das Browser-Werkzeug bevorzugt jetzt Playwrights eigene Browser und fällt
+  nur dann auf das System-Chromium zurück, wenn es keine gibt — eine fremde
+  Fassung kann im Steuerprotokoll abweichen.
+
+---
+
 ## [1.328.0] - 2026-09-21
 
 ### Neu

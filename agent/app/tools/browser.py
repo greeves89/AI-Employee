@@ -68,9 +68,21 @@ def _chromium_pfad() -> str | None:
     Lokal (Entwicklung, Tests) gibt es die Datei nicht; dann bleibt es beim
     mitgelieferten Browser, und nichts aendert sich.
     """
-    for kandidat in (os.environ.get("BROWSER_EXECUTABLE"),
-                     os.environ.get("PUPPETEER_EXECUTABLE_PATH"),
-                     "/usr/bin/chromium"):
+    # 1. Ausdrueckliche Vorgabe des Betreibers schlaegt alles.
+    vorgabe = os.environ.get("BROWSER_EXECUTABLE")
+    if vorgabe and os.path.exists(vorgabe):
+        return vorgabe
+
+    # 2. Liegen Playwrights EIGENE Browser bereit, nimm die. Sie passen zur
+    #    Version des Python-Pakets; ein fremdes Chromium kann im
+    #    Steuerprotokoll (CDP) abweichen. Seit dem gemeinsamen Ablageort im
+    #    Abbild (PLAYWRIGHT_BROWSERS_PATH) ist das der Normalfall.
+    eigene = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if eigene and os.path.isdir(eigene) and os.listdir(eigene):
+        return None
+
+    # 3. Rueckfall auf das Chromium des Abbilds.
+    for kandidat in (os.environ.get("PUPPETEER_EXECUTABLE_PATH"), "/usr/bin/chromium"):
         if kandidat and os.path.exists(kandidat):
             return kandidat
     return None

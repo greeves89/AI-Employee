@@ -206,7 +206,8 @@ class ChromiumPfad(unittest.TestCase):
     def _mit_umgebung(self, **werte):
         import os
         from unittest.mock import patch
-        leer = {"BROWSER_EXECUTABLE": "", "PUPPETEER_EXECUTABLE_PATH": ""}
+        leer = {"BROWSER_EXECUTABLE": "", "PUPPETEER_EXECUTABLE_PATH": "",
+                "PLAYWRIGHT_BROWSERS_PATH": ""}
         return patch.dict(os.environ, {**leer, **werte}, clear=False)
 
     def test_gesetzter_pfad_wird_genommen(self):
@@ -219,6 +220,32 @@ class ChromiumPfad(unittest.TestCase):
         """Den setzt das Abbild bereits -- er soll nicht zweimal gepflegt werden."""
         with tempfile.NamedTemporaryFile() as f:
             with self._mit_umgebung(PUPPETEER_EXECUTABLE_PATH=f.name):
+                self.assertEqual(self.browser._chromium_pfad(), f.name)
+
+    def test_playwrights_eigene_browser_haben_vorrang(self):
+        """Sie passen zur Version des Pakets; ein fremdes Chromium kann im
+        Steuerprotokoll abweichen. ``None`` heisst: Playwright waehlt selbst."""
+        import os
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "chromium-1243"), "w").close()
+            with self._mit_umgebung(PLAYWRIGHT_BROWSERS_PATH=d,
+                                    PUPPETEER_EXECUTABLE_PATH="/usr/bin/sh"):
+                self.assertIsNone(self.browser._chromium_pfad())
+
+    def test_leere_ablage_faellt_auf_das_abbild_zurueck(self):
+        """Ein gesetzter, aber leerer Ordner darf nicht als 'ist da' gelten —
+        sonst scheitert der Start mit 'Executable doesn't exist'."""
+        import os
+        with tempfile.TemporaryDirectory() as d, tempfile.NamedTemporaryFile() as f:
+            with self._mit_umgebung(PLAYWRIGHT_BROWSERS_PATH=d,
+                                    PUPPETEER_EXECUTABLE_PATH=f.name):
+                self.assertEqual(self.browser._chromium_pfad(), f.name)
+
+    def test_vorgabe_des_betreibers_schlaegt_alles(self):
+        import os
+        with tempfile.TemporaryDirectory() as d, tempfile.NamedTemporaryFile() as f:
+            open(os.path.join(d, "chromium-1243"), "w").close()
+            with self._mit_umgebung(BROWSER_EXECUTABLE=f.name, PLAYWRIGHT_BROWSERS_PATH=d):
                 self.assertEqual(self.browser._chromium_pfad(), f.name)
 
     def test_ein_pfad_der_nicht_existiert_wird_ignoriert(self):

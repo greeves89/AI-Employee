@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 # Version label - change this to trigger update detection for running agents
-LABEL ai-employee.version="1.328.0"
+LABEL ai-employee.version="1.328.1"
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
@@ -42,6 +42,21 @@ RUN npm install -g hyperframes
 
 # Pre-install Playwright + Chromium for browser automation (Computer-Use Phase 1)
 # Only activated when COMPUTER_USE_BROWSER=true — pre-installing avoids runtime download delays
+#
+# GEMEINSAMER Ablageort statt des Heimatverzeichnisses (21.09.2026, #828):
+# Der Download laeuft hier als root, der Container laeuft spaeter als "agent"
+# (gosu im Startskript) -- und der Nutzer "agent" existiert an dieser Stelle
+# noch gar nicht. Ohne diese Variable landeten 662 MB Browser in
+# /root/.cache/ms-playwright, wo der Agent sie WEDER findet NOCH lesen darf
+# ("Permission denied"). Ergebnis: Python-Playwright scheiterte hart, und der
+# Playwright-MCP (der Weg von Claude Code) musste bei jedem frischen Container
+# erneut ~400 MB ziehen -- oder blieb ohne Netz ganz aus.
+#
+# Der Ort muss VOR dem Download gesetzt sein, sonst wirkt er nicht; das
+# abschliessende "chmod a+rX" macht ihn fuer den Agenten-Nutzer lesbar --
+# ohne das waere der gemeinsame Ort genauso unerreichbar wie /root/.cache.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     chromium \
@@ -64,7 +79,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && npx -y @playwright/mcp@latest --version 2>/dev/null || true \
-    && npx -y playwright install chromium --with-deps 2>/dev/null || true
+    && npx -y playwright install chromium --with-deps 2>/dev/null || true \
+    && chmod -R a+rX /opt/ms-playwright 2>/dev/null || true
 
 # Point Puppeteer/hyperframes to the system Chromium (avoids x86_64 download on ARM)
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
