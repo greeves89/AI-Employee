@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.331.0] - 2026-09-22
+
+### Neu
+- **Videos im Chat zeigen ein Vorschaubild.** Bisher stand dort nur eine Kachel
+  mit Dateinamen — man sah nicht, was drin ist, und musste erst mehrere
+  Megabyte laden, um es herauszufinden. Das Standbild wird jetzt dort erzeugt,
+  wo Werkzeug und Datei ohnehin liegen: mit `ffmpeg` im Agenten-Container. An
+  einem echten Video nachgemessen: **6347 KB Video → 21 KB Standbild.**
+  - Gesucht wird bei 0,5 Sekunden, weil der allererste Bildinhalt bei vielen
+    Videos noch schwarz ist. Ist das Video kürzer, folgt ein zweiter Versuch
+    ohne Vorspulen — sonst bekämen kurze Videos nie eine Vorschau.
+  - Gleiche Berechtigungs- und Pfadprüfung wie beim Herunterladen; das
+    Zwischenbild wird nach dem Ausliefern wieder entfernt.
+- **Herunterladen bleibt möglich.** Sobald ein Anhang abspielbar war, gab es
+  nur noch Abspielen — die Datei speichern ging nicht mehr. Jetzt steht ein
+  eigener Knopf daneben, der eine bereits geladene Datei nicht erneut holt.
+
+### Behoben
+- **Hochformat-Videos sprengten den Verlauf.** Ein 9:16-Video in voller Breite
+  ist fast doppelt so hoch wie breit und füllte den ganzen Bildschirm. Jetzt
+  gilt eine feste Höhengrenze, das Bild passt sich darin ein.
+
+---
+
 ## [1.330.0] - 2026-09-22
 
 ### Neu

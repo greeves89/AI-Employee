@@ -2121,6 +2121,44 @@ async def download_file(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.get("/{agent_id}/files/thumbnail")
+async def video_thumbnail(
+    agent_id: str,
+    path: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+    file_mgr: FileManager = Depends(_get_file_manager),
+):
+    """Ein Standbild aus einem Video im Arbeitsbereich (JPEG).
+
+    Damit zeigt das Gespraech ein Vorschaubild, OHNE das ganze Video zu
+    uebertragen: Ein 6-MB-Video ergibt hier wenige Kilobyte. Erzeugt wird es
+    per ``ffmpeg`` im Agenten-Container — dort liegen Werkzeug und Datei
+    ohnehin.
+
+    Gleiche Berechtigungspruefung und gleiche Pfadabsicherung wie beim
+    Herunterladen; eine zweite, eigene Pruefung waere genau die Luecke, die
+    man spaeter sucht.
+    """
+    from fastapi.responses import Response
+
+    await _check_owner(agent_id, user, db)
+    agent = await manager._get_agent(agent_id)
+    if not agent.container_id:
+        raise HTTPException(status_code=400, detail="Agent has no container")
+    try:
+        bild = file_mgr.video_standbild(agent.container_id, path)
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return Response(
+        content=bild,
+        media_type="image/jpeg",
+        # Ein Standbild aendert sich nicht mehr — einmal holen genuegt.
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
 class DateiInhalt(BaseModel):
     """Rumpf zum Speichern einer bearbeiteten Datei."""
     path: str

@@ -349,6 +349,57 @@ class FileManager:
 
         return self.docker.get_file_from_container(container_id, validated)
 
+    #: Groesse des erzeugten Standbilds. 480 px reichen fuer eine Kachel im
+    #: Gespraech und bleiben bei wenigen Kilobyte — der ganze Sinn der Uebung.
+    VORSCHAU_BREITE = 480
+
+    def video_standbild(self, container_id: str, file_path: str) -> bytes:
+        """Ein einzelnes Standbild aus einem Video holen (JPEG).
+
+        Warum im Container und nicht hier: ``ffmpeg`` liegt im Agenten-Abbild,
+        und die Videodatei ebenfalls. Der Orchestrator hat weder das eine noch
+        das andere — er muesste sonst erst mehrere Megabyte zu sich holen,
+        genau das, was dieses Standbild vermeiden soll. Ein 6-MB-Video ergibt
+        so eine Vorschau von wenigen Kilobyte.
+
+        Gesucht wird bei 0,5 s statt bei 0: Der allererste Bildinhalt ist bei
+        vielen Videos noch schwarz.
+        """
+        import uuid as _uuid
+
+        validated = _validate_path(file_path)
+        exit_code, output = self.docker.exec_in_container(
+            container_id,
+            ["bash", "-c", f"test -L {shlex.quote(validated)} && echo SYMLINK || echo OK"],
+        )
+        if output.strip() == "SYMLINK":
+            raise ValueError("Cannot read symlinks for security reasons")
+
+        ziel = f"/tmp/vorschau-{_uuid.uuid4().hex}.jpg"
+        befehl = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-ss", "0.5", "-i", validated,
+            "-frames:v", "1",
+            "-vf", f"scale={self.VORSCHAU_BREITE}:-2",
+            "-f", "image2", ziel,
+        ]
+        code, fehler = self.docker.exec_in_container(container_id, befehl)
+        if code != 0:
+            # Zweiter Versuch ohne Vorspulen — bei sehr kurzen Videos liegt
+            # hinter 0,5 s womoeglich gar kein Bild mehr.
+            befehl[befehl.index("-ss") + 1] = "0"
+            code, fehler = self.docker.exec_in_container(container_id, befehl)
+        if code != 0:
+            raise ValueError(f"Standbild nicht erzeugbar: {(fehler or '').strip()[:200]}")
+
+        try:
+            return self.docker.get_file_from_container(container_id, ziel)
+        finally:
+            try:
+                self.docker.exec_in_container(container_id, ["rm", "-f", ziel])
+            except Exception:  # noqa: BLE001 — /tmp raeumt sich notfalls selbst
+                logger.debug("Vorschaubild %s nicht entfernbar", ziel, exc_info=True)
+
     def write_file(self, container_id: str, file_path: str, content: str) -> int:
         """Eine Textdatei im Arbeitsbereich ueberschreiben.
 

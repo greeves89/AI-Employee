@@ -3421,22 +3421,35 @@ function isVideoFile(file: ChatFile) {
   return /\.(mp4|webm|mov|m4v|ogv)$/i.test(file.filename || file.path);
 }
 
-/** Video im Chat — abspielbar statt nur herunterladbar.
+/** Video im Chat — Vorschaubild, Abspielen, Herunterladen.
  *
- * Ein erzeugtes Video will man ansehen, nicht erst speichern und in einem
- * anderen Programm oeffnen. Geladen wird trotzdem erst auf Klick: Die Dateien
- * sind mehrere Megabyte gross, und in einem Verlauf stehen schnell mehrere.
+ * Drei Dinge, die vorher fehlten:
+ *
+ * * **Man sah nicht, was drin ist.** Eine Kachel mit Dateinamen sagt nichts
+ *   ueber das Video. Das Standbild kommt vom Server (``/files/thumbnail``,
+ *   ``ffmpeg`` im Agenten-Container) und kostet wenige Kilobyte statt der
+ *   mehreren Megabyte des Videos.
+ * * **Kein Herunterladen mehr moeglich.** Sobald etwas abspielbar war, gab es
+ *   nur noch Abspielen — die Datei speichern ging nicht.
+ * * **Hochformat sprengte das Gespraech.** Ein 9:16-Video in voller Breite ist
+ *   fast doppelt so hoch wie breit und fuellte den ganzen Bildschirm. Deshalb
+ *   eine feste Hoehengrenze; das Bild passt sich darin ein.
  */
 function VideoAttachment({ agentId, file }: { agentId: string; file: ChatFile }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [laedt, setLaedt] = useState(false);
+  const [laedtDatei, setLaedtDatei] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
+  const [ohneVorschau, setOhneVorschau] = useState(false);
 
   useEffect(() => {
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [objectUrl]);
+
+  const vorschauUrl =
+    `${getApiUrl()}/api/v1/agents/${agentId}/files/thumbnail?path=${encodeURIComponent(file.path)}`;
 
   const abspielen = async () => {
     if (objectUrl || laedt) return;
@@ -3451,42 +3464,103 @@ function VideoAttachment({ agentId, file }: { agentId: string; file: ChatFile })
     }
   };
 
+  const herunterladen = async () => {
+    if (laedtDatei) return;
+    setLaedtDatei(true);
+    setFehler(null);
+    try {
+      // Schon geladen? Dann nicht noch einmal holen.
+      const url = objectUrl ?? (await ladeDatei(agentId, file.path));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.filename || "video.mp4";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (!objectUrl) URL.revokeObjectURL(url);
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : "Konnte nicht geladen werden");
+    } finally {
+      setLaedtDatei(false);
+    }
+  };
+
   const groesse = file.size ? `${Math.max(1, Math.round(file.size / 1024))} KB` : "";
+  const fusszeile = (
+    <div className="flex items-start gap-2 px-1 pt-1">
+      <div className="min-w-0 flex-1 text-xs text-muted-foreground">
+        <span className="block truncate font-medium text-foreground">{file.filename}</span>
+        <span className="block">
+          {fehler ?? file.caption ?? "Video"}
+          {groesse ? ` · ${groesse}` : ""}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={herunterladen}
+        disabled={laedtDatei}
+        title="Herunterladen"
+        aria-label="Video herunterladen"
+        className="shrink-0 rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-60"
+      >
+        {laedtDatei ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+      </button>
+    </div>
+  );
 
   if (objectUrl) {
     return (
-      <div className="max-w-md space-y-1">
+      <div className="max-w-md">
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-        <video src={objectUrl} controls autoPlay playsInline className="w-full rounded-lg border border-border bg-black" />
-        <div className="px-1 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{file.filename}</span>
-          {file.caption ? ` · ${file.caption}` : ""}
-          {groesse ? ` · ${groesse}` : ""}
-        </div>
+        <video
+          src={objectUrl}
+          controls
+          autoPlay
+          playsInline
+          // Hoehengrenze: Ein Hochformat wuerde sonst den ganzen Verlauf fuellen.
+          className="max-h-[420px] w-full rounded-lg border border-border bg-black object-contain"
+        />
+        {fusszeile}
       </div>
     );
   }
 
   return (
-    <button
-      type="button"
-      onClick={abspielen}
-      disabled={laedt}
-      className="flex max-w-md items-center gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-left transition-colors hover:bg-muted/55 disabled:opacity-70"
-    >
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
-        {laedt ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5 translate-x-0.5" />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-foreground">{file.filename}</span>
-        <span className="block text-xs text-muted-foreground">
-          {fehler ? fehler : laedt ? "Wird geladen …" : (file.caption || "Video abspielen")}
-          {groesse ? ` · ${groesse}` : ""}
+    <div className="max-w-md">
+      <button
+        type="button"
+        onClick={abspielen}
+        disabled={laedt}
+        aria-label={`${file.filename} abspielen`}
+        className="group relative block w-full overflow-hidden rounded-lg border border-border bg-muted/40"
+      >
+        {ohneVorschau ? (
+          <div className="flex h-36 w-full items-center justify-center bg-muted/60" />
+        ) : (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={vorschauUrl}
+            alt=""
+            onError={() => setOhneVorschau(true)}
+            className="max-h-[420px] w-full bg-black object-contain"
+          />
+        )}
+        <span className="absolute inset-0 grid place-items-center bg-black/15 transition group-hover:bg-black/25">
+          <span className="grid h-14 w-14 place-items-center rounded-full bg-blue-500/95 text-white shadow-lg">
+            {laedt ? <Loader2 className="h-6 w-6 animate-spin" /> : <Play className="h-6 w-6 translate-x-0.5" />}
+          </span>
         </span>
-      </span>
-    </button>
+        {laedt && (
+          <span className="absolute bottom-2 left-2 rounded bg-black/70 px-2 py-0.5 text-[11px] text-white">
+            Wird geladen …
+          </span>
+        )}
+      </button>
+      {fusszeile}
+    </div>
   );
 }
+
 
 function isAudioFile(file: ChatFile) {
   if (file.media_type?.startsWith("audio/")) return true;
