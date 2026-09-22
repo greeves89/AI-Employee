@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.8] - 2026-09-22
+
+### Geändert
+- Der lokale Embedding-Dienst läuft auf Uvicorn 0.53.0 (vorher 0.52.4): korrekte Behandlung gemischter `Connection: close`-Header, Proxy-Vertrauen umfasst jetzt auch `::1`. Keine Konfigurationsänderung nötig; HTTP/2 bleibt ausgeschaltet (Dependabot #814).
+
 ## [1.328.7] - 2026-09-22
 
 ### Behoben
