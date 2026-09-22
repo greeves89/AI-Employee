@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.10] - 2026-09-22
+
+### Geändert
+- CI-Workflow nutzt actions/setup-node v7 statt v4 (Dependabot #816). Für den Betrieb keine Änderung; die einzige Breaking Change (entfernter NODE_AUTH_TOKEN-Fallback bei `registry-url`) betrifft diesen Workflow nicht, da `registry-url` nirgends gesetzt ist.
+
 ## [1.328.9] - 2026-09-22
 
 ### Geändert
