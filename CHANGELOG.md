@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.9] - 2026-09-22
+
+### Geändert
+- Frontend-Abhängigkeiten aktualisiert (Dependabot-Minor-Gruppe #817): framer-motion 13.2→13.4, lucide-react 1.44→1.47, next 16.3.4→16.3.5, tailwind-merge 3.6→3.7, @types/node 26.5→26.6. Für Nutzer keine sichtbare Änderung; Review fand keinen Migrationsbedarf in den verwendeten APIs. Bekannte, von diesem Update unabhängige npm-Audit-Befunde (brace-expansion, tmp) bleiben offen.
+
 ## [1.328.8] - 2026-09-22
 
 ### Geändert
