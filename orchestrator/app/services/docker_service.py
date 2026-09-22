@@ -103,6 +103,19 @@ print(f"PRUNED {len(pruned)}: {pruned}")
 """
 
 
+def _directory_entries_for(names) -> list[str]:
+    """Every intermediate directory of the given relative file names, parents
+    first, each exactly once: ["a", "a/b"] for "a/b/c.txt"."""
+    seen: list[str] = []
+    for name in names:
+        parts = name.strip("/").split("/")[:-1]
+        for depth in range(1, len(parts) + 1):
+            directory = "/".join(parts[:depth])
+            if directory and directory not in seen:
+                seen.append(directory)
+    return seen
+
+
 class DockerService:
     """Wraps Docker SDK for container management.
 
@@ -501,6 +514,23 @@ class DockerService:
 
         Files are owned by the agent user (uid/gid 1000) by default; see
         write_file_in_container for why.
+
+        Nested names ("meine-app/src/index.js", as the ZIP import produces them)
+        need the same care for their directories: put_archive creates every
+        directory that is missing from the archive itself — as root. The agent
+        could then overwrite the imported files but not add a single new one
+        next to them (Permission denied on mkdir/create). So every intermediate
+        directory gets an explicit entry with the agent's uid/gid first.
+
+        Deliberate semantics for directories that already exist: Docker applies
+        owner AND mode of a directory entry to an existing directory as well
+        (moby pkg/archive createTarFile: Mkdir only if missing, then Lchown +
+        Chmod unconditionally). An import therefore normalises the directories
+        it writes INTO to agent-owned 0755 — the same treatment the files get
+        (overwritten, agent-owned, 0644). Only directories on the path of a
+        written file are touched, never siblings, never ``target_dir`` itself.
+        That is what makes a re-import of an app fix a root-owned tree from an
+        older import instead of preserving the broken state.
         """
         import io
         import tarfile
@@ -509,6 +539,13 @@ class DockerService:
 
         tar_stream = io.BytesIO()
         with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+            for directory in _directory_entries_for(name for name, _ in files):
+                info = tarfile.TarInfo(name=directory)
+                info.type = tarfile.DIRTYPE
+                info.mode = 0o755  # normalises existing dirs too, see docstring
+                info.uid = uid
+                info.gid = gid
+                tar.addfile(info)
             for filename, data in files:
                 info = tarfile.TarInfo(name=filename)
                 info.size = len(data)
