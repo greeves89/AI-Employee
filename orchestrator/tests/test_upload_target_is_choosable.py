@@ -72,8 +72,25 @@ class ThePromisedFolderIsActuallyCreatedTests(unittest.TestCase):
         self.assertIn("wird angelegt", UI)
 
     def test_the_server_keeps_that_promise(self):
-        self.assertIn('["mkdir", "-p", safe_path]',
-                      inspect.getsource(FileManager.upload_files))
+        """Verhaltenstest statt Quelltextfenster: das In-Container-Skript, das
+        upload_files vor dem Schreiben ausfuehrt, legt eine fehlende Kette
+        wirklich an (siehe test_upload_target_dir_owned_by_agent fuer die
+        Symlink-Faelle)."""
+        import os
+        import subprocess
+        import sys
+        import tempfile
+
+        from app.core.file_manager import _PREPARE_TARGET_DIR_SCRIPT
+
+        with tempfile.TemporaryDirectory() as tmp:
+            r = subprocess.run(
+                [sys.executable, "-c", _PREPARE_TARGET_DIR_SCRIPT, tmp,
+                 str(os.getuid()), str(os.getgid()), "projekte", "neu"],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertTrue(os.path.isdir(os.path.join(tmp, "projekte", "neu")))
 
 
 if __name__ == "__main__":

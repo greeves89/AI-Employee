@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.11] - 2026-09-22
+
+### Behoben
+- **Importierte Apps und hochgeladene Ordner gehören jetzt vollständig dem
+  Agenten.** Bisher gehörten die Dateien dem Agenten, die Ordner aber root:
+  beim ZIP-Import legte Docker die im Archiv fehlenden Zwischenordner selbst
+  an (als root, Datum 1970), beim Datei-Upload lief das `mkdir -p` als root.
+  Der Agent konnte importierte Dateien zwar überschreiben, aber keine neue
+  daneben anlegen — sichtbar geworden an einer importierten App, bei der ein
+  Rebuild mit einem neuen Modul im Import-Loop crashte, weil das Modul im
+  Arbeitsbereich gar nicht ankam (`Permission denied`). Jetzt bekommt jeder
+  Zwischenordner einen eigenen Eintrag im tar mit uid/gid 1000, und beim
+  Upload wird die Ordnerkette unter `/workspace` angelegt und (nicht rekursiv)
+  dem Agenten übergeben. Ein erneuter Import einer App setzt die Ordner, in
+  die er schreibt, bewusst auf Agenten-Besitz und Standardrechte (0755) —
+  genau wie die Dateien selbst — und repariert damit auch einen älteren,
+  root-eigenen Import. Alternativ einmal `chown -R 1000:1000 <ordner>` im
+  Agenten-Container.
+- **Die Übergabe folgt keinem Symlink.** Die Ordnerkette wird im Container
+  Glied für Glied über Verzeichnis-Deskriptoren geöffnet (`O_NOFOLLOW`) und
+  per `fchown` übergeben; ein Symlink oder eine Datei an irgendeiner Stelle
+  der Kette (etwa `/workspace/link -> /etc`) lehnt den Upload mit einer
+  klaren Meldung ab, statt als root Eigentum außerhalb des Arbeitsbereichs
+  zu ändern.
+- **Ein fehlgeschlagenes Anlegen oder Übergeben des Zielordners ist jetzt ein
+  Fehler (HTTP 400 mit Grund), kein erfolgreicher Upload.** Vorher wurde der
+  Exit-Code verworfen und die Dateien landeten trotzdem in einem
+  root-eigenen Ordner — genau der Zustand, den der Fix beheben soll.
+
 ## [1.328.10] - 2026-09-22
 
 ### Geändert
