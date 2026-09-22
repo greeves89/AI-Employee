@@ -197,6 +197,38 @@ def render_markdown(law: dict) -> str:
     return "\n".join(lines)
 
 
+class _AusfallZaehler:
+    """Zaehlt Fehlschlaege eines Crawl-Laufs und meldet sie EINMAL am Ende.
+
+    Warum ueberhaupt: die beiden Crawl-Schleifen haben jeden Fehler einzeln
+    auf ``debug`` gelegt und weitergemacht. Bei einem dauerhaften Mangel --
+    #834: ``vault_chunks`` ohne ``embedding``/``ts``, jedes Einfuegen scheitert
+    -- laeuft der Crawler dann endlos ohne eine einzige sichtbare Zeile: ein
+    Kern auf Anschlag, null Ergebnis, nichts im Betriebslog. Ein Fehlschlag
+    ist normal (eine Norm fehlt), ALLE sind ein Befund; deshalb eine
+    Sammelmeldung mit Anzahl und erstem Grund statt Zeile fuer Zeile.
+    """
+
+    def __init__(self, bereich: str):
+        self.bereich = bereich
+        self.anzahl = 0
+        self.erster_grund: str | None = None
+
+    def melde(self, kennung: str, fehler: BaseException) -> None:
+        self.anzahl += 1
+        if self.erster_grund is None:
+            self.erster_grund = f"{kennung}: {type(fehler).__name__}: {fehler}"
+
+    def bericht(self, geschrieben: int) -> str | None:
+        """Sammelmeldung, oder ``None`` wenn nichts zu melden ist."""
+        if not self.anzahl:
+            return None
+        return (
+            f"{self.bereich}: {self.anzahl} Normen fehlgeschlagen, "
+            f"{geschrieben} geschrieben — erster Grund: {self.erster_grund}"
+        )
+
+
 class GesetzCrawlerService:
     """Crawls gesetze-im-internet.de (DE) and the curated EU-law list daily,
     indexing both into vault_chunks under their own brain_label."""
@@ -258,6 +290,7 @@ class GesetzCrawlerService:
 
         headers = {"User-Agent": "AI-Employee-Gesetze-Crawler/1.0"}
         written = 0
+        ausfaelle = _AusfallZaehler("Gesetz crawler")
         async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT, headers=headers) as client:
             toc = await self._fetch_toc(client)
             logger.info("Gesetz crawler: %d Normen im Index", len(toc))
@@ -275,11 +308,15 @@ class GesetzCrawlerService:
                     written += 1
                 except Exception as e:
                     logger.debug("Gesetz crawler: %s (%s) failed: %s", slug, title, e)
+                    ausfaelle.melde(slug, e)
 
         from datetime import datetime
 
         self.last_crawled_at = datetime.now(UTC).isoformat()
         self.law_count = written
+        bericht = ausfaelle.bericht(written)
+        if bericht:
+            logger.warning(bericht)
         logger.info("Gesetz crawler: %d Normen indiziert", written)
         return written
 
@@ -292,6 +329,7 @@ class GesetzCrawlerService:
 
         headers = {"User-Agent": "Mozilla/5.0", "Accept-Language": "deu"}
         written = 0
+        ausfaelle = _AusfallZaehler("Gesetz crawler (EU)")
         async with httpx.AsyncClient(
             timeout=_REQUEST_TIMEOUT, headers=headers, follow_redirects=True
         ) as client:
@@ -315,10 +353,14 @@ class GesetzCrawlerService:
                     written += 1
                 except Exception as e:
                     logger.debug("Gesetz crawler (EU): %s (%s) failed: %s", celex, kurzname, e)
+                    ausfaelle.melde(celex, e)
 
         from datetime import datetime
 
         self.eu_last_crawled_at = datetime.now(UTC).isoformat()
         self.eu_law_count = written
+        bericht = ausfaelle.bericht(written)
+        if bericht:
+            logger.warning(bericht)
         logger.info("Gesetz crawler (EU): %d Normen indiziert", written)
         return written

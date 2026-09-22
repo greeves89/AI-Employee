@@ -13,7 +13,7 @@ declared as ORM attributes here.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import Integer, String, Text, UniqueConstraint, DateTime
+from sqlalchemy import BigInteger, Integer, String, Text, UniqueConstraint, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -25,7 +25,14 @@ class VaultChunk(Base):
         UniqueConstraint("brain_label", "path", "chunk_idx", name="uq_vault_chunk"),
     )
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    # BigInteger, damit ``create_all`` dieselbe Form wie die Migration erzeugt
+    # (BIGSERIAL). Vorher wich der Rueckfallpfad hier still ab (#834).
+    # with_variant(Integer, "sqlite"): SQLite vergibt IDs nur fuer
+    # "INTEGER PRIMARY KEY" automatisch -- ein BIGINT-Schluessel bliebe dort
+    # NULL. Der Postgres-DDL ist unveraendert BIGSERIAL.
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True
+    )
     # Which vault (SecondBrain.label) and which file inside it.
     brain_label: Mapped[str] = mapped_column(String, nullable=False, index=True)
     path: Mapped[str] = mapped_column(String, nullable=False)  # vault-relative file path
@@ -35,8 +42,12 @@ class VaultChunk(Base):
     # Hash of the whole source file — lets the indexer skip unchanged files and
     # replace all chunks of a file atomically when it changes.
     file_hash: Mapped[str] = mapped_column(String, nullable=False)
+    # server_default: der Indexer fuegt per rohem SQL ein und setzt die Spalte
+    # nicht. Ohne Vorgabewert IN DER DATENBANK scheitert dieser Weg am NOT NULL,
+    # sobald die Tabelle aus dem Modell statt aus der Migration entstand (#834).
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        server_default=func.now(),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,

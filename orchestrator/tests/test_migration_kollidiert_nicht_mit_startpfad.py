@@ -16,6 +16,19 @@ dem Startpfad gegen jedes ``op.add_column("tabelle", sa.Column("spalte", ..))``
 in den Revisionen. Eine Ueberschneidung ist ein Fehler; der Weg ist
 ``op.execute("ALTER TABLE .. ADD COLUMN IF NOT EXISTS ..")`` wie seit #689
 Konvention in diesem Baum.
+
+Zweiter Sensor (#834): der SPIEGELFALL. Legt eine Revision eine Tabelle per
+rohem ``CREATE TABLE`` an und traegt dabei Spalten, die SQLAlchemy nicht
+ausdruecken kann (``vector(n)``, generierte ``tsvector``), laesst das
+ORM-Modell sie bewusst weg. Faellt eine Migration auf einer frischen Anlage
+aus, entsteht die Tabelle aus dem Modell (``create_all``) — ohne diese Spalten
+— und Alembic wird auf HEAD gestempelt: die Revision laeuft nie wieder, der
+Mangel ist dauerhaft. Nur der Startpfad kann solche Spalten noch nachtragen.
+Deshalb gilt: jede Spalte, die im rohen ``CREATE TABLE`` steht, aber nicht im
+ORM-Modell derselben Tabelle, MUSS im Startpfad per
+``ADD COLUMN IF NOT EXISTS`` auftauchen. Die erste Wache konnte diese Form
+nicht sehen (sie kennt nur ``op.add_column`` und ``ALTER TABLE``), weshalb
+``vault_chunks`` durchrutschte.
 """
 
 import ast
@@ -26,6 +39,21 @@ from pathlib import Path
 _ORCH = Path(__file__).resolve().parents[1]
 _VERSIONS = _ORCH / "alembic" / "versions"
 _MAIN = _ORCH / "app" / "main.py"
+# Der Startpfad ist nicht mehr nur main.py: laengere Reparaturen liegen als
+# eigenes Modul daneben und werden beim Hochfahren aufgerufen. Kommt eine
+# weitere hinzu, gehoert sie HIER hinein -- sonst haelt die Wache eine
+# versorgte Spalte faelschlich fuer unversorgt. Die Vorbedingungspruefung
+# unten faellt um, wenn eine dieser Dateien wegfaellt oder nichts beitraegt.
+_STARTPFAD_QUELLEN = (
+    _MAIN,
+    _ORCH / "app" / "core" / "vault_chunks_schema.py",
+)
+
+_CREATE_TABLE = re.compile(
+    r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s*\(", re.IGNORECASE
+)
+# Erste Worte, die keine Spalte einleiten, sondern eine Tabellenbedingung.
+_KEINE_SPALTE = {"constraint", "primary", "unique", "foreign", "check", "exclude", "like"}
 
 _ADD_IF_NOT_EXISTS = re.compile(
     r"ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(\w+)", re.IGNORECASE
@@ -129,6 +157,92 @@ def _harte_add_columns(quelle: str) -> set[tuple[str, str]]:
     return funde
 
 
+def _spalten_aus_create_table(text: str) -> dict[str, set[str]]:
+    """Tabelle -> Spaltennamen jedes rohen ``CREATE TABLE`` in ``text``.
+
+    Klammern werden gezaehlt, nicht geraten: eine generierte Spalte
+    (``GENERATED ALWAYS AS (to_tsvector(...)) STORED``) traegt selbst Klammern
+    und Kommata; ein naives ``split(",")`` zerlegt sie in Phantasiespalten.
+    """
+    gefunden: dict[str, set[str]] = {}
+    for treffer in _CREATE_TABLE.finditer(text):
+        tabelle = treffer.group(1).lower()
+        tiefe, start = 1, treffer.end()
+        i = start
+        while i < len(text) and tiefe:
+            if text[i] == "(":
+                tiefe += 1
+            elif text[i] == ")":
+                tiefe -= 1
+            i += 1
+        if tiefe:  # unbalanciert -> nichts behaupten
+            continue
+        rumpf, teil, tiefe2 = text[start:i - 1], "", 0
+        teile = []
+        for zeichen in rumpf:
+            if zeichen == "(":
+                tiefe2 += 1
+            elif zeichen == ")":
+                tiefe2 -= 1
+            if zeichen == "," and tiefe2 == 0:
+                teile.append(teil)
+                teil = ""
+            else:
+                teil += zeichen
+        teile.append(teil)
+        spalten = set()
+        for eintrag in teile:
+            worte = eintrag.split()
+            if worte and worte[0].lower() not in _KEINE_SPALTE:
+                spalten.add(worte[0].strip('"').lower())
+        if spalten:
+            gefunden.setdefault(tabelle, set()).update(spalten)
+    return gefunden
+
+
+def _rohe_create_tables(quelle: str) -> dict[str, set[str]]:
+    """Wie oben, aber nur aus ``upgrade()`` einer Revision.
+
+    Ein ``downgrade()`` legt nichts an, was der Startpfad tragen muesste.
+    """
+    gefunden: dict[str, set[str]] = {}
+    upgrades = [k for k in ast.walk(ast.parse(quelle))
+                if isinstance(k, ast.FunctionDef) and k.name == "upgrade"]
+    for knoten in (k for fn in upgrades for k in ast.walk(fn)):
+        if isinstance(knoten, ast.Constant) and isinstance(knoten.value, str):
+            for tabelle, spalten in _spalten_aus_create_table(knoten.value).items():
+                gefunden.setdefault(tabelle, set()).update(spalten)
+    return gefunden
+
+
+def _orm_spalten() -> dict[str, set[str]]:
+    """Tabelle -> Spalten, wie ``create_all`` sie anlegen wuerde."""
+    from app.models import Base  # noqa: F401 -- registriert alle Modelle
+
+    return {name: {s.name.lower() for s in t.columns}
+            for name, t in Base.metadata.tables.items()}
+
+
+def _startpfad_alle_quellen() -> set[tuple[str, str]]:
+    funde: set[tuple[str, str]] = set()
+    for pfad in _STARTPFAD_QUELLEN:
+        funde |= _startpfad_spalten(pfad.read_text())
+    return funde
+
+
+def _kollisionen(quellen: dict[str, str]) -> list[str]:
+    """``name -> Revisionsquelltext`` => Liste der Kollisionen mit dem Startpfad.
+
+    Bewusst EINE Routine fuer die echte Wache und fuer die Gegenprobe: liefe
+    die Gegenprobe ueber eigenen Code, koennte die Wache enger werden (z.B.
+    wieder nur ``main.py`` lesen) und die Gegenprobe bliebe trotzdem gruen.
+    """
+    startpfad = _startpfad_alle_quellen()
+    return [f"{name}: {tabelle}.{spalte}"
+            for name, quelle in sorted(quellen.items())
+            for tabelle, spalte in sorted(_harte_add_columns(quelle) & startpfad)]
+
+
 def _revisionen():
     return sorted(p for p in _VERSIONS.glob("*.py") if p.name != "__init__.py")
 
@@ -149,11 +263,9 @@ class MigrationKollidiertNichtMitStartpfadTests(unittest.TestCase):
         self.assertGreater(len(spalten), 40, spalten)
 
     def test_keine_revision_legt_startpfad_spalte_hart_an(self):
-        startpfad = _startpfad_spalten(_MAIN.read_text())
-        kollisionen = []
-        for pfad in _revisionen():
-            for tabelle, spalte in sorted(_harte_add_columns(pfad.read_text()) & startpfad):
-                kollisionen.append(f"{pfad.name}: {tabelle}.{spalte}")
+        # ALLE Startpfad-Quellen, nicht nur main.py: sonst waeren genau die
+        # Spalten unbewacht, die eine zweite Datei nachtraegt (#834).
+        kollisionen = _kollisionen({p.name: p.read_text() for p in _revisionen()})
         self.assertEqual(
             kollisionen, [],
             "op.add_column fuer eine Spalte, die der Startpfad (app/main.py) schon "
@@ -162,6 +274,19 @@ class MigrationKollidiertNichtMitStartpfadTests(unittest.TestCase):
             "op.execute(\"ALTER TABLE .. ADD COLUMN IF NOT EXISTS ..\"):\n  "
             + "\n  ".join(kollisionen),
         )
+
+    def test_auch_spalten_der_zweiten_startpfad_quelle_sind_bewacht(self):
+        """#834: der Startpfad besteht aus mehr als main.py. Eine Migration,
+        die ``vault_chunks.embedding`` hart anlegt, waere auf jeder bereits
+        gestarteten Anlage ein DuplicateColumnError -- die Wache muss sie
+        finden, obwohl die Spalte NICHT in main.py steht."""
+        kuenstlich = {
+            "z9_test.py": 'def upgrade() -> None:\n'
+                          '    op.add_column("vault_chunks", sa.Column("embedding", sa.String()))\n'
+        }
+        self.assertEqual(_kollisionen(kuenstlich), ["z9_test.py: vault_chunks.embedding"])
+        # Beleg, dass der Treffer WIRKLICH aus der zweiten Quelle kommt:
+        self.assertNotIn(("vault_chunks", "embedding"), _startpfad_spalten(_MAIN.read_text()))
 
     def test_wache_erkennt_den_belegfall(self):
         """Gegenprobe: die Form, die #825 ausgeloest hat, muss gefunden werden --
@@ -185,6 +310,100 @@ class MigrationKollidiertNichtMitStartpfadTests(unittest.TestCase):
             '    op.add_column("agent_memories", sa.Column("embedding", sa.NullType()))\n'
         )
         self.assertEqual(_harte_add_columns(nur_downgrade), set())
+
+
+class RoheCreateTableSpaltenBrauchenDenStartpfadTests(unittest.TestCase):
+    """#834: Spalten, die nur im rohen ``CREATE TABLE`` stehen, muessen der
+    Startpfad tragen -- ``create_all`` kann sie nicht anlegen."""
+
+    def test_sensor_sieht_ueberhaupt_rohe_create_tables(self):
+        """Vorbedingung: findet der Sensor die drei bekannten rohen
+        ``CREATE TABLE``? Ohne Treffer liefe der Klassentest leer gruen."""
+        tabellen = {}
+        for pfad in _revisionen():
+            for tabelle, spalten in _rohe_create_tables(pfad.read_text()).items():
+                tabellen.setdefault(tabelle, set()).update(spalten)
+        self.assertIn("vault_chunks", tabellen)
+        self.assertIn("users", tabellen)
+        self.assertIn("device_tokens", tabellen)
+        # Und die beiden Spalten, um die es geht, werden wirklich gelesen --
+        # auch die generierte, die Klammern und ein Komma enthaelt.
+        self.assertIn("embedding", tabellen["vault_chunks"])
+        self.assertIn("ts", tabellen["vault_chunks"])
+        # Keine Phantasiespalte aus dem Inneren des GENERATED-Ausdrucks:
+        self.assertNotIn("to_tsvector", tabellen["vault_chunks"])
+        self.assertNotIn("coalesce", tabellen["vault_chunks"])
+
+    def test_startpfad_quellen_tragen_alle_bei(self):
+        """Vorbedingung: jede gelistete Startpfad-Datei existiert UND liefert
+        Spalten. Wird eine verschoben oder umbenannt, faellt das hier auf --
+        nicht erst dadurch, dass die Wache eine versorgte Spalte anmahnt."""
+        for pfad in _STARTPFAD_QUELLEN:
+            self.assertTrue(pfad.exists(), pfad)
+            self.assertTrue(_startpfad_spalten(pfad.read_text()), f"keine Spalten in {pfad}")
+
+    def test_jede_nur_im_sql_stehende_spalte_wird_beim_start_nachgetragen(self):
+        startpfad = _startpfad_alle_quellen()
+        orm = _orm_spalten()
+        luecken = []
+        for pfad in _revisionen():
+            for tabelle, spalten in sorted(_rohe_create_tables(pfad.read_text()).items()):
+                if tabelle not in orm:
+                    # Das ORM kennt die Tabelle gar nicht -> create_all legt sie
+                    # nicht an, es gibt keine stille Teilform.
+                    continue
+                for spalte in sorted(spalten - orm[tabelle]):
+                    if (tabelle, spalte) not in startpfad:
+                        luecken.append(f"{pfad.name}: {tabelle}.{spalte}")
+        self.assertEqual(
+            luecken, [],
+            "Spalte steht nur im rohen CREATE TABLE der Migration und fehlt im "
+            "ORM-Modell -- faellt eine Migration auf einer frischen Anlage aus, "
+            "entsteht die Tabelle ohne sie und Alembic wird gestempelt: dauerhaft "
+            "kaputt (#834). Der Startpfad muss sie per ADD COLUMN IF NOT EXISTS "
+            "nachtragen:\n  " + "\n  ".join(luecken),
+        )
+
+    def test_wache_erkennt_den_belegfall(self):
+        """Gegenprobe: genau die Form aus #834 muss auffallen -- und die
+        reparierte Form darf es nicht mehr."""
+        revision = (
+            'def upgrade() -> None:\n'
+            '    op.execute("""\n'
+            '        CREATE TABLE IF NOT EXISTS vault_chunks (\n'
+            '            id BIGSERIAL PRIMARY KEY,\n'
+            '            content TEXT NOT NULL,\n'
+            '            embedding vector(1024),\n'
+            "            ts tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(content, ''))) STORED,\n"
+            '            CONSTRAINT uq_x UNIQUE (content)\n'
+            '        )\n'
+            '    """)\n'
+        )
+        gelesen = _rohe_create_tables(revision)
+        self.assertEqual(gelesen, {"vault_chunks": {"id", "content", "embedding", "ts"}})
+
+        orm_ohne = {"vault_chunks": {"id", "content"}}
+        unversorgt = {s for s in gelesen["vault_chunks"] - orm_ohne["vault_chunks"]}
+        self.assertEqual(unversorgt, {"embedding", "ts"})
+
+        # Unversorgt gegen einen Startpfad, der nichts davon kennt -> Luecke.
+        leerer_startpfad = _startpfad_spalten('x = "ALTER TABLE andere ADD COLUMN IF NOT EXISTS y int"')
+        self.assertEqual(
+            {s for s in unversorgt if ("vault_chunks", s) not in leerer_startpfad},
+            {"embedding", "ts"},
+        )
+        # Und gegen den ECHTEN Startpfad dieses Baums -> keine Luecke mehr.
+        echt = _startpfad_alle_quellen()
+        self.assertEqual({s for s in unversorgt if ("vault_chunks", s) not in echt}, set())
+
+    def test_downgrade_create_table_ist_kein_treffer(self):
+        nur_downgrade = (
+            'def upgrade() -> None:\n'
+            '    pass\n'
+            'def downgrade() -> None:\n'
+            '    op.execute("CREATE TABLE IF NOT EXISTS alt (id serial, weg vector(3))")\n'
+        )
+        self.assertEqual(_rohe_create_tables(nur_downgrade), {})
 
 
 if __name__ == "__main__":

@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.331.1] - 2026-09-22
+
+### Behoben
+- **Der Gesetze-Crawler konnte einen Rechnerkern dauerhaft auslasten, ohne je
+  ein Ergebnis zu speichern.** Gemeldet von aussen, an einer Anlage mit zwei
+  Kernen: einer ueber zwei Stunden am Anschlag, die Tabelle die ganze Zeit bei
+  null Zeilen, im Log nichts. Ursache: der Tabelle `vault_chunks` fehlten zwei
+  Spalten, die nur die Migration anlegen kann (`embedding` fuer die
+  Vektorsuche, `ts` fuer die Volltextsuche) — und der Vorgabewert fuer
+  `updated_at`. Damit scheiterte JEDES Speichern einer Passage, und weil die
+  Tabelle dadurch leer blieb, hielt der Crawler jede Datei fuer neu und
+  begann von vorn.
+  - Wie es dazu kommt: schlaegt eine Datenbank-Migration beim allerersten
+    Start fehl, baut der Rueckfall die Tabellen aus dem Programmcode — der
+    diese beiden Spalten gar nicht kennen kann — und vermerkt danach alle
+    Migrationen als erledigt. Der Mangel ist damit dauerhaft; ein spaeteres
+    Nachmigrieren holt ihn nie ein.
+  - Die Reparatur laeuft jetzt bei JEDEM Start und stellt die fehlenden
+    Spalten, den Vorgabewert und die drei Suchindizes wieder her. Bestehende
+    Anlagen heilen sich damit beim naechsten Neustart selbst; Daten gehen
+    dabei nicht verloren. Sie ist auf fuenf Sekunden Wartezeit begrenzt —
+    eine Reparatur darf eine laufende Anlage nicht festsetzen.
+  - Laesst sich die Volltext-Spalte ausnahmsweise nicht herstellen, gibt die
+    Reparatur das Speichern bewusst NICHT frei und meldet das deutlich im Log:
+    eine halb hergestellte Tabelle, die sich schon fuellt, liesse sich spaeter
+    nur noch mit einer langen Sperre vervollstaendigen. So bleibt der Zustand
+    reparierbar und sichtbar statt dauerhaft und still.
+  - **Second-Brain-Suche:** auf betroffenen Anlagen lief sie dauerhaft ins
+    Leere, weil nie eine Passage gespeichert wurde. Sie funktioniert nach dem
+    Neustart wieder.
+
+### Geaendert
+- **Der Gesetze-Crawler meldet jetzt, wenn ein Lauf reihenweise scheitert.**
+  Bisher stand jeder Fehlschlag nur in der ausfuehrlichen Entwickler-Ausgabe;
+  im Betriebslog blieb es still, auch wenn ALLE Normen scheiterten. Jetzt gibt
+  es am Ende eines Laufs eine Warnung mit Anzahl und erstem Grund — einmal pro
+  Lauf, damit der Normalfall (eine Norm fehlt) kein Rauschen erzeugt.
+
 ## [1.331.0] - 2026-09-22
 
 ### Neu
