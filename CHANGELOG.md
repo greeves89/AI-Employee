@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.7] - 2026-09-22
+
+### Behoben
+- Der Embedding-Dienst blockierte während jeder Berechnung seinen gesamten Event-Loop: Solange ein Batch lief, konnte er nicht einmal seinen eigenen Gesundheitscheck beantworten, Docker stufte ihn als „unhealthy" ein und die Oberfläche zeigte „Degraded", obwohl er nur arbeitete. Die Modellaufrufe laufen jetzt im Threadpool (einer nach dem anderen), der Dienst bleibt währenddessen ansprechbar; das Healthcheck-Zeitfenster wurde von 10 auf 30 Sekunden erhöht (Fixes #826).
+- Ein Aufrufer, der aufgibt, stoppt jetzt auch die Arbeit: Große Batches werden in Teilstücken berechnet, und zwischen zwei Teilstücken prüft der Dienst, ob der Aufrufer noch verbunden ist. Vorher rechnete der Container nach dem Timeout des Orchestrators über eine Stunde bei voller CPU-Last weiter, ohne dass jemand auf das Ergebnis wartete.
+- Torch belegt nicht mehr alle CPU-Kerne: Standard ist „alle bis auf einen", damit der Orchestrator auf kleinen Hosts nicht verhungert; einstellbar über `EMBEDDING_TORCH_THREADS` (Teilstückgröße über `EMBEDDING_SUB_BATCH_SIZE`, Standard 16).
+
 ## [1.328.6] - 2026-09-22
 
 ### Behoben
