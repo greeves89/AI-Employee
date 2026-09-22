@@ -1100,6 +1100,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure agent_memory_links columns: {e}")
 
+    # vault_chunks (#834): embedding + ts entstehen nur im rohen CREATE TABLE der
+    # Migration, das ORM-Modell laesst sie bewusst weg. Scheitert eine Migration
+    # auf einer frischen DB, legt der Rueckfall die Tabelle ohne beide Spalten an
+    # und stempelt HEAD -- dauerhaft, weil die Revision danach als angewandt gilt.
+    # Deshalb hier im UNBEDINGTEN Startpfad und nicht in _init_db_from_models:
+    # auf einer bereits beschaedigten Anlage gelingt "upgrade head", der
+    # Rueckfall laeuft also nie wieder.
+    try:
+        from app.core.vault_chunks_schema import ensure_vault_chunks_schema
+        from app.db.session import engine as _eng
+
+        # Meldet selbst: Warnung je gescheiterter Anweisung, Fehler fuer den
+        # Zustand "Schema bleibt unvollstaendig". Der Rueckgabewert ist hier
+        # nur noch Pruefgroesse fuer Tests.
+        await ensure_vault_chunks_schema(_eng)
+    except Exception as e:
+        # Fehler, nicht Warnung: hier ist die Reparatur GAR NICHT gelaufen --
+        # der schwerere Fall als eine einzelne gescheiterte Anweisung.
+        logger.error(f"Could not ensure vault_chunks schema: {e}")
+
     # DLP egress rules (#388): new table; create_all is only a fresh-DB fallback, so
     # ensure it idempotently and seed the built-in global defaults once.
     try:

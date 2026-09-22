@@ -194,3 +194,131 @@ class SlugExtractionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AusfaelleBleibenNichtStummTests(unittest.TestCase):
+    """#834: jeder Fehlschlag lag auf ``debug`` -- bei einem dauerhaften Mangel
+    (kaputtes ``vault_chunks``-Schema) lief der Crawler endlos ohne Ergebnis
+    und ohne eine einzige sichtbare Zeile. Eine Sammelmeldung am Ende macht
+    genau diesen Zustand sichtbar, ohne den Normalfall zuzuspammen."""
+
+    def test_ohne_ausfall_keine_meldung(self):
+        from app.services.gesetz_crawler import _AusfallZaehler
+
+        self.assertIsNone(_AusfallZaehler("Test").bericht(42))
+
+    def test_meldung_nennt_anzahl_geschriebene_und_ersten_grund(self):
+        from app.services.gesetz_crawler import _AusfallZaehler
+
+        z = _AusfallZaehler("Test")
+        z.melde("bgb", ValueError('column "embedding" of relation "vault_chunks" does not exist'))
+        z.melde("stgb", RuntimeError("zweiter"))
+        bericht = z.bericht(0)
+        self.assertIn("2", bericht)
+        self.assertIn("bgb", bericht)
+        self.assertIn("embedding", bericht)
+        # Nur der ERSTE Grund -- sonst waechst eine Logzeile auf tausende Normen.
+        self.assertNotIn("zweiter", bericht)
+
+    def test_ein_crawl_lauf_mit_lauter_fehlschlaegen_meldet_wirklich_eine_warnung(self):
+        """VERHALTEN, nicht Quelltext: ein Zaehler, den niemand ausliest --
+        oder eine Meldung hinter einer toten Verzweigung -- sieht im Quelltext
+        richtig aus und bleibt trotzdem stumm. Deshalb der echte Lauf.
+
+        Nachgebaut ist die Lage aus #834: jede Norm scheitert (dort am
+        kaputten vault_chunks-Schema), der Lauf geht weiter, schreibt nichts.
+        Kein Netz noetig -- der Fehler faellt vor dem ersten Abruf."""
+        import asyncio
+        from unittest.mock import patch
+
+        from app.services.gesetz_crawler import GesetzCrawlerService
+
+        dienst = GesetzCrawlerService()
+
+        async def _toc(_selbst, _client):
+            return [("Buergerliches Gesetzbuch", "bgb"), ("Strafgesetzbuch", "stgb")]
+
+        async def _eine(_selbst, _client, slug):
+            raise RuntimeError(f'column "embedding" of relation "vault_chunks" does not exist [{slug}]')
+
+        with patch.object(GesetzCrawlerService, "_fetch_toc", _toc), \
+                patch.object(GesetzCrawlerService, "_fetch_one", _eine):
+            with self.assertLogs("app.services.gesetz_crawler", level="WARNING") as protokoll:
+                geschrieben = asyncio.run(dienst.crawl())
+
+        self.assertEqual(geschrieben, 0)
+        gesamt = "\n".join(protokoll.output)
+        self.assertIn("2", gesamt)
+        self.assertIn("embedding", gesamt)
+
+    def test_ein_lauf_ohne_fehlschlag_meldet_keine_warnung(self):
+        """Gegenprobe: die Warnung darf nicht bei jedem Lauf kommen, sonst
+        ist sie nach einer Woche Rauschen und niemand sieht sie mehr."""
+        import asyncio
+        import logging
+        from unittest.mock import patch
+
+        from app.services.gesetz_crawler import GesetzCrawlerService
+
+        dienst = GesetzCrawlerService()
+
+        async def _toc(_selbst, _client):
+            return []
+
+        with patch.object(GesetzCrawlerService, "_fetch_toc", _toc):
+            with self.assertNoLogs("app.services.gesetz_crawler", level=logging.WARNING):
+                self.assertEqual(asyncio.run(dienst.crawl()), 0)
+
+
+class AusfaelleImEuLaufBleibenNichtStummTests(unittest.TestCase):
+    """Dieselbe Pruefung wie oben fuer die ZWEITE Crawl-Schleife (``crawl_eu``).
+
+    Beide Schleifen tragen denselben Mangel und dieselbe Reparatur; ohne
+    eigenen Test kann die Sammelmeldung in dieser hier jederzeit wieder
+    verschwinden, waehrend alle Tests gruen bleiben (#834)."""
+
+    class _FehlerClient:
+        """HTTP-Client, an dem JEDER Abruf scheitert -- kein Netz noetig."""
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def get(self, *_a, **_k):
+            raise RuntimeError(
+                'column "embedding" of relation "vault_chunks" does not exist'
+            )
+
+    def test_ein_eu_lauf_mit_lauter_fehlschlaegen_meldet_wirklich_eine_warnung(self):
+        import asyncio
+        from unittest.mock import patch
+
+        from app.services import gesetz_crawler as gc
+
+        dienst = gc.GesetzCrawlerService()
+        zwei = [("32016R0679", "DSGVO"), ("32019R0947", "Drohnen")]
+        with patch.object(gc, "EU_CURATED_LAWS", zwei), \
+                patch.object(gc.httpx, "AsyncClient", lambda *a, **k: self._FehlerClient()):
+            with self.assertLogs("app.services.gesetz_crawler", level="WARNING") as protokoll:
+                geschrieben = asyncio.run(dienst.crawl_eu())
+
+        self.assertEqual(geschrieben, 0)
+        gesamt = "\n".join(protokoll.output)
+        self.assertIn("2", gesamt)
+        self.assertIn("embedding", gesamt)
+        self.assertIn("EU", gesamt)
+
+    def test_ein_eu_lauf_ohne_fehlschlag_meldet_keine_warnung(self):
+        import asyncio
+        import logging
+        from unittest.mock import patch
+
+        from app.services import gesetz_crawler as gc
+
+        dienst = gc.GesetzCrawlerService()
+        with patch.object(gc, "EU_CURATED_LAWS", []), \
+                patch.object(gc.httpx, "AsyncClient", lambda *a, **k: self._FehlerClient()):
+            with self.assertNoLogs("app.services.gesetz_crawler", level=logging.WARNING):
+                self.assertEqual(asyncio.run(dienst.crawl_eu()), 0)
