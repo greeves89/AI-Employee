@@ -43,6 +43,22 @@ function guessMediaType(filename) {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    // Video und Ton fehlten hier komplett: Ein erzeugtes Video kam als
+    // "application/octet-stream" im Chat an und war damit fuer die Oberflaeche
+    // nur eine Datei zum Herunterladen, nicht etwas Abspielbares.
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".m4v": "video/x-m4v",
+    ".ogv": "video/ogg",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".opus": "audio/opus",
+    ".flac": "audio/flac",
   };
   return types[ext] || "application/octet-stream";
 }

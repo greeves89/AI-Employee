@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.330.0] - 2026-09-22
+
+### Neu
+- **Videos im Chat lassen sich abspielen.** Ein vom Agenten erzeugtes Video war
+  bisher nur eine Kachel zum Herunterladen — man musste es speichern und in
+  einem anderen Programm öffnen, um zu sehen, was entstanden ist. Jetzt steht
+  ein Abspielknopf darauf; nach dem Laden läuft es direkt im Verlauf. Geladen
+  wird erst auf Klick, weil solche Dateien mehrere Megabyte groß sind und in
+  einem Verlauf schnell mehrere stehen.
+- **Anhänge zeigen beim Klicken, dass etwas passiert.** Ein Download von
+  mehreren Megabyte brauchte spürbar Zeit, und sichtbar geschah dabei nichts —
+  wer nicht weiß, ob der Klick angekommen ist, klickt noch einmal. Jetzt läuft
+  ein Ladezeiger, und ein Fehlschlag steht an der Kachel statt nirgends.
+
+### Behoben
+- **Videos kamen als „unbekannte Datei" im Chat an.** Die Medientyp-Tabelle des
+  Benachrichtigungs-Servers kannte PDF, Office, ZIP und Bilder — aber **kein
+  einziges Video- oder Tonformat**. Alles andere fiel auf
+  `application/octet-stream`. Zwei frisch erzeugte MP4s standen so in der
+  Datenbank. Video- und Tonformate sind jetzt ergänzt.
+  - Die Oberfläche erkennt Videos zusätzlich an der Dateiendung: Die bereits
+    gespeicherten Anhänge tragen den falschen Typ weiterhin und lassen sich
+    nicht nachträglich reparieren.
+
+---
+
 ## [1.329.0] - 2026-09-22
 
 ### Behoben

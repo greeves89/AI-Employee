@@ -3336,45 +3336,155 @@ function PresentedImages({ images }: { images?: ChatImage[] }) {
 function PresentedFiles({ agentId, files }: { agentId: string; files?: ChatFile[] }) {
   if (!files || files.length === 0) return null;
 
-  const download = async (file: ChatFile) => {
-    const url = `${getApiUrl()}/api/v1/agents/${agentId}/files/download?path=${encodeURIComponent(file.path)}`;
-    const resp = await fetch(url, { credentials: "include" });
-    if (!resp.ok) return;
-    const blob = await resp.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = objectUrl;
-    a.download = file.filename || "download";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(objectUrl);
-  };
-
   return (
     <div className="space-y-2 pt-1">
       {files.map((file, i) =>
         isAudioFile(file) ? (
-          <AudioAttachment key={`${file.path}-${i}`} agentId={agentId} file={file} onDownload={() => download(file)} />
+          <AudioAttachment key={`${file.path}-${i}`} agentId={agentId} file={file} />
+        ) : isVideoFile(file) ? (
+          <VideoAttachment key={`${file.path}-${i}`} agentId={agentId} file={file} />
         ) : (
-          <button
-            key={`${file.path}-${i}`}
-            type="button"
-            onClick={() => download(file)}
-            className="flex max-w-md items-center gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-left hover:bg-muted/55 transition-colors"
-          >
-            <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-foreground">{file.filename}</span>
-              <span className="block text-xs text-muted-foreground">
-                {file.caption || file.media_type || "Attachment"}
-                {file.size ? ` · ${Math.max(1, Math.round(file.size / 1024))} KB` : ""}
-              </span>
-            </span>
-          </button>
+          <DateiAnhang key={`${file.path}-${i}`} agentId={agentId} file={file} />
         )
       )}
     </div>
+  );
+}
+
+/** Holt eine Datei des Agenten und gibt eine lokale Adresse darauf zurueck. */
+async function ladeDatei(agentId: string, pfad: string): Promise<string> {
+  const url = `${getApiUrl()}/api/v1/agents/${agentId}/files/download?path=${encodeURIComponent(pfad)}`;
+  const resp = await fetch(url, { credentials: "include" });
+  if (!resp.ok) throw new Error(`Download fehlgeschlagen (${resp.status})`);
+  return URL.createObjectURL(await resp.blob());
+}
+
+/** Anhang ohne eigene Wiedergabe — Klick laedt herunter.
+ *
+ * Mit Rueckmeldung: Eine Datei von mehreren Megabyte braucht spuerbar Zeit,
+ * und vorher passierte beim Klicken sichtbar NICHTS. Wer nicht weiss, ob der
+ * Klick angekommen ist, klickt noch einmal.
+ */
+function DateiAnhang({ agentId, file }: { agentId: string; file: ChatFile }) {
+  const [laedt, setLaedt] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+
+  const holen = async () => {
+    if (laedt) return;
+    setLaedt(true);
+    setFehler(null);
+    try {
+      const objectUrl = await ladeDatei(agentId, file.path);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = file.filename || "download";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : "Konnte nicht geladen werden");
+    } finally {
+      setLaedt(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={holen}
+      disabled={laedt}
+      className="flex max-w-md items-center gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-left transition-colors hover:bg-muted/55 disabled:opacity-70"
+    >
+      {laedt ? (
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+      ) : (
+        <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-foreground">{file.filename}</span>
+        <span className="block text-xs text-muted-foreground">
+          {fehler
+            ? fehler
+            : laedt
+              ? "Wird geladen …"
+              : (file.caption || file.media_type || "Anhang")}
+          {file.size ? ` · ${Math.max(1, Math.round(file.size / 1024))} KB` : ""}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function isVideoFile(file: ChatFile) {
+  if (file.media_type?.startsWith("video/")) return true;
+  return /\.(mp4|webm|mov|m4v|ogv)$/i.test(file.filename || file.path);
+}
+
+/** Video im Chat — abspielbar statt nur herunterladbar.
+ *
+ * Ein erzeugtes Video will man ansehen, nicht erst speichern und in einem
+ * anderen Programm oeffnen. Geladen wird trotzdem erst auf Klick: Die Dateien
+ * sind mehrere Megabyte gross, und in einem Verlauf stehen schnell mehrere.
+ */
+function VideoAttachment({ agentId, file }: { agentId: string; file: ChatFile }) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [laedt, setLaedt] = useState(false);
+  const [fehler, setFehler] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [objectUrl]);
+
+  const abspielen = async () => {
+    if (objectUrl || laedt) return;
+    setLaedt(true);
+    setFehler(null);
+    try {
+      setObjectUrl(await ladeDatei(agentId, file.path));
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : "Video konnte nicht geladen werden");
+    } finally {
+      setLaedt(false);
+    }
+  };
+
+  const groesse = file.size ? `${Math.max(1, Math.round(file.size / 1024))} KB` : "";
+
+  if (objectUrl) {
+    return (
+      <div className="max-w-md space-y-1">
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video src={objectUrl} controls autoPlay playsInline className="w-full rounded-lg border border-border bg-black" />
+        <div className="px-1 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{file.filename}</span>
+          {file.caption ? ` · ${file.caption}` : ""}
+          {groesse ? ` · ${groesse}` : ""}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={abspielen}
+      disabled={laedt}
+      className="flex max-w-md items-center gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-left transition-colors hover:bg-muted/55 disabled:opacity-70"
+    >
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
+        {laedt ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5 translate-x-0.5" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-foreground">{file.filename}</span>
+        <span className="block text-xs text-muted-foreground">
+          {fehler ? fehler : laedt ? "Wird geladen …" : (file.caption || "Video abspielen")}
+          {groesse ? ` · ${groesse}` : ""}
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -3383,7 +3493,7 @@ function isAudioFile(file: ChatFile) {
   return /\.(mp3|m4a|wav|ogg|opus|aac|flac)$/i.test(file.filename || file.path);
 }
 
-function AudioAttachment({ agentId, file, onDownload }: { agentId: string; file: ChatFile; onDownload: () => void }) {
+function AudioAttachment({ agentId, file }: { agentId: string; file: ChatFile }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -3469,9 +3579,20 @@ function AudioAttachment({ agentId, file, onDownload }: { agentId: string; file:
             <span className="truncate text-sm font-medium">{file.caption || file.filename}</span>
             <button
               type="button"
-              onClick={onDownload}
+              onClick={async () => {
+                // Dieselbe Datei, die ohnehin schon geladen sein kann —
+                // dann ohne zweiten Abruf.
+                const url = objectUrl ?? (await ensureAudio());
+                if (!url) return;
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = file.filename || "audio";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+              }}
               className="shrink-0 rounded-md p-1 text-muted-foreground transition hover:bg-background/60 hover:text-foreground"
-              aria-label="Download audio"
+              aria-label="Audio herunterladen"
             >
               <Download className="h-3.5 w-3.5" />
             </button>
