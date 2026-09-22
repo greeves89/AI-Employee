@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.331.2] - 2026-09-22
+
+### Behoben
+- Agenten-Container beenden sich beim Stoppen wieder sauber. Bisher brach der Startprozess im Container ab, sobald die Plattform einen Agenten anhielt -- das Abschaltsignal kam beim Agenten nie an, laufende Arbeit hatte keine Gelegenheit mehr, sich zu sichern, und im Docker-Status war ein planmaessiges Anhalten nicht von einem Absturz zu unterscheiden. Ein geordnetes Anhalten sieht jetzt auch als solches aus. Die Aenderung greift pro Agent erst, sobald sein Container NEU angelegt wird (Agent aktualisieren oder neu starten) -- ein blosses Starten des vorhandenen Containers uebernimmt sie nicht (#835).
+
 ## [1.331.1] - 2026-09-22
 
 ### Behoben
