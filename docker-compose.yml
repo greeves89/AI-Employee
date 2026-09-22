@@ -266,7 +266,9 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/healthz"]
       interval: 30s
-      timeout: 10s
+      # 30s: a brief CPU spike during a batch must not flip a healthy service
+      # to "unhealthy" (issue #826); the loop itself no longer blocks.
+      timeout: 30s
       retries: 3
       # first-run bge-m3 download (~2.3 GB) takes 2-5 min; see issue #287
       start_period: 300s
