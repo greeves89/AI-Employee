@@ -26,16 +26,77 @@ def _arg_parse_selftest() -> bool:
     return parsed == {"content": "kept"}
 
 
+async def _mcp_zustand() -> dict:
+    """Antworten die eingebauten MCP-Server wirklich?
+
+    Warum das hier steht: Am 22.09.2026 meldete ein Agent dem Nutzer, dass
+    Orchestrator, Skills und Memory "nicht verbunden" seien. Sie waren es --
+    alle zehn antworteten. Der Agent hatte die Diagnosewarnungen von
+    ``claude mcp list`` gelesen und als Ausfall gedeutet.
+
+    Ein Agent kann seine eigene Verdrahtung bis dahin nirgends NACHSEHEN; er
+    kann sie nur aus Werkzeugfehlern und Warntexten erraten. Genau das ist hier
+    schiefgegangen. Also gibt es jetzt eine Stelle mit einer klaren Antwort --
+    fuer den Betreiber wie fuer den Agenten selbst.
+
+    Gemessen wird der gemeinsame Prozess, nicht die CLI-Konfiguration: Ein
+    Server, der antwortet, ist verbunden; ein Warntext ueber doppelte
+    Eintraege sagt darueber nichts aus.
+    """
+    port = int(os.environ.get("MCP_HTTP_PORT") or 0)
+    if not port:
+        return {"modus": "einzelprozesse", "hinweis":
+                "Kein gemeinsamer MCP-Prozess eingerichtet (MCP_HTTP_PORT nicht gesetzt)."}
+
+    from app.main import _COMBINED_MCP_NAMES
+
+    namen = list(_COMBINED_MCP_NAMES)
+    erreichbar, tot = [], []
+
+    import asyncio
+
+    async def _pruefe(name: str) -> None:
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection("127.0.0.1", port), timeout=2)
+            writer.close()
+            await writer.wait_closed()
+            erreichbar.append(name)
+        except Exception:  # noqa: BLE001 - genau das ist das Ergebnis
+            tot.append(name)
+
+    # Der gemeinsame Prozess bedient alle Namen; ein Verbindungsaufbau genuegt.
+    await _pruefe(namen[0] if namen else "-")
+    if erreichbar:
+        erreichbar, tot = namen, []
+    else:
+        erreichbar, tot = [], namen
+
+    return {
+        "modus": "gemeinsamer prozess",
+        "port": port,
+        "erwartet": len(namen),
+        "erreichbar": len(erreichbar),
+        "fehlend": sorted(tot),
+    }
+
+
 async def diag_handler(request: web.Request) -> web.Response:
     """Runtime self-diagnostic — surfaces whether the deployed image is affected
     by the MCP arg-stripping regression (#342). Returns HTTP 500 when degraded so
     a health probe / monitor can page on a stale deploy."""
     arg_parse_ok = _arg_parse_selftest()
+    mcp = await _mcp_zustand()
+    mcp_ok = not mcp.get("fehlend")
     body = {
         "agent_id": request.app["agent_id"],
-        "checks": {"mcp_arg_parse": "ok" if arg_parse_ok else "FAILED"},
+        "checks": {
+            "mcp_arg_parse": "ok" if arg_parse_ok else "FAILED",
+            "mcp_server": "ok" if mcp_ok else "FAILED",
+        },
+        "mcp": mcp,
     }
-    return web.json_response(body, status=200 if arg_parse_ok else 500)
+    return web.json_response(body, status=200 if (arg_parse_ok and mcp_ok) else 500)
 
 
 async def pretooluse_hook_handler(request: web.Request) -> web.Response:

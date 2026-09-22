@@ -1238,11 +1238,17 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             : s
         );
         const lastStep = updatedSteps[updatedSteps.length - 1];
-        if (lastStep && lastStep.type === "text") {
+        // `neuer_block` sagt, ob hier eine EIGENSTAENDIGE Aeusserung beginnt
+        // oder nur das naechste Teilstueck derselben kommt. Ohne diese
+        // Unterscheidung wurde beides verkettet, und aus mehreren
+        // Zwischenmeldungen wurde ein Fliesstext ohne Luecke:
+        // "...in Intervallen.Beide noch in der Warteschlange..."
+        const neuerBlock = Boolean(data.neuer_block);
+        if (lastStep && lastStep.type === "text" && !neuerBlock) {
           // Append to existing text step
           updatedSteps[updatedSteps.length - 1] = { ...lastStep, content: lastStep.content + String(data.text || "") };
         } else {
-          // New text step (after tool calls or at start)
+          // New text step (after tool calls, at start, or a new turn)
           updatedSteps.push({ type: "text", content: String(data.text || "") });
         }
         msgs[assistantIdx] = {
@@ -3256,9 +3262,48 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
           )
         );
       })()}
+      {/* Laeuft der Zug weiter, obwohl schon Text dasteht? Dann muss man das
+          SEHEN. Bisher erschien der Hinweis nur, solange gar nichts dastand —
+          sobald eine Zwischenmeldung kam, verschwand er, und der Rest sah aus
+          wie eine fertige Antwort. Wer dann wartete, wusste nicht, worauf. */}
+      {message.isStreaming && !noVisibleContent && (
+        <ArbeitetWeiter seit={message.timestamp} />
+      )}
       <PresentedImages images={message.images} />
       <PresentedFiles agentId={String(message.agentId || "")} files={message.files} />
       {message.meta && !message.isStreaming && !simpleMode && <MetaBar meta={message.meta} />}
+    </div>
+  );
+}
+
+/* ─── "Arbeitet weiter" mit laufender Dauer ─────────────────────────── */
+
+/** Zeigt waehrend eines laufenden Zuges an, dass es weitergeht — mit Dauer.
+ *
+ * Die Dauer ist der eigentliche Punkt: Ein Spinner allein beantwortet nicht,
+ * ob seit zehn Sekunden oder seit zehn Minuten gewartet wird. Genau daran
+ * entscheidet sich aber, ob man wartet oder nachfragt.
+ */
+function ArbeitetWeiter({ seit }: { seit: string }) {
+  const [sekunden, setSekunden] = useState(0);
+
+  useEffect(() => {
+    const start = new Date(seit).getTime();
+    const tick = () => setSekunden(Math.max(0, Math.round((Date.now() - start) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [seit]);
+
+  const dauer =
+    sekunden < 60
+      ? `${sekunden} s`
+      : `${Math.floor(sekunden / 60)} min ${String(sekunden % 60).padStart(2, "0")} s`;
+
+  return (
+    <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground/70">
+      <Loader2 className="h-3 w-3 animate-spin" />
+      <span>Arbeitet weiter … {dauer}</span>
     </div>
   );
 }

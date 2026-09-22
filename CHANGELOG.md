@@ -5,6 +5,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.329.0] - 2026-09-22
+
+### Behoben
+- **Zwischenmeldungen klebten im Chat zu einem Fließtext zusammen.** In der
+  Oberfläche stand: „…Ich check in Intervallen.Beide noch in der
+  Warteschlange…" — kein Leerzeichen, kein Absatz, vier eigenständige
+  Statusmeldungen aus vier Zügen zu einem Block verkettet.
+  - **Ursache:** Durch denselben Kanal kommt zweierlei. Innerhalb *einer*
+    Antwort echte Teilstücke, die zusammengehören; bei einem *neuen* Zug die
+    vollständige neue Äußerung, die nicht an die vorige gehört. Beides sah
+    gleich aus, also hängte die Oberfläche alles aneinander.
+  - Der Absender markiert die Grenze jetzt selbst (`neuer_block`) — nur er kann
+    sie kennen. Bei Codex ist jedes Textstück ohnehin eine fertige Äußerung.
+- **Ein laufender Zug sah aus wie eine fertige Antwort.** Der Hinweis
+  „Arbeitet…" erschien nur, solange noch gar nichts dastand. Sobald die erste
+  Zwischenmeldung kam, verschwand er — wer danach wartete, wusste nicht,
+  worauf. Jetzt läuft darunter eine Zeile mit **Dauer** weiter; erst sie
+  beantwortet, ob seit zehn Sekunden oder seit zehn Minuten gewartet wird.
+- **Frisch verbundene OAuth-Konnektoren meldeten „0 Werkzeuge".** Beim Anlegen
+  gibt es noch kein Token, die Liste bleibt also zwangsläufig leer — und der
+  OAuth-Rückweg fragte sie nie erneut ab. Ein betroffener Server lieferte auf
+  direkte Nachfrage sofort 98 Werkzeuge. Jetzt wird die Liste unmittelbar nach
+  dem Speichern des Tokens geholt; scheitert das, bleibt die Verbindung
+  trotzdem bestehen — das Token ist gültig, nur die Liste fehlt dann.
+
+### Neu
+- **`/diag` beantwortet „laufen meine Werkzeuge?"** — gemessen am laufenden
+  MCP-Prozess statt an der Konfiguration, mit HTTP 500 bei echtem Ausfall.
+  Hintergrund: Ein Agent meldete einen MCP-Ausfall, den es nicht gab; er hatte
+  Konfigurationswarnungen als Ausfall gedeutet, weil er seine eigene
+  Verdrahtung nirgends nachsehen konnte.
+- Eine Wache hält die beiden Listen der eingebauten MCP-Server zusammen. Sie
+  waren schon einmal um vier Server auseinandergelaufen, ohne dass es auffiel.
+
+---
+
 ## [1.328.11] - 2026-09-22
 
 ### Behoben

@@ -1211,5 +1211,36 @@ async def oauth_callback(
 
     apply_token_to_server(server, parsed)
     _mark_health(server, MCP_HEALTH_OK)
+
+    # Werkzeugliste JETZT holen. Beim Anlegen gab es noch kein Token, also kam
+    # dort zwangslaeufig eine leere Liste heraus — und danach fragte niemand
+    # erneut. Ergebnis: Jeder OAuth-geschuetzte Server stand nach dem Verbinden
+    # auf "verbunden, 0 Werkzeuge" und sah kaputt aus, obwohl er lief. Am
+    # 22.09.2026 genau so gemeldet; der betroffene Server lieferte auf Nachfrage
+    # sofort 98 Werkzeuge.
+    #
+    # Ein Fehlschlag hier darf das Verbinden NICHT zuruecknehmen: Das Token ist
+    # gueltig und gespeichert, und "Aktualisieren" bleibt jederzeit moeglich.
+    import logging as _logging
+
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from app.core.log_redaction import scrub_log
+
+    _log = _logging.getLogger(__name__)
+    try:
+        from app.core.encryption import decrypt_token as _dt
+
+        token = _dt(server.auth_token_encrypted) if server.auth_token_encrypted else None
+        extra = json_mod.loads(_dt(server.headers_encrypted)) if server.headers_encrypted else None
+        server.tools = await _discover_tools(
+            server.url, token, extra, allow_private=bool(server.allow_private_host))
+        flag_modified(server, "tools")
+        _log.info("[MCP] %s nach dem Verbinden: %d Werkzeuge",
+                  scrub_log(server.name), len(server.tools or []))
+    except Exception as exc:  # noqa: BLE001 — siehe oben: nur die Liste fehlt dann
+        _log.warning("[MCP] Werkzeugliste fuer %s nach dem Verbinden nicht abrufbar: %s",
+                     scrub_log(server.name), scrub_log(str(exc)))
+
     await db.commit()
     return _integrations_redirect("connected", server=server.name)

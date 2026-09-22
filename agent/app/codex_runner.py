@@ -295,7 +295,12 @@ class CodexAgentRunner:
                 text = _extract_text(event)
                 if text:
                     text_output.append(text)
-                    await _publish(self.log_publisher, stream, target_id, "text", {"text": text})
+                    # Jedes Textstueck von Codex ist eine FERTIGE Aeusserung,
+                    # kein Teilstueck — deshalb immer ein eigener Block. Sonst
+                    # verschmelzen mehrere Zwischenmeldungen in der Oberflaeche
+                    # zu einem Fliesstext ohne Luecke.
+                    await _publish(self.log_publisher, stream, target_id, "text",
+                                   {"text": text, "neuer_block": True})
 
                 tool_call = _extract_tool_call(event)
                 if tool_call:

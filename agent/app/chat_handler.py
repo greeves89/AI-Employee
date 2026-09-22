@@ -345,16 +345,28 @@ class ChatHandler:
                     # Detect new assistant turn: if current text is shorter
                     # than what we've already seen, the content array has reset
                     # (new assistant message after tool use in multi-turn)
+                    neuer_block = False
                     if len(current_full_text) < seen_text_len:
                         seen_text_len = 0
+                        neuer_block = True
 
                     # Only send NEW text (delta since last event)
                     if len(current_full_text) > seen_text_len:
                         new_text = current_full_text[seen_text_len:]
                         full_text += new_text
                         seen_text_len = len(current_full_text)
+                        # ``neuer_block`` trennt EIGENSTAENDIGE Antworten von der
+                        # blossen Fortsetzung derselben. Innerhalb einer Antwort
+                        # kommen echte Teilstuecke, die aneinandergehoeren;
+                        # beginnt aber ein neuer Zug, ist es ein neuer Gedanke.
+                        #
+                        # Ohne diese Unterscheidung klebte die Oberflaeche beides
+                        # zusammen, und aus mehreren Zwischenmeldungen wurde ein
+                        # Fliesstext ohne Luecke: "...in Intervallen.Beide noch in
+                        # der Warteschlange...". Am 22.09.2026 vom Nutzer gemeldet.
                         await self.log_publisher.publish_chat(
-                            message_id, "text", {"text": new_text}
+                            message_id, "text",
+                            {"text": new_text, "neuer_block": neuer_block},
                         )
 
                 elif event_type == "tool_result":
