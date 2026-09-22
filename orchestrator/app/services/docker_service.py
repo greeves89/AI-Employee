@@ -195,7 +195,19 @@ class DockerService:
             # Security hardening
             security_opt=security_opts,
             cap_drop=["ALL"],
-            cap_add=["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER"],
+            # KILL: Die Signalkette hat hier ZWEI Init-Schichten. init=True
+            # oben setzt Dockers eigenes docker-init als PID 1; das ENTRYPOINT
+            # des Images ("tini -- /entrypoint.sh") ist die zweite Schicht
+            # darunter -- daher meldet sich tini im Fehlerfall als PID 7, nicht
+            # als PID 1. Die erste Weitergabe (PID 1 -> tini) ist harmlos, beide
+            # laufen als root. Die ZWEITE ist der Knackpunkt: entrypoint.sh
+            # schliesst mit "exec gosu agent", der Agent laeuft also unter einer
+            # anderen UID. Ein Signal ueber die UID-Grenze verlangt CAP_KILL --
+            # ohne sie scheitert tini mit EPERM ("Unexpected error when
+            # forwarding signal: 'Operation not permitted'"), der Agent sieht
+            # SIGTERM nie, und der Container endet mit Exit 1 statt 143
+            # (Issue #835).
+            cap_add=["CHOWN", "SETUID", "SETGID", "DAC_OVERRIDE", "FOWNER", "KILL"],
             pids_limit=512,
         )
         return container
