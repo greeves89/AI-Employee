@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.328.6] - 2026-09-22
+
+### Behoben
+- Bestehende Installationen bleiben beim Update nicht mehr an der Migration `g5h6i7j8k9l0` hängen: Sie legte die Spalte `mcp_servers.oauth_callback_base_url` hart an, die der Startpfad auf jeder Anlage längst angelegt hatte — `DuplicateColumnError`, und alle nachfolgenden Migrationen blieben liegen, bis der Orchestrator am nächsten fehlenden Modell-Feld gar nicht mehr hochkam. Die Migration ist jetzt idempotent (`ADD COLUMN IF NOT EXISTS`, Konvention seit #689). Frische Installationen waren nie betroffen (Fixes #825).
+- Neue Wache im Test-Set: keine Migration darf per `op.add_column` eine Spalte anlegen, die der Startpfad schon per `ADD COLUMN IF NOT EXISTS` anlegt — die Fehlerklasse ist damit für alle 44 Startpfad-Spalten geschlossen (auch die in Schleifen angelegten Embedding- und Git-Spalten), nicht nur für die eine gemeldete.
+
 ## [1.328.5] - 2026-09-21
 
 ### Behoben
