@@ -5,6 +5,8 @@ import os
 import docker
 from docker.errors import NotFound, APIError
 
+from app.core.log_redaction import scrub_log
+
 logger = logging.getLogger(__name__)
 
 # Load seccomp profile once at import time.  The orchestrator container
@@ -114,6 +116,77 @@ def _directory_entries_for(names) -> list[str]:
             if directory and directory not in seen:
                 seen.append(directory)
     return seen
+
+
+class ZielordnerNichtVorbereitbar(ValueError):
+    """Der Zielordner eines Schreibvorgangs liess sich nicht sicher
+    anlegen/uebergeben — ein Glied der Kette ist ein Symlink oder eine Datei,
+    oder mkdir/chown schlugen fehl. Es wurde NICHTS geschrieben."""
+
+
+_WORKSPACE_ROOT = "/workspace"
+
+
+# Laeuft IM Agenten-Container (python:3.12-slim, python3 ist immer da) als root.
+# Argumente: <wurzel> <uid> <gid> <glied>... — legt die Kette wurzel/glied1/glied2/...
+# an und uebergibt jedes Glied dem Agenten. Jeder Schritt oeffnet das naechste
+# Glied RELATIV zum vorigen Verzeichnis-Deskriptor mit O_NOFOLLOW|O_DIRECTORY und
+# chown't den Deskriptor (fchown): ein Symlink an irgendeiner Stelle der Kette
+# (auch ein spaeter eingetauschter) liefert ELOOP statt einer Eigentumsaenderung
+# ausserhalb der Wurzel. Ein ``chown`` auf Pfade — auch mit ``-h`` — koennte das
+# fuer Zwischenglieder nicht garantieren. Meldungen gehen nach stdout, weil
+# exec_in_container nur stdout zurueckgibt.
+_PREPARE_TARGET_DIR_SCRIPT = """
+import errno, os, stat, sys
+root, uid, gid, *parts = sys.argv[1:]
+uid, gid = int(uid), int(gid)
+# Eigene Wache, unabhaengig vom Aufrufer: ein Glied ist genau EIN Ordnername.
+# "..", "" oder ein Slash wuerden dir_fd aushebeln ("/x" ignoriert dir_fd).
+for part in parts:
+    if part in ("", ".", "..") or "/" in part:
+        print(f"unzulaessiges Kettenglied {part!r} — Upload-Ziel abgelehnt")
+        sys.exit(1)
+flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+try:
+    fd = os.open(root, flags)
+except OSError as e:
+    print(f"Wurzel {root!r} nicht als Verzeichnis zu oeffnen: {e.strerror}")
+    sys.exit(2)
+try:
+    for part in parts:
+        try:
+            os.mkdir(part, 0o755, dir_fd=fd)
+        except FileExistsError:
+            pass
+        except OSError as e:
+            print(f"mkdir {part!r} fehlgeschlagen: {e.strerror}")
+            sys.exit(3)
+        try:
+            nfd = os.open(part, flags, dir_fd=fd)
+        except OSError as e:
+            # Linux meldet fuer einen Symlink bei O_NOFOLLOW|O_DIRECTORY ENOTDIR,
+            # nicht ELOOP — fuer die Meldung nachsehen, was es wirklich ist.
+            try:
+                ist_link = stat.S_ISLNK(os.lstat(part, dir_fd=fd).st_mode)
+            except OSError:
+                ist_link = False
+            if ist_link or e.errno == errno.ELOOP:
+                print(f"{part!r} ist ein Symlink — Upload-Ziel abgelehnt")
+            elif e.errno == errno.ENOTDIR:
+                print(f"{part!r} ist kein Verzeichnis — Upload-Ziel abgelehnt")
+            else:
+                print(f"{part!r} nicht zu oeffnen: {e.strerror}")
+            sys.exit(4)
+        try:
+            os.fchown(nfd, uid, gid)
+        except OSError as e:
+            print(f"chown {part!r} fehlgeschlagen: {e.strerror}")
+            sys.exit(5)
+        os.close(fd)
+        fd = nfd
+finally:
+    os.close(fd)
+"""
 
 
 class DockerService:
@@ -514,6 +587,68 @@ class DockerService:
 
         container.put_archive(dir_path, tar_stream)
 
+    def prepare_target_dir(
+        self, container_id: str, target_dir: str, uid: int = 1000, gid: int = 1000
+    ) -> str:
+        """Die Ordnerkette unterhalb von /workspace symlink-sicher anlegen und
+        dem Agenten uebergeben. Gibt den normalisierten Zielpfad zurueck.
+
+        mkdir laeuft als root, ein frisch angelegtes Ziel gehoerte damit root —
+        der Agent koennte danach keine Datei daneben legen. Deshalb wird jedes
+        Glied angelegt UND uebergeben, in EINEM Schritt im Behaelter, jeweils
+        relativ zum vorigen Verzeichnis-Deskriptor mit O_NOFOLLOW (siehe
+        :data:`_PREPARE_TARGET_DIR_SCRIPT`). Ein Exitcode != 0 bricht ab,
+        BEVOR irgendetwas geschrieben wurde.
+
+        Was das NICHT ist: eine Garantie gegen einen Tausch zwischen dieser
+        Pruefung und dem Schreiben. Die Kette gehoert danach dem Agenten (uid
+        1000), er kann ein Glied in der Zwischenzeit ersetzen. Abgedeckt ist
+        der Zustand VOR dem Schreiben — das ist genau der Weg, ueber den der
+        Zielpfad heute umgelenkt wuerde.
+
+        Braucht einen LAUFENDEN Behaelter (exec). ``put_archive`` allein kaeme
+        auch an einen gestoppten heran; deshalb wird dieser Fall hier in eine
+        verstaendliche Ablehnung uebersetzt statt in einen Docker-Fehler.
+
+        Raises:
+            ValueError: Ziel liegt nicht unterhalb von /workspace.
+            ZielordnerNichtVorbereitbar: Kette nicht sicher herstellbar, oder
+                der Behaelter laeuft nicht.
+        """
+        if "\x00" in target_dir:
+            raise ValueError("Null bytes not allowed in path")
+        safe_dir = os.path.normpath(target_dir)
+        if safe_dir != _WORKSPACE_ROOT and not safe_dir.startswith(_WORKSPACE_ROOT + "/"):
+            # Kein Aufrufer schreibt heute ausserhalb; wer es kuenftig tut,
+            # soll das bewusst entscheiden und nicht hier hineinstolpern.
+            raise ValueError("Write target must be within /workspace")
+
+        parts = [p for p in safe_dir[len(_WORKSPACE_ROOT):].split("/") if p]
+        try:
+            exit_code, output = self.exec_in_container(
+                container_id,
+                ["python3", "-c", _PREPARE_TARGET_DIR_SCRIPT,
+                 _WORKSPACE_ROOT, str(uid), str(gid), *parts],
+                user="root",
+            )
+        except APIError as e:
+            # Haeufigster Fall: der Behaelter laeuft nicht (409). Ohne diese
+            # Uebersetzung meldet der Import-Endpunkt ein nacktes 500.
+            raise ZielordnerNichtVorbereitbar(
+                "Zielordner konnte nicht vorbereitet werden: der Agent-Behaelter "
+                f"antwortet nicht (laeuft er?) — {e}"
+            ) from e
+        if exit_code != 0:
+            grund = (output or "").strip().splitlines()[-1:] or ["unbekannter Fehler"]
+            logger.warning(
+                "[Dateien] Ziel %s nicht vorbereitbar (rc=%s): %s",
+                scrub_log(safe_dir), exit_code, scrub_log(grund[0]),
+            )
+            raise ZielordnerNichtVorbereitbar(
+                f"Zielordner konnte nicht vorbereitet werden: {grund[0]}"
+            )
+        return safe_dir
+
     def write_files_in_container(
         self,
         container_id: str,
@@ -543,9 +678,21 @@ class DockerService:
         written file are touched, never siblings, never ``target_dir`` itself.
         That is what makes a re-import of an app fix a root-owned tree from an
         older import instead of preserving the broken state.
+
+        Der Zielordner wird VORHER symlink-sicher angelegt und dem Agenten
+        uebergeben (:meth:`prepare_target_dir`). Das steht bewusst hier und
+        nicht bei den Aufrufern: ``put_archive`` loest den Zielpfad im
+        Behaelter mit ``filepath.EvalSymlinks`` auf — ausdruecklich
+        einschliesslich des letzten Pfadglieds (moby ``daemon/archive_unix.go``:
+        "so that you can extract an archive to a symlink that points to a
+        directory"). Ein vom Agenten eingetauschter Symlink lenkt den
+        Schreibvorgang also wirklich um. Den Schutz bei jedem Aufrufer einzeln
+        zu wiederholen hat zweimal nicht getragen (#821, #840).
         """
         import io
         import tarfile
+
+        safe_dir = self.prepare_target_dir(container_id, target_dir, uid, gid)
 
         container = self.client.containers.get(container_id)
 
@@ -566,7 +713,7 @@ class DockerService:
                 tar.addfile(info, io.BytesIO(data))
         tar_stream.seek(0)
 
-        container.put_archive(target_dir, tar_stream)
+        container.put_archive(safe_dir, tar_stream)
 
     def get_file_from_container(self, container_id: str, path: str) -> bytes:
         import io

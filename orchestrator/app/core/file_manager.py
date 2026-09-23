@@ -4,7 +4,12 @@ import shlex
 from dataclasses import dataclass, field
 
 from app.core.log_redaction import scrub_log
-from app.services.docker_service import DockerService
+from app.services.docker_service import (
+    _PREPARE_TARGET_DIR_SCRIPT,  # noqa: F401  — Re-Export, Tests aus #821 haengen daran
+    _WORKSPACE_ROOT,
+    DockerService,
+    ZielordnerNichtVorbereitbar,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +27,6 @@ BLOCKED_EXTENSIONS = {
 }
 
 
-_WORKSPACE_ROOT = "/workspace"
 
 
 def _validate_path(path: str) -> str:
@@ -231,72 +235,10 @@ class ExportZuGross(ValueError):
     """Der Ordner passt nicht in einen Export — mit Zahlen zum Anzeigen."""
 
 
-class UploadZielNichtVorbereitbar(ValueError):
-    """Der Zielordner eines Uploads liess sich nicht sicher anlegen/uebergeben —
-    ein Glied der Kette ist ein Symlink oder eine Datei, oder mkdir/chown
-    schlugen fehl. Es wurde NICHTS geschrieben."""
-
-
-# Laeuft IM Agenten-Container (python:3.12-slim, python3 ist immer da) als root.
-# Argumente: <wurzel> <uid> <gid> <glied>... — legt die Kette wurzel/glied1/glied2/...
-# an und uebergibt jedes Glied dem Agenten. Jeder Schritt oeffnet das naechste
-# Glied RELATIV zum vorigen Verzeichnis-Deskriptor mit O_NOFOLLOW|O_DIRECTORY und
-# chown't den Deskriptor (fchown): ein Symlink an irgendeiner Stelle der Kette
-# (auch ein spaeter eingetauschter) liefert ELOOP statt einer Eigentumsaenderung
-# ausserhalb der Wurzel. Ein ``chown`` auf Pfade — auch mit ``-h`` — koennte das
-# fuer Zwischenglieder nicht garantieren. Meldungen gehen nach stdout, weil
-# exec_in_container nur stdout zurueckgibt.
-_PREPARE_TARGET_DIR_SCRIPT = """
-import errno, os, stat, sys
-root, uid, gid, *parts = sys.argv[1:]
-uid, gid = int(uid), int(gid)
-# Eigene Wache, unabhaengig vom Aufrufer: ein Glied ist genau EIN Ordnername.
-# "..", "" oder ein Slash wuerden dir_fd aushebeln ("/x" ignoriert dir_fd).
-for part in parts:
-    if part in ("", ".", "..") or "/" in part:
-        print(f"unzulaessiges Kettenglied {part!r} — Upload-Ziel abgelehnt")
-        sys.exit(1)
-flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-try:
-    fd = os.open(root, flags)
-except OSError as e:
-    print(f"Wurzel {root!r} nicht als Verzeichnis zu oeffnen: {e.strerror}")
-    sys.exit(2)
-try:
-    for part in parts:
-        try:
-            os.mkdir(part, 0o755, dir_fd=fd)
-        except FileExistsError:
-            pass
-        except OSError as e:
-            print(f"mkdir {part!r} fehlgeschlagen: {e.strerror}")
-            sys.exit(3)
-        try:
-            nfd = os.open(part, flags, dir_fd=fd)
-        except OSError as e:
-            # Linux meldet fuer einen Symlink bei O_NOFOLLOW|O_DIRECTORY ENOTDIR,
-            # nicht ELOOP — fuer die Meldung nachsehen, was es wirklich ist.
-            try:
-                ist_link = stat.S_ISLNK(os.lstat(part, dir_fd=fd).st_mode)
-            except OSError:
-                ist_link = False
-            if ist_link or e.errno == errno.ELOOP:
-                print(f"{part!r} ist ein Symlink — Upload-Ziel abgelehnt")
-            elif e.errno == errno.ENOTDIR:
-                print(f"{part!r} ist kein Verzeichnis — Upload-Ziel abgelehnt")
-            else:
-                print(f"{part!r} nicht zu oeffnen: {e.strerror}")
-            sys.exit(4)
-        try:
-            os.fchown(nfd, uid, gid)
-        except OSError as e:
-            print(f"chown {part!r} fehlgeschlagen: {e.strerror}")
-            sys.exit(5)
-        os.close(fd)
-        fd = nfd
-finally:
-    os.close(fd)
-"""
+#: Der Zielordner eines Uploads liess sich nicht sicher anlegen/uebergeben.
+#: Liegt jetzt beim Schreib-Helfer selbst (#840) — der Name bleibt, weil der
+#: Endpunkt ihn als Eingabefehler (HTTP 400) fuehrt.
+UploadZielNichtVorbereitbar = ZielordnerNichtVorbereitbar
 
 
 class FileManager:
@@ -599,6 +541,9 @@ class FileManager:
         # Datei-Upload. Verschachtelte Pfade sind hier erlaubt: die Sperre
         # dagegen sitzt in upload_files (_validate_filename), nicht im
         # Schreib-Helfer, und wir haben oben selbst geprueft.
+        # Die Zielkette selbst prueft der Schreib-Helfer (#840): ``ziel``
+        # kommt aus _validate_path und ist damit nur als Zeichenkette sicher —
+        # ein Symlink an dieser Stelle lenkte den Schreibvorgang sonst um.
         self.docker.write_files_in_container(container_id, ziel, dateien)
 
         logger.info(
@@ -644,29 +589,10 @@ class FileManager:
             )
 
         safe_path = _validate_path(target_path)
-        # mkdir runs as root, so a freshly created target (and any parent it had
-        # to create) belongs to root — the agent could not add files there
-        # afterwards. Create the chain below /workspace and hand every link of it
-        # to the agent in ONE in-container step (non-recursive, so an existing
-        # project tree is not walked). _validate_path only checks the string;
-        # the script refuses symlinks and files along the chain (see there) and
-        # a non-zero exit aborts BEFORE anything is written.
-        parts = [p for p in safe_path[len(_WORKSPACE_ROOT):].split("/") if p]
-        exit_code, output = self.docker.exec_in_container(
-            container_id,
-            ["python3", "-c", _PREPARE_TARGET_DIR_SCRIPT, _WORKSPACE_ROOT, "1000", "1000", *parts],
-            user="root",
-        )
-        if exit_code != 0:
-            grund = (output or "").strip().splitlines()[-1:] or ["unbekannter Fehler"]
-            logger.warning(
-                "[Dateien] Upload-Ziel %s nicht vorbereitbar (rc=%s): %s",
-                scrub_log(safe_path), exit_code, grund[0],
-            )
-            raise UploadZielNichtVorbereitbar(
-                f"Zielordner konnte nicht vorbereitet werden: {grund[0]}"
-            )
-
+        # Der Zielordner wird vom Schreib-Helfer selbst symlink-sicher angelegt
+        # und dem Agenten uebergeben (#840): _validate_path prueft nur die
+        # Zeichenkette, nicht, was im Behaelter unter dem Pfad liegt. Ein
+        # fehlgeschlagener Versuch bricht dort ab, BEVOR etwas geschrieben wird.
         self.docker.write_files_in_container(container_id, safe_path, files)
         logger.info(f"Uploaded {len(files)} files ({total_size} bytes) to {scrub_log(target_path)}")
         return len(files)
