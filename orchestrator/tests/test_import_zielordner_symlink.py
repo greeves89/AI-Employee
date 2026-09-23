@@ -194,12 +194,17 @@ class JederSchreibwegGehtDurchDieVorbereitungTests(unittest.TestCase):
         self.assertIn("laeuft er?", str(ctx.exception))
         self.assertEqual(container.archives, [])
 
-    def _reihenfolge_prepare_vor_put_archive(self, funktion):
+    def _reihenfolge_prepare_vor_put_archive(self, funktion_oder_knoten):
         """Reihenfolge ist die ganze Schutzwirkung: erst pruefen, dann
         schreiben. Ein Formtest, weil ein Verhaltenstest bei rc=0 beide
-        Reihenfolgen gleich gruen sieht."""
-        quelle = inspect.getsource(funktion)
-        baum = ast.parse(ast.unparse(ast.parse(quelle.strip())))
+        Reihenfolgen gleich gruen sieht. Nimmt entweder eine Funktion (per
+        inspect.getsource) oder einen bereits geparsten ast.FunctionDef-Knoten
+        (fuer den Sammel-Scan ueber alle Traeger)."""
+        if isinstance(funktion_oder_knoten, ast.AST):
+            baum = funktion_oder_knoten
+        else:
+            quelle = inspect.getsource(funktion_oder_knoten)
+            baum = ast.parse(ast.unparse(ast.parse(quelle.strip())))
         namen = []
         for knoten in ast.walk(baum):
             if isinstance(knoten, ast.Call) and isinstance(knoten.func, ast.Attribute):
@@ -227,14 +232,18 @@ class JederSchreibwegGehtDurchDieVorbereitungTests(unittest.TestCase):
         """Wer put_archive direkt ruft, MUSS im selben Funktionskoerper zuerst
         prepare_target_dir rufen — sonst umgeht er die Vorbereitung.
 
-        Seit #841 gilt das fuer BEIDE bekannten Traeger (Einzahl und Mehrzahl).
-        Ein neuer, dritter Aufrufer von put_archive faellt hier durch, wenn er
-        die Vorbereitung vergisst — das ist die eigentliche Lehre aus #840/#841:
-        nicht den gemeldeten Aufrufer flicken, sondern die Stelle vermessen,
-        an der geschrieben wird."""
+        Seit #841 gilt das fuer BEIDE bekannten Traeger (Einzahl und Mehrzahl),
+        und die Reihenfolge-Pruefung (erst pruefen, dann schreiben) laeuft
+        automatisch ueber JEDEN gefundenen Traeger — nicht nur ueber die zwei
+        bekannten Namen. Ein neuer, dritter Aufrufer von put_archive faellt
+        hier durch, wenn er die Vorbereitung vergisst ODER sie nach dem
+        Schreiben statt davor ruft — das ist die eigentliche Lehre aus
+        #840/#841: nicht den gemeldeten Aufrufer flicken, sondern die Stelle
+        vermessen, an der geschrieben wird."""
         quelle = inspect.getsource(ds_modul)
         baum = ast.parse(quelle)
         traeger_ohne_vorbereitung = []
+        falsche_reihenfolge = []
         alle_traeger = set()
         for knoten in ast.walk(baum):
             if not isinstance(knoten, ast.FunctionDef):
@@ -247,12 +256,18 @@ class JederSchreibwegGehtDurchDieVorbereitungTests(unittest.TestCase):
                         ruft_put_archive = True
                     elif unter.func.attr == "prepare_target_dir":
                         ruft_prepare = True
-            if ruft_put_archive:
-                alle_traeger.add(knoten.name)
-                if not ruft_prepare:
-                    traeger_ohne_vorbereitung.append(knoten.name)
+            if not ruft_put_archive:
+                continue
+            alle_traeger.add(knoten.name)
+            if not ruft_prepare:
+                traeger_ohne_vorbereitung.append(knoten.name)
+                continue
+            reihenfolge = self._reihenfolge_prepare_vor_put_archive(knoten)
+            if reihenfolge != ["prepare_target_dir", "put_archive"]:
+                falsche_reihenfolge.append(knoten.name)
         self.assertEqual(alle_traeger, {"write_file_in_container", "write_files_in_container"})
         self.assertEqual(traeger_ohne_vorbereitung, [])
+        self.assertEqual(falsche_reihenfolge, [])
 
 
 class SkriptLehntSymlinkWirklichAbTests(unittest.TestCase):
