@@ -33,8 +33,11 @@ _CLAUDE_MODELS: dict[str, list[dict]] = {
     # Rateversuch. Erfordert CLI >= 2.1.270 (siehe agent/Dockerfile; aeltere CLIs
     # kennen die Namen schlicht nicht, das war lange der eigentliche Grund, warum
     # hier "nichts Neues" auftauchte).
+    # "claude-opus-5-5" live-verifiziert (23.09.2026) auf demselben Weg: Antwort
+    # trug "modelUsage":{"claude-opus-5-5":...}, CLI 2.1.280, Abo-Anmeldung.
     "anthropic": [
-        {"value": "claude-opus-5", "label": "Opus 5 (Latest)", "tier": "Most Powerful"},
+        {"value": "claude-opus-5-5", "label": "Opus 5.5 (Latest)", "tier": "Most Powerful"},
+        {"value": "claude-opus-5", "label": "Opus 5", "tier": "Most Powerful"},
         {"value": "claude-sonnet-5", "label": "Sonnet 5", "tier": "Balanced"},
         {"value": "claude-haiku-4-5", "label": "Haiku 4.5", "tier": "Fast"},
         {"value": "claude-opus-4-8", "label": "Opus 4.8", "tier": "Legacy"},
