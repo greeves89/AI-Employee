@@ -605,8 +605,8 @@ async def assign_skill(
     )).scalar_one_or_none()
     if existing:
         # Still push files in case they changed since last assignment
-        await _push_skill_files_to_agent(request, db, skill_id, skill.name, body.agent_id)
-        return {"status": "already_assigned"}
+        pushed = await _push_skill_files_to_agent(request, db, skill_id, skill.name, body.agent_id)
+        return {"status": "already_assigned", "files_pushed": pushed}
 
     assignment = AgentSkillAssignment(
         agent_id=body.agent_id,
@@ -616,21 +616,26 @@ async def assign_skill(
     db.add(assignment)
     await db.commit()
 
-    await _push_skill_files_to_agent(request, db, skill_id, skill.name, body.agent_id)
-    return {"status": "assigned", "agent_id": body.agent_id, "skill_id": skill_id}
+    pushed = await _push_skill_files_to_agent(request, db, skill_id, skill.name, body.agent_id)
+    return {"status": "assigned", "agent_id": body.agent_id, "skill_id": skill_id, "files_pushed": pushed}
 
 
-async def _push_skill_files_to_agent(request, db: AsyncSession, skill_id: int, skill_name: str, agent_id: str) -> None:
-    """Push all skill file attachments into the agent's container workspace."""
+async def _push_skill_files_to_agent(request, db: AsyncSession, skill_id: int, skill_name: str, agent_id: str) -> bool:
+    """Push all skill file attachments into the agent's container workspace.
+
+    Returns whether the push actually reached the container. Ein abgelehntes
+    Ziel (z.B. Symlink-Vorbereitung schlaegt fehl) wurde bisher nur geloggt —
+    der Aufrufer bekam trotzdem "assigned"/"installed" zurueck und hielt die
+    Zuweisung faelschlich fuer vollstaendig (#841, Nebenbefund)."""
     files = get_all_files_for_agent(skill_id)
     if not files:
-        return
+        return True
     try:
         from app.models.agent import Agent
         from app.dependencies import get_docker_service
         agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
         if not agent or not agent.container_id:
-            return
+            return False
         docker = get_docker_service(request)
         target_dir = f"/workspace/skills/{skill_name}"
         docker.write_files_in_container(agent.container_id, target_dir, files)
@@ -638,9 +643,11 @@ async def _push_skill_files_to_agent(request, db: AsyncSession, skill_id: int, s
         logging.getLogger(__name__).info(
             f"Pushed {len(files)} file(s) for skill '{scrub_log(skill_name)}' to agent {scrub_log(agent_id)}"
         )
+        return True
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Could not push skill files to agent {scrub_log(agent_id)}: {e}")
+        return False
 
 
 @router.delete("/marketplace/{skill_id}/unassign/{agent_id}")
@@ -684,6 +691,7 @@ async def agent_install_skill(
         )
     )).scalar_one_or_none()
 
+    files_pushed = True
     if not existing:
         db.add(AgentSkillAssignment(
             skill_id=skill_id,
@@ -691,7 +699,7 @@ async def agent_install_skill(
             assigned_by=f"agent:{agent_id}",
         ))
         await db.commit()
-        await _push_skill_files_to_agent(request, db, skill_id, skill.name, agent_id)
+        files_pushed = await _push_skill_files_to_agent(request, db, skill_id, skill.name, agent_id)
 
     # Track install as a usage event so analytics reflects actual use in the current task
     from app.models.task import Task, TaskStatus as TS
@@ -723,6 +731,7 @@ async def agent_install_skill(
         "skill_id": skill_id,
         "skill_name": skill.name,
         "content": skill.content,
+        "files_pushed": files_pushed,
     }
 
 

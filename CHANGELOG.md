@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.331.5] - 2026-09-23
+
+### Behoben
+- **Die einzelne Datei einer Agenten-Instruktion, einer Knowledge-Datei oder
+  eines Skills konnte beim Schreiben denselben Zielordner-Trick nutzen wie
+  zuletzt der Ordner-Import (#840): ein zuvor vom Agenten durch eine
+  Verknuepfung ersetzter Ordner wurde nicht erkannt.** Der Schreib-Helfer
+  fuer einzelne Dateien bereitet den Zielordner jetzt genauso ab wie der
+  Helfer fuer mehrere Dateien — geprueft BEVOR geschrieben wird, kein
+  Aufrufer kann es mehr uebersehen.
+  - Zwei Stellen schreiben bewusst ausserhalb des Arbeitsbereichs
+    (Sudoers-Berechtigung, geteilte Team-Registrierung) und geben dafuer
+    jetzt ausdruecklich ihr eigenes Ziel und ihre Berechtigungen mit, statt
+    stillschweigend eine Ausnahme zu sein.
+  - Nebenbefund mitbehoben: schlug das Uebertragen der Dateien eines
+    zugewiesenen Skills fehl, meldete die Zuweisung trotzdem Erfolg. Die
+    Antwort zeigt das jetzt an.
+
 ## [1.331.4] - 2026-09-23
 
 ### Behoben

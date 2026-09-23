@@ -141,6 +141,30 @@ class JederSchreibwegGehtDurchDieVorbereitungTests(unittest.TestCase):
             svc.write_files_in_container("c1", "/workspace/link", [("a.txt", b"a")])
         self.assertEqual(container.archives, [])
 
+    def test_einzahl_helfer_ist_seit_841_ebenfalls_geschuetzt(self):
+        """Issue #841: write_file_in_container (Einzahl) ging denselben
+        Weg an put_archive vorbei an der Vorbereitung vorbei — hier der
+        gemeldete Fall, durch den echten Schreibweg gefahren."""
+        svc, container = _service(*SYMLINK_ABLEHNUNG)
+        with self.assertRaises(ZielordnerNichtVorbereitbar):
+            svc.write_file_in_container("c1", "/workspace/link/knowledge.md", "x")
+        self.assertEqual(container.archives, [])
+
+    def test_einzahl_helfer_lehnt_ziel_ausserhalb_der_wurzel_ab(self):
+        svc, container = _service()
+        with self.assertRaises(ValueError):
+            svc.write_file_in_container("c1", "/etc/passwd", "x")
+        self.assertEqual(container.archives, [])
+        self.assertFalse(svc.exec_in_container.called)
+
+    def test_einzahl_helfer_akzeptiert_bewusst_erklaerte_fremde_wurzel(self):
+        svc, container = _service()
+        svc.write_file_in_container("c1", "/etc/sudoers.d/x", "x", uid=0, gid=0, root="/etc")
+
+        cmd = svc.exec_in_container.call_args.args[1]
+        self.assertEqual(cmd[3:], ["/etc", "0", "0", "sudoers.d"])
+        self.assertEqual(len(container.archives), 1)
+
     def test_skill_zuweisung_ist_jetzt_ebenfalls_geschuetzt(self):
         """Dritter Aufrufer (`_push_skill_files_to_agent`, Ziel
         /workspace/skills/<name>) — im Issue nicht genannt, gleiche Klasse."""
@@ -170,11 +194,11 @@ class JederSchreibwegGehtDurchDieVorbereitungTests(unittest.TestCase):
         self.assertIn("laeuft er?", str(ctx.exception))
         self.assertEqual(container.archives, [])
 
-    def test_vorbereitung_laeuft_VOR_dem_schreiben(self):
+    def _reihenfolge_prepare_vor_put_archive(self, funktion):
         """Reihenfolge ist die ganze Schutzwirkung: erst pruefen, dann
         schreiben. Ein Formtest, weil ein Verhaltenstest bei rc=0 beide
         Reihenfolgen gleich gruen sieht."""
-        quelle = inspect.getsource(DockerService.write_files_in_container)
+        quelle = inspect.getsource(funktion)
         baum = ast.parse(ast.unparse(ast.parse(quelle.strip())))
         namen = []
         for knoten in ast.walk(baum):
@@ -182,30 +206,53 @@ class JederSchreibwegGehtDurchDieVorbereitungTests(unittest.TestCase):
                 if knoten.func.attr in ("prepare_target_dir", "put_archive"):
                     namen.append((knoten.lineno, knoten.func.attr))
         namen.sort()
-        self.assertEqual([n for _, n in namen], ["prepare_target_dir", "put_archive"])
+        return [n for _, n in namen]
+
+    def test_vorbereitung_laeuft_VOR_dem_schreiben(self):
+        self.assertEqual(
+            self._reihenfolge_prepare_vor_put_archive(DockerService.write_files_in_container),
+            ["prepare_target_dir", "put_archive"],
+        )
+
+    def test_vorbereitung_laeuft_VOR_dem_schreiben_auch_im_einzahl_helfer(self):
+        """Issue #841: derselbe Reihenfolge-Beweis fuer write_file_in_container
+        (Einzahl) — sonst waere die Vorbereitung nur Zierde, wenn sie NACH
+        dem Schreiben liefe."""
+        self.assertEqual(
+            self._reihenfolge_prepare_vor_put_archive(DockerService.write_file_in_container),
+            ["prepare_target_dir", "put_archive"],
+        )
 
     def test_kein_aufrufer_umgeht_den_schreib_helfer(self):
-        """Wer put_archive direkt ruft, umgeht die Vorbereitung.
+        """Wer put_archive direkt ruft, MUSS im selben Funktionskoerper zuerst
+        prepare_target_dir rufen — sonst umgeht er die Vorbereitung.
 
-        ``write_file_in_container`` (EINZAHL) steht hier auf der Liste, OHNE
-        die Vorbereitung zu haben — das ist eine bekannte offene Stelle
-        derselben Klasse, nicht ein Freibrief: siehe Issue #841. Sie wurde
-        hier bewusst nicht mitgefixt, weil zwei ihrer Aufrufer legitim
-        ausserhalb von /workspace schreiben und der Helfer keine Ordner
-        anlegt. Faellt dieser Test, weil ein NEUER Name dazukommt, ist das
-        ein echter Befund."""
+        Seit #841 gilt das fuer BEIDE bekannten Traeger (Einzahl und Mehrzahl).
+        Ein neuer, dritter Aufrufer von put_archive faellt hier durch, wenn er
+        die Vorbereitung vergisst — das ist die eigentliche Lehre aus #840/#841:
+        nicht den gemeldeten Aufrufer flicken, sondern die Stelle vermessen,
+        an der geschrieben wird."""
         quelle = inspect.getsource(ds_modul)
         baum = ast.parse(quelle)
-        traeger = set()
+        traeger_ohne_vorbereitung = []
+        alle_traeger = set()
         for knoten in ast.walk(baum):
             if not isinstance(knoten, ast.FunctionDef):
                 continue
+            ruft_put_archive = False
+            ruft_prepare = False
             for unter in ast.walk(knoten):
-                if (isinstance(unter, ast.Call)
-                        and isinstance(unter.func, ast.Attribute)
-                        and unter.func.attr == "put_archive"):
-                    traeger.add(knoten.name)
-        self.assertEqual(traeger, {"write_file_in_container", "write_files_in_container"})
+                if isinstance(unter, ast.Call) and isinstance(unter.func, ast.Attribute):
+                    if unter.func.attr == "put_archive":
+                        ruft_put_archive = True
+                    elif unter.func.attr == "prepare_target_dir":
+                        ruft_prepare = True
+            if ruft_put_archive:
+                alle_traeger.add(knoten.name)
+                if not ruft_prepare:
+                    traeger_ohne_vorbereitung.append(knoten.name)
+        self.assertEqual(alle_traeger, {"write_file_in_container", "write_files_in_container"})
+        self.assertEqual(traeger_ohne_vorbereitung, [])
 
 
 class SkriptLehntSymlinkWirklichAbTests(unittest.TestCase):
