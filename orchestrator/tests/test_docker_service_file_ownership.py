@@ -10,10 +10,18 @@ from app.services.docker_service import DockerService
 class _FakeContainer:
     def __init__(self):
         self.archives = []  # list of (dir_path, tar_bytes)
+        self.execs = []
 
     def put_archive(self, dir_path, tar_stream):
         self.archives.append((dir_path, tar_stream.read()))
         return True
+
+    def exec_run(self, _cmd, **_kwargs):
+        # write_files_in_container bereitet den Zielordner seit #840 selbst vor
+        # (ein exec im Behaelter). Hier soll er gelingen — dass er ueberhaupt
+        # laeuft und was er ablehnt, prueft test_import_zielordner_symlink.py.
+        self.execs.append(_cmd)
+        return 0, (b"", b"")
 
 
 class _FakeClient:
@@ -128,7 +136,9 @@ def test_flat_names_add_no_directory_entries():
 
 def test_directory_entries_honour_the_ownership_override():
     svc, container = _service_with_fake_container()
-    svc.write_files_in_container("cid", "/etc", [("d/f", b"x")], uid=0, gid=0)
+    # Ziel bewusst unter /workspace: der Schreib-Helfer nimmt seit #840 nichts
+    # anderes mehr an. Geprueft wird hier die uid/gid-Durchreichung.
+    svc.write_files_in_container("cid", "/workspace/x", [("d/f", b"x")], uid=0, gid=0)
 
     (_dir, tar_bytes) = container.archives[0]
     d = next(m for m in _members(tar_bytes) if m.isdir())

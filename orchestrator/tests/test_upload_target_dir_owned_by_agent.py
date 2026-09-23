@@ -20,7 +20,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from app.core.file_manager import (
@@ -28,14 +27,7 @@ from app.core.file_manager import (
     FileManager,
     UploadZielNichtVorbereitbar,
 )
-
-
-def _manager(rc=0, out=""):
-    docker = SimpleNamespace(
-        exec_in_container=MagicMock(return_value=(rc, out)),
-        write_files_in_container=MagicMock(),
-    )
-    return FileManager(docker), docker
+from app.services.docker_service import DockerService
 
 
 def _run_script(root, *parts):
@@ -137,58 +129,118 @@ class PrepareScriptStaysInsideTheRootTests(unittest.TestCase):
         self.assertFalse(aufrufe & {"chown", "lchown", "makedirs", "chmod"}, aufrufe)
 
 
-class UploadHandsTheTargetToTheAgentTests(unittest.IsolatedAsyncioTestCase):
-    async def test_one_root_exec_prepares_the_chain_then_files_are_written(self):
-        mgr, docker = _manager()
-        await mgr.upload_files("c1", "/workspace/projects/app", [("a.txt", b"a")])
+class _FakeContainer:
+    def __init__(self):
+        self.archives = []
 
-        self.assertEqual(docker.exec_in_container.call_count, 1)
-        call = docker.exec_in_container.call_args
+    def put_archive(self, dir_path, tar_stream):
+        self.archives.append((dir_path, tar_stream.read()))
+        return True
+
+
+class _FakeClient:
+    def __init__(self, container):
+        self._container = container
+
+    class _Containers:
+        def __init__(self, container):
+            self._container = container
+
+        def get(self, _container_id):
+            return self._container
+
+    @property
+    def containers(self):
+        return self._Containers(self._container)
+
+
+def _service(rc=0, out=""):
+    """Echter DockerService mit gefaelschtem Client — der Schutz sitzt seit
+    #840 im Schreib-Helfer, nicht mehr im FileManager. Ein Mock des
+    DockerService wuerde ihn also gar nicht mehr ausfuehren."""
+    container = _FakeContainer()
+    svc = DockerService.__new__(DockerService)  # __init__ braucht einen Daemon
+    svc.client = _FakeClient(container)
+    svc.exec_in_container = MagicMock(return_value=(rc, out))
+    return svc, container
+
+
+class WriteHandsTheTargetToTheAgentTests(unittest.TestCase):
+    """Dieselben Zusagen wie vor #840, nur an der Stelle gemessen, an der die
+    Vorbereitung jetzt sitzt — damit sie fuer JEDEN Aufrufer gelten."""
+
+    def test_one_root_exec_prepares_the_chain_then_files_are_written(self):
+        svc, container = _service()
+        svc.write_files_in_container("c1", "/workspace/projects/app", [("a.txt", b"a")])
+
+        self.assertEqual(svc.exec_in_container.call_count, 1)
+        call = svc.exec_in_container.call_args
         cmd = call.args[1]
         self.assertEqual(cmd[:2], ["python3", "-c"])
         self.assertEqual(cmd[2], _PREPARE_TARGET_DIR_SCRIPT)
         self.assertEqual(cmd[3:], ["/workspace", "1000", "1000", "projects", "app"])
         self.assertEqual(call.kwargs.get("user"), "root")
-        docker.write_files_in_container.assert_called_once_with(
-            "c1", "/workspace/projects/app", [("a.txt", b"a")]
-        )
+        self.assertEqual(len(container.archives), 1)
+        self.assertEqual(container.archives[0][0], "/workspace/projects/app")
 
-    async def test_chain_links_come_from_the_normalised_path(self):
-        """Das Skript bekommt die Glieder aus safe_path (normpath), nicht aus
-        dem Rohpfad: '/workspace/../workspace/x' darf nur ['x'] ergeben."""
-        mgr, docker = _manager()
-        await mgr.upload_files("c1", "/workspace/../workspace//x/./y/", [("a.txt", b"a")])
+    def test_chain_links_come_from_the_normalised_path(self):
+        """'/workspace/../workspace/x' darf nur ['x'] ergeben — und auch
+        geschrieben wird in den normalisierten Pfad, nicht in den Rohpfad."""
+        svc, container = _service()
+        svc.write_files_in_container("c1", "/workspace/../workspace//x/./y/", [("a.txt", b"a")])
 
-        cmd = docker.exec_in_container.call_args.args[1]
+        cmd = svc.exec_in_container.call_args.args[1]
         self.assertEqual(cmd[3:], ["/workspace", "1000", "1000", "x", "y"])
-        docker.write_files_in_container.assert_called_once_with(
-            "c1", "/workspace/x/y", [("a.txt", b"a")]
-        )
+        self.assertEqual(container.archives[0][0], "/workspace/x/y")
 
-    async def test_uploading_into_workspace_root_passes_no_chain_link(self):
+    def test_writing_into_workspace_root_passes_no_chain_link(self):
         """/workspace gehoert dem Agenten schon; die Kette ist leer, das Skript
         oeffnet nur die Wurzel und uebergibt nichts."""
-        mgr, docker = _manager()
-        await mgr.upload_files("c1", "/workspace", [("a.txt", b"a")])
+        svc, _ = _service()
+        svc.write_files_in_container("c1", "/workspace", [("a.txt", b"a")])
 
-        cmd = docker.exec_in_container.call_args.args[1]
+        cmd = svc.exec_in_container.call_args.args[1]
         self.assertEqual(cmd[3:], ["/workspace", "1000", "1000"])
 
-    async def test_failed_preparation_aborts_before_anything_is_written(self):
+    def test_failed_preparation_aborts_before_anything_is_written(self):
         """Ein fehlgeschlagenes mkdir/chown (rc != 0) darf nicht als
-        erfolgreicher Upload durchgehen: vorher war genau das der Zustand, den
-        der Fix beheben soll — Dateien in einem root-eigenen Ordner."""
-        mgr, docker = _manager(rc=5, out="chown 'app' fehlgeschlagen: Operation not permitted\n")
+        erfolgreicher Schreibvorgang durchgehen."""
+        svc, container = _service(rc=5, out="chown 'app' fehlgeschlagen: Operation not permitted\n")
         with self.assertRaises(UploadZielNichtVorbereitbar) as ctx:
-            await mgr.upload_files("c1", "/workspace/projects/app", [("a.txt", b"a")])
+            svc.write_files_in_container("c1", "/workspace/projects/app", [("a.txt", b"a")])
 
         self.assertIn("Operation not permitted", str(ctx.exception))
-        self.assertFalse(docker.write_files_in_container.called)
+        self.assertEqual(container.archives, [])
 
-    async def test_symlink_refusal_is_a_400_class_error_with_the_reason(self):
-        mgr, docker = _manager(rc=4, out="'link' ist ein Symlink — Upload-Ziel abgelehnt\n")
+    def test_symlink_refusal_is_a_400_class_error_with_the_reason(self):
+        svc, container = _service(rc=4, out="'link' ist ein Symlink — Upload-Ziel abgelehnt\n")
         with self.assertRaises(ValueError) as ctx:  # -> HTTP 400 im Endpunkt
-            await mgr.upload_files("c1", "/workspace/link", [("a.txt", b"a")])
+            svc.write_files_in_container("c1", "/workspace/link", [("a.txt", b"a")])
 
         self.assertIn("Symlink", str(ctx.exception))
-        self.assertFalse(docker.write_files_in_container.called)
+        self.assertEqual(container.archives, [])
+
+
+class UploadReachesTheProtectedWriterTests(unittest.IsolatedAsyncioTestCase):
+    """upload_files selbst bereitet nicht mehr vor — es muss den geschuetzten
+    Schreib-Helfer mit dem normalisierten Pfad erreichen."""
+
+    async def test_upload_writes_through_the_protected_helper(self):
+        svc, container = _service()
+        mgr = FileManager(svc)
+        await mgr.upload_files("c1", "/workspace/../workspace//projects/./app/", [("a.txt", b"a")])
+
+        self.assertEqual(container.archives[0][0], "/workspace/projects/app")
+        cmd = svc.exec_in_container.call_args.args[1]
+        self.assertEqual(cmd[3:], ["/workspace", "1000", "1000", "projects", "app"])
+
+    async def test_refused_target_stops_the_upload(self):
+        svc, container = _service(rc=4, out="'link' ist ein Symlink — Upload-Ziel abgelehnt\n")
+        mgr = FileManager(svc)
+        with self.assertRaises(UploadZielNichtVorbereitbar):
+            await mgr.upload_files("c1", "/workspace/link", [("a.txt", b"a")])
+        self.assertEqual(container.archives, [])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.331.4] - 2026-09-23
+
+### Behoben
+- **Ein importiertes App-Paket konnte an einem Ordner vorbeigeschrieben
+  werden, den der Agent zuvor durch eine Verknuepfung ersetzt hatte.** Beim
+  Hochladen einzelner Dateien war das bereits abgesichert, beim Import eines
+  ganzen Ordners als ZIP nicht — und bei der Zuweisung eines Skills an einen
+  Agenten ebenfalls nicht. Wer ein Paket in einen solchen Zielordner
+  importierte, schrieb damit unbemerkt ausserhalb des Arbeitsbereichs.
+  Der Import bricht jetzt mit einer verstaendlichen Meldung ab, BEVOR etwas
+  geschrieben wird.
+  - Die Absicherung sitzt jetzt an der Stelle, an der tatsaechlich
+    geschrieben wird, und nicht mehr bei den einzelnen Aufrufern. Der Grund
+    ist der Verlauf selbst: dieselbe Absicherung wurde bei zwei Gelegenheiten
+    von insgesamt zwei Aufrufern vergessen. Ein neuer Aufrufer kann sie jetzt
+    nicht mehr uebersehen; ein Test achtet zusaetzlich darauf.
+  - Spuerbare Nebenwirkung: ein Ordner-Import und eine Skill-Zuweisung
+    brauchen jetzt einen LAUFENDEN Agenten. Ist er angehalten, sagt die
+    Meldung das jetzt, statt einen unklaren Fehler zu zeigen.
+  - Noch offen und getrennt erfasst: derselbe Schutz fehlt beim Schreiben
+    EINZELNER Dateien in einen Agenten (#841).
+
 ## [1.331.3] - 2026-09-22
 
 ### Behoben
