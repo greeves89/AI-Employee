@@ -6,7 +6,7 @@ import {
   AlertCircle, Loader2, Unplug, ExternalLink, RefreshCw,
   Plus, Trash2, ChevronRight, Wrench, Globe, Power,
   Eye, EyeOff, Save, Users, Copy, Info, Pencil, KeyRound, PlugZap,
-  ShieldCheck, LogIn, Play,
+  ShieldCheck, LogIn, Play, AlertTriangle,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 import { Header } from "@/components/layout/header";
@@ -16,6 +16,7 @@ import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Integration } from "@/lib/types";
 import type { McpServerInfo, McpTool, McpAgentHealth, McpAgentHealthEntry, McpToolCallResult } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
+import { ClaudeLoginDialog, startClaudeLogin } from "@/components/integrations/claude-login-dialog";
 
 const PROVIDER_ICONS: Record<string, typeof Mail> = {
   Mail,
@@ -244,6 +245,10 @@ export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
+  // Anthropic zeigt nach dem Login nur "code#state" an statt zurueckzuleiten —
+  // ein Redirect-Flow endet dort in einer Sackgasse. Daher Code-Dialog.
+  const [claudeLoginOpen, setClaudeLoginOpen] = useState(false);
+  const [claudeAuthState, setClaudeAuthState] = useState("");
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [patToken, setPatToken] = useState("");
@@ -297,6 +302,15 @@ export default function IntegrationsPage() {
   }, [toast]);
 
   const handleConnect = async (provider: string) => {
+    if (provider === "anthropic") {
+      try {
+        setClaudeAuthState(await startClaudeLogin());
+        setClaudeLoginOpen(true);
+      } catch (e) {
+        setToast({ type: "error", message: e instanceof Error ? e.message : "Failed to start OAuth flow" });
+      }
+      return;
+    }
     setConnecting(provider);
     try {
       const { auth_url } = await api.getAuthUrl(provider);
@@ -351,6 +365,17 @@ export default function IntegrationsPage() {
     <div className="flex-1 flex flex-col min-h-0">
       <Header title="Integrations" subtitle="Connect external services and MCP servers for your agents" />
 
+      {/* Claude-Login per Code (Anthropic leitet nicht zurueck) */}
+      <ClaudeLoginDialog
+        open={claudeLoginOpen}
+        authState={claudeAuthState}
+        onClose={() => setClaudeLoginOpen(false)}
+        onConnected={async () => {
+          setToast({ type: "success", message: "Claude verbunden – der neue Token gilt ab sofort für alle Agents." });
+          await loadIntegrations();
+        }}
+      />
+
       {/* Toast */}
       {toast && (
         <div className={cn(
@@ -387,13 +412,21 @@ export default function IntegrationsPage() {
                 const Icon = PROVIDER_ICONS[integration.icon] || Plug;
                 const isConnecting = connecting === integration.provider;
                 const isDisconnecting = disconnecting === integration.provider;
+                // "connected" heisst nur: es gibt eine Zeile. Ob der Token noch taugt,
+                // sagt status (Backend: app/core/integration_health.py).
+                const isExpired = integration.status === "expired";
+                const isFailing = integration.status === "refresh_failing";
+                const needsReauth = integration.connected && (isExpired || isFailing);
+                const isHealthy = integration.connected && !needsReauth;
 
                 return (
                   <div
                     key={integration.provider}
                     className={cn(
                       "rounded-xl border bg-card/80 backdrop-blur-sm p-5 transition-all",
-                      integration.connected
+                      needsReauth
+                        ? "border-amber-500/40"
+                        : isHealthy
                         ? "border-emerald-500/30"
                         : integration.available
                           ? "border-foreground/[0.06] hover:border-foreground/[0.12]"
@@ -404,20 +437,32 @@ export default function IntegrationsPage() {
                       <div className="flex items-start gap-4">
                         <div className={cn(
                           "flex h-12 w-12 items-center justify-center rounded-xl",
-                          integration.connected ? "bg-emerald-500/10" : "bg-foreground/[0.06]"
+                          needsReauth ? "bg-amber-500/10" : isHealthy ? "bg-emerald-500/10" : "bg-foreground/[0.06]"
                         )}>
                           <Icon className={cn(
                             "h-6 w-6",
-                            integration.connected ? "text-emerald-400" : "text-muted-foreground"
+                            needsReauth ? "text-amber-500" : isHealthy ? "text-emerald-400" : "text-muted-foreground"
                           )} />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
                             <h3 className="text-sm font-semibold">{integration.display_name}</h3>
-                            {integration.connected && (
+                            {isHealthy && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
                                 <CheckCircle2 className="h-2.5 w-2.5" />
                                 Connected
+                              </span>
+                            )}
+                            {isExpired && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                <AlertTriangle className="h-2.5 w-2.5" />
+                                Abgelaufen
+                              </span>
+                            )}
+                            {isFailing && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                <AlertTriangle className="h-2.5 w-2.5" />
+                                Erneuerung schlägt fehl
                               </span>
                             )}
                             {integration.per_user && (
@@ -429,9 +474,23 @@ export default function IntegrationsPage() {
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">{integration.description}</p>
                           {integration.connected && integration.account_label && (
-                            <p className="text-xs text-emerald-400/80 mt-1.5">
+                            <p className={cn("text-xs mt-1.5", needsReauth ? "text-muted-foreground" : "text-emerald-400/80")}>
                               Signed in as {integration.account_label}
                             </p>
+                          )}
+                          {needsReauth && (
+                            <div className="mt-1.5 space-y-0.5 text-xs text-amber-700 dark:text-amber-400/90">
+                              <p>
+                                {isExpired
+                                  ? `Token seit ${integration.expires_at ? new Date(integration.expires_at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }) : "unbekannt"} abgelaufen – alles, was diese Integration nutzt, schlägt fehl. Bitte neu verbinden.`
+                                  : `Token gilt noch${integration.expires_at ? ` bis ${new Date(integration.expires_at).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })}` : ""}, lässt sich aber nicht erneuern. Neu verbinden, bevor er abläuft.`}
+                              </p>
+                              {integration.refresh_error && (
+                                <p className="font-mono text-[10px] text-amber-700/80 dark:text-amber-400/70">
+                                  Letzter Fehler: {integration.refresh_error}
+                                </p>
+                              )}
+                            </div>
                           )}
                           {!integration.available && !integration.connected && integration.auth_type !== "pat" && (
                             <p className="text-[10px] text-yellow-500/80 mt-1.5">
@@ -467,6 +526,16 @@ export default function IntegrationsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        {needsReauth && (
+                          <button
+                            onClick={() => handleConnect(integration.provider)}
+                            disabled={isConnecting}
+                            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all disabled:opacity-50"
+                          >
+                            {isConnecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                            Neu verbinden
+                          </button>
+                        )}
                         {integration.connected ? (
                           <button
                             onClick={() => handleDisconnect(integration.provider)}

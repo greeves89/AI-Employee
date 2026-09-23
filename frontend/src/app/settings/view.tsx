@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { MyAiCredentials } from "@/components/settings/my-ai-credentials";
 import { AvailableModels } from "@/components/settings/available-models";
+import { ClaudeLoginDialog, startClaudeLogin } from "@/components/integrations/claude-login-dialog";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Settings, ModelProvider, AIAccount } from "@/lib/types";
 
@@ -198,9 +199,6 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   // Claude OAuth login
   const [claudeLoginOpen, setClaudeLoginOpen] = useState(false);
   const [claudeAuthState, setClaudeAuthState] = useState("");
-  const [claudeCode, setClaudeCode] = useState("");
-  const [claudeLoginLoading, setClaudeLoginLoading] = useState(false);
-  const [claudeLoginError, setClaudeLoginError] = useState("");
   // Codex ChatGPT login
   const [codexLoginOpen, setCodexLoginOpen] = useState(false);
   const [codexAuthJson, setCodexAuthJson] = useState("");
@@ -632,59 +630,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   // Claude OAuth login handlers
   const handleClaudeLogin = async () => {
     try {
-      setClaudeLoginError("");
-      const { auth_url } = await api.getAuthUrl("anthropic");
-      // Extract state from auth URL
-      const url = new URL(auth_url);
-      const state = url.searchParams.get("state") || "";
-      setClaudeAuthState(state);
+      // Login im neuen Tab, Code-Eingabe im Dialog (components/integrations/claude-login-dialog)
+      setClaudeAuthState(await startClaudeLogin());
       setClaudeLoginOpen(true);
-      setClaudeCode("");
-      // Open Anthropic login in new tab
-      window.open(auth_url, "_blank");
     } catch (e) {
       setMessage(`Error: ${e instanceof Error ? e.message : "Failed to start login"}`);
-    }
-  };
-
-  // Robustly extract {code, state} from whatever the user pastes: the full callback
-  // URL (…?code=X&state=Y), the Anthropic "code#state" form, or a bare code. Using the
-  // pasted state (when present) instead of only the stored one avoids the "invalid
-  // state" mismatch when several login tabs were opened.
-  const parsePastedCode = (raw: string): { code: string; state: string } => {
-    const v = raw.trim();
-    try {
-      if (/^https?:\/\//i.test(v)) {
-        const u = new URL(v);
-        return { code: u.searchParams.get("code") || "", state: u.searchParams.get("state") || "" };
-      }
-    } catch {
-      /* not a URL */
-    }
-    if (v.includes("#")) {
-      const [c, s] = v.split("#");
-      return { code: c.trim(), state: (s || "").trim() };
-    }
-    return { code: v, state: "" };
-  };
-
-  const handleClaudeCodeSubmit = async () => {
-    if (!claudeCode.trim()) return;
-    setClaudeLoginLoading(true);
-    setClaudeLoginError("");
-    try {
-      const parsed = parsePastedCode(claudeCode);
-      await api.exchangeOAuthCode("anthropic", parsed.code, parsed.state || claudeAuthState);
-      setClaudeLoginOpen(false);
-      setClaudeCode("");
-      setMessage("Claude Login erfolgreich! Bot hat eigene Session.");
-      // Refresh settings
-      const s = await api.getSettings();
-      setSettings(s);
-    } catch (e) {
-      setClaudeLoginError(e instanceof Error ? e.message : "Code exchange failed");
-    } finally {
-      setClaudeLoginLoading(false);
     }
   };
 
@@ -2466,58 +2416,15 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         </div>
         )}
         {/* ─── Claude OAuth Code Paste Modal ─── */}
-        {claudeLoginOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="w-full max-w-md rounded-2xl border border-foreground/[0.08] bg-card p-6 shadow-2xl"
-            >
-              <h3 className="text-base font-semibold mb-1">Claude Login Code eingeben</h3>
-              <p className="text-xs text-muted-foreground/60 mb-4">
-                Ein neuer Tab wurde geöffnet. Logge dich dort ein und kopiere den angezeigten Code hierher.
-              </p>
-
-              <input
-                type="text"
-                value={claudeCode}
-                onChange={(e) => setClaudeCode(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleClaudeCodeSubmit()}
-                placeholder="Code hier einfügen..."
-                autoFocus
-                className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-3 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/25"
-              />
-
-              {claudeLoginError && (
-                <p className="text-xs text-red-400 mt-2 flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" />
-                  {claudeLoginError}
-                </p>
-              )}
-
-              <div className="flex gap-2 mt-4">
-                <button
-                  onClick={handleClaudeCodeSubmit}
-                  disabled={claudeLoginLoading || !claudeCode.trim()}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 transition-all"
-                >
-                  {claudeLoginLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4" />
-                  )}
-                  Verbinden
-                </button>
-                <button
-                  onClick={() => { setClaudeLoginOpen(false); setClaudeCode(""); setClaudeLoginError(""); }}
-                  className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
-                >
-                  Abbrechen
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
+        <ClaudeLoginDialog
+          open={claudeLoginOpen}
+          authState={claudeAuthState}
+          onClose={() => setClaudeLoginOpen(false)}
+          onConnected={async () => {
+            setMessage("Claude Login erfolgreich! Bot hat eigene Session.");
+            setSettings(await api.getSettings());
+          }}
+        />
 
         {/* ─── Codex ChatGPT Device Auth Modal ─── */}
         {codexLoginOpen && (

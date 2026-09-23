@@ -5,6 +5,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.332.0] - 2026-09-25
+
+### Hinzugefügt
+- **Die Integrationsseite zeigt jetzt, ob ein Token noch taugt — nicht nur,
+  ob es eine Verbindung gibt.** Bisher hiess "Connected" lediglich: in
+  `oauth_integrations` steht eine Zeile. Genau so ist es passiert: der
+  Anthropic-Refresh-Token lief ab (`invalid_grant: Refresh token expired`),
+  der Hintergrund-Refresh schrieb alle fuenf Minuten eine Fehlerzeile ins Log,
+  und die Karte blieb elf Tage lang gruen, waehrend jeder Claude-Agent mit
+  401 antwortete. Jetzt gibt es drei Zustaende (`status` in
+  `GET /integrations/`, Logik in `app/core/integration_health.py`):
+  - **Connected** — Token gueltig, letzte Erneuerung ging durch.
+  - **Erneuerung schlaegt fehl** — Token gilt noch, der Refresh scheitert.
+    Vorwarnung, bevor etwas kaputtgeht.
+  - **Abgelaufen** — `expires_at` ist vorbei. Da der Refresh zehn Minuten
+    vorher laeuft, heisst das zuverlaessig: nur ein neuer Login hilft.
+  Unter dem Badge steht der letzte Fehler (nur die standardisierten Felder
+  `error`/`error_description`, nie der Rohtext der Antwort), daneben ein
+  Knopf **Neu verbinden**.
+- **Ein endgueltig gescheiterter Refresh wird gemeldet statt nur geloggt:**
+  Glocke in der Web-UI, Telegram-Alarmkanal und Push an die Apps — bei
+  geteilten Integrationen an alle Admins, bei persoenlichen an den Besitzer.
+  Endgueltig heisst `invalid_grant`/`invalid_client`/`unauthorized_client`
+  (RFC 6749 §5.2) oder ein 400/401 ohne Code; 5xx bleibt still und wird beim
+  naechsten Lauf erneut versucht. Hoechstens eine Meldung pro Tag und
+  Integration (atomar per `SET NX EX`), zurueckgesetzt durch einen
+  erfolgreichen Refresh, einen neuen Login oder Trennen.
+
+### Behoben
+- **"Connect" bei Anthropic auf der Integrationsseite endete in einer
+  Sackgasse.** Anthropic leitet nach dem Login nicht zurueck, sondern zeigt
+  nur einen Code der Form `code#state` an — das Eingabefeld dafuer gab es
+  bisher nur unter Einstellungen. Die Integrationsseite oeffnet jetzt
+  denselben Dialog. Der Dialog ist dafuer als gemeinsame Komponente
+  (`components/integrations/claude-login-dialog.tsx`) aus den Einstellungen
+  herausgeloest; dort verhaelt er sich unveraendert.
+
 ## [1.331.8] - 2026-09-25
 
 ### Behoben

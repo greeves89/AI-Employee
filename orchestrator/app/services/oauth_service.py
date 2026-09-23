@@ -17,6 +17,7 @@ from app.core.encryption import decrypt_token, encrypt_token
 from app.core.log_redaction import scrub_log
 from app.core.oauth_retry import post_refresh_with_retry
 from app.core.url_guard import check_outbound_url
+from app.core import integration_health
 from app.core.oauth_providers import (
     PROVIDERS,
     apply_tenant,
@@ -266,6 +267,8 @@ class OAuthService:
 
         await self.db.commit()
         await self.db.refresh(integration)
+        # Frischer Login: ein alter Refresh-Fehler samt Melde-Sperre ist hinfaellig.
+        await integration_health.clear_refresh_failure(self.redis, getattr(integration, "id", None))
         return integration
 
     async def get_valid_token(self, provider_name: str, user_id: str | None = None) -> str:
@@ -331,6 +334,7 @@ class OAuthService:
                 )
             if response.status_code != 200:
                 logger.error("Token refresh failed for %s: %s", integration.provider.value, response.text)
+                await self._report_refresh_failure(integration, response.status_code, response.text)
                 raise ValueError(f"Token refresh failed: {response.status_code}")
             token_data = response.json()
 
@@ -342,6 +346,7 @@ class OAuthService:
 
         await self.db.commit()
         await self.db.refresh(integration)
+        await integration_health.clear_refresh_failure(self.redis, getattr(integration, "id", None))
         logger.info("Refreshed token for %s (user=%s)", integration.provider.value, integration.user_id)
         return integration
 
@@ -494,8 +499,10 @@ class OAuthService:
         )
         integration = result.scalar_one_or_none()
         if integration:
+            integration_id = integration.id
             await self.db.delete(integration)
             await self.db.commit()
+            await integration_health.clear_refresh_failure(self.redis, integration_id)
 
         # Cutting the Microsoft connection also drops the remembered MCP consents of
         # that user — otherwise an external client (OpenWebUI) would silently be
@@ -544,12 +551,22 @@ class OAuthService:
             integration = connected.get(name)
             is_pat_provider = provider.token_exchange_method == "pat_or_oauth"
             is_auth_json_provider = provider.token_exchange_method == "auth_json"
+            failure = (
+                await integration_health.get_refresh_failure(self.redis, integration.id)
+                if integration else None
+            )
             integrations.append({
                 "provider": name,
                 "display_name": provider.display_name,
                 "icon": provider.icon,
                 "description": provider.description,
                 "connected": integration is not None,
+                "status": integration_health.integration_status(
+                    integration is not None,
+                    integration.expires_at if integration else None,
+                    failure,
+                ),
+                "refresh_error": failure.get("error") if failure else None,
                 "account_label": integration.account_label if integration else None,
                 "expires_at": integration.expires_at.isoformat() if integration and integration.expires_at else None,
                 "scopes": integration.scopes if integration else " ".join(get_provider_scopes(provider)),
@@ -575,6 +592,8 @@ class OAuthService:
             "icon": "Mail",
             "description": "On-prem Exchange — Mail & Kalender (benutzerspezifisch via Impersonation)",
             "connected": ex_connected,
+            "status": integration_health.STATUS_CONNECTED if ex_connected else integration_health.STATUS_DISCONNECTED,
+            "refresh_error": None,
             "account_label": None,
             "expires_at": None,
             "scopes": "",
@@ -595,6 +614,90 @@ class OAuthService:
             except (ValueError, Exception) as e:
                 logger.warning("Could not get token for %s (user=%s): %s", provider_name, effective_user, e)
         return tokens
+
+    async def _report_refresh_failure(
+        self, integration: OAuthIntegration, status_code: int, body: str
+    ) -> None:
+        """Gescheiterten Refresh festhalten und — wenn endgueltig — einmal melden.
+
+        Best effort: wirft nie. Der Aufrufer wirft danach ohnehin seinen
+        ``ValueError``; eine kaputte Meldung darf den nicht verdecken.
+        """
+        try:
+            error_code, error_text = integration_health.describe_refresh_error(status_code, body)
+            permanent = integration_health.is_permanent_failure(status_code, error_code)
+            should_alert = await integration_health.record_refresh_failure(
+                self.redis, getattr(integration, "id", None), error_text, permanent
+            )
+            if should_alert:
+                await self._alert_refresh_failure(integration, error_text)
+        except Exception:  # noqa: BLE001
+            logger.exception("Refresh-Fehler fuer %s nicht gemeldet", integration.provider.value)
+
+    async def _alert_refresh_failure(self, integration: OAuthIntegration, error_text: str) -> None:
+        """Glocke in der Web-UI, Telegram-Alarmkanal und Push an die Zustaendigen.
+
+        Zustaendig ist bei einer persoenlichen Integration ihr Besitzer, bei einer
+        geteilten (Anthropic, GitHub, …) jeder Admin — nur die koennen neu verbinden.
+        """
+        from app.models.notification import Notification
+        from app.models.user import User, UserRole
+
+        name = get_provider(integration.provider.value).display_name
+        # Der Token kann in diesem Moment noch gelten (Refresh laeuft 10 min vor
+        # Ablauf) — also nicht "abgelaufen" behaupten, sondern was feststeht.
+        titel = f"{name}: Token laesst sich nicht erneuern – bitte neu verbinden"
+        nachricht = (
+            f"Der Token fuer {name} laesst sich nicht mehr erneuern ({error_text}). "
+            f"Spaetestens mit seinem Ablauf schlaegt alles fehl, was diese "
+            f"Integration nutzt – bis unter Integrationen neu verbunden wird."
+        )
+        meta = {
+            "type": "integration_refresh_failed",
+            "provider": integration.provider.value,
+            "integration_id": integration.id,
+        }
+        notif = Notification(
+            agent_id="system",
+            type="error",
+            title=titel,
+            message=nachricht[:2000],
+            priority="high",
+            action_url="/integrations",
+            meta=meta,
+        )
+        self.db.add(notif)
+        await self.db.commit()
+
+        try:
+            from app.services.duty_service import _publish_telegram
+            await _publish_telegram(self.redis, titel, nachricht)
+        except Exception:  # noqa: BLE001
+            logger.debug("Telegram-Meldung zum Refresh-Fehler nicht zugestellt", exc_info=True)
+
+        try:
+            from app.core.push import push_to_user
+            if integration.user_id:
+                empfaenger = [integration.user_id]
+            else:
+                empfaenger = list((await self.db.execute(
+                    select(User.id).where(User.role == UserRole.ADMIN, User.is_active.is_(True))
+                )).scalars().all())
+            for user_id in empfaenger:
+                # Gleiche Form wie TaskRouter._notification_push_payload, damit
+                # die Apps den Tap wie jede andere Meldung auf action_url fuehren.
+                await push_to_user(
+                    self.db, user_id, titel, nachricht,
+                    data={
+                        "notification_id": str(notif.id),
+                        "agent_id": "system",
+                        "type": "error",
+                        "action_url": "/integrations",
+                        "meta": meta,
+                    },
+                )
+        except Exception:  # noqa: BLE001
+            logger.debug("Push zum Refresh-Fehler nicht zugestellt", exc_info=True)
 
     async def refresh_expiring_tokens(self) -> None:
         """Background task: refresh tokens expiring within 10 minutes."""

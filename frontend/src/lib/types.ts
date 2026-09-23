@@ -163,6 +163,13 @@ export interface Integration {
   icon: string;
   description: string;
   connected: boolean;
+  /**
+   * Zustand des Tokens, nicht nur "gibt es eine Zeile" (siehe
+   * orchestrator/app/core/integration_health.py). Fehlt bei aelteren Backends.
+   */
+  status?: "connected" | "refresh_failing" | "expired" | "disconnected";
+  /** Letzter Refresh-Fehler, z. B. "HTTP 400 – invalid_grant: Refresh token expired". */
+  refresh_error?: string | null;
   account_label: string | null;
   expires_at: string | null;
   scopes: string;
