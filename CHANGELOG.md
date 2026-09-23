@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.331.3] - 2026-09-22
+
+### Behoben
+- **Eine einzige haengengebliebene Aufgabe konnte stundenlang ALLE faelligen
+  Zeitplan-Laeufe eines Agenten ausfallen lassen.** Gemessen an einer Anlage:
+  acht Laeufe an einem Nachmittag — Tageszusammenfassung, Pruefjobs,
+  Ueberwachung — wurden uebersprungen und nicht nachgeholt, waehrend im
+  Betrieb nichts darauf hinwies.
+  - Ursache: derselbe Begriff ("die Aufgabe haengt") wurde an zwei Stellen mit
+    verschiedenen Zeiten beurteilt. Gesperrt wurde bereits nach 30 Minuten
+    ohne Lebenszeichen, beendet wurde die haengende Aufgabe aber erst nach der
+    eingestellten Wartezeit (standardmaessig drei Stunden). In den zweieinhalb
+    Stunden dazwischen galt der Agent als blockiert, ohne dass irgendetwas die
+    Blockade aufloeste.
+  - Jetzt gilt beidesmal dieselbe, einstellbare Zeit: ein Agent wird genau
+    dann gesperrt, wenn die haengende Aufgabe auch wirklich beendet wird.
+    Wer die Wartezeit verstellt, verschiebt damit automatisch beides.
+
 ## [1.331.2] - 2026-09-22
 
 ### Behoben

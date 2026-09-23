@@ -1506,11 +1506,29 @@ class SchedulerService:
             await db.commit()
         return created
 
+    @staticmethod
+    def _stale_schwelle() -> timedelta:
+        """Die EINE Schwelle fuer 'haengt' -- dieselbe, mit der der
+        StaleTaskWatchdog die Aufgabe auch wirklich beendet (#838).
+
+        Vorher stand hier der fest verdrahtete Rueckfall aus dem Watchdog-Modul
+        (30 min), waehrend das Aufraeumen ``watchdog_stale_task_minutes``
+        (Standard 180) benutzte. Beides zusammen ergab ein Fenster von 150
+        Minuten, in dem der Agent als ``blocked`` galt und JEDER faellige
+        Zeitplan-Lauf ersatzlos uebersprungen wurde -- gemessen acht Laeufe an
+        einem Tag -- ohne dass irgendetwas die haengende Aufgabe beendet haette.
+        Zwei Schwellen fuer denselben Begriff sind hier keine Feineinstellung,
+        sondern genau die Luecke.
+        """
+        from app.config import settings as _cfg
+
+        return timedelta(minutes=max(1, int(getattr(_cfg, "watchdog_stale_task_minutes", 180))))
+
     async def _stale_task_count(self, db: AsyncSession, agent_id: str, now: datetime) -> int:
         """Wie viele Aufgaben dieses Agenten haengen? Nutzt die Watchdog-Definition,
         damit 'haengt' ueberall dasselbe heisst."""
         try:
-            stale = await find_stale_tasks(db, now)
+            stale = await find_stale_tasks(db, now, self._stale_schwelle())
             return sum(1 for t in stale if t.agent_id == agent_id)
         except Exception:  # noqa: BLE001 — im Zweifel nicht blockieren
             logger.debug("[Scheduler] Stale-Zaehlung fehlgeschlagen", exc_info=True)
@@ -1661,15 +1679,13 @@ class SchedulerService:
         instead of the operator discovering a missing artifact hours later.
         """
         import json as _json
-        from datetime import timedelta as _td
-
-        from app.config import settings as _cfg
 
         # Einstellbar seit #692: der feste 30-Minuten-Wert war faktisch eine
         # Obergrenze fuer jede delegierte Aufgabe, weil niemand ein Lebenszeichen
         # sendete. Der Herzschlag kommt jetzt — aber ein Agent auf einem aelteren
         # Abbild sendet ihn noch nicht, deshalb liegt der Standard hoeher.
-        schwelle = _td(minutes=max(1, int(getattr(_cfg, "watchdog_stale_task_minutes", 180))))
+        # EINE Quelle, gemeinsam mit der Sperre in _stale_task_count (#838).
+        schwelle = self._stale_schwelle()
         now = datetime.now(timezone.utc)
         async with resilient_session() as db:
             stale = await find_stale_tasks(db, now, schwelle)
