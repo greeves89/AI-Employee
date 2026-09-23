@@ -80,7 +80,9 @@ def test_write_files_in_container_owned_by_agent_uid():
 
 def test_ownership_override_is_honoured():
     svc, container = _service_with_fake_container()
-    svc.write_file_in_container("cid", "/etc/thing", "x", uid=0, gid=0)
+    # Seit #841 lehnt der Helfer ein Ziel ausserhalb seiner Wurzel ab; wer
+    # (wie hier) bewusst ausserhalb /workspace schreibt, gibt ``root`` mit.
+    svc.write_file_in_container("cid", "/etc/thing", "x", uid=0, gid=0, root="/etc")
 
     (_dir, tar_bytes) = container.archives[0]
     members = _members(tar_bytes)

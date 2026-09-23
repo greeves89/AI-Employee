@@ -558,6 +558,7 @@ class DockerService:
         content: str,
         uid: int = 1000,
         gid: int = 1000,
+        root: str = _WORKSPACE_ROOT,
     ) -> None:
         """Write a file into a running container using tar archive.
 
@@ -565,16 +566,26 @@ class DockerService:
         process can modify them afterwards (e.g. /workspace/knowledge.md). A freshly
         constructed TarInfo defaults to uid/gid 0, which put_archive honours and would
         otherwise leave the file root-owned and unwritable for the agent.
+
+        Der Zielordner wird VORHER symlink-sicher angelegt und dem Agenten
+        uebergeben (:meth:`prepare_target_dir`) — derselbe Schutz wie bei
+        :meth:`write_files_in_container`, siehe dort fuer die Begruendung
+        (#821, #840). ``root`` ist normalerweise ``/workspace``; die zwei
+        Aufrufer, die legitim ausserhalb schreiben (Sudoers-Datei, geteilte
+        Team-Registrierung), geben ihre eigene Wurzel UND passende uid/gid
+        bewusst mit, statt sie stillschweigend zu umgehen (#841).
         """
         import io
         import tarfile
+
+        filename = path.split("/")[-1]
+        dir_path = "/".join(path.split("/")[:-1]) or "/"
+        safe_dir = self.prepare_target_dir(container_id, dir_path, uid, gid, root=root)
 
         container = self.client.containers.get(container_id)
 
         # Create a tar archive with the file
         data = content.encode("utf-8")
-        filename = path.split("/")[-1]
-        dir_path = "/".join(path.split("/")[:-1]) or "/"
 
         tar_stream = io.BytesIO()
         with tarfile.open(fileobj=tar_stream, mode="w") as tar:
@@ -585,13 +596,15 @@ class DockerService:
             tar.addfile(info, io.BytesIO(data))
         tar_stream.seek(0)
 
-        container.put_archive(dir_path, tar_stream)
+        container.put_archive(safe_dir, tar_stream)
 
     def prepare_target_dir(
-        self, container_id: str, target_dir: str, uid: int = 1000, gid: int = 1000
+        self, container_id: str, target_dir: str, uid: int = 1000, gid: int = 1000,
+        root: str = _WORKSPACE_ROOT,
     ) -> str:
-        """Die Ordnerkette unterhalb von /workspace symlink-sicher anlegen und
-        dem Agenten uebergeben. Gibt den normalisierten Zielpfad zurueck.
+        """Die Ordnerkette unterhalb von ``root`` (Vorgabe ``/workspace``)
+        symlink-sicher anlegen und dem Agenten uebergeben. Gibt den
+        normalisierten Zielpfad zurueck.
 
         mkdir laeuft als root, ein frisch angelegtes Ziel gehoerte damit root —
         der Agent koennte danach keine Datei daneben legen. Deshalb wird jedes
@@ -600,35 +613,45 @@ class DockerService:
         :data:`_PREPARE_TARGET_DIR_SCRIPT`). Ein Exitcode != 0 bricht ab,
         BEVOR irgendetwas geschrieben wurde.
 
+        ``root`` ist eine explizite Entscheidung des Aufrufers, keine
+        Umgehung: die beiden Stellen, die legitim ausserhalb von
+        ``/workspace`` schreiben (Sudoers-Datei unter ``/etc``, geteilte
+        Team-Registrierung unter ``/shared``), geben ihre Wurzel bewusst mit
+        UND — wichtig fuer ``/etc`` — passende uid/gid, sonst chownt dieser
+        Helfer ein Systemverzeichnis auf den Agenten (#841).
+
         Was das NICHT ist: eine Garantie gegen einen Tausch zwischen dieser
-        Pruefung und dem Schreiben. Die Kette gehoert danach dem Agenten (uid
-        1000), er kann ein Glied in der Zwischenzeit ersetzen. Abgedeckt ist
-        der Zustand VOR dem Schreiben — das ist genau der Weg, ueber den der
-        Zielpfad heute umgelenkt wuerde.
+        Pruefung und dem Schreiben. Die Kette gehoert danach dem/der
+        uebergebenen uid/gid, ein Aufrufer mit Agenten-uid kann ein Glied in
+        der Zwischenzeit ersetzen. Abgedeckt ist der Zustand VOR dem
+        Schreiben — das ist genau der Weg, ueber den der Zielpfad heute
+        umgelenkt wuerde.
 
         Braucht einen LAUFENDEN Behaelter (exec). ``put_archive`` allein kaeme
         auch an einen gestoppten heran; deshalb wird dieser Fall hier in eine
         verstaendliche Ablehnung uebersetzt statt in einen Docker-Fehler.
 
         Raises:
-            ValueError: Ziel liegt nicht unterhalb von /workspace.
+            ValueError: Ziel liegt nicht unterhalb von ``root``.
             ZielordnerNichtVorbereitbar: Kette nicht sicher herstellbar, oder
                 der Behaelter laeuft nicht.
         """
         if "\x00" in target_dir:
             raise ValueError("Null bytes not allowed in path")
+        safe_root = os.path.normpath(root)
         safe_dir = os.path.normpath(target_dir)
-        if safe_dir != _WORKSPACE_ROOT and not safe_dir.startswith(_WORKSPACE_ROOT + "/"):
-            # Kein Aufrufer schreibt heute ausserhalb; wer es kuenftig tut,
-            # soll das bewusst entscheiden und nicht hier hineinstolpern.
-            raise ValueError("Write target must be within /workspace")
+        if safe_dir != safe_root and not safe_dir.startswith(safe_root + "/"):
+            # Kein Aufrufer schreibt heute ausserhalb seiner erklaerten
+            # Wurzel; wer es kuenftig tut, soll das bewusst entscheiden und
+            # nicht hier hineinstolpern.
+            raise ValueError(f"Write target must be within {safe_root}")
 
-        parts = [p for p in safe_dir[len(_WORKSPACE_ROOT):].split("/") if p]
+        parts = [p for p in safe_dir[len(safe_root):].split("/") if p]
         try:
             exit_code, output = self.exec_in_container(
                 container_id,
                 ["python3", "-c", _PREPARE_TARGET_DIR_SCRIPT,
-                 _WORKSPACE_ROOT, str(uid), str(gid), *parts],
+                 safe_root, str(uid), str(gid), *parts],
                 user="root",
             )
         except APIError as e:

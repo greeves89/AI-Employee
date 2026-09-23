@@ -1762,11 +1762,18 @@ class AgentManager:
         """Write sudoers file into container based on permission packages."""
         sudoers_content = generate_sudoers(permissions)
         if sudoers_content:
-            # Write sudoers file via tar archive (avoids shell escaping issues)
+            # Write sudoers file via tar archive (avoids shell escaping issues).
+            # Ausserhalb von /workspace: eigene Wurzel UND root-uid/gid bewusst
+            # mitgeben (#841) — sonst chownt die Zielordner-Vorbereitung
+            # /etc/sudoers.d auf den Agenten, und die Datei selbst waere ihm
+            # gehoerig statt root:root wie unten dokumentiert.
             self.docker.write_file_in_container(
                 container_id,
                 "/etc/sudoers.d/agent-permissions",
                 sudoers_content,
+                uid=0,
+                gid=0,
+                root="/etc",
             )
             # Fix ownership and permissions (must be root:root, 0440)
             self.docker.exec_in_container(
@@ -1806,8 +1813,12 @@ class AgentManager:
             "status": "online",
         })
 
+        # Ausserhalb von /workspace: eigene Wurzel bewusst mitgeben (#841).
+        # uid/gid bleiben Agent-Standard — /shared ist fuer alle Agenten
+        # gemeinsam beschreibbar, das aendert sich hier nicht.
         self.docker.write_file_in_container(
-            container_id, "/shared/team.json", json_module.dumps(team, indent=2)
+            container_id, "/shared/team.json", json_module.dumps(team, indent=2),
+            root="/shared",
         )
 
     async def restart_agent(self, agent_id: str) -> Agent:
