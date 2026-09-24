@@ -746,9 +746,11 @@ class DockerService:
         Team-Registrierung), geben ihre eigene Wurzel UND passende uid/gid
         bewusst mit, statt sie stillschweigend zu umgehen (#841).
 
-        Nach ``put_archive`` wird die Kette per :meth:`_assert_target_dir_still_safe`
-        nochmal nachgeprueft (#843) — schliesst das TOCTOU-Fenster zwischen
-        Vorbereitung und Schreiben, siehe dort.
+        ``put_archive`` schreibt NICHT mehr in die Zielkette, sondern in ein
+        root-eigenes Zwischenlager; erst :meth:`_install_from_staging`
+        uebernimmt von dort in die Kette (#843). Das TOCTOU-Fenster zwischen
+        Vorbereitung und Schreiben ist damit wirkungslos, nicht nur erkennbar
+        — siehe dort.
         """
         import io
         import tarfile
@@ -807,10 +809,12 @@ class DockerService:
         der Zwischenzeit ersetzen. Abgedeckt ist der Zustand VOR dem
         Schreiben — das ist genau der Weg, ueber den der Zielpfad heute
         umgelenkt wuerde. Das Fenster NACH dieser Pruefung schliesst
-        :meth:`_assert_target_dir_still_safe`, die beide Schreib-Helfer nach
-        ``put_archive`` aufrufen (#843): eine Nachpruefung erkennt einen im
-        Fenster eingetauschten Symlink zwar erst NACHTRAEGLICH, markiert den
-        Vorgang dann aber als kompromittiert statt ihn als Erfolg zu melden.
+        :meth:`_install_from_staging`, die beide Schreib-Helfer statt eines
+        direkten ``put_archive`` in die Kette aufrufen (#843): dort wird jedes
+        Kettenglied mit O_NOFOLLOW geoeffnet und nur noch relativ zu den
+        offenen Deskriptoren geschrieben, ein im Fenster eingetauschter
+        Symlink laesst die Uebernahme scheitern, BEVOR etwas in der Kette
+        landet.
 
         Braucht einen LAUFENDEN Behaelter (exec). ``put_archive`` allein kaeme
         auch an einen gestoppten heran; deshalb wird dieser Fall hier in eine
@@ -957,9 +961,11 @@ class DockerService:
         Heute gibt ihn niemand mit — der Ordner-Import schreibt immer nach
         ``/workspace``.
 
-        Nach ``put_archive`` wird die Kette per :meth:`_assert_target_dir_still_safe`
-        nochmal nachgeprueft (#843) — schliesst das TOCTOU-Fenster zwischen
-        Vorbereitung und Schreiben, siehe dort.
+        ``put_archive`` schreibt NICHT mehr in die Zielkette, sondern in ein
+        root-eigenes Zwischenlager; erst :meth:`_install_from_staging`
+        uebernimmt von dort in die Kette (#843). Das TOCTOU-Fenster zwischen
+        Vorbereitung und Schreiben ist damit wirkungslos, nicht nur erkennbar
+        — siehe dort.
         """
         import io
         import tarfile

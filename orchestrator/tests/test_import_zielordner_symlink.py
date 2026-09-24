@@ -113,8 +113,8 @@ class ImportSchreibtNichtAnEinemSymlinkVorbeiTests(unittest.TestCase):
 
         mgr.importiere_ordner_zip("c1", "/workspace/projects", _zip_mit_einem_ordner())
 
-        # #843: nach put_archive prueft _assert_target_dir_still_safe die
-        # Kette nochmal nach — die Vorbereitung bleibt der ERSTE Aufruf.
+        # #843: nach put_archive uebernimmt _install_from_staging aus dem
+        # Zwischenlager in die Kette — die Vorbereitung bleibt der ERSTE Aufruf.
         cmd = svc.exec_in_container.call_args_list[0].args[1]
         self.assertEqual(cmd[:2], ["python3", "-c"])
         self.assertEqual(cmd[3:], ["/workspace", "1000", "1000", "projects"])
