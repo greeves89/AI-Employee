@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.339.0] - 2026-09-25
+
+### Hinzugefügt
+- **Echtzeit-Gespraech: "Immer der Agent".** Bisher antwortete im
+  Echtzeit-Modus (Nova Sonic / Azure Realtime) das Sprachmodell selbst — mit
+  eigener, kleinerer Werkzeugliste und eigenem, deutlich kleinerem Verstand.
+  Gemeldet: der Triathlon-Coach sagte am Telefon, er habe keinen
+  Garmin-Zugriff, waehrend derselbe Agent im Textchat die Schlafdaten sofort
+  lieferte. Neuer Schalter: Das Sprachmodell ist nur noch Ohr und Mund, jede
+  inhaltliche Bitte geht per `ask_agent` an den Agenten im Container (sein
+  Modell, sein Wissen, seine MCP-Rechte), die Antwort wird inhaltlich
+  unveraendert vorgelesen. Freihaendig und Reinreden bleiben, dafuer einige
+  Sekunden Wartezeit pro Antwort.
+  - Plattform-Vorgabe unter *Einstellungen → Sprache*
+    (`voice_delegate_to_agent`), pro Agent im Sprach-Tab ueberschreibbar
+    (Plattform-Vorgabe / Immer der Agent / Stimme direkt),
+    `PUT /agents/{id}/voice-delegate`.
+  - Im Modus bekommt die Sprachfront nur noch Werkzeuge zur
+    Gespraechsfuehrung (weiterreichen, nachschaerfen, abbrechen, Status der
+    weitergereichten Aufgaben, Anzeige) und einen eigenen, kurzen Systemprompt
+    — der normale listet Werkzeuge, die es dort nicht gibt, und verbietet
+    ausdruecklich das Weiterreichen.
+  - Logik in `app/core/voice_delegate.py`; ohne Einstellung bleibt alles wie
+    bisher.
+
 ## [1.338.1] - 2026-09-25
 
 ### Behoben

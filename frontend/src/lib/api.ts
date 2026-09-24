@@ -236,6 +236,20 @@ export async function updateAgentInteractionModel(
   });
 }
 
+/**
+ * Soll die Echtzeit-Sprachfront bei diesem Agenten alles an ihn weiterreichen?
+ * true = immer der Agent, false = Stimme antwortet selbst, null = Plattform-Vorgabe.
+ */
+export async function updateAgentVoiceDelegate(
+  agentId: string,
+  value: boolean | null,
+): Promise<{ agent_id: string; voice_delegate_to_agent: boolean | null }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/voice-delegate`, {
+    method: "PUT",
+    body: JSON.stringify({ voice_delegate_to_agent: value }),
+  });
+}
+
 export interface ModelCatalogModel {
   value: string;
   label: string;

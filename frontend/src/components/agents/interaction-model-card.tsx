@@ -20,11 +20,14 @@ export function InteractionModelCard({
   current,
   currentAccountId,
   currentModelId,
+  currentDelegate,
 }: {
   agentId: string;
   current?: string | null;
   currentAccountId?: number | null;
   currentModelId?: string | null;
+  /** true = immer der Agent, false = Stimme direkt, null/undefined = Plattform-Vorgabe. */
+  currentDelegate?: boolean | null;
 }) {
   const [models, setModels] = useState<RealtimeModelOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +36,7 @@ export function InteractionModelCard({
   );
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [delegate, setDelegate] = useState<boolean | null>(currentDelegate ?? null);
 
   useEffect(() => {
     api.getRealtimeModels()
@@ -69,6 +73,32 @@ export function InteractionModelCard({
       setMsg(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
     } finally { setSaving(false); }
   };
+
+  // Wer antwortet im Echtzeit-Gespraech: die Stimme selbst oder der Agent?
+  // (Backend: orchestrator/app/core/voice_delegate.py)
+  const applyDelegate = async (value: boolean | null) => {
+    if (saving || value === delegate) return;
+    setSaving(true); setMsg("");
+    try {
+      await api.updateAgentVoiceDelegate(agentId, value);
+      setDelegate(value);
+      setMsg(
+        value === null
+          ? "Plattform-Vorgabe gilt (Einstellungen → Sprache). Ab dem nächsten Gespräch."
+          : value
+            ? "Im Echtzeit-Gespräch antwortet jetzt immer der Agent. Ab dem nächsten Gespräch."
+            : "Die Echtzeit-Stimme antwortet jetzt selbst. Ab dem nächsten Gespräch.",
+      );
+    } catch (e) {
+      setMsg(`Fehler: ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setSaving(false); }
+  };
+
+  const DELEGATE_OPTIONS: { value: boolean | null; label: string; hint: string }[] = [
+    { value: null, label: "Plattform-Vorgabe", hint: "wie unter Einstellungen → Sprache" },
+    { value: true, label: "Immer der Agent", hint: "sein Modell & seine Rechte, einige Sekunden Wartezeit" },
+    { value: false, label: "Stimme direkt", hint: "schneller, eigene Werkzeuge der Stimme" },
+  ];
 
   return (
     <div className="overflow-hidden rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm">
@@ -137,6 +167,37 @@ export function InteractionModelCard({
               </button>
             );
           })}
+        </div>
+
+        {/* Wer antwortet im Echtzeit-Gespraech? */}
+        <div className="space-y-1.5 border-t border-foreground/[0.06] pt-3">
+          <p className="text-[11px] font-medium text-muted-foreground/80">
+            Wer antwortet im Echtzeit-Gespräch?
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {DELEGATE_OPTIONS.map((o) => {
+              const active = delegate === o.value;
+              return (
+                <button
+                  key={String(o.value)}
+                  onClick={() => applyDelegate(o.value)}
+                  disabled={saving}
+                  className={cn(
+                    "flex flex-col gap-0.5 rounded-lg border p-2.5 text-left transition-colors disabled:opacity-60",
+                    active
+                      ? "border-fuchsia-500/40 bg-fuchsia-500/[0.06]"
+                      : "border-foreground/[0.08] hover:border-foreground/20 hover:bg-foreground/[0.03]",
+                  )}
+                >
+                  <span className="flex items-center gap-1.5 text-xs font-medium">
+                    {o.label}
+                    {active && <Check className="ml-auto h-3 w-3 text-fuchsia-400" />}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/70">{o.hint}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {!loading && models.length === 0 && (

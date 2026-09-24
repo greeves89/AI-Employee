@@ -52,6 +52,10 @@ Der Unterschied zu einem Assistenten: Ein Assistent antwortet. Ein Mitarbeiter *
 
 **Daily Doings, die wegfallen:** Tippen, wenn die Hände voll sind · Notizzettel für später · „ich mach das gleich, wenn ich am Rechner bin".
 
+**Wer antwortet eigentlich?** Im Echtzeit-Gespräch hört und spricht ein eigenes Sprachmodell (Nova Sonic bzw. Azure Realtime). Es gibt zwei Arten, es zu betreiben — einstellbar unter *Einstellungen → Sprache* (Vorgabe) und pro Agent im Sprach-Tab:
+- **Stimme direkt:** Das Sprachmodell antwortet selbst und nutzt eigene Werkzeuge (Kalender, Wissen, angebundene MCP-Dienste). Am schnellsten, aber es ist nicht der Agent: kleineres Modell, ohne dessen Skills und Dateien.
+- **Immer der Agent:** Das Sprachmodell ist nur Ohr und Mund. Jede Frage geht an den Agenten — mit seinem Modell, seinem Wissen und seinen MCP-Rechten —, die Antwort wird vorgelesen. Einige Sekunden Wartezeit pro Antwort, dafür dieselbe Qualität wie im Chat. Freihändig und mit Reinreden bleibt es trotzdem.
+
 ---
 
 ## 4. Zweites Gehirn — Firmenwissen, das antwortet

@@ -73,6 +73,7 @@ class SettingsUpdate(BaseModel):
     voice_interaction_model: str | None = None      # "" = classic pipeline; else engine e.g. "nova_sonic"
     voice_interaction_account_id: str | None = None  # AI-account id providing the realtime creds
     nova_sonic_voice: str | None = None              # voiceId des Echtzeit-Gespraechs
+    voice_delegate_to_agent: str | None = None       # "true"/"false": Echtzeit-Front reicht alles an den Agenten
     # On-prem Exchange (EWS) connection config — auth is per-user via impersonation
     exchange_server_url: str | None = None               # EWS host, e.g. "mail.example.com"
     exchange_auth_mode: str | None = None                # "service_account" | "modern_auth" | "basic"
@@ -145,6 +146,9 @@ class VoiceSettings(BaseModel):
     voice_interaction_account_id: str = ""
     # Stimme des Echtzeit-Gespraechs (Nova Sonic voiceId), Vorgabe "matthew".
     nova_sonic_voice: str = "matthew"
+    # Echtzeit-Front reicht jede inhaltliche Bitte an den Agenten weiter
+    # (Plattform-Vorgabe, pro Agent ueberschreibbar) — app/core/voice_delegate.py
+    voice_delegate_to_agent: bool = False
 
 
 class SettingsResponse(BaseModel):

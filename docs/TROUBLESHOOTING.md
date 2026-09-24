@@ -236,6 +236,26 @@ docker exec ai-employee-redis redis-cli --no-auth-warning \
   -a "$(grep '^REDIS_PASSWORD=' .env | cut -d= -f2-)" GET oauth:refresh_failure:<id>
 ```
 
+### Im Sprachgespräch fehlt dem Agenten ein Werkzeug, im Chat nicht
+
+**Symptom:** Per Sprache (App/Browser, Echtzeit-Modus) sagt der Agent, er habe
+keinen Zugriff auf einen Dienst (z. B. Garmin), im Textchat klappt dieselbe Frage.
+
+**Ursache:** Im Echtzeit-Modus antwortet nicht der Agent, sondern das
+Sprachmodell (Nova Sonic / Azure Realtime) mit **eigener** Werkzeugliste. Die
+MCP-Werkzeuge liest es aus dem **gespeicherten Katalog** des Servers
+(`mcp_servers.tools`), nicht live — der Agent im Container fragt dagegen live.
+Ist der Katalog leer oder veraltet, fehlen die Werkzeuge nur in der Stimme.
+
+**Lösung:**
+- Kurzfristig: unter **Integrationen** auf der MCP-Karte **Neu laden** (liest
+  den Katalog neu ein).
+- Grundsätzlich: **„Immer der Agent"** einschalten (*Einstellungen → Sprache*
+  oder pro Agent im Sprach-Tab). Dann reicht die Stimme jede Frage an den
+  Agenten weiter, der seine Dienste selbst und live aufruft — Katalog und
+  Werkzeugliste der Stimme spielen keine Rolle mehr
+  (`orchestrator/app/core/voice_delegate.py`).
+
 ### JWT token expired
 
 **Symptom:** API returns 401 after being logged in.

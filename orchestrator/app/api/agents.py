@@ -1955,6 +1955,45 @@ async def update_agent_interaction_model(
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
+@router.put("/{agent_id}/voice-delegate")
+async def update_agent_voice_delegate(
+    agent_id: str,
+    body: dict,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Soll die Echtzeit-Sprachfront bei diesem Agenten alles an ihn weiterreichen?
+
+    Body: {"voice_delegate_to_agent": true | false | null}
+    true  → Nova ist nur Ohr und Mund, jede inhaltliche Bitte geht per ask_agent an
+            den Agenten (sein Modell, seine MCP-Rechte).
+    false → Nova antwortet selbst, mit eigenen Werkzeugen (schneller).
+    null  → Plattform-Vorgabe gilt (Einstellungen → Sprache).
+    Eigener Endpunkt, weil ``/interaction-model`` beim Speichern alle
+    interaction_*-Schluessel neu schreibt. Wirkt ab dem naechsten Gespraech.
+    """
+    await _check_owner(agent_id, user, db)
+    from app.core import voice_delegate as _vd
+    raw = body.get("voice_delegate_to_agent")
+    if raw is not None and not isinstance(raw, bool):
+        raise HTTPException(status_code=422, detail="voice_delegate_to_agent must be true, false or null")
+    try:
+        agent = await manager._get_agent(agent_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    cfg = dict(agent.config or {})
+    if raw is None:
+        cfg.pop(_vd.CONFIG_KEY, None)
+    else:
+        cfg[_vd.CONFIG_KEY] = raw
+    agent.config = cfg
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(agent, "config")
+    await db.commit()
+    return {"agent_id": agent_id, "voice_delegate_to_agent": raw}
+
+
 @router.delete("/{agent_id}")
 async def remove_agent(
     agent_id: str,

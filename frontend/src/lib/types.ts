@@ -112,6 +112,8 @@ export interface Agent {
   interaction_model?: string | null;
   interaction_account_id?: number | null;
   interaction_model_id?: string | null;
+  /** Echtzeit-Front reicht alles an den Agenten weiter; null/undefined = Plattform-Vorgabe. */
+  voice_delegate_to_agent?: boolean | null;
   webhook_enabled?: boolean;
   webhook_token?: string | null;
   shared_for_rooms?: boolean;
