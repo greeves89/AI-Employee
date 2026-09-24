@@ -10,14 +10,19 @@ enger: ein Agent mit uid 1000 — der genau die Kette besitzt, die
 GENAU in dem Fenster zwischen dem Exec-Aufruf und dem nachfolgenden
 `put_archive`-Aufruf gegen einen Symlink zu tauschen.
 
-Der Fix verhindert das Fenster nicht (das wuerde eine einzige atomare
-Docker-API-Operation brauchen, die `put_archive` nicht anbietet), sondern
-erkennt einen im Fenster erfolgten Tausch NACHTRAEGLICH:
-`_assert_target_dir_still_safe` geht die Kette nach `put_archive` nochmal mit
-O_NOFOLLOW ab (read-only). Eine Flucht aus der Kette ist nur ueber einen
-Symlink moeglich (ein `mkdir` legt ein Ersatz-Verzeichnis immer INNERHALB des
-gleichen Elternordners an, es kann die Kette nicht verlassen) — genau das
-faengt O_NOFOLLOW ab, unabhaengig vom Owner des eingetauschten Symlinks.
+Der Fix nimmt dem Fenster die Wirkung, statt es nur zu erkennen:
+`put_archive` schreibt nur noch in ein root-eigenes Zwischenlager, an dem der
+Agent nichts umbiegen kann. Die Zielkette fasst erst
+`_install_from_staging` an — in EINEM Exec, das jedes Glied mit O_NOFOLLOW
+oeffnet und danach nur noch relativ zu den offenen Deskriptoren schreibt.
+Eine Flucht aus der Kette ist nur ueber einen Symlink moeglich (ein `mkdir`
+legt ein Ersatz-Verzeichnis immer INNERHALB des gleichen Elternordners an, es
+kann die Kette nicht verlassen) — genau das faengt O_NOFOLLOW ab, unabhaengig
+vom Owner des eingetauschten Symlinks.
+
+Dass dabei wirklich nichts mehr ausserhalb der Kette landet, misst
+`test_toctou_kein_schreiben_ausserhalb_843.py` am echten Dateisystem; hier
+stehen die Einzelteile (Skript, Reihenfolge, Vollstaendigkeit).
 """
 
 import ast
@@ -29,6 +34,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+import uuid
 from unittest.mock import MagicMock
 
 from app.services import docker_service as ds_modul
@@ -36,7 +42,7 @@ from app.services.docker_service import (
     DockerService,
     ZielordnerKompromittiert,
     ZielordnerNichtVorbereitbar,
-    _VERIFY_TARGET_DIR_SCRIPT,
+    _INSTALL_FROM_STAGING_SCRIPT,
 )
 
 
@@ -73,7 +79,7 @@ def _service():
 
 
 PREPARE_OK = (0, "")
-VERIFY_SYMLINK_GETAUSCHT = (
+INSTALL_SYMLINK_GETAUSCHT = (
     3, "'app' wurde waehrend des Schreibens gegen einen Symlink getauscht\n",
 )
 
@@ -93,11 +99,20 @@ class SkriptErkenntSymlinkTauschAmEchtenDateisystemTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def _run(self, *parts):
-        return subprocess.run(
-            [sys.executable, "-c", _VERIFY_TARGET_DIR_SCRIPT, self.root, *parts],
+    def _run(self, *parts, inhalt=b"nutzlast"):
+        """Faehrt das ECHTE Uebernahme-Skript mit einem gefuellten
+        Zwischenlager. Rueckgabe zusaetzlich: wo der Inhalt gelandet ist."""
+        staging = os.path.join(self._tmp.name, "staging", uuid.uuid4().hex)
+        os.makedirs(staging)
+        with open(os.path.join(staging, "nutzlast.txt"), "wb") as fh:
+            fh.write(inhalt)
+        r = subprocess.run(
+            [sys.executable, "-c", _INSTALL_FROM_STAGING_SCRIPT, self.root,
+             str(os.getuid()), str(os.getgid()), staging, *parts],
             capture_output=True, text=True,
         )
+        self.staging = staging
+        return r
 
     def test_unveraenderte_kette_besteht_die_nachpruefung(self):
         os.makedirs(os.path.join(self.root, "projects", "app"))
@@ -150,18 +165,50 @@ class SkriptErkenntSymlinkTauschAmEchtenDateisystemTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_script_has_no_syntax_error_and_needs_no_third_party_import(self):
-        compile(_VERIFY_TARGET_DIR_SCRIPT, "<verify>", "exec")
-        self.assertNotIn("import app", _VERIFY_TARGET_DIR_SCRIPT)
+        compile(_INSTALL_FROM_STAGING_SCRIPT, "<install>", "exec")
+        self.assertNotIn("import app", _INSTALL_FROM_STAGING_SCRIPT)
+
+    def test_zwischenlager_wird_auch_nach_einer_ablehnung_entfernt(self):
+        """Ein abgelehnter Schreibvorgang darf keine Nutzlast im
+        Zwischenlager liegen lassen — sonst sammelt sich dort ueber die Zeit
+        genau der Inhalt an, den der Aufrufer fuer nicht geschrieben haelt."""
+        os.makedirs(os.path.join(self.root, "projects"))
+        os.symlink(self.outside, os.path.join(self.root, "projects", "app"))
+        r = self._run("projects", "app")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(os.path.exists(self.staging), r.stdout)
+
+    def test_nutzlast_landet_bei_heiler_kette_wirklich_im_ziel(self):
+        os.makedirs(os.path.join(self.root, "projects", "app"))
+        r = self._run("projects", "app", inhalt=b"hallo")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        ziel = os.path.join(self.root, "projects", "app", "nutzlast.txt")
+        with open(ziel, "rb") as fh:
+            self.assertEqual(fh.read(), b"hallo")
+        self.assertFalse(os.path.exists(self.staging))
+
+    def test_symlink_als_zieldatei_wird_nicht_durchgeschrieben(self):
+        """Haertung, die put_archive nicht hatte: eine bereits als Symlink
+        angelegte Zieldatei wird abgelehnt statt durchgeschrieben."""
+        os.makedirs(os.path.join(self.root, "projects", "app"))
+        beute = os.path.join(self.outside, "beute.txt")
+        with open(beute, "w") as fh:
+            fh.write("unberuehrt")
+        os.symlink(beute, os.path.join(self.root, "projects", "app", "nutzlast.txt"))
+        r = self._run("projects", "app", inhalt=b"uebernommen")
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        with open(beute) as fh:
+            self.assertEqual(fh.read(), "unberuehrt")
 
 
 class NachpruefungWirdNachDemSchreibenAufgerufenTests(unittest.TestCase):
-    """Verhaltenstest ueber den gefaelschten Client: _assert_target_dir_still_safe
+    """Verhaltenstest ueber den gefaelschten Client: _install_from_staging
     laeuft NACH put_archive, und ein Fehlschlag dort markiert den bereits
     erfolgten Schreibvorgang als kompromittiert (ZielordnerKompromittiert)."""
 
     def test_write_file_in_container_erkennt_kompromittierte_kette(self):
         svc, container = _service()
-        svc.exec_in_container = MagicMock(side_effect=[PREPARE_OK, VERIFY_SYMLINK_GETAUSCHT])
+        svc.exec_in_container = MagicMock(side_effect=[PREPARE_OK, INSTALL_SYMLINK_GETAUSCHT])
 
         with self.assertRaises(ZielordnerKompromittiert) as ctx:
             svc.write_file_in_container("c1", "/workspace/app/knowledge.md", "x")
@@ -174,13 +221,52 @@ class NachpruefungWirdNachDemSchreibenAufgerufenTests(unittest.TestCase):
 
     def test_write_files_in_container_erkennt_kompromittierte_kette(self):
         svc, container = _service()
-        svc.exec_in_container = MagicMock(side_effect=[PREPARE_OK, VERIFY_SYMLINK_GETAUSCHT])
+        svc.exec_in_container = MagicMock(side_effect=[PREPARE_OK, INSTALL_SYMLINK_GETAUSCHT])
 
         with self.assertRaises(ZielordnerKompromittiert):
             svc.write_files_in_container("c1", "/workspace/app", [("a.txt", b"a")])
 
         self.assertEqual(len(container.archives), 1)
         self.assertEqual(svc.exec_in_container.call_count, 2)
+
+    def test_put_archive_zielt_nie_auf_den_vom_agenten_erreichbaren_pfad(self):
+        """Der Kern des Fixes: der Docker-Daemon bekommt den Zielpfad gar
+        nicht mehr zu sehen — er schreibt in die root-eigene Staging-Wurzel,
+        und jeder Archiv-Eintrag liegt unterhalb des Staging-Praefixes. Ein
+        Rueckfall auf den Zielpfad waere hier sofort sichtbar, auch wenn alle
+        Ablaeufe gruen bleiben."""
+        praefix = ds_modul._IMPORT_STAGING_DIR + "/"
+        for aufruf in (
+            lambda svc: svc.write_file_in_container("c1", "/workspace/app/knowledge.md", "x"),
+            lambda svc: svc.write_files_in_container("c1", "/workspace/app", [("src/a.txt", b"a")]),
+        ):
+            svc, container = _service()
+            svc.exec_in_container = MagicMock(return_value=PREPARE_OK)
+            aufruf(svc)
+            ziel, rohdaten = container.archives[0]
+            self.assertEqual(ziel, ds_modul._IMPORT_STAGING_PARENT)
+            with tarfile.open(fileobj=io.BytesIO(rohdaten)) as tar:
+                namen = tar.getnames()
+            self.assertTrue(namen)
+            for name in namen:
+                self.assertTrue(
+                    name == ds_modul._IMPORT_STAGING_DIR or name.startswith(praefix),
+                    f"Archiv-Eintrag {name!r} liegt ausserhalb des Zwischenlagers",
+                )
+                self.assertNotIn("..", name.split("/"))
+
+    def test_zwischenlager_ordner_gehoeren_root_und_sind_nur_fuer_root_begehbar(self):
+        """Ohne das ist das Zwischenlager keines: koennte der Agent hinein,
+        haette er den Symlink-Tausch nur an eine andere Stelle verlegt."""
+        svc, container = _service()
+        svc.exec_in_container = MagicMock(return_value=PREPARE_OK)
+        svc.write_file_in_container("c1", "/workspace/app/knowledge.md", "x")
+        with tarfile.open(fileobj=io.BytesIO(container.archives[0][1])) as tar:
+            ordner = [m for m in tar.getmembers() if m.isdir()]
+        self.assertEqual(len(ordner), 2, [m.name for m in ordner])
+        for m in ordner:
+            self.assertEqual((m.uid, m.gid), (0, 0), m.name)
+            self.assertEqual(m.mode, 0o700, m.name)
 
     def test_kompromittierung_ist_eine_zielordner_nicht_vorbereitbar_unterklasse(self):
         """Bestehende Aufrufer, die ZielordnerNichtVorbereitbar in einen 4xx
@@ -197,7 +283,7 @@ class NachpruefungWirdNachDemSchreibenAufgerufenTests(unittest.TestCase):
         self.assertEqual(len(container.archives), 1)
         self.assertEqual(svc.exec_in_container.call_count, 2)
 
-    def _reihenfolge_put_archive_vor_verify(self, funktion):
+    def _reihenfolge_put_archive_vor_uebernahme(self, funktion):
         """Formtest wie schon fuer prepare_target_dir/put_archive in
         test_import_zielordner_symlink.py: bei rc=0 sehen beide Reihenfolgen
         gleich gruen aus, deshalb am Quelltext pruefen statt am Verhalten."""
@@ -206,24 +292,24 @@ class NachpruefungWirdNachDemSchreibenAufgerufenTests(unittest.TestCase):
         namen = []
         for knoten in ast.walk(baum):
             if isinstance(knoten, ast.Call) and isinstance(knoten.func, ast.Attribute):
-                if knoten.func.attr in ("put_archive", "_assert_target_dir_still_safe"):
+                if knoten.func.attr in ("put_archive", "_install_from_staging"):
                     namen.append((knoten.lineno, knoten.func.attr))
         namen.sort()
         return [n for _, n in namen]
 
-    def test_verify_laeuft_nach_put_archive_im_einzahl_helfer(self):
+    def test_uebernahme_laeuft_nach_put_archive_im_einzahl_helfer(self):
         self.assertEqual(
-            self._reihenfolge_put_archive_vor_verify(DockerService.write_file_in_container),
-            ["put_archive", "_assert_target_dir_still_safe"],
+            self._reihenfolge_put_archive_vor_uebernahme(DockerService.write_file_in_container),
+            ["put_archive", "_install_from_staging"],
         )
 
-    def test_verify_laeuft_nach_put_archive_im_mehrzahl_helfer(self):
+    def test_uebernahme_laeuft_nach_put_archive_im_mehrzahl_helfer(self):
         self.assertEqual(
-            self._reihenfolge_put_archive_vor_verify(DockerService.write_files_in_container),
-            ["put_archive", "_assert_target_dir_still_safe"],
+            self._reihenfolge_put_archive_vor_uebernahme(DockerService.write_files_in_container),
+            ["put_archive", "_install_from_staging"],
         )
 
-    def test_beide_bekannten_put_archive_traeger_rufen_die_nachpruefung(self):
+    def test_beide_bekannten_put_archive_traeger_rufen_die_uebernahme(self):
         """Dieselbe Lehre wie in #840/#841: nicht den gemeldeten Aufrufer
         flicken, sondern JEDEN Traeger von put_archive erfassen. Ein neuer,
         dritter Aufrufer faellt hier durch, wenn er die Nachpruefung
@@ -231,26 +317,26 @@ class NachpruefungWirdNachDemSchreibenAufgerufenTests(unittest.TestCase):
         prepare_target_dir in test_import_zielordner_symlink.py."""
         quelle = inspect.getsource(ds_modul)
         baum = ast.parse(quelle)
-        traeger_ohne_verify = []
+        traeger_ohne_uebernahme = []
         alle_traeger = set()
         for knoten in ast.walk(baum):
             if not isinstance(knoten, ast.FunctionDef):
                 continue
             ruft_put_archive = False
-            ruft_verify = False
+            ruft_uebernahme = False
             for unter in ast.walk(knoten):
                 if isinstance(unter, ast.Call) and isinstance(unter.func, ast.Attribute):
                     if unter.func.attr == "put_archive":
                         ruft_put_archive = True
-                    elif unter.func.attr == "_assert_target_dir_still_safe":
-                        ruft_verify = True
+                    elif unter.func.attr == "_install_from_staging":
+                        ruft_uebernahme = True
             if not ruft_put_archive:
                 continue
             alle_traeger.add(knoten.name)
-            if not ruft_verify:
-                traeger_ohne_verify.append(knoten.name)
+            if not ruft_uebernahme:
+                traeger_ohne_uebernahme.append(knoten.name)
         self.assertEqual(alle_traeger, {"write_file_in_container", "write_files_in_container"})
-        self.assertEqual(traeger_ohne_verify, [])
+        self.assertEqual(traeger_ohne_uebernahme, [])
 
 
 if __name__ == "__main__":

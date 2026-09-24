@@ -27,6 +27,7 @@ from app.core.file_manager import (
     FileManager,
     UploadZielNichtVorbereitbar,
 )
+from app.services import docker_service as ds_modul
 from app.services.docker_service import DockerService
 
 
@@ -173,9 +174,9 @@ class WriteHandsTheTargetToTheAgentTests(unittest.TestCase):
         svc, container = _service()
         svc.write_files_in_container("c1", "/workspace/projects/app", [("a.txt", b"a")])
 
-        # #843: ein zweiter exec-Aufruf prueft die Kette NACH put_archive
-        # nochmal nach (_assert_target_dir_still_safe) — die Vorbereitung
-        # bleibt der ERSTE Aufruf.
+        # #843: ein zweiter exec-Aufruf uebernimmt den Inhalt NACH
+        # put_archive aus dem Zwischenlager in die Zielkette
+        # (_install_from_staging) — die Vorbereitung bleibt der ERSTE Aufruf.
         self.assertEqual(svc.exec_in_container.call_count, 2)
         call = svc.exec_in_container.call_args_list[0]
         cmd = call.args[1]
@@ -184,7 +185,12 @@ class WriteHandsTheTargetToTheAgentTests(unittest.TestCase):
         self.assertEqual(cmd[3:], ["/workspace", "1000", "1000", "projects", "app"])
         self.assertEqual(call.kwargs.get("user"), "root")
         self.assertEqual(len(container.archives), 1)
-        self.assertEqual(container.archives[0][0], "/workspace/projects/app")
+        # put_archive zielt seit #843 auf die root-eigene Staging-Wurzel; der
+        # Zielpfad steht im zweiten (Uebernahme-)Aufruf.
+        self.assertEqual(container.archives[0][0], ds_modul._IMPORT_STAGING_PARENT)
+        uebernahme = svc.exec_in_container.call_args_list[1].args[1]
+        self.assertEqual(uebernahme[3:][:1], ["/workspace"])
+        self.assertEqual(uebernahme[3:][-2:], ["projects", "app"])
 
     def test_chain_links_come_from_the_normalised_path(self):
         """'/workspace/../workspace/x' darf nur ['x'] ergeben — und auch
@@ -194,7 +200,9 @@ class WriteHandsTheTargetToTheAgentTests(unittest.TestCase):
 
         cmd = svc.exec_in_container.call_args_list[0].args[1]
         self.assertEqual(cmd[3:], ["/workspace", "1000", "1000", "x", "y"])
-        self.assertEqual(container.archives[0][0], "/workspace/x/y")
+        self.assertEqual(container.archives[0][0], ds_modul._IMPORT_STAGING_PARENT)
+        uebernahme = svc.exec_in_container.call_args_list[1].args[1]
+        self.assertEqual(uebernahme[3:][-2:], ["x", "y"])
 
     def test_writing_into_workspace_root_passes_no_chain_link(self):
         """/workspace gehoert dem Agenten schon; die Kette ist leer, das Skript
@@ -233,9 +241,11 @@ class UploadReachesTheProtectedWriterTests(unittest.IsolatedAsyncioTestCase):
         mgr = FileManager(svc)
         await mgr.upload_files("c1", "/workspace/../workspace//projects/./app/", [("a.txt", b"a")])
 
-        self.assertEqual(container.archives[0][0], "/workspace/projects/app")
+        self.assertEqual(container.archives[0][0], ds_modul._IMPORT_STAGING_PARENT)
         cmd = svc.exec_in_container.call_args_list[0].args[1]
         self.assertEqual(cmd[3:], ["/workspace", "1000", "1000", "projects", "app"])
+        uebernahme = svc.exec_in_container.call_args_list[1].args[1]
+        self.assertEqual(uebernahme[3:][-2:], ["projects", "app"])
 
     async def test_refused_target_stops_the_upload(self):
         svc, container = _service(rc=4, out="'link' ist ein Symlink — Upload-Ziel abgelehnt\n")
