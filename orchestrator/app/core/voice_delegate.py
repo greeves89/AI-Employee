@@ -35,14 +35,18 @@ CONFIG_KEY = "voice_delegate_to_agent"
 #: Werkzeuge, die im Weiterreich-Modus bleiben. Alles andere — Kalender, Mail,
 #: Brain, MCP-Dienste — soll der Agent selbst tun, nicht die Sprachfront. Was
 #: hier bleibt, dient nur der Gespraechsfuehrung: weiterreichen, nachschaerfen,
-#: abbrechen, nachfragen was laeuft, Hilfe, Anzeige.
+#: abbrechen, nachfragen was laeuft, Anzeige.
+#:
+#: Bewusst NICHT dabei: ``voice_help``. Es liefert eine feste Uebersicht der
+#: Faehigkeiten der Sprachfront selbst ("Mails vorlesen, Wissensgraph …") —
+#: im ersten Test am 24.09. zaehlte die Stimme genau die auf, obwohl sie diese
+#: Werkzeuge hier gar nicht hat. "Was kannst du?" beantwortet der Agent besser.
 KEEP_TOOLS = frozenset({
     "ask_agent",
     "delegate_tasks",
     "refine_task",
     "cancel_task",
     "get_delegated_tasks",
-    "voice_help",
     "rename_conversation",
     "show_on_screen",
     "control_ui",

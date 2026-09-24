@@ -65,6 +65,11 @@ class FilterToolsTests(unittest.TestCase):
         schema = json.loads(result[0]["toolSpec"]["inputSchema"]["json"])
         self.assertEqual(schema["required"], ["instruction"])
 
+    def test_capability_overview_of_the_voice_is_dropped(self):
+        # voice_help zaehlt die Faehigkeiten der Stimme auf (Mails, Wissensgraph …),
+        # die es im Modus nicht gibt — erster Live-Test am 24.09.
+        self.assertNotIn("voice_help", _names(vd.filter_tools([_spec("voice_help"), _spec("ask_agent")])))
+
     def test_ask_agent_is_added_if_missing(self):
         self.assertEqual(_names(vd.filter_tools([_spec("cancel_task")])), ["ask_agent", "cancel_task"])
 
