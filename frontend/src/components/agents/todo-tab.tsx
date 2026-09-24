@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CheckCircle2,
   Circle,
@@ -21,6 +21,7 @@ import {
   deleteAgentTodo,
 } from "@/lib/api";
 import type { AgentTodo, TodoStatus } from "@/lib/types";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 const priorityColors: Record<number, string> = {
   1: "bg-red-500/20 text-red-400 border-red-500/30",
@@ -72,7 +73,6 @@ export function TodoTab({ agentId }: TodoTabProps) {
   const [newDescription, setNewDescription] = useState("");
   const [newPriority, setNewPriority] = useState(3);
   const [newProject, setNewProject] = useState("");
-  const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const fetchTodos = useCallback(async () => {
     try {
@@ -100,8 +100,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
 
   useEffect(() => {
     fetchTodos();
-    pollRef.current = setInterval(fetchTodos, 15000);
-    return () => clearInterval(pollRef.current);
+    return setVisibleInterval(fetchTodos, 15000);
   }, [fetchTodos]);
 
   const handleToggle = async (todo: AgentTodo) => {

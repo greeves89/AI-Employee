@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Database, Radio, Container, Wifi, RefreshCw } from "lucide-react";
 import { getApiUrl } from "@/lib/config";
 import { cn } from "@/lib/utils";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 interface ServiceCheck {
   status: "healthy" | "unhealthy" | "degraded" | "unknown";
@@ -103,8 +104,7 @@ export function SystemStatusBar() {
 
   useEffect(() => {
     fetchHealth();
-    const interval = setInterval(fetchHealth, 30_000);
-    return () => clearInterval(interval);
+    return setVisibleInterval(fetchHealth, 30_000);
   }, []);
 
   const toStatus = (check?: ServiceCheck): DotStatus => {

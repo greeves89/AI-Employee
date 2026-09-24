@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.339.1] - 2026-09-25
+
+### Behoben
+- **Die Oberflaeche fragt nur noch bei sichtbarem Tab im Takt nach.** Jede
+  offene Ansicht pollte dauerhaft — auch Tabs, die niemand ansah. Alles zaehlt
+  gegen dasselbe Rate-Limit pro Nutzer (120/min, `APIRateLimitMiddleware`).
+  Zwei offene Chat-Tabs lagen allein mit der Freigabe-Abfrage bei 40
+  Anfragen/min; zusammen mit einem hakenden Zweitgeraet bekam JEDES Geraet
+  des Nutzers 429 — auch der Token-Refresh.
+  - Neuer Helfer `lib/visible-interval.ts` (`setVisibleInterval`): im
+    Hintergrund kein Takt, beim Zurueckkommen sofort einmal nachfragen.
+    Umgestellt: Chat (Aufgaben-Endstaende, Beschaeftigt-Abgleich),
+    Agentenseite, Agenten-/Aufgabenlisten, Seitenleiste, Glocke,
+    Chat-Uebersicht, Todos, Docker-Apps, Agenten-Netz, Sprach-Tab,
+    Computer-Use-Status, Chat-Layout, Freigabeseite, Dashboard-Statusleiste.
+    Bewusst unveraendert: Presence-Heartbeat (meldet Anwesenheit), laufende
+    Sprach- und Live-Bildschirm-Sitzungen.
+- **Freigaben im Chat kommen live statt per 3-s-Abfrage.** Das Backend sendet
+  `approval_request` ohnehin ueber die Chat-WebSocket; der Chat reagiert jetzt
+  darauf mit einem sofortigen Abgleich. Die Abfrage bleibt als Rueckfall:
+  30 s, solange ein Freigabe-Banner steht 5 s (eine anderswo erledigte
+  Freigabe hat kein Live-Ereignis).
+- `docs/TROUBLESHOOTING.md`: Abschnitt zu 429 mit Diagnose und Entsperren.
+
 ## [1.339.0] - 2026-09-25
 
 ### Hinzugefügt

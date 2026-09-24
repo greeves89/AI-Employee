@@ -15,6 +15,7 @@ import { UserMenu } from "@/components/layout/user-menu";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import * as api from "@/lib/api";
 import type { Agent } from "@/lib/types";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 interface ConversationItem {
   sessionId: string;
@@ -49,8 +50,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
       }
     };
     loadAgents();
-    const interval = setInterval(loadAgents, 30000);
-    return () => clearInterval(interval);
+    return setVisibleInterval(loadAgents, 30000);
   }, []);
 
   // Load conversations for all agents

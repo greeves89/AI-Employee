@@ -180,7 +180,8 @@ interface ChatEvent {
   agent_id: string;
   message_id: string;
   session_id?: string;  // owning session (set by the server) — used to isolate chat tabs
-  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card" | "context";
+  type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card" | "context"
+    | "approval_request";  // Freigabe angelegt (approvals.py) — Anstoss fuer den Banner-Abgleich
   data: Record<string, unknown>;
   timestamp: string;
 }
@@ -300,6 +301,7 @@ function LiveActivity({ agentId }: { agentId: string }) {
 import { getWsUrl, getApiUrl } from "@/lib/config";
 import { useVoiceSession } from "./voice-session-provider";
 import { formatMoney } from "@/lib/money";
+import { setVisibleInterval } from "@/lib/visible-interval";
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 /* ─── Tool Display Helper ───────────────────────────────────────────── */
@@ -535,8 +537,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     };
     holen();
     if (laufend.length === 0) return;
-    const intervall = setInterval(holen, 4000);
-    return () => { lebendig = false; clearInterval(intervall); };
+    const stopp = setVisibleInterval(holen, 4000);
+    return () => { lebendig = false; stopp(); };
   }, [offeneAuftraege, alleAuftraege]);
 
   /** Ein Schritt aus dem Aktivitaetsverlauf in eine kurze Zeile fassen — dieselben
@@ -645,6 +647,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // Rueckfrage leer) und zwei feste Knoepfe.
   type PendingApproval = ApprovalPromptData & { risk_level: string };
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  // Neue Freigaben kommen live als `approval_request` ueber die Chat-WebSocket
+  // (approvals.py publiziert auf agent:{id}:chat:response). onmessage stoesst
+  // darueber sofort einen Abgleich an; der Takt unten ist nur noch Rueckfall.
+  const approvalRecheckRef = useRef<() => void>(() => {});
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
@@ -1026,8 +1032,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       } catch { /* transient — ignore */ }
     };
     check();
-    const iv = setInterval(check, 4000);
-    return () => { cancelled = true; clearInterval(iv); };
+    const stop = setVisibleInterval(check, 4000);
+    return () => { cancelled = true; stop(); };
   }, [agentId, activeSessionId]);
 
   const connect = useCallback(async () => {
@@ -1166,6 +1172,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     ws.onmessage = (event) => {
       try {
         const chatEvent: ChatEvent = JSON.parse(event.data);
+        if (chatEvent.type === "approval_request") {
+          // Live-Signal: sofort abgleichen statt auf den naechsten Takt zu warten.
+          approvalRecheckRef.current();
+        }
         if (chatEvent.type === "session") {
           const sid = String(chatEvent.data.session_id || "");
           if (sid) {
@@ -2006,6 +2016,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     return () => clearInterval(interval);
   }, [isWaiting, messages, thinkingStartTime]);
 
+  const hasPendingApproval = pendingApproval !== null;
   // Poll for approvals that need this chat's attention.
   //
   // Bug fix (live-reported 2026-09-18): this used to only poll while
@@ -2036,10 +2047,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         setPendingApproval(relevant[0] || null);
       } catch {}
     };
+    approvalRecheckRef.current = check;
     check();
-    const poll = setInterval(check, 3000);
-    return () => { cancelled = true; clearInterval(poll); };
-  }, [agentId]);
+    // Nur Rueckfall: neue Freigaben kommen live (approvalRecheckRef); mit Banner enger.
+    const stop = setVisibleInterval(check, hasPendingApproval ? 5000 : 30000);
+    return () => { cancelled = true; stop(); approvalRecheckRef.current = () => {}; };
+  }, [agentId, hasPendingApproval]);
 
   // Fenstergroesse für den Ring im Composer. Einmal je Gespraech geholt — sie
   // aendert sich nur, wenn jemand das Modell umstellt.

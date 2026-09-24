@@ -6,6 +6,7 @@ import * as api from "@/lib/api";
 import type { ChatHistoryMessage, ChatSession } from "@/lib/api";
 import { SessionRail } from "./session-rail";
 import { useVoiceSession } from "./voice-session-provider";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 /** Speech tab: a "Gespräche" rail (shared component with the text chat, incl.
  *  pin/rename/delete) plus the embedded live voice view. Picking a conversation
@@ -44,8 +45,7 @@ export function AgentSpeechTab({ agentId, agentName }: { agentId: string; agentN
   // der Speech-Ansicht auftaucht.
   useEffect(() => {
     if (!voiceSession.activeSession) return;
-    const t = setInterval(loadSessions, 8000);
-    return () => clearInterval(t);
+    return setVisibleInterval(loadSessions, 8000);
   }, [voiceSession.activeSession, loadSessions]);
 
   // Verlauf des ausgewählten Gesprächs laden (dieselbe Quelle wie der Text-Chat).

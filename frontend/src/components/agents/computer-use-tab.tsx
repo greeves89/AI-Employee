@@ -51,6 +51,7 @@ import {
   type ComputerUseSession,
 } from "@/lib/api";
 import { getApiUrl, getBase } from "@/lib/config";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 interface Props {
   agentId: string;
@@ -211,8 +212,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 3000);
-    return () => clearInterval(t);
+    return setVisibleInterval(refresh, 3000);
   }, [refresh]);
 
   useEffect(() => {

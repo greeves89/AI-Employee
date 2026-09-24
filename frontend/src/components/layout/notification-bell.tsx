@@ -17,6 +17,7 @@ import { TaskDetailModal } from "@/components/layout/task-detail-modal";
 import { useAuthStore } from "@/lib/auth";
 
 import { getWsUrl, getApiUrl } from "@/lib/config";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 const typeColors: Record<string, string> = {
   info: "bg-blue-500",
@@ -173,11 +174,11 @@ export function NotificationBell({
     connect();
     fetchCount();
 
-    // Poll count every 30 seconds as fallback
-    const interval = setInterval(fetchCount, 30000);
+    // Poll count every 30 seconds as fallback (nur bei sichtbarem Tab)
+    const stopPolling = setVisibleInterval(fetchCount, 30000);
 
     return () => {
-      clearInterval(interval);
+      stopPolling();
       clearTimeout(reconnectTimeout.current);
       intentionalClose.current = true;
       wsRef.current?.close();

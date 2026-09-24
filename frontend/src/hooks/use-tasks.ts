@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useState } from "react";
 import { useTaskStore } from "@/store/task-store";
 import * as api from "@/lib/api";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 export function useTasks(agentId?: string) {
   const { tasks, loading, error, setTasks, setLoading, setError } =
@@ -25,8 +26,7 @@ export function useTasks(agentId?: string) {
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 15000);
-    return () => clearInterval(interval);
+    return setVisibleInterval(refresh, 15000);
   }, [refresh]);
 
   return { tasks, loading, error, refresh, total };

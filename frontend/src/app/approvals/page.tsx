@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 const CATEGORY_CONFIG: Record<string, { icon: typeof DollarSign; color: string; label: string }> = {
   money: { icon: DollarSign, color: "text-emerald-400", label: "Geld" },
@@ -202,8 +203,7 @@ export default function ApprovalsPage() {
 
   useEffect(() => {
     loadApprovals();
-    const interval = setInterval(loadApprovals, 10000);
-    return () => clearInterval(interval);
+    return setVisibleInterval(loadApprovals, 10000);
   }, []);
 
   const loadRules = async () => {

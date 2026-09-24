@@ -7,6 +7,7 @@ import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { AgentTeam } from "@/lib/api";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                      */
@@ -178,8 +179,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
 
   useEffect(() => {
     fetchMessages();
-    const interval = setInterval(fetchMessages, 10000); // refresh every 10s
-    return () => clearInterval(interval);
+    return setVisibleInterval(fetchMessages, 10000); // refresh every 10s
   }, [fetchMessages, timeFilter]);
 
   // Responsive resize

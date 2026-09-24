@@ -256,6 +256,30 @@ Ist der Katalog leer oder veraltet, fehlen die Werkzeuge nur in der Stimme.
   Werkzeugliste der Stimme spielen keine Rolle mehr
   (`orchestrator/app/core/voice_delegate.py`).
 
+### Browser oder App bekommen „429 Too Many Requests"
+
+**Symptom:** Seiten laden nicht mehr, Token-Refresh schlägt fehl, im Log viele
+`429 Too Many Requests` für denselben Nutzer — oft gleichzeitig auf allen
+Geräten.
+
+**Hintergrund:** `APIRateLimitMiddleware` erlaubt **120 Anfragen pro Minute
+und Nutzer** (Schlüssel aus dem JWT, sonst IP) — über alle Geräte und Tabs
+zusammen. WebSocket-Upgrades zählen nicht. Die Oberfläche fragt vieles im Takt
+nach (Aufgaben, Agent-Status, Zähler); seit v1.339.1 nur noch bei **sichtbarem
+Tab** (`frontend/src/lib/visible-interval.ts`), und neue Freigaben kommen live
+über die Chat-WebSocket (`approval_request`) statt über eine 3-s-Abfrage.
+
+**Typische Auslöser:** ein Client in einer Wiederverbindungsschleife (lädt bei
+jedem Neuverbinden alles neu), sehr viele offene Tabs.
+
+```bash
+# Wer fragt was? (letzte Minute)
+docker compose logs --since 60s orchestrator 2>&1 | grep -oE '"(GET|POST) [^ ?]+' | sort | uniq -c | sort -rn | head
+# Sperre sofort aufheben (statt das 60-s-Fenster abzuwarten)
+docker exec ai-employee-redis redis-cli --no-auth-warning \
+  -a "$(grep '^REDIS_PASSWORD=' .env | cut -d= -f2-)" DEL ratelimit:user:<user_id>
+```
+
 ### JWT token expired
 
 **Symptom:** API returns 401 after being logged in.
