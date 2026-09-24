@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.331.6] - 2026-09-24
+
+### Behoben
+- **Die verbleibende Restluecke aus #843 (Nachfolge zu #840/#842): zwischen dem
+  Vorbereiten des Zielordners und dem eigentlichen Schreiben liegt ein
+  kurzes Zeitfenster, in dem ein Agent ein Glied der Zielkette gegen eine
+  Verknuepfung tauschen konnte, ohne dass das bislang auffiel.** Nach jedem
+  Schreibvorgang wird die Kette jetzt nochmal geprueft; wurde sie im Fenster
+  veraendert, meldet der Schreibvorgang jetzt einen Fehler statt eines
+  stillen Erfolgs.
+
 ## [1.331.5] - 2026-09-23
 
 ### Behoben

@@ -173,8 +173,11 @@ class WriteHandsTheTargetToTheAgentTests(unittest.TestCase):
         svc, container = _service()
         svc.write_files_in_container("c1", "/workspace/projects/app", [("a.txt", b"a")])
 
-        self.assertEqual(svc.exec_in_container.call_count, 1)
-        call = svc.exec_in_container.call_args
+        # #843: ein zweiter exec-Aufruf prueft die Kette NACH put_archive
+        # nochmal nach (_assert_target_dir_still_safe) — die Vorbereitung
+        # bleibt der ERSTE Aufruf.
+        self.assertEqual(svc.exec_in_container.call_count, 2)
+        call = svc.exec_in_container.call_args_list[0]
         cmd = call.args[1]
         self.assertEqual(cmd[:2], ["python3", "-c"])
         self.assertEqual(cmd[2], _PREPARE_TARGET_DIR_SCRIPT)
@@ -189,7 +192,7 @@ class WriteHandsTheTargetToTheAgentTests(unittest.TestCase):
         svc, container = _service()
         svc.write_files_in_container("c1", "/workspace/../workspace//x/./y/", [("a.txt", b"a")])
 
-        cmd = svc.exec_in_container.call_args.args[1]
+        cmd = svc.exec_in_container.call_args_list[0].args[1]
         self.assertEqual(cmd[3:], ["/workspace", "1000", "1000", "x", "y"])
         self.assertEqual(container.archives[0][0], "/workspace/x/y")
 
@@ -199,7 +202,7 @@ class WriteHandsTheTargetToTheAgentTests(unittest.TestCase):
         svc, _ = _service()
         svc.write_files_in_container("c1", "/workspace", [("a.txt", b"a")])
 
-        cmd = svc.exec_in_container.call_args.args[1]
+        cmd = svc.exec_in_container.call_args_list[0].args[1]
         self.assertEqual(cmd[3:], ["/workspace", "1000", "1000"])
 
     def test_failed_preparation_aborts_before_anything_is_written(self):
@@ -231,7 +234,7 @@ class UploadReachesTheProtectedWriterTests(unittest.IsolatedAsyncioTestCase):
         await mgr.upload_files("c1", "/workspace/../workspace//projects/./app/", [("a.txt", b"a")])
 
         self.assertEqual(container.archives[0][0], "/workspace/projects/app")
-        cmd = svc.exec_in_container.call_args.args[1]
+        cmd = svc.exec_in_container.call_args_list[0].args[1]
         self.assertEqual(cmd[3:], ["/workspace", "1000", "1000", "projects", "app"])
 
     async def test_refused_target_stops_the_upload(self):

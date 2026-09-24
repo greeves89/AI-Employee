@@ -69,7 +69,11 @@ class TeamRegistryTests(unittest.TestCase):
         mgr, svc, container = _manager()
         mgr._update_team_registry("c1", "agent-1", "Nina", "dev")
 
-        prep_cmd = svc.exec_in_container.call_args_list[-1].args[1]
+        # _update_team_registry liest zuerst /shared/team.json (cat), dann
+        # bereitet write_file_in_container vor und schreibt. #843 haengt
+        # danach einen dritten exec-Aufruf an (Nachpruefung der Kette) — die
+        # Vorbereitung ist damit der VORLETZTE Aufruf, nicht mehr der letzte.
+        prep_cmd = svc.exec_in_container.call_args_list[-2].args[1]
         self.assertEqual(prep_cmd[3:], ["/shared", "1000", "1000"])
         self.assertEqual(len(container.archives), 1)
         dir_path, tar_bytes = container.archives[0]

@@ -124,6 +124,15 @@ class ZielordnerNichtVorbereitbar(ValueError):
     oder mkdir/chown schlugen fehl. Es wurde NICHTS geschrieben."""
 
 
+class ZielordnerKompromittiert(ZielordnerNichtVorbereitbar):
+    """Die Nachpruefung NACH put_archive hat ein Kettenglied als Symlink
+    vorgefunden, das vor dem Schreiben noch ein echtes Verzeichnis war (#843).
+    Im Unterschied zu ZielordnerNichtVorbereitbar wurde hier bereits
+    geschrieben — der Aufrufer darf den Vorgang trotzdem nicht als Erfolg
+    werten, denn der Zielpfad kann im TOCTOU-Fenster zwischen
+    prepare_target_dir und put_archive umgelenkt worden sein."""
+
+
 _WORKSPACE_ROOT = "/workspace"
 
 
@@ -182,6 +191,55 @@ try:
         except OSError as e:
             print(f"chown {part!r} fehlgeschlagen: {e.strerror}")
             sys.exit(5)
+        os.close(fd)
+        fd = nfd
+finally:
+    os.close(fd)
+"""
+
+
+# Laeuft NACH put_archive als root: geht dieselbe Kette (Wurzel + Basis-
+# Ordner) NOCHMAL mit O_NOFOLLOW ab, diesmal rein lesend (kein mkdir, kein
+# chown). Schliesst das TOCTOU-Fenster zwischen prepare_target_dir
+# (Exec-Aufruf) und put_archive (getrennter Docker-API-Roundtrip, #843): ein
+# Kettenglied, das im Fenster gegen einen Symlink getauscht wurde, liefert
+# bei der erneuten O_NOFOLLOW-Oeffnung ELOOP statt eines Erfolgs — unabhaengig
+# davon, welchen Owner der eingetauschte Symlink traegt. Ein Kettenglied kann
+# nicht unbemerkt durch ein ANDERES echtes Verzeichnis ersetzt werden, ohne
+# die Wurzel zu verlassen (mkdir legt nur innerhalb desselben Elternordners
+# an) — die einzige Fluchtmoeglichkeit aus der Kette ist ein Symlink, und
+# genau den faengt O_NOFOLLOW ab. Erkennt einen im Fenster erfolgten Angriff
+# NACHTRAEGLICH, verhindert ihn nicht: das Schreiben ist zu diesem Zeitpunkt
+# schon passiert, der Aufrufer soll es dann aber nicht als Erfolg werten.
+_VERIFY_TARGET_DIR_SCRIPT = """
+import errno, os, stat, sys
+root, *parts = sys.argv[1:]
+for part in parts:
+    if part in ("", ".", "..") or "/" in part:
+        print(f"unzulaessiges Kettenglied {part!r} — Nachpruefung abgelehnt")
+        sys.exit(1)
+flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+try:
+    fd = os.open(root, flags)
+except OSError as e:
+    print(f"Wurzel {root!r} nicht mehr als Verzeichnis zu oeffnen: {e.strerror}")
+    sys.exit(2)
+try:
+    for part in parts:
+        try:
+            nfd = os.open(part, flags, dir_fd=fd)
+        except OSError as e:
+            try:
+                ist_link = stat.S_ISLNK(os.lstat(part, dir_fd=fd).st_mode)
+            except OSError:
+                ist_link = False
+            if ist_link or e.errno == errno.ELOOP:
+                print(f"{part!r} wurde waehrend des Schreibens gegen einen Symlink getauscht")
+            elif e.errno == errno.ENOTDIR:
+                print(f"{part!r} ist kein Verzeichnis mehr")
+            else:
+                print(f"{part!r} nicht mehr zu oeffnen: {e.strerror}")
+            sys.exit(3)
         os.close(fd)
         fd = nfd
 finally:
@@ -574,6 +632,10 @@ class DockerService:
         Aufrufer, die legitim ausserhalb schreiben (Sudoers-Datei, geteilte
         Team-Registrierung), geben ihre eigene Wurzel UND passende uid/gid
         bewusst mit, statt sie stillschweigend zu umgehen (#841).
+
+        Nach ``put_archive`` wird die Kette per :meth:`_assert_target_dir_still_safe`
+        nochmal nachgeprueft (#843) — schliesst das TOCTOU-Fenster zwischen
+        Vorbereitung und Schreiben, siehe dort.
         """
         import io
         import tarfile
@@ -597,6 +659,7 @@ class DockerService:
         tar_stream.seek(0)
 
         container.put_archive(safe_dir, tar_stream)
+        self._assert_target_dir_still_safe(container_id, dir_path, root=root)
 
     def prepare_target_dir(
         self, container_id: str, target_dir: str, uid: int = 1000, gid: int = 1000,
@@ -625,7 +688,11 @@ class DockerService:
         uebergebenen uid/gid, ein Aufrufer mit Agenten-uid kann ein Glied in
         der Zwischenzeit ersetzen. Abgedeckt ist der Zustand VOR dem
         Schreiben — das ist genau der Weg, ueber den der Zielpfad heute
-        umgelenkt wuerde.
+        umgelenkt wuerde. Das Fenster NACH dieser Pruefung schliesst
+        :meth:`_assert_target_dir_still_safe`, die beide Schreib-Helfer nach
+        ``put_archive`` aufrufen (#843): eine Nachpruefung erkennt einen im
+        Fenster eingetauschten Symlink zwar erst NACHTRAEGLICH, markiert den
+        Vorgang dann aber als kompromittiert statt ihn als Erfolg zu melden.
 
         Braucht einen LAUFENDEN Behaelter (exec). ``put_archive`` allein kaeme
         auch an einen gestoppten heran; deshalb wird dieser Fall hier in eine
@@ -672,6 +739,45 @@ class DockerService:
             )
         return safe_dir
 
+    def _assert_target_dir_still_safe(
+        self, container_id: str, target_dir: str, root: str = _WORKSPACE_ROOT,
+    ) -> None:
+        """Nachpruefung NACH ``put_archive`` (#843): geht dieselbe Kette wie
+        :meth:`prepare_target_dir` erneut mit O_NOFOLLOW ab, diesmal rein
+        lesend. ``target_dir`` hat zu diesem Zeitpunkt bereits
+        :meth:`prepare_target_dir` erfolgreich durchlaufen — hier wird nur
+        noch geprueft, ob sich seitdem etwas veraendert hat, nicht erneut
+        gegen ``root`` validiert.
+
+        Wirft :class:`ZielordnerKompromittiert`, wenn ein Kettenglied im
+        Fenster zwischen Vorbereitung und Schreiben gegen einen Symlink
+        getauscht wurde. Das Schreiben ist dann bereits passiert — der
+        Aufrufer soll es trotzdem nicht als Erfolg werten.
+        """
+        safe_root = os.path.normpath(root)
+        safe_dir = os.path.normpath(target_dir)
+        parts = [p for p in safe_dir[len(safe_root):].split("/") if p] if safe_dir != safe_root else []
+        try:
+            exit_code, output = self.exec_in_container(
+                container_id,
+                ["python3", "-c", _VERIFY_TARGET_DIR_SCRIPT, safe_root, *parts],
+                user="root",
+            )
+        except APIError as e:
+            raise ZielordnerKompromittiert(
+                "Zielordner nach dem Schreiben nicht mehr zu pruefen: der "
+                f"Agent-Behaelter antwortet nicht (laeuft er noch?) — {e}"
+            ) from e
+        if exit_code != 0:
+            grund = (output or "").strip().splitlines()[-1:] or ["unbekannter Fehler"]
+            logger.warning(
+                "[Dateien] Ziel %s nach dem Schreiben kompromittiert (rc=%s): %s",
+                scrub_log(safe_dir), exit_code, scrub_log(grund[0]),
+            )
+            raise ZielordnerKompromittiert(
+                f"Zielordner wurde waehrend des Schreibens veraendert: {grund[0]}"
+            )
+
     def write_files_in_container(
         self,
         container_id: str,
@@ -711,6 +817,10 @@ class DockerService:
         directory"). Ein vom Agenten eingetauschter Symlink lenkt den
         Schreibvorgang also wirklich um. Den Schutz bei jedem Aufrufer einzeln
         zu wiederholen hat zweimal nicht getragen (#821, #840).
+
+        Nach ``put_archive`` wird die Kette per :meth:`_assert_target_dir_still_safe`
+        nochmal nachgeprueft (#843) — schliesst das TOCTOU-Fenster zwischen
+        Vorbereitung und Schreiben, siehe dort.
         """
         import io
         import tarfile
@@ -737,6 +847,7 @@ class DockerService:
         tar_stream.seek(0)
 
         container.put_archive(safe_dir, tar_stream)
+        self._assert_target_dir_still_safe(container_id, target_dir)
 
     def get_file_from_container(self, container_id: str, path: str) -> bytes:
         import io
