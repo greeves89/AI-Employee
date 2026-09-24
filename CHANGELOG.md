@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.331.8] - 2026-09-25
+
+### Behoben
+- **Ein mehrstuendiger Datenbank-Aussetzer (#617) liess die
+  Leerlauf-Ueberwachung fuer Agenten-Container ohne jede Meldung stumm
+  weiterlaufen — ungenutzte Container wurden waehrenddessen nicht gestoppt,
+  und niemand erfuhr davon.** Dieselbe Eskalations-Meldung, die der
+  Zeitplan-Dienst bei einem laengeren Datenbank-Ausfall schon auslöst, gibt
+  es jetzt auch hier: haelt die Stoerung an, kommt eine Meldung, und bei
+  einem laenger andauernden Ausfall wiederholt sie sich statt nach der
+  ersten Meldung zu verstummen.
+
 ## [1.331.7] - 2026-09-24
 
 ### Behoben
