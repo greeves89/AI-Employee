@@ -42,9 +42,26 @@ class _FakeContainer:
 
     def put_archive(self, dir_path, tar_stream):
         self.ziele.append(dir_path)
+        # Bewusst OHNE tarfile.extractall: der Daemon entpackt nicht
+        # abgesichert, und genau das soll hier nachgebildet werden — mit
+        # extractall wuerde ein Sicherheitsfilter (ab Python 3.14 der
+        # Standard) die Fluchtwege wegnehmen, die dieser Test messen will.
+        # Entpackt wird deshalb Eintrag fuer Eintrag unter dem AUFGELOESTEN
+        # Zielpfad, so wie moby es tut.
         ziel = os.path.realpath(dir_path)
         with tarfile.open(fileobj=io.BytesIO(tar_stream.read())) as tar:
-            tar.extractall(ziel)
+            for eintrag in tar.getmembers():
+                pfad = os.path.join(ziel, eintrag.name)
+                if eintrag.isdir():
+                    os.makedirs(pfad, exist_ok=True)
+                    os.chmod(pfad, eintrag.mode)
+                    continue
+                os.makedirs(os.path.dirname(pfad), exist_ok=True)
+                with open(pfad, "wb") as fh:
+                    quelle = tar.extractfile(eintrag)
+                    if quelle is not None:
+                        fh.write(quelle.read())
+                os.chmod(pfad, eintrag.mode)
         return True
 
 
