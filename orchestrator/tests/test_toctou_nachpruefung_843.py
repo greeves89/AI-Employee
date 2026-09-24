@@ -239,6 +239,45 @@ class SkriptErkenntSymlinkTauschAmEchtenDateisystemTests(unittest.TestCase):
             "Der Inhalt einer Datei ausserhalb der Kette wurde hineinkopiert.",
         )
 
+    def test_kurzschreibung_meldet_fehlschlag_statt_erfolg(self):
+        """``os.write`` ist kein write_all: bei voller Platte schreibt es
+        kuerzer, ohne zu melden. Ohne Auswertung endete das Skript regulaer
+        mit 0 — der Aufrufer bekaeme Erfolg fuer eine ABGESCHNITTENE Datei.
+        Die Schreibgrenze wird hier per RLIMIT_FSIZE gesetzt (SIGXFSZ
+        ignoriert); das Kernel-Verhalten ist dasselbe wie bei ENOSPC."""
+        import resource
+        import signal
+
+        grenze = 4096
+        os.makedirs(os.path.join(self.root, "projects", "app"))
+        staging = os.path.join(self._tmp.name, "staging", uuid.uuid4().hex)
+        os.makedirs(staging)
+        nutzlast = b"X" * (grenze * 4)
+        with open(os.path.join(staging, "nutzlast.txt"), "wb") as fh:
+            fh.write(nutzlast)
+
+        def begrenzen():
+            signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+            resource.setrlimit(resource.RLIMIT_FSIZE, (grenze, grenze))
+
+        r = subprocess.run(
+            [sys.executable, "-c", _INSTALL_FROM_STAGING_SCRIPT, self.root,
+             str(os.getuid()), str(os.getgid()), staging, "projects", "app"],
+            capture_output=True, text=True, preexec_fn=begrenzen,
+        )
+
+        self.assertNotEqual(
+            r.returncode, 0,
+            "Erfolg gemeldet, obwohl die Datei nicht vollstaendig ankam: "
+            f"{r.stdout}{r.stderr}",
+        )
+        ziel = os.path.join(self.root, "projects", "app", "nutzlast.txt")
+        if os.path.exists(ziel):
+            self.assertNotEqual(
+                os.path.getsize(ziel), len(nutzlast),
+                "Testaufbau greift nicht: die Schreibgrenze hat nicht gewirkt.",
+            )
+
     def test_nutzlast_landet_bei_heiler_kette_wirklich_im_ziel(self):
         os.makedirs(os.path.join(self.root, "projects", "app"))
         r = self._run("projects", "app", inhalt=b"hallo")

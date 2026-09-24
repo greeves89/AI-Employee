@@ -25,6 +25,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   - Nebenbei abgedeckt: ein Archiv-Eintrag, der keine Datei und kein Ordner
     ist, sowie eine Zieldatei, die selbst eine Verknuepfung ist, werden jetzt
     abgelehnt statt durchgeschrieben.
+  - Ebenfalls behoben: lief beim Schreiben die Platte voll, meldete der
+    Import trotzdem Erfolg — die Datei lag dann abgeschnitten im Ziel. Jetzt
+    wird nachgefasst und die Groesse geprueft; passt die Datei nicht
+    vollstaendig, meldet der Vorgang einen Fehler.
 
 ## [1.331.5] - 2026-09-23
 

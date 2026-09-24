@@ -334,12 +334,27 @@ def uebernehmen(quelle, ziel_fd):
             except OSError as e:
                 fehler(f"{name!r} nicht schreibbar (Symlink im Ziel?): {e.strerror}", 7)
             try:
-                with open(pfad, "rb") as quell:
-                    while True:
-                        brocken = quell.read(1 << 20)
-                        if not brocken:
-                            break
-                        os.write(zfd, brocken)
+                # os.write ist KEIN write_all: es darf kuerzer schreiben, ohne
+                # zu melden (volle Platte, Signal nach schon geschriebenen
+                # Bytes). Ohne Auswertung des Rueckgabewerts endet die
+                # Schleife regulaer, das Skript mit 0 — und der Aufrufer
+                # bekommt Erfolg fuer eine ABGESCHNITTENE Datei gemeldet.
+                # Deshalb wird nachgefasst und die Groesse am Ende geprueft.
+                try:
+                    with open(pfad, "rb") as quell:
+                        while True:
+                            brocken = quell.read(1 << 20)
+                            if not brocken:
+                                break
+                            while brocken:
+                                brocken = brocken[os.write(zfd, brocken):]
+                except OSError as e:
+                    fehler(f"{name!r} nicht vollstaendig schreibbar: {e.strerror}", 9)
+                if os.fstat(zfd).st_size != eintrag.st_size:
+                    fehler(
+                        f"{name!r} nur unvollstaendig uebernommen "
+                        f"({os.fstat(zfd).st_size} von {eintrag.st_size} Byte)", 9
+                    )
                 os.fchown(zfd, uid, gid)
                 os.fchmod(zfd, 0o644)
             finally:
