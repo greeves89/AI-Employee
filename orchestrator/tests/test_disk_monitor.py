@@ -8,10 +8,12 @@ agents were never actually stopped. These tests pin the producer/consumer
 contract so the four keys stay in sync.
 """
 
+import io
+import tarfile
 import unittest
 from unittest.mock import MagicMock
 
-from app.services.docker_service import DockerService
+from app.services.docker_service import _IMPORT_STAGING_PARENT, DockerService
 from app.services.disk_monitor import DiskMonitorService
 
 
@@ -54,9 +56,24 @@ class TestWriteWarningContract(unittest.TestCase):
         monitor._write_warning("c1", stats)
 
         # The .disk_warning file must actually be written into the container.
-        put_archive = docker.client.containers.get.return_value.put_archive
+        # Seit #843 geht put_archive in das root-eigene Zwischenlager; in den
+        # Zielordner uebernimmt danach ein eigener Exec. Geprueft wird deshalb
+        # beides — sonst faellt auf, dass die Datei geschrieben wird, aber
+        # nicht mehr, WOHIN.
+        container = docker.client.containers.get.return_value
+        put_archive = container.put_archive
         put_archive.assert_called_once()
-        self.assertEqual(put_archive.call_args.args[0], "/workspace")
+        self.assertEqual(put_archive.call_args.args[0], _IMPORT_STAGING_PARENT)
+
+        with tarfile.open(fileobj=io.BytesIO(put_archive.call_args.args[1].read())) as tar:
+            self.assertTrue(
+                any(m.name.endswith(".disk_warning") for m in tar.getmembers()),
+                [m.name for m in tar.getmembers()],
+            )
+
+        uebernahme = container.exec_run.call_args.args[0]
+        self.assertEqual(uebernahme[:2], ["python3", "-c"])
+        self.assertEqual(uebernahme[3], "/workspace")
 
 
 class TestCleanupWorkspaceVolumeRunsBothSteps(unittest.TestCase):

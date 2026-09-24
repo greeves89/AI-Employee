@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 import uuid
 
 import docker
@@ -131,9 +132,13 @@ class ZielordnerKompromittiert(ZielordnerNichtVorbereitbar):
     ein Kettenglied, das im TOCTOU-Fenster gegen einen Symlink getauscht
     wurde (#843).
 
-    In die Zielkette wurde dann NICHTS geschrieben: der Docker-Daemon hat nur
+    AUSSERHALB der Zielkette liegt danach nichts: der Docker-Daemon hat nur
     das root-eigene Zwischenlager befuellt, und das wird in jedem Fall wieder
-    entfernt. Eigene Klasse, weil der Grund ein anderer ist als bei
+    entfernt. INNERHALB der Kette koennen dagegen bereits Eintraege
+    angekommen sein — die Uebernahme arbeitet die Eintraege der Reihe nach ab
+    und bricht beim ersten abgelehnten ab. Der Aufrufer darf den Vorgang also
+    nicht als Erfolg werten, aber auch nicht als "nichts passiert".
+    Eigene Klasse, weil der Grund ein anderer ist als bei
     ZielordnerNichtVorbereitbar (dort war die Kette schon vorher nicht
     herstellbar) — Aufrufer, die die Oberklasse behandeln, bekommen beides
     ohne Aenderung mit."""
@@ -296,9 +301,34 @@ def uebernehmen(quelle, ziel_fd):
             finally:
                 os.close(nfd)
         elif stat.S_ISREG(eintrag.st_mode):
+            # O_NOFOLLOW sieht nur Symlinks. Ein HARDLINK auf eine Datei
+            # ausserhalb der Kette traegt keine Markierung — O_TRUNC wuerde
+            # die Opferdatei zerstoeren und das anschliessende fchown/fchmod
+            # ihren Inode dem Agenten ueberschreiben, obwohl wir als root
+            # schreiben. Deshalb wird ein vorhandener Name erst GELOEST
+            # (unlink trifft nur den Verweis, nie den Inode dahinter) und die
+            # Datei danach mit O_EXCL neu angelegt. Eine Verknuepfung als
+            # Zielname bleibt wie bisher eine Ablehnung — sie zu ersetzen
+            # waere zwar sicher, wuerde dem Agenten aber stillschweigend
+            # etwas wegnehmen.
+            try:
+                vorhanden = os.lstat(name, dir_fd=ziel_fd)
+            except FileNotFoundError:
+                vorhanden = None
+            if vorhanden is not None:
+                if stat.S_ISLNK(vorhanden.st_mode):
+                    fehler(f"{name!r} ist im Ziel eine Verknuepfung — Uebernahme abgelehnt", 7)
+                if stat.S_ISDIR(vorhanden.st_mode):
+                    fehler(f"{name!r} ist im Ziel ein Ordner — Uebernahme abgelehnt", 7)
+                try:
+                    os.unlink(name, dir_fd=ziel_fd)
+                except FileNotFoundError:
+                    pass
+                except OSError as e:
+                    fehler(f"{name!r} nicht ersetzbar: {e.strerror}", 7)
             try:
                 zfd = os.open(
-                    name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+                    name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                     0o644, dir_fd=ziel_fd,
                 )
             except OSError as e:
@@ -345,16 +375,27 @@ finally:
     # Reste aus abgebrochenen Laeufen (put_archive lief, das Exec kam nie an)
     # mitnehmen — sonst sammelt sich im Zwischenlager genau der Inhalt an,
     # den der Aufrufer fuer nicht geschrieben haelt.
+    #
+    # Das Alter kommt aus dem NAMEN (<epoch>-<uuid>), NICHT aus der mtime:
+    # die Ordner entstehen aus Archiv-Eintraegen, und tarfile.TarInfo setzt
+    # mtime=0 — der Daemon uebertraegt das, womit jede mtime-Schwelle immer
+    # erfuellt waere und dieser Block die Zwischenlager GLEICHZEITIG
+    # laufender Importe mit weggeraeumt haette. Das eigene Lager ist ohnehin
+    # schon weg (oben), wird aber zusaetzlich ausgenommen.
+    eigener = os.path.basename(staging)
     try:
         eltern = os.path.dirname(staging)
         jetzt = time.time()
         for name in os.listdir(eltern):
-            rest = os.path.join(eltern, name)
+            if name == eigener:
+                continue
+            kopf, _, _ = name.partition("-")
             try:
-                if jetzt - os.lstat(rest).st_mtime > 3600:
-                    shutil.rmtree(rest, ignore_errors=True)
-            except OSError:
-                pass
+                alter = jetzt - int(kopf)
+            except ValueError:
+                alter = None  # fremdes Namensschema: nicht anfassen
+            if alter is not None and alter > 86400:
+                shutil.rmtree(os.path.join(eltern, name), ignore_errors=True)
     except OSError:
         pass
 """
@@ -757,7 +798,7 @@ class DockerService:
 
         filename = path.split("/")[-1]
         dir_path = "/".join(path.split("/")[:-1]) or "/"
-        staging_name = uuid.uuid4().hex
+        staging_name = f"{int(time.time())}-{uuid.uuid4().hex}"
         staging = f"{_IMPORT_STAGING_PARENT}/{_IMPORT_STAGING_DIR}/{staging_name}"
         self.prepare_target_dir(container_id, dir_path, uid, gid, root=root)
 
@@ -887,8 +928,9 @@ class DockerService:
         Raises:
             ZielordnerKompromittiert: Die Kette hat sich seit der Vorbereitung
                 veraendert, oder das Archiv enthielt einen Eintrag, der kein
-                Ordner und keine normale Datei ist. In die Zielkette wurde
-                dann NICHTS geschrieben.
+                Ordner und keine normale Datei ist. AUSSERHALB der Zielkette
+                liegt dann nichts; innerhalb koennen die bis zum Abbruch
+                bereits uebernommenen Eintraege liegen.
         """
         safe_root = os.path.normpath(root)
         safe_dir = os.path.normpath(target_dir)
@@ -970,7 +1012,7 @@ class DockerService:
         import io
         import tarfile
 
-        staging_name = uuid.uuid4().hex
+        staging_name = f"{int(time.time())}-{uuid.uuid4().hex}"
         staging = f"{_IMPORT_STAGING_PARENT}/{_IMPORT_STAGING_DIR}/{staging_name}"
         self.prepare_target_dir(container_id, target_dir, uid, gid, root=root)
 

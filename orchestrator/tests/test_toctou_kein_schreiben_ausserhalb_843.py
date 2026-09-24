@@ -25,6 +25,8 @@ import tarfile
 import tempfile
 import unittest
 
+from docker.errors import APIError
+
 from app.services import docker_service as ds_modul
 from app.services.docker_service import DockerService, ZielordnerKompromittiert
 
@@ -165,6 +167,109 @@ class KeinSchreibenAusserhalbDerKetteTests(unittest.TestCase):
         self._schreibe_datei()
         with open(os.path.join(self.root, "projects", "app", "geheim.txt")) as fh:
             self.assertEqual(fh.read(), "GEHEIMNIS: vom Agenten geschrieben")
+
+
+    # --- Luecken, die eine Mutationsbatterie sichtbar gemacht hat ---------
+
+    def test_hardlink_im_ziel_zerstoert_die_opferdatei_nicht(self):
+        """O_NOFOLLOW sieht nur Symlinks. Legt der Agent vorher einen HARDLINK
+        auf eine Datei ausserhalb der Kette, wuerde ein O_TRUNC-Schreibvorgang
+        als root deren Inhalt zerstoeren und sie per fchown dem Agenten
+        ueberschreiben — ohne dass je ein Symlink im Spiel war."""
+        opfer = os.path.join(self.outside, "opfer.txt")
+        with open(opfer, "w") as fh:
+            fh.write("fremder Inhalt")
+        os.chmod(opfer, 0o600)
+        os.link(opfer, os.path.join(self.root, "projects", "app", "geheim.txt"))
+
+        self._schreibe_datei()
+
+        with open(opfer) as fh:
+            self.assertEqual(
+                fh.read(), "fremder Inhalt",
+                "Der Schreibvorgang ist einem Hardlink gefolgt und hat eine "
+                "Datei ausserhalb der Zielkette ueberschrieben.",
+            )
+        self.assertEqual(os.stat(opfer).st_mode & 0o777, 0o600)
+        ziel = os.path.join(self.root, "projects", "app", "geheim.txt")
+        with open(ziel) as fh:
+            self.assertEqual(fh.read(), "GEHEIMNIS: vom Agenten geschrieben")
+
+    def test_unterordner_aus_dem_archiv_folgt_keinem_symlink_im_ziel(self):
+        """Zweite O_NOFOLLOW-Stelle: nicht die Kettenglieder, sondern die
+        Ordner, die die Uebernahme selbst im Ziel anlegt."""
+        os.symlink(self.outside, os.path.join(self.root, "projects", "app", "src"))
+        with self.assertRaises(ZielordnerKompromittiert):
+            self._schreibe_ordner()
+        self.assertEqual(sorted(os.listdir(self.outside)), [])
+
+    def test_behaelter_weg_meldet_fehlschlag_statt_erfolg(self):
+        echt = self.svc.exec_in_container
+
+        def nur_die_uebernahme_faellt_aus(cid, cmd, user=None):
+            if self.execs:  # der erste Aufruf ist die Vorbereitung
+                raise APIError("Behaelter antwortet nicht")
+            return echt(cid, cmd, user=user)
+
+        self.svc.exec_in_container = nur_die_uebernahme_faellt_aus
+        with self.assertRaises(ZielordnerKompromittiert):
+            self._schreibe_datei()
+
+    def test_geschriebene_datei_gehoert_dem_agenten(self):
+        """Ohne fchown/fchmod bliebe die Datei root:root und mit den Rechten,
+        die die umask des Orchestrators gerade vorgibt — der Agent koennte
+        seine eigene Datei nicht mehr schreiben (Regressionsklasse #840/#841).
+
+        Die umask wird bewusst restriktiv gesetzt: sonst liefert schon
+        ``os.open(..., 0o644)`` zufaellig das erwartete Ergebnis, und der Test
+        koennte den Wegfall von fchmod gar nicht bemerken. Den Eigentuemer
+        kann ein Testlauf ohne root-Rechte nicht veraendern — geprueft wird
+        daher, dass er die uebergebene uid/gid traegt."""
+        vorher = os.umask(0o077)
+        try:
+            self._schreibe_datei()
+        finally:
+            os.umask(vorher)
+        st = os.stat(os.path.join(self.root, "projects", "app", "geheim.txt"))
+        self.assertEqual((st.st_uid, st.st_gid), (os.getuid(), os.getgid()))
+        self.assertEqual(
+            st.st_mode & 0o777, 0o644,
+            "Die Datei traegt die umask des Orchestrators statt der "
+            "ausdruecklich gesetzten Rechte — fchmod fehlt.",
+        )
+
+    def test_datei_groesser_als_ein_brocken_kommt_vollstaendig_an(self):
+        """Die Uebernahme kopiert in 1-MiB-Brocken."""
+        nutzlast = (b"0123456789abcdef" * 65536) + b"REST"  # 1 MiB + 4 Byte
+        self.svc.write_files_in_container(
+            "c1", os.path.join(self.root, "projects", "app"),
+            [("gross.bin", nutzlast)],
+            uid=os.getuid(), gid=os.getgid(), root=self.root,
+        )
+        with open(os.path.join(self.root, "projects", "app", "gross.bin"), "rb") as fh:
+            self.assertEqual(fh.read(), nutzlast)
+
+    def test_aufraeumen_trifft_nur_alte_zwischenlager(self):
+        """Die Ordner im Zwischenlager entstehen aus Archiv-Eintraegen und
+        tragen deshalb mtime=0 — eine mtime-Schwelle waere IMMER erfuellt und
+        haette die Zwischenlager gleichzeitig laufender Importe geloescht.
+        Das Alter kommt aus dem Namen."""
+        import time as _t
+
+        lager = os.path.join(self.staging_root, ds_modul._IMPORT_STAGING_DIR)
+        frisch = os.path.join(lager, f"{int(_t.time())}-parallel")
+        alt = os.path.join(lager, f"{int(_t.time()) - 90000}-verwaist")
+        for pfad in (frisch, alt):
+            os.makedirs(pfad)
+            os.utime(pfad, (0, 0))  # wie vom Daemon aus dem Archiv gesetzt
+
+        self._schreibe_datei()
+
+        self.assertTrue(
+            os.path.isdir(frisch),
+            "Das Zwischenlager eines parallel laufenden Imports wurde geloescht.",
+        )
+        self.assertFalse(os.path.isdir(alt), "Verwaister Rest blieb liegen.")
 
 
 if __name__ == "__main__":

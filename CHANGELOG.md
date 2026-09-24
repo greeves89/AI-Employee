@@ -17,7 +17,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Schritt in den Zielordner uebernommen — dabei wird jedes Glied der Kette
   festgehalten, bevor etwas geschrieben wird. Wer das Fenster gewinnt,
   erreicht damit nichts mehr: der Vorgang bricht ab, und es landet nichts
-  ausserhalb des Zielordners.
+  ausserhalb des Zielordners. (Im Zielordner selbst koennen die bis zum
+  Abbruch uebernommenen Dateien liegen — der Vorgang meldet einen Fehler,
+  kein "nichts passiert".)
   - Vorher meldete der Schreibvorgang einen Fehler, die Daten lagen zu
     diesem Zeitpunkt aber schon am umgelenkten Pfad. Das ist damit erledigt.
   - Nebenbei abgedeckt: ein Archiv-Eintrag, der keine Datei und kein Ordner
