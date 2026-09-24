@@ -178,6 +178,67 @@ class SkriptErkenntSymlinkTauschAmEchtenDateisystemTests(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertFalse(os.path.exists(self.staging), r.stdout)
 
+    # --- Luecken aus der Mutationsbatterie zu #843 ------------------------
+    # Die drei folgenden Faelle blieben GRUEN, als die jeweilige Sicherung im
+    # Uebernahme-Skript abgeschaltet wurde — sie waren also ungeprueft.
+
+    def test_unzulaessiges_kettenglied_wird_abgelehnt(self):
+        """Die Kettenglieder kommen heute aus ``os.path.normpath`` und koennen
+        deshalb kein ".." mehr enthalten. Die Pruefung im Skript ist die
+        Absicherung gegen einen KUENFTIGEN Aufrufer, der die Glieder anders
+        herleitet — ohne sie wuerde ein solcher Aufrufer die Kette per ".."
+        nach oben verlassen, und zwar an den Deskriptoren vorbei."""
+        os.makedirs(os.path.join(self.root, "projects"))
+        for glied in ("..", ".", "", "projects/app"):
+            with self.subTest(glied=glied):
+                r = self._run("projects", glied)
+                self.assertNotEqual(
+                    r.returncode, 0,
+                    f"Das Kettenglied {glied!r} wurde angenommen: {r.stdout}",
+                )
+                self.assertIn("unzulaessig", r.stdout)
+
+    def test_zwischenlager_wird_auch_vor_dem_ketteneinstieg_entfernt(self):
+        """Eine Ablehnung VOR dem Betreten der Kette laeuft nicht durch den
+        finally-Zweig — das Aufraeumen muss deshalb schon in der
+        Fehlerbehandlung selbst stehen. Sonst bleibt bei jedem solchen
+        Abbruch die vollstaendige Nutzlast im Zwischenlager liegen."""
+        os.makedirs(os.path.join(self.root, "projects"))
+        r = self._run("projects", "..", inhalt=b"GEHEIMNIS")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(
+            os.path.exists(self.staging),
+            f"Nutzlast blieb im Zwischenlager liegen: {r.stdout}",
+        )
+
+    def test_eintrag_im_zwischenlager_der_keine_datei_ist_wird_abgelehnt(self):
+        """Der Docker-Daemon entpackt das Archiv ungefiltert — ein Eintrag,
+        der weder Ordner noch normale Datei ist (Symlink, FIFO, Geraet),
+        landet also so im Zwischenlager. Wuerde die Uebernahme ihn einfach
+        weiterreichen, oeffnete ``open(pfad, "rb")`` beim Symlink die Datei
+        AM ZIEL des Verweises und kopierte deren Inhalt in die Kette — ein
+        Leseweg nach draussen, vorbei an allen Deskriptor-Sicherungen."""
+        staging = os.path.join(self._tmp.name, "staging", uuid.uuid4().hex)
+        os.makedirs(staging)
+        geheim = os.path.join(self.outside, "schluessel.txt")
+        with open(geheim, "wb") as fh:
+            fh.write(b"GEHEIMNIS: liegt ausserhalb der Kette")
+        os.symlink(geheim, os.path.join(staging, "beute.txt"))
+        os.makedirs(os.path.join(self.root, "projects", "app"))
+
+        r = subprocess.run(
+            [sys.executable, "-c", _INSTALL_FROM_STAGING_SCRIPT, self.root,
+             str(os.getuid()), str(os.getgid()), staging, "projects", "app"],
+            capture_output=True, text=True,
+        )
+
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertIn("weder Datei noch Ordner", r.stdout)
+        self.assertFalse(
+            os.path.exists(os.path.join(self.root, "projects", "app", "beute.txt")),
+            "Der Inhalt einer Datei ausserhalb der Kette wurde hineinkopiert.",
+        )
+
     def test_nutzlast_landet_bei_heiler_kette_wirklich_im_ziel(self):
         os.makedirs(os.path.join(self.root, "projects", "app"))
         r = self._run("projects", "app", inhalt=b"hallo")
