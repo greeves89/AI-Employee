@@ -1,0 +1,14 @@
+{
+  "name": "ai-employee-desktop",
+  "version": "0.1.0",
+  "description": "AI-Employee Desktop — einfacher Chat-Client (ChatGPT/Claude-Style) für dein KI-Team",
+  "private": true,
+  "scripts": {
+    "dev": "python3 -m http.server 4321 --directory .",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

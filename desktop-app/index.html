@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Employee Desktop</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ LOGIN ══ -->
+  <section class="screen login" id="screen-login">
+    <div class="login-card">
+      <div class="logo-lg">AI</div>
+      <h1>AI-Employee</h1>
+      <p class="muted">Melde dich an, um mit deinem KI-Team zu chatten.</p>
+      <label>Server</label>
+      <input id="in-url" type="text" placeholder="https://dein-server.ai-employee.de" autocomplete="off">
+      <label>E-Mail</label>
+      <input id="in-email" type="email" placeholder="du@firma.de" autocomplete="username">
+      <label>Passwort</label>
+      <input id="in-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+      <button class="btn-primary" id="btn-login">Anmelden</button>
+      <div class="err" id="login-err"></div>
+    </div>
+  </section>
+
+  <!-- ══ AGENT SELECTION (Einstieg) ══ -->
+  <section class="screen agents" id="screen-agents">
+    <header class="topbar">
+      <div class="brand"><div class="logo-sm">AI</div><b>AI-Employee</b></div>
+      <div class="spacer"></div>
+      <span class="conn-pill"><i class="dot"></i> <span id="conn-server">verbunden</span></span>
+      <button class="btn-ghost" id="btn-logout">Abmelden</button>
+    </header>
+    <div class="agents-body">
+      <h2>Wähle einen Agenten</h2>
+      <p class="muted">Mit wem möchtest du sprechen?</p>
+      <div class="agent-grid" id="agent-grid">
+        <div class="loading">Lade Agenten…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ CHAT ══ -->
+  <section class="screen chat" id="screen-chat">
+    <aside class="sidebar">
+      <div class="side-top">
+        <button class="btn-back" id="btn-back-agents" title="Agenten">‹</button>
+        <div class="cur-agent"><div class="cur-av" id="cur-av">🤖</div><div class="cur-name" id="cur-name">Agent</div></div>
+      </div>
+      <button class="btn-newchat" id="btn-newchat">＋ Neuer Chat</button>
+      <div class="side-sec">Chats</div>
+      <div class="chat-list" id="chat-list"></div>
+    </aside>
+    <main class="chat-main">
+      <header class="chat-head">
+        <div class="chat-title" id="chat-title">Neuer Chat</div>
+        <div class="spacer"></div>
+        <span class="chat-sub" id="chat-sub"></span>
+      </header>
+      <div class="thread" id="thread"></div>
+      <div class="composer">
+        <div class="cbox">
+          <textarea id="input-msg" rows="1" placeholder="Schreib eine Nachricht … (Enter zum Senden)"></textarea>
+          <button class="btn-mic" id="btn-mic" title="Sprechen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4"/></svg>
+          </button>
+          <button class="btn-send" id="btn-send" title="Senden">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>
+          </button>
+        </div>
+        <div class="hint">AI-Employee kann Fehler machen. Wichtiges bitte prüfen.</div>
+      </div>
+    </main>
+  </section>
+
+  <!-- Voice overlay -->
+  <div class="voice-overlay" id="voice-overlay">
+    <div class="orb" id="voice-orb"></div>
+    <div class="v-title" id="voice-title">Tippe zum Sprechen</div>
+    <div class="v-sub" id="voice-sub"></div>
+    <div class="v-actions">
+      <button class="v-rec" id="voice-rec">🎙 Aufnehmen</button>
+      <button class="v-close" id="voice-close">Schließen</button>
+    </div>
+  </div>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>

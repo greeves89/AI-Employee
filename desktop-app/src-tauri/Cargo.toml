@@ -1,0 +1,17 @@
+[package]
+name = "ai-employee-desktop"
+version = "0.1.0"
+description = "AI-Employee Desktop"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lib]
+name = "ai_employee_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
