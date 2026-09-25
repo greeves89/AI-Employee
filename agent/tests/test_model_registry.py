@@ -28,6 +28,14 @@ def test_anthropic_pricing_matches_official_docs():
     assert abs(model_registry.estimate_cost("claude-haiku-4-5", 1_000_000, 1_000_000) - 6.0) < 1e-9
 
 
+def test_opus_5_5_is_not_priced_as_opus_5():
+    # "claude-opus-5" ist ein Praefix von "claude-opus-5-5". Ohne eigenen Eintrag
+    # wuerde Opus 5.5 ($4 / $20) still zum Preis von Opus 5 ($5 / $25) gerechnet.
+    assert model_registry.get_context_window("claude-opus-5-5") == 1_000_000
+    assert abs(model_registry.estimate_cost("claude-opus-5-5", 1_000_000, 1_000_000) - 24.0) < 1e-9
+    assert abs(model_registry.estimate_cost("claude-opus-5", 1_000_000, 1_000_000) - 30.0) < 1e-9
+
+
 def test_longest_substring_wins():
     # "gpt-4o-mini" must not be shadowed by the shorter "gpt-4o" entry.
     assert model_registry.get_context_window("gpt-4o-mini") == 128_000

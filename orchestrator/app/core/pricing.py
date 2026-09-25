@@ -14,7 +14,12 @@ MODEL_PRICING: dict[str, tuple[float, float]] = {
     "o1": (15.00, 60.00),
     "o1-mini": (3.00, 12.00),
     "o3-mini": (1.10, 4.40),
-    # Anthropic (pricing per Anthropic docs as of 2026-05-27)
+    # Anthropic (pricing per Anthropic docs as of 2026-05-27; 5er-Familie
+    # ergaenzt 2026-09-23 — fehlte, lief deshalb auf den Sonnet-Default)
+    "claude-fable-5": (10.00, 50.00),
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-opus-5": (5.00, 25.00),
+    "claude-sonnet-5": (3.00, 15.00),
     "claude-opus-4-8": (5.00, 25.00),
     "claude-opus-4-7": (5.00, 25.00),
     "claude-opus-4-6": (5.00, 25.00),
