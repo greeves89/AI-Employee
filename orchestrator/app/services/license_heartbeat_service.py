@@ -12,6 +12,7 @@ that are already running.
 """
 
 import asyncio
+import hashlib
 import logging
 import random
 import uuid
@@ -36,8 +37,12 @@ _STARTUP_DELAY = 30
 # Deshalb zusaetzlich ein schmales Lebenszeichen, das ohne beides auskommt.
 # Es ist bewusst harmlos:
 #
-# * Es sendet eine zufaellige, lokal erzeugte Kennung und die Version — mehr
-#   nicht. Kein Inhalt, keine Namen, keine Agentendaten.
+# * Es sendet eine zufaellige, lokal erzeugte Kennung, die Version, die
+#   Anzahl der Agenten als blosse Zahl und — falls ein Lizenzschluessel
+#   hinterlegt ist — dessen SHA-256, nie den Schluessel selbst. Mehr nicht:
+#   kein Inhalt, keine Namen, nichts ueber einzelne Agenten oder Personen.
+#   Die Regel dahinter: Bestand ja, Verhalten nein, Inhalt niemals. Die
+#   vollstaendige Liste steht in ``test_lebenszeichen_takt.ERLAUBTE_FELDER``.
 # * Die Antwort kann einen Hinweistext enthalten, den die Oberflaeche als
 #   Streifen zeigt. Sie sperrt NICHTS: Eine laufende Anlage darf nie von
 #   aussen gestoppt werden — derselbe Grundsatz wie oben.
@@ -120,11 +125,26 @@ class LicenseHeartbeatService:
                 await svc.set("license_instance_id", kennung)
                 await db.commit()
 
+            # Nur Bestand, nie Verhalten: eine Zahl, keine Namen.
+            agenten = (await db.execute(select(func.count(Agent.id)))).scalar() or 0
+            schluessel = (await svc.get("license_key") or "").strip()
+
+        inhalt: dict = {
+            "instance_id": kennung,
+            "version": _read_version(),
+            "agent_count": int(agenten),
+        }
+        # Der Schluessel selbst geht NIE ueber diesen offenen Weg — nur sein
+        # Hash. Der Lizenzserver kennt die Schluessel, die er ausgegeben hat,
+        # und ordnet die Anlage damit einem Kunden zu; er erkennt so auch, wenn
+        # derselbe Schluessel auf mehreren Anlagen laeuft.
+        if schluessel:
+            inhalt["license_key_hash"] = hashlib.sha256(schluessel.encode("utf-8")).hexdigest()
+
         url = ziel.rstrip("/") + "/api/v1/call2home/ping"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(
-                    url, json={"instance_id": kennung, "version": _read_version()})
+                resp = await client.post(url, json=inhalt)
             if resp.status_code != 200:
                 return
             antwort = resp.json()

@@ -18,18 +18,32 @@ Und drei Dinge, die es NICHT tun darf: den Start verzoegern, bei einem
 unerreichbaren Server lautstark scheitern, oder irgendetwas sperren.
 """
 
+import hashlib
+import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
 from app.services import license_heartbeat_service as dienst
 
+#: Alles, was das Lebenszeichen enthalten DARF. Wer hier etwas ergaenzt,
+#: muss die Datenschutzerklaerung (docs/ios-app/datenschutz.html) mitziehen —
+#: die Liste ist das Versprechen an die Betreiber der Anlagen.
+ERLAUBTE_FELDER = {"instance_id", "version", "agent_count", "license_key_hash"}
+
+
+class _Ergebnis:
+    def __init__(self, wert): self._wert = wert
+    def scalar(self): return self._wert
+
 
 class _Db:
-    """Sitzungs-Attrappe — der Dienst benutzt sie nur als Kontextmanager."""
+    """Sitzungs-Attrappe. ``execute`` beantwortet nur die Agentenzaehlung."""
 
+    def __init__(self, agenten: int = 0): self._agenten = agenten
     async def __aenter__(self): return self
     async def __aexit__(self, *a): return False
     async def commit(self): pass
+    async def execute(self, _anfrage): return _Ergebnis(self._agenten)
 
 
 class TaktTest(unittest.TestCase):
@@ -71,7 +85,7 @@ class InhaltTest(unittest.IsolatedAsyncioTestCase):
         s = dienst.LicenseHeartbeatService(lambda: _Db())
         return s, _Svc
 
-    async def _ping(self, einstellungen, antwort=None, status=200):
+    async def _ping(self, einstellungen, antwort=None, status=200, agenten=0):
         s, svc = self._service(einstellungen)
         gesendet = {}
 
@@ -87,17 +101,37 @@ class InhaltTest(unittest.IsolatedAsyncioTestCase):
                 gesendet["body"] = json
                 return _Resp()
 
-        with patch("app.db.session.resilient_session", lambda session_factory: _Db()), \
+        with patch("app.db.session.resilient_session", lambda session_factory: _Db(agenten)), \
              patch("app.services.settings_service.SettingsService", svc), \
              patch.object(dienst.httpx, "AsyncClient", lambda **k: _Client()):
             await s._ping()
         return gesendet
 
-    async def test_es_wird_nur_kennung_und_version_gesendet(self):
-        """Kein Inhalt, keine Namen, keine Agentendaten."""
-        gesendet = await self._ping({"license_instance_id": "abc123"})
-        self.assertEqual(set(gesendet["body"]), {"instance_id", "version"})
+    async def test_gesendet_wird_nur_was_ausdruecklich_erlaubt_ist(self):
+        """Kein Inhalt, keine Namen — nur Bestand, nie Verhalten."""
+        gesendet = await self._ping({"license_instance_id": "abc123",
+                                     "license_key": "irgendein-token"})
+        self.assertLessEqual(set(gesendet["body"]), ERLAUBTE_FELDER,
+                             "Das Lebenszeichen enthaelt ein nicht freigegebenes Feld.")
         self.assertEqual(gesendet["body"]["instance_id"], "abc123")
+
+    async def test_die_agentenzahl_geht_als_blosse_zahl_mit(self):
+        gesendet = await self._ping({"license_instance_id": "x"}, agenten=4)
+        self.assertEqual(gesendet["body"]["agent_count"], 4)
+
+    async def test_der_schluessel_selbst_verlaesst_die_anlage_nie(self):
+        """Der Endpunkt ist offen — dort hat ein Schluessel nichts verloren."""
+        schluessel = "eyJ-ein-signierter-lizenzschluessel"
+        gesendet = await self._ping({"license_instance_id": "x", "license_key": schluessel})
+        self.assertNotIn(schluessel, json.dumps(gesendet["body"]))
+        self.assertEqual(gesendet["body"]["license_key_hash"],
+                         hashlib.sha256(schluessel.encode("utf-8")).hexdigest(),
+                         "Der Lizenzserver hasht das ausgegebene Token genauso — "
+                         "sonst findet der Abgleich keinen Kunden.")
+
+    async def test_ohne_schluessel_kein_hash(self):
+        gesendet = await self._ping({"license_instance_id": "x"})
+        self.assertNotIn("license_key_hash", gesendet["body"])
 
     async def test_ohne_kennung_wird_eine_erzeugt_und_gemerkt(self):
         einstellungen: dict = {}

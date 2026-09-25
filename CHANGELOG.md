@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.336.0] - 2026-09-25
+
+### Neu
+- **Das Lebenszeichen nennt die Anzahl der Agenten.** Als blosse Zahl — sie
+  zeigt, ob eine Anlage produktiv arbeitet oder nur ausprobiert wird.
+- **Zuordnung zu einer Lizenz ueber eine Pruefsumme.** Ist ein
+  Lizenzschluessel hinterlegt, geht dessen SHA-256 mit — nie der Schluessel
+  selbst. Der Lizenzserver ordnet die Anlage damit einem Kunden zu und
+  erkennt, wenn derselbe Schluessel auf mehreren Anlagen laeuft.
+
+### Geaendert
+- **Datenschutzerklaerung nennt die vollstaendige Liste** dessen, was das
+  Lebenszeichen enthaelt, und dass der Anbieter zur IP oeffentliche
+  Registerangaben (Netzbetreiber, Land) nachschlaegt. Ein Test haelt die
+  Liste der erlaubten Felder fest; wer eines ergaenzt, muss die Erklaerung
+  mitziehen.
+
+---
+
 ## [1.335.0] - 2026-09-25
 
 ### Neu
