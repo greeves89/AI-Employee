@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.331.7] - 2026-09-24
+
+### Behoben
+- **Die verbleibende Restluecke aus #843 (Nachfolge zu #840/#842): zwischen dem
+  Vorbereiten des Zielordners und dem eigentlichen Schreiben lag ein kurzes
+  Zeitfenster, in dem ein Agent ein Glied der Zielkette gegen eine
+  Verknuepfung tauschen und den Schreibvorgang so an einen selbst gewaehlten
+  Pfad umlenken konnte.** Dateien werden jetzt zuerst in einen Zwischenordner
+  geschrieben, an den der Agent nicht herankommt, und erst danach in EINEM
+  Schritt in den Zielordner uebernommen — dabei wird jedes Glied der Kette
+  festgehalten, bevor etwas geschrieben wird. Wer das Fenster gewinnt,
+  erreicht damit nichts mehr: der Vorgang bricht ab, und es landet nichts
+  ausserhalb des Zielordners. (Im Zielordner selbst koennen die bis zum
+  Abbruch uebernommenen Dateien liegen — der Vorgang meldet einen Fehler,
+  kein "nichts passiert".)
+  - Vorher meldete der Schreibvorgang einen Fehler, die Daten lagen zu
+    diesem Zeitpunkt aber schon am umgelenkten Pfad. Das ist damit erledigt.
+  - Nebenbei abgedeckt: ein Archiv-Eintrag, der keine Datei und kein Ordner
+    ist, sowie eine Zieldatei, die selbst eine Verknuepfung ist, werden jetzt
+    abgelehnt statt durchgeschrieben.
+  - Ebenfalls behoben: lief beim Schreiben die Platte voll, meldete der
+    Import trotzdem Erfolg — die Datei lag dann abgeschnitten im Ziel. Jetzt
+    wird nachgefasst und die Groesse geprueft; passt die Datei nicht
+    vollstaendig, meldet der Vorgang einen Fehler.
+
 ## [1.331.6] - 2026-09-23
 
 ### Behoben

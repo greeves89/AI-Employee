@@ -113,10 +113,12 @@ class ImportSchreibtNichtAnEinemSymlinkVorbeiTests(unittest.TestCase):
 
         mgr.importiere_ordner_zip("c1", "/workspace/projects", _zip_mit_einem_ordner())
 
-        cmd = svc.exec_in_container.call_args.args[1]
+        # #843: nach put_archive uebernimmt _install_from_staging aus dem
+        # Zwischenlager in die Kette — die Vorbereitung bleibt der ERSTE Aufruf.
+        cmd = svc.exec_in_container.call_args_list[0].args[1]
         self.assertEqual(cmd[:2], ["python3", "-c"])
         self.assertEqual(cmd[3:], ["/workspace", "1000", "1000", "projects"])
-        self.assertEqual(svc.exec_in_container.call_args.kwargs.get("user"), "root")
+        self.assertEqual(svc.exec_in_container.call_args_list[0].kwargs.get("user"), "root")
         self.assertEqual(len(container.archives), 1)
 
     def test_fehlermeldung_wird_nicht_als_413_fehlgedeutet(self):
@@ -161,7 +163,7 @@ class JederSchreibwegGehtDurchDieVorbereitungTests(unittest.TestCase):
         svc, container = _service()
         svc.write_file_in_container("c1", "/etc/sudoers.d/x", "x", uid=0, gid=0, root="/etc")
 
-        cmd = svc.exec_in_container.call_args.args[1]
+        cmd = svc.exec_in_container.call_args_list[0].args[1]
         self.assertEqual(cmd[3:], ["/etc", "0", "0", "sudoers.d"])
         self.assertEqual(len(container.archives), 1)
 

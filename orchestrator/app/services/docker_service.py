@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import time
+import uuid
 
 import docker
 from docker.errors import NotFound, APIError
@@ -124,7 +126,56 @@ class ZielordnerNichtVorbereitbar(ValueError):
     oder mkdir/chown schlugen fehl. Es wurde NICHTS geschrieben."""
 
 
+class ZielordnerKompromittiert(ZielordnerNichtVorbereitbar):
+    """Die Uebernahme aus dem Zwischenlager in die Zielkette wurde abgelehnt,
+    weil sich die Kette seit der Vorbereitung veraendert hat — typischerweise
+    ein Kettenglied, das im TOCTOU-Fenster gegen einen Symlink getauscht
+    wurde (#843).
+
+    AUSSERHALB der Zielkette liegt danach nichts: der Docker-Daemon hat nur
+    das root-eigene Zwischenlager befuellt, und das wird in jedem Fall wieder
+    entfernt. INNERHALB der Kette koennen dagegen bereits Eintraege
+    angekommen sein — die Uebernahme arbeitet die Eintraege der Reihe nach ab
+    und bricht beim ersten abgelehnten ab. Der Aufrufer darf den Vorgang also
+    nicht als Erfolg werten, aber auch nicht als "nichts passiert".
+    Eigene Klasse, weil der Grund ein anderer ist als bei
+    ZielordnerNichtVorbereitbar (dort war die Kette schon vorher nicht
+    herstellbar) — Aufrufer, die die Oberklasse behandeln, bekommen beides
+    ohne Aenderung mit."""
+
+
 _WORKSPACE_ROOT = "/workspace"
+
+# Zwischenlager fuer put_archive (#843). Liegt bewusst NICHT unter
+# /workspace: /var/lib gehoert root und ist fuer den Agenten (uid 1000, ohne
+# sudo) nicht beschreibbar — er kann dort kein Glied gegen einen Symlink
+# tauschen. Damit bekommt der Docker-Daemon den vom Agenten erreichbaren
+# Zielpfad gar nicht mehr zu sehen.
+#
+# Angelegt wird das Zwischenlager nicht per eigenem Exec, sondern vom
+# Archiv selbst: die beiden Ordner-Eintraege tragen uid/gid 0 und Modus 0700,
+# und put_archive legt sie als root an (moby createTarFile: Mkdir, dann
+# Lchown + Chmod). Das spart einen Docker-Roundtrip und laesst
+# _PREPARE_TARGET_DIR_SCRIPT unveraendert.
+_IMPORT_STAGING_PARENT = "/var/lib"
+_IMPORT_STAGING_DIR = "ai-employee-import"
+
+
+def _staging_anlegen(tar, name: str) -> str:
+    """Die zwei Ordner-Eintraege ins Archiv legen, die das Zwischenlager
+    erzeugen, und das Praefix zurueckgeben, unter dem die Nutzlast liegen
+    muss. uid/gid 0 und Modus 0700: der Agent kann den Ordner danach weder
+    betreten noch ersetzen."""
+    import tarfile
+
+    for pfad in (_IMPORT_STAGING_DIR, f"{_IMPORT_STAGING_DIR}/{name}"):
+        info = tarfile.TarInfo(name=pfad)
+        info.type = tarfile.DIRTYPE
+        info.mode = 0o700
+        info.uid = 0
+        info.gid = 0
+        tar.addfile(info)
+    return f"{_IMPORT_STAGING_DIR}/{name}"
 
 
 # Laeuft IM Agenten-Container (python:3.12-slim, python3 ist immer da) als root.
@@ -186,6 +237,182 @@ try:
         fd = nfd
 finally:
     os.close(fd)
+"""
+
+
+# Laeuft NACH put_archive als root und ist der einzige Schritt, der die
+# Zielkette ueberhaupt anfasst: put_archive hat vorher nur in das root-eigene
+# Zwischenlager geschrieben (:data:`_IMPORT_STAGING_PARENT`). Hier wird jedes
+# Kettenglied mit O_NOFOLLOW geoeffnet und danach AUSSCHLIESSLICH relativ zu
+# den so festgenagelten Deskriptoren geschrieben — ein Tausch gegen einen
+# Symlink im TOCTOU-Fenster (#843) laesst die Oeffnung fehlschlagen, und wer
+# das Fenster erst nach der Oeffnung gewinnt, aendert nur noch einen Namen:
+# der Deskriptor zeigt weiter auf den geprueften Inode. Damit wird der
+# umgelenkte Schreibvorgang nicht mehr nachtraeglich erkannt, sondern gar
+# nicht erst ausgefuehrt.
+#
+# Zwei Haertungen fallen dabei ab, die put_archive nicht hatte: ein Eintrag
+# im Archiv, der kein Ordner und keine normale Datei ist (Symlink, Geraet),
+# wird abgelehnt statt uebernommen, und eine Zieldatei, die bereits ein
+# Symlink ist, wird nicht mehr durchgeschrieben.
+_INSTALL_FROM_STAGING_SCRIPT = """
+import errno, os, shutil, stat, sys, time
+root, uid, gid, staging, *parts = sys.argv[1:]
+uid, gid = int(uid), int(gid)
+flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+
+def fehler(text, code):
+    print(text)
+    shutil.rmtree(staging, ignore_errors=True)
+    sys.exit(code)
+
+
+for part in parts:
+    if part in ("", ".", "..") or "/" in part:
+        fehler(f"unzulaessiges Kettenglied {part!r} — Uebernahme abgelehnt", 1)
+try:
+    fd = os.open(root, flags)
+except OSError as e:
+    fehler(f"Wurzel {root!r} nicht als Verzeichnis zu oeffnen: {e.strerror}", 2)
+
+
+def uebernehmen(quelle, ziel_fd):
+    for name in sorted(os.listdir(quelle)):
+        if name in ("", ".", "..") or "/" in name:
+            fehler(f"unzulaessiger Eintrag {name!r} im Archiv — Uebernahme abgelehnt", 4)
+        pfad = os.path.join(quelle, name)
+        eintrag = os.lstat(pfad)
+        if stat.S_ISDIR(eintrag.st_mode):
+            try:
+                os.mkdir(name, 0o755, dir_fd=ziel_fd)
+            except FileExistsError:
+                pass
+            except OSError as e:
+                fehler(f"mkdir {name!r} fehlgeschlagen: {e.strerror}", 5)
+            try:
+                nfd = os.open(name, flags, dir_fd=ziel_fd)
+            except OSError as e:
+                fehler(f"{name!r} ist kein Verzeichnis oder ein Symlink: {e.strerror}", 6)
+            try:
+                os.fchown(nfd, uid, gid)
+                os.fchmod(nfd, 0o755)
+                uebernehmen(pfad, nfd)
+            finally:
+                os.close(nfd)
+        elif stat.S_ISREG(eintrag.st_mode):
+            # O_NOFOLLOW sieht nur Symlinks. Ein HARDLINK auf eine Datei
+            # ausserhalb der Kette traegt keine Markierung — O_TRUNC wuerde
+            # die Opferdatei zerstoeren und das anschliessende fchown/fchmod
+            # ihren Inode dem Agenten ueberschreiben, obwohl wir als root
+            # schreiben. Deshalb wird ein vorhandener Name erst GELOEST
+            # (unlink trifft nur den Verweis, nie den Inode dahinter) und die
+            # Datei danach mit O_EXCL neu angelegt. Eine Verknuepfung als
+            # Zielname bleibt wie bisher eine Ablehnung — sie zu ersetzen
+            # waere zwar sicher, wuerde dem Agenten aber stillschweigend
+            # etwas wegnehmen.
+            try:
+                vorhanden = os.lstat(name, dir_fd=ziel_fd)
+            except FileNotFoundError:
+                vorhanden = None
+            if vorhanden is not None:
+                if stat.S_ISLNK(vorhanden.st_mode):
+                    fehler(f"{name!r} ist im Ziel eine Verknuepfung — Uebernahme abgelehnt", 7)
+                if stat.S_ISDIR(vorhanden.st_mode):
+                    fehler(f"{name!r} ist im Ziel ein Ordner — Uebernahme abgelehnt", 7)
+                try:
+                    os.unlink(name, dir_fd=ziel_fd)
+                except FileNotFoundError:
+                    pass
+                except OSError as e:
+                    fehler(f"{name!r} nicht ersetzbar: {e.strerror}", 7)
+            try:
+                zfd = os.open(
+                    name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                    0o644, dir_fd=ziel_fd,
+                )
+            except OSError as e:
+                fehler(f"{name!r} nicht schreibbar (Symlink im Ziel?): {e.strerror}", 7)
+            try:
+                # os.write ist KEIN write_all: es darf kuerzer schreiben, ohne
+                # zu melden (volle Platte, Signal nach schon geschriebenen
+                # Bytes). Ohne Auswertung des Rueckgabewerts endet die
+                # Schleife regulaer, das Skript mit 0 — und der Aufrufer
+                # bekommt Erfolg fuer eine ABGESCHNITTENE Datei gemeldet.
+                # Deshalb wird nachgefasst und die Groesse am Ende geprueft.
+                try:
+                    with open(pfad, "rb") as quell:
+                        while True:
+                            brocken = quell.read(1 << 20)
+                            if not brocken:
+                                break
+                            while brocken:
+                                brocken = brocken[os.write(zfd, brocken):]
+                except OSError as e:
+                    fehler(f"{name!r} nicht vollstaendig schreibbar: {e.strerror}", 9)
+                if os.fstat(zfd).st_size != eintrag.st_size:
+                    fehler(
+                        f"{name!r} nur unvollstaendig uebernommen "
+                        f"({os.fstat(zfd).st_size} von {eintrag.st_size} Byte)", 9
+                    )
+                os.fchown(zfd, uid, gid)
+                os.fchmod(zfd, 0o644)
+            finally:
+                os.close(zfd)
+        else:
+            fehler(f"{name!r} ist weder Datei noch Ordner — Uebernahme abgelehnt", 8)
+
+
+try:
+    for part in parts:
+        try:
+            nfd = os.open(part, flags, dir_fd=fd)
+        except OSError as e:
+            try:
+                ist_link = stat.S_ISLNK(os.lstat(part, dir_fd=fd).st_mode)
+            except OSError:
+                ist_link = False
+            if ist_link or e.errno == errno.ELOOP:
+                fehler(f"{part!r} wurde waehrend des Schreibens gegen einen Symlink getauscht", 3)
+            elif e.errno == errno.ENOTDIR:
+                fehler(f"{part!r} ist kein Verzeichnis mehr", 3)
+            else:
+                fehler(f"{part!r} nicht mehr zu oeffnen: {e.strerror}", 3)
+        os.close(fd)
+        fd = nfd
+    uebernehmen(staging, fd)
+finally:
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+    shutil.rmtree(staging, ignore_errors=True)
+    # Reste aus abgebrochenen Laeufen (put_archive lief, das Exec kam nie an)
+    # mitnehmen — sonst sammelt sich im Zwischenlager genau der Inhalt an,
+    # den der Aufrufer fuer nicht geschrieben haelt.
+    #
+    # Das Alter kommt aus dem NAMEN (<epoch>-<uuid>), NICHT aus der mtime:
+    # die Ordner entstehen aus Archiv-Eintraegen, und tarfile.TarInfo setzt
+    # mtime=0 — der Daemon uebertraegt das, womit jede mtime-Schwelle immer
+    # erfuellt waere und dieser Block die Zwischenlager GLEICHZEITIG
+    # laufender Importe mit weggeraeumt haette. Das eigene Lager ist ohnehin
+    # schon weg (oben), wird aber zusaetzlich ausgenommen.
+    eigener = os.path.basename(staging)
+    try:
+        eltern = os.path.dirname(staging)
+        jetzt = time.time()
+        for name in os.listdir(eltern):
+            if name == eigener:
+                continue
+            kopf, _, _ = name.partition("-")
+            try:
+                alter = jetzt - int(kopf)
+            except ValueError:
+                alter = None  # fremdes Namensschema: nicht anfassen
+            if alter is not None and alter > 86400:
+                shutil.rmtree(os.path.join(eltern, name), ignore_errors=True)
+    except OSError:
+        pass
 """
 
 
@@ -574,13 +801,21 @@ class DockerService:
         Aufrufer, die legitim ausserhalb schreiben (Sudoers-Datei, geteilte
         Team-Registrierung), geben ihre eigene Wurzel UND passende uid/gid
         bewusst mit, statt sie stillschweigend zu umgehen (#841).
+
+        ``put_archive`` schreibt NICHT mehr in die Zielkette, sondern in ein
+        root-eigenes Zwischenlager; erst :meth:`_install_from_staging`
+        uebernimmt von dort in die Kette (#843). Das TOCTOU-Fenster zwischen
+        Vorbereitung und Schreiben ist damit wirkungslos, nicht nur erkennbar
+        — siehe dort.
         """
         import io
         import tarfile
 
         filename = path.split("/")[-1]
         dir_path = "/".join(path.split("/")[:-1]) or "/"
-        safe_dir = self.prepare_target_dir(container_id, dir_path, uid, gid, root=root)
+        staging_name = f"{int(time.time())}-{uuid.uuid4().hex}"
+        staging = f"{_IMPORT_STAGING_PARENT}/{_IMPORT_STAGING_DIR}/{staging_name}"
+        self.prepare_target_dir(container_id, dir_path, uid, gid, root=root)
 
         container = self.client.containers.get(container_id)
 
@@ -589,14 +824,18 @@ class DockerService:
 
         tar_stream = io.BytesIO()
         with tarfile.open(fileobj=tar_stream, mode="w") as tar:
-            info = tarfile.TarInfo(name=filename)
+            praefix = _staging_anlegen(tar, staging_name)
+            info = tarfile.TarInfo(name=f"{praefix}/{filename}")
             info.size = len(data)
             info.uid = uid
             info.gid = gid
             tar.addfile(info, io.BytesIO(data))
         tar_stream.seek(0)
 
-        container.put_archive(safe_dir, tar_stream)
+        container.put_archive(_IMPORT_STAGING_PARENT, tar_stream)
+        self._install_from_staging(
+            container_id, dir_path, staging, uid, gid, root=root,
+        )
 
     def prepare_target_dir(
         self, container_id: str, target_dir: str, uid: int = 1000, gid: int = 1000,
@@ -625,7 +864,13 @@ class DockerService:
         uebergebenen uid/gid, ein Aufrufer mit Agenten-uid kann ein Glied in
         der Zwischenzeit ersetzen. Abgedeckt ist der Zustand VOR dem
         Schreiben — das ist genau der Weg, ueber den der Zielpfad heute
-        umgelenkt wuerde.
+        umgelenkt wuerde. Das Fenster NACH dieser Pruefung schliesst
+        :meth:`_install_from_staging`, die beide Schreib-Helfer statt eines
+        direkten ``put_archive`` in die Kette aufrufen (#843): dort wird jedes
+        Kettenglied mit O_NOFOLLOW geoeffnet und nur noch relativ zu den
+        offenen Deskriptoren geschrieben, ein im Fenster eingetauschter
+        Symlink laesst die Uebernahme scheitern, BEVOR etwas in der Kette
+        landet.
 
         Braucht einen LAUFENDEN Behaelter (exec). ``put_archive`` allein kaeme
         auch an einen gestoppten heran; deshalb wird dieser Fall hier in eine
@@ -672,6 +917,61 @@ class DockerService:
             )
         return safe_dir
 
+    def _install_from_staging(
+        self, container_id: str, target_dir: str, staging: str,
+        uid: int = 1000, gid: int = 1000, root: str = _WORKSPACE_ROOT,
+    ) -> None:
+        """Den Inhalt des Zwischenlagers in die Zielkette uebernehmen (#843).
+
+        ``put_archive`` hat vorher nur nach ``staging`` geschrieben — einem
+        root-eigenen Ordner unterhalb von :data:`_IMPORT_STAGING_PARENT`, an dem
+        der Agent nichts umbiegen kann. Erst dieser Schritt fasst die
+        Zielkette an, und zwar in EINEM Exec, das jedes Glied mit O_NOFOLLOW
+        oeffnet und danach nur noch relativ zu den offenen Deskriptoren
+        schreibt (:data:`_INSTALL_FROM_STAGING_SCRIPT`).
+
+        Damit ist das TOCTOU-Fenster zwischen :meth:`prepare_target_dir` und
+        dem Schreiben nicht mehr nur nachtraeglich erkennbar, sondern
+        wirkungslos: wer im Fenster ein Glied gegen einen Symlink tauscht,
+        laesst die Oeffnung fehlschlagen (nichts wird geschrieben); wer erst
+        danach tauscht, aendert nur einen Namen, waehrend der Deskriptor auf
+        dem geprueften Inode stehen bleibt.
+
+        Das Zwischenlager wird in jedem Fall wieder entfernt — auch wenn die
+        Uebernahme abgelehnt wird.
+
+        Raises:
+            ZielordnerKompromittiert: Die Kette hat sich seit der Vorbereitung
+                veraendert, oder das Archiv enthielt einen Eintrag, der kein
+                Ordner und keine normale Datei ist. AUSSERHALB der Zielkette
+                liegt dann nichts; innerhalb koennen die bis zum Abbruch
+                bereits uebernommenen Eintraege liegen.
+        """
+        safe_root = os.path.normpath(root)
+        safe_dir = os.path.normpath(target_dir)
+        parts = [p for p in safe_dir[len(safe_root):].split("/") if p] if safe_dir != safe_root else []
+        try:
+            exit_code, output = self.exec_in_container(
+                container_id,
+                ["python3", "-c", _INSTALL_FROM_STAGING_SCRIPT,
+                 safe_root, str(uid), str(gid), staging, *parts],
+                user="root",
+            )
+        except APIError as e:
+            raise ZielordnerKompromittiert(
+                "Zielordner konnte nach dem Schreiben nicht beschrieben werden: der "
+                f"Agent-Behaelter antwortet nicht (laeuft er noch?) — {e}"
+            ) from e
+        if exit_code != 0:
+            grund = (output or "").strip().splitlines()[-1:] or ["unbekannter Fehler"]
+            logger.warning(
+                "[Dateien] Uebernahme nach %s abgelehnt (rc=%s): %s",
+                scrub_log(safe_dir), exit_code, scrub_log(grund[0]),
+            )
+            raise ZielordnerKompromittiert(
+                f"Zielordner wurde waehrend des Schreibens veraendert: {grund[0]}"
+            )
+
     def write_files_in_container(
         self,
         container_id: str,
@@ -679,6 +979,7 @@ class DockerService:
         files: list[tuple[str, bytes]],
         uid: int = 1000,
         gid: int = 1000,
+        root: str = _WORKSPACE_ROOT,
     ) -> None:
         """Write multiple files into a container directory using a single tar archive.
 
@@ -711,32 +1012,49 @@ class DockerService:
         directory"). Ein vom Agenten eingetauschter Symlink lenkt den
         Schreibvorgang also wirklich um. Den Schutz bei jedem Aufrufer einzeln
         zu wiederholen hat zweimal nicht getragen (#821, #840).
+
+        ``root`` ist wie beim Geschwister :meth:`write_file_in_container` eine
+        bewusste Angabe des Aufrufers statt einer stillen Umgehung (#841).
+        Heute gibt ihn niemand mit — der Ordner-Import schreibt immer nach
+        ``/workspace``.
+
+        ``put_archive`` schreibt NICHT mehr in die Zielkette, sondern in ein
+        root-eigenes Zwischenlager; erst :meth:`_install_from_staging`
+        uebernimmt von dort in die Kette (#843). Das TOCTOU-Fenster zwischen
+        Vorbereitung und Schreiben ist damit wirkungslos, nicht nur erkennbar
+        — siehe dort.
         """
         import io
         import tarfile
 
-        safe_dir = self.prepare_target_dir(container_id, target_dir, uid, gid)
+        staging_name = f"{int(time.time())}-{uuid.uuid4().hex}"
+        staging = f"{_IMPORT_STAGING_PARENT}/{_IMPORT_STAGING_DIR}/{staging_name}"
+        self.prepare_target_dir(container_id, target_dir, uid, gid, root=root)
 
         container = self.client.containers.get(container_id)
 
         tar_stream = io.BytesIO()
         with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+            praefix = _staging_anlegen(tar, staging_name)
             for directory in _directory_entries_for(name for name, _ in files):
-                info = tarfile.TarInfo(name=directory)
+                info = tarfile.TarInfo(name=f"{praefix}/{directory}")
                 info.type = tarfile.DIRTYPE
                 info.mode = 0o755  # normalises existing dirs too, see docstring
                 info.uid = uid
                 info.gid = gid
                 tar.addfile(info)
             for filename, data in files:
-                info = tarfile.TarInfo(name=filename)
+                info = tarfile.TarInfo(name=f"{praefix}/{filename}")
                 info.size = len(data)
                 info.uid = uid
                 info.gid = gid
                 tar.addfile(info, io.BytesIO(data))
         tar_stream.seek(0)
 
-        container.put_archive(safe_dir, tar_stream)
+        container.put_archive(_IMPORT_STAGING_PARENT, tar_stream)
+        self._install_from_staging(
+            container_id, target_dir, staging, uid, gid, root=root,
+        )
 
     def get_file_from_container(self, container_id: str, path: str) -> bytes:
         import io

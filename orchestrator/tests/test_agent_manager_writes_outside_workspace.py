@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from app.core.agent_manager import AgentManager
+from app.services import docker_service as ds_modul
 from app.services.docker_service import DockerService
 
 
@@ -69,11 +70,19 @@ class TeamRegistryTests(unittest.TestCase):
         mgr, svc, container = _manager()
         mgr._update_team_registry("c1", "agent-1", "Nina", "dev")
 
-        prep_cmd = svc.exec_in_container.call_args_list[-1].args[1]
+        # _update_team_registry liest zuerst /shared/team.json (cat), dann
+        # bereitet write_file_in_container vor und schreibt. #843 haengt
+        # danach einen dritten exec-Aufruf an (Uebernahme aus dem
+        # Zwischenlager) — die Vorbereitung ist damit der VORLETZTE Aufruf.
+        prep_cmd = svc.exec_in_container.call_args_list[-2].args[1]
         self.assertEqual(prep_cmd[3:], ["/shared", "1000", "1000"])
         self.assertEqual(len(container.archives), 1)
         dir_path, tar_bytes = container.archives[0]
-        self.assertEqual(dir_path, "/shared")
+        # put_archive zielt seit #843 auf die root-eigene Staging-Wurzel; dass
+        # /shared das echte Ziel bleibt, steht im Uebernahme-Aufruf.
+        self.assertEqual(dir_path, ds_modul._IMPORT_STAGING_PARENT)
+        uebernahme = svc.exec_in_container.call_args_list[-1].args[1]
+        self.assertEqual(uebernahme[3], "/shared")
 
 
 if __name__ == "__main__":

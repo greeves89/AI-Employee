@@ -4,7 +4,11 @@ afterwards (e.g. /workspace/knowledge.md)."""
 import io
 import tarfile
 
-from app.services.docker_service import DockerService
+from app.services.docker_service import (
+    _IMPORT_STAGING_DIR as _STAGING_DIR,
+    _IMPORT_STAGING_PARENT,
+    DockerService,
+)
 
 
 class _FakeContainer:
@@ -48,8 +52,38 @@ def _service_with_fake_container():
 
 
 def _members(tar_bytes):
+    """Die NUTZLAST des Archivs, ohne das Zwischenlager.
+
+    Seit #843 schreibt ``put_archive`` nicht mehr in die Zielkette, sondern in
+    ein root-eigenes Zwischenlager ``ai-employee-import/<lauf>`` unterhalb von
+    /var/lib; erst ein eigener Exec uebernimmt von dort. Die beiden
+    Ordner-Eintraege, die dieses Lager anlegen, gehoeren nicht zur Nutzlast —
+    sie werden hier abgetrennt und in :func:`_staging_eintraege` eigens
+    geprueft. Die Namen der Nutzlast sind wieder die relativen Namen, die der
+    Aufrufer uebergeben hat."""
     with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tar:
-        return list(tar.getmembers())
+        alle = list(tar.getmembers())
+    praefix = _staging_praefix(alle)
+    nutzlast = []
+    for m in alle:
+        if m.name == _STAGING_DIR or m.name == praefix:
+            continue
+        assert m.name.startswith(praefix + "/"), m.name
+        m.name = m.name[len(praefix) + 1:]
+        nutzlast.append(m)
+    return nutzlast
+
+
+def _staging_praefix(alle):
+    assert alle[0].name == _STAGING_DIR, alle[0].name
+    return alle[1].name
+
+
+def _staging_eintraege(tar_bytes):
+    """Die zwei Ordner-Eintraege, die das Zwischenlager anlegen."""
+    with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tar:
+        alle = list(tar.getmembers())
+    return alle[:2]
 
 
 def test_write_file_in_container_owned_by_agent_uid():
@@ -172,3 +206,39 @@ def test_directory_entries_carry_a_mode_at_all():
     d = next(m for m in _members(tar_bytes) if m.isdir())
     assert d.mode & 0o111 == 0o111, oct(d.mode)
     assert d.mode == 0o755
+
+
+# --- Das Zwischenlager selbst (#843) ----------------------------------------
+
+
+def test_zwischenlager_gehoert_root_und_ist_fuer_den_agenten_zu(tmp_path=None):
+    """Die zwei Ordner-Eintraege, die das Zwischenlager anlegen, MUESSEN
+    uid/gid 0 und Modus 0700 tragen: nur deshalb kann der Agent dort kein
+    Glied gegen eine Verknuepfung tauschen, waehrend put_archive schreibt.
+    Traegt einer von beiden die Agenten-uid oder ein betretbares Recht,
+    ist der ganze Umbau aus #843 wirkungslos."""
+    svc, container = _service_with_fake_container()
+    svc.write_files_in_container("cid", "/workspace", [("a.txt", b"a")])
+
+    (dir_path, tar_bytes) = container.archives[0]
+    assert dir_path == _IMPORT_STAGING_PARENT, (
+        "put_archive zielt wieder auf einen vom Agenten erreichbaren Pfad"
+    )
+    lager = _staging_eintraege(tar_bytes)
+    assert [m.name for m in lager][0] == _STAGING_DIR
+    for m in lager:
+        assert m.isdir(), m.name
+        assert (m.uid, m.gid) == (0, 0), m.name
+        assert m.mode == 0o700, (m.name, oct(m.mode))
+
+
+def test_jeder_lauf_bekommt_ein_eigenes_zwischenlager():
+    """Zwei gleichzeitige Importe duerfen sich nicht dasselbe Lager teilen —
+    sonst sieht der eine die halb geschriebene Nutzlast des anderen."""
+    namen = set()
+    for _ in range(3):
+        svc, container = _service_with_fake_container()
+        svc.write_files_in_container("cid", "/workspace", [("a.txt", b"a")])
+        with tarfile.open(fileobj=io.BytesIO(container.archives[0][1])) as tar:
+            namen.add(tar.getmembers()[1].name)
+    assert len(namen) == 3, namen
