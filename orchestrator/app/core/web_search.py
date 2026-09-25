@@ -221,6 +221,36 @@ async def _search_serp(query: str, max_results: int, api_key: str) -> list[dict]
     ]
 
 
+async def news_search_with_settings(query: str, max_results: int, db) -> list[dict]:
+    """Nachrichtensuche — unabhaengig davon, welcher Provider fuer die Websuche
+    eingestellt ist.
+
+    Die Websuche und der Nachrichtenindex sind zwei verschiedene Dinge, keine
+    Alternative zueinander: Der Nachrichtenindex liefert ausschliesslich
+    Meldungen (mit Datum und Herausgeber), die Websuche auch Dokumentation und
+    Nachschlagewerke. Ein Agent braucht je nach Aufgabe das eine oder das
+    andere — deshalb zwei Wege statt eines Schalters.
+
+    Schluessel und Aktualitaet kommen aus den PlatformSettings; der Admin
+    richtet das ein, der Nutzer konfiguriert nichts. Ohne Brave-Schluessel
+    gibt es keinen Nachrichtenindex — dann bleibt die Liste leer, damit der
+    Aufrufer nicht stillschweigend Web-Treffer fuer Meldungen haelt.
+    """
+    from app.services.settings_service import SettingsService
+
+    svc = SettingsService(db)
+    api_key = await svc.get("web_search_api_key")
+    if not api_key:
+        logger.warning("Nachrichtensuche ohne Brave-Schluessel angefragt — keine Treffer")
+        return []
+    freshness = await svc.get("web_search_freshness")
+    query = (query or "").strip()
+    if not query:
+        return []
+    max_results = max(1, min(int(max_results or 5), 10))
+    return await _search_brave_news(query, max_results, api_key, freshness)
+
+
 async def web_search_with_settings(query: str, max_results: int, db) -> list[dict]:
     """Wie ``web_search``, liest Provider + Key aber selbst aus den
     PlatformSettings — der bequeme Weg fuer Aufrufer, die schon eine

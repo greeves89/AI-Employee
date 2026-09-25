@@ -14,8 +14,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.settings import get_settings, update_settings
-from app.core.web_search import web_search, web_search_with_settings
+from app.core.permissions import can_use_search_index
+from app.core.web_search import (
+    news_search_with_settings,
+    web_search,
+    web_search_with_settings,
+)
+from fastapi import HTTPException
+
 from app.models.oauth_integration import OAuthIntegration
+from app.models.agent import Agent
+from app.models.user import User, UserRole
 from app.models.platform_settings import PlatformSettings
 from app.schemas.settings import SettingsUpdate
 from app.services.settings_service import SettingsService
@@ -395,6 +404,238 @@ class BraveWebSearchAgeTests(unittest.IsolatedAsyncioTestCase):
         with patch("httpx.AsyncClient", return_value=ctx):
             out = await web_search("gold", 5, provider="brave", api_key="bk")
         self.assertEqual(out[0]["age"], "2026-09-18T10:00:00")
+
+
+class RolePermissionShapeTests(unittest.TestCase):
+    """Jede Rolle muss JEDES Recht nennen — auch mit leerer Liste.
+
+    Anlass: ``search_indexes`` fehlte zunaechst bei VIEWER, weil die Zeile
+    darueber einen nachgestellten Kommentar trug. Ein fehlender Schluessel
+    gilt als "None = alles erlaubt" — ein Nur-Lese-Nutzer haette den
+    Nachrichtenindex also nutzen duerfen. Der Fehler ist lautlos: Es gibt
+    keine Fehlermeldung, nur mehr Rechte als gedacht. Dieser Test macht ihn
+    laut, fuer jedes kuenftige Recht mit.
+    """
+
+    def test_every_role_declares_every_permission(self):
+        from app.core.permissions import DEFAULT_PERMISSIONS_BY_ROLE
+
+        rollen = DEFAULT_PERMISSIONS_BY_ROLE
+        alle_rechte = set().union(*(set(p) for p in rollen.values()))
+        for rolle, rechte in rollen.items():
+            with self.subTest(rolle=rolle):
+                self.assertEqual(
+                    alle_rechte - set(rechte), set(),
+                    f"{rolle} nennt nicht alle Rechte — fehlende gelten als unbeschraenkt",
+                )
+
+    def test_restricted_roles_do_not_get_the_news_index(self):
+        from app.core.permissions import DEFAULT_PERMISSIONS_BY_ROLE, UserRole
+
+        for rolle in (UserRole.VIEWER, UserRole.UNASSIGNED):
+            with self.subTest(rolle=rolle):
+                self.assertFalse(
+                    can_use_search_index(DEFAULT_PERMISSIONS_BY_ROLE[rolle], "news"),
+                )
+
+
+class SearchIndexPermissionTests(unittest.TestCase):
+    """Der Nachrichtenindex ist etwas, das der Admin freigibt — nicht etwas,
+    das ein Nutzer sich einstellt. Gleiche Logik wie bei allen anderen
+    Erlaubnislisten: None = alles erlaubt, eine Liste schraenkt ein."""
+
+    def test_none_allows_everything(self):
+        self.assertTrue(can_use_search_index({"search_indexes": None}, "news"))
+        self.assertTrue(can_use_search_index({"search_indexes": None}, "web"))
+
+    def test_a_list_restricts(self):
+        perms = {"search_indexes": ["web"]}
+        self.assertTrue(can_use_search_index(perms, "web"))
+        self.assertFalse(can_use_search_index(perms, "news"))
+
+    def test_an_empty_list_denies_everything(self):
+        self.assertFalse(can_use_search_index({"search_indexes": []}, "news"))
+
+    def test_a_missing_key_behaves_like_none(self):
+        """Bestehende Installationen haben den Schluessel nicht — sie duerfen alles."""
+        self.assertTrue(can_use_search_index({}, "news"))
+
+    def test_no_index_asked_for_is_always_fine(self):
+        self.assertTrue(can_use_search_index({"search_indexes": []}, None))
+
+
+class NewsSearchWithSettingsTests(unittest.IsolatedAsyncioTestCase):
+    """Die Nachrichtensuche ist ein eigener Weg, keine Variante der Websuche."""
+
+    async def asyncSetUp(self):
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            await conn.run_sync(PlatformSettings.metadata.create_all, tables=[PlatformSettings.__table__])
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+
+    async def _mit_einstellungen(self, **werte):
+        async with self.Session() as db:
+            svc = SettingsService(db)
+            for k, v in werte.items():
+                await svc.set(k, v)
+            await db.commit()
+
+    async def test_it_hits_the_news_index_even_when_the_web_provider_is_duckduckgo(self):
+        """Der eingestellte Web-Provider darf die Nachrichtensuche nicht umlenken."""
+        await self._mit_einstellungen(web_search_provider="duckduckgo", web_search_api_key="bk")
+        ctx, client = _client_returning({"results": []})
+        async with self.Session() as db:
+            with patch("httpx.AsyncClient", return_value=ctx):
+                await news_search_with_settings("ezb zinsen", 5, db)
+        self.assertIn("news/search", client.get.call_args.args[0])
+
+    async def test_the_platform_freshness_is_applied(self):
+        await self._mit_einstellungen(web_search_api_key="bk", web_search_freshness="pw")
+        ctx, client = _client_returning({"results": []})
+        async with self.Session() as db:
+            with patch("httpx.AsyncClient", return_value=ctx):
+                await news_search_with_settings("ezb zinsen", 5, db)
+        self.assertEqual(client.get.call_args.kwargs["params"]["freshness"], "pw")
+
+    async def test_without_a_key_it_returns_nothing_instead_of_web_results(self):
+        """Stillschweigend Web-Treffer zu liefern waere schlimmer als nichts:
+        der Aufrufer haelt sie sonst fuer datierte Meldungen."""
+        await self._mit_einstellungen(web_search_provider="duckduckgo")
+        with patch("httpx.AsyncClient") as mocked:
+            async with self.Session() as db:
+                out = await news_search_with_settings("ezb zinsen", 5, db)
+        self.assertEqual(out, [])
+        mocked.assert_not_called()
+
+    async def test_an_empty_query_makes_no_request(self):
+        await self._mit_einstellungen(web_search_api_key="bk")
+        with patch("httpx.AsyncClient") as mocked:
+            async with self.Session() as db:
+                out = await news_search_with_settings("   ", 5, db)
+        self.assertEqual(out, [])
+        mocked.assert_not_called()
+
+
+def _abhaengigkeiten(router, pfad: str, methode: str) -> list[str]:
+    """Namen der Depends(...)-Aufrufe einer Route — wie in test_security_hardening."""
+    namen: list[str] = []
+    for route in router.routes:
+        if getattr(route, "path", "").endswith(pfad) and methode in (getattr(route, "methods", set()) or set()):
+            for dep in route.dependant.dependencies:
+                call = getattr(dep, "call", None)
+                if call is not None:
+                    namen.append(call.__name__)
+    return namen
+
+
+class NewsRouteAuthTests(unittest.TestCase):
+    """Beide neuen Routen haengen am Agenten-Token — unangemeldet geht nichts."""
+
+    def test_the_news_route_requires_an_agent_token(self):
+        from app.api import agent_search
+        self.assertIn("verify_agent_token", _abhaengigkeiten(agent_search.router, "/news", "POST"))
+
+    def test_the_capabilities_route_requires_an_agent_token(self):
+        from app.api import agent_search
+        self.assertIn("verify_agent_token", _abhaengigkeiten(agent_search.router, "/capabilities", "GET"))
+
+
+class NewsRouteEnforcementTests(unittest.IsolatedAsyncioTestCase):
+    """Die Durchsetzung sitzt in der Route, nicht nur im Werkzeugkatalog.
+
+    Dass der MCP-Server das Werkzeug ausblendet, ist Hoeflichkeit. Verlassen
+    darf man sich nur darauf, dass der Endpunkt selbst ablehnt — ein Agent
+    kann HTTP sprechen, auch ohne dass ihm jemand ein Werkzeug anbietet.
+    """
+
+    async def asyncSetUp(self):
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            for modell in (PlatformSettings, Agent, User):
+                await conn.run_sync(modell.metadata.create_all, tables=[modell.__table__])
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+
+    async def _aufbauen(self, rolle, *, mit_schluessel=True, benutzer_anlegen=True):
+        async with self.Session() as db:
+            if mit_schluessel:
+                await SettingsService(db).set("web_search_api_key", "bk")
+            if benutzer_anlegen:
+                db.add(User(id="u1", email="u@example.test", name="U", role=rolle))
+            db.add(Agent(id="a1", name="Test", user_id="u1", config={}))
+            await db.commit()
+
+    async def test_news_is_refused_with_403_when_the_index_is_not_granted(self):
+        from app.api.agent_search import AgentWebSearchRequest, agent_news_search
+        await self._aufbauen(UserRole.VIEWER)
+        async with self.Session() as db:
+            with self.assertRaises(HTTPException) as ctx:
+                await agent_news_search(
+                    AgentWebSearchRequest(query="gold"), {"agent_id": "a1"}, db,
+                )
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_news_is_served_when_granted(self):
+        from app.api.agent_search import AgentWebSearchRequest, agent_news_search
+        await self._aufbauen(UserRole.MEMBER)
+        ctx_http, client = _client_returning({"results": []})
+        async with self.Session() as db:
+            with patch("httpx.AsyncClient", return_value=ctx_http):
+                out = await agent_news_search(
+                    AgentWebSearchRequest(query="gold"), {"agent_id": "a1"}, db,
+                )
+        self.assertEqual(out, {"results": []})
+        self.assertIn("news/search", client.get.call_args.args[0])
+
+    async def test_a_dangling_user_reference_is_refused(self):
+        """user_id gesetzt, Nutzer geloescht: kein Weg zu mehr Rechten als der
+        lebende Nutzer hatte."""
+        from app.api.agent_search import AgentWebSearchRequest, agent_news_search
+        await self._aufbauen(UserRole.MEMBER, benutzer_anlegen=False)
+        async with self.Session() as db:
+            with self.assertRaises(HTTPException) as ctx:
+                await agent_news_search(
+                    AgentWebSearchRequest(query="gold"), {"agent_id": "a1"}, db,
+                )
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_an_unknown_agent_is_refused(self):
+        from app.api.agent_search import AgentWebSearchRequest, agent_news_search
+        await self._aufbauen(UserRole.MEMBER)
+        async with self.Session() as db:
+            with self.assertRaises(HTTPException) as ctx:
+                await agent_news_search(
+                    AgentWebSearchRequest(query="gold"), {"agent_id": "gibt-es-nicht"}, db,
+                )
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_capabilities_reports_news_false_when_not_granted(self):
+        from app.api.agent_search import agent_search_capabilities
+        await self._aufbauen(UserRole.VIEWER)
+        async with self.Session() as db:
+            out = await agent_search_capabilities({"agent_id": "a1"}, db)
+        self.assertEqual(out, {"web": True, "news": False})
+
+    async def test_capabilities_reports_news_true_when_granted(self):
+        from app.api.agent_search import agent_search_capabilities
+        await self._aufbauen(UserRole.MEMBER)
+        async with self.Session() as db:
+            out = await agent_search_capabilities({"agent_id": "a1"}, db)
+        self.assertEqual(out, {"web": True, "news": True})
+
+    async def test_a_fresh_install_without_a_key_is_closed(self):
+        """Ohne Brave-Schluessel gibt es keinen Nachrichtenindex — auch fuer
+        einen Nutzer, dem nichts verboten ist."""
+        from app.api.agent_search import agent_search_capabilities
+        await self._aufbauen(UserRole.MEMBER, mit_schluessel=False)
+        async with self.Session() as db:
+            out = await agent_search_capabilities({"agent_id": "a1"}, db)
+        self.assertEqual(out["news"], False)
 
 
 if __name__ == "__main__":

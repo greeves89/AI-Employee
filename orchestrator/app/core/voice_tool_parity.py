@@ -65,7 +65,7 @@ DIREKT = frozenset({
 DELEGIERT = frozenset({
     "bash", "write_file", "edit_file", "multi_edit", "read_file", "list_files",
     "glob", "grep", "git_status", "git_diff",
-    "web_search", "web_fetch", "view_image",
+    "web_search", "news_search", "web_fetch", "view_image",
     "browser", "computer_use",
     "install_package", "skill_search",
     "list_apps", "start_app", "stop_app", "rebuild_app", "app_logs",
