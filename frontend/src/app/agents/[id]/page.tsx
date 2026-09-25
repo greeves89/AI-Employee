@@ -1871,6 +1871,7 @@ function AgentSettings({
         current={agent.interaction_model}
         currentAccountId={agent.interaction_account_id}
         currentModelId={agent.interaction_model_id}
+        currentDelegate={agent.voice_delegate_to_agent}
       />
 
       {/* Model Selection (Claude Code + Codex CLI agents) */}

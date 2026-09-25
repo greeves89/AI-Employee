@@ -2627,6 +2627,7 @@ class AgentManager:
             "interaction_model": config.get("interaction_model"),
             "interaction_account_id": config.get("interaction_account_id"),
             "interaction_model_id": config.get("interaction_model_id"),
+            "voice_delegate_to_agent": config.get("voice_delegate_to_agent"),
             "config": config,
         }
 

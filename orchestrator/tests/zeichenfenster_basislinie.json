@@ -23,7 +23,7 @@
   "orchestrator/tests/test_delegation_report_reaches_the_user.py": 2,
   "orchestrator/tests/test_delegation_result_not_cut_mid_word.py": 1,
   "orchestrator/tests/test_knowledge_title_ensure_survives_alembic.py": 1,
-  "orchestrator/tests/test_master_rules.py": 4,
+  "orchestrator/tests/test_master_rules.py": 2,
   "orchestrator/tests/test_mcp_callback_base_reachable_in_ui.py": 1,
   "orchestrator/tests/test_menu_links_are_web_addresses.py": 4,
   "orchestrator/tests/test_migrations_offline_capable.py": 1,

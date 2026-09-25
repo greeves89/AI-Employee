@@ -107,6 +107,9 @@ class AgentResponse(BaseModel):
     interaction_model: str | None = None  # "nova_sonic" | null (classic voice pipeline)
     interaction_account_id: int | None = None  # linked AI-Account (realtime provider creds)
     interaction_model_id: str | None = None    # concrete provider model id
+    # Echtzeit-Front reicht alles an den Agenten weiter: True/False = eigene
+    # Einstellung, None = Plattform-Vorgabe (app/core/voice_delegate.py)
+    voice_delegate_to_agent: bool | None = None
     webhook_enabled: bool = False
     webhook_token: str | None = None
     shared_for_rooms: bool = False  # admin-curated: offered in every user's Meeting-Room picker

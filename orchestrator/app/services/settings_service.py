@@ -123,6 +123,9 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "voice_interaction_model",
     "voice_interaction_account_id",
     "nova_sonic_voice",
+    # Echtzeit-Front reicht alles an den Agenten weiter ("true"/"false"), pro
+    # Agent ueberschreibbar — app/core/voice_delegate.py
+    "voice_delegate_to_agent",
     # APNs push config
     "apns_key_id",
     "apns_team_id",

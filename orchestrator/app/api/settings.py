@@ -278,6 +278,8 @@ async def update_settings(
         # Ohne diesen Eintrag wurde die gewaehlte Stimme still verworfen: Die
         # erlaubten Schluessel stehen an ZWEI Stellen, und diese hier entscheidet.
         "nova_sonic_voice",
+        # Weiterreich-Modus der Echtzeit-Front (app/core/voice_delegate.py).
+        "voice_delegate_to_agent",
     ]
     for field_name in _VOICE_FIELDS:
         value = getattr(data, field_name, None)
@@ -364,6 +366,8 @@ async def get_voice_settings(
     # Stimme des Echtzeit-Gesprächs — ohne diesen Wert konnte die Oberfläche die
     # eingestellte Stimme nicht anzeigen, obwohl der Sprach-Layer sie längst las.
     nova_voice = (await svc.get("nova_sonic_voice")) or "matthew"
+    from app.core import voice_delegate as _vd
+    delegate_all = _vd.resolve(None, await svc.get(_vd.SETTING_KEY))
     return VoiceSettings(
         stt_provider=cfg["stt_provider"],
         tts_provider=cfg["tts_provider"],
@@ -381,6 +385,7 @@ async def get_voice_settings(
         voice_interaction_model=interaction_model,
         voice_interaction_account_id=interaction_account,
         nova_sonic_voice=nova_voice,
+        voice_delegate_to_agent=delegate_all,
     )
 
 

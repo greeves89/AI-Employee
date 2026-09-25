@@ -23,6 +23,8 @@ type VoiceConfig = {
   voice_interaction_model?: string;
   voice_interaction_account_id?: string;
   nova_sonic_voice?: string;
+  /** Echtzeit-Front reicht jede inhaltliche Bitte an den Agenten weiter (Plattform-Vorgabe). */
+  voice_delegate_to_agent?: boolean;
 };
 
 const STT_LABELS: Record<string, string> = {
@@ -221,6 +223,32 @@ export function VoiceSettings() {
                 Die übrigen Stimmen sind auf ihre jeweilige Sprache ausgelegt. Die neue Stimme
                 gilt ab dem nächsten Gespräch.
               </div>
+            </div>
+          )}
+
+          {/* ── Wer antwortet im Echtzeit-Gespräch? ─────────────── */}
+          {realtimeActive && (
+            <div className="rounded-lg border border-foreground/[0.06] p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={!!cfg.voice_delegate_to_agent}
+                  onChange={(e) => patch({ voice_delegate_to_agent: e.target.checked ? "true" : "false" })}
+                  disabled={saving}
+                  className="mt-0.5 h-4 w-4 rounded border-foreground/20"
+                />
+                <div>
+                  <div className="text-sm font-medium">Alles an den Agenten weiterreichen</div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground/60">
+                    Die Echtzeit-Stimme hört zu und spricht, beantwortet aber nichts selbst: jede
+                    Frage geht an den Agenten mit seinem Modell, seinem Wissen und seinen
+                    MCP-Rechten. Gründlicher, dafür einige Sekunden Wartezeit pro Antwort. Aus:
+                    Die Stimme antwortet selbst mit eigenen Werkzeugen — schneller, aber nicht
+                    der Agent. Pro Agent im Sprach-Tab überschreibbar; gilt ab dem nächsten
+                    Gespräch.
+                  </div>
+                </div>
+              </label>
             </div>
           )}
 

@@ -1746,6 +1746,8 @@ class RealtimeVoiceSession:
     #: hier vorbelegt, damit die Zustellung auch dann nicht wirft, wenn das
     #: Laden der Server fehlgeschlagen ist.
     _mcp_plan: dict = field(default_factory=dict)
+    #: Weiterreich-Modus (app/core/voice_delegate.py) — in init() gesetzt.
+    _delegate_all: bool = False
     #: Name, Dienst und Beschreibung ALLER Werkzeuge — auch der nicht
     #: deklarierten. Grundlage fuer `mcp_search_tools`.
     _mcp_katalog: list = field(default_factory=list)
@@ -1852,6 +1854,10 @@ class RealtimeVoiceSession:
 
         svc = SettingsService(db)
         language = (await svc.get("voice_language")) or "de"
+        # Weiterreich-Modus: Nova ist nur Ohr und Mund, jede inhaltliche Bitte geht
+        # per ask_agent an den Agenten im Container (app/core/voice_delegate.py).
+        from app.core import voice_delegate as _vd
+        self._delegate_all = _vd.resolve(cfg, await svc.get(_vd.SETTING_KEY))
 
         self._out_queue = asyncio.Queue(maxsize=512)
         self._in_queue = asyncio.Queue(maxsize=512)
@@ -1878,8 +1884,18 @@ class RealtimeVoiceSession:
             RENAME_CONVERSATION_TOOL,
         ]
 
+        if self._delegate_all:
+            # Nur Gespraechsfuehrung bleibt; Kalender, Brain, MCP & Co. macht der
+            # Agent selbst — mit seinem Modell und seinen Rechten.
+            _tools = _vd.filter_tools(_tools)
+            logger.info(
+                "[Sprache] Weiterreich-Modus fuer Agent %s: %d Werkzeuge, keine MCP-Direktwerkzeuge",
+                self.agent_id, len(_tools),
+            )
+
         # Die MCP-Server, die AN DIESEM AGENTEN haengen, werden zu echten
-        # Werkzeugen der Sprachfront.
+        # Werkzeugen der Sprachfront. (Nicht im Weiterreich-Modus — dort ruft der
+        # Agent seine Dienste selbst auf.)
         #
         # Bis hierher stand die Werkzeugliste vollstaendig von Hand im Quelltext.
         # Wer einen MCP-Server anband, sah ihn im Chat — die Stimme nicht. Sie
@@ -1889,41 +1905,42 @@ class RealtimeVoiceSession:
         #
         # Die Auswahl kommt aus derselben Stelle wie die des Containers, samt
         # Gruppenrechten — siehe core/agent_mcp_servers.py.
-        try:
-            from app.core.agent_mcp_servers import (
-                WERKZEUG_BUDGET, servers_for_agent, voice_toolspecs,
-            )
-            from app.db.session import async_session_factory
-            async with async_session_factory() as _db:
-                _server = await servers_for_agent(_db, self.agent_id, cfg)
-                # Budget: das Gesamtpaket muss unter die Grenze der Engine passen.
-                # Die eingebauten Werkzeuge stehen schon fest, dazu die beiden
-                # Nachschlage-Werkzeuge unten.
-                _platz = WERKZEUG_BUDGET - len(_tools) - 2
-                # Die Namen, die hier oben schon vergeben sind, muessen mit —
-                # sonst kann ein angebundener Dienst einen davon ein zweites Mal
-                # belegen, und Bedrock weist den GESAMTEN Sitzungsstart ab
-                # (`ValidationException: Input is invalid`). Genau so ist die
-                # Sprachfront am 18.08. ausgefallen, nachdem ein Dienst ein
-                # eigenes `list_todos` mitbrachte.
-                _belegt = {
-                    str(((t or {}).get("toolSpec") or {}).get("name") or "")
-                    for t in _tools
-                }
-                _belegt.discard("")
-                _fremde, self._mcp_plan, self._mcp_katalog = voice_toolspecs(
-                    _server, _platz, _belegt
+        if not self._delegate_all:
+            try:
+                from app.core.agent_mcp_servers import (
+                    WERKZEUG_BUDGET, servers_for_agent, voice_toolspecs,
                 )
-            if self._mcp_plan:
-                _tools = _tools + _fremde + [MCP_SEARCH_TOOLS_TOOL, MCP_CALL_TOOL_TOOL]
-                logger.info(
-                    "[Sprache] %d MCP-Werkzeuge aus %d Server(n) fuer Agent %s: %d direkt, "
-                    "%d ueber Nachschlagen",
-                    len(self._mcp_plan), len(_server), self.agent_id,
-                    len(_fremde), len(self._mcp_plan) - len(_fremde),
-                )
-        except Exception as e:  # noqa: BLE001 — ohne Fremdwerkzeuge reden statt gar nicht
-            logger.warning("[Sprache] MCP-Werkzeuge nicht ladbar: %s", e)
+                from app.db.session import async_session_factory
+                async with async_session_factory() as _db:
+                    _server = await servers_for_agent(_db, self.agent_id, cfg)
+                    # Budget: das Gesamtpaket muss unter die Grenze der Engine passen.
+                    # Die eingebauten Werkzeuge stehen schon fest, dazu die beiden
+                    # Nachschlage-Werkzeuge unten.
+                    _platz = WERKZEUG_BUDGET - len(_tools) - 2
+                    # Die Namen, die hier oben schon vergeben sind, muessen mit —
+                    # sonst kann ein angebundener Dienst einen davon ein zweites Mal
+                    # belegen, und Bedrock weist den GESAMTEN Sitzungsstart ab
+                    # (`ValidationException: Input is invalid`). Genau so ist die
+                    # Sprachfront am 18.08. ausgefallen, nachdem ein Dienst ein
+                    # eigenes `list_todos` mitbrachte.
+                    _belegt = {
+                        str(((t or {}).get("toolSpec") or {}).get("name") or "")
+                        for t in _tools
+                    }
+                    _belegt.discard("")
+                    _fremde, self._mcp_plan, self._mcp_katalog = voice_toolspecs(
+                        _server, _platz, _belegt
+                    )
+                if self._mcp_plan:
+                    _tools = _tools + _fremde + [MCP_SEARCH_TOOLS_TOOL, MCP_CALL_TOOL_TOOL]
+                    logger.info(
+                        "[Sprache] %d MCP-Werkzeuge aus %d Server(n) fuer Agent %s: %d direkt, "
+                        "%d ueber Nachschlagen",
+                        len(self._mcp_plan), len(_server), self.agent_id,
+                        len(_fremde), len(self._mcp_plan) - len(_fremde),
+                    )
+            except Exception as e:  # noqa: BLE001 — ohne Fremdwerkzeuge reden statt gar nicht
+                logger.warning("[Sprache] MCP-Werkzeuge nicht ladbar: %s", e)
         # Einrichtungsstand: wer anruft, soll nicht 'wie kann ich helfen?' hoeren,
         # wenn der Agent noch gar nicht weiss, wofuer er da ist.
         from app.core.onboarding import onboarding_note
@@ -1967,11 +1984,20 @@ class RealtimeVoiceSession:
         except Exception as e:  # noqa: BLE001
             logger.warning("[Sprache] Master-Regeln nicht ladbar: %s", e)
 
-        sys_prompt = (
-            _master
-            + _system_prompt(agent_name, agent_role, language)
-            + _ob_note + _rhythm_note + _mcp_note + self._memory_context
-        )
+        if self._delegate_all:
+            # Eigener Prompt statt Zusatz: der normale listet Werkzeuge, die es hier
+            # nicht gibt, und verbietet ausdruecklich das Weiterreichen.
+            sys_prompt = (
+                _master
+                + _vd.system_prompt(agent_name, agent_role, language)
+                + self._memory_context
+            )
+        else:
+            sys_prompt = (
+                _master
+                + _system_prompt(agent_name, agent_role, language)
+                + _ob_note + _rhythm_note + _mcp_note + self._memory_context
+            )
         engine = creds.get("engine") or "nova_sonic"
 
         if engine == "azure_realtime":

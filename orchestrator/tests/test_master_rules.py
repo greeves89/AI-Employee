@@ -10,6 +10,7 @@ vergessen; die Sprachfront hatte eine eigene Werkzeugliste). Eine Regel, die
 fuer sechs von sieben Agenten gilt, ist keine Regel.
 """
 
+import re
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -113,14 +114,41 @@ class EveryRuntimeGetsThemTests(unittest.TestCase):
             with self.subTest(aufruf=i):
                 self.assertIn("master_rules=", block[:400])
 
+    def _voice_prompt_blocks(self):
+        """Jede Stelle, an der die Sprachfront ihren Systemprompt zusammenbaut.
+
+        Es ist ausdruecklich MEHR ALS EINE: der Weiterreich-Modus baut einen
+        eigenen Prompt (mit einem eigenen Prompt-Bauer) statt den normalen zu
+        ergaenzen. Ein Test, der nur die erste Fundstelle ansieht, laesst genau
+        die neu hinzugekommene Laufzeit ungeprueft — der Fehler, vor dem der
+        Kopf dieser Datei warnt.
+        """
+        stellen = self.VOICE.split("sys_prompt = (")[1:]
+        self.assertTrue(stellen, "Sprachfront baut keinen sys_prompt mehr?")
+        return [block[:200] for block in stellen]
+
     def test_the_voice_front_gets_them_too(self):
         self.assertIn("master_rules as _mr", self.VOICE)
-        block = self.VOICE.split("sys_prompt = (", 1)[1][:200]
-        self.assertIn("_master", block)
+        for i, block in enumerate(self._voice_prompt_blocks(), start=1):
+            with self.subTest(baustelle=i):
+                self.assertIn("_master", block)
 
     def test_the_voice_front_puts_them_first(self):
-        block = self.VOICE.split("sys_prompt = (", 1)[1][:200]
-        self.assertLess(block.index("_master"), block.index("_system_prompt("))
+        # Der Prompt-Bauer heisst je nach Modus anders (_system_prompt bzw.
+        # _vd.system_prompt) — daher auf die gemeinsame Endung pruefen statt
+        # auf einen festen Namen, der beim naechsten Modus wieder bricht.
+        for i, block in enumerate(self._voice_prompt_blocks(), start=1):
+            with self.subTest(baustelle=i):
+                self.assertIn("_master", block)
+                bauer = re.search(r"[\w.]*system_prompt\(", block)
+                self.assertIsNotNone(
+                    bauer, "kein Prompt-Bauer in dieser sys_prompt-Zuweisung"
+                )
+                self.assertLess(
+                    block.index("_master"),
+                    bauer.start(),
+                    "Master-Regeln stehen nicht ganz vorne",
+                )
 
 
 class TheAdminCanSetThemTests(unittest.TestCase):
