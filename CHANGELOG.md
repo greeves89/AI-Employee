@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.333.0] - 2026-09-25
+
+### Neu
+- **Subagenten sind im Gespräch sichtbar.** Schickt ein Agent Helfer los,
+  stand das bisher unsichtbar in der grauen „N Tools"-Blase — drei parallel
+  gestartete Helfer sahen aus wie drei beliebige Werkzeugaufrufe. Jetzt gibt
+  es eine eigene Kachel: **„3 Subagenten · 2 fertig, 1 läuft"**. Ein Klick
+  klappt die Liste auf, ein weiterer öffnet den einzelnen Helfer mit seinem
+  vollständigen Auftrag und Ergebnis.
+  - Je Helfer: Beschreibung, Art (z. B. `code-reviewer`), Laufzeit,
+    Statuspunkt, „im Hintergrund"-Kennzeichnung.
+  - **Alle drei Laufzeiten**, obwohl die Mechanik verschieden ist: Claude Code
+    startet Subagenten im eigenen Prozess (`Agent`), Codex und Custom-LLM
+    delegieren an andere Agenten der Plattform (`create_task`,
+    `delegate_and_wait`, `create_task_batch`). In der Zeile steht, welcher Weg
+    es war. Für den Nutzer ist die Frage dieselbe — wer arbeitet hier gerade
+    für mich?
+  - Auch im **einfachen Modus** sichtbar: Dass Helfer laufen, ist keine
+    technische Einzelheit.
+
+### Behoben
+- **Subagenten waren nach einem Neuladen namenlos.** Für die Persistenz wird
+  der Werkzeug-Input auf 200 Zeichen gekürzt — bei einem `Bash`-Aufruf
+  richtig, bei einem Subagenten fällt dabei genau das weg, was ihn ausmacht.
+  In den echten Daten steht der lange Auftragstext im selben JSON, das JSON
+  war nach der Kürzung nicht einmal mehr lesbar. Subagenten tragen ihre
+  Kernfelder jetzt gesondert und ungekürzt.
+
+---
+
 ## [1.332.0] - 2026-09-25
 
 ### Hinzugefügt

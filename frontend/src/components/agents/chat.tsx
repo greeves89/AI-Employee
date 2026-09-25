@@ -12,6 +12,8 @@ import {
   Sparkles as SummarizeIcon,
   Eye,
   EyeOff,
+  Users,
+  ChevronDown,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { LogEvent } from "@/lib/types";
@@ -67,7 +69,82 @@ interface ToolStep {
   status: "running" | "done" | "error";
 }
 
-type AssistantStep = TextStep | ToolStep;
+/** Ein Subagent, den Claude Code fuer eine Teilaufgabe gestartet hat.
+ *
+ * Eigener Schritt-Typ statt eines gewoehnlichen Werkzeugaufrufs: Ein Subagent
+ * ist keine Zeile Bash, sondern ein eigener Lauf mit eigenem Auftrag, eigener
+ * Dauer und eigenem Ergebnis. In der grauen "N Tools"-Blase ging das unter --
+ * drei parallel gestartete Helfer sahen aus wie drei beliebige Werkzeuge.
+ */
+interface SubagentStep {
+  type: "subagent";
+  id: string;                 // tool_use_id — verknuepft Aufruf und Ergebnis
+  /** "eigen" = Subagent im selben Prozess (Claude Code),
+   *  "delegiert" = Auftrag an einen anderen Agenten (Codex, Custom-LLM). */
+  herkunft: "eigen" | "delegiert";
+  beschreibung: string;
+  art?: string;               // z. B. "mindCoder:code-reviewer"
+  imHintergrund: boolean;
+  auftrag: string;            // der vollstaendige Prompt
+  ergebnis?: string;
+  status: "laeuft" | "fertig";
+  gestartet: number;          // ms — fuer die Dauer
+  dauerMs?: number;
+}
+
+type AssistantStep = TextStep | ToolStep | SubagentStep;
+
+/** Werkzeuge, mit denen ein Agent Helfer losschickt — in ALLEN Laufzeiten.
+ *
+ * Claude Code startet Subagenten im eigenen Prozess (``Agent``, frueher
+ * ``Task``). Codex und Custom-LLM koennen das nicht; sie delegieren ueber die
+ * Plattform an andere Agenten (``create_task``, ``delegate_and_wait``,
+ * ``create_task_batch``).
+ *
+ * Fuer den Nutzer ist beides dasselbe: Sein Agent hat Helfer losgeschickt.
+ * Deshalb EINE Anzeige statt zweier — sonst sieht ein Codex-Agent ohne
+ * Subagenten-Blase so aus, als koenne er es nicht.
+ */
+const SUBAGENT_WERKZEUGE: Record<string, "eigen" | "delegiert"> = {
+  Agent: "eigen",
+  Task: "eigen",                 // aeltere Bezeichnung, kommt in Verlaeufen vor
+  create_task: "delegiert",
+  create_task_batch: "delegiert",
+  delegate_and_wait: "delegiert",
+};
+
+/** Aus dem Werkzeug-Input die Felder holen, die beide Wege gemeinsam haben. */
+function subagentAusInput(
+  werkzeug: string,
+  input: Record<string, unknown>,
+): { beschreibung: string; art?: string; auftrag: string; imHintergrund: boolean } {
+  const herkunft = SUBAGENT_WERKZEUGE[werkzeug];
+  if (herkunft === "eigen") {
+    return {
+      beschreibung: String(input.description || "Subagent"),
+      art: input.subagent_type ? String(input.subagent_type) : undefined,
+      auftrag: String(input.prompt || ""),
+      imHintergrund: Boolean(input.run_in_background),
+    };
+  }
+  // Delegation: Ein Stapel traegt seine Auftraege unter "tasks".
+  const stapel = Array.isArray(input.tasks) ? (input.tasks as Record<string, unknown>[]) : null;
+  if (stapel && stapel.length > 0) {
+    const titel = stapel.map((t) => String(t.title || "")).filter(Boolean);
+    return {
+      beschreibung: titel.length === 1 ? titel[0] : `${stapel.length} Auftraege delegiert`,
+      art: "an andere Agenten",
+      auftrag: stapel.map((t, i) => `${i + 1}. ${t.title || ""}\n${t.prompt || ""}`).join("\n\n"),
+      imHintergrund: werkzeug !== "delegate_and_wait",
+    };
+  }
+  return {
+    beschreibung: String(input.title || "Delegierter Auftrag"),
+    art: input.agent_id ? `an ${String(input.agent_id).slice(0, 8)}` : "an anderen Agenten",
+    auftrag: String(input.prompt || ""),
+    imHintergrund: werkzeug !== "delegate_and_wait",
+  };
+}
 
 interface ChatImage {
   media_type: string;
@@ -785,6 +862,33 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 for (const tc of m.toolCalls) {
                   let parsedInput: Record<string, unknown> = {};
                   try { parsedInput = JSON.parse(tc.input || "{}"); } catch { /* truncated */ }
+                  // Subagenten auch im Verlauf als solche zeigen.
+                  //
+                  // Der gespeicherte ``input`` ist auf 200 Zeichen gekuerzt und
+                  // laesst sich oft nicht mehr als JSON lesen — deshalb traegt
+                  // ein Subagent seine Kernfelder gesondert (``tc.subagent``,
+                  // siehe chat_handler.py). Aeltere Verlaeufe haben das nicht;
+                  // fuer sie wird aus dem gekuerzten Input gerettet, was geht.
+                  const sa = (tc as { subagent?: Record<string, unknown> }).subagent;
+                  if (sa || SUBAGENT_WERKZEUGE[tc.tool]) {
+                    const feld = sa
+                      ? {
+                          beschreibung: String(sa.description || "Subagent"),
+                          art: sa.subagent_type ? String(sa.subagent_type) : undefined,
+                          auftrag: String(parsedInput.prompt || ""),
+                          imHintergrund: Boolean(sa.run_in_background),
+                        }
+                      : subagentAusInput(tc.tool, parsedInput);
+                    steps.push({
+                      type: "subagent",
+                      id: `hist-${Math.random().toString(36).slice(2, 8)}`,
+                      herkunft: SUBAGENT_WERKZEUGE[tc.tool] || "eigen",
+                      ...feld,
+                      status: "fertig",
+                      gestartet: 0,
+                    });
+                    continue;
+                  }
                   steps.push({
                     type: "tool_call",
                     id: `hist-${Math.random().toString(36).slice(2, 8)}`,
@@ -1260,7 +1364,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         const steps = [...(msgs[assistantIdx].steps || [])];
         const toolId = String(data.tool_use_id || `tc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
         // Skip if we already have this tool_call (dedup)
-        const alreadyExists = steps.some((s) => s.type === "tool_call" && s.id === toolId);
+        const alreadyExists = steps.some(
+          (s) => (s.type === "tool_call" || s.type === "subagent") && s.id === toolId);
         if (!alreadyExists) {
           // A new tool call means all previous running tools have completed
           const updatedSteps = steps.map((s) =>
@@ -1271,13 +1376,26 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           const inputObj = (typeof data.input === "object" && data.input !== null)
             ? data.input as Record<string, unknown>
             : {};
-          updatedSteps.push({
-            type: "tool_call",
-            id: toolId,
-            tool: String(data.tool || ""),
-            input: inputObj,
-            status: "running",
-          });
+          const werkzeug = String(data.tool || "");
+          if (SUBAGENT_WERKZEUGE[werkzeug]) {
+            const feld = subagentAusInput(werkzeug, inputObj);
+            updatedSteps.push({
+              type: "subagent",
+              id: toolId,
+              herkunft: SUBAGENT_WERKZEUGE[werkzeug],
+              ...feld,
+              status: "laeuft",
+              gestartet: Date.now(),
+            });
+          } else {
+            updatedSteps.push({
+              type: "tool_call",
+              id: toolId,
+              tool: String(data.tool || ""),
+              input: inputObj,
+              status: "running",
+            });
+          }
           msgs[assistantIdx] = { ...msgs[assistantIdx], steps: updatedSteps };
         } else {
           msgs[assistantIdx] = { ...msgs[assistantIdx], steps };
@@ -1286,6 +1404,23 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         const steps = [...(msgs[assistantIdx].steps || [])];
         const toolUseId = String(data.tool_use_id || "");
         const content = extractResultContent(data.content);
+        // Subagenten zuerst: Sie sind ueber tool_use_id eindeutig zuzuordnen,
+        // und ihr Ergebnis gehoert in ihre eigene Zeile, nicht in die
+        // Werkzeugliste.
+        const saIdx = toolUseId
+          ? steps.findIndex((s) => s.type === "subagent" && s.id === toolUseId)
+          : -1;
+        if (saIdx !== -1) {
+          const sa = steps[saIdx] as SubagentStep;
+          steps[saIdx] = {
+            ...sa,
+            ergebnis: content,
+            status: "fertig",
+            dauerMs: Date.now() - sa.gestartet,
+          };
+          msgs[assistantIdx] = { ...msgs[assistantIdx], steps };
+          return msgs;
+        }
         // Match by tool_use_id first, then fall back to last running tool
         let tcIdx = -1;
         if (toolUseId) {
@@ -3198,8 +3333,11 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
   }
 
   // Simple mode: only show text steps, hide tool calls
+  // Im einfachen Modus bleiben Werkzeugaufrufe verborgen — Subagenten NICHT.
+  // Dass der Agent Helfer losgeschickt hat, ist keine technische Einzelheit,
+  // sondern das, was gerade fuer den Nutzer passiert.
   const visibleSteps = simpleMode
-    ? steps.filter((s) => s.type === "text")
+    ? steps.filter((s) => s.type === "text" || s.type === "subagent")
     : steps;
 
   // In simple mode, if there are no text steps yet (only tool calls running), show a working indicator
@@ -3224,12 +3362,19 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
         const groups: Array<
           | { kind: "text"; content: string; idx: number }
           | { kind: "tools"; steps: ToolStep[]; idx: number }
+          | { kind: "subagents"; steps: SubagentStep[]; idx: number }
         > = [];
         visibleSteps.forEach((step, i) => {
           if (step.type === "tool_call") {
             const last = groups[groups.length - 1];
             if (last && last.kind === "tools") last.steps.push(step);
             else groups.push({ kind: "tools", steps: [step], idx: i });
+          } else if (step.type === "subagent") {
+            // Eigene Gruppe: Werden mehrere Helfer gleichzeitig gestartet,
+            // gehoeren sie zusammen — und nicht zwischen die Werkzeugaufrufe.
+            const last = groups[groups.length - 1];
+            if (last && last.kind === "subagents") last.steps.push(step);
+            else groups.push({ kind: "subagents", steps: [step], idx: i });
           } else if (step.type === "text") {
             groups.push({ kind: "text", content: step.content, idx: i });
           }
@@ -3242,6 +3387,8 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
                 <span className="inline-block w-1.5 h-4 bg-muted-foreground/50 animate-pulse ml-0.5 rounded-sm" />
               )}
             </div>
+          ) : g.kind === "subagents" ? (
+            <SubagentCluster key={`sa-${g.idx}`} steps={g.steps} />
           ) : (
             <ToolCluster
               key={`tools-${g.idx}`}
@@ -3272,6 +3419,119 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
       <PresentedImages images={message.images} />
       <PresentedFiles agentId={String(message.agentId || "")} files={message.files} />
       {message.meta && !message.isStreaming && !simpleMode && <MetaBar meta={message.meta} />}
+    </div>
+  );
+}
+
+/* ─── Subagenten-Kachel ──────────────────────────────────────────────── */
+
+function dauerText(ms?: number): string {
+  if (!ms || ms < 0) return "";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+}
+
+/** Die Helfer eines Zuges — zusammengefasst, aufklappbar, einzeln lesbar.
+ *
+ * Warum eigenstaendig und nicht in der Werkzeugliste: Ein Subagent ist ein
+ * eigener Lauf mit eigenem Auftrag, eigener Dauer und eigenem Ergebnis. In der
+ * grauen "N Tools"-Blase ging genau das unter — drei parallel gestartete
+ * Helfer sahen aus wie drei beliebige Werkzeugaufrufe.
+ *
+ * Die Kachel gilt fuer ALLE Laufzeiten: Claude Code startet Subagenten im
+ * eigenen Prozess, Codex und Custom-LLM delegieren an andere Agenten der
+ * Plattform. Verschiedene Mechanik, gleiche Frage des Nutzers — "wer arbeitet
+ * hier gerade fuer mich?".
+ */
+function SubagentCluster({ steps }: { steps: SubagentStep[] }) {
+  const [offen, setOffen] = useState(false);
+  const [detail, setDetail] = useState<string | null>(null);
+
+  const fertig = steps.filter((s) => s.status === "fertig").length;
+  const laufen = steps.length - fertig;
+
+  return (
+    <div className="my-1">
+      <button
+        type="button"
+        onClick={() => setOffen((o) => !o)}
+        className="inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10
+          px-3 py-1 text-xs text-violet-700 transition hover:bg-violet-500/20
+          dark:text-violet-300"
+      >
+        {laufen > 0 ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Users className="h-3.5 w-3.5" />
+        )}
+        <span className="font-medium">
+          {steps.length} {steps.length === 1 ? "Subagent" : "Subagenten"}
+        </span>
+        <span className="text-violet-600/70 dark:text-violet-400/70">
+          {laufen > 0 ? `${fertig} fertig, ${laufen} laufen` : "alle fertig"}
+        </span>
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${offen ? "rotate-180" : ""}`} />
+      </button>
+
+      {offen && (
+        <div className="mt-1.5 space-y-1 rounded-lg border border-border bg-muted/30 p-1.5">
+          {steps.map((sa) => (
+            <div key={sa.id}>
+              <button
+                type="button"
+                onClick={() => setDetail((d) => (d === sa.id ? null : sa.id))}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-muted/70"
+              >
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    sa.status === "fertig" ? "bg-emerald-500" : "animate-pulse bg-amber-500"
+                  }`}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-foreground">{sa.beschreibung}</span>
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    {sa.herkunft === "eigen" ? "eigener Subagent" : "an anderen Agenten"}
+                    {sa.art ? ` · ${sa.art}` : ""}
+                    {sa.imHintergrund ? " · im Hintergrund" : ""}
+                  </span>
+                </span>
+                <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                  {sa.status === "fertig" ? dauerText(sa.dauerMs) : "laeuft"}
+                </span>
+                <ChevronDown
+                  className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${
+                    detail === sa.id ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {detail === sa.id && (
+                <div className="space-y-2 px-2 pb-2 pt-1">
+                  <div>
+                    <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Auftrag
+                    </div>
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted/60 p-2 text-[11px] leading-relaxed">
+                      {sa.auftrag || "(kein Auftragstext uebermittelt)"}
+                    </pre>
+                  </div>
+                  {sa.ergebnis && (
+                    <div>
+                      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Ergebnis
+                      </div>
+                      <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted/60 p-2 text-[11px] leading-relaxed">
+                        {sa.ergebnis}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

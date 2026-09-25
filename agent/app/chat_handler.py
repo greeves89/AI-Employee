@@ -329,10 +329,27 @@ class ChatHandler:
                             seen_tool_ids.add(tool_id)
                             tool_name = block.get("name", "unknown")
                             tool_input = block.get("input", {})
-                            accumulated_tool_calls.append({
+                            eintrag = {
                                 "tool": tool_name,
                                 "input": json.dumps(tool_input)[:200],
-                            })
+                            }
+                            # Subagenten zusaetzlich UNGEKUERZT festhalten.
+                            #
+                            # Der 200-Zeichen-Schnitt oben ist fuer gewoehnliche
+                            # Werkzeugaufrufe richtig — bei einem Subagenten
+                            # faellt dabei aber genau das weg, was ihn
+                            # ausmacht: Beschreibung und Art. Nach dem Neuladen
+                            # stand in der Uebersicht dann ein namenloser
+                            # Helfer. Der Auftragstext selbst bleibt gekuerzt;
+                            # er kann sehr lang werden und wird zur Anzeige
+                            # nicht gebraucht.
+                            if tool_name in ("Agent", "Task"):
+                                eintrag["subagent"] = {
+                                    "description": str(tool_input.get("description", ""))[:200],
+                                    "subagent_type": tool_input.get("subagent_type"),
+                                    "run_in_background": bool(tool_input.get("run_in_background")),
+                                }
+                            accumulated_tool_calls.append(eintrag)
                             await self.log_publisher.publish_chat(
                                 message_id,
                                 "tool_call",
