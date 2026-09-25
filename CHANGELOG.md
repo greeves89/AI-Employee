@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.337.0] - 2026-09-25
+
+### Behoben
+- **Systembenachrichtigungen kamen bei niemandem an — seit v1.68.3.**
+  Selbsttest, Sentinel-Ausfall, abgelaufene Anmeldungen bei verbundenen
+  Diensten und aehnliche Meldungen werden mit dem Absender `system`
+  angelegt. Seit Benachrichtigungen auf die eigenen Agenten beschraenkt sind,
+  passte dieser Absender auf keinen Nutzer. Auf einer Anlage lagen 640
+  ungelesene, darunter mehrfach dringend "Sentinel antwortet nicht mehr".
+  Sie gehen jetzt an die Administratoren — und nur an die.
+- **Der Hinweis des Anbieters konnte nie ankommen, und das Lebenszeichen
+  liess sich nicht abschalten.** Die Einstellungen `usage_ping_*` fehlten in
+  der Liste der erlaubten Schluessel; das Speichern scheiterte still. Die
+  Tests waren gruen, weil ihre Attrappe jeden Schluessel annahm — sie ist
+  jetzt so streng wie das Original.
+- **Eine Aufgabe, die immer wieder abbricht,** meldet sich ohne zugeordneten
+  Agenten jetzt bei den Administratoren statt bei niemandem.
+
+### Geaendert
+- **Der Selbsttest meldet sich nur noch bei Veraenderung** (erster Lauf,
+  bestanden/fehlgeschlagen, andere Zahl von Fehlschlaegen) — statt bei jedem
+  Lauf dieselbe Meldung, rund 25-mal am Tag.
+- **Hinweis des Anbieters als gelber Streifen am unteren Rand** statt als
+  kleine Box in der Seitenleiste, die bei eingeklapptem Menue ganz fehlte.
+  Hauptbereich und Chat machen ihm Platz, statt von ihm verdeckt zu werden;
+  eine Mailadresse im Text ist anklickbar. Zusaetzlich landet ein neuer oder
+  geaenderter Hinweis als Benachrichtigung bei den Administratoren.
+
+---
+
 ## [1.336.0] - 2026-09-25
 
 ### Neu

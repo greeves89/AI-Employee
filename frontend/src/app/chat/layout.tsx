@@ -185,14 +185,14 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-[calc(100vh-var(--betreiber-hinweis-h,0px))] overflow-hidden bg-background">
       {/* Sidebar */}
       <AnimatePresence mode="wait">
         <motion.aside
           initial={false}
           animate={{ width: sidebarCollapsed ? 0 : 280 }}
           transition={{ duration: 0.2, ease: "easeInOut" }}
-          className="relative h-screen border-r border-border bg-card/50 backdrop-blur-xl flex flex-col overflow-hidden shrink-0"
+          className="relative h-[calc(100vh-var(--betreiber-hinweis-h,0px))] border-r border-border bg-card/50 backdrop-blur-xl flex flex-col overflow-hidden shrink-0"
         >
           {/* Header */}
           <div className="flex h-14 items-center gap-3 px-4 border-b border-border shrink-0">
@@ -295,7 +295,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
       </button>
 
       {/* Main content */}
-      <main className="flex-1 min-w-0 h-screen overflow-hidden">
+      <main className="flex-1 min-w-0 h-[calc(100vh-var(--betreiber-hinweis-h,0px))] overflow-hidden">
         {children}
       </main>
     </div>

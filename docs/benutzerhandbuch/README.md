@@ -1089,13 +1089,30 @@ zeigt ungelesene).
 2. **Arten von Meldungen**, die hier auflaufen:
    - **„Task abgeschlossen — Bewertung?"** — mit Möglichkeit, direkt zu **bewerten**.
    - **Freigabe-Anfragen** — mit **Antwort-Buttons** direkt in der Meldung.
-   - **„Neuer Skill erstellt"**, **Self-Test-Report** und weitere System-Hinweise.
-   - Nachrichten/Ergebnisse deiner Agenten.
+   - **„Neuer Skill erstellt"** und Nachrichten/Ergebnisse deiner Agenten.
+   - **Nur für Administratoren — Meldungen zum Betrieb der Plattform:** Selbsttest
+     (nur wenn sich das Ergebnis ändert, nicht bei jedem Lauf), Sentinel-Ausfall und
+     -Entwarnung, abgelaufene Anmeldungen bei verbundenen Diensten, Aufgaben, die immer
+     wieder abbrechen, und der **Hinweis des Anbieters** (siehe unten).
 3. **Bei einer Freigabe** direkt eine Option klicken (ohne die Approvals-Seite zu öffnen).
 4. **Haken** = einzeln als gelesen; **Read all** = alle; **Papierkorb** = löschen.
 
 > Datenschutz: Du siehst **nur Benachrichtigungen deiner eigenen** (bzw. dir freigegebener)
-> Agenten. Bleiben neue Meldungen aus, einmal die Seite neu laden.
+> Agenten — und als Administrator zusätzlich die Betriebsmeldungen der Plattform. Bleiben
+> neue Meldungen aus, einmal die Seite neu laden.
+
+### 21.1 Hinweis des Anbieters (gelber Streifen)
+
+Bittet der Anbieter der Software um Kontakt, erscheint am **unteren Rand** ein dezent
+**gelber Streifen** mit seiner Nachricht. Eine darin genannte E-Mail-Adresse ist anklickbar.
+
+- **Er sperrt nichts** — alle Funktionen laufen unverändert weiter.
+- **Ausblenden:** das **X** rechts im Streifen. Er bleibt dann für diese Sitzung weg und
+  kommt erst wieder, wenn der Anbieter einen **neuen** Text hinterlegt.
+- **Nachlesen:** Administratoren finden denselben Text zusätzlich als Benachrichtigung
+  **„Hinweis des Anbieters"** in der Glocke.
+- Der Hinweis kommt mit dem **täglichen Lebenszeichen** der Anlage an — eine Änderung
+  beim Anbieter kann also bis zu einem Tag brauchen.
 
 ---
 

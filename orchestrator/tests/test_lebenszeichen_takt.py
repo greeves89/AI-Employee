@@ -39,7 +39,11 @@ class _Ergebnis:
 class _Db:
     """Sitzungs-Attrappe. ``execute`` beantwortet nur die Agentenzaehlung."""
 
+    #: Alles, was waehrend eines Tests per ``add`` angelegt wurde.
+    angelegt: list = []
+
     def __init__(self, agenten: int = 0): self._agenten = agenten
+    def add(self, objekt): _Db.angelegt.append(objekt)
     async def __aenter__(self): return self
     async def __aexit__(self, *a): return False
     async def commit(self): pass
@@ -77,15 +81,28 @@ class InhaltTest(unittest.IsolatedAsyncioTestCase):
     """Was gesendet wird — und was ausdruecklich nicht."""
 
     def _service(self, einstellungen):
+        from app.services.settings_service import ALLOWED_KEYS
+
         class _Svc:
+            """So streng wie das Original.
+
+            Die erste Fassung dieser Attrappe nahm jeden Schluessel an. Der echte
+            SettingsService lehnt unbekannte ab — und genau daran ist das
+            Speichern des Hinweises gescheitert, auf jeder Anlage, still. Die
+            Tests waren trotzdem gruen.
+            """
             def __init__(self, _db): pass
             async def get(self, k): return einstellungen.get(k)
-            async def set(self, k, v): einstellungen[k] = v
+            async def set(self, k, v):
+                if k not in ALLOWED_KEYS:
+                    raise ValueError(f"Unknown setting: {k}")
+                einstellungen[k] = v
 
         s = dienst.LicenseHeartbeatService(lambda: _Db())
         return s, _Svc
 
     async def _ping(self, einstellungen, antwort=None, status=200, agenten=0):
+        _Db.angelegt = []
         s, svc = self._service(einstellungen)
         gesendet = {}
 
@@ -158,6 +175,35 @@ class InhaltTest(unittest.IsolatedAsyncioTestCase):
         einstellungen = {"license_instance_id": "x", "usage_ping_hinweis": "alt"}
         await self._ping(einstellungen, antwort={"bewertung": "legitim"})
         self.assertEqual(einstellungen["usage_ping_hinweis"], "")
+
+    def _benachrichtigungen(self):
+        from app.models.notification import Notification
+        return [o for o in _Db.angelegt if isinstance(o, Notification)]
+
+    async def test_ein_neuer_hinweis_landet_bei_den_administratoren(self):
+        """Den Streifen kann man wegklicken — die Benachrichtigung bleibt."""
+        await self._ping({"license_instance_id": "x"},
+                         antwort={"bewertung": "bitte_melden", "hinweis": "Bitte melden."})
+        meldungen = self._benachrichtigungen()
+        self.assertEqual(len(meldungen), 1)
+        self.assertEqual(meldungen[0].agent_id, "system",
+                         "Nur der Absender 'system' erreicht die Administratoren.")
+        self.assertIn("Bitte melden.", meldungen[0].message)
+
+    async def test_derselbe_hinweis_wird_nicht_taeglich_neu_gemeldet(self):
+        await self._ping({"license_instance_id": "x", "usage_ping_hinweis": "Bitte melden."},
+                         antwort={"bewertung": "bitte_melden", "hinweis": "Bitte melden."})
+        self.assertEqual(self._benachrichtigungen(), [])
+
+    async def test_ein_geaenderter_hinweis_wird_gemeldet(self):
+        await self._ping({"license_instance_id": "x", "usage_ping_hinweis": "Alt."},
+                         antwort={"bewertung": "bitte_melden", "hinweis": "Neu."})
+        self.assertEqual(len(self._benachrichtigungen()), 1)
+
+    async def test_ohne_hinweis_keine_benachrichtigung(self):
+        await self._ping({"license_instance_id": "x", "usage_ping_hinweis": "Alt."},
+                         antwort={"bewertung": "legitim"})
+        self.assertEqual(self._benachrichtigungen(), [])
 
     async def test_ein_unerreichbarer_server_ist_folgenlos(self):
         """Weder Ausnahme noch Zustandsaenderung."""

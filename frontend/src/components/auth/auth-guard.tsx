@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Menu, ShieldAlert } from "lucide-react";
 import { initAuth, useAuthStore } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
+import { BetreiberHinweis } from "@/components/layout/betreiber-hinweis";
 import { VoiceSessionProvider } from "@/components/agents/voice-session-provider";
 import { SidebarProvider, useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { cn } from "@/lib/utils";
@@ -166,9 +167,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
           "min-h-screen min-w-0 overflow-x-hidden transition-[margin] duration-300",
           collapsed ? "lg:ml-[64px]" : "lg:ml-[260px]"
         )}
+        // Platz fuer den Hinweis des Anbieters, falls er angezeigt wird.
+        style={{ paddingBottom: "var(--betreiber-hinweis-h, 0px)" }}
       >
         {children}
       </main>
+
+      <BetreiberHinweis />
     </div>
   );
 }

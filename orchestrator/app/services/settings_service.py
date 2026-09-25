@@ -91,6 +91,14 @@ ALLOWED_KEYS = SECRET_KEYS | {
     # Empty license_server_url = disabled, nothing is ever sent.
     "license_server_url",
     "license_instance_id",
+    # Taegliches Lebenszeichen (license_heartbeat_service.run_ping).
+    # Fehlten hier bis v1.336.0: der Dienst las sie, konnte aber keine davon
+    # schreiben — der Hinweis des Betreibers kam nie an, und abschalten liess
+    # sich das Lebenszeichen auch nicht.
+    "usage_ping_enabled",
+    "usage_ping_url",
+    "usage_ping_hinweis",
+    "usage_ping_bewertung",
     # Lifecycle configuration
     "agent_idle_timeout_minutes",
     # Expose MS Graph MCP server to external LLM clients (OpenWebUI)

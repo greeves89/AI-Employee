@@ -278,11 +278,19 @@ async def webpush_unsubscribe(
 
 # --- UI-facing: list, count, mark read ---
 
+#: Absender aller Benachrichtigungen, die den Betrieb der Plattform betreffen
+#: und keinem Agenten gehoeren (Selbsttest, Sentinel, abgelaufene Tokens, ...).
+SYSTEM_ABSENDER = "system"
+
+
 async def _visible_agent_ids(user, db: AsyncSession) -> list[str]:
     """Agent ids whose notifications this user may see: own + explicitly
     shared. Notifications are keyed by ``agent_id`` (no per-user recipient
     column), so without this scope every user would see every agent's
     notifications — a cross-user data leak.
+
+    Plus ``SYSTEM_ABSENDER`` for administrators — platform-level messages
+    belong to whoever runs the platform, not to one user.
 
     Ownerless agents are NOT auto-included (changed 2026-08-27, see
     tasks.py::_get_user_agent_ids) — they used to count as "system" agents
@@ -301,7 +309,16 @@ async def _visible_agent_ids(user, db: AsyncSession) -> list[str]:
     shared = (await db.execute(
         select(AgentAccess.agent_id).where(AgentAccess.user_id == user.id)
     )).scalars().all()
-    return list(set(owned) | set(shared))
+    sichtbar = set(owned) | set(shared)
+
+    # Systemmeldungen gehen an die Administratoren. Bis hierher sah sie
+    # niemand: es gibt keinen Agenten "system", also fielen sie seit der
+    # Beschraenkung auf eigene Agenten (v1.68.3) durch jedes Raster — auf dem
+    # Pi 640 ungelesene, darunter dringende Sentinel-Ausfaelle.
+    from app.models.user import UserRole
+    if getattr(user, "role", None) == UserRole.ADMIN:
+        sichtbar.add(SYSTEM_ABSENDER)
+    return list(sichtbar)
 
 
 @router.get("/")

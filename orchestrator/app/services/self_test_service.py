@@ -35,6 +35,17 @@ API_BASE = "http://127.0.0.1:8000/api/v1"
 RUN_INTERVAL_SECONDS = 86400
 
 
+
+def _soll_melden(vorher: int | None, fehlgeschlagen: int) -> bool:
+    """Lohnt dieser Lauf eine Benachrichtigung?
+
+    ``vorher`` ist die Zahl der Fehlschlaege im letzten abgeschlossenen Lauf,
+    ``None`` wenn es keinen gab. Gemeldet wird der erste Lauf und jede
+    Veraenderung — nicht aber derselbe Stand zum wiederholten Mal. Bis
+    v1.336.0 meldete jeder Lauf; auf dem Pi 557-mal dasselbe.
+    """
+    return vorher is None or vorher != fehlgeschlagen
+
 class TestResult:
     """Result of a single test."""
 
@@ -140,6 +151,21 @@ class SelfTestService:
 
                 # Send Telegram digest
                 await self._send_telegram_digest(summary)
+
+                # Nur bei Veraenderung melden (siehe _soll_melden).
+                vorher = (await db.execute(
+                    select(TestRun.failed)
+                    .where(TestRun.id != test_run.id)
+                    .where(TestRun.status.in_(("passed", "failed")))
+                    .order_by(TestRun.id.desc())
+                    .limit(1)
+                )).scalar_one_or_none()
+                if not _soll_melden(vorher, failed):
+                    logger.info(
+                        f"[SelfTest] Run #{test_run.id}: {passed}/{len(results)} passed, "
+                        f"unveraendert — keine Benachrichtigung"
+                    )
+                    return test_run.results
 
                 # Create notification
                 notif = Notification(

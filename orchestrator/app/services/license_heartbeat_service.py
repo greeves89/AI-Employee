@@ -156,10 +156,27 @@ class LicenseHeartbeatService:
         # Leerer Hinweis loescht den alten — sonst bliebe ein einmal gesetzter
         # Streifen fuer immer stehen, auch nachdem der Betreiber ihn
         # zurueckgenommen hat.
+        neuer_hinweis = str(antwort.get("hinweis") or "").strip()
         async with resilient_session(session_factory=self._sf) as db:
             svc = SettingsService(db)
-            await svc.set("usage_ping_hinweis", str(antwort.get("hinweis") or ""))
+            bisher = (await svc.get("usage_ping_hinweis") or "").strip()
+            await svc.set("usage_ping_hinweis", neuer_hinweis)
             await svc.set("usage_ping_bewertung", str(antwort.get("bewertung") or "unbekannt"))
+
+            # Zusaetzlich zum Streifen eine Benachrichtigung — den Streifen
+            # klickt man weg, die Benachrichtigung bleibt nachlesbar. Nur wenn
+            # der Hinweis neu ist oder sich geaendert hat, sonst kaeme dieselbe
+            # Meldung jeden Tag.
+            if neuer_hinweis and neuer_hinweis != bisher:
+                from app.models.notification import Notification
+                db.add(Notification(
+                    agent_id="system",   # erreicht die Administratoren
+                    type="warning",
+                    title="Hinweis des Anbieters",
+                    message=neuer_hinweis[:1000],
+                    priority="high",
+                    meta={"type": "betreiber_hinweis"},
+                ))
             await db.commit()
         logger.debug("Lebenszeichen gesendet (%s)", antwort.get("bewertung"))
 

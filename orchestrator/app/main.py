@@ -2222,7 +2222,9 @@ clean Markdown; you don't need to commit.
                     orig.completed_at = datetime.now(timezone.utc)
                 from app.models.notification import Notification
                 db.add(Notification(
-                    agent_id=meta.get("agent_id"),
+                    # Ohne Agent an die Administratoren — eine Meldung mit leerer
+                    # agent_id sieht niemand.
+                    agent_id=meta.get("agent_id") or "system",
                     type="warning",
                     title="Aufgabe bricht immer wieder ab",
                     message=(

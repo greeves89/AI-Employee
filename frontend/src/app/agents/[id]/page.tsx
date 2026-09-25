@@ -239,7 +239,7 @@ export default function AgentDetailPage() {
   })();
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-[calc(100vh-4rem-var(--betreiber-hinweis-h,0px))]">
       <Header
         title={agent.name}
         subtitle={agent.role?.trim() ? agent.role : `Agent ${agent.id.slice(0, 8)}`}
