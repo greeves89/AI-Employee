@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.338.1] - 2026-09-25
+
+### Behoben
+- **Ein vom Sentinel angehaltener Agent blieb bis zu 3 Stunden faelschlich
+  "blockiert"** — laufende Aufgaben wurden beim Stopp nicht abgeschlossen
+  und wirkten deshalb bis zu ihrer Erkennung durch den Watchdog wie
+  haengengeblieben; in der Zwischenzeit fiel jeder faellige Zeitplan-Lauf
+  dieses Agenten ersatzlos aus. Ein Sentinel-Stopp schliesst seine laufenden
+  Aufgaben jetzt selbst ab.
+
+---
+
 ## [1.338.0] - 2026-09-25
 
 ### Neu

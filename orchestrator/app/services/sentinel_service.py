@@ -43,6 +43,7 @@ import asyncio
 import json
 import time
 import logging
+from datetime import timedelta
 
 from app.config import settings
 from app.services.redis_service import RedisService
@@ -69,6 +70,11 @@ _MAX_SCAN_CHARS = 20_000
 
 #: Wie lange derselbe Vorfall desselben Agenten nicht erneut ausgeloest wird.
 _VORFALL_SPERRE_SEKUNDEN = 60.0
+
+#: Gleicher Wert wie disk_monitor._TASK_EVICT_GRACE — bewusst getrennt gehalten
+#: (kein Modul-Import), aber deshalb absichtlich unter demselben Namen, damit
+#: eine kuenftige Anpassung der Kulanzfrist an beiden Stellen auffaellt.
+_TASK_EVICT_GRACE = timedelta(days=7)
 
 #: Schluessel, unter dem der Sentinel sein Lebenszeichen ablegt.
 SENTINEL_HEARTBEAT_KEY = "sentinel:heartbeat"
@@ -428,6 +434,7 @@ class SentinelService:
                     await AgentManager(db, self.docker, self.redis).stop_agent(agent_id)
                 gestoppt = True
                 logger.warning("[Sentinel] Agent %s angehalten (Grund: %s)", agent_id, reason)
+                await self._fail_running_tasks(agent_id, reason)
             except Exception as e:  # noqa: BLE001 — der Vermerk unten ist wichtiger
                 fehler = str(e)[:300]
                 logger.error("[Sentinel] Agent %s konnte NICHT angehalten werden: %s", agent_id, fehler)
@@ -473,6 +480,60 @@ class SentinelService:
                     await db.commit()
             except Exception:  # noqa: BLE001
                 logger.exception("[Sentinel] Zweite Meldung fehlgeschlagen")
+
+    async def _fail_running_tasks(self, agent_id: str, reason: str) -> None:
+        """Laufende Aufgaben des gerade gestoppten Agenten sofort schliessen (#855).
+
+        Ohne dies bleibt eine laufende Aufgabe mit Status RUNNING in der
+        Datenbank stehen — der Container, der sie haette beenden koennen, ist
+        weg. `agent_duty.assess` liest daraus "blocked" (`find_stale_tasks`),
+        bis der Watchdog sie nach `watchdog_stale_task_minutes` (Standard 180)
+        als stale erkennt; bis dahin wird jeder faellige Zeitplan-Lauf dieses
+        Agenten uebersprungen. Ein Sentinel-Stopp kennt Agent und Grund bereits
+        und kann die Sperre selbst aufloesen, statt auf den Watchdog zu warten
+        — dasselbe Muster wie `disk_monitor._fail_running_tasks_and_alert`
+        (#714), hier ohne die dortige Recovery-/Alert-Logik, weil `_notify`
+        (siehe oben) den Betreiber schon ueber den Vorfall selbst informiert.
+
+        Absichtlich in einem eigenen try/except: ein Fehler hier darf weder
+        den Anhalten-Erfolg (`gestoppt`) noch den Pruefspur-Vermerk in
+        `_stop_agent` verfaelschen.
+        """
+        from datetime import datetime, timezone
+
+        from sqlalchemy import select
+
+        from app.db.session import async_session_factory
+        from app.models.task import Task, TaskStatus
+
+        try:
+            grund = f"Sentinel hat den Agenten angehalten (Grund: {reason})."
+            anzahl = 0
+            async with async_session_factory() as db:
+                result = await db.execute(
+                    select(Task).where(Task.agent_id == agent_id, Task.status == TaskStatus.RUNNING)
+                )
+                jetzt = datetime.now(timezone.utc)
+                for task in result.scalars().all():
+                    task.status = TaskStatus.FAILED
+                    task.error = grund
+                    task.completed_at = jetzt
+                    task.notified = True
+                    task.evict_after = jetzt + _TASK_EVICT_GRACE
+                    anzahl += 1
+                if anzahl:
+                    await db.commit()
+            if anzahl:
+                logger.warning(
+                    "[Sentinel] %s laufende Aufgabe(n) von Agent %s nach Stopp als "
+                    "fehlgeschlagen verbucht (Grund: %s)",
+                    anzahl, agent_id, reason,
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "[Sentinel] Laufende Aufgaben von Agent %s konnten nach dem Stopp "
+                "nicht als fehlgeschlagen verbucht werden", agent_id,
+            )
 
     async def _notify(self, agent_id: str, reason: str, excerpt: str | None) -> None:
         """Den Menschen erreichen — und zwar so, dass er es nicht uebersieht.
