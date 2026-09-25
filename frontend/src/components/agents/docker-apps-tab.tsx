@@ -30,6 +30,7 @@ import {
 } from "@/lib/api";
 import { getBase } from "@/lib/config";
 import type { DockerApp, DockerAppLog } from "@/lib/types";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 interface DockerAppsTabProps {
   agentId: string;
@@ -103,8 +104,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
 
   useEffect(() => {
     fetchApps();
-    const interval = setInterval(fetchApps, 10000);
-    return () => clearInterval(interval);
+    return setVisibleInterval(fetchApps, 10000);
   }, [fetchApps]);
 
   // Cleanup timers on unmount

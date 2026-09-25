@@ -6,6 +6,7 @@ import { MessageSquare, Pin, X, ArrowRight, Loader2, Clock } from "lucide-react"
 import * as api from "@/lib/api";
 import type { ChatSession } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 // Load the full chat lazily to avoid a static circular import (chat.tsx imports
 // ChatOverview). Rendered inside the modal so a chat session is fully usable
@@ -59,8 +60,7 @@ export function ChatOverview({
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 10000); // keep tiles fresh
-    return () => clearInterval(t);
+    return setVisibleInterval(load, 10000); // keep tiles fresh
   }, [load]);
 
   if (loading) {

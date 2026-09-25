@@ -3,6 +3,7 @@
 import { useEffect, useCallback } from "react";
 import { useAgentStore } from "@/store/agent-store";
 import * as api from "@/lib/api";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 export function useAgents() {
   const { agents, loading, error, setAgents, setLoading, setError } =
@@ -23,8 +24,7 @@ export function useAgents() {
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 15000); // Poll every 15s
-    return () => clearInterval(interval);
+    return setVisibleInterval(refresh, 15000); // alle 15 s, nur bei sichtbarem Tab
   }, [refresh]);
 
   return { agents, loading, error, refresh };

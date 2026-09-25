@@ -57,6 +57,7 @@ import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { Agent, AIAccount, FileEntry, PermissionPackage } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { formatMoney } from "@/lib/money";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string }> = {
   pending: { icon: Clock, color: "text-amber-700 dark:text-amber-400", badge: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" },
@@ -183,8 +184,7 @@ export default function AgentDetailPage() {
 
   useEffect(() => {
     ladeAgent();
-    const interval = setInterval(ladeAgent, 15000);
-    return () => clearInterval(interval);
+    return setVisibleInterval(ladeAgent, 15000);
   }, [ladeAgent]);
 
   // Nach dem Absenden einer Chatnachricht kurz nachfassen. Die „Aktiver

@@ -42,7 +42,10 @@ class ApprovalBannerScopeTests(unittest.TestCase):
         block = self.src.split("Poll for approvals that need this chat", 1)[1]
         block = block[:2000]
         self.assertNotIn("[isWaiting, agentId]", block)
-        self.assertIn("[agentId]", block)
+        self.assertNotIn("isWaiting]", block)
+        # Seit 24.09.: zusaetzlich hasPendingApproval (enger Takt, solange ein
+        # Banner steht) — entscheidend bleibt: kein isWaiting in den Abhaengigkeiten.
+        self.assertIn("[agentId, hasPendingApproval]", block)
 
 
 if __name__ == "__main__":

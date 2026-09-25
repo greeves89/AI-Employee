@@ -41,6 +41,7 @@ import {
   type RolePermissions,
 } from "@/lib/api";
 import { pageIcon } from "@/lib/page-icons";
+import { setVisibleInterval } from "@/lib/visible-interval";
 
 type NavItem = {
   href: string;
@@ -246,8 +247,8 @@ export function Sidebar() {
         .then((n) => { if (alive) setPendingApprovals(n); })
         .catch(() => {});
     load();
-    const timer = setInterval(load, 30000);
-    return () => { alive = false; clearInterval(timer); };
+    const stop = setVisibleInterval(load, 30000);
+    return () => { alive = false; stop(); };
   }, [pathname]);
 
   const canSeePath = (href: string) => {
