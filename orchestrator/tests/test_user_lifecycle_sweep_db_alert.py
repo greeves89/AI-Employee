@@ -14,6 +14,7 @@ write an urgent Notification and publish a Telegram alert via
 _alert_sweep_down().
 """
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -57,6 +58,31 @@ class _FakeSession:
 
     async def __aexit__(self, *exc):
         return False
+
+
+# Ein Schleifentest, der auf ein Ereignis wartet, das nie eintritt, HAENGT
+# still — statt rot zu werden. Genau das passierte bei einer Mutation von
+# _SWEEP_ALERT_THRESHOLD: der Lauf lief ins Nichts, ohne Fehlermeldung.
+# Deshalb zwei Dinge: der sleep-Ersatz gibt echt an den Event-Loop ab (sonst
+# kann keine Zeitschranke greifen), und jeder run()-Aufruf steht unter einer
+# harten Schranke. Wartet die Schleife zu lange, faellt der Test durch.
+_LOOP_TIMEOUT_S = 5
+
+
+# Vor dem Patchen festhalten: patch("...user_lifecycle.asyncio.sleep") setzt
+# das Attribut am GETEILTEN asyncio-Modul — ein Helfer, der danach
+# asyncio.sleep aufruft, ruft sich selbst auf.
+_ECHTES_SLEEP = asyncio.sleep
+
+
+async def _kein_echtes_warten(*args, **kwargs):
+    """Ersetzt asyncio.sleep: verbraucht keine Zeit, gibt aber ab."""
+    await _ECHTES_SLEEP(0)
+
+
+async def _run_mit_schranke(svc):
+    """svc.run() unter einer harten Zeitschranke — haengen = durchfallen."""
+    await asyncio.wait_for(svc.run(), timeout=_LOOP_TIMEOUT_S)
 
 
 @pytest.mark.asyncio
@@ -159,8 +185,8 @@ async def test_run_loop_alerts_after_threshold_and_recovers_silently():
     svc._sweep = AsyncMock(side_effect=_sweep_side_effect)
     svc._alert_sweep_down = AsyncMock()
 
-    with patch("app.services.user_lifecycle.asyncio.sleep", new=AsyncMock()):
-        await svc.run()
+    with patch("app.services.user_lifecycle.asyncio.sleep", new=_kein_echtes_warten):
+        await _run_mit_schranke(svc)
 
     svc._alert_sweep_down.assert_awaited_once()
     streak_arg = svc._alert_sweep_down.await_args.args[0]
@@ -192,8 +218,8 @@ async def test_run_loop_reescalates_on_doubling_not_once_per_episode():
     alarme = []
     svc._alert_sweep_down = AsyncMock(side_effect=lambda streak, *a, **kw: alarme.append(streak))
 
-    with patch("app.services.user_lifecycle.asyncio.sleep", new=AsyncMock()):
-        await svc.run()
+    with patch("app.services.user_lifecycle.asyncio.sleep", new=_kein_echtes_warten):
+        await _run_mit_schranke(svc)
 
     assert alarme == [_SWEEP_ALERT_THRESHOLD, TOTAL_FAILS]
 
@@ -215,8 +241,8 @@ async def test_a_single_blip_self_heals_without_any_alert():
     svc._sweep = AsyncMock(side_effect=_sweep_side_effect)
     svc._alert_sweep_down = AsyncMock()
 
-    with patch("app.services.user_lifecycle.asyncio.sleep", new=AsyncMock()):
-        await svc.run()
+    with patch("app.services.user_lifecycle.asyncio.sleep", new=_kein_echtes_warten):
+        await _run_mit_schranke(svc)
 
     svc._alert_sweep_down.assert_not_awaited()
 
@@ -241,8 +267,8 @@ async def test_non_transient_errors_still_use_the_plain_log_path_not_the_alert()
     svc._sweep = AsyncMock(side_effect=_sweep_side_effect)
     svc._alert_sweep_down = AsyncMock()
 
-    with patch("app.services.user_lifecycle.asyncio.sleep", new=AsyncMock()):
-        await svc.run()
+    with patch("app.services.user_lifecycle.asyncio.sleep", new=_kein_echtes_warten):
+        await _run_mit_schranke(svc)
 
     svc._alert_sweep_down.assert_not_awaited()
     assert svc._sweep_fail_streak == 0
