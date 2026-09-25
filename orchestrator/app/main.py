@@ -2458,6 +2458,11 @@ clean Markdown; you don't need to commit.
 
     license_heartbeat = LicenseHeartbeatService(_sf_lic_hb)
     license_heartbeat_task = asyncio.create_task(license_heartbeat.run())
+    # Zweiter, eigener Takt: das taegliche Lebenszeichen ohne Lizenz. Bewusst
+    # getrennt — der lizenzierte Herzschlag laeuft alle sechs Stunden, weil ein
+    # Lizenzentzug zeitnah ankommen muss; fuer "wer setzt das ein" reicht ein
+    # Mal am Tag.
+    license_ping_task = asyncio.create_task(license_heartbeat.run_ping())
     app.state.license_heartbeat = license_heartbeat
 
     # Start embedding backfill (for semantic memory search)
@@ -2519,6 +2524,7 @@ clean Markdown; you don't need to commit.
     disk_monitor_task.cancel()
     license_heartbeat.stop()
     license_heartbeat_task.cancel()
+    license_ping_task.cancel()
     embedding_backfill_task.cancel()
     if telegram_task:
         telegram_task.cancel()

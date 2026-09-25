@@ -137,10 +137,26 @@ async def check_version():
     if remote_version:
         update_available = _version_tuple(remote_version) > _version_tuple(current_version)
 
+    # Hinweis des Betreibers, falls einer hinterlegt wurde.
+    #
+    # Er kommt aus der Antwort auf das taegliche Lebenszeichen und steht in
+    # den Einstellungen. Bewusst hier und nicht in einem eigenen Endpunkt:
+    # Die Oberflaeche fragt die Version ohnehin ab: ein Aufruf statt zwei.
+    hinweis = ""
+    try:
+        from app.db.session import async_session_factory
+        from app.services.settings_service import SettingsService
+
+        async with async_session_factory() as db:
+            hinweis = (await SettingsService(db).get("usage_ping_hinweis") or "").strip()
+    except Exception:  # noqa: BLE001 — ein fehlender Hinweis darf nichts kippen
+        hinweis = ""
+
     return {
         "current": current_version,
         "latest": remote_version,
         "update_available": update_available,
+        "betreiber_hinweis": hinweis,
     }
 
 

@@ -13,6 +13,7 @@ that are already running.
 
 import asyncio
 import logging
+import random
 import uuid
 
 import httpx
@@ -25,6 +26,48 @@ logger = logging.getLogger(__name__)
 
 _INTERVAL = 6 * 3600  # 6 hours — frequent enough to catch revocations within any reasonable grace period, not chatty
 _STARTUP_DELAY = 30
+
+# --- Lebenszeichen ohne Lizenz ---------------------------------------------
+#
+# Der Heartbeat oben verlangt eine eingetragene Serveradresse UND einen
+# Lizenzschluessel. Damit meldet sich nur, wer ohnehin schon Kunde ist — die
+# Installationen, um die es eigentlich geht, sieht der Betreiber nie.
+#
+# Deshalb zusaetzlich ein schmales Lebenszeichen, das ohne beides auskommt.
+# Es ist bewusst harmlos:
+#
+# * Es sendet eine zufaellige, lokal erzeugte Kennung und die Version — mehr
+#   nicht. Kein Inhalt, keine Namen, keine Agentendaten.
+# * Die Antwort kann einen Hinweistext enthalten, den die Oberflaeche als
+#   Streifen zeigt. Sie sperrt NICHTS: Eine laufende Anlage darf nie von
+#   aussen gestoppt werden — derselbe Grundsatz wie oben.
+# * Ein Administrator kann es abschalten (``usage_ping_enabled`` = "false").
+#
+#: Einmal am Tag. Begruendung fuer genau diesen Takt:
+#:
+#: * Die Frage lautet "wer setzt das ein", nicht "was tut er gerade" — dafuer
+#:   reicht Tagesaufloesung.
+#: * Haeufiger waere schwer zu rechtfertigen: Es ist keine Funktion, von der
+#:   der Betreiber der Anlage etwas hat.
+#: * Seltener wuerde kurzlebige Installationen verpassen. Deshalb kommt der
+#:   erste Ping schon kurz nach dem Start — wer die Plattform nur einen
+#:   Nachmittag ausprobiert, taucht trotzdem auf.
+PING_INTERVALL = 24 * 3600
+#: Nicht sofort: Beim Hochfahren hat die Anlage Wichtigeres zu tun, und ein
+#: Ping aus einem halb gestarteten Zustand sagt wenig.
+PING_START_VERZUG = 120
+#: Streuung, damit nicht alle Anlagen gleichzeitig anklopfen. Ohne die
+#: schlagen tausend Installationen im selben Moment auf, sobald sie einmal
+#: gemeinsam neu gestartet wurden (Stromausfall, Update-Welle).
+PING_STREUUNG = 0.1
+#: Voreinstellung — ueberschreibbar ueber ``usage_ping_url``.
+PING_STANDARD_URL = "https://lizenzen.future-app.de"
+
+
+def _mit_streuung(sekunden: float) -> float:
+    """Wartezeit um bis zu PING_STREUUNG nach oben oder unten verschieben."""
+    spanne = sekunden * PING_STREUUNG
+    return max(1.0, sekunden + random.uniform(-spanne, spanne))
 
 
 class LicenseHeartbeatService:
@@ -41,8 +84,64 @@ class LicenseHeartbeatService:
                 logger.warning("License heartbeat cycle failed (non-fatal): %s", exc)
             await asyncio.sleep(_INTERVAL)
 
+    async def run_ping(self) -> None:
+        """Eigener Takt fuer das Lebenszeichen ohne Lizenz (taeglich)."""
+        await asyncio.sleep(_mit_streuung(PING_START_VERZUG))
+        while self._running:
+            try:
+                await self._ping()
+            except Exception as exc:
+                # Niemals laut: Das hier ist kein Dienst, auf den sich jemand
+                # verlaesst — es darf im Protokoll nicht wie ein Ausfall wirken.
+                logger.debug("Lebenszeichen fehlgeschlagen (folgenlos): %s", exc)
+            await asyncio.sleep(_mit_streuung(PING_INTERVALL))
+
     def stop(self) -> None:
         self._running = False
+
+    # ------------------------------------------------------------------
+    async def _ping(self) -> None:
+        """Ein Lebenszeichen ohne Lizenz — und die Antwort darauf merken."""
+        from app.db.session import resilient_session
+        from app.services.settings_service import SettingsService
+
+        async with resilient_session(session_factory=self._sf) as db:
+            svc = SettingsService(db)
+            if (await svc.get("usage_ping_enabled") or "true").strip().lower() == "false":
+                return  # vom Betreiber abgeschaltet
+
+            ziel = (await svc.get("usage_ping_url") or PING_STANDARD_URL).strip()
+            if not ziel:
+                return
+
+            kennung = await svc.get("license_instance_id")
+            if not kennung:
+                kennung = uuid.uuid4().hex
+                await svc.set("license_instance_id", kennung)
+                await db.commit()
+
+        url = ziel.rstrip("/") + "/api/v1/call2home/ping"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    url, json={"instance_id": kennung, "version": _read_version()})
+            if resp.status_code != 200:
+                return
+            antwort = resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.debug("Lebenszeichen nicht zugestellt: %s", exc)
+            return
+
+        # Der Hinweis wird gemerkt, damit die Oberflaeche ihn zeigen kann.
+        # Leerer Hinweis loescht den alten — sonst bliebe ein einmal gesetzter
+        # Streifen fuer immer stehen, auch nachdem der Betreiber ihn
+        # zurueckgenommen hat.
+        async with resilient_session(session_factory=self._sf) as db:
+            svc = SettingsService(db)
+            await svc.set("usage_ping_hinweis", str(antwort.get("hinweis") or ""))
+            await svc.set("usage_ping_bewertung", str(antwort.get("bewertung") or "unbekannt"))
+            await db.commit()
+        logger.debug("Lebenszeichen gesendet (%s)", antwort.get("bewertung"))
 
     # ------------------------------------------------------------------
     async def _beat(self) -> None:

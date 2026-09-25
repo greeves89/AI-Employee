@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { ArrowUpCircle, X, GitCommit, Clock, Loader2, ChevronRight, AlertTriangle } from "lucide-react";
+import { ArrowUpCircle, X, GitCommit, Clock, Loader2, ChevronRight, AlertTriangle, Info } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import * as Dialog from "@radix-ui/react-dialog";
 import { getBase } from "@/lib/config";
@@ -10,6 +10,10 @@ interface VersionInfo {
   current: string;
   latest: string | null;
   update_available: boolean;
+  /** Hinweis des Betreibers der Plattform — etwa die Bitte, sich zu melden.
+   *  Kommt aus der Antwort auf das taegliche Lebenszeichen. Leer = kein
+   *  Hinweis. Er sperrt nichts; er steht nur da. */
+  betreiber_hinweis?: string;
 }
 
 interface Commit {
@@ -48,6 +52,7 @@ export function UpdateBanner() {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [mismatchDismissed, setMismatchDismissed] = useState(false);
+  const [hinweisDismissed, setHinweisDismissed] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [commits, setCommits] = useState<Commit[]>([]);
   const [changelogMd, setChangelogMd] = useState<string | null>(null);
@@ -122,6 +127,12 @@ export function UpdateBanner() {
     BUNDLE_VERSION !== backendVersion;
   const showMismatch = versionMismatch && !mismatchDismissed;
 
+  // Hinweis des Betreibers. Wegklickbar, aber er kommt beim naechsten Laden
+  // wieder — solange der Betreiber ihn stehen laesst. Bewusst kein Dialog,
+  // der die Arbeit blockiert: Das hier ist eine Bitte, keine Sperre.
+  const hinweis = (version?.betreiber_hinweis || "").trim();
+  const showHinweis = hinweis.length > 0 && !hinweisDismissed;
+
   function formatDate(dateStr: string) {
     if (!dateStr) return "";
     const d = new Date(dateStr);
@@ -186,6 +197,32 @@ export function UpdateBanner() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {showHinweis && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="mx-3 mb-2 flex items-start gap-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2"
+          >
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-700 dark:text-sky-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium text-sky-800 dark:text-sky-300">
+                Hinweis des Anbieters
+              </p>
+              <p className="text-[10px] leading-relaxed text-sky-800/80 dark:text-sky-400/80">
+                {hinweis}
+              </p>
+            </div>
+            <button
+              onClick={() => setHinweisDismissed(true)}
+              aria-label="Hinweis ausblenden"
+              className="shrink-0 rounded-lg p-1 text-sky-700/60 transition-colors hover:bg-sky-500/10 hover:text-sky-700 dark:text-sky-400/50 dark:hover:text-sky-300"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </motion.div>
+        )}
+
         {showMismatch && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}

@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.335.0] - 2026-09-25
+
+### Neu
+- **Eine Anlage meldet einmal taeglich ein Lebenszeichen.** Wer die Plattform
+  einsetzt, war bisher nur zu sehen, wenn eine Lizenz hinterlegt war — also
+  genau bei denen, die ohnehin bekannt sind. Neu meldet sich jede Installation
+  einmal am Tag mit einer bei der Installation zufaellig erzeugten Kennung und
+  der Version. **Keine Inhalte, keine Namen, keine Nutzungsdaten.** Der Betreiber
+  des Dienstes kann eine Installation als in Ordnung einstufen oder um Kontakt
+  bitten; im zweiten Fall zeigt die Oberflaeche einen Hinweisstreifen. Gesperrt
+  wird nichts — eine laufende Anlage darf nie von aussen gestoppt werden.
+  Abschaltbar ueber die Einstellung `usage_ping_enabled`.
+- **Reichweitenmessung der oeffentlichen Seiten.** Landingpage, Datenschutz und
+  Impressum zaehlen Aufrufe ueber einen selbst betriebenen Dienst: keine Cookies,
+  keine Kennung auf dem Geraet, keine IP-Speicherung, keine Weitergabe an Dritte.
+  „Do Not Track" des Browsers wird beachtet.
+
+### Geaendert
+- **Datenschutzerklaerung nachgezogen.** Die Aussage „nutzt keine Analyse- oder
+  Tracking-Dienste" stimmte mit der Reichweitenmessung nicht mehr. Ergaenzt sind
+  ein Abschnitt zur Messung und einer zum taeglichen Lebenszeichen selbst
+  betriebener Instanzen — mit Zweck, Rechtsgrundlage und Widerspruchsmoeglichkeit.
+
+---
+
 ## [1.334.0] - 2026-09-25
 
 ### Neu
