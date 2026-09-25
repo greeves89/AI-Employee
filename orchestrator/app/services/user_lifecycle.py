@@ -13,9 +13,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.log_redaction import scrub_log
+from app.db.session import resilient_session
 from app.models.agent import Agent, AgentState
 from app.models.user import User
 
@@ -29,6 +31,19 @@ logger = logging.getLogger(__name__)
 DEFAULT_INACTIVITY_MINUTES = 30
 # How often the background loop runs
 CHECK_INTERVAL_SECONDS = 60
+
+# Connect-level DB errors that resilient_session already retried and
+# exhausted during a brief DB blip. Dieselbe Klasse wie
+# scheduler_service._TRANSIENT_DB_ERRORS.
+_TRANSIENT_DB_ERRORS = (OperationalError, DBAPIError, ConnectionError, TimeoutError)
+
+# Consecutive failed sweeps (60s cadence) before escalating to the user.
+# 2 ticks (~2min), nicht 1: ein einzelner Ausrutscher heilt lautlos selbst
+# und ist keinen Alarm wert (#617): "app.services.user_lifecycle: 130 ERROR
+# (Sweep error)" ueber Stunden ohne jede Eskalation war der gemeldete Zustand
+# — derselbe Fehlerklasse, fuer die _check_due_schedules im Scheduler bereits
+# eskaliert (#601/#719).
+_SWEEP_ALERT_THRESHOLD = 2
 
 
 async def _has_imminent_schedule(db: AsyncSession, agent_id: str, now: datetime,
@@ -71,6 +86,14 @@ class UserLifecycleService:
         self.docker = docker_service
         self.redis = redis_service
         self._running = False
+        # Consecutive failed sweeps + wall-clock time of the first failed
+        # tick in the current outage (reset on the first successful sweep).
+        # Wanduhrzeit statt streak*60s (#719-Lehre): auch hier wartet
+        # resilient_session seinen eigenen Timeout aus, ein Tick kann also
+        # laenger als 60s dauern.
+        self._sweep_fail_streak = 0
+        self._sweep_first_fail_at: datetime | None = None
+        self._sweep_next_alert_streak = _SWEEP_ALERT_THRESHOLD
 
     async def run(self) -> None:
         """Main loop: every minute, check for inactive users and stop their agents."""
@@ -79,12 +102,94 @@ class UserLifecycleService:
         while self._running:
             try:
                 await self._sweep()
+                if self._sweep_fail_streak >= _SWEEP_ALERT_THRESHOLD:
+                    logger.info(
+                        "[UserLifecycle] Sweep DB recovered after %s failed tick(s)",
+                        self._sweep_fail_streak,
+                    )
+                self._sweep_fail_streak = 0
+                self._sweep_first_fail_at = None
+                self._sweep_next_alert_streak = _SWEEP_ALERT_THRESHOLD
+            except _TRANSIENT_DB_ERRORS as e:
+                self._sweep_fail_streak += 1
+                if self._sweep_first_fail_at is None:
+                    self._sweep_first_fail_at = datetime.now(timezone.utc)
+                logger.warning(
+                    "[UserLifecycle] Sweep DB unavailable (transient, retrying "
+                    "next tick, %s consecutive): %s: %s",
+                    self._sweep_fail_streak, type(e).__name__, e,
+                )
+                if self._sweep_fail_streak >= self._sweep_next_alert_streak:
+                    self._sweep_next_alert_streak = self._sweep_fail_streak * 2
+                    try:
+                        await self._alert_sweep_down(
+                            self._sweep_fail_streak, self._sweep_first_fail_at,
+                        )
+                    except Exception as alert_err:
+                        logger.warning(
+                            "[UserLifecycle] Sweep alert error: %s", alert_err,
+                        )
             except Exception as e:
                 logger.error("[UserLifecycle] Sweep error: %s", e, exc_info=True)
             await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
     def stop(self) -> None:
         self._running = False
+
+    async def _alert_sweep_down(
+        self, streak: int, first_fail_at: datetime | None = None,
+    ) -> None:
+        """Escalate while a DB outage keeps blocking the idle-agent sweep.
+
+        Spiegelt SchedulerService._alert_due_schedules_down (#601/#719): ohne
+        das lief eine Datenbank-Stoerung hier bislang nur als wiederholtes
+        ERROR-Log durch, ohne dass jemand benachrichtigt wurde (#617) —
+        waehrenddessen laufen ungenutzte Agenten-Container einfach weiter,
+        statt nach Ablauf ihrer Leerlaufzeit gestoppt zu werden.
+        """
+        if first_fail_at is not None:
+            outage_min = round((datetime.now(timezone.utc) - first_fail_at).total_seconds() / 60, 1)
+        else:
+            outage_min = round(streak * CHECK_INTERVAL_SECONDS / 60, 1)
+        logger.error(
+            "[UserLifecycle] Sweep DB unreachable for %s consecutive ticks "
+            "(~%s min) — idle agents may keep running unattended", streak, outage_min,
+        )
+        try:
+            from app.models.notification import Notification
+            async with resilient_session(session_factory=self.db_factory) as db:
+                db.add(Notification(
+                    agent_id="system",
+                    type="error",
+                    title="Leerlauf-Ueberwachung kann Agenten nicht pruefen",
+                    message=(
+                        f"Die Datenbank ist seit ~{outage_min} Minuten nicht "
+                        "erreichbar, waehrend geprueft werden sollte, welche "
+                        "Agenten wegen Inaktivitaet gestoppt werden koennen. "
+                        "Bis die Datenbank wieder erreichbar ist, laufen "
+                        "untaetige Agenten-Container unbeaufsichtigt weiter."
+                    ),
+                    priority="urgent",
+                ))
+                await db.commit()
+        except _TRANSIENT_DB_ERRORS as e:
+            logger.warning(
+                "[UserLifecycle] Sweep alert Notification write failed (DB still down): %s", e,
+            )
+        if self.redis and self.redis.client:
+            import json as _json
+            payload = {
+                "text": (
+                    f"🔴 Leerlauf-Ueberwachung: Datenbank seit ~{outage_min} "
+                    "Minuten nicht erreichbar — untaetige Agenten werden gerade "
+                    "nicht gestoppt."
+                ),
+                "parse_mode": "Markdown",
+            }
+            try:
+                await self.redis.client.publish("telegram:notification", _json.dumps(payload))
+            except Exception as e:
+                logger.warning("[UserLifecycle] Sweep alert publish error: %s", e)
 
     async def _sweep(self) -> None:
         """One sweep: find inactive users and stop their idle agents."""
