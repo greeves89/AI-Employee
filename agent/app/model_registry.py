@@ -34,6 +34,9 @@ _MODELS: dict[str, tuple[int, float | None, float | None]] = {
     # zu niedrig sein, sonst reisst ein Budget unbemerkt.
     "claude-fable-5": (1_000_000, 10.00, 50.00),
     "claude-mythos-5": (1_000_000, 10.00, 50.00),
+    # Eigener Eintrag, obwohl "claude-opus-5" als Praefix schon trifft: genau
+    # das ist das Problem — ohne ihn landet Opus 5.5 beim Preis von Opus 5.
+    "claude-opus-5-5": (1_000_000, 4.00, 20.00),
     "claude-opus-5": (1_000_000, 5.00, 25.00),
     "claude-sonnet-5": (1_000_000, 3.00, 15.00),
     "claude-opus-4-8": (1_000_000, 5.00, 25.00),

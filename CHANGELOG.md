@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [1.331.6] - 2026-09-24
+## [1.331.7] - 2026-09-24
 
 ### Behoben
 - **Die verbleibende Restluecke aus #843 (Nachfolge zu #840/#842): zwischen dem
@@ -29,6 +29,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
     Import trotzdem Erfolg — die Datei lag dann abgeschnitten im Ziel. Jetzt
     wird nachgefasst und die Groesse geprueft; passt die Datei nicht
     vollstaendig, meldet der Vorgang einen Fehler.
+
+## [1.331.6] - 2026-09-23
+
+### Behoben
+- **Claude Opus 5.5 fehlte in der Modell-Auswahl, obwohl die CLI es schon
+  kann.** Wie bei Claude 5 kommt die Auswahl aus der kuratierten Liste
+  (`model_catalog.py`), die noch nicht nachgezogen war. Live verifiziert:
+  `claude -p ... --model claude-opus-5-5` gegen einen laufenden Agenten (CLI
+  2.1.280, Abo-Anmeldung) kam mit echter Antwort und `claude-opus-5-5` in
+  `modelUsage` zurueck. Opus 5.5 steht jetzt als "Latest" oben, Opus 5
+  darunter.
+- **Opus 5.5 wurde zum Preis von Opus 5 gerechnet.** Die Preistabelle sucht
+  per Praefix, und `claude-opus-5` ist ein Praefix von `claude-opus-5-5` —
+  ohne eigenen Eintrag lief Opus 5.5 ($4 / $20 pro Mio. Token) still auf
+  $5 / $25, die Kostenanzeige lag also rund 25 % zu hoch. Eigener Eintrag
+  plus Test, der genau diese Verwechslung festnagelt.
+- **Die Kostenschaetzung im Orchestrator (`pricing.py`) kannte die ganze
+  5er-Familie nicht** und fiel fuer Opus 5, Sonnet 5 und Fable 5 auf den
+  Sonnet-Standardpreis zurueck. Werte aus `agent/app/model_registry.py`
+  uebernommen.
 
 ## [1.331.5] - 2026-09-23
 
