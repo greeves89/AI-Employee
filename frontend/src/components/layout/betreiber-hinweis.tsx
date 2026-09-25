@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Info, X } from "lucide-react";
+import Link from "next/link";
+import { Info, KeyRound, X } from "lucide-react";
 import { getBase } from "@/lib/config";
+import { useAuthStore } from "@/lib/auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +15,9 @@ const VARIABLE = "--betreiber-hinweis-h";
 
 /** Alle 30 Minuten nachsehen — wie der Versionscheck, denselben Endpunkt. */
 const PRUEF_INTERVALL = 30 * 60 * 1000;
+
+/** Direkt zum Eintragen — Reiter "System", Abschnitt "Lizenz" der Einstellungen. */
+export const LIZENZ_EINTRAGEN_PFAD = "/settings?tab=system#lizenz";
 
 /** Merkt sich das Wegklicken je Text: ein NEUER Hinweis erscheint wieder. */
 const WEGGEKLICKT_SCHLUESSEL = "betreiber-hinweis-weggeklickt";
@@ -27,6 +32,8 @@ const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
  *  Benachrichtigung bei den Administratoren und bleibt dort nachlesbar. */
 export function BetreiberHinweis() {
   const { collapsed } = useSidebarCollapsed();
+  // Eintragen duerfen nur Administratoren — allen anderen fuehrte der Knopf ins Leere.
+  const istAdmin = useAuthStore((s) => s.user?.role === "admin");
   const [hinweis, setHinweis] = useState("");
   const [weggeklickt, setWeggeklickt] = useState<string | null>(null);
 
@@ -104,6 +111,20 @@ export function BetreiberHinweis() {
       <p className="min-w-0 flex-1 truncate text-sm" title={hinweis}>
         {inhalt}
       </p>
+      {istAdmin && (
+        <Link
+          href={LIZENZ_EINTRAGEN_PFAD}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+            "bg-amber-500 text-white hover:bg-amber-600",
+            "dark:bg-amber-500/90 dark:text-amber-950 dark:hover:bg-amber-400"
+          )}
+        >
+          <KeyRound className="h-3.5 w-3.5" aria-hidden />
+          <span className="hidden sm:inline">Lizenzschlüssel eintragen</span>
+          <span className="sm:hidden">Lizenz</span>
+        </Link>
+      )}
       <button
         type="button"
         onClick={wegklicken}

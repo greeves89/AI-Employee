@@ -1107,6 +1107,11 @@ Bittet der Anbieter der Software um Kontakt, erscheint am **unteren Rand** ein d
 **gelber Streifen** mit seiner Nachricht. Eine darin genannte E-Mail-Adresse ist anklickbar.
 
 - **Er sperrt nichts** — alle Funktionen laufen unverändert weiter.
+- **Lizenzschlüssel eintragen** (nur für Administratoren sichtbar): der Knopf im Streifen
+  öffnet **Einstellungen → System → Lizenz**. Dort den Schlüssel in das Feld **License Key**
+  einfügen und **Apply License** klicken. Beim nächsten Lebenszeichen ordnet der Anbieter die
+  Anlage damit zu, und der Hinweis verschwindet, sobald er sie freigibt.
+- Direktlink zum Eintragen: **`/settings?tab=system#lizenz`**.
 - **Ausblenden:** das **X** rechts im Streifen. Er bleibt dann für diese Sitzung weg und
   kommt erst wieder, wenn der Anbieter einen **neuen** Text hinterlegt.
 - **Nachlesen:** Administratoren finden denselben Text zusätzlich als Benachrichtigung

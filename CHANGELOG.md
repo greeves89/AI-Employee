@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.338.0] - 2026-09-25
+
+### Neu
+- **Knopf "Lizenzschluessel eintragen" im Hinweis des Anbieters** — nur fuer
+  Administratoren, weil nur sie eintragen duerfen. Er fuehrt direkt zum
+  Abschnitt Lizenz in den Einstellungen.
+- **Einstellungen sind per Adresse ansteuerbar:** `?tab=` oeffnet den
+  Reiter, `#lizenz` springt zum Abschnitt — `/settings?tab=system#lizenz`.
+
+---
+
 ## [1.337.0] - 2026-09-25
 
 ### Behoben

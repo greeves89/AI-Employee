@@ -358,11 +358,29 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     if (!isAdmin && (secTab === "voice" || secTab === "system")) setSecTab("modelle");
   }, [isAdmin, secTab]);
+
+  // Direkt ansteuerbar, z. B. vom Hinweis des Anbieters:
+  // /settings?tab=system#lizenz oeffnet den Reiter und springt zum Abschnitt.
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab === "modelle" || tab === "meine" || tab === "integrationen" || tab === "voice" || tab === "system") {
+      setSecTab(tab);
+    }
+  }, []);
   // License state
   const [license, setLicense] = useState<import("@/lib/api").License | null>(null);
   const [licenseKeyInput, setLicenseKeyInput] = useState("");
   const [licenseBusy, setLicenseBusy] = useState(false);
   const [licenseError, setLicenseError] = useState("");
+
+  // Sprung zu einem Abschnitt per #anker (z. B. #lizenz vom Hinweis des Anbieters).
+  useEffect(() => {
+    const ziel = window.location.hash.slice(1);
+    if (!ziel) return;
+    // Der Abschnitt entsteht erst, wenn Reiter UND Lizenzdaten da sind.
+    const el = document.getElementById(ziel);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [secTab, license]);
 
   // Provider/model catalog from the backend (single source of truth, live
   // Anthropic/OpenAI discovery + admin-freigeschaltete Zusatzmodelle) — statt
@@ -1549,7 +1567,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         )}
         {/* ─── License ─── */}
         {isAdmin && (
-          <section>
+          <section id="lizenz" className="scroll-mt-6">
             <div className="flex items-center gap-2 mb-3">
               <Lock className="h-4 w-4 text-muted-foreground/60" />
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
