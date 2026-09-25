@@ -192,6 +192,50 @@ Common issues:
 - OAuth app callback URL mismatch → update in your OAuth provider settings
 - Clock skew > 5 minutes → sync host time: `sudo timedatectl set-ntp true`
 
+### Integration zeigt „Abgelaufen" oder „Erneuerung schlägt fehl"
+
+**Symptom:** Auf der Seite **Integrationen** hat eine Karte ein gelbes Badge
+statt „Connected". Bei Anthropic (Claude) antworten gleichzeitig alle
+Claude-Agents mit `401 OAuth access token has expired`.
+
+**Was die Zustände bedeuten** (Backend: `orchestrator/app/core/integration_health.py`):
+
+| Badge | `status` in `GET /api/v1/integrations/` | Bedeutung | Handlungsbedarf |
+|---|---|---|---|
+| Connected (grün) | `connected` | Token gültig, letzte Erneuerung ging durch | keiner |
+| Erneuerung schlägt fehl | `refresh_failing` | Token gilt noch, aber der Hintergrund-Refresh scheitert | vor Ablauf neu verbinden |
+| Abgelaufen | `expired` | `expires_at` ist vorbei — da der Refresh 10 min vorher läuft, heißt das: er klappt nicht mehr | sofort neu verbinden |
+
+Unter dem Badge steht der letzte Fehler, z. B.
+`HTTP 400 – invalid_grant: Refresh token expired`. `invalid_grant`,
+`invalid_client` und `unauthorized_client` heilen nicht von selbst — nur ein
+neuer Login hilft. 5xx-Fehler sind vorübergehend und werden beim nächsten Lauf
+(alle 5 min) erneut versucht.
+
+**Lösung:** Auf der Karte **Neu verbinden** klicken.
+
+- **Anthropic (Claude):** Anthropic leitet nach dem Login nicht zurück, sondern
+  zeigt einen Code der Form `code#state` an. „Neu verbinden" öffnet den Login
+  daher in einem neuen Tab und ein Eingabefeld für diesen Code. Code
+  vollständig einfügen (inklusive `#…`) → **Verbinden**. Der neue Token gilt
+  sofort für alle Agents; sie lesen ihn bei jedem Lauf aus
+  `/shared/.auth/token.json`, ein Neustart ist nicht nötig.
+- **Andere Anbieter:** normaler OAuth-Redirect.
+
+**Benachrichtigung:** Beim ersten endgültigen Refresh-Fehler gibt es eine
+Meldung in der Glocke (Web-UI), im Telegram-Alarmkanal und als Push an die
+Apps — bei geteilten Integrationen an alle Admins, bei persönlichen an den
+Besitzer. Danach höchstens einmal pro Tag und Integration, bis erfolgreich
+neu verbunden wurde.
+
+```bash
+# Refresh-Fehler im Log
+docker logs ai-employee-orchestrator 2>&1 | grep -i "Token refresh failed" | tail -5
+# Gemerkter Fehler je Integration (ID aus oauth_integrations; im Repo-Verzeichnis ausführen)
+docker exec ai-employee-redis redis-cli --no-auth-warning \
+  -a "$(grep '^REDIS_PASSWORD=' .env | cut -d= -f2-)" GET oauth:refresh_failure:<id>
+```
+
 ### JWT token expired
 
 **Symptom:** API returns 401 after being logged in.

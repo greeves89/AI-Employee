@@ -11,6 +11,11 @@ class IntegrationStatus(BaseModel):
     icon: str
     description: str
     connected: bool
+    # connected | refresh_failing | expired | disconnected — siehe
+    # app/core/integration_health.py. "connected" allein sagt nur, dass eine
+    # Zeile existiert; ob der Token noch taugt, steht hier.
+    status: str = "disconnected"
+    refresh_error: str | None = None  # letzter Refresh-Fehler, ohne Token-Inhalte
     account_label: str | None = None
     expires_at: datetime | None = None
     scopes: str = ""
