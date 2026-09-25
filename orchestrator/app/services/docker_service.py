@@ -688,8 +688,23 @@ class DockerService:
         """
         try:
             container = self.client.containers.get(container_id)
+            # Mit niedrigster Priorität messen.
+            #
+            # ``du`` laeuft den ganzen Baum ab. Auf einem gewachsenen
+            # Arbeitsbereich (git-Auschecken, node_modules, venvs) sind das
+            # hunderttausende Dateien — am 25.09.2026 auf einer Anlage mit
+            # 97 % CPU gemessen, waehrend ein Agent gerade hochfuhr und der
+            # Nutzer auf seine Antwort wartete.
+            #
+            # Das ist eine Gesundheitspruefung im Hintergrund; sie darf echter
+            # Arbeit nie die Maschine wegnehmen. ``ionice`` gibt es nicht in
+            # jedem Abbild, deshalb mit Rueckfall auf ``nice`` allein.
+            befehl = (
+                "ionice -c 3 nice -n 19 du -sm --exclude=.cache /workspace "
+                "2>/dev/null || nice -n 19 du -sm --exclude=.cache /workspace"
+            )
             exit_code, output = container.exec_run(
-                ["du", "-sm", "--exclude=.cache", "/workspace"],
+                ["sh", "-c", befehl],
                 demux=True,
             )
             stdout = output[0].decode("utf-8", errors="replace") if output[0] else ""

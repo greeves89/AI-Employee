@@ -76,19 +76,67 @@ class OberflaecheTest(unittest.TestCase):
         self.assertIn("function SubagentCluster", self.quelle)
 
     def test_subagenten_sind_anklickbar(self):
-        """Der Kern des Wunsches: draufklicken und alle Helfer sehen."""
-        kachel = self.quelle[self.quelle.index("function SubagentCluster"):]
-        kachel = kachel[:kachel.index("\n/* ─")] if "\n/* ─" in kachel else kachel
-        self.assertIn("setOffen", kachel, "Die Kachel laesst sich nicht aufklappen.")
-        self.assertIn("setDetail", kachel, "Einzelne Helfer lassen sich nicht oeffnen.")
-        self.assertIn("Auftrag", kachel)
-        self.assertIn("Ergebnis", kachel)
+        """Der Kern des Wunsches: draufklicken und alle Helfer sehen.
+
+        Geprueft wird die REIHENFOLGE im Quelltext, nicht ein Zeichenabstand
+        (#726): Aufklappen und Detailoeffnen muessen INNERHALB der Kachel
+        stehen, also nach ihrem Beginn und vor der naechsten Funktion.
+        """
+        beginn = self.quelle.index("function SubagentCluster")
+        ende = self.quelle.index("function ", beginn + 20)
+        for was, warum in (
+            ("setOffen", "Die Kachel laesst sich nicht aufklappen."),
+            ("setDetail", "Einzelne Helfer lassen sich nicht oeffnen."),
+            ("Auftrag", "Der Auftrag wird nicht gezeigt."),
+            ("Ergebnis", "Das Ergebnis wird nicht gezeigt."),
+        ):
+            with self.subTest(was=was):
+                stelle = self.quelle.find(was, beginn)
+                self.assertNotEqual(stelle, -1, warum)
+                self.assertLess(stelle, ende, warum)
 
     def test_sie_verschwinden_nicht_im_einfachen_modus(self):
         """Dass Helfer laufen, ist keine technische Einzelheit."""
         treffer = re.search(r"const visibleSteps = simpleMode\s*\?(.*?);", self.quelle, re.S)
         self.assertIsNotNone(treffer)
         self.assertIn('"subagent"', treffer.group(1))
+
+    def test_es_gibt_eine_dauerhafte_anzeige_unten(self):
+        """Die Kachel in der Blase reicht nicht.
+
+        Sobald man weiterschreibt, ist sie nach oben gescrollt — und damit auch
+        die Antwort auf "laeuft da noch was?". Deshalb zusaetzlich eine
+        sitzungsweite Anzeige in der Eingabeleiste, wie das Modell-Abzeichen.
+        """
+        self.assertIn("function SubagentLeiste", self.quelle)
+        # Sie muss WIRKLICH in der Eingabeleiste stehen, nicht irgendwo.
+        # Geprueft ueber die Reihenfolge: Der Aufruf steht nach dem Beginn der
+        # Leiste und vor der Bueroklammer, die dort als erstes Bedienelement
+        # sitzt.
+        leiste = self.quelle.index("border-t border-border/60 px-2 py-1.5")
+        aufruf = self.quelle.find("<SubagentLeiste", leiste)
+        klammer = self.quelle.find("fileInputRef.current?.click()", leiste)
+        self.assertNotEqual(aufruf, -1, "Die Anzeige haengt nicht an der Eingabeleiste.")
+        self.assertLess(aufruf, klammer,
+                        "Sie steht nicht innerhalb der Eingabeleiste.")
+
+    def test_sie_sammelt_ueber_die_ganze_sitzung(self):
+        """Nicht nur die Helfer einer Blase — sonst waere sie so blind wie
+        die Kachel."""
+        stelle = self.quelle.index("const alleSubagenten")
+        flat = self.quelle.find("messages.flatMap", stelle)
+        naechste = self.quelle.find("\n  const ", stelle + 10)
+        self.assertNotEqual(flat, -1, "Sie schaut nicht ueber alle Nachrichten.")
+        self.assertLess(flat, naechste,
+                        "messages.flatMap gehoert nicht zu dieser Berechnung.")
+
+    def test_ohne_helfer_bleibt_die_leiste_leer(self):
+        """Kein Platzhalter, der dauerhaft Raum kostet."""
+        beginn = self.quelle.index("function SubagentLeiste")
+        ende = self.quelle.index("function ", beginn + 20)
+        stelle = self.quelle.find("subagenten.length === 0) return null", beginn)
+        self.assertNotEqual(stelle, -1, "Die leere Leiste kostet dauerhaft Platz.")
+        self.assertLess(stelle, ende)
 
     def test_der_verlauf_stellt_sie_wieder_her(self):
         self.assertIn("tc as { subagent?", self.quelle,

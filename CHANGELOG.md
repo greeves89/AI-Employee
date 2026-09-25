@@ -5,6 +5,39 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.334.0] - 2026-09-25
+
+### Neu
+- **Subagenten stehen dauerhaft unten im Eingabebereich.** Die Kachel in der
+  Nachrichtenblase zeigt die Helfer *eines* Zuges — sobald man weiterschreibt,
+  ist sie nach oben gescrollt, und damit auch die Antwort auf „läuft da noch
+  was?". Jetzt steht neben Büroklammer und Mikrofon ein Zähler für die ganze
+  Sitzung: **„2 aktiv von 5"**. Ein Klick öffnet die Liste aller Helfer mit
+  Zustand, Art und Laufzeit. Ohne Helfer bleibt die Leiste leer — kein
+  Platzhalter, der dauerhaft Raum kostet.
+
+### Behoben
+- **Der Auftragstext eines Subagenten fehlte nach dem Neuladen.** In der
+  Übersicht stand „(kein Auftragstext übermittelt)". Ursache: Der gespeicherte
+  Werkzeug-Input wird bei 200 Zeichen abgeschnitten und ist dann als JSON gar
+  nicht mehr lesbar — die Beschreibung war gerettet, der Auftrag nicht. Er
+  wird jetzt gesondert festgehalten (bis 4000 Zeichen). Wirkt für neue
+  Subagenten; bereits gespeicherte behalten die Lücke.
+- **Der Speicherquoten-Wächter war der größte CPU-Verbraucher der Anlage.**
+  Gemessen, während ein Nutzer auf die Antwort seines Agenten wartete:
+  `du -sm` bei **97 % CPU**, daneben zwei CLI-Aktualisierungen und vier
+  gleichzeitig startende Agenten. `du` läuft den ganzen Baum ab — auf einem
+  gewachsenen Arbeitsbereich hunderttausende Dateien, und das für jeden
+  laufenden Agenten alle fünf Minuten.
+  - Die Messung läuft jetzt mit **niedrigster Priorität** (`nice`, `ionice`
+    mit Rückfall). Eine Hintergrundprüfung darf echter Arbeit nie die Maschine
+    wegnehmen.
+  - Gemessen wird nur noch, **wo es nötig ist**: Unter 60 % Füllung wird knapp
+    eine Stunde übersprungen. Nah an der Grenze bleibt es bei jedem Durchlauf —
+    dort zählt jede Minute.
+
+---
+
 ## [1.333.0] - 2026-09-25
 
 ### Neu

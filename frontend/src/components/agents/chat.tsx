@@ -483,9 +483,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // Delegierte Auftraege dieses Gespraechs, nach Auftragskennung.
   const [taskCards, setTaskCards] = useState<Record<string, TaskCard>>({});
+  // Alle Helfer DIESER Sitzung, nicht nur die einer Blase. Unten in der
+  // Eingabeleiste soll stehen, wer gerade fuer einen arbeitet — auch wenn die
+  // Blase, in der sie gestartet wurden, laengst nach oben gescrollt ist.
   // Echter Kontext-Fuellstand laut Agent (done.input_tokens / context.tokens);
   // null = noch kein Wert, dann schaetzt der Ring aus dem sichtbaren Text.
   const [liveContextTokens, setLiveContextTokens] = useState<number | null>(null);
+  const [subagentenOffen, setSubagentenOffen] = useState(false);
   // Aktivitaetsverlauf je Auftrags-Kachel (Kundenwunsch): in der Kachel selbst
   // sofort sichtbar, welcher Schritt zuletzt lief und wann — nicht erst nach
   // einem Klick. Aufklappbar für den vollen Verlauf.
@@ -875,7 +879,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                       ? {
                           beschreibung: String(sa.description || "Subagent"),
                           art: sa.subagent_type ? String(sa.subagent_type) : undefined,
-                          auftrag: String(parsedInput.prompt || ""),
+                          // Aus dem gesonderten Feld, nicht aus dem gekuerzten
+                          // Input — der ist als JSON meist gar nicht mehr lesbar.
+                          auftrag: String(sa.prompt || parsedInput.prompt || ""),
                           imHintergrund: Boolean(sa.run_in_background),
                         }
                       : subagentAusInput(tc.tool, parsedInput);
@@ -2086,6 +2092,18 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const wirksameStufe: ReasoningLevel = reasoning || agentDefaultReasoning;
   const stufeIstGeerbt = !reasoning && !!agentDefaultReasoning;
 
+  // Alle Helfer dieser Sitzung, aelteste zuerst. Aus den Schritten aller
+  // Blasen eingesammelt: Die Blase, in der ein Helfer gestartet wurde, ist
+  // meist laengst nach oben gescrollt — unten in der Leiste soll trotzdem
+  // stehen, wer gerade fuer einen arbeitet.
+  const alleSubagenten: SubagentStep[] = useMemo(
+    () =>
+      messages.flatMap((m) =>
+        (m.steps || []).filter((st): st is SubagentStep => st.type === "subagent"),
+      ),
+    [messages],
+  );
+
   // Befehlsliste: öffnet sich, sobald die Eingabe mit "/" beginnt und noch kein
   // Leerzeichen enthaelt — danach ist es Fliesstext, kein Befehl mehr.
   const slashOpen = /^\/[a-z]*$/i.test(input);
@@ -2923,6 +2941,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
 
           {/* Fusszeile */}
           <div className="flex flex-wrap items-center gap-1.5 border-t border-border/60 px-2 py-1.5">
+            <SubagentLeiste
+              subagenten={alleSubagenten}
+              offen={subagentenOffen}
+              setOffen={setSubagentenOffen}
+            />
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={!isConnected || isUploading}
@@ -3419,6 +3442,103 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
       <PresentedImages images={message.images} />
       <PresentedFiles agentId={String(message.agentId || "")} files={message.files} />
       {message.meta && !message.isStreaming && !simpleMode && <MetaBar meta={message.meta} />}
+    </div>
+  );
+}
+
+/* ─── Subagenten unten in der Eingabeleiste ──────────────────────────── */
+
+/** Dauerhafte Anzeige, wer gerade fuer einen arbeitet.
+ *
+ * Die Kachel in der Nachrichtenblase zeigt die Helfer EINES Zuges. Sobald man
+ * weiterschreibt, ist sie nach oben gescrollt — und damit auch die Antwort auf
+ * "laeuft da noch was?". Deshalb hier unten, immer sichtbar, sitzungsweit:
+ * links neben Bueroklammer und Mikrofon, wie das Modell-Abzeichen.
+ *
+ * Sind keine Helfer im Spiel, ist die Leiste leer — kein Platzhalter, der
+ * dauerhaft Raum kostet.
+ */
+function SubagentLeiste({
+  subagenten,
+  offen,
+  setOffen,
+}: {
+  subagenten: SubagentStep[];
+  offen: boolean;
+  setOffen: (o: boolean | ((v: boolean) => boolean)) => void;
+}) {
+  if (subagenten.length === 0) return null;
+
+  const laufen = subagenten.filter((s) => s.status === "laeuft").length;
+  const fertig = subagenten.length - laufen;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOffen((o) => !o)}
+        title={`${subagenten.length} Helfer in dieser Sitzung — klicken fuer die Liste`}
+        className={cn(
+          "flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] transition-all",
+          laufen > 0
+            ? "bg-violet-500/15 text-violet-300 hover:bg-violet-500/25"
+            : "text-muted-foreground/70 hover:bg-foreground/[0.06] hover:text-foreground",
+        )}
+      >
+        {laufen > 0 ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Users className="h-4 w-4" />
+        )}
+        <span className="font-medium">
+          {laufen > 0 ? `${laufen} aktiv` : `${subagenten.length}`}
+        </span>
+        <span className="opacity-70">
+          {laufen > 0
+            ? `von ${subagenten.length}`
+            : subagenten.length === 1 ? "Subagent" : "Subagenten"}
+        </span>
+      </button>
+
+      {offen && (
+        <>
+          {/* Klick daneben schliesst — sonst bleibt das Fenster im Weg stehen. */}
+          <div className="fixed inset-0 z-40" onClick={() => setOffen(false)} />
+          <div className="absolute bottom-10 left-0 z-50 max-h-80 w-[min(26rem,calc(100vw-2rem))]
+            overflow-auto rounded-lg border border-border bg-popover p-2 shadow-lg">
+            <div className="mb-1.5 flex items-center justify-between px-1">
+              <span className="text-xs font-medium text-foreground">
+                Subagenten dieser Sitzung
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                {fertig} fertig{laufen > 0 ? `, ${laufen} laufen` : ""}
+              </span>
+            </div>
+            <div className="space-y-0.5">
+              {subagenten.map((sa) => (
+                <div key={sa.id} className="flex items-start gap-2 rounded-md px-1.5 py-1.5 hover:bg-muted/60">
+                  <span
+                    className={cn(
+                      "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                      sa.status === "fertig" ? "bg-emerald-500" : "animate-pulse bg-amber-500",
+                    )}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs text-foreground">{sa.beschreibung}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {sa.herkunft === "eigen" ? "eigener Subagent" : "an anderen Agenten"}
+                      {sa.art ? ` · ${sa.art}` : ""}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                    {sa.status === "fertig" ? dauerText(sa.dauerMs) : "laeuft"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

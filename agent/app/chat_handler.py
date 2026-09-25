@@ -348,6 +348,14 @@ class ChatHandler:
                                     "description": str(tool_input.get("description", ""))[:200],
                                     "subagent_type": tool_input.get("subagent_type"),
                                     "run_in_background": bool(tool_input.get("run_in_background")),
+                                    # Der Auftrag ist das Interessanteste am
+                                    # Helfer — ohne ihn steht in der Uebersicht
+                                    # nach einem Neuladen "(kein Auftragstext
+                                    # uebermittelt)". Grosszuegig, aber nicht
+                                    # unbegrenzt: Ein Auftrag kann sehr lang
+                                    # werden, und der Verlauf soll nicht daran
+                                    # wachsen.
+                                    "prompt": str(tool_input.get("prompt", ""))[:4000],
                                 }
                             accumulated_tool_calls.append(eintrag)
                             await self.log_publisher.publish_chat(

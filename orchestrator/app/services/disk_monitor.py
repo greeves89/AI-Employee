@@ -19,6 +19,18 @@ logger = logging.getLogger(__name__)
 _CHECK_INTERVAL = 300  # 5 minutes
 _WARN_THRESHOLD = 80.0
 _STOP_THRESHOLD = 95.0
+
+#: Ab welcher Fuellung wieder JEDEN Durchlauf gemessen wird.
+#:
+#: Darunter reicht seltener. Ein Arbeitsbereich bei 2 % wird nicht binnen fuenf
+#: Minuten voll, und das Messen ist nicht umsonst: ``du`` laeuft den ganzen
+#: Baum ab. Am 25.09.2026 auf einer Anlage mit 97 % CPU gemessen — waehrend
+#: ein Agent hochfuhr und der Nutzer auf seine Antwort wartete.
+_GENAU_HINSEHEN_AB = 60.0
+
+#: Wie viele Durchlaeufe ein ruhiger Arbeitsbereich uebersprungen wird.
+#: 11 Durchlaeufe a 5 Minuten = knapp eine Stunde zwischen zwei Messungen.
+_RUHIG_UEBERSPRINGEN = 11
 # Gleiche Aufbewahrungsfrist wie der normale Abschlusspfad
 # (task_router.TASK_EVICT_GRACE_SECONDS) — hier nicht importiert, um den
 # Monitor nicht an den Router zu koppeln.
@@ -31,6 +43,29 @@ class DiskMonitorService:
         self.docker = docker_service
         self._redis = redis
         self._running = True
+        #: Zuletzt gemessene Fuellung je Agent — entscheidet, ob beim naechsten
+        #: Durchlauf ueberhaupt gemessen wird.
+        self._letzte_fuellung: dict[str, float] = {}
+        #: Verbleibende Durchlaeufe, die ein ruhiger Agent uebersprungen wird.
+        self._ueberspringen: dict[str, int] = {}
+
+    def _muss_gemessen_werden(self, agent_id: str) -> bool:
+        """Ist dieser Arbeitsbereich in diesem Durchlauf an der Reihe?
+
+        Noch nie gemessen, oder zuletzt nah an der Grenze: immer. Sonst wird
+        eine Weile uebersprungen — das Messen selbst ist der teure Teil.
+        """
+        offen = self._ueberspringen.get(agent_id, 0)
+        if offen > 0:
+            self._ueberspringen[agent_id] = offen - 1
+            return False
+        return True
+
+    def _naechsten_takt_festlegen(self, agent_id: str, prozent: float) -> None:
+        self._letzte_fuellung[agent_id] = prozent
+        self._ueberspringen[agent_id] = (
+            0 if prozent >= _GENAU_HINSEHEN_AB else _RUHIG_UEBERSPRINGEN
+        )
 
     async def run(self) -> None:
         await asyncio.sleep(60)  # brief startup delay
@@ -59,6 +94,8 @@ class DiskMonitorService:
         for agent in agents:
             if not agent.container_id:
                 continue
+            if not self._muss_gemessen_werden(agent.id):
+                continue
             try:
                 # Per-agent override takes precedence over global default
                 limit_gb = float(agent.config.get("workspace_size_gb") or settings.agent_workspace_size_gb) if agent.config else settings.agent_workspace_size_gb
@@ -72,6 +109,7 @@ class DiskMonitorService:
                     continue
 
                 percent = stats["disk_percent"]
+                self._naechsten_takt_festlegen(agent.id, percent)
                 logger.debug(
                     "Agent %s workspace: %.1f%% (%.0f / %.0f MB)",
                     agent.id,
