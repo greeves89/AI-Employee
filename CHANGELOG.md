@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.339.3] - 2026-09-26
+
+### Behoben
+- **Telegram-Chat konnte dieselbe Nachricht doppelt verarbeiten, wenn der Agent
+  gerade aus dem Schlaf aufwachte.** Der Weckvorgang kann bis zu 20 Sekunden
+  dauern und war dabei komplett still — der Tipp-Indikator im Chat erlischt nach
+  wenigen Sekunden ohne Auffrischung, sodass eine 20 Sekunden tote Leitung wie
+  ein gescheiterter Versand aussah und zu einem erneuten Senden derselben
+  Nachricht verleitete. Der Tipp-Indikator wird jetzt waehrend des gesamten
+  Weckvorgangs regelmaessig aufgefrischt, damit sichtbar bleibt, dass gerade
+  gearbeitet wird.
+
 ## [1.339.2] - 2026-09-26
 
 ### Behoben
