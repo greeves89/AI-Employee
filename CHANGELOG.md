@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.339.3] - 2026-09-26
+
+### Behoben
+- **Wenn die Selbstbewertung einer Aufgabe scheitert, steht jetzt im Protokoll,
+  WORAN sie gescheitert ist.** Bisher endete die Meldung in fast allen Faellen
+  mitten im Satz — 156 von 161 Ausfaellen in 18 Tagen nannten keinen Grund,
+  weil mehrere der moeglichen Fehlerarten von sich aus keinen Text mitbringen
+  und nur dieser Text protokolliert wurde. Betroffen war damit nicht die
+  Bewertung selbst, sondern jede Chance, sie zu reparieren: jeder dieser Laeufe
+  wurde still per Formel bewertet statt von der Selbsteinschaetzung des Agenten,
+  und die Daten, auf denen die Selbstverbesserung aufbaut, waren in einem
+  grossen Teil der Faelle nicht die, fuer die sie gehalten wurden.
+  Die Meldung nennt jetzt immer die Art des Fehlers. Laeuft der Aufruf in sein
+  Zeitbudget, steht das Budget mit in der Zeile, sodass die Frage "war die Zeit
+  zu knapp?" aus dem Protokoll allein beantwortbar ist. Ein Abbruch der Aufgabe
+  wird weiterhin durchgereicht und war auch bisher keine gescheiterte Bewertung;
+  das haengt jetzt nur nicht mehr an einer Feinheit der Klassenhierarchie,
+  sondern ist ausdruecklich abgesichert.
+  Am Verhalten der Bewertung selbst aendert sich nichts. (#857)
+- **Eine abgelaufene Selbstbewertung laesst keinen Prozess mehr zurueck.** Lief der
+  Aufruf in sein Zeitbudget, wurde bisher nur das Warten abgebrochen — das
+  gestartete Hilfsprogramm lief weiter und belegte seine Dateikennungen bis zum
+  Ende des Behaelters. Bei der gemessenen Haeufigkeit sammelte sich das ueber Tage
+  an. Es wird jetzt beendet und eingesammelt, so wie es die uebrigen Aufrufe im
+  System schon tun. Das Aufraeumen hat dabei eine eigene, kurze Frist: laesst ein
+  Folgeprozess die Leitungen des Hilfsprogramms offen, wartet die Bewertung nicht
+  laenger darauf, sondern vermerkt das im Protokoll und liefert ihr Ergebnis
+  trotzdem aus. Ohne diese Frist koennte das Aufraeumen den Abschluss einer
+  Aufgabe unbegrenzt aufhalten. (#857)
+
+---
+
 ## [1.339.2] - 2026-09-26
 
 ### Behoben
