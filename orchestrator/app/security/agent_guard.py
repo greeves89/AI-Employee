@@ -159,6 +159,28 @@ def eigene_musterzeilen() -> frozenset[str]:
 #: durch.
 EIGENE_ZEILEN_FUER_AUSNAHME = 2
 
+#: Maskierte Zeilenumbrueche, wie sie in einem JSON-String stehen: nicht das
+#: Zeichen 0x0A, sondern die ZWEI Zeichen Rueckstrich und `n`.
+_MASKIERTER_UMBRUCH = re.compile(r"\\r\\n|\\n|\\r")
+
+#: Die JSON-Maskierung EINES Zeichens zurueckdrehen — in einem Durchgang, damit
+#: ein zurueckgedrehter Rueckstrich nicht gleich wieder als Maskierung des
+#: Folgezeichens gelesen wird.
+_JSON_MASKE = re.compile(r'\\(["\\/])')
+
+
+def _entmaskiert(text: str) -> str:
+    """Denselben Text so, wie er VOR der JSON-Kodierung aussah.
+
+    Der Sentinel bekommt seinen Prueftext aus `SentinelService._text_of`, und das
+    ist ein `json.dumps` des ganzen Ereignisses. Ein gelesener Quelltext kommt
+    dort also als EINE kilometerlange Zeile an, in der die Umbrueche maskiert
+    sind. Ohne diese Ruecknahme ist die Ausnahme unten auf dem Sentinel-Pfad
+    wirkungslos — genau daran sind drei laufende Arbeiten am Waechter selbst
+    abgebrochen (#859).
+    """
+    return _JSON_MASKE.sub(r"\1", _MASKIERTER_UMBRUCH.sub("\n", text))
+
 
 def _ohne_eigene_zeilen(text: str) -> str:
     """Den Text ohne die Zeilen, die woertlich aus dem eigenen Quelltext stammen.
@@ -168,6 +190,24 @@ def _ohne_eigene_zeilen(text: str) -> str:
     das mitten im Lauf gestoppt: das Sicherheitssubsystem loeste seinen eigenen
     Detektor aus. Was daneben steht, wird weiterhin voll geprueft; nur die
     woertlich bekannten Zeilen fallen weg.
+
+    Geprueft werden ZWEI Lesarten desselben Textes: erst der Text wie er kommt,
+    dann — nur falls die Schwelle so nicht erreicht wird — seine entmaskierte
+    Form (#859). Die Reihenfolge ist wesentlich und nicht vertauschbar:
+
+    * Ein Text mit ECHTEN Umbruechen, der irgendwo die zwei Zeichen
+      Rueckstrich-`n` woertlich enthaelt (jeder Angriffskorpus tut das), wuerde
+      beim Entmaskieren an dieser Stelle zerschnitten. Seine langen Zeilen
+      zerfielen in Bruchstuecke, die in der Weissliste nicht stehen — die
+      Ausnahme griffe dann NICHT mehr, wo sie vorher griff.
+    * Die Weissliste selbst wird weiterhin aus echten Quelldateien mit
+      `str.splitlines` gebaut. Schneidet man sie ebenfalls entmaskiert, entstehen
+      kurze Bruchstuecke, und ein Bruchstueck kann selbst ein nackter
+      Angriffssatz sein — genau die Tarnkappe, gegen die
+      `test_keine_bekannte_zeile_ist_ein_nackter_angriffssatz` wacht.
+
+    Beide Fehlgriffe sind beim Bauen wirklich passiert und wurden von den
+    bestehenden Tests gemeldet; deshalb stehen sie hier.
 
     **Schwelle gegen Missbrauch:** Eine Ausnahme, die schon bei EINER passenden
     Zeile greift, ist eine Tarnkappe — es genuegte, eine Zeile aus dem
@@ -180,11 +220,12 @@ def _ohne_eigene_zeilen(text: str) -> str:
     bekannt = eigene_musterzeilen()
     if not bekannt:
         return text
-    zeilen = text.splitlines()
-    treffer = sum(1 for z in zeilen if z.strip() in bekannt)
-    if treffer < EIGENE_ZEILEN_FUER_AUSNAHME:
-        return text
-    return "\n".join(z for z in zeilen if z.strip() not in bekannt)
+    for lesart in (text, _entmaskiert(text)):
+        zeilen = lesart.splitlines()
+        treffer = sum(1 for z in zeilen if z.strip() in bekannt)
+        if treffer >= EIGENE_ZEILEN_FUER_AUSNAHME:
+            return "\n".join(z for z in zeilen if z.strip() not in bekannt)
+    return text
 
 
 def bewerte_injection(text: str) -> tuple[list[str], list[str]]:

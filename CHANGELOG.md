@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.339.2] - 2026-09-26
+
+### Behoben
+- **Wer am Sicherheitswaechter arbeitet, wird nicht mehr von ihm angehalten.**
+  Ein gewoehnliches Anzeigen des Waechtermodules in einem Werkzeugergebnis hat
+  den laufenden Agenten hart gestoppt — dreimal in zwei Tagen, jedes Mal mitten
+  in der Arbeit, mit dringender Vorfallmeldung an den Betreiber. Die Ausnahme,
+  die genau das verhindern sollte, war auf diesem Weg wirkungslos: der Waechter
+  bekommt seinen Prueftext in kodierter Form, in der ein Zeilenumbruch kein
+  Umbruch mehr ist, und erkannte deshalb keine einzige Zeile des eigenen
+  Quelltextes wieder. Er prueft den Text jetzt in beiden Lesarten.
+  Echte Angriffstexte loesen unveraendert aus — auch dann, wenn sie direkt
+  neben freigestelltem Quelltext stehen; genau dieser Fall ist als Abnahme-
+  bedingung mitgetestet. (#859)
+
 ## [1.339.1] - 2026-09-25
 
 ### Behoben
