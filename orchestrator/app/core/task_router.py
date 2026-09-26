@@ -31,6 +31,12 @@ _SCHEDULE_AUTO_PAUSE_THRESHOLD = 3
 # Model used for self-reflection rating + improvement suggestions
 _REFLECTION_MODEL = "claude-haiku-4-5-20251001"
 
+# Wall-clock budget for the whole reflection subprocess. A constant (not a literal at
+# the call site) so the number in the timeout log line can never drift away from the
+# number actually enforced — without that coupling, a later tuning of the budget
+# silently turns the log line into a false statement (#857).
+_REFLECTION_TIMEOUT_S = 20.0
+
 # Cheap model an agent is downgraded to once its monthly budget is exhausted
 # (when budget_exceeded_action == "haiku").
 BUDGET_FALLBACK_MODEL = "claude-haiku-4-5-20251001"
@@ -231,6 +237,11 @@ async def _llm_reflect_on_task(task: "Task") -> tuple[int, str, bool | None, str
         result_preview=result_preview,
     )
 
+    # Bound before the try so the timeout handler below can always ask whether there is
+    # a child to reap: TimeoutError is an OSError subclass, so it can in principle also
+    # come out of create_subprocess_exec itself — and an unbound name there would turn a
+    # handled failure into a NameError escaping the whole rating path.
+    proc = None
     try:
         env = os.environ.copy()
         if settings.anthropic_api_key:
@@ -247,10 +258,54 @@ async def _llm_reflect_on_task(task: "Task") -> tuple[int, str, bool | None, str
             stderr=asyncio.subprocess.PIPE,
             env=env,
         )
-        stdout, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=20.0)
+        stdout, stderr_bytes = await asyncio.wait_for(
+            proc.communicate(), timeout=_REFLECTION_TIMEOUT_S
+        )
         return _parse_reflection_stdout(stdout, stderr_bytes, proc.returncode)
+    except asyncio.CancelledError:
+        # A cancelled task is not a failed rating. On Python >= 3.8 CancelledError
+        # derives from BaseException, so `except Exception` below would not catch it
+        # anyway — this branch states that intent explicitly instead of relying on a
+        # detail of the class hierarchy, and keeps the cancellation propagating.
+        raise
+    except asyncio.TimeoutError as exc:
+        # Named separately from the generic branch because THIS is the class whose
+        # message is empty: the old single handler logged `...falling back to formula: `
+        # and nothing else, which is what made 156 of 161 failures unattributable
+        # (#857). Naming the budget here is what lets the log alone answer "how long
+        # did it wait?".
+        #
+        # `str(exc)` is still consulted first, and that is not cosmetic: in 3.12
+        # asyncio.TimeoutError IS the builtin TimeoutError, whose MRO runs through
+        # OSError — so an OSError carrying errno ETIMEDOUT from the subprocess
+        # machinery lands in this branch too, and it DOES have a message
+        # ("[Errno 110] connection timed out"). Hard-coding the budget sentence would
+        # overwrite that message with a false statement and re-create exactly the
+        # information loss this change removes.
+        detail = str(exc) or f"wait_for budget exceeded (timeout={_REFLECTION_TIMEOUT_S}s)"
+        logger.warning(
+            f"LLM self-reflection failed for task {task.id}, falling back to formula: "
+            f"{type(exc).__name__}: {detail}"
+        )
+        # wait_for only cancels the communicate() coroutine — the `claude` child and its
+        # pipe transports survive it, so without this every timeout leaks a process plus
+        # its file descriptors (measured: 3 fds per timeout, child still in state S).
+        # Same shape as skill_crawler._clone and codex_device_auth_service.
+        if proc is not None:
+            try:
+                proc.kill()
+                await proc.wait()
+            except ProcessLookupError:
+                pass  # already reaped between the timeout and here
+        return _compute_formula_rating(task), "auto-rated (formula fallback)", None, ""
     except Exception as exc:
-        logger.warning(f"LLM self-reflection failed for task {task.id}, falling back to formula: {exc}")
+        # `{exc}` alone is not enough: several exception classes reachable here have an
+        # empty string form (any instance raised without arguments), and the type name
+        # is then the only thing that identifies the failure at all.
+        logger.warning(
+            f"LLM self-reflection failed for task {task.id}, falling back to formula: "
+            f"{type(exc).__name__}: {exc}"
+        )
         return _compute_formula_rating(task), "auto-rated (formula fallback)", None, ""
 
 
