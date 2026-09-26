@@ -20,14 +20,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Die Meldung nennt jetzt immer die Art des Fehlers. Laeuft der Aufruf in sein
   Zeitbudget, steht das Budget mit in der Zeile, sodass die Frage "war die Zeit
   zu knapp?" aus dem Protokoll allein beantwortbar ist. Ein Abbruch der Aufgabe
-  wird nicht mehr als gescheiterte Bewertung behandelt, sondern durchgereicht.
+  wird weiterhin durchgereicht und war auch bisher keine gescheiterte Bewertung;
+  das haengt jetzt nur nicht mehr an einer Feinheit der Klassenhierarchie,
+  sondern ist ausdruecklich abgesichert.
   Am Verhalten der Bewertung selbst aendert sich nichts. (#857)
 - **Eine abgelaufene Selbstbewertung laesst keinen Prozess mehr zurueck.** Lief der
   Aufruf in sein Zeitbudget, wurde bisher nur das Warten abgebrochen — das
   gestartete Hilfsprogramm lief weiter und belegte seine Dateikennungen bis zum
   Ende des Behaelters. Bei der gemessenen Haeufigkeit sammelte sich das ueber Tage
   an. Es wird jetzt beendet und eingesammelt, so wie es die uebrigen Aufrufe im
-  System schon tun. (#857)
+  System schon tun. Das Aufraeumen hat dabei eine eigene, kurze Frist: laesst ein
+  Folgeprozess die Leitungen des Hilfsprogramms offen, wartet die Bewertung nicht
+  laenger darauf, sondern vermerkt das im Protokoll und liefert ihr Ergebnis
+  trotzdem aus. Ohne diese Frist koennte das Aufraeumen den Abschluss einer
+  Aufgabe unbegrenzt aufhalten. (#857)
 
 ---
 

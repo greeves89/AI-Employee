@@ -24,6 +24,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.core.task_router import (
+    _REFLECTION_REAP_TIMEOUT_S,  # noqa: F401  (in Quelltexttest geprueft)
     _REFLECTION_TIMEOUT_S,
     _compute_formula_rating,
     _llm_reflect_on_task,
@@ -92,7 +93,17 @@ class ReflectionFailureLoggingTests(unittest.IsolatedAsyncioTestCase):
     async def _run_with_wait_for(self, boom):
         test = self
 
+        real_wait_for = asyncio.wait_for
+        calls = []
+
         async def fake_wait_for(awaitable, timeout=None):
+            # NUR der erste Aufruf ist der ueberwachte `communicate()`. Der Timeout-Zweig
+            # ruft wait_for ein ZWEITES Mal fuer das begrenzte Aufraeumen — wuerde der
+            # Doppel auch dort werfen, traege der Test einen Fehler in den Fehlerpfad und
+            # das aufgezeichnete Budget waere das des Aufraeumens statt des Aufrufs.
+            calls.append(timeout)
+            if len(calls) > 1:
+                return await real_wait_for(awaitable, timeout=timeout)
             # Das TATSAECHLICH erzwungene Budget mitschreiben — nur so kann der Test
             # bemerken, wenn Protokolltext und Wirklichkeit auseinanderlaufen.
             test.observed_timeout = timeout
@@ -241,6 +252,125 @@ class ReflectionFailureLoggingTests(unittest.IsolatedAsyncioTestCase):
                 await _llm_reflect_on_task(_task())
 
 
+class RealChildReapBoundTests(unittest.IsolatedAsyncioTestCase):
+    """Das Aufraeumen nach dem Zeitablauf darf die Bewertung nicht unbegrenzt aufhalten.
+
+    Warum das ein EIGENER Test mit ECHTEN Prozessen sein muss
+    --------------------------------------------------------
+    ``_FakeProc.wait()`` oben setzt ein Boolean und kehrt sofort zurueck. Damit ist
+    beweisbar, DASS eingesammelt wird — aber grundsaetzlich nicht, ob das Einsammeln
+    jemals endet. Genau dort sass der Fehler: ``await proc.wait()`` ohne Frist ist
+    unbegrenzt, weil der Prozess-Waiter unter dem normalen asyncio-Loop zusaetzlich auf
+    das Schliessen der Pipe-TRANSPORTE wartet. Ein Enkelprozess, der stdout/stderr des
+    Kindes geerbt hat, haelt diese offen — das direkte Kind ist laengst mit ``-9``
+    eingesammelt, und die Bewertung kehrt trotzdem nie zurueck. Mit ihr haengen
+    ``_auto_rate_task`` und die nachgelagerten Abschluss-Callbacks.
+
+    Der Test startet deshalb ein echtes Kind, das einen echten Enkel mit geerbten
+    Leitungen hinterlaesst. Der Aufruf selbst ist in ein ``wait_for`` gewickelt: ohne
+    das wuerde der alte Code den Testlauf HAENGEN lassen statt rot zu werden, und ein
+    haengender Test meldet keinen Fehler, er frisst nur den Lauf.
+    """
+
+    async def test_cleanup_is_bounded_when_a_descendant_holds_the_pipes_open(self):
+        import os
+        import signal
+        import sys
+        import tempfile
+        import time
+
+        pid_file = tempfile.NamedTemporaryFile(delete=False)
+        pid_file.close()
+        # Kind: startet einen Enkel, der stdout/stderr ERBT, und schlaeft dann selbst.
+        child_code = (
+            "import subprocess, sys, time\n"
+            "g = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+            "open(sys.argv[1], 'w').write(str(g.pid))\n"
+            "time.sleep(60)\n"
+        )
+
+        spawned = []
+        # Die ECHTE Funktion festhalten, bevor der Patch sie ersetzt — sonst ruft der
+        # Ersatz sich selbst auf, und die RecursionError landet im generischen
+        # Fehlerzweig der Produktion: der Test saehe eine Warnung und haette nie einen
+        # Prozess gestartet.
+        real_exec = asyncio.create_subprocess_exec
+
+        async def _exec_real(*_args, **_kwargs):
+            proc = await real_exec(
+                sys.executable, "-c", child_code, pid_file.name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            spawned.append(proc)
+            return proc
+
+        budget, reap = 0.2, 0.3
+        patches = [
+            patch("asyncio.create_subprocess_exec", new=_exec_real),
+            patch("app.core.task_router._REFLECTION_TIMEOUT_S", budget),
+            patch("app.core.task_router._REFLECTION_REAP_TIMEOUT_S", reap),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+        # Warten, bis der Enkel wirklich existiert - sonst misst der Test nichts.
+        started = time.monotonic()
+        try:
+            with self.assertLogs(_LOGGER, level=logging.WARNING) as captured:
+                result = await asyncio.wait_for(
+                    _llm_reflect_on_task(_task("t857-real")),
+                    # Grosszuegig ueber beiden Budgets: der ALTE, unbegrenzte Code
+                    # laeuft hier in einen Fehlschlag statt den Lauf zu blockieren.
+                    timeout=budget + reap + 5.0,
+                )
+        except asyncio.TimeoutError:  # pragma: no cover - nur beim Regress
+            self.fail(
+                "Die Bewertung kehrte nicht zurueck: das Aufraeumen nach dem "
+                "Zeitablauf ist unbegrenzt, solange ein Nachkomme die Leitungen "
+                "des Kindes offen haelt."
+            )
+        finally:
+            for proc in spawned:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+            try:
+                grandchild = int(open(pid_file.name).read() or 0)
+            except (OSError, ValueError):
+                grandchild = 0
+            if grandchild:
+                try:
+                    os.kill(grandchild, signal.SIGKILL)
+                    os.waitpid(grandchild, 0)
+                except (ProcessLookupError, ChildProcessError, PermissionError):
+                    pass
+            os.unlink(pid_file.name)
+
+        # Das misslungene Aufraeumen muss SICHTBAR sein. Ohne diese Zusicherung bleibt
+        # ein stiller `except asyncio.TimeoutError: pass` gruen — der Betreiber saehe
+        # dann weder den Haenger noch die weiterhin gehaltenen Dateikennungen, und der
+        # Befund aus #857 ("der Ausfall steht nicht im Protokoll") waere zurueck.
+        log = "\n".join(captured.output)
+        self.assertIn("could not confirm", log)
+        self.assertIn(f"{reap}s", log)
+
+        elapsed = time.monotonic() - started
+        self.assertLess(
+            elapsed, budget + reap + 4.0,
+            f"Aufruf brauchte {elapsed:.2f}s - das Aufraeumen ist nicht begrenzt",
+        )
+        # Vorbedingung: der Zeitablauf-Zweig wurde wirklich betreten.
+        self.assertEqual(len(spawned), 1, "Vorbedingung: genau ein echtes Kind erzeugt")
+        self.assertIsNotNone(spawned[0].returncode, "Kind wurde nicht eingesammelt")
+        # Und das Ergebnis ist trotz unvollstaendigem Aufraeumen der Formel-Fallback,
+        # nicht etwa gar keines.
+        self.assertEqual(result[0], _compute_formula_rating(_task("t857-real")))
+        self.assertEqual(result[1], "auto-rated (formula fallback)")
+
+
 class ReflectionTimeoutConstantTests(unittest.TestCase):
     def test_call_site_uses_the_constant_not_a_literal(self):
         """Protokolltext und erzwungenes Budget duerfen nicht auseinanderlaufen.
@@ -257,6 +387,10 @@ class ReflectionTimeoutConstantTests(unittest.TestCase):
         src = inspect.getsource(task_router._llm_reflect_on_task)
         self.assertIn("timeout=_REFLECTION_TIMEOUT_S", src)
         self.assertNotIn("timeout=20.0", src)
+        # Dasselbe gilt fuer die Frist des Aufraeumens: ein blankes `await proc.wait()`
+        # ohne wait_for ist der Merge-Blocker, den dieser PR behebt.
+        self.assertIn("timeout=_REFLECTION_REAP_TIMEOUT_S", src)
+        self.assertNotIn("await proc.wait()\n", src)
         # Die eigentliche Zusicherung liegt im Verhaltenstest
         # test_timeout_names_the_type_and_the_enforced_budget, der das WIRKLICH
         # uebergebene Budget mit der Zahl im Protokoll vergleicht. Dieser Quelltext-

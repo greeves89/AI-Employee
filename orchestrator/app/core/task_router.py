@@ -37,6 +37,15 @@ _REFLECTION_MODEL = "claude-haiku-4-5-20251001"
 # silently turns the log line into a false statement (#857).
 _REFLECTION_TIMEOUT_S = 20.0
 
+# Separate, much smaller budget for REAPING the child after the budget above ran out.
+# It needs its own number because `proc.wait()` is not bounded by the wait_for above and
+# can outlive the child by an unbounded amount: under plain asyncio the process waiter
+# also waits for the pipe TRANSPORTS to close, and a grandchild that inherited the
+# child's stdout/stderr keeps them open even though the direct child is already reaped
+# with returncode -9. Without this bound the formula fallback — and with it the whole
+# task-completion callback chain — never returns (#857).
+_REFLECTION_REAP_TIMEOUT_S = 5.0
+
 # Cheap model an agent is downgraded to once its monthly budget is exhausted
 # (when budget_exceeded_action == "haiku").
 BUDGET_FALLBACK_MODEL = "claude-haiku-4-5-20251001"
@@ -291,12 +300,30 @@ async def _llm_reflect_on_task(task: "Task") -> tuple[int, str, bool | None, str
         # pipe transports survive it, so without this every timeout leaks a process plus
         # its file descriptors (measured: 3 fds per timeout, child still in state S).
         # Same shape as skill_crawler._clone and codex_device_auth_service.
+        #
+        # The reap itself gets its OWN budget, and that is not belt-and-braces: a bare
+        # `await proc.wait()` here is unbounded. The child is gone within microseconds of
+        # kill(), but under plain asyncio the waiter also waits for the pipe transports,
+        # and a grandchild holding the inherited stdout/stderr keeps those open for as
+        # long as IT lives. Reaping is a cleanup, never a reason to withhold the rating:
+        # if it does not finish in time we say so and return the fallback anyway. That
+        # leaves at worst the pre-existing leak, which is strictly better than a hang.
         if proc is not None:
             try:
                 proc.kill()
-                await proc.wait()
             except ProcessLookupError:
                 pass  # already reaped between the timeout and here
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=_REFLECTION_REAP_TIMEOUT_S)
+            except ProcessLookupError:
+                pass
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"LLM self-reflection cleanup for task {task.id} could not confirm "
+                    f"the child was reaped within {_REFLECTION_REAP_TIMEOUT_S}s "
+                    f"(pid={proc.pid}) — descriptors may still be held by a descendant. "
+                    f"Returning the formula fallback regardless."
+                )
         return _compute_formula_rating(task), "auto-rated (formula fallback)", None, ""
     except Exception as exc:
         # `{exc}` alone is not enough: several exception classes reachable here have an
