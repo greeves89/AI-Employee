@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.340.2] - 2026-09-27
+
+### Behoben
+- **Der Chat weckt einen gestoppten Agenten.** Bisher lehnte der Chat einen
+  gestoppten Agenten ab und versuchte es nur fünfmal erneut; ein Agent ohne
+  Container (nach einem Update) blieb ganz unerreichbar. Geweckt wurde nur beim
+  Anmelden, und auch dort nur mit vorhandenem Container. Wer den Chat öffnet,
+  weckt den Agenten jetzt; fehlt der Container, wird er neu aufgebaut. Ein
+  Weckvorgang je Agent, auch wenn der Chat sich mehrfach neu verbindet.
+
+### Geändert
+- **Die Aufgabenspalte neben dem Chat lässt sich einklappen**, damit der Chat
+  die volle Breite bekommt. Eingeklappt bleibt eine schmale Leiste mit der
+  Anzahl und einem Hinweis auf laufende Aufgaben; die Wahl gilt je Browser.
+- Benachrichtigungen im Profilmenü: deutsch.
+
+### Tests
+- `test_chat_weckt_agenten.py` fährt den echten Chat-Handler über einen echten
+  WebSocket: gestoppter Agent ohne Container wird geweckt, laufender nicht
+  angefasst, scheitert das Wecken, bleibt es bei 4010.
+
+---
+
 ## [1.340.1] - 2026-09-27
 
 ### Geändert

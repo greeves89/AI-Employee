@@ -11,7 +11,7 @@ import {
   Timer, Hash, DollarSign, Activity, RefreshCw,
   Brain, Save, Edit3, FolderOpen, File, Folder,
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
-  Settings, ShieldAlert, Check, ListTodo,
+  Settings, ShieldAlert, Check, ListTodo, PanelRightClose, PanelRightOpen,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor, Globe,
   Layers, AudioLines, ArrowUpRight, CalendarDays,
@@ -680,7 +680,42 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
 
 /** Mitglieder-Ansicht: was der Agent erledigt hat, rechts neben dem Chat.
  *  Laufende zuerst, dann die juengsten — ohne Dauer, Kosten oder IDs. */
+const AUFGABEN_OFFEN_SCHLUESSEL = "agent_aufgaben_offen";
+
 function AufgabenSpalte({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] }) {
+  // Einklappbar, damit der Chat die volle Breite bekommt; gemerkt je Browser.
+  const [offen, setOffen] = useState(() => {
+    try {
+      return localStorage.getItem(AUFGABEN_OFFEN_SCHLUESSEL) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const umschalten = () => {
+    setOffen((o) => {
+      try {
+        localStorage.setItem(AUFGABEN_OFFEN_SCHLUESSEL, o ? "0" : "1");
+      } catch {
+        // ohne Speicher gilt die Wahl nur bis zum Neuladen
+      }
+      return !o;
+    });
+  };
+  const laufend = tasks.filter((t) => ["pending", "queued", "running"].includes(t.status)).length;
+  if (!offen) {
+    return (
+      <button
+        onClick={umschalten}
+        title="Aufgaben einblenden"
+        className="hidden lg:flex w-11 shrink-0 flex-col items-center gap-2 rounded-xl border border-foreground/[0.06] bg-card/50 py-3 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.03] transition-colors"
+      >
+        <PanelRightOpen className="h-4 w-4" />
+        <ListTodo className="h-4 w-4 text-primary" />
+        <span className="text-[11px] tabular-nums">{tasks.length}</span>
+        {laufend > 0 && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
+      </button>
+    );
+  }
   const sortiert = [...tasks].sort((a, b) => {
     const laeuftA = ["pending", "queued", "running"].includes(a.status) ? 0 : 1;
     const laeuftB = ["pending", "queued", "running"].includes(b.status) ? 0 : 1;
@@ -693,6 +728,13 @@ function AufgabenSpalte({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"]
         <ListTodo className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-semibold">Aufgaben</h3>
         <span className="ml-auto text-[11px] text-muted-foreground/60 tabular-nums">{tasks.length}</span>
+        <button
+          onClick={umschalten}
+          title="Aufgaben ausblenden"
+          className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+        >
+          <PanelRightClose className="h-4 w-4" />
+        </button>
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {sortiert.length === 0 ? (

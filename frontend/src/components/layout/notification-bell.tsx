@@ -278,10 +278,10 @@ export function NotificationBell({
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return "just now";
-    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 1) return "gerade eben";
+    if (diffMin < 60) return `vor ${diffMin} Min.`;
     const diffH = Math.floor(diffMin / 60);
-    if (diffH < 24) return `${diffH}h ago`;
+    if (diffH < 24) return `vor ${diffH} Std.`;
     return d.toLocaleDateString();
   };
 
@@ -290,7 +290,7 @@ export function NotificationBell({
       {variant === "sidebar" && collapsed ? (
         <button
           onClick={handleOpen}
-          title="Notifications"
+          title="Benachrichtigungen"
           className={cn(
             "relative flex items-center justify-center h-9 w-9 rounded-xl transition-all",
             isOpen
@@ -323,7 +323,7 @@ export function NotificationBell({
               </span>
             )}
           </div>
-          Notifications
+          Benachrichtigungen
           {unreadCount > 0 && (
             <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/10 text-red-400">
               {unreadCount}
@@ -355,13 +355,13 @@ export function NotificationBell({
           className="fixed max-h-[480px] rounded-xl border border-border bg-card shadow-2xl z-[100] overflow-hidden flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <h3 className="text-sm font-semibold">Notifications</h3>
+            <h3 className="text-sm font-semibold">Benachrichtigungen</h3>
             <div className="flex items-center gap-1">
               {unreadCount > 0 && (
                 <button
                   onClick={handleMarkAllRead}
                   className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                  title="Mark all as read"
+                  title="Alle als gelesen markieren"
                 >
                   <CheckCheck className="h-3 w-3" />
                   Read all
@@ -381,7 +381,7 @@ export function NotificationBell({
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <Bell className="h-8 w-8 mb-2 opacity-30" />
-                <p className="text-xs">No notifications yet</p>
+                <p className="text-xs">Noch keine Benachrichtigungen</p>
               </div>
             ) : (
               notifications.map((notif) => (

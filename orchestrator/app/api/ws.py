@@ -156,6 +156,16 @@ async def _auto_inject_skills_for_chat(agent_id: str, text: str, is_new_session:
         logger.warning(f"Skill auto-injection failed for chat session {scrub_log(session_id)}: {e}")
 
 
+_chat_wake_locks: dict[str, asyncio.Lock] = {}
+
+
+def _chat_wake_lock(agent_id: str) -> asyncio.Lock:
+    """Ein Weckvorgang je Agent: Der Chat verbindet sich bei einem Fehlschlag
+    mehrfach neu, und zwei gleichzeitige Neuaufbauten desselben Agenten
+    erzeugten zwei Container."""
+    return _chat_wake_locks.setdefault(agent_id, asyncio.Lock())
+
+
 @router.websocket("/agents/{agent_id}/chat")
 async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None = Query(None), ticket: str | None = Query(None), client_id: str | None = Query(None)):
     """Bidirectional WebSocket for chatting with an agent.
@@ -207,15 +217,22 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 if not agent:
                     await websocket.close(code=4004, reason="Agent not found")
                     return
-                if not agent.container_id:
-                    await websocket.close(code=4010, reason="Agent has no container")
-                    return
-                agent_container_id = agent.container_id
                 agent_mode = agent.mode or "claude_code"
-                status = _docker.get_container_status(agent.container_id)
+                status = _docker.get_container_status(agent.container_id) if agent.container_id else "missing"
                 if status not in ("running", "created"):
-                    await websocket.close(code=4010, reason=f"Agent container is {status}")
-                    return
+                    # Wer den Chat oeffnet, will mit dem Agenten reden: gestoppte
+                    # (Leerlauf-Stopp) und container-lose Agenten (nach einem
+                    # Update) werden hier geweckt. Vorher lehnte der Chat sie mit
+                    # 4010 ab, und ohne den Neustart-Knopf — den die einfache
+                    # Ansicht nicht zeigt — kam ein Nutzer nie wieder an sie heran.
+                    from app.services.user_lifecycle import wake_agent
+                    async with _chat_wake_lock(agent_id):
+                        bereit = await wake_agent(db, _docker, agent_id, wait=True, timeout=45)
+                    if not bereit:
+                        await websocket.close(code=4010, reason=f"Agent container is {status}")
+                        return
+                    await db.refresh(agent)
+                agent_container_id = agent.container_id
         except Exception:
             pass  # Allow connection attempt if check fails
 
