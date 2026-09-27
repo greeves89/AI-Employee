@@ -15,8 +15,17 @@ Ausloeser, ein Pfad: der Agent faellt aus (dann uebernimmt der Vertreter) oder d
 antwortet nicht (dann geht es eine Stufe hoeher).
 """
 
+import os
 from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
+
+
+def anlagen_zeitzone() -> str:
+    """Die Zeitzone der Anlage (``TZ`` des Orchestrators), sonst UTC — der
+    Rueckfall ueberall dort, wo ein Agent oder eine Dienstzeit keine eigene hat.
+    Bis 27.09.2026 stand an diesen Stellen fest "UTC": „jeden Tag um 6" lief so
+    um 8 Uhr Ortszeit."""
+    return (os.environ.get("TZ") or "").strip() or "UTC"
 
 # Zustaende
 OK = "ok"
@@ -85,12 +94,12 @@ def is_on_duty(agent, now: datetime | None = None) -> bool:
     now = now or datetime.now(timezone.utc)
     if hours.get("weekdays_only"):
         try:
-            tz = ZoneInfo(hours.get("timezone") or "UTC")
+            tz = ZoneInfo(hours.get("timezone") or anlagen_zeitzone())
         except Exception:
             tz = timezone.utc
         if now.astimezone(tz).weekday() >= 5:
             return False
-    return _within(now, start, end, hours.get("timezone") or "UTC")
+    return _within(now, start, end, hours.get("timezone") or anlagen_zeitzone())
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +196,7 @@ def duty_note(agent, duty: dict, *, now: datetime | None = None) -> str:
     lines: list[str] = []
     hours = working_hours(agent)
     if hours.get("start") and hours.get("end"):
-        tz = hours.get("timezone") or "UTC"
+        tz = hours.get("timezone") or anlagen_zeitzone()
         tail = ", nur werktags" if hours.get("weekdays_only") else ""
         lines.append(
             f"Deine Dienstzeit ist {hours['start']}–{hours['end']} ({tz}{tail}). Ausserhalb "

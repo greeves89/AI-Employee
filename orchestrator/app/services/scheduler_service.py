@@ -2272,7 +2272,8 @@ def _contact_hours_note(proactive_config: dict) -> str:
     end = (hours.get("end") or "").strip()
     if not start or not end:
         return ""
-    tz = (hours.get("timezone") or "UTC").strip() or "UTC"
+    from app.core.agent_duty import anlagen_zeitzone
+    tz = (hours.get("timezone") or anlagen_zeitzone()).strip() or anlagen_zeitzone()
     return (
         "## Ansprechpartner-Erreichbarkeit\n"
         f"Erreichbar {start}–{end} ({tz}). Außerhalb dieses Fensters gilt STEP 4 "

@@ -57,15 +57,20 @@ def timezone_name(config: dict | None) -> str:
     """In welcher Zeitzone denkt dieser Agent?
 
     Erreichbarkeit des Ansprechpartners zuerst — nach dessen Uhr richtet sich der Tag —,
-    sonst die eigene Dienstzeit, sonst UTC. Dieselbe Reihenfolge nutzt die Sprachfront,
+    sonst die eigene Dienstzeit, sonst die Zeitzone der Anlage (TZ), zuletzt UTC.
+    Dieselbe Reihenfolge nutzt die Sprachfront,
     damit gesprochene und angezeigte Uhrzeit nie auseinanderlaufen.
     """
     cfg = config or {}
+    # Ohne eigene Angabe die Zeitzone der Anlage (``TZ``, im Compose standardmaessig
+    # Europe/Berlin) statt UTC: „jeden Tag um 6" wurde sonst um 8 Uhr Ortszeit
+    # ausgefuehrt, waehrend der Agent „06:00" bestaetigte (27.09.2026).
+    anlage = agent_duty.anlagen_zeitzone()
     return str(
         ((cfg.get("proactive") or {}).get("contact_hours") or {}).get("timezone")
         or (cfg.get("working_hours") or {}).get("timezone")
-        or "UTC"
-    ).strip() or "UTC"
+        or anlage
+    ).strip() or anlage
 
 
 def tzinfo(config: dict | None):

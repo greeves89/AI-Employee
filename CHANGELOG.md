@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.342.2] - 2026-09-27
+
+### Behoben
+- **Zeitpläne ohne Zeitzone liefen in UTC.** Hatte ein Agent keine eigene
+  Zeitzone (Dienstzeit oder Erreichbarkeit), rechnete die Plattform in UTC:
+  „jeden Tag um 6 Uhr" kam um 8 Uhr Ortszeit, während der Agent „06:00"
+  bestätigte. Jetzt gilt ohne eigene Angabe die Zeitzone der Anlage (`TZ`,
+  standardmäßig Europe/Berlin) — für neue Zeitpläne, den Container-Takt und
+  die Dienstzeit-Prüfung. Bestehende Zeitpläne behalten ihre gespeicherte
+  Zeitzone.
+
+### Tests
+- `test_zeitzone_der_anlage.py`
+
+---
+
 ## [1.342.1] - 2026-09-27
 
 ### Behoben
