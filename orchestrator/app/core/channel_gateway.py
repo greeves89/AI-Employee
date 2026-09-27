@@ -351,6 +351,10 @@ async def deliver(redis, message: InboundMessage, *, capture: bool = True) -> bo
     if capture:
         await capture_if_worthwhile(message)
     await enqueue(redis, message)
+    # Sonst haelt der Leerlauf-Sweep den Agenten fuer verwaist und stoppt ihn
+    # mitten im Gespraech — er kennt nur Aktivitaet in der Web-Oberflaeche.
+    from app.services.user_lifecycle import mark_agent_interaction
+    await mark_agent_interaction(redis, message.agent_id)
     logger.info("[Gateway] %s -> Agent %s (Sitzung %s)",
                 message.channel, message.agent_id, message.session_id)
     return True

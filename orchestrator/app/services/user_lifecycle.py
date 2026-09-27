@@ -66,14 +66,72 @@ async def _has_imminent_schedule(db: AsyncSession, agent_id: str, now: datetime,
         return True
 
 
+# Letzte Nachricht, die ueber einen Kanal (Telegram, Teams, Slack) an einen
+# Agenten ging. Der Sweep misst Aktivitaet sonst nur an ``user.last_active_at``
+# — und das setzt ausschliesslich die Web-Oberflaeche. Wer nur per Telegram
+# schreibt, galt deshalb als inaktiv. _frisch_gestartet schuetzt einen gerade
+# geweckten Agenten, aber nur ab Containerstart: Laeuft er schon laenger als
+# die Frist, wird er nach der Antwort beim naechsten Sweep gestoppt, und jede
+# Folgenachricht im selben Gespraech wartet wieder auf "Agent faehrt hoch".
+# Pro Agent statt pro Nutzer, weil der Absender im Kanal kein Plattform-Nutzer
+# sein muss.
+_INTERACTION_KEY = "agent:{agent_id}:last_interaction"
+# Laenger als jeder sinnvolle Timeout; danach zaehlt ohnehin nur noch das Alter.
+_INTERACTION_TTL_S = 7 * 24 * 3600
+
+
+async def mark_agent_interaction(redis, agent_id: str, now: datetime | None = None) -> None:
+    """Haelt fest, dass gerade jemand mit dem Agenten spricht.
+
+    Best-effort: Ein Redis-Aussetzer darf die Zustellung nie aufhalten — im
+    schlimmsten Fall schlaeft der Agent frueher ein und wird beim naechsten
+    Mal wieder geweckt, wie vor dieser Aenderung.
+    """
+    stamp = (now or datetime.now(timezone.utc)).timestamp()
+    try:
+        await redis.client.set(
+            _INTERACTION_KEY.format(agent_id=agent_id), str(stamp), ex=_INTERACTION_TTL_S
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug("[UserLifecycle] Kanal-Aktivitaet nicht gespeichert", exc_info=True)
+
+
+async def _last_interaction(redis, agent_id: str) -> datetime | None:
+    """Zeitpunkt der letzten Kanal-Nachricht an den Agenten, sonst None."""
+    try:
+        raw = await redis.client.get(_INTERACTION_KEY.format(agent_id=agent_id))
+        if raw:
+            return datetime.fromtimestamp(float(raw), tz=timezone.utc)
+    except Exception:  # noqa: BLE001 — dann zaehlt nur die Web-Aktivitaet
+        logger.debug("[UserLifecycle] Kanal-Aktivitaet nicht lesbar", exc_info=True)
+    return None
+
+
 async def _get_timeout_minutes(db: AsyncSession) -> int:
-    """Read the configured idle-timeout from platform_settings (cached)."""
+    """Leerlauf-Frist fuer den Sweep.
+
+    Reihenfolge: ``agent_idle_timeout_minutes`` (Einstellungs-API), sonst
+    ``max_idle_minutes`` — das ist der Wert, den die Admin-Konsole unter
+    "Auto-Stop Idle Agents" setzt ("0 = deaktiviert") —, sonst 30 Minuten.
+
+    Bisher las der Sweep nur den ersten Schluessel, den die Oberflaeche gar
+    nicht anbietet. Ein Admin, der dort 0 eintrug, schaltete damit nur den
+    zweiten Leerlauf-Mechanismus im Scheduler ab; dieser hier stoppte seine
+    Agenten weiter nach 30 Minuten.
+    """
     try:
         from app.services.settings_service import SettingsService
         svc = SettingsService(db)
         value = await svc.get("agent_idle_timeout_minutes")
         if value is not None and value != "":
             return int(value)
+    except Exception:
+        pass
+    try:
+        from app.models.platform_settings import PlatformSettings
+        ps = await db.get(PlatformSettings, "max_idle_minutes")
+        if ps is not None and ps.value not in (None, ""):
+            return int(ps.value)
     except Exception:
         pass
     return DEFAULT_INACTIVITY_MINUTES
@@ -263,6 +321,11 @@ class UserLifecycleService:
 
                 threshold = now - timedelta(minutes=timeout)
                 last_active = user.last_active_at
+                # Eine Kanal-Nachricht an genau diesen Agenten zaehlt wie
+                # Web-Aktivitaet (siehe _INTERACTION_KEY).
+                interaction = await _last_interaction(self.redis, agent.id)
+                if interaction is not None and (last_active is None or interaction > last_active):
+                    last_active = interaction
                 if last_active is not None and last_active >= threshold:
                     continue  # user was active recently enough for this agent's timeout
 
