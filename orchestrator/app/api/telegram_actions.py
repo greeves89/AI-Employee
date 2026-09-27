@@ -117,7 +117,15 @@ async def _tg_request(token: str, method: str, data: dict | None = None, files: 
             status_code=400,
             detail=f"Telegram API error: {result.get('description', 'Unknown error')}",
         )
-    return result.get("result", {})
+    payload = result.get("result", {})
+    if method.startswith("send"):
+        # Neue Nachricht unten im Chat → eine laufende Live-Antwort steht nicht
+        # mehr unten und wird beim naechsten Stand nach unten geholt (chat_tail).
+        from app.telegram import chat_tail
+        bot_id = chat_tail.bot_id_from_token(token)
+        for chat_id, message_id in chat_tail.sent_message_ids(payload):
+            await chat_tail.note(bot_id, chat_id, message_id)
+    return payload
 
 
 # --- Models ---
