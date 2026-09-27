@@ -1188,34 +1188,14 @@ async def lifespan(app: FastAPI):
         # der schwerere Fall als eine einzelne gescheiterte Anweisung.
         logger.error(f"Could not ensure vault_chunks schema: {e}")
 
-    # DLP egress rules (#388): new table; create_all is only a fresh-DB fallback, so
-    # ensure it idempotently and seed the built-in global defaults once.
+    # DLP egress rules (#388): Tabelle bei jedem Start herstellen und die globalen
+    # Standardregeln einmal anlegen — auch, wenn die Tabelle aus create_all stammt
+    # (#865, siehe app/core/dlp_rules_schema.py).
     try:
         from app.db.session import engine as _eng
-        from sqlalchemy import text as _txt
-        async with _eng.begin() as conn:
-            await conn.execute(_txt(
-                "CREATE TABLE IF NOT EXISTS dlp_rules ("
-                "id serial PRIMARY KEY, pii_class varchar(40) NOT NULL, agent_id varchar,"
-                "action varchar(20) NOT NULL, enabled boolean NOT NULL DEFAULT true,"
-                "created_at timestamptz NOT NULL DEFAULT now())"
-            ))
-            await conn.execute(_txt(
-                "CREATE INDEX IF NOT EXISTS ix_dlp_rules_class ON dlp_rules (pii_class)"
-            ))
-            # Seed global defaults only if the table has no global rows yet.
-            existing = (await conn.execute(_txt(
-                "SELECT count(*) FROM dlp_rules WHERE agent_id IS NULL"
-            ))).scalar() or 0
-            if existing == 0:
-                from app.core.dlp import DEFAULT_ACTIONS
-                for cls, act in DEFAULT_ACTIONS.items():
-                    await conn.execute(
-                        _txt("INSERT INTO dlp_rules (pii_class, agent_id, action, enabled) "
-                             "VALUES (:c, NULL, :a, true)"),
-                        {"c": cls, "a": act},
-                    )
-        logger.info("dlp_rules table ensured + defaults seeded")
+        from app.core.dlp_rules_schema import ensure_dlp_rules_schema
+        seeded = await ensure_dlp_rules_schema(_eng)
+        logger.info(f"dlp_rules table ensured ({seeded} default rules seeded)")
     except Exception as e:
         logger.warning(f"Could not ensure dlp_rules table: {e}")
 
