@@ -359,6 +359,11 @@ class ChatConsumer:
         # per source_key; same channel stays serial, different channels run
         # concurrently up to the semaphore. Empty in serial mode.
         self._lanes: dict[str, asyncio.Queue] = {}
+        # Rohdaten der Nachrichten, die in einen laufenden Zug eingefaltet wurden
+        # (je Spur). Sie liegen wie jede abgeholte Nachricht in der Inflight-Liste
+        # und muessen sie am Zugende wieder verlassen — sonst stellt der naechste
+        # Start sie erneut zu, und das bei jedem Start wieder.
+        self._eingefaltet: dict[str, list[bytes]] = {}
         self._lane_tasks: dict[str, asyncio.Task] = {}
         self._sem: asyncio.Semaphore | None = None
 
@@ -520,9 +525,10 @@ class ChatConsumer:
             # they are all this channel, so nothing needs re-queueing.
             while not lane.empty():
                 try:
-                    qmsg, _ = lane.get_nowait()
+                    qmsg, qraw = lane.get_nowait()
                 except asyncio.QueueEmpty:
                     break
+                self._eingefaltet.setdefault(source_key, []).append(qraw)
                 if qmsg.get("text", "").strip() == "/reset":
                     await self._reset_handler(source_key)
                     texts.clear()
@@ -772,10 +778,15 @@ class ChatConsumer:
                 except Exception as e:  # noqa: BLE001
                     await self._report_loop_error(e)
                 finally:
-                    try:
-                        await self.redis.lrem(self.inflight_key, 1, msg_json)
-                    except Exception:  # noqa: BLE001
-                        pass
+                    # Die Startnachricht UND alles, was in diesen Zug eingefaltet
+                    # wurde, ist jetzt verarbeitet. Bis v1.339.2 blieben die
+                    # eingefalteten liegen und kamen bei jedem Start wieder —
+                    # beim Kunden 17 alte Nachrichten, jede Stunde erneut.
+                    for roh in [msg_json, *self._eingefaltet.pop(source_key, [])]:
+                        try:
+                            await self.redis.lrem(self.inflight_key, 1, roh)
+                        except Exception:  # noqa: BLE001
+                            pass
 
     async def _report_loop_error(self, e: Exception) -> None:
         if self.redis:

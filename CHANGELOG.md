@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.339.4] - 2026-09-27
+
+### Behoben
+- **Ein Agent bekam bei jedem Aufwecken denselben alten Chat erneut.** Im
+  parallelen Chat-Modus werden Nachrichten, die waehrend eines laufenden Zugs
+  eintreffen, in diesen Zug eingefaltet. Entfernt wurde danach aber nur die
+  Nachricht, die den Zug gestartet hatte — die eingefalteten blieben in der
+  Absturzsicherung (`agent:<id>:chat:inflight`) liegen und wurden bei jedem Start
+  erneut zugestellt. Bei einem Agenten, der stuendlich fuer Zeitplaene geweckt
+  wird, hiess das: stuendlich dieselbe Antwort auf einen alten Block, auf einer
+  Anlage 17-mal. Jetzt verlassen auch die eingefalteten Nachrichten die Liste.
+- **Die Leerlauf-Abschaltung stoppte frisch geweckte Agenten nach 90 Sekunden.**
+  Sie prueft, ob der Nutzer seit der Leerlaufzeit nichts getan hat und ob der
+  Agent arbeitet — ein Agent, der gerade hochfaehrt, sah dabei untaetig aus.
+  Zeitplan-Laeufe wurden mitten im Start abgeschossen und tauchten als
+  "[Ausgefallen]" wieder auf. Jetzt bleibt ein Container, der vor weniger als
+  der Leerlaufzeit gestartet wurde, an; die Startzeit liefert Docker.
+
+---
+
 ## [1.339.2] - 2026-09-26
 
 ### Behoben

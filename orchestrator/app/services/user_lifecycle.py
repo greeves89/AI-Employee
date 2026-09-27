@@ -10,6 +10,7 @@ Rules:
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -77,6 +78,32 @@ async def _get_timeout_minutes(db: AsyncSession) -> int:
         pass
     return DEFAULT_INACTIVITY_MINUTES
 
+
+
+def _frisch_gestartet(docker, container_id: str | None, jetzt: datetime, minuten: int) -> bool:
+    """Wurde der Container vor weniger als ``minuten`` gestartet?
+
+    Ein gerade geweckter Agent faehrt noch hoch: er hat weder den Status
+    "working" noch zwingend etwas in der Warteschlange und sieht damit aus wie
+    ein untaetiger. Bis v1.339.2 wurde er deshalb oft 90 Sekunden nach dem
+    Wecken wieder gestoppt — mitten im faelligen Zeitplan-Lauf.
+
+    Die Startzeit steht bei Docker, es braucht keinen eigenen Zustand. Im
+    Zweifel (kein Container, unlesbare Zeit) gilt die bisherige Regel.
+    """
+    if not docker or not container_id:
+        return False
+    try:
+        roh = docker.get_container(container_id).attrs["State"]["StartedAt"]
+        # Docker liefert Nanosekunden ("...58.662587871Z"); fromisoformat kann
+        # hoechstens Mikrosekunden.
+        roh = re.sub(r"(\.\d{6})\d+", r"\1", roh).replace("Z", "+00:00")
+        gestartet = datetime.fromisoformat(roh)
+    except Exception:  # noqa: BLE001
+        return False
+    if gestartet.year < 2000:           # "0001-01-01..." = nie gestartet
+        return False
+    return jetzt - gestartet < timedelta(minutes=minuten)
 
 class UserLifecycleService:
     """Background service that auto-stops agents of inactive users."""
@@ -238,6 +265,11 @@ class UserLifecycleService:
                 last_active = user.last_active_at
                 if last_active is not None and last_active >= threshold:
                     continue  # user was active recently enough for this agent's timeout
+
+                # Gerade erst gestartet (etwa fuer einen faelligen Zeitplan
+                # geweckt)? Dann ist er nicht untaetig, sondern faehrt hoch.
+                if _frisch_gestartet(self.docker, agent.container_id, now, timeout):
+                    continue
 
                 # Skip agents with queued/running tasks
                 queue_depth = await self.redis.get_queue_depth(agent.id)

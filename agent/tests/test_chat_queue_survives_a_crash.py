@@ -114,6 +114,7 @@ class DrainPendingLaneTests(unittest.IsolatedAsyncioTestCase):
         c.agent_id = "a1"
         c._lanes = {}
         c._handlers = {}
+        c._eingefaltet = {}
         lane: asyncio.Queue = asyncio.Queue()
         for item in items:
             lane.put_nowait(item)
