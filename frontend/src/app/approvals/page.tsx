@@ -693,10 +693,10 @@ export default function ApprovalsPage() {
             <>
               <ShieldCheck className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
               <p className="text-sm text-muted-foreground/50">
-                No pending approval requests
+                Keine offenen Anfragen
               </p>
               <p className="text-[11px] text-muted-foreground/30 mt-1">
-                Approval requests from agents will appear here
+                Wenn ein Agent um Erlaubnis fragt, erscheint das hier
               </p>
             </>
           )}

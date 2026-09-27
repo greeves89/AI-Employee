@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.340.1] - 2026-09-27
+
+### Geändert
+- **Dashboard in der einfachen Ansicht aufgeräumt.** Kostenaufstellung nach
+  Tokens und Nachtschicht-Statistik entfallen für Nutzer ohne Admin-Rolle; die
+  letzten Aufgaben zeigen keine Laufzeit und Züge mehr. Agentenkarten zeigen
+  dort keine Eigeninitiative-, Update- und Auftrags-Abzeichen mehr — der Name
+  des Agenten war daneben nur noch abgeschnitten zu lesen.
+- Kennzahlen, „Letzte Aufgaben", leere Freigaben-Liste, Verbindungsanzeige im
+  Chat: deutsch.
+- Pausierte Zeitpläne zeigen als nächsten Lauf „pausiert" statt einer Zeit in
+  der Vergangenheit.
+
+---
+
 ## [1.340.0] - 2026-09-27
 
 ### Neu

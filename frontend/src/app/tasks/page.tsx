@@ -818,7 +818,7 @@ function ScheduledTasksView() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Timer className="h-3.5 w-3.5" />
-                  <span>Nächster: {formatRelative(schedule.next_run_at)}</span>
+                  <span>Nächster: {schedule.enabled ? formatRelative(schedule.next_run_at) : "pausiert"}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />

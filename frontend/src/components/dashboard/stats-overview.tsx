@@ -13,7 +13,7 @@ interface StatsOverviewProps {
 const statConfig = [
   {
     key: "active",
-    label: "Active Agents",
+    label: "Aktive Agenten",
     icon: Cpu,
     color: "text-emerald-400",
     gradient: "from-emerald-500/20 via-emerald-500/5 to-transparent",
@@ -21,7 +21,7 @@ const statConfig = [
   },
   {
     key: "working",
-    label: "Working",
+    label: "Arbeiten gerade",
     icon: Zap,
     color: "text-blue-400",
     gradient: "from-blue-500/20 via-blue-500/5 to-transparent",
@@ -29,7 +29,7 @@ const statConfig = [
   },
   {
     key: "running",
-    label: "In Queue",
+    label: "In Warteschlange",
     icon: Clock,
     color: "text-amber-700 dark:text-amber-400",
     gradient: "from-amber-500/20 via-amber-500/5 to-transparent",
@@ -37,7 +37,7 @@ const statConfig = [
   },
   {
     key: "completed",
-    label: "Completed",
+    label: "Erledigt",
     icon: CheckCircle2,
     color: "text-emerald-400",
     gradient: "from-emerald-500/20 via-emerald-500/5 to-transparent",
@@ -45,7 +45,7 @@ const statConfig = [
   },
   {
     key: "cost",
-    label: "Total Cost",
+    label: "Kosten gesamt",
     icon: DollarSign,
     color: "text-violet-400",
     gradient: "from-violet-500/20 via-violet-500/5 to-transparent",

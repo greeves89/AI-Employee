@@ -1079,7 +1079,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           {
             id: "reconnecting",
             role: "system",
-            content: `Reconnecting... (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`,
+            content: `Verbinde neu … (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`,
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -1147,7 +1147,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               role: "system",
               content: isContainerDown
                 ? `Agent container is starting… reconnecting (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`
-                : `Reconnecting... (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`,
+                : `Verbinde neu … (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`,
               timestamp: new Date().toISOString(),
             },
           ];

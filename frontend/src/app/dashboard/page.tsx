@@ -114,16 +114,21 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Cost Attribution + Recent Tasks */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <RecentTasks tasks={tasks} />
+        {/* Cost Attribution + Recent Tasks — Tokens und Nachtschicht-Statistik
+            sind Betreibersache */}
+        {simpleMode ? (
+          <RecentTasks tasks={tasks} />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <RecentTasks tasks={tasks} />
+            </div>
+            <div className="space-y-6">
+              <CostAttribution />
+              <ReflectionCard />
+            </div>
           </div>
-          <div className="space-y-6">
-            <CostAttribution />
-            <ReflectionCard />
-          </div>
-        </div>
+        )}
       </motion.div>
     </div>
   );

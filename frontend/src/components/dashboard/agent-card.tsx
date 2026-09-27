@@ -111,7 +111,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                     Einrichtungsgespräch gibt es nicht mehr, der Agent hält sich an
                     seine Vorlage. Es hätte nur noch einen Zustand angezeigt, den
                     niemand mehr ändern kann. */}
-                {agent.has_responsibilities === false ? (
+                {simpleMode ? null : agent.has_responsibilities === false ? (
                   <span
                     title="Kein Auftrag — es fehlen Verantwortungsbereiche. Proaktive Läufe werden übersprungen."
                     className="shrink-0"
@@ -137,7 +137,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
             {(() => {
               // Proactive mode indicator: lightning + trigger interval (e.g. "1h").
               const proactive = (agent.config as { proactive?: { enabled?: boolean; interval_seconds?: number } } | null | undefined)?.proactive;
-              if (!proactive?.enabled) return null;
+              if (simpleMode || !proactive?.enabled) return null;
               const label = formatInterval(proactive.interval_seconds ?? 0);
               return (
                 <div
@@ -168,7 +168,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                  agent.llm_config.provider_type}
               </div>
             ) : null}
-            {(updating || agent.update_available) && (
+            {!simpleMode && (updating || agent.update_available) && (
               <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                 {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpCircle className="h-3 w-3" />}
                 {updating ? "Aktualisiere…" : "Update"}

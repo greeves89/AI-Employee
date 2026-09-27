@@ -5,6 +5,7 @@ import { CheckCircle2, XCircle, Clock, Loader2, ArrowRight } from "lucide-react"
 import type { Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatDuration, timeAgo } from "@/lib/utils";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 const statusIcons: Record<string, { icon: typeof CheckCircle2; color: string }> = {
   completed: { icon: CheckCircle2, color: "text-emerald-400" },
@@ -20,6 +21,7 @@ interface RecentTasksProps {
 }
 
 export function RecentTasks({ tasks }: RecentTasksProps) {
+  const { simpleMode } = useSimpleMode();
   const recent = tasks.slice(0, 8);
 
   return (
@@ -28,20 +30,20 @@ export function RecentTasks({ tasks }: RecentTasksProps) {
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-foreground/[0.06]">
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-sm font-semibold tracking-tight">Recent Activity</span>
+          <span className="text-sm font-semibold tracking-tight">Letzte Aufgaben</span>
         </div>
         <Link
           href="/tasks"
           className="flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
         >
-          All tasks <ArrowRight className="h-3 w-3" />
+          Alle Aufgaben <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
 
       {/* Task list */}
       {recent.length === 0 ? (
         <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-          No tasks yet. Create one to get started.
+          Noch keine Aufgaben.
         </div>
       ) : (
         <div className="divide-y divide-foreground/[0.04]">
@@ -65,13 +67,13 @@ export function RecentTasks({ tasks }: RecentTasksProps) {
                 </div>
 
                 <div className="shrink-0 flex items-center gap-4 text-[11px] text-muted-foreground tabular-nums">
-                  {task.duration_ms && (
+                  {!simpleMode && task.duration_ms && (
                     <span>{formatDuration(task.duration_ms)}</span>
                   )}
-                  {task.num_turns && (
+                  {!simpleMode && task.num_turns && (
                     <span>{task.num_turns}t</span>
                   )}
-                  <span className="w-14 text-right">{timeAgo(task.created_at)}</span>
+                  <span className="w-20 text-right whitespace-nowrap">{timeAgo(task.created_at)}</span>
                 </div>
               </div>
             );
