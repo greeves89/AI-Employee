@@ -22,6 +22,7 @@ from telegram.ext import (
 
 from app.config import settings
 from app.core.log_redaction import redact_logs
+from app.telegram import chat_tail
 
 import re as _re
 
@@ -183,6 +184,7 @@ class TelegramAgentBot:
         # und der laeuft, bevor der Antwort-Lauscher je gestartet wurde.
         self._live: dict = {}
         self._last_user_msg: dict = {}
+        self._bot_id = chat_tail.bot_id_from_token(bot_token)
         self._telegram_send_listener: asyncio.Task | None = None
 
     async def start(self) -> None:
@@ -191,6 +193,9 @@ class TelegramAgentBot:
 
         self.app = Application.builder().token(self.bot_token).build()
 
+        # Gruppe -1 laeuft VOR den eigentlichen Handlern und haelt nur fest, dass
+        # unten im Chat eine neue Nachricht steht (chat_tail) — fuer jede Nachricht.
+        self.app.add_handler(MessageHandler(filters.ALL, self._note_inbound), group=-1)
         self.app.add_handler(CommandHandler("start", self._cmd_start))
         self.app.add_handler(CommandHandler("auth", self._cmd_auth))
         self.app.add_handler(CommandHandler("agent", self._cmd_agent))
@@ -1099,6 +1104,11 @@ class TelegramAgentBot:
         except Exception as e:  # noqa: BLE001 — eine Reaktion ist Beiwerk
             logger.debug("[Telegram] reaction failed chat=%s: %s", chat_id, e)
 
+    async def _note_inbound(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        msg = update.effective_message
+        if msg is not None:
+            await chat_tail.note(self._bot_id, msg.chat_id, msg.message_id)
+
     async def _live_update(self, chat_id: int, text: str, *, status: str = "",
                            final: bool = False) -> None:
         """Eine Nachricht schreiben und dann FORTLAUFEND bearbeiten statt viele zu senden.
@@ -1138,7 +1148,12 @@ class TelegramAgentBot:
                     except Exception:
                         pass
                 return
-            if state["id"] and len(body) <= 4000:
+            # Steht unter der Live-Nachricht inzwischen etwas anderes, bliebe die
+            # fertige Antwort beim Bearbeiten weiter oben unsichtbar — dann wie bei
+            # zu langem Text: alte Nachricht weg, Antwort neu unten (chat_tail).
+            buried = bool(state["id"]) and await chat_tail.is_buried(
+                self._bot_id, chat_id, state["id"])
+            if state["id"] and len(body) <= 4000 and not buried:
                 checked = await self._dlp_text(body)
                 if checked is None:
                     try:
@@ -1161,7 +1176,7 @@ class TelegramAgentBot:
                         except Exception:
                             pass
                 return
-            # Zu lang oder noch keine Live-Nachricht → normaler Weg (mit DLP + Stueckelung)
+            # Zu lang, ueberholt oder noch keine Live-Nachricht → normaler Weg (mit DLP + Stueckelung)
             if state["id"]:
                 try:
                     await self.app.bot.delete_message(chat_id, state["id"])
@@ -1183,6 +1198,15 @@ class TelegramAgentBot:
             return
         if now < state.get("blocked_until", 0.0):
             return  # nach einer Sperre erst wieder rangehen, wenn sie abgelaufen ist
+        if state["id"] and await chat_tail.is_buried(self._bot_id, chat_id, state["id"]):
+            # Ueberholt: neu unten senden, sonst arbeitet der Agent sichtbar nur
+            # weiter oben im Verlauf, wo niemand hinsieht.
+            try:
+                await self.app.bot.delete_message(chat_id, state["id"])
+            except Exception:
+                pass
+            state["id"] = None
+            state["shown"] = ""
         try:
             pretty = _tg_format(shown)
             try:
@@ -1194,6 +1218,7 @@ class TelegramAgentBot:
                     sent = await self.app.bot.send_message(
                         chat_id=chat_id, text=pretty, parse_mode="HTML")
                     state["id"] = sent.message_id
+                    await chat_tail.note(self._bot_id, chat_id, sent.message_id)
             except Exception:
                 # Telegram lehnt das HTML ab (z.B. exotische Verschachtelung) →
                 # lieber unformatiert als gar nicht.
@@ -1203,6 +1228,7 @@ class TelegramAgentBot:
                 else:
                     sent = await self.app.bot.send_message(chat_id=chat_id, text=shown)
                     state["id"] = sent.message_id
+                    await chat_tail.note(self._bot_id, chat_id, sent.message_id)
             state["shown"] = shown
             state["last"] = now
         except Exception as e:  # noqa: BLE001
@@ -1275,11 +1301,12 @@ class TelegramAgentBot:
         for i in range(0, len(text), 4000):
             chunk = text[i : i + 4000]
             try:
-                await self.app.bot.send_message(
+                sent = await self.app.bot.send_message(
                     chat_id=chat_id, text=_tg_format(chunk), parse_mode="HTML")
             except Exception:
                 # Formatierung abgelehnt → lieber unformatiert als gar nicht.
-                await self.app.bot.send_message(chat_id=chat_id, text=chunk)
+                sent = await self.app.bot.send_message(chat_id=chat_id, text=chunk)
+            await chat_tail.note(self._bot_id, chat_id, getattr(sent, "message_id", None))
 
     async def _maybe_send_voice_reply(self, chat_id: int, msg_id: str, text: str) -> None:
         """Voice-first: if this message arrived as a voice/audio message, also
