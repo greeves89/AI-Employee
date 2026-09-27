@@ -450,7 +450,7 @@ function ContextRing({ percent }: { percent: number }) {
   );
 }
 
-export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds, onTurnChange }: { agentId: string; initialSessionId?: string | null; embedded?: boolean; busySessionIds?: string[]; onTurnChange?: () => void }) {
+export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds, onTurnChange, leiste }: { agentId: string; initialSessionId?: string | null; embedded?: boolean; busySessionIds?: string[]; onTurnChange?: () => void; /** Zusaetzliche Knoepfe in der Fusszeile neben dem Mikrofon. */ leiste?: React.ReactNode }) {
   const { simpleMode } = useSimpleMode();
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -2540,9 +2540,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {thinkingElapsed > 0 ? (
-                    <>Thinking... <span className="tabular-nums text-muted-foreground/60">{thinkingElapsed}s</span></>
+                    <>Denkt nach … <span className="tabular-nums text-muted-foreground/60">{thinkingElapsed} s</span></>
                   ) : (
-                    "Thinking..."
+                    "Denkt nach …"
                   )}
                 </span>
                 {thinkingElapsed > 30 && (
@@ -2982,6 +2982,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             >
               <Mic className="h-4 w-4" />
             </button>
+            {leiste}
 
             {!simpleMode && (
 <div className="relative" ref={reasoningRef}>
@@ -3372,16 +3373,10 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
     );
   }
 
-  // Simple mode: only show text steps, hide tool calls
-  // Im einfachen Modus bleiben Werkzeugaufrufe verborgen — Subagenten NICHT.
-  // Dass der Agent Helfer losgeschickt hat, ist keine technische Einzelheit,
-  // sondern das, was gerade fuer den Nutzer passiert.
-  const visibleSteps = simpleMode
-    ? steps.filter((s) => s.type === "text" || s.type === "subagent")
-    : steps;
-
-  // In simple mode, if there are no text steps yet (only tool calls running), show a working indicator
-  const hasRunningTools = simpleMode && steps.some((s) => s.type === "tool_call" && s.status === "running");
+  // Werkzeuge und Subagenten sieht jeder: welches Werkzeug der Agent gerade
+  // nutzt, ist genau das, was man bei der Arbeit zusehen will. Die einfache
+  // Ansicht spart nur Tokens und Kosten (MetaBar) aus.
+  const visibleSteps = steps;
   const noVisibleContent = visibleSteps.length === 0;
 
   return (
@@ -3390,12 +3385,6 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
         <MsgTime ts={message.timestamp} />
         {actions}
       </div>
-      {simpleMode && hasRunningTools && noVisibleContent && (
-        <div className="flex items-center gap-2 text-muted-foreground/60 text-xs py-1">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          <span>Arbeitet...</span>
-        </div>
-      )}
       {(() => {
         // Group consecutive tool calls into one collapsible cluster (overlapping
         // bubbles, max 5 + "+N"); text segments stay inline between clusters.

@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.341.0] - 2026-09-27
+
+### Neu
+- **Leiste unten im Chat (einfache Ansicht).** Was früher als Reiter über dem
+  Chat stand, liegt jetzt als Icon neben Büroklammer und Mikrofon; jedes öffnet
+  ein Fenster mit der bestehenden Verwaltung:
+  - Konnektoren: MCP-Server und Integrationen des Agenten samt Zugangsdaten
+  - Modell: Modellwahl und Verhalten
+  - Rechte: Autonomiestufe und Berechtigungen
+  - Dateien: der Arbeitsordner des Agenten
+  - Wissen: angebundene Second Brains
+- **Die Aufgabenspalte zeigt alles, was man dem Agenten aufträgt**:
+  - Offen: seine To-do-Liste, die er aus Chat-Aufträgen führt
+  - Geplant: selbst angelegte Zeitpläne mit Takt und nächstem Lauf
+  - Erledigt & laufend: Aufgabenläufe und abgehakte To-dos
+  Bisher standen dort nur Aufgabenläufe; ein im Chat angelegter Zeitplan fehlte.
+  Die Spalte lädt neu, sobald der Agent einen Zug beendet.
+- **Aufgaben öffnen im Fenster über dem Chat** — mit Auftrag, Ergebnis und
+  Live-Verlauf. Man bleibt dabei im Gespräch.
+
+### Geändert
+- **Werkzeuge und Live-Verlauf sieht jeder.** Die einfache Ansicht blendete
+  Werkzeugaufrufe im Chat und den Live-Verlauf einer Aufgabe aus. Zuzusehen,
+  was der Agent gerade tut, ist aber genau das, was man als Auftraggeber will.
+  Ausgeblendet bleiben nur Tokens, Kosten, Züge und IDs.
+- Aufgabendetails: Agentenname statt ID, Titel ohne Herkunftsmarke
+  („[Manual]") in der einfachen Ansicht; Beschriftungen deutsch.
+- „Thinking…" heißt „Denkt nach …".
+
+---
+
 ## [1.340.2] - 2026-09-27
 
 ### Behoben

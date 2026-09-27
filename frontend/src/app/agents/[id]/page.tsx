@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -11,7 +11,7 @@ import {
   Timer, Hash, DollarSign, Activity, RefreshCw,
   Brain, Save, Edit3, FolderOpen, File, Folder,
   Download, Upload, ChevronRight, ArrowLeft, Plug, ArrowUpCircle,
-  Settings, ShieldAlert, Check, ListTodo, PanelRightClose, PanelRightOpen,
+  Settings, ShieldAlert, Check, ListTodo, PanelRightClose, PanelRightOpen, CalendarClock, Circle,
   Eye, EyeOff, Search, X, ArrowUpDown, Code, FileText,
   Image as ImageIcon, Container, Send, Copy, RefreshCcw, Trash2, Key, Sparkles, Monitor, Globe,
   Layers, AudioLines, ArrowUpRight, CalendarDays,
@@ -47,7 +47,10 @@ import { CommandPoliciesTab } from "@/components/agents/command-policies-tab";
 import { PermissionPackagesPanel } from "@/components/agents/permission-packages-panel";
 import { ComputerUseDefaultPanel } from "@/components/agents/computer-use-default-panel";
 import { useTasks } from "@/hooks/use-tasks";
-import { AUFGABEN_STATUS } from "@/lib/aufgaben-anzeige";
+import { AUFGABEN_STATUS, aufgabenTitel, istSystemZeitplan } from "@/lib/aufgaben-anzeige";
+import { Fenster } from "@/components/ui/fenster";
+import { TaskDetail } from "@/components/tasks/task-detail";
+import type { AgentTodo, Schedule } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -128,7 +131,7 @@ export default function AgentDetailPage() {
   const confirm = useConfirm();
   const toast = useToast();
   const [agent, setAgent] = useState<Agent | null>(null);
-  const { tasks } = useTasks(agentId);
+  const { tasks, refresh: ladeAufgaben } = useTasks(agentId);
   const [activeSub, setActiveSub] = useState<SubKey>("chat");
   // When the busy pill (current_task = "chat:<id>") is clicked, jump to that chat.
   const [chatFocusSession, setChatFocusSession] = useState<string | null>(null);
@@ -432,9 +435,15 @@ export default function AgentDetailPage() {
                 initialSessionId={chatFocusSession}
                 busySessionIds={busyChatSessions}
                 onTurnChange={nachfassen}
+                leiste={<Schnellzugriff agent={agent} setAgent={setAgent} />}
               />
             </div>
-            <AufgabenSpalte tasks={tasks} />
+            <AufgabenSpalte
+              agentId={agentId}
+              tasks={tasks}
+              ladeAufgaben={ladeAufgaben}
+              ausloeser={agent.current_task ?? ""}
+            />
           </div>
         ) : (<>
         {/* Grouped tab switcher (groups + sub-reiter) */}
@@ -678,11 +687,108 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
 }
 
 
-/** Mitglieder-Ansicht: was der Agent erledigt hat, rechts neben dem Chat.
- *  Laufende zuerst, dann die juengsten — ohne Dauer, Kosten oder IDs. */
-const AUFGABEN_OFFEN_SCHLUESSEL = "agent_aufgaben_offen";
+/** Mitglieder-Ansicht: was frueher als Reiter oben stand, unten in der
+ *  Chat-Leiste als Icon — je ein Fenster mit der bestehenden Verwaltung. */
+type SchnellKey = "konnektoren" | "modell" | "rechte" | "dateien" | "wissen";
+const SCHNELL: { key: SchnellKey; titel: string; icon: typeof CheckCircle2 }[] = [
+  { key: "konnektoren", titel: "Konnektoren", icon: Plug },
+  { key: "modell", titel: "Modell", icon: Cpu },
+  { key: "rechte", titel: "Rechte", icon: ShieldCheck },
+  { key: "dateien", titel: "Dateien", icon: FolderOpen },
+  { key: "wissen", titel: "Wissen", icon: Brain },
+];
 
-function AufgabenSpalte({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] }) {
+function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent) => void }) {
+  const [offen, setOffen] = useState<SchnellKey | null>(null);
+  const zu = useCallback(() => setOffen(null), []);
+  const aktiv = SCHNELL.find((s) => s.key === offen);
+  return (
+    <>
+      {SCHNELL.map(({ key, titel, icon: Icon }) => (
+        <button
+          key={key}
+          onClick={() => setOffen(key)}
+          title={titel}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/70 transition-all hover:bg-foreground/[0.06] hover:text-foreground"
+        >
+          <Icon className="h-4 w-4" />
+        </button>
+      ))}
+      <Fenster offen={offen !== null} schliessen={zu} titel={aktiv?.titel}>
+        <div className="p-5">
+          {offen === "konnektoren" && <IntegrationSelector agentId={agent.id} />}
+          {offen === "modell" && (
+            <NurAbschnitt.Provider value="Modell & Verhalten">
+              <AgentSettings agent={agent} onUpdated={setAgent} />
+            </NurAbschnitt.Provider>
+          )}
+          {offen === "rechte" && (
+            <NurAbschnitt.Provider value="Zugriff & Rechte">
+              <AgentSettings agent={agent} onUpdated={setAgent} />
+            </NurAbschnitt.Provider>
+          )}
+          {offen === "dateien" && (
+            <div className="h-[70vh]">
+              <FileBrowser
+                agentId={agent.id}
+                diskUsageMb={agent.disk_usage_mb ?? 0}
+                diskLimitMb={agent.disk_limit_mb ?? 0}
+                diskPercent={agent.disk_percent ?? 0}
+              />
+            </div>
+          )}
+          {offen === "wissen" && <AgentSecondBrains agentId={agent.id} />}
+        </div>
+      </Fenster>
+    </>
+  );
+}
+
+const AUFGABEN_OFFEN_SCHLUESSEL = "agent_aufgaben_offen";
+const LAUFENDE_STATUS = ["pending", "queued", "running"];
+const datumKurz = (iso: string) =>
+  new Date(iso).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+/** Mitglieder-Ansicht: alles, was man dem Agenten aufgetragen hat, rechts neben
+ *  dem Chat — ohne Dauer, Kosten oder IDs:
+ *  - Offen: seine To-do-Liste (die er selbst aus Chat-Auftraegen fuehrt)
+ *  - Geplant: Zeitplaene, die der Nutzer angelegt hat (die der Plattform —
+ *    Eigeninitiative, Tagesrhythmus — stehen unter Aufgaben → Zeitpläne)
+ *  - Erledigt & laufend: Aufgabenlaeufe und abgehakte To-dos */
+function AufgabenSpalte({
+  agentId,
+  tasks,
+  ladeAufgaben,
+  ausloeser,
+}: {
+  agentId: string;
+  tasks: ReturnType<typeof useTasks>["tasks"];
+  ladeAufgaben: () => void;
+  /** Aendert sich, wenn der Agent einen Zug beginnt oder beendet — dann neu laden,
+   *  damit ein gerade im Chat Aufgetragenes sofort erscheint. */
+  ausloeser: string;
+}) {
+  const [plaene, setPlaene] = useState<Schedule[]>([]);
+  const [todos, setTodos] = useState<AgentTodo[]>([]);
+  // Aufgabe im Fenster ueber dem Chat — man bleibt im Gespraech.
+  const [angesehen, setAngesehen] = useState<string | null>(null);
+  const fensterZu = useCallback(() => setAngesehen(null), []);
+  const ladeRest = useCallback(async () => {
+    const [z, t] = await Promise.allSettled([api.getSchedules(), api.getAgentTodos(agentId)]);
+    if (z.status === "fulfilled") {
+      setPlaene(z.value.schedules.filter((p) => p.agent_id === agentId && !istSystemZeitplan(p)));
+    }
+    if (t.status === "fulfilled") setTodos(t.value.todos);
+  }, [agentId]);
+  useEffect(() => {
+    ladeRest();
+    return setVisibleInterval(ladeRest, 15000);
+  }, [ladeRest]);
+  useEffect(() => {
+    ladeRest();
+    ladeAufgaben();
+  }, [ausloeser, ladeRest, ladeAufgaben]);
+
   // Einklappbar, damit der Chat die volle Breite bekommt; gemerkt je Browser.
   const [offen, setOffen] = useState(() => {
     try {
@@ -701,7 +807,35 @@ function AufgabenSpalte({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"]
       return !o;
     });
   };
-  const laufend = tasks.filter((t) => ["pending", "queued", "running"].includes(t.status)).length;
+
+  const offeneTodos = todos
+    .filter((t) => t.status !== "completed")
+    .sort((a, b) => (a.status === "in_progress" ? 0 : 1) - (b.status === "in_progress" ? 0 : 1) || a.sort_order - b.sort_order);
+  type Eintrag = { key: string; titel: string; status: string; zeit: string; aufgabe?: string; laeuft: boolean };
+  const erledigt: Eintrag[] = [
+    ...tasks.map((t) => ({
+      key: `t-${t.id}`,
+      titel: aufgabenTitel(t.title),
+      status: t.status,
+      zeit: t.created_at,
+      aufgabe: t.id,
+      laeuft: LAUFENDE_STATUS.includes(t.status),
+    })),
+    ...todos
+      .filter((t) => t.status === "completed")
+      .map((t) => ({
+        key: `d-${t.id}`,
+        titel: t.title,
+        status: "completed",
+        zeit: t.completed_at ?? t.updated_at ?? t.created_at,
+        laeuft: false,
+      })),
+  ]
+    .sort((a, b) => (a.laeuft === b.laeuft ? new Date(b.zeit).getTime() - new Date(a.zeit).getTime() : a.laeuft ? -1 : 1))
+    .slice(0, 50);
+  const anzahl = offeneTodos.length + plaene.length + erledigt.length;
+  const aktiv = offeneTodos.some((t) => t.status === "in_progress") || erledigt.some((e) => e.laeuft);
+
   if (!offen) {
     return (
       <button
@@ -711,23 +845,36 @@ function AufgabenSpalte({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"]
       >
         <PanelRightOpen className="h-4 w-4" />
         <ListTodo className="h-4 w-4 text-primary" />
-        <span className="text-[11px] tabular-nums">{tasks.length}</span>
-        {laufend > 0 && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
+        <span className="text-[11px] tabular-nums">{anzahl}</span>
+        {aktiv && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
       </button>
     );
   }
-  const sortiert = [...tasks].sort((a, b) => {
-    const laeuftA = ["pending", "queued", "running"].includes(a.status) ? 0 : 1;
-    const laeuftB = ["pending", "queued", "running"].includes(b.status) ? 0 : 1;
-    if (laeuftA !== laeuftB) return laeuftA - laeuftB;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
+
+  const Abschnitt = ({ titel }: { titel: string }) => (
+    <p className="px-2.5 pt-3 pb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 first:pt-1">{titel}</p>
+  );
+  const Zeile = ({ icon, titel, unter, href, onClick }: { icon: React.ReactNode; titel: string; unter: string; href?: string; onClick?: () => void }) => {
+    const inhalt = (
+      <>
+        {icon}
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] leading-snug line-clamp-2">{titel}</p>
+          <p className="text-[11px] text-muted-foreground/70">{unter}</p>
+        </div>
+      </>
+    );
+    const klasse = "flex w-full text-left items-start gap-2.5 rounded-lg px-2.5 py-2 hover:bg-foreground/[0.04] transition-colors";
+    if (onClick) return <button onClick={onClick} className={klasse}>{inhalt}</button>;
+    return href ? <Link href={href} className={klasse}>{inhalt}</Link> : <div className={klasse}>{inhalt}</div>;
+  };
+
   return (
     <aside className="hidden lg:flex w-80 shrink-0 flex-col rounded-xl border border-foreground/[0.06] bg-card/50 min-h-0">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-foreground/[0.06]">
         <ListTodo className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-semibold">Aufgaben</h3>
-        <span className="ml-auto text-[11px] text-muted-foreground/60 tabular-nums">{tasks.length}</span>
+        <span className="ml-auto text-[11px] text-muted-foreground/60 tabular-nums">{anzahl}</span>
         <button
           onClick={umschalten}
           title="Aufgaben ausblenden"
@@ -736,33 +883,51 @@ function AufgabenSpalte({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"]
           <PanelRightClose className="h-4 w-4" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {sortiert.length === 0 ? (
+      <div className="flex-1 overflow-y-auto p-2">
+        {anzahl === 0 && (
           <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-            Noch keine Aufgaben. Sobald der Agent etwas für dich erledigt, steht es hier.
+            Noch nichts aufgetragen. Was du dem Agenten im Chat gibst, steht hier.
           </p>
-        ) : (
-          sortiert.slice(0, 50).map((task) => {
-            const cfg = statusConfig[task.status] ?? statusConfig.pending;
-            const Icon = cfg.icon;
-            return (
-              <Link
-                key={task.id}
-                href={`/tasks/${task.id}`}
-                className="flex items-start gap-2.5 rounded-lg px-2.5 py-2 hover:bg-foreground/[0.04] transition-colors"
-              >
-                <Icon className={cn("h-3.5 w-3.5 mt-0.5 shrink-0", cfg.color, task.status === "running" && "animate-spin")} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] leading-snug line-clamp-2">{task.title}</p>
-                  <p className="text-[11px] text-muted-foreground/70">
-                    {AUFGABEN_STATUS[task.status] ?? task.status} · {timeAgo(task.created_at)}
-                  </p>
-                </div>
-              </Link>
-            );
-          })
         )}
+        {offeneTodos.length > 0 && <Abschnitt titel="Offen" />}
+        {offeneTodos.map((t) => (
+          <Zeile
+            key={`o-${t.id}`}
+            icon={t.status === "in_progress"
+              ? <Loader2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-blue-400 animate-spin" />
+              : <Circle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground/60" />}
+            titel={t.title}
+            unter={t.status === "in_progress" ? "In Arbeit" : "Offen"}
+          />
+        ))}
+        {plaene.length > 0 && <Abschnitt titel="Geplant" />}
+        {plaene.map((plan) => (
+          <Zeile
+            key={`p-${plan.id}`}
+            href="/tasks"
+            icon={<CalendarClock className={cn("h-3.5 w-3.5 mt-0.5 shrink-0", plan.enabled ? "text-violet-400" : "text-muted-foreground/50")} />}
+            titel={aufgabenTitel(plan.name)}
+            unter={`${plan.takt || "wiederkehrend"} · ${plan.enabled ? `nächster Lauf ${datumKurz(plan.next_run_at)}` : "pausiert"}`}
+          />
+        ))}
+        {erledigt.length > 0 && <Abschnitt titel="Erledigt & laufend" />}
+        {erledigt.map((e) => {
+          const cfg = statusConfig[e.status] ?? statusConfig.pending;
+          const Icon = cfg.icon;
+          return (
+            <Zeile
+              key={e.key}
+              onClick={e.aufgabe ? () => setAngesehen(e.aufgabe!) : undefined}
+              icon={<Icon className={cn("h-3.5 w-3.5 mt-0.5 shrink-0", cfg.color, e.status === "running" && "animate-spin")} />}
+              titel={e.titel}
+              unter={`${AUFGABEN_STATUS[e.status] ?? e.status} · ${timeAgo(e.zeit)}`}
+            />
+          );
+        })}
       </div>
+      <Fenster offen={angesehen !== null} schliessen={fensterZu} breite="max-w-5xl">
+        {angesehen && <TaskDetail key={angesehen} taskId={angesehen} imFenster zeigeAufgabe={setAngesehen} />}
+      </Fenster>
     </aside>
   );
 }
@@ -1335,6 +1500,9 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
 // Technische/Secret-tragende Gruppen starten zu und tragen eine Warnung,
 // damit ein Nutzer nicht erst an API-Tokens vorbeiscrollen muss, um zu den
 // für ihn relevanten Einstellungen zu kommen.
+/** Zeigt AgentSettings nur einen Abschnitt (Fenster aus der Chat-Leiste). */
+const NurAbschnitt = createContext<string | null>(null);
+
 function SettingsAccordionSection({
   title,
   icon: Icon,
@@ -1348,7 +1516,9 @@ function SettingsAccordionSection({
   secretsWarning?: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const nurAbschnitt = useContext(NurAbschnitt);
+  const [open, setOpen] = useState(defaultOpen || nurAbschnitt === title);
+  if (nurAbschnitt && nurAbschnitt !== title) return null;
   return (
     <div className="rounded-xl border border-foreground/[0.06] bg-card/50 backdrop-blur-sm overflow-hidden">
       <button

@@ -23,7 +23,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TASK = (ROOT / "frontend/src/app/tasks/[id]/page.tsx").read_text()
+# Seit 1.341.0 ein Baustein, den Seite und Fenster ueber dem Chat teilen.
+TASK = (ROOT / "frontend/src/components/tasks/task-detail.tsx").read_text()
 TERM = (ROOT / "frontend/src/components/terminal/live-terminal.tsx").read_text()
 
 

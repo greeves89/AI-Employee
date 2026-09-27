@@ -20,6 +20,11 @@ const SYSTEM_ZEITPLAENE: { praefix: string; titel: string; zweck: string }[] = [
   { praefix: "[Rhythmus] Morgencheck", titel: "Morgencheck", zweck: "Der Agent prüft morgens den Plan für heute." },
 ];
 
+/** Legt die Plattform selbst an (Eigeninitiative, Tagesrhythmus)? */
+export function istSystemZeitplan(schedule: Schedule): boolean {
+  return SYSTEM_ZEITPLAENE.some((z) => schedule.name.startsWith(z.praefix));
+}
+
 /** Titel und Beschreibung eines Zeitplans. In der vollen Ansicht unverändert;
  *  in der Mitglieder-Ansicht ohne Systemprompt. */
 export function zeitplanAnzeige(schedule: Schedule, einfach: boolean): { titel: string; beschreibung: string } {
@@ -28,4 +33,9 @@ export function zeitplanAnzeige(schedule: Schedule, einfach: boolean): { titel: 
     if (system) return { titel: system.titel, beschreibung: system.zweck };
   }
   return { titel: schedule.name, beschreibung: schedule.prompt };
+}
+
+/** Titel ohne Herkunftsmarke ("[Manual] ", "[Scheduled] " …) — die sagt Nutzern nichts. */
+export function aufgabenTitel(titel: string): string {
+  return titel.replace(/^\[[^\]]+\]\s*/, "");
 }

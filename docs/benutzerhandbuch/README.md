@@ -136,11 +136,22 @@ Ansicht**. Sie zeigt nur, was man für die Arbeit mit seinen Agenten braucht:
 
 - **Seitenleiste:** Dashboard, Agenten, Aufgaben, Freigaben, Dateien, Hilfe.
   Hat der Admin deiner Rolle eigene Menüpunkte zugeteilt (Kap. 22.4), gelten diese.
-- **Agenten-Seite:** links der **Chat**, rechts die **Aufgaben** des Agenten —
-  laufende oben, darunter die erledigten. Ein Klick auf eine Aufgabe öffnet ihr
-  Ergebnis.
+- **Agenten-Seite:** links der **Chat**, rechts die **Aufgaben** des Agenten:
+  - **Offen** — was du ihm im Chat aufgetragen hast und er noch erledigt
+  - **Geplant** — wiederkehrende Aufträge mit Takt und nächstem Lauf
+  - **Erledigt & laufend** — Klick darauf öffnet ein Fenster mit Auftrag,
+    Ergebnis und Live-Verlauf; du bleibst dabei im Chat.
+  Mit dem Symbol rechts oben in der Spalte klappst du sie ein und aus.
 - **Sprechen statt tippen:** unten im Chat auf das **Mikrofon** klicken — die
   Sprachsitzung startet, der Agent antwortet gesprochen.
+- **Die Leiste unten im Chat** (neben Büroklammer und Mikrofon), je ein Klick
+  öffnet ein Fenster:
+  - **Stecker** — Konnektoren: MCP-Server und Dienste mit ihren Zugangsdaten
+  - **Chip** — Modell: welches KI-Modell der Agent nutzt
+  - **Schild** — Rechte: wie selbstständig der Agent handeln darf
+  - **Ordner** — Dateien, die der Agent angelegt hat
+  - **Gehirn** — Wissen: angebundene Second Brains
+- Im Chat siehst du, welche **Werkzeuge** der Agent gerade nutzt.
 - **Freigaben:** Anfragen deiner Agenten erlauben oder ablehnen (Kap. 13).
 
 ![Einfache Ansicht: Chat und Aufgaben](screenshots/37-mitglieder-agent.png)
