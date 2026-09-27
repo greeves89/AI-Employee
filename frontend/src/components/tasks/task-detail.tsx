@@ -600,7 +600,7 @@ export function TaskDetail({
                         max={replaySteps.length}
                         value={replayIndex}
                         onChange={(e) => { setReplayPlaying(false); setReplayIndex(parseInt(e.target.value, 10)); }}
-                        className="flex-1 accent-blue-500"
+                        className="volle-breite flex-1 accent-blue-500"
                       />
                       <span className="text-[11px] tabular-nums text-muted-foreground/70 w-28 text-right">
                         Schritt {replayIndex}/{replaySteps.length}

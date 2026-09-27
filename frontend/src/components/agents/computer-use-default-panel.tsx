@@ -13,7 +13,7 @@ import * as api from "@/lib/api";
 // computer_use.py, nicht nur hier angezeigt).
 const LABELS: Record<string, { label: string; icon: React.ElementType }> = {
   screenshots: { label: "Bildschirmfotos", icon: Camera },
-  accessibility: { label: "Bedienoberflaeche lesen", icon: Eye },
+  accessibility: { label: "Bedienoberfläche lesen", icon: Eye },
   mouse: { label: "Maussteuerung", icon: MousePointer2 },
   keyboard: { label: "Tastatureingaben", icon: Keyboard },
   apps: { label: "Programme öffnen/schließen", icon: FolderOpen },
@@ -83,9 +83,9 @@ export function ComputerUseDefaultPanel({ agentId }: { agentId: string }) {
         </button>
       </div>
       <p className="px-5 pt-4 text-[11px] text-muted-foreground">
-        Diese Faehigkeiten erhaelt jede Desktop-Sitzung dieses Agenten hoechstens
-        — unabhaengig davon, was der Plattform-Standard sonst erlaubt. Eine
-        laufende Sitzung kann dies nur noch einschraenken, nie erweitern.
+        Diese Fähigkeiten erhält jede Desktop-Sitzung dieses Agenten höchstens
+        — unabhängig davon, was der Plattform-Standard sonst erlaubt. Eine
+        laufende Sitzung kann dies nur noch einschränken, nie erweitern.
       </p>
       <div className="p-5 space-y-2">
         {groups.map((group) => {

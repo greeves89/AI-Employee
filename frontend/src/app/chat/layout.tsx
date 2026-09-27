@@ -255,7 +255,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
                 <ConversationGroup title="Heute" items={grouped.today} />
                 <ConversationGroup title="Gestern" items={grouped.yesterday} />
                 <ConversationGroup title="Letzte 7 Tage" items={grouped.lastWeek} />
-                <ConversationGroup title="Aelter" items={grouped.older} />
+                <ConversationGroup title="Älter" items={grouped.older} />
               </>
             )}
           </nav>

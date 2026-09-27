@@ -13,8 +13,8 @@ import type {
 export const MAX_RESPONSIBILITIES = 20;
 
 export const RHYTHMS: { value: ResponsibilityRhythm; label: string }[] = [
-  { value: "daily", label: "taeglich" },
-  { value: "weekly", label: "woechentlich" },
+  { value: "daily", label: "täglich" },
+  { value: "weekly", label: "wöchentlich" },
   { value: "monthly", label: "monatlich" },
   { value: "continuous", label: "laufend" },
 ];
@@ -76,7 +76,7 @@ export function ResponsibilitiesEditor({
       {value.length === 0 ? (
         <div className="rounded-lg border border-dashed border-foreground/[0.08] p-2.5 text-[10px] leading-relaxed text-muted-foreground/50">
           {emptyHint ??
-            "Noch keine Bereiche. Ohne sie plant der Agent nur, was jemand als Todo angelegt hat — mit ihnen weiss er, wofuer er dauerhaft zuständig ist, und baut sich daraus selbst den Tag."}
+            "Noch keine Bereiche. Ohne sie plant der Agent nur, was jemand als Todo angelegt hat — mit ihnen weiß er, wofür er dauerhaft zuständig ist, und baut sich daraus selbst den Tag."}
         </div>
       ) : (
         <div className="space-y-1.5">
@@ -124,7 +124,7 @@ export function ResponsibilitiesEditor({
                 type="text"
                 value={duty.notes ?? ""}
                 onChange={(e) => patch(idx, { notes: e.target.value })}
-                placeholder="Praezisierung (optional) — woran genau erkennt er, dass es erledigt ist?"
+                placeholder="Präzisierung (optional) — woran genau erkennt er, dass es erledigt ist?"
                 className="mt-1.5 w-full rounded-md border border-foreground/[0.06] bg-background/40 px-2 py-1 text-[10px] text-muted-foreground placeholder:text-muted-foreground/25 focus:border-emerald-500/40 focus:outline-none"
               />
             </div>

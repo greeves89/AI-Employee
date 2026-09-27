@@ -778,13 +778,13 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
     if (datei.size > grenze) {
       setFehler(
         api.laeuftUeberTunnel()
-          ? `Das Paket ist ${mb(datei.size)} gross. Ueber diese Adresse sind ` +
-            `${mb(api.CLOUDFLARE_KOERPER_GRENZE)} moeglich — die Grenze setzt der Tunnel ` +
+          ? `Das Paket ist ${mb(datei.size)} groß. Über diese Adresse sind ` +
+            `${mb(api.CLOUDFLARE_KOERPER_GRENZE)} möglich — die Grenze setzt der Tunnel ` +
             `davor, nicht die Plattform. Zwei Wege: das Paket schlanker packen ` +
             `(node_modules, .git und Build-Ordner wirft der Import ohnehin weg), ` +
-            `oder die Oberflaeche im lokalen Netz direkt aufrufen, dann gelten ` +
+            `oder die Oberfläche im lokalen Netz direkt aufrufen, dann gelten ` +
             `${mb(api.MAX_APP_IMPORT_BYTES)}.`
-          : `Das Paket ist ${mb(datei.size)} gross, moeglich sind ${mb(api.MAX_APP_IMPORT_BYTES)}.`
+          : `Das Paket ist ${mb(datei.size)} groß, möglich sind ${mb(api.MAX_APP_IMPORT_BYTES)}.`
       );
       return;
     }
@@ -822,11 +822,11 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
         .map((b) => `- ${b.text}`)
         .join("\n");
       const r = await api.createTask({
-        title: `App "${ergebnis.ordner}" lauffaehig machen`,
+        title: `App "${ergebnis.ordner}" lauffähig machen`,
         prompt:
           `Im Arbeitsbereich liegt unter /workspace/${ergebnis.ordner} eine gerade ` +
           `importierte App. Der Checkup hat folgende Punkte gefunden:\n\n${maengel}\n\n` +
-          `Bitte ergaenze, was fehlt, damit die App auf der Plattform startet. ` +
+          `Bitte ergänze, was fehlt, damit die App auf der Plattform startet. ` +
           `Die Plattform startet Apps ueber docker-compose.yml, compose.yml, ` +
           `docker-compose.yaml oder compose.yaml im App-Ordner.`,
         agent_id: agentId,
@@ -871,7 +871,7 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
                   onChange={(e) => setAgentId(e.target.value)}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
                 >
-                  <option value="">Agent waehlen …</option>
+                  <option value="">Agent wählen …</option>
                   {agents.map((a) => (
                     <option key={a.id} value={a.id}>{a.name}</option>
                   ))}
@@ -908,7 +908,7 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
                   {api.laeuftUeberTunnel()
                     ? " — die Grenze setzt der Tunnel vor der Plattform. Im lokalen Netz direkt aufgerufen sind es 500 MB."
                     : " (lokaler Zugang, ohne Tunnel)."}{" "}
-                  Tipp: node_modules, .git und Build-Ordner koennen raus — der
+                  Tipp: node_modules, .git und Build-Ordner können raus — der
                   Import wirft sie ohnehin weg.
                 </p>
               </div>
@@ -920,7 +920,7 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>
                   {phase === "pruefen"
-                    ? "Entpacken und pruefen …"
+                    ? "Entpacken und prüfen …"
                     : `Hochladen — ${mb((datei?.size ?? 0) * fortschritt)} von ${mb(datei?.size ?? 0)}`}
                 </span>
                 <span>{phase === "pruefen" ? "" : `${Math.round(fortschritt * 100)} %`}</span>
@@ -953,7 +953,7 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
                   <dd>{ergebnis.geschrieben} Datei{ergebnis.geschrieben === 1 ? "" : "en"} · {mb(ergebnis.bytes)}</dd>
                   {ergebnis.uebersprungen_gesamt > 0 && (
                     <>
-                      <dt>Uebersprungen</dt>
+                      <dt>Übersprungen</dt>
                       <dd>{ergebnis.uebersprungen_gesamt}</dd>
                     </>
                   )}

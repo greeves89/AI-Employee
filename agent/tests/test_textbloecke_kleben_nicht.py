@@ -85,3 +85,38 @@ class OberflaecheBeachtetDieGrenze(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GespeicherterVerlaufKlebtNicht(unittest.IsolatedAsyncioTestCase):
+    """27.09.2026: Live war die Luecke da, nach dem Neuladen nicht — gespeichert
+    wurde ``"".join(...)``. Der Text oben prueft nur, dass die Markierung im
+    Quelltext steht; das hier faehrt den echten Codex-Lauf."""
+
+    async def test_codex_ergebnis_trennt_aeusserungen(self):
+        import json
+        import os
+        import tempfile
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.codex_runner import CodexAgentRunner
+        from tests.test_codex_exit_preserves_partial_result import _FakeProcess
+
+        def ereignis(text):
+            return (json.dumps({"type": "item.completed",
+                                "item": {"type": "agent_message", "text": text}}) + "\n").encode()
+
+        publisher = MagicMock()
+        publisher.publish = AsyncMock()
+        publisher.publish_chat = AsyncMock()
+        publisher.last_activity_at = 0.0
+        runner = CodexAgentRunner(publisher)
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.dict(os.environ, {"CODEX_HOME": tmp}), \
+                patch("app.codex_runner._codex_auth_problem", return_value=None), \
+                patch("app.codex_runner.codex_auth_sync.push_if_rotated", AsyncMock(return_value=False)), \
+                patch("app.codex_runner.asyncio.create_subprocess_exec", AsyncMock(return_value=_FakeProcess(
+                    [ereignis("Ich lege den Job an."), ereignis("Erledigt!")], [], 0))):
+            ergebnis = await runner._run_codex("t1", "prompt", "model", stream="task")
+
+        self.assertEqual(ergebnis.get("result"), "Ich lege den Job an.\n\nErledigt!")
+

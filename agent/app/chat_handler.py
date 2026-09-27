@@ -378,6 +378,12 @@ class ChatHandler:
                     # Only send NEW text (delta since last event)
                     if len(current_full_text) > seen_text_len:
                         new_text = current_full_text[seen_text_len:]
+                        # Gespeichert wird wie angezeigt: ein neuer Zug ist ein
+                        # neuer Absatz. Live trennte die Oberflaeche die Bloecke
+                        # schon, im gespeicherten Verlauf klebten sie nach dem
+                        # Neuladen zusammen ("...an.Erledigt!", 27.09.2026).
+                        if neuer_block and full_text and not full_text.endswith("\n"):
+                            full_text += "\n\n"
                         full_text += new_text
                         seen_text_len = len(current_full_text)
                         # ``neuer_block`` trennt EIGENSTAENDIGE Antworten von der

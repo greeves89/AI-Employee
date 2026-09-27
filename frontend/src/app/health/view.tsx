@@ -188,7 +188,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
       {!embedded && (
         <Header
           title="Health & Performance"
-          subtitle="System-Gesundheit, Self-Tests und Verbesserungsvorschlaege"
+          subtitle="System-Gesundheit, Self-Tests und Verbesserungsvorschläge"
         />
       )}
 
@@ -771,7 +771,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   </div>
                   <div className="text-center p-3 rounded-lg bg-gray-500/5 border border-gray-500/10">
                     <p className="text-2xl font-bold text-gray-400">{latestRun.skipped}</p>
-                    <p className="text-[11px] text-muted-foreground/70">Uebersprungen</p>
+                    <p className="text-[11px] text-muted-foreground/70">Übersprungen</p>
                   </div>
                 </div>
                 {latestRun.results?.length > 0 && (
@@ -801,7 +801,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-primary" />
-              Verbesserungsvorschlaege
+              Verbesserungsvorschläge
             </h3>
             <div className="space-y-3">
               {dashboard.improvements.map((imp, i) => (

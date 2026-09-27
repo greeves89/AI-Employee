@@ -658,8 +658,8 @@ async def update_capabilities(
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    f"Faehigkeiten ausserhalb des Agenten-Defaults: {sorted(over_cap)}. "
-                    "Der zugewiesene Agent erlaubt hoechstens "
+                    f"Fähigkeiten außerhalb des Agenten-Standards: {sorted(over_cap)}. "
+                    "Der zugewiesene Agent erlaubt höchstens "
                     f"{sorted(agent_default)}."
                 ),
             )

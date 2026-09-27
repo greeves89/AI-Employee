@@ -925,7 +925,7 @@ export function CreateAgentModal({
                               </button>
                             </div>
                             <p className="text-[11px] text-muted-foreground/50 mt-1">
-                              Wird verschluesselt gespeichert. Nie in API-Responses sichtbar.
+                              Wird verschlüsselt gespeichert. Nie in API-Responses sichtbar.
                             </p>
                           </div>
 
@@ -1092,7 +1092,7 @@ export function CreateAgentModal({
                               <option value="l1">L1 — Nur lesen &amp; suchen</option>
                               <option value="l2">L2 — Empfehlungen erstellen</option>
                               <option value="l3">L3 — Aktionen mit Freigabe (Standard)</option>
-                              <option value="l4">L4 — Vollstaendig autonom</option>
+                              <option value="l4">L4 — Vollständig autonom</option>
                             </select>
                             <p className="mt-1 text-[11px] text-muted-foreground/60">
                               {autonomyLevel === "l1" && "Agent kann nur lesen und suchen — keine Aktionen."}
@@ -1158,7 +1158,7 @@ export function CreateAgentModal({
                               </select>
                               <p className="mt-1 text-[11px] text-muted-foreground/60">
                                 {budgetExceededAction === "haiku"
-                                  ? "Agent arbeitet weiter, aber mit dem guenstigen Haiku-Modell."
+                                  ? "Agent arbeitet weiter, aber mit dem günstigen Haiku-Modell."
                                   : "Agent wird gestoppt und nimmt keine neuen Tasks an."}
                               </p>
                             </div>

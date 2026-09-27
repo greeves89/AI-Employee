@@ -575,7 +575,7 @@ function TemplateEditForm({
         <ResponsibilitiesEditor
           value={state.responsibilities}
           onChange={next => onChange({ ...state, responsibilities: next })}
-          emptyHint="Noch keine Bereiche. Wer hier welche eintraegt, gibt jedem Agenten aus dieser Vorlage sofort einen Auftrag — er gilt damit als eingerichtet und faengt eigenstaendig an."
+          emptyHint="Noch keine Bereiche. Wer hier welche einträgt, gibt jedem Agenten aus dieser Vorlage sofort einen Auftrag — er gilt damit als eingerichtet und fängt eigenständig an."
           footnote="Werden beim Anlegen eines Agenten übernommen. Ändert man sie hier, gilt das für NEUE Agenten — bestehende behalten ihre eigenen."
         />
       </div>

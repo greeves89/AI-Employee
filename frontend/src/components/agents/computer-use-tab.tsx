@@ -129,7 +129,7 @@ const CAPABILITY_META: CapabilityMeta[] = [
   {
     id: "input_capture",
     label: "Eingaben mitschneiden",
-    description: "Zeichnet deine eigenen Klicks und Tastatureingaben auf (nur waehrend einer Aufnahme)",
+    description: "Zeichnet deine eigenen Klicks und Tastatureingaben auf (nur während einer Aufnahme)",
     icon: <Keyboard className="h-3.5 w-3.5" />,
     risk: "high",
     defaultOn: false,
@@ -971,8 +971,8 @@ function ReplayPanel({
           <span>
             Meine eigenen Eingaben mitschneiden (Ablauf von Hand vormachen).
             {humanCaptureAllowed
-              ? " Achtung: waehrend der Aufnahme werden alle Klicks und Tastatureingaben erfasst — keine Passwoerter eingeben."
-              : " Dafuer zuerst die Berechtigung „Eingaben mitschneiden“ aktivieren."}
+              ? " Achtung: während der Aufnahme werden alle Klicks und Tastatureingaben erfasst — keine Passwörter eingeben."
+              : " Dafür zuerst die Berechtigung „Eingaben mitschneiden“ aktivieren."}
           </span>
         </label>
       )}

@@ -54,7 +54,7 @@ PERMISSION_PACKAGES = {
     },
     "full-access": {
         "label": "Voller Root-Zugriff",
-        "description": "Uneingeschraenkter sudo-Zugriff - fuer Entwicklung und Testing",
+        "description": "Uneingeschränkter sudo-Zugriff — für Entwicklung und Tests",
         "icon": "shield-off",
         "sudoers_commands": ["ALL"],
     },

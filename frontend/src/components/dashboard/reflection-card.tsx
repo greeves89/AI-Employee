@@ -131,7 +131,7 @@ export function ReflectionCard() {
                   {stats.errors!.length} von {stats.transcripts_read ?? 0} Auswertungen fehlgeschlagen
                   {" — "}
                   {stats.errors!.some((e) => e.includes("extraction failed"))
-                    ? "kein LLM-Zugang? Anthropic-Key oder Bedrock-Account pruefen."
+                    ? "kein LLM-Zugang? Anthropic-Key oder Bedrock-Account prüfen."
                     : "Details im Audit-Log."}
                 </p>
               )}

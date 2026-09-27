@@ -540,7 +540,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           // in agent_credentials.py) — unabhaengig davon, was beim Agenten-Anlegen
           // explizit als Harness gewählt wurde. Wer Codex als Default will, stellt
           // das bewusst über die Provider-Auswahl + "Speichern" ein.
-          setMessage("Codex Login erfolgreich! Codex ist jetzt als Konto verfuegbar.");
+          setMessage("Codex Login erfolgreich! Codex ist jetzt als Konto verfügbar.");
           const s = await api.getSettings();
           setSettings(s);
         } else if (status.status === "error" || status.status === "expired" || status.status === "cancelled") {
@@ -686,7 +686,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       // NICHT mehr automatisch den globalen Default-Provider.
       setCodexLoginOpen(false);
       setCodexAuthJson("");
-      setMessage("Codex Login erfolgreich! Codex ist jetzt als Konto verfuegbar.");
+      setMessage("Codex Login erfolgreich! Codex ist jetzt als Konto verfügbar.");
       const s = await api.getSettings();
       setSettings(s);
     } catch (e) {

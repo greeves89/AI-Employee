@@ -5,6 +5,53 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.343.0] - 2026-09-27
+
+Befunde aus einem UI-Test der einfachen Ansicht mit einem Testkonto
+(Desktop hell/dunkel und Handy), verglichen mit gängigen KI-Chat-Oberflächen.
+
+### Behoben
+- **Antworten klebten nach dem Neuladen zusammen** („…an.Erledigt!"). Live
+  trennte die Oberfläche Textblöcke bereits, gespeichert wurden sie ohne
+  Trennung — bei Claude Code und Codex. Jetzt als Absatz, wie angezeigt.
+- **Handy: Chat nach Öffnen eines Gesprächs unlesbar.** Die Gesprächsliste
+  blieb neben dem Chat stehen und ließ ihm rund 80 px. Auf schmalen Bildschirmen
+  liegt sie jetzt über dem Chat und schließt nach der Auswahl.
+- **Handy: keine Aufgabenspalte.** Ein runder Knopf öffnet sie im Fenster.
+- **Echte Umlaute** in 66 sichtbaren Texten (Hilfe, Apps, Teams, Rechte,
+  Computer-Use, Einstellungen u. a.) und in zwei Server-Meldungen
+  („Uneingeschränkter sudo-Zugriff", Computer-Use-Fehlermeldung).
+
+### Geändert
+- **Zahlenfelder und Schieberegler zentral begrenzt.** Ein Feld für eine 3
+  oder eine 60 zog sich über die halbe Seite, ein Schieberegler über die ganze.
+  Zahlenfelder werden höchstens so breit wie eine sechsstellige Zahl (gleich
+  breite Ziffern), Schieberegler höchstens etwa 20 rem — eine Regel statt
+  27 Einzelstellen, sie gilt auch für künftige Felder.
+- **Neuer Baustein „Stufenwahl"** (− 2 +) für kleine ganze Zahlen; ersetzt bei
+  „Gleichzeitige Sitzungen" Schieberegler plus Zahlenfeld, die Karte ist eine
+  Zeile mit einem kurzen Satz.
+- **Erschöpftes KI-Kontingent verständlich:** statt der englischen Meldung,
+  doppelt als Fehler und als Antwort, ein deutscher Hinweis mit Rückkehrzeit in
+  Ortszeit.
+- **Werkzeuge im Chat mit deutschen Namen** in der einfachen Ansicht („Im Web
+  gesucht", „To-dos abgerufen", „Datei gelesen") statt der Rohnamen der
+  Laufzeiten; die eingeklappte Zeile zeigt „Arbeitet … zuletzt: …".
+- **Agenten-Liste für Mitglieder:** deutsch, ohne Ansichtsumschalter und ohne
+  Sammelaktionen (Start/Neustart/Stopp/Update für alle).
+- **Modell-Fenster für Mitglieder:** nur die Modellwahl und die Sprach-Karte;
+  „Gleichzeitige Sitzungen" und „Model-Router" bleiben beim Admin. Die
+  Sprach-Karte erklärt sich in einem Satz; „Wer antwortet?" erscheint nur bei
+  gewähltem Echtzeit-Modell.
+
+### Tests
+- Codex-Ergebnis trennt Äußerungen als Absatz (`test_textbloecke_kleben_nicht.py`,
+  fährt den echten Codex-Lauf).
+- `test_subagenten_bleiben_erkennbar.py` war seit 1.341.0 rot (prüfte noch den
+  alten Filter der einfachen Ansicht) — angepasst: ungefiltert oder mit Helfern.
+
+---
+
 ## [1.342.2] - 2026-09-27
 
 ### Behoben

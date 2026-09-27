@@ -162,7 +162,7 @@ export function CreateTeamModal({
                       <textarea
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Wofuer ist dieses Team zuständig?"
+                        placeholder="Wofür ist dieses Team zuständig?"
                         rows={2}
                         className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none"
                       />
@@ -239,7 +239,7 @@ export function CreateTeamModal({
                         ))}
                       </select>
                       <p className="text-[11px] text-muted-foreground/50 mt-1">
-                        Der Lead muss Mitglied des Teams sein und erhaelt delegierte Tasks.
+                        Der Lead muss Mitglied des Teams sein und erhält delegierte Tasks.
                       </p>
                     </div>
 

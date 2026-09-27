@@ -33,7 +33,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "begriffe",
     category: "Erste Schritte",
     title: "Agent, Chat, Task, Workspace — was ist was?",
-    body: "Agent = dein KI-Mitarbeiter (eigener Container + Gedaechtnis). Chat = unterhalten (Hin und Her). Task = beauftragen (autonom, auch im Hintergrund). Workspace = privater Dateibereich des Agenten (/workspace), bleibt über Updates erhalten.",
+    body: "Agent = dein KI-Mitarbeiter (eigener Container + Gedächtnis). Chat = unterhalten (Hin und Her). Task = beauftragen (autonom, auch im Hintergrund). Workspace = privater Dateibereich des Agenten (/workspace), bleibt über Updates erhalten.",
     keywords: ["agent", "chat", "task", "workspace", "begriffe", "grundlagen"],
     href: "/onboarding",
     hrefLabel: "Onboarding starten",
@@ -89,7 +89,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "skills-install",
     category: "Funktionen",
     title: "Skill in einen Agenten installieren",
-    body: "Im Skill Store zuerst oben einen Agenten auswaehlen, dann beim gewünschten Skill auf 'Installieren' klicken. Ohne ausgewählten Agenten weist ein Hinweis darauf hin; Fehler werden angezeigt statt verschluckt.",
+    body: "Im Skill Store zuerst oben einen Agenten auswählen, dann beim gewünschten Skill auf 'Installieren' klicken. Ohne ausgewählten Agenten weist ein Hinweis darauf hin; Fehler werden angezeigt statt verschluckt.",
     keywords: ["skill", "installieren", "hinzufügen", "agent"],
     href: "/skills",
     hrefLabel: "Zum Skill Marketplace",
@@ -153,7 +153,7 @@ const HELP_TOPICS: HelpTopic[] = [
     id: "rollen",
     category: "Admin",
     title: "Modelle/Accounts/Tools per Rolle freigeben",
-    body: "Es werden nur freigegebene Optionen angezeigt. Admin legt einen AI-Account an und gibt ihn per Rolle (Rechtebuendel) frei — erst dann ist er für Benutzer wählbar.",
+    body: "Es werden nur freigegebene Optionen angezeigt. Admin legt einen AI-Account an und gibt ihn per Rolle (Rechtebündel) frei — erst dann ist er für Benutzer wählbar.",
     keywords: ["rolle", "freigabe", "rechte", "ai-account", "modell", "admin", "gruppe"],
     href: "/admin",
     hrefLabel: "Zur Admin-Konsole",
@@ -161,7 +161,7 @@ const HELP_TOPICS: HelpTopic[] = [
   // --- Problemloesung (FAQ aus dem Benutzerhandbuch) ----------------------------
   {
     id: "faq-keine-agenten",
-    category: "Problemloesung (FAQ)",
+    category: "Problemlösung (FAQ)",
     title: "Ich sehe keinen Agenten",
     body: "Auf der Agents-Seite siehst du nur deine eigenen Agenten. Admins: Admin-Konsole, All Agents für alle.",
     keywords: ["agent", "leer", "sehe nichts", "faq"],
@@ -170,30 +170,30 @@ const HELP_TOPICS: HelpTopic[] = [
   },
   {
     id: "faq-modell-nicht-wählbar",
-    category: "Problemloesung (FAQ)",
+    category: "Problemlösung (FAQ)",
     title: "Modell/Account nicht wählbar",
     body: "Es werden nur freigegebene Optionen angezeigt. Der Admin muss den AI-Account anlegen und per Rolle freigeben.",
     keywords: ["modell", "account", "wählbar", "freigabe", "faq"],
   },
   {
     id: "faq-agent-hängt",
-    category: "Problemloesung (FAQ)",
+    category: "Problemlösung (FAQ)",
     title: "Agent reagiert nicht / arbeitet ewig",
-    body: "Status auf der Detailseite pruefen; bei Bedarf Restart. Lange Aufgaben (Render/Build) brauchen Zeit.",
+    body: "Status auf der Detailseite prüfen; bei Bedarf Restart. Lange Aufgaben (Render/Build) brauchen Zeit.",
     keywords: ["agent", "hängt", "reagiert nicht", "restart", "faq"],
     href: "/agents",
     hrefLabel: "Zu den Agents",
   },
   {
     id: "faq-update",
-    category: "Problemloesung (FAQ)",
+    category: "Problemlösung (FAQ)",
     title: "Update available beim Agenten",
     body: "Auf 'Update Now' klicken — Workspace-Daten bleiben erhalten.",
     keywords: ["update", "available", "agent", "faq"],
   },
   {
     id: "faq-approval",
-    category: "Problemloesung (FAQ)",
+    category: "Problemlösung (FAQ)",
     title: "Freigabe-Anfrage blockiert den Agenten",
     body: "Unter Approvals bzw. in der Benachrichtigung eine Option wählen — erst dann macht der Agent weiter.",
     keywords: ["approval", "freigabe", "blockiert", "genehmigung", "faq"],
@@ -202,7 +202,7 @@ const HELP_TOPICS: HelpTopic[] = [
   },
   {
     id: "faq-datei-finden",
-    category: "Problemloesung (FAQ)",
+    category: "Problemlösung (FAQ)",
     title: "Datei / Ergebnis finden",
     body: "Im Agenten Workspace-Tab oder unter Explorer; dort herunterladen.",
     keywords: ["datei", "ergebnis", "workspace", "explorer", "download", "faq"],
@@ -211,14 +211,14 @@ const HELP_TOPICS: HelpTopic[] = [
   },
   {
     id: "faq-benachrichtigungen",
-    category: "Problemloesung (FAQ)",
+    category: "Problemlösung (FAQ)",
     title: "Benachrichtigungen aktualisieren nicht live",
     body: "Seite einmal neu laden. Du siehst nur Benachrichtigungen deiner Agenten.",
     keywords: ["benachrichtigung", "live", "aktualisieren", "neu laden", "faq"],
   },
 ];
 
-const CATEGORY_ORDER = ["Erste Schritte", "Agenten", "Funktionen", "Admin", "Problemloesung (FAQ)"];
+const CATEGORY_ORDER = ["Erste Schritte", "Agenten", "Funktionen", "Admin", "Problemlösung (FAQ)"];
 
 export default function HelpPage() {
   const [query, setQuery] = useState("");

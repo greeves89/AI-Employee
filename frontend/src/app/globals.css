@@ -118,6 +118,19 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Ein Feld fuer eine 3 oder eine 60 zog sich ueber die halbe Seite, ein
+     Schieberegler ueber die ganze — so wirkt eine Oberflaeche wie ein Formular-
+     Generator, nicht wie ein Produkt. Zentral begrenzt statt an 27 Stellen:
+     max-width statt width, damit ``w-full`` im Raster weiter greift, das Feld
+     aber nie breiter wird als sein Inhalt braucht. Eine ausdrueckliche
+     ``max-w-*``-Klasse (Utility-Ebene) geht weiterhin vor. */
+  input[type="number"] {
+    max-width: 9rem;
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="range"]:not(.volle-breite) {
+    max-width: 20rem;
+  }
 }
 
 @layer utilities {

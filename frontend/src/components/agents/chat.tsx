@@ -21,6 +21,8 @@ import { ChatOverview } from "./chat-overview";
 import { SessionRail } from "./session-rail";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { aufgabenTitel } from "@/lib/aufgaben-anzeige";
+import { istKontingentMeldung, kontingentWiederAb } from "@/lib/kontingent";
+import { werkzeugAufDeutsch } from "@/lib/werkzeug-namen";
 import { cn, formatBytes } from "@/lib/utils";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import * as api from "@/lib/api";
@@ -133,7 +135,7 @@ function subagentAusInput(
   if (stapel && stapel.length > 0) {
     const titel = stapel.map((t) => String(t.title || "")).filter(Boolean);
     return {
-      beschreibung: titel.length === 1 ? titel[0] : `${stapel.length} Auftraege delegiert`,
+      beschreibung: titel.length === 1 ? titel[0] : `${stapel.length} Aufträge delegiert`,
       art: "an andere Agenten",
       auftrag: stapel.map((t, i) => `${i + 1}. ${t.title || ""}\n${t.prompt || ""}`).join("\n\n"),
       imHintergrund: werkzeug !== "delegate_and_wait",
@@ -2253,14 +2255,31 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         </div>
       )}
       {/* Conversation rail (shared with the Speech tab) — hidden in embedded (modal) mode */}
+      {/* Auf dem Handy liegt die Liste UEBER dem Chat und schliesst nach der
+          Auswahl. Daneben gequetscht blieben dem Chat rund 80 px — ein
+          Buchstabe je Zeile (UI-Test 27.09.2026). */}
+      {!embedded && railOpen && (
+        <button
+          type="button"
+          aria-label="Gesprächsliste schließen"
+          onClick={() => setRailOpen(false)}
+          className="absolute inset-0 z-20 bg-black/40 md:hidden"
+        />
+      )}
       {!embedded && railOpen && (
         <SessionRail
-          className="border-r border-border bg-card/40"
+          className="border-r border-border bg-card/40 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-30 max-md:w-72 max-md:bg-card max-md:shadow-2xl"
           sessions={sessions.map((s) => ({ ...s, fallbackLabel: s.label }))}
           selectedId={activeSessionId}
           busyIds={beschaeftigteFaeden}
-          onSelect={switchSession}
-          onNew={createNewSession}
+          onSelect={(id) => {
+            switchSession(id);
+            if (!window.matchMedia("(min-width: 768px)").matches) setRailOpen(false);
+          }}
+          onNew={() => {
+            createNewSession();
+            if (!window.matchMedia("(min-width: 768px)").matches) setRailOpen(false);
+          }}
           newDisabled={!isConnected}
           onPin={togglePin}
           onRename={renameSession}
@@ -2383,7 +2402,28 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             </button>
           </div>
         )}
-        {messages.filter((msg, idx, arr) => arr.findIndex((m) => m.id === msg.id && m.role === msg.role) === idx).map((msg) => {
+        {messages.filter((msg, idx, arr) => arr.findIndex((m) => m.id === msg.id && m.role === msg.role) === idx).map((msg, idx, arr) => {
+          // Erschöpftes Kontingent: EIN deutscher Hinweis statt der englischen
+          // Meldung, die als Fehler UND als Antwort doppelt im Verlauf stand.
+          if ((msg.role === "error" || msg.role === "assistant") && istKontingentMeldung(msg.content)) {
+            const vorige = arr[idx - 1];
+            if (vorige && istKontingentMeldung(vorige.content) && vorige.content === msg.content) return null;
+            const wieder = kontingentWiederAb(msg.content);
+            return (
+              <div key={`${msg.id}-kontingent`} className="mx-auto w-full max-w-3xl px-4 py-1">
+                <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 text-[13px]">
+                  <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div>
+                    <p className="font-medium">Das KI-Kontingent ist gerade aufgebraucht.</p>
+                    <p className="text-muted-foreground">
+                      Diese Nachricht wurde nicht bearbeitet.
+                      {wieder ? ` Wieder verfügbar: ${wieder}.` : ""} Wenn es eilt, wende dich an deinen Administrator.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
           // Eine Auftrags-Kachel ist ein Element des VERLAUFS, keine eigene Zone:
           // sie steht dort, wo der Auftrag vergeben wurde, und alles Spaetere
           // kommt darunter. Vorher hingen alle Kacheln am Ende und rutschten bei
@@ -3491,7 +3531,7 @@ function SubagentLeiste({
       <button
         type="button"
         onClick={() => setOffen((o) => !o)}
-        title={`${subagenten.length} Helfer in dieser Sitzung — klicken fuer die Liste`}
+        title={`${subagenten.length} Helfer in dieser Sitzung — klicken für die Liste`}
         className={cn(
           "flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11px] transition-all",
           laufen > 0
@@ -4112,6 +4152,8 @@ function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: 
   // dass der ZUG läuft, nicht dass gerade ein Werkzeug rechnet. Zwischen zwei
   // Werkzeugen denkt der Agent, und genau dann sah es tot aus.
   const anyRunning = isStreaming || steps.some((s) => s.status === "running");
+  const { simpleMode } = useSimpleMode();
+  const letzter = steps[steps.length - 1];
 
   if (expanded) {
     return (
@@ -4120,7 +4162,7 @@ function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: 
           onClick={() => setExpanded(false)}
           className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
         >
-          <ChevronRight className="h-3 w-3 rotate-90" /> {steps.length} Tool-Aufrufe einklappen
+          <ChevronRight className="h-3 w-3 rotate-90" /> {steps.length} {simpleMode ? (steps.length === 1 ? "Schritt" : "Schritte") : "Tool-Aufrufe"} einklappen
         </button>
         {steps.map((s) => (
           <ToolCallBlock key={s.id} step={s} />
@@ -4140,7 +4182,7 @@ function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: 
     >
       <div className="flex items-center">
         {shown.map((s, idx) => {
-          const { label } = getToolDisplay(s.tool, s.input);
+          const label = simpleMode ? werkzeugAufDeutsch(s.tool) : getToolDisplay(s.tool, s.input).label;
           return (
             <span
               key={s.id}
@@ -4174,7 +4216,9 @@ function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: 
         {/* „es dreht sich kein Kreis" — aus dem ersten Kundenfeedback zu dieser
             Zeile. Ein Wort allein liest man nicht als Bewegung. */}
         {anyRunning && <Loader2 className="h-3 w-3 animate-spin text-amber-500" />}
-        {anyRunning ? "Arbeitet…" : `${steps.length} ${steps.length === 1 ? "Tool" : "Tools"}`} · Details
+        {simpleMode
+          ? (anyRunning && letzter ? `Arbeitet … zuletzt: ${werkzeugAufDeutsch(letzter.tool)}` : `${steps.length} ${steps.length === 1 ? "Schritt" : "Schritte"}`)
+          : (anyRunning ? "Arbeitet…" : `${steps.length} ${steps.length === 1 ? "Tool" : "Tools"}`)} · Details
       </span>
     </button>
   );
@@ -4182,7 +4226,11 @@ function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: 
 
 function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const { label, description, detail } = getToolDisplay(step.tool, step.input);
+  const { simpleMode } = useSimpleMode();
+  const anzeige = getToolDisplay(step.tool, step.input);
+  // Einfache Ansicht: was der Agent tut, nicht wie das Werkzeug heisst.
+  const label = simpleMode ? werkzeugAufDeutsch(step.tool) : anzeige.label;
+  const { description, detail } = anzeige;
   const isRunning = step.status === "running";
   const hasOutput = Boolean(step.output);
 

@@ -833,7 +833,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
       setServers((prev) => [server, ...prev]);
       closeForm();
       setExpandedServer(server.id);
-      onToast({ type: "success", message: `MCP Server "${server.name}" hinzugefuegt (${server.tools.length} Tools)` });
+      onToast({ type: "success", message: `MCP Server "${server.name}" hinzugefügt (${server.tools.length} Tools)` });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Verbindung fehlgeschlagen";
       // Nur bei einer PRIVATEN Adresse anbieten. Loopback und Metadatenpunkt

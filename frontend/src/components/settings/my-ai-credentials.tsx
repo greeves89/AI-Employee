@@ -261,7 +261,7 @@ export function MyAiCredentials() {
                         <span
                           title={
                             unbestaetigt
-                              ? `Zuletzt bestaetigt ${relativeZeit(z!.last_used_at!)} — seither ist kein Agent mehr damit gelaufen.`
+                              ? `Zuletzt bestätigt ${relativeZeit(z!.last_used_at!)} — seither ist kein Agent mehr damit gelaufen.`
                               : undefined
                           }
                         >

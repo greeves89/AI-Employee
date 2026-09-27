@@ -49,6 +49,7 @@ import { ComputerUseDefaultPanel } from "@/components/agents/computer-use-defaul
 import { useTasks } from "@/hooks/use-tasks";
 import { AUFGABEN_STATUS, aufgabenTitel, istSystemZeitplan } from "@/lib/aufgaben-anzeige";
 import { Fenster } from "@/components/ui/fenster";
+import { Stufenwahl } from "@/components/ui/stufenwahl";
 import { TaskDetail } from "@/components/tasks/task-detail";
 import type { AgentTodo, Schedule } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -139,6 +140,7 @@ export default function AgentDetailPage() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
+  const [aufgabenFenster, setAufgabenFenster] = useState(false);
   const { simpleMode } = useSimpleMode();
   const isAdminUser = useAuthStore((s) => s.user?.role) === "admin";
 
@@ -444,6 +446,24 @@ export default function AgentDetailPage() {
               ladeAufgaben={ladeAufgaben}
               ausloeser={agent.current_task ?? ""}
             />
+            {/* Handy/Tablet: die Spalte hat keinen Platz — ein Knopf holt sie
+                ins Fenster (UI-Test 27.09.2026: dort gab es sie gar nicht). */}
+            <button
+              onClick={() => setAufgabenFenster(true)}
+              title="Aufgaben"
+              className="lg:hidden fixed bottom-24 right-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
+            >
+              <ListTodo className="h-5 w-5" />
+            </button>
+            <Fenster offen={aufgabenFenster} schliessen={() => setAufgabenFenster(false)} titel="Aufgaben">
+              <AufgabenSpalte
+                agentId={agentId}
+                tasks={tasks}
+                ladeAufgaben={ladeAufgaben}
+                ausloeser={agent.current_task ?? ""}
+                imFenster
+              />
+            </Fenster>
           </div>
         ) : (<>
         {/* Grouped tab switcher (groups + sub-reiter) */}
@@ -770,8 +790,11 @@ function AufgabenSpalte({
   tasks,
   ladeAufgaben,
   ausloeser,
+  imFenster = false,
 }: {
   agentId: string;
+  /** Auf schmalen Bildschirmen im Fenster statt als Spalte — ohne Einklappen. */
+  imFenster?: boolean;
   tasks: ReturnType<typeof useTasks>["tasks"];
   ladeAufgaben: () => void;
   /** Aendert sich, wenn der Agent einen Zug beginnt oder beendet — dann neu laden,
@@ -849,7 +872,7 @@ function AufgabenSpalte({
   const anzahl = offeneTodos.length + plaene.length + erledigt.length;
   const aktiv = offeneTodos.some((t) => t.status === "in_progress") || erledigt.some((e) => e.laeuft);
 
-  if (!offen) {
+  if (!offen && !imFenster) {
     return (
       <button
         onClick={umschalten}
@@ -915,18 +938,20 @@ function AufgabenSpalte({
   };
 
   return (
-    <aside className="hidden lg:flex w-80 shrink-0 flex-col rounded-xl border border-foreground/[0.06] bg-card/50 min-h-0">
+    <aside className={imFenster
+      ? "flex h-[70vh] flex-col"
+      : "hidden lg:flex w-80 shrink-0 flex-col rounded-xl border border-foreground/[0.06] bg-card/50 min-h-0"}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-foreground/[0.06]">
         <ListTodo className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-semibold">Aufgaben</h3>
         <span className="ml-auto text-[11px] text-muted-foreground/60 tabular-nums">{anzahl}</span>
-        <button
+        {!imFenster && <button
           onClick={umschalten}
           title="Aufgaben ausblenden"
           className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
         >
           <PanelRightClose className="h-4 w-4" />
-        </button>
+        </button>}
       </div>
       {/* Reiter statt gestapelter Abschnitte: bei vielen offenen To-dos war
           alles Geplante und Erledigte aus dem Blick geschoben. */}
@@ -1489,7 +1514,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
                 <button
                   onClick={handleRegenerateKey}
                   className="rounded-lg p-2.5 border border-foreground/[0.08] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
-                  title="Key neu generieren (alle Sessions ungueltig)"
+                  title="Key neu generieren (alle Sessions ungültig)"
                 >
                   <RefreshCcw className="h-4 w-4" />
                 </button>
@@ -1596,6 +1621,7 @@ function AgentSettings({
 }) {
   const agentId = agent.id;
   const currentPermissions = agent.permissions ?? [];
+  const { simpleMode } = useSimpleMode();
 
   const [packages, setPackages] = useState<PermissionPackage[]>([]);
   const [selected, setSelected] = useState<string[]>(currentPermissions);
@@ -2075,12 +2101,13 @@ function AgentSettings({
 
       <SettingsAccordionSection title="Modell & Verhalten" icon={Brain}>
       {/* Model-Router: pick a model per task from its content instead of always using one fixed model */}
+      {!simpleMode && (
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="text-sm font-medium">Model-Router</div>
             <div className="text-[11px] text-muted-foreground/60">
-              Wählt pro Task automatisch ein Modell anhand des Prompt-Inhalts (einfach / normal / komplex) statt immer dasselbe Modell zu nutzen. Budget-Downgrade hat weiterhin Vorrang.
+              Wählt je Aufgabe ein passendes Modell nach Schwierigkeit.
             </div>
           </div>
           <button
@@ -2133,54 +2160,36 @@ function AgentSettings({
           </div>
         )}
       </div>
+      )}
 
-      {/* Parallele Sessions */}
-      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-foreground/[0.06] px-5 py-3">
-          <Layers className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium">Parallele Sessions</span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full border border-primary/20 bg-primary/10 text-primary font-medium">
-            {savedParallel}×
-          </span>
-        </div>
-        <div className="p-5 space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Wie viele Sessions der Agent <span className="font-medium text-foreground/80">gleichzeitig</span> bearbeitet
-            — gilt für Aufgaben und Chats. Alles darüber wird automatisch in die Warteschlange gestellt und startet,
-            sobald ein Platz frei wird.
-          </p>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={8}
-              step={1}
-              value={parallelSessions}
-              onChange={(e) => setParallelSessions(Number(e.target.value))}
-              className="flex-1 accent-primary"
-            />
-            <input
-              type="number"
-              min={1}
-              max={16}
-              value={parallelSessions}
-              onChange={(e) => setParallelSessions(Math.max(1, Math.min(16, Number(e.target.value) || 1)))}
-              className="w-16 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-2.5 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
+      {/* Parallele Sessions — Betrieb (CPU/RAM, Neustart), nicht fuer Mitglieder */}
+      {!simpleMode && (
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Layers className="h-4 w-4 text-primary" />
+              Gleichzeitige Sitzungen
+            </div>
+            <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+              Aufgaben und Chats zugleich; der Rest wartet. Mehr braucht mehr Speicher.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Stufenwahl wert={parallelSessions} setWert={setParallelSessions} min={1} max={16} label="Gleichzeitige Sitzungen" />
             <button
               onClick={savePS}
               disabled={psSaving || parallelSessions === savedParallel}
-              className="flex items-center gap-2 rounded-lg bg-primary px-3.5 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              title="Speichern startet den Agenten neu"
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
             >
-              {psSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {psSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
               Speichern
             </button>
           </div>
-          <p className="text-[11px] text-muted-foreground/60">
-            1 = streng nacheinander (Standard). Höhere Werte brauchen mehr CPU/RAM im Container. Ändern startet den Agenten neu.
-          </p>
         </div>
       </div>
+      )}
 
       {/* Voice interaction front (classic pipeline vs. realtime models) */}
       <InteractionModelCard
@@ -2477,7 +2486,7 @@ function AgentSettings({
                     onChange={(e) => setLlmTemp(e.target.value)}
                     className="w-full max-w-[200px] rounded-lg border border-foreground/[0.1] bg-background/80 px-3.5 py-2 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all tabular-nums"
                   />
-                  <p className="text-[10px] text-muted-foreground/40 mt-1">0 = praezise, 1 = kreativ</p>
+                  <p className="text-[10px] text-muted-foreground/40 mt-1">0 = präzise, 1 = kreativ</p>
                 </div>
 
                 {/* API Key (change) */}

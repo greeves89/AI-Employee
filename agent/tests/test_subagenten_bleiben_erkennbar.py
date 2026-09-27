@@ -96,10 +96,16 @@ class OberflaecheTest(unittest.TestCase):
                 self.assertLess(stelle, ende, warum)
 
     def test_sie_verschwinden_nicht_im_einfachen_modus(self):
-        """Dass Helfer laufen, ist keine technische Einzelheit."""
-        treffer = re.search(r"const visibleSteps = simpleMode\s*\?(.*?);", self.quelle, re.S)
+        """Dass Helfer laufen, ist keine technische Einzelheit.
+
+        Seit v1.341.0 filtert die einfache Ansicht die Schritte gar nicht mehr
+        (auch Werkzeuge bleiben sichtbar). Ein erneuter Filter muesste Helfer
+        ausdruecklich durchlassen."""
+        treffer = re.search(r"const visibleSteps = (.*?);", self.quelle, re.S)
         self.assertIsNotNone(treffer)
-        self.assertIn('"subagent"', treffer.group(1))
+        filter_ausdruck = treffer.group(1)
+        if "simpleMode" in filter_ausdruck:
+            self.assertIn('"subagent"', filter_ausdruck)
 
     def test_es_gibt_eine_dauerhafte_anzeige_unten(self):
         """Die Kachel in der Blase reicht nicht.

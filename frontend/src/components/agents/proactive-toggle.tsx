@@ -171,7 +171,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 2000);
     } catch {
-      setSaveError("Speichern fehlgeschlagen — pruefe Uhrzeit-Format (HH:MM) und Zeitzone.");
+      setSaveError("Speichern fehlgeschlagen — prüfe Uhrzeit-Format (HH:MM) und Zeitzone.");
     }
     setSavingPrompt(false);
   };
@@ -398,11 +398,11 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
                     value={customDraft}
                     onChange={(e) => setCustomDraft(e.target.value)}
                     rows={5}
-                    placeholder="z.B. Pruefe bei jedem Lauf das IT-Operations Second Brain auf neue Druckerprobleme und ergaenze fehlende Loesungen als .md."
+                    placeholder="z.B. Prüfe bei jedem Lauf das IT-Operations Second Brain auf neue Druckerprobleme und ergänze fehlende Lösungen als .md."
                     className="w-full resize-y rounded-lg border border-foreground/[0.08] bg-background/60 p-2 text-[11px] leading-relaxed text-foreground placeholder:text-muted-foreground/30 focus:border-emerald-500/40 focus:outline-none"
                   />
                   <div className="mt-1.5 text-[10px] text-muted-foreground/40">
-                    Wird bei jedem proaktiven Lauf an den Basis-Prompt angehaengt.
+                    Wird bei jedem proaktiven Lauf an den Basis-Prompt angehängt.
                   </div>
                 </div>
 

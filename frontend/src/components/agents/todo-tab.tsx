@@ -208,7 +208,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
             className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             <Plus className="h-3 w-3" />
-            Hinzufuegen
+            Hinzufügen
           </button>
         </div>
       </div>

@@ -13,6 +13,7 @@ import type { AgentTeam } from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import { getAgentTag } from "@/components/agents/agent-avatar";
 import { AgentFilterBar, type GroupBy, type SortBy } from "@/components/agents/agent-filter-bar";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 type ViewMode = "grid" | "network" | "teams";
 
 /** Die Begründung aus einer 409-Antwort herausholen.
@@ -55,6 +56,7 @@ const AgentNetworkView = dynamic(
 export default function AgentsPage() {
   const { agents, loading, refresh } = useAgents();
   const confirm = useConfirm();
+  const { simpleMode } = useSimpleMode();
   const [showCreate, setShowCreate] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -316,10 +318,13 @@ export default function AgentsPage() {
   return (
     <div>
       <Header
-        title="Agents"
-        subtitle="Manage your Claude Code agent containers"
+        title={simpleMode ? "Agenten" : "Agents"}
+        subtitle={simpleMode ? "Deine KI-Mitarbeiter — Klick auf einen öffnet den Chat" : "Manage your Claude Code agent containers"}
         actions={
           <div className="flex items-center gap-2">
+            {/* Ansichten und Sammelaktionen sind Betrieb, nicht Alltag —
+                in der einfachen Ansicht nur "Neuer Agent". */}
+            {!simpleMode && (<>
             {/* View mode toggle */}
             <div className="flex items-center rounded-lg border border-foreground/[0.06] bg-card/50 p-0.5">
               <button
@@ -401,13 +406,14 @@ export default function AgentsPage() {
                 Stop All
               </button>
             )}
+            </>)}
 
             <button
               onClick={() => setShowCreate(true)}
               className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all duration-200"
             >
               <Plus className="h-4 w-4" />
-              New Agent
+              {simpleMode ? "Neuer Agent" : "New Agent"}
             </button>
           </div>
         }
@@ -445,16 +451,16 @@ export default function AgentsPage() {
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground/[0.06] mb-4">
               <Bot className="h-7 w-7 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold mb-1.5">No agents yet</h3>
+            <h3 className="text-lg font-semibold mb-1.5">Noch keine Agenten</h3>
             <p className="text-sm text-muted-foreground mb-5">
-              Create your first agent to start running autonomous tasks.
+              Leg deinen ersten Agenten an — er übernimmt Aufgaben für dich.
             </p>
             <button
               onClick={() => setShowCreate(true)}
               className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
             >
               <Plus className="h-4 w-4" />
-              Create Agent
+              Agent anlegen
             </button>
           </div>
         ) : (
@@ -518,11 +524,11 @@ export default function AgentsPage() {
                     </div>
                   ) : (
                     <>
-                      {agent.update_available && (
+                      {agent.update_available && !simpleMode && (
                         <button
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleUpdateAgent(agent.id); }}
                           className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 transition-colors"
-                          title="Update agent"
+                          title="Agent aktualisieren"
                         >
                           <ArrowUpCircle className="h-3.5 w-3.5" />
                         </button>
@@ -531,7 +537,7 @@ export default function AgentsPage() {
                         <button
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleStart(agent.id); }}
                           className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/15 transition-colors"
-                          title="Start"
+                          title="Starten"
                         >
                           <Play className="h-3.5 w-3.5" />
                         </button>
@@ -539,7 +545,7 @@ export default function AgentsPage() {
                         <button
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleStop(agent.id); }}
                           className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm text-muted-foreground hover:text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 transition-colors"
-                          title="Stop"
+                          title="Anhalten"
                         >
                           <Square className="h-3.5 w-3.5" />
                         </button>
@@ -547,7 +553,7 @@ export default function AgentsPage() {
                       <button
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRemove(agent.id); }}
                         className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm text-muted-foreground hover:text-red-400 hover:bg-red-500/15 transition-colors"
-                        title="Remove"
+                        title="Löschen"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

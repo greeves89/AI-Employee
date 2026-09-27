@@ -5,6 +5,7 @@ import { Radio, Loader2, Mic, Check, ExternalLink } from "lucide-react";
 import * as api from "@/lib/api";
 import type { RealtimeModelOption } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 /**
  * Per-agent voice interaction front selector.
@@ -30,6 +31,7 @@ export function InteractionModelCard({
   currentDelegate?: boolean | null;
 }) {
   const [models, setModels] = useState<RealtimeModelOption[]>([]);
+  const { simpleMode } = useSimpleMode();
   const [loading, setLoading] = useState(true);
   const [selValue, setSelValue] = useState<string | null>(
     current && currentAccountId && currentModelId ? `${currentAccountId}:${currentModelId}` : null,
@@ -115,10 +117,8 @@ export function InteractionModelCard({
         {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/60" />}
       </div>
       <div className="space-y-3 p-5">
-        <p className="text-[11px] leading-relaxed text-muted-foreground/70">
-          Wie der Agent per Sprache mit dir spricht. Realtime-Modelle (z. B. AWS Nova Sonic)
-          hören durchgehend zu und geben Aufgaben über <code>ask_agent</code> weiter — Zugänge
-          richtest du unter <b>AI-Accounts</b> ein, hier wählst du Modell ↔ Provider.
+        <p className="text-[11px] text-muted-foreground/70">
+          Klassisch per Aufnahme oder als Gespräch in Echtzeit.
         </p>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -169,7 +169,9 @@ export function InteractionModelCard({
           })}
         </div>
 
-        {/* Wer antwortet im Echtzeit-Gespraech? */}
+        {/* Wer antwortet im Echtzeit-Gespraech? — nur, wenn Echtzeit gewaehlt ist;
+            vorher ist die Frage gegenstandslos. */}
+        {selValue && (
         <div className="space-y-1.5 border-t border-foreground/[0.06] pt-3">
           <p className="text-[11px] font-medium text-muted-foreground/80">
             Wer antwortet im Echtzeit-Gespräch?
@@ -199,8 +201,10 @@ export function InteractionModelCard({
             })}
           </div>
         </div>
+        )}
 
-        {!loading && models.length === 0 && (
+        {/* Den Zugang legt der Admin an — Mitglieder koennen hier nichts tun. */}
+        {!loading && models.length === 0 && !simpleMode && (
           <a
             href="/?tab=ai-accounts"
             className="flex items-center gap-1.5 text-[11px] text-fuchsia-400 hover:underline"

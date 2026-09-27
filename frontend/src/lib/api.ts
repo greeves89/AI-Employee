@@ -2017,7 +2017,7 @@ export async function importAppZip(
     xhr.onerror = () => reject(new Error(
       "Verbindung abgebrochen. Bei grossen Paketen bricht meist der Reverse-Proxy ab."
     ));
-    xhr.ontimeout = () => reject(new Error("Zeitueberschreitung beim Hochladen"));
+    xhr.ontimeout = () => reject(new Error("Zeitüberschreitung beim Hochladen"));
     xhr.send(fd);
   });
 }

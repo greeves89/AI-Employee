@@ -339,7 +339,9 @@ class CodexAgentRunner:
 
             returncode = await self._process.wait()
             await stderr_task
-            final_text = "".join(text_output)
+            # Jedes Stueck ist eine eigene Aeusserung (siehe oben) — als Absatz
+            # trennen, sonst klebt der gespeicherte Verlauf zusammen.
+            final_text = "\n\n".join(t.strip("\n") for t in text_output)
             result_data["result"] = final_text
             result_data["text"] = final_text
 

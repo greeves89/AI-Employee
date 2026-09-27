@@ -69,7 +69,7 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
   const handleDelete = async (team: Team) => {
     const ok = await confirm({
       title: `Team "${team.name}" löschen?`,
-      message: "Das Team wird entfernt. Die zugehoerigen Agents bleiben erhalten.",
+      message: "Das Team wird entfernt. Die zugehörigen Agents bleiben erhalten.",
       variant: "destructive",
       confirmLabel: "Löschen",
     });
@@ -96,7 +96,7 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
           </div>
           <div>
             <h2 className="text-base font-semibold leading-tight">Teams</h2>
-            <p className="text-xs text-muted-foreground">Agents buendeln, Lead festlegen, Tasks delegieren</p>
+            <p className="text-xs text-muted-foreground">Agents bündeln, Lead festlegen, Tasks delegieren</p>
           </div>
         </div>
         <button
@@ -145,7 +145,7 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
           </div>
           <h3 className="text-lg font-semibold mb-1.5">Noch keine Teams</h3>
           <p className="text-sm text-muted-foreground mb-5">
-            Buendle deine Agents zu einem Team und delegiere Tasks an den Lead.
+            Bündle deine Agents zu einem Team und delegiere Tasks an den Lead.
           </p>
           <button
             onClick={() => setShowCreate(true)}
