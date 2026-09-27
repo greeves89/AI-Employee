@@ -24,33 +24,33 @@ const statusConfig: Record<string, {
 }> = {
   running: {
     online: true,
-    label: "Idle",
+    label: "Bereit",
     badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   },
   idle: {
     online: true,
-    label: "Idle",
+    label: "Bereit",
     badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   },
   working: {
     online: true,
-    label: "Working",
+    label: "Arbeitet",
     badge: "bg-blue-500/10 text-blue-400 border-blue-500/20",
     glow: "from-blue-500/20 to-transparent",
   },
   stopped: {
     online: false,
-    label: "Stopped",
+    label: "Gestoppt",
     badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
   },
   error: {
     online: false,
-    label: "Error",
+    label: "Fehler",
     badge: "bg-red-500/10 text-red-400 border-red-500/20",
   },
   created: {
     online: false,
-    label: "Starting",
+    label: "Startet",
     badge: "bg-violet-500/10 text-violet-400 border-violet-500/20",
   },
 };
@@ -100,7 +100,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
               <div className="flex items-center gap-1.5">
                 {agent.role ? (
                   <span className="text-[11px] text-primary/70 font-medium truncate">{agent.role}</span>
-                ) : (
+                ) : simpleMode ? null : (
                   <span className="text-[11px] font-mono text-muted-foreground/70">
                     {agent.model.split("-").slice(0, 2).join("-")}
                   </span>
@@ -149,7 +149,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                 </div>
               );
             })()}
-            {agent.mode === "claude_code" ? (
+            {simpleMode ? null : agent.mode === "claude_code" ? (
               <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-orange-500/10 text-orange-400 border-orange-500/20">
                 <Plug className="h-3 w-3" />
                 Anthropic
@@ -174,7 +174,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                 {updating ? "Aktualisiere…" : "Update"}
               </div>
             )}
-            {!updating && !agent.update_available && agent.image_outdated && (
+            {!simpleMode && !updating && !agent.update_available && agent.image_outdated && (
               <div
                 title="Läuft auf einem veralteten Agent-Image. Auf dem Host ./scripts/update.sh ausführen und den Agent neu erstellen."
                 className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-orange-500/10 text-orange-400 border-orange-500/20"
@@ -225,7 +225,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
         {agent.current_task && (
           <div className="mb-4 rounded-lg bg-blue-500/5 border border-blue-500/10 px-3 py-2">
             <p className="text-[11px] font-medium text-blue-400 truncate">
-              {agent.current_task}
+              {simpleMode && agent.current_task.startsWith("chat:") ? "Antwortet im Chat" : agent.current_task}
             </p>
           </div>
         )}
@@ -294,13 +294,13 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
           {!simpleMode && agent.queue_depth !== null && agent.queue_depth > 0 ? (
             <div className="flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
               <Layers className="h-3 w-3" />
-              {agent.queue_depth} queued
+              {agent.queue_depth} in Warteschlange
             </div>
           ) : (
-            <span className="text-[11px] text-muted-foreground/50">{simpleMode ? "" : "No queue"}</span>
+            <span className="text-[11px] text-muted-foreground/50">{simpleMode ? "" : "Keine Warteschlange"}</span>
           )}
           <div className="flex items-center gap-1 text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-            Open <ArrowUpRight className="h-3 w-3" />
+            Öffnen <ArrowUpRight className="h-3 w-3" />
           </div>
         </div>
       </div>

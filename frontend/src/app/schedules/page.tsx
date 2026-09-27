@@ -34,6 +34,7 @@ const itemVariants = {
 };
 
 function formatInterval(schedule: Schedule): string {
+  if (schedule.takt) return schedule.takt;
   if (schedule.cron_expression) return `Cron: ${schedule.cron_expression}`;
   const seconds = schedule.interval_seconds;
   if (seconds < 3600) return `Every ${Math.round(seconds / 60)} min`;

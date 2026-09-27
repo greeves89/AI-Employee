@@ -130,6 +130,32 @@ Unten auf dein **Profil** (Name/Avatar) klicken → **Abmelden**.
 > Hinweis: Welche Menüpunkte du siehst, kann von deiner **Rolle** abhängen — ein Admin gibt
 > pro Gruppe frei, welche Bereiche sichtbar sind (Kap. 22.4).
 
+### 1.4 Einfache Ansicht für Nutzer ohne Admin-Rolle *(seit 1.340.0)*
+Wer **kein Systemadmin** ist, sieht die Plattform automatisch in der **einfachen
+Ansicht**. Sie zeigt nur, was man für die Arbeit mit seinen Agenten braucht:
+
+- **Seitenleiste:** Dashboard, Agenten, Aufgaben, Freigaben, Dateien, Hilfe.
+  Hat der Admin deiner Rolle eigene Menüpunkte zugeteilt (Kap. 22.4), gelten diese.
+- **Agenten-Seite:** links der **Chat**, rechts die **Aufgaben** des Agenten —
+  laufende oben, darunter die erledigten. Ein Klick auf eine Aufgabe öffnet ihr
+  Ergebnis.
+- **Sprechen statt tippen:** unten im Chat auf das **Mikrofon** klicken — die
+  Sprachsitzung startet, der Agent antwortet gesprochen.
+- **Freigaben:** Anfragen deiner Agenten erlauben oder ablehnen (Kap. 13).
+
+![Einfache Ansicht: Chat und Aufgaben](screenshots/37-mitglieder-agent.png)
+
+**Für Admins — die Ansicht selbst prüfen:**
+1. Unten links auf dein **Profil** (Name/Avatar) klicken.
+2. Auf **Mitglieder-Ansicht** klicken (rot markiert). Rechts steht nun **an**.
+3. Die Oberfläche zeigt jetzt, was deine Nutzer sehen — auch die Admin-Konsole
+   ist ausgeblendet.
+4. Zurück: erneut **Profil** → **Mitglieder-Ansicht** (steht dann auf **aus**).
+
+![Schalter Mitglieder-Ansicht im Profilmenü](screenshots/38-mitglieder-umschalter.png)
+
+Die Wahl gilt nur für diesen Browser; deine Rechte ändern sich dadurch nicht.
+
 ---
 
 ## 2. Onboarding

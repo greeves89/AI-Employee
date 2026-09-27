@@ -15,6 +15,8 @@ import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { Schedule } from "@/lib/types";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { AUFGABEN_STATUS, zeitplanAnzeige } from "@/lib/aufgaben-anzeige";
 
 /* ─── Single Tasks Config ─────────────────────────────────────────── */
 
@@ -28,10 +30,10 @@ const statusConfig: Record<string, { icon: typeof CheckCircle2; badge: string; c
 };
 
 const filterTabs = [
-  { key: "active", label: "Active" },
-  { key: "all", label: "All" },
-  { key: "completed", label: "Completed" },
-  { key: "failed", label: "Failed" },
+  { key: "active", label: "Aktiv" },
+  { key: "all", label: "Alle" },
+  { key: "completed", label: "Erledigt" },
+  { key: "failed", label: "Fehlgeschlagen" },
 ];
 
 const ACTIVE_STATUSES = ["pending", "queued", "running"];
@@ -49,30 +51,26 @@ const itemVariants = {
 };
 
 function formatInterval(seconds: number): string {
-  if (seconds < 3600) return `Every ${Math.round(seconds / 60)} min`;
-  if (seconds < 86400) {
-    const h = Math.round(seconds / 3600);
-    return `Every ${h} hour${h > 1 ? "s" : ""}`;
-  }
-  const d = Math.round(seconds / 86400);
-  return `Every ${d} day${d > 1 ? "s" : ""}`;
+  if (seconds < 3600) return `alle ${Math.round(seconds / 60)} Min`;
+  if (seconds < 86400) return `alle ${Math.round(seconds / 3600)} Std`;
+  return `alle ${Math.round(seconds / 86400)} Tage`;
 }
 
 function formatRelative(dateStr: string | null): string {
-  if (!dateStr) return "Never";
+  if (!dateStr) return "nie";
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = date.getTime() - now.getTime();
   const absDiff = Math.abs(diffMs);
 
-  if (absDiff < 60000) return diffMs > 0 ? "in < 1 min" : "< 1 min ago";
+  if (absDiff < 60000) return diffMs > 0 ? "in < 1 Min" : "vor < 1 Min";
   if (absDiff < 3600000) {
     const m = Math.round(absDiff / 60000);
-    return diffMs > 0 ? `in ${m} min` : `${m} min ago`;
+    return diffMs > 0 ? `in ${m} Min` : `vor ${m} Min`;
   }
   if (absDiff < 86400000) {
     const h = Math.round(absDiff / 3600000);
-    return diffMs > 0 ? `in ${h}h` : `${h}h ago`;
+    return diffMs > 0 ? `in ${h} Std` : `vor ${h} Std`;
   }
   return date.toLocaleDateString();
 }
@@ -81,10 +79,10 @@ const INTERVAL_PRESETS = [
   { label: "5 min", seconds: 300 },
   { label: "15 min", seconds: 900 },
   { label: "30 min", seconds: 1800 },
-  { label: "1 hour", seconds: 3600 },
-  { label: "6 hours", seconds: 21600 },
-  { label: "12 hours", seconds: 43200 },
-  { label: "24 hours", seconds: 86400 },
+  { label: "1 Std", seconds: 3600 },
+  { label: "6 Std", seconds: 21600 },
+  { label: "12 Std", seconds: 43200 },
+  { label: "24 Std", seconds: 86400 },
 ];
 
 /* ─── Main Page ────────────────────────────────────────────────────── */
@@ -97,8 +95,8 @@ export default function TasksPage() {
   return (
     <div>
       <Header
-        title="Tasks"
-        subtitle={viewMode === "single" ? "All tasks across agents" : "Recurring tasks that run automatically"}
+        title="Aufgaben"
+        subtitle={viewMode === "single" ? "Alle Aufgaben deiner Agenten" : "Wiederkehrende Aufgaben, die von selbst laufen"}
         actions={
           viewMode === "single" ? (
             <Link
@@ -106,7 +104,7 @@ export default function TasksPage() {
               className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all duration-200"
             >
               <Plus className="h-4 w-4" />
-              New Task
+              Neue Aufgabe
             </Link>
           ) : null
         }
@@ -124,7 +122,7 @@ export default function TasksPage() {
                 : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
             )}
           >
-            Single Tasks
+            Einzelaufgaben
           </button>
           <button
             onClick={() => setViewMode("scheduled")}
@@ -137,7 +135,7 @@ export default function TasksPage() {
           >
             <span className="inline-flex items-center gap-1.5">
               <Clock className="h-3 w-3" />
-              Scheduled
+              Zeitpläne
             </span>
           </button>
         </div>
@@ -155,6 +153,7 @@ function SingleTasksView() {
   const { agents } = useAgents();
   const [filter, setFilter] = useState<string>("active");
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const { simpleMode } = useSimpleMode();
 
   const agentNameById = agents.reduce<Record<string, string>>((acc, a) => {
     acc[a.id] = a.name;
@@ -258,10 +257,10 @@ function SingleTasksView() {
       ) : filteredTasks.length === 0 ? (
         <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-12 text-center text-muted-foreground">
           {filter === "active"
-            ? "No active tasks. All tasks are completed or idle."
+            ? "Keine aktiven Aufgaben."
             : filter === "all"
-            ? "No tasks yet."
-            : `No ${filter} tasks.`}
+            ? "Noch keine Aufgaben."
+            : "Keine Aufgaben in dieser Ansicht."}
         </div>
       ) : (
         <div className="space-y-2">
@@ -300,11 +299,11 @@ function SingleTasksView() {
                         "shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
                         cfg.badge
                       )}>
-                        {task.status}
+                        {AUFGABEN_STATUS[task.status] ?? task.status}
                       </span>
                       {task.parent_task_id && (
                         <span className="shrink-0 inline-flex items-center rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-400">
-                          Subtask
+                          Teilaufgabe
                         </span>
                       )}
                     </div>
@@ -321,7 +320,7 @@ function SingleTasksView() {
                         className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-[11px] font-medium text-orange-400 hover:bg-orange-500/20 transition-colors"
                       >
                         <RotateCcw className="h-3 w-3" />
-                        Retry
+                        Wiederholen
                       </button>
                     )}
                     {canCancel && (
@@ -348,7 +347,7 @@ function SingleTasksView() {
                         onClick={(e) => handleDelete(e, task.id)}
                         disabled={deleting.has(task.id)}
                         className="inline-flex items-center rounded-lg p-1.5 text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                        title="Delete task"
+                        title="Aufgabe löschen"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -358,10 +357,10 @@ function SingleTasksView() {
 
                 {/* Meta row */}
                 <div className="mt-2.5 ml-9 flex items-center gap-4 text-[11px] text-muted-foreground/60">
-                  <span className="flex items-center gap-1 font-mono">
+                  {!simpleMode && <span className="flex items-center gap-1 font-mono">
                     <Hash className="h-3 w-3" />{task.id.slice(0, 8)}
-                  </span>
-                  {task.parent_task_id && (
+                  </span>}
+                  {!simpleMode && task.parent_task_id && (
                     <span className="flex items-center gap-1 text-blue-400/60">
                       <GitBranch className="h-3 w-3" />parent: {task.parent_task_id.slice(0, 8)}
                     </span>
@@ -376,10 +375,10 @@ function SingleTasksView() {
                       <Timer className="h-3 w-3" />{formatDuration(task.duration_ms)}
                     </span>
                   )}
-                  {task.num_turns && (
-                    <span className="tabular-nums">{task.num_turns} turns</span>
+                  {!simpleMode && task.num_turns && (
+                    <span className="tabular-nums">{task.num_turns} Züge</span>
                   )}
-                  {task.cost_usd ? (
+                  {!simpleMode && task.cost_usd ? (
                     <span className="tabular-nums">{formatCost(task.cost_usd)}</span>
                   ) : null}
                   <span>{timeAgo(task.created_at)}</span>
@@ -409,6 +408,7 @@ function ScheduledTasksView() {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [triggering, setTriggering] = useState<string | null>(null);
+  const { simpleMode } = useSimpleMode();
   const { agents } = useAgents();
   //: Welche Agenten aufgeklappt sind. Startet LEER — bei einem Dutzend Agenten
   //: mit je mehreren Zeitplaenen ist eine flache Liste nicht mehr lesbar.
@@ -537,7 +537,7 @@ function ScheduledTasksView() {
           className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:shadow-primary/40 hover:brightness-110"
         >
           <Plus className="h-4 w-4" />
-          New Schedule
+          Neuer Zeitplan
         </button>
       </div>
 
@@ -561,19 +561,19 @@ function ScheduledTasksView() {
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Daily Code Review"
+                placeholder="z. B. Wochenbericht"
                 className="w-full rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] px-4 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/25"
               />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                Prompt
+                Auftrag
               </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={3}
-                placeholder="What should the agent do each time?"
+                placeholder="Was soll der Agent jedes Mal tun?"
                 className="w-full rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] px-4 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/25 resize-none"
               />
             </div>
@@ -581,7 +581,7 @@ function ScheduledTasksView() {
             {/* Interval Picker */}
             <div>
               <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                Interval
+                Intervall
               </label>
               <div className="flex flex-wrap gap-2">
                 {INTERVAL_PRESETS.map((preset) => (
@@ -604,14 +604,14 @@ function ScheduledTasksView() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                  Priority
+                  Priorität
                 </label>
                 <div className="flex gap-2">
                   {[
-                    { value: 0, label: "Low", color: "text-slate-400" },
+                    { value: 0, label: "Niedrig", color: "text-slate-400" },
                     { value: 1, label: "Normal", color: "text-blue-400" },
-                    { value: 2, label: "High", color: "text-amber-700 dark:text-amber-400" },
-                    { value: 3, label: "Urgent", color: "text-red-400" },
+                    { value: 2, label: "Hoch", color: "text-amber-700 dark:text-amber-400" },
+                    { value: 3, label: "Dringend", color: "text-red-400" },
                   ].map((p) => (
                     <button
                       key={p.value}
@@ -636,7 +636,7 @@ function ScheduledTasksView() {
                   onChange={(e) => setAgentId(e.target.value)}
                   className="w-full rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] px-4 py-2.5 text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/25"
                 >
-                  <option value="">Auto-assign</option>
+                  <option value="">Automatisch zuweisen</option>
                   {agents
                     .filter((a) => a.state === "running" || a.state === "idle")
                     .map((a) => (
@@ -653,7 +653,7 @@ function ScheduledTasksView() {
                 onClick={() => setShowCreate(false)}
                 className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                Cancel
+                Abbrechen
               </button>
               <button
                 onClick={handleCreate}
@@ -661,7 +661,7 @@ function ScheduledTasksView() {
                 className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-all hover:brightness-110 disabled:opacity-50"
               >
                 {creating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Create Schedule
+                Zeitplan anlegen
               </button>
             </div>
           </div>
@@ -684,10 +684,10 @@ function ScheduledTasksView() {
             <CalendarClock className="h-7 w-7 text-muted-foreground/50" />
           </div>
           <p className="text-sm font-medium text-muted-foreground">
-            No schedules yet
+            Noch keine Zeitpläne
           </p>
           <p className="mt-1 text-xs text-muted-foreground/60">
-            Create a recurring task to automate agent work
+            Lege eine wiederkehrende Aufgabe an, die dein Agent selbst erledigt
           </p>
         </div>
       ) : (
@@ -751,7 +751,7 @@ function ScheduledTasksView() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3">
                     <h3 className="text-sm font-semibold tracking-tight truncate">
-                      {schedule.name}
+                      {zeitplanAnzeige(schedule, simpleMode).titel}
                     </h3>
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
@@ -765,11 +765,11 @@ function ScheduledTasksView() {
                           schedule.enabled ? "bg-emerald-400" : "bg-muted-foreground"
                         }`}
                       />
-                      {schedule.enabled ? "Active" : "Paused"}
+                      {schedule.enabled ? "Aktiv" : "Pausiert"}
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground/70 line-clamp-1">
-                    {schedule.prompt}
+                    {zeitplanAnzeige(schedule, simpleMode).beschreibung}
                   </p>
                 </div>
 
@@ -778,7 +778,7 @@ function ScheduledTasksView() {
                   <button
                     onClick={() => handleTrigger(schedule.id)}
                     disabled={triggering === schedule.id}
-                    title="Run Now"
+                    title="Jetzt ausführen"
                     className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 backdrop-blur-sm transition-colors disabled:opacity-50"
                   >
                     {triggering === schedule.id ? (
@@ -814,11 +814,11 @@ function ScheduledTasksView() {
               <div className="mt-4 flex items-center gap-6 text-xs text-muted-foreground">
                 <div className="flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5" />
-                  <span>{formatInterval(schedule.interval_seconds)}</span>
+                  <span title={schedule.cron_expression ?? undefined}>{schedule.takt || formatInterval(schedule.interval_seconds)}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Timer className="h-3.5 w-3.5" />
-                  <span>Next: {formatRelative(schedule.next_run_at)}</span>
+                  <span>Nächster: {formatRelative(schedule.next_run_at)}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
@@ -829,14 +829,14 @@ function ScheduledTasksView() {
                   <span>{schedule.fail_count}</span>
                 </div>
                 <div className="text-muted-foreground/50">
-                  {schedule.total_runs} runs
+                  {schedule.total_runs} {schedule.total_runs === 1 ? "Lauf" : "Läufe"}
                   {schedule.total_runs > 0 && (
-                    <> &middot; {Math.round(schedule.success_rate * 100)}% success</>
+                    <> &middot; {Math.round(schedule.success_rate * 100)} % erfolgreich</>
                   )}
                 </div>
                 {schedule.last_run_at && (
                   <div className="text-muted-foreground/50">
-                    Last: {formatRelative(schedule.last_run_at)}
+                    Zuletzt: {formatRelative(schedule.last_run_at)}
                   </div>
                 )}
               </div>

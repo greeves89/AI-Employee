@@ -235,6 +235,8 @@ export interface Schedule {
   success_count: number;
   fail_count: number;
   success_rate: number;
+  /** Takt als lesbare Zeile vom Server („täglich 22:00", „alle 30 Min"). */
+  takt?: string;
   created_at: string;
   updated_at: string;
 }

@@ -5,6 +5,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.340.0] - 2026-09-27
+
+### Neu
+- **Einfache Ansicht für alle, die keine Systemadmins sind.** Die Oberfläche
+  zeigte jedem Nutzer dieselben Betriebsdetails wie dem Admin: Container-Werte,
+  Modellnamen, Token-Züge, Kosten je Aufgabe, Agenten-IDs, den Zustand von API,
+  Datenbank und Redis. Nutzer ohne Admin-Rolle bekommen jetzt automatisch eine
+  einfache Ansicht:
+  - Die Agenten-Seite besteht aus dem Chat (mit Mikrofon für die
+    Sprachsitzung) und rechts den Aufgaben des Agenten. Reiter, Einstellungen,
+    Neustart, Budget- und Update-Leiste fallen weg.
+  - Die Seitenleiste zeigt Dashboard, Agenten, Aufgaben, Freigaben, Dateien und
+    Hilfe. Hat der Admin einer Rolle ausdrücklich Menüpunkte zugeteilt, gilt
+    weiterhin seine Liste.
+  - Der Chat zeigt keine Denktiefe, keinen Modellnamen und keinen Kontextring.
+  - Die Freigaben-Seite zeigt Ausstehend, Eskalationen und Nachtschicht; Regeln,
+    Stufen-Vorlagen und Befehlsrichtlinien bleiben beim Admin.
+  - Zeitpläne, die die Plattform selbst anlegt, stehen mit einem Satz statt mit
+    ihrem Systemauftrag in der Liste.
+- **Admins können die Mitglieder-Ansicht einschalten**, um zu sehen, was ihre
+  Nutzer sehen: Profil unten links → **Mitglieder-Ansicht**. Die Wahl gilt je
+  Browser.
+
+### Behoben
+- **Cron-Zeitpläne wurden als „Every 0 min" angezeigt.** Die Oberfläche
+  rechnete den Takt aus dem Intervall, das bei Cron-Zeitplänen 0 ist. Der
+  Server liefert den Takt jetzt lesbar mit („Mo–Fr 17:30", „täglich 09:00"),
+  auf der Aufgaben- und der Zeitplan-Seite.
+- **Gemischte Sprache in Dashboard, Agentenkarten, Aufgaben und Freigaben**
+  („New Agent", „Idle", „No queue", „Restart", „3m ago"): durchgehend deutsch.
+
+### Tests
+- `test_schedule_takt.py`: Der Takt kommt für Cron- und Intervall-Zeitpläne
+  lesbar vom Server und ist nie ein Null-Intervall.
+
+---
+
 ## [1.339.5] - 2026-09-27
 
 ### Behoben

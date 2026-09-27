@@ -33,6 +33,7 @@ import { StopReasonAlert } from "./stop-reason-alert";
 import { UserMenu } from "./user-menu";
 import { useAuthStore } from "@/lib/auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 import {
   getMyPermissions,
   getPendingApprovalCount,
@@ -48,6 +49,8 @@ type NavItem = {
   label: string;
   icon: React.ElementType;
   simpleVisible: boolean;
+  /** Beschriftung in der Mitglieder-Ansicht (siehe useSimpleMode). */
+  simpleLabel?: string;
   /** Gesetzt bei selbst angelegten Menuepunkten der Art "Link": der Eintrag
    *  öffnet die Adresse direkt in einem neuen Tab, statt erst unsere Seite zu
    *  laden, die nur einen Knopf dorthin zeigt. */
@@ -113,6 +116,7 @@ type NavGroup = {
   key: string;
   items: NavItem[];
   adminOnly?: boolean;  // group only shown to admins
+  simpleLabel?: string;
 };
 
 const navGroups: NavGroup[] = [
@@ -121,22 +125,22 @@ const navGroups: NavGroup[] = [
     key: "overview",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, simpleVisible: true },
-      { href: "/agents", label: "Agents", icon: Cpu, simpleVisible: true },
+      { href: "/agents", label: "Agents", simpleLabel: "Agenten", icon: Cpu, simpleVisible: true },
       // Onboarding vorerst ausgeblendet (Seite bleibt unter /onboarding erreichbar)
       // { href: "/onboarding", label: "Onboarding", icon: Rocket, simpleVisible: true },
-      { href: "/tasks", label: "Tasks", icon: ListTodo, simpleVisible: true },
-      { href: "/activity", label: "Activity", icon: Activity, simpleVisible: true },
-      { href: "/analytics", label: "Analytics", icon: BarChart3, simpleVisible: true },
-      { href: "/learning", label: "Gelerntes", icon: Sparkles, simpleVisible: true },
+      { href: "/tasks", label: "Tasks", simpleLabel: "Aufgaben", icon: ListTodo, simpleVisible: true },
+      { href: "/activity", label: "Activity", simpleLabel: "Aktivität", icon: Activity, simpleVisible: false },
+      { href: "/analytics", label: "Analytics", simpleLabel: "Auswertung", icon: BarChart3, simpleVisible: false },
+      { href: "/learning", label: "Gelerntes", icon: Sparkles, simpleVisible: false },
     ],
   },
   {
     label: "Zusammenarbeit",
     key: "collab",
     items: [
-      { href: "/knowledge", label: "Knowledge", icon: BookOpen, simpleVisible: true },
+      { href: "/knowledge", label: "Knowledge", simpleLabel: "Wissen", icon: BookOpen, simpleVisible: false },
       { href: "/meeting-rooms", label: "Meeting Rooms", icon: Users, simpleVisible: false },
-      { href: "/apps", label: "Apps", icon: AppWindow, simpleVisible: true },
+      { href: "/apps", label: "Apps", icon: AppWindow, simpleVisible: false },
     ],
   },
   {
@@ -151,11 +155,12 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "System",
+    simpleLabel: "Arbeitsplatz",
     key: "system",
     items: [
-      { href: "/approvals", label: "Approvals", icon: ShieldCheck, simpleVisible: false },
-      { href: "/files", label: "Explorer", icon: FolderOpen, simpleVisible: true },
-      { href: "/integrations", label: "Integrations", icon: Plug, simpleVisible: false },
+      { href: "/approvals", label: "Approvals", simpleLabel: "Freigaben", icon: ShieldCheck, simpleVisible: true },
+      { href: "/files", label: "Explorer", simpleLabel: "Dateien", icon: FolderOpen, simpleVisible: true },
+      { href: "/integrations", label: "Integrations", simpleLabel: "Verbindungen", icon: Plug, simpleVisible: false },
     ],
   },
   {
@@ -185,6 +190,7 @@ export function Sidebar() {
   const searchParams = useSearchParams();
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "admin";
+  const { simpleMode } = useSimpleMode();
   const { collapsed, toggle, mobileOpen, setMobileOpen } = useSidebarCollapsed();
   // The desktop icon-rail (collapsed) must NOT apply on mobile — there the sidebar is
   // an off-canvas drawer that always shows the full menu. Track the lg breakpoint.
@@ -271,11 +277,18 @@ export function Sidebar() {
         external: p.open_mode === "link" ? nurWebAdresse(p.url) : undefined,
       }));
 
+  // Mitglieder-Ansicht: nur die einfachen Punkte, deutsch beschriftet. Hat der
+  // Administrator der Rolle ausdruecklich Menuepunkte zugeteilt, gilt seine
+  // Liste — sonst verschwaende hier, was er bewusst freigegeben hat.
+  const einfach = simpleMode && !permissions?.menu_paths;
   const visibleGroups = navGroups
     .filter((group) => !group.adminOnly || isAdmin)
     .map((group) => ({
       ...group,
-      items: [...group.items, ...extraItemsFor(group.key)].filter((item) => canSeePath(item.href)),
+      label: (simpleMode && group.simpleLabel) || group.label,
+      items: [...group.items, ...extraItemsFor(group.key)]
+        .filter((item) => canSeePath(item.href) && (!einfach || item.simpleVisible))
+        .map((item) => ({ ...item, label: (simpleMode && item.simpleLabel) || item.label })),
     }))
     .filter((group) => group.items.length > 0);
 

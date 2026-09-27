@@ -2363,7 +2363,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         {messages.length === 0 && !connectionFailed && historyLoaded && (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Bot className="h-8 w-8 mb-2" />
-            <p className="text-sm">Send a message to start chatting</p>
+            <p className="text-sm">Schreib eine Nachricht oder tippe auf das Mikrofon, um loszulegen.</p>
           </div>
         )}
         {messages.length === 0 && !connectionFailed && !historyLoaded && (
@@ -2983,7 +2983,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               <Mic className="h-4 w-4" />
             </button>
 
-            <div className="relative" ref={reasoningRef}>
+            {!simpleMode && (
+<div className="relative" ref={reasoningRef}>
               <button
                 onClick={() => setReasoningOpen((o) => !o)}
                 disabled={!isConnected}
@@ -3039,9 +3040,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 </div>
               )}
             </div>
+)}
 
             <div className="ml-auto flex items-center gap-1.5">
-              {agentModel && (
+              {agentModel && !simpleMode && (
                 <span
                   className="hidden max-w-[10rem] truncate font-mono text-[10px] text-muted-foreground/50 sm:inline"
                   title={agentModel}
@@ -3053,7 +3055,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               {/* Kontextring: ersetzt den frueheren Streifen unter dem Composer.
                   Dort stand er ohne Bezug zur Eingabe; hier sitzt er neben dem
                   Absenden, also da, wo die Entscheidung faellt. */}
-              <div className="relative" ref={contextRef}>
+              {!simpleMode && (
+<div className="relative" ref={contextRef}>
                 <button
                   onClick={() => setContextOpen((o) => !o)}
                   title="Kontext: belegter Anteil des Gesprächsfensters"
@@ -3110,6 +3113,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   </div>
                 )}
               </div>
+)}
 
               {isWaiting ? (
                 <button

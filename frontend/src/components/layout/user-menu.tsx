@@ -6,16 +6,26 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { LogOut, Settings, Shield, Sun, Moon, Star, Info, Bot, X } from "lucide-react";
+import { LogOut, Settings, Shield, Sun, Moon, Star, Info, Bot, X, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout, useAuthStore } from "@/lib/auth";
 import { useTheme } from "@/components/theme-provider";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { NotificationBell } from "./notification-bell";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
+
+const ROLLEN: Record<string, string> = {
+  admin: "Admin",
+  manager: "Manager",
+  member: "Mitglied",
+  viewer: "Betrachter",
+  unassigned: "Ohne Rolle",
+};
 
 export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
   const { user } = useAuthStore();
   const { theme, toggleTheme } = useTheme();
+  const { simpleMode, istAdmin, mitgliederAnsicht, setMitgliederAnsicht } = useSimpleMode();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -112,10 +122,25 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               <span className="text-[13px] font-medium">
-                {theme === "dark" ? "Light Mode" : "Dark Mode"}
+                {theme === "dark" ? "Helles Design" : "Dunkles Design"}
               </span>
             </button>
-            <a
+            {/* Admins sehen, was ihre Mitglieder sehen — ohne zweites Konto. */}
+            {istAdmin && (
+              <button
+                onClick={() => setMitgliederAnsicht(!mitgliederAnsicht)}
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-xl px-3 py-2 transition-all duration-150 hover:bg-accent/50 hover:text-foreground",
+                  mitgliederAnsicht ? "text-violet-500" : "text-muted-foreground"
+                )}
+                title="Zeigt die Oberfläche so, wie sie Nutzer ohne Admin-Rechte sehen"
+              >
+                <UserRound className="h-4 w-4" />
+                <span className="text-[13px] font-medium">Mitglieder-Ansicht</span>
+                <span className="ml-auto text-[11px] text-muted-foreground/60">{mitgliederAnsicht ? "an" : "aus"}</span>
+              </button>
+            )}
+            {!simpleMode && <a
               href="https://github.com/greeves89/AI-Employee"
               target="_blank"
               rel="noopener noreferrer"
@@ -128,7 +153,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
             >
               <Star className="h-4 w-4" />
               <span className="text-[13px] font-medium">Star on GitHub</span>
-            </a>
+            </a>}
             <button
               onClick={() => setAboutOpen(true)}
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
@@ -149,7 +174,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
                 ? "bg-amber-500/10 text-amber-500"
                 : "bg-blue-500/10 text-blue-500"
             )}>
-              {user.role}
+              {ROLLEN[user.role] ?? user.role}
             </span>
           </div>
           <div className="py-1">
@@ -169,7 +194,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
               className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-accent/50 transition-colors"
             >
               <LogOut className="h-3.5 w-3.5" />
-              Sign Out
+              Abmelden
             </button>
           </div>
         </div>

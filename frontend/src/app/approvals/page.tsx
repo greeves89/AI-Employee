@@ -10,6 +10,7 @@ import {
   getLevelPresets, addPresetRule, deletePresetRule, clearPendingApprovals,
 } from "@/lib/api";
 import type { ApprovalRequest, ReflectionChangeMeta } from "@/lib/types";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 import type { ApprovalRule, LevelPreset, PresetRule } from "@/lib/api";
 import {
   AlertCircle,
@@ -137,6 +138,7 @@ function escalationLabel(a: ApprovalRequest): string {
 export default function ApprovalsPage() {
   const confirm = useConfirm();
   const toast = useToast();
+  const { simpleMode } = useSimpleMode();
   const [activeTab, setActiveTab] = useState<"pending" | "escalations" | "reflection" | "rules" | "command-policies" | "presets">("pending");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [selectedRequest, setSelectedRequest] =
@@ -374,10 +376,10 @@ export default function ApprovalsPage() {
           </div>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              Command Approvals
+              Freigaben
             </h1>
             <p className="text-sm text-muted-foreground/60 mt-0.5">
-              Review and approve agent command requests
+              Hier bittet dein Agent um Erlaubnis, bevor er etwas Heikles tut
             </p>
           </div>
         </div>
@@ -441,6 +443,8 @@ export default function ApprovalsPage() {
           <Moon className="h-3.5 w-3.5" />
           Nachtschicht ({reflectionApprovals.length})
         </button>
+        {/* Regeln, Stufen-Vorlagen und Befehlsrichtlinien stellt der Admin ein */}
+        {!simpleMode && (<>
         <button
           onClick={() => setActiveTab("rules")}
           className={cn(
@@ -476,6 +480,7 @@ export default function ApprovalsPage() {
           <ShieldAlert className="h-3.5 w-3.5" />
           Command Policies
         </button>
+        </>)}
       </div>
 
       {activeTab === "command-policies" && <CommandPoliciesTab />}

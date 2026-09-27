@@ -124,6 +124,10 @@ class ScheduleResponse(BaseModel):
     success_count: int
     fail_count: int
     success_rate: float = 0.0
+    # Der Takt als lesbare Zeile („täglich 22:00", „alle 30 Min"). Die Oberflaeche
+    # rechnete ihn selbst aus dem Intervall und zeigte bei Cron-Zeitplaenen
+    # (Intervall 0) „Every 0 min".
+    takt: str = ""
     created_at: datetime
     updated_at: datetime
 
@@ -131,6 +135,8 @@ class ScheduleResponse(BaseModel):
 
     @classmethod
     def from_schedule(cls, schedule) -> "ScheduleResponse":
+        from app.core.plan_rhythm import describe_schedule
+
         rate = 0.0
         if schedule.total_runs > 0:
             rate = round(schedule.success_count / schedule.total_runs, 2)
@@ -151,6 +157,7 @@ class ScheduleResponse(BaseModel):
             success_count=schedule.success_count,
             fail_count=schedule.fail_count,
             success_rate=rate,
+            takt=describe_schedule(schedule),
             created_at=schedule.created_at,
             updated_at=schedule.updated_at,
         )

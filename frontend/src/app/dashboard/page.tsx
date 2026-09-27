@@ -12,6 +12,7 @@ import { RecentTasks } from "@/components/dashboard/recent-tasks";
 import { CostAttribution } from "@/components/dashboard/cost-attribution";
 import { ReflectionCard } from "@/components/dashboard/reflection-card";
 import { SystemStatusBar } from "@/components/dashboard/system-status-bar";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 
 const containerVariants = {
   hidden: {},
@@ -30,19 +31,20 @@ const itemVariants = {
 export default function DashboardPage() {
   const { agents, loading: agentsLoading } = useAgents();
   const { tasks } = useTasks();
+  const { simpleMode } = useSimpleMode();
 
   return (
     <div>
       <Header
         title="Dashboard"
-        subtitle="Overview of your AI Employee agents"
+        subtitle="Überblick über deine Agenten"
         actions={
           <Link
             href="/agents"
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all duration-200 hover:shadow-primary/30 hover:-translate-y-0.5"
           >
             <Plus className="h-4 w-4" />
-            New Agent
+            Neuer Agent
           </Link>
         }
       />
@@ -53,8 +55,8 @@ export default function DashboardPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
-        {/* System Status */}
-        <SystemStatusBar />
+        {/* System Status — API/DB/Redis sind Betreibersache */}
+        {!simpleMode && <SystemStatusBar />}
 
         {/* Stats */}
         <StatsOverview agents={agents} tasks={tasks} />
@@ -62,12 +64,12 @@ export default function DashboardPage() {
         {/* Agents */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold tracking-tight">Active Agents</h3>
+            <h3 className="text-lg font-semibold tracking-tight">Aktive Agenten</h3>
             <Link
               href="/agents"
               className="text-[13px] text-muted-foreground hover:text-foreground transition-colors"
             >
-              View all
+              Alle anzeigen
             </Link>
           </div>
 
@@ -87,13 +89,13 @@ export default function DashboardPage() {
                   <Bot className="h-6 w-6 text-primary" />
                 </div>
               </div>
-              <p className="text-muted-foreground mb-4">No agents running yet</p>
+              <p className="text-muted-foreground mb-4">Noch keine Agenten angelegt</p>
               <Link
                 href="/agents"
                 className="inline-flex items-center gap-2 rounded-xl bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 transition-colors"
               >
                 <Plus className="h-4 w-4" />
-                Create Agent
+                Agent anlegen
               </Link>
             </div>
           ) : (

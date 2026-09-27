@@ -47,6 +47,7 @@ import { CommandPoliciesTab } from "@/components/agents/command-policies-tab";
 import { PermissionPackagesPanel } from "@/components/agents/permission-packages-panel";
 import { ComputerUseDefaultPanel } from "@/components/agents/computer-use-default-panel";
 import { useTasks } from "@/hooks/use-tasks";
+import { AUFGABEN_STATUS } from "@/lib/aufgaben-anzeige";
 import { cn } from "@/lib/utils";
 import { formatDuration, formatCost, timeAgo } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -69,12 +70,12 @@ const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; b
 };
 
 const agentStateConfig: Record<string, { online: boolean; label: string; badge: string }> = {
-  running: { online: true, label: "Idle", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
-  idle: { online: true, label: "Idle", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
-  working: { online: true, label: "Working", badge: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
-  stopped: { online: false, label: "Stopped", badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" },
-  error: { online: false, label: "Error", badge: "bg-red-500/10 text-red-400 border-red-500/20" },
-  created: { online: false, label: "Starting", badge: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
+  running: { online: true, label: "Bereit", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  idle: { online: true, label: "Bereit", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  working: { online: true, label: "Arbeitet", badge: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  stopped: { online: false, label: "Gestoppt", badge: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" },
+  error: { online: false, label: "Fehler", badge: "bg-red-500/10 text-red-400 border-red-500/20" },
+  created: { online: false, label: "Startet", badge: "bg-violet-500/10 text-violet-400 border-violet-500/20" },
 };
 
 // Sub-tabs are grouped under 6 top-level groups. Each group renders a
@@ -85,38 +86,38 @@ type SubKey =
   | "knowledge" | "memory" | "skills" | "secondbrain"
   | "settings" | "integrations" | "command-policies";
 
-type SubTab = { key: SubKey; label: string; icon: typeof CheckCircle2; simpleVisible: boolean };
+type SubTab = { key: SubKey; label: string; icon: typeof CheckCircle2 };
 type TabGroup = { key: string; label: string; icon: typeof CheckCircle2; subs: SubTab[] };
 
 const tabGroups: TabGroup[] = [
   { key: "chat", label: "Chat", icon: MessageSquare, subs: [
-    { key: "chat", label: "Chat", icon: MessageSquare, simpleVisible: true },
+    { key: "chat", label: "Chat", icon: MessageSquare },
   ] },
   { key: "speech", label: "Speech", icon: AudioLines, subs: [
-    { key: "speech", label: "Speech", icon: AudioLines, simpleVisible: true },
+    { key: "speech", label: "Speech", icon: AudioLines },
   ] },
   { key: "activity", label: "Activity", icon: Activity, subs: [
-    { key: "todos", label: "Todos", icon: ListTodo, simpleVisible: true },
-    { key: "calendar", label: "Kalender", icon: CalendarDays, simpleVisible: true },
-    { key: "terminal", label: "Live", icon: Activity, simpleVisible: false },
-    { key: "history", label: "Verlauf", icon: History, simpleVisible: true },
+    { key: "todos", label: "Todos", icon: ListTodo },
+    { key: "calendar", label: "Kalender", icon: CalendarDays },
+    { key: "terminal", label: "Live", icon: Activity },
+    { key: "history", label: "Verlauf", icon: History },
   ] },
   { key: "workspace", label: "Workspace", icon: FolderOpen, subs: [
-    { key: "files", label: "Files", icon: FolderOpen, simpleVisible: true },
-    { key: "apps", label: "Apps", icon: Container, simpleVisible: false },
-    { key: "computer-use", label: "Computer-Use", icon: Monitor, simpleVisible: true },
-    { key: "browser", label: "Browser", icon: Globe, simpleVisible: true },
+    { key: "files", label: "Files", icon: FolderOpen },
+    { key: "apps", label: "Apps", icon: Container },
+    { key: "computer-use", label: "Computer-Use", icon: Monitor },
+    { key: "browser", label: "Browser", icon: Globe },
   ] },
   { key: "wissen", label: "Wissen", icon: Brain, subs: [
-    { key: "knowledge", label: "Knowledge", icon: Brain, simpleVisible: false },
-    { key: "secondbrain", label: "Second Brain", icon: Brain, simpleVisible: true },
-    { key: "memory", label: "Memory", icon: MemoryStick, simpleVisible: false },
-    { key: "skills", label: "Skills", icon: Sparkles, simpleVisible: false },
+    { key: "knowledge", label: "Knowledge", icon: Brain },
+    { key: "secondbrain", label: "Second Brain", icon: Brain },
+    { key: "memory", label: "Memory", icon: MemoryStick },
+    { key: "skills", label: "Skills", icon: Sparkles },
   ] },
   { key: "settings", label: "Settings", icon: Settings, subs: [
-    { key: "settings", label: "Allgemein", icon: Settings, simpleVisible: false },
-    { key: "integrations", label: "Integrations", icon: Plug, simpleVisible: false },
-    { key: "command-policies", label: "Command Policies", icon: ShieldAlert, simpleVisible: false },
+    { key: "settings", label: "Allgemein", icon: Settings },
+    { key: "integrations", label: "Integrations", icon: Plug },
+    { key: "command-policies", label: "Command Policies", icon: ShieldAlert },
   ] },
 ];
 
@@ -138,13 +139,14 @@ export default function AgentDetailPage() {
   const { simpleMode } = useSimpleMode();
   const isAdminUser = useAuthStore((s) => s.user?.role) === "admin";
 
-  // In simple mode keep only sub-tabs flagged simpleVisible, then drop empty groups.
+  // Die Mitglieder-Ansicht zeigt nur den Chat (samt Mikrofon fuer die
+  // Sprachsitzung) und rechts die Aufgaben — Reiter gibt es dort keine.
   const groupsForMode = useMemo(
     () =>
       tabGroups
         .map((g) => ({
           ...g,
-          subs: simpleMode ? g.subs.filter((s) => s.simpleVisible) : g.subs,
+          subs: simpleMode ? g.subs.filter((s) => s.key === "chat") : g.subs,
         }))
         .filter((g) => g.subs.length > 0),
     [simpleMode],
@@ -242,8 +244,8 @@ export default function AgentDetailPage() {
     <div className="flex flex-col h-[calc(100vh-4rem-var(--betreiber-hinweis-h,0px))]">
       <Header
         title={agent.name}
-        subtitle={agent.role?.trim() ? agent.role : `Agent ${agent.id.slice(0, 8)}`}
-        titleAdornment={
+        subtitle={agent.role?.trim() ? agent.role : simpleMode ? undefined : `Agent ${agent.id.slice(0, 8)}`}
+        titleAdornment={simpleMode ? undefined :
           /* Direkt am Namen: am rechten Rand war der Bezug nicht erkennbar, und die
              Kopfzeile wurde dadurch unnoetig breit (#537). */
           <div className="flex shrink-0 items-center gap-1.5">
@@ -356,7 +358,7 @@ export default function AgentDetailPage() {
                 Admin-Ansicht
               </Link>
             )}
-            <button
+            {!simpleMode && <button
               onClick={async () => {
                 setRestarting(true);
                 try {
@@ -370,12 +372,12 @@ export default function AgentDetailPage() {
               }}
               disabled={restarting}
               className="inline-flex items-center gap-1.5 rounded-full border border-foreground/[0.1] px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-foreground/[0.2] hover:bg-foreground/[0.04] transition-all disabled:opacity-50"
-              title="Restart agent (picks up new MCP servers, integrations)"
+              title="Agent neu starten (übernimmt neue Verbindungen und MCP-Server)"
             >
               <RefreshCw className={cn("h-3 w-3", restarting && "animate-spin")} />
-              {restarting ? "Restarting..." : "Restart"}
-            </button>
-            {agent.mode === "custom_llm" && (
+              {restarting ? "Startet neu …" : "Neu starten"}
+            </button>}
+            {agent.mode === "custom_llm" && !simpleMode && (
               <div className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium bg-violet-500/10 text-violet-400 border-violet-500/20">
                 <Plug className="h-3 w-3" />
                 Custom LLM
@@ -408,7 +410,7 @@ export default function AgentDetailPage() {
       >
 
         {/* Budget progress */}
-        {agent.budget_usd != null && agent.budget_usd > 0 && (
+        {!simpleMode && agent.budget_usd != null && agent.budget_usd > 0 && (
           <BudgetBar
             spent={agent.monthly_cost_usd ?? 0}
             budget={agent.budget_usd}
@@ -417,10 +419,24 @@ export default function AgentDetailPage() {
         )}
 
         {/* Update available banner */}
-        {agent.update_available && (
+        {!simpleMode && agent.update_available && (
           <UpdateBanner agentId={agentId} onUpdated={(a) => setAgent(a)} />
         )}
 
+        {simpleMode ? (
+          <div className="flex-1 min-h-0 h-full flex gap-4">
+            <div className="flex-1 min-w-0 min-h-0 h-full">
+              <AgentChat
+                key={chatFocusSession ? `chat-${chatFocusSession}` : "chat"}
+                agentId={agentId}
+                initialSessionId={chatFocusSession}
+                busySessionIds={busyChatSessions}
+                onTurnChange={nachfassen}
+              />
+            </div>
+            <AufgabenSpalte tasks={tasks} />
+          </div>
+        ) : (<>
         {/* Grouped tab switcher (groups + sub-reiter) */}
         <div className="space-y-2">
           <div className="flex items-center gap-3 min-w-0">
@@ -538,6 +554,7 @@ export default function AgentDetailPage() {
           )}
           {activeSub === "settings" && <AgentSettings agent={agent} onUpdated={(a) => setAgent(a)} />}
         </div>
+        </>)}
       </motion.div>
     </div>
   );
@@ -660,6 +677,53 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
   );
 }
 
+
+/** Mitglieder-Ansicht: was der Agent erledigt hat, rechts neben dem Chat.
+ *  Laufende zuerst, dann die juengsten — ohne Dauer, Kosten oder IDs. */
+function AufgabenSpalte({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] }) {
+  const sortiert = [...tasks].sort((a, b) => {
+    const laeuftA = ["pending", "queued", "running"].includes(a.status) ? 0 : 1;
+    const laeuftB = ["pending", "queued", "running"].includes(b.status) ? 0 : 1;
+    if (laeuftA !== laeuftB) return laeuftA - laeuftB;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+  return (
+    <aside className="hidden lg:flex w-80 shrink-0 flex-col rounded-xl border border-foreground/[0.06] bg-card/50 min-h-0">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-foreground/[0.06]">
+        <ListTodo className="h-4 w-4 text-primary" />
+        <h3 className="text-sm font-semibold">Aufgaben</h3>
+        <span className="ml-auto text-[11px] text-muted-foreground/60 tabular-nums">{tasks.length}</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {sortiert.length === 0 ? (
+          <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+            Noch keine Aufgaben. Sobald der Agent etwas für dich erledigt, steht es hier.
+          </p>
+        ) : (
+          sortiert.slice(0, 50).map((task) => {
+            const cfg = statusConfig[task.status] ?? statusConfig.pending;
+            const Icon = cfg.icon;
+            return (
+              <Link
+                key={task.id}
+                href={`/tasks/${task.id}`}
+                className="flex items-start gap-2.5 rounded-lg px-2.5 py-2 hover:bg-foreground/[0.04] transition-colors"
+              >
+                <Icon className={cn("h-3.5 w-3.5 mt-0.5 shrink-0", cfg.color, task.status === "running" && "animate-spin")} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] leading-snug line-clamp-2">{task.title}</p>
+                  <p className="text-[11px] text-muted-foreground/70">
+                    {AUFGABEN_STATUS[task.status] ?? task.status} · {timeAgo(task.created_at)}
+                  </p>
+                </div>
+              </Link>
+            );
+          })
+        )}
+      </div>
+    </aside>
+  );
+}
 
 function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] }) {
   const retryTask = async (task: { title: string; prompt: string; agent_id: string | null; model: string | null }) => {

@@ -29,8 +29,9 @@ export function timeAgo(date: string): string {
   const seconds = Math.floor(
     (new Date().getTime() - new Date(date).getTime()) / 1000
   );
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
+  if (seconds < 60) return "gerade eben";
+  if (seconds < 3600) return `vor ${Math.floor(seconds / 60)} Min.`;
+  if (seconds < 86400) return `vor ${Math.floor(seconds / 3600)} Std.`;
+  const tage = Math.floor(seconds / 86400);
+  return tage === 1 ? "vor 1 Tag" : `vor ${tage} Tagen`;
 }
