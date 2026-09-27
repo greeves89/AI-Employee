@@ -9,8 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import is_agent_principal, require_auth, require_auth_or_agent
+from app.dependencies import get_redis_service, is_agent_principal, require_auth, require_auth_or_agent
 from app.models.schedule import Schedule
+from app.services.redis_service import RedisService
 from app.schemas.schedule import (
     ScheduleCreate,
     ScheduleListResponse,
@@ -128,7 +129,12 @@ async def parse_schedule_timing(
 
 
 @router.post("/", response_model=ScheduleResponse, status_code=201)
-async def create_schedule(data: ScheduleCreate, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+async def create_schedule(
+    data: ScheduleCreate,
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
+):
     schedule_id = uuid.uuid4().hex[:8]
     now = datetime.now(timezone.utc)
 
@@ -158,10 +164,19 @@ async def create_schedule(data: ScheduleCreate, user=Depends(require_auth_or_age
     else:
         next_run_at = _calc_next_run(data, now)  # type: ignore[arg-type]
 
+    # Legt ein Agent den Zeitplan im Gespraech an, gehoeren die Laeufe dorthin:
+    # jeder erscheint in diesem Chat als Kachel mit Ergebnis. Fuer alle
+    # Laufzeiten gleich, weil hier und nicht im Werkzeug entschieden.
+    chat_session_id = None
+    if is_agent_principal(user) and agent_id == user.id:
+        from app.core.task_router import faden_des_laufenden_zuges
+        chat_session_id = await faden_des_laufenden_zuges(redis, agent_id)
+
     schedule = Schedule(
         id=schedule_id,
         name=data.name,
         prompt=data.prompt,
+        chat_session_id=chat_session_id,
         interval_seconds=data.interval_seconds,
         cron_expression=data.cron_expression,
         timezone=data.timezone,

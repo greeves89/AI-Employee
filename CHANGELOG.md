@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.342.0] - 2026-09-27
+
+### Neu
+- **Das Ergebnis einer Aufgabe erscheint im Chat, aus dem sie kam.** Bisher
+  bekamen nur Delegationen (ein Agent beauftragt einen anderen) eine Kachel im
+  Chat. Was sich ein Agent im Gespräch selbst auftrug, und jeder Zeitplan-Lauf
+  endeten in keinem Chat — das Ergebnis stand nur in der Aufgabenliste. Jetzt:
+  - Selbst-Aufträge erscheinen als Kachel in dem Chat, in dem sie entstanden.
+  - Zeitpläne merken sich beim Anlegen ihren Chat; jeder Lauf erscheint dort.
+    Zeitpläne ohne Chat-Herkunft (z. B. im Formular angelegt) schreiben in ein
+    eigenes Gespräch, benannt nach dem Zeitplan.
+  - Die Kachel zeigt das Ergebnis direkt (als Markdown, scrollbar), nicht erst
+    nach einem Klick.
+  - Die Zeitpläne der Plattform (Eigeninitiative, Tagesrhythmus) bleiben
+    bewusst außen vor — sie liefen stündlich in einen Chat, den niemand bestellt hat.
+  Eine Aufgabe läuft weiterhin in einer eigenen Sitzung, nicht in der des Chats:
+  so können Chat und Aufgabe gleichzeitig laufen, und der Chat-Kontext wächst
+  nicht mit jedem Lauf.
+- **Aufgabenspalte mit Reitern** Offen · Geplant · Erledigt samt Anzahl statt
+  untereinander gestapelter Abschnitte; ohne eigene Wahl öffnet der erste
+  Reiter mit Inhalt. Ab mehr als 10 Einträgen erscheint eine Suche.
+
+### Datenbank
+- Migration `schedules.chat_session_id` (neue Spalte, nullable).
+
+### Tests
+- `test_aufgaben_ergebnis_im_chat.py`: Selbst-Auftrag, Zeitplan mit und ohne
+  Herkunft, System-Zeitpläne, Formular-Aufgabe und gemerkter Faden werden dem
+  richtigen Chat zugeordnet; ein Selbst-Auftrag bekommt eine Kachel mit Ergebnis.
+
+---
+
 ## [1.341.0] - 2026-09-27
 
 ### Neu

@@ -2692,15 +2692,6 @@ async def get_chat_sessions(
                     preview = first_file.get("filename") or first_file.get("path") or ""
             previews[session_id] = preview[:80]
 
-    # Filter out phantom sessions (no user messages, only empty assistant entries)
-    valid_sessions = [
-        s for s in sessions
-        if previews.get(s.session_id) or s.message_count > 1 or s.session_id == "scheduler"
-    ]
-    # Fall back to all sessions if filtering removed everything
-    if not valid_sessions:
-        valid_sessions = list(sessions)
-
     # Merge in per-session metadata (custom title + pin + reasoning level). A
     # session without a row keeps its derived preview, is unpinned and thinks at
     # the harness default — nothing breaks pre-feature.
@@ -2711,6 +2702,18 @@ async def get_chat_sessions(
         .where(ChatSession.agent_id == agent_id)
     )).all()
     meta = {m.session_id: (m.title, m.pinned, m.reasoning_level) for m in meta_rows}
+
+    # Filter out phantom sessions (no user messages, only empty assistant entries).
+    # Ein benanntes Gespraech ist nie ein Phantom: das eigene Gespraech eines
+    # Zeitplans beginnt mit genau einer Kachel und waere sonst unsichtbar.
+    valid_sessions = [
+        s for s in sessions
+        if previews.get(s.session_id) or s.message_count > 1 or s.session_id == "scheduler"
+        or (meta.get(s.session_id) or (None,))[0]
+    ]
+    # Fall back to all sessions if filtering removed everything
+    if not valid_sessions:
+        valid_sessions = list(sessions)
 
     out = []
     for s in valid_sessions:

@@ -20,6 +20,7 @@ import type { LogEvent } from "@/lib/types";
 import { ChatOverview } from "./chat-overview";
 import { SessionRail } from "./session-rail";
 import { MarkdownContent } from "@/components/ui/markdown-content";
+import { aufgabenTitel } from "@/lib/aufgaben-anzeige";
 import { cn, formatBytes } from "@/lib/utils";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import * as api from "@/lib/api";
@@ -2415,7 +2416,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                       ) : (
                         <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
                       )}
-                      <span className="min-w-0 flex-1 truncate font-medium">{karte.title}</span>
+                      <span className="min-w-0 flex-1 truncate font-medium">{aufgabenTitel(karte.title)}</span>
                       <span className="shrink-0 text-[11px] text-muted-foreground">
                         {karte.assigned_agent_name}
                       </span>
@@ -2425,6 +2426,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                       {karte.duration_ms ? ` · ${Math.round(karte.duration_ms / 1000)} s` : ""}
                     </div>
                   </button>
+                  {/* Das Ergebnis gehoert in den Chat, nicht erst hinter einen Klick:
+                      bei Selbst-Auftraegen und Zeitplan-Laeufen IST es die Antwort. */}
+                  {!läuft && karte.result_preview && (
+                    <div className="mt-1.5 max-h-80 overflow-y-auto border-t border-current/10 pl-5 pr-2 pt-1.5 text-[13px] text-foreground/90">
+                      <MarkdownContent content={karte.result_preview} />
+                    </div>
+                  )}
                   {(() => {
                     const schritte = taskActivity[karte.task_id];
                     if (!schritte || schritte.length === 0) return null;

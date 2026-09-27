@@ -136,12 +136,19 @@ Ansicht**. Sie zeigt nur, was man für die Arbeit mit seinen Agenten braucht:
 
 - **Seitenleiste:** Dashboard, Agenten, Aufgaben, Freigaben, Dateien, Hilfe.
   Hat der Admin deiner Rolle eigene Menüpunkte zugeteilt (Kap. 22.4), gelten diese.
-- **Agenten-Seite:** links der **Chat**, rechts die **Aufgaben** des Agenten:
+- **Agenten-Seite:** links der **Chat**, rechts die **Aufgaben** des Agenten in
+  drei Reitern:
   - **Offen** — was du ihm im Chat aufgetragen hast und er noch erledigt
   - **Geplant** — wiederkehrende Aufträge mit Takt und nächstem Lauf
-  - **Erledigt & laufend** — Klick darauf öffnet ein Fenster mit Auftrag,
-    Ergebnis und Live-Verlauf; du bleibst dabei im Chat.
-  Mit dem Symbol rechts oben in der Spalte klappst du sie ein und aus.
+  - **Erledigt** — Klick darauf öffnet ein Fenster mit Auftrag, Ergebnis und
+    Live-Verlauf; du bleibst dabei im Chat.
+  Ab mehr als 10 Einträgen erscheint oben eine **Suche**. Mit dem Symbol rechts
+  oben klappst du die Spalte ein und aus.
+- **Ergebnisse kommen in den Chat:** Bittest du den Agenten im Chat um eine
+  Aufgabe oder einen Zeitplan (z. B. „schick mir jeden Morgen um 6 einen
+  Newsletter"), erscheint jedes Ergebnis als Kachel in genau diesem Chat.
+  Zeitpläne, die nicht aus einem Chat stammen, bekommen ein eigenes Gespräch
+  mit ihrem Namen.
 - **Sprechen statt tippen:** unten im Chat auf das **Mikrofon** klicken — die
   Sprachsitzung startet, der Agent antwortet gesprochen.
 - **Die Leiste unten im Chat** (neben Büroklammer und Mikrofon), je ein Klick

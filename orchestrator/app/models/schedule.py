@@ -36,3 +36,7 @@ class Schedule(Base, TimestampMixin):
     # is still just one). At the threshold the schedule auto-disables instead
     # of escalating hourly forever — see task_router._escalate_exhausted_task.
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    # Der Chat, in dem der Zeitplan angelegt wurde: jeder Lauf erscheint dort als
+    # Kachel. Ohne Herkunft (Formular) schreibt der Zeitplan in ein eigenes
+    # Gespraech — siehe task_router.faden_fuer_aufgabe.
+    chat_session_id: Mapped[str | None] = mapped_column(String, nullable=True)

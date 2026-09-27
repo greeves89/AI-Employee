@@ -745,6 +745,16 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
 }
 
 const AUFGABEN_OFFEN_SCHLUESSEL = "agent_aufgaben_offen";
+const REITER = [
+  { key: "offen", titel: "Offen" },
+  { key: "geplant", titel: "Geplant" },
+  { key: "erledigt", titel: "Erledigt" },
+] as const;
+const LEER = {
+  offen: "Nichts offen. Was du dem Agenten im Chat aufträgst, steht hier.",
+  geplant: "Nichts geplant. Bitte den Agenten im Chat, etwas regelmäßig zu tun.",
+  erledigt: "Noch nichts erledigt.",
+};
 const LAUFENDE_STATUS = ["pending", "queued", "running"];
 const datumKurz = (iso: string) =>
   new Date(iso).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -772,6 +782,9 @@ function AufgabenSpalte({
   const [todos, setTodos] = useState<AgentTodo[]>([]);
   // Aufgabe im Fenster ueber dem Chat — man bleibt im Gespraech.
   const [angesehen, setAngesehen] = useState<string | null>(null);
+  // Ohne eigene Wahl: der erste Reiter mit Inhalt, nicht ein leerer "Offen".
+  const [gewaehlterReiter, setReiter] = useState<"offen" | "geplant" | "erledigt" | null>(null);
+  const [suche, setSuche] = useState("");
   const fensterZu = useCallback(() => setAngesehen(null), []);
   const ladeRest = useCallback(async () => {
     const [z, t] = await Promise.allSettled([api.getSchedules(), api.getAgentTodos(agentId)]);
@@ -851,9 +864,41 @@ function AufgabenSpalte({
     );
   }
 
-  const Abschnitt = ({ titel }: { titel: string }) => (
-    <p className="px-2.5 pt-3 pb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 first:pt-1">{titel}</p>
-  );
+  type Zeilendaten = { key: string; icon: React.ReactNode; titel: string; unter: string; href?: string; onClick?: () => void };
+  const eintraege: Record<"offen" | "geplant" | "erledigt", Zeilendaten[]> = {
+    offen: offeneTodos.map((t) => ({
+      key: `o-${t.id}`,
+      icon: t.status === "in_progress"
+        ? <Loader2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-blue-400 animate-spin" />
+        : <Circle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground/60" />,
+      titel: t.title,
+      unter: t.status === "in_progress" ? "In Arbeit" : "Offen",
+    })),
+    geplant: plaene.map((plan) => ({
+      key: `p-${plan.id}`,
+      href: "/tasks",
+      icon: <CalendarClock className={cn("h-3.5 w-3.5 mt-0.5 shrink-0", plan.enabled ? "text-violet-400" : "text-muted-foreground/50")} />,
+      titel: aufgabenTitel(plan.name),
+      unter: `${plan.takt || "wiederkehrend"} · ${plan.enabled ? `nächster Lauf ${datumKurz(plan.next_run_at)}` : "pausiert"}`,
+    })),
+    erledigt: erledigt.map((e) => {
+      const cfg = statusConfig[e.status] ?? statusConfig.pending;
+      const Icon = cfg.icon;
+      return {
+        key: e.key,
+        onClick: e.aufgabe ? () => setAngesehen(e.aufgabe!) : undefined,
+        icon: <Icon className={cn("h-3.5 w-3.5 mt-0.5 shrink-0", cfg.color, e.status === "running" && "animate-spin")} />,
+        titel: e.titel,
+        unter: `${AUFGABEN_STATUS[e.status] ?? e.status} · ${timeAgo(e.zeit)}`,
+      };
+    }),
+  };
+  const zahl = { offen: eintraege.offen.length, geplant: eintraege.geplant.length, erledigt: eintraege.erledigt.length };
+  const reiter = gewaehlterReiter ?? (zahl.offen ? "offen" : zahl.geplant ? "geplant" : zahl.erledigt ? "erledigt" : "offen");
+  const begriff = suche.trim().toLowerCase();
+  const sichtbar = begriff
+    ? eintraege[reiter].filter((z) => `${z.titel} ${z.unter}`.toLowerCase().includes(begriff))
+    : eintraege[reiter];
   const Zeile = ({ icon, titel, unter, href, onClick }: { icon: React.ReactNode; titel: string; unter: string; href?: string; onClick?: () => void }) => {
     const inhalt = (
       <>
@@ -883,47 +928,43 @@ function AufgabenSpalte({
           <PanelRightClose className="h-4 w-4" />
         </button>
       </div>
+      {/* Reiter statt gestapelter Abschnitte: bei vielen offenen To-dos war
+          alles Geplante und Erledigte aus dem Blick geschoben. */}
+      <div className="flex gap-1 border-b border-foreground/[0.06] px-2 py-1.5">
+        {REITER.map(({ key, titel }) => (
+          <button
+            key={key}
+            onClick={() => { setReiter(key); setSuche(""); }}
+            className={cn(
+              "flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+              reiter === key ? "bg-foreground/[0.08] text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]",
+            )}
+          >
+            {titel} <span className="tabular-nums text-muted-foreground/60">{zahl[key]}</span>
+          </button>
+        ))}
+      </div>
+      {/* Suche erst ab mehr als 10 Eintraegen — darunter ist sie nur Ballast. */}
+      {zahl[reiter] > 10 && (
+        <div className="relative px-2 pt-2">
+          <Search className="pointer-events-none absolute left-4 top-1/2 mt-1 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
+          <input
+            value={suche}
+            onChange={(e) => setSuche(e.target.value)}
+            placeholder="Suchen …"
+            className="w-full rounded-md border border-foreground/[0.08] bg-background py-1.5 pl-7 pr-2 text-xs outline-none focus:border-primary/40"
+          />
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto p-2">
-        {anzahl === 0 && (
+        {sichtbar.length === 0 && (
           <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-            Noch nichts aufgetragen. Was du dem Agenten im Chat gibst, steht hier.
+            {suche ? "Nichts gefunden." : LEER[reiter]}
           </p>
         )}
-        {offeneTodos.length > 0 && <Abschnitt titel="Offen" />}
-        {offeneTodos.map((t) => (
-          <Zeile
-            key={`o-${t.id}`}
-            icon={t.status === "in_progress"
-              ? <Loader2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-blue-400 animate-spin" />
-              : <Circle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground/60" />}
-            titel={t.title}
-            unter={t.status === "in_progress" ? "In Arbeit" : "Offen"}
-          />
+        {sichtbar.map((z) => (
+          <Zeile key={z.key} icon={z.icon} titel={z.titel} unter={z.unter} href={z.href} onClick={z.onClick} />
         ))}
-        {plaene.length > 0 && <Abschnitt titel="Geplant" />}
-        {plaene.map((plan) => (
-          <Zeile
-            key={`p-${plan.id}`}
-            href="/tasks"
-            icon={<CalendarClock className={cn("h-3.5 w-3.5 mt-0.5 shrink-0", plan.enabled ? "text-violet-400" : "text-muted-foreground/50")} />}
-            titel={aufgabenTitel(plan.name)}
-            unter={`${plan.takt || "wiederkehrend"} · ${plan.enabled ? `nächster Lauf ${datumKurz(plan.next_run_at)}` : "pausiert"}`}
-          />
-        ))}
-        {erledigt.length > 0 && <Abschnitt titel="Erledigt & laufend" />}
-        {erledigt.map((e) => {
-          const cfg = statusConfig[e.status] ?? statusConfig.pending;
-          const Icon = cfg.icon;
-          return (
-            <Zeile
-              key={e.key}
-              onClick={e.aufgabe ? () => setAngesehen(e.aufgabe!) : undefined}
-              icon={<Icon className={cn("h-3.5 w-3.5 mt-0.5 shrink-0", cfg.color, e.status === "running" && "animate-spin")} />}
-              titel={e.titel}
-              unter={`${AUFGABEN_STATUS[e.status] ?? e.status} · ${timeAgo(e.zeit)}`}
-            />
-          );
-        })}
       </div>
       <Fenster offen={angesehen !== null} schliessen={fensterZu} breite="max-w-5xl">
         {angesehen && <TaskDetail key={angesehen} taskId={angesehen} imFenster zeigeAufgabe={setAngesehen} />}

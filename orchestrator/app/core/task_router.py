@@ -374,6 +374,62 @@ async def _build_approval_rules_prefix(db: AsyncSession, agent_id: str) -> str:
     return "\n".join(lines)
 
 
+
+SYSTEM_ZEITPLAN_PRAEFIXE = ("[Proactive] ", "[Rhythmus] ")
+
+
+def ist_system_zeitplan(name: str | None) -> bool:
+    """Zeitplaene, die die Plattform selbst je Agent anlegt (Eigeninitiative,
+    Tagesrhythmus). Gegenstueck im Frontend: ``istSystemZeitplan``."""
+    return bool(name) and name.startswith(SYSTEM_ZEITPLAN_PRAEFIXE)
+
+
+async def faden_des_laufenden_zuges(redis, agent_id: str | None) -> str | None:
+    """Der Gespraechsfaden, in dem dieser Agent GERADE arbeitet.
+
+    Auftraege, die ueber den stdio-MCP-Server entstehen (Claude Code, Codex),
+    fuehren keinen Faden mit — der Werkzeugserver kennt die Sitzung des Chats
+    nicht. Der Agent selbst schreibt sie aber waehrend eines Zuges in seinen
+    Statuseintrag (``current_task = "chat:{faden}"``).
+
+    Das ist NICHT der frueher hier benutzte Auffangweg „zuletzt benutzter
+    Faden": gefragt wird nach dem Gespraech, das in DIESEM Moment laeuft. Es
+    ist damit dasselbe, in dem der Mensch gerade sitzt — und nicht irgendein
+    anderes.
+    """
+    if not agent_id or not (redis and redis.client):
+        return None
+    try:
+        status = await redis.client.hgetall(f"agent:{agent_id}:status")
+        if not status:
+            return None
+
+        def _text(wert) -> str:
+            return wert.decode() if isinstance(wert, bytes) else str(wert or "")
+
+        eintraege = {_text(k): _text(v) for k, v in status.items()}
+        aktuell = eintraege.get("current_task", "")
+        if aktuell.startswith("chat:"):
+            return aktuell[5:]
+
+        # ``current_task`` traegt nur EINE Arbeit. Agenten laufen aber
+        # parallel (MAX_PARALLEL_TASKS/-CHATS): wer nebenher einen
+        # Zeitplan-Auftrag abarbeitet, hat dort dessen Kennung stehen — und
+        # der Chat, in dem der Mensch gerade sitzt, war unsichtbar. Genau so
+        # gingen am 2026-08-13 zwei von vier Kacheln verloren.
+        # ``active_sessions`` fuehrt ALLE laufenden Arbeiten. Genau ein
+        # offenes Gespraech ist eindeutig; bei mehreren waere jede Wahl
+        # geraten, und eine Kachel im falschen Chat ist schlimmer als keine.
+        try:
+            laufend = json.loads(eintraege.get("active_sessions") or "[]")
+        except (TypeError, ValueError):
+            return None
+        faeden = [str(e)[5:] for e in laufend if str(e).startswith("chat:")]
+        return faeden[0] if len(faeden) == 1 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 class TaskRouter:
     """Routes tasks to agents via Redis queues with load balancing."""
 
@@ -840,11 +896,12 @@ class TaskRouter:
         logger.debug(
             "Task %s completion: delegator=%s agent=%s", task.id, delegator_id, agent_id
         )
+        # Erst die Kachel aktualisieren (sofort sichtbar) — fuer JEDE Aufgabe mit
+        # Chat-Bezug, auch Selbst-Auftraege und Zeitplan-Laeufe.
+        await self.publish_task_card(task, "done")
         if delegator_id and delegator_id != agent_id:
             logger.info("Firing delegation callback for task %s → delegator %s", task.id, delegator_id)
-            # Erst die Kachel aktualisieren (sofort sichtbar), dann den Lead
-            # anstossen (der braucht einen ganzen Zug).
-            await self.publish_task_card(task, "done")
+            # Nur bei Delegation den Lead anstossen (der braucht einen ganzen Zug).
             await self._notify_delegating_agent(task, delegator_id, fulfilled, gap)
 
         # Request user rating via notification + Telegram inline keyboard
@@ -2256,49 +2313,58 @@ class TaskRouter:
             logger.warning(f"Could not notify parent agent for subtask {subtask.id}: {e}")
 
     async def _session_of_running_turn(self, agent_id: str | None) -> str | None:
-        """Der Gespraechsfaden, in dem dieser Agent GERADE arbeitet.
+        """Siehe :func:`faden_des_laufenden_zuges`."""
+        return await faden_des_laufenden_zuges(self.redis, agent_id)
 
-        Auftraege, die ueber den stdio-MCP-Server entstehen (Claude Code, Codex),
-        fuehren keinen Faden mit — der Werkzeugserver kennt die Sitzung des Chats
-        nicht. Der Agent selbst schreibt sie aber waehrend eines Zuges in seinen
-        Statuseintrag (``current_task = "chat:{faden}"``).
+    async def _faden_fuer_aufgabe(self, task: Task) -> tuple[str | None, str | None]:
+        """In welches Gespraech gehoert die Kachel dieser Aufgabe — und wessen ist es?
 
-        Das ist NICHT der frueher hier benutzte Auffangweg „zuletzt benutzter
-        Faden": gefragt wird nach dem Gespraech, das in DIESEM Moment laeuft. Es
-        ist damit dasselbe, in dem der Mensch gerade sitzt — und nicht irgendein
-        anderes.
+        Rueckgabe ``(besitzer_agent, faden)``:
+
+        * Gemerkter Faden am Auftrag (Delegation, fruehere Kachel) gilt immer.
+        * Zeitplan-Lauf: der Chat, in dem der Zeitplan angelegt wurde; ohne
+          Herkunft ein eigenes Gespraech je Zeitplan. Die Laeufe der Plattform
+          (Eigeninitiative, Tagesrhythmus) bekommen KEINE Kachel — sie liefen
+          stuendlich in einen Chat, den niemand bestellt hat.
+        * Auftrag eines Agenten (an sich selbst oder an einen anderen): der
+          Chat, in dem er gerade arbeitet — dort hat der Mensch darum gebeten.
+        * Sonst (Formular, Besprechung, Testlauf): keiner.
         """
-        if not agent_id or not (self.redis and self.redis.client):
-            return None
+        meta = task.metadata_ or {}
+        auftraggeber = meta.get("created_by_agent")
+        besitzer = auftraggeber or task.agent_id
+        if meta.get("chat_session_id"):
+            return besitzer, meta["chat_session_id"]
+        if meta.get("schedule_id"):
+            from app.models.schedule import Schedule as _S
+
+            plan = await self.db.get(_S, meta["schedule_id"])
+            if plan is None or ist_system_zeitplan(plan.name) or not plan.agent_id:
+                return besitzer, None
+            if plan.chat_session_id:
+                return plan.agent_id, plan.chat_session_id
+            return plan.agent_id, await self._eigenes_zeitplan_gespraech(plan)
+        if auftraggeber:
+            return besitzer, await self._session_of_running_turn(auftraggeber)
+        return besitzer, None
+
+    async def _eigenes_zeitplan_gespraech(self, plan) -> str | None:
+        """Ein Gespraech je Zeitplan ohne Chat-Herkunft, benannt nach dem Zeitplan."""
+        from app.models.chat_session import ChatSession as _CS
+
+        faden = f"zeitplan-{plan.id}"
         try:
-            status = await self.redis.client.hgetall(f"agent:{agent_id}:status")
-            if not status:
-                return None
-
-            def _text(wert) -> str:
-                return wert.decode() if isinstance(wert, bytes) else str(wert or "")
-
-            eintraege = {_text(k): _text(v) for k, v in status.items()}
-            aktuell = eintraege.get("current_task", "")
-            if aktuell.startswith("chat:"):
-                return aktuell[5:]
-
-            # ``current_task`` traegt nur EINE Arbeit. Agenten laufen aber
-            # parallel (MAX_PARALLEL_TASKS/-CHATS): wer nebenher einen
-            # Zeitplan-Auftrag abarbeitet, hat dort dessen Kennung stehen — und
-            # der Chat, in dem der Mensch gerade sitzt, war unsichtbar. Genau so
-            # gingen am 2026-08-13 zwei von vier Kacheln verloren.
-            # ``active_sessions`` fuehrt ALLE laufenden Arbeiten. Genau ein
-            # offenes Gespraech ist eindeutig; bei mehreren waere jede Wahl
-            # geraten, und eine Kachel im falschen Chat ist schlimmer als keine.
-            try:
-                laufend = json.loads(eintraege.get("active_sessions") or "[]")
-            except (TypeError, ValueError):
-                return None
-            faeden = [str(e)[5:] for e in laufend if str(e).startswith("chat:")]
-            return faeden[0] if len(faeden) == 1 else None
-        except Exception:  # noqa: BLE001
-            return None
+            vorhanden = (await self.db.execute(
+                select(_CS).where(_CS.agent_id == plan.agent_id, _CS.session_id == faden)
+            )).scalar_one_or_none()
+            if vorhanden is None:
+                self.db.add(_CS(agent_id=plan.agent_id, session_id=faden, title=plan.name))
+            plan.chat_session_id = faden
+            await self.db.commit()
+        except Exception:  # noqa: BLE001 — eine Anzeige darf keinen Lauf kosten
+            logger.debug("[Kachel] eigenes Zeitplan-Gespraech nicht angelegt", exc_info=True)
+            await self.db.rollback()
+        return faden
 
     async def _persist_task_card(self, task: Task, payload: dict,
                                  session_id: str | None) -> None:
@@ -2315,7 +2381,7 @@ class TaskRouter:
             )).scalar_one_or_none()
             if row is None:
                 row = _CM(
-                    agent_id=(task.metadata_ or {}).get("created_by_agent"),
+                    agent_id=(task.metadata_ or {}).get("created_by_agent") or task.agent_id,
                     session_id=session_id,
                     message_id=f"card-{task.id}",
                     role="system",
@@ -2346,12 +2412,12 @@ class TaskRouter:
         """
         try:
             meta = task.metadata_ or {}
-            delegator = meta.get("created_by_agent")
-            session = meta.get("chat_session_id") or await self._session_of_running_turn(delegator)
+            # Bis v1.341.0 bekamen nur Delegationen eine Kachel. Was sich ein
+            # Agent selbst auftrug und jeder Zeitplan-Lauf endeten in keinem
+            # Chat — das Ergebnis stand nur in der Aufgabenliste.
+            delegator, session = await self._faden_fuer_aufgabe(task)
             if not (delegator and self.redis and self.redis.client):
                 return
-            if delegator == task.agent_id:
-                return  # sich selbst beauftragen ist keine Delegation
 
             name = None
             if task.agent_id:
@@ -2368,7 +2434,9 @@ class TaskRouter:
                 "status": getattr(task.status, "value", str(task.status)),
                 "assigned_agent_id": task.agent_id,
                 "assigned_agent_name": name or task.agent_id,
-                "result_preview": (task.result or task.error or "")[:400],
+                # Bei Selbst-Auftraegen und Zeitplaenen IST die Kachel die Antwort —
+                # 400 Zeichen schnitten einen Newsletter nach dem ersten Absatz ab.
+                "result_preview": (task.result or task.error or "")[:4000],
                 "cost_usd": task.cost_usd,
                 "duration_ms": task.duration_ms,
                 # Ohne den Faden kann das Fenster nicht entscheiden, ob die
