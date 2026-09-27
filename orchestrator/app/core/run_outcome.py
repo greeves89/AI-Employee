@@ -34,7 +34,10 @@ _SIGNATUREN: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Zugang abgelaufen", re.compile(
         r"(OAuth access token has expired|Failed to authenticate\.?\s*API Error:\s*401)", re.I)),
     ("Kontingent erschoepft", re.compile(
-        r"(You'?ve hit your (usage )?limit|rate.?limit(ed)? exceeded|429 Too Many Requests)", re.I)),
+        # Zwischen „your" und „limit" stehen je nach Abo andere Woerter
+        # („usage", „weekly", „Opus weekly") — bis zu drei, sonst waere jeder
+        # neue Wortlaut wieder ein gruener Haken ohne Arbeit (27.09.2026).
+        r"(You'?ve hit your (\w+ ){0,3}limit|rate.?limit(ed)? exceeded|429 Too Many Requests)", re.I)),
     ("Zugang abgelehnt", re.compile(
         r"(invalid_grant|refresh_token_reused|credit balance is too low)", re.I)),
 )

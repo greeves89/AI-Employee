@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.342.1] - 2026-09-27
+
+### Behoben
+- **Ein Lauf im Wochenlimit galt als erledigt.** Die Erkennung erschöpfter
+  Kontingente kannte nur „You've hit your limit" und „…your usage limit". Der
+  neue Wortlaut „You've hit your weekly limit" rutschte durch: die Aufgabe stand
+  auf „Erledigt", das Ergebnis war nur die Limit-Meldung. Jetzt werden bis zu
+  drei Wörter zwischen „your" und „limit" erkannt; der Lauf gilt als
+  fehlgeschlagen und löst die übliche Meldung aus.
+
+### Tests
+- Wochenlimit und „…your Opus weekly limit" in `test_run_outcome_green_but_empty.py`.
+
+---
+
 ## [1.342.0] - 2026-09-27
 
 ### Neu

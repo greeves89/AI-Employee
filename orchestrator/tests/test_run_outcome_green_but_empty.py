@@ -117,6 +117,16 @@ class KontingentWortlauteTests(unittest.TestCase):
                 "visit https://example.com/usage to purchase more credits or try again at 5:21 PM.")
         self.assertEqual(warum_kein_erfolg(text, 180_000), "Kontingent erschoepft")
 
+    def test_wochenlimit(self):
+        """27.09.2026: „You've hit your weekly limit" — wieder ein neues Wort
+        zwischen „your" und „limit", wieder ein gruener Haken ohne Arbeit."""
+        self.assertEqual(warum_kein_erfolg(
+            "You've hit your weekly limit · resets Oct 2, 7am (UTC)", 4000), "Kontingent erschoepft")
+
+    def test_limit_mit_zwei_woertern(self):
+        self.assertEqual(warum_kein_erfolg(
+            "You've hit your Opus weekly limit · resets Oct 2", 4000), "Kontingent erschoepft")
+
     def test_bisheriger_wortlaut_bleibt(self):
         self.assertEqual(warum_kein_erfolg(
             "You've hit your limit - resets 1pm (Europe/Berlin)", 2000), "Kontingent erschoepft")
