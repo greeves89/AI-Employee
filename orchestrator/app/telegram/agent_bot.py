@@ -165,6 +165,11 @@ def _tool_label(raw: str) -> str:
 class TelegramAgentBot:
     """A Telegram bot instance bound to a single AI Employee agent."""
 
+    # Wie oft der Tipp-Indikator waehrend eines Wake-Waits aufgefrischt wird.
+    # Telegram loescht ihn nach ~5 s ohne Auffrischung von selbst — als Klassenattribut,
+    # damit Tests ihn ohne echtes Warten verkuerzen koennen.
+    WAKE_TYPING_INTERVAL_SECONDS = 4
+
     def __init__(self, agent_id: str, agent_name: str, bot_token: str, auth_key: str):
         self.agent_id = agent_id
         self.agent_name = agent_name
@@ -536,10 +541,30 @@ class TelegramAgentBot:
                 if not needs_wake:
                     return False
 
-                # Needs waking — tell user and start
+                # Needs waking — tell user and start. Der Wake-Wait kann bis zu 20 s
+                # dauern und war bisher komplett still: Telegrams Tipp-Indikator
+                # erlischt nach ~5 s ohne Auffrischung, und laut Nutzer-Beobachtung
+                # (Screenshot 26.09.2026) sieht ein Client eine 20 s tote Leitung
+                # als gescheiterten Versand an und schickt die Nachricht ein zweites
+                # Mal — mit neuer message_id, die die Gateway-Dublettenprüfung
+                # (channel_gateway.already_seen, dedupliziert nur je message_id)
+                # deshalb nicht faengt. Ein aufgefrischter Tipp-Indikator waehrend
+                # des Wartens haelt den Client sichtbar "im Gespraech".
                 await update.message.reply_text("⏳ Agent fährt hoch, einen Moment...")
-                ok = await wake_agent(db, docker, target_agent_id or self.agent_id, wait=True, timeout=20)
-                return ok
+                wake_task = asyncio.ensure_future(
+                    wake_agent(db, docker, target_agent_id or self.agent_id, wait=True, timeout=20)
+                )
+                while not wake_task.done():
+                    try:
+                        await update.effective_chat.send_action("typing")
+                    except Exception:  # noqa: BLE001 — Tipp-Indikator ist Komfort, kein Muss
+                        pass
+                    try:
+                        await asyncio.wait_for(asyncio.shield(wake_task),
+                                                timeout=self.WAKE_TYPING_INTERVAL_SECONDS)
+                    except asyncio.TimeoutError:
+                        continue
+                return await wake_task
         except Exception as e:
             logging.getLogger(__name__).warning(f"Telegram wake-up failed: {e}")
             return False

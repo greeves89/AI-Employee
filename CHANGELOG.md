@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.339.5] - 2026-09-27
+
+### Behoben
+- **Die Selbstbewertung einer Aufgabe konnte haengen bleiben.** Lief die
+  Bewertung in ihr Zeitlimit, wurde nur das Warten abgebrochen — der
+  `claude`-Prozess lief weiter und hielt seine Leitungen offen. Hatte er einen
+  eigenen Unterprozess gestartet, kehrte das anschliessende Aufraeumen nie
+  zurueck, und mit ihm blieb der Abschluss der Aufgabe stehen. Der Prozess wird
+  jetzt beendet, das Aufraeumen hat eine eigene Frist, und die Bewertung faellt
+  danach verlaesslich auf die Formel zurueck.
+- **Fehlgeschlagene Selbstbewertungen sind im Protokoll zuzuordnen.** Bisher
+  stand dort bei den meisten Faellen nur "falling back to formula:" ohne Grund,
+  weil der Zeitablauf keine Fehlermeldung traegt. Jetzt stehen Fehlerart und bei
+  Zeitablauf das Limit im Protokoll (#857).
+- **Telegram zeigt waehrend des Aufweckens eines Agenten weiter "schreibt...".**
+  Das Aufwecken kann mehrere Sekunden dauern, in denen der Chat still war;
+  Telegram blendet die Anzeige nach etwa fuenf Sekunden aus. Wer dann glaubte,
+  die Nachricht sei nicht angekommen, schickte sie erneut. Die Anzeige wird
+  jetzt waehrend des gesamten Aufweckens erneuert.
+
+### Tests
+- Der Test fuer das begrenzte Aufraeumen haengt nicht mehr davon ab, ob auf der
+  Maschine die `claude`-CLI installiert ist — ohne sie kehrte die Funktion sofort
+  zurueck, und der Test pruefte nichts.
+
+---
+
 ## [1.339.4] - 2026-09-27
 
 ### Behoben
