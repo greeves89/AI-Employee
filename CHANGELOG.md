@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.343.1] - 2026-09-28
+
+### Behoben
+- **Zeitplan-Ergebnisse landeten in der Glocke statt im Chat.** Die
+  Agenten-Anleitung empfahl `notify_user` „für erledigte Aufgaben", also
+  schickten Agenten das Ergebnis dorthin — die Chat-Kachel zeigte nur das
+  Vorgeplänkel. Anleitung und die Werkzeuge `create_task`/`create_schedule`
+  (alle Laufzeiten) sagen jetzt: Das Ergebnis ist die Schlussantwort, es
+  erscheint automatisch im Chat, aus dem der Auftrag kam.
+- **Codex: Das Aufgaben-Ergebnis enthielt alle Zwischenmeldungen.** Jetzt ist es
+  wie bei Claude Code nur die Schlussantwort; der Chat-Verlauf behält alles.
+
+---
+
 ## [1.343.0] - 2026-09-27
 
 Befunde aus einem UI-Test der einfachen Ansicht mit einem Testkonto

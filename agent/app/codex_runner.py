@@ -342,7 +342,12 @@ class CodexAgentRunner:
             # Jedes Stueck ist eine eigene Aeusserung (siehe oben) — als Absatz
             # trennen, sonst klebt der gespeicherte Verlauf zusammen.
             final_text = "\n\n".join(t.strip("\n") for t in text_output)
-            result_data["result"] = final_text
+            # Chat: der ganze Verlauf. Aufgabe: nur die SCHLUSSantwort — wie bei
+            # Claude Code, dessen ``result`` ebenfalls nur die letzte Aeusserung
+            # ist. Sonst stand in der Ergebnis-Kachel das Vorgeplaenkel
+            # („Ich recherchiere …") vor dem eigentlichen Ergebnis (28.09.2026).
+            letzte = text_output[-1].strip("\n") if text_output else ""
+            result_data["result"] = letzte if stream == "task" else final_text
             result_data["text"] = final_text
 
             if returncode in (-2, -15, 130) or getattr(self, "_interrupted", False):

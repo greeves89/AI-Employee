@@ -602,7 +602,10 @@ ORCHESTRATOR_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "create_task",
-            "description": "Create a task for yourself or another agent. Use to delegate work or schedule follow-up work.",
+            "description": (
+                "Create a task for yourself or another agent. Use to delegate work or schedule follow-up work. "
+                "The result of every run appears automatically as a card in the chat where it was requested — so write the prompt so that the run's FINAL ANSWER is the deliverable itself (e.g. the full newsletter text). Do NOT deliver content via notify_user; that only rings the bell and the chat card stays empty."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -825,7 +828,8 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                 "run_in_seconds = ONE-SHOT self follow-up ('look at this again in 30 min' → 1800), fires once then stops. "
                 "interval_seconds = repeat forever every N seconds. "
                 "cron_expression = exact wall-clock times (e.g. daily/twice-daily). "
-                "Give exactly ONE of the three. Use this instead of sleeping/waiting."
+                "Give exactly ONE of the three. Use this instead of sleeping/waiting. "
+                "The result of every run appears automatically as a card in the chat where it was requested — so write the prompt so that the run's FINAL ANSWER is the deliverable itself (e.g. the full newsletter text). Do NOT deliver content via notify_user; that only rings the bell and the chat card stays empty."
             ),
             "parameters": {
                 "type": "object",

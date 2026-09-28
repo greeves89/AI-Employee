@@ -91,7 +91,8 @@ export function buildServer() {
         description:
           "Create a new task for yourself or another agent. The task will be queued and " +
           "executed when resources are available. Use this to delegate work, split complex " +
-          "tasks into subtasks, or schedule follow-up work.",
+          "tasks into subtasks, or schedule follow-up work. " +
+          "The result of every run appears automatically as a card in the chat where it was requested — so write the prompt so that the run's FINAL ANSWER is the deliverable itself (e.g. the full newsletter text). Do NOT deliver content via notify_user; that only rings the bell and the chat card stays empty.",
         inputSchema: {
           type: "object",
           properties: {
@@ -469,7 +470,8 @@ export function buildServer() {
           "Schedule YOURSELF to run a task later — you choose the timing. Use instead of sleeping/waiting. " +
           "run_in_seconds = ONE-SHOT self follow-up ('look at this again in 30 min' → 1800): fires once, then stops. " +
           "interval_seconds = repeat forever. cron_expression = exact wall-clock times (daily, twice-daily). " +
-          "Provide exactly ONE of the three timing options.",
+          "Provide exactly ONE of the three timing options. " +
+          "The result of every run appears automatically as a card in the chat where it was requested — so write the prompt so that the run's FINAL ANSWER is the deliverable itself (e.g. the full newsletter text). Do NOT deliver content via notify_user; that only rings the bell and the chat card stays empty.",
         inputSchema: {
           type: "object",
           properties: {

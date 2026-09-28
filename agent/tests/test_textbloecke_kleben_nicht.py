@@ -118,5 +118,8 @@ class GespeicherterVerlaufKlebtNicht(unittest.IsolatedAsyncioTestCase):
                     [ereignis("Ich lege den Job an."), ereignis("Erledigt!")], [], 0))):
             ergebnis = await runner._run_codex("t1", "prompt", "model", stream="task")
 
-        self.assertEqual(ergebnis.get("result"), "Ich lege den Job an.\n\nErledigt!")
+        # Der Verlauf trennt die Aeusserungen als Absatz ...
+        self.assertEqual(ergebnis.get("text"), "Ich lege den Job an.\n\nErledigt!")
+        # ... das Aufgaben-Ergebnis ist nur die Schlussantwort (wie bei Claude Code).
+        self.assertEqual(ergebnis.get("result"), "Erledigt!")
 
