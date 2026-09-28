@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.344.2] - 2026-09-28
+
+### Behoben
+- **Mac-Download der Computer-Bridge lief nach jedem Release ins Leere.** Der
+  Link zeigte auf die Datei mit der neuen Versionsnummer, die die CI erst
+  Minuten nach dem Release hochlädt. Jetzt auf die unnummerierte Datei, die bei
+  jedem Bau aktualisiert wird und immer vorhanden ist.
+
+---
+
 ## [1.344.1] - 2026-09-28
 
 ### Geändert

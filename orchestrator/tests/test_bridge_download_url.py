@@ -73,3 +73,15 @@ class BridgeDownloadUrlTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MacDownloadHaengtNichtAmBauTests(unittest.IsolatedAsyncioTestCase):
+    """28.09.2026: Nach jedem Release zeigte der Mac-Knopf auf eine Datei mit der
+    NEUEN Versionsnummer, die die CI erst Minuten spaeter hochlaedt (404). Die
+    unnummerierte Datei liegt immer im Release."""
+
+    async def test_mac_link_ohne_versionsnummer(self):
+        from app.api import downloads
+
+        ziel = (await downloads.download_bridge_mac()).headers["location"]
+        self.assertTrue(ziel.endswith("/AI-Employee-Bridge.dmg"), ziel)

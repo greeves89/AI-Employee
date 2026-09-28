@@ -4,7 +4,6 @@ import os
 
 from fastapi import APIRouter
 from fastapi.responses import RedirectResponse
-from app.config import get_agent_version
 
 router = APIRouter(prefix="/download", tags=["downloads"])
 
@@ -20,7 +19,10 @@ BRIDGE_TAG = os.getenv("BRIDGE_RELEASE_TAG") or "bridge-latest"
 
 @router.get("/bridge/mac")
 async def download_bridge_mac():
-    bridge_asset = f"AI-Employee-Bridge-v{get_agent_version()}.dmg"
+    # Die Datei OHNE Versionsnummer: die CI laedt sie bei jedem Bau mit hoch.
+    # Die nummerierte (…-v1.344.1.dmg) entsteht erst Minuten nach dem Release —
+    # bis dahin fuehrte der Mac-Knopf nach JEDEM Update auf eine 404-Seite.
+    bridge_asset = "AI-Employee-Bridge.dmg"
     url = f"https://github.com/{GITHUB_REPO}/releases/download/{BRIDGE_TAG}/{bridge_asset}"
     return RedirectResponse(url=url, status_code=302)
 
