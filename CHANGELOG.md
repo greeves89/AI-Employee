@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.344.1] - 2026-09-28
+
+### Geändert
+- **Computer-Bridge im Konnektoren-Fenster des Chats** — Download für macOS und
+  Windows direkt dort, wo man Konten und Schlüssel verbindet. Bisher nur im
+  Computer-Use-Bereich, den die einfache Ansicht nicht zeigt. Ein gemeinsamer
+  Baustein für beide Stellen.
+- Der Windows-Download ist eine `.zip`, nicht wie beschriftet eine `.exe`.
+
+---
+
 ## [1.344.0] - 2026-09-28
 
 ### Neu

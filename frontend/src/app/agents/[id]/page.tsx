@@ -35,6 +35,7 @@ import { InteractionModelCard } from "@/components/agents/interaction-model-card
 import { AgentSpeechTab } from "@/components/agents/agent-speech-tab";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
 import { KontoVerbindungen } from "@/components/agents/konto-verbindungen";
+import { BridgeDownload } from "@/components/agents/bridge-download";
 import { MemoryTab } from "@/components/agents/memory-tab";
 import { TodoTab } from "@/components/agents/todo-tab";
 import { McpInfo } from "@/components/agents/mcp-info";
@@ -746,6 +747,7 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
           {offen === "konnektoren" && (
             <div className="space-y-4">
               <KontoVerbindungen agentId={agent.id} />
+              <BridgeDownload />
               <IntegrationSelector agentId={agent.id} />
             </div>
           )}

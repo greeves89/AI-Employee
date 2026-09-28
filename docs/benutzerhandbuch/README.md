@@ -157,6 +157,8 @@ Ansicht**. Sie zeigt nur, was man für die Arbeit mit seinen Agenten braucht:
     - **Deine Konten** — z. B. Microsoft 365 mit **Verbinden** anmelden. Erscheint
       nur, wenn der Administrator den Dienst eingerichtet hat (bei Microsoft: die
       Entra-App). Nach der Anmeldung landest du wieder im Chat.
+    - **Computer-Bridge** — Download für macOS (.dmg) und Windows (.zip), damit
+      der Agent auf deinem Rechner arbeiten kann.
     - **Schlüssel** — mit **Schlüssel hinzufügen** einen eigenen API-Schlüssel
       anlegen (Name, Variablenname, Wert). Er wird verschlüsselt gespeichert,
       gehört nur dir und wird gleich diesem Agenten zugewiesen. Vom Admin

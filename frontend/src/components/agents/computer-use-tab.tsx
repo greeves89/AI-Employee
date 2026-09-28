@@ -6,7 +6,6 @@ import {
   Monitor,
   Globe,
   Download,
-  Apple,
   Plus,
   Trash2,
   RefreshCw,
@@ -51,6 +50,7 @@ import {
   type ComputerUseSession,
 } from "@/lib/api";
 import { getApiUrl, getBase } from "@/lib/config";
+import { BridgeDownload } from "@/components/agents/bridge-download";
 import { setVisibleInterval } from "@/lib/visible-interval";
 
 interface Props {
@@ -328,38 +328,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
       </div>
 
       {/* Download Bridge App */}
-      <div className="rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground/[0.06] shrink-0">
-            <Download className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-foreground">Bridge App herunterladen</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Läuft in der Menüleiste / im System-Tray. Verbindet diesen Server mit deinem Desktop.
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <a
-            href={`${baseUrl}/api/v1/download/bridge/mac`}
-            className="inline-flex items-center gap-2 rounded-lg bg-foreground/[0.06] border border-foreground/[0.08] px-3.5 py-2 text-xs font-medium text-foreground hover:bg-foreground/[0.1] transition-all"
-          >
-            <Apple className="h-3.5 w-3.5" />
-            macOS (.dmg)
-          </a>
-          <a
-            href={`${baseUrl}/api/v1/download/bridge/windows`}
-            className="inline-flex items-center gap-2 rounded-lg bg-foreground/[0.06] border border-foreground/[0.08] px-3.5 py-2 text-xs font-medium text-foreground hover:bg-foreground/[0.1] transition-all"
-          >
-            <Monitor className="h-3.5 w-3.5" />
-            Windows (.exe)
-          </a>
-        </div>
-        <p className="text-[10px] text-muted-foreground mt-2.5">
-          Die App enthält alle Berechtigungen — du siehst im Tray-Menü genau, was erlaubt ist.
-        </p>
-      </div>
+      <BridgeDownload />
 
       {/* Desktop Bridge sessions */}
       <div className="flex items-center justify-between">
