@@ -59,7 +59,11 @@ class DownstreamLinksPointAtTheAdminTabDirectlyTests(unittest.TestCase):
     def test_secrets_links_in_integration_selector_are_direct(self):
         src = (Path(__file__).resolve().parents[2]
                / "frontend/src/components/agents/integration-selector.tsx").read_text()
-        self.assertEqual(src.count('href="/admin?tab=secrets"'), 2)
+        # Seit 1.344.0 nur noch EIN Link (fuer Admins, "Alle verwalten") — der
+        # leere Zustand oeffnet das Anlege-Formular im Fenster statt der
+        # Admin-Konsole, in die ein Mitglied nicht darf. Worum es hier geht,
+        # bleibt: direkt auf den Reiter, nie ueber die Umleitung /secrets.
+        self.assertGreaterEqual(src.count('href="/admin?tab=secrets"'), 1)
         self.assertNotIn('href="/secrets"', src)
 
 

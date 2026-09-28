@@ -5,6 +5,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.344.0] - 2026-09-28
+
+### Neu
+- **Konten direkt aus dem Chat verbinden.** Das Konnektoren-Fenster zeigt oben
+  „Deine Konten" (z. B. Microsoft 365) mit Verbinden, Neu verbinden und Trennen.
+  Angeboten wird nur, was der Admin eingerichtet hat — bei Microsoft also nur
+  mit hinterlegter Entra-App. Nach der Anmeldung führt der Login zurück in den
+  Chat, das Fenster öffnet sich wieder.
+- **Eigene Schlüssel im Konnektoren-Fenster anlegen** („Schlüssel hinzufügen":
+  Name, Variablenname, Wert). Der Schlüssel wird verschlüsselt gespeichert und
+  gleich diesem Agenten zugewiesen; eigene Schlüssel sind markiert und lassen
+  sich löschen.
+
+### Sicherheit
+- **Ein Secret gehört dem, der es anlegt.** Bisher durfte ein Mitglied ein
+  Secret anlegen, sah es danach aber nicht und konnte es keinem Agenten
+  zuweisen — es fiel in den allgemeinen Bestand, den Mitglieder nur über die
+  Rollen-Freigabe erreichen. Jetzt:
+  - Nutzen (sehen, zuweisen): Admin, Besitzer oder per Rolle freigegeben.
+  - Verwalten (ändern, löschen): nur Admin oder Besitzer. Bisher durfte, wem ein
+    Firmen-Secret nur zur Nutzung freigegeben war, es auch ändern und löschen.
+  - Eigene Secrets nur an eigene Agenten, nicht an nur geteilte — der Wert läge
+    sonst im Container eines anderen Nutzers.
+  - Von Admins angelegte Secrets bleiben Firmen-Secrets ohne Besitzer.
+- **Secrets eines geteilten Agenten waren für jeden sichtbar, der ihn sehen
+  durfte** — Name, Variable und Teile des Werts, auch ohne Freigabe. Sichtbar ist
+  jetzt nur, was der Aufrufer auch in der Secrets-Liste sähe; der Besitzer des
+  Agenten sieht alles auf seinem Agenten.
+- **OAuth-Rückleitung:** Das neue Rücksprungziel nimmt nur Pfade dieser App an
+  (kein fremder Host, kein `//`, keine Kodierungstricks), beim Lesen erneut
+  geprüft. `provider` und `error` werden in der Rückleitung jetzt maskiert;
+  bisher ließen sich darüber Parameter einschleusen.
+
+### Datenbank
+- Migration `agent_secrets.owner_id` (neue Spalte, nullable, Index).
+
+### Tests
+- `test_secrets_gehoeren_ihrem_ersteller.py` (Matrix Admin/Besitzer/freigegeben/
+  fremd für Sehen, Zuweisen, Ändern, Löschen; geteilte Agenten),
+  `test_oauth_ruecksprung.py` (Angriffsziele, erneute Prüfung, Maskierung).
+
+---
+
 ## [1.343.1] - 2026-09-28
 
 ### Behoben

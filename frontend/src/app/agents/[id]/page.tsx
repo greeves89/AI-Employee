@@ -34,6 +34,7 @@ import { AutonomyMatrix } from "@/components/agents/autonomy-matrix";
 import { InteractionModelCard } from "@/components/agents/interaction-model-card";
 import { AgentSpeechTab } from "@/components/agents/agent-speech-tab";
 import { IntegrationSelector } from "@/components/agents/integration-selector";
+import { KontoVerbindungen } from "@/components/agents/konto-verbindungen";
 import { MemoryTab } from "@/components/agents/memory-tab";
 import { TodoTab } from "@/components/agents/todo-tab";
 import { McpInfo } from "@/components/agents/mcp-info";
@@ -720,6 +721,12 @@ const SCHNELL: { key: SchnellKey; titel: string; icon: typeof CheckCircle2 }[] =
 
 function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent) => void }) {
   const [offen, setOffen] = useState<SchnellKey | null>(null);
+  // Zurueck vom Konto-Login (Microsoft u. a.): Konnektoren-Fenster wieder oeffnen,
+  // damit man das Konto gleich diesem Agenten freigeben kann.
+  const suchParameter = useSearchParams();
+  useEffect(() => {
+    if (suchParameter.get("konnektoren") === "1" || suchParameter.get("connected")) setOffen("konnektoren");
+  }, [suchParameter]);
   const zu = useCallback(() => setOffen(null), []);
   const aktiv = SCHNELL.find((s) => s.key === offen);
   return (
@@ -736,7 +743,12 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
       ))}
       <Fenster offen={offen !== null} schliessen={zu} titel={aktiv?.titel}>
         <div className="p-5">
-          {offen === "konnektoren" && <IntegrationSelector agentId={agent.id} />}
+          {offen === "konnektoren" && (
+            <div className="space-y-4">
+              <KontoVerbindungen agentId={agent.id} />
+              <IntegrationSelector agentId={agent.id} />
+            </div>
+          )}
           {offen === "modell" && (
             <NurAbschnitt.Provider value="Modell & Verhalten">
               <AgentSettings agent={agent} onUpdated={setAgent} />

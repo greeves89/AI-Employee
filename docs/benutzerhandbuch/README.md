@@ -153,7 +153,15 @@ Ansicht**. Sie zeigt nur, was man für die Arbeit mit seinen Agenten braucht:
   Sprachsitzung startet, der Agent antwortet gesprochen.
 - **Die Leiste unten im Chat** (neben Büroklammer und Mikrofon), je ein Klick
   öffnet ein Fenster:
-  - **Stecker** — Konnektoren: MCP-Server und Dienste mit ihren Zugangsdaten
+  - **Stecker** — Konnektoren:
+    - **Deine Konten** — z. B. Microsoft 365 mit **Verbinden** anmelden. Erscheint
+      nur, wenn der Administrator den Dienst eingerichtet hat (bei Microsoft: die
+      Entra-App). Nach der Anmeldung landest du wieder im Chat.
+    - **Schlüssel** — mit **Schlüssel hinzufügen** einen eigenen API-Schlüssel
+      anlegen (Name, Variablenname, Wert). Er wird verschlüsselt gespeichert,
+      gehört nur dir und wird gleich diesem Agenten zugewiesen. Vom Admin
+      freigegebene Firmen-Schlüssel kannst du zuweisen, aber nicht ändern.
+    - darunter MCP-Server und Dienste, die der Agent nutzen darf
   - **Chip** — Modell: welches KI-Modell der Agent nutzt
   - **Schild** — Rechte: wie selbstständig der Agent handeln darf
   - **Ordner** — Dateien, die der Agent angelegt hat

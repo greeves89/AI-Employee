@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import re
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -47,12 +48,31 @@ def _provider_filter(provider_enum: OAuthProvider, user_id: str | None):
     return and_(OAuthIntegration.provider == provider_enum, OAuthIntegration.user_id == user_id)
 
 
+_RUECKSPRUNG = re.compile(r"^/[A-Za-z0-9/_\-]{0,200}(\?[A-Za-z0-9=&_\-]{0,200})?$")
+
+
+def sicherer_ruecksprung(pfad: str | None) -> str | None:
+    """Wohin nach dem Login zurueck — nur ein Pfad INNERHALB der App.
+
+    Die Rueckleitung nach dem OAuth-Login nimmt ein Ziel an (z. B. zurueck in den
+    Chat eines Agenten). Ein frei waehlbares Ziel waere ein offener Umleiter:
+    ein Link auf unseren Login, der nach der Anmeldung auf eine fremde Seite
+    fuehrt. Deshalb nur absolute Pfade dieser App, kein ``//host``, kein Schema,
+    keine Sonderzeichen — alles andere faellt auf die Integrationsseite zurueck.
+    """
+    if not pfad or pfad.startswith("//") or "\\" in pfad:
+        return None
+    return pfad if _RUECKSPRUNG.match(pfad) else None
+
+
 class OAuthService:
     def __init__(self, db: AsyncSession, redis: RedisService):
         self.db = db
         self.redis = redis
 
-    async def generate_auth_url(self, provider_name: str, user_id: str | None = None) -> str:
+    async def generate_auth_url(
+        self, provider_name: str, user_id: str | None = None, ruecksprung: str | None = None
+    ) -> str:
         """Generate OAuth authorization URL with CSRF state."""
         provider = get_provider(provider_name)
         client_id = get_provider_client_id(provider)
@@ -62,7 +82,11 @@ class OAuthService:
         state = secrets.token_urlsafe(32)
         state_key = f"oauth:state:{state}"
         # Store provider + user_id so callback can associate the token correctly
-        state_payload = json.dumps({"provider": provider_name, "user_id": user_id})
+        state_payload = json.dumps({
+            "provider": provider_name,
+            "user_id": user_id,
+            "ruecksprung": sicherer_ruecksprung(ruecksprung),
+        })
         await self.redis.client.setex(state_key, STATE_TTL_SECONDS, state_payload)
 
         if provider.token_exchange_method == "anthropic_oauth":
@@ -97,6 +121,17 @@ class OAuthService:
             }
 
         return f"{apply_tenant(provider.authorization_url)}?{urlencode(params)}"
+
+    async def ruecksprung_fuer(self, state: str) -> str | None:
+        """Das beim Start hinterlegte Ziel — VOR ``exchange_code`` lesen, das den
+        Zustand verbraucht. Beim Lesen erneut geprueft (Tiefenverteidigung)."""
+        try:
+            raw = await self.redis.client.get(f"oauth:state:{state}")
+            if isinstance(raw, bytes):
+                raw = raw.decode()
+            return sicherer_ruecksprung((json.loads(raw) or {}).get("ruecksprung")) if raw else None
+        except Exception:  # noqa: BLE001 — ohne Ziel gilt die Integrationsseite
+            return None
 
     async def exchange_code(self, provider_name: str, code: str, state: str) -> OAuthIntegration:
         """Exchange authorization code for tokens, encrypt and store them."""

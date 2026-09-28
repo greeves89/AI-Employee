@@ -1,5 +1,7 @@
 """API endpoints for OAuth integrations and PAT-based integrations (GitHub)."""
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -43,12 +45,17 @@ async def list_integrations(user=Depends(require_auth), service: OAuthService = 
 @router.get("/{provider}/auth", response_model=AuthUrlResponse)
 async def get_auth_url(
     provider: str,
+    zurueck: str | None = Query(None, max_length=400),
     user=Depends(require_auth),
     service: OAuthService = Depends(_get_oauth_service),
 ):
-    """Generate OAuth authorization URL for a provider."""
+    """Generate OAuth authorization URL for a provider.
+
+    ``zurueck``: Pfad innerhalb der App, auf den der Callback nach dem Login
+    leitet (z. B. der Chat eines Agenten). Nur relative App-Pfade werden
+    uebernommen, siehe ``sicherer_ruecksprung``."""
     try:
-        auth_url = await service.generate_auth_url(provider, user_id=user.id)
+        auth_url = await service.generate_auth_url(provider, user_id=user.id, ruecksprung=zurueck)
         return AuthUrlResponse(auth_url=auth_url, provider=provider)
     except (KeyError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -66,16 +73,20 @@ async def oauth_callback(
     if error:
         # Redirect to frontend with error
         return RedirectResponse(
-            url=f"/integrations?error={error}&provider={provider}"
+            url="/integrations?" + urlencode({"error": error, "provider": provider})
         )
 
     try:
+        ziel = await service.ruecksprung_fuer(state)
         await service.exchange_code(provider, code, state)
-        # Redirect to frontend with success
-        return RedirectResponse(url=f"/integrations?connected={provider}")
+        # Zurueck dorthin, wo verbunden wurde (z. B. Chat); sonst Integrationsseite.
+        if ziel:
+            trenner = "&" if "?" in ziel else "?"
+            return RedirectResponse(url=f"{ziel}{trenner}" + urlencode({"connected": provider}))
+        return RedirectResponse(url="/integrations?" + urlencode({"connected": provider}))
     except ValueError as e:
         return RedirectResponse(
-            url=f"/integrations?error={str(e)}&provider={provider}"
+            url="/integrations?" + urlencode({"error": str(e), "provider": provider})
         )
 
 

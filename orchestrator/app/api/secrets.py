@@ -63,8 +63,12 @@ def _mask(value_encrypted: str) -> str:
         return "****"
 
 
-def _serialize(s: AgentSecret, include_mask: bool = True) -> dict:
+def _serialize(s: AgentSecret, include_mask: bool = True, user=None) -> dict:
+    eigen = bool(user is not None and s.owner_id and s.owner_id == getattr(user, "id", None))
     return {
+        # Fuer die Oberflaeche: eigene Secrets kann man bearbeiten, freigegebene nur nutzen.
+        "owned": eigen,
+        "manageable": eigen or (user is not None and _ist_admin(user)),
         "id": s.id,
         "name": s.name,
         "key_name": s.key_name,
@@ -125,8 +129,10 @@ async def list_secrets(
         perms = await get_effective_permissions(user, db)
         allowed = perms.get("secret_ids")
         allowed_set = set(allowed) if allowed is not None else set()
-        secrets = [s for s in secrets if s.id in allowed_set]
-    return {"secrets": [_serialize(s) for s in secrets]}
+        # Plus die eigenen: bis v1.343 verschwand ein selbst angelegtes Secret
+        # sofort aus der Liste — es war in keiner Rollen-Freigabe.
+        secrets = [s for s in secrets if s.id in allowed_set or s.owner_id == user.id]
+    return {"secrets": [_serialize(s, user=user) for s in secrets]}
 
 
 @router.post("", status_code=201)
@@ -142,11 +148,12 @@ async def create_secret(
         secret_type=body.secret_type,
         description=body.description,
         created_by=getattr(user, "email", None),
+        owner_id=None if _ist_admin(user) else user.id,
     )
     db.add(secret)
     await db.commit()
     await db.refresh(secret)
-    return _serialize(secret)
+    return _serialize(secret, user=user)
 
 
 async def _assert_agent_owned(agent_id: str, user, db) -> None:
@@ -158,11 +165,31 @@ async def _assert_agent_owned(agent_id: str, user, db) -> None:
         raise HTTPException(status_code=404, detail="Agent not found")
 
 
-async def _assert_secret_allowed(secret_id: int, user, db) -> None:
-    """403 unless the caller may use this secret. Default-deny: a non-admin needs an
-    explicit role allowlist (secret_ids); None = none. Admin bypasses."""
+async def _agent_besitzer(agent_id: str, db) -> str | None:
+    """Wem der Agent GEHOERT — nicht nur, wer ihn sehen darf (geteilte Agenten)."""
+    from app.models.agent import Agent
+    return (await db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
+
+
+async def _freigegebene_secret_ids(user, db) -> set[int]:
+    from app.core.permissions import get_effective_permissions
+    perms = await get_effective_permissions(user, db)
+    allowed = perms.get("secret_ids")
+    return set(allowed) if allowed is not None else set()
+
+
+def _ist_admin(user) -> bool:
     from app.models.user import UserRole
-    if hasattr(user, "role") and user.role == UserRole.ADMIN:
+    return getattr(user, "role", None) == UserRole.ADMIN
+
+
+async def _assert_secret_allowed(secret_id: int, user, db) -> None:
+    """403 unless the caller may USE this secret (assign it to an own agent).
+    Admin, the owner, or an explicit role allowlist (secret_ids; None = none)."""
+    if _ist_admin(user):
+        return
+    secret = await db.get(AgentSecret, secret_id)
+    if secret is not None and secret.owner_id and secret.owner_id == getattr(user, "id", None):
         return
     from app.core.permissions import get_effective_permissions
     perms = await get_effective_permissions(user, db)
@@ -173,6 +200,18 @@ async def _assert_secret_allowed(secret_id: int, user, db) -> None:
             status_code=403,
             detail="Dieser Key/Secret ist für deine Gruppe nicht freigegeben.",
         )
+
+
+def _assert_secret_managed(secret: AgentSecret, user) -> None:
+    """403 unless the caller may CHANGE or DELETE this secret: admin or owner.
+
+    Nutzen ist nicht verwalten: Wem ein Firmen-Secret per Rolle nur zur Nutzung
+    freigegeben ist, durfte es bis v1.343 auch aendern und loeschen."""
+    if _ist_admin(user):
+        return
+    if secret.owner_id and secret.owner_id == getattr(user, "id", None):
+        return
+    raise HTTPException(status_code=403, detail="Dieses Secret kann nur sein Besitzer oder ein Admin ändern.")
 
 
 @router.patch("/{secret_id}")
@@ -186,7 +225,7 @@ async def update_secret(
     secret = await db.get(AgentSecret, secret_id)
     if not secret:
         raise HTTPException(status_code=404, detail="Secret not found")
-    await _assert_secret_allowed(secret_id, user, db)
+    _assert_secret_managed(secret, user)
 
     should_refresh = body.value is not None or body.is_active is not None
     if body.name is not None:
@@ -200,7 +239,7 @@ async def update_secret(
 
     await db.commit()
     await db.refresh(secret)
-    response = _serialize(secret)
+    response = _serialize(secret, user=user)
     if should_refresh:
         response["refresh"] = await _refresh_agents_for_secret(db, manager, secret_id)
     return response
@@ -216,7 +255,7 @@ async def delete_secret(
     secret = await db.get(AgentSecret, secret_id)
     if not secret:
         raise HTTPException(status_code=404, detail="Secret not found")
-    await _assert_secret_allowed(secret_id, user, db)
+    _assert_secret_managed(secret, user)
     result = await db.execute(
         select(AgentSecretAssignment.agent_id).where(
             AgentSecretAssignment.secret_id == secret_id
@@ -251,7 +290,15 @@ async def get_agent_secrets(
         s_result = await db.execute(select(AgentSecret).where(AgentSecret.id.in_(secret_ids)))
         secrets = s_result.scalars().all()
 
-    return {"agent_id": agent_id, "secrets": [_serialize(s) for s in secrets]}
+    # Wem der Agent nur GETEILT ist, der sah hier bis v1.344 alle Secrets des
+    # Agenten (Name, Variable, Teile des Werts) — auch ohne Freigabe. Sichtbar ist
+    # jetzt, was der Aufrufer auch in /secrets saehe; der Besitzer des Agenten
+    # sieht alles, was auf seinem Agenten liegt (es steckt in seinem Container).
+    if not _ist_admin(user) and await _agent_besitzer(agent_id, db) != user.id:
+        freigegeben = await _freigegebene_secret_ids(user, db)
+        secrets = [s for s in secrets if s.id in freigegeben or s.owner_id == user.id]
+
+    return {"agent_id": agent_id, "secrets": [_serialize(s, user=user) for s in secrets]}
 
 
 @router.post("/agent/{agent_id}/{secret_id}", status_code=201)
@@ -269,6 +316,10 @@ async def assign_secret(
     # The caller must own the target agent AND be allowed to use the secret (admin bypasses both).
     await _assert_agent_owned(agent_id, user, db)
     await _assert_secret_allowed(secret_id, user, db)
+    # Ein PRIVATES Secret nur an einen EIGENEN Agenten — nicht an einen, der
+    # nur geteilt ist: der Wert laege sonst im Container eines anderen Nutzers.
+    if secret.owner_id and not _ist_admin(user) and await _agent_besitzer(agent_id, db) != user.id:
+        raise HTTPException(status_code=403, detail="Eigene Schlüssel nur an eigene Agenten.")
 
     existing = await db.execute(
         select(AgentSecretAssignment).where(

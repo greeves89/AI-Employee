@@ -1252,8 +1252,11 @@ export async function getIntegrations(): Promise<{ integrations: Integration[] }
   return fetchJSON(`${getBase()}/integrations/`);
 }
 
-export async function getAuthUrl(provider: string): Promise<{ auth_url: string; provider: string }> {
-  return fetchJSON(`${getBase()}/integrations/${provider}/auth`);
+/** ``zurueck``: Pfad in der App, auf den der Login danach zurückführt (z. B. der
+ *  Chat eines Agenten). Der Server nimmt nur App-Pfade an. */
+export async function getAuthUrl(provider: string, zurueck?: string): Promise<{ auth_url: string; provider: string }> {
+  const qs = zurueck ? `?zurueck=${encodeURIComponent(zurueck)}` : "";
+  return fetchJSON(`${getBase()}/integrations/${provider}/auth${qs}`);
 }
 
 export async function disconnectIntegration(provider: string): Promise<void> {
@@ -4089,6 +4092,10 @@ export interface AgentSecretEntry {
   masked_value: string | null;
   created_at: string | null;
   assigned_agent_ids: string[];
+  /** Selbst angelegt (gehört mir). */
+  owned?: boolean;
+  /** Ändern/Löschen erlaubt: eigenes Secret oder Admin. */
+  manageable?: boolean;
 }
 
 export async function listSecrets(): Promise<AgentSecretEntry[]> {

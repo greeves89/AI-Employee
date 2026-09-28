@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { Integration } from "@/lib/types";
 import type { McpServerInfo, UrlAllowlistEntry, UrlAllowlistTemplate, AgentSecretEntry } from "@/lib/api";
+import { useAuthStore } from "@/lib/auth";
+import { useConfirm } from "@/components/ui/dialog-provider";
 
 // Built-in MCP servers that every agent has
 const BUILTIN_MCP_SERVERS = [
@@ -84,6 +86,16 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [allSecrets, setAllSecrets] = useState<AgentSecretEntry[]>([]);
   const [agentSecretIds, setAgentSecretIds] = useState<Set<number>>(new Set());
   const [togglingSecret, setTogglingSecret] = useState<number | null>(null);
+  // Eigene Schlüssel direkt hier anlegen: der frühere Link führte in die
+  // Admin-Konsole, in die ein Mitglied gar nicht darf.
+  const istAdmin = useAuthStore((st) => st.user?.role) === "admin";
+  const confirm = useConfirm();
+  const [neuOffen, setNeuOffen] = useState(false);
+  const [neuName, setNeuName] = useState("");
+  const [neuVariable, setNeuVariable] = useState("");
+  const [neuWert, setNeuWert] = useState("");
+  const [neuSpeichert, setNeuSpeichert] = useState(false);
+  const [neuFehler, setNeuFehler] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -196,6 +208,39 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
     } finally {
       setApplyingTemplate(null);
     }
+  };
+
+  const variableAus = (name: string) =>
+    name.trim().toUpperCase().replace(/[ÄÖÜ]/g, (z) => ({ Ä: "AE", Ö: "OE", Ü: "UE" }[z] as string)).replace(/ß/g, "SS").replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+
+  const handleCreateSecret = async () => {
+    const variable = (neuVariable || variableAus(neuName)).trim();
+    if (!neuName.trim() || !variable || !neuWert) return;
+    setNeuSpeichert(true);
+    setNeuFehler(null);
+    try {
+      const angelegt = await api.createSecret({ name: neuName.trim(), key_name: variable, value: neuWert });
+      // Wer hier anlegt, will ihn für DIESEN Agenten — gleich zuweisen.
+      await api.assignSecret(agentId, angelegt.id);
+      setNeuName(""); setNeuVariable(""); setNeuWert(""); setNeuOffen(false);
+      await load();
+    } catch (e) {
+      setNeuFehler(e instanceof Error ? e.message : "Anlegen fehlgeschlagen");
+    } finally {
+      setNeuSpeichert(false);
+    }
+  };
+
+  const handleDeleteSecret = async (secret: AgentSecretEntry) => {
+    const ok = await confirm({
+      title: `„${secret.name}" löschen?`,
+      message: "Alle Agenten, denen der Schlüssel zugewiesen ist, verlieren ihn.",
+      variant: "destructive",
+      confirmLabel: "Löschen",
+    });
+    if (!ok) return;
+    await api.deleteSecret(secret.id);
+    await load();
   };
 
   const handleToggleSecret = async (secretId: number) => {
@@ -701,30 +746,91 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               <KeyRound className="h-4 w-4 text-violet-400" />
             </div>
             <div>
-              <h3 className="text-sm font-medium">API Keys & Secrets</h3>
+              <h3 className="text-sm font-medium">Schlüssel</h3>
               <p className="text-[11px] text-muted-foreground/60 mt-0.5">
-                {agentSecretIds.size > 0 ? `${agentSecretIds.size} secret${agentSecretIds.size !== 1 ? "s" : ""} assigned` : "No secrets assigned"}
-                {" — injected as env vars when agent starts"}
+                {agentSecretIds.size > 0 ? `${agentSecretIds.size} zugewiesen` : "Keiner zugewiesen"}
+                {" — der Agent erhält sie beim Start"}
               </p>
             </div>
           </div>
-          <a
-            href="/admin?tab=secrets"
-            target="_blank"
-            className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-          >
-            Manage secrets
-            <ExternalLink className="h-3 w-3" />
-          </a>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setNeuOffen((o) => !o)}
+              className="flex items-center gap-1 rounded-lg border border-foreground/[0.08] px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+            >
+              <Plus className="h-3 w-3" />
+              Schlüssel hinzufügen
+            </button>
+            {istAdmin && (
+              <a
+                href="/admin?tab=secrets"
+                target="_blank"
+                className="flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+              >
+                Alle verwalten
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </div>
         </div>
+
+        {neuOffen && (
+          <div className="space-y-2.5 border-b border-foreground/[0.06] bg-foreground/[0.02] px-5 py-4">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-[11px] font-medium text-muted-foreground">Name</span>
+                <input
+                  value={neuName}
+                  onChange={(e) => setNeuName(e.target.value)}
+                  placeholder="z. B. Wetterdienst"
+                  className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background px-3 py-1.5 text-sm outline-none focus:border-primary/50"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[11px] font-medium text-muted-foreground">Variablenname</span>
+                <input
+                  value={neuVariable || variableAus(neuName)}
+                  onChange={(e) => setNeuVariable(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"))}
+                  placeholder="WETTERDIENST_API_KEY"
+                  className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background px-3 py-1.5 font-mono text-xs outline-none focus:border-primary/50"
+                />
+              </label>
+            </div>
+            <label className="block">
+              <span className="text-[11px] font-medium text-muted-foreground">Wert</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={neuWert}
+                onChange={(e) => setNeuWert(e.target.value)}
+                placeholder="wird verschlüsselt gespeichert"
+                className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background px-3 py-1.5 text-sm outline-none focus:border-primary/50"
+              />
+            </label>
+            {neuFehler && <p className="text-[11px] text-red-400">{neuFehler}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setNeuOffen(false)} className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
+                Abbrechen
+              </button>
+              <button
+                onClick={handleCreateSecret}
+                disabled={neuSpeichert || !neuName.trim() || !neuWert}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+              >
+                {neuSpeichert && <Loader2 className="h-3 w-3 animate-spin" />}
+                Anlegen und zuweisen
+              </button>
+            </div>
+          </div>
+        )}
 
         {allSecrets.length === 0 ? (
           <div className="px-5 py-6 text-center">
             <KeyRound className="h-6 w-6 mx-auto mb-2 text-muted-foreground/30" />
-            <p className="text-[11px] text-muted-foreground/50">No secrets configured yet.</p>
-            <a href="/admin?tab=secrets" target="_blank" className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors mt-1 inline-block">
-              Create your first secret →
-            </a>
+            <p className="text-[11px] text-muted-foreground/50">Noch keine Schlüssel.</p>
+            <button onClick={() => setNeuOffen(true)} className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors mt-1 inline-block">
+              Ersten Schlüssel hinzufügen
+            </button>
           </div>
         ) : (
           <div className="divide-y divide-foreground/[0.04]">
@@ -742,6 +848,9 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                       <span className="text-[10px] font-mono text-muted-foreground/50 bg-foreground/[0.04] px-1.5 py-0.5 rounded">
                         {secret.key_name}
                       </span>
+                      {secret.owned && (
+                        <span className="text-[10px] rounded-full border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-violet-400">eigen</span>
+                      )}
                     </div>
                     {secret.description && (
                       <p className="text-[10px] text-muted-foreground/40 mt-0.5 truncate">{secret.description}</p>
@@ -761,8 +870,17 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                       ? <Loader2 className="h-3 w-3 animate-spin" />
                       : assigned ? <CheckCircle2 className="h-3 w-3" /> : <Plus className="h-3 w-3" />
                     }
-                    {assigned ? "Assigned" : "Assign"}
+                    {assigned ? "Zugewiesen" : "Zuweisen"}
                   </button>
+                  {secret.manageable && secret.owned && (
+                    <button
+                      onClick={() => handleDeleteSecret(secret)}
+                      title="Schlüssel löschen"
+                      className="rounded-lg p-1.5 text-muted-foreground/60 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               );
             })}

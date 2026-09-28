@@ -29,6 +29,9 @@ class AgentSecret(Base, TimestampMixin):
     description: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Wem das Secret gehoert (Nutzer-ID). NULL = Firmen-Secret eines Admins,
+    # das Mitglieder nur ueber die Rollen-Freigabe (secret_ids) erreichen.
+    owner_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 
     assignments: Mapped[list["AgentSecretAssignment"]] = relationship(
         back_populates="secret", cascade="all, delete-orphan", lazy="selectin"
