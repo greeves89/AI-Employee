@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.346.4] - 2026-09-29
+
+### Behoben
+- **Jede Netzwerkunterbrechung eines Custom-LLM-Agenten wurde zum Absturz.**
+  Die Fehlerdiagnose (seit „Modell-Fehler erklären sich selbst") las
+  `self.model` — das Attribut heißt `model_name`. Ein `ReadError` löste so einen
+  `AttributeError` aus, der den echten Fehler überdeckte; die Erkennung
+  „vorübergehend, erneut versuchen" griff nie, die Aufgabe brach ab. Betroffen
+  waren alle drei Anbieter (OpenAI/Azure, Anthropic, Google). Auf einer
+  Kundenanlage scheiterten daran zwei Aufgaben, eine dritte wartete darauf und
+  lief in „Task lost".
+- **Selbstbewertung ohne Claude-Zugang.** Geprüft wurde nur, ob die `claude`-CLI
+  installiert ist, nicht, ob es einen Zugang gibt. Auf Anlagen, die nur
+  Azure/Custom-LLM nutzen, scheiterte die Bewertung jeder Aufgabe und landete als
+  Warnung in der Fehlerdatei. Ohne Zugang gilt jetzt direkt die Formel.
+- **Warnungsflut „No Claude token / No token file".** Alle zwei Minuten zwei
+  Warnungen, rund 400 am Tag, auch auf Anlagen ganz ohne Claude — sie verdeckten
+  echte Fehler. Jetzt eine Meldung je Zustandswechsel.
+
+### Tests
+- `test_netzfehler_wird_nicht_zum_absturz.py` (echter Streaming-Pfad aller drei
+  Anbieter mit abreißender Verbindung), `test_reflection_failure_logging.py`
+  (ohne Zugang: Formel, kein Aufruf).
+
+---
+
 ## [1.346.3] - 2026-09-29
 
 ### Behoben

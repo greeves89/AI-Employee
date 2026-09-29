@@ -116,7 +116,8 @@ class ClaudeTokenService:
             source = "settings"
 
         if not token:
-            logger.warning("No Claude token found in DB, Keychain file, or settings")
+            # Die Hauptschleife meldet das einmal je Zustandswechsel (main.py).
+            logger.debug("No Claude token found in DB, Keychain file, or settings")
             return False
 
         token_suffix = token[-8:]

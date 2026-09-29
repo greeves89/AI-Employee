@@ -232,6 +232,10 @@ async def _llm_reflect_on_task(task: "Task") -> tuple[int, str, bool | None, str
 
     if not shutil.which("claude"):
         return _compute_formula_rating(task), "auto-rated (claude CLI not found)", None, ""
+    # Ohne Zugang scheitert jeder Aufruf — auf Anlagen, die nur Azure/Custom-LLM
+    # nutzen, landete so JEDE Aufgabe als Warnung in der Fehlerdatei (29.09.2026).
+    if not (settings.anthropic_api_key or settings.claude_code_oauth_token):
+        return _compute_formula_rating(task), "auto-rated (kein Claude-Zugang)", None, ""
 
     duration_s = round((task.duration_ms or 0) / 1000, 1)
     result_preview = truncate_preserving_words(task.result or task.error or "", 1500)

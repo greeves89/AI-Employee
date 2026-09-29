@@ -260,15 +260,24 @@ async def _refresh_claude_token() -> None:
     await service.write_initial_token()
 
     last_forced_refresh_date: str = ""
+    # Nur beim Zustandswechsel melden. Auf Anlagen ohne Claude-Zugang (z. B. nur
+    # Azure/Custom-LLM) standen sonst alle 2 Minuten zwei Warnungen im Protokoll —
+    # rund 400 am Tag, die echte Fehler in der Fehlerdatei verdeckten (29.09.2026).
+    token_fehlt_gemeldet = False
 
     while True:
         try:
             success = await service.refresh_access_token()
-            if not success:
+            if not success and not token_fehlt_gemeldet:
                 logger.warning(
-                    "No token file found at /host-auth/token.json — "
-                    "ensure launchd sync job is running on host."
+                    "Kein Claude-Token (DB, /host-auth/token.json, Einstellungen) — "
+                    "Claude-Code-Agenten koennen sich nicht anmelden. Wird erst wieder "
+                    "gemeldet, wenn sich das aendert."
                 )
+                token_fehlt_gemeldet = True
+            elif success and token_fehlt_gemeldet:
+                logger.info("Claude-Token wieder verfuegbar")
+                token_fehlt_gemeldet = False
 
             # Forced OAuth refresh at 01:00 UTC (= 03:00 German CEST / 02:00 CET)
             now = datetime.now(timezone.utc)

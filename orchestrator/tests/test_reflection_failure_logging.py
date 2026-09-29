@@ -83,10 +83,14 @@ class ReflectionFailureLoggingTests(unittest.IsolatedAsyncioTestCase):
         # Fehlerpfad wird je betreten — der Test waere dann leer gruen.
         self._which = patch("shutil.which", return_value="/usr/bin/claude")
         self._exec = patch("asyncio.create_subprocess_exec", new=_fake_exec)
+        # Seit 1.346.4 braucht der Claude-Weg auch einen Zugang — sonst Formel.
+        self._zugang = patch("app.config.settings.claude_code_oauth_token", "test-token")
         self._which.start()
         self._exec.start()
+        self._zugang.start()
         self.addCleanup(self._which.stop)
         self.addCleanup(self._exec.stop)
+        self.addCleanup(self._zugang.stop)
         _SPAWNED.clear()
         self.observed_timeout = None
 
@@ -311,6 +315,7 @@ class RealChildReapBoundTests(unittest.IsolatedAsyncioTestCase):
             # sofort mit "claude CLI not found" zurueck — kein Prozess, keine
             # Warnung, und der Test pruefte nichts, sondern schlug nur fehl.
             patch("shutil.which", return_value="/usr/local/bin/claude"),  # task_router importiert shutil lokal
+            patch("app.config.settings.claude_code_oauth_token", "test-token"),
             patch("asyncio.create_subprocess_exec", new=_exec_real),
             patch("app.core.task_router._REFLECTION_TIMEOUT_S", budget),
             patch("app.core.task_router._REFLECTION_REAP_TIMEOUT_S", reap),
@@ -403,3 +408,32 @@ class ReflectionTimeoutConstantTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OhneClaudeZugangTests(unittest.IsolatedAsyncioTestCase):
+    """29.09.2026, Kundenanlage nur mit Azure: CLI installiert, aber kein Zugang —
+    jede Aufgabe scheiterte an der Selbstbewertung und landete als Warnung in der
+    Fehlerdatei. Ohne Zugang gleich die Formel, ohne Aufruf."""
+
+    async def test_kein_zugang_heisst_formel_ohne_aufruf(self):
+        from types import SimpleNamespace
+        from app.core import task_router
+
+        aufrufe = []
+
+        async def zaehlt(*a, **k):
+            aufrufe.append(a)
+            raise AssertionError("claude darf nicht aufgerufen werden")
+
+        aufgabe = SimpleNamespace(id="t1", title="t", status=SimpleNamespace(value="completed"),
+                                  duration_ms=1000, num_turns=1, cost_usd=0, error=None,
+                                  prompt="p", result="r")
+        with patch("shutil.which", return_value="/usr/bin/claude"), \
+             patch("asyncio.create_subprocess_exec", new=zaehlt), \
+             patch("app.config.settings.claude_code_oauth_token", ""), \
+             patch("app.config.settings.anthropic_api_key", ""), \
+             patch.object(task_router, "_compute_formula_rating", return_value=4):
+            wertung, grund, _, _ = await task_router._llm_reflect_on_task(aufgabe)
+        self.assertEqual((wertung, aufrufe), (4, []))
+        self.assertIn("kein Claude-Zugang", grund)
+

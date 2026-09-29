@@ -98,7 +98,7 @@ class GoogleProvider(BaseLLMProvider):
 
         def _diag(e):
             return describe_failure(e, url=url, body=body, messages=messages,
-                                    model=self.model, started=_start)
+                                    model=self.model_name, started=_start)
 
         try:
             async with self.http.stream("POST", url, json=body, headers=headers) as response:
