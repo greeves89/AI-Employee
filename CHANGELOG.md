@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.348.0] - 2026-09-29
+
+### Geändert
+- sentence-transformers im Embedding-Service auf 6.1.0 (Dokumentation, Multimodal-Eingaben) — reine Abhaengigkeitsaktualisierung.
+
 ## [1.347.2] - 2026-09-29
 
 ### Behoben
