@@ -463,6 +463,9 @@ class TelegramAgentBot:
                 message_id=str(update.message.message_id),
                 context=tg_context,
                 sender_name=(user.first_name if user else "") or "",
+                # message_id zaehlt je Bot-Chat — ohne den Bot kollidieren die
+                # Nummern der Agenten-Bots in der Doppelt-Pruefung.
+                gateway_id=self.agent_id,
             )
             await gw.deliver(SimpleNamespace(client=redis), inbound)
             await redis.aclose()
@@ -547,7 +550,7 @@ class TelegramAgentBot:
                 # (Screenshot 26.09.2026) sieht ein Client eine 20 s tote Leitung
                 # als gescheiterten Versand an und schickt die Nachricht ein zweites
                 # Mal — mit neuer message_id, die die Gateway-Dublettenprüfung
-                # (channel_gateway.already_seen, dedupliziert nur je message_id)
+                # (channel_gateway.already_seen, dedupliziert je Bot-Chat und message_id)
                 # deshalb nicht faengt. Ein aufgefrischter Tipp-Indikator waehrend
                 # des Wartens haelt den Client sichtbar "im Gespraech".
                 await update.message.reply_text("⏳ Agent fährt hoch, einen Moment...")

@@ -60,6 +60,11 @@ class InboundMessage:
     context: dict = field(default_factory=dict)
     # Wer geschrieben hat (nur zur Anzeige).
     sender_name: str = ""
+    # Ueber welchen Zugang die Nachricht kam, wenn der Anbieter seine
+    # Nachrichten-Kennungen NUR je Zugang und Gespraech vergibt. Telegram zaehlt
+    # message_id je Bot-Chat ab 1 — bei mehreren Agenten-Bots gibt es dieselbe
+    # Nummer mehrfach. Leer = Kennung ist kanalweit eindeutig (Teams, Discord …).
+    gateway_id: str = ""
 
     @property
     def session_id(self) -> str:
@@ -81,8 +86,19 @@ async def already_seen(redis, message: InboundMessage, ttl: int = 24 * 3600) -> 
     Für Kanäle, die abgefragt werden (Teams über Graph), ist das unverzichtbar: zwei
     Durchläufe sehen dieselbe Nachricht, und der Agent würde zweimal antworten. Bei
     Telegram, das die Nachricht aktiv zustellt, ist es eine billige Zusatzsicherung.
+
+    Mit ``gateway_id`` gehoeren Zugang und Gespraech zum Schluessel: Telegram
+    vergibt message_id je Bot-Chat, und ein kanalweiter Schluessel verwarf die
+    Nachricht Nr. 173 an Bot B still als Dublette, weil Bot A Stunden vorher
+    seine eigene Nr. 173 gesehen hatte. Ohne ``gateway_id`` bleibt der Schluessel
+    wie bisher — abgefragte Kanaele (Teams) sehen nach einem Update sonst alles
+    noch einmal und der Agent antwortet doppelt.
     """
-    key = f"gateway:seen:{message.channel}:{message.message_id}"
+    if message.gateway_id:
+        key = (f"gateway:seen:{message.channel}:{message.gateway_id}:"
+               f"{message.conversation_id}:{message.message_id}")
+    else:
+        key = f"gateway:seen:{message.channel}:{message.message_id}"
     try:
         return not await redis.client.set(key, "1", nx=True, ex=ttl)
     except Exception:  # noqa: BLE001 — ohne Redis lieber doppelt als gar nicht
