@@ -64,6 +64,23 @@ _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: ein** -- sonst faellt dieser Test mit einer irrefuehrenden Meldung um.
 _TABELLEN_NACH_DER_MARKE = ("app_favorites",)
 
+#: Spalten, die eine Migration NACH ``_REVISION_DAVOR`` an einer schon
+#: BESTEHENDEN Tabelle erst anlegt (Paare aus Tabelle, Spalte).
+#:
+#: Gleiche Fehlerklasse wie ``_TABELLEN_NACH_DER_MARKE``, nur fuer Spalten:
+#: ``create_all`` legt sie schon aus dem aktuellen Modell an, die Migration
+#: versucht sie beim Vorwaertslauf ein zweites Mal anzulegen und scheitert
+#: mit ``DuplicateColumn``.
+#:
+#: **Wer eine Migration ergaenzt, die eine Spalte an einer bestehenden
+#: Tabelle anlegt, traegt sie hier ein** -- sonst faellt dieser Test mit
+#: einer irrefuehrenden Meldung um.
+_SPALTEN_NACH_DER_MARKE = (
+    ("schedules", "chat_session_id"),
+    ("agent_secrets", "owner_id"),
+    ("agent_templates", "build_tools"),
+)
+
 
 def _postgres_da() -> bool:
     if "postgresql" not in _DB_URL:
@@ -128,6 +145,8 @@ class MigrationAufGewachsenerDatenbank(unittest.TestCase):
                 await c.execute(text("ALTER TABLE agents DROP COLUMN IF EXISTS access_policy"))
                 for tabelle in _TABELLEN_NACH_DER_MARKE:
                     await c.execute(text(f"DROP TABLE IF EXISTS {tabelle} CASCADE"))
+                for tabelle, spalte in _SPALTEN_NACH_DER_MARKE:
+                    await c.execute(text(f"ALTER TABLE {tabelle} DROP COLUMN IF EXISTS {spalte}"))
 
                 # Pflichtspalten aus dem Schema fuellen, statt sich durch
                 # NOT-NULL-Fehler zu raten.
@@ -222,6 +241,15 @@ class MigrationAufGewachsenerDatenbank(unittest.TestCase):
                 f"SELECT count(*) FROM information_schema.tables "
                 f"WHERE table_name='{tabelle}'"
             )), 1, f"{tabelle} fehlt — die Migrationskette lief nicht zu Ende")
+
+        # Gleiche Absicherung fuer Spalten: vorher entfernt, muss nachher
+        # wieder da sein — sonst wuerde ein stiller Abbruch NACH dem Entfernen
+        # nicht auffallen.
+        for tabelle, spalte in _SPALTEN_NACH_DER_MARKE:
+            self.assertEqual(asyncio.run(self._lies(
+                f"SELECT count(*) FROM information_schema.columns "
+                f"WHERE table_name='{tabelle}' AND column_name='{spalte}'"
+            )), 1, f"{tabelle}.{spalte} fehlt — die Migrationskette lief nicht zu Ende")
 
     def test_der_operator_der_es_zerlegt_hat(self):
         """Haelt fest, WARUM die Umwandlung noetig ist.
