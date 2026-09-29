@@ -130,3 +130,32 @@ def mounts_to_docker_volumes(mounts: list[MountEntry]) -> dict[str, dict]:
         m.host_path: {"bind": m.container_path, "mode": m.mode}
         for m in mounts
     }
+
+
+async def freigegebene_mounts(user, db) -> dict[str, str | None] | None:
+    """Welche Mount-Labels (Second Brains, Freigaben) darf dieser Nutzer nutzen?
+
+    ``None`` = Admin, alles. Sonst ``{label: modus}`` — persoenliche Freigabe
+    (``user_mount_access``, Modus begrenzt) ODER ueber die Rolle
+    (``custom_role.permissions.mount_labels``, Modus ``None`` = Katalog-Standard).
+
+    Eine Stelle fuer beide Fragen: welche Brains ein Nutzer in der Liste sieht und
+    welche er an einen Agenten haengen darf. Bis 29.09.2026 pruefte nur das
+    Anhaengen — die Liste zeigte jedem alle Brains samt Beschreibung.
+    """
+    from sqlalchemy import select
+
+    from app.core.permissions import get_effective_permissions
+    from app.models.user import UserRole
+    from app.models.user_mount_access import UserMountAccess
+
+    if getattr(user, "role", None) == UserRole.ADMIN:
+        return None
+    perms = await get_effective_permissions(user, db)
+    erlaubt: dict[str, str | None] = {label: None for label in (perms.get("mount_labels") or [])}
+    grants = (await db.execute(
+        select(UserMountAccess).where(UserMountAccess.user_id == user.id)
+    )).scalars().all()
+    for g in grants:
+        erlaubt[g.mount_label] = g.mode
+    return erlaubt

@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.345.1] - 2026-09-29
+
+### Sicherheit
+- **Die Liste der Second Brains zeigte jedem alle Brains** samt Beschreibung,
+  auch ohne Freigabe — anhängen durfte man nur freigegebene. Liste und Anhängen
+  folgen jetzt derselben Regel (persönliche Freigabe oder über die Rolle; Admin
+  alles), zusammengefasst in `freigegebene_mounts`.
+
+### Tests
+- `test_brains_nur_freigegebene.py` (Admin, Rolle, persönliche Freigabe, keine).
+
+---
+
 ## [1.345.0] - 2026-09-29
 
 ### Behoben

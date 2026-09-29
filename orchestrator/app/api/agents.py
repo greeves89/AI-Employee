@@ -3509,7 +3509,6 @@ async def update_agent_mounts(
     await _check_owner(agent_id, user, db)
     from app.core.mounts import get_effective_catalog
     from app.models.user import UserRole
-    from app.models.user_mount_access import UserMountAccess
 
     # Effective catalog = static env catalog + DB-managed Second Brains, so brains
     # created in the UI are assignable here too.
@@ -3523,16 +3522,12 @@ async def update_agent_mounts(
     # group/role (custom_role.permissions.mount_labels) — a UNION of both.
     effective_modes: dict[str, str] = {}
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        from app.core.permissions import get_effective_permissions
+        from app.core.mounts import freigegebene_mounts
 
-        perms = await get_effective_permissions(user, db)
-        role_mount_labels = set(perms.get("mount_labels") or [])
-
-        grants = (await db.execute(
-            select(UserMountAccess).where(UserMountAccess.user_id == user.id)
-        )).scalars().all()
-        grant_by_label = {g.mount_label: g.mode for g in grants}
-        granted_labels = set(grant_by_label) | role_mount_labels
+        erlaubt = await freigegebene_mounts(user, db) or {}
+        # Nur persoenliche Freigaben tragen einen Modus; Rollen-Freigaben: None.
+        grant_by_label = {label: modus for label, modus in erlaubt.items() if modus is not None}
+        granted_labels = set(erlaubt)
         denied = [m for m in new_mounts if m not in granted_labels]
         if denied:
             raise HTTPException(

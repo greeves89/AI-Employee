@@ -201,11 +201,20 @@ async def list_brains(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """List Second Brains (any authenticated user — needed to attach to agents)."""
+    """List Second Brains the caller may use (admin: all).
+
+    Bis 29.09.2026 sah jeder angemeldete Nutzer alle Brains samt Beschreibung,
+    auch ohne Freigabe — anhaengen durfte er sie ohnehin nicht. Jetzt dieselbe
+    Regel wie beim Anhaengen (``freigegebene_mounts``)."""
+    from app.core.mounts import freigegebene_mounts
+
     stmt = select(SecondBrain).order_by(SecondBrain.name)
     if active_only:
         stmt = stmt.where(SecondBrain.is_active.is_(True))
     rows = (await db.execute(stmt)).scalars().all()
+    erlaubt = await freigegebene_mounts(user, db)
+    if erlaubt is not None:
+        rows = [b for b in rows if b.label in erlaubt]
     return [_to_response(b) for b in rows]
 
 
