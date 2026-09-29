@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.348.2] - 2026-09-29
+
+### Behoben
+- Hauptlinie war seit 27.09. dauerhaft rot: Der Migrations-Test gegen echtes PostgreSQL scheiterte, weil er das Schema aus den aktuellen Modellen anlegt (dort existieren neu hinzugekommene Spalten schon) und danach dieselben Spalten per Migration erneut anzulegen versucht ("already exists"). Betraf drei seit dem 27./28.09. zusammengeführte Migrationen (schedules.chat_session_id, agent_secrets.owner_id, agent_templates.build_tools); der Test dropt diese Spalten jetzt vor dem Migrationslauf, wie er es für neue Tabellen bereits tat.
+
 ## [1.348.1] - 2026-09-29
 
 ### Geändert

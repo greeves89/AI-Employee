@@ -64,6 +64,21 @@ _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: ein** -- sonst faellt dieser Test mit einer irrefuehrenden Meldung um.
 _TABELLEN_NACH_DER_MARKE = ("app_favorites",)
 
+#: Dieselbe Falle, eine Ebene tiefer: Spalten, die eine Migration NACH
+#: ``_REVISION_DAVOR`` per ``ADD COLUMN`` an eine BESTEHENDE Tabelle haengt.
+#: ``create_all`` legt sie ueber das Modell schon mit an; bleibt die Spalte
+#: stehen, scheitert ihre Migration mit ``DuplicateColumn`` -- ein Fehler, den
+#: es im Betrieb nie gibt (dort laeuft die Migration exakt einmal).
+#:
+#: **Wer eine Migration ergaenzt, die einer bestehenden Tabelle eine Spalte
+#: hinzufuegt, traegt sie hier ein** -- sonst faellt dieser Test mit derselben
+#: irrefuehrenden Meldung um.
+_SPALTEN_NACH_DER_MARKE = (
+    ("schedules", "chat_session_id"),
+    ("agent_secrets", "owner_id"),
+    ("agent_templates", "build_tools"),
+)
+
 
 def _postgres_da() -> bool:
     if "postgresql" not in _DB_URL:
@@ -128,6 +143,10 @@ class MigrationAufGewachsenerDatenbank(unittest.TestCase):
                 await c.execute(text("ALTER TABLE agents DROP COLUMN IF EXISTS access_policy"))
                 for tabelle in _TABELLEN_NACH_DER_MARKE:
                     await c.execute(text(f"DROP TABLE IF EXISTS {tabelle} CASCADE"))
+                for tabelle, spalte in _SPALTEN_NACH_DER_MARKE:
+                    await c.execute(text(
+                        f"ALTER TABLE {tabelle} DROP COLUMN IF EXISTS {spalte}"
+                    ))
 
                 # Pflichtspalten aus dem Schema fuellen, statt sich durch
                 # NOT-NULL-Fehler zu raten.
