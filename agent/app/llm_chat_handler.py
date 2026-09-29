@@ -8,6 +8,7 @@ import time
 
 from app import context_compressor, model_registry, multimodal
 from app import announcement_guard
+from app.subagent_felder import subagent_felder
 from app.loop_detector import LoopDetector
 from app.config import settings
 from app.ai_credential_status import report_result_status
@@ -749,10 +750,16 @@ class LLMChatHandler:
                             "name": event.tool_name,
                             "input": event.tool_input,
                         })
-                        accumulated_tool_calls.append({
+                        eintrag = {
                             "tool": event.tool_name,
                             "input": json.dumps(event.tool_input)[:200],
-                        })
+                        }
+                        # Helfer mit vollen Kernfeldern (wie bei Claude Code) —
+                        # siehe app/subagent_felder.py.
+                        felder = subagent_felder(event.tool_name, event.tool_input)
+                        if felder:
+                            eintrag["subagent"] = felder
+                        accumulated_tool_calls.append(eintrag)
                         await self.log_publisher.publish_chat(
                             message_id, "tool_call",
                             {

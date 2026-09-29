@@ -8,6 +8,7 @@ import os
 import signal
 from typing import AsyncIterator
 
+from app.subagent_felder import subagent_felder
 from app.config import get_oauth_token, settings
 from app.ai_credential_status import is_auth_error, report_result_status
 from app.log_publisher import LogPublisher
@@ -343,20 +344,11 @@ class ChatHandler:
                             # Helfer. Der Auftragstext selbst bleibt gekuerzt;
                             # er kann sehr lang werden und wird zur Anzeige
                             # nicht gebraucht.
-                            if tool_name in ("Agent", "Task"):
-                                eintrag["subagent"] = {
-                                    "description": str(tool_input.get("description", ""))[:200],
-                                    "subagent_type": tool_input.get("subagent_type"),
-                                    "run_in_background": bool(tool_input.get("run_in_background")),
-                                    # Der Auftrag ist das Interessanteste am
-                                    # Helfer — ohne ihn steht in der Uebersicht
-                                    # nach einem Neuladen "(kein Auftragstext
-                                    # uebermittelt)". Grosszuegig, aber nicht
-                                    # unbegrenzt: Ein Auftrag kann sehr lang
-                                    # werden, und der Verlauf soll nicht daran
-                                    # wachsen.
-                                    "prompt": str(tool_input.get("prompt", ""))[:4000],
-                                }
+                            # Eigene Subagenten UND Delegationen an andere
+                            # Agenten: siehe app/subagent_felder.py.
+                            felder = subagent_felder(tool_name, tool_input)
+                            if felder:
+                                eintrag["subagent"] = felder
                             accumulated_tool_calls.append(eintrag)
                             await self.log_publisher.publish_chat(
                                 message_id,

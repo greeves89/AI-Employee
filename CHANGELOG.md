@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.346.2] - 2026-09-29
+
+### Behoben
+- **Delegierte Aufträge waren nach dem Neuladen leer.** Die Karte zeigte
+  „Delegierter Auftrag — an anderen Agenten · an anderen Agenten" und
+  „(kein Auftragstext übermittelt)". Werkzeug-Eingaben werden im Verlauf auf
+  200 Zeichen gekürzt gespeichert; nur eigene Subagenten bekamen ihre Felder
+  gesondert, Delegationen an andere Agenten nicht. Jetzt legt eine gemeinsame
+  Funktion (`agent/app/subagent_felder.py`) für beide Arten Titel, Auftrag
+  (bis 4000 Zeichen) und Ziel ab — in Claude Code und im eigenen LLM gleich.
+- Delegationen werden auch mit MCP-Vorsilbe (`mcp__orchestrator__create_task`)
+  als solche erkannt; „an anderen Agenten" steht nicht mehr doppelt.
+- „läuft" und „übermittelt" mit echten Umlauten.
+
+### Tests
+- `test_subagent_felder.py`; `test_subagenten_bleiben_erkennbar.py` prüft
+  Verhalten statt Quelltext.
+
+---
+
 ## [1.346.1] - 2026-09-29
 
 ### Behoben

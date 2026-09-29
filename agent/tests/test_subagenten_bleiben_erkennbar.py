@@ -35,18 +35,22 @@ class PersistenzTest(unittest.TestCase):
         self.quelle = _HANDLER.read_text(encoding="utf-8")
 
     def test_subagenten_tragen_ihre_felder_gesondert(self):
+        """Seit 1.346.2 in app/subagent_felder.py (auch fuer Delegationen);
+        der Handler muss sie dort holen und gesondert ablegen."""
         self.assertIn('eintrag["subagent"]', self.quelle,
                       "Ohne eigenes Feld ueberlebt die Beschreibung die Kuerzung nicht.")
+        self.assertIn("subagent_felder(tool_name, tool_input)", self.quelle)
+        from app.subagent_felder import subagent_felder
+        felder = subagent_felder("Agent", {"description": "d", "subagent_type": "s", "run_in_background": True})
         for feld in ("description", "subagent_type", "run_in_background"):
             with self.subTest(feld=feld):
-                self.assertIn(feld, self.quelle)
+                self.assertIn(feld, felder)
 
     def test_beide_werkzeugnamen_werden_erkannt(self):
         """``Task`` ist die aeltere Bezeichnung und steht in alten Verlaeufen."""
-        treffer = re.search(r'if tool_name in \(([^)]*)\)', self.quelle)
-        self.assertIsNotNone(treffer, "Erkennung des Subagenten-Werkzeugs nicht gefunden")
-        self.assertIn('"Agent"', treffer.group(1))
-        self.assertIn('"Task"', treffer.group(1))
+        from app.subagent_felder import subagent_felder
+        self.assertIsNotNone(subagent_felder("Agent", {}))
+        self.assertIsNotNone(subagent_felder("Task", {}))
 
     def test_die_kuerzung_bleibt_fuer_gewoehnliche_werkzeuge(self):
         """Ein Bash-Aufruf soll den Verlauf nicht aufblaehen."""

@@ -116,12 +116,18 @@ const SUBAGENT_WERKZEUGE: Record<string, "eigen" | "delegiert"> = {
   delegate_and_wait: "delegiert",
 };
 
+/** Helfer-Art eines Werkzeugs — auch mit MCP-Vorsilbe
+ *  ("mcp__orchestrator__create_task" ist eine Delegation wie "create_task"). */
+function helferArt(werkzeug: string): "eigen" | "delegiert" | undefined {
+  return SUBAGENT_WERKZEUGE[werkzeug] ?? SUBAGENT_WERKZEUGE[(werkzeug || "").split("__").pop() || ""];
+}
+
 /** Aus dem Werkzeug-Input die Felder holen, die beide Wege gemeinsam haben. */
 function subagentAusInput(
   werkzeug: string,
   input: Record<string, unknown>,
 ): { beschreibung: string; art?: string; auftrag: string; imHintergrund: boolean } {
-  const herkunft = SUBAGENT_WERKZEUGE[werkzeug];
+  const herkunft = helferArt(werkzeug);
   if (herkunft === "eigen") {
     return {
       beschreibung: String(input.description || "Subagent"),
@@ -136,14 +142,15 @@ function subagentAusInput(
     const titel = stapel.map((t) => String(t.title || "")).filter(Boolean);
     return {
       beschreibung: titel.length === 1 ? titel[0] : `${stapel.length} Aufträge delegiert`,
-      art: "an andere Agenten",
+      art: undefined,
       auftrag: stapel.map((t, i) => `${i + 1}. ${t.title || ""}\n${t.prompt || ""}`).join("\n\n"),
       imHintergrund: werkzeug !== "delegate_and_wait",
     };
   }
   return {
     beschreibung: String(input.title || "Delegierter Auftrag"),
-    art: input.agent_id ? `an ${String(input.agent_id).slice(0, 8)}` : "an anderen Agenten",
+    // Die Karte schreibt „an anderen Agenten" selbst davor — hier nur das Ziel.
+    art: input.agent_id ? `an ${String(input.agent_id).slice(0, 8)}` : undefined,
     auftrag: String(input.prompt || ""),
     imHintergrund: werkzeug !== "delegate_and_wait",
   };
@@ -885,7 +892,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   // siehe chat_handler.py). Aeltere Verlaeufe haben das nicht;
                   // fuer sie wird aus dem gekuerzten Input gerettet, was geht.
                   const sa = (tc as { subagent?: Record<string, unknown> }).subagent;
-                  if (sa || SUBAGENT_WERKZEUGE[tc.tool]) {
+                  if (sa || helferArt(tc.tool)) {
                     const feld = sa
                       ? {
                           beschreibung: String(sa.description || "Subagent"),
@@ -899,7 +906,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                     steps.push({
                       type: "subagent",
                       id: `hist-${Math.random().toString(36).slice(2, 8)}`,
-                      herkunft: SUBAGENT_WERKZEUGE[tc.tool] || "eigen",
+                      herkunft: helferArt(tc.tool) || "eigen",
                       ...feld,
                       status: "fertig",
                       gestartet: 0,
@@ -1404,12 +1411,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             ? data.input as Record<string, unknown>
             : {};
           const werkzeug = String(data.tool || "");
-          if (SUBAGENT_WERKZEUGE[werkzeug]) {
+          if (helferArt(werkzeug)) {
             const feld = subagentAusInput(werkzeug, inputObj);
             updatedSteps.push({
               type: "subagent",
               id: toolId,
-              herkunft: SUBAGENT_WERKZEUGE[werkzeug],
+              herkunft: helferArt(werkzeug)!,
               ...feld,
               status: "laeuft",
               gestartet: Date.now(),
@@ -3603,7 +3610,7 @@ function SubagentLeiste({
                     </span>
                   </span>
                   <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                    {sa.status === "fertig" ? dauerText(sa.dauerMs) : "laeuft"}
+                    {sa.status === "fertig" ? dauerText(sa.dauerMs) : "läuft"}
                   </span>
                 </div>
               ))}
@@ -3689,7 +3696,7 @@ function SubagentCluster({ steps }: { steps: SubagentStep[] }) {
                   </span>
                 </span>
                 <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                  {sa.status === "fertig" ? dauerText(sa.dauerMs) : "laeuft"}
+                  {sa.status === "fertig" ? dauerText(sa.dauerMs) : "läuft"}
                 </span>
                 <ChevronDown
                   className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${
@@ -3705,7 +3712,7 @@ function SubagentCluster({ steps }: { steps: SubagentStep[] }) {
                       Auftrag
                     </div>
                     <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded bg-muted/60 p-2 text-[11px] leading-relaxed">
-                      {sa.auftrag || "(kein Auftragstext uebermittelt)"}
+                      {sa.auftrag || "(kein Auftragstext übermittelt)"}
                     </pre>
                   </div>
                   {sa.ergebnis && (
