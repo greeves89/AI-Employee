@@ -9,6 +9,7 @@ owns. Admins see all. This is the platform-wide counterpart to the per-agent
 
 import json
 import logging
+import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -108,6 +109,57 @@ def _first_port(container) -> str | None:
         if p.isdigit():
             return p
     return None
+
+
+_WEB_NAMEN = {"nginx", "caddy", "traefik", "proxy", "gateway", "frontend", "web", "ui", "app",
+              "site", "client"}
+_KEIN_WEB = {"db", "database", "postgres", "postgresql", "mysql", "mariadb", "mongo", "mongodb",
+             "redis", "valkey", "worker", "queue", "celery", "beat", "cron", "scheduler", "mail",
+             "mailpit", "mailhog", "smtp", "minio", "rabbitmq", "kafka", "elasticsearch",
+             "migrate", "migrations", "backup"}
+_WEB_PORTS = {"80": 30, "443": 30, "3000": 15, "8080": 15, "5173": 15, "4173": 10, "8000": 5}
+
+
+def _veroeffentlichte_ports(container) -> list[str]:
+    """Container-Ports mit Host-Zuordnung (``ports:`` in Compose) — der Einstieg,
+    den der Entwickler selbst nach aussen gelegt hat."""
+    ports = container.attrs.get("NetworkSettings", {}).get("Ports") or {}
+    return [str(pk).split("/")[0] for pk, ziel in ports.items() if ziel and str(pk).split("/")[0].isdigit()]
+
+
+def _web_einstieg(containers) -> tuple:
+    """Der Container (und Port), unter dem eine App im Browser erreichbar ist.
+
+    Bis 29.09.2026 galt der ERSTE laufende Container mit irgendeinem Port — welcher
+    das war, entschied Dockers Reihenfolge. Bei einer App aus sechs Diensten
+    zeigten „Öffnen" und der Freigabe-Link so auf den Worker (Port 8000, keine
+    Oberflaeche): „Bad Gateway". Jetzt gewinnt, was nach Web-Einstieg aussieht:
+    veroeffentlichter Port, Web-Name (nginx, frontend, …), Web-Port; Datenbanken,
+    Worker, Mail usw. nie. Rueckgabe ``(container, port)`` oder ``(None, None)``.
+    """
+    bester, bester_port, beste_wertung = None, None, None
+    for c in containers:
+        if getattr(c, "status", "") != "running":
+            continue
+        port = _first_port(c)
+        if not port:
+            continue
+        # Wortteile des Dienstnamens, nicht Teilstrings: „quick" ist kein „ui".
+        dienst = c.labels.get("com.docker.compose.service", "") or c.name
+        teile = set(re.split(r"[^a-z0-9]+", dienst.lower()))
+        wertung = 0
+        if teile & _KEIN_WEB:
+            wertung -= 200
+        if teile & _WEB_NAMEN:
+            wertung += 50
+        veroeffentlicht = _veroeffentlichte_ports(c)
+        if veroeffentlicht:
+            wertung += 100
+            port = next((p for p in veroeffentlicht if p in _WEB_PORTS), veroeffentlicht[0])
+        wertung += _WEB_PORTS.get(port, 0)
+        if beste_wertung is None or wertung > beste_wertung:
+            bester, bester_port, beste_wertung = c, port, wertung
+    return bester, bester_port
 
 
 @router.get("")
@@ -214,17 +266,22 @@ async def list_apps(
             "name": c.name, "status": c.status,
             "service": c.labels.get("com.docker.compose.service", ""),
         })
+        entry.setdefault("_laeufer", []).append(c)
         if c.status == "running":
             entry["status"] = "running"
-            port = _first_port(c)
-            if not entry["url"] and port:
-                entry["url"] = f"/api/v1/agents/{agent.id}/apps/proxy/{c.name}/{port}/"
         elif entry["status"] == "not_started":
             entry["status"] = "stopped"  # has containers but none running
+
+    # Einstieg je App erst, wenn alle ihre Container bekannt sind.
+    for entry in apps.values():
+        einstieg, port = _web_einstieg(entry.pop("_laeufer", []))
+        if einstieg is not None:
+            entry["url"] = f"/api/v1/agents/{entry['agent_id']}/apps/proxy/{einstieg.name}/{port}/"
 
     # Besitzer nachtragen. Für eigene Apps beantwortet das „wem gehört das
     # eigentlich" (Admins sehen alle), für freigegebene das eigentlich wichtige:
     # von wem stammt die App, die hier in meiner Liste auftaucht.
+
     all_agents = list(owned.values()) + list(shared_agents.values())
     names = await _owner_names(all_agents, db)
     by_agent = {
@@ -719,9 +776,10 @@ async def app_detail(
             "port": port,
             "created": str(c.attrs.get("Created", ""))[:19],
         })
-        if c.status == "running" and not url and port:
-            url = f"/api/v1/agents/{agent.id}/apps/proxy/{c.name}/{port}/"
-            open_container, open_port = c.name, port
+    einstieg, einstieg_port = _web_einstieg(containers)
+    if einstieg is not None:
+        url = f"/api/v1/agents/{agent.id}/apps/proxy/{einstieg.name}/{einstieg_port}/"
+        open_container, open_port = einstieg.name, einstieg_port
 
     shares: list[dict] = []
     if can_manage:

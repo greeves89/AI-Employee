@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.346.5] - 2026-09-29
+
+### Behoben
+- **Freigabe-Link einer App aus mehreren Diensten zeigte „Bad Gateway".**
+  „Öffnen" und der Freigabe-Link nahmen den ersten laufenden Container mit
+  irgendeinem Port — welcher das war, entschied Dockers Reihenfolge. Bei einer
+  App mit Worker, API, Datenbank, Web, Mail und nginx landete der Link auf dem
+  Worker (keine Oberfläche). Jetzt gilt als Einstieg, was danach aussieht:
+  veröffentlichter Port, Web-Dienstname (nginx, frontend, web …), Web-Port;
+  Datenbank, Worker, Mail und Ähnliches nur, wenn es nichts anderes gibt.
+  „Öffnen", App-Liste und Freigabe nutzen dieselbe Auswahl. Bestehende
+  Freigaben bleiben gültig; den Link einmal neu kopieren.
+
 ## [1.346.4] - 2026-09-29
 
 ### Behoben
