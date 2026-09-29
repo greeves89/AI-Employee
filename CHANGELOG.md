@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.345.2] - 2026-09-29
+
+### Behoben
+- **Neuer Chat: die Warteanzeige verschwand nach 20 Sekunden.** Eine Notbremse
+  räumt die Anzeige ab, wenn der Agent mehrere Runden lang nicht an diesem
+  Gespräch arbeitet. Genau das tut er aber, solange die Nachricht noch wartet
+  (Agent beschäftigt oder im Anlauf) — der Chat sah fertig aus, die Antwort kam
+  Minuten später. Der Status meldet jetzt Gespräche mit unbeantworteten
+  Nachrichten (`pending_sessions`); für sie greift die Notbremse nicht, und die
+  Anzeige sagt „Wartet — gleich dran …".
+- **Sagen, womit der Agent beschäftigt ist.** Schreibt man, während er arbeitet,
+  hieß es immer „Message received — steering current agent turn" — auch wenn
+  die Nachricht in Wahrheit wartete. Jetzt: „Nachricht angekommen — Ben nimmt
+  sie in die laufende Antwort auf" oder „Ben arbeitet gerade an „…" — deine
+  Nachricht ist als Nächstes dran".
+
+### Tests
+- `test_chat_warte_hinweis.py` (Hinweis je Lage, wartende Gespräche),
+  `test_chat_waiting_state.py` (Notbremse schont wartende Nachrichten).
+
+---
+
 ## [1.345.1] - 2026-09-29
 
 ### Sicherheit

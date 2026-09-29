@@ -2452,6 +2452,30 @@ class AgentManager:
         await self.db.delete(agent)
         await self.db.commit()
 
+    async def _wartende_gespraeche(self, agent_id: str) -> list[str]:
+        """Gespraeche mit Nachrichten, die der Agent noch nicht beantwortet hat —
+        in der Warteschlange oder schon abgeholt und noch in Arbeit.
+
+        Fuer die Warteanzeige im Chat: Solange eine Nachricht hier steht, arbeitet
+        der Agent entweder schon daran oder sie ist als Naechstes dran. Die
+        Notbremse der Anzeige („arbeitet nicht an diesem Faden → Anzeige weg")
+        raeumte sonst nach 20 Sekunden eine wartende Nachricht ab, und der Chat
+        sah fertig aus (29.09.2026).
+        """
+        faeden: list[str] = []
+        try:
+            for schluessel in (f"agent:{agent_id}:chat", f"agent:{agent_id}:chat:inflight"):
+                for roh in await self.redis.client.lrange(schluessel, 0, 49):
+                    try:
+                        faden = json.loads(roh).get("chat_session_id")
+                    except (ValueError, TypeError, AttributeError):
+                        continue
+                    if faden and faden not in faeden:
+                        faeden.append(str(faden))
+        except Exception:  # noqa: BLE001 — eine Anzeige, kein Betriebsmittel
+            return []
+        return faeden
+
     async def get_agent_with_metrics(
         self,
         agent_id: str,
@@ -2644,6 +2668,7 @@ class AgentManager:
             result["active_sessions"] = json.loads(_as) if _as else []
         except (ValueError, TypeError):
             result["active_sessions"] = []
+        result["pending_sessions"] = await self._wartende_gespraeche(agent_id)
         result["queue_depth"] = await self.redis.get_queue_depth(agent_id)
 
         # Sync live state from Redis (agent reports idle/working in real-time)

@@ -128,6 +128,7 @@ class AgentResponse(BaseModel):
     # Live metrics (from Redis, not DB)
     current_task: str | None = None
     active_sessions: list[str] | None = None  # all "chat:<session>" being processed now
+    pending_sessions: list[str] | None = None  # sessions with unanswered messages (queued or in progress)
     cpu_percent: float | None = None
     memory_usage_mb: float | None = None
     disk_usage_mb: float | None = None

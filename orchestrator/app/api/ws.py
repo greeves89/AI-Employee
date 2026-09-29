@@ -156,6 +156,48 @@ async def _auto_inject_skills_for_chat(agent_id: str, text: str, is_new_session:
         logger.warning(f"Skill auto-injection failed for chat session {scrub_log(session_id)}: {e}")
 
 
+async def _warte_hinweis(agent_id: str, status: dict, faden: str | None) -> dict:
+    """Was der Nutzer sieht, wenn er schreibt, waehrend der Agent arbeitet.
+
+    ``steering``: Der Agent arbeitet an DIESEM Gespraech — die Nachricht fliesst in
+    die laufende Antwort ein. Sonst wartet sie, und der Hinweis nennt, woran er
+    gerade sitzt (Aufgabentitel oder „einem anderen Gespraech")."""
+    def _text(wert) -> str:
+        return wert.decode() if isinstance(wert, bytes) else str(wert or "")
+
+    eintraege = {_text(k): _text(v) for k, v in (status or {}).items()}
+    try:
+        laufend = json.loads(eintraege.get("active_sessions") or "[]")
+    except (TypeError, ValueError):
+        laufend = []
+    aktuell = eintraege.get("current_task", "")
+    alle = [str(x) for x in laufend] or ([aktuell] if aktuell else [])
+    name = "Der Agent"
+    try:
+        from app.models.agent import Agent
+        async with async_session_factory() as db:
+            name = await db.scalar(select(Agent.name).where(Agent.id == agent_id)) or name
+    except Exception:  # noqa: BLE001
+        pass
+    if faden and f"chat:{faden}" in alle:
+        return {"steering": True,
+                "message": f"Nachricht angekommen — {name} nimmt sie in die laufende Antwort auf."}
+
+    woran = "einem anderen Gespräch"
+    aufgaben = [x for x in alle if x and not x.startswith("chat:")]
+    if aufgaben:
+        try:
+            from app.models.task import Task
+            async with async_session_factory() as db:
+                titel = await db.scalar(select(Task.title).where(Task.id == aufgaben[0]))
+            if titel:
+                woran = f"„{re.sub(r'^\[[^\]]+\]\s*', '', titel)[:80]}“"
+        except Exception:  # noqa: BLE001 — ein Hinweis darf nichts aufhalten
+            woran = "einer Aufgabe"
+    return {"steering": False,
+            "message": f"{name} arbeitet gerade an {woran} — deine Nachricht ist als Nächstes dran."}
+
+
 _chat_wake_locks: dict[str, asyncio.Lock] = {}
 
 
@@ -878,20 +920,22 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
 
             await _redis.client.lpush(f"agent:{agent_id}:chat", chat_payload)
 
-            # Check if agent is currently busy — if so, notify client the message is queued
+            # Ist der Agent beschaeftigt, sofort sagen, WOMIT — statt Stille.
+            # Bisher hiess es immer „steering current agent turn"; das stimmt nur,
+            # wenn er an DIESEM Gespraech arbeitet. Arbeitet er an einem anderen
+            # oder an einer Aufgabe, WARTET die Nachricht — und man sah nichts
+            # (29.09.2026: gut zwei Minuten ohne jedes Zeichen).
             try:
                 agent_status = await _redis.client.hgetall(f"agent:{agent_id}:status")
                 state = str(agent_status.get("state", ""))
                 queue_depth = await _redis.client.llen(f"agent:{agent_id}:chat")
                 if state == "working" or queue_depth > 1:
+                    hinweis = await _warte_hinweis(agent_id, agent_status, _session["id"])
                     await websocket.send_text(json.dumps({
                         "agent_id": agent_id,
                         "message_id": message_id,
                         "type": "queued",
-                        "data": {
-                            "message": "Agent is working — your message was added to the current turn.",
-                            "queue_position": int(queue_depth),
-                        },
+                        "data": {**hinweis, "queue_position": int(queue_depth)},
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }))
             except Exception:

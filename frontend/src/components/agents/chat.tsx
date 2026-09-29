@@ -606,6 +606,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // started from this connection (e.g. we just re-entered the chat). Shows a live
   // indicator and reloads history when the turn finishes.
   const [liveElsewhere, setLiveElsewhere] = useState(false);
+  // Nachricht dieses Gespraechs wartet (Agent arbeitet noch woanders oder laeuft an).
+  const [inWarteschlange, setInWarteschlange] = useState(false);
   const [historyReloadKey, setHistoryReloadKey] = useState(0);
   const isWaitingRef = useRef(false);
   const pendingCountRef = useRef(0);
@@ -1001,7 +1003,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         const a = await api.getAgent(agentId);
         const list = (a as unknown as { active_sessions?: string[] }).active_sessions;
         const busy = Array.isArray(list) && list.includes(`chat:${activeSessionId}`);
+        // Unbeantwortete Nachricht dieses Gespraechs liegt noch beim Agenten
+        // (Warteschlange oder abgeholt). Dann ist „arbeitet nicht hier" KEIN
+        // Zeichen fuer „fertig" — die Nachricht ist nur noch nicht dran.
+        const offen = (a as unknown as { pending_sessions?: string[] }).pending_sessions;
+        const wartet = Array.isArray(offen) && offen.includes(activeSessionId);
         if (cancelled) return;
+        setInWarteschlange(wartet && !busy);
         // „Arbeitet woanders dran" nur, wenn es nicht der eigene, gerade
         // beendete Zug ist. Der Messwert hinkt dem Ende bis zu einer Runde
         // hinterher — genau deshalb blitzte das Banner nach jeder Antwort auf.
@@ -1016,7 +1024,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         // sagt. Bewusst traege (3 Runden = 12s UND 20s Ruhe), weil der Anlauf
         // eines Zuges mehrere Sekunden dauert und ein zu eiliger Abbruch die
         // Anzeige mitten im Denken löschen würde.
-        if (!busy && isWaitingRef.current) {
+        if (!busy && !wartet && isWaitingRef.current) {
           notBusyStreakRef.current += 1;
           const ruhe = Date.now() - lastEventAtRef.current;
           if (notBusyStreakRef.current >= 3 && ruhe > 20000) {
@@ -1485,14 +1493,15 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           msgs[assistantIdx] = { ...msgs[assistantIdx], files };
         }
       } else if (type === "queued") {
-        // The agent drains pending chat messages mid-turn, so this is a live
-        // steering acknowledgement rather than a "wait until later" state.
+        // Der Server sagt, ob die Nachricht in die laufende Antwort einfliesst
+        // (dieses Gespraech) oder wartet, weil der Agent woanders arbeitet — und
+        // woran. Vorher stand immer „steering", auch wenn sie wartete.
         const queuedMsgId = `queued-${message_id}`;
         if (!msgs.some((m) => m.id === queuedMsgId)) {
           msgs.push({
             id: queuedMsgId,
             role: "system",
-            content: "Message received — steering current agent turn",
+            content: String(data.message || "Nachricht angekommen — sie wird gleich bearbeitet."),
             timestamp: event.timestamp,
             isQueued: true,
           });
@@ -2588,7 +2597,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {thinkingElapsed > 0 ? (
-                    <>Denkt nach … <span className="tabular-nums text-muted-foreground/60">{thinkingElapsed} s</span></>
+                    <>{inWarteschlange ? "Wartet — gleich dran …" : "Denkt nach …"} <span className="tabular-nums text-muted-foreground/60">{thinkingElapsed} s</span></>
                   ) : (
                     "Denkt nach …"
                   )}

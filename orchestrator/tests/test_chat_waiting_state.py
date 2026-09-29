@@ -119,13 +119,21 @@ class TheWatchdogTests(unittest.TestCase):
     Faden-Abschottung verwirft Fremdes), ist der Agent selbst die Wahrheit."""
 
     def test_it_exists(self):
-        self.assertIn("if (!busy && isWaitingRef.current) {", CHAT)
+        self.assertIn("if (!busy && !wartet && isWaitingRef.current) {", CHAT)
+
+    def test_a_waiting_message_is_not_mistaken_for_finished(self):
+        """29.09.2026: Wartete die Nachricht (Agent noch woanders beschaeftigt),
+        raeumte die Notbremse nach 20 s die Anzeige ab — der Chat sah fertig aus,
+        die Antwort kam zwei Minuten spaeter. Wartende Faeden meldet der Server
+        (``pending_sessions``); fuer sie greift die Notbremse nicht."""
+        self.assertIn("pending_sessions", CHAT)
+        self.assertIn("const wartet = Array.isArray(offen) && offen.includes(activeSessionId);", CHAT)
 
     def test_it_is_deliberately_slow(self):
         """Ein eiliger Abbruch loescht die Anzeige mitten im Denken. Der Anlauf
         eines Zuges dauert mehrere Sekunden, in denen der Agent noch nicht als
         beschaeftigt gilt."""
-        block = _block("if (!busy && isWaitingRef.current) {")
+        block = _block("if (!busy && !wartet && isWaitingRef.current) {")
         self.assertIn("notBusyStreakRef.current >= 3", block)
         self.assertRegex(block, r"ruhe > \d{5}")
 
