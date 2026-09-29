@@ -92,9 +92,18 @@ class CliAktualisierungTest(unittest.TestCase):
                 echo "npm error ENOTEMPTY" >&2
                 exit 1
             """)
+        elif verhalten == "aktuell":
+            # Registry meldet genau die installierte Fassung; eine Installation
+            # hinterliesse eine Spur.
+            inhalt = textwrap.dedent(f"""\
+                #!/bin/bash
+                if [ "$1" = "view" ]; then echo "1.0.0-alt"; exit 0; fi
+                touch "{self.attrappen}/installiert"
+            """)
         else:
             inhalt = textwrap.dedent(f"""\
                 #!/bin/bash
+                if [ "$1" = "view" ]; then echo "2.0.0-neu"; exit 0; fi
                 # Zwischenablage aus "--prefix <dir>" herauslesen.
                 prefix=""
                 while [ $# -gt 0 ]; do
@@ -118,6 +127,7 @@ class CliAktualisierungTest(unittest.TestCase):
             "ENTRYPOINT_MODULE_DIR": self.module,
             "ENTRYPOINT_BIN_DIR": self.bins,
             "ENTRYPOINT_NPM_TIMEOUT": frist,
+            "ENTRYPOINT_NPM_VIEW_TIMEOUT": frist,
             "ENTRYPOINT_NUR_DEFINIEREN": "1",
         }
         return subprocess.run(
@@ -135,6 +145,25 @@ class CliAktualisierungTest(unittest.TestCase):
         return r.stdout.strip() if r.returncode == 0 else None
 
     # --- Die eigentlichen Pruefungen ---------------------------------------
+
+    def test_aktuelle_fassung_wird_nicht_neu_installiert(self):
+        """29.09.2026: Jeder Start installierte neu -- 80 s bis zum ersten Zuhoeren."""
+        self._npm_attrappe("aktuell")
+        r = self._lauf()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.attrappen, "installiert")))
+        self.assertEqual(self._version(), "1.0.0-alt")
+        self.assertIn("aktuell", r.stdout)
+
+    def test_ohne_registry_kein_warten_auf_die_installation(self):
+        """Haengt schon die Versionsabfrage, wird gar nicht erst installiert."""
+        import time
+        self._npm_attrappe("haengt")
+        start = time.monotonic()
+        r = self._lauf(frist="1")
+        self.assertLess(time.monotonic() - start, 10)  # nicht Abfrage- UND Installationsfrist
+        self.assertEqual(self._version(), "1.0.0-alt")
+        self.assertIn("Registry nicht erreichbar", r.stdout)
 
     def test_abbruch_laesst_die_vorhandene_fassung_unberuehrt(self):
         """Der Fall vom 21.09.: Frist laeuft ab, waehrend npm arbeitet."""

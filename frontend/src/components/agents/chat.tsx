@@ -2909,6 +2909,15 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       {/* Input area */}
       <div className={cn("border-t border-border p-4", viewMode === "overview" && "hidden")}>
         <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(e) => addPendingFiles(e.target.files)} />
+        {/* Waehrend der Verbindungsaufbau laeuft, wird ein schlafender Agent
+            geweckt — das dauert Sekunden. Vorher stand hier nichts, und das
+            Eingabefeld wirkte tot. */}
+        {!isConnected && !connectionFailed && (
+          <div className="mb-2.5 flex items-center gap-2 rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-3 py-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+            Der Agent wird gestartet — einen Moment, dann kannst du schreiben.
+          </div>
+        )}
         {pendingFiles.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2.5">
             {pendingFiles.map((file, i) => (

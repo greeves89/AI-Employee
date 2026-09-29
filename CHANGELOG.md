@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.346.0] - 2026-09-29
+
+### Behoben
+- **Ein geweckter Agent brauchte über eine Minute bis zur ersten Antwort.** Das
+  Startskript installierte bei JEDEM Containerstart `claude-code` und `codex`
+  komplett neu aus npm, auch wenn beide aktuell waren — auf dem Pi 36 und 44
+  Sekunden, bevor der Agent überhaupt Nachrichten annahm. Jetzt fragt es erst
+  die Version ab (etwa eine Sekunde) und installiert nur, wenn es eine neuere
+  gibt. Ist die Registry nicht erreichbar, startet der Agent sofort mit der
+  vorhandenen Fassung, statt bis zu fünf Minuten in eine aussichtslose
+  Installation zu laufen.
+
+### Geändert
+- **Hinweis beim Start eines Agenten:** Solange die Verbindung aufgebaut und ein
+  schlafender Agent geweckt wird, steht über dem Eingabefeld „Der Agent wird
+  gestartet — einen Moment, dann kannst du schreiben". Vorher wirkte das
+  Eingabefeld tot.
+
+### Tests
+- `test_cli_update_zerstoert_nichts.py`: aktuelle Fassung wird nicht neu
+  installiert; ohne Registry kein Warten auf die Installation.
+
+---
+
 ## [1.345.2] - 2026-09-29
 
 ### Behoben

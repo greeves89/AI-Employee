@@ -26,6 +26,8 @@ export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first
 # Pi gemessen brauchte allein die Installation von @anthropic-ai/claude-code
 # 51 Sekunden -- die frueheren 60 s trafen genau die Abbruchkante.
 NPM_FRIST="${ENTRYPOINT_NPM_TIMEOUT:-300}"
+# Frist fuer die Versionsabfrage vor einer Installation (siehe update_cli).
+NPM_VIEW_FRIST="${ENTRYPOINT_NPM_VIEW_TIMEOUT:-20}"
 
 # Zielverzeichnisse. Im Betrieb immer die echten; die Tests biegen sie um,
 # damit sie das Verhalten an einer Attrappe wirklich nachmessen koennen,
@@ -51,7 +53,29 @@ BIN_DIR="${ENTRYPOINT_BIN_DIR:-/usr/bin}"
 # geschehen.
 update_cli() {
   local pkg="$1" bin="$2"
-  local stage log
+  local stage log installiert neueste
+
+  # Erst fragen, dann installieren. Bis 29.09.2026 lief bei JEDEM Start eine
+  # volle Neuinstallation -- auf dem Pi 36 s fuer claude-code und 44 s fuer
+  # codex, bevor der Agent ueberhaupt zuhoerte. Jeder geweckte Agent brauchte
+  # so ueber eine Minute bis zur ersten Antwort. Die Versionsabfrage kostet
+  # eine Sekunde.
+  installiert="$("$BIN_DIR/$bin" --version 2>/dev/null | head -1 || true)"
+  if [ -n "$installiert" ]; then
+    neueste="$(timeout -k 2 "${NPM_VIEW_FRIST}" npm view "$pkg" version 2>/dev/null | tail -1 | tr -d '[:space:]' || true)"
+    if [ -z "$neueste" ]; then
+      # Registry nicht erreichbar: eine Installation liefe nur in die Frist.
+      echo "[entrypoint] ${pkg} bleibt bei ${installiert} (Registry nicht erreichbar)"
+      return 0
+    fi
+    case "$installiert" in
+      *"$neueste"*)
+        echo "[entrypoint] ${pkg} aktuell (${installiert})"
+        return 0
+        ;;
+    esac
+  fi
+
   stage="$(mktemp -d)"
   # Physischen Pfad verwenden: "readlink -f" weiter unten loest auch die
   # Verzeichnis-Verknuepfungen darueber auf (auf macOS zeigt /var auf
