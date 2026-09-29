@@ -158,7 +158,8 @@ class WebSearchWithSettingsTests(unittest.IsolatedAsyncioTestCase):
         ctx, client = _client_returning({"results": []})
         async with self.Session() as db:
             with patch("httpx.AsyncClient", return_value=ctx):
-                await web_search_with_settings("pokemon karten", 5, db)
+                # Nachrichtenindex nur mit Freigabe (Review zu #812, K2).
+                await web_search_with_settings("pokemon karten", 5, db, allow_news=True)
         self.assertEqual(client.get.call_args.kwargs["params"]["freshness"], "pw")
 
 
@@ -483,17 +484,19 @@ class NewsSearchWithSettingsTests(unittest.IsolatedAsyncioTestCase):
                 await svc.set(k, v)
             await db.commit()
 
-    async def test_it_hits_the_news_index_even_when_the_web_provider_is_duckduckgo(self):
-        """Der eingestellte Web-Provider darf die Nachrichtensuche nicht umlenken."""
-        await self._mit_einstellungen(web_search_provider="duckduckgo", web_search_api_key="bk")
+    async def test_it_hits_the_news_index_when_a_brave_provider_is_set(self):
+        """Auch mit Brave-Websuche geht die Nachrichtensuche an den Nachrichtenindex."""
+        await self._mit_einstellungen(web_search_provider="brave", web_search_api_key="bk")
         ctx, client = _client_returning({"results": []})
         async with self.Session() as db:
             with patch("httpx.AsyncClient", return_value=ctx):
                 await news_search_with_settings("ezb zinsen", 5, db)
         self.assertIn("news/search", client.get.call_args.args[0])
+        self.assertEqual(client.get.call_args.kwargs["headers"]["X-Subscription-Token"], "bk")
 
     async def test_the_platform_freshness_is_applied(self):
-        await self._mit_einstellungen(web_search_api_key="bk", web_search_freshness="pw")
+        await self._mit_einstellungen(
+            web_search_provider="brave", web_search_api_key="bk", web_search_freshness="pw")
         ctx, client = _client_returning({"results": []})
         async with self.Session() as db:
             with patch("httpx.AsyncClient", return_value=ctx):
@@ -511,7 +514,7 @@ class NewsSearchWithSettingsTests(unittest.IsolatedAsyncioTestCase):
         mocked.assert_not_called()
 
     async def test_an_empty_query_makes_no_request(self):
-        await self._mit_einstellungen(web_search_api_key="bk")
+        await self._mit_einstellungen(web_search_provider="brave", web_search_api_key="bk")
         with patch("httpx.AsyncClient") as mocked:
             async with self.Session() as db:
                 out = await news_search_with_settings("   ", 5, db)
@@ -564,6 +567,7 @@ class NewsRouteEnforcementTests(unittest.IsolatedAsyncioTestCase):
     async def _aufbauen(self, rolle, *, mit_schluessel=True, benutzer_anlegen=True):
         async with self.Session() as db:
             if mit_schluessel:
+                await SettingsService(db).set("web_search_provider", "brave")
                 await SettingsService(db).set("web_search_api_key", "bk")
             if benutzer_anlegen:
                 db.add(User(id="u1", email="u@example.test", name="U", role=rolle))

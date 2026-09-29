@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.search_access import NEWS, agent_may_use_index
 from app.db.session import get_db
 from app.dependencies import verify_agent_token
 
@@ -44,45 +45,22 @@ async def agent_web_search(
     auth: dict = Depends(verify_agent_token),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.core.web_search import web_search_with_settings
+    from app.core.web_search import web_search_uses_news_index, web_search_with_settings
 
-    results = await web_search_with_settings(body.query, body.max_results, db)
+    # Ist brave_news eingestellt, ist die Websuche der Nachrichtenindex — dann
+    # gilt dieselbe Freigabe wie fuer /news (Review zu #812, K2).
+    allow_news = await web_search_uses_news_index(db) and await _darf_index(
+        auth.get("agent_id", ""), NEWS, db)
+    results = await web_search_with_settings(
+        body.query, body.max_results, db, allow_news=allow_news,
+    )
     return {"results": results}
 
 
 async def _darf_index(agent_id: str, index: str, db: AsyncSession) -> bool:
-    """Ob der BESITZER des Agenten diesen Suchindex nutzen darf.
-
-    Die Berechtigung haengt am Menschen, nicht am Agenten — ein Agent ist nur
-    das Werkzeug seines Besitzers und soll nicht mehr duerfen als dieser.
-    """
-    from sqlalchemy import select
-
-    from app.core.permissions import can_use_search_index, get_effective_permissions
-    from app.models.agent import Agent
-    from app.models.user import User
-
-    agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
-    if agent is None:
-        # Kein solcher Agent — es gibt niemanden, dessen Rechte gelten wuerden.
-        return False
-    if not agent.user_id:
-        # Bewusst herrenlos (Plattform-Agent): Es gibt keinen Besitzer, dessen
-        # Rechte man einschraenken koennte. Erlaubt, wie ueberall sonst auch,
-        # wo keine Einschraenkung hinterlegt ist.
-        return True
-    user = (await db.execute(select(User).where(User.id == agent.user_id))).scalar_one_or_none()
-    if user is None:
-        # user_id gesetzt, aber der Nutzer existiert nicht mehr: ein haengender
-        # Verweis, kein Entwurf. Hier NICHT durchlassen — sonst waere ein
-        # geloeschter Nutzer der Weg zu mehr Rechten als der lebende hatte.
-        logger.warning(
-            "Agent %s verweist auf nicht vorhandenen Nutzer %s — Suchindex verweigert",
-            agent_id, agent.user_id,
-        )
-        return False
-    perms = await get_effective_permissions(user, db)
-    return can_use_search_index(perms, index)
+    """Siehe ``app.core.search_access.agent_may_use_index`` — dieselbe
+    Entscheidung fuer alle Zugaenge zum Index."""
+    return await agent_may_use_index(agent_id, index, db)
 
 
 @router.get("/capabilities")
@@ -96,13 +74,16 @@ async def agent_search_capabilities(
     wenn es hier ``true`` ist. So sieht ein Agent ohne Freigabe das Werkzeug
     gar nicht, statt es anzubieten und dann mit 403 abzuweisen.
     """
+    from app.core.web_search import brave_news_key
     from app.services.settings_service import SettingsService
 
     agent_id = auth.get("agent_id", "")
-    hat_schluessel = bool(await SettingsService(db).get("web_search_api_key"))
+    # Dieselbe Aufloesung wie die Suche selbst: ein SerpApi-Schluessel macht
+    # den Nachrichtenindex NICHT verfuegbar (Review zu #812, K1).
+    hat_schluessel = bool(await brave_news_key(SettingsService(db)))
     return {
         "web": True,
-        "news": hat_schluessel and await _darf_index(agent_id, "news", db),
+        "news": hat_schluessel and await _darf_index(agent_id, NEWS, db),
     }
 
 
@@ -117,7 +98,7 @@ async def agent_news_search(
 
     from app.core.web_search import news_search_with_settings
 
-    if not await _darf_index(auth.get("agent_id", ""), "news", db):
+    if not await _darf_index(auth.get("agent_id", ""), NEWS, db):
         raise HTTPException(status_code=403, detail="Nachrichtensuche ist fuer dich nicht freigegeben.")
     results = await news_search_with_settings(body.query, body.max_results, db)
     return {"results": results}
