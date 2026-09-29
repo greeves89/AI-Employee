@@ -389,6 +389,55 @@ async def get_cost_attribution(
     )
 
 
+@router.get("/schritte")
+async def get_steps_for_many(
+    ids: str = Query(..., max_length=2000, description="Kommagetrennte Aufgaben-IDs"),
+    letzte: int = Query(20, ge=1, le=100),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Die letzten Schritte MEHRERER Aufgaben in einer Anfrage.
+
+    Der Chat zeigt zu jedem laufenden delegierten Auftrag den letzten Schritt und
+    fragte dafuer alle 4 Sekunden JE Auftrag ``/{id}/steps`` ab — mit dem ganzen
+    Verlauf. Bei acht offenen Auftraegen waren das allein 120 Anfragen pro Minute:
+    die komplette Grenze je Nutzer. Danach bekam jede andere Seite (z. B. die
+    Admin-Ansicht eines Agenten) nur noch 429 (29.09.2026, Kundenanlage).
+
+    Zugriff wie beim Einzelabruf; nicht sichtbare Aufgaben fallen still heraus.
+    """
+    from app.models.task_step import TaskStep
+
+    kennungen = [i for i in dict.fromkeys(x.strip() for x in ids.split(",")) if i][:50]
+    if not kennungen:
+        return {"tasks": {}}
+    aufgaben = (await db.execute(select(Task).where(Task.id.in_(kennungen)))).scalars().all()
+    erlaubt = None
+    if hasattr(user, "role"):
+        erlaubt = await _get_user_agent_ids(user, db)
+    sichtbar = [
+        t.id for t in aufgaben
+        if erlaubt is None or not hasattr(user, "role") or _agent_delegated_this(user, t)
+        or t.agent_id in erlaubt
+    ]
+    ergebnis: dict[str, list[dict]] = {i: [] for i in sichtbar}
+    for task_id in sichtbar:
+        zeilen = (await db.execute(
+            select(TaskStep).where(TaskStep.task_id == task_id)
+            .order_by(TaskStep.sequence.desc()).limit(letzte)
+        )).scalars().all()
+        ergebnis[task_id] = [
+            {
+                "sequence": s.sequence,
+                "type": s.event_type,
+                "data": s.event_data,
+                "timestamp": s.timestamp.isoformat() if s.timestamp else None,
+            }
+            for s in reversed(zeilen)
+        ]
+    return {"tasks": ergebnis}
+
+
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: str,

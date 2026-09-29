@@ -2550,7 +2550,10 @@ app = FastAPI(
 app.add_middleware(SecurityHeadersMiddleware)
 
 # API rate limiting (120 requests/minute per user or IP)
-app.add_middleware(APIRateLimitMiddleware, max_requests=120, window_seconds=60)
+# 300/min je Nutzer: 120 reichten fuer eine Oberflaeche mit Live-Ansichten und
+# mehreren offenen Tabs nicht (29.09.2026, 429 auf der Admin-Ansicht beim Kunden).
+# Die eigentliche Ursache — je Auftrag eine Abfrage alle 4 s — ist behoben.
+app.add_middleware(APIRateLimitMiddleware, max_requests=300, window_seconds=60)
 
 # CORS - allow access from any origin so the app works from LAN, VPN, etc.
 # In production, restrict via CORS_ALLOW_ORIGIN env var.

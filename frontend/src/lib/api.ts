@@ -841,6 +841,13 @@ export interface TaskArtifact {
   modified: number;
 }
 
+/** Die letzten Schritte mehrerer Aufgaben in EINER Anfrage (Chat-Kacheln). */
+export async function getStepsForMany(taskIds: string[], letzte = 20): Promise<Record<string, TaskStep[]>> {
+  if (taskIds.length === 0) return {};
+  const data = await fetchJSON(`${getBase()}/tasks/schritte?ids=${encodeURIComponent(taskIds.join(","))}&letzte=${letzte}`) as { tasks?: Record<string, TaskStep[]> };
+  return data.tasks ?? {};
+}
+
 export async function getTaskSteps(
   id: string,
 ): Promise<{ task_id: string; total_steps: number; steps: TaskStep[] }> {

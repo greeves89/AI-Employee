@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.346.3] - 2026-09-29
+
+### Behoben
+- **„Admin-Ansicht" eines Agenten lud nicht (429 Too Many Requests).** Die
+  Anfragebremse erlaubt eine feste Zahl Anfragen je Nutzer und Minute. Jede
+  laufende Auftrags-Kachel im Chat fragte alle 4 Sekunden einzeln ihren
+  kompletten Verlauf ab — bei acht offenen Aufträgen allein 120 Anfragen pro
+  Minute, die ganze Grenze. Jede andere Seite bekam danach nur noch 429.
+  - Neu: `GET /tasks/schritte?ids=…` liefert die letzten Schritte aller offenen
+    Aufträge in EINER Anfrage (gleiche Zugriffsprüfung wie der Einzelabruf).
+  - Die Grenze steigt von 120 auf 300 Anfragen pro Minute und Nutzer.
+
+### Tests
+- `test_task_schritte_gebuendelt.py` (nur sichtbare Aufgaben, nur die letzten
+  Schritte).
+
+---
+
 ## [1.346.2] - 2026-09-29
 
 ### Behoben

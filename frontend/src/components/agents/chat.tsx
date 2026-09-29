@@ -532,18 +532,18 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     if (zuHolen.length === 0) return;
 
     let lebendig = true;
+    // EINE Anfrage fuer alle offenen Auftraege. Vorher je Auftrag eine, alle 4 s,
+    // mit dem ganzen Verlauf — bei acht Auftraegen allein 120 Anfragen pro
+    // Minute, die komplette Grenze je Nutzer (29.09.2026, Kundenanlage).
     const holen = async () => {
-      for (const taskId of zuHolen) {
-        try {
-          const resp = await api.getTaskSteps(taskId);
-          if (!lebendig) return;
-          setTaskActivity((prev) => ({ ...prev, [taskId]: resp.steps }));
-        } catch {
-          // Kein Abbruch der Kachel wegen eines einzelnen fehlgeschlagenen
-          // Abrufs — der naechste Takt versucht es erneut.
-        }
+      try {
+        const alle = await api.getStepsForMany(zuHolen);
+        if (!lebendig) return;
+        setTaskActivity((prev) => ({ ...prev, ...alle }));
+        for (const taskId of geradeFertig) abgerufeneEndstaende.current.add(taskId);
+      } catch {
+        // Der naechste Takt versucht es erneut.
       }
-      for (const taskId of geradeFertig) abgerufeneEndstaende.current.add(taskId);
     };
     holen();
     if (laufend.length === 0) return;
