@@ -355,13 +355,21 @@ async def escalate_silence(db: AsyncSession, redis, agent: Agent) -> bool:
     und es ist genau das, was ein Mensch auch pruefen wuerde.
     """
     cutoff = datetime.now(timezone.utc) - UNANSWERED_AFTER
-    unanswered = (await db.execute(
+    offen = (await db.execute(
         select(Notification).where(
             Notification.agent_id == agent.id,
             Notification.read.is_(False),
             Notification.created_at < cutoff,
         ).order_by(Notification.created_at)
     )).scalars().all()
+    # Nur echte Fragen des Agenten: Freigabe-Anfragen und Rueckfragen (is_checkin).
+    # Bis 29.09.2026 zaehlte jede ungelesene Meldung — Bewertungsbitten, Ergebnis-
+    # Hinweise, Skill-Vorschlaege. Wer seine Glocke nicht leerte, bekam jeden Morgen
+    # „wartet seit ueber 12 Stunden auf eine Antwort", ohne dass je gefragt wurde.
+    unanswered = [
+        n for n in offen
+        if n.type == "approval" or bool((n.meta or {}).get("is_checkin"))
+    ]
     if len(unanswered) < duty_core.ESCALATE_AFTER_UNANSWERED:
         return False
 

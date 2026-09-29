@@ -583,6 +583,8 @@ class SchedulerService:
                 approval.user_response = (
                     f"Nicht beantwortet, nach {_APPROVAL_TTL_HOURS} h verfallen"
                 )
+            from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
+            await benachrichtigungen_abschliessen(db, rows)
             await db.commit()
         logger.info("[Freigaben] %s unbeantwortete Anfrage(n) verfallen", len(rows))
         return len(rows)
@@ -1553,22 +1555,22 @@ class SchedulerService:
 
         from app.core.onboarding import is_onboarded
         fehlt = (
-            "Er weiss noch nicht, wofuer er da ist."
+            "Er weiß noch nicht, wofür er da ist."
             if not is_onboarded(agent)
-            else "Ihm fehlen die Verantwortungsbereiche — er hat also keine wiederkehrenden Aufgaben."
+            else "Ihm fehlen wiederkehrende Aufgaben."
         )
         db.add(Notification(
             agent_id=agent.id,
             type="warning",
             title=f"{agent.name} wartet auf seinen Auftrag",
             message=(
-                f"{fehlt} Der proaktive Lauf wurde deshalb uebersprungen — ohne Auftrag "
-                f"kann er nichts tun. Sag ihm im Chat, welche Rolle er hat und welche "
-                f"Aufgaben er dauerhaft uebernimmt, oder trage die Bereiche direkt in "
-                f"seinen Einstellungen ein."
+                f"{fehlt} Sag ihm im Chat, wofür er zuständig ist und was er "
+                f"regelmäßig übernehmen soll — dann legt er selbst los."
             )[:240],
             priority="normal",
-            action_url=f"/agents/{agent.id}?tab=settings",
+            # In den Chat, nicht in die Einstellungen: die gibt es in der einfachen
+            # Ansicht nicht, und der Auftrag wird ohnehin im Gespraech vergeben.
+            action_url=f"/agents/{agent.id}",
             meta={"reason": "missing_assignment"},
         ))
         logger.info("[Scheduler] Hinweis an Besitzer: %s hat keinen Auftrag", agent.id)

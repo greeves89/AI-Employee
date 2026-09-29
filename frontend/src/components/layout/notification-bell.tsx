@@ -425,6 +425,14 @@ export function NotificationBell({
                             <Check className="h-3 w-3" />
                             {String(notif.meta.response)}
                           </span>
+                        ) : notif.meta?.entschieden ? (
+                          // Anderswo entschieden (Freigaben-Seite, Telegram, Ablauf):
+                          // keine Knoepfe mehr fuer eine erledigte Frage.
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-foreground/[0.05] text-muted-foreground border border-foreground/[0.08]">
+                            <Check className="h-3 w-3" />
+                            {{ approved: "Freigegeben", denied: "Abgelehnt", expired: "Verfallen" }[String(notif.meta.entschieden)] ?? "Erledigt"}
+                            {notif.meta.antwort && !String(notif.meta.antwort).startsWith("Approved by") ? ` · ${String(notif.meta.antwort)}` : ""}
+                          </span>
                         ) : (
                           (notif.meta.options as string[]).map((opt, i) => (
                             <button

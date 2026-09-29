@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
 import {
   HelpCircle,
   Search,
@@ -222,15 +223,18 @@ const CATEGORY_ORDER = ["Erste Schritte", "Agenten", "Funktionen", "Admin", "Pro
 
 export default function HelpPage() {
   const [query, setQuery] = useState("");
+  // Mitglieder: ohne Admin-Rubrik und Technik-Karten (Architektur, GitHub-Changelog).
+  const { simpleMode } = useSimpleMode();
   const [open, setOpen] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return HELP_TOPICS;
-    return HELP_TOPICS.filter((t) =>
+    const themen = simpleMode ? HELP_TOPICS.filter((t) => t.category !== "Admin") : HELP_TOPICS;
+    if (!q) return themen;
+    return themen.filter((t) =>
       [t.title, t.body, ...t.keywords].join(" ").toLowerCase().includes(q),
     );
-  }, [query]);
+  }, [query, simpleMode]);
 
   const byCategory = useMemo(() => {
     const map = new Map<string, HelpTopic[]>();
@@ -283,6 +287,7 @@ export default function HelpPage() {
             <div className="text-xs text-muted-foreground truncate">Onboarding-Wizard öffnen</div>
           </div>
         </Link>
+        {!simpleMode && (<>
         <a
           href="https://github.com/greeves89/AI-Employee/blob/main/CHANGELOG.md"
           target="_blank"
@@ -305,6 +310,7 @@ export default function HelpPage() {
             <div className="text-xs text-muted-foreground truncate">Diagramme, API, Tools, Modelle</div>
           </div>
         </Link>
+        </>)}
       </div>
 
       {/* Suche */}

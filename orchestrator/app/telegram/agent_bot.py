@@ -749,6 +749,8 @@ class TelegramAgentBot:
                                 approval.status = ApprovalStatus.DENIED if negative else ApprovalStatus.APPROVED
                                 approval.resolved_at = datetime.now(timezone.utc)
                                 approval.user_response = choice
+                                from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
+                                await benachrichtigungen_abschliessen(db, [approval])
                         await db.commit()
                 redis = aioredis.from_url(settings.redis_url, decode_responses=True)
                 await redis.set(f"approval:result:{notif_id}", choice, ex=3600)

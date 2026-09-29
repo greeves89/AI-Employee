@@ -5,6 +5,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.345.0] - 2026-09-29
+
+### Behoben
+- **„wartet seit über 12 Stunden auf eine Antwort" ohne Frage.** Die Eskalation
+  zählte jede ungelesene Benachrichtigung als unbeantwortete Rückfrage —
+  Bewertungsbitten, Ergebnis-Hinweise, Skill-Vorschläge. Wer seine Glocke nicht
+  leerte, bekam jeden Morgen eine Eskalation. Jetzt zählen nur Freigabe-Anfragen
+  und Rückfragen (`is_checkin`).
+- **Entschiedene Freigaben standen weiter mit Knöpfen in der Glocke**, während
+  die Freigaben-Seite leer war. Entschieden wird an sechs Stellen (freigeben,
+  ablehnen, abbrechen, alle verwerfen, Telegram, Ablauf) — keine hat die
+  Benachrichtigung angefasst. Jetzt schließt jede sie und vermerkt die
+  Entscheidung; die Glocke zeigt „Freigegeben", „Abgelehnt" oder „Verfallen".
+- **„wartet auf seinen Auftrag"** führte in Einstellungen, die es in der
+  einfachen Ansicht nicht gibt, und war in Ersatzschreibweise. Jetzt in den Chat,
+  kurz und mit echten Umlauten.
+
+### Geändert
+- **Offene To-dos in der Aufgabenspalte lassen sich anklicken:** Fenster mit
+  Beschreibung, „Als erledigt markieren" und „Streichen".
+- **Das Design folgt ohne eigene Wahl dem System** (hell/dunkel) statt immer
+  dunkel zu starten.
+- **Hilfe für Mitglieder** ohne Admin-Rubrik und ohne die Karten „Architektur"
+  und „Was ist neu?" (GitHub) — Neuigkeiten stehen im Profilmenü unter
+  „Über AI Employee".
+
+### Tests
+- `test_duty_chain_e2e.py`: Infos und Bewertungsbitten eskalieren nicht,
+  Rückfragen mit `is_checkin` schon.
+- `test_freigabe_benachrichtigung.py`: fährt die Zuordnung gegen eine echte
+  Datenbank.
+
+---
+
 ## [1.344.2] - 2026-09-28
 
 ### Behoben

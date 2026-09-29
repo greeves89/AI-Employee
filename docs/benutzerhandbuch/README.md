@@ -142,6 +142,8 @@ Ansicht**. Sie zeigt nur, was man für die Arbeit mit seinen Agenten braucht:
   - **Geplant** — wiederkehrende Aufträge mit Takt und nächstem Lauf
   - **Erledigt** — Klick darauf öffnet ein Fenster mit Auftrag, Ergebnis und
     Live-Verlauf; du bleibst dabei im Chat.
+  Ein Klick auf ein **offenes** To-do zeigt seine Beschreibung; dort kannst du es
+  **als erledigt markieren** oder **streichen**.
   Ab mehr als 10 Einträgen erscheint oben eine **Suche**. Mit dem Symbol rechts
   oben klappst du die Spalte ein und aus.
 - **Ergebnisse kommen in den Chat:** Bittest du den Agenten im Chat um eine

@@ -705,6 +705,8 @@ async def clear_pending_approvals(
         approval.status = ApprovalStatus.DENIED
         approval.resolved_at = now
         approval.user_response = f"Sammelverwerfung durch {user.email}"
+    from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
+    await benachrichtigungen_abschliessen(db, rows)
     await db.commit()
 
     # Wartende Agenten aufwecken, statt sie in ihre Zeitgrenze laufen zu lassen.
@@ -777,6 +779,8 @@ async def approve_request(
     # welche gemeint war, und fragte im naechsten Zug erneut.
     antwort = (body.answer or "").strip() if body else ""
     approval.user_response = antwort or f"Approved by {user.email}"
+    from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
+    await benachrichtigungen_abschliessen(db, [approval])
 
     audit_entry = AuditLog(
         agent_id=approval.agent_id,
@@ -843,6 +847,8 @@ async def deny_request(
     approval.status = ApprovalStatus.DENIED
     approval.resolved_at = datetime.now(timezone.utc)
     approval.user_response = decision.reason or "Denied by user"
+    from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
+    await benachrichtigungen_abschliessen(db, [approval])
 
     audit_entry = AuditLog(
         agent_id=approval.agent_id,
@@ -896,6 +902,8 @@ async def cancel_approval_request(
     approval.status = ApprovalStatus.DENIED
     approval.resolved_at = datetime.now(timezone.utc)
     approval.user_response = "Cancelled by user"
+    from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
+    await benachrichtigungen_abschliessen(db, [approval])
     await db.commit()
 
     # Sentinel event (#591): a cancel is also a resolution outcome — a Sentinel

@@ -51,6 +51,7 @@ import { ComputerUseDefaultPanel } from "@/components/agents/computer-use-defaul
 import { useTasks } from "@/hooks/use-tasks";
 import { AUFGABEN_STATUS, aufgabenTitel, istSystemZeitplan } from "@/lib/aufgaben-anzeige";
 import { Fenster } from "@/components/ui/fenster";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 import { Stufenwahl } from "@/components/ui/stufenwahl";
 import { TaskDetail } from "@/components/tasks/task-detail";
 import type { AgentTodo, Schedule } from "@/lib/types";
@@ -823,6 +824,31 @@ function AufgabenSpalte({
   const [gewaehlterReiter, setReiter] = useState<"offen" | "geplant" | "erledigt" | null>(null);
   const [suche, setSuche] = useState("");
   const fensterZu = useCallback(() => setAngesehen(null), []);
+  // Offenes To-do ansehen, abhaken oder streichen — vorher tat ein Klick nichts.
+  const [todoAuf, setTodoAuf] = useState<AgentTodo | null>(null);
+  const [todoArbeitet, setTodoArbeitet] = useState(false);
+  const confirmTodo = useConfirm();
+  const todoAendern = async (aktion: "erledigt" | "loeschen") => {
+    if (!todoAuf) return;
+    if (aktion === "loeschen") {
+      const ok = await confirmTodo({
+        title: "To-do streichen?",
+        message: `„${todoAuf.title}" wird aus der Liste entfernt.`,
+        variant: "destructive",
+        confirmLabel: "Streichen",
+      });
+      if (!ok) return;
+    }
+    setTodoArbeitet(true);
+    try {
+      if (aktion === "erledigt") await api.updateAgentTodo(todoAuf.id, { status: "completed" });
+      else await api.deleteAgentTodo(todoAuf.id);
+      setTodoAuf(null);
+      await ladeRest();
+    } finally {
+      setTodoArbeitet(false);
+    }
+  };
   const ladeRest = useCallback(async () => {
     const [z, t] = await Promise.allSettled([api.getSchedules(), api.getAgentTodos(agentId)]);
     if (z.status === "fulfilled") {
@@ -910,6 +936,7 @@ function AufgabenSpalte({
         : <Circle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground/60" />,
       titel: t.title,
       unter: t.status === "in_progress" ? "In Arbeit" : "Offen",
+      onClick: () => setTodoAuf(t),
     })),
     geplant: plaene.map((plan) => ({
       key: `p-${plan.id}`,
@@ -1005,6 +1032,42 @@ function AufgabenSpalte({
           <Zeile key={z.key} icon={z.icon} titel={z.titel} unter={z.unter} href={z.href} onClick={z.onClick} />
         ))}
       </div>
+      <Fenster offen={todoAuf !== null} schliessen={() => setTodoAuf(null)} titel="To-do" breite="max-w-lg">
+        {todoAuf && (
+          <div className="space-y-4 p-5">
+            <div>
+              <p className="text-base font-medium">{todoAuf.title}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {todoAuf.status === "in_progress" ? "In Arbeit" : "Offen"}
+                {todoAuf.project ? ` · ${todoAuf.project}` : ""}
+                {` · angelegt ${timeAgo(todoAuf.created_at)}`}
+              </p>
+            </div>
+            {todoAuf.description ? (
+              <div className="text-sm text-foreground/90"><MarkdownContent content={todoAuf.description} /></div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Keine Beschreibung.</p>
+            )}
+            <div className="flex justify-end gap-2 border-t border-foreground/[0.06] pt-4">
+              <button
+                onClick={() => todoAendern("loeschen")}
+                disabled={todoArbeitet}
+                className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+              >
+                Streichen
+              </button>
+              <button
+                onClick={() => todoAendern("erledigt")}
+                disabled={todoArbeitet}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+              >
+                {todoArbeitet ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                Als erledigt markieren
+              </button>
+            </div>
+          </div>
+        )}
+      </Fenster>
       <Fenster offen={angesehen !== null} schliessen={fensterZu} breite="max-w-5xl">
         {angesehen && <TaskDetail key={angesehen} taskId={angesehen} imFenster zeigeAufgabe={setAngesehen} />}
       </Fenster>

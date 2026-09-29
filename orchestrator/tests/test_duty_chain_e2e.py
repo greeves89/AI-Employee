@@ -324,6 +324,33 @@ class SilenceEscalationTests(DutyChainBase):
             agent = (await db.execute(select(Agent).where(Agent.id == "fragend"))).scalar_one()
             self.assertFalse(await duty_service.escalate_silence(db, self.redis, agent))
 
+    async def test_infos_und_bewertungsbitten_sind_keine_rueckfragen(self):
+        """29.09.2026: Jeden Morgen „wartet seit ueber 12 Stunden auf eine Antwort",
+        obwohl der Agent nichts gefragt hatte — gezaehlt wurden ungelesene Infos
+        („Task abgeschlossen — Bewertung?", Ergebnis-Hinweise)."""
+        async with self.Session() as db:
+            db.add(self._agent("fragend", "Frager"))
+            for titel in ("Task abgeschlossen — Bewertung?", "KI & Tech Newsletter", "Neuer Skill erstellt"):
+                note = self._old_note("fragend", titel)
+                note.type = "info"
+                db.add(note)
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "fragend"))).scalar_one()
+            self.assertFalse(await duty_service.escalate_silence(db, self.redis, agent))
+
+    async def test_checkin_rueckfragen_zaehlen(self):
+        """Eine Rueckfrage per notify_user (is_checkin) ist eine Frage, auch als Info."""
+        async with self.Session() as db:
+            db.add(self._agent("fragend", "Frager"))
+            for i in range(duty_core.ESCALATE_AFTER_UNANSWERED):
+                note = self._old_note("fragend", f"Soll ich {i}?")
+                note.type = "info"
+                note.meta = {"is_checkin": True}
+                db.add(note)
+            await db.commit()
+            agent = (await db.execute(select(Agent).where(Agent.id == "fragend"))).scalar_one()
+            self.assertTrue(await duty_service.escalate_silence(db, self.redis, agent))
+
     async def test_escalation_happens_once(self):
         async with self.Session() as db:
             db.add(self._agent("fragend", "Frager"))
