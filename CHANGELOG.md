@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.348.2] - 2026-09-29
+
+### Behoben
+- Hauptlinie war seit 27.09. auf jedem PR rot: der Migrationstest gegen eine gewachsene Anlage (`test_migrationen_gegen_echtes_postgres.py`) scheiterte an drei neuen Migrationen der letzten Tage, die je eine Spalte an eine bereits bestehende Tabelle anhängen (`schedules.chat_session_id`, `agent_secrets.owner_id`, `agent_templates.build_tools`) — der Test kannte bisher nur den gleichwertigen Mechanismus für neue TABELLEN. Kein Produktionsfehler, reines falsches Rot des Tests (Issue #871).
+
 ## [1.348.1] - 2026-09-29
 
 ### Geändert
