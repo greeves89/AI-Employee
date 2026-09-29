@@ -300,6 +300,11 @@ class RealChildReapBoundTests(unittest.IsolatedAsyncioTestCase):
         # Prozess gestartet.
         real_exec = asyncio.create_subprocess_exec
 
+        # Der Zeitpunkt, an dem die Vorbedingung steht und die gemessene Frist
+        # beginnt. Ohne ihn wuerde die Wartezeit auf den Enkel in die Dauer-
+        # Zusicherung unten einlaufen und sie unter Last zu Unrecht reissen.
+        armed_at = []
+
         async def _exec_real(*_args, **_kwargs):
             proc = await real_exec(
                 sys.executable, "-c", child_code, pid_file.name,
@@ -307,8 +312,37 @@ class RealChildReapBoundTests(unittest.IsolatedAsyncioTestCase):
                 stderr=asyncio.subprocess.PIPE,
             )
             spawned.append(proc)
+            # VORBEDINGUNG, nicht Bequemlichkeit: dieser Test prueft den Fall "ein
+            # NACHKOMME haelt die Leitungen offen". Existiert der Enkel noch nicht,
+            # wenn das Budget ablaeuft, schliesst `kill()` die Leitungen sofort, das
+            # Aufraeumen glueckt, und `assertIn("could not confirm")` unten faellt
+            # durch — der Test ist dann falsch ROT, obwohl die Produktion korrekt
+            # ist. Gemessen auf 4 Kernen unter Last: 2 von 10 Laeufen rot.
+            #
+            # Hier zu warten ist der einzige Ort, der das deterministisch macht: die
+            # Frist der Produktion laeuft erst ab der RUECKKEHR dieser Funktion, also
+            # steht der Enkel garantiert, bevor die Uhr startet. Ein groesseres Budget
+            # macht das Zeitfenster nur breiter, nicht zuverlaessig.
+            deadline = time.monotonic() + 30.0
+            while True:
+                try:
+                    if int(open(pid_file.name).read() or 0) > 0:
+                        break
+                except (OSError, ValueError):
+                    pass
+                if time.monotonic() > deadline:
+                    self.fail(
+                        "Vorbedingung nicht herstellbar: das Kind hat binnen 30 s "
+                        "keinen Enkelprozess gestartet — der Test kann den Fall "
+                        "'Nachkomme haelt die Leitungen offen' nicht messen."
+                    )
+                await asyncio.sleep(0.01)
+            armed_at.append(time.monotonic())
             return proc
 
+        # Knapp bleiben ist hier richtig: die Vorbedingung oben ist bereits
+        # hergestellt, wenn die Uhr startet, also entscheidet das Budget nur noch,
+        # wie lange der Test wartet — nicht mehr, OB er das Richtige misst.
         budget, reap = 0.2, 0.3
         patches = [
             # Ohne das kehrt die Funktion auf jeder Maschine ohne `claude`-CLI (CI!)
@@ -324,8 +358,9 @@ class RealChildReapBoundTests(unittest.IsolatedAsyncioTestCase):
             p.start()
             self.addCleanup(p.stop)
 
-        # Warten, bis der Enkel wirklich existiert - sonst misst der Test nichts.
-        started = time.monotonic()
+        # Das Warten auf den Enkel steckt in `_exec_real` (siehe dort): es MUSS
+        # zwischen dem Start des Kindes und dem Ablauf des Budgets liegen, und nur
+        # die gepatchte Startfunktion sitzt an dieser Stelle.
         try:
             with self.assertLogs(_LOGGER, level=logging.WARNING) as captured:
                 result = await asyncio.wait_for(
@@ -366,7 +401,11 @@ class RealChildReapBoundTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("could not confirm", log)
         self.assertIn(f"{reap}s", log)
 
-        elapsed = time.monotonic() - started
+        # Ab dem Moment gemessen, in dem die Vorbedingung stand und die Frist der
+        # Produktion zu laufen begann — nicht ab Testbeginn. Das Herstellen der
+        # Vorbedingung ist Aufbau und darf die Frist-Zusicherung nicht mitbelasten.
+        self.assertEqual(len(armed_at), 1, "Vorbedingung: genau ein Startzeitpunkt")
+        elapsed = time.monotonic() - armed_at[0]
         self.assertLess(
             elapsed, budget + reap + 4.0,
             f"Aufruf brauchte {elapsed:.2f}s - das Aufraeumen ist nicht begrenzt",

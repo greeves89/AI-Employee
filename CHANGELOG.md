@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.347.1] - 2026-09-29
+
+### Tests
+- **Ein Test zur Selbstbewertung schlug gelegentlich ohne eigenes Zutun fehl.**
+  Er prueft den Fall, dass ein Nachkomme des beendeten Unterprozesses dessen
+  Leitungen offen haelt — dazu muss dieser Nachkomme aber schon existieren, wenn
+  die Frist ablaeuft. Auf einer ausgelasteten Maschine war er das nicht immer;
+  dann glueckte das Aufraeumen, die erwartete Protokollzeile fehlte, und der Test
+  wurde rot, obwohl der Programmcode korrekt war (gemessen: 2 von 10 Laeufen).
+  Der Test stellt diese Vorbedingung jetzt selbst her, statt auf sie zu hoffen.
+
 ## [1.347.0] - 2026-09-29
 
 ### Neu
