@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.348.1] - 2026-09-29
+
+### Geändert
+- Frontend-Abhaengigkeiten aktualisiert: @xyflow/react 12.11.6->12.12.0, lucide-react 1.47.0->1.48.0 (beide minor) sowie 5 Patch-Bumps (docx-preview, framer-motion, next, three, @types/node).
+
 ## [1.348.0] - 2026-09-29
 
 ### Geändert
