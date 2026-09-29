@@ -96,13 +96,21 @@ class EveryRuntimeGetsThemTests(unittest.TestCase):
 
     def test_they_stand_at_the_very_top(self):
         """Die Agenten-Laufzeit kuerzt eine zu lange Anleitung von HINTEN.
-        Angehaengt waeren ausgerechnet die Regeln als Erstes weg."""
-        rumpf = self.MANAGER.split("def _render_claude_md", 1)[1][:1200]
-        rueckgabe = rumpf.split("return ", 1)[1]
-        self.assertTrue(
-            rueckgabe.startswith("master_rules"),
-            "die Master-Regeln stehen nicht mehr als Erstes in der Anleitung",
-        )
+        Angehaengt waeren ausgerechnet die Regeln als Erstes weg.
+
+        Am Ergebnis geprueft, nicht am Quelltext: jede Laufzeit, mit und ohne
+        Build-Werkzeuge-Abschnitt, muss mit den Regeln beginnen."""
+        from app.core.agent_manager import _render_claude_md
+
+        for mode in ("claude_code", "codex_cli", "custom_llm"):
+            for build_tools in (False, True):
+                with self.subTest(mode=mode, build_tools=build_tools):
+                    text = _render_claude_md([], master_rules="REGELN-ZUERST\n",
+                                             mode=mode, build_tools=build_tools)
+                    self.assertTrue(
+                        text.startswith("REGELN-ZUERST"),
+                        "die Master-Regeln stehen nicht mehr als Erstes in der Anleitung",
+                    )
 
     def test_no_render_path_forgets_them(self):
         """Es gibt VIER Stellen, die die Anleitung schreiben (anlegen,

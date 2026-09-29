@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+# build-tools — Werkzeugketten fuer Windows-Programme (.exe) einrichten.
+#
+# Nur fuer Agenten, deren Vorlage das vorsieht (``build_tools`` an der Vorlage,
+# mitgeliefert: „Fullstack Developer"). Der Orchestrator haengt diesen Agenten
+# ein eigenes Volume nach $BUILD_TOOLS_HOME und setzt BUILD_TOOLS=1. Alles liegt
+# dort — nicht im Workspace, damit es nicht aufs Speicherkontingent zaehlt und
+# nicht in Exporten landet — und uebersteht jedes Update des Agenten.
+#
+# Alle drei Laufzeiten (Claude Code, Codex, Custom-LLM) rufen dasselbe Skript
+# ueber ihre Shell auf; es gibt keine zweite Implementierung.
+#
+# Die Installation laeuft im Hintergrund: Rust oder .NET brauchen auf einem
+# kleinen Rechner laenger, als ein einzelner Shell-Aufruf warten darf. Am Ende
+# baut jede Werkzeugkette eine Test-.exe — erst dann gilt sie als bereit.
+
+set -uo pipefail
+
+ROOT="${BUILD_TOOLS_HOME:-/opt/build-tools}"
+STATE="$ROOT/.status"
+KETTEN="go rust dotnet mingw"
+
+# Das Abbild setzt diese Werte schon (agent/Dockerfile); hier nur als Rueckfall,
+# damit das Skript auch in einer Shell mit geleerter Umgebung dieselben Pfade nimmt.
+export CARGO_HOME="${CARGO_HOME:-$ROOT/cargo}" RUSTUP_HOME="${RUSTUP_HOME:-$ROOT/rustup}"
+export GOPATH="${GOPATH:-$ROOT/gopath}" DOTNET_ROOT="${DOTNET_ROOT:-$ROOT/dotnet}"
+export NUGET_PACKAGES="${NUGET_PACKAGES:-$ROOT/nuget}"
+export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+# Entpackt wird IM Volume, nicht in /tmp: dann ist das Einsetzen am Ende ein
+# Umbenennen statt einer Kopie ueber Dateisystemgrenzen, und /tmp (Container-
+# Schicht) laeuft nicht mit einer halben Werkzeugkette voll.
+export TMPDIR="$ROOT/.tmp"
+
+case ":$PATH:" in
+  *":$ROOT/go/bin:"*) ;;
+  *) export PATH="$ROOT/go/bin:$CARGO_HOME/bin:$DOTNET_ROOT:$ROOT/llvm-mingw/bin:$PATH";;
+esac
+
+hilfe() {
+  cat <<'EOF'
+build-tools — Windows-Programme (.exe) aus diesem Linux-Container bauen
+
+  build-tools status             Was ist eingerichtet, was läuft gerade?
+  build-tools install <kette>    Einrichten im Hintergrund (go, rust, dotnet, mingw, alle)
+  build-tools log <kette>        Protokoll der letzten Einrichtung
+  build-tools test <kette>       Test-.exe bauen (läuft nach jeder Einrichtung automatisch)
+
+Bauen, wenn die Kette bereit ist:
+  Go     GOOS=windows GOARCH=amd64 go build -o app.exe .
+  Rust   cargo build --release --target x86_64-pc-windows-gnullvm
+  .NET   dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+         (WinForms/WPF zusätzlich: -p:EnableWindowsTargeting=true)
+  C/C++  x86_64-w64-mingw32-clang main.c -o app.exe
+
+Python/PyInstaller erzeugt unter Linux keine .exe.
+EOF
+}
+
+fehler() { echo "build-tools: $*" >&2; exit 1; }
+
+freigegeben() {
+  if [ "${BUILD_TOOLS:-}" != "1" ]; then
+    echo "Dieser Agent hat keine Build-Werkzeuge. Es gibt sie für Agenten aus einer" >&2
+    echo "Vorlage mit Build-Werkzeugen (mitgeliefert: „Fullstack Developer\")." >&2
+    exit 3
+  fi
+  mkdir -p "$STATE" "$TMPDIR" 2>/dev/null || fehler "$ROOT ist nicht beschreibbar."
+  [ -w "$ROOT" ] || fehler "$ROOT ist nicht beschreibbar."
+}
+
+kette_pruefen() {
+  case " $KETTEN " in *" $1 "*) ;; *) fehler "Unbekannte Kette '$1'. Möglich: $KETTEN, alle";; esac
+}
+
+arch_go() { case "$(uname -m)" in x86_64) echo amd64;; aarch64|arm64) echo arm64;; *) fehler "Prozessor $(uname -m) wird nicht unterstützt.";; esac; }
+arch_gnu() { case "$(uname -m)" in x86_64) echo x86_64;; aarch64|arm64) echo aarch64;; *) fehler "Prozessor $(uname -m) wird nicht unterstützt.";; esac; }
+
+# ── Einrichten je Kette ────────────────────────────────────────────────
+
+einrichten_go() {
+  local v tmp
+  v="$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1)" || return 1
+  [ -n "$v" ] || return 1
+  tmp="$(mktemp -d)"
+  curl -fsSL "https://go.dev/dl/${v}.linux-$(arch_go).tar.gz" | tar -xz -C "$tmp" || { rm -rf "$tmp"; return 1; }
+  rm -rf "$ROOT/go" && mv "$tmp/go" "$ROOT/go" && rm -rf "$tmp"
+}
+
+einrichten_mingw() {
+  local url tmp
+  url="$(curl -fsSL https://api.github.com/repos/mstorsjo/llvm-mingw/releases/latest \
+        | jq -r --arg a "$(arch_gnu)" '.assets[].browser_download_url
+            | select(test("-ucrt-ubuntu-[0-9.]+-" + $a + "\\.tar\\.xz$"))' | head -1)"
+  [ -n "$url" ] || { echo "Kein passendes llvm-mingw-Paket gefunden."; return 1; }
+  tmp="$(mktemp -d)"
+  curl -fsSL "$url" | tar -xJ -C "$tmp" --strip-components=1 || { rm -rf "$tmp"; return 1; }
+  rm -rf "$ROOT/llvm-mingw" && mv "$tmp" "$ROOT/llvm-mingw"
+}
+
+einrichten_rust() {
+  # Das Windows-Ziel linkt mit dem Clang aus llvm-mingw (Ziel *-gnullvm). Fehlt
+  # es, richtet rust es mit ein — unter der Sperre von mingw, damit nie zwei
+  # Laeufe in denselben Ordner entpacken.
+  if [ ! -x "$ROOT/llvm-mingw/bin/x86_64-w64-mingw32-clang" ]; then
+    (
+      flock 8
+      [ -x "$ROOT/llvm-mingw/bin/x86_64-w64-mingw32-clang" ] && exit 0
+      einrichten_mingw && echo "bereit $(version_von mingw)" > "$STATE/mingw"
+    ) 8>"$STATE/mingw.lock" || return 1
+  fi
+  curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
+    --default-toolchain stable || return 1
+  "$CARGO_HOME/bin/rustup" target add x86_64-pc-windows-gnullvm || return 1
+  cat > "$CARGO_HOME/config.toml" <<'EOF'
+[target.x86_64-pc-windows-gnullvm]
+linker = "x86_64-w64-mingw32-clang"
+EOF
+}
+
+einrichten_dotnet() {
+  curl -fsSL https://dot.net/v1/dotnet-install.sh \
+    | bash -s -- --channel LTS --install-dir "$ROOT/dotnet" --no-path || return 1
+}
+
+# ── Test-.exe je Kette ─────────────────────────────────────────────────
+
+ist_exe() { [ -s "$1" ] && [ "$(head -c 2 "$1")" = "MZ" ]; }
+
+test_go() {
+  cat > main.go <<'EOF'
+package main
+
+import "fmt"
+
+func main() { fmt.Println("hallo") }
+EOF
+  go mod init hallo >/dev/null 2>&1
+  GOOS=windows GOARCH=amd64 go build -o hallo.exe . && ist_exe hallo.exe
+}
+
+test_mingw() {
+  printf '#include <stdio.h>\nint main(void){puts("hallo");return 0;}\n' > main.c
+  x86_64-w64-mingw32-clang main.c -o hallo.exe && ist_exe hallo.exe
+}
+
+test_rust() {
+  cargo new --quiet hallo && cd hallo \
+    && cargo build --quiet --release --target x86_64-pc-windows-gnullvm \
+    && ist_exe target/x86_64-pc-windows-gnullvm/release/hallo.exe
+}
+
+test_dotnet() {
+  dotnet new console --output hallo >/dev/null && cd hallo \
+    && dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o out \
+    && ist_exe out/hallo.exe
+}
+
+testen() {
+  local k="$1" tmp rc
+  tmp="$(mktemp -d)"
+  ( cd "$tmp" && "test_$k" ); rc=$?
+  rm -rf "$tmp"
+  return $rc
+}
+
+version_von() {
+  case "$1" in
+    go) go version 2>/dev/null | awk '{print $3}';;
+    rust) rustc --version 2>/dev/null | awk '{print $2}';;
+    dotnet) dotnet --version 2>/dev/null;;
+    mingw) x86_64-w64-mingw32-clang --version 2>/dev/null | head -1 | grep -o 'clang version [0-9.]*';;
+  esac
+}
+
+# ── Ablauf im Hintergrund ──────────────────────────────────────────────
+
+eine_kette() {
+  local k="$1"
+  kette_pruefen "$k"   # auch hier, nicht nur beim Aufrufer: der Name wird zum Funktionsnamen
+  (
+    flock -n 9 || { echo "$k: Einrichtung läuft bereits"; exit 0; }
+    echo "läuft" > "$STATE/$k"
+    echo "== Einrichten $k ($(date -Is))"
+    if "einrichten_$k" && echo "== Test-.exe bauen" && testen "$k"; then
+      echo "bereit $(version_von "$k")" > "$STATE/$k"
+      echo "== fertig: $k ist bereit"
+    else
+      echo "fehlgeschlagen" > "$STATE/$k"
+      echo "== FEHLGESCHLAGEN — Protokoll oben"
+    fi
+  ) 9>"$STATE/$k.lock" > "$STATE/$k.log" 2>&1
+}
+
+lauf() {  # von `install` abgetrennt gestartet; Ketten nacheinander, nie parallel
+  local k
+  for k in "$@"; do eine_kette "$k"; done
+}
+
+installieren() {
+  local ziel="$1" k
+  [ "$ziel" = "alle" ] && ziel="mingw go rust dotnet"
+  for k in $ziel; do kette_pruefen "$k"; done
+  nohup "$0" _lauf $ziel > /dev/null 2>&1 &
+  echo "Einrichtung gestartet: $ziel"
+  echo "Dauert je Kette einige Minuten. Stand: build-tools status — Protokoll: build-tools log <kette>"
+}
+
+noch_aktiv() { ! flock -n "$STATE/$1.lock" true 2>/dev/null; }
+
+status() {
+  local k s
+  for k in $KETTEN; do
+    s="$(cat "$STATE/$k" 2>/dev/null || echo "nicht eingerichtet")"
+    # Neustart des Containers mitten in der Einrichtung: Die Sperre ist weg,
+    # der Vermerk "laeuft" nicht.
+    if [ "$s" = "läuft" ] && ! noch_aktiv "$k"; then
+      s="abgebrochen — neu starten mit: build-tools install $k"
+    fi
+    printf '%-7s %s\n' "$k" "$s"
+  done
+  echo "Speicher: $(du -sh "$ROOT" 2>/dev/null | cut -f1) in $ROOT"
+}
+
+befehl="${1:-hilfe}"
+case "$befehl" in
+  hilfe|-h|--help) hilfe;;
+  status) freigegeben; status;;
+  install) freigegeben; [ -n "${2:-}" ] || fehler "Welche Kette? $KETTEN, alle"; installieren "$2";;
+  log) freigegeben; kette_pruefen "${2:-}"; tail -n 60 "$STATE/$2.log" 2>/dev/null || echo "Noch kein Protokoll.";;
+  test) freigegeben; kette_pruefen "${2:-}"
+        if testen "$2"; then echo "$2: Test-.exe gebaut"; else fehler "$2: Test fehlgeschlagen"; fi;;
+  _lauf) freigegeben; shift; lauf "$@";;
+  *) hilfe; exit 2;;
+esac

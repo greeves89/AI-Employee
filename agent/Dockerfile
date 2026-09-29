@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 # Version label - change this to trigger update detection for running agents
-LABEL ai-employee.version="1.346.5"
+LABEL ai-employee.version="1.347.0"
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gosu \
     ripgrep \
     ffmpeg \
+    xz-utils \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -101,6 +102,26 @@ RUN chmod -R a+rX /opt/agent/app/
 # Install ai-team CLI helper (allows agents to call orchestrator API)
 COPY scripts/ai-team /usr/local/bin/ai-team
 RUN chmod +x /usr/local/bin/ai-team
+
+# Build-Werkzeuge fuer Windows-Programme (.exe): Go, Rust, .NET, llvm-mingw.
+# Nicht im Abbild — das waeren 2-3 GB fuer jeden Agenten. Agenten aus einer
+# Vorlage mit ``build_tools`` bekommen ein eigenes Volume auf BUILD_TOOLS_HOME
+# und richten die Ketten dort bei Bedarf ein (``build-tools install``). Das
+# leere Verzeichnis gehoert dem Agenten, damit ein frisches Volume diese
+# Eigentuemerschaft uebernimmt.
+COPY scripts/build-tools /usr/local/bin/build-tools
+RUN chmod +x /usr/local/bin/build-tools \
+    && mkdir -p /opt/build-tools && chown agent:agent /opt/build-tools
+ENV BUILD_TOOLS_HOME=/opt/build-tools \
+    CARGO_HOME=/opt/build-tools/cargo \
+    RUSTUP_HOME=/opt/build-tools/rustup \
+    GOPATH=/opt/build-tools/gopath \
+    DOTNET_ROOT=/opt/build-tools/dotnet \
+    NUGET_PACKAGES=/opt/build-tools/nuget \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1 \
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
+    PATH=/opt/build-tools/go/bin:/opt/build-tools/cargo/bin:/opt/build-tools/dotnet:/opt/build-tools/llvm-mingw/bin:$PATH
 
 # Install MCP servers (Model Context Protocol - provides native tools to Claude CLI)
 COPY mcp/ /opt/mcp/

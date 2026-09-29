@@ -594,6 +594,8 @@ export interface AgentTemplate {
   knowledge_template: string;
   /** Dauerauftraege, die jeder Agent aus dieser Vorlage mitbekommt. */
   responsibilities?: Responsibility[];
+  /** Agenten dieser Vorlage bauen Windows-Programme (.exe). */
+  build_tools?: boolean;
   is_builtin: boolean;
   is_published: boolean;
   published_at: string | null;

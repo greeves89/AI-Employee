@@ -825,6 +825,37 @@ def agent_timezone(config: dict | None) -> str:
     return timezone_name(config)
 
 
+#: Wo die Build-Werkzeuge eines Agenten liegen — eigenes Volume, nicht der
+#: Workspace: 2-3 GB Werkzeugketten sollen weder aufs Speicherkontingent zaehlen
+#: (der Agent wuerde gestoppt) noch in Exporten landen. Gleicher Pfad wie
+#: BUILD_TOOLS_HOME in agent/Dockerfile.
+BUILD_TOOLS_PATH = "/opt/build-tools"
+
+
+def build_tools_volume(agent_id: str) -> str:
+    """Name des Werkzeug-Volumes eines Agenten — EINE Stelle fuer Anlegen und Loeschen."""
+    return f"build-tools-{agent_id}"
+
+
+_BUILD_TOOLS_HINWEIS = """
+## Windows-Programme bauen (.exe)
+Du kannst aus diesem Linux-Container echte Windows-Programme bauen. Die Werkzeugketten
+liegen in /opt/build-tools und bleiben über Updates erhalten.
+- Einrichten, einmalig je Kette: `build-tools install go|rust|dotnet|mingw` — läuft im
+  Hintergrund und baut am Ende selbst eine Test-.exe. Stand: `build-tools status`,
+  Fehler: `build-tools log <kette>`. Erst bauen, wenn die Kette „bereit" meldet.
+- Go: `GOOS=windows GOARCH=amd64 go build -o app.exe .`
+- Rust: `cargo build --release --target x86_64-pc-windows-gnullvm`
+- .NET: `dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true`
+  (WinForms/WPF zusätzlich `-p:EnableWindowsTargeting=true`)
+- C/C++: `x86_64-w64-mingw32-clang main.c -o app.exe`
+- Python/PyInstaller erzeugt unter Linux keine .exe. Soll es ein Windows-Programm werden,
+  nimm Go oder .NET — oder baue über die Computer Bridge auf einem Windows-Rechner.
+- Die fertige .exe gehört nach /workspace; nenne dem Nutzer den Pfad, dort kann er sie
+  herunterladen. Ausführen kannst du sie hier nicht — sie ist für Windows.
+"""
+
+
 def _laufzeit_hinweis(mode: str | None) -> str:
     """Der eine Absatz, der sich je Laufzeit WIRKLICH unterscheidet.
 
@@ -967,7 +998,8 @@ def _identity_line(name: str, role: str) -> str:
 def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
                       workspace_size_gb: float | None = None,
                       agent_name: str = "", agent_role: str = "",
-                      master_rules: str = "", mode: str | None = None) -> str:
+                      master_rules: str = "", mode: str | None = None,
+                      build_tools: bool = False) -> str:
     """Render the agent CLAUDE.md from its template — the SINGLE place that fills
     its placeholders (identity, workspace soft-quota, host-mounts section). Used by
     the create / update / restart paths, so the substitution lives in exactly one spot.
@@ -981,7 +1013,9 @@ def _render_claude_md(agent_mounts: list[str], catalog: dict | None = None,
     # runner_hooks.get_identity_context). Angehaengt waeren ausgerechnet die
     # Regeln, die immer gelten sollen, bei einem gespraechigen Agenten als
     # Erstes weg.
-    return master_rules + _laufzeit_hinweis(mode) + (
+    # Der Build-Abschnitt steht vorn aus demselben Grund: er ist kurz, und ein
+    # Agent, der ihn nicht kennt, baut die .exe gar nicht erst.
+    return master_rules + _laufzeit_hinweis(mode) + (_BUILD_TOOLS_HINWEIS if build_tools else "") + (
         DEFAULT_CLAUDE_MD
         .replace("$AGENT_IDENTITY", _identity_line(agent_name, agent_role))
         .replace("$AGENT_WORKSPACE_SIZE_GB", str(size))
@@ -1505,7 +1539,7 @@ class AgentManager:
         return env
 
     async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str = "l3",
-                           knowledge_md: str | None = None) -> Agent:
+                           knowledge_md: str | None = None, template_id: int | None = None) -> Agent:
         agent_id = uuid.uuid4().hex[:8]
         # Ein Agent ohne Besitzer ist ein Betriebsunfall, kein Betriebsmodus:
         # er taucht in keiner persoenlichen Liste mehr auf (seit dem Schliessen
@@ -1581,6 +1615,10 @@ class AgentManager:
             "TZ": agent_timezone(None),
         }
 
+        build_tools = await self._build_tools_aktiv(template_id)
+        if build_tools:
+            env_vars["BUILD_TOOLS"] = "1"
+
         if mode == "custom_llm" and effective_llm:
             # Custom LLM: LLM-specific env vars + integrations + MCP servers
             mcp_env = await self._get_custom_mcp_env(agent_id=agent_id, agent_integrations=integrations)
@@ -1631,6 +1669,7 @@ class AgentManager:
             environment=env_vars,
             volume_name=volume_name,
             session_volume_name=session_volume,
+            build_tools_volume_name=build_tools_volume(agent_id) if build_tools else None,
             shared_volume_name="ai-employee-shared",
             network=settings.agent_network,
             memory_limit=settings.agent_memory_limit,
@@ -1649,7 +1688,8 @@ class AgentManager:
         agent_mounts = []
         from app.core import master_rules as _mr
         claude_md = _render_claude_md(agent_mounts, agent_name=name, agent_role=role or "",
-                                      master_rules=await _mr.load(self.db), mode=mode)
+                                      master_rules=await _mr.load(self.db), mode=mode,
+                                      build_tools=build_tools)
         # Same instruction text for EVERY harness — only the file name differs, because
         # each CLI reads its own (see instructions_paths). Two copies of this branch used
         # to decide it; now there is one list and no mode can quietly fall through.
@@ -1705,6 +1745,7 @@ class AgentManager:
             budget_exceeded_action=budget_exceeded_action,
             browser_mode=browser_mode,
             autonomy_level=autonomy_level.lower(),
+            template_id=template_id,
             config={
                 "session_volume": session_volume,
                 "role": role or "",
@@ -1899,6 +1940,13 @@ class AgentManager:
             "AUTONOMY_LEVEL": (agent.autonomy_level or "l3").lower(),
         }
 
+        # Build-Werkzeuge haengen an der Vorlage (``build_tools``). In JEDEM Weg,
+        # der einen Container baut — sonst verliert ein Agent sein Volume beim
+        # naechsten Neustart, obwohl seine Anleitung es ihm verspricht.
+        build_tools = await self._build_tools_aktiv(agent.template_id)
+        if build_tools:
+            env_vars["BUILD_TOOLS"] = "1"
+
         secrets_env = await self._get_secrets_env(agent_id)
 
         effective_llm = await self._effective_llm_config(agent.ai_account_id, agent.llm_config, agent.model)
@@ -1947,6 +1995,7 @@ class AgentManager:
                     environment=env_vars,
                     volume_name=volume_name,
                     session_volume_name=session_volume,
+                    build_tools_volume_name=build_tools_volume(agent_id) if build_tools else None,
                     shared_volume_name="ai-employee-shared",
                     network=settings.agent_network,
                     memory_limit=settings.agent_memory_limit,
@@ -1986,6 +2035,7 @@ class AgentManager:
             fresh_claude_md = _render_claude_md(
                 agent_mounts, catalog, agent_name=agent.name, agent_role=role or "",
                 master_rules=await _mr.load(self.db), mode=mode,
+                build_tools=build_tools,
             )
             for target_file in instructions_paths(mode):
                 self.docker.write_file_in_container(container.id, target_file, fresh_claude_md)
@@ -2123,6 +2173,18 @@ class AgentManager:
                            scrub_log(agent_id), scrub_log(e))
             return False
 
+    async def _build_tools_aktiv(self, template_id: int | None) -> bool:
+        """Bekommt ein Agent dieser Vorlage Build-Werkzeuge (.exe bauen)?
+
+        Die Vorlage entscheidet, nicht ein Schalter am Agenten: Agenten aus
+        „Fullstack Developer" koennen es, alle anderen nicht.
+        """
+        if not template_id:
+            return False
+        from app.models.agent_template import AgentTemplate
+        vorlage = await self.db.get(AgentTemplate, template_id)
+        return bool(vorlage and vorlage.build_tools)
+
     async def refresh_instructions(self, agent: Agent) -> bool:
         """Schreibt die aktuelle Anleitung in einen BESTEHENDEN Container.
 
@@ -2139,11 +2201,13 @@ class AgentManager:
             from app.core.mounts import get_effective_catalog
             catalog = await get_effective_catalog(self.db)
             mode = agent.mode or (agent.config or {}).get("mode", "claude_code")
+            build_tools = await self._build_tools_aktiv(agent.template_id)
             from app.core import master_rules as _mr
             rendered = _render_claude_md(
                 (agent.config or {}).get("mounts", []), catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
                 master_rules=await _mr.load(self.db), mode=mode,
+                build_tools=build_tools,
             )
             for path in instructions_paths(mode):
                 self.docker.write_file_in_container(agent.container_id, path, rendered)
@@ -2243,6 +2307,13 @@ class AgentManager:
             "AUTONOMY_LEVEL": (agent.autonomy_level or "l3").lower(),
         }
 
+        # Build-Werkzeuge haengen an der Vorlage (``build_tools``). In JEDEM Weg,
+        # der einen Container baut — sonst verliert ein Agent sein Volume beim
+        # naechsten Neustart, obwohl seine Anleitung es ihm verspricht.
+        build_tools = await self._build_tools_aktiv(agent.template_id)
+        if build_tools:
+            env_vars["BUILD_TOOLS"] = "1"
+
         secrets_env = await self._get_secrets_env(agent_id)
 
         effective_llm = await self._effective_llm_config(agent.ai_account_id, agent.llm_config, agent.model)
@@ -2309,6 +2380,7 @@ class AgentManager:
                     environment=env_vars,
                     volume_name=volume_name,
                     session_volume_name=session_volume,
+                    build_tools_volume_name=build_tools_volume(agent_id) if build_tools else None,
                     shared_volume_name="ai-employee-shared",
                     network=settings.agent_network,
                     memory_limit=settings.agent_memory_limit,
@@ -2346,6 +2418,7 @@ class AgentManager:
                 _agent_mounts, catalog,
                 agent_name=agent.name, agent_role=(agent.config or {}).get("role", ""),
                 master_rules=await _mr.load(self.db), mode=mode,
+                build_tools=build_tools,
             )
             for _path in _instructions_files:
                 self.docker.write_file_in_container(container.id, _path, _rendered)
@@ -2433,6 +2506,9 @@ class AgentManager:
             session_vol = config.get("session_volume")
             if session_vol:
                 self.docker.remove_volume(session_vol)
+            # Nur vorhanden bei Agenten mit Build-Werkzeugen; fehlt es, ist
+            # remove_volume ohnehin still.
+            self.docker.remove_volume(build_tools_volume(agent.id))
         # Clear/delete FK references before deleting the agent
         from app.models.task import Task
         from app.models.task_rating import TaskRating

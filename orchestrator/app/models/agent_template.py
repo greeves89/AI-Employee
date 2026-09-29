@@ -31,6 +31,12 @@ class AgentTemplate(Base, TimestampMixin):
     # core/responsibilities: [{title, rhythm, priority, notes}].
     responsibilities: Mapped[list] = mapped_column(JSON, default=list)
     claude_md: Mapped[str] = mapped_column(Text, default="")
+    # Agenten dieser Vorlage bauen Windows-Programme (.exe): eigenes Volume fuer
+    # die Werkzeugketten + Anleitung. Siehe agent/scripts/build-tools.
+    # Nur ueber die mitgelieferten Vorlagen gesetzt (Start-Abgleich); die
+    # Vorlagen-API nimmt das Feld bewusst nicht an. Wer die Vorlage nutzen darf,
+    # regelt can_use_template je Rolle.
+    build_tools: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     # Meta
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)

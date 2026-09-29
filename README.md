@@ -238,7 +238,7 @@ Database migrations run automatically on startup. Your data is persisted in name
 
 | # | Template | Description |
 |---|---|---|
-| 1 | **Fullstack Developer** | TypeScript + Python, writes tests, deploys with Docker |
+| 1 | **Fullstack Developer** | TypeScript + Python, writes tests, deploys with Docker; builds Windows programs (.exe) with Go, Rust, .NET or C/C++ |
 | 2 | **Frontend Specialist** | React/Next.js, Tailwind, accessibility, Figma-to-code |
 | 3 | **Backend Engineer** | APIs, databases, message queues, observability |
 | 4 | **DevOps Engineer** | Docker, Kubernetes, CI/CD, Terraform |

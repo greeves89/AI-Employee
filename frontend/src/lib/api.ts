@@ -84,10 +84,11 @@ export async function createAgent(
   autonomy_level?: string,
   budget_exceeded_action: "haiku" | "stop" = "haiku",
   ai_account_id?: number,
+  template_id?: number,
 ): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/`, {
     method: "POST",
-    body: JSON.stringify({ name, model, role, permissions, budget_usd, mode, llm_config, autonomy_level, budget_exceeded_action, ai_account_id }),
+    body: JSON.stringify({ name, model, role, permissions, budget_usd, mode, llm_config, autonomy_level, budget_exceeded_action, ai_account_id, template_id }),
   });
 }
 

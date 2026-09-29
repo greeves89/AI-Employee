@@ -323,9 +323,11 @@ BUILTIN_TEMPLATES = [
     {
         "name": "fullstack-developer",
         "display_name": "Fullstack Developer",
-        "description": "Baut Web-Anwendungen: Oberflaeche mit React/Next.js, Server mit Python oder Node",
+        "description": "Baut Web-Anwendungen und Windows-Programme (.exe): Oberfläche mit React/Next.js, Server mit Python oder Node",
         "icon": "Code2",
         "category": "dev",
+        # Eigenes Volume fuer Go/Rust/.NET/llvm-mingw + Anleitung zum .exe-Bauen.
+        "build_tools": True,
         "model": "claude-sonnet-4-6",
         "role": (
             "Senior Fullstack Developer with expertise in React, Next.js, Python, "

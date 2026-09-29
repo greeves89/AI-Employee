@@ -1782,6 +1782,11 @@ async def lifespan(app: FastAPI):
                         source_val = tmpl_data.get(field)
                         if source_val is not None and getattr(existing, field) != source_val:
                             setattr(existing, field, source_val)
+                    # Ein Schalter, kein Text: fehlt er in der Quelle, heisst das
+                    # „aus" — sonst bliebe er nach dem Entfernen fuer immer an.
+                    build_tools = bool(tmpl_data.get("build_tools", False))
+                    if existing.build_tools != build_tools:
+                        existing.build_tools = build_tools
             await db.commit()
         logger.info(f"Seeded/synced {len(BUILTIN_TEMPLATES)} builtin agent templates")
     except Exception as e:

@@ -77,6 +77,7 @@ def _template_to_dict(t: AgentTemplate) -> dict:
         "knowledge_template": t.knowledge_template,
         "responsibilities": list(getattr(t, "responsibilities", None) or []),
         "claude_md": t.claude_md or "",
+        "build_tools": bool(t.build_tools),
         "is_builtin": t.is_builtin,
         "is_published": t.is_published,
         "published_at": t.published_at.isoformat() if t.published_at else None,
@@ -276,6 +277,106 @@ async def delete_template(
     return {"deleted": True}
 
 
+async def vorlage_fuer_nutzer(template_id: int, user, db: AsyncSession) -> AgentTemplate:
+    """Die Vorlage, wenn DIESER Nutzer daraus einen Agenten bauen darf — sonst 404/403.
+
+    Eine Pruefung fuer beide Wege, auf denen ein Agent aus einer Vorlage entsteht:
+    ``/templates/{id}/create-agent`` und ``POST /agents`` mit ``template_id`` (so
+    legt das Anlegen-Fenster Agenten mit KI-Konto, Codex oder Custom-LLM an). Die
+    Vorlage bestimmt, womit der Container gebaut wird — etwa Build-Werkzeuge —,
+    also darf sie niemand ueber den zweiten Weg an seiner Rolle vorbei nutzen.
+    """
+    from app.models.user import UserRole
+
+    template = await db.scalar(select(AgentTemplate).where(AgentTemplate.id == template_id))
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    # Users can only start from published templates
+    if user.role not in (UserRole.ADMIN, UserRole.MANAGER) and not template.is_published:
+        raise HTTPException(status_code=403, detail="This template is not published yet")
+    if user.id != "__anonymous__":
+        from app.core.permissions import can_use_template, get_effective_permissions
+
+        perms = await get_effective_permissions(user, db)
+        if not can_use_template(perms, template.id):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Template '{template.name}' ist für deine Rolle nicht erlaubt.",
+            )
+    return template
+
+
+async def vorlage_anwenden(agent, template: AgentTemplate, db: AsyncSession, docker) -> None:
+    """Was eine Vorlage einem frisch angelegten Agenten mitgibt: Anleitung, Wissen,
+    Daueraufgaben, Skills. Fuer beide Anlege-Wege dieselbe Stelle — bisher bekam ein
+    Agent, der mit KI-Konto aus einer Vorlage entstand, nur deren Rolle.
+    """
+    if template.claude_md and agent.container_id:
+        try:
+            docker.write_file_in_container(
+                agent.container_id, "/workspace/CLAUDE.md", template.claude_md
+            )
+        except Exception as e:
+            logger.warning(f"Failed to write template CLAUDE.md: {e}")
+
+    if template.knowledge_template and agent.container_id:
+        try:
+            docker.write_file_in_container(
+                agent.container_id, "/workspace/knowledge.md", template.knowledge_template
+            )
+            agent.config = {
+                **agent.config,
+                "onboarding_complete": True,
+                "knowledge_template": template.knowledge_template,
+            }
+            await db.commit()
+        except Exception as e:
+            logger.warning(f"Failed to write knowledge template: {e}")
+
+    # Daueraufgaben der Vorlage uebernehmen — sonst startet jeder neue Agent ohne
+    # Auftrag und muss einzeln gebrieft werden (V5). Ueber dieselbe Validierung wie
+    # die Handeingabe, damit eine kaputte Vorlage nicht still Muell hinterlegt.
+    template_duties = list(getattr(template, "responsibilities", None) or [])
+    if template_duties:
+        from app.core.responsibilities import validated_responsibilities
+        from sqlalchemy.orm.attributes import flag_modified
+        try:
+            duties = validated_responsibilities(template_duties)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Vorlage %s hat unbrauchbare Verantwortungsbereiche: %s", scrub_log(template.name), e)
+            duties = []
+        if duties:
+            cfg = dict(agent.config or {})
+            proactive = dict(cfg.get("proactive") or {})
+            proactive["responsibilities"] = duties
+            cfg["proactive"] = proactive
+            cfg["onboarding_complete"] = True   # Auftrag steht: er kann sofort planen
+            agent.config = cfg
+            flag_modified(agent, "config")
+            await db.commit()
+            logger.info("Vorlage %s: %d Verantwortungsbereich(e) uebernommen", scrub_log(template.name), len(duties))
+
+    # Auto-assign template skills
+    if template.skill_ids:
+        from app.models.skill import Skill, AgentSkillAssignment
+        for skill_id in template.skill_ids:
+            skill = await db.get(Skill, skill_id)
+            if skill and skill.status == "active":
+                existing = await db.scalar(
+                    select(AgentSkillAssignment).where(
+                        AgentSkillAssignment.agent_id == agent.id,
+                        AgentSkillAssignment.skill_id == skill_id,
+                    )
+                )
+                if not existing:
+                    db.add(AgentSkillAssignment(
+                        agent_id=agent.id,
+                        skill_id=skill_id,
+                        assigned_by="template",
+                    ))
+        await db.commit()
+
+
 @router.post("/{template_id}/create-agent")
 async def create_agent_from_template(
     template_id: int,
@@ -287,30 +388,15 @@ async def create_agent_from_template(
     redis: RedisService = Depends(get_redis_service),
 ):
     """Create an agent from a template. Users can only start from published templates."""
-    from app.models.user import UserRole
+    template = await vorlage_fuer_nutzer(template_id, user, db)
 
-    template = await db.scalar(
-        select(AgentTemplate).where(AgentTemplate.id == template_id)
-    )
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
-
-    # Users can only start from published templates
-    if user.role not in (UserRole.ADMIN, UserRole.MANAGER) and not template.is_published:
-        raise HTTPException(status_code=403, detail="This template is not published yet")
-
-    # Role-based permission checks (max_agents + allowed templates)
+    # Rollen-Grenze fuer die Zahl der Agenten
     if user.id != "__anonymous__":
-        from app.core.permissions import get_effective_permissions, can_use_template
+        from app.core.permissions import get_effective_permissions
         from sqlalchemy import func
         from app.models.agent import Agent as _Agent
 
         perms = await get_effective_permissions(user, db)
-        if not can_use_template(perms, template.id):
-            raise HTTPException(
-                status_code=403,
-                detail=f"Template '{template.name}' ist für deine Rolle nicht erlaubt.",
-            )
         max_agents = perms.get("max_agents")
         if max_agents is not None:
             count = (await db.execute(
@@ -337,80 +423,12 @@ async def create_agent_from_template(
             user_id=uid,
             budget_usd=body.budget_usd,
             budget_exceeded_action=body.budget_exceeded_action,
+            # Die Herkunft gleich beim Anlegen: davon haengt ab, womit der
+            # Container gebaut wird (Build-Werkzeuge der Vorlage).
+            template_id=template.id,
         )
 
-        if template.claude_md and agent.container_id:
-            try:
-                docker.write_file_in_container(
-                    agent.container_id, "/workspace/CLAUDE.md", template.claude_md
-                )
-            except Exception as e:
-                logger.warning(f"Failed to write template CLAUDE.md: {e}")
-
-        if template.knowledge_template and agent.container_id:
-            try:
-                docker.write_file_in_container(
-                    agent.container_id, "/workspace/knowledge.md", template.knowledge_template
-                )
-                agent.config = {
-                    **agent.config,
-                    "onboarding_complete": True,
-                    "knowledge_template": template.knowledge_template,
-                }
-                await db.commit()
-            except Exception as e:
-                logger.warning(f"Failed to write knowledge template: {e}")
-
-        # Daueraufgaben der Vorlage uebernehmen — sonst startet jeder neue Agent ohne
-        # Auftrag und muss einzeln gebrieft werden (V5). Ueber dieselbe Validierung wie
-        # die Handeingabe, damit eine kaputte Vorlage nicht still Muell hinterlegt.
-        template_duties = list(getattr(template, "responsibilities", None) or [])
-        if template_duties:
-            from app.core.responsibilities import validated_responsibilities
-            from sqlalchemy.orm.attributes import flag_modified
-            try:
-                duties = validated_responsibilities(template_duties)
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Vorlage %s hat unbrauchbare Verantwortungsbereiche: %s", scrub_log(template.name), e)
-                duties = []
-            if duties:
-                cfg = dict(agent.config or {})
-                proactive = dict(cfg.get("proactive") or {})
-                proactive["responsibilities"] = duties
-                cfg["proactive"] = proactive
-                cfg["onboarding_complete"] = True   # Auftrag steht: er kann sofort planen
-                agent.config = cfg
-                flag_modified(agent, "config")
-                await db.commit()
-                logger.info("Vorlage %s: %d Verantwortungsbereich(e) uebernommen", scrub_log(template.name), len(duties))
-
-        # Store template origin on agent
-        from app.models.agent import Agent
-        from sqlalchemy import update
-        await db.execute(
-            update(Agent).where(Agent.id == agent.id).values(template_id=template.id)
-        )
-        await db.commit()
-
-        # Auto-assign template skills
-        if template.skill_ids:
-            from app.models.skill import Skill, AgentSkillAssignment
-            for skill_id in template.skill_ids:
-                skill = await db.get(Skill, skill_id)
-                if skill and skill.status == "active":
-                    existing = await db.scalar(
-                        select(AgentSkillAssignment).where(
-                            AgentSkillAssignment.agent_id == agent.id,
-                            AgentSkillAssignment.skill_id == skill_id,
-                        )
-                    )
-                    if not existing:
-                        db.add(AgentSkillAssignment(
-                            agent_id=agent.id,
-                            skill_id=skill_id,
-                            assigned_by="template",
-                        ))
-            await db.commit()
+        await vorlage_anwenden(agent, template, db, docker)
 
         metrics = await manager.get_agent_with_metrics(agent.id)
         return {**metrics, "template_id": template.id, "template_name": template.name}

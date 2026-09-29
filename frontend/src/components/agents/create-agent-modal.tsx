@@ -5,6 +5,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
+  AppWindow,
   Plus,
   Loader2,
   RefreshCw,
@@ -424,6 +425,7 @@ export function CreateAgentModal({
           autonomyLevel,
           budgetExceededAction,
           aiAccountId,
+          selectedTemplate?.id,
         );
       } else if (selectedTemplate && mode === "claude_code") {
         created = await api.createAgentFromTemplate(
@@ -443,6 +445,8 @@ export function CreateAgentModal({
           undefined,
           autonomyLevel,
           budgetExceededAction,
+          undefined,
+          selectedTemplate?.id,
         );
       } else if (mode === "custom_llm") {
         const llmConfig: LLMConfig = {
@@ -466,6 +470,8 @@ export function CreateAgentModal({
           llmConfig,
           autonomyLevel,
           budgetExceededAction,
+          undefined,
+          selectedTemplate?.id,
         );
       } else {
         created = await api.createAgent(
@@ -623,8 +629,14 @@ export function CreateAgentModal({
                               <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-2">
                                 {tmpl.description}
                               </p>
-                              {tmpl.permissions.length > 0 && (
-                                <div className="flex gap-1 mt-2">
+                              {(tmpl.permissions.length > 0 || tmpl.build_tools) && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {tmpl.build_tools && (
+                                    <span className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                                      <AppWindow className="h-2.5 w-2.5" />
+                                      Windows-Programme (.exe)
+                                    </span>
+                                  )}
                                   {tmpl.permissions.map((p) => (
                                     <span key={p} className="text-[9px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground/80">
                                       {p}

@@ -838,6 +838,13 @@ async def create_agent(
                     ),
                 )
 
+        # Vorlage: dieselbe Zugriffspruefung wie /templates/{id}/create-agent —
+        # sie entscheidet mit, womit der Container gebaut wird.
+        vorlage = None
+        if data.template_id is not None:
+            from app.api.templates import vorlage_fuer_nutzer
+            vorlage = await vorlage_fuer_nutzer(data.template_id, user, db)
+
         # Don't set user_id for anonymous (setup mode) users
         uid = user.id if user.id != "__anonymous__" else None
         agent = await manager.create_agent(
@@ -850,7 +857,11 @@ async def create_agent(
             ai_account_id=data.ai_account_id,
             browser_mode=data.browser_mode,
             autonomy_level=data.autonomy_level,
+            template_id=vorlage.id if vorlage else None,
         )
+        if vorlage is not None:
+            from app.api.templates import vorlage_anwenden
+            await vorlage_anwenden(agent, vorlage, db, manager.docker)
         metrics = await manager.get_agent_with_metrics(agent.id)
         return AgentResponse(**metrics)
     except HTTPException:

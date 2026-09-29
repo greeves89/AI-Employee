@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.347.0] - 2026-09-29
+
+### Neu
+- **Agenten aus der Vorlage „Fullstack Developer" bauen Windows-Programme (.exe).**
+  Sie bekommen ein eigenes Volume `/opt/build-tools` und den Befehl `build-tools`,
+  der Go, Rust, .NET und llvm-mingw bei Bedarf einrichtet und am Ende selbst eine
+  Test-.exe baut. Die Werkzeuge liegen außerhalb des Workspace, überstehen jedes
+  Update und zählen nicht auf die Speichergrenze. Welche Agenten das können,
+  entscheidet die Vorlage (neues Feld `build_tools`), nicht ein Schalter am Agenten.
+  Die Vorlagenkarte zeigt den Hinweis „Windows-Programme (.exe)", die Anleitung der
+  Agenten erklärt den Ablauf für alle drei Laufzeiten gleich.
+
+### Behoben
+- **Agenten, die mit KI-Konto, Codex oder Custom-LLM aus einer Vorlage angelegt
+  wurden, verloren die Vorlage.** Das Anlegen-Fenster nahm dafür den allgemeinen
+  Weg, der die Vorlage nicht kannte: Wissen, Daueraufgaben, Skills und Herkunft
+  fehlten. `POST /agents` nimmt jetzt `template_id` an, prüft sie wie der
+  Vorlagen-Weg (veröffentlicht, für die Rolle freigegeben) und wendet die Vorlage
+  über dieselbe Funktion an.
+- Die Herkunft eines Agenten steht jetzt schon beim Anlegen fest statt erst danach.
+
 ## [1.346.5] - 2026-09-29
 
 ### Behoben

@@ -346,11 +346,8 @@ async def assign_agent_to_user(
         user_id=body.user_id,
         budget_usd=body.budget_usd,
         mode="claude_code",
+        template_id=body.template_id,
     )
-
-    # Track template origin
-    agent.template_id = body.template_id
-    await db.commit()
 
     # Write knowledge template to workspace
     if template.knowledge_template:
@@ -473,9 +470,9 @@ async def distribute_agent(
                 ai_account_id=source.ai_account_id,
                 browser_mode=source.browser_mode,
                 autonomy_level=source.autonomy_level,
+                template_id=source.template_id,
             )
             clone.source_agent_id = source.id
-            clone.template_id = source.template_id
             # Carry MCP-server grants (skills travel with the workspace copy).
             new_cfg = clone.config or {}
             new_cfg["mcp_servers"] = cfg.get("mcp_servers", [])

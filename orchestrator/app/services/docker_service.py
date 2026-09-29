@@ -444,9 +444,10 @@ class DockerService:
         shared_volume_name: str | None = None,
         needs_sudo: bool = False,
         bind_mounts: dict[str, dict] | None = None,
+        build_tools_volume_name: str | None = None,
     ) -> docker.models.containers.Container:
         # Ensure named volumes exist (bind-mount host paths are not managed here)
-        for vol in [volume_name, session_volume_name, shared_volume_name]:
+        for vol in [volume_name, session_volume_name, shared_volume_name, build_tools_volume_name]:
             if vol:
                 try:
                     self.client.volumes.get(vol)
@@ -461,6 +462,11 @@ class DockerService:
             }
         if shared_volume_name:
             volumes[shared_volume_name] = {"bind": "/shared", "mode": "rw"}
+        # Werkzeugketten fuer .exe-Builds (nur Agenten aus Vorlagen mit
+        # build_tools) — eigenes Volume, damit sie Updates ueberstehen, ohne
+        # den Workspace zu fuellen.
+        if build_tools_volume_name:
+            volumes[build_tools_volume_name] = {"bind": "/opt/build-tools", "mode": "rw"}
         # Admin-defined bind mounts (host_path → {bind: container_path, mode: ro|rw})
         if bind_mounts:
             volumes.update(bind_mounts)

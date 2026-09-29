@@ -77,6 +77,9 @@ class AgentCreate(BaseModel):
     ai_account_id: int | None = None     # … or a reusable, admin-managed AI account
     browser_mode: bool = False  # Enable Playwright browser control inside agent container
     autonomy_level: AutonomyLevel = "l3"  # constrained: no free strings → no fail-open level
+    # Aus welcher Vorlage — das Anlegen-Fenster nimmt diesen Weg, sobald ein KI-Konto,
+    # Codex oder Custom-LLM gewaehlt ist. Die Vorlage bestimmt u. a. Build-Werkzeuge.
+    template_id: int | None = None
 
 
 class AgentResponse(BaseModel):
