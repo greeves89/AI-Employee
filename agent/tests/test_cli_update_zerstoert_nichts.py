@@ -146,6 +146,35 @@ class CliAktualisierungTest(unittest.TestCase):
 
     # --- Die eigentlichen Pruefungen ---------------------------------------
 
+    def test_aktualisierung_blockiert_den_start_nicht(self):
+        """Eine echte Neuinstallation laeuft im Hintergrund; der Aufrufer ist
+        sofort zurueck (hier haengt npm absichtlich)."""
+        import time
+        self._npm_attrappe("haengt")
+        umgebung = {
+            **os.environ,
+            "PATH": self.attrappen + os.pathsep + os.environ["PATH"],
+            "ENTRYPOINT_MODULE_DIR": self.module,
+            "ENTRYPOINT_BIN_DIR": self.bins,
+            "ENTRYPOINT_NPM_TIMEOUT": "2",
+            "ENTRYPOINT_NPM_VIEW_TIMEOUT": "2",
+            "ENTRYPOINT_NUR_DEFINIEREN": "1",
+        }
+        start = time.monotonic()
+        prozess = subprocess.Popen(
+            ["bash", "-c", f'source "{_ENTRYPOINT}"; starte_cli_aktualisierung; echo gestartet'],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=umgebung,
+        )
+        try:
+            erste_zeile = prozess.stdout.readline().strip()
+            dauer = time.monotonic() - start
+        finally:
+            prozess.kill()
+            prozess.communicate(timeout=30)
+        # Der Start meldet sich, bevor die (haengende) Aktualisierung fertig ist.
+        self.assertEqual(erste_zeile, "gestartet")
+        self.assertLess(dauer, 1.5)
+
     def test_aktuelle_fassung_wird_nicht_neu_installiert(self):
         """29.09.2026: Jeder Start installierte neu -- 80 s bis zum ersten Zuhoeren."""
         self._npm_attrappe("aktuell")

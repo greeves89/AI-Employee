@@ -152,11 +152,20 @@ update_cli() {
   fi
 }
 
+# Aktualisierung im HINTERGRUND: Der Agent startet sofort mit der vorhandenen
+# Fassung. Gibt es eine neuere, wird sie danach per Umbenennen eingehaengt
+# (update_cli) und gilt ab dem naechsten Lauf. Blockierend kostete eine echte
+# Neuinstallation auf dem Pi 40-80 s, in denen der Agent keine Nachricht annahm
+# (29.09.2026) — und das bei jedem frisch aufgesetzten Agenten, weil das Abbild
+# aus dem Build-Zwischenspeicher eine aeltere CLI mitbringt.
+starte_cli_aktualisierung() {
+  ( update_cli "@anthropic-ai/claude-code" "claude"; update_cli "@openai/codex" "codex" ) &
+}
+
 # Nur die Funktionen bereitstellen -- die Tests binden diese Datei ein und
 # rufen update_cli danach gezielt auf.
 [ "${ENTRYPOINT_NUR_DEFINIEREN:-}" = "1" ] && return 0
 
-update_cli "@anthropic-ai/claude-code" "claude"
-update_cli "@openai/codex" "codex"
+starte_cli_aktualisierung
 
 exec gosu agent "$@"

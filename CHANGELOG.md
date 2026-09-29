@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.346.1] - 2026-09-29
+
+### Behoben
+- **Auch eine echte CLI-Aktualisierung blockiert den Start nicht mehr.** Sie läuft
+  jetzt im Hintergrund: Der Agent nimmt sofort Nachrichten an (gemessen auf dem
+  Pi: 2 Sekunden statt 80), die neuere Fassung wird danach eingehängt und gilt
+  ab dem nächsten Lauf. Nötig, weil ein frisch gebautes Abbild aus dem
+  Build-Zwischenspeicher oft eine ältere CLI mitbringt — jeder neu aufgesetzte
+  Agent installierte dann beim ersten Start 40–80 Sekunden lang nach.
+
+---
+
 ## [1.346.0] - 2026-09-29
 
 ### Behoben
