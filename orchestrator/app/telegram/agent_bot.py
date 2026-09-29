@@ -690,6 +690,13 @@ class TelegramAgentBot:
                 "images": images,
             })
             await redis.lpush(f"agent:{target_agent_id}:chat", payload)
+            # Der Medien-Pfad geht nicht durch channel_gateway.deliver — ohne
+            # eigene Markierung haelt der Leerlauf-Sweep den Agenten trotz eines
+            # gerade geschickten Fotos oder einer Sprachnachricht fuer verwaist.
+            from types import SimpleNamespace
+
+            from app.services.user_lifecycle import mark_agent_interaction
+            await mark_agent_interaction(SimpleNamespace(client=redis), target_agent_id)
             # Voice-first: a voice/audio message should get a voice reply.
             if media_type in ("voice", "audio"):
                 await redis.setex(f"agent:{target_agent_id}:voicereply:{message_id}", 3600, "1")

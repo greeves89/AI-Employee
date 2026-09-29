@@ -5,6 +5,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.347.2] - 2026-09-29
+
+### Behoben
+- Telegram-/Kanal-Nachrichten halten den Agenten jetzt wach (kein Stopp mitten im Gespraech), und "Auto-Stop Idle Agents = 0" in der Admin-Konsole schaltet den Leerlauf-Sweep wirklich ab. Beitrag von hamburgtech.
+
 ## [1.347.1] - 2026-09-29
 
 ### Tests
