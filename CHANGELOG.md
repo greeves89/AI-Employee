@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.350.1] - 2026-10-01
+
+### Geändert
+- **README vollständig überarbeitet und gegen den Code geprüft.** Die Liste der
+  Vorlagen nannte 27 Rollen, von denen viele nicht existierten; jetzt stehen dort
+  die 34 tatsächlichen, nach Kategorie. Die Konfigurationstabelle nannte
+  Variablen, die es nicht gibt; jetzt stehen dort die aus `.env.community.example`.
+  Das Versionsabzeichen zeigt das aktuelle Release statt 1.169.1, der Block
+  „Aktuell (v1.127)" ist durch eine kurze Roadmap ersetzt. Funktionen der letzten
+  Monate sind ergänzt (drei Laufzeiten, einfache Ansicht für Mitglieder,
+  Aufgaben-Ergebnisse im Chat, Windows-Programme, Kanäle, Anmeldeverfahren).
+- **Aussagen zur Datentrennung präzisiert.** README und COMPARISON.md nennen
+  nicht mehr „PostgreSQL RLS" als Mechanismus, sondern beschreiben, was getrennt
+  ist: jeder Nutzer arbeitet mit seinen eigenen Agenten, Aufgaben und Daten.
+- **Grafiken neu und reproduzierbar:** Vergleich, Architektur und neu die
+  Preisübersicht entstehen aus HTML-Quellen unter `docs/assets-src/`
+  (`render.mjs`). Die alten Grafiken hatten keine Quelle im Repository.
+
 ## [1.350.0] - 2026-10-01
 
 ### Behoben

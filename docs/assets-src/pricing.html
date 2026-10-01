@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Editions and pricing</title>
+<link rel="stylesheet" href="base.css">
+<style>
+body{width:1700px}
+.reihe{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+.karte{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px 22px 24px;display:flex;flex-direction:column}
+.karte.hervor{background:var(--accent-bg);border-color:#33487f}
+.karte h2{font-size:24px;font-weight:650}
+.karte.hervor h2{color:var(--accent)}
+.fuer{color:var(--muted);font-size:15px;margin-top:6px;min-height:40px;line-height:1.35}
+.preis{font-size:34px;font-weight:700;letter-spacing:-0.5px;margin-top:18px;white-space:nowrap}
+.preis span{display:block;font-size:14px;font-weight:400;color:var(--muted);letter-spacing:0;margin-top:2px;min-height:18px}
+.agenten{margin-top:16px;padding:9px 12px;border-radius:10px;background:var(--panel-2);border:1px solid var(--line);font-size:15.5px;font-weight:600}
+.karte.hervor .agenten{background:#1b2848;border-color:#33487f}
+ul{list-style:none;padding:0;margin-top:18px;display:grid;gap:10px}
+li{font-size:15px;line-height:1.4;color:#c9d0de;padding-left:20px;position:relative}
+li::before{content:"";position:absolute;left:2px;top:7px;width:7px;height:7px;border-radius:50%;background:var(--yes)}
+.band{margin-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.band div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px;font-size:15px;color:var(--muted);line-height:1.5}
+.band b{display:block;color:var(--text);font-size:16px;margin-bottom:3px}
+</style></head>
+<body>
+<header><div class="mark"><svg viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg></div><h1>Editions and pricing</h1></header>
+<p class="sub">One license per installation, with a package of agents. Self-hosted, with your own model access.</p>
+<div class="reihe"><section class="karte">
+  <h2>Community</h2><p class="fuer">Private and non-commercial use</p>
+  <p class="preis">Free<span></span></p>
+  <p class="agenten">Unlimited agents</p>
+  <ul><li>Full platform</li><li>30-day evaluation for businesses</li><li>Community support (GitHub)</li></ul>
+</section><section class="karte">
+  <h2>Starter</h2><p class="fuer">Freelancers, small offices</p>
+  <p class="preis">149 €<span>per month</span></p>
+  <p class="agenten">3 agents included</p>
+  <ul><li>Full platform</li><li>Commercial use</li><li>E-mail support</li></ul>
+</section><section class="karte">
+  <h2>Team</h2><p class="fuer">Small teams</p>
+  <p class="preis">390 €<span>per month</span></p>
+  <p class="agenten">10 agents included</p>
+  <ul><li>Full platform</li><li>Commercial use</li><li>E-mail support</li></ul>
+</section><section class="karte hervor">
+  <h2>Business</h2><p class="fuer">Companies</p>
+  <p class="preis">990 €<span>per month</span></p>
+  <p class="agenten">30 agents included</p>
+  <ul><li>Full platform</li><li>Single sign-on: Microsoft Entra, Google, OIDC</li><li>Priority e-mail support</li><li>+250 € per 10 further agents</li></ul>
+</section><section class="karte">
+  <h2>Enterprise</h2><p class="fuer">Large and regulated organisations</p>
+  <p class="preis">from 2,490 €<span>per month</span></p>
+  <p class="agenten">100 agents included</p>
+  <ul><li>Everything in Business</li><li>SAML single sign-on</li><li>High-availability setup, multiple tenants</li><li>Named contact, agreed response times</li><li>+190 € per 10 further agents</li></ul>
+</section></div>
+<div class="band">
+  <div><b>You run it</b>Self-hosted on your own server. Your data stays with you.</div>
+  <div><b>Bring your own model</b>Claude, GPT, Azure, Bedrock or local models. No markup, no usage caps from us.</div>
+  <div><b>Counted per installation</b>Every agent on the installation counts, running or stopped.</div>
+</div>
+<p class="foot">Prices are net, plus VAT, with a 12-month term billed annually. Setup and managed operation are optional and quoted separately. See <b>LICENSE.md</b>. · As of October 2026</p>
+</body></html>

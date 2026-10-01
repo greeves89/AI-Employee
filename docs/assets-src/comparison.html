@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Why AI-Employee?</title>
+<link rel="stylesheet" href="base.css">
+<style>
+body{width:1700px}
+table{width:100%;border-collapse:separate;border-spacing:0;background:var(--panel);border:1px solid var(--line);border-radius:20px;overflow:hidden;font-size:18.5px}
+thead th{padding:26px 18px;font-weight:650;text-align:center;border-bottom:1px solid var(--line);background:var(--panel-2)}
+thead th:first-child{text-align:left;padding-left:26px;font-weight:500;color:var(--muted)}
+thead th.wir{color:var(--accent);background:var(--accent-bg)}
+thead small{display:block;font-weight:400;color:var(--muted);font-size:14px;margin-top:2px}
+tbody th{text-align:left;font-weight:450;padding:19px 26px;border-bottom:1px solid var(--line);width:34%}
+td{text-align:center;padding:19px 14px;border-bottom:1px solid var(--line)}
+tbody tr:last-child th,tbody tr:last-child td{border-bottom:0}
+td.wir{background:var(--accent-bg)}
+td.y{color:var(--yes)} td.p{color:var(--partial)} td.n{color:var(--no)} td.t{color:var(--muted);font-size:16px}
+td small{color:var(--muted);font-size:14px}
+</style></head>
+<body>
+<header><div class="mark"><svg viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg></div><h1>Why AI-Employee?</h1></header>
+<p class="sub">How AI-Employee compares to the platforms it is usually evaluated against.</p>
+<table><thead><tr><th>Feature</th><th class="wir">AI-Employee</th><th>OpenClaw</th><th>CrewAI</th><th>Lindy</th><th>OpenAI Responses API<small>/ Agents SDK</small></th></tr></thead><tbody><tr><th>Self-hosted</th><td class="y wir">Yes</td><td class="y">Yes</td><td class="y">Yes <small>(BYO)</small></td><td class="n">No</td><td class="n">No</td></tr><tr><th>Multi-agent (isolated containers)</th><td class="y wir">Yes</td><td class="n">No <small>(shared FS)</small></td><td class="n">No</td><td class="n">No</td><td class="n">No</td></tr><tr><th>Multi-user with per-user data separation</th><td class="y wir">Yes</td><td class="n">No</td><td class="n">No</td><td class="y">Yes</td><td class="y">Yes</td></tr><tr><th>Local semantic memory (no OpenAI)</th><td class="y wir">Yes <small>(bge-m3)</small></td><td class="p">Partial</td><td class="t">BYO</td><td class="n">No</td><td class="n">No</td></tr><tr><th>Autonomy levels / permission tiers</th><td class="y wir">Yes</td><td class="p">Partial</td><td class="y">Yes <small>(RBAC)</small></td><td class="y">Yes</td><td class="y">Yes <small>(Enterprise)</small></td></tr><tr><th>Human-in-the-loop approvals</th><td class="y wir">Yes</td><td class="p">Partial</td><td class="y">Yes</td><td class="p">Partial</td><td class="y">Yes <small>(Agents SDK)</small></td></tr><tr><th>Governance audit trail</th><td class="y wir">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes <small>(Business+)</small></td><td class="y">Yes <small>(Enterprise)</small></td></tr><tr><th>Meeting rooms (multi-agent chat)</th><td class="y wir">Yes</td><td class="n">No</td><td class="p">Partial</td><td class="n">No</td><td class="n">No</td></tr><tr><th>Persistent agent teams + lead routing</th><td class="y wir">Yes</td><td class="n">No</td><td class="p">Partial</td><td class="n">No</td><td class="n">No</td></tr><tr><th>DSGVO-compliant by default</th><td class="y wir">Yes*</td><td class="p">Partial</td><td class="t">BYO</td><td class="n">No <small>(SOC2/GDPR · US cloud)</small></td><td class="n">No <small>(EU residency/ZDR · Enterprise)</small></td></tr><tr><th>Telegram + voice (STT/TTS + realtime)</th><td class="y wir">Yes</td><td class="y">Yes</td><td class="t">BYO</td><td class="n">No</td><td class="n">No</td></tr><tr><th>Agents deploy and operate Docker apps</th><td class="y wir">Yes</td><td class="p">Partial <small>(shell)</small></td><td class="n">No</td><td class="n">No</td><td class="n">No</td></tr><tr><th>34 pre-built agent templates</th><td class="y wir">Yes</td><td class="t">Marketplace</td><td class="y">Yes <small>(Marketplace)</small></td><td class="y">Yes</td><td class="y">Yes</td></tr><tr><th>LLM-agnostic (Claude / GPT-5.x / Gemini / Bedrock / Azure / local)</th><td class="y wir">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="p">Partial <small>(GPT/Claude, no BYO)</small></td><td class="n">No</td></tr></tbody></table>
+<p class="foot">* Model inference through a cloud API leaves your infrastructure; use local models or an EU-hosted deployment for full data locality. For a detailed, honest comparison including scenarios where competitors are the better fit, see <b>COMPARISON.md</b>. · Competitor data reviewed August 2026</p>
+</body></html>

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Architecture</title>
+<link rel="stylesheet" href="base.css">
+<style>
+body{width:1700px}
+.ebene{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px 28px;text-align:center}
+.ebene h2{font-size:23px;font-weight:650}
+.ebene p{color:var(--muted);font-size:16.5px;margin-top:7px}
+.kern{background:var(--accent-bg);border-color:#33487f}
+.kern h2{color:var(--accent)}
+.chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:15px}
+.chips span{font-size:14.5px;padding:6px 13px;border-radius:9px;background:#1b2848;border:1px solid #33487f;color:#c9d6f5}
+.linie{width:2px;height:26px;background:var(--line);margin:0 auto}
+.proxy{width:560px;margin:0 auto;border-radius:999px;padding:13px;background:#0f2019;border:1px solid #1f5a41;color:var(--yes);font-weight:650;font-size:18px;text-align:center}
+.unten{display:grid;grid-template-columns:1fr 1fr 1fr 1.5fr;gap:16px}
+.unten .ebene{padding:22px 18px}
+.agenten{border-color:#33487f}
+.modelle{margin-top:16px;border-style:dashed}
+</style></head>
+<body>
+<header><div class="mark"><svg viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg></div><h1>Architecture</h1></header>
+<p class="sub">One orchestrator, one isolated container per agent, everything on your own server.</p>
+<div class="ebene"><h2>Clients</h2><p>Web UI (Next.js) · installable PWA and iOS app · Telegram, Teams, Slack, WhatsApp · realtime voice · REST and MCP API</p></div>
+<div class="linie"></div><div class="proxy">Caddy / Traefik / nginx · TLS</div><div class="linie"></div>
+<div class="ebene kern"><h2>Orchestrator</h2><p>FastAPI · SQLAlchemy async · Docker SDK · WebSocket</p>
+<div class="chips"><span>Agent manager</span><span>Task router</span><span>Scheduler and workflows</span><span>Autonomy matrix and approvals</span><span>Channel gateway</span><span>MCP routes</span><span>Audit log</span></div></div>
+<div class="linie"></div>
+<div class="unten">
+ <div class="ebene"><h2>Redis</h2><p>Queues · live events</p></div>
+ <div class="ebene"><h2>PostgreSQL 16</h2><p>pgvector · state, memory, knowledge</p></div>
+ <div class="ebene"><h2>Embedding service</h2><p>bge-m3 · runs locally</p></div>
+ <div class="ebene agenten"><h2>Agent containers</h2><p>One isolated Docker container per agent</p>
+ <div class="chips"><span>Claude Code</span><span>Codex CLI</span><span>Custom LLM</span><span>Workspace</span><span>Skills</span><span>MCP tools</span></div></div>
+</div>
+<div class="ebene modelle"><h2>Your model access</h2><p>Anthropic · OpenAI · Azure · AWS Bedrock · Google Vertex · local models (Ollama, LM Studio)</p></div>
+<p class="foot">As of October 2026</p>
+</body></html>

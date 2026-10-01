@@ -1,0 +1,22 @@
+/* Gemeinsames Aussehen der README-Grafiken. Gerendert mit render.mjs. */
+:root {
+  --bg: #07080d; --panel: #10131c; --panel-2: #151a26; --line: #232a3a;
+  --text: #e8ecf4; --muted: #8d97ab; --dim: #5e6880;
+  --accent: #7aa2ff; --accent-bg: #16203a; --yes: #4ade9a; --partial: #f5b942; --no: #6d7689;
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+  background: var(--bg); color: var(--text); padding: 44px 40px 40px; width: 1500px;
+  font-family: -apple-system, "SF Pro Text", "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+header { display: flex; align-items: center; gap: 22px; margin-bottom: 10px; }
+.mark {
+  width: 60px; height: 60px; border-radius: 15px; display: grid; place-items: center;
+  background: linear-gradient(140deg, #5b8cff, #8a5bff);
+}
+.mark svg { width: 34px; height: 34px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+h1 { font-size: 44px; font-weight: 700; letter-spacing: -0.5px; }
+.sub { color: var(--muted); font-size: 19px; margin: 6px 0 34px; }
+.foot { color: var(--dim); font-size: 15px; margin-top: 22px; line-height: 1.6; }
+.foot b { color: var(--text); font-weight: 600; }

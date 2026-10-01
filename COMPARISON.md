@@ -39,7 +39,7 @@ If you are evaluating AI agent platforms for:
 | Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | Self-hostable | Yes | Yes | Yes | **No** | **No** | Yes | Yes | Yes |
-| Open source | Yes (Fair-Code) | Yes | Yes (MIT) | **No** | **No** | Yes (MIT) | Yes (MIT) | Yes (Fair-Code) |
+| Open source | Source available | Yes | Yes (MIT) | **No** | **No** | Yes (MIT) | Yes (MIT) | Yes (Fair-Code) |
 | Multi-agent | Yes | **No** | Yes | Partial | Partial | Yes | Yes | No |
 | Persistent agent teams + lead-routing | **Yes** | No | Partial | No | No | Partial | Partial | No |
 | Docker isolation per agent | **Yes** | No (shared FS) | No | N/A | N/A | No | No | No |
@@ -67,7 +67,7 @@ If you are evaluating AI agent platforms for:
 | Backlinks & tags | Yes | No | No | No | No | No | No | No |
 | Self-improvement loop | Yes | No | No | Partial | No | No | No | No |
 | Task rating feedback | Yes | No | No | No | No | No | No | No |
-| Per-user memory isolation | Yes (RLS) | No | No | Yes | Yes | No | No | Partial |
+| Per-user memory isolation | Yes | No | No | Yes | Yes | No | No | Partial |
 
 ### Governance & Compliance
 
@@ -76,7 +76,7 @@ If you are evaluating AI agent platforms for:
 | Approval rules (natural language) | **Yes** | No | No | Partial | No | No | No | Partial |
 | Inline approvals (Telegram/UI) | Yes | No | No | No | No | No | No | No |
 | Audit log | Yes | Partial | No | Yes | Yes | No | No | Yes |
-| Multi-tenant (PostgreSQL RLS) | **Yes** | No | No | Yes | Yes | No | No | Partial |
+| Multi-user with per-user data separation | **Yes** | No | No | Yes | Yes | No | No | Partial |
 | DSGVO / GDPR by default | Yes | Partial | BYO | No (US) | No (US) | BYO | BYO | Yes |
 | Data export / deletion endpoints | Yes | No | BYO | Partial | Partial | BYO | BYO | Yes |
 | Role-based access control (RBAC) | Yes | No | No | Yes | Yes | No | No | Yes |
@@ -109,7 +109,7 @@ If you are evaluating AI agent platforms for:
 
 | Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Pre-built agent templates | **27** | Marketplace | Marketplace | ~50 | GPT Store | No | No | Templates |
+| Pre-built agent templates | **34** | Marketplace | Marketplace | ~50 | GPT Store | No | No | Templates |
 | Custom skills system | Yes | Plugins | Tools | No | Actions | Tools | Tools | Nodes |
 | Meeting rooms (multi-agent chat) | **Yes** | No | Partial | No | No | Partial | Yes | No |
 | Agent deploys Docker apps | **Yes** | No | No | No | No | No | No | No |
@@ -144,7 +144,7 @@ If you are evaluating AI agent platforms for:
 - Single-user setup in minutes
 
 **Cons:**
-- Fundamentally single-user architecture; no PostgreSQL RLS, no multi-tenant isolation
+- Fundamentally single-user architecture; no separation of data between users
 - Shared filesystem between "agents" — no true sandboxing
 - No built-in approval rules or governance framework
 - No meeting rooms / multi-agent collaboration primitives
