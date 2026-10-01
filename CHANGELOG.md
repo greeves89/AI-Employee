@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.348.3] - 2026-10-01
+
+### Geändert
+- **Lizenzmodell mit Editionen und Listenpreisen veröffentlicht.** README und
+  LICENSE.md nennen jetzt die Abrechnung je Agent (Team 99 €, Business 129 € je
+  Agent und Monat, netto; Enterprise auf Anfrage), was jede Edition enthält, und
+  eine kostenlose Testphase von 30 Tagen für Unternehmen. Bisher stand dort nur
+  „Preis im Einzelfall". Private und nicht-gewerbliche Nutzung bleibt kostenlos.
+  Am Verhalten der Software ändert sich nichts.
+
 ## [1.348.2] - 2026-09-29
 
 ### Behoben

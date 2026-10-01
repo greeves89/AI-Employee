@@ -26,10 +26,17 @@ license agreement. This includes, but is not limited to:
   freelancers working for clients)
 - Deploying the Software on behalf of, or for the benefit of, any legal entity
 
+**Evaluation.** A business or organisation may evaluate the Software free of
+charge for up to 30 days from first installation. After that period, continued
+use requires a business license.
+
+**Editions and pricing.** Business licenses are granted per agent. The current
+editions and list prices are published in the "License" section of
+[README.md](README.md); the written license agreement prevails over the
+published list.
+
 **To obtain a business license, contact:**
 daniel.alisch@me.com
-
-Licenses are granted individually and pricing is discussed case by case.
 
 ### 3. What Is Always Prohibited (Regardless of License)
 

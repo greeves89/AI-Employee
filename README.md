@@ -41,7 +41,7 @@
 
 ---
 
-> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen. Vollständige Multi-User-Datenisolation — jeder Nutzer sieht ausschließlich seine eigenen Agents, Tasks, Schedules, Regeln und eine eigene Knowledge Base (automatisch von allen seinen Agents geteilt). Autonomie als **3-stufige Fähigkeits-Matrix (Erlaubt/Freigabe/Verboten)** mit L1–L4-Presets — alles auf „Freigabe" löst automatisch eine Freigabe-Anfrage aus, „Verboten" wird nie ausgeführt. Native Microsoft 365-Integration über 47 MS-Graph-MCP-Tools; jeder Nutzer verbindet sein eigenes M365-Konto per OAuth. Kostenlos für private Nutzung — gewerbliche Nutzung erfordert eine kommerzielle Lizenz. Kontakt: daniel.alisch@me.com
+> **Deutsch (Kurzfassung):** AI-Employee ist eine selbst gehostete Multi-Agent-KI-Plattform für KMU, regulierte Branchen und Teams im DACH-Raum. Jeder Agent läuft in einem isolierten Docker-Container, alle Daten bleiben bei Ihnen. Vollständige Multi-User-Datenisolation — jeder Nutzer sieht ausschließlich seine eigenen Agents, Tasks, Schedules, Regeln und eine eigene Knowledge Base (automatisch von allen seinen Agents geteilt). Autonomie als **3-stufige Fähigkeits-Matrix (Erlaubt/Freigabe/Verboten)** mit L1–L4-Presets — alles auf „Freigabe" löst automatisch eine Freigabe-Anfrage aus, „Verboten" wird nie ausgeführt. Native Microsoft 365-Integration über 47 MS-Graph-MCP-Tools; jeder Nutzer verbindet sein eigenes M365-Konto per OAuth. Kostenlos für private Nutzung — gewerbliche Nutzung erfordert eine Lizenz je Agent (Team 99 €, Business 129 € je Agent und Monat, netto; 30 Tage kostenlos testen), siehe [Lizenz](#license). Kontakt: daniel.alisch@me.com
 
 > **Aktuell (v1.127):** **Visueller Workflow-Builder (n8n-Stil)** (Issue #394) — ein Drag-&-Drop-Editor auf React Flow, aufgesetzt auf die **Workflow-Engine** (Issue #392, v1.126): eine Seite **Workflows** (Sidebar → Automation) mit Liste und Canvas-Editor, in dem Bausteine **Aufgabe / Bedingung / Warten** per Klick hinzugefügt und per Ziehen verbunden werden (Bedingung mit „ja"/„nein"-Ausgängen), pro Baustein ein Konfig-Panel (Agent, Prompt mit `{{schritt}}`-Platzhaltern, Operator/Wert, Sekunden); **Speichern** und **Ausführen** direkt aus dem Canvas mit live hervorgehobenem Schritt und Ergebnissen pro Schritt · **#392 Cron-Auto-Trigger** — Workflows mit `trigger.cron` starten automatisch (croniter, verpasste Slots werden einmalig nachgeholt); Editor und Engine teilen sich **eine** Definition, keine Doppel-Logik · **Dry-Run / Simulationsmodus** (Issue #386, Vertrauen & Kontrolle) — vor der echten Ausführung läuft eine Aufgabe als **Vorschau**: der Agent erstellt einen strukturierten Ausführungsplan (Schritte, betroffene Dateien/Befehle, externe Aktionen, Aufwands-/Risiko-Schätzung) und führt **nichts** aus; die Task-Detailseite zeigt ein Vorschau-Banner mit **„Jetzt wirklich ausführen"**, das dieselbe Aufgabe mit Original-Prompt regulär anlegt · **„Planen"-Button im Chat** — neben „Senden" schickt „Planen" die Nachricht mit einer „nur planen, nichts ausführen"-Anweisung an den Agenten; die angezeigte Nutzer-Nachricht bleibt wie getippt, nur was der Agent empfängt wird umhüllt · **DLP-Egress-Filter** (Vertrauen & Kontrolle) — ausgehender Agenten-Text wird vor dem Versand auf PII/Secrets gescannt (secret/IBAN/Kreditkarte mit Luhn/E-Mail/Steuer-ID), Aktion pro Datenklasse **allow/log/mask/block**, Audit ohne Klartext, Admin-UI zum Konfigurieren · **Decision-Trace / Zeitreise** — volle, abspielbare Task-Timeline (Gedanke → Tool-Call → Ergebnis) mit Dauer pro Schritt, Governance-&-Kosten-Strip und JSON/PDF-Export („warum hat der Agent das getan?") · **Audit-Log-Cockpit** — der Compliance-Trail direkt in der Admin-Sidebar mit klickbaren Zeilen und selbsterklärendem Detail-Modal (Klartext-Titel + Ein-Satz-Erklärung je Ereignistyp, freundliche Feld-Labels, Roh-JSON einklappbar); DLP-Treffer zeigen die erkannten Datenklassen samt maskiertem Ausschnitt (`df***as`), der Voll-Wert wird nie gespeichert · **Second Brain Stufe 1** — automatische semantische Verknüpfung von Agent-Memories **und** Cross-System-Brücke Memory↔Wissen, Graph-View unterscheidet Backlinks vs. semantische Kanten · **Per-Agent „Immer an"** (nimmt einen Agenten von beiden Idle-Sweeps aus) · **Realtime Voice Assistant** (Nova Sonic / Azure Realtime) — spricht live mit dem Nutzer und kann per Stimme das Workspace durchsuchen und Dateien lesen (inkl. PDF/Word/Excel), ins **Second Brain** schreiben, eigene **Docker-Apps verwalten** (list/logs/start/stop/**rebuild**), **Microsoft 365** nutzen (Mail senden, Termine anlegen), proaktiv an Kalendertermine erinnern und Tasks über den vollen Lebenszyklus steuern · **Live-Steering** — mitten im laufenden Turn nachsteuern (Queue → Interrupt → Resume), für Claude **und** Codex · **eigene Auth-Header für externe MCP-Server** (Composio, Home Assistant, UniFi, Computer-Use-Bridge) · 3-stufige **Autonomie-Matrix** (Erlaubt/Freigabe/Verboten) mit L1–L4-Presets · **provider-abhängige Modellauswahl** (Claude / GPT-5.x via Codex / Custom-LLM) · persistente **Agenten-Teams mit Lead-Routing** · **47 MS-Graph-Tools**.
 
@@ -370,11 +370,31 @@ AI-Employee is **Source Available**. The source code is publicly visible, but us
 **Free for:**
 - Personal projects, learning, research, experimentation
 - Non-commercial use
+- **Businesses for 30 days** — evaluate the full platform before you buy
 
-**Requires a license (contact first):**
-- Any business or commercial use — internal company tooling, SaaS, products, client work, professional services
+**Requires a paid license:**
+- Any business or commercial use after the evaluation period — internal company tooling, SaaS, products, client work, professional services
 
-Contact **daniel.alisch@me.com** to obtain a business license.
+### Editions and pricing
+
+AI-Employee is licensed **per agent**: every agent that exists on your installation counts, running or stopped. You host it yourself and bring your own model access (Claude, GPT, Azure, Bedrock, local) — model costs are not part of the license.
+
+| | Community | Team | Business | Enterprise |
+|---|---|---|---|---|
+| **Price** | Free | **99 € per agent / month** | **129 € per agent / month** | On request |
+| **For** | Private and non-commercial use; 30-day business evaluation | Small teams | Companies | Large and regulated organisations |
+| **Agents** | Unlimited | 3 to 10 | From 5 | From 25 |
+| **Commercial use** | No | Yes | Yes | Yes |
+| **Platform** | Full platform | Full platform | Full platform | Full platform |
+| **Single sign-on** | — | — | Microsoft Entra, Google, OIDC | plus SAML |
+| **Deployment** | Single host | Single host | Single host | High-availability setup, multiple tenants |
+| **Support** | Community (GitHub) | E-mail | Priority e-mail | Named contact, agreed response times |
+
+- Prices are net, plus VAT, with a 12-month term billed annually.
+- All editions run the same code. The license defines what you may use commercially, how many agents you may run and which support you get; the agent limit is enforced by a signed license key.
+- Discounts for education and non-profit organisations on request.
+
+Contact **daniel.alisch@me.com** for a license or a quote.
 
 See **[LICENSE.md](LICENSE.md)** for the complete terms.
 
