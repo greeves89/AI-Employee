@@ -30,8 +30,10 @@ license agreement. This includes, but is not limited to:
 charge for up to 30 days from first installation. After that period, continued
 use requires a business license.
 
-**Editions and pricing.** Business licenses are granted per agent. The current
-editions and list prices are published in the "License" section of
+**Editions and pricing.** Business licenses are granted per installation and
+include a number of agents. The Software is operated by the licensee; model
+usage and infrastructure are not part of the license. The current editions and
+list prices are published in the "License" section of
 [README.md](README.md); the written license agreement prevails over the
 published list.
 

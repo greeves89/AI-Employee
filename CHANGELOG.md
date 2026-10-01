@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.349.0] - 2026-10-01
+
+### Geändert
+- **Lizenzmodell: Preis je Anlage mit Agenten-Paket statt Preis je Agent.**
+  AI-Employee wird vom Kunden selbst betrieben, mit eigenem Modellzugang; die
+  Lizenz deckt die Plattform. Editionen: Starter 149 € (3 Agenten), Team 390 €
+  (10), Business 990 € (30), Enterprise ab 2.490 € (100) im Monat, netto,
+  Jahresvertrag; weitere Agenten im Zehnerpaket. Einrichtung und Betrieb durch
+  den Anbieter sind eigene, optionale Leistungen. Ersetzt die am selben Tag
+  veröffentlichten Preise je Agent (1.348.3).
+
+### Neu
+- Edition **Starter** als kleinste gewerbliche Stufe; der Lizenzverifizierer
+  kennt sie, die Einstellungen zeigen sie samt enthaltener Agentenzahl an.
+
+### Behoben
+- Das Lizenzfeld in den Einstellungen nannte die Community Edition „free for
+  internal business use". Das widersprach der Lizenz: gewerbliche Nutzung ist
+  nach 30 Tagen Testphase lizenzpflichtig.
+
 ## [1.348.3] - 2026-10-01
 
 ### Geändert

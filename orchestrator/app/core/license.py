@@ -5,13 +5,15 @@ Public key is embedded here — the corresponding private key lives ONLY on
 the license server operated by the copyright holder.
 
 A license is a JSON payload with:
-  - tier: "community" | "team" | "business" | "enterprise"
+  - tier: "community" | "starter" | "team" | "business" | "enterprise"
   - features: list of enabled feature flags
   - issued_to: customer identifier (email/company)
   - issued_at: ISO timestamp
   - expires_at: ISO timestamp (or null for perpetual)
   - license_id: unique identifier
-  - instance_limit: max concurrent instances (0 = unlimited)
+  - instance_limit: max agents on this installation (0 = unlimited). Paid
+    editions are sold as agent packages — starter 3, team 10, business 30,
+    enterprise 100, further agents in packs of ten (see README "License").
 
 The signature is appended as ".base64signature" using Ed25519.
 """
@@ -53,6 +55,10 @@ COMMUNITY_FEATURES = frozenset({
     "self_improvement",
     "rbac_basic",  # 4 roles, single-tenant
 })
+
+# Starter is the smallest commercial edition: same platform, the license
+# grants commercial use for a small agent package. No extra feature flags.
+STARTER_FEATURES = COMMUNITY_FEATURES
 
 TEAM_FEATURES = COMMUNITY_FEATURES | frozenset({
     "priority_support",
@@ -128,6 +134,7 @@ class License:
 def _get_features_for_tier(tier: str) -> frozenset[str]:
     return {
         "community": COMMUNITY_FEATURES,
+        "starter": STARTER_FEATURES,
         "team": TEAM_FEATURES,
         "business": BUSINESS_FEATURES,
         "enterprise": ENTERPRISE_FEATURES,

@@ -1584,6 +1584,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                         license.tier === "enterprise" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
                         license.tier === "business" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
                         license.tier === "team" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                        license.tier === "starter" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" :
                         "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
                       )}>
                         {license.tier}
@@ -1603,9 +1604,14 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {license.tier === "community"
-                        ? "Community Edition — all core features included, free for internal business use"
+                        ? "Community Edition — free for private and non-commercial use. Businesses may evaluate for 30 days; after that a license is required."
                         : `Licensed to ${license.issued_to}`}
                     </p>
+                    {license.tier !== "community" && (
+                      <p className="text-[11px] text-muted-foreground/60 mt-1">
+                        {license.instance_limit > 0 ? `Includes ${license.instance_limit} agents` : "Unlimited agents"}
+                      </p>
+                    )}
                     {license.expires_at && (
                       <p className="text-[11px] text-muted-foreground/60 mt-1">
                         Expires: {new Date(license.expires_at).toLocaleDateString("de-DE")}
