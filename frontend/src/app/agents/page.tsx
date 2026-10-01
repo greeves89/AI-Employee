@@ -14,22 +14,8 @@ import { useConfirm } from "@/components/ui/dialog-provider";
 import { getAgentTag } from "@/components/agents/agent-avatar";
 import { AgentFilterBar, type GroupBy, type SortBy } from "@/components/agents/agent-filter-bar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { apiFehlertext } from "@/lib/api-fehler";
 type ViewMode = "grid" | "network" | "teams";
-
-/** Die Begründung aus einer 409-Antwort herausholen.
- *
- *  Der Fehlertext ist „API Error 409: {json}". Ohne das stünde im Dialog eine
- *  JSON-Zeile — und der Grund, weshalb blockiert wurde, wäre unlesbar. */
-function extractGateMessage(raw: string): string {
-  const start = raw.indexOf("{");
-  if (start < 0) return raw;
-  try {
-    const parsed = JSON.parse(raw.slice(start));
-    return String(parsed?.detail?.message ?? parsed?.detail ?? raw);
-  } catch {
-    return raw;
-  }
-}
 
 const CreateAgentModal = dynamic(
   () => import("@/components/agents/create-agent-modal").then((m) => m.CreateAgentModal),
@@ -91,7 +77,7 @@ export default function AgentsPage() {
       const ok = await confirm({
         title: "Golden-Tests schlagen Alarm",
         message:
-          `${extractGateMessage(message)}\n\n` +
+          `${apiFehlertext(message)}\n\n` +
           "Trotzdem aktualisieren? Der Rückschritt wäre danach draußen.",
         variant: "warning",
         confirmLabel: "Trotzdem aktualisieren",

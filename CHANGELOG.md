@@ -5,6 +5,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.350.0] - 2026-10-01
+
+### Behoben
+- **Das Agentenlimit der Lizenz galt nur auf einem von fünf Anlege-Wegen** (#886).
+  Geprüft wurde im Endpunkt `POST /agents`; das Anlegen aus einer Vorlage, die
+  Zuweisung durch den Administrator, das Verteilen eines trainierten Agenten und
+  die Branchenpakete liefen daran vorbei. Die Prüfung sitzt jetzt in
+  `AgentManager.create_agent` (`core/agentenlimit.py`). Branchenpakete prüfen
+  vorab die ganze Menge, damit kein halbes Paket entsteht.
+- **Eine abgelaufene Lizenz hob das Limit auf.** Sie wurde beim Laden durch die
+  Community-Lizenz ersetzt — und die ist unbegrenzt. Sie bleibt jetzt geladen
+  (Zustand „abgelaufen", Funktionen auf Grundstand) und behält ihr Limit.
+  Dasselbe gilt nach dem Entfernen einer Lizenz, bis eine neue eingetragen ist.
+- **Ein falsch eingetippter Schlüssel ersetzte die gültige Lizenz im Speicher**
+  bis zum nächsten Neustart. Jetzt wird erst geprüft, dann übernommen.
+- Die Absage „Lizenz-Limit erreicht" erschien als JSON-Zeile; der Vorlagen-Weg
+  machte aus ihr sogar eine 500. Beide zeigen jetzt den Text.
+
+### Neu
+- **Lizenzstand in den Einstellungen:** Zustand (aktiv, abgelaufen, widerrufen),
+  Belegung („14 von 30 Agenten") und ein Hinweis, wenn etwas nicht zur Lizenz
+  passt. Derselbe Hinweis erscheint Administratoren als Streifen.
+- **Widerruf kommt an:** Die Anlage merkt sich, was der Lizenzserver zu ihrer
+  Lizenz meldet (im täglichen Lebenszeichen und im Heartbeat).
+- **Testphase sichtbar:** Nach 30 Tagen ohne Lizenz sehen Administratoren einen
+  Hinweis. Wer die Anlage privat oder nicht-gewerblich nutzt, erklärt das im
+  Lizenzfeld; der Hinweis verschwindet dann dauerhaft.
+
+### Geändert
+- Kein Lizenzzustand stoppt oder verändert einen bestehenden Agenten —
+  durchgesetzt wird ausschließlich das Anlegen neuer Agenten.
+- Die Funktionslisten je Edition nennen nur noch, was es gibt (entfernt:
+  Apple-Anmeldung, LDAP, SCIM, Branding, White-Label). Sie bleiben eine
+  vertragliche Beschreibung; technisch gesperrt wird damit nichts.
+- Benutzerhandbuch: Abschnitt 21.2 „Lizenz und Agentenlimit", Abschnitt 4.3
+  „Windows-Programme bauen (.exe)"; PDF neu erzeugt.
+
 ## [1.349.0] - 2026-10-01
 
 ### Geändert

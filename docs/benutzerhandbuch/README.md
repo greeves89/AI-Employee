@@ -332,6 +332,39 @@ Klicke auf die gewünschte Karte (oder **Leerer Agent**).
 startet automatisch; nach wenigen Sekunden erscheint der neue Agent als Kachel mit Status
 *Idle*. Ab jetzt kannst du ihn öffnen und mit ihm arbeiten (Kap. 5).
 
+### 4.3 Windows-Programme bauen (.exe) *(seit 1.347.0)*
+
+Agenten aus der Vorlage **Fullstack Developer** bauen nicht nur Web-Anwendungen, sondern
+auch echte Windows-Programme: eine `.exe`, die du herunterlädst und auf einem
+Windows-Rechner startest. Andere Agenten können das nicht.
+
+**Schritt 1 — Agent aus der Vorlage anlegen.** **+ New Agent** → in der Vorlagen-Auswahl die
+Karte **Fullstack Developer** wählen. Du erkennst sie am Hinweis **Windows-Programme (.exe)**.
+
+Das gilt auch, wenn du danach ein KI-Konto, Codex oder ein eigenes Modell auswählst.
+
+**Schritt 2 — Im Chat beschreiben, was das Programm tun soll.** Zum Beispiel:
+*„Bau mir ein kleines Windows-Programm, das alle PDF-Dateien in einem Ordner auflistet.
+Als .exe, bitte in Go."*
+
+Beim ersten Mal richtet der Agent die nötigen Werkzeuge ein. Das dauert einige Minuten,
+danach bleiben sie erhalten, auch über Updates hinweg.
+
+**Schritt 3 — Die .exe herunterladen.** Der Agent nennt dir den Pfad. Die Datei liegt im
+Workspace des Agenten (Kap. 5.4), dort lädst du sie herunter.
+
+**Gut zu wissen**
+- **Sprachen:** Go, Rust, .NET (C#, auch mit Oberfläche über WinForms/WPF) sowie C/C++.
+  Python-Programme lassen sich hier nicht in eine .exe umwandeln. Bitte in dem Fall um Go
+  oder .NET.
+- **Windows-Warnung beim ersten Start:** Die .exe ist nicht signiert. Windows zeigt deshalb
+  „Der Computer wurde durch Windows geschützt". Über **Weitere Informationen** →
+  **Trotzdem ausführen** startest du sie. In Firmennetzen entscheidet die IT, ob
+  unsignierte Programme laufen dürfen.
+- **Speicher:** Die Werkzeuge liegen getrennt vom Workspace und zählen nicht auf dessen
+  Speichergrenze.
+- **Bestehende Agenten** aus der Vorlage bekommen die Werkzeuge mit dem nächsten Update.
+
 ---
 
 ## 5. Agent-Detailseite
@@ -1164,8 +1197,8 @@ Bittet der Anbieter der Software um Kontakt, erscheint am **unteren Rand** ein d
 
 - **Er sperrt nichts** — alle Funktionen laufen unverändert weiter.
 - **Lizenzschlüssel eintragen** (nur für Administratoren sichtbar): der Knopf im Streifen
-  öffnet **Einstellungen → System → Lizenz**. Dort den Schlüssel in das Feld **License Key**
-  einfügen und **Apply License** klicken. Beim nächsten Lebenszeichen ordnet der Anbieter die
+  öffnet **Einstellungen → System → Lizenz**. Dort den Schlüssel in das Feld **Lizenzschlüssel**
+  einfügen und **Lizenz eintragen** klicken. Beim nächsten Lebenszeichen ordnet der Anbieter die
   Anlage damit zu, und der Hinweis verschwindet, sobald er sie freigibt.
 - Direktlink zum Eintragen: **`/settings?tab=system#lizenz`**.
 - **Ausblenden:** das **X** rechts im Streifen. Er bleibt dann für diese Sitzung weg und
@@ -1174,6 +1207,43 @@ Bittet der Anbieter der Software um Kontakt, erscheint am **unteren Rand** ein d
   **„Hinweis des Anbieters"** in der Glocke.
 - Der Hinweis kommt mit dem **täglichen Lebenszeichen** der Anlage an — eine Änderung
   beim Anbieter kann also bis zu einem Tag brauchen.
+
+### 21.2 Lizenz und Agentenlimit (nur Administratoren) *(seit 1.350.0)*
+
+Unter **Einstellungen → System → Lizenz** steht, mit welcher Lizenz die Anlage läuft.
+
+**Was dort steht**
+- die **Edition** (Community, Starter, Team, Business, Enterprise) und der **Zustand**:
+  *Aktiv*, *Abgelaufen* oder *Widerrufen*,
+- für wen die Lizenz ausgestellt ist und bis wann sie gilt,
+- die **Belegung**: zum Beispiel „14 von 30 Agenten belegt". Gezählt wird jeder Agent der
+  Anlage, laufend oder gestoppt.
+
+**Lizenz eintragen — Schritt für Schritt**
+1. **Einstellungen** öffnen, Reiter **System**, zum Abschnitt **Lizenz** blättern.
+2. Den Schlüssel in das Feld **Lizenzschlüssel** einfügen.
+3. **Lizenz eintragen** klicken. Edition und Belegung erscheinen sofort.
+
+Ein falscher oder unvollständiger Schlüssel wird abgelehnt; die bisherige Lizenz bleibt
+dabei unverändert bestehen.
+
+**Was das Agentenlimit bewirkt**
+- Ist das Limit erreicht, lässt sich **kein weiterer Agent anlegen** — egal auf welchem Weg
+  (Anlegen-Fenster, Vorlage, Zuweisung, Verteilen, Branchenpaket). Die Meldung nennt das
+  Limit. Abhilfe: einen Agenten löschen oder ein größeres Paket eintragen.
+- **Bestehende Agenten laufen immer weiter.** Kein Lizenzzustand stoppt oder verändert sie.
+
+**Hinweise, die Administratoren sehen** (im Lizenzfeld und als gelber Streifen unten)
+- *Lizenz abgelaufen* oder *widerrufen*: Das Agentenlimit gilt weiter, neue Agenten gehen
+  nur bis zu diesem Limit.
+- *Mehr Agenten als lizenziert*: etwa nach dem Wechsel auf ein kleineres Paket.
+- *Lizenz entfernt*: Das Limit der entfernten Lizenz gilt weiter, bis eine neue eingetragen ist.
+- *Seit mehr als 30 Tagen ohne Lizenz*: Unternehmen dürfen 30 Tage testen. Wer die Anlage
+  **privat oder nicht-gewerblich** nutzt, setzt im Lizenzfeld den Haken
+  **„Diese Anlage wird ausschließlich privat oder nicht-gewerblich genutzt"** — der Hinweis
+  verschwindet dann dauerhaft.
+
+Editionen und Preise stehen in der README des Projekts, Abschnitt „License".
 
 ---
 

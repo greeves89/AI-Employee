@@ -170,6 +170,23 @@ class InhaltTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(einstellungen["usage_ping_hinweis"], "Bitte melden.")
         self.assertEqual(einstellungen["usage_ping_bewertung"], "bitte_melden")
 
+    async def test_der_lizenzstatus_des_servers_wird_gemerkt(self):
+        """Ein Widerruf kam bis #886 in der Anlage nie an — er stand nur im
+        (opt-in) Herzschlag und dort nur im Protokoll."""
+        einstellungen = {"license_instance_id": "x", "license_key": "ein-schluessel"}
+        await self._ping(einstellungen, antwort={"license_status": "revoked"})
+        self.assertEqual(einstellungen["license_server_status"], "revoked")
+
+    async def test_ohne_schluessel_bleibt_kein_alter_lizenzstatus_stehen(self):
+        einstellungen = {"license_instance_id": "x", "license_server_status": "revoked"}
+        await self._ping(einstellungen, antwort={"license_status": "revoked"})
+        self.assertEqual(einstellungen["license_server_status"], "")
+
+    async def test_ein_verstuemmelter_lizenzstatus_loest_nichts_aus(self):
+        einstellungen = {"license_instance_id": "x", "license_key": "ein-schluessel"}
+        await self._ping(einstellungen, antwort={"license_status": "<script>"})
+        self.assertEqual(einstellungen["license_server_status"], "")
+
     async def test_ein_zurueckgenommener_hinweis_verschwindet_wieder(self):
         """Sonst bliebe ein einmal gesetzter Streifen fuer immer stehen."""
         einstellungen = {"license_instance_id": "x", "usage_ping_hinweis": "alt"}

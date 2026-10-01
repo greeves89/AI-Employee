@@ -43,6 +43,7 @@ import {
   Globe,
 } from "lucide-react";
 import * as api from "@/lib/api";
+import { apiFehlertext } from "@/lib/api-fehler";
 import type { AgentMode, AgentTemplate, AIAccount, AIAccountProviderType, LLMConfig, LLMProviderType, PermissionPackage, Settings as AppSettings } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { AppearancePicker } from "@/components/agents/appearance-picker";
@@ -502,7 +503,8 @@ export function CreateAgentModal({
       onOpenChange(false);
       onCreated();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create agent");
+      // z. B. „Lizenz-Limit erreicht" — der Text, nicht die JSON-Zeile.
+      setError(apiFehlertext(e, "Agent konnte nicht angelegt werden."));
     } finally {
       setCreating(false);
     }

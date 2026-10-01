@@ -26,7 +26,10 @@ const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
 
 /** Hinweis des Anbieters als dezent gelber Streifen am unteren Rand.
  *
- *  Er kommt aus der Antwort auf das taegliche Lebenszeichen der Anlage.
+ *  Zwei Quellen, ein Streifen: der Hinweis des Anbieters aus der Antwort auf
+ *  das taegliche Lebenszeichen (fuer alle), und — nur fuer Administratoren —
+ *  der Lizenzstand der Anlage selbst (abgelaufen, widerrufen, mehr Agenten als
+ *  lizenziert, Testphase vorbei). Der Anbieter-Hinweis hat Vorrang.
  *  Er sperrt nichts und blockiert keine Arbeit — deshalb ein Streifen und kein
  *  Dialog. Wegklickbar fuer die Sitzung; zusaetzlich steht er als
  *  Benachrichtigung bei den Administratoren und bleibt dort nachlesbar. */
@@ -49,7 +52,13 @@ export function BetreiberHinweis() {
         const res = await fetch(`${getBase()}/version/`, { credentials: "include" });
         if (!res.ok) return;
         const daten: { betreiber_hinweis?: string } = await res.json();
-        setHinweis((daten.betreiber_hinweis || "").trim());
+        let text = (daten.betreiber_hinweis || "").trim();
+        if (!text && istAdmin) {
+          // Den Lizenzstand liefert der Server nur Administratoren aus.
+          const lizenz = await fetch(`${getBase()}/license/`, { credentials: "include" });
+          if (lizenz.ok) text = (((await lizenz.json()) as { hinweis?: string | null }).hinweis || "").trim();
+        }
+        setHinweis(text);
       } catch {
         // kein Hinweis ist kein Fehler
       }
@@ -58,7 +67,7 @@ export function BetreiberHinweis() {
     laden();
     const intervall = setInterval(laden, PRUEF_INTERVALL);
     return () => clearInterval(intervall);
-  }, []);
+  }, [istAdmin]);
 
   const sichtbar = hinweis.length > 0 && weggeklickt !== hinweis;
 

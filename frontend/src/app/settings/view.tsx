@@ -20,6 +20,7 @@ import { SamlConfig } from "@/components/settings/saml-config";
 import { TeamsCallingConfig } from "@/components/settings/teams-calling-config";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
+import { apiFehlertext } from "@/lib/api-fehler";
 import { MyAiCredentials } from "@/components/settings/my-ai-credentials";
 import { AvailableModels } from "@/components/settings/available-models";
 import { ClaudeLoginDialog, startClaudeLogin } from "@/components/integrations/claude-login-dialog";
@@ -425,7 +426,16 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setLicenseKeyInput("");
       await loadLicense();
     } catch (e) {
-      setLicenseError(e instanceof Error ? e.message : "Invalid license");
+      setLicenseError(apiFehlertext(e, "Kein gültiger Lizenzschlüssel."));
+    } finally {
+      setLicenseBusy(false);
+    }
+  };
+
+  const handleNutzung = async (privat: boolean) => {
+    setLicenseBusy(true);
+    try {
+      setLicense(await api.setLicenseNutzung(privat));
     } finally {
       setLicenseBusy(false);
     }
@@ -433,8 +443,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
 
   const handleRemoveLicense = async () => {
     const ok = await confirm({
-      title: "License entfernen?",
-      message: "Enterprise-Features werden deaktiviert.",
+      title: "Lizenz entfernen?",
+      message: "Das Agentenlimit dieser Lizenz gilt weiter, bis eine neue Lizenz eingetragen ist.",
       variant: "destructive",
       confirmLabel: "Entfernen",
     });
@@ -1571,13 +1581,13 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             <div className="flex items-center gap-2 mb-3">
               <Lock className="h-4 w-4 text-muted-foreground/60" />
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-                License
+                Lizenz
               </h2>
             </div>
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
               {license && (
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
+                <div className="mb-4 flex items-start justify-between gap-4">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={cn(
                         "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider",
@@ -1589,59 +1599,76 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                       )}>
                         {license.tier}
                       </span>
-                      {license.valid && !license.is_expired && (
+                      {license.zustand === "aktiv" && (
                         <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
                           <CheckCircle2 className="h-3 w-3" />
-                          Active
+                          Aktiv
                         </span>
                       )}
-                      {license.is_expired && (
+                      {(license.zustand === "abgelaufen" || license.zustand === "widerrufen") && (
                         <span className="inline-flex items-center gap-1 text-[11px] text-red-400">
                           <AlertCircle className="h-3 w-3" />
-                          Expired
+                          {license.zustand === "widerrufen" ? "Widerrufen" : "Abgelaufen"}
                         </span>
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {license.tier === "community"
-                        ? "Community Edition — free for private and non-commercial use. Businesses may evaluate for 30 days; after that a license is required."
-                        : `Licensed to ${license.issued_to}`}
+                      {license.zustand === "ohne"
+                        ? "Community Edition — kostenlos für private und nicht-gewerbliche Nutzung. Unternehmen dürfen 30 Tage testen, danach ist eine Lizenz nötig."
+                        : `Lizenziert für ${license.issued_to}`}
                     </p>
-                    {license.tier !== "community" && (
-                      <p className="text-[11px] text-muted-foreground/60 mt-1">
-                        {license.instance_limit > 0 ? `Includes ${license.instance_limit} agents` : "Unlimited agents"}
+                    {typeof license.agenten === "number" && (
+                      <p className="text-[11px] text-muted-foreground/70 mt-1">
+                        {license.agentenlimit
+                          ? `${license.agenten} von ${license.agentenlimit} Agenten belegt`
+                          : `${license.agenten} Agenten, unbegrenzt`}
                       </p>
                     )}
                     {license.expires_at && (
                       <p className="text-[11px] text-muted-foreground/60 mt-1">
-                        Expires: {new Date(license.expires_at).toLocaleDateString("de-DE")}
+                        {license.is_expired ? "Abgelaufen am" : "Gültig bis"}: {new Date(license.expires_at).toLocaleDateString("de-DE")}
                       </p>
                     )}
-                    <p className="text-[10px] text-muted-foreground/50 mt-1.5">
-                      {license.features.length} features enabled
-                    </p>
+                    {license.hinweis && (
+                      <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-200">
+                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>{license.hinweis}</span>
+                      </p>
+                    )}
+                    {license.zustand === "ohne" && license.limit_quelle !== "gemerkt" && (
+                      <label className="mt-3 flex items-start gap-2 text-[12px] text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={!!license.private_nutzung}
+                          disabled={licenseBusy}
+                          onChange={(e) => handleNutzung(e.target.checked)}
+                        />
+                        <span>Diese Anlage wird ausschließlich privat oder nicht-gewerblich genutzt.</span>
+                      </label>
+                    )}
                   </div>
-                  {license.tier !== "community" && license.license_id !== "community-default" && (
+                  {license.zustand !== "ohne" && (
                     <button
                       onClick={handleRemoveLicense}
                       disabled={licenseBusy}
-                      className="text-[11px] text-red-400 hover:text-red-300 underline underline-offset-2"
+                      className="shrink-0 text-[11px] text-red-400 hover:text-red-300 underline underline-offset-2"
                     >
-                      Remove license
+                      Lizenz entfernen
                     </button>
                   )}
                 </div>
               )}
-              {(license?.tier === "community" || license?.is_expired || !license?.valid) && (
+              {(!license || license.zustand !== "aktiv") && (
                 <div className="space-y-3 border-t border-foreground/[0.04] pt-4">
                   <div>
                     <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                      License Key
+                      Lizenzschlüssel
                     </label>
                     <textarea
                       value={licenseKeyInput}
                       onChange={(e) => setLicenseKeyInput(e.target.value)}
-                      placeholder="Paste your license key here (format: base64url.signature)"
+                      placeholder="Lizenzschlüssel hier einfügen"
                       rows={3}
                       className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-xs font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 resize-none"
                     />
@@ -1654,9 +1681,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   )}
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] text-muted-foreground/60">
-                      Don't have a license? The Community Edition includes all core features.
-                      Upgrade at{" "}
-                      <a href="https://github.com/greeves89/AI-Employee#pricing" target="_blank" rel="noopener" className="text-primary hover:underline">
+                      Editionen und Preise:{" "}
+                      <a href="https://github.com/greeves89/AI-Employee#license" target="_blank" rel="noopener" className="text-primary hover:underline">
                         github.com/greeves89/AI-Employee
                       </a>
                     </p>
@@ -1666,7 +1692,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                       className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                       {licenseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                      Apply License
+                      Lizenz eintragen
                     </button>
                   </div>
                 </div>

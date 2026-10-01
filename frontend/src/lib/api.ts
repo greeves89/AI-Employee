@@ -2806,6 +2806,28 @@ export interface License {
   is_expired: boolean;
   error: string | null;
   features: string[];
+  /** Ein Wort für den Stand der Lizenz. */
+  zustand: "ohne" | "aktiv" | "abgelaufen" | "widerrufen";
+  // Ab hier nur für Administratoren gefüllt.
+  /** Agenten auf dieser Anlage, laufend oder gestoppt. */
+  agenten?: number;
+  /** Wie viele angelegt werden dürfen; 0 = unbegrenzt. */
+  agentenlimit?: number;
+  /** "gemerkt" = Lizenz entfernt, ihr Limit gilt weiter. */
+  limit_quelle?: "lizenz" | "gemerkt" | null;
+  tage_seit_einrichtung?: number | null;
+  testphase_tage?: number;
+  private_nutzung?: boolean;
+  /** Der eine Satz zum Lizenzstand, falls es etwas zu sagen gibt. */
+  hinweis?: string | null;
+}
+
+/** Erklärung des Administrators: private / nicht-gewerbliche Nutzung. */
+export async function setLicenseNutzung(privat: boolean): Promise<License> {
+  return fetchJSON(`${getBase()}/license/nutzung`, {
+    method: "POST",
+    body: JSON.stringify({ privat }),
+  });
 }
 
 export async function getLicenseStatus(): Promise<License> {

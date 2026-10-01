@@ -16,6 +16,21 @@ A license is a JSON payload with:
     enterprise 100, further agents in packs of ten (see README "License").
 
 The signature is appended as ".base64signature" using Ed25519.
+
+What is enforced, and what is not (Issue #886)
+----------------------------------------------
+* **Enforced: the agent limit, and only when a NEW agent is created**
+  (``core/agentenlimit.py``, called from ``AgentManager.create_agent`` so every
+  creation path passes it). Nothing here ever stops or changes an existing
+  agent: a license state must not take a running installation down.
+* **Kept across expiry and removal:** an expired or revoked license keeps its
+  agent limit, and so does a removed one (``wirksames_agentenlimit``). Otherwise
+  letting a license lapse would grant MORE than paying for it.
+* **Not enforced: the feature flags per tier.** They describe what an edition
+  entitles the customer to (README, "License"); no code path checks them. Gating
+  sign-in methods technically would lock installations out of their own login.
+* **Shown, not blocked:** evaluation period, more agents than licensed, expiry,
+  revocation — see ``lizenz_hinweis``.
 """
 
 from __future__ import annotations
@@ -67,24 +82,29 @@ TEAM_FEATURES = COMMUNITY_FEATURES | frozenset({
 BUSINESS_FEATURES = TEAM_FEATURES | frozenset({
     "sso_google",
     "sso_microsoft",
-    "sso_apple",
+    "sso_oidc",
     "advanced_analytics",
-    "custom_branding",
 })
 
 ENTERPRISE_FEATURES = BUSINESS_FEATURES | frozenset({
     "sso_saml",
     "sso_okta",
-    "sso_ldap",
-    "scim_provisioning",
     "audit_log_immutable",
     "high_availability",
     "multi_tenant",
     "api_rate_limit_per_org",
     "data_residency_eu",
     "sla_support",
-    "white_label",
 })
+
+
+ZUSTAND_OHNE = "ohne"
+ZUSTAND_AKTIV = "aktiv"
+ZUSTAND_ABGELAUFEN = "abgelaufen"
+ZUSTAND_WIDERRUFEN = "widerrufen"
+
+#: Testphase fuer Unternehmen (LICENSE.md, Abschnitt 2).
+TESTPHASE_TAGE = 30
 
 
 @dataclass
@@ -98,6 +118,9 @@ class License:
     instance_limit: int = 0
     valid: bool = True
     error: str | None = None
+    #: Was der Lizenzserver zuletzt zu dieser Lizenz gemeldet hat:
+    #: "" (nichts bekannt), "active", "expired" oder "revoked".
+    server_status: str = ""
 
     @property
     def is_expired(self) -> bool:
@@ -109,9 +132,21 @@ class License:
         except Exception:
             return True
 
+    @property
+    def zustand(self) -> str:
+        """``ohne`` | ``aktiv`` | ``abgelaufen`` | ``widerrufen`` — EIN Wort fuer
+        Oberflaeche, Hinweise und Limit, statt drei Felder einzeln zu deuten."""
+        if not self.license_id or self.license_id == "community-default":
+            return ZUSTAND_OHNE
+        if self.server_status == "revoked":
+            return ZUSTAND_WIDERRUFEN
+        if self.is_expired or self.server_status == "expired":
+            return ZUSTAND_ABGELAUFEN
+        return ZUSTAND_AKTIV
+
     def has_feature(self, feature: str) -> bool:
         """Check if a feature is enabled by this license."""
-        if not self.valid or self.is_expired:
+        if not self.valid or self.zustand != ZUSTAND_AKTIV:
             # Fall back to community features if license is invalid/expired
             return feature in COMMUNITY_FEATURES
         return feature in self.features
@@ -126,6 +161,7 @@ class License:
             "instance_limit": self.instance_limit,
             "valid": self.valid,
             "is_expired": self.is_expired,
+            "zustand": self.zustand,
             "error": self.error,
             "features": sorted(self.features),
         }
@@ -236,20 +272,105 @@ def get_current_license() -> License:
 def load_license_from_string(license_string: str) -> License:
     """Load and verify a license, update the module-level cache."""
     global _current_license
-    _current_license = verify_license(license_string)
-    if _current_license.valid:
+    lic = verify_license(license_string)
+    if lic.valid:
         logger.info(
-            f"License loaded: tier={_current_license.tier}, "
-            f"issued_to={_current_license.issued_to}, "
-            f"expires_at={_current_license.expires_at}"
+            f"License loaded: tier={lic.tier}, "
+            f"issued_to={lic.issued_to}, "
+            f"expires_at={lic.expires_at}"
         )
+        _current_license = lic
+    elif lic.license_id and lic.is_expired:
+        # Echt signiert, nur abgelaufen. Sie bleibt geladen: die Oberflaeche
+        # zeigt „abgelaufen", die Funktionen fallen auf den Grundstand zurueck
+        # (has_feature), und ihr Agentenlimit gilt weiter. Bis #886 wurde sie
+        # hier durch die Community-Lizenz ersetzt — und damit UNBEGRENZT.
+        logger.warning("License expired at %s — its agent limit stays in force", lic.expires_at)
+        _current_license = lic
     else:
         logger.warning(
-            f"License invalid ({_current_license.error}) — "
+            f"License invalid ({lic.error}) — "
             f"falling back to community tier"
         )
         _current_license = _community_license()
     return _current_license
+
+
+#: Agentenlimit der zuletzt eingetragenen Lizenz. Gilt weiter, wenn die Lizenz
+#: entfernt wurde — sonst waere das Entfernen der bequemste Weg zu unbegrenzt
+#: vielen Agenten. Eine neu eingetragene Lizenz ersetzt den Wert.
+_gemerktes_limit: int = 0
+
+SERVER_STATUS_BEKANNT = ("active", "expired", "revoked")
+
+
+def merke_limit(limit: int | str | None) -> None:
+    """Das Limit der zuletzt eingetragenen Lizenz festhalten (beim Start aus den
+    Einstellungen, beim Eintragen aus der Lizenz)."""
+    global _gemerktes_limit
+    try:
+        _gemerktes_limit = max(0, int(limit or 0))
+    except (TypeError, ValueError):
+        _gemerktes_limit = 0
+
+
+def setze_server_status(status: str | None) -> str:
+    """Was der Lizenzserver zur aktuellen Lizenz meldet. Unbekanntes zaehlt als
+    „nichts bekannt" — eine verstuemmelte Antwort darf keinen Zustand ausloesen."""
+    wert = (status or "").strip().lower()
+    if wert not in SERVER_STATUS_BEKANNT:
+        wert = ""
+    get_current_license().server_status = wert
+    return wert
+
+
+def wirksames_agentenlimit() -> tuple[int, str | None]:
+    """Wie viele Agenten diese Anlage anlegen darf — und woher die Zahl stammt.
+
+    ``(0, None)`` heisst unbegrenzt. Die Herkunft ist ``"lizenz"`` (eine geladene
+    Lizenz, auch abgelaufen oder widerrufen) oder ``"gemerkt"`` (Lizenz entfernt).
+    """
+    lic = get_current_license()
+    if lic.zustand != ZUSTAND_OHNE:
+        return (lic.instance_limit or 0), ("lizenz" if lic.instance_limit else None)
+    if _gemerktes_limit > 0:
+        return _gemerktes_limit, "gemerkt"
+    return 0, None
+
+
+def lizenz_hinweis(
+    *,
+    zustand: str,
+    agenten: int,
+    limit: int,
+    limit_quelle: str | None,
+    tage_seit_einrichtung: int | None,
+    privat_erklaert: bool,
+) -> str | None:
+    """Der eine Satz, den Administratoren zum Lizenzstand sehen — oder ``None``.
+
+    Reine Funktion: alle Hinweise entstehen hier, damit Streifen und
+    Einstellungen nie Verschiedenes sagen. Ein Hinweis sperrt nichts.
+    Reihenfolge = Dringlichkeit.
+    """
+    if zustand == ZUSTAND_WIDERRUFEN:
+        return ("Die Lizenz dieser Anlage wurde widerrufen. Bestehende Agenten laufen weiter; "
+                "bitte melde dich beim Anbieter.")
+    if zustand == ZUSTAND_ABGELAUFEN:
+        return ("Die Lizenz dieser Anlage ist abgelaufen. Bestehende Agenten laufen weiter; "
+                "bitte verlängere die Lizenz.")
+    if limit > 0 and agenten > limit:
+        return (f"Auf dieser Anlage gibt es {agenten} Agenten, lizenziert sind {limit}. "
+                "Bestehende Agenten laufen weiter; neue lassen sich erst nach einem größeren Paket anlegen.")
+    if limit_quelle == "gemerkt":
+        return (f"Die Lizenz wurde entfernt. Ihr Agentenlimit ({limit}) gilt weiter, "
+                "bis eine neue Lizenz eingetragen ist.")
+    if (zustand == ZUSTAND_OHNE and not privat_erklaert
+            and tage_seit_einrichtung is not None and tage_seit_einrichtung > TESTPHASE_TAGE):
+        return (f"Diese Anlage läuft seit {tage_seit_einrichtung} Tagen ohne Lizenz. Private und "
+                f"nicht-gewerbliche Nutzung ist kostenlos; im Unternehmen ist nach {TESTPHASE_TAGE} Tagen "
+                "eine Lizenz nötig.")
+    return None
 
 
 def require_feature(feature: str) -> None:

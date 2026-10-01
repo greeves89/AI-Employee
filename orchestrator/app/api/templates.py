@@ -432,5 +432,8 @@ async def create_agent_from_template(
 
         metrics = await manager.get_agent_with_metrics(agent.id)
         return {**metrics, "template_id": template.id, "template_name": template.name}
+    except HTTPException:
+        # z. B. 402 „Lizenz-Limit erreicht" — nicht zu einer 500 mit Rohtext machen.
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

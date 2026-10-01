@@ -1996,14 +1996,12 @@ clean Markdown; you don't need to commit.
 
     # Load license from DB (falls back to community tier if not present or invalid)
     try:
-        from app.core.license import load_license_from_string
         from app.db.session import async_session_factory as _sf_lic_load
-        from app.services.settings_service import SettingsService as _SS_lic
+        from app.services.lizenz_zustand import lade_lizenzzustand
 
         async with _sf_lic_load() as db:
-            svc = _SS_lic(db)
-            license_key = await svc.get("license_key")
-            load_license_from_string(license_key or "")
+            # Lizenz, gemerktes Limit und letzter Serverstatus — zusammen (#886).
+            await lade_lizenzzustand(db)
     except Exception as e:
         logger.warning(f"Could not load license: {e}")
 

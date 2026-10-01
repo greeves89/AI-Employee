@@ -162,6 +162,12 @@ class LicenseHeartbeatService:
             bisher = (await svc.get("usage_ping_hinweis") or "").strip()
             await svc.set("usage_ping_hinweis", neuer_hinweis)
             await svc.set("usage_ping_bewertung", str(antwort.get("bewertung") or "unbekannt"))
+            # Was der Server zur Lizenz dieser Anlage sagt (aktiv / abgelaufen /
+            # widerrufen). Ohne Schluessel gibt es keine Aussage — dann wird ein
+            # alter Stand geloescht, statt ewig stehen zu bleiben. Das aendert
+            # nur Anzeige und Hinweis; gestoppt wird dadurch nichts (#886).
+            from app.services.lizenz_zustand import merke_server_status
+            await merke_server_status(db, antwort.get("license_status") if schluessel else "")
 
             # Zusaetzlich zum Streifen eine Benachrichtigung — den Streifen
             # klickt man weg, die Benachrichtigung bleibt nachlesbar. Nur wenn
@@ -219,7 +225,13 @@ class LicenseHeartbeatService:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(url, json=body, headers={"Authorization": f"Bearer {license_key}"})
             if resp.status_code == 200:
-                logger.info("License heartbeat ok: %s", resp.json().get("license_status"))
+                status = resp.json().get("license_status")
+                logger.info("License heartbeat ok: %s", status)
+                # Bisher nur protokolliert — ein Widerruf kam in der Anlage nie an.
+                from app.services.lizenz_zustand import merke_server_status
+                async with resilient_session(session_factory=self._sf) as db:
+                    await merke_server_status(db, status)
+                    await db.commit()
             else:
                 logger.warning("License heartbeat rejected: HTTP %s", resp.status_code)
         except httpx.HTTPError as exc:

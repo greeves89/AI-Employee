@@ -491,6 +491,12 @@ async def distribute_agent(
             db.add(AgentAccess(agent_id=clone.id, user_id=uid))
             await db.commit()
             created.append({"user_id": uid, "user_name": target_user.name, "agent_id": clone.id, "agent_name": clone.name})
+        except HTTPException as e:
+            # Erwartbare Absage (z. B. Lizenz-Limit erreicht): als lesbarer Grund,
+            # nicht als Fehler mit Stacktrace. Die uebrigen Nutzer treffen dieselbe
+            # Grenze, also bekommen auch sie diesen Grund.
+            grund = e.detail.get("message") if isinstance(e.detail, dict) else str(e.detail)
+            skipped.append({"user_id": uid, "user_name": target_user.name, "reason": grund})
         except Exception as e:  # noqa: BLE001
             logger.exception(f"Failed to clone source {source.id} for user {scrub_log(uid)}")
             skipped.append({"user_id": uid, "user_name": target_user.name, "reason": f"error: {e}"})

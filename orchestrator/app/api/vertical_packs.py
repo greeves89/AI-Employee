@@ -91,8 +91,15 @@ async def provision_vertical_pack(
         raise HTTPException(status_code=404, detail="Vertical pack not found")
 
     uid = user.id if getattr(user, "id", None) and user.id != "__anonymous__" else None
+    # Vorab die ganze Menge pruefen: ein Paket legt mehrere Agenten an, und ein
+    # halbes Paket (Limit mittendrin erreicht) hilft niemandem.
+    from app.core.agentenlimit import pruefe_agentenlimit
+    await pruefe_agentenlimit(db, zusaetzlich=len(pack.get("template_names", [])))
+
     try:
         result = await provision_pack(pack, uid, db, docker, redis)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[VerticalPack] Provisioning '{scrub_log(slug)}' failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Provisioning failed: {e}")

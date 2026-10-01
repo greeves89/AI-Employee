@@ -87,6 +87,12 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "oauth_apple_key_id",
     # License
     "license_key",
+    # Lizenzzustand, der einen Neustart ueberleben muss (services/lizenz_zustand.py):
+    # Limit der zuletzt eingetragenen Lizenz, Status vom Lizenzserver, Erklaerung
+    # zur privaten Nutzung. Ohne Eintrag hier scheitert das Speichern still.
+    "license_last_limit",
+    "license_server_status",
+    "license_private_use",
     # call2home — opt-in usage/renewal heartbeat, see services/license_heartbeat_service.py.
     # Empty license_server_url = disabled, nothing is ever sent.
     "license_server_url",
