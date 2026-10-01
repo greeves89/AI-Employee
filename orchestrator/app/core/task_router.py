@@ -388,6 +388,44 @@ def ist_system_zeitplan(name: str | None) -> bool:
     return bool(name) and name.startswith(SYSTEM_ZEITPLAN_PRAEFIXE)
 
 
+async def auftrag_des_laufenden_zuges(redis, agent_id: str | None) -> str | None:
+    """Der Auftrag, an dem dieser Agent GERADE arbeitet — oder ``None``.
+
+    Legt ein Agent waehrend eines Auftrags einen weiteren an, ist der laufende
+    dessen Eltern-Auftrag. Kein Werkzeug hat das bisher mitgegeben (#880): bei
+    Claude Code fehlte der Parameter, bei Codex und Custom-LLM wurde er
+    verworfen. Statt es drei Laufzeiten einzeln beizubringen, liest der Server
+    es dort ab, wo es ohnehin steht: der Agent fuehrt in seinem Status alle
+    laufenden Arbeiten (``active_sessions``), Auftraege mit ihrer Kennung,
+    Gespraeche als ``chat:…`` und Nachrichten als ``msg:…``.
+
+    Wie beim Gespraechsfaden gilt: nur wenn es EINDEUTIG ist. Arbeitet der
+    Agent an zwei Auftraegen zugleich, waere jede Wahl geraten — und ein
+    falscher Eltern-Auftrag ist schlimmer als keiner.
+    """
+    if not agent_id or not (redis and redis.client):
+        return None
+    try:
+        status = await redis.client.hgetall(f"agent:{agent_id}:status")
+        if not status:
+            return None
+
+        def _text(wert) -> str:
+            return wert.decode() if isinstance(wert, bytes) else str(wert or "")
+
+        eintraege = {_text(k): _text(v) for k, v in status.items()}
+        try:
+            laufend = [str(e) for e in json.loads(eintraege.get("active_sessions") or "[]")]
+        except (TypeError, ValueError):
+            laufend = []
+        if eintraege.get("current_task"):
+            laufend.append(eintraege["current_task"])
+        auftraege = {e for e in laufend if e and not e.startswith(("chat:", "msg:"))}
+        return next(iter(auftraege)) if len(auftraege) == 1 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 async def faden_des_laufenden_zuges(redis, agent_id: str | None) -> str | None:
     """Der Gespraechsfaden, in dem dieser Agent GERADE arbeitet.
 
@@ -453,15 +491,23 @@ class TaskRouter:
         parent_task_id: str | None = None,
         created_by_agent: str | None = None,
         metadata: dict | None = None,
+        anleger_agent: str | None = None,
+        erlaubte_agenten: set[str] | None = None,
     ) -> Task:
         task_id = _make_task_id()
+
+        # Eltern-Auftrag: pruefen, wenn er mitkam; ableiten, wenn nicht (#880).
+        # ``anleger_agent`` ist der AUSGEWIESENE Aufrufer (Agenten-Token) und geht
+        # vor: ``created_by_agent`` steht im Request und fehlt, wenn ein Agent
+        # sich selbst beauftragt.
+        parent_task_id = await self._eltern_auftrag(parent_task_id, anleger_agent or created_by_agent)
 
         # Platform-wide budget check
         await self._check_platform_budget()
 
         # Auto-assign if no agent specified
         if not agent_id:
-            agent_id = await self.load_balancer.select_agent(priority=priority)
+            agent_id = await self.load_balancer.select_agent(priority=priority, kandidaten=erlaubte_agenten)
             if agent_id and not await self._agent_exists(agent_id):
                 logger.warning(
                     "Load balancer selected stale agent %s; pruning Redis status and retrying",
@@ -469,7 +515,7 @@ class TaskRouter:
                 )
                 if self.redis.client:
                     await self.redis.client.delete(f"agent:{agent_id}:status")
-                agent_id = await self.load_balancer.select_agent(priority=priority)
+                agent_id = await self.load_balancer.select_agent(priority=priority, kandidaten=erlaubte_agenten)
                 if agent_id and not await self._agent_exists(agent_id):
                     logger.warning("Load balancer retry also selected invalid agent %s", agent_id)
                     agent_id = None
@@ -590,6 +636,49 @@ class TaskRouter:
 
         existing = await self.db.scalar(select(Agent.id).where(Agent.id == agent_id))
         return existing is not None
+
+    async def _eltern_auftrag(self, angegeben: str | None, created_by_agent: str | None) -> str | None:
+        """Der Eltern-Auftrag eines neuen Auftrags — geprueft oder abgeleitet.
+
+        * Von einem Menschen angelegt (kein ``created_by_agent``): wie bisher,
+          was mitkam, gilt.
+        * Von einem Agenten mit Angabe: nur, wenn der Eltern-Auftrag existiert
+          und einem Agenten DESSELBEN Nutzers gehoert. Sonst 403 — ein Agent
+          darf sich nicht an einen fremden Auftrag haengen und so dessen
+          Rueckmeldungen und Zielkette erreichen.
+        * Von einem Agenten ohne Angabe: der Auftrag, an dem er gerade
+          arbeitet, falls das eindeutig ist (``auftrag_des_laufenden_zuges``).
+        """
+        if not created_by_agent:
+            return angegeben
+
+        from fastapi import HTTPException
+        from app.models.agent import Agent
+
+        if angegeben:
+            eltern = await self.db.get(Task, angegeben)
+            if eltern is None:
+                raise HTTPException(status_code=404, detail=f"Eltern-Auftrag {angegeben} nicht gefunden.")
+            besitzer = {}
+            for agent_id in (created_by_agent, eltern.agent_id):
+                agent = await self.db.get(Agent, agent_id) if agent_id else None
+                besitzer[agent_id] = agent.user_id if agent else None
+            if besitzer.get(created_by_agent) is None or besitzer.get(created_by_agent) != besitzer.get(eltern.agent_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Der angegebene Eltern-Auftrag gehört nicht zu deinen Aufträgen.",
+                )
+            return angegeben
+
+        laufend = await auftrag_des_laufenden_zuges(self.redis, created_by_agent)
+        if not laufend:
+            return None
+        # Nur ein echter Auftrag dieses Agenten zaehlt: der Status kommt aus dem
+        # Container, also wird nachgesehen statt geglaubt.
+        eltern = await self.db.get(Task, laufend)
+        if eltern is None or eltern.agent_id != created_by_agent:
+            return None
+        return laufend
 
     async def _delegatable_agents(self, created_by_agent: str | None) -> list[tuple[str, str]]:
         """An wen darf dieser Agent wirklich delegieren — (id, name).
@@ -891,12 +980,16 @@ class TaskRouter:
         # Lauf ueber zwanzig Minuten hunderte Anfragen fuer eine einzige Antwort.
         await self._deliver_task_callback(task)
 
-        # Subtask completion callback: notify the parent task's agent
-        if task.parent_task_id:
-            await self._notify_parent_agent(task, fulfilled, gap)
-
         # Delegation callback: notify the agent that created/delegated this task
         delegator_id = (task.metadata_ or {}).get("created_by_agent")
+
+        # Subtask completion callback: notify the parent task's agent — ausser er
+        # ist derselbe Agent, der den Auftrag vergeben hat. Seit #880 tragen
+        # Auftraege, die ein Agent vergibt, ihren Eltern-Auftrag; ihr Auftraggeber
+        # bekommt unten ohnehin die Delegations-Rueckmeldung. Beide Wege zusammen
+        # hiessen: zwei Rueckmeldungen und zwei Zuege fuer ein Ergebnis.
+        if task.parent_task_id and not await self._eltern_ist_auftraggeber(task, delegator_id):
+            await self._notify_parent_agent(task, fulfilled, gap)
         logger.debug(
             "Task %s completion: delegator=%s agent=%s", task.id, delegator_id, agent_id
         )
@@ -2156,6 +2249,13 @@ class TaskRouter:
                 f"Platform monthly budget exceeded (${monthly_spend:.2f}/${cap:.2f}). "
                 f"Increase PLATFORM_BUDGET_USD or wait for next month."
             )
+
+    async def _eltern_ist_auftraggeber(self, task: Task, delegator_id: str | None) -> bool:
+        """Gehoert der Eltern-Auftrag dem Agenten, der diesen Auftrag vergeben hat?"""
+        if not delegator_id or not task.parent_task_id:
+            return False
+        eltern = await self.db.get(Task, task.parent_task_id)
+        return bool(eltern and eltern.agent_id == delegator_id)
 
     async def _notify_parent_agent(
         self, subtask: Task, fulfilled: bool | None = None, gap: str = ""

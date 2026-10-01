@@ -16,7 +16,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, delete, func, or_, select, text as sa_text, update
+from sqlalchemy import and_, func, or_, select, text as sa_text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -376,7 +376,6 @@ async def save_memory_core(
     # --- Step 6: invalidate room summary cache -------------------------------
     if body.room:
         try:
-            from app.services.memory_compressor import MemoryCompressor
             from app.services.redis_service import RedisService  # noqa
             # Fire-and-forget invalidation via app.state.redis if available.
             # Skip cleanly if redis wasn't attached (happens in tests).
@@ -661,13 +660,15 @@ async def _preload(agent_id, task_context, room, user, db):
     """
     if hasattr(user, "role"):
         from app.models.user import UserRole
-        from app.models.agent import Agent
         if is_agent_principal(user):
             if user.id != agent_id:
                 raise HTTPException(status_code=403, detail="Agent can only preload its own memories")
         elif user.role != UserRole.ADMIN:
-            agent_obj = await db.get(Agent, agent_id)
-            if agent_obj and agent_obj.user_id and agent_obj.user_id != user.id:
+            # Eigene und freigegebene Agenten — und nur die. Bisher liess die
+            # Pruefung jeden Agenten OHNE Besitzer fuer alle Nutzer offen.
+            from app.core.ownership import visible_agent_ids
+            sichtbar = await visible_agent_ids(user, db)
+            if sichtbar is not None and agent_id not in sichtbar:
                 raise HTTPException(status_code=403, detail="Access denied")
     # Selection + grouping live in app.core.memory_preload so the voice front uses
     # exactly the same definition of "what this agent must always know".
@@ -724,15 +725,17 @@ async def list_agent_memories(
     """
     if hasattr(user, "role"):
         from app.models.user import UserRole
-        from app.models.agent import Agent
         # Agent calling for its own memories — allowed
         if is_agent_principal(user):
             if user.id != agent_id:
                 raise HTTPException(status_code=403, detail="Agent can only list its own memories")
         elif user.role != UserRole.ADMIN:
             # User caller: must own the agent
-            agent_obj = await db.get(Agent, agent_id)
-            if agent_obj and agent_obj.user_id and agent_obj.user_id != user.id:
+            # Eigene und freigegebene Agenten — und nur die. Bisher liess die
+            # Pruefung jeden Agenten OHNE Besitzer fuer alle Nutzer offen.
+            from app.core.ownership import visible_agent_ids
+            sichtbar = await visible_agent_ids(user, db)
+            if sichtbar is not None and agent_id not in sichtbar:
                 raise HTTPException(status_code=403, detail="Access denied")
 
     # Real per-category breakdown across ALL memories, regardless of the
@@ -772,15 +775,17 @@ async def _assert_agent_access(agent_id: str, user, db) -> None:
     if not hasattr(user, "role"):
         return
     from app.models.user import UserRole
-    from app.models.agent import Agent
     if is_agent_principal(user):
         if user.id != agent_id:
             raise HTTPException(status_code=403, detail="Access denied")
         return
     if user.role == UserRole.ADMIN:
         return
-    agent_obj = await db.get(Agent, agent_id)
-    if agent_obj and agent_obj.user_id and agent_obj.user_id != user.id:
+    # Eigene und freigegebene Agenten — und nur die. Bisher liess die
+    # Pruefung jeden Agenten OHNE Besitzer fuer alle Nutzer offen.
+    from app.core.ownership import visible_agent_ids
+    sichtbar = await visible_agent_ids(user, db)
+    if sichtbar is not None and agent_id not in sichtbar:
         raise HTTPException(status_code=403, detail="Access denied")
 
 

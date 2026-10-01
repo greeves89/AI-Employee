@@ -17,6 +17,7 @@ from sqlalchemy.ext.compiler import compiles
 
 from app.api.evals import list_runs
 from app.models.agent import Agent, AgentState
+from app.models.agent_access import AgentAccess
 from app.models.eval_set import EvalRun, EvalSet
 
 
@@ -33,7 +34,8 @@ class EvalIsolationTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (Agent, EvalSet, EvalRun):
+            # AgentAccess: die Zugriffspruefung fragt auch nach freigegebenen Agenten.
+            for model in (Agent, EvalSet, EvalRun, AgentAccess):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
 

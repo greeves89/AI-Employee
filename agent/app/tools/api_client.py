@@ -118,6 +118,9 @@ class OrchestratorAPIClient:
             "priority": t.get("priority", vorgabe_prio),
             "agent_id": t.get("agent_id"),
             **({"model": t["model"]} if t.get("model") else {}),
+            # Wurde im Werkzeug angeboten, hier aber verworfen (#880). Ohne Angabe
+            # leitet der Server den Eltern-Auftrag aus dem laufenden Auftrag ab.
+            **({"parent_task_id": t["parent_task_id"]} if t.get("parent_task_id") else {}),
             **_session_field(),
         }
 

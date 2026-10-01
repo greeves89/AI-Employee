@@ -92,6 +92,47 @@ async def _get_user_agent_ids(user, db: AsyncSession) -> list[str] | None:
     return list({row[0] for row in owned.all()} | {row[0] for row in shared.all()})
 
 
+async def _erreichbare_agenten(user, db: AsyncSession) -> set[str] | None:
+    """Agenten, mit deren Auftraegen der Aufrufer arbeiten darf. ``None`` = alle.
+
+    * Administrator: alle.
+    * Mensch: eigene, freigegebene und Plattform-Agenten.
+    * Agent: er selbst und die Agenten SEINES Besitzers — nicht mehr. Ein
+      Agenten-Token galt bisher fuer die Auftraege der ganzen Anlage.
+    """
+    if is_agent_principal(user):
+        from app.models.agent import Agent
+        from app.models.agent_access import AgentAccess
+
+        selbst = await db.get(Agent, user.id)
+        besitzer = selbst.user_id if selbst else None
+        ids = {user.id}
+        if besitzer:
+            eigene = await db.execute(
+                select(Agent.id).where((Agent.user_id == besitzer) | (Agent.is_platform_agent.is_(True)))
+            )
+            geteilt = await db.execute(select(AgentAccess.agent_id).where(AgentAccess.user_id == besitzer))
+            ids |= {r[0] for r in eigene.all()} | {r[0] for r in geteilt.all()}
+        # Team-Kollegen zaehlen mit, auch wenn sie einem anderen Nutzer gehoeren:
+        # ein gemischtes Team kann nur ein Administrator anlegen, es ist also
+        # eine bewusste Entscheidung — und ein Lead muss delegieren koennen.
+        from app.models.team import Team
+        teams = (await db.execute(select(Team).where(Team.is_active.is_(True)))).scalars().all()
+        for team in teams:
+            mitglieder = {*(team.member_agent_ids or []), team.lead_agent_id} - {None}
+            if user.id in mitglieder:
+                ids |= mitglieder
+        return ids
+    erlaubt = await _get_user_agent_ids(user, db)
+    return None if erlaubt is None else set(erlaubt)
+
+
+def _pruefe_zielagent(agent_id: str | None, erreichbar: set[str] | None) -> None:
+    """403, wenn der genannte Agent nicht zu denen des Aufrufers gehoert."""
+    if agent_id and erreichbar is not None and agent_id not in erreichbar:
+        raise HTTPException(status_code=403, detail="Dieser Agent gehört nicht zu deinen Agenten.")
+
+
 @router.get("/", response_model=TaskListResponse)
 async def list_tasks(
     status: TaskStatus | None = None,
@@ -103,7 +144,12 @@ async def list_tasks(
     db: AsyncSession = Depends(get_db),
     router_: TaskRouter = Depends(_get_task_router),
 ):
-    agent_ids = await _get_user_agent_ids(user, db) if hasattr(user, "role") else None
+    # Fuer JEDEN Aufrufer, auch Agenten: bisher bekam ein Agenten-Token die
+    # Auftraege aller Nutzer, und ein Mensch mit ``?agent_id=<fremd>`` die eines
+    # fremden Agenten — der Filter auf die eigenen griff nur ohne ``agent_id``.
+    erreichbar = await _erreichbare_agenten(user, db)
+    _pruefe_zielagent(agent_id, erreichbar)
+    agent_ids = None if erreichbar is None else list(erreichbar)
     tasks = await router_.list_tasks(
         status=status,
         agent_id=agent_id,
@@ -130,11 +176,18 @@ async def list_tasks(
     return TaskListResponse(tasks=responses, total=int(total))
 
 
+def _aufrufender_agent(user) -> str | None:
+    """Die Kennung des Agenten, wenn der Aufruf mit einem Agenten-Token kam."""
+    from app.dependencies import AgentPrincipal
+    return user.id if isinstance(user, AgentPrincipal) else None
+
+
 @router.post("/", response_model=TaskResponse, status_code=201)
 async def create_task(
     data: TaskCreate,
     user=Depends(require_auth_or_agent),
     router_: TaskRouter = Depends(_get_task_router),
+    db: AsyncSession = Depends(get_db),
 ):
     from app.models.user import UserRole
     if hasattr(user, "role") and user.role == UserRole.VIEWER:
@@ -148,6 +201,9 @@ async def create_task(
         metadata["original_prompt"] = data.prompt
         prompt = _DRY_RUN_WRAPPER.format(task=data.prompt)
 
+    erreichbar = await _erreichbare_agenten(user, db)
+    _pruefe_zielagent(data.agent_id, erreichbar)
+
     task = await router_.create_and_route_task(
         title=(f"[Vorschau] {data.title}" if data.dry_run else data.title),
         prompt=prompt,
@@ -158,6 +214,8 @@ async def create_task(
         created_by_agent=data.created_by_agent,
         metadata={**metadata, "chat_session_id": data.chat_session_id}
         if data.chat_session_id else (metadata or None),
+        anleger_agent=_aufrufender_agent(user),
+        erlaubte_agenten=erreichbar,
     )
     return TaskResponse.model_validate(task)
 
@@ -167,6 +225,7 @@ async def create_task_batch(
     data: TaskBatchCreate,
     user=Depends(require_auth_or_agent),
     router_: TaskRouter = Depends(_get_task_router),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create multiple tasks in a single call for parallel sub-agent execution.
 
@@ -184,6 +243,11 @@ async def create_task_batch(
     if len(data.tasks) > 20:
         raise HTTPException(status_code=400, detail="Maximum 20 tasks per batch")
 
+    # Erst ALLE Ziele pruefen, dann anlegen: sonst entsteht ein halber Stapel.
+    erreichbar = await _erreichbare_agenten(user, db)
+    for task_data in data.tasks:
+        _pruefe_zielagent(task_data.agent_id, erreichbar)
+
     created = []
     for task_data in data.tasks:
         task = await router_.create_and_route_task(
@@ -196,6 +260,8 @@ async def create_task_batch(
             created_by_agent=data.created_by_agent or task_data.created_by_agent,
             metadata=({"chat_session_id": task_data.chat_session_id}
                       if task_data.chat_session_id else None),
+            anleger_agent=_aufrufender_agent(user),
+            erlaubte_agenten=erreichbar,
         )
         created.append(TaskResponse.model_validate(task))
 
@@ -236,6 +302,7 @@ async def estimate_task_cost(
 
     # If agent specified, get historical average cost
     agent_avg = None
+    _pruefe_zielagent(data.agent_id, await _erreichbare_agenten(user, db))
     if data.agent_id:
         from app.models.agent import Agent
 
@@ -650,8 +717,10 @@ async def get_task_artifacts(
 async def delete_task(
     task_id: str,
     user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
     router_: TaskRouter = Depends(_get_task_router),
 ):
+    await _assert_task_access(task_id, user, db)
     try:
         deleted = await router_.delete_task(task_id)
     except ValueError as e:
@@ -665,8 +734,10 @@ async def delete_task(
 async def cancel_task(
     task_id: str,
     user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
     router_: TaskRouter = Depends(_get_task_router),
 ):
+    await _assert_task_access(task_id, user, db)
     try:
         task = await router_.cancel_task(task_id)
     except ValueError as e:
@@ -683,10 +754,7 @@ async def retain_task(
     user=Depends(require_auth),
 ):
     """Pin a task so the GC never auto-evicts it (UI is viewing it)."""
-    result = await db.execute(select(Task).where(Task.id == task_id))
-    task = result.scalar_one_or_none()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+    task = await _assert_task_access(task_id, user, db)
     task.retain = True
     task.evict_after = None  # Cancel any scheduled eviction
     await db.commit()
@@ -704,10 +772,7 @@ async def release_task(
     from app.core.task_router import TASK_EVICT_GRACE_SECONDS
     from app.models.task import is_terminal_task_status
 
-    result = await db.execute(select(Task).where(Task.id == task_id))
-    task = result.scalar_one_or_none()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+    task = await _assert_task_access(task_id, user, db)
     task.retain = False
     if is_terminal_task_status(task.status) and task.notified:
         task.evict_after = datetime.now(timezone.utc) + timedelta(seconds=TASK_EVICT_GRACE_SECONDS)

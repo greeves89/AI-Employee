@@ -77,16 +77,34 @@ async def _owned_agent(db: AsyncSession, agent_id: str, user) -> Agent:
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
-    if agent.user_id is not None and str(agent.user_id) != str(user.id) and user.role != "admin":
+    # Eigene und freigegebene Agenten; ein Agent ohne Besitzer gehoert den
+    # Administratoren, nicht jedem.
+    from app.core.ownership import visible_agent_ids
+    sichtbar = await visible_agent_ids(user, db)
+    if sichtbar is not None and agent_id not in sichtbar:
         raise HTTPException(status_code=403, detail="Kein Zugriff auf diesen Agenten")
     return agent
 
 
-async def _owned_set(db: AsyncSession, set_id: str, user) -> EvalSet:
+async def _owned_set(db: AsyncSession, set_id: str, user, aendern: bool = False) -> EvalSet:
+    """Die Sammlung, wenn der Aufrufer sie benutzen (oder ``aendern``) darf.
+
+    Sammlungen ohne Besitzer sind die mitgelieferten: jeder darf sie benutzen,
+    aber nur ein Administrator sie aendern oder loeschen — bisher durfte das
+    jeder angemeldete Nutzer.
+    """
+    from app.core.ownership import is_admin
+
     row = (await db.execute(select(EvalSet).where(EvalSet.id == set_id))).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Sammlung nicht gefunden")
-    if row.user_id is not None and str(row.user_id) != str(user.id) and user.role != "admin":
+    if is_admin(user):
+        return row
+    if row.user_id is None:
+        if aendern:
+            raise HTTPException(status_code=403, detail="Mitgelieferte Sammlungen ändert nur ein Administrator.")
+        return row
+    if str(row.user_id) != str(user.id):
         raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Sammlung")
     return row
 
@@ -148,7 +166,7 @@ async def update_set(
     Ohne das wäre ein Vergleich zwischen zwei Läufen wertlos: ein besserer Wert
     könnte auch nur eine leichtere Aufgabe bedeuten.
     """
-    row = await _owned_set(db, set_id, user)
+    row = await _owned_set(db, set_id, user, aendern=True)
     try:
         items = eval_harness.validate_items(body.items)
     except ValueError as e:
@@ -171,7 +189,7 @@ async def delete_set(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    row = await _owned_set(db, set_id, user)
+    row = await _owned_set(db, set_id, user, aendern=True)
     await db.delete(row)
     await db.commit()
     return {"status": "deleted", "id": set_id}

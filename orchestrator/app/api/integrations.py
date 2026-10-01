@@ -42,6 +42,24 @@ async def list_integrations(user=Depends(require_auth), service: OAuthService = 
     )
 
 
+def _geteilte_nur_admin(provider: str, user) -> None:
+    """Verbindungen, die fuer die GANZE Anlage gelten, aendert nur ein Administrator.
+
+    Microsoft, Google und Exchange verbindet jeder Nutzer fuer sich
+    (``PER_USER_PROVIDERS``). Alles andere — etwa GitHub oder der gemeinsame
+    Claude-Zugang — ist eine einzige Verbindung fuer alle: bisher konnte jeder
+    angemeldete Nutzer sie ueberschreiben, erneuern oder trennen.
+    """
+    from app.core.ownership import is_admin
+    from app.models.oauth_integration import PER_USER_PROVIDERS
+
+    if provider not in PER_USER_PROVIDERS and not is_admin(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Diese Verbindung gilt für die ganze Anlage und kann nur von einem Administrator geändert werden.",
+        )
+
+
 @router.get("/{provider}/auth", response_model=AuthUrlResponse)
 async def get_auth_url(
     provider: str,
@@ -54,6 +72,7 @@ async def get_auth_url(
     ``zurueck``: Pfad innerhalb der App, auf den der Callback nach dem Login
     leitet (z. B. der Chat eines Agenten). Nur relative App-Pfade werden
     uebernommen, siehe ``sicherer_ruecksprung``."""
+    _geteilte_nur_admin(provider, user)
     try:
         auth_url = await service.generate_auth_url(provider, user_id=user.id, ruecksprung=zurueck)
         return AuthUrlResponse(auth_url=auth_url, provider=provider)
@@ -98,6 +117,7 @@ async def disconnect_integration(
 ):
     """Disconnect an OAuth integration."""
     from app.models.oauth_integration import PER_USER_PROVIDERS
+    _geteilte_nur_admin(provider, user)
     try:
         uid = user.id if provider in PER_USER_PROVIDERS else None
         await service.disconnect(provider, user_id=uid)
@@ -114,6 +134,7 @@ async def refresh_token(
 ):
     """Manually refresh an OAuth token."""
     from app.models.oauth_integration import PER_USER_PROVIDERS
+    _geteilte_nur_admin(provider, user)
     try:
         uid = user.id if provider in PER_USER_PROVIDERS else None
         await service.get_valid_token(provider, user_id=uid)
@@ -181,6 +202,7 @@ async def exchange_code_manual(
     service: OAuthService = Depends(_get_oauth_service),
 ):
     """Exchange an authorization code for tokens (manual flow - user pastes code)."""
+    _geteilte_nur_admin(provider, user)
     try:
         # Strip URL fragment (everything after #) — user may accidentally copy it
         code = body.code.split("#")[0].strip()
@@ -214,6 +236,7 @@ async def store_pat(
     service: OAuthService = Depends(_get_oauth_service),
 ):
     """Store a Personal Access Token for a provider (e.g., GitHub PAT)."""
+    _geteilte_nur_admin(provider, user)
     try:
         integration = await service.store_pat(provider, body.token, base_url=body.base_url)
         return {

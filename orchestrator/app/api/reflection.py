@@ -14,7 +14,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import require_admin, require_auth
 from app.models.command_approval import ApprovalStatus, CommandApproval
 from app.models.reflection_run import ReflectionRun
 from app.models.user import UserRole
@@ -43,7 +43,7 @@ def _run_to_dict(r: ReflectionRun) -> dict:
 
 
 @router.get("/status")
-async def reflection_status(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+async def reflection_status(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
     """Last run + pending approval count — the dashboard card in one call."""
     from app.services.reflection_service import ReflectionService
     cfg = await ReflectionService()._load_config(db)
@@ -82,7 +82,7 @@ async def reflection_status(user=Depends(require_auth), db: AsyncSession = Depen
 @router.get("/runs")
 async def list_runs(
     limit: int = 20,
-    user=Depends(require_auth),
+    user=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     rows = (await db.execute(

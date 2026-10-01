@@ -16,6 +16,7 @@ import unittest
 
 from app.api import memory as api
 from app.models.agent import Agent, AgentState
+from app.models.agent_access import AgentAccess
 from app.models.memory import AgentMemory, AgentMemoryLink, AgentMemoryTag
 from app.models.user import UserRole
 from sqlalchemy.dialects.postgresql import JSONB
@@ -33,7 +34,8 @@ class TrueCountsBeyondThePageTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (Agent, AgentMemory, AgentMemoryTag, AgentMemoryLink):
+            # AgentAccess: die Zugriffspruefung fragt auch nach freigegebenen Agenten.
+            for model in (Agent, AgentMemory, AgentMemoryTag, AgentMemoryLink, AgentAccess):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.Session() as db:

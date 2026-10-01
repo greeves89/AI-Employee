@@ -533,7 +533,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "devops-engineer",
         "display_name": "DevOps Engineer",
-        "description": "Betreut Server, Container, Auslieferung und Ueberwachung",
+        "description": "Betreut Server, Container, Auslieferung und Überwachung",
         "icon": "Server",
         "category": "ops",
         "model": "claude-sonnet-4-6",
@@ -643,7 +643,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "presentation-designer",
         "display_name": "Presentation Designer",
-        "description": "Baut Foliensaetze: Aufbau, Text und Bilder bis zur fertigen Datei",
+        "description": "Baut Foliensätze: Aufbau, Text und Bilder bis zur fertigen Datei",
         "icon": "Presentation",
         "category": "creative",
         "model": "claude-sonnet-4-6",
@@ -700,7 +700,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "marketing-agent",
         "display_name": "Marketing Agent",
-        "description": "Plant Kampagnen und schreibt Beitraege, Newsletter und Redaktionsplaene",
+        "description": "Plant Kampagnen und schreibt Beiträge, Newsletter und Redaktionspläne",
         "icon": "Megaphone",
         "category": "marketing",
         "model": "claude-sonnet-4-6",
@@ -811,7 +811,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "sales-agent",
         "display_name": "Sales Agent",
-        "description": "Recherchiert Interessenten, schreibt Angebote und haelt die Kundendaten aktuell",
+        "description": "Recherchiert Interessenten, schreibt Angebote und hält die Kundendaten aktuell",
         "icon": "TrendingUp",
         "category": "sales",
         "model": "claude-sonnet-4-6",
@@ -934,7 +934,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "security-auditor",
         "display_name": "Security Auditor",
-        "description": "Prueft Code und Abhaengigkeiten auf Schwachstellen und belegt jeden Fund",
+        "description": "Prüft Code und Abhängigkeiten auf Schwachstellen und belegt jeden Fund",
         "icon": "ShieldAlert",
         "category": "security",
         "model": "claude-sonnet-4-6",
@@ -981,7 +981,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "code-reviewer",
         "display_name": "Code Reviewer",
-        "description": "Prueft Aenderungen vor dem Zusammenfuehren und begruendet jeden Einwand",
+        "description": "Prüft Änderungen vor dem Zusammenführen und begründet jeden Einwand",
         "icon": "GitPullRequest",
         "category": "dev",
         "model": "claude-sonnet-4-6",
@@ -1028,7 +1028,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "qa-tester",
         "display_name": "QA Tester",
-        "description": "Schreibt und faehrt Tests, findet Fehler und beschreibt sie nachvollziehbar",
+        "description": "Schreibt und fährt Tests, findet Fehler und beschreibt sie nachvollziehbar",
         "icon": "TestTube2",
         "category": "dev",
         "model": "claude-sonnet-4-6",
@@ -1080,7 +1080,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "seo-specialist",
         "display_name": "SEO Specialist",
-        "description": "Findet Suchbegriffe, prueft die Technik und macht Seiten auffindbar",
+        "description": "Findet Suchbegriffe, prüft die Technik und macht Seiten auffindbar",
         "icon": "Search",
         "category": "marketing",
         "model": "claude-sonnet-4-6",
@@ -1124,7 +1124,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "social-media-manager",
         "display_name": "Social Media Manager",
-        "description": "Schreibt Beitraege je Kanal, plant den Kalender und wertet die Resonanz aus",
+        "description": "Schreibt Beiträge je Kanal, plant den Kalender und wertet die Resonanz aus",
         "icon": "Share2",
         "category": "marketing",
         "model": "claude-sonnet-4-6",
@@ -1170,7 +1170,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "legal-assistant",
         "display_name": "Legal Assistant",
-        "description": "Liest Vertraege, prueft Datenschutz und markiert, was ein Anwalt sehen muss",
+        "description": "Liest Verträge, prüft Datenschutz und markiert, was ein Anwalt sehen muss",
         "icon": "Scale",
         "category": "general",
         "model": "claude-sonnet-4-6",
@@ -1217,7 +1217,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "recruiter",
         "display_name": "Recruiter",
-        "description": "Schreibt Stellenanzeigen, sichtet Bewerbungen und bereitet Gespraeche vor",
+        "description": "Schreibt Stellenanzeigen, sichtet Bewerbungen und bereitet Gespräche vor",
         "icon": "UserPlus",
         "category": "general",
         "model": "claude-sonnet-4-6",
@@ -1264,7 +1264,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "translator",
         "display_name": "Translator",
-        "description": "Uebersetzt und lokalisiert Texte zwischen DE, EN, FR, ES und weiteren Sprachen",
+        "description": "Übersetzt und lokalisiert Texte zwischen DE, EN, FR, ES und weiteren Sprachen",
         "icon": "Languages",
         "category": "writing",
         "model": "claude-sonnet-4-6",
@@ -1312,7 +1312,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "product-manager",
         "display_name": "Product Manager",
-        "description": "Schreibt Anforderungen, schneidet sie in Aufgaben und setzt Prioritaeten",
+        "description": "Schreibt Anforderungen, schneidet sie in Aufgaben und setzt Prioritäten",
         "icon": "Kanban",
         "category": "management",
         "model": "claude-sonnet-4-6",
@@ -1357,7 +1357,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "database-admin",
         "display_name": "Database Admin",
-        "description": "Entwirft Datenmodelle, beschleunigt Abfragen und fuehrt Schema-Aenderungen sicher aus",
+        "description": "Entwirft Datenmodelle, beschleunigt Abfragen und führt Schema-Änderungen sicher aus",
         "icon": "Database",
         "category": "ops",
         "model": "claude-sonnet-4-6",
@@ -1402,7 +1402,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "ui-designer",
         "display_name": "UI/UX Designer",
-        "description": "Entwirft Oberflaechen: Skizze, Bausteine, Design-System und Barrierefreiheit",
+        "description": "Entwirft Oberflächen: Skizze, Bausteine, Design-System und Barrierefreiheit",
         "icon": "Palette",
         "category": "creative",
         "model": "claude-sonnet-4-6",
@@ -1495,7 +1495,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "content-writer",
         "display_name": "Content Writer",
-        "description": "Schreibt Blogbeitraege, Seitentexte und E-Mail-Strecken in einer Stimme",
+        "description": "Schreibt Blogbeiträge, Seitentexte und E-Mail-Strecken in einer Stimme",
         "icon": "PenTool",
         "category": "writing",
         "model": "claude-sonnet-4-6",
@@ -1541,7 +1541,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "crawler-agent",
         "display_name": "Web Crawler",
-        "description": "Holt Daten von Webseiten, erkennt Aenderungen und baut daraus saubere Datensaetze",
+        "description": "Holt Daten von Webseiten, erkennt Änderungen und baut daraus saubere Datensätze",
         "icon": "Globe",
         "category": "data",
         "model": "claude-sonnet-4-6",
@@ -1587,7 +1587,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "automation-agent",
         "display_name": "Automation Agent",
-        "description": "Automatisiert wiederkehrende Arbeit: Skripte, Zeitplaene, Ueberwachung von Ordnern",
+        "description": "Automatisiert wiederkehrende Arbeit: Skripte, Zeitpläne, Überwachung von Ordnern",
         "icon": "Zap",
         "category": "ops",
         "model": "claude-sonnet-4-6",
@@ -1861,7 +1861,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "bookkeeper",
         "display_name": "Buchhaltung",
-        "description": "Kontiert Belege vor, ordnet Konten zu, prueft Umsatzsteuer und sammelt Rueckfragen",
+        "description": "Kontiert Belege vor, ordnet Konten zu, prüft Umsatzsteuer und sammelt Rückfragen",
         "icon": "Receipt",
         "category": "finance",
         "model": "claude-sonnet-4-6",
@@ -1901,7 +1901,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "payroll-clerk",
         "display_name": "Lohnbuchhaltung",
-        "description": "Bereitet die Lohnabrechnung vor, ueberwacht Fristen und stellt Meldungen zusammen",
+        "description": "Bereitet die Lohnabrechnung vor, überwacht Fristen und stellt Meldungen zusammen",
         "icon": "Users",
         "category": "finance",
         "model": "claude-sonnet-4-6",
@@ -1940,7 +1940,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "quote-clerk",
         "display_name": "Angebot & Kalkulation",
-        "description": "Uebersetzt Aufmasse in Angebote, kalkuliert Positionen und erfasst Nachtraege",
+        "description": "Übersetzt Aufmaße in Angebote, kalkuliert Positionen und erfasst Nachträge",
         "icon": "Calculator",
         "category": "general",
         "model": "claude-sonnet-4-6",
@@ -1977,7 +1977,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "dispatcher",
         "display_name": "Disposition",
-        "description": "Plant Termine und Monteure, buendelt Rueckfragen und informiert Kunden aktiv",
+        "description": "Plant Termine und Monteure, bündelt Rückfragen und informiert Kunden aktiv",
         "icon": "CalendarClock",
         "category": "general",
         "model": "claude-sonnet-4-6",
@@ -2072,7 +2072,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "jura",
         "display_name": "Jura",
-        "description": "Beantwortet Rechtsfragen mit Fundstelle aus dem echten, taeglich aktualisierten Gesetzestext",
+        "description": "Beantwortet Rechtsfragen mit Fundstelle aus dem echten, täglich aktualisierten Gesetzestext",
         "icon": "Gavel",
         "category": "general",
         "model": "claude-sonnet-4-6",

@@ -72,6 +72,14 @@ class ExportAuthzTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ImportTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # Hier geht es um die Mechanik des Imports. Ob die Schritt-Agenten dem
+        # Aufrufer gehoeren, prueft tests/test_nutzertrennung_endpunkte.py.
+        from unittest.mock import AsyncMock, patch
+        p = patch.object(wf_api, "_pruefe_schritt_agenten", AsyncMock())
+        p.start()
+        self.addCleanup(p.stop)
+
     async def test_import_creates_disabled_owned_workflow(self):
         user = MagicMock(id="importer")
         body = wf_api.WorkflowImport(

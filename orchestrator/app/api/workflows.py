@@ -41,6 +41,38 @@ WORKFLOW_EXPORT_FORMAT = "ai-employee-workflow"
 WORKFLOW_EXPORT_VERSION = 1
 
 
+async def _pruefe_schritt_agenten(defn: dict, user, db: AsyncSession, besitzer_id: str | None = None) -> None:
+    """403, wenn ein Schritt einen Agenten nennt, den weder der Aufrufer noch der
+    Besitzer des Workflows benutzen darf.
+
+    Der Schritt-Agent ging bisher ungeprueft an die Auftragserstellung: wer die
+    Kennung eines fremden Agenten kannte, liess ihn ueber einen Workflow
+    arbeiten und las das Ergebnis im Lauf. Der Besitzer zaehlt mit, damit ein
+    geteilter Workflow fuer den, mit dem er geteilt wurde, weiter laeuft.
+    """
+    from app.core.ownership import visible_agent_ids
+    from app.models.user import User
+
+    erlaubt = await visible_agent_ids(user, db)
+    if erlaubt is None:
+        return
+    erlaubt = set(erlaubt)
+    if besitzer_id and besitzer_id != str(user.id):
+        besitzer = await db.get(User, besitzer_id)
+        if besitzer is not None:
+            vom_besitzer = await visible_agent_ids(besitzer, db)
+            if vom_besitzer is None:
+                return
+            erlaubt |= set(vom_besitzer)
+    for sid, step in ((defn or {}).get("steps") or {}).items():
+        agent_id = step.get("agent_id") if isinstance(step, dict) else None
+        if agent_id and agent_id not in erlaubt:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Schritt '{sid}' nennt einen Agenten, der nicht zu deinen Agenten gehört.",
+            )
+
+
 def _cron_shape_valid(expr: str) -> bool:
     return len(expr.split()) == 5
 
@@ -107,7 +139,9 @@ async def _shared_folder_ids(user, db: AsyncSession) -> set[str]:
 
 async def _access_role(wf: Workflow, user, db: AsyncSession) -> str | None:
     """Return 'owner' | 'editor' | 'viewer' | None for this user on a workflow."""
-    if _is_admin(user) or wf.user_id in (None, str(user.id)):
+    # Ein Workflow ohne Besitzer gehoert niemandem ausser den Administratoren —
+    # bisher galt er fuer JEDEN Nutzer als eigener (lesen, starten, loeschen).
+    if _is_admin(user) or (wf.user_id is not None and wf.user_id == str(user.id)):
         return "owner"
     # direct share
     direct = (await db.execute(
@@ -141,7 +175,7 @@ async def _get_wf(workflow_id: str, user, db: AsyncSession, *, edit: bool = Fals
 
 
 def _is_owner(wf: Workflow, user) -> bool:
-    return _is_admin(user) or wf.user_id in (None, str(user.id))
+    return _is_admin(user) or (wf.user_id is not None and wf.user_id == str(user.id))
 
 
 async def _get_wf_owned(workflow_id: str, user, db: AsyncSession) -> Workflow:
@@ -223,7 +257,7 @@ async def list_workflows(user=Depends(require_auth), db: AsyncSession = Depends(
     rows = (await db.execute(select(Workflow).order_by(Workflow.created_at.desc()))).scalars().all()
     out = []
     for w in rows:
-        if w.user_id in (None, uid):
+        if w.user_id is not None and w.user_id == uid:
             out.append(_wf_dict(w, "owner"))
         elif w.id in shared_ids or (w.folder_id and w.folder_id in folder_ids):
             role = await _access_role(w, user, db)
@@ -234,6 +268,7 @@ async def list_workflows(user=Depends(require_auth), db: AsyncSession = Depends(
 @router.post("", status_code=201)
 async def create_workflow(body: WorkflowUpsert, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _validate_definition(body.definition)
+    await _pruefe_schritt_agenten(body.definition, user, db)
     _validate_trigger(body.trigger)
     await _assert_owns_folder(body.folder_id, user, db)
     wf = Workflow(
@@ -271,6 +306,7 @@ async def import_workflow(body: WorkflowImport, user=Depends(require_auth), db: 
     if body.version is not None and body.version > WORKFLOW_EXPORT_VERSION:
         raise HTTPException(status_code=400, detail=f"Format-Version {body.version} wird nicht unterstützt")
     _validate_definition(body.definition)
+    await _pruefe_schritt_agenten(body.definition, user, db)
     _validate_trigger(body.trigger)
     await _assert_owns_folder(body.folder_id, user, db)
     name = (body.name or "").strip() or "Importierter Workflow"
@@ -423,6 +459,7 @@ async def update_workflow(workflow_id: str, body: WorkflowUpsert, user=Depends(r
     _validate_definition(body.definition)
     _validate_trigger(body.trigger)
     wf = await _get_wf(workflow_id, user, db, edit=True)
+    await _pruefe_schritt_agenten(body.definition, user, db, besitzer_id=wf.user_id)
     # Re-parenting into a folder is owner-only and only into a folder you own — an
     # editor must not move a shared workflow (could leak it via a shared folder).
     if body.folder_id != wf.folder_id:
@@ -464,6 +501,9 @@ async def run_workflow(
     wf = await _get_wf(workflow_id, user, db, edit=True)
     if not (wf.definition or {}).get("start"):
         raise HTTPException(status_code=400, detail="Workflow has no start step")
+    # Auch beim Start: eine Definition kann importiert oder vor dieser Pruefung
+    # gespeichert worden sein.
+    await _pruefe_schritt_agenten(wf.definition, user, db, besitzer_id=wf.user_id)
     run = await start_run(wf, db)
     # Advance immediately instead of waiting for the next scheduler tick (up to 30s) —
     # the user clicked "Ausführen" and expects the first step to kick off right away.

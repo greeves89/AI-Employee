@@ -272,6 +272,17 @@ async def update_rule(
         if rule.created_by != str(user.id):
             raise HTTPException(status_code=403, detail="Access denied")
     changes = body.model_dump(exclude_unset=True)
+    # Dieselbe Pruefung wie beim Anlegen: wer seine eigene Regel auf einen
+    # fremden Agenten umhaengt oder das Feld leert, haette sonst eine Regel fuer
+    # fremde oder fuer ALLE Agenten — eine globale Regel ist Administratorsache.
+    if "agent_id" in changes:
+        from app.core.ownership import is_admin, visible_agent_ids
+        if changes["agent_id"]:
+            vids = await visible_agent_ids(user, db)
+            if vids is not None and changes["agent_id"] not in vids:
+                raise HTTPException(status_code=403, detail="Agent gehört dir nicht.")
+        elif not is_admin(user):
+            raise HTTPException(status_code=403, detail="Nur Admins können globale Regeln anlegen.")
     for field, value in changes.items():
         setattr(rule, field, value)
     await db.commit()

@@ -628,7 +628,7 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     },
                     "parent_task_id": {
                         "type": "string",
-                        "description": "Link this as a subtask of a parent task. The parent agent will be notified when this subtask completes.",
+                        "description": "Optional. Normally leave empty: a task created while you work on a task is linked to it automatically. Set it only to attach the task to a different task of yours.",
                     },
                 },
                 "required": ["prompt", "title"],

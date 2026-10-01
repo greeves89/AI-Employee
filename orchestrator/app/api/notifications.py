@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
-from app.dependencies import get_redis_service, require_auth, verify_agent_token
+from app.dependencies import get_redis_service, require_auth, require_auth_or_agent, verify_agent_token
 from app.models.notification import Notification
 from app.services.redis_service import RedisService
 
@@ -429,12 +429,28 @@ async def respond_to_approval(
 @router.get("/{notification_id}/result")
 async def get_approval_result(
     notification_id: int,
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Poll for an approval response (used by agents — no user auth required)."""
+    """Poll for an approval response — nur fuer den Agenten, dem die Anfrage
+    gehoert, oder einen Nutzer, der ihn sehen darf.
+
+    War ohne jede Anmeldung erreichbar: wer fortlaufende Nummern durchprobierte,
+    las die Antworten auf die Freigabe-Anfragen aller Nutzer.
+    """
+    from app.core.ownership import visible_agent_ids
+    from app.dependencies import is_agent_principal
+
     result = await db.execute(select(Notification).where(Notification.id == notification_id))
     notif = result.scalar_one_or_none()
-    if not notif or notif.type != "approval":
+    if notif and is_agent_principal(user):
+        erlaubt = notif.agent_id == user.id
+    elif notif:
+        sichtbar = await visible_agent_ids(user, db)
+        erlaubt = sichtbar is None or notif.agent_id in sichtbar
+    else:
+        erlaubt = False
+    if not notif or notif.type != "approval" or not erlaubt:
         raise HTTPException(status_code=404, detail="Approval not found")
     meta = notif.meta or {}
     return {

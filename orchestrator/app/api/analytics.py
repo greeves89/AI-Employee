@@ -705,6 +705,16 @@ async def self_improvement(
         select(Skill).where(Skill.created_at >= since).order_by(Skill.created_at.desc())
     )).scalars().all()
 
+    # ``vids`` wurde berechnet und nie angewandt: die Antwort nannte sich
+    # „scoped" und lieferte doch die Skills, Erinnerungen und Laeufe aller.
+    def _meins(skill) -> bool:
+        if vids is None or skill.is_public:
+            return True
+        ersteller = skill.created_by or ""
+        return ersteller == f"user:{user.id}" or (ersteller.startswith("agent:") and ersteller[6:] in vids)
+
+    skills = [s for s in skills if _meins(s)]
+
     def _origin(skill) -> str:
         by = (skill.created_by or "").lower()
         if by.startswith("reflection"):
@@ -725,6 +735,7 @@ async def self_improvement(
         ).order_by(Skill.updated_at.desc()).limit(50)
     )).scalars().all()
 
+    improved = [s for s in improved if _meins(s)]
     validated = [s for s in improved
                  if str(getattr(s.status, "value", s.status)) == "validated"]
     rolled_back = [s for s in improved
@@ -734,19 +745,29 @@ async def self_improvement(
     from sqlalchemy import text as sa_text   # wie in den uebrigen Funktionen dieser Datei
     memories = 0
     try:
-        rows = await db.execute(sa_text(
-            "SELECT count(*) FROM agent_memories "
-            "WHERE created_at >= :since AND source = 'reflection' "
-            "AND superseded_by IS NULL"
-        ), {"since": since})
-        memories = int(rows.scalar() or 0)
+        if vids is None:
+            rows = await db.execute(sa_text(
+                "SELECT count(*) FROM agent_memories "
+                "WHERE created_at >= :since AND source = 'reflection' "
+                "AND superseded_by IS NULL"
+            ), {"since": since})
+            memories = int(rows.scalar() or 0)
+        elif vids:
+            from sqlalchemy import bindparam
+            rows = await db.execute(sa_text(
+                "SELECT count(*) FROM agent_memories "
+                "WHERE created_at >= :since AND source = 'reflection' "
+                "AND superseded_by IS NULL AND agent_id IN :agenten"
+            ).bindparams(bindparam("agenten", expanding=True)), {"since": since, "agenten": sorted(vids)})
+            memories = int(rows.scalar() or 0)
     except Exception:  # noqa: BLE001 — ohne Spalte bleibt der Rest aussagekraeftig
         logger.debug("Reflexions-Erinnerungen nicht zaehlbar", exc_info=True)
 
     # --- Naechtliche Laeufe ----------------------------------------------------
     from app.models.reflection_run import ReflectionRun
 
-    runs = (await db.execute(
+    # Die Nachtlaeufe betreffen die ganze Anlage — Administratorsache.
+    runs = [] if vids is not None else (await db.execute(
         select(ReflectionRun).where(ReflectionRun.started_at >= since)
         .order_by(ReflectionRun.started_at.desc()).limit(30)
     )).scalars().all()

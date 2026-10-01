@@ -21,6 +21,8 @@ def _require_admin(user):
 @router.get("/")
 async def list_roles(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """List all custom roles. Visible to all authenticated users."""
+    from app.core.ownership import is_admin
+    ist_admin = is_admin(user)
     rows = (await db.execute(select(CustomRole).order_by(CustomRole.name))).scalars().all()
     return {
         "roles": [
@@ -28,7 +30,9 @@ async def list_roles(user=Depends(require_auth), db: AsyncSession = Depends(get_
                 "id": r.id,
                 "name": r.name,
                 "description": r.description,
-                "permissions": r.permissions or {},
+                # Was eine Rolle freigibt (Secrets, Konten, Mounts), sieht nur,
+                # wer Rollen verwaltet. Alle anderen bekommen Name und Text.
+                "permissions": (r.permissions or {}) if ist_admin else {},
                 "is_system": r.is_system,
             }
             for r in rows

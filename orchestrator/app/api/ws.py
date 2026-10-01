@@ -124,6 +124,43 @@ async def _authenticate_ws(websocket: WebSocket, token: str | None = None, ticke
     return True
 
 
+async def _ws_nutzer(websocket: WebSocket):
+    """Der angemeldete Nutzer dieser Verbindung — oder ``None``."""
+    from app.models.user import User as _User
+
+    uid = getattr(websocket.state, "user_id", None)
+    if not uid or uid == "unknown":
+        return None
+    async with async_session_factory() as db:
+        return await db.get(_User, uid)
+
+
+async def _ws_darf_agent(websocket: WebSocket, agent_id: str) -> bool:
+    """Darf diese Verbindung den Agenten sehen? Schliesst sie sonst mit 4003.
+
+    Die Anmeldung allein genuegt nicht: ohne diese Pruefung konnte jeder
+    angemeldete Nutzer die Protokolle JEDES Agenten mitlesen — Werkzeugaufrufe
+    und Ausgaben fremder Nutzer eingeschlossen.
+    """
+    from app.dependencies import require_agent_access
+    from fastapi import HTTPException as _HTTPException
+
+    try:
+        nutzer = await _ws_nutzer(websocket)
+        if nutzer is None:
+            await websocket.close(code=4001, reason="Unauthorized")
+            return False
+        async with async_session_factory() as db:
+            await require_agent_access(agent_id, nutzer, db)
+        return True
+    except _HTTPException:
+        await websocket.close(code=4003, reason="Access denied to this agent")
+        return False
+    except Exception:  # noqa: BLE001 — im Zweifel zu, nie auf
+        await websocket.close(code=1011, reason="authorization error")
+        return False
+
+
 @router.websocket("/agents/{agent_id}/logs")
 async def ws_agent_logs(websocket: WebSocket, agent_id: str, token: str | None = Query(None), ticket: str | None = Query(None)):
     if not stream_manager:
@@ -131,6 +168,8 @@ async def ws_agent_logs(websocket: WebSocket, agent_id: str, token: str | None =
         return
 
     if not await _authenticate_ws(websocket, token=token, ticket=ticket):
+        return
+    if not await _ws_darf_agent(websocket, agent_id):
         return
 
     try:
@@ -1292,6 +1331,13 @@ async def ws_all_logs(websocket: WebSocket, token: str | None = Query(None), tic
         return
 
     if not await _authenticate_ws(websocket, token=token, ticket=ticket):
+        return
+    # Der Strom ALLER Agenten ist Sache der Administratoren: er traegt die
+    # Protokolle saemtlicher Nutzer der Anlage.
+    from app.core.ownership import is_admin
+    nutzer = await _ws_nutzer(websocket)
+    if nutzer is None or not is_admin(nutzer):
+        await websocket.close(code=4003, reason="Admin only")
         return
 
     try:

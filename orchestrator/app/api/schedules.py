@@ -144,6 +144,11 @@ async def create_schedule(
     if agent_id is None and is_agent_principal(user):
         agent_id = user.id
 
+    # Der Zielagent muss zu denen des Aufrufers gehoeren: sonst liesse sich ein
+    # wiederkehrender Auftrag auf den Agenten eines anderen Nutzers legen.
+    from app.api.tasks import _erreichbare_agenten, _pruefe_zielagent
+    _pruefe_zielagent(agent_id, await _erreichbare_agenten(user, db))
+
     # Zeitzone: was der Agent NICHT angibt, meint seine eigene. Ein Zeitplan
     # „täglich 07:00", der in UTC gerechnet wird, feuert in Berlin um neun — genau
     # so standen im Kalender Namen, die nicht zur Uhrzeit passten.
@@ -208,6 +213,11 @@ async def update_schedule(
 ):
     schedule = await _get_schedule(db, schedule_id)
     await _check_schedule_access(schedule, user, db)
+    # Geprueft wurde bisher nur der ALTE Zeitplan — er liess sich danach auf
+    # einen fremden Agenten umhaengen.
+    if data.agent_id is not None:
+        from app.api.tasks import _erreichbare_agenten, _pruefe_zielagent
+        _pruefe_zielagent(data.agent_id, await _erreichbare_agenten(user, db))
 
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(schedule, field, value)

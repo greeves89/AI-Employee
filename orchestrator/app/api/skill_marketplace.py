@@ -224,6 +224,44 @@ def _version_to_response(v: SkillVersion) -> dict:
 
 # --- User-facing endpoints ---
 
+async def _nur_admin(user) -> None:
+    """Was ALLE Agenten der Anlage betrifft, entscheidet ein Administrator.
+
+    Ein freigegebener Skill wird Agenten nach Rolle und Pfad automatisch
+    mitgegeben — auch denen anderer Nutzer. Freigeben, Ablehnen, Verbesserungen
+    uebernehmen und der Sammel-Import konnte bisher jeder angemeldete Nutzer.
+    """
+    from app.core.ownership import is_admin
+    if not is_admin(user):
+        raise HTTPException(status_code=403, detail="Nur für Administratoren.")
+
+
+async def _darf_skill_aendern(skill_id: int, user, db: AsyncSession) -> None:
+    """403, wenn der Skill weder dem Aufrufer noch einem seiner Agenten gehoert.
+
+    Skills tragen ihren Ersteller in ``created_by``: ``user:<id>`` (seit dieser
+    Pruefung; aeltere tragen nur ``user`` und gehoeren damit den Administratoren)
+    oder ``agent:<id>``. Aendern, Loeschen, Zuruecksetzen und Dateien waren
+    bisher fuer jeden offen — und der Inhalt eines Skills laeuft in den Agenten
+    anderer Nutzer.
+    """
+    from app.core.ownership import is_admin, visible_agent_ids
+    if is_admin(user):
+        return
+    skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    ersteller = skill.created_by or ""
+    if ersteller == f"user:{user.id}":
+        return
+    if ersteller.startswith("agent:"):
+        sichtbar = await visible_agent_ids(user, db)
+        if sichtbar is not None and ersteller[6:] in sichtbar:
+            return
+    raise HTTPException(status_code=403, detail="Diesen Skill kannst du nicht ändern.")
+
+
+
 @router.get("/marketplace")
 async def list_skills(
     category: str | None = Query(None),
@@ -237,6 +275,12 @@ async def list_skills(
 ):
     """List all skills in the marketplace."""
     query = select(Skill)
+    # Nicht-oeffentliche Skills sieht nur, wer sie angelegt hat (oder dessen
+    # Agent) — bisher wurde ``is_public`` gar nicht ausgewertet.
+    from app.core.ownership import is_admin as _ist_admin, visible_agent_ids as _sichtbare
+    if not _ist_admin(user):
+        eigene = [f"user:{user.id}", *[f"agent:{a}" for a in (await _sichtbare(user, db) or set())]]
+        query = query.where(Skill.is_public.is_(True) | Skill.created_by.in_(eigene))
     if category:
         query = query.where(Skill.category == category)
     if status:
@@ -289,6 +333,11 @@ async def get_skill(
         .where(AgentSkillAssignment.skill_id == skill_id)
     )
     agents = [row[0] for row in result]
+    # Nur die eigenen: die Zuweisungen nannten sonst die Agenten aller Nutzer.
+    from app.core.ownership import visible_agent_ids as _sichtbare
+    sichtbar = await _sichtbare(user, db)
+    if sichtbar is not None:
+        agents = [a for a in agents if a in sichtbar]
     return _to_response(skill, assigned_agents=agents)
 
 
@@ -325,7 +374,8 @@ async def create_skill(
         content=body.content,
         category=_normalize_category(body.category),
         status=SkillStatus.ACTIVE,
-        created_by="user",
+        # Mit Nutzerkennung, damit der Ersteller seinen Skill spaeter aendern darf.
+        created_by=f"user:{user.id}" if str(getattr(user, "id", "")) not in ("", "__anonymous__") else "user",
         paths=body.paths,
         roles=body.roles,
         is_public=body.is_public,
@@ -347,6 +397,7 @@ async def update_skill(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a skill. Snapshots the previous version before applying changes."""
+    await _darf_skill_aendern(skill_id, user, db)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -374,6 +425,7 @@ async def delete_skill(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a skill and all its assignments."""
+    await _darf_skill_aendern(skill_id, user, db)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -392,6 +444,7 @@ async def approve_skill(
     db: AsyncSession = Depends(get_db),
 ):
     """Approve a DRAFT skill — makes it active in the marketplace."""
+    await _nur_admin(user)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -408,6 +461,7 @@ async def reject_skill(
     db: AsyncSession = Depends(get_db),
 ):
     """Reject a DRAFT skill — archives it."""
+    await _nur_admin(user)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -424,6 +478,7 @@ async def list_pending_improvements(
     db: AsyncSession = Depends(get_db),
 ):
     """List all skills with an improvement proposal awaiting review."""
+    await _nur_admin(user)
     skills = (await db.execute(
         select(Skill)
         .where(Skill.improvement_status == "pending_review")
@@ -439,6 +494,7 @@ async def approve_improvement(
     db: AsyncSession = Depends(get_db),
 ):
     """Approve a pending improvement proposal — applies it and starts A/B probation."""
+    await _nur_admin(user)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -478,6 +534,7 @@ async def reject_improvement(
     db: AsyncSession = Depends(get_db),
 ):
     """Reject a pending improvement proposal — discards it, skill content unchanged."""
+    await _nur_admin(user)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -543,6 +600,7 @@ async def rollback_skill(
     db: AsyncSession = Depends(get_db),
 ):
     """Rollback a skill to a previous version. Snapshots current content first."""
+    await _darf_skill_aendern(skill_id, user, db)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -1154,6 +1212,7 @@ async def set_skill_manual_duration(
     db: AsyncSession = Depends(get_db),
 ):
     """Set the estimated manual effort for a skill — used for ROI / time-savings analytics."""
+    await _darf_skill_aendern(skill_id, user, db)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -1174,6 +1233,7 @@ async def upload_skill_file(
     db: AsyncSession = Depends(get_db),
 ):
     """Upload a file attachment to a skill."""
+    await _darf_skill_aendern(skill_id, user, db)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -1287,6 +1347,7 @@ async def delete_skill_file(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a skill file attachment."""
+    await _darf_skill_aendern(skill_id, user, db)
     skill_file = (await db.execute(
         select(SkillFile).where(SkillFile.skill_id == skill_id, SkillFile.filename == filename)
     )).scalar_one_or_none()
@@ -1329,6 +1390,7 @@ async def import_skill(
     db: AsyncSession = Depends(get_db),
 ):
     """Import a skill from an external source."""
+    await _nur_admin(user)
     await _gate_skill_or_reject(
         db, skill_name=body.name, agent_id=f"import:{body.source_repo or 'manual'}",
         user_id=str(getattr(user, "id", "unknown")), content=body.content,
@@ -1489,6 +1551,7 @@ async def seed_from_crawler(
     user=Depends(require_auth),
 ):
     """Trigger the skill crawler to import external skills into the DB marketplace."""
+    await _nur_admin(user)
     try:
         from app.dependencies import get_redis_service
         from app.services.skill_crawler import SkillCrawlerService

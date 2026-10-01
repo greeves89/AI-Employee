@@ -34,6 +34,13 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import HTTPException
 
 
+def _admin(**mehr):
+    """Die Mechanik-Tests laufen als Administrator: wer welches Team anfassen
+    darf, prueft tests/test_nutzertrennung_endpunkte.py."""
+    from app.models.user import UserRole
+    return MagicMock(role=UserRole.ADMIN, **mehr)
+
+
 def _exec_returns(value):
     res = MagicMock()
     res.scalar_one_or_none.return_value = value
@@ -45,7 +52,7 @@ def _exec_returns(value):
 async def test_create_team_builds_object():
     from app.api.teams import create_team, CreateTeam
     db = AsyncMock()
-    user = MagicMock(email="me@x.de")
+    user = _admin(email="me@x.de")
     out = await create_team(CreateTeam(name="Dev", member_agent_ids=["a1"]), user=user, db=db)
     assert out["name"] == "Dev"
     assert out["member_agent_ids"] == ["a1"]
@@ -59,7 +66,7 @@ async def test_create_team_rejects_bad_lead():
     from app.api.teams import create_team, CreateTeam
     with pytest.raises(HTTPException) as e:
         await create_team(CreateTeam(name="D", member_agent_ids=["a1"], lead_agent_id="ghost"),
-                          user=MagicMock(email="m"), db=AsyncMock())
+                          user=_admin(email="m"), db=AsyncMock())
     assert e.value.status_code == 400
 
 
@@ -69,7 +76,7 @@ async def test_get_team_404_when_missing():
     db = AsyncMock()
     db.execute.return_value = _exec_returns(None)
     with pytest.raises(HTTPException) as e:
-        await get_team("nope", user=MagicMock(), db=db)
+        await get_team("nope", user=_admin(), db=db)
     assert e.value.status_code == 404
 
 
@@ -84,7 +91,7 @@ async def test_set_lead_rejects_non_member():
     db = AsyncMock()
     db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
     with pytest.raises(HTTPException) as e:
-        await set_lead("t1", SetLead(lead_agent_id="ghost"), user=MagicMock(), db=db)
+        await set_lead("t1", SetLead(lead_agent_id="ghost"), user=_admin(), db=db)
     assert e.value.status_code == 400
 
 
@@ -95,7 +102,7 @@ async def test_set_lead_ok_for_member():
     t = Team(id="t1", name="T", member_agent_ids=["a1", "lead1"], lead_agent_id=None, is_active=True)
     db = AsyncMock()
     db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
-    out = await set_lead("t1", SetLead(lead_agent_id="lead1"), user=MagicMock(), db=db)
+    out = await set_lead("t1", SetLead(lead_agent_id="lead1"), user=_admin(), db=db)
     assert out["lead_agent_id"] == "lead1"
 
 
@@ -106,7 +113,7 @@ async def test_remove_member_clears_lead():
     t = Team(id="t1", name="T", member_agent_ids=["a1", "lead1"], lead_agent_id="lead1", is_active=True)
     db = AsyncMock()
     db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
-    out = await change_members("t1", MembersChange(remove=["lead1"]), user=MagicMock(), db=db)
+    out = await change_members("t1", MembersChange(remove=["lead1"]), user=_admin(), db=db)
     assert "lead1" not in out["member_agent_ids"]
     assert out["lead_agent_id"] is None
 
@@ -123,7 +130,7 @@ async def test_delegate_requires_lead():
     db = AsyncMock(); db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
     with pytest.raises(HTTPException) as e:
         await delegate_to_team("t1", DelegateTask(title="x", prompt="do"),
-                               request=MagicMock(), router_=AsyncMock(), user=MagicMock(), db=db)
+                               request=MagicMock(), router_=AsyncMock(), user=_admin(), db=db)
     assert e.value.status_code == 400
 
 
@@ -144,7 +151,7 @@ async def test_delegate_creates_lead_task_with_roster(monkeypatch):
     async def fake_create(**kw): captured.update(kw); return _Task()
     router_.create_and_route_task = fake_create
     out = await delegate_to_team("t1", DelegateTask(title="build", prompt="do x"),
-                                 request=MagicMock(), router_=router_, user=MagicMock(), db=db)
+                                 request=MagicMock(), router_=router_, user=_admin(), db=db)
     assert out["task_id"] == "task1" and out["lead_agent_id"] == "lead1"
     assert captured["agent_id"] == "lead1"
     assert "Team-Roster" in captured["prompt"] and "do x" in captured["prompt"]

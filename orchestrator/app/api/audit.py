@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
+from app.core.ownership import visible_agent_ids
 from app.dependencies import require_auth, verify_agent_token
 from app.models.audit_log import AuditLog, AuditEventType
 
@@ -120,6 +121,12 @@ async def list_audit_logs(
     """
     base = select(AuditLog)
 
+    # Nur Eintraege der Agenten, die der Aufrufer sehen darf. Eintraege ohne
+    # Agentenbezug ("global", "user") gehoeren damit allein den Administratoren.
+    sichtbar = await visible_agent_ids(user, db)
+    if sichtbar is not None:
+        base = base.where(AuditLog.agent_id.in_(sichtbar))
+
     if agent_id:
         base = base.where(AuditLog.agent_id == agent_id)
     if task_id:
@@ -176,6 +183,9 @@ async def audit_summary(
         .order_by(AuditLog.event_type, AuditLog.outcome)
     )
 
+    sichtbar = await visible_agent_ids(user, db)
+    if sichtbar is not None:
+        stmt = stmt.where(AuditLog.agent_id.in_(sichtbar))
     if agent_id:
         stmt = stmt.where(AuditLog.agent_id == agent_id)
     if since:
@@ -213,6 +223,9 @@ async def get_audit_log(
 ):
     """Retrieve a single audit log entry by ID."""
     entry = await db.get(AuditLog, log_id)
-    if not entry:
+    sichtbar = await visible_agent_ids(user, db)
+    # Dieselbe Antwort fuer „gibt es nicht" und „gehoert dir nicht": sonst liesse
+    # sich ueber die fortlaufende Nummer abzaehlen, was andere Nutzer tun.
+    if not entry or (sichtbar is not None and entry.agent_id not in sichtbar):
         raise HTTPException(status_code=404, detail="Audit log entry not found")
     return entry

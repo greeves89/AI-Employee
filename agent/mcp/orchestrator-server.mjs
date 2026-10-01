@@ -118,6 +118,12 @@ export function buildServer() {
                 "ID of the agent to assign this task to. Leave empty to assign to yourself. " +
                 "Use list_team to find other agents.",
             },
+            parent_task_id: {
+              type: "string",
+              description:
+                "Optional. Normally leave empty: a task created while you work on a task is linked to it automatically. " +
+                "Set it only to attach the task to a different task of yours.",
+            },
           },
           required: ["title", "prompt"],
         },
@@ -1040,6 +1046,7 @@ export function buildServer() {
           priority: args.priority || 5,
           agent_id: targetAgent,
         };
+        if (args.parent_task_id) body.parent_task_id = args.parent_task_id;
         // Track delegation: if creating task for another agent, record who delegated
         if (targetAgent !== AGENT_ID) {
           body.created_by_agent = AGENT_ID;

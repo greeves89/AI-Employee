@@ -31,12 +31,18 @@ class LoadBalancer:
         self.redis = redis
 
     async def select_agent(
-        self, priority: int = 1, required_capability: str | None = None
+        self, priority: int = 1, required_capability: str | None = None,
+        kandidaten: set[str] | None = None,
     ) -> str | None:
+        """``kandidaten`` begrenzt die Auswahl auf die Agenten, die der
+        Auftraggeber benutzen darf. ``None`` = keine Grenze (Administrator,
+        interne Wege). Ohne diese Grenze landete ein Auftrag ohne Zielagent bei
+        irgendeinem Agenten der Anlage — auch dem eines anderen Nutzers."""
         metrics = await self._collect_metrics()
         available = [
             m for m in metrics
             if m.healthy and m.state not in ("stopped", "error", "unknown")
+            and (kandidaten is None or m.agent_id in kandidaten)
         ]
 
         if not available:

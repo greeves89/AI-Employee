@@ -216,11 +216,14 @@ async def _auth_agent(agent_id: str, request: Request, db: AsyncSession) -> Agen
     if not agent.webhook_enabled:
         raise HTTPException(status_code=403, detail="MCP access is not enabled for this agent. Enable via Settings → Externer Zugriff.")
 
-    if agent.webhook_token:
-        auth_header = request.headers.get("Authorization", "")
-        provided = auth_header.removeprefix("Bearer ").strip()
-        if not provided or not hmac.compare_digest(provided, agent.webhook_token):
-            raise HTTPException(status_code=401, detail="Invalid or missing Bearer token")
+    # Ohne hinterlegten Token gibt es keinen Zugang. Bisher wurde die Pruefung
+    # dann einfach uebersprungen: eingeschaltet, aber Token leer hiess offen.
+    if not agent.webhook_token:
+        raise HTTPException(status_code=403, detail="MCP access has no token configured. Rotate the token in Settings → Externer Zugriff.")
+    auth_header = request.headers.get("Authorization", "")
+    provided = auth_header.removeprefix("Bearer ").strip()
+    if not provided or not hmac.compare_digest(provided, agent.webhook_token):
+        raise HTTPException(status_code=401, detail="Invalid or missing Bearer token")
 
     return agent
 

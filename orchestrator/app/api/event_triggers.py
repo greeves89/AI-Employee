@@ -122,6 +122,21 @@ async def get_trigger(
     return _to_response(trigger)
 
 
+async def _pruefe_workflow(workflow_id: str | None, besitzer_id: str | None, ist_admin: bool, db: AsyncSession) -> None:
+    """403, wenn der Ausloeser einen Workflow starten soll, der dem Aufrufer nicht gehoert.
+
+    Die Kennung wurde bisher ungeprueft uebernommen: ein eigener Ausloeser konnte
+    den Workflow eines anderen Nutzers starten.
+    """
+    if not workflow_id or ist_admin:
+        return
+    from app.models.workflow import Workflow
+
+    wf = await db.get(Workflow, workflow_id)
+    if wf is None or wf.user_id is None or str(wf.user_id) != str(besitzer_id or ""):
+        raise HTTPException(status_code=403, detail="Dieser Workflow gehört dir nicht.")
+
+
 @router.post("", status_code=201)
 async def create_trigger(
     body: EventTriggerCreate,
@@ -133,6 +148,7 @@ async def create_trigger(
     vids = await visible_agent_ids(user, db)
     if vids is not None and body.agent_id not in vids:
         raise HTTPException(status_code=403, detail="Agent gehört dir nicht.")
+    await _pruefe_workflow(body.workflow_id, str(user.id), vids is None, db)
     trigger = EventTrigger(
         name=body.name,
         agent_id=body.agent_id,
@@ -165,7 +181,15 @@ async def update_trigger(
         raise HTTPException(status_code=404, detail="Event trigger not found")
     await _guard_trigger(trigger, user, db)
 
-    for field, value in body.model_dump(exclude_unset=True).items():
+    aenderungen = body.model_dump(exclude_unset=True)
+    # Auch die NEUEN Werte pruefen, nicht nur den alten Ausloeser.
+    from app.core.ownership import visible_agent_ids
+    vids = await visible_agent_ids(user, db)
+    if aenderungen.get("agent_id") and vids is not None and aenderungen["agent_id"] not in vids:
+        raise HTTPException(status_code=403, detail="Agent gehört dir nicht.")
+    await _pruefe_workflow(aenderungen.get("workflow_id"), str(user.id), vids is None, db)
+
+    for field, value in aenderungen.items():
         setattr(trigger, field, value)
 
     await db.commit()
@@ -232,6 +256,10 @@ async def create_trigger_for_agent(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a trigger for this agent (HMAC auth). agent_id is forced to caller's ID."""
+    if body.workflow_id:
+        from app.models.agent import Agent
+        selbst = await db.get(Agent, agent_info["agent_id"])
+        await _pruefe_workflow(body.workflow_id, selbst.user_id if selbst else None, False, db)
     trigger = EventTrigger(
         name=body.name,
         agent_id=agent_info["agent_id"],

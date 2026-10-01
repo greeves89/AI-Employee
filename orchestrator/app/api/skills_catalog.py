@@ -5,18 +5,28 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.dependencies import require_admin, require_auth
 from app.models.skill import Skill, SkillStatus
 
 router = APIRouter(prefix="/skills", tags=["skills-catalog"])
 
 
 @router.get("/catalog")
-async def get_skill_catalog(request: Request, db: AsyncSession = Depends(get_db)):
-    """Return merged catalog: crawled GitHub skills + DB marketplace skills."""
+async def get_skill_catalog(request: Request, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Return merged catalog: crawled GitHub skills + DB marketplace skills.
+
+    Nur fuer angemeldete Nutzer — der Katalog lieferte bisher OHNE Anmeldung den
+    vollen Inhalt jedes Skills der Anlage, auch der nicht-oeffentlichen und der
+    von Agenten gelernten.
+    """
+    from app.core.ownership import is_admin, visible_agent_ids
+
     # 1. DB marketplace skills (agent-created + user-created, always available)
-    db_result = await db.execute(
-        select(Skill).where(Skill.status == SkillStatus.ACTIVE)
-    )
+    abfrage = select(Skill).where(Skill.status == SkillStatus.ACTIVE)
+    if not is_admin(user):
+        eigene = [f"user:{user.id}", *[f"agent:{a}" for a in (await visible_agent_ids(user, db) or set())]]
+        abfrage = abfrage.where(Skill.is_public.is_(True) | Skill.created_by.in_(eigene))
+    db_result = await db.execute(abfrage)
     db_skills = db_result.scalars().all()
     db_entries = [
         {
@@ -64,7 +74,7 @@ async def get_skill_catalog(request: Request, db: AsyncSession = Depends(get_db)
 
 
 @router.post("/catalog/refresh")
-async def refresh_skill_catalog(request: Request):
+async def refresh_skill_catalog(request: Request, user=Depends(require_admin)):
     """Force a re-crawl of all skill repos."""
     crawler = getattr(request.app.state, "skill_crawler", None)
     if not crawler:

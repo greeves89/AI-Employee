@@ -78,9 +78,26 @@ async def _require_team_access(team: Team, user, db: AsyncSession) -> None:
         raise HTTPException(status_code=403, detail="Not a member of this team")
 
 
+async def _nur_eigene_agenten(agent_ids, user, db: AsyncSession) -> None:
+    """403, wenn ein Nicht-Administrator fremde Agenten in ein Team setzen will.
+
+    Ein Team oeffnet seinen Mitgliedern die Auftraege aller Mitglieder und laesst
+    den Lead fuer sie arbeiten. Wer einen fremden Agenten neben den eigenen in
+    ein Team setzen durfte, kam so an dessen Auftraege und konnte ihm Arbeit
+    geben. Gemischte Teams legt deshalb nur ein Administrator an.
+    """
+    erlaubt = await _get_user_agent_ids(user, db)
+    if erlaubt is None:
+        return
+    fremd = {a for a in (agent_ids or []) if a} - set(erlaubt)
+    if fremd:
+        raise HTTPException(status_code=403, detail="Ein Team darf nur deine eigenen Agenten enthalten.")
+
+
 @router.post("/", status_code=201)
 async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     _validate_lead(body.member_agent_ids, body.lead_agent_id)
+    await _nur_eigene_agenten([*(body.member_agent_ids or []), body.lead_agent_id], user, db)
     team = Team(
         id=uuid.uuid4().hex[:32], name=body.name, description=body.description,
         member_agent_ids=body.member_agent_ids, lead_agent_id=body.lead_agent_id,
@@ -97,10 +114,10 @@ async def list_teams(user=Depends(require_auth_or_agent), db: AsyncSession = Dep
     rows = (await db.execute(select(Team).where(Team.is_active == True))).scalars().all()  # noqa: E712
     # Agent principals only enumerate teams they're actually part of (this is
     # also all the list_team_tasks MCP tool needs: scanning for "my own team").
-    # Human-facing listing keeps its existing (pre-existing, unrestricted)
-    # behavior — narrowing that is a separate, bigger change out of scope here.
-    if is_agent_principal(user):
-        rows = [t for t in rows if await _is_team_member(t, user, db)]
+    # Menschen ebenso: die Liste nannte bisher JEDES Team der Anlage samt den
+    # Kennungen seiner Mitglieder. Administratoren sehen weiter alle
+    # (_is_team_member laesst sie durch).
+    rows = [t for t in rows if await _is_team_member(t, user, db)]
     return {"teams": [_serialize(t) for t in rows]}
 
 
@@ -169,9 +186,8 @@ async def list_my_teams(user=Depends(require_auth_or_agent), db: AsyncSession = 
 @router.get("/{team_id}")
 async def get_team(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)
-    # Same scoping as list_teams: agents may only look up teams they're in.
-    if is_agent_principal(user):
-        await _require_team_access(t, user, db)
+    # Same scoping as list_teams: only teams the caller is part of.
+    await _require_team_access(t, user, db)
     return _serialize(t)
 
 
@@ -217,6 +233,8 @@ async def list_team_tasks(
 @router.patch("/{team_id}")
 async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)
+    await _require_team_access(t, user, db)
+    await _nur_eigene_agenten([*(body.member_agent_ids or []), body.lead_agent_id], user, db)
     if body.name is not None: t.name = body.name
     if body.description is not None: t.description = body.description
     if body.member_agent_ids is not None: t.member_agent_ids = body.member_agent_ids
@@ -229,6 +247,7 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
 @router.delete("/{team_id}")
 async def delete_team(team_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)
+    await _require_team_access(t, user, db)
     t.is_active = False
     await db.commit()
     return {"status": "deleted", "id": team_id}
@@ -246,6 +265,8 @@ class SetLead(BaseModel):
 @router.post("/{team_id}/members")
 async def change_members(team_id: str, body: MembersChange, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)
+    await _require_team_access(t, user, db)
+    await _nur_eigene_agenten(body.add, user, db)
     members = list(t.member_agent_ids or [])
     for a in body.add:
         if a not in members:
@@ -262,6 +283,8 @@ async def change_members(team_id: str, body: MembersChange, user=Depends(require
 @router.patch("/{team_id}/lead")
 async def set_lead(team_id: str, body: SetLead, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)
+    await _require_team_access(t, user, db)
+    await _nur_eigene_agenten([body.lead_agent_id], user, db)
     _validate_lead(t.member_agent_ids, body.lead_agent_id)
     t.lead_agent_id = body.lead_agent_id
     await db.commit()
@@ -334,6 +357,7 @@ async def delegate_to_team(team_id: str, body: DelegateTask, request: Request,
                            router_: TaskRouter = Depends(_get_task_router),
                            user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)
+    await _require_team_access(t, user, db)
     if not t.lead_agent_id:
         raise HTTPException(status_code=400, detail="assign a lead first")
     if not (t.member_agent_ids or []):

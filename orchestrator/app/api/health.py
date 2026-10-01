@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.dependencies import require_auth
+from app.dependencies import require_admin, require_auth
 from app.models.agent import Agent
 from app.models.task import Task, TaskStatus
 from app.models.task_rating import TaskRating
@@ -100,7 +100,8 @@ async def get_test_run(
 
 @router.post("/test-runs/trigger", response_model=TestRunResponse)
 async def trigger_test_run(
-    user=Depends(require_auth),
+    # Ein Testlauf belastet die Anlage und kann Issues anlegen — Administratorsache.
+    user=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Manually trigger a test run (async — returns immediately with running status)."""
@@ -199,8 +200,16 @@ async def get_health_dashboard(
         overall_status = "critical"
 
     # --- Agent ratings ---
+    # Nur die Agenten des Aufrufers — wie bei /auto-metrics. Der Zustand der
+    # Plattform (Testlaeufe) bleibt fuer alle sichtbar, er nennt keine Nutzerdaten.
+    from app.core.ownership import visible_agent_ids
+
+    sichtbar = await visible_agent_ids(user, db)
     agent_ratings_list = []
-    agents_result = await db.execute(select(Agent))
+    agents_stmt = select(Agent)
+    if sichtbar is not None:
+        agents_stmt = agents_stmt.where(Agent.id.in_(sichtbar))
+    agents_result = await db.execute(agents_stmt)
     agents = list(agents_result.scalars().all())
     for agent in agents:
         config = agent.config or {}
@@ -219,12 +228,13 @@ async def get_health_dashboard(
 
     # --- Cost & task summary (7 days) ---
     seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    cost_result = await db.execute(
-        select(
-            func.sum(Task.cost_usd),
-            func.count(Task.id),
-        ).where(Task.completed_at >= seven_days_ago)
-    )
+    cost_stmt = select(
+        func.sum(Task.cost_usd),
+        func.count(Task.id),
+    ).where(Task.completed_at >= seven_days_ago)
+    if sichtbar is not None:
+        cost_stmt = cost_stmt.where(Task.agent_id.in_(sichtbar))
+    cost_result = await db.execute(cost_stmt)
     cost_row = cost_result.one()
     total_cost_7d = round(float(cost_row[0]), 4) if cost_row[0] else None
     total_tasks_7d = cost_row[1] or 0
@@ -264,7 +274,17 @@ async def get_auto_metrics(
     """
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    agents_result = await db.execute(select(Agent))
+    # Nur die Agenten, die der Aufrufer sehen darf. Bis 1.350.1 lud diese Stelle
+    # ALLE Agenten der Anlage — jeder angemeldete Nutzer bekam Namen, Kosten und
+    # Fehlertexte fremder Agenten. ``None`` heisst Administrator (kein Filter);
+    # eine leere Menge heisst „nichts", nie „alles".
+    from app.core.ownership import visible_agent_ids
+
+    agents_stmt = select(Agent)
+    sichtbar = await visible_agent_ids(user, db)
+    if sichtbar is not None:
+        agents_stmt = agents_stmt.where(Agent.id.in_(sichtbar))
+    agents_result = await db.execute(agents_stmt)
     agents = list(agents_result.scalars().all())
 
     agent_metrics = []

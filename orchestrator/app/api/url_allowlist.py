@@ -33,7 +33,9 @@ async def _assert_template_owned(template, user, db) -> None:
     from app.core.ownership import is_admin
     if is_admin(user):
         return
-    if template.created_by and template.created_by != str(getattr(user, "id", "")):
+    # Vorlagen ohne Ersteller sind die mitgelieferten — sie aendert nur ein
+    # Administrator. Bisher liess genau das fehlende Feld jeden durch.
+    if not template.created_by or template.created_by != str(getattr(user, "id", "")):
         raise HTTPException(status_code=404, detail="Template not found")
 from app.models.url_allowlist import (
     AgentUrlAllowlist,
@@ -236,7 +238,7 @@ def _agent_entry_to_dict(e: AgentUrlAllowlist) -> dict:
 # ── Template CRUD ────────────────────────────────────────────────────────────
 
 @router.get("/templates")
-async def list_templates(db: AsyncSession = Depends(get_db)):
+async def list_templates(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """List all URL allowlist templates."""
     result = await db.execute(
         select(UrlAllowlistTemplate).order_by(UrlAllowlistTemplate.name)
@@ -509,13 +511,18 @@ async def clear_agent_allowlist(
 async def check_url(
     agent_id: str,
     body: CheckUrlRequest,
+    user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Check if a URL is allowed for an agent. No auth required (agents call this).
+    """Check if a URL is allowed for an agent — fuer den Agenten selbst oder
+    einen Nutzer, der ihn sehen darf. War ohne Anmeldung erreichbar und verriet
+    die Freigaberegeln jedes Agenten.
 
     Returns {"allowed": true/false, "reason": "..."}.
     If the agent has no allowlist entries, all URLs are allowed (fail-open).
     """
+    await _assert_agent_owned(agent_id, user, db)
+
     from app.core.permissions import get_effective_permissions
     from app.models.agent import Agent
     from app.models.user import User

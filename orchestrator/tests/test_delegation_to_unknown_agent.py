@@ -170,6 +170,9 @@ def _team(*mitglieder):
 def _router(db):
     r = TaskRouter.__new__(TaskRouter)
     r.db = db
+    # Der echte Router hat immer eine Redis-Anbindung; ohne laufenden Auftrag im
+    # Status leitet er keinen Eltern-Auftrag ab (#880).
+    r.redis = None
     return r
 
 

@@ -5,6 +5,52 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.351.0] - 2026-10-01
+
+### Sicherheit
+- **Zugriffsprüfungen an den Endpunkten vervollständigt.** Eine Durchsicht aller
+  API-Router fand Stellen, an denen ein angemeldeter Nutzer Daten sehen oder
+  ändern konnte, die nicht zu seinen Agenten gehören. Behoben:
+  - Protokoll-Streams, Audit-Log, Kennzahlen (`/health/auto-metrics`,
+    `/health/dashboard`) und die Auswertung zur Selbstverbesserung zeigen nur
+    noch die eigenen Agenten.
+  - Aufträge, Zeitpläne, Workflows, Ereignis-Auslöser und Freigaberegeln lassen
+    sich nicht mehr auf fremde Agenten richten; Aufträge fremder Agenten lassen
+    sich nicht mehr auflisten, löschen oder abbrechen. Ein Auftrag ohne
+    Zielagent landet nur noch bei einem eigenen Agenten.
+  - Ein Team darf für Nicht-Administratoren nur eigene Agenten enthalten;
+    Ändern, Löschen und Delegieren setzen die Zugehörigkeit zum Team voraus.
+  - Agenten-Token gelten für die Agenten des Besitzers und die Team-Kollegen,
+    nicht mehr für die Aufträge der ganzen Anlage.
+  - Skills: Ändern, Löschen, Zurücksetzen und Dateien nur durch den Ersteller
+    oder einen Administrator; Freigeben, Ablehnen, Verbesserungen übernehmen
+    und Sammel-Import nur durch Administratoren. Nicht-öffentliche Skills sieht
+    nur ihr Ersteller.
+  - Verbindungen, die für die ganze Anlage gelten (zum Beispiel GitHub), ändert
+    nur ein Administrator. Verbindungen je Nutzer (Microsoft, Google) bleiben
+    unverändert.
+  - Vier Endpunkte waren ohne Anmeldung erreichbar (Skill-Katalog samt
+    Neu-Einlesen, URL-Vorlagen, URL-Prüfung, Antwort auf eine Freigabe); sie
+    verlangen jetzt eine Anmeldung. Der externe MCP-Zugang eines Agenten ist
+    ohne hinterlegten Token geschlossen statt offen.
+  - Agenten, Testsammlungen, Workflows und URL-Vorlagen **ohne Besitzer**
+    gehören den Administratoren, nicht mehr jedem.
+- **Was sich für Mitglieder ändert:** Skill-Entwürfe gibt ein Administrator
+  frei; GitHub und der gemeinsame Modellzugang lassen sich nur noch vom
+  Administrator verbinden oder trennen; Nachtlauf-Status und Rollenrechte sind
+  Administratoren vorbehalten.
+
+### Behoben
+- **Delegierte Aufträge tragen ihren Eltern-Auftrag** (#880). Kein Werkzeug hat
+  `parent_task_id` je gesetzt: bei Claude Code fehlte der Parameter, bei Codex
+  und Custom-LLM wurde er angeboten und verworfen. Der Server leitet den
+  Eltern-Auftrag jetzt aus dem laufenden Auftrag des Agenten ab — für alle
+  Laufzeiten gleich — und weist eine Angabe auf einen fremden Auftrag ab. Der
+  Auftraggeber bekommt weiterhin genau eine Rückmeldung.
+- **Vorlagen in echter Schreibweise:** Namen und Beschreibungen der
+  mitgelieferten Vorlagen standen in Ersatzschreibweise („Foliensaetze",
+  „Prueft Aenderungen").
+
 ## [1.350.1] - 2026-10-01
 
 ### Geändert
