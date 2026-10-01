@@ -3409,8 +3409,18 @@ class RealtimeVoiceSession:
         query = (query or "").strip()
         if not query:
             return "Keine Suchanfrage erkannt."
+        from app.core.search_access import NEWS, agent_may_use_index
+        from app.core.web_search import web_search_uses_news_index
+
         async with async_session_factory() as db:
-            results = await web_search_with_settings(query, max_results, db)
+            # Dieselbe Freigabe wie /agent-search/news — sonst waere der
+            # Nachrichtenindex (brave_news) ueber die Sprache erreichbar,
+            # obwohl er dem Besitzer gesperrt ist (Review zu #812, K2).
+            allow_news = await web_search_uses_news_index(db) and await agent_may_use_index(
+                getattr(self, "agent_id", "") or "", NEWS, db)
+            results = await web_search_with_settings(
+                query, max_results, db, allow_news=allow_news,
+            )
         if not results:
             return f"Zu „{query}“ habe ich im Web nichts gefunden."
         # Surface the results to the Jarvis UI too (cards/links), not just to voice.

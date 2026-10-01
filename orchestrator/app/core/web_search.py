@@ -221,15 +221,89 @@ async def _search_serp(query: str, max_results: int, api_key: str) -> list[dict]
     ]
 
 
-async def web_search_with_settings(query: str, max_results: int, db) -> list[dict]:
+#: Provider, deren gemeinsamer ``web_search_api_key`` ein Brave-Schluessel ist.
+#: Nur dann darf er an ``api.search.brave.com`` gehen.
+BRAVE_PROVIDERS = ("brave", "brave_news")
+
+
+async def brave_news_key(svc) -> str | None:
+    """Der Schluessel fuer den Brave-Nachrichtenindex — oder None.
+
+    ``web_search_api_key`` ist EIN Feld fuer den jeweils eingestellten Provider
+    (Brave ODER SerpApi, siehe ``schemas/settings.py``). Ist SerpApi
+    eingestellt, ist es ein SerpApi-Schluessel; ihn an Brave zu schicken hiesse,
+    ein Zugangsdatum an einen fremden Dienst zu geben (Review zu #812, K1).
+    Deshalb gibt es den Nachrichtenindex nur, wenn ein Brave-Provider
+    eingestellt ist. ``/capabilities`` nutzt dieselbe Aufloesung.
+    """
+    provider = ((await svc.get("web_search_provider")) or "duckduckgo").strip().lower()
+    if provider not in BRAVE_PROVIDERS:
+        return None
+    return (await svc.get("web_search_api_key")) or None
+
+
+async def web_search_uses_news_index(db) -> bool:
+    """Trifft die allgemeine Websuche gerade den Nachrichtenindex (``brave_news``)?
+
+    Nur dann muessen Aufrufer die Index-Freigabe pruefen — so kostet die
+    normale Websuche keine zusaetzliche Datenbankabfrage.
+    """
+    from app.services.settings_service import SettingsService
+
+    provider = (await SettingsService(db).get("web_search_provider")) or ""
+    return provider.strip().lower() == "brave_news"
+
+
+async def news_search_with_settings(query: str, max_results: int, db) -> list[dict]:
+    """Nachrichtensuche — ein eigener Weg neben der Websuche.
+
+    Die Websuche und der Nachrichtenindex sind zwei verschiedene Dinge, keine
+    Alternative zueinander: Der Nachrichtenindex liefert ausschliesslich
+    Meldungen (mit Datum und Herausgeber), die Websuche auch Dokumentation und
+    Nachschlagewerke. Ein Agent braucht je nach Aufgabe das eine oder das
+    andere — deshalb zwei Wege statt eines Schalters.
+
+    Schluessel und Aktualitaet kommen aus den PlatformSettings; der Admin
+    richtet das ein, der Nutzer konfiguriert nichts. Ohne Brave-Provider mit
+    Schluessel (``brave_news_key``) gibt es keinen Nachrichtenindex — dann
+    bleibt die Liste leer, damit der Aufrufer nicht stillschweigend
+    Web-Treffer fuer Meldungen haelt, und kein fremder Schluessel geht raus.
+    """
+    from app.services.settings_service import SettingsService
+
+    svc = SettingsService(db)
+    api_key = await brave_news_key(svc)
+    if not api_key:
+        logger.warning("Nachrichtensuche ohne Brave-Provider/-Schluessel angefragt — keine Treffer")
+        return []
+    freshness = await svc.get("web_search_freshness")
+    query = (query or "").strip()
+    if not query:
+        return []
+    max_results = max(1, min(int(max_results or 5), 10))
+    return await _search_brave_news(query, max_results, api_key, freshness)
+
+
+async def web_search_with_settings(
+    query: str, max_results: int, db, *, allow_news: bool = False,
+) -> list[dict]:
     """Wie ``web_search``, liest Provider + Key aber selbst aus den
     PlatformSettings — der bequeme Weg fuer Aufrufer, die schon eine
-    DB-Sitzung haben (Sprachfront, der neue HTTP-Endpunkt fuer den
-    Agent-Container)."""
+    DB-Sitzung haben (Sprachfront, der HTTP-Endpunkt fuer den Agent-Container).
+
+    ``allow_news``: Ist ``brave_news`` eingestellt, trifft die Websuche den
+    Nachrichtenindex. Den darf aber nicht jeder (``search_indexes``). Ohne
+    Freigabe sucht sie deshalb mit demselben Brave-Schluessel im Webindex —
+    sonst waere die Sperre von ``/agent-search/news`` ueber die Websuche
+    umgehbar (Review zu #812, K2). Standard ist ``False``: Wer die Freigabe
+    nicht prueft, bekommt den Nachrichtenindex nicht.
+    """
     from app.services.settings_service import SettingsService
 
     svc = SettingsService(db)
     provider = (await svc.get("web_search_provider")) or "duckduckgo"
+    if provider.strip().lower() == "brave_news" and not allow_news:
+        provider = "brave"
     api_key = await svc.get("web_search_api_key")
     freshness = await svc.get("web_search_freshness")
     return await web_search(

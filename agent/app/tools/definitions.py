@@ -312,13 +312,40 @@ LOCAL_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "web_search",
-            "description": "Search the web for information. Use this when you need current data (weather, news, prices, facts) or don't know which URL to visit. Returns top search results with titles, URLs, and snippets.",
+            "description": "Search the web for information — documentation, reference material, background, facts. Returns top results with titles, URLs, and snippets. For current events with a publication date, use news_search instead when you have it.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
                         "description": "Search query (e.g. 'weather Berlin today', 'Python FastAPI tutorial', 'latest AI news')",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Number of results to return (default: 5, max: 10)",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "news_search",
+            "description": (
+                "Search the news index for current events. Results carry a publication "
+                "date and publisher, so you can tell today's report from a two-year-old "
+                "article. Use this when recency matters — for documentation or reference "
+                "material use web_search instead."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (e.g. 'ECB rate decision', 'central bank gold reserves')",
                     },
                     "max_results": {
                         "type": "integer",
