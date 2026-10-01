@@ -569,6 +569,27 @@ async def _assert_task_access(task_id: str, user, db: AsyncSession) -> Task:
     return task
 
 
+@router.get("/{task_id}/zielkette")
+async def get_zielkette(
+    task_id: str,
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Wozu ein Auftrag dient: die Kette vom Ausgangsauftrag bis zu ihm (#881).
+
+    Nur fuer Auftraege der eigenen Agenten — auch fuer ein Agenten-Token.
+    """
+    from app.core.zielkette import als_text, team_zweck, zielkette
+
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    erreichbar = await _erreichbare_agenten(user, db)
+    if not task or (erreichbar is not None and task.agent_id not in erreichbar):
+        raise HTTPException(status_code=404, detail="Task not found")
+    kette = await zielkette(db, task)
+    zweck = await team_zweck(db, task)
+    return {"task_id": task_id, "kette": kette, "team": zweck, "text": als_text(kette, zweck)}
+
+
 @router.get("/{task_id}/trace")
 async def get_task_trace(
     task_id: str,

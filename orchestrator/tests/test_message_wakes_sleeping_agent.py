@@ -20,6 +20,20 @@ from types import SimpleNamespace
 
 from app.core import agent_wakeup
 
+# Wer wem schreiben darf, prueft tests/test_agenten_nachricht_kontext.py. Hier
+# sind Absender und Empfaenger Kollegen.
+from unittest.mock import AsyncMock, patch
+
+_KOLLEGEN = patch("app.api.tasks._erreichbare_agenten", AsyncMock(return_value={"lead", "a2"}))
+
+
+def setUpModule():
+    _KOLLEGEN.start()
+
+
+def tearDownModule():
+    _KOLLEGEN.stop()
+
 
 class _Docker:
     """Ein Container, der nach dem Start WIRKLICH laeuft (``after_start``) —
@@ -209,7 +223,7 @@ class OrderOfOperationsTests(unittest.IsolatedAsyncioTestCase):
                 agent_id="a2",
                 body=SimpleNamespace(text="Hallo Welt", from_agent_id="lead",
                                      from_name="Lead", message_type="message",
-                                     reply_to=None),
+                                     reply_to=None, anlass=None, auswirkung=None),
                 # Agenten-Token: der Besitzer-Check entfaellt, wie bei jeder
                 # Nachricht zwischen zwei Agenten.
                 user=SimpleNamespace(id="lead", principal_type="agent"),
@@ -280,7 +294,7 @@ class HonestDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 agent_id="a2",
                 body=SimpleNamespace(text="Hallo Welt", from_agent_id="lead",
                                      from_name="Lead", message_type="message",
-                                     reply_to=None),
+                                     reply_to=None, anlass=None, auswirkung=None),
                 user=SimpleNamespace(id="lead", principal_type="agent"),
                 db=_Db(),
                 manager=_Mgr(),

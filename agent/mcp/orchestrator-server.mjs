@@ -338,6 +338,16 @@ export function buildServer() {
                 "message_id of a previous message you are replying to. " +
                 "This links your response to the original message for conversation threading.",
             },
+            anlass: {
+              type: "string",
+              description:
+                "Required for message_type 'question' and 'handoff': WHY you ask or hand over — what you are working on and what you need decided.",
+            },
+            auswirkung: {
+              type: "string",
+              description:
+                "Required for message_type 'question' and 'handoff': WHAT depends on the answer — what happens with either outcome.",
+            },
           },
           required: ["agent_id", "message"],
         },
@@ -363,6 +373,16 @@ export function buildServer() {
               type: "string",
               enum: ["question", "message"],
               description: "Type of message. Default: question.",
+            },
+            anlass: {
+              type: "string",
+              description:
+                "Required for message_type 'question' and 'handoff': WHY you ask or hand over — what you are working on and what you need decided.",
+            },
+            auswirkung: {
+              type: "string",
+              description:
+                "Required for message_type 'question' and 'handoff': WHAT depends on the answer — what happens with either outcome.",
             },
           },
           required: ["agent_id", "message"],
@@ -1319,6 +1339,8 @@ export function buildServer() {
             text: args.message,
             message_type: args.message_type || "message",
             reply_to: args.reply_to || null,
+            anlass: args.anlass || null,
+            auswirkung: args.auswirkung || null,
           }),
         });
         const typeLabel = args.message_type ? ` [${args.message_type}]` : "";
@@ -1364,6 +1386,8 @@ export function buildServer() {
             from_name: AGENT_NAME,
             text: args.message,
             message_type: args.message_type || "question",
+            anlass: args.anlass || null,
+            auswirkung: args.auswirkung || null,
           }),
         });
 

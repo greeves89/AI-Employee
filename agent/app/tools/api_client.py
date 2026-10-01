@@ -386,15 +386,26 @@ class OrchestratorAPIClient:
             lines.append(f"[{msg.get('timestamp', '?')}] {msg.get('from_name') or msg.get('from_id')}: {text}")
         return "\n\n".join(lines)
 
+    @staticmethod
+    def _nachricht_kontext(params: dict) -> dict:
+        """Anlass und Auswirkung einer Rueckfrage oder Uebergabe (#884) — ein
+        Bauplan fuer beide Nachrichten-Werkzeuge."""
+        return {k: params[k] for k in ("anlass", "auswirkung") if params.get(k)}
+
     async def send_message(self, params: dict) -> str:
         """Send a message to another agent."""
         target_id = params.get("agent_id", "")
         if not target_id:
             return "Error: agent_id is required"
+        # Typ, Bezug und Kontext gingen hier bisher verloren — der MCP-Satz
+        # (Claude Code) reichte sie durch, dieser Weg nicht.
         body = {
             "from_agent_id": self.agent_id,
             "from_name": self.agent_name,
             "text": params.get("message", ""),
+            "message_type": params.get("message_type") or "message",
+            "reply_to": params.get("reply_to") or None,
+            **self._nachricht_kontext(params),
         }
         result = await self._request("POST", f"/agents/{target_id}/message", json=body)
         if isinstance(result, str):
@@ -1313,6 +1324,7 @@ class OrchestratorAPIClient:
             "from_name": self.agent_name,
             "text": params.get("message", ""),
             "message_type": params.get("message_type", "question"),
+            **self._nachricht_kontext(params),
         }
         send_result = await self._request("POST", f"/agents/{target_id}/message", json=body)
         # #774: Empfaenger konnte nicht geweckt werden — nicht 45 s auf eine

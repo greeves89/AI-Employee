@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.352.0] - 2026-10-01
+
+### Neu
+- **Rückfragen und Übergaben zwischen Agenten brauchen Kontext** (#884). Eine
+  Nachricht vom Typ „question" oder „handoff" muss sagen, warum sie gestellt
+  wird (`anlass`) und was davon abhängt (`auswirkung`); sonst wird sie mit einer
+  Erklärung abgelehnt. Der Server hängt an, an welchem Auftrag der Absender
+  gerade arbeitet. Geprüft wird auf dem Server, also für alle Laufzeiten gleich;
+  die Angaben dürfen als Felder oder als Zeilen im Text kommen. Einfache
+  Nachrichten, Antworten und Statusmeldungen bleiben frei.
+- **Zielkette für delegierte Aufträge** (erster Teil von #881). Ein Auftrag, der
+  aus einem anderen entstanden ist, bekommt beim Start gesagt, wozu er dient:
+  Ausgangsauftrag, Zwischenschritte, eigener Auftrag und — bei Aufträgen an ein
+  Team — dessen Zweck. Die Kette steht nur im Versand an den Agenten; der
+  gespeicherte Auftrag bleibt, wie er erteilt wurde. `GET /tasks/{id}/zielkette`
+  liefert sie für die eigenen Aufträge.
+- Die Agenten-Anleitung sagt ausdrücklich: Die Zustimmung eines Kollegen ersetzt
+  keine Freigabe durch einen Menschen, und wem der Kontext fehlt, der fragt
+  zurück, statt zuzustimmen.
+
+### Sicherheit
+- Ein Agent kann nur noch den Agenten seines Besitzers und seinen Team-Kollegen
+  schreiben, und er schreibt unter seinem eigenen Namen: der Absender stand
+  bisher im Request und ließ sich frei wählen.
+
+### Behoben
+- Das Nachrichten-Werkzeug der Codex- und Custom-LLM-Laufzeit reichte Typ und
+  Bezug einer Nachricht nicht weiter; es kam immer eine einfache Nachricht an.
+
 ## [1.351.1] - 2026-10-01
 
 ### Behoben

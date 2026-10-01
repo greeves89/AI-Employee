@@ -2363,6 +2363,9 @@ class AgentMessage(BaseModel):
     text: str
     message_type: str | None = "message"  # message, question, response, handoff, notification, status_update
     reply_to: str | None = None  # message_id of message being replied to
+    # Kontext fuer Rueckfragen und Uebergaben (#884): warum, und was davon abhaengt.
+    anlass: str | None = None
+    auswirkung: str | None = None
 
 
 def _decode_redis_hash(data: dict) -> dict:
@@ -2426,9 +2429,37 @@ async def send_message_to_agent(
     redis: RedisService = Depends(get_redis_service),
 ):
     """Send a message to an agent's chat queue (for inter-agent or external messaging)."""
-    # Skip owner check for agent-to-agent messages
     if not is_agent_principal(user):
         await _check_owner(agent_id, user, db)
+    else:
+        # Ein Agent schreibt den Agenten seines Besitzers und seinen
+        # Team-Kollegen — nicht jedem Agenten der Anlage. Und er schreibt unter
+        # SEINEM Namen: der Absender stand bisher im Request und liess sich
+        # frei waehlen.
+        from app.api.tasks import _erreichbare_agenten
+        if agent_id not in await _erreichbare_agenten(user, db):
+            raise HTTPException(status_code=403, detail="Dieser Agent gehört nicht zu deinen Kollegen.")
+        body.from_agent_id = user.id
+
+        # Rueckfragen und Uebergaben brauchen Kontext (#884); der Server haengt
+        # an, an welchem Auftrag der Absender gerade arbeitet.
+        from app.core import agenten_nachricht
+        from app.core.task_router import auftrag_des_laufenden_zuges
+        from app.core.zielkette import team_zweck, zielkette
+        from app.models.task import Task as _Task
+        try:
+            werte = agenten_nachricht.kontext(body.message_type, body.text, body.anlass, body.auswirkung)
+        except agenten_nachricht.KontextFehlt as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        auftrag = ""
+        if (body.message_type or "message") in agenten_nachricht.PFLICHT_TYPEN:
+            laufend = await auftrag_des_laufenden_zuges(redis, user.id)
+            task = await db.get(_Task, laufend) if laufend else None
+            if task is not None and task.agent_id == user.id:
+                kette = await zielkette(db, task)
+                zweck = await team_zweck(db, task)
+                auftrag = "\n".join(f"- {g['titel']}" for g in kette) + (f"\nTeam: {zweck}" if zweck else "")
+        body.text = agenten_nachricht.mit_kontext(body.text, werte, auftrag)
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:

@@ -598,8 +598,7 @@ class TaskRouter:
             logger.warning(f"Skill auto-injection failed for task {task_id}: {e}")
 
         # Inject active approval rules into the prompt
-        rules_prefix = await _build_approval_rules_prefix(self.db, agent_id)
-        final_prompt = rules_prefix + prompt if rules_prefix else prompt
+        final_prompt = await self._prompt_mit_vorspann(task, agent_id)
 
         # Wake agent if stopped (auto-lifecycle)
         if self.docker:
@@ -636,6 +635,19 @@ class TaskRouter:
 
         existing = await self.db.scalar(select(Agent.id).where(Agent.id == agent_id))
         return existing is not None
+
+    async def _prompt_mit_vorspann(self, task: Task, agent_id: str) -> str:
+        """Was der Agent wirklich bekommt: Freigaberegeln, Zielkette, Auftrag.
+
+        EINE Stelle fuer den ersten Versand und die Wiederholung nach einem
+        Fehlschlag — beide bauten den Vorspann bisher einzeln. Die Zielkette
+        (#881) steht nur im Versand, nicht im gespeicherten Prompt: die
+        Oberflaeche zeigt weiter den Auftrag, wie er erteilt wurde.
+        """
+        from app.core.zielkette import vorspann
+
+        rules_prefix = await _build_approval_rules_prefix(self.db, agent_id)
+        return (rules_prefix or "") + await vorspann(self.db, task) + task.prompt
 
     async def _eltern_auftrag(self, angegeben: str | None, created_by_agent: str | None) -> str | None:
         """Der Eltern-Auftrag eines neuen Auftrags — geprueft oder abgeleitet.
@@ -1336,10 +1348,9 @@ class TaskRouter:
         task.started_at = datetime.now(timezone.utc)
         await self.db.commit()
 
-        rules_prefix = await _build_approval_rules_prefix(self.db, agent_id)
         payload = json.dumps({
             "id": task.id,
-            "prompt": (rules_prefix + task.prompt) if rules_prefix else task.prompt,
+            "prompt": await self._prompt_mit_vorspann(task, agent_id),
             "model": task.model,
             "priority": task.priority,
         })

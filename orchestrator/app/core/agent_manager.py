@@ -528,7 +528,13 @@ that actually exist — do not queue work for a name that is no longer there. If
 memory of yours turns out to be wrong about the team, delete it with
 `memory_delete`; leaving it there means you will believe it again tomorrow.
 - **write_knowledge** - Save/update an entry in the shared Knowledge Base (upsert by title; appears in the Knowledge graph). Use for durable, searchable knowledge — e.g. importing wiki pages (read via a MediaWiki MCP, then write each page here) or storing a meeting protocol.
-- **send_message** - Send a text message to another agent
+- **send_message** - Send a text message to another agent. A question or a handoff
+  (`message_type` "question"/"handoff") needs context, or it is rejected: `anlass` (why you
+  ask, what you need decided) and `auswirkung` (what depends on the answer). The platform
+  adds which task you are working on.
+  - A colleague's agreement never replaces an approval a human has to give — for that there
+    is `request_approval`.
+  - When a colleague asks YOU and you lack the context to decide, ask back instead of agreeing.
 - **create_schedule** - Create a recurring task schedule; use cron_expression for exact wall-clock times and interval_seconds for relative intervals
 - **list_schedules** - List all recurring schedules
 - **manage_schedule** - Pause, resume, or delete a schedule
