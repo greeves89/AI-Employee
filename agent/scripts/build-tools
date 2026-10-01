@@ -16,6 +16,14 @@
 
 set -uo pipefail
 
+# Nie als root arbeiten: wer das Skript per ``docker exec`` (Standard: root)
+# aufruft, legte sonst Status- und Zwischenverzeichnis als root an — und der
+# Agent konnte danach seinen eigenen Stand nicht mehr schreiben. Genau so
+# passiert beim ersten Praxistest am 01.10.2026.
+if [ "$(id -u)" = "0" ] && command -v gosu >/dev/null 2>&1 && id agent >/dev/null 2>&1; then
+  exec gosu agent "$0" "$@"
+fi
+
 ROOT="${BUILD_TOOLS_HOME:-/opt/build-tools}"
 STATE="$ROOT/.status"
 KETTEN="go rust dotnet mingw"

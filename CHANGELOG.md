@@ -5,6 +5,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.351.1] - 2026-10-01
+
+### Behoben
+- **`build-tools` arbeitet nie als root.** Wurde das Skript per `docker exec`
+  (Standard: root) aufgerufen, legte es sein Status- und Zwischenverzeichnis als
+  root an; der Agent konnte danach seinen eigenen Stand nicht mehr schreiben.
+  Aufgefallen beim ersten Praxistest mit einem echten Agenten. Das Skript
+  wechselt jetzt selbst zum Nutzer `agent`.
+
+### Geprüft
+- Ein Agent aus der Vorlage „Fullstack Developer" hat im Chat auf Zuruf ein
+  Windows-Programm in Go gebaut und als `.exe` zum Download geliefert
+  (2,8 MB, gültiger Windows-Kopf).
+
+### Geändert
+- README: neue Bildschirmfotos (Dashboard, Agent baut eine .exe,
+  Vorlagenauswahl); sieben nicht mehr verwendete Bilder entfernt.
+- Benutzerhandbuch: Bildschirmfotos zu 4.3 (Vorlage, Chat mit .exe) und 21.2
+  (Lizenzfeld); PDF neu erzeugt.
+
 ## [1.351.0] - 2026-10-01
 
 ### Sicherheit

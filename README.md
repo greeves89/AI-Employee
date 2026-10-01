@@ -28,9 +28,9 @@
 </div>
 
 <div align="center">
-  <img src="docs/assets/agents.png" alt="AI-Employee agent overview" width="49%" />
-  <img src="docs/assets/tasks.png" alt="AI-Employee task history" width="49%" />
-  <p><em>Left: agent overview &nbsp;·&nbsp; Right: task history across all agents</em></p>
+  <img src="docs/assets/chat.png" alt="An agent builds a Windows program and delivers the .exe in the chat" width="49%" />
+  <img src="docs/assets/templates.png" alt="Template picker with the Fullstack Developer template" width="49%" />
+  <p><em>Left: an agent builds a Windows program and hands over the .exe &nbsp;·&nbsp; Right: 34 templates to start from</em></p>
 </div>
 
 ---

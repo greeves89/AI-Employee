@@ -341,6 +341,8 @@ Windows-Rechner startest. Andere Agenten können das nicht.
 **Schritt 1 — Agent aus der Vorlage anlegen.** **+ New Agent** → in der Vorlagen-Auswahl die
 Karte **Fullstack Developer** wählen. Du erkennst sie am Hinweis **Windows-Programme (.exe)**.
 
+![Vorlage mit Build-Werkzeugen](screenshots/f22-vorlage-exe.png)
+
 Das gilt auch, wenn du danach ein KI-Konto, Codex oder ein eigenes Modell auswählst.
 
 **Schritt 2 — Im Chat beschreiben, was das Programm tun soll.** Zum Beispiel:
@@ -350,8 +352,11 @@ Als .exe, bitte in Go."*
 Beim ersten Mal richtet der Agent die nötigen Werkzeuge ein. Das dauert einige Minuten,
 danach bleiben sie erhalten, auch über Updates hinweg.
 
-**Schritt 3 — Die .exe herunterladen.** Der Agent nennt dir den Pfad. Die Datei liegt im
-Workspace des Agenten (Kap. 5.4), dort lädst du sie herunter.
+![Agent baut eine .exe und liefert sie im Chat](screenshots/f23-chat-exe.png)
+
+**Schritt 3 — Die .exe herunterladen.** Der Agent hängt die fertige Datei als Karte an
+seine Antwort (im Bild unten: **pdf-lister.exe**). Ein Klick darauf lädt sie herunter. Sie
+liegt außerdem im Workspace des Agenten (Kap. 5.4).
 
 **Gut zu wissen**
 - **Sprachen:** Go, Rust, .NET (C#, auch mit Oberfläche über WinForms/WPF) sowie C/C++.
@@ -1211,6 +1216,8 @@ Bittet der Anbieter der Software um Kontakt, erscheint am **unteren Rand** ein d
 ### 21.2 Lizenz und Agentenlimit (nur Administratoren) *(seit 1.350.0)*
 
 Unter **Einstellungen → System → Lizenz** steht, mit welcher Lizenz die Anlage läuft.
+
+![Lizenzfeld mit Edition, Belegung, Hinweis und Schlüsselfeld](screenshots/f24-lizenz.png)
 
 **Was dort steht**
 - die **Edition** (Community, Starter, Team, Business, Enterprise) und der **Zustand**:
