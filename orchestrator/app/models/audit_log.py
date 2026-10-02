@@ -65,6 +65,8 @@ class AuditEventType(str, Enum):
     BLOG_POST_PUBLISHED = "blog_post_published"
     BLOG_POST_UNPUBLISHED = "blog_post_unpublished"
     BLOG_POST_DELETED = "blog_post_deleted"
+    BLOG_IMAGE_SAVED = "blog_image_saved"
+    BLOG_IMAGE_DELETED = "blog_image_deleted"
     # External MCP servers (#414) — operator-triggered diagnostics
     MCP_TOOL_CALLED = "mcp_tool_called"           # admin invoked a tool by hand (tools/call)
     MCP_TOOL_CALL_FAILED = "mcp_tool_call_failed" # manual tool invocation could not reach/run

@@ -13,7 +13,10 @@
 <meta property="og:url" content="{{ canonical }}">
 <meta property="og:site_name" content="{{ marke }}">
 <meta property="og:locale" content="de_DE">
-<meta name="twitter:card" content="summary">
+{% if og_bild %}<meta property="og:image" content="{{ og_bild }}">
+<meta name="twitter:card" content="summary_large_image">
+{% else %}<meta name="twitter:card" content="summary">
+{% endif %}
 <link rel="alternate" type="application/rss+xml" title="{{ marke }} Blog" href="{{ basis }}/blog/feed.xml">
 <link rel="preload" href="/blog/assets/fonts/ibm-plex-sans.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/blog/assets/fonts/sora.woff2" as="font" type="font/woff2" crossorigin>
@@ -64,6 +67,10 @@ footer a{color:var(--muted)}
 .karte:hover,.karte:focus-visible{border-color:rgba(10,132,255,.6);transform:translateY(-2px)}
 .karte h2,.karte h3{font-size:21px;line-height:1.25;font-weight:700}
 .karte p{margin:0;color:var(--muted);font-size:15.5px;line-height:1.55}
+.karte img{display:block;width:calc(100% + 52px);max-width:none;margin:-26px -26px 6px;aspect-ratio:1200/630;object-fit:cover;border-radius:18px 18px 0 0;border-bottom:1px solid var(--line)}
+.titelbild{margin:26px 0 0}
+.titelbild img{display:block;width:100%;border:1px solid var(--line);border-radius:16px}
+.text img{display:block;margin:8px auto 24px;border:1px solid var(--line)}
 .meta{font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--dim);display:flex;gap:14px;flex-wrap:wrap}
 .themen{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
 .themen span{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px}

@@ -1482,8 +1482,12 @@ man ihn einschaltet (`docs/BLOG.md`).
 7. Den **Text** in Markdown schreiben: die Antwort in den ersten Absatz, danach
    Zwischenüberschriften mit `##`. Verweise auf eigene Seiten so:
    `[Text](/blog/andere-adresse)`.
-8. Optional **Themen** (mit Komma getrennt) und **Häufige Fragen** ergänzen.
-9. **Speichern** anklicken. Der Beitrag ist jetzt ein **Entwurf**.
+8. Unter **Bilder** eine Beschreibung eintragen und **Bild hochladen** anklicken
+   (PNG, JPEG oder WebP bis 1,5 MB). Am hochgeladenen Bild setzt **In den Text**
+   es an die Schreibmarke, **Als Titelbild** macht es zum Bild oben im Beitrag
+   und auf der Karte in der Übersicht (am besten 1200 × 630).
+9. Optional **Themen** (mit Komma getrennt) und **Häufige Fragen** ergänzen.
+10. **Speichern** anklicken. Der Beitrag ist jetzt ein **Entwurf**.
 
 ![Blog: Editor mit Prüfung](screenshots/f26-blog-editor.png)
 

@@ -18,6 +18,7 @@ als Code im Dokument ankommen.
 Gegen echtes SQL (SQLite im Speicher) und ueber die echten Endpunkt-Funktionen.
 """
 
+import base64
 import json
 import unittest
 from types import SimpleNamespace
@@ -31,9 +32,14 @@ from app.config import settings
 from app.core import blog
 from app.models.audit_log import AuditLog
 from app.models.base import Base
+from app.models.blog_image import BlogImage
 from app.models.blog_post import STATUS_DRAFT, STATUS_PUBLISHED, BlogPost
 
 TOKEN = "t" * 40
+
+# Ein echtes 1x1-PNG und ein kleinstes JPEG (mit Abmessungen 3x2 im Kopf).
+PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+JPG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xc0\x00\x11\x08\x00\x02\x00\x03\x03\x01\x22\x00\x02\x11\x01\x03\x11\x01\xff\xd9"
 
 LANGER_TEXT = (
     "KI-Agenten selbst hosten heißt, die Plattform auf eigenen Servern zu betreiben.\n\n"
@@ -52,10 +58,15 @@ def _anfrage(body, token: str | None = TOKEN, kopf: str | None = None):
     elif token is not None:
         kopfzeilen["Authorization"] = f"Bearer {token}"
 
-    async def _json():
-        return body
+    roh = body if isinstance(body, bytes) else json.dumps(body).encode()
 
-    return SimpleNamespace(headers=kopfzeilen, json=_json)
+    async def _stream():
+        # In Stuecken, wie ein echter Anfragekoerper ankommt.
+        mitte = len(roh) // 2
+        yield roh[:mitte]
+        yield roh[mitte:]
+
+    return SimpleNamespace(headers=kopfzeilen, stream=_stream)
 
 
 def _aufruf(werkzeug: str, **args) -> dict:
@@ -66,7 +77,7 @@ class _MitDatenbank(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=[BlogPost.__table__, AuditLog.__table__]))
+            await conn.run_sync(lambda c: Base.metadata.create_all(c, tables=[BlogPost.__table__, BlogImage.__table__, AuditLog.__table__]))
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         self._patches = [
             patch.object(settings, "blog_enabled", True),
@@ -293,7 +304,8 @@ class McpWerkzeugeTest(_MitDatenbank):
         namen = {t["name"] for t in json.loads(antwort.body)["result"]["tools"]}
         self.assertEqual(namen, {
             "blog_writing_guide", "blog_list_posts", "blog_get_post", "blog_save_post", "blog_seo_check",
-            "blog_find_mentions", "blog_publish", "blog_unpublish", "blog_delete_post"})
+            "blog_find_mentions", "blog_publish", "blog_unpublish", "blog_delete_post",
+            "blog_upload_image", "blog_list_images", "blog_delete_image"})
         text, _ = await self._mcp("blog_writing_guide")
         self.assertIn("höchstens zehn Fragen", text)
 
@@ -625,6 +637,172 @@ class VerwaltungTest(_MitDatenbank):
         self.assertTrue(all(z.command == "/blog/selbst-hosten" for z in zeilen))
 
 
+class BilderTest(_MitDatenbank):
+    """Bilder: nur echte Rasterbilder, nur aus dem eigenen Bestand, nie als Einfallstor."""
+
+    ADMIN = SimpleNamespace(id="user-admin")
+
+    @staticmethod
+    def _abruf(methode="GET", **kopf):
+        return SimpleNamespace(method=methode, headers=kopf)
+
+    async def _hoch(self, name="grafik.png", daten=PNG, alt="Eine Grafik"):
+        return await self._mcp("blog_upload_image", name=name, data_base64=base64.b64encode(daten).decode(), alt=alt)
+
+    async def test_hochladen_liefert_markdown_und_abmessungen(self):
+        text, fehler = await self._hoch()
+        self.assertFalse(fehler, text)
+        d = json.loads(text)
+        self.assertEqual((d["name"], d["breite"], d["hoehe"], d["typ"]), ("grafik.png", 1, 1, "image/png"))
+        self.assertEqual(d["markdown"], "![Eine Grafik](/blog/media/grafik.png)")
+        text, fehler = await self._hoch(name="foto.jpg", daten=JPG)
+        self.assertFalse(fehler, text)
+        self.assertEqual((json.loads(text)["breite"], json.loads(text)["hoehe"]), (3, 2))
+
+    async def test_der_inhalt_entscheidet_nicht_die_endung(self):
+        svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+        html = b"<html><script>alert(1)</script></html>"
+        for name, daten in (("boese.png", svg), ("boese.jpg", html), ("boese.webp", b"RIFF"), ("leer.png", b""),
+                            ("falsch.jpg", PNG), ("bild.svg", svg), ("../x.png", PNG), ("GROSS.PNG.exe", PNG),
+                            ("a b.png", PNG), ("riesig.png", PNG + b"0" * blog.MAX_BILD)):
+            text, fehler = await self._hoch(name=name, daten=daten)
+            self.assertTrue(fehler, name)
+        text, fehler = await self._mcp("blog_upload_image", name="x.png", data_base64="kein base64 !!")
+        self.assertTrue(fehler)
+        async with self.Session() as db:
+            self.assertEqual(await blog.bilder(db), [])
+
+    async def test_auslieferung_mit_festem_typ_und_nur_fuer_vorhandene_namen(self):
+        await self._hoch()
+        async with self.Session() as db:
+            antwort = await blog_public.blog_bild("grafik.png", self._abruf(), db=db)
+            self.assertEqual(antwort.media_type, "image/png")
+            self.assertEqual(antwort.body, PNG)
+            self.assertEqual(antwort.headers["content-security-policy"], "default-src 'none'; sandbox")
+            for name in ("gibt-es-nicht.png", "../grafik.png", "grafik.png/../x", "GRAFIK.PNG", "grafik.png\n", ""):
+                with self.assertRaises(HTTPException) as ctx:
+                    await blog_public.blog_bild(name, self._abruf(), db=db)
+                self.assertEqual(ctx.exception.status_code, 404)
+        with patch.object(settings, "blog_enabled", False):
+            async with self.Session() as db:
+                with self.assertRaises(HTTPException):
+                    await blog_public.blog_bild("grafik.png", self._abruf(), db=db)
+
+    async def test_wer_das_bild_schon_hat_bekommt_304_ohne_dass_die_daten_geladen_werden(self):
+        await self._hoch()
+        async with self.Session() as db:
+            erst = await blog_public.blog_bild("grafik.png", self._abruf(), db=db)
+            etag = erst.headers["etag"]
+        with patch.object(blog, "hole_bild", wraps=blog.hole_bild) as hole:
+            async with self.Session() as db:
+                wieder = await blog_public.blog_bild("grafik.png", self._abruf(**{"if-none-match": etag}), db=db)
+                kopf = await blog_public.blog_bild("grafik.png", self._abruf(methode="HEAD"), db=db)
+            self.assertTrue(all(not a.kwargs.get("mit_daten") for a in hole.call_args_list))
+        self.assertEqual((wieder.status_code, wieder.body), (304, b""))
+        self.assertEqual((kopf.status_code, kopf.body, kopf.headers["content-length"]), (200, b"", str(len(PNG))))
+        # Ein ersetztes Bild bekommt eine neue Pruefsumme.
+        await self._hoch(daten=PNG + b"\x00")
+        async with self.Session() as db:
+            neu = await blog_public.blog_bild("grafik.png", self._abruf(**{"if-none-match": etag}), db=db)
+        self.assertEqual(neu.status_code, 200)
+        self.assertNotEqual(neu.headers["etag"], etag)
+
+    async def test_uebergrosse_oder_unlesbare_abmessungen_werden_abgelehnt(self):
+        import struct
+
+        def png(breite, hoehe):
+            return PNG[:16] + struct.pack(">II", breite, hoehe) + PNG[24:]
+
+        for breite, hoehe in ((4294967295, 4294967295), (30000, 30000), (6001, 10), (0, 0), (5000, 5000)):
+            text, fehler = await self._hoch(name="bombe.png", daten=png(breite, hoehe))
+            self.assertTrue(fehler, (breite, hoehe))
+        text, fehler = await self._hoch(name="titelbild.png", daten=png(2400, 1260))
+        self.assertFalse(fehler, text)
+
+    async def test_zu_grosse_anfrage_wird_abgewiesen_bevor_sie_gelesen_ist(self):
+        gross = b"x" * (blog.MAX_MCP_ANFRAGE + 1)
+        async with self.Session() as db:
+            for anfrage in (_anfrage(gross), SimpleNamespace(
+                    headers={"Authorization": f"Bearer {TOKEN}", "content-length": str(10**9)}, stream=None)):
+                with self.assertRaises(HTTPException) as ctx:
+                    await blog_mcp.mcp_blog_endpoint(anfrage, db)
+                self.assertEqual(ctx.exception.status_code, 413)
+        text, fehler = await self._mcp("blog_upload_image", name="x.png", data_base64="A" * (blog.MAX_BILD * 4 // 3 + 100))
+        self.assertTrue(fehler)
+        self.assertIn("größer als", text)
+
+    async def test_fremde_bilder_werden_zu_text_eigene_bekommen_abmessungen(self):
+        html, _ = blog.render(
+            "![Eigen](/blog/media/grafik.png) ![Fremd](https://anderswo.example/x.png) "
+            "![Daten](data:image/png;base64,AAAA) ![Pfad](/api/v1/secrets) ![Trick](/blog/media/../../api/x.png)",
+            {"grafik.png": (1200, 630)})
+        self.assertEqual(html.count("<img"), 1)
+        self.assertIn('src="/blog/media/grafik.png"', html)
+        self.assertIn('width="1200" height="630"', html)
+        self.assertIn("Fremd", html)
+        self.assertNotIn("anderswo.example", html)
+        self.assertNotIn("/api/", html)
+
+    async def test_titelbild_muss_es_geben_und_erscheint_auf_seite_und_karte(self):
+        text, fehler = await self._mcp("blog_save_post", slug="x", title="T", body_markdown="B", cover="fehlt.png")
+        self.assertTrue(fehler)
+        self.assertIn("gibt es nicht", text)
+        await self._hoch(name="titel.png")
+        await self._beitrag(veroeffentlicht=True, cover="titel.png",
+                            body_markdown=LANGER_TEXT + "\n\n![Eine Grafik](/blog/media/titel.png)")
+        async with self.Session() as db:
+            seite = (await blog_public.blog_beitrag("selbst-hosten", vorschau="", db=db)).body.decode()
+            liste = (await blog_public.blog_uebersicht(db=db)).body.decode()
+            neueste = json.loads((await blog_public.blog_neueste(db=db)).body)
+        self.assertIn('<meta property="og:image" content="https://example.com/blog/media/titel.png">', seite)
+        self.assertIn('"image": "https://example.com/blog/media/titel.png"', seite)
+        self.assertIn('summary_large_image', seite)
+        self.assertIn('class="titelbild"', seite)
+        self.assertIn('src="/blog/media/titel.png"', liste)
+        self.assertEqual(neueste["beitraege"][0]["bild"]["src"], "/blog/media/titel.png")
+
+    async def test_verwendetes_bild_laesst_sich_nicht_loeschen(self):
+        await self._hoch(name="titel.png")
+        await self._hoch(name="frei.png")
+        await self._beitrag(cover="titel.png")
+        text, fehler = await self._mcp("blog_delete_image", name="titel.png")
+        self.assertTrue(fehler)
+        self.assertIn("selbst-hosten", text)
+        text, fehler = await self._mcp("blog_delete_image", name="frei.png")
+        self.assertFalse(fehler, text)
+        text, _ = await self._mcp("blog_list_images")
+        self.assertEqual([b["name"] for b in json.loads(text)["bilder"]], ["titel.png"])
+
+    async def test_verwaltung_hochladen_begrenzt_und_nur_fuer_administratoren(self):
+        from io import BytesIO
+
+        from fastapi import UploadFile
+
+        from app.dependencies import require_admin
+
+        for route in blog_admin.router.routes:
+            self.assertIn(require_admin, [d.call for d in route.dependant.dependencies], route.path)
+        async with self.Session() as db:
+            bild = await blog_admin.blog_bild_hochladen(
+                file=UploadFile(BytesIO(PNG), filename="Mein Schönes Bild.PNG"), name="", alt="Alt", user=self.ADMIN, db=db)
+            self.assertEqual(bild["name"], "mein-schoenes-bild.png")
+            with self.assertRaises(HTTPException) as ctx:
+                await blog_admin.blog_bild_hochladen(
+                    file=UploadFile(BytesIO(PNG + b"0" * blog.MAX_BILD), filename="gross.png"), name="", alt="",
+                    user=self.ADMIN, db=db)
+            self.assertEqual(ctx.exception.status_code, 413)
+            with self.assertRaises(HTTPException) as ctx:
+                await blog_admin.blog_bild_hochladen(
+                    file=UploadFile(BytesIO(b"<svg/>"), filename="x.png"), name="", alt="", user=self.ADMIN, db=db)
+            self.assertEqual(ctx.exception.status_code, 422)
+            self.assertEqual(len((await blog_admin.blog_bilder(user=self.ADMIN, db=db))["images"]), 1)
+            self.assertEqual(await blog_admin.blog_bild_loeschen("mein-schoenes-bild.png", user=self.ADMIN, db=db),
+                             {"deleted": "mein-schoenes-bild.png"})
+            with self.assertRaises(HTTPException) as ctx:
+                await blog_admin.blog_bild_loeschen("mein-schoenes-bild.png", user=self.ADMIN, db=db)
+            self.assertEqual(ctx.exception.status_code, 404)
+
+
 class SeoPruefungTest(unittest.TestCase):
     def _post(self, **mehr) -> BlogPost:
         werte = dict(
@@ -637,11 +815,23 @@ class SeoPruefungTest(unittest.TestCase):
         return BlogPost(**werte)
 
     def test_guter_beitrag_hat_weder_fehler_noch_hinweise(self):
+        text = LANGER_TEXT + "\n\n![Die drei Kostenblöcke als Grafik](/blog/media/kosten.png)"
         with patch.object(settings, "blog_base_url", "https://example.com"):
-            p = blog.seo_pruefung(self._post())
+            p = blog.seo_pruefung(self._post(body_md=text, cover="titel.png"))
         self.assertEqual(p["fehler"], [])
         self.assertEqual(p["hinweise"], [])
         self.assertEqual(p["interne_verweise"], 2)
+
+    def test_bilder_fehlend_ohne_beschreibung_oder_fremd_sind_hinweise(self):
+        p = blog.seo_pruefung(self._post())
+        self.assertTrue(any("Kein Titelbild" in h for h in p["hinweise"]))
+        self.assertTrue(any("Kein Bild im Text" in h for h in p["hinweise"]))
+        text = LANGER_TEXT + "\n\n![](/blog/media/a.png)\n\n![Fremd](https://anderswo.example/b.png)"
+        p = blog.seo_pruefung(self._post(body_md=text, cover="t.png"))
+        self.assertEqual(p["bilder"], 2)
+        self.assertTrue(any("ohne Beschreibung" in h for h in p["hinweise"]))
+        self.assertTrue(any("liegen nicht im Blog" in h for h in p["hinweise"]))
+        self.assertEqual(p["fehler"], [])
 
     def test_jede_luecke_wird_einzeln_gemeldet(self):
         faelle = {

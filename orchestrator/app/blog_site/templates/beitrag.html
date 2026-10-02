@@ -13,6 +13,7 @@
         {% if geaendert %}<span>Aktualisiert: {{ geaendert }}</span>{% endif %}
       </div>
     </header>
+    {% if titelbild %}<figure class="titelbild"><img src="{{ titelbild.src }}" alt="" fetchpriority="high"{% if titelbild.breite %} width="{{ titelbild.breite }}" height="{{ titelbild.hoehe }}"{% endif %}></figure>{% endif %}
     {% if gliederung|length >= 3 %}
     <nav class="inhalt" aria-label="Inhalt">
       <b>Inhalt</b>
@@ -49,6 +50,7 @@
       {% for b in verwandte %}
       <li>
         <a class="karte" href="/blog/{{ b.slug }}">
+          {% if b.bild %}<img src="{{ b.bild.src }}" alt="" loading="lazy" decoding="async"{% if b.bild.breite %} width="{{ b.bild.breite }}" height="{{ b.bild.hoehe }}"{% endif %}>{% endif %}
           <span class="meta"><time datetime="{{ b.datum_iso }}">{{ b.datum }}</time><span>{{ b.lesezeit }} Min. Lesezeit</span></span>
           <h3>{{ b.titel }}</h3>
           <p>{{ b.beschreibung }}</p>

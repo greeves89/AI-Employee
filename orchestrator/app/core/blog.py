@@ -15,9 +15,13 @@ herein und geht ohne Anmeldung an jeden Besucher hinaus. Deshalb
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import hmac
 import re
 import secrets
+import struct
 import unicodedata
 from datetime import datetime, timezone
 
@@ -25,14 +29,15 @@ from markdown_it import MarkdownIt
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import defer
+from sqlalchemy.orm import defer, undefer
 
 from app.config import settings
 from app.models.audit_log import AuditEventType, AuditLog
+from app.models.blog_image import BlogImage
 from app.models.blog_post import BLOG_STATUS, STATUS_DRAFT, STATUS_PUBLISHED, BlogPost
 
 # Kleinbuchstaben, Ziffern, Bindestriche; kein Bindestrich am Rand oder doppelt.
-SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 MAX_SLUG = 80
 MAX_BODY = 60_000
 MAX_TAGS = 8
@@ -42,7 +47,21 @@ MAX_FAQ = 12
 MIN_TOKEN = 32
 
 # Adressen unter /blog/, die keine Beitraege sind.
-RESERVED_SLUGS = frozenset({"feed", "assets", "latest", "vorschau", "thema"})
+RESERVED_SLUGS = frozenset({"feed", "assets", "latest", "vorschau", "thema", "media"})
+
+# Bilder: Name wie eine Adresse plus Endung; Typ wird an den ersten Bytes
+# erkannt, nicht an der Endung geglaubt. Kein SVG — es kann Skripte tragen.
+BILD_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\.(png|jpg|webp)\Z")
+BILD_TYPEN = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}
+MAX_BILD = 1_500_000
+MAX_BILDER = 500
+# Abmessungen: gross genug fuer ein Titelbild in doppelter Aufloesung, klein
+# genug, dass kein Bild den Browser eines Besuchers beim Entpacken ueberlaedt.
+MAX_BILD_SEITE = 6000
+MAX_BILD_PIXEL = 24_000_000
+# Anfrage an den MCP-Dienst: ein Bild in Base64 plus Umschlag, nicht mehr.
+MAX_MCP_ANFRAGE = MAX_BILD * 4 // 3 + 200_000
+BILD_PFAD = "/blog/media/"
 
 WORDS_PER_MINUTE = 200
 
@@ -201,13 +220,39 @@ def _ist_extern(href: str) -> bool:
     return not (basis and (href == basis or href.startswith(basis + "/")))
 
 
-def render(body_md: str) -> tuple[str, list[dict]]:
+def bild_name_aus(src: str) -> str | None:
+    """Name eines Blog-Bildes aus einer Adresse im Text — oder ``None``, wenn es keines ist."""
+    src = (src or "").strip()
+    basis = basis_url()
+    if basis and src.startswith(basis + BILD_PFAD):
+        src = src[len(basis):]
+    if not src.startswith(BILD_PFAD):
+        return None
+    name = src[len(BILD_PFAD):]
+    return name if BILD_NAME_RE.match(name) else None
+
+
+def bilder_im_text(body_md: str) -> list[tuple[str, str]]:
+    """Alle Bilder im Text als (Adresse, alt-Text)."""
+    funde: list[tuple[str, str]] = []
+    for tok in _md.parse(body_md or ""):
+        for kind in (tok.children or []) if tok.type == "inline" else []:
+            if kind.type == "image":
+                funde.append((str(kind.attrGet("src") or ""), kind.content or ""))
+    return funde
+
+
+def render(body_md: str, masse: dict[str, tuple[int, int]] | None = None) -> tuple[str, list[dict]]:
     """Markdown zu HTML. Liefert das HTML und die Zwischenueberschriften (h2).
 
     Ueberschriften bekommen einen Anker fuer das Inhaltsverzeichnis. Eine
     Ueberschrift erster Ordnung im Text wird zur zweiten herabgestuft — die
     erste gehoert dem Titel der Seite. Verweise nach draussen oeffnen ohne
     Zugriff auf das eigene Fenster.
+
+    Bilder gibt es nur aus dem eigenen Bestand (``/blog/media/<name>``); jedes
+    andere Bild wird zu seinem alt-Text. ``masse`` (Name → Breite, Hoehe) setzt
+    die Abmessungen, damit die Seite beim Laden nicht springt.
     """
     tokens = _md.parse(body_md or "")
     vergeben: set[str] = set()
@@ -227,7 +272,18 @@ def render(body_md: str) -> tuple[str, list[dict]]:
                 if kind.type == "link_open" and _ist_extern(str(kind.attrGet("href") or "")):
                     kind.attrSet("rel", "noopener noreferrer")
                 if kind.type == "image":
+                    name = bild_name_aus(str(kind.attrGet("src") or ""))
+                    if not name:
+                        # Fremdes Bild: nur sein Text bleibt.
+                        kind.type, kind.tag, kind.attrs, kind.children = "text", "", {}, None
+                        continue
+                    kind.attrSet("src", BILD_PFAD + name)
                     kind.attrSet("loading", "lazy")
+                    kind.attrSet("decoding", "async")
+                    breite, hoehe = (masse or {}).get(name, (0, 0))
+                    if breite and hoehe:
+                        kind.attrSet("width", str(breite))
+                        kind.attrSet("height", str(hoehe))
     return _md.renderer.render(tokens, _md.options, {}), gliederung
 
 
@@ -325,6 +381,17 @@ def seo_pruefung(post: BlogPost) -> dict:
         hinweise.append("Keine Fragen und Antworten (faq) — sie beantworten Nebenfragen und erscheinen als eigener Abschnitt.")
     if not post.tags:
         hinweise.append("Keine Themen (tags) — sie verbinden den Beitrag mit verwandten.")
+    im_text = bilder_im_text(post.body_md)
+    if not post.cover:
+        hinweise.append("Kein Titelbild (cover) — es erscheint oben im Beitrag, auf der Karte und beim Teilen.")
+    if not im_text:
+        hinweise.append("Kein Bild im Text — eine Grafik oder ein Bildschirmfoto macht den Beitrag anschaulicher.")
+    ohne_alt = [src for src, alt in im_text if not alt.strip()]
+    if ohne_alt:
+        hinweise.append(f"{len(ohne_alt)} Bild(er) ohne Beschreibung — so schreiben: ![Was zu sehen ist](/blog/media/name.png).")
+    fremd = [src for src, _ in im_text if not bild_name_aus(src)]
+    if fremd:
+        hinweise.append(f"{len(fremd)} Bild(er) liegen nicht im Blog und werden nicht angezeigt — erst hochladen (blog_upload_image).")
 
     return {
         "fehler": fehler,
@@ -333,6 +400,7 @@ def seo_pruefung(post: BlogPost) -> dict:
         "lesezeit_minuten": lesezeit(worte),
         "zwischenueberschriften": len(h2),
         "interne_verweise": len(intern),
+        "bilder": len(im_text),
         "titel_zeichen": len(titel),
         "beschreibung_zeichen": len(beschr),
     }
@@ -439,6 +507,11 @@ async def speichere(db: AsyncSession, angaben: dict, wer: str | None = None, ueb
         post.faq = pruefe_faq(angaben["faq"])
     if "author" in angaben:
         post.author = _zeile(angaben["author"], "author", 120)
+    if "cover" in angaben:
+        cover = _zeile(angaben["cover"], "cover", 120)
+        if cover and not await hole_bild(db, cover):
+            raise BlogFehler(f"cover: Das Bild „{cover}“ gibt es nicht — erst hochladen (blog_upload_image).")
+        post.cover = cover
 
     if post.status == STATUS_PUBLISHED:
         # Ein veroeffentlichter Beitrag zeigt jede Aenderung sofort. Was die
@@ -506,6 +579,178 @@ async def loesche(db: AsyncSession, slug: str, wer: str | None = None, ueber: st
     await db.commit()
 
 
+# --- Bilder -------------------------------------------------------------------
+
+
+def _bild_masse(daten: bytes, endung: str) -> tuple[int, int]:
+    """Breite und Hoehe aus den Bilddaten lesen. (0, 0), wenn sie sich nicht bestimmen lassen."""
+    try:
+        if endung == "png":
+            return struct.unpack(">II", daten[16:24])
+        if endung == "jpg":
+            i = 2
+            while i + 9 < len(daten):
+                if daten[i] != 0xFF:
+                    i += 1
+                    continue
+                marke = daten[i + 1]
+                if marke in (0xC0, 0xC1, 0xC2):
+                    hoehe, breite = struct.unpack(">HH", daten[i + 5:i + 9])
+                    return breite, hoehe
+                if marke in (0xD8, 0x01) or 0xD0 <= marke <= 0xD7:
+                    i += 2
+                    continue
+                i += 2 + struct.unpack(">H", daten[i + 2:i + 4])[0]
+        if endung == "webp":
+            art = daten[12:16]
+            if art == b"VP8X":
+                breite = int.from_bytes(daten[24:27], "little") + 1
+                hoehe = int.from_bytes(daten[27:30], "little") + 1
+                return breite, hoehe
+            if art == b"VP8 ":
+                breite, hoehe = struct.unpack("<HH", daten[26:30])
+                return breite & 0x3FFF, hoehe & 0x3FFF
+            if art == b"VP8L":
+                bits = int.from_bytes(daten[21:25], "little")
+                return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+    except (struct.error, IndexError):
+        pass
+    return 0, 0
+
+
+def _bild_typ(daten: bytes) -> str | None:
+    """Die Endung, die zu den ersten Bytes passt — der Inhalt entscheidet, nicht der Name."""
+    if daten.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if daten.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if daten[:4] == b"RIFF" and daten[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+def pruefe_bild_name(name) -> str:
+    name = str(name or "").strip().lower()
+    if len(name) > 120 or not BILD_NAME_RE.match(name):
+        raise BlogFehler(
+            "name: Kleinbuchstaben, Ziffern und Bindestriche mit der Endung .png, .jpg oder .webp "
+            "(Beispiel: kostenbloecke-ki-agent.png)."
+        )
+    return name
+
+
+def bild_aus_base64(text) -> bytes:
+    roh = str(text or "").strip()
+    if roh.startswith("data:"):
+        roh = roh.split(",", 1)[-1]
+    # Vor dem Dekodieren pruefen — sonst liegt ein zu grosses Bild erst einmal ganz im Speicher.
+    if len(roh) > MAX_BILD * 4 // 3 + 8:
+        raise BlogFehler(f"Das Bild ist größer als {MAX_BILD // 1000} kB.")
+    try:
+        return base64.b64decode(roh, validate=True)
+    except (binascii.Error, ValueError) as e:
+        raise BlogFehler("data_base64: kein gültiges Base64.") from e
+
+
+async def hole_bild(db: AsyncSession, name, mit_daten: bool = False) -> BlogImage | None:
+    """Ein Bild nach Namen. Die Bilddaten kommen nur mit, wenn sie gebraucht werden (Auslieferung)."""
+    name = str(name or "")
+    if not BILD_NAME_RE.match(name):
+        return None
+    abfrage = select(BlogImage).where(BlogImage.name == name)
+    if mit_daten:
+        abfrage = abfrage.options(undefer(BlogImage.data))
+    return (await db.execute(abfrage)).scalar_one_or_none()
+
+
+async def bilder(db: AsyncSession) -> list[BlogImage]:
+    return list((await db.execute(select(BlogImage).order_by(BlogImage.created_at.desc(), BlogImage.id.desc()))).scalars().all())
+
+
+async def bild_masse(db: AsyncSession, namen) -> dict[str, tuple[int, int]]:
+    namen = [n for n in set(namen) if n]
+    if not namen:
+        return {}
+    zeilen = await db.execute(select(BlogImage.name, BlogImage.width, BlogImage.height).where(BlogImage.name.in_(namen)))
+    return {name: (breite, hoehe) for name, breite, hoehe in zeilen.all()}
+
+
+async def speichere_bild(db: AsyncSession, name, daten: bytes, alt="", wer: str | None = None,
+                         ueber: str = UEBER_MCP) -> tuple[BlogImage, bool]:
+    """Bild anlegen oder ersetzen. Liefert das Bild und ob es neu ist."""
+    name = pruefe_bild_name(name)
+    if not daten:
+        raise BlogFehler("Das Bild ist leer.")
+    if len(daten) > MAX_BILD:
+        raise BlogFehler(f"Das Bild hat {len(daten) // 1000} kB — höchstens {MAX_BILD // 1000} kB. Kleiner rechnen oder als JPEG/WebP speichern.")
+    typ = _bild_typ(daten)
+    if not typ:
+        raise BlogFehler("Kein PNG, JPEG oder WebP — andere Formate (auch SVG) nimmt der Blog nicht an.")
+    if typ != name.rsplit(".", 1)[1]:
+        raise BlogFehler(f"Der Inhalt ist ein .{typ}-Bild, der Name endet anders. Bitte „{name.rsplit('.', 1)[0]}.{typ}“ verwenden.")
+    alt = _zeile(alt, "alt", 300)
+    breite, hoehe = _bild_masse(daten, typ)
+    if breite <= 0 or hoehe <= 0:
+        raise BlogFehler("Die Abmessungen des Bildes lassen sich nicht lesen — die Datei ist beschädigt oder kein übliches Bild.")
+    if breite > MAX_BILD_SEITE or hoehe > MAX_BILD_SEITE or breite * hoehe > MAX_BILD_PIXEL:
+        raise BlogFehler(f"Das Bild hat {breite} × {hoehe} Bildpunkte — höchstens {MAX_BILD_SEITE} je Seite.")
+
+    bild = await hole_bild(db, name)
+    neu = bild is None
+    if neu:
+        anzahl = len((await db.execute(select(BlogImage.id))).all())
+        if anzahl >= MAX_BILDER:
+            raise BlogFehler(f"Der Blog hält schon {anzahl} Bilder — erst nicht mehr gebrauchte löschen.")
+        bild = BlogImage(name=name)
+        db.add(bild)
+    bild.content_type = BILD_TYPEN[typ]
+    bild.data = daten
+    bild.size = len(daten)
+    bild.etag = hashlib.sha256(daten).hexdigest()[:32]
+    bild.width, bild.height = breite, hoehe
+    if alt or neu:
+        bild.alt = alt
+    db.add(_protokoll(AuditEventType.BLOG_IMAGE_SAVED, f"media/{name}", wer, ueber, neu=neu, bytes=len(daten)))
+    try:
+        await db.commit()
+    except IntegrityError as e:
+        await db.rollback()
+        raise BlogFehler(f"Ein Bild mit dem Namen „{name}“ gibt es schon.") from e
+    return bild, neu
+
+
+async def bild_verwendung(db: AsyncSession, name: str) -> list[str]:
+    """Adressen der Beitraege, die ein Bild als Titelbild oder im Text verwenden."""
+    posts = (await db.execute(select(BlogPost))).scalars().all()
+    return [p.slug for p in posts
+            if p.cover == name or any(bild_name_aus(src) == name for src, _ in bilder_im_text(p.body_md))]
+
+
+async def loesche_bild(db: AsyncSession, name, wer: str | None = None, ueber: str = UEBER_MCP) -> None:
+    bild = await hole_bild(db, pruefe_bild_name(name))
+    if not bild:
+        raise BlogFehler(f"Kein Bild mit dem Namen „{name}“.")
+    genutzt = await bild_verwendung(db, bild.name)
+    if genutzt:
+        raise BlogFehler("Das Bild wird noch verwendet in: " + ", ".join(genutzt) + ". Erst dort entfernen.")
+    db.add(_protokoll(AuditEventType.BLOG_IMAGE_DELETED, f"media/{bild.name}", wer, ueber))
+    await db.delete(bild)
+    await db.commit()
+
+
+def bild_kurz(bild: BlogImage) -> dict:
+    return {
+        "name": bild.name,
+        "adresse": BILD_PFAD + bild.name,
+        "markdown": f"![{bild.alt or 'Beschreibung'}]({BILD_PFAD}{bild.name})",
+        "alt": bild.alt,
+        "breite": bild.width,
+        "hoehe": bild.height,
+        "kb": round(bild.size / 1000),
+        "typ": bild.content_type,
+    }
+
+
 # --- Darstellung fuer MCP-Dienst und Oberflaeche ------------------------------
 
 
@@ -523,6 +768,7 @@ def kurz(post: BlogPost) -> dict:
         "status": post.status,
         "hauptbegriff": post.keyword,
         "themen": post.tags or [],
+        "titelbild": post.cover or "",
         "worte": post.words,
         "adresse": absolut(f"/blog/{post.slug}"),
         "veroeffentlicht_am": post.published_at.isoformat() if post.published_at else None,

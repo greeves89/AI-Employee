@@ -40,6 +40,23 @@ die sie einschalten. Ohne `BLOG_ENABLED` antworten alle Adressen des Blogs mit
    		import forwarded_https
    	}
    }
+   # Bilder kommen über diese beiden Wege herein — mehr als ein Bild passt nicht durch.
+   handle /api/v1/mcp/blog {
+   	request_body {
+   		max_size 3MB
+   	}
+   	reverse_proxy ai-employee-orchestrator:8000 {
+   		import forwarded_https
+   	}
+   }
+   handle /api/v1/blog/images {
+   	request_body {
+   		max_size 3MB
+   	}
+   	reverse_proxy ai-employee-orchestrator:8000 {
+   		import forwarded_https
+   	}
+   }
    handle /sitemap.xml {
    	reverse_proxy ai-employee-orchestrator:8000
    }
@@ -82,6 +99,8 @@ Laufzeiten die Werkzeuge.
 | `blog_save_post` | Anlegen oder ändern; neue Beiträge sind Entwürfe |
 | `blog_seo_check` | Prüfung: Längen, Hauptbegriff, Gliederung, Umfang, Verweise |
 | `blog_find_mentions` | Beiträge, die einen Begriff nennen — für die Verlinkung |
+| `blog_upload_image` | Bild hochladen (PNG, JPEG, WebP bis 1,5 MB); liefert die Markdown-Zeile |
+| `blog_list_images` / `blog_delete_image` | Bilder ansehen und löschen |
 | `blog_publish` / `blog_unpublish` | Online stellen und zurückziehen |
 | `blog_delete_post` | Löschen (veröffentlichte nur mit Bestätigung) |
 
@@ -101,13 +120,23 @@ Die Werkzeuge bilden eine einfache Methode ab:
 2. **Erfahrung erfragen.** Vor dem Schreiben dem Menschen, in dessen Namen der
    Beitrag erscheint, höchstens zehn Fragen stellen — eigene Erfahrung,
    Fallbeispiele, Meinung. Nichts erfinden.
-3. **Verlinken.** `blog_find_mentions` zeigt, wo der Hauptbegriff schon steht.
+3. **Bebildern.** Jeder Beitrag bekommt ein Titelbild (Querformat 1200 × 630)
+   und mindestens ein Bild im Text — eine Grafik oder ein echtes
+   Bildschirmfoto, ohne Personen- oder Kundendaten.
+4. **Verlinken.** `blog_find_mentions` zeigt, wo der Hauptbegriff schon steht.
    An etwa drei dieser Stellen auf den neuen Beitrag verweisen.
 
 ## Sicherheit
 
 - Markdown wird mit abgeschaltetem HTML aufbereitet; HTML im Text erscheint als
   Text. Verweise mit `javascript:` und ähnlichen Zielen werden nicht zu Links.
+- Bilder gibt es nur aus dem eigenen Bestand (`/blog/media/…`); fremde Bilder
+  im Text werden nicht angezeigt. Angenommen werden PNG, JPEG und WebP — der
+  Typ wird am Inhalt geprüft, SVG ist ausgeschlossen. Die Bilder liegen in der
+  Datenbank und gehen mit jeder Sicherung mit.
+- Jedes hochgeladene Bild ist unter seinem Namen öffentlich abrufbar, auch wenn
+  es nur in einem Entwurf steckt. Auf Bilder gehört deshalb nichts
+  Vertrauliches — keine Kundendaten, keine Zugangsdaten auf Bildschirmfotos.
 - Die Seiten setzen eine eigene Content-Security-Policy ohne Skripte (Ausnahme:
   die eingetragene Besucherzählung).
 - Der MCP-Schlüssel braucht mindestens 32 Zeichen; ein kürzerer Wert schaltet

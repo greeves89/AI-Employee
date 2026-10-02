@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   ExternalLink,
   Globe,
+  ImagePlus,
   Loader2,
   Newspaper,
   Plus,
@@ -18,7 +19,7 @@ import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
-import type { BlogFaq, BlogPost, BlogPostKurz, BlogPruefung, BlogStatus } from "@/lib/api";
+import type { BlogBild, BlogFaq, BlogPost, BlogPostKurz, BlogPruefung, BlogStatus } from "@/lib/api";
 
 /**
  * Blog der Landingpage: Beiträge schreiben, prüfen und veröffentlichen.
@@ -37,11 +38,12 @@ interface Entwurf {
   body_markdown: string;
   tags: string;
   author: string;
+  cover: string;
   faq: BlogFaq[];
 }
 
 const LEER: Entwurf = {
-  slug: "", title: "", description: "", keyword: "", body_markdown: "", tags: "", author: "", faq: [],
+  slug: "", title: "", description: "", keyword: "", body_markdown: "", tags: "", author: "", cover: "", faq: [],
 };
 
 const FELD =
@@ -56,6 +58,7 @@ function ausBeitrag(p: BlogPost): Entwurf {
     body_markdown: p.body_markdown,
     tags: (p.themen ?? []).join(", "),
     author: p.autor ?? "",
+    cover: p.titelbild ?? "",
     faq: p.faq ?? [],
   };
 }
@@ -98,6 +101,7 @@ function Pruefung({ p }: { p: BlogPruefung }) {
           ["Lesezeit", `${p.lesezeit_minuten} Min.`],
           ["Zwischenüberschriften", p.zwischenueberschriften],
           ["Verweise auf eigene Seiten", p.interne_verweise],
+          ["Bilder im Text", p.bilder],
         ].map(([name, wert]) => (
           <div key={String(name)} className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2">
             <p className="text-muted-foreground/60">{name}</p>
@@ -147,11 +151,21 @@ export function BlogView() {
   const [gespeichert, setGespeichert] = useState<Entwurf>(LEER);
   const [arbeitet, setArbeitet] = useState<string | null>(null);
 
+  const [bilder, setBilder] = useState<BlogBild[]>([]);
+  const [bildAlt, setBildAlt] = useState("");
+  const [laedtHoch, setLaedtHoch] = useState(false);
+  const dateiwahl = useRef<HTMLInputElement>(null);
+  const textfeld = useRef<HTMLTextAreaElement>(null);
+
   const laden = useCallback(async () => {
     try {
       const s = await api.getBlogStatus();
       setStatus(s);
-      if (s.enabled) setPosts((await api.listBlogPosts()).posts);
+      if (s.enabled) {
+        const [p, b] = await Promise.all([api.listBlogPosts(), api.listBlogImages()]);
+        setPosts(p.posts);
+        setBilder(b.images);
+      }
       setLadefehler(null);
     } catch (e) {
       // Ein Ladefehler ist etwas anderes als ein abgeschalteter Blog — getrennt zeigen.
@@ -216,6 +230,7 @@ export function BlogView() {
     tags: entwurf.tags.split(",").map((t) => t.trim()).filter(Boolean),
     faq: entwurf.faq.filter((f) => f.frage.trim() && f.antwort.trim()),
     author: entwurf.author,
+    cover: entwurf.cover,
   });
 
   const speichern = async (): Promise<BlogPost | null> => {
@@ -300,6 +315,48 @@ export function BlogView() {
       toast.error("Löschen fehlgeschlagen", apiFehlertext(e));
     } finally {
       setArbeitet(null);
+    }
+  };
+
+  const bildHochladen = async (datei: File | undefined) => {
+    if (!datei) return;
+    setLaedtHoch(true);
+    try {
+      const bild = await api.uploadBlogImage(datei, bildAlt.trim());
+      setBilder((v) => [bild, ...v.filter((b) => b.name !== bild.name)]);
+      setBildAlt("");
+      toast.success("Bild hochgeladen.", bild.name);
+    } catch (e) {
+      toast.error("Bild nicht hochgeladen", apiFehlertext(e));
+    } finally {
+      setLaedtHoch(false);
+      if (dateiwahl.current) dateiwahl.current.value = "";
+    }
+  };
+
+  const bildEinfuegen = (bild: BlogBild) => {
+    // An der Schreibmarke einfügen, als eigener Absatz.
+    const feld = textfeld.current;
+    const stelle = feld ? feld.selectionStart : entwurf.body_markdown.length;
+    const vorher = entwurf.body_markdown.slice(0, stelle).replace(/\n*$/, "");
+    const nachher = entwurf.body_markdown.slice(stelle).replace(/^\n*/, "");
+    setEntwurf((v) => ({ ...v, body_markdown: `${vorher}${vorher ? "\n\n" : ""}${bild.markdown}\n\n${nachher}` }));
+  };
+
+  const bildLoeschen = async (bild: BlogBild) => {
+    const ok = await confirm({
+      title: `„${bild.name}“ löschen?`,
+      message: "Das geht nur, solange kein Beitrag das Bild verwendet.",
+      confirmLabel: "Löschen",
+      variant: "destructive",
+    });
+    if (!ok) return;
+    try {
+      await api.deleteBlogImage(bild.name);
+      setBilder((v) => v.filter((b) => b.name !== bild.name));
+      if (entwurf.cover === bild.name) setEntwurf((v) => ({ ...v, cover: "" }));
+    } catch (e) {
+      toast.error("Bild nicht gelöscht", apiFehlertext(e));
     }
   };
 
@@ -494,6 +551,7 @@ export function BlogView() {
             <label className="block space-y-1.5">
               <span className="text-xs font-medium">Text (Markdown)</span>
               <textarea
+                ref={textfeld}
                 value={entwurf.body_markdown}
                 onChange={(e) => setze("body_markdown", e.target.value)}
                 rows={26}
@@ -530,6 +588,77 @@ export function BlogView() {
                   className={FELD}
                 />
               </label>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-xs font-medium">Bilder</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={bildAlt}
+                  onChange={(e) => setBildAlt(e.target.value)}
+                  maxLength={300}
+                  placeholder="Was auf dem Bild zu sehen ist"
+                  className={cn(FELD, "min-w-[220px] flex-1")}
+                />
+                <input
+                  ref={dateiwahl}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => bildHochladen(e.target.files?.[0])}
+                />
+                <button
+                  onClick={() => dateiwahl.current?.click()}
+                  disabled={laedtHoch}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-2 text-xs font-medium transition-colors hover:bg-foreground/[0.04] disabled:opacity-40"
+                >
+                  {laedtHoch ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
+                  Bild hochladen
+                </button>
+              </div>
+              <span className="block text-[10px] text-muted-foreground/60">
+                PNG, JPEG oder WebP bis 1,5 MB. Für das Titelbild passt das Querformat 1200 × 630 am besten.
+              </span>
+              {bilder.length > 0 && (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {bilder.map((b) => (
+                    <div
+                      key={b.name}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg border bg-card/60 p-2",
+                        entwurf.cover === b.name ? "border-primary/50" : "border-foreground/[0.06]",
+                      )}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={b.adresse} alt="" className="h-12 w-20 shrink-0 rounded object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-mono text-[11px]">{b.name}</p>
+                        <p className="text-[10px] text-muted-foreground/60">
+                          {b.breite} × {b.hoehe} · {b.kb} kB
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+                          <button onClick={() => bildEinfuegen(b)} className="text-primary hover:underline">
+                            In den Text
+                          </button>
+                          <button
+                            onClick={() => setze("cover", entwurf.cover === b.name ? "" : b.name)}
+                            className="text-primary hover:underline"
+                          >
+                            {entwurf.cover === b.name ? "Titelbild entfernen" : "Als Titelbild"}
+                          </button>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => bildLoeschen(b)}
+                        title="Bild löschen"
+                        className="shrink-0 rounded-lg p-1.5 text-muted-foreground/40 transition-colors hover:text-red-500"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

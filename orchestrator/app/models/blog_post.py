@@ -41,6 +41,9 @@ class BlogPost(Base, TimestampMixin):
     # Fragen und Antworten am Ende des Beitrags: [{"frage": ..., "antwort": ...}]
     faq: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     author: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    # Name des Titelbilds (``blog_images.name``) — oben im Beitrag, auf den
+    # Karten der Uebersicht und als Vorschaubild beim Teilen. Leer: keines.
+    cover: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     # Wortzahl des Textes, beim Speichern gezaehlt: Uebersicht und Karten
     # brauchen sie fuer die Lesezeit und sollen dafuer nicht jeden Beitrag bei
     # jedem Aufruf neu zerlegen.

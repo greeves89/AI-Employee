@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 from xml.sax.saxutils import escape as xml
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -124,9 +124,18 @@ def _ld(daten: dict) -> str:
     return json.dumps(daten, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
-def _karte(post: BlogPost) -> dict:
+def _bild(name: str, masse: dict) -> dict | None:
+    """Angaben zu einem Titelbild fuer die Vorlagen — ``None``, wenn es das Bild nicht (mehr) gibt."""
+    if not name or name not in masse:
+        return None
+    breite, hoehe = masse[name]
+    return {"src": blog.BILD_PFAD + name, "breite": breite, "hoehe": hoehe}
+
+
+def _karte(post: BlogPost, masse: dict | None = None) -> dict:
     datum = post.published_at or post.created_at
     return {
+        "bild": _bild(post.cover, masse or {}),
         "slug": post.slug,
         "titel": post.title,
         "beschreibung": post.description,
@@ -147,6 +156,7 @@ def _seite(vorlage: str, status: int = 200, cache: str = _CACHE, **werte) -> HTM
     werte.setdefault("strukturdaten", [])
     werte.setdefault("og_typ", "website")
     werte.setdefault("og_titel", werte.get("seitentitel", ""))
+    werte.setdefault("og_bild", "")
     html = _vorlagen.get_template(vorlage).render(
         marke=_marke(), basis=blog.basis_url(), analytics_src=src, analytics_id=kennung, **werte,
     )
@@ -174,6 +184,7 @@ def _nicht_gefunden() -> HTMLResponse:
 async def blog_uebersicht(db: AsyncSession = Depends(get_db)):
     _nur_wenn_aktiv()
     posts = await blog.veroeffentlichte(db)
+    masse = await blog.bild_masse(db, [p.cover for p in posts])
     marke = _marke()
     beschreibung = (
         f"Antworten auf die Fragen, die sich beim Einsatz von KI-Agenten im Unternehmen stellen: "
@@ -198,7 +209,7 @@ async def blog_uebersicht(db: AsyncSession = Depends(get_db)):
         ueberschrift="KI-Agenten im Unternehmen: Fragen und Antworten",
         beschreibung=beschreibung,
         canonical=blog.absolut("/blog"),
-        beitraege=[_karte(p) for p in posts],
+        beitraege=[_karte(p, masse) for p in posts],
         strukturdaten=[_ld(daten)],
     )
 
@@ -232,7 +243,8 @@ async def blog_neueste(db: AsyncSession = Depends(get_db)):
     """Die drei neuesten Beitraege — fuer den Abschnitt auf der Startseite."""
     _nur_wenn_aktiv()
     posts = await blog.veroeffentlichte(db, limit=3)
-    return JSONResponse({"beitraege": [_karte(p) for p in posts]}, headers={"Cache-Control": _CACHE})
+    masse = await blog.bild_masse(db, [p.cover for p in posts])
+    return JSONResponse({"beitraege": [_karte(p, masse) for p in posts]}, headers={"Cache-Control": _CACHE})
 
 
 @router.api_route("/blog/assets/fonts/{name}", methods=["GET", "HEAD"], include_in_schema=False)
@@ -242,6 +254,34 @@ async def blog_schrift(name: str):
     if not datei or not datei.is_file():
         raise HTTPException(status_code=404, detail="Not found")
     return FileResponse(datei, media_type="font/woff2", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+@router.api_route("/blog/media/{name}", methods=["GET", "HEAD"], include_in_schema=False)
+async def blog_bild(name: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Ein Bild des Blogs. Der Typ steht fest (PNG, JPEG, WebP) und wurde beim Hochladen am Inhalt geprueft.
+
+    Die Bilddaten werden erst geladen, wenn sie wirklich gebraucht werden: Wer
+    das Bild schon hat (``If-None-Match``) oder nur den Kopf will, bekommt die
+    Antwort aus den Angaben zum Bild.
+    """
+    _nur_wenn_aktiv()
+    bild = await blog.hole_bild(db, name)
+    if not bild:
+        raise HTTPException(status_code=404, detail="Not found")
+    etag = f'"{bild.etag}"'
+    kopf = {
+        # Eine Stunde, danach Nachfrage mit Pruefsumme: ein ersetztes Bild ist schnell ueberall neu.
+        "Cache-Control": "public, max-age=3600",
+        "ETag": etag,
+        # Selbst wenn ein Browser das Bild als Dokument oeffnet, laeuft darin nichts.
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+    }
+    if bild.etag and etag in (request.headers.get("if-none-match") or ""):
+        return Response(status_code=304, headers=kopf)
+    if request.method == "HEAD":
+        return Response(media_type=bild.content_type, headers={**kopf, "Content-Length": str(bild.size)})
+    bild = await blog.hole_bild(db, name, mit_daten=True)
+    return Response(bild.data, media_type=bild.content_type, headers=kopf)
 
 
 @router.api_route("/blog/{slug}", methods=["GET", "HEAD"], include_in_schema=False)
@@ -257,7 +297,11 @@ async def blog_beitrag(slug: str, vorschau: str = Query("", max_length=64), db: 
         # Ein Entwurf verraet sich nicht: dieselbe Antwort wie bei einer falschen Adresse.
         return _nicht_gefunden()
 
-    html, gliederung = blog.render(post.body_md)
+    andere = await blog.veroeffentlichte(db)
+    im_text = [blog.bild_name_aus(src) for src, _ in blog.bilder_im_text(post.body_md)]
+    masse = await blog.bild_masse(db, [post.cover, *im_text, *[p.cover for p in andere]])
+    titelbild = _bild(post.cover, masse)
+    html, gliederung = blog.render(post.body_md, masse)
     html = html.replace("<table>", '<div class="tabelle"><table>').replace("</table>", "</table></div>")
     marke = _marke()
     autor = post.author or settings.blog_author or ""
@@ -284,6 +328,8 @@ async def blog_beitrag(slug: str, vorschau: str = Query("", max_length=64), db: 
         }
         if autor:
             artikel["author"] = {"@type": "Person", "name": autor}
+        if titelbild:
+            artikel["image"] = blog.absolut(titelbild["src"])
         strukturdaten.append(_ld(artikel))
         strukturdaten.append(_ld({
             "@context": "https://schema.org",
@@ -304,9 +350,10 @@ async def blog_beitrag(slug: str, vorschau: str = Query("", max_length=64), db: 
                 ],
             }))
 
-    andere = await blog.veroeffentlichte(db)
     return _seite(
         "beitrag.html",
+        titelbild=titelbild,
+        og_bild=blog.absolut(titelbild["src"]) if titelbild else "",
         cache=_CACHE if oeffentlich else "no-store",
         noindex=not oeffentlich,
         vorschau=not oeffentlich,
@@ -326,7 +373,7 @@ async def blog_beitrag(slug: str, vorschau: str = Query("", max_length=64), db: 
         gliederung=gliederung,
         html=html,
         faq=post.faq or [],
-        verwandte=[_karte(p) for p in blog.verwandte(post, andere)],
+        verwandte=[_karte(p, masse) for p in blog.verwandte(post, andere)],
         strukturdaten=strukturdaten,
     )
 

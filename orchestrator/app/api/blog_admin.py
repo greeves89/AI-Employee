@@ -12,7 +12,7 @@ Ohne ``BLOG_ENABLED`` gibt nur ``/blog/status`` Auskunft (damit die Oberflaeche
 erklaeren kann, wie man den Blog einschaltet); alles andere antwortet mit 404.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +40,7 @@ class BeitragEingabe(BaseModel):
     tags: list[str] | None = Field(default=None, max_length=blog.MAX_TAGS)
     faq: list[FaqEintrag] | None = Field(default=None, max_length=blog.MAX_FAQ)
     author: str | None = Field(default=None, max_length=120)
+    cover: str | None = Field(default=None, max_length=120)
 
 
 def _nur_wenn_aktiv() -> None:
@@ -49,6 +50,14 @@ def _nur_wenn_aktiv() -> None:
 
 def _angaben(body: BeitragEingabe) -> dict:
     return body.model_dump(exclude_unset=True, exclude_none=True)
+
+
+async def _lies_begrenzt(datei: UploadFile) -> bytes:
+    """Hoechstens ein Byte mehr lesen als erlaubt — ein zu grosses Bild wird nicht erst ganz geladen."""
+    daten = await datei.read(blog.MAX_BILD + 1)
+    if len(daten) > blog.MAX_BILD:
+        raise HTTPException(status_code=413, detail=f"Das Bild ist größer als {blog.MAX_BILD // 1000} kB.")
+    return daten
 
 
 async def _ausfuehren(aufruf):
@@ -141,3 +150,41 @@ async def blog_post_loeschen(slug: str, user=Depends(require_admin), db: AsyncSe
     war_oeffentlich = post.status == STATUS_PUBLISHED
     await _ausfuehren(blog.loesche(db, slug, wer=str(user.id), ueber=blog.UEBER_OBERFLAECHE))
     return {"deleted": slug, "was_published": war_oeffentlich}
+
+
+# --- Bilder -------------------------------------------------------------------
+
+
+@router.get("/images")
+async def blog_bilder(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    _nur_wenn_aktiv()
+    return {"images": [blog.bild_kurz(b) for b in await blog.bilder(db)], "max_kb": blog.MAX_BILD // 1000}
+
+
+@router.post("/images", status_code=201)
+async def blog_bild_hochladen(
+    file: UploadFile = File(...),
+    name: str = Form("", max_length=120),
+    alt: str = Form("", max_length=300),
+    user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    _nur_wenn_aktiv()
+    daten = await _lies_begrenzt(file)
+    # Ohne eigenen Namen: aus dem Dateinamen ableiten (Endung bleibt, Rest wird vereinfacht).
+    quelle = (name or file.filename or "").strip().lower()
+    stamm, _, endung = quelle.rpartition(".")
+    endung = "jpg" if endung == "jpeg" else endung
+    bildname = f"{blog.slug_aus(stamm)}.{endung}" if stamm else quelle
+    bild, _ = await _ausfuehren(blog.speichere_bild(
+        db, bildname, daten, alt, wer=str(user.id), ueber=blog.UEBER_OBERFLAECHE))
+    return blog.bild_kurz(bild)
+
+
+@router.delete("/images/{name}")
+async def blog_bild_loeschen(name: str, user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    _nur_wenn_aktiv()
+    if not await blog.hole_bild(db, name):
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    await _ausfuehren(blog.loesche_bild(db, name, wer=str(user.id), ueber=blog.UEBER_OBERFLAECHE))
+    return {"deleted": name}

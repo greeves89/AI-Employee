@@ -260,6 +260,7 @@
   .tile{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px;display:grid;gap:8px}
   .tile h3{font-size:17px}
   a.tile{text-decoration:none}
+  a.tile img{display:block;width:100%;height:auto;aspect-ratio:1200/630;object-fit:cover;border-radius:10px;margin-bottom:4px}
   .tile time{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.04em}
   .tile p{color:var(--muted);font-size:15px}
 
@@ -805,6 +806,11 @@
           var t=document.createElement('time'); t.dateTime=b.datum_iso||''; t.textContent=b.datum||'';
           var h=document.createElement('h3'); h.textContent=b.titel||'';
           var p=document.createElement('p'); p.textContent=b.beschreibung||'';
+          if(b.bild&&/^\/blog\/media\/[a-z0-9-]+\.(png|jpg|webp)$/.test(b.bild.src||'')){
+            var i=document.createElement('img'); i.src=b.bild.src; i.alt=''; i.loading='lazy';
+            if(b.bild.breite){i.width=b.bild.breite; i.height=b.bild.hoehe}
+            a.appendChild(i);
+          }
           a.appendChild(t); a.appendChild(h); a.appendChild(p); kacheln.appendChild(a);
         });
         if(kacheln.children.length) abschnitt.hidden=false;

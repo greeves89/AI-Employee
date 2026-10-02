@@ -14,6 +14,7 @@
       {% for b in beitraege %}
       <li>
         <a class="karte" href="/blog/{{ b.slug }}">
+          {% if b.bild %}<img src="{{ b.bild.src }}" alt="" loading="lazy" decoding="async"{% if b.bild.breite %} width="{{ b.bild.breite }}" height="{{ b.bild.hoehe }}"{% endif %}>{% endif %}
           <span class="meta"><time datetime="{{ b.datum_iso }}">{{ b.datum }}</time><span>{{ b.lesezeit }} Min. Lesezeit</span></span>
           <h2>{{ b.titel }}</h2>
           <p>{{ b.beschreibung }}</p>

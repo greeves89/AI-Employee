@@ -54,13 +54,20 @@ ARBEITSWEISE = """So entsteht ein Beitrag, der gefunden wird:
    Zwischenüberschrift. Titel bis 60 Zeichen, Beschreibung 120 bis 160.
    Am Ende drei bis fünf Nebenfragen als faq.
 
-4. VERLINKEN. blog_find_mentions mit dem Hauptbegriff aufrufen: Es zeigt die
+4. BILDER. Jeder Beitrag bekommt ein Titelbild im Querformat (1200x630) und
+   mindestens ein Bild im Text: eine Grafik, die den Kern zeigt, oder ein
+   echtes Bildschirmfoto. Hochladen mit blog_upload_image, im Text einfügen als
+   ![Was zu sehen ist](/blog/media/name.png), Titelbild über das Feld cover.
+   Keine fremden Bilder, keine erfundenen Zahlen in Grafiken, keine echten
+   Personen- oder Kundendaten auf Bildschirmfotos.
+
+5. VERLINKEN. blog_find_mentions mit dem Hauptbegriff aufrufen: Es zeigt die
    veröffentlichten Beiträge, die den Begriff schon nennen. Etwa drei davon
    öffnen und den Begriff dort auf den neuen Beitrag verlinken (blog_save_post
    mit dem geänderten Text). Im neuen Beitrag selbst mindestens zwei Verweise
    auf eigene Seiten setzen, z. B. [Text](/blog/andere-adresse).
 
-5. PRÜFEN UND VERÖFFENTLICHEN. blog_save_post legt einen Entwurf an und meldet,
+6. PRÜFEN UND VERÖFFENTLICHEN. blog_save_post legt einen Entwurf an und meldet,
    was fehlt. Die Vorschau-Adresse im Browser ansehen. blog_publish stellt den
    Beitrag online; solange Fehler offen sind, lehnt es ab.
 
@@ -88,6 +95,7 @@ _BEITRAG = {
         },
     },
     "author": {"type": "string", "description": "Name unter dem Beitrag. Leer: der Standard der Anlage."},
+    "cover": {"type": "string", "description": "Name des Titelbilds (aus blog_upload_image), z. B. 'was-ist-ein-ki-agent.png'. Querformat 1200x630 passt am besten. Leer: kein Titelbild."},
 }
 
 _SLUG = {"slug": {"type": "string", "description": "Adresse des Beitrags unter /blog/."}}
@@ -143,6 +151,33 @@ BLOG_TOOLS = [
         },
     },
     {
+        "name": "blog_upload_image",
+        "description": (
+            "Bild in den Blog laden: PNG, JPEG oder WebP bis 1,5 MB (kein SVG). Antwortet mit der Markdown-Zeile "
+            "zum Einfügen in den Text. Dasselbe Bild dient als Titelbild, wenn sein Name bei blog_save_post als "
+            "cover angegeben wird. Ein vorhandener Name wird ersetzt."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Dateiname: Kleinbuchstaben, Ziffern, Bindestriche plus .png, .jpg oder .webp."},
+                "data_base64": {"type": "string", "description": "Die Bilddatei, Base64-kodiert."},
+                "alt": {"type": "string", "description": "Was auf dem Bild zu sehen ist — für Screenreader und Suchmaschinen."},
+            },
+            "required": ["name", "data_base64"],
+        },
+    },
+    {
+        "name": "blog_list_images",
+        "description": "Alle Bilder des Blogs mit Name, Abmessungen, Größe und der Markdown-Zeile zum Einfügen.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "blog_delete_image",
+        "description": "Bild löschen. Lehnt ab, solange ein Beitrag es als Titelbild oder im Text verwendet.",
+        "inputSchema": {"type": "object", "properties": {"name": {"type": "string", "description": "Dateiname des Bildes."}}, "required": ["name"]},
+    },
+    {
         "name": "blog_publish",
         "description": "Beitrag veröffentlichen: erscheint in Übersicht, Feed und Sitemap. Lehnt ab, solange die Prüfung Fehler meldet.",
         "inputSchema": {"type": "object", "properties": _SLUG, "required": ["slug"]},
@@ -180,9 +215,22 @@ async def mcp_blog_endpoint(request: Request, db: AsyncSession = Depends(get_db)
     """MCP Streamable HTTP — nimmt alle JSON-RPC-Anfragen der Clients entgegen."""
     _auth(request)
 
+    # Erst die Groesse, dann der Inhalt: ohne Grenze koennte eine einzige
+    # Anfrage den Arbeitsspeicher des Dienstes fuellen.
     try:
-        body = await request.json()
-    except Exception:  # noqa: BLE001
+        angekuendigt = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        angekuendigt = 0
+    if angekuendigt > blog.MAX_MCP_ANFRAGE:
+        raise HTTPException(status_code=413, detail="Request too large")
+    roh = bytearray()
+    async for stueck in request.stream():
+        roh.extend(stueck)
+        if len(roh) > blog.MAX_MCP_ANFRAGE:
+            raise HTTPException(status_code=413, detail="Request too large")
+    try:
+        body = json.loads(bytes(roh))
+    except ValueError:
         return JSONResponse(_mcp_error(None, -32700, "Parse error: invalid JSON"), status_code=200)
 
     if isinstance(body, list):
@@ -267,6 +315,21 @@ async def _call_tool(name: str, args: dict, db: AsyncSession) -> dict:
             "vorschau": blog.vorschau_adresse(post),
             "pruefung": blog.seo_pruefung(post),
         })
+
+    if name == "blog_upload_image":
+        bild, neu = await blog.speichere_bild(
+            db, args.get("name"), blog.bild_aus_base64(args.get("data_base64")), args.get("alt") or "")
+        logger.info("blog_upload_image name=%s neu=%s bytes=%s", bild.name, neu, bild.size)
+        return _json({"ergebnis": "hochgeladen" if neu else "ersetzt", **blog.bild_kurz(bild)})
+
+    if name == "blog_list_images":
+        liste = await blog.bilder(db)
+        return _json({"anzahl": len(liste), "bilder": [blog.bild_kurz(b) for b in liste]})
+
+    if name == "blog_delete_image":
+        await blog.loesche_bild(db, args.get("name"))
+        logger.info("blog_delete_image name=%s", str(args.get("name"))[:120])
+        return _tool_result(f"Gelöscht: {args.get('name')}")
 
     slug = str(args.get("slug") or args.get("target_slug") or "").strip()
 

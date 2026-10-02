@@ -17,7 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - **Verwaltung in der Admin-Konsole** (System → Blog): Beiträge schreiben,
   prüfen, in der Vorschau ansehen, veröffentlichen und zurückziehen. Nur für
   Administratoren.
-- **MCP-Dienst für den Blog** (`/api/v1/mcp/blog`): neun Werkzeuge zum
+- **MCP-Dienst für den Blog** (`/api/v1/mcp/blog`): zwölf Werkzeuge zum
   Entwerfen, Prüfen, Verlinken und Veröffentlichen — für MCP-Clients und, über
   Integrationen eingetragen, für die Agenten der Plattform in allen Laufzeiten.
   Der Dienst bringt seine Arbeitsweise mit: je Frage ein Beitrag, vor dem
@@ -27,12 +27,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Hauptbegriff an den wichtigen Stellen, Gliederung, Umfang, Verweise auf
   eigene Seiten. Ein Beitrag mit Fehlern lässt sich nicht veröffentlichen —
   weder in der Oberfläche noch über den MCP-Dienst.
+- **Bilder im Blog**: Titelbild je Beitrag (oben im Beitrag, auf den Karten und
+  als Vorschaubild beim Teilen) und Bilder im Text. Hochladen in der
+  Verwaltung oder über den MCP-Dienst (drei weitere Werkzeuge); PNG, JPEG und
+  WebP bis 1,5 MB. Die Bilder liegen in der Datenbank.
 - Die Landingpage verweist auf den Blog, zeigt die drei neuesten Beiträge und
   trägt jetzt selbst Titel, kanonische Adresse und Angaben für Vorschaukarten.
 
 ### Sicherheit
 - Der Text eines Beitrags wird mit abgeschaltetem HTML aufbereitet; die
   Blogseiten setzen eine eigene Content-Security-Policy ohne Skripte.
+- Bilder werden am Inhalt geprüft, nicht an der Endung; SVG ist
+  ausgeschlossen, fremde Bilder im Text werden nicht angezeigt.
 - Entwürfe sind nur über eine Vorschau-Adresse mit eigenem zufälligem Schlüssel
   je Beitrag sichtbar; der Schlüssel wird beim Zurückziehen neu vergeben, und
   Vorschau-Seiten laden keine Besucherzählung.
@@ -50,7 +56,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 ### Betrieb
 - Neue Abhängigkeiten im Orchestrator: `markdown-it-py` und `jinja2`. Das
   Orchestrator-Abbild muss neu gebaut werden.
-- Neue Tabelle `blog_posts` (Migration `7c3d1e9a4f52`).
+- Neue Tabellen `blog_posts` und `blog_images` (Migrationen `7c3d1e9a4f52`,
+  `8d4e2f1b5a63`).
 - Einrichtung: `docs/BLOG.md`.
 
 ---

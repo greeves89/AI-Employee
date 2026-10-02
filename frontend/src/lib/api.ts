@@ -4480,6 +4480,7 @@ export interface BlogPruefung {
   lesezeit_minuten: number;
   zwischenueberschriften: number;
   interne_verweise: number;
+  bilder: number;
   titel_zeichen: number;
   beschreibung_zeichen: number;
 }
@@ -4492,6 +4493,7 @@ export interface BlogPostKurz {
   status: "draft" | "published";
   hauptbegriff: string;
   themen: string[];
+  titelbild: string;
   worte: number;
   adresse: string;
   beschreibung: string;
@@ -4516,6 +4518,18 @@ export interface BlogPostEingabe {
   tags?: string[];
   faq?: BlogFaq[];
   author?: string;
+  cover?: string;
+}
+
+export interface BlogBild {
+  name: string;
+  adresse: string;
+  markdown: string;
+  alt: string;
+  breite: number;
+  hoehe: number;
+  kb: number;
+  typ: string;
 }
 
 export async function getBlogStatus(): Promise<BlogStatus> {
@@ -4548,4 +4562,22 @@ export async function unpublishBlogPost(slug: string): Promise<BlogPost> {
 
 export async function deleteBlogPost(slug: string): Promise<{ deleted: string; was_published: boolean }> {
   return fetchJSON(`${getBase()}/blog/posts/${encodeURIComponent(slug)}`, { method: "DELETE" });
+}
+
+export async function listBlogImages(): Promise<{ images: BlogBild[]; max_kb: number }> {
+  return fetchJSON(`${getBase()}/blog/images`);
+}
+
+/** Bild hochladen (PNG, JPEG, WebP). Der Server prüft Typ und Größe am Inhalt. */
+export async function uploadBlogImage(file: File, alt: string): Promise<BlogBild> {
+  const fd = new FormData();
+  fd.append("file", file, file.name);
+  fd.append("alt", alt);
+  const res = await fetch(`${getBase()}/blog/images`, { method: "POST", body: fd, credentials: "include" });
+  if (!res.ok) throw new Error(`API Error ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+export async function deleteBlogImage(name: string): Promise<{ deleted: string }> {
+  return fetchJSON(`${getBase()}/blog/images/${encodeURIComponent(name)}`, { method: "DELETE" });
 }

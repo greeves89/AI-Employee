@@ -1,0 +1,41 @@
+/* Aussehen der Blog-Bilder: Farben und Schriften der Landingpage. Gerendert mit render.mjs. */
+@font-face{font-family:'Sora';font-weight:600 800;src:url(../../../orchestrator/app/blog_site/fonts/sora.woff2) format('woff2')}
+@font-face{font-family:'IBM Plex Sans';font-weight:400 600;src:url(../../../orchestrator/app/blog_site/fonts/ibm-plex-sans.woff2) format('woff2')}
+@font-face{font-family:'IBM Plex Mono';font-weight:500;src:url(../../../orchestrator/app/blog_site/fonts/ibm-plex-mono.woff2) format('woff2')}
+:root{--bg:#06080f;--bg2:#0b0f1a;--surface:#0f1524;--line:rgba(255,255,255,.1);--text:#f2f4f8;--muted:#98a1b5;--dim:#5f6a80;
+  --blue:#0a84ff;--cyan:#22d3ee;--green:#34d399;--amber:#f59e0b;--violet:#a78bfa}
+*{box-sizing:border-box;margin:0}
+body{width:1200px;background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:22px;line-height:1.4;-webkit-font-smoothing:antialiased}
+h1,h2,h3,b.t{font-family:'Sora',sans-serif;letter-spacing:-.02em}
+.mono{font-family:'IBM Plex Mono',monospace;font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* Titelbild 1200x630 */
+.titel{height:630px;padding:64px 72px;display:grid;grid-template-columns:1fr 300px;gap:40px;align-items:center;
+  background:radial-gradient(900px 500px at 88% 40%,rgba(10,132,255,.2),transparent 70%),var(--bg)}
+.titel h1{font-size:60px;line-height:1.08;font-weight:800;margin-top:22px;text-wrap:balance}
+.titel .marke{display:flex;align-items:center;gap:14px;font-family:'Sora',sans-serif;font-weight:700;font-size:22px;margin-top:44px;color:var(--muted)}
+.titel .marke i{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--blue),var(--cyan));display:grid;place-items:center}
+.titel .marke svg{width:22px;height:22px}
+.titel .symbol{width:300px;height:300px;border-radius:64px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center}
+.titel .symbol svg{width:150px;height:150px;stroke:var(--acc,var(--blue))}
+svg{fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.symbol svg{stroke-width:1.5}
+
+/* Grafiken */
+.grafik{padding:56px 60px 52px}
+.grafik h2{font-size:38px;font-weight:700;margin:10px 0 34px}
+.reihe{display:grid;gap:20px}
+.k2{grid-template-columns:1fr 1fr}.k3{grid-template-columns:repeat(3,1fr)}.k4{grid-template-columns:repeat(4,1fr)}.k5{grid-template-columns:repeat(5,1fr)}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:26px}
+.box b.t{display:block;font-size:25px;font-weight:700;margin-bottom:8px}
+.box p{color:var(--muted);font-size:19px}
+.box.hell{border-color:color-mix(in srgb,var(--acc,var(--blue)) 55%,transparent);background:color-mix(in srgb,var(--acc,var(--blue)) 9%,var(--surface))}
+.zahl{font-family:'IBM Plex Mono',monospace;font-size:16px;color:var(--acc,var(--blue));letter-spacing:.1em;display:block;margin-bottom:12px}
+.schritte{display:flex;flex-direction:column;gap:12px;margin-top:18px}
+.schritt{display:flex;align-items:center;gap:14px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:14px 18px;font-size:20px}
+.schritt i{width:10px;height:10px;border-radius:50%;background:var(--acc,var(--blue));flex:none}
+.pfeil{color:var(--dim);font-size:26px;text-align:center;line-height:1}
+.fuss{color:var(--dim);font-size:17px;margin-top:26px}
+.marke-klein{display:flex;align-items:center;gap:10px;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;color:var(--dim);margin-top:30px}
+.marke-klein i{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--blue),var(--cyan));display:grid;place-items:center}
+.marke-klein svg{width:15px;height:15px}
