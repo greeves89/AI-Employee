@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.8] - 2026-10-02
+
+### Behoben
+- **Aufgaben-Ergebnis „wurde oben geliefert“:** Als Ergebnis einer Aufgabe gilt die
+  letzte Nachricht des Agenten. Schrieb er die Tabelle in eine frühere Nachricht und
+  schloss mit „Fertig — die Tabelle wurde oben geliefert“, blieb das Ergebnisfeld
+  ohne Inhalt. Die Agenten-Anleitung verlangt jetzt das vollständige Ergebnis in
+  der letzten Nachricht. Wirkt nach „Agent aktualisieren“.
+
+---
+
 ## [1.356.7] - 2026-10-02
 
 ### Behoben
