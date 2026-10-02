@@ -1,6 +1,6 @@
 # AI-Employee vs. The Field
 
-> **Stand: 01.08.2026** — Feature-Matrix und Bewertungen entsprechen dem Entwicklungsstand zu diesem Datum. Star-Zahlen und Fremdprodukt-Details sind grobe Momentaufnahmen.
+> **Stand: 02.10.2026** — Feature-Matrix und Bewertungen entsprechen dem Entwicklungsstand zu diesem Datum (Langdock: Herstellerseiten und Dokumentation, abgerufen am 02.10.2026; übrige Fremdprodukte: 01.08.2026). Star-Zahlen und Fremdprodukt-Details sind grobe Momentaufnahmen.
 
 An honest, detailed comparison of AI-Employee against the most common alternatives. We believe comparisons should help you pick the *right* tool — not trick you into picking ours.
 
@@ -23,6 +23,7 @@ If you are evaluating AI agent platforms for:
 | **OpenClaw** | Messaging-first personal AI | Peter Steinberger | 60,000+ |
 | **CrewAI** | Python multi-agent framework | João Moura | 25,000+ |
 | **Lindy.ai** | Cloud no-code AI builder | Flo Crivello | Closed-source |
+| **Langdock** | EU cloud AI workspace (chat, agents, workflows) | Langdock GmbH (Berlin) | Closed-source |
 | **OpenAI Responses API / Agents SDK** | Cloud AI assistants (formerly GPTs / Assistants API — Assistants API shuts down 2026-08-26) | OpenAI | Closed-source |
 | **LangGraph** | Graph-based agent framework | LangChain Inc. | 9,000+ |
 | **AutoGen** | Multi-agent research framework | Microsoft Research | 35,000+ |
@@ -36,97 +37,97 @@ If you are evaluating AI agent platforms for:
 
 ### Core Architecture
 
-| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Self-hostable | Yes | Yes | Yes | **No** | **No** | Yes | Yes | Yes |
-| Open source | Source available | Yes | Yes (MIT) | **No** | **No** | Yes (MIT) | Yes (MIT) | Yes (Fair-Code) |
-| Multi-agent | Yes | **No** | Yes | Partial | Partial | Yes | Yes | No |
-| Persistent agent teams + lead-routing | **Yes** | No | Partial | No | No | Partial | Partial | No |
-| Docker isolation per agent | **Yes** | No (shared FS) | No | N/A | N/A | No | No | No |
-| Multi-user / team | Yes | Partial | No | Yes | Yes | No | No | Yes |
-| Cloud option available | Planned | Yes | Cloud only | Yes | Yes | No | No | Yes |
-| Runs fully offline | Yes (with local LLM) | Partial | Yes | No | No | Yes | Yes | Yes |
+| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Self-hostable | Yes | Yes | Yes | **No** | Enterprise only (5,000+ seats) | **No** | Yes | Yes | Yes |
+| Open source | Source available | Yes | Yes (MIT) | **No** | **No** | **No** | Yes (MIT) | Yes (MIT) | Yes (Fair-Code) |
+| Multi-agent | Yes | **No** | Yes | Partial | Partial (agents as workflow steps) | Partial | Yes | Yes | No |
+| Persistent agent teams + lead-routing | **Yes** | No | Partial | No | No | No | Partial | Partial | No |
+| Docker isolation per agent | **Yes** | No (shared FS) | No | N/A | N/A | N/A | No | No | No |
+| Multi-user / team | Yes | Partial | No | Yes | Yes | Yes | No | No | Yes |
+| Cloud option available | Planned | Yes | Cloud only | Yes | Yes (EU) | Yes | No | No | Yes |
+| Runs fully offline | Yes (with local LLM) | Partial | Yes | No | No | No | Yes | Yes | Yes |
 
 ### LLM Support
 
-| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Claude (Anthropic) | Yes (native) | Yes | Yes | Yes | No | Yes | Yes | Yes |
-| OpenAI GPT-5.x (Codex) | Yes (native) | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Gemini | Yes | Yes | Yes | No | No | Yes | Yes | Yes |
-| Local models (Ollama) | Yes | Yes | Yes | No | No | Yes | Yes | Yes |
-| Multi-model per agent | Yes | No | Yes | No | No | Yes | Yes | No |
+| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Claude (Anthropic) | Yes (native) | Yes | Yes | Yes | Yes | No | Yes | Yes | Yes |
+| OpenAI GPT-5.x (Codex) | Yes (native) | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Gemini | Yes | Yes | Yes | No | Yes | No | Yes | Yes | Yes |
+| Local models (Ollama) | Yes | Yes | Yes | No | Custom endpoints | No | Yes | Yes | Yes |
+| Multi-model per agent | Yes | No | Yes | No | Yes | No | Yes | Yes | No |
 
 ### Memory & Knowledge
 
-| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Semantic memory built-in | Yes | Yes | BYO | Yes | Yes | BYO | BYO | BYO |
-| Local embeddings (no cloud) | **Yes (bge-m3)** | Partial | BYO | No | No | BYO | BYO | BYO |
-| Knowledge base (Obsidian-style) | Yes | No | No | No | No | No | No | No |
-| Backlinks & tags | Yes | No | No | No | No | No | No | No |
-| Self-improvement loop | Yes | No | No | Partial | No | No | No | No |
-| Task rating feedback | Yes | No | No | No | No | No | No | No |
-| Per-user memory isolation | Yes | No | No | Yes | Yes | No | No | Partial |
+| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Semantic memory built-in | Yes | Yes | BYO | Yes | Chat only (not in agents) | Yes | BYO | BYO | BYO |
+| Local embeddings (no cloud) | **Yes (bge-m3)** | Partial | BYO | No | No | No | BYO | BYO | BYO |
+| Knowledge base (Obsidian-style) | Yes | No | No | No | No (folders, knowledge bases) | No | No | No | No |
+| Backlinks & tags | Yes | No | No | No | No | No | No | No | No |
+| Self-improvement loop | Yes | No | No | Partial | No | No | No | No | No |
+| Task rating feedback | Yes | No | No | No | No | No | No | No | No |
+| Per-user memory isolation | Yes | No | No | Yes | Yes | Yes | No | No | Partial |
 
 ### Governance & Compliance
 
-| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Approval rules (natural language) | **Yes** | No | No | Partial | No | No | No | Partial |
-| Inline approvals (Telegram/UI) | Yes | No | No | No | No | No | No | No |
-| Audit log | Yes | Partial | No | Yes | Yes | No | No | Yes |
-| Multi-user with per-user data separation | **Yes** | No | No | Yes | Yes | No | No | Partial |
-| DSGVO / GDPR by default | Yes | Partial | BYO | No (US) | No (US) | BYO | BYO | Yes |
-| Data export / deletion endpoints | Yes | No | BYO | Partial | Partial | BYO | BYO | Yes |
-| Role-based access control (RBAC) | Yes | No | No | Yes | Yes | No | No | Yes |
+| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Approval rules (natural language) | **Yes** | No | No | Partial | No | No | No | No | Partial |
+| Inline approvals (Telegram/UI) | Yes | No | No | No | Yes (UI, workflows) | No | No | No | No |
+| Audit log | Yes | Partial | No | Yes | Partial (analytics, governance add-on) | Yes | No | No | Yes |
+| Multi-user with per-user data separation | **Yes** | No | No | Yes | Yes | Yes | No | No | Partial |
+| DSGVO / GDPR by default | Yes | Partial | BYO | No (US) | Yes (EU cloud) | No (US) | BYO | BYO | Yes |
+| Data export / deletion endpoints | Yes | No | BYO | Partial | Partial (retention, usage export) | Partial | BYO | BYO | Yes |
+| Role-based access control (RBAC) | Yes | No | No | Yes | Yes | Yes | No | No | Yes |
 
 ### Integrations
 
-| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Telegram | Yes (per-agent bots) | Yes | BYO | No | No | BYO | BYO | Yes |
-| WhatsApp | Planned | Yes | BYO | Yes | No | BYO | BYO | Yes |
-| iMessage / SMS | Planned | Yes | BYO | Yes | No | BYO | BYO | Yes |
-| Voice STT/TTS | Yes | Yes | BYO | Yes | Yes | BYO | BYO | Partial |
-| Google Workspace OAuth | Yes | Partial | BYO | Yes | No | BYO | BYO | Yes |
-| Microsoft 365 OAuth | Yes | Partial | BYO | Yes | No | BYO | BYO | Yes |
-| MCP (Model Context Protocol) | Yes | Partial | No | No | No | No | No | No |
-| Pre-built integrations count | ~20 | ~40 | 0 (framework) | 3000+ | ~12 | 0 (framework) | 0 (framework) | 500+ |
+| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Telegram | Yes (per-agent bots) | Yes | BYO | No | No | No | BYO | BYO | Yes |
+| WhatsApp | Yes | Yes | BYO | Yes | No | No | BYO | BYO | Yes |
+| iMessage / SMS | Planned | Yes | BYO | Yes | No | No | BYO | BYO | Yes |
+| Voice STT/TTS | Yes | Yes | BYO | Yes | Dictation only | Yes | BYO | BYO | Partial |
+| Google Workspace OAuth | Yes | Partial | BYO | Yes | Yes | No | BYO | BYO | Yes |
+| Microsoft 365 OAuth | Yes | Partial | BYO | Yes | Yes | No | BYO | BYO | Yes |
+| MCP (Model Context Protocol) | Yes | Partial | No | No | Yes (directory of 77 servers) | No | No | No | No |
+| Pre-built integrations count | ~20 | ~40 | 0 (framework) | 3000+ | 57 (754 actions) | ~12 | 0 (framework) | 0 (framework) | 500+ |
 
 ### UI / UX
 
-| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Web UI | Yes | Yes | No | Yes | Yes | Studio only | No (terminal) | Yes |
-| Chat interface | Yes | Yes (native) | No | Yes | Yes | No | No | No |
-| No-code builder | Partial | Yes | No | **Yes** | Yes | Partial | No | Yes |
-| Workflow canvas | Planned | No | No | Yes | No | Yes (graph) | No | **Yes** |
-| Mobile app | Via Telegram | Yes (iOS) | No | iOS/Android | Yes | No | No | Via web |
-| Dark mode | Yes | Yes | N/A | Yes | Yes | N/A | N/A | Yes |
+| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Web UI | Yes | Yes | No | Yes | Yes | Yes | Studio only | No (terminal) | Yes |
+| Chat interface | Yes | Yes (native) | No | Yes | Yes (native) | Yes | No | No | No |
+| No-code builder | Partial | Yes | No | **Yes** | **Yes** | Yes | Partial | No | Yes |
+| Workflow canvas | Yes | No | No | Yes | **Yes** | No | Yes (graph) | No | **Yes** |
+| Mobile app | iOS (TestFlight) | Yes (iOS) | No | iOS/Android | iOS/Android, desktop | Yes | No | No | Via web |
+| Dark mode | Yes | Yes | N/A | Yes | Yes | Yes | N/A | N/A | Yes |
 
 ### Developer Experience
 
-| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Pre-built agent templates | **34** | Marketplace | Marketplace | ~50 | GPT Store | No | No | Templates |
-| Custom skills system | Yes | Plugins | Tools | No | Actions | Tools | Tools | Nodes |
-| Meeting rooms (multi-agent chat) | **Yes** | No | Partial | No | No | Partial | Yes | No |
-| Agent deploys Docker apps | **Yes** | No | No | No | No | No | No | No |
-| Python SDK | Yes | Yes | Yes (core) | No | Yes | Yes (core) | Yes (core) | No |
-| TypeScript SDK | Planned | Yes | No | No | Yes | Yes | No | No |
-| REST API | Yes | Yes | BYO | Yes | Yes | BYO | BYO | Yes |
-| Webhook support | Yes | Yes | BYO | Yes | Yes | BYO | BYO | Yes |
+| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Pre-built agent templates | **34** | Marketplace | Marketplace | ~50 | ~35 | GPT Store | No | No | Templates |
+| Custom skills system | Yes | Plugins | Tools | No | Skills | Actions | Tools | Tools | Nodes |
+| Meeting rooms (multi-agent chat) | **Yes** | No | Partial | No | No | No | Partial | Yes | No |
+| Agent deploys Docker apps | **Yes** | No | No | No | No | No | No | No | No |
+| Python SDK | Yes | Yes | Yes (core) | No | No (REST) | Yes | Yes (core) | Yes (core) | No |
+| TypeScript SDK | Planned | Yes | No | No | No (REST) | Yes | Yes | No | No |
+| REST API | Yes | Yes | BYO | Yes | Yes | Yes | BYO | BYO | Yes |
+| Webhook support | Yes | Yes | BYO | Yes | Yes | Yes | BYO | BYO | Yes |
 
 ### Compliance
 
-| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI | LangGraph | AutoGen | n8n |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| DSGVO-ready | Yes | Partial | BYO | No | No | BYO | BYO | Yes |
-| SOC2 | In progress | No | No | Yes | Yes | No | No | Yes |
-| EU data residency | Yes (self-host) | Yes (self-host) | Yes (self-host) | US | US | Yes (self-host) | Yes (self-host) | Yes |
-| SSO / SAML | Planned | No | No | Yes (enterprise) | Yes | No | No | Yes (enterprise) |
-| On-prem deployment | Yes | Yes | Yes | No | No | Yes | Yes | Yes |
+| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| DSGVO-ready | Yes | Partial | BYO | No | Yes | No | BYO | BYO | Yes |
+| SOC2 | In progress | No | No | Yes | Yes (Type II), ISO 27001 | Yes | No | No | Yes |
+| EU data residency | Yes (self-host) | Yes (self-host) | Yes (self-host) | US | Yes (Azure EU) | US | Yes (self-host) | Yes (self-host) | Yes |
+| SSO / SAML | Yes (OIDC, SAML) | No | No | Yes (enterprise) | Yes (SCIM too) | Yes | No | No | Yes (enterprise) |
+| On-prem deployment | Yes | Yes | Yes | No | Enterprise only (5,000+ seats) | No | Yes | Yes | Yes |
 
 ---
 
@@ -194,6 +195,30 @@ If you are evaluating AI agent platforms for:
 **Choose Lindy if:** you are OK with US cloud, you want the best no-code UX, and compliance is not a blocker.
 
 **Choose AI-Employee if:** your data cannot leave your infrastructure or you need DSGVO compliance.
+
+### Langdock
+
+**What it is:** A German (Berlin) AI workspace delivered as EU-hosted SaaS: a company-wide chat with a choice of models, configurable agents, a visual workflow builder and a large integration library. It is the tool we are most often compared with in DACH, and it solves a different problem: giving every employee a governed AI chat, rather than running autonomous agents on your own infrastructure.
+
+**Pros:**
+- Rollout to a whole company in days — nothing to host, model usage included in the seat price (fair-use policy), BYOK possible
+- 57 native integrations with 754 actions, plus a curated directory of 77 remote MCP servers and a builder for custom integrations
+- Visual workflow builder with schedule, webhook and form triggers, code nodes and human-in-the-loop steps
+- Strong onboarding: agent templates, a conversational agent builder, prompt library
+- Native iOS, Android, macOS and Windows apps; Excel and Outlook add-ins; Slack and Teams bots
+- ISO 27001, SOC 2 Type II, SSO/SAML/SCIM, EU hosting on Azure
+
+**Cons:**
+- SaaS first: a dedicated deployment needs 2,000+ seats, your own cloud or on-premise 5,000+ seats (Enterprise)
+- Agents are configured assistants — instructions, knowledge and actions. Code runs in a short-lived sandbox for data analysis and file generation; there is no persistent machine per agent and no agent that builds, deploys and operates software
+- Memory works in regular chats only, not inside agents or projects
+- No persistent agent teams, delegation between agents or meeting rooms; multi-step work is modelled as a workflow
+- Priced per seat (EUR 25 per user and month; workflow volume and governance are add-ons), so cost follows headcount rather than the work done
+- Closed source
+
+**Choose Langdock if:** you want every employee to have a compliant AI chat with company knowledge and many ready-made connectors, and you do not want to operate anything yourself.
+
+**Choose AI-Employee if:** the platform has to run on your own servers at any company size, or you need agents that work on their own — with their own container, memory, schedules, teams and approval rules — instead of assistants that answer when asked.
 
 ### OpenAI Responses API / Agents SDK
 
@@ -297,6 +322,7 @@ We'd rather you pick the right tool than the wrong one:
 - **You are a solo hobbyist who wants the best iMessage/WhatsApp bot.** → Use **OpenClaw**.
 - **You want a pure Python framework to embed in your own SaaS.** → Use **CrewAI** or **LangGraph**.
 - **You want a no-code cloud tool with 3000 integrations and don't care about data residency.** → Use **Lindy**.
+- **You want an EU-hosted AI chat for the whole company with ready-made connectors and nothing to operate.** → Use **Langdock**.
 - **You are fully committed to OpenAI and want the GPT Store.** → Use **OpenAI's Responses API / Agents SDK**.
 - **You are doing academic research on multi-agent conversation patterns.** → Use **AutoGen**.
 - **You need workflow automation with AI as one step among many.** → Use **n8n**.

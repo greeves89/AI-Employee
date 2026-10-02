@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.352.1] - 2026-10-02
+
+### Dokumentation
+- **Vergleich um Langdock erweitert.** `COMPARISON.md` führt die Plattform jetzt
+  in allen Tabellen und mit einer eigenen Einzelbetrachtung, die Übersicht in
+  der README und die Vergleichsgrafik ebenfalls. Grundlage sind Herstellerseiten
+  und Dokumentation mit Stand 02.10.2026.
+- Eigene Angaben im Vergleich gegen den Code berichtigt: WhatsApp, die
+  Workflow-Fläche, die iOS-App und die Anmeldung über OIDC und SAML standen noch
+  als „geplant“ oder fehlten.
+
+---
+
 ## [1.352.0] - 2026-10-01
 
 ### Neu

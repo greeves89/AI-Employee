@@ -52,30 +52,30 @@ It is built for **small and medium-sized businesses and regulated organisations 
 How AI-Employee compares to the platforms it is usually evaluated against:
 
 <p align="center">
-  <img src="docs/assets/comparison.png" alt="Feature comparison: AI-Employee vs OpenClaw, CrewAI, Lindy, OpenAI Agents SDK" width="960">
+  <img src="docs/assets/comparison.png" alt="Feature comparison: AI-Employee vs OpenClaw, CrewAI, Lindy, Langdock, OpenAI Agents SDK" width="960">
 </p>
 
 <details>
 <summary>Same comparison as a table</summary>
 
-| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | OpenAI Responses API / Agents SDK |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Self-hosted | Yes | Yes | Yes (BYO) | No | No |
-| Multi-agent (isolated containers) | Yes | No (shared FS) | No | No | No |
-| Multi-user with per-user data separation | Yes | No | No | Yes | Yes |
-| Local semantic memory (no OpenAI) | Yes (bge-m3) | Partial | BYO | No | No |
-| Autonomy levels / permission tiers | Yes | Partial | Yes (RBAC) | Yes | Yes (Enterprise) |
-| Human-in-the-loop approvals | Yes | Partial | Yes | Partial | Yes (Agents SDK) |
-| Governance audit trail | Yes | Yes | Yes | Yes (Business+) | Yes (Enterprise) |
-| Meeting rooms (multi-agent chat) | Yes | No | Partial | No | No |
-| Persistent agent teams + lead routing | Yes | No | Partial | No | No |
-| DSGVO-compliant by default | Yes* | Partial | BYO | No (SOC2/GDPR, US cloud) | No (EU residency/ZDR on Enterprise) |
-| Telegram + voice (STT/TTS + realtime) | Yes | Yes | BYO | No | No |
-| Agents deploy and operate Docker apps | Yes | Partial (shell) | No | No | No |
-| 34 pre-built agent templates | Yes | Marketplace | Yes (Marketplace) | Yes | Yes |
-| LLM-agnostic (Claude / GPT-5.x / Gemini / Bedrock / Azure / local) | Yes | Yes | Yes | Partial (GPT/Claude, no BYO) | No |
+| Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI Responses API / Agents SDK |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| Self-hosted | Yes | Yes | Yes (BYO) | No | Enterprise only (5,000+ seats) | No |
+| Multi-agent (isolated containers) | Yes | No (shared FS) | No | No | No | No |
+| Multi-user with per-user data separation | Yes | No | No | Yes | Yes | Yes |
+| Local semantic memory (no OpenAI) | Yes (bge-m3) | Partial | BYO | No | No | No |
+| Autonomy levels / permission tiers | Yes | Partial | Yes (RBAC) | Yes | Partial (action permissions) | Yes (Enterprise) |
+| Human-in-the-loop approvals | Yes | Partial | Yes | Partial | Yes (workflows) | Yes (Agents SDK) |
+| Governance audit trail | Yes | Yes | Yes | Yes (Business+) | Partial (add-on) | Yes (Enterprise) |
+| Meeting rooms (multi-agent chat) | Yes | No | Partial | No | No | No |
+| Persistent agent teams + lead routing | Yes | No | Partial | No | No | No |
+| DSGVO-compliant by default | Yes* | Partial | BYO | No (SOC2/GDPR, US cloud) | Yes (EU cloud) | No (EU residency/ZDR on Enterprise) |
+| Telegram + voice (STT/TTS + realtime) | Yes | Yes | BYO | No | No (Slack/Teams, dictation) | No |
+| Agents deploy and operate Docker apps | Yes | Partial (shell) | No | No | No | No |
+| 34 pre-built agent templates | Yes | Marketplace | Yes (Marketplace) | Yes | Yes | Yes |
+| LLM-agnostic (Claude / GPT-5.x / Gemini / Bedrock / Azure / local) | Yes | Yes | Yes | Partial (GPT/Claude, no BYO) | Yes (BYOK) | No |
 
-\* Model inference through a cloud API leaves your infrastructure. Use local models or an EU-hosted deployment for full data locality. Competitor data was last reviewed in August 2026.
+\* Model inference through a cloud API leaves your infrastructure. Use local models or an EU-hosted deployment for full data locality. Competitor data was last reviewed in August 2026, Langdock in October 2026.
 
 </details>
 
