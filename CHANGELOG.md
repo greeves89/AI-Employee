@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.354.1] - 2026-10-02
+
+### Geändert
+- Landingpage: Der Knopf „TestFlight-Beta“ und der Hinweis auf Vorabversionen
+  über TestFlight sind entfernt; die App gibt es im App Store.
+
+---
+
 ## [1.354.0] - 2026-10-02
 
 ### Entfernt
