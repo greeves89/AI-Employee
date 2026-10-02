@@ -5,6 +5,48 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.353.0] - 2026-10-02
+
+### Neu
+- **Blog für die Landingpage.** Die statische Landingpage bekommt einen Blog,
+  den der Orchestrator als fertiges HTML ausliefert: Übersicht, Beitragsseiten
+  mit Inhaltsverzeichnis, häufigen Fragen und verwandten Beiträgen, dazu
+  RSS-Feed, Sitemap und `robots.txt`. Jede Seite trägt Titel, Beschreibung,
+  kanonische Adresse und strukturierte Daten. Standardmäßig aus
+  (`BLOG_ENABLED`); ohne den Schalter antworten alle Adressen mit 404.
+- **Verwaltung in der Admin-Konsole** (System → Blog): Beiträge schreiben,
+  prüfen, in der Vorschau ansehen, veröffentlichen und zurückziehen. Nur für
+  Administratoren.
+- **MCP-Dienst für den Blog** (`/api/v1/mcp/blog`): neun Werkzeuge zum
+  Entwerfen, Prüfen, Verlinken und Veröffentlichen — für MCP-Clients und, über
+  Integrationen eingetragen, für die Agenten der Plattform in allen Laufzeiten.
+  Der Dienst bringt seine Arbeitsweise mit: je Frage ein Beitrag, vor dem
+  Schreiben die Erfahrung des Autors erfragen, den Hauptbegriff an vorhandenen
+  Stellen auf den neuen Beitrag verlinken.
+- **Prüfung vor der Veröffentlichung**: Länge von Titel und Beschreibung,
+  Hauptbegriff an den wichtigen Stellen, Gliederung, Umfang, Verweise auf
+  eigene Seiten. Ein Beitrag mit Fehlern lässt sich nicht veröffentlichen —
+  weder in der Oberfläche noch über den MCP-Dienst.
+- Die Landingpage verweist auf den Blog, zeigt die drei neuesten Beiträge und
+  trägt jetzt selbst Titel, kanonische Adresse und Angaben für Vorschaukarten.
+
+### Sicherheit
+- Der Text eines Beitrags wird mit abgeschaltetem HTML aufbereitet; die
+  Blogseiten setzen eine eigene Content-Security-Policy ohne Skripte.
+- Entwürfe sind nur über eine Vorschau-Adresse mit eigenem zufälligem Schlüssel
+  je Beitrag sichtbar; der Schlüssel wird beim Zurückziehen neu vergeben, und
+  Vorschau-Seiten laden keine Besucherzählung.
+- Jede Änderung am Blog steht im Audit-Protokoll, mit Herkunft (Oberfläche oder
+  MCP-Dienst).
+
+### Betrieb
+- Neue Abhängigkeiten im Orchestrator: `markdown-it-py` und `jinja2`. Das
+  Orchestrator-Abbild muss neu gebaut werden.
+- Neue Tabelle `blog_posts` (Migration `7c3d1e9a4f52`).
+- Einrichtung: `docs/BLOG.md`.
+
+---
+
 ## [1.352.1] - 2026-10-02
 
 ### Dokumentation

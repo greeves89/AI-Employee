@@ -4458,3 +4458,94 @@ export async function updateSsoGroupMapping(
 export async function deleteSsoGroupMapping(id: number): Promise<{ deleted: number }> {
   return fetchJSON(`${getBase()}/sso-group-mappings/${id}`, { method: "DELETE" });
 }
+
+/* ── Blog der Landingpage ─────────────────────────────────────────────────
+   Verwaltung für Administratoren. Dieselben Regeln wie der MCP-Dienst des
+   Blogs: neue Beiträge sind Entwürfe, veröffentlicht wird erst, wenn die
+   Prüfung keine Fehler mehr meldet. */
+export interface BlogStatus {
+  enabled: boolean;
+  /** an | aus | ohne_adresse (eingeschaltet, aber BLOG_BASE_URL fehlt) */
+  state: "an" | "aus" | "ohne_adresse";
+  base_url: string;
+  blog_url: string | null;
+  mcp_ready: boolean;
+  mcp_url: string | null;
+}
+
+export interface BlogPruefung {
+  fehler: string[];
+  hinweise: string[];
+  worte: number;
+  lesezeit_minuten: number;
+  zwischenueberschriften: number;
+  interne_verweise: number;
+  titel_zeichen: number;
+  beschreibung_zeichen: number;
+}
+
+export interface BlogFaq { frage: string; antwort: string }
+
+export interface BlogPostKurz {
+  slug: string;
+  titel: string;
+  status: "draft" | "published";
+  hauptbegriff: string;
+  themen: string[];
+  worte: number;
+  adresse: string;
+  beschreibung: string;
+  veroeffentlicht_am: string | null;
+  geaendert_am: string | null;
+}
+
+export interface BlogPost extends BlogPostKurz {
+  autor: string;
+  faq: BlogFaq[];
+  vorschau: string;
+  pruefung: BlogPruefung;
+  body_markdown: string;
+}
+
+export interface BlogPostEingabe {
+  slug?: string;
+  title?: string;
+  description?: string;
+  keyword?: string;
+  body_markdown?: string;
+  tags?: string[];
+  faq?: BlogFaq[];
+  author?: string;
+}
+
+export async function getBlogStatus(): Promise<BlogStatus> {
+  return fetchJSON(`${getBase()}/blog/status`);
+}
+
+export async function listBlogPosts(): Promise<{ posts: BlogPostKurz[] }> {
+  return fetchJSON(`${getBase()}/blog/posts`);
+}
+
+export async function getBlogPost(slug: string): Promise<BlogPost> {
+  return fetchJSON(`${getBase()}/blog/posts/${encodeURIComponent(slug)}`);
+}
+
+export async function createBlogPost(body: BlogPostEingabe): Promise<BlogPost> {
+  return fetchJSON(`${getBase()}/blog/posts`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function updateBlogPost(slug: string, body: BlogPostEingabe): Promise<BlogPost> {
+  return fetchJSON(`${getBase()}/blog/posts/${encodeURIComponent(slug)}`, { method: "PUT", body: JSON.stringify(body) });
+}
+
+export async function publishBlogPost(slug: string): Promise<BlogPost> {
+  return fetchJSON(`${getBase()}/blog/posts/${encodeURIComponent(slug)}/publish`, { method: "POST" });
+}
+
+export async function unpublishBlogPost(slug: string): Promise<BlogPost> {
+  return fetchJSON(`${getBase()}/blog/posts/${encodeURIComponent(slug)}/unpublish`, { method: "POST" });
+}
+
+export async function deleteBlogPost(slug: string): Promise<{ deleted: string; was_published: boolean }> {
+  return fetchJSON(`${getBase()}/blog/posts/${encodeURIComponent(slug)}`, { method: "DELETE" });
+}

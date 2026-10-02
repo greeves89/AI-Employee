@@ -11,6 +11,15 @@
         ],
         "createdAt": "2026-09-03T12:34:05.437Z",
         "reason": "pre-existing Pi hardware-stats panel (Die Moehre): violet/fuchsia is a deliberate per-metric color code (cyan=CPU, violet=RAM, amber=Disk), not touched by today's icon-consistency change, not accidental AI palette drift"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "orchestrator/app/blog_site/templates/base.html"
+        ],
+        "createdAt": "2026-10-02T05:21:34.925Z",
+        "reason": "Claude: Markenzeichen und Hauptknopf sind 1:1 von der bestehenden Landingpage (docs/ios-app/index.html) uebernommen, damit Blog und Startseite gleich aussehen"
       }
     ]
   }

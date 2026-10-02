@@ -45,6 +45,7 @@ from app.models.job_state import JobState
 from app.models.reflection_run import ReflectionRun
 from app.models.app_share import AppShare, APP_SHARE_SCOPES
 from app.models.custom_page import CustomPage, GROUP_KEYS, OPEN_MODES
+from app.models.blog_post import BlogPost, BLOG_STATUS
 from app.models.sso_group_mapping import SsoGroupRoleMapping, TARGET_KIND_ROLE, TARGET_KIND_CUSTOM_ROLE
 from app.models.sso_observed_group import SsoObservedGroup
 
@@ -79,5 +80,6 @@ __all__ = [
     "JobState",
     "ReflectionRun",
     "CustomPage", "GROUP_KEYS", "OPEN_MODES",
+    "BlogPost", "BLOG_STATUS",
     "SsoGroupRoleMapping", "TARGET_KIND_ROLE", "TARGET_KIND_CUSTOM_ROLE", "SsoObservedGroup",
 ]

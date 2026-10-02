@@ -42,6 +42,7 @@ import {
   Search,
   Download,
   Scale,
+  Newspaper,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 
@@ -55,6 +56,7 @@ import { DlpView } from "@/app/admin/dlp-view";
 import { GesetzeView } from "@/app/admin/gesetze-view";
 import { WebSearchView } from "@/app/admin/web-search-view";
 import { MasterRulesView } from "@/app/admin/master-rules-view";
+import { BlogView } from "@/app/admin/blog-view";
 import { cn, timeAgo, formatCost } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
@@ -74,17 +76,17 @@ import { formatMoney } from "@/lib/money";
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
   | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit" | "dlp"
-  | "master-rules" | "web-search" | "gesetze"
+  | "master-rules" | "web-search" | "gesetze" | "blog"
   | "pages" | "sso-groups";
 
 // Tabs whose content is a full embedded page component (rendered without
 // their own <Header>). They don't depend on the admin page's own data load.
-const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules", "web-search", "gesetze"];
+const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules", "web-search", "gesetze", "blog"];
 
 const ALLE_TABS: Tab[] = [
   "users", "agents", "assignments", "roles", "feedback", "budget",
   "settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp",
-  "master-rules", "web-search", "gesetze", "pages", "sso-groups",
+  "master-rules", "web-search", "gesetze", "blog", "pages", "sso-groups",
 ];
 
 // Das Menüband ist zweistufig: oben die Themengruppe, darunter deren Unterreiter.
@@ -95,7 +97,7 @@ const TAB_GROUPS: { id: string; label: string; icon: typeof Users; tabs: Tab[] }
   { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains", "web-search"] },
   { id: "security", label: "Compliance", icon: Shield, tabs: ["master-rules", "secrets", "dlp", "audit", "gesetze"] },
   { id: "ops", label: "Betrieb", icon: HeartPulse, tabs: ["health", "budget", "feedback"] },
-  { id: "system", label: "System", icon: SettingsIcon, tabs: ["settings", "pages"] },
+  { id: "system", label: "System", icon: SettingsIcon, tabs: ["settings", "pages", "blog"] },
 ];
 
 const stateColors: Record<string, string> = {
@@ -453,6 +455,7 @@ export default function AdminPage() {
     { id: "master-rules", label: "Master-Regeln", icon: ShieldAlert },
     { id: "gesetze", label: "Gesetze", icon: Scale },
     { id: "pages", label: "Seiten & Links", icon: AppWindow },
+    { id: "blog", label: "Blog", icon: Newspaper },
     { id: "sso-groups", label: "SSO-Gruppen", icon: KeyRound },
   ];
 
@@ -544,6 +547,7 @@ export default function AdminPage() {
             {tab === "dlp" && <DlpView embedded />}
             {tab === "master-rules" && <MasterRulesView />}
             {tab === "gesetze" && <GesetzeView embedded />}
+            {tab === "blog" && <BlogView />}
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center py-20">

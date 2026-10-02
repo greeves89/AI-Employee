@@ -53,6 +53,11 @@ dependencies = [
     # stdlib xml.etree ist gegen XXE/Billion-Laughs verwundbar, defusedxml haertet
     # denselben Aufruf minimal-invasiv ab.
     "defusedxml>=0.7",
+    # Blog der Landingpage: Markdown wird mit abgeschaltetem HTML aufbereitet
+    # (kein Eigenbau an dieser Stelle — der Text geht ohne Anmeldung an jeden
+    # Besucher), die Seiten entstehen aus Vorlagen mit automatischer Maskierung.
+    "markdown-it-py>=3.0",
+    "jinja2>=3.1.6",
 ]
 
 [build-system]

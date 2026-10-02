@@ -4,7 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="AI Employee — Self-Hosted KI-Agenten-Plattform: M365 und MCP direkt, drei Laufzeiten, alle Kanäle, Freigaben und Prüfspur. Mit iOS-App AI Employee Hub.">
-<title>AI Employee</title>
+<title>AI Employee — Self-Hosted KI-Agenten-Plattform für dein Team</title>
+<link rel="canonical" href="https://agents.future-app.de/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="AI Employee — Self-Hosted KI-Agenten-Plattform für dein Team">
+<meta property="og:description" content="KI-Mitarbeiter, die in deinen Systemen arbeiten: selbst betrieben per Docker, mit Freigaben, Budgets und Prüfspur. Mit iOS-App.">
+<meta property="og:url" content="https://agents.future-app.de/">
+<meta property="og:site_name" content="AI Employee">
+<meta property="og:locale" content="de_DE">
+<link rel="alternate" type="application/rss+xml" title="AI Employee Blog" href="/blog/feed.xml">
 <style>
 /* Schriften lokal eingebettet — keine Verbindung zu Google */
 @font-face {
@@ -251,6 +259,8 @@
   .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
   .tile{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px;display:grid;gap:8px}
   .tile h3{font-size:17px}
+  a.tile{text-decoration:none}
+  .tile time{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.04em}
   .tile p{color:var(--muted);font-size:15px}
 
   /* CTA */
@@ -397,6 +407,7 @@
       <a href="#plattform">Plattform</a>
       <a href="#app">iOS-App</a>
       <a href="#rollen">Rollen</a>
+      <a href="/blog">Blog</a>
       <a href="#beta">Beta</a>
     </nav>
     <a class="btn primary" href="#beta">Zur Beta</a>
@@ -682,6 +693,17 @@
   </div>
 </section>
 
+<section class="more" id="blog" hidden>
+  <div class="wrap">
+    <div class="head reveal">
+      <span class="eyebrow">Blog</span>
+      <h2>Fragen und Antworten aus der Praxis</h2>
+      <p class="lede">Was beim Einsatz von KI-Agenten im Unternehmen wirklich zählt: Betrieb, Sicherheit, Kosten. <a href="/blog">Alle Beiträge</a></p>
+    </div>
+    <div class="tiles" id="blogtiles"></div>
+  </div>
+</section>
+
 <section class="cta" id="beta">
   <div class="wrap">
     <span class="eyebrow">Beta</span>
@@ -711,7 +733,7 @@
 <footer>
   <div class="wrap">
     <span>AI Employee Hub · iOS-Begleiter zur AI-Employee-Plattform</span>
-    <span class="legal"><a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></span>
+    <span class="legal"><a href="/blog">Blog</a> · <a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></span>
     <span>Version 1.3.3 · iOS 18 oder neuer</span>
   </div>
 </footer>
@@ -767,6 +789,27 @@
       entries.forEach(function(en){if(en.isIntersecting){en.target.classList.add('in');io.unobserve(en.target)}})
     },{rootMargin:'0px 0px -10% 0px',threshold:.1});
     els.forEach(function(e){io.observe(e)});
+  })();
+  (function(){
+    // Neueste Blogbeitraege: der Abschnitt erscheint nur, wenn es welche gibt.
+    var abschnitt=document.getElementById('blog'), kacheln=document.getElementById('blogtiles');
+    if(!abschnitt||!kacheln||!window.fetch) return;
+    fetch('/blog/latest.json',{headers:{'Accept':'application/json'}})
+      .then(function(r){return r.ok?r.json():null})
+      .then(function(d){
+        var liste=d&&d.beitraege||[];
+        if(!liste.length) return;
+        liste.forEach(function(b){
+          if(!/^[a-z0-9-]+$/.test(b.slug||'')) return;
+          var a=document.createElement('a'); a.className='tile'; a.href='/blog/'+b.slug;
+          var t=document.createElement('time'); t.dateTime=b.datum_iso||''; t.textContent=b.datum||'';
+          var h=document.createElement('h3'); h.textContent=b.titel||'';
+          var p=document.createElement('p'); p.textContent=b.beschreibung||'';
+          a.appendChild(t); a.appendChild(h); a.appendChild(p); kacheln.appendChild(a);
+        });
+        if(kacheln.children.length) abschnitt.hidden=false;
+      })
+      .catch(function(){});
   })();
   (function(){
     // Maus-Spotlight auf Karten und Kacheln (ein Listener, Delegation)

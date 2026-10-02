@@ -117,3 +117,7 @@ handle / {
 	file_server
 }
 ```
+
+Der Blog der Landingpage (`/blog`, `/sitemap.xml`, `/robots.txt`) braucht ein
+weiteres Snippet und ein paar Angaben in der `.env` — siehe
+[docs/BLOG.md](../docs/BLOG.md).

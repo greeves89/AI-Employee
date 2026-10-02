@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ seitentitel }}</title>
+<meta name="description" content="{{ beschreibung }}">
+{% if noindex %}<meta name="robots" content="noindex, nofollow">
+{% else %}<link rel="canonical" href="{{ canonical }}">
+{% endif %}<meta property="og:type" content="{{ og_typ }}">
+<meta property="og:title" content="{{ og_titel }}">
+<meta property="og:description" content="{{ beschreibung }}">
+<meta property="og:url" content="{{ canonical }}">
+<meta property="og:site_name" content="{{ marke }}">
+<meta property="og:locale" content="de_DE">
+<meta name="twitter:card" content="summary">
+<link rel="alternate" type="application/rss+xml" title="{{ marke }} Blog" href="{{ basis }}/blog/feed.xml">
+<link rel="preload" href="/blog/assets/fonts/ibm-plex-sans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/blog/assets/fonts/sora.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+/* Schriften liegen auf dem eigenen Server, keine Verbindung zu Schriftanbietern */
+@font-face{font-family:'Sora';font-style:normal;font-weight:600 800;font-display:swap;src:url(/blog/assets/fonts/sora.woff2) format('woff2')}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:400 600;font-display:swap;src:url(/blog/assets/fonts/ibm-plex-sans.woff2) format('woff2')}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url(/blog/assets/fonts/ibm-plex-mono.woff2) format('woff2')}
+:root{
+  --bg:#06080f;--bg2:#0b0f1a;--surface:#0f1524;--line:rgba(255,255,255,.08);
+  --text:#f2f4f8;--muted:#98a1b5;--dim:#5f6a80;
+  --blue:#0a84ff;--cyan:#22d3ee;--link:#7cd6ff;
+  --display:"Sora",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --body:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);font-size:17px;line-height:1.7;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit}
+img{max-width:100%;height:auto;border-radius:12px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+.schmal{max-width:760px;margin:0 auto;padding:0 24px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.02em}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+header.kopf{position:sticky;top:0;z-index:20;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);background:rgba(6,8,15,.75);border-bottom:1px solid var(--line)}
+header.kopf .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;height:64px}
+.brand{display:flex;align-items:center;gap:12px;font-family:var(--display);font-weight:700;font-size:17px;text-decoration:none;white-space:nowrap}
+.brand i{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--blue),var(--cyan));display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 24px rgba(10,132,255,.45)}
+.brand i svg{width:18px;height:18px;stroke:#fff}
+nav{display:flex;gap:24px;font-size:15px;color:var(--muted)}
+nav a{text-decoration:none}
+nav a:hover,nav a:focus-visible,nav a[aria-current]{color:var(--text)}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:12px 20px;border-radius:999px;font-family:var(--display);font-weight:600;font-size:15px;text-decoration:none;border:1px solid var(--line);white-space:nowrap}
+.btn.primary{background:var(--blue);border-color:transparent;color:#fff;box-shadow:0 10px 30px rgba(10,132,255,.35)}
+@media (max-width:720px){nav a.weit{display:none} nav{gap:16px} header.kopf .btn{display:none}}
+footer{border-top:1px solid var(--line);padding:32px 0;color:var(--dim);font-size:14px;margin-top:80px}
+footer .wrap{display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap}
+footer a{color:var(--muted)}
+.hinweis{background:#3b2a05;color:#fde68a;border-bottom:1px solid #92400e;text-align:center;padding:10px 24px;font-size:14px}
+
+/* Uebersicht */
+.blogkopf{padding:72px 0 36px}
+.blogkopf h1{font-size:clamp(34px,5vw,54px);line-height:1.05;font-weight:800;margin:14px 0 16px}
+.blogkopf p{color:var(--muted);font-size:clamp(17px,1.6vw,20px);max-width:38em;margin:0}
+.karten{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;padding:0;margin:0;list-style:none}
+.karte{border:1px solid var(--line);border-radius:18px;background:var(--surface);padding:26px;display:flex;flex-direction:column;gap:12px;height:100%;text-decoration:none;transition:border-color .15s ease,transform .15s ease}
+.karte:hover,.karte:focus-visible{border-color:rgba(10,132,255,.6);transform:translateY(-2px)}
+.karte h2,.karte h3{font-size:21px;line-height:1.25;font-weight:700}
+.karte p{margin:0;color:var(--muted);font-size:15.5px;line-height:1.55}
+.meta{font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--dim);display:flex;gap:14px;flex-wrap:wrap}
+.themen{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+.themen span{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.leer{color:var(--muted);border:1px dashed var(--line);border-radius:18px;padding:40px;text-align:center}
+
+/* Beitrag */
+.pfad{font-size:14px;color:var(--dim);padding:28px 0 0}
+.pfad a{color:var(--muted);text-decoration:none}
+.pfad a:hover{color:var(--text)}
+article header{padding:22px 0 8px}
+article h1{font-size:clamp(32px,4.6vw,48px);line-height:1.1;font-weight:800;margin:0 0 18px}
+.vorspann{font-size:clamp(18px,1.7vw,20.5px);color:var(--muted);margin:0 0 20px;line-height:1.55}
+.inhalt{border:1px solid var(--line);border-radius:16px;background:var(--bg2);padding:20px 24px;margin:28px 0}
+.inhalt b{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.inhalt ol{margin:10px 0 0;padding-left:22px;color:var(--muted)}
+.inhalt a{text-decoration:none}
+.inhalt a:hover{color:var(--text)}
+.text{font-size:18px}
+.text h2{font-size:clamp(24px,3vw,30px);line-height:1.2;font-weight:700;margin:52px 0 14px;scroll-margin-top:84px}
+.text h3{font-size:21px;font-weight:600;margin:36px 0 10px;scroll-margin-top:84px}
+.text h4{font-family:var(--display);font-size:18px;margin:28px 0 8px}
+.text p{margin:0 0 20px;color:#d5dbe8}
+.text a{color:var(--link);text-underline-offset:3px}
+.text a:hover{color:#fff}
+.text ul,.text ol{margin:0 0 20px;padding-left:24px;color:#d5dbe8}
+.text li{margin:0 0 8px}
+.text strong{color:var(--text);font-weight:600}
+.text blockquote{margin:0 0 20px;padding:16px 20px;border:1px solid var(--line);border-radius:14px;background:var(--bg2);color:var(--muted)}
+.text blockquote p:last-child{margin-bottom:0}
+.text blockquote p{color:inherit}
+.text code{font-family:var(--mono);font-size:.88em;background:rgba(255,255,255,.07);border-radius:6px;padding:2px 6px}
+.text pre{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:18px 20px;overflow-x:auto;margin:0 0 20px;font-size:14.5px;line-height:1.6}
+.text pre code{background:none;padding:0;font-size:inherit}
+.text hr{border:0;border-top:1px solid var(--line);margin:40px 0}
+.tabelle{overflow-x:auto;margin:0 0 20px}
+.text table{border-collapse:collapse;width:100%;font-size:16px}
+.text th,.text td{border-bottom:1px solid var(--line);padding:10px 14px;text-align:left;vertical-align:top}
+.text th{font-family:var(--display);font-weight:600;color:var(--text);white-space:nowrap}
+.text td{color:#d5dbe8}
+.faq{margin-top:56px}
+.faq h2{font-size:clamp(24px,3vw,30px);font-weight:700;margin:0 0 18px}
+.faq details{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:0 20px;margin-bottom:10px}
+.faq summary{cursor:pointer;font-family:var(--display);font-weight:600;font-size:17.5px;padding:16px 0;list-style-position:outside}
+.faq details p{margin:0 0 18px;color:#d5dbe8}
+.cta{margin:56px 0 0;border:1px solid rgba(10,132,255,.35);border-radius:20px;background:linear-gradient(135deg,rgba(10,132,255,.14),rgba(34,211,238,.06));padding:30px}
+.cta h2{font-size:24px;font-weight:700;margin:0 0 8px}
+.cta p{margin:0 0 20px;color:var(--muted)}
+.autor{margin-top:40px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-size:15px}
+.weiter{margin-top:72px}
+.weiter h2{font-size:24px;font-weight:700;margin:0 0 20px}
+</style>
+{% if analytics_src %}<!-- Besucherzählung über den eigenen Dienst: keine Cookies, keine personenbezogenen Daten. Siehe /datenschutz -->
+<script defer src="{{ analytics_src }}" data-website-id="{{ analytics_id }}" data-do-not-track="true"></script>
+{% endif %}{% for block in strukturdaten %}<script type="application/ld+json">{{ block|safe }}</script>
+{% endfor %}</head>
+<body>
+{% if vorschau %}<div class="hinweis">Vorschau eines Entwurfs — nicht veröffentlicht, nur über diese Adresse sichtbar.</div>{% endif %}
+<header class="kopf">
+  <div class="wrap">
+    <a class="brand" href="/"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/><path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/><path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg></i>{{ marke }}</a>
+    <nav aria-label="Hauptnavigation">
+      <a class="weit" href="/#plattform">Plattform</a>
+      <a class="weit" href="/#app">iOS-App</a>
+      <a href="/blog"{% if og_typ == 'website' %} aria-current="page"{% endif %}>Blog</a>
+    </nav>
+    <a class="btn primary" href="/#beta">Zugang anfragen</a>
+  </div>
+</header>
+<main>
+{% block inhalt %}{% endblock %}
+</main>
+<footer>
+  <div class="wrap">
+    <span>{{ marke }} · Self-Hosted KI-Agenten-Plattform</span>
+    <span><a href="/blog">Blog</a> · <a href="/blog/feed.xml">RSS</a> · <a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a></span>
+  </div>
+</footer>
+</body>
+</html>
