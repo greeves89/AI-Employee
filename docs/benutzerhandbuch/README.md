@@ -1892,7 +1892,7 @@ oder dem **X** schließt du es — es kommt danach nicht mehr von selbst.
 
 **Später wieder ansehen:**
 1. Linke Seitenleiste → **Hilfe & FAQ**.
-2. Oben auf die Kachel **Klick-Tutorials** klicken (rot markiert) — das Fenster öffnet sich.
+2. Oben auf die breite Karte **Klick-Tutorials** klicken (rot markiert) — das Fenster öffnet sich.
 3. Oder einen Eintrag aufklappen, der ein Tutorial hat (z. B. **Neuen Agenten erstellen**):
    Das Video steht direkt unter der Erklärung.
 

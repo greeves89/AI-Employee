@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.2] - 2026-10-02
+
+### Geändert
+- **Hilfe & FAQ:** Die Klick-Tutorials stehen jetzt als breite Karte über dem
+  Schnellzugriff („Der schnellste Einstieg: 5 kurze Videos mit Sprecher“), statt
+  als eine von mehreren kleinen Kacheln. Im einfachen Modus füllen die übrigen
+  zwei Kacheln die Zeile. Benutzerhandbuch: Bildschirmfotos der Hilfe-Seite
+  erneuert.
+
+---
+
 ## [1.356.1] - 2026-10-02
 
 ### Behoben

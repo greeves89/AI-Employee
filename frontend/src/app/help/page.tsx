@@ -13,10 +13,12 @@ import {
   Download,
   Network,
   PlayCircle,
+  ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTutorials } from "@/components/tutorials/tutorial-fenster";
 import { TutorialVideo } from "@/components/tutorials/tutorial-video";
+import { TUTORIALS } from "@/lib/tutorials";
 
 // --- Hilfe-Index: alles was als Hilfe/Help identifizierbar ist -------------------
 // Eine Quelle für FAQ + Funktions-How-Tos + Deep-Links. Die Suche filtert client-
@@ -280,8 +282,25 @@ export default function HelpPage() {
         </div>
       </div>
 
+      {/* Klick-Tutorials: der schnellste Einstieg, deshalb breit über dem Schnellzugriff */}
+      <button
+        onClick={() => tutorialsOeffnen()}
+        className="group flex w-full items-center gap-4 rounded-2xl border border-primary/25 bg-card p-5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
+      >
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+          <PlayCircle className="h-6 w-6 text-primary" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-base font-semibold">Klick-Tutorials</div>
+          <div className="text-sm text-muted-foreground">
+            Der schnellste Einstieg: {TUTORIALS.length} kurze Videos mit Sprecher, der Reihe nach.
+          </div>
+        </div>
+        <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      </button>
+
       {/* Schnellzugriff */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={cn("grid gap-3 sm:grid-cols-2", !simpleMode && "lg:grid-cols-4")}>
         <a
           href="/benutzerhandbuch.pdf"
           target="_blank"
@@ -306,16 +325,6 @@ export default function HelpPage() {
             <div className="text-xs text-muted-foreground truncate">Onboarding-Wizard öffnen</div>
           </div>
         </Link>
-        <button
-          onClick={() => tutorialsOeffnen()}
-          className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card p-4 text-left hover:bg-foreground/[0.04] transition-colors"
-        >
-          <PlayCircle className="h-5 w-5 text-primary shrink-0" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium">Klick-Tutorials</div>
-            <div className="text-xs text-muted-foreground truncate">Kurze Videos zu den wichtigsten Schritten</div>
-          </div>
-        </button>
         {!simpleMode && (<>
         <a
           href="https://github.com/greeves89/AI-Employee/blob/main/CHANGELOG.md"
