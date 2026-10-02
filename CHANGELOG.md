@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.1] - 2026-10-02
+
+### Behoben
+- **Videos liefen in Safari und auf dem iPhone nicht** (schwarzes Bild,
+  durchgestrichenes Abspielsymbol): Die in 1.356.0 neu gebauten Klick-Tutorials
+  und der Film der Landingpage waren mit H.264 „High 4:4:4“ kodiert, das nur
+  Chrome abspielt. Alle sieben Videos sind jetzt in 4:2:0 (High-Profil) neu
+  gebaut; `docs/videos/film.py` erzwingt das und bricht ab, falls doch ein
+  anderes Format entsteht.
+
+---
+
 ## [1.356.0] - 2026-10-02
 
 ### Geändert

@@ -122,10 +122,12 @@ with tempfile.TemporaryDirectory() as tmp:
     fl.append("".join(f"[c{i}]" for i in range(len(teile))) + f"concat=n={len(teile)}:v=1:a=0,{gemein}[ui]")
     fl.append(f"[0:v]{gemein}[in]"); fl.append(f"[2:v]{gemein}[en]")
     fl.append(f"[in][ui]xfade=transition=fade:duration={X}:offset={A:.3f}[iu]")
-    fl.append(f"[iu][en]xfade=transition=fade:duration={X}:offset={B:.3f}[v]")
+    fl.append(f"[iu][en]xfade=transition=fade:duration={X}:offset={B:.3f},format=yuv420p[v]")
     bild = os.path.join(tmp, "bild.mp4")
     sh("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", intro, "-i", roh, "-i", ende,
        "-filter_complex", ";".join(fl), "-map", "[v]", "-c:v", "libx264", "-preset", "slow",
+       # yuv420p + High-Profil: sonst wählt ffmpeg 4:4:4, das Safari und iPhone nicht abspielen
+       "-pix_fmt", "yuv420p", "-profile:v", "high", "-color_range", "tv",
        "-crf", str(f.get("crf", 24)), "-t", f"{T:.3f}", bild)
 
     # 3. Musikbett: ruhig, ohne Effekte, Glocken zum Schluss.
@@ -186,6 +188,12 @@ MUSIC_GAIN = 1.0
     # Vorschaubild: die Titelkarte mit Logo.
     sh("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", f"{min(1.8, I - .6):.2f}", "-i", ziel + ".mp4",
        "-frames:v", "1", "-vf", f"scale={min(W, 1280)}:-2", "-q:v", "3", ziel + ".jpg")
+
+# Safari/iPhone spielen nur 4:2:0 — lieber hier scheitern als mit einem schwarzen Video im Browser.
+pf = subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=pix_fmt,profile",
+                              "-of", "csv=p=0", ziel + ".mp4"]).decode().strip()
+if "yuv420p" not in pf or "4:4:4" in pf:
+    sys.exit(f"Videoformat nicht überall abspielbar: {pf}")
 
 # 6. Untertitel: je Satz eine Einblendung, kurze Sätze zusammen; Zeit nach Zeichenanteil.
 def zeit(t):
