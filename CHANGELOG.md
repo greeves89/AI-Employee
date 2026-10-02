@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.7] - 2026-10-02
+
+### Behoben
+- **Chat-Antworten klebten an der Ankündigung:** Kündigte ein Claude-Code-Agent
+  einen Schritt an („Ich schau kurz nach …“), rief dann ein Werkzeug auf und
+  antwortete, stand beides ohne Lücke da („…nach.Drei kurze Ideen …“). Die
+  Markierung für einen neuen Absatz verfiel am Werkzeugaufruf, der keinen Text
+  hat. Sie gilt jetzt, bis wieder Text kommt; zusätzlich zählt eine neue
+  Nachrichten-ID als neuer Zug. Damit verliert auch eine längere zweite Nachricht
+  nicht mehr ihre ersten Zeichen.
+
+---
+
 ## [1.356.6] - 2026-10-02
 
 ### Geändert

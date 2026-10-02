@@ -38,6 +38,44 @@ def _is_context_length_error(error: str) -> bool:
     return any(marker in text for marker in _CONTEXT_LENGTH_MARKERS)
 
 
+
+class TextBloecke:
+    """Welcher Text eines ``assistant``-Ereignisses ist neu — und beginnt er einen neuen Zug?
+
+    Claude Code schickt je Ereignis den bisherigen Inhalt EINER Nachricht. Innerhalb
+    einer Nachricht waechst der Text (nur das Delta ist neu); eine neue Nachricht
+    nach einem Werkzeugaufruf ist ein neuer Gedanke und gehoert als eigener Absatz
+    abgesetzt.
+
+    Bis 1.356.6 hing die Erkennung allein daran, dass der Text KUERZER wurde. Das
+    Ereignis mit dem Werkzeugaufruf hat aber gar keinen Text: Die Markierung wurde
+    dort gesetzt und verfiel, bevor der naechste Text kam. Aus „Ich schau kurz
+    nach." und „Drei kurze Ideen …" wurde „…nach.Drei kurze Ideen". Jetzt gilt die
+    Markierung, bis wirklich Text kommt, und eine neue Nachrichten-ID zaehlt auch.
+    """
+
+    def __init__(self) -> None:
+        self._gesehen = 0
+        self._wechsel = False
+        self._letzte_id: str | None = None
+
+    def neu(self, message: dict) -> tuple[str, bool] | None:
+        text = "".join(
+            b.get("text", "") for b in message.get("content", []) if b.get("type") == "text"
+        )
+        mid = message.get("id")
+        if (mid and self._letzte_id and mid != self._letzte_id) or len(text) < self._gesehen:
+            self._gesehen = 0
+            self._wechsel = True
+        if mid:
+            self._letzte_id = mid
+        if len(text) <= self._gesehen:
+            return None
+        neu = text[self._gesehen:]
+        self._gesehen = len(text)
+        wechsel, self._wechsel = self._wechsel, False
+        return neu, wechsel
+
 class ChatHandler:
     """Handles interactive chat sessions using Claude Code CLI with --resume."""
 
@@ -306,7 +344,7 @@ class ChatHandler:
             stderr_task = asyncio.create_task(_collect_stderr(self._process))
 
             full_text = ""
-            seen_text_len = 0  # Track how much text we already sent
+            bloecke = TextBloecke()  # neue Textstuecke + Zugwechsel erkennen
             seen_tool_ids: set[str] = set()  # Deduplicate tool_use blocks
             async for event in self._stream_output(self._process):
                 event_type = event.get("type", "unknown")
@@ -318,12 +356,8 @@ class ChatHandler:
 
                 if event_type == "assistant":
                     message = event.get("message", {})
-                    # Rebuild full text from all text blocks to detect new content
-                    current_full_text = ""
                     for block in message.get("content", []):
-                        if block.get("type") == "text":
-                            current_full_text += block["text"]
-                        elif block.get("type") == "tool_use":
+                        if block.get("type") == "tool_use":
                             tool_id = block.get("id", "")
                             if tool_id and tool_id in seen_tool_ids:
                                 continue  # Skip already-published tool calls
@@ -359,17 +393,10 @@ class ChatHandler:
                                     "input": tool_input,
                                 },
                             )
-                    # Detect new assistant turn: if current text is shorter
-                    # than what we've already seen, the content array has reset
-                    # (new assistant message after tool use in multi-turn)
-                    neuer_block = False
-                    if len(current_full_text) < seen_text_len:
-                        seen_text_len = 0
-                        neuer_block = True
-
                     # Only send NEW text (delta since last event)
-                    if len(current_full_text) > seen_text_len:
-                        new_text = current_full_text[seen_text_len:]
+                    stueck = bloecke.neu(message)
+                    if stueck:
+                        new_text, neuer_block = stueck
                         # Gespeichert wird wie angezeigt: ein neuer Zug ist ein
                         # neuer Absatz. Live trennte die Oberflaeche die Bloecke
                         # schon, im gespeicherten Verlauf klebten sie nach dem
@@ -377,7 +404,6 @@ class ChatHandler:
                         if neuer_block and full_text and not full_text.endswith("\n"):
                             full_text += "\n\n"
                         full_text += new_text
-                        seen_text_len = len(current_full_text)
                         # ``neuer_block`` trennt EIGENSTAENDIGE Antworten von der
                         # blossen Fortsetzung derselben. Innerhalb einer Antwort
                         # kommen echte Teilstuecke, die aneinandergehoeren;

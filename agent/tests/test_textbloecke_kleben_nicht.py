@@ -34,22 +34,48 @@ _FRONTEND = (Path(__file__).resolve().parents[2]
 
 class AbsenderMarkiertDieGrenze(unittest.TestCase):
 
-    def test_claude_code_markiert_den_zugwechsel(self):
-        quelle = (_AGENT / "chat_handler.py").read_text(encoding="utf-8")
-        self.assertIn("neuer_block", quelle,
-                      "Ohne Markierung kann die Oberflaeche Fortsetzung und "
-                      "neue Aeusserung nicht unterscheiden.")
-        # Die Markierung muss am ZURUECKSETZEN des Zaehlers haengen — genau dort
-        # beginnt ein neuer Zug. (Nicht an der Initialisierung weiter oben.)
-        treffer = re.search(
-            r"if len\(current_full_text\) < seen_text_len:(.{0,200}?)\n\n",
-            quelle, re.S)
-        self.assertIsNotNone(treffer, "Der Zugwechsel-Zweig wurde nicht gefunden.")
-        self.assertIn(
-            "neuer_block = True", treffer.group(1),
-            "Die Markierung haengt nicht am Zugwechsel — dann trennt sie die "
-            "falschen Stellen.",
+    def _folge(self, *nachrichten):
+        from app.chat_handler import TextBloecke
+        bloecke = TextBloecke()
+        return [s for s in (bloecke.neu(m) for m in nachrichten) if s]
+
+    def test_ankuendigung_werkzeug_antwort(self):
+        """02.10.2026: „…was wir wissen.Drei kurze Ideen …" — zwischen Ankündigung
+        und Antwort lag ein Werkzeugaufruf ohne Text, an dem die Markierung verfiel."""
+        stuecke = self._folge(
+            {"id": "m1", "content": [{"type": "text", "text": "Ich schau kurz nach."}]},
+            {"id": "m1", "content": [{"type": "tool_use", "id": "t1", "name": "brain_search"}]},
+            {"id": "m2", "content": [{"type": "text", "text": "Drei kurze Ideen"}]},
         )
+        self.assertEqual(stuecke, [("Ich schau kurz nach.", False), ("Drei kurze Ideen", True)])
+
+    def test_laengere_neue_nachricht_verliert_keinen_anfang(self):
+        # Ohne Nachrichten-ID-Vergleich galt nur „Text wurde kürzer" als Zugwechsel;
+        # eine längere zweite Nachricht verlor dann ihre ersten Zeichen.
+        stuecke = self._folge(
+            {"id": "m1", "content": [{"type": "text", "text": "Kurz."}]},
+            {"id": "m2", "content": [{"type": "text", "text": "Eine deutlich längere Antwort"}]},
+        )
+        self.assertEqual(stuecke[1], ("Eine deutlich längere Antwort", True))
+
+    def test_wachsender_text_derselben_nachricht_ist_fortsetzung(self):
+        stuecke = self._folge(
+            {"id": "m1", "content": [{"type": "text", "text": "Hallo"}]},
+            {"id": "m1", "content": [{"type": "text", "text": "Hallo Welt"}]},
+        )
+        self.assertEqual(stuecke, [("Hallo", False), (" Welt", False)])
+
+    def test_ohne_id_zaehlt_das_kuerzerwerden(self):
+        stuecke = self._folge(
+            {"content": [{"type": "text", "text": "Erster Zug"}]},
+            {"content": [{"type": "tool_use"}]},
+            {"content": [{"type": "text", "text": "Zweiter"}]},
+        )
+        self.assertEqual(stuecke, [("Erster Zug", False), ("Zweiter", True)])
+
+    def test_chat_handler_nutzt_die_klasse(self):
+        quelle = (_AGENT / "chat_handler.py").read_text(encoding="utf-8")
+        self.assertIn("bloecke.neu(message)", quelle)
 
     def test_codex_schickt_jedes_stueck_als_eigenen_block(self):
         quelle = (_AGENT / "codex_runner.py").read_text(encoding="utf-8")
