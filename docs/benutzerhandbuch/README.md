@@ -1873,8 +1873,8 @@ Aus aufgezeichneten Meetings erkannte **Action-Items** werden automatisch als Au
 
 1. Linke Seitenleiste → **Hilfe & FAQ**.
 2. **Suchfeld** nutzen (z. B. „Skill herunterladen", „Exchange", „Symbol") oder Themen aufklappen.
-3. Schnellzugriff oben: **Benutzerhandbuch (PDF)**, **Schnellstart**, **Klick-Tutorials**
-   und — nur für Admins — **Changelog** und **Architektur**.
+3. Ganz oben die breite Karte **Klick-Tutorials**, darunter der Schnellzugriff:
+   **Benutzerhandbuch (PDF)**, **Schnellstart** und — nur für Admins — **Changelog** und **Architektur**.
 
 ![Hilfe & FAQ mit Schnellzugriff und Suche](screenshots/39-hilfe.png)
 
