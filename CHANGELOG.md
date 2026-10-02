@@ -39,6 +39,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Jede Änderung am Blog steht im Audit-Protokoll, mit Herkunft (Oberfläche oder
   MCP-Dienst).
 
+### Dokumentation
+- **Vergleich auf den Stand vom 02.10.2026 gebracht.** Alle Fremdprodukte in
+  `COMPARISON.md`, in der Übersicht der README und in der Vergleichsgrafik
+  wurden gegen Herstellerseiten und Repositories geprüft. Geändert haben sich
+  vor allem die Unterstützung für MCP (inzwischen bei fast allen vorhanden),
+  Freigaben und Mehragenten-Funktionen einzelner Produkte, die Zahl der
+  Anbindungen und der Status eines Frameworks, das nur noch gewartet wird.
+
 ### Betrieb
 - Neue Abhängigkeiten im Orchestrator: `markdown-it-py` und `jinja2`. Das
   Orchestrator-Abbild muss neu gebaut werden.

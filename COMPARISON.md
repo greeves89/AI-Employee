@@ -1,6 +1,6 @@
 # AI-Employee vs. The Field
 
-> **Stand: 02.10.2026** — Feature-Matrix und Bewertungen entsprechen dem Entwicklungsstand zu diesem Datum (Langdock: Herstellerseiten und Dokumentation, abgerufen am 02.10.2026; übrige Fremdprodukte: 01.08.2026). Star-Zahlen und Fremdprodukt-Details sind grobe Momentaufnahmen.
+> **Stand: 02.10.2026** — Feature-Matrix und Bewertungen entsprechen dem Entwicklungsstand zu diesem Datum (alle Fremdprodukte: Herstellerseiten, Dokumentation und Repositories, abgerufen am 02.10.2026; nicht jede Zelle ließ sich dort belegen). Star-Zahlen und Fremdprodukt-Details sind grobe Momentaufnahmen.
 
 An honest, detailed comparison of AI-Employee against the most common alternatives. We believe comparisons should help you pick the *right* tool — not trick you into picking ours.
 
@@ -20,14 +20,14 @@ If you are evaluating AI agent platforms for:
 | Tool | Category | Creator | GitHub Stars (approx) |
 |---|---|---|---|
 | **AI-Employee** | Self-hosted multi-agent platform | Daniel Alisch (DACH) | Early-stage |
-| **OpenClaw** | Messaging-first personal AI | Peter Steinberger | 60,000+ |
-| **CrewAI** | Python multi-agent framework | João Moura | 25,000+ |
+| **OpenClaw** | Messaging-first personal AI | Peter Steinberger / OpenClaw Foundation | 390,000+ |
+| **CrewAI** | Python multi-agent framework | João Moura | 59,000+ |
 | **Lindy.ai** | Cloud no-code AI builder | Flo Crivello | Closed-source |
 | **Langdock** | EU cloud AI workspace (chat, agents, workflows) | Langdock GmbH (Berlin) | Closed-source |
-| **OpenAI Responses API / Agents SDK** | Cloud AI assistants (formerly GPTs / Assistants API — Assistants API shuts down 2026-08-26) | OpenAI | Closed-source |
-| **LangGraph** | Graph-based agent framework | LangChain Inc. | 9,000+ |
-| **AutoGen** | Multi-agent research framework | Microsoft Research | 35,000+ |
-| **n8n** | Workflow automation | n8n.io | 65,000+ |
+| **OpenAI Responses API / Agents SDK** | Cloud AI assistants (formerly GPTs / Assistants API — the Assistants API was shut down on 2026-08-26) | OpenAI | Closed-source |
+| **LangGraph** | Graph-based agent framework | LangChain Inc. | 42,000+ |
+| **AutoGen** | Multi-agent framework (maintenance mode; successor: Microsoft Agent Framework) | Microsoft Research | 61,000+ |
+| **n8n** | Workflow automation | n8n.io | 200,000+ |
 
 > Star counts are rough snapshots and change constantly. They measure popularity, not quality.
 
@@ -41,11 +41,11 @@ If you are evaluating AI agent platforms for:
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | Self-hostable | Yes | Yes | Yes | **No** | Enterprise only (5,000+ seats) | **No** | Yes | Yes | Yes |
 | Open source | Source available | Yes | Yes (MIT) | **No** | **No** | **No** | Yes (MIT) | Yes (MIT) | Yes (Fair-Code) |
-| Multi-agent | Yes | **No** | Yes | Partial | Partial (agents as workflow steps) | Partial | Yes | Yes | No |
+| Multi-agent | Yes | Yes (routing, isolated workspaces) | Yes | Partial | Partial (agents as workflow steps) | Partial | Yes | Yes | Partial (sub-agents) |
 | Persistent agent teams + lead-routing | **Yes** | No | Partial | No | No | No | Partial | Partial | No |
 | Docker isolation per agent | **Yes** | No (shared FS) | No | N/A | N/A | N/A | No | No | No |
 | Multi-user / team | Yes | Partial | No | Yes | Yes | Yes | No | No | Yes |
-| Cloud option available | Planned | Yes | Cloud only | Yes | Yes (EU) | Yes | No | No | Yes |
+| Cloud option available | Planned | Yes | Yes (AMP) | Yes | Yes (EU) | Yes | No | No | Yes |
 | Runs fully offline | Yes (with local LLM) | Partial | Yes | No | No | No | Yes | Yes | Yes |
 
 ### LLM Support
@@ -62,7 +62,7 @@ If you are evaluating AI agent platforms for:
 
 | Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Semantic memory built-in | Yes | Yes | BYO | Yes | Chat only (not in agents) | Yes | BYO | BYO | BYO |
+| Semantic memory built-in | Yes | Yes | Partial | Yes | Chat only (not in agents) | Yes | Partial | BYO | BYO |
 | Local embeddings (no cloud) | **Yes (bge-m3)** | Partial | BYO | No | No | No | BYO | BYO | BYO |
 | Knowledge base (Obsidian-style) | Yes | No | No | No | No (folders, knowledge bases) | No | No | No | No |
 | Backlinks & tags | Yes | No | No | No | No | No | No | No | No |
@@ -75,10 +75,10 @@ If you are evaluating AI agent platforms for:
 | Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | Approval rules (natural language) | **Yes** | No | No | Partial | No | No | No | No | Partial |
-| Inline approvals (Telegram/UI) | Yes | No | No | No | Yes (UI, workflows) | No | No | No | No |
-| Audit log | Yes | Partial | No | Yes | Partial (analytics, governance add-on) | Yes | No | No | Yes |
+| Inline approvals (Telegram/UI) | Yes | Partial (exec approvals) | No | No | Yes (UI, workflows) | No | No | No | Yes |
+| Audit log | Yes | Partial | No | Yes (Enterprise) | Partial (analytics, governance add-on) | Yes | No | No | Yes |
 | Multi-user with per-user data separation | **Yes** | No | No | Yes | Yes | Yes | No | No | Partial |
-| DSGVO / GDPR by default | Yes | Partial | BYO | No (US) | Yes (EU cloud) | No (US) | BYO | BYO | Yes |
+| DSGVO / GDPR by default | Yes | Partial | BYO | Partial (US company) | Yes (EU cloud) | Partial | BYO | BYO | Yes |
 | Data export / deletion endpoints | Yes | No | BYO | Partial | Partial (retention, usage export) | Partial | BYO | BYO | Yes |
 | Role-based access control (RBAC) | Yes | No | No | Yes | Yes | Yes | No | No | Yes |
 
@@ -92,25 +92,25 @@ If you are evaluating AI agent platforms for:
 | Voice STT/TTS | Yes | Yes | BYO | Yes | Dictation only | Yes | BYO | BYO | Partial |
 | Google Workspace OAuth | Yes | Partial | BYO | Yes | Yes | No | BYO | BYO | Yes |
 | Microsoft 365 OAuth | Yes | Partial | BYO | Yes | Yes | No | BYO | BYO | Yes |
-| MCP (Model Context Protocol) | Yes | Partial | No | No | Yes (directory of 77 servers) | No | No | No | No |
-| Pre-built integrations count | ~20 | ~40 | 0 (framework) | 3000+ | 57 (754 actions) | ~12 | 0 (framework) | 0 (framework) | 500+ |
+| MCP (Model Context Protocol) | Yes | Yes | Yes | No | Yes (directory of 77 servers) | Yes (Agents SDK) | Partial (adapter) | Yes | Yes |
+| Pre-built integrations count | ~20 | 20+ channels + plugins | 0 (framework) | 1,000+ | 57 (754 actions) | ~12 | 0 (framework) | 0 (framework) | 1,500+ |
 
 ### UI / UX
 
 | Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Web UI | Yes | Yes | No | Yes | Yes | Yes | Studio only | No (terminal) | Yes |
+| Web UI | Yes | Yes | Partial (AMP, paid) | Yes | Yes | Yes | Studio only | Partial (AutoGen Studio) | Yes |
 | Chat interface | Yes | Yes (native) | No | Yes | Yes (native) | Yes | No | No | No |
-| No-code builder | Partial | Yes | No | **Yes** | **Yes** | Yes | Partial | No | Yes |
+| No-code builder | Partial | Yes | Partial (AMP, paid) | **Yes** | **Yes** | Yes | Partial | Partial (AutoGen Studio) | Yes |
 | Workflow canvas | Yes | No | No | Yes | **Yes** | No | Yes (graph) | No | **Yes** |
-| Mobile app | iOS (TestFlight) | Yes (iOS) | No | iOS/Android | iOS/Android, desktop | Yes | No | No | Via web |
+| Mobile app | iOS (TestFlight) | iOS, Android, desktop | No | iOS/Android | iOS/Android, desktop | Yes | No | No | Via web |
 | Dark mode | Yes | Yes | N/A | Yes | Yes | Yes | N/A | N/A | Yes |
 
 ### Developer Experience
 
 | Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Pre-built agent templates | **34** | Marketplace | Marketplace | ~50 | ~35 | GPT Store | No | No | Templates |
+| Pre-built agent templates | **34** | Marketplace | Marketplace | 40+ skills | ~35 | GPT Store | No | No | Templates |
 | Custom skills system | Yes | Plugins | Tools | No | Skills | Actions | Tools | Tools | Nodes |
 | Meeting rooms (multi-agent chat) | **Yes** | No | Partial | No | No | No | Partial | Yes | No |
 | Agent deploys Docker apps | **Yes** | No | No | No | No | No | No | No | No |
@@ -123,10 +123,10 @@ If you are evaluating AI agent platforms for:
 
 | Feature | AI-Employee | OpenClaw | CrewAI | Lindy | Langdock | OpenAI | LangGraph | AutoGen | n8n |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| DSGVO-ready | Yes | Partial | BYO | No | Yes | No | BYO | BYO | Yes |
+| DSGVO-ready | Yes | Partial | BYO | Partial | Yes | No | BYO | BYO | Yes |
 | SOC2 | In progress | No | No | Yes | Yes (Type II), ISO 27001 | Yes | No | No | Yes |
-| EU data residency | Yes (self-host) | Yes (self-host) | Yes (self-host) | US | Yes (Azure EU) | US | Yes (self-host) | Yes (self-host) | Yes |
-| SSO / SAML | Yes (OIDC, SAML) | No | No | Yes (enterprise) | Yes (SCIM too) | Yes | No | No | Yes (enterprise) |
+| EU data residency | Yes (self-host) | Yes (self-host) | Yes (self-host) | US | Yes (Azure EU) | Yes (EU region, on approval) | Yes (self-host) | Yes (self-host) | Yes |
+| SSO / SAML | Yes (OIDC, SAML) | No | No | Yes (enterprise) | Yes (SCIM too) | Yes | No | No | Yes (Business+) |
 | On-prem deployment | Yes | Yes | Yes | No | Enterprise only (5,000+ seats) | No | Yes | Yes | Yes |
 
 ---
@@ -135,20 +135,21 @@ If you are evaluating AI agent platforms for:
 
 ### OpenClaw
 
-**What it is:** A very popular open-source personal AI agent, messaging-first, with 60,000+ GitHub stars and a thriving community. Created by Peter Steinberger. Its superpower is the number of messaging platforms it speaks (iMessage, WhatsApp, Telegram, Discord, Slack, etc.) and its marketplace.
+**What it is:** A very popular open-source personal AI agent, messaging-first, with 390,000+ GitHub stars and a thriving community. Created by Peter Steinberger, MIT-licensed and now run by the OpenClaw Foundation. Its superpower is the number of messaging platforms it speaks (iMessage, WhatsApp, Telegram, Discord, Slack, etc.) and its marketplace.
 
 **Pros:**
 - Huge community, fast-moving, excellent docs
 - Best-in-class messaging integrations (iMessage, WhatsApp, Signal)
 - Active plugin marketplace
-- Mature iOS app
+- Apps for iOS, Android, macOS and Windows
+- Multi-agent routing with isolated workspaces; MCP as client and server
 - Single-user setup in minutes
 
 **Cons:**
-- Fundamentally single-user architecture; no separation of data between users
-- Shared filesystem between "agents" — no true sandboxing
-- No built-in approval rules or governance framework
-- No meeting rooms / multi-agent collaboration primitives
+- Designed for one operator or a mutually trusting team per gateway; no isolation between users who must not see each other's data
+- Agents get isolated workspaces, not their own containers
+- Exec approvals and allowlists exist, but no multi-user governance (roles, approval rules, per-user audit)
+- No meeting rooms or persistent agent teams
 - DSGVO compliance is your responsibility
 
 **Choose OpenClaw if:** you are a solo developer or power-user, you want the richest messaging integrations, and you do not need to share the system with colleagues or clients.
@@ -164,12 +165,12 @@ If you are evaluating AI agent platforms for:
 - Strong multi-agent primitives (crews, tasks, processes)
 - MIT licensed
 - Active development, large community
+- MCP support, memory and a knowledge layer in the framework
 
 **Cons:**
-- Framework only — you build the UI, persistence, auth, multi-tenancy yourself
-- No built-in web UI or chat
-- No governance, approval rules, or audit logging
-- No built-in knowledge base or local embeddings
+- The open-source framework has no UI, auth or multi-user layer — you build them, or buy the paid AMP platform (Crew Studio, dashboards)
+- Governance, approvals and audit logging are not part of the framework
+- Knowledge and memory exist; which embeddings you use, and where they run, is your choice
 
 **Choose CrewAI if:** you are a Python team that wants to embed multi-agent logic into your own product and will build the surrounding platform yourself.
 
@@ -177,17 +178,17 @@ If you are evaluating AI agent platforms for:
 
 ### Lindy.ai
 
-**What it is:** A polished cloud SaaS with a no-code builder for AI agents. Sleek UI, thousands of pre-built integrations, focused on business automation.
+**What it is:** A polished cloud SaaS with a no-code builder for AI agents. Sleek UI, 1,000+ pre-built integrations, focused on business automation.
 
 **Pros:**
 - Beautiful, mature no-code builder
-- Enormous integration library (3000+)
+- Large integration library (1,000+)
 - Zero setup — sign up and go
 - Great onboarding
 
 **Cons:**
 - Cloud only — no self-host option
-- US-hosted, not DSGVO-friendly by default
+- US company; GDPR and SOC 2 Type II compliance are claimed, EU data residency only on request
 - Your data, prompts, and workflows live in their cloud
 - Pricing scales fast with usage
 - Closed source — vendor lock-in
@@ -222,14 +223,14 @@ If you are evaluating AI agent platforms for:
 
 ### OpenAI Responses API / Agents SDK
 
-**What it is:** OpenAI's first-party agent platform. Tight integration with the latest OpenAI models, Code Interpreter, and the GPT Store. Note: the older **Assistants API is deprecated and shuts down 2026-08-26** — OpenAI directs new work to the **Responses API** (GA March 2025) and the **Agents SDK** (which adds human-in-the-loop `needs_approval` gates).
+**What it is:** OpenAI's first-party agent platform. Tight integration with the latest OpenAI models, Code Interpreter, and the GPT Store. Note: the older **Assistants API was shut down on 2026-08-26** — OpenAI directs new work to the **Responses API** (GA March 2025) and the **Agents SDK** (which adds human-in-the-loop `needs_approval` gates).
 
 **Pros:**
 - Access to the best-in-class OpenAI models
 - Code Interpreter and built-in retrieval
 - GPT Store for distribution
 - Official, reliable, well-documented
-- Human-in-the-loop approvals via the Agents SDK; EU data residency + ZDR on Enterprise
+- Human-in-the-loop approvals and MCP tools via the Agents SDK; an EU region with zero data retention on approval
 
 **Cons:**
 - Cloud only
@@ -264,21 +265,21 @@ If you are evaluating AI agent platforms for:
 
 ### AutoGen (Microsoft)
 
-**What it is:** Microsoft Research's multi-agent framework. Strong academic backing, excellent multi-agent conversation patterns.
+**What it is:** Microsoft Research's multi-agent framework. Strong academic backing, excellent multi-agent conversation patterns. **AutoGen is now in maintenance mode**; Microsoft recommends its successor, the Microsoft Agent Framework, for new projects.
 
 **Pros:**
 - Sophisticated multi-agent conversation primitives
 - Research-grade quality
-- Microsoft backing
+- AutoGen Studio as a simple UI; MCP support
 - MIT licensed
 
 **Cons:**
+- In maintenance mode — no new features; Microsoft's investment goes to the Agent Framework
 - Research-focused — production usage requires engineering
-- No first-party UI
 - No multi-tenant, governance, or integrations out of the box
 - Documentation aimed at researchers
 
-**Choose AutoGen if:** you are doing research on multi-agent systems or want the most sophisticated conversation patterns.
+**Choose AutoGen if:** you are doing research on multi-agent systems or maintain an existing AutoGen project. For new work, look at the Microsoft Agent Framework instead.
 
 **Choose AI-Employee if:** you need a production-ready platform a business team can actually use.
 
@@ -287,15 +288,16 @@ If you are evaluating AI agent platforms for:
 **What it is:** A mature workflow automation platform (think Zapier/Make self-hosted). Fair-Code licensed. Massive integration library. Added AI nodes recently.
 
 **Pros:**
-- 500+ integrations
+- 1,500+ integrations; MCP client and server nodes
+- Human-in-the-loop approval for AI tool calls through chat, Slack, Telegram, Teams and e-mail
 - Self-hostable, Fair-Code licensed
 - Visual workflow builder is best-in-class
 - Huge community
 
 **Cons:**
 - Workflow automation first, AI second
-- Not agent-native — agents are nodes in workflows
-- No multi-agent collaboration primitives
+- Not agent-native — agents and sub-agents are nodes in workflows
+- No persistent agent teams with their own workspace and memory
 - No meeting rooms or agent-to-agent conversation
 
 **Choose n8n if:** you primarily need workflow automation with AI as one of many steps.
@@ -321,7 +323,7 @@ We'd rather you pick the right tool than the wrong one:
 
 - **You are a solo hobbyist who wants the best iMessage/WhatsApp bot.** → Use **OpenClaw**.
 - **You want a pure Python framework to embed in your own SaaS.** → Use **CrewAI** or **LangGraph**.
-- **You want a no-code cloud tool with 3000 integrations and don't care about data residency.** → Use **Lindy**.
+- **You want a no-code cloud tool with 1,000+ integrations and don't care about data residency.** → Use **Lindy**.
 - **You want an EU-hosted AI chat for the whole company with ready-made connectors and nothing to operate.** → Use **Langdock**.
 - **You are fully committed to OpenAI and want the GPT Store.** → Use **OpenAI's Responses API / Agents SDK**.
 - **You are doing academic research on multi-agent conversation patterns.** → Use **AutoGen**.
