@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.6] - 2026-10-02
+
+### Geändert
+- **Agenten-Antworten ohne internes Protokoll:** Agenten schrieben ihre Routine in
+  Ergebnisse und Chat-Antworten („Keine passende Skill vorhanden …“, „laut Policy
+  überspringe ich die Reflection-Schritte …“). Die Agenten-Anleitung legt jetzt
+  fest: Die Antwort beginnt und endet mit dem Ergebnis; Hauswirtschaft wie
+  Skill-Suche, leere Gedächtnisabfragen oder Selbstbewertung wird nicht erwähnt.
+  Wirkt nach „Agent aktualisieren“.
+
+---
+
 ## [1.356.5] - 2026-10-02
 
 ### Behoben
