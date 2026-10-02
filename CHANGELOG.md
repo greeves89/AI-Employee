@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.10] - 2026-10-02
+
+### Behoben
+- **Rückfrage im Chat deckte den Chat zu:** Legte ein Agent einer Freigabe einen
+  langen Text bei (etwa einen ganzen Newsletter-Entwurf), stand er im Chat in
+  voller Länge — auf dem Handy war vom Gespräch nichts mehr zu sehen. Im Chat und
+  im Sprachcockpit zeigt die Rückfrage langen Kontext jetzt erst in drei Zeilen,
+  mit „Ganzen Text zeigen“. Frage und Antwortknöpfe bleiben sichtbar.
+
+---
+
 ## [1.356.9] - 2026-10-02
 
 ### Behoben

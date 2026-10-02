@@ -46,6 +46,11 @@ interface Props {
 export function ApprovalPrompt({ request, onAnswer, onDeny, busy, compact }: Props) {
   const [gewaehlt, setGewaehlt] = useState<string | null>(null);
   const [eigene, setEigene] = useState("");
+  // Langer Kontext (etwa ein ganzer Newsletter-Entwurf) schob im Chat die Frage,
+  // die Knöpfe und den Gesprächsverlauf aus dem Bild — auf dem Handy deckte die
+  // Karte den Chat ganz zu. Wo wenig Platz ist, deshalb erst drei Zeilen.
+  const [kontextOffen, setKontextOffen] = useState(false);
+  const kontextKuerzen = Boolean(compact && request.context && request.context.length > 240);
 
   const antworten = (a?: string) => {
     setGewaehlt(a ?? null);
@@ -66,7 +71,23 @@ export function ApprovalPrompt({ request, onAnswer, onDeny, busy, compact }: Pro
       </p>
 
       {request.context && (
-        <p className="mt-1 text-xs text-muted-foreground break-words">{request.context}</p>
+        <>
+          <p className={cn(
+            "mt-1 text-xs text-muted-foreground break-words whitespace-pre-line",
+            kontextKuerzen && !kontextOffen && "line-clamp-3",
+          )}>
+            {request.context}
+          </p>
+          {kontextKuerzen && (
+            <button
+              type="button"
+              onClick={() => setKontextOffen((o) => !o)}
+              className="mt-1 text-xs font-medium text-amber-700 hover:underline dark:text-amber-300"
+            >
+              {kontextOffen ? "Weniger anzeigen" : "Ganzen Text zeigen"}
+            </button>
+          )}
+        </>
       )}
 
       {zeigtAnsicht && (
