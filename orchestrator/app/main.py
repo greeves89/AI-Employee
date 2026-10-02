@@ -57,19 +57,12 @@ class SecurityHeadersMiddleware:
         async def send_with_headers(message):
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
-                # Der oeffentliche Blog bringt eine engere Content-Security-Policy
-                # und fuer Vorschau-Seiten eine engere Referrer-Policy mit und
-                # behaelt beide. Bewusst nur dort: alle anderen Antworten bekommen
-                # weiter die allgemeinen Werte, auch wenn sie selbst welche setzen.
-                blog = scope.get("path", "").startswith("/blog")
-                eigene_csp = headers.get("Content-Security-Policy") if blog else None
-                eigener_referrer = headers.get("Referrer-Policy") if blog else None
                 headers["X-Content-Type-Options"] = "nosniff"
                 headers["X-Frame-Options"] = "DENY"
-                headers["Referrer-Policy"] = eigener_referrer or "strict-origin-when-cross-origin"
+                headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
                 headers["X-XSS-Protection"] = "1; mode=block"
                 headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-                headers["Content-Security-Policy"] = eigene_csp or self._CSP
+                headers["Content-Security-Policy"] = self._CSP
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
@@ -2626,12 +2619,6 @@ app.include_router(oauth_wellknown_router)
 # the bridge client can connect at ws://host/ws/computer-use/bridge
 from app.api.computer_use import ws_router as cu_ws_router
 app.include_router(cu_ws_router)
-
-# Oeffentlicher Blog der Landingpage (/blog, /sitemap.xml, /robots.txt) — an
-# der Wurzel, weil Suchmaschinen diese Adressen dort erwarten. Ohne
-# BLOG_ENABLED antworten sie mit 404.
-from app.api.blog_public import router as blog_public_router
-app.include_router(blog_public_router)
 
 
 @app.get("/healthz")

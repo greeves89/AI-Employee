@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.354.0] - 2026-10-02
+
+### Entfernt
+- **Der Blog der Landingpage gehört nicht ins Produkt und ist wieder heraus.**
+  v1.353.0 hatte ihn als abschaltbare Funktion in den Orchestrator gelegt
+  (öffentliche Seiten, Reiter „Blog“ in der Admin-Konsole, MCP-Dienst). Ein Blog
+  für die eigene Landingpage ist aber kein Teil einer Agenten-Plattform, die
+  Kunden bei sich installieren; er läuft jetzt als eigener Dienst außerhalb
+  dieses Repositorys. Entfernt sind Code, Oberfläche, Einstellungen (`BLOG_*`),
+  Dokumentation und die beiden Abhängigkeiten `markdown-it-py` und `jinja2`.
+- Die Tabellen `blog_posts` und `blog_images` entfernt die Migration
+  `9e5f3a2c6b74`. Sie waren nur gefüllt, wo der Blog eingeschaltet war; wer ihn
+  mit v1.353.0 genutzt hat, sichert die Beiträge vor dem Update.
+
+### Geändert
+- Die Sicherheitskopfzeilen gelten wieder ausnahmslos für jede Antwort; die
+  Ausnahme für Pfade unter `/blog` ist entfallen.
+- Die Landingpage behält ihren Verweis auf den Blog und den Abschnitt mit den
+  neuesten Beiträgen. Beides bleibt unsichtbar, solange unter `/blog` kein
+  Dienst antwortet.
+
+---
+
 ## [1.353.0] - 2026-10-02
 
 ### Neu

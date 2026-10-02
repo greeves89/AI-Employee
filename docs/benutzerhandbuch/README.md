@@ -1461,58 +1461,6 @@ Tab **Key Management** — Verwaltung von **API-/Zugangs-Schlüsseln auf Plattfo
 (z. B. für Integrationen/Webhooks). Schlüssel anlegen, ansehen (sofern erlaubt) und
 widerrufen. Sensible Werte werden verschlüsselt gehalten.
 
-### 22.9 Blog der Landingpage
-Tab **System → Blog** — Beiträge für den öffentlichen Blog der Landingpage
-schreiben, prüfen und veröffentlichen. Der Reiter ist nur für Administratoren
-sichtbar. Ist der Blog auf der Installation nicht eingeschaltet, steht dort, wie
-man ihn einschaltet (`docs/BLOG.md`).
-
-![Blog: Liste der Beiträge](screenshots/f25-blog-liste.png)
-
-**Einen Beitrag schreiben**
-1. **Admin-Konsole** öffnen → Gruppe **System** → Reiter **Blog**.
-2. **Neuer Beitrag** anklicken.
-3. **Titel** eintragen — am besten die Frage, die der Beitrag beantwortet. Unter
-   dem Feld steht, ob die Länge passt (üblich 30 bis 60 Zeichen).
-4. **Adresse** festlegen oder leer lassen; dann entsteht sie aus dem Titel. Sie
-   lässt sich nach dem Anlegen nicht mehr ändern, damit Verweise gültig bleiben.
-5. **Hauptbegriff** eintragen: wonach jemand sucht, der den Beitrag finden soll.
-6. **Beschreibung** schreiben (üblich 120 bis 160 Zeichen) — das ist der Text
-   unter dem Suchtreffer.
-7. Den **Text** in Markdown schreiben: die Antwort in den ersten Absatz, danach
-   Zwischenüberschriften mit `##`. Verweise auf eigene Seiten so:
-   `[Text](/blog/andere-adresse)`.
-8. Unter **Bilder** eine Beschreibung eintragen und **Bild hochladen** anklicken
-   (PNG, JPEG oder WebP bis 1,5 MB). Am hochgeladenen Bild setzt **In den Text**
-   es an die Schreibmarke, **Als Titelbild** macht es zum Bild oben im Beitrag
-   und auf der Karte in der Übersicht (am besten 1200 × 630).
-
-![Blog: Bilder hochladen, einfügen und als Titelbild wählen](screenshots/f27-blog-bilder.png)
-
-9. Optional **Themen** (mit Komma getrennt) und **Häufige Fragen** ergänzen.
-10. **Speichern** anklicken. Der Beitrag ist jetzt ein **Entwurf**.
-
-![Blog: Editor mit Prüfung](screenshots/f26-blog-editor.png)
-
-**Prüfen und veröffentlichen**
-1. Rechts unter **Prüfung** steht, was dem Beitrag fehlt. Rot markierte Punkte
-   verhindern die Veröffentlichung, gelbe sind Hinweise.
-2. **Vorschau** öffnet den Entwurf im Browser — so, wie Besucher ihn später
-   sehen. Die Vorschau-Adresse ist nur für diesen Entwurf gültig.
-3. **Veröffentlichen** anklicken und bestätigen. Der Beitrag erscheint in der
-   Übersicht unter `/blog`, im Feed und in der Sitemap.
-
-**Später ändern oder zurückziehen**
-- Beitrag in der Liste anklicken, ändern, **Speichern**. Bei einem
-  veröffentlichten Beitrag ist die Änderung sofort online.
-- **Zurückziehen** nimmt den Beitrag offline; er bleibt als Entwurf erhalten.
-- Das Papierkorb-Symbol löscht den Beitrag endgültig.
-
-**Schreiben lassen:** Unter der Liste steht die Adresse des MCP-Dienstes des
-Blogs. Ein Agent oder ein eigener MCP-Client, der ihn mit dem Schlüssel aus der
-`.env` einbindet, kann Beiträge entwerfen, prüfen und veröffentlichen — nach
-denselben Regeln wie diese Seite. Jede Änderung steht im **Audit Log**.
-
 ---
 
 ## 22a. Concierge: was gerade auf dich wartet (nur Admins)
@@ -2380,7 +2328,6 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 | Settings | `/settings` | `17-settings.png` |
 | Approvals | `/approvals` | `18-approvals.png` |
 | Admin: Users | `/admin` | `19-admin.png` |
-| Admin: Blog der Landingpage | `/admin?tab=blog` | `f25-blog-liste.png`, `f26-blog-editor.png`, `f27-blog-bilder.png` |
 | Admin: Zuweisungen | `/admin` | `21-admin-zuweisungen.png` |
 | Admin: Verteilen-Modal | `/admin` | `22-verteilen-modal.png` |
 | Admin: Rollen | `/admin` | `23-admin-rollen.png` |

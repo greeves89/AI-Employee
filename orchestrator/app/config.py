@@ -193,22 +193,6 @@ class Settings(BaseSettings):
     contact_to: str = ""
     contact_from: str = ""
 
-    # Blog der Landingpage (Opt-in: ohne BLOG_ENABLED antworten alle Adressen
-    # des Blogs mit 404). Geschrieben wird ueber den MCP-Dienst
-    # /api/v1/mcp/blog; dessen Schluessel (mindestens 32 Zeichen) gehoert NIE
-    # ins Repo — nur in die .env der Installation. Siehe docs/BLOG.md.
-    blog_enabled: bool = False
-    blog_mcp_token: str = ""
-    # Oeffentliche Adresse der Seite fuer Verweise, Sitemap und Feed
-    # (z. B. https://example.com). Leer: PUBLIC_APP_URL.
-    blog_base_url: str = ""
-    blog_site_name: str = "AI Employee"
-    # Name unter den Beitraegen, wenn ein Beitrag keinen eigenen nennt.
-    blog_author: str = ""
-    # Optionale Besucherzaehlung des Betreibers (Skript-Adresse + Kennung).
-    blog_analytics_src: str = ""
-    blog_analytics_id: str = ""
-
     # Security
     encryption_key: str = ""
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing

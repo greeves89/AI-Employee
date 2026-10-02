@@ -174,7 +174,6 @@ Database migrations run on start. Data lives in named Docker volumes and survive
 - **Idle lifecycle** — agents stop when idle and wake on login, chat or a scheduled task; individual agents can be kept always on.
 - **Health and self-test** — checks for Redis, Postgres, Docker, the embedding service and every agent, plus an administrator overview of what needs attention.
 - **Monitoring** — Prometheus metrics and Grafana dashboards (`docker-compose.monitoring.yml`).
-- **Landing page with blog** — an optional static landing page with a contact form and a blog: server-rendered posts with sitemap and feed, an admin editor with an SEO check, and an MCP service so agents can draft and publish posts. Off by default; see [docs/BLOG.md](docs/BLOG.md).
 - **Backups** — scripts for database dumps and volume archives, with a cron installer.
 - **Reverse proxy** — Caddy and Traefik configurations with TLS.
 - **High availability** — an optional multi-node setup (`deploy/docker-compose.ha.yml`).

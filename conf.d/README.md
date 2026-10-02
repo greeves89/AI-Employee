@@ -118,6 +118,12 @@ handle / {
 }
 ```
 
-Der Blog der Landingpage (`/blog`, `/sitemap.xml`, `/robots.txt`) braucht ein
-weiteres Snippet und ein paar Angaben in der `.env` — siehe
-[docs/BLOG.md](../docs/BLOG.md).
+Soll die Landingpage einen Blog bekommen, liefert ihn ein eigener Dienst
+außerhalb dieses Repositorys; hier genügt ein weiteres Snippet, das die Pfade
+dorthin gibt:
+
+```caddy
+handle /blog* {
+	reverse_proxy <dienst>:<port>
+}
+```

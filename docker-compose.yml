@@ -202,16 +202,6 @@ services:
       # browser). Empty/false by default → router not mounted, endpoints 404. Set to
       # "true" ONLY on the single-user Pi kiosk, NEVER on multi-tenant/VPS boxes.
       KIOSK_ENABLED: ${KIOSK_ENABLED:-false}
-      # Blog der Landingpage (docs/BLOG.md): standardmaessig aus → /blog,
-      # /sitemap.xml, /robots.txt und der MCP-Dienst antworten mit 404.
-      # BLOG_MCP_TOKEN braucht mindestens 32 Zeichen und darf kein $ enthalten.
-      BLOG_ENABLED: ${BLOG_ENABLED:-false}
-      BLOG_MCP_TOKEN: ${BLOG_MCP_TOKEN:-}
-      BLOG_BASE_URL: ${BLOG_BASE_URL:-}
-      BLOG_SITE_NAME: ${BLOG_SITE_NAME:-AI Employee}
-      BLOG_AUTHOR: ${BLOG_AUTHOR:-}
-      BLOG_ANALYTICS_SRC: ${BLOG_ANALYTICS_SRC:-}
-      BLOG_ANALYTICS_ID: ${BLOG_ANALYTICS_ID:-}
       # How many different chat sessions ONE agent processes concurrently (1 =
       # serial default). >1 → independent sessions/tasks run in parallel in one
       # container. Passed through to each agent container.
