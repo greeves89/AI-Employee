@@ -73,7 +73,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 26. [Mit dem Agenten sprechen (Voice)](#26-mit-dem-agenten-sprechen-voice)
 27. [Meeting-Transkription → MS Planner](#27-meeting-transkription--ms-planner)
 28. [Benachrichtigung → Task-Details öffnen](#28-benachrichtigung--task-details-öffnen)
-29. [Hilfe & FAQ (im Menü)](#29-hilfe--faq-im-menü)
+29. [Hilfe & FAQ (im Menü) und Klick-Tutorials](#29-hilfe--faq-im-menü)
 30. [Admin: Exchange on-prem, Azure-Stimmen, Dreaming](#30-admin-exchange-on-prem-azure-stimmen-dreaming)
 31. [Nachtschicht (Reflection) — Agenten lernen über Nacht](#31-nachtschicht-reflection--agenten-lernen-über-nacht)
 32. [Apps (Ergebnisse deiner Agenten öffnen & freigeben)](#32-apps-ergebnisse-deiner-agenten-öffnen--freigeben)
@@ -1873,9 +1873,32 @@ Aus aufgezeichneten Meetings erkannte **Action-Items** werden automatisch als Au
 
 1. Linke Seitenleiste → **Hilfe & FAQ**.
 2. **Suchfeld** nutzen (z. B. „Skill herunterladen", „Exchange", „Symbol") oder Themen aufklappen.
-3. Schnellzugriff oben: **Benutzerhandbuch (PDF)**, **Onboarding**, **Changelog**.
+3. Schnellzugriff oben: **Benutzerhandbuch (PDF)**, **Schnellstart**, **Klick-Tutorials**
+   und — nur für Admins — **Changelog** und **Architektur**.
 
-> _[Screenshot folgt: Hilfe-Seite mit Suchfeld und FAQ]_
+![Hilfe & FAQ mit Schnellzugriff und Suche](screenshots/39-hilfe.png)
+
+### 29.1 Klick-Tutorials *(seit 1.355.0)*
+
+Kurze Videos (ohne Ton, mit Einblendungen zu jedem Schritt) zeigen die wichtigsten Abläufe:
+**Mit einem Agenten chatten**, **Neuen Agenten anlegen**, **Aufgabe vergeben**,
+**Rechte eines Agenten einstellen**, **Dateien und Ergebnisse finden**.
+
+**Beim ersten Start** öffnet sich das Fenster **„Willkommen — so funktioniert AI Employee“**
+von selbst. Links wählst du ein Tutorial, rechts läuft das Video. Mit **„Los geht's“**
+oder dem **X** schließt du es — es kommt danach nicht mehr von selbst.
+
+![Willkommensfenster mit den Klick-Tutorials](screenshots/40-tutorials-fenster.png)
+
+**Später wieder ansehen:**
+1. Linke Seitenleiste → **Hilfe & FAQ**.
+2. Oben auf die Kachel **Klick-Tutorials** klicken (rot markiert) — das Fenster öffnet sich.
+3. Oder einen Eintrag aufklappen, der ein Tutorial hat (z. B. **Neuen Agenten erstellen**):
+   Das Video steht direkt unter der Erklärung.
+
+![Kachel „Klick-Tutorials“ in Hilfe & FAQ](screenshots/41-tutorials-kachel.png)
+
+Die Videos werden mit AI Employee ausgeliefert und laufen auch ohne Internetzugang.
 
 ---
 

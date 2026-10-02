@@ -209,7 +209,7 @@ Your model access: Anthropic · OpenAI · Azure · AWS Bedrock · Google Vertex 
 
 </details>
 
-Operating the platform is covered in **[docs/INSTALLATION.md](docs/INSTALLATION.md)** and **[docs/OPERATIONS.md](docs/OPERATIONS.md)**; the click-by-click user guide is in **[docs/benutzerhandbuch](docs/benutzerhandbuch/README.md)** (German).
+Operating the platform is covered in **[docs/INSTALLATION.md](docs/INSTALLATION.md)** and **[docs/OPERATIONS.md](docs/OPERATIONS.md)**; the click-by-click user guide is in **[docs/benutzerhandbuch](docs/benutzerhandbuch/README.md)** (German). Inside the app, **Help & FAQ** plays short click tutorials (no sound, step captions) — they also open once as a welcome window on first login.
 
 ## Agent Templates
 

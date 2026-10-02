@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.355.0] - 2026-10-02
+
+### Hinzugefügt
+- **Klick-Tutorials:** fünf kurze Videos (ohne Ton, mit Einblendungen zu jedem
+  Schritt) — Mit einem Agenten chatten, Neuen Agenten anlegen, Aufgabe vergeben,
+  Rechte eines Agenten einstellen, Dateien und Ergebnisse finden. Sie liegen im
+  Produkt (`frontend/public/hilfe/`) und laufen auch ohne Internetzugang.
+- **Willkommensfenster beim ersten Start:** zeigt die Tutorials; beim Schließen
+  merkt sich der Server das je Nutzer (`users.tutorial_seen_at`,
+  `POST /auth/me/tutorial-seen`). Auch bestehende Nutzer sehen es einmal.
+- **Hilfe & FAQ:** Kachel „Klick-Tutorials“ öffnet das Fenster jederzeit; passende
+  Einträge zeigen ihr Video direkt unter der Erklärung; neuer Eintrag „Rechte
+  eines Agenten einstellen“.
+- Drehbücher zum Neuaufnehmen unter `docs/benutzerhandbuch/tutorials/`.
+
+### Geändert
+- Senden-Knopf im Chat hat jetzt eine Beschriftung für Screenreader („Senden“).
+- Benutzerhandbuch: Abschnitt 29 mit Bildschirmfotos zu Hilfe & FAQ und den
+  Klick-Tutorials, PDF neu erzeugt.
+
+---
+
 ## [1.354.6] - 2026-10-02
 
 ### Geändert
