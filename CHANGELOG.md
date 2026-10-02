@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.3] - 2026-10-02
+
+### Behoben
+- **Aufgaben-Ergebnis zeigte Markdown als Rohtext:** Tabellen, Listen und
+  Fettdruck im Feld „Ergebnis“ einer erledigten Aufgabe erschienen mit Strichen,
+  Sternchen und senkrechten Strichen. Das Ergebnis wird jetzt wie im Chat und im
+  Live-Verlauf formatiert dargestellt.
+
+### Geändert
+- **Video-Werkzeuge:** `docs/videos/rahmen.mjs` skaliert Logo-Intro und
+  -Abschluss nach der kürzeren Bildseite, damit sie auch im Hochformat
+  (1080×1920) richtig groß sind.
+
+---
+
 ## [1.356.2] - 2026-10-02
 
 ### Geändert

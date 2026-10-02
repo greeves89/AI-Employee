@@ -15,7 +15,7 @@ const opt = {}; for (let i = 4; i < process.argv.length; i += 2) opt[process.arg
 if (!['intro', 'ende'].includes(art) || !ziel) { console.error('Aufruf: node rahmen.mjs intro|ende <ziel.mp4> --dauer s …'); process.exit(1); }
 const W = +(opt.breite || 1280), H = +(opt.hoehe || 720), FPS = 30, DAUER = +(opt.dauer || 4);
 const ANIM = art === 'intro' ? 1.3 : 2.3;          // danach steht das Bild
-const k = H / 720;                                 // alle Maße sind für 720p angegeben
+const k = Math.min(W, H) / 720;                   // alle Maße sind für 720p angegeben; im Hochformat zählt die Breite
 const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
 // lucide „cpu“ — dasselbe Zeichen wie das Logo in der Seitenleiste der App.

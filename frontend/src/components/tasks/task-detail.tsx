@@ -416,9 +416,10 @@ export function TaskDetail({
         {task.result && task.status === "completed" && (
           <div className="rounded-xl bg-emerald-500/5 border border-emerald-500/10 px-5 py-4 flex items-start gap-3">
             <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-emerald-400/70 mb-1">Ergebnis</p>
-              <p className="text-sm text-foreground/90 whitespace-pre-wrap break-words">{task.result}</p>
+              {/* Wie im Chat und im Live-Verlauf: Tabellen, Listen und Fettdruck statt roher Zeichen */}
+              <MarkdownContent content={task.result} className="text-sm !text-foreground/90 break-words" />
             </div>
           </div>
         )}
