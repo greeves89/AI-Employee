@@ -1,0 +1,27 @@
+{
+ "stimme": "JBFqnCBsd6RMkjVDRZzb",
+ "modell": "eleven_v4",
+ "texte": {
+  "intro": "So stellst du ein, was ein Agent selbst darf.",
+  "oeffnen": "Im Chat des Agenten öffnest du unten die Rechte.",
+  "stufen": "Ganz oben stellst du die Autonomie ein – in vier Stufen, von nur lesen bis vollständig autonom.",
+  "l2": "Auf Stufe zwei schlägt der Agent nur vor. Du entscheidest.",
+  "faehigkeiten": "Darunter regelst du jede Fähigkeit einzeln: erlaubt, nur mit Freigabe oder verboten – zum Beispiel E-Mails nach außen.",
+  "l3": "Stufe drei ist der übliche Mittelweg: Der Agent führt aus, und Heikles wartet auf deine Freigabe.",
+  "outro": "Deine Änderungen gelten ab der nächsten Aufgabe des Agenten."
+ },
+ "film": {
+  "ziel": "../../../frontend/public/hilfe/rechte",
+  "intro": {
+   "titel": "Rechte eines Agenten einstellen",
+   "untertitel": "Was er selbst darf – und was eine Freigabe braucht"
+  },
+  "ende": {
+   "zeile": "Änderungen gelten ab der nächsten Aufgabe",
+   "klein": "Jederzeit wieder unter Hilfe & FAQ"
+  },
+  "rand_rechts": 8,
+  "crf": 27,
+  "audio_kbps": 96
+ }
+}

@@ -1,0 +1,30 @@
+{
+ "stimme": "JBFqnCBsd6RMkjVDRZzb",
+ "modell": "eleven_v4",
+ "texte": {
+  "intro": "Imagine your team gets AI colleagues who actually get work done – securely, on your own server. This is AI Employee.",
+  "agenten": "Every agent has a clear role, such as marketing, research or personal assistant. With its own computer, its own tools and its own memory.",
+  "auftrag": "You give the task in plain language, just like you would to a colleague. The agent researches, writes – and delivers the result right in the chat.",
+  "nachhaken": "Not quite right yet? Just follow up.",
+  "kontrolle": "And you stay in control: for every capability, you decide whether the agent may use it, only with your approval – or not at all.",
+  "stufen": "How independently it works, you set in four levels – from read only to fully autonomous.",
+  "freigaben": "Anything sensitive waits for your decision in Approvals.",
+  "aufgaben": "Plan recurring work once – the agent handles the rest on schedule. And every result stays traceable.",
+  "dashboard": "The dashboard shows what your team delivers – and what it costs. Budgets cap spending automatically.",
+  "outro": "AI Employee. Your AI team – on your own infrastructure. In the browser and as an iPhone app. Request your demo today."
+ },
+ "film": {
+  "intro": {
+   "titel": "AI colleagues who actually get work done",
+   "untertitel": "Shown on a demo account with fictional data"
+  },
+  "ende": {
+   "zeile": "Your AI team. On your own infrastructure.",
+   "klein": "Request a demo: agents.future-app.de"
+  },
+  "ziel": "../../ios-app/landing/ai-employee-film-en",
+  "rand_rechts": 16,
+  "crf": 24,
+  "audio_kbps": 128
+ }
+}

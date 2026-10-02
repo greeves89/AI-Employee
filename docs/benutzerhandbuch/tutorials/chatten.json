@@ -1,0 +1,27 @@
+{
+ "stimme": "JBFqnCBsd6RMkjVDRZzb",
+ "modell": "eleven_v4",
+ "texte": {
+  "intro": "So chattest du mit einem Agenten.",
+  "oeffnen": "Unter Agenten klickst du auf einen Agenten. Der Chat öffnet sich.",
+  "gespraech": "Für jedes neue Thema beginnst du am besten ein eigenes Gespräch.",
+  "auftrag": "Dann schreibst du einfach in Alltagssprache, was der Agent tun soll.",
+  "senden": "Ein Klick auf Senden – und der Agent legt los. Er denkt nach und arbeitet mit seinen Werkzeugen.",
+  "antwort": "Die Antwort steht direkt im Chat. Hast du noch Fragen, schreibst du einfach weiter – der Agent kennt das ganze Gespräch.",
+  "outro": "Längere Arbeit gibst du am besten als Aufgabe. Wie das geht, zeigt das nächste Video."
+ },
+ "film": {
+  "ziel": "../../../frontend/public/hilfe/chatten",
+  "intro": {
+   "titel": "Mit einem Agenten chatten",
+   "untertitel": "Auftrag schreiben, Antwort lesen"
+  },
+  "ende": {
+   "zeile": "Längere Arbeit lieber als Aufgabe vergeben",
+   "klein": "Jederzeit wieder unter Hilfe & FAQ"
+  },
+  "rand_rechts": 8,
+  "crf": 27,
+  "audio_kbps": 96
+ }
+}

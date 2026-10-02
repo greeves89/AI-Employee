@@ -1880,7 +1880,7 @@ Aus aufgezeichneten Meetings erkannte **Action-Items** werden automatisch als Au
 
 ### 29.1 Klick-Tutorials *(seit 1.355.0)*
 
-Kurze Videos (ohne Ton, mit Einblendungen zu jedem Schritt) zeigen die wichtigsten Abläufe:
+Kurze Videos mit Sprecher und Einblendungen zu jedem Schritt zeigen die wichtigsten Abläufe:
 **Mit einem Agenten chatten**, **Neuen Agenten anlegen**, **Aufgabe vergeben**,
 **Rechte eines Agenten einstellen**, **Dateien und Ergebnisse finden**.
 
@@ -1898,7 +1898,8 @@ oder dem **X** schließt du es — es kommt danach nicht mehr von selbst.
 
 ![Kachel „Klick-Tutorials“ in Hilfe & FAQ](screenshots/41-tutorials-kachel.png)
 
-Die Videos werden mit AI Employee ausgeliefert und laufen auch ohne Internetzugang.
+Untertitel schaltest du im Video über das Menü der Steuerleiste zu. Die Videos werden mit AI Employee
+ausgeliefert und laufen auch ohne Internetzugang.
 
 ---
 

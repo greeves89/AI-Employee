@@ -1,0 +1,28 @@
+{
+ "stimme": "JBFqnCBsd6RMkjVDRZzb",
+ "modell": "eleven_v4",
+ "texte": {
+  "intro": "So vergibst du eine Aufgabe – mit Probelauf.",
+  "neu": "Unter Aufgaben klickst du auf Neue Aufgabe. Aufgaben laufen im Hintergrund weiter, auch wenn du die Seite schließt.",
+  "titel": "Gib ihr einen kurzen Titel. Er erscheint später in der Aufgabenliste.",
+  "auftrag": "Dann beschreibst du den Auftrag. Je genauer, desto besser das Ergebnis.",
+  "agent": "Hier wählst du den Agenten – oder du lässt die Plattform den passenden aussuchen.",
+  "probelauf": "Mit dem Probelauf schreibt der Agent erst nur einen Plan und führt noch nichts aus.",
+  "vorschau": "Passt der Plan, startest du die Aufgabe mit einem Klick.",
+  "outro": "Den Stand jeder Aufgabe siehst du jederzeit unter Aufgaben."
+ },
+ "film": {
+  "ziel": "../../../frontend/public/hilfe/aufgabe",
+  "intro": {
+   "titel": "Aufgabe vergeben",
+   "untertitel": "Erst den Plan ansehen, dann starten"
+  },
+  "ende": {
+   "zeile": "Den Stand jeder Aufgabe siehst du unter „Aufgaben“",
+   "klein": "Jederzeit wieder unter Hilfe & FAQ"
+  },
+  "rand_rechts": 8,
+  "crf": 27,
+  "audio_kbps": 96
+ }
+}

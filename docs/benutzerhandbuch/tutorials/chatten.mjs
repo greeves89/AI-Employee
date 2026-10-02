@@ -1,11 +1,14 @@
-import { AGENT_ID, AGENT_NAME, basis, vorbereitung } from './gemeinsam.mjs';
+import { AGENT_ID, AGENT_NAME, abschnitt, basis, vorbereitung } from './gemeinsam.mjs';
 export default { ...basis, vorbereitung: vorbereitung('/agents', { agent: AGENT_ID }), schritte: [
-  { karte: { titel: 'Mit einem Agenten chatten', untertitel: 'Auftrag schreiben, Antwort lesen' }, halten: 3000 },
-  { klick: { rolle: 'link', name: new RegExp('^' + AGENT_NAME) }, text: { titel: 'Agent öffnen', erklaerung: 'Unter „Agenten“ auf einen Agenten klicken — der Chat öffnet sich.' } },
-  { klick: { rolle: 'button', name: 'Neues Gespräch' }, text: { titel: 'Neues Gespräch beginnen', erklaerung: 'Jedes Thema bekommt sein eigenes Gespräch.' } },
-  { tippen: { css: 'textarea' }, wert: 'Schreib mir drei kurze Ideen für einen Instagram-Post zu unserer neuen Herbstkarte im Café.', text: { titel: 'Auftrag in Alltagssprache', erklaerung: 'Einfach schreiben, was der Agent tun soll.' } },
-  { klick: { css: 'button.h-9.w-9.bg-primary' }, text: { titel: 'Senden', erklaerung: 'Der Agent denkt nach und arbeitet mit seinen Werkzeugen.' } },
-  { warten: 20000 },
-  { zeigen: { css: 'textarea' }, text: { titel: 'Die Antwort steht im Chat', erklaerung: 'Nachfragen? Einfach weiterschreiben — der Agent kennt das Gespräch.' }, halten: 4000 },
-  { karte: { titel: 'Fertig', untertitel: 'Längere Arbeit lieber als Aufgabe vergeben — siehe nächstes Video.' }, halten: 3000, bleiben: true },
+  ...abschnitt('oeffnen', { titel: 'Agent öffnen', erklaerung: 'Unter „Agenten“ auf einen Agenten klicken — der Chat öffnet sich.' }, [
+    { zeigen: { rolle: 'link', name: new RegExp('^' + AGENT_NAME) } }, { klick: { rolle: 'link', name: new RegExp('^' + AGENT_NAME) } }]),
+  ...abschnitt('gespraech', { titel: 'Neues Gespräch beginnen', erklaerung: 'Jedes Thema bekommt sein eigenes Gespräch.' }, [
+    { klick: { rolle: 'button', name: 'Neues Gespräch' } }]),
+  ...abschnitt('auftrag', { titel: 'Auftrag in Alltagssprache', erklaerung: 'Einfach schreiben, was der Agent tun soll.' }, [
+    { tippen: { css: 'textarea' }, wert: 'Schreib mir drei kurze Ideen für einen Instagram-Post zu unserer neuen Herbstkarte im Café.' }]),
+  // Der Satz zu „Senden“ läuft über die Wartezeit weiter; die Wartezeit selbst erscheint im Film als Zeitraffer.
+  { klick: { css: 'button.h-9.w-9.bg-primary' }, ton: 'senden', text: { titel: 'Senden', erklaerung: 'Der Agent denkt nach und arbeitet mit seinen Werkzeugen.' }, halten: 400 },
+  { warten: 20000, raffen: 5 },
+  ...abschnitt('antwort', { titel: 'Die Antwort steht im Chat', erklaerung: 'Nachfragen? Einfach weiterschreiben — der Agent kennt das Gespräch.' }, [
+    { zeigen: { css: 'textarea' } }]),
 ] };

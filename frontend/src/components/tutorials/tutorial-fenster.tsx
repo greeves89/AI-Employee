@@ -6,7 +6,8 @@ import { create } from "zustand";
 import { PlayCircle } from "lucide-react";
 import { Fenster } from "@/components/ui/fenster";
 import { markTutorialSeen, useAuthStore } from "@/lib/auth";
-import { TUTORIALS, tutorialFinden, tutorialPoster, tutorialVideo } from "@/lib/tutorials";
+import { TUTORIALS, tutorialFinden } from "@/lib/tutorials";
+import { TutorialVideo } from "@/components/tutorials/tutorial-video";
 import { cn } from "@/lib/utils";
 
 /**
@@ -89,21 +90,13 @@ export function TutorialFenster() {
           ))}
         </nav>
         <div className="min-w-0 flex-1">
-          <video
-            key={t.id}
-            src={tutorialVideo(t.id)}
-            poster={tutorialPoster(t.id)}
-            controls
-            playsInline
-            preload="metadata"
-            className="aspect-video w-full rounded-xl border border-foreground/[0.08] bg-black"
-          />
+          <TutorialVideo id={t.id} className="rounded-xl" />
           <div className="mt-3 flex items-start gap-2">
             <PlayCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <div>
               <div className="text-sm font-medium">{t.titel}</div>
               <div className="text-xs text-muted-foreground">
-                {t.kurz} Ohne Ton — die Einblendungen erklären jeden Schritt.
+                {t.kurz} Mit Sprecher — Untertitel lassen sich im Video zuschalten.
               </div>
             </div>
           </div>

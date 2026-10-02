@@ -1,0 +1,26 @@
+{
+ "stimme": "JBFqnCBsd6RMkjVDRZzb",
+ "modell": "eleven_v4",
+ "texte": {
+  "intro": "So findest du die Dateien und Ergebnisse deiner Agenten.",
+  "explorer": "Unter Dateien in der Seitenleiste siehst du die Arbeitsbereiche deiner Agenten.",
+  "ordner": "Jeder Agent hat seinen eigenen Ordner. Ein Klick klappt ihn auf.",
+  "datei": "Klickst du eine Datei an, erscheint rechts die Vorschau. Von dort kannst du sie auch herunterladen.",
+  "chat": "Dieselben Dateien erreichst du auch im Chat – über den Ordner-Knopf unter dem Eingabefeld.",
+  "outro": "Ergebnisse von Aufgaben findest du außerdem direkt in der jeweiligen Aufgabe."
+ },
+ "film": {
+  "ziel": "../../../frontend/public/hilfe/dateien",
+  "intro": {
+   "titel": "Dateien und Ergebnisse finden",
+   "untertitel": "Alles, was deine Agenten anlegen"
+  },
+  "ende": {
+   "zeile": "Ergebnisse stehen auch direkt in der Aufgabe",
+   "klein": "Jederzeit wieder unter Hilfe & FAQ"
+  },
+  "rand_rechts": 8,
+  "crf": 27,
+  "audio_kbps": 96
+ }
+}

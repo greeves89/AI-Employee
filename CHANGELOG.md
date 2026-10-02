@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.0] - 2026-10-02
+
+### Geändert
+- **Klick-Tutorials mit Sprecher:** Die fünf Tutorials in Hilfe & FAQ und im
+  Willkommensfenster sind neu aufgenommen und vertont. Eine Stimme erklärt jeden
+  Schritt, die Klicks laufen im Takt der Sprache, Wartezeiten (Antwort des
+  Agenten, Start eines neuen Agenten) erscheinen als Zeitraffer. Die Videos sind
+  dadurch kürzer (34–44 s statt 40–77 s). Untertitel lassen sich im Video
+  zuschalten (`frontend/public/hilfe/<id>.vtt`). Willkommensfenster und Hilfe
+  nutzen dafür eine gemeinsame Komponente `TutorialVideo`.
+- **Einheitlicher Rahmen für alle Videos:** Jedes Video beginnt mit einem
+  Logo-Intro samt Titel und endet mit einem animierten Logo-Abschluss. Das gilt
+  für die Tutorials und für den Film der Landingpage (DE/EN).
+- Werkzeuge dafür unter `docs/videos/`: `ton.py` (Sprechtexte über ElevenLabs),
+  `rahmen.mjs` (Intro und Abschluss), `film.py` (Film zusammensetzen, Pausen
+  messen und für die nächste Aufnahme korrigieren). Drehbücher und Sprechtexte
+  der Tutorials liegen in `docs/benutzerhandbuch/tutorials/`, die des Films der
+  Landingpage in `docs/videos/werbefilm/`.
+- Benutzerhandbuch: Abschnitt 29.1 beschreibt die vertonten Tutorials,
+  Bildschirmfoto des Willkommensfensters erneuert.
+
+---
+
 ## [1.355.1] - 2026-10-02
 
 ### Geändert

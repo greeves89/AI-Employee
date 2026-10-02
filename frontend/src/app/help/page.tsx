@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTutorials } from "@/components/tutorials/tutorial-fenster";
-import { tutorialPoster, tutorialVideo } from "@/lib/tutorials";
+import { TutorialVideo } from "@/components/tutorials/tutorial-video";
 
 // --- Hilfe-Index: alles was als Hilfe/Help identifizierbar ist -------------------
 // Eine Quelle für FAQ + Funktions-How-Tos + Deep-Links. Die Suche filtert client-
@@ -387,14 +387,7 @@ export default function HelpPage() {
                       <div className="px-4 pb-3.5 -mt-1 space-y-2.5">
                         <p className="text-sm text-muted-foreground leading-relaxed">{t.body}</p>
                         {t.tutorial && (
-                          <video
-                            src={tutorialVideo(t.tutorial)}
-                            poster={tutorialPoster(t.tutorial)}
-                            controls
-                            playsInline
-                            preload="none"
-                            className="aspect-video w-full max-w-2xl rounded-lg border border-foreground/[0.08] bg-black"
-                          />
+                          <TutorialVideo id={t.tutorial} preload="none" className="max-w-2xl rounded-lg" />
                         )}
                         {t.href && (
                           <Link

@@ -1,0 +1,42 @@
+--- klickpfad.mjs
++++ klickpfad.mjs
+@@ -5,6 +5,7 @@
+ //   --probe: gleicher Ablauf ohne Aufnahme, schnell, zum Prüfen der Selektoren
+ // drehbuch.mjs exportiert: export default { baseUrl, schritte: [...], und optional:
+ //   size: [1920,1080] Ausgabe · zoom: 1.5 UI-Vergrößerung · tempo: 1 (>1 langsamer) · farbe: '#2563eb' Akzent
++//   marke: 'Text' ersetzt „Schritt n von m“ über der Einblendung
+ //   zeiten: { vorAktion, zeigerFahrt, nachKlick, tippenJeZeichen, lesenJeWort, lesenBasis, karte } in ms
+ //   vorbereitung: async (page) => {} läuft vor der Aufnahme (z. B. Demo zurücksetzen, Rolle wählen) }
+ // Schritt-Arten (jeweils optional: text = Einblendung {titel, erklaerung}, spot = Ziel hervorheben, halten = ms):
+@@ -109,6 +110,7 @@
+ // Aufnahme per CDP-Screencast: Frames mit Zeitstempel, Standzeiten bleiben erhalten
+ const out = path.resolve('klickpfad-frames'); fs.rmSync(out, { recursive: true, force: true }); fs.mkdirSync(out);
+ const frames = []; let cdp;
++const zeitplan = []; // Beginn jedes Schritts (Wandzeit, gleiche Uhr wie die Screencast-Bilder) — für die Tonspur
+ if (!PROBE) {
+   cdp = await ctx.newCDPSession(page);
+   cdp.on('Page.screencastFrame', async (f) => { const n = frames.length; const file = path.join(out, String(n).padStart(6, '0') + '.jpg');
+@@ -121,6 +123,7 @@
+ const zaehlbar = DB.schritte.filter(s => s.text && !s.karte).length; let nr = 0;
+ fs.rmSync('kontakt', { recursive: true, force: true }); fs.mkdirSync('kontakt');
+ for (const [i, s] of DB.schritte.entries()) {
++  zeitplan.push({ i, ton: s.ton || null, t: Date.now() / 1000, ...(s.raffen ? { raffen: s.raffen } : {}) }); // raffen: Wartezeit, im Film als Zeitraffer (true oder Zieldauer in s)
+   await sicher();
+   if (s.karte) { await page.evaluate(() => { __kpCap(null); __kpSpot(null); __kpCursor(false); });
+     await page.evaluate(c => __kpCard(c), s.karte); await warte(s.halten || Z.karte);
+@@ -128,7 +131,7 @@
+   if (s.goto) { await page.goto(new URL(s.goto, DB.baseUrl).href, { waitUntil: 'networkidle' }); await sicher(); }
+   if (s.warten) { await page.waitForTimeout(s.warten); continue; }
+   if (s.erwarten) { await loc(s.erwarten).first().waitFor({ state: 'visible', timeout: 15000 }); continue; }
+-  const cap = s.text ? { n: `Schritt ${++nr} von ${zaehlbar}`, ...s.text } : null;
++  const cap = s.text ? { n: DB.marke || `Schritt ${++nr} von ${zaehlbar}`, ...s.text } : null; // marke: feste Zeile statt Zählung (Werbefilm)
+   if (cap) { await page.evaluate(c => __kpCap(c), cap); }
+   const ziel = s.klick || s.tippen || s.einfuegen || s.zeigen || s.scroll;
+   let bb = null;
+@@ -164,5 +167,6 @@
+   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'klickpfad-frames.txt', '-vf', `fps=30,scale=${W}:${H}:flags=lanczos,format=yuv420p`, '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-movflags', '+faststart', 'klickpfad.mp4']);
+   const dur = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', 'klickpfad.mp4']).toString().trim();
+   console.log('klickpfad.mp4', Number(dur).toFixed(1), 's,', frames.length, 'Frames');
++  fs.writeFileSync('zeitplan.json', JSON.stringify({ t0: frames[0].t, schritte: zeitplan }, null, 1));
+ }
+ console.log('Seitenfehler:', fehler.length ? fehler : 'keine'); await b.close();

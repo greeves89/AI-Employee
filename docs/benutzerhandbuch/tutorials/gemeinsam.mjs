@@ -1,4 +1,4 @@
-// Gemeinsame Vorbereitung der Klick-Tutorials (Hilfe & FAQ, Willkommensfenster).
+// Gemeinsame Vorbereitung der Klick-Tutorials (Hilfe & FAQ, Willkommensfenster), vertont.
 // Aufnahme mit dem Skill „erklaervideo“ (Format Klickpfad) gegen ein Demokonto mit Rolle Mitglied
 // und ausschließlich erfundenen Inhalten — nie gegen ein Konto mit echten Daten. Siehe README.md.
 import { readFileSync } from 'node:fs'; import os from 'node:os';
@@ -12,7 +12,23 @@ const AUSBLENDEN = () => { const weg = () => document.querySelectorAll('div,asid
 // Demo-Agent, mit dem Chat, Rechte und Dateien gezeigt werden (Rolle Mitglied, nur erfundene Inhalte).
 export const AGENT_ID = process.env.TUTORIAL_AGENT_ID || '';
 export const AGENT_NAME = process.env.TUTORIAL_AGENT_NAME || 'Marketing';
-export const basis = { baseUrl: B + '/login', size: [1280, 720], zoom: 1, tempo: 1, farbe: '#3b82f6' };
+// Vertonung: Jeder Abschnitt dauert so lange wie sein Sprechtext. Die Längen schreibt docs/videos/ton.py nach
+// dauern.json, den gemessenen Überhang docs/videos/film.py --korrektur nach korrektur.json — beides im
+// Arbeitsordner, in dem aufgenommen wird.
+const lies = (datei) => { try { return JSON.parse(readFileSync(datei, 'utf8')); } catch { return {}; } };
+const D = lies('dauern.json'), K = lies('korrektur.json');
+const Z = { vorAktion: 250, zeigerFahrt: 650, nachKlick: 400, tippenJeZeichen: 38, lesenJeWort: 0, lesenBasis: 0, karte: 3000 };
+// Geschätzte Eigenzeit einer Aktion (Zeiger, Klick-Welle, Tippen, Scrollen) in ms.
+const eigen = (s) => s.scroll ? 1000 : (s.tippen || s.einfuegen) ? Z.vorAktion + Z.zeigerFahrt + 180 + (s.tippen ? String(s.wert).length * Z.tippenJeZeichen : 0)
+  : s.klick ? Z.vorAktion + Z.zeigerFahrt + 180 : s.zeigen ? Z.vorAktion + Z.zeigerFahrt : 0;
+// Ein Abschnitt = ein Sprechtext; der erste Schritt trägt Ton und Einblendung, die Sprechdauer verteilt sich auf alle Schritte.
+export function abschnitt(ton, text, schritte) {
+  if (!(ton in D)) throw new Error(`dauern.json fehlt „${ton}“ — erst docs/videos/ton.py im Arbeitsordner laufen lassen`);
+  const rest = Math.max(0, D[ton] * 1000 + 350 - schritte.reduce((a, s) => a + eigen(s), 0) - (K[ton] || 0));
+  const je = Math.max(K[ton] ? 150 : Z.nachKlick, Math.round(rest / schritte.length));
+  return schritte.map((s, i) => ({ ...s, halten: s.halten ?? je, ...(i === 0 ? { ton, text } : {}) }));
+}
+export const basis = { baseUrl: B + '/login', size: [1280, 720], zoom: 1, tempo: 1, farbe: '#3b82f6', zeiten: Z };
 export function vorbereitung(start, { agent } = {}) {
   return async (page) => {
     await page.context().addInitScript(AUSBLENDEN); await page.evaluate(AUSBLENDEN);
