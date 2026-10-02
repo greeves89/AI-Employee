@@ -129,14 +129,16 @@ async def run_backfill_loop(db_factory) -> None:
     logger.info("[EmbeddingBackfill] Starting...")
 
     svc = get_embedding_service()
-    # Verify the local embedding service is actually reachable
-    if not await svc._check_local_available():
-        logger.info("[EmbeddingBackfill] Local embedding service not yet reachable — will retry later")
+    # Lokaler Dienst ODER Cloud-Ausweichweg. Frueher zaehlte nur der lokale Dienst:
+    # Anlagen ohne ihn betteten Suchanfragen ueber die Cloud ein, holten aber nie die
+    # Eintraege ohne Embedding nach — die blieben fuer die semantische Suche unsichtbar.
+    if not await svc.available():
+        logger.info("[EmbeddingBackfill] No embedding provider reachable — will retry later")
         # Keep the loop alive in case the service starts up later
         while True:
             await asyncio.sleep(60)
-            if await svc._check_local_available():
-                logger.info("[EmbeddingBackfill] Local embedding service now reachable, starting backfill")
+            if await svc.available():
+                logger.info("[EmbeddingBackfill] Embedding provider now reachable, starting backfill")
                 break
 
     total_memories = 0

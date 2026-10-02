@@ -165,7 +165,23 @@ async def create_entry(
     db.add(entry)
     await db.commit()
     await db.refresh(entry)
-    return _to_response(entry)
+    # Antwort VOR dem Einbetten bauen: embed_and_link committet, danach waeren die
+    # Attribute abgelaufen und muessten im async-Kontext nachgeladen werden.
+    antwort = _to_response(entry)
+    await _einbetten(db, entry)
+    return antwort
+
+
+async def _einbetten(db: AsyncSession, entry: KnowledgeEntry) -> None:
+    """Von Hand angelegtes oder geaendertes Wissen sofort einbetten.
+
+    Die Agentensuche (``brain_search``) findet nur Eintraege MIT Embedding. Ohne
+    diesen Schritt blieb alles, was ein Mensch ins Wissen schrieb, fuer seine
+    Agenten unsichtbar — der Nachtrags-Job sollte es richten, wartete aber auf einen
+    lokalen Embedding-Dienst, den nicht jede Anlage hat.
+    """
+    from app.core.knowledge_write import embed_and_link
+    await embed_and_link(db, entry.id, entry.user_id, f"{entry.title}: {entry.content}")
 
 
 @router.put("/entries/{entry_id}")
@@ -202,7 +218,10 @@ async def update_entry(
     entry.updated_by = "user"
     await db.commit()
     await db.refresh(entry)
-    return _to_response(entry)
+    antwort = _to_response(entry)
+    if body.title is not None or body.content is not None:
+        await _einbetten(db, entry)
+    return antwort
 
 
 @router.delete("/entries/{entry_id}")

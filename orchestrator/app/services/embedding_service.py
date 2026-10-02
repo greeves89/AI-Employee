@@ -121,6 +121,15 @@ class EmbeddingService:
             "service_url": LOCAL_SERVICE_URL,
         }
 
+    async def available(self) -> bool:
+        """Kann gerade ueberhaupt eingebettet werden — lokal ODER ueber die Cloud?
+
+        ``embed`` faellt auf OpenAI zurueck, wenn der lokale Dienst fehlt. Wer nur
+        den lokalen Dienst prueft, haelt eine Anlage ohne ihn (etwa den Raspberry Pi)
+        faelschlich fuer eine ohne Embeddings.
+        """
+        return await self._check_local_available() or bool(settings.openai_api_key)
+
     async def _check_local_available(self) -> bool:
         """Health-check with TTL. Re-verifies every _AVAILABILITY_TTL seconds."""
         # Explicitly disabled (e.g. on the Raspberry Pi where the embedding model

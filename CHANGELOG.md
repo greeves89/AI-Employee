@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.4] - 2026-10-02
+
+### Behoben
+- **Von Hand angelegtes Wissen war für die Agenten unsichtbar:** Die Agentensuche
+  (`brain_search`) durchsucht nur Wissenseinträge mit Embedding. Einträge, die ein
+  Mensch unter „Wissen“ anlegte oder änderte, bekamen keins — der Nachtrags-Job
+  sollte es nachholen, startete aber nur mit einem lokalen Embedding-Dienst. Auf
+  Anlagen ohne ihn fand die Suche nach „Herbstkarte“ den Eintrag „Herbstkarte“
+  nicht, und der Agent schrieb ohne das hinterlegte Wissen. Anlegen und Ändern
+  betten jetzt sofort ein; der Nachtrags-Job läuft, sobald irgendein
+  Embedding-Anbieter erreichbar ist, und holt bestehende Einträge nach.
+
+---
+
 ## [1.356.3] - 2026-10-02
 
 ### Behoben
