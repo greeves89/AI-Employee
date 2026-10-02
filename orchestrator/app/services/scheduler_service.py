@@ -12,7 +12,7 @@ try:
 except ImportError:
     _CRONITER_AVAILABLE = False
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, select
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -613,9 +613,8 @@ class SchedulerService:
                 expired = list(result.scalars().all())
                 if not expired:
                     return
-                from app.models.task_rating import TaskRating
-                expired_ids = [t.id for t in expired]
-                await db.execute(delete(TaskRating).where(TaskRating.task_id.in_(expired_ids)))
+                from app.core.aufgaben_loeschen import abhaengiges_loesen
+                await abhaengiges_loesen(db, [t.id for t in expired])
                 for task in expired:
                     await db.delete(task)
                 await db.commit()

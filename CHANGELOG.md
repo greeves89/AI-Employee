@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.5] - 2026-10-02
+
+### Behoben
+- **Erledigte Aufgaben ließen sich nicht löschen** (Serverfehler 500): Jede
+  erledigte Aufgabe bekommt eine automatische Bewertung, und deren Verweis auf die
+  Aufgabe verhinderte das Löschen. Dasselbe galt für Aufgaben mit Unteraufgaben.
+  Beim Löschen verschwinden jetzt die Bewertungen mit; Unteraufgaben bleiben
+  erhalten und verlieren nur den Verweis. Die automatische Bereinigung alter
+  Aufgaben nutzt denselben Weg.
+
+---
+
 ## [1.356.4] - 2026-10-02
 
 ### Behoben

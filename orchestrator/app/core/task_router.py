@@ -820,6 +820,8 @@ class TaskRouter:
         # If task is queued, remove from Redis queue
         if task.status == TaskStatus.QUEUED and task.agent_id:
             await self._remove_from_queue(task.agent_id, task_id)
+        from app.core.aufgaben_loeschen import abhaengiges_loesen
+        await abhaengiges_loesen(self.db, [task_id])
         await self.db.delete(task)
         await self.db.commit()
         return True
