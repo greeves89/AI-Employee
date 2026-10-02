@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.9] - 2026-10-02
+
+### Behoben
+- **Freigaben auf Deutsch und mit Agentennamen:** Fragen eines Agenten hießen in der
+  Freigaben-Liste „Agent Question“ mit dem Abzeichen „APPROVAL“, und unter jeder
+  Karte stand die Kennung („Agent: e225cbe0“). Jetzt „Frage des Agenten“,
+  „Freigabe“ und der Name des Agenten.
+
+---
+
 ## [1.356.8] - 2026-10-02
 
 ### Behoben

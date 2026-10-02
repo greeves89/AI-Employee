@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import type { ApprovalRequest, ReflectionChangeMeta } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { useAgents } from "@/hooks/use-agents";
 import type { ApprovalRule, LevelPreset, PresetRule } from "@/lib/api";
 import {
   AlertCircle,
@@ -141,6 +142,9 @@ export default function ApprovalsPage() {
   const { simpleMode } = useSimpleMode();
   const [activeTab, setActiveTab] = useState<"pending" | "escalations" | "reflection" | "rules" | "command-policies" | "presets">("pending");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
+  // Name statt Kennung unter jeder Karte: „Agent: e225cbe0“ sagt niemandem etwas.
+  const { agents } = useAgents();
+  const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
   const [selectedRequest, setSelectedRequest] =
     useState<ApprovalRequest | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -747,7 +751,7 @@ export default function ApprovalsPage() {
                                 ? "Wissenseintrag"
                                 : "Notiz"
                               : isQuestion
-                              ? "Agent Question"
+                              ? "Frage des Agenten"
                               : approval.tool}
                           </span>
                           {isReflection ? (
@@ -771,7 +775,7 @@ export default function ApprovalsPage() {
                                 config.border
                               )}
                             >
-                              {isQuestion ? "APPROVAL" : config.label}
+                              {isQuestion ? "Freigabe" : config.label}
                             </span>
                           )}
                         </div>
@@ -864,7 +868,7 @@ export default function ApprovalsPage() {
 
                         {/* Meta */}
                         <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground/40">
-                          <span>Agent: {approval.agent_id}</span>
+                          <span>Agent: {agentName(approval.agent_id)}</span>
                           <span>
                             {new Date(approval.created_at).toLocaleString()}
                           </span>
