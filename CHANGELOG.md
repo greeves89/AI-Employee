@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.354.3] - 2026-10-02
+
+### Geändert
+- Impressum der Landingpage: Der Absatz „Haftung für Links“ berücksichtigt
+  jetzt, dass die Blogbeiträge Quellen auf Websites Dritter verlinken.
+
+---
+
 ## [1.354.2] - 2026-10-02
 
 ### Geändert
