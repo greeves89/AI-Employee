@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.354.4] - 2026-10-02
+
+### Hinzugefügt
+- Landingpage: Abschnitt „AI Employee in 32 Sekunden“ mit einem Kurzfilm
+  (Auftrag im Chat, Arbeitsschritte des Agenten, Freigabe vor dem Versand,
+  iOS-App). Das Video läuft stumm an, sobald es im Bild ist, Ton gibt es über
+  die Steuerelemente; bei „Bewegung reduzieren“ startet es nicht von selbst.
+  Video und Vorschaubild liegen unter `docs/ios-app/landing/`, ausgeliefert
+  unter `/landing/` (Caddy-Beispiel in `conf.d/README.md` ergänzt).
+
+---
+
 ## [1.354.3] - 2026-10-02
 
 ### Geändert

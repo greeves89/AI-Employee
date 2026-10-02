@@ -375,6 +375,10 @@
   .term .caret{display:inline-block;width:8px;height:15px;background:var(--green);vertical-align:-2px}
   @media (prefers-reduced-motion:no-preference){.term .caret{animation:blink 1s steps(1) infinite}@keyframes blink{50%{opacity:0}}}
   @media (max-width:900px){.demo .wrap{grid-template-columns:1fr}}
+  .film{padding:96px 0 24px;border-top:1px solid var(--line)}
+  .film .head{display:grid;gap:14px;max-width:44em;margin-bottom:32px}
+  .film .frame{border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.1);box-shadow:0 40px 90px rgba(0,0,0,.55);background:var(--bg);aspect-ratio:16/9}
+  .film video{display:block;width:100%;height:100%}
 
   /* Enthüllen beim Scrollen */
   .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
@@ -446,6 +450,19 @@
 </section>
 
 <div class="marquee" aria-hidden="true"><div class="track"><span>Microsoft 365</span><span>Outlook / Exchange</span><span>Microsoft Graph</span><span>Teams</span><span>Slack</span><span>Telegram</span><span>WhatsApp</span><span>Claude Code</span><span>Codex CLI</span><span>Azure OpenAI</span><span>AWS Bedrock</span><span>Google Vertex</span><span>Model Context Protocol</span><span>Matrix42</span><span>OpenWebUI</span><span>Docker</span><span>PostgreSQL</span><span>Redis</span><span>Microsoft 365</span><span>Outlook / Exchange</span><span>Microsoft Graph</span><span>Teams</span><span>Slack</span><span>Telegram</span><span>WhatsApp</span><span>Claude Code</span><span>Codex CLI</span><span>Azure OpenAI</span><span>AWS Bedrock</span><span>Google Vertex</span><span>Model Context Protocol</span><span>Matrix42</span><span>OpenWebUI</span><span>Docker</span><span>PostgreSQL</span><span>Redis</span></div></div>
+
+<section class="film" id="film">
+  <div class="wrap">
+    <div class="head reveal">
+      <span class="eyebrow">AI Employee in 32 Sekunden</span>
+      <h2>Ein Auftrag, <span class="a">vom Chat bis zur Freigabe</span></h2>
+      <p class="lede">Du schreibst in Alltagssprache, der Agent arbeitet mit echten Werkzeugen, und alles Heikle wartet auf deine Freigabe — im Browser und in der <span style="white-space:nowrap">iOS-App</span>.</p>
+    </div>
+    <div class="frame reveal">
+      <video id="teaser" src="/landing/ai-employee-teaser.mp4" poster="/landing/ai-employee-teaser.jpg" controls muted playsinline loop preload="metadata" aria-label="Kurzfilm: Ein Agent bekommt einen Auftrag im Chat, recherchiert, legt eine Datei ab und bittet vor dem Versand um Freigabe"></video>
+    </div>
+  </div>
+</section>
 
 <section class="platform" id="plattform">
   <div class="wrap">
@@ -832,6 +849,15 @@
       entries.forEach(function(en){if(en.isIntersecting){en.target.classList.add('in');io.unobserve(en.target)}})
     },{rootMargin:'0px 0px -10% 0px',threshold:.1});
     els.forEach(function(e){io.observe(e)});
+  })();
+  (function(){
+    // Kurzfilm: stumm abspielen, solange er im Bild ist (nicht bei "Bewegung reduzieren"); Ton per Klick in den Steuerelementen.
+    var v=document.getElementById('teaser');
+    if(!v||!('IntersectionObserver' in window)) return;
+    if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    new IntersectionObserver(function(es){es.forEach(function(en){
+      if(en.isIntersecting){var p=v.play();if(p&&p.catch)p.catch(function(){})}else{v.pause()}
+    })},{threshold:.5}).observe(v);
   })();
   (function(){
     // Neueste Blogbeitraege: der Abschnitt erscheint nur, wenn es welche gibt.

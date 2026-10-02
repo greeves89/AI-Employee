@@ -116,6 +116,11 @@ handle / {
 	root * /srv/ios-app
 	file_server
 }
+# Medien der Landingpage (Kurzfilm, Vorschaubild) aus docs/ios-app/landing/.
+handle /landing/* {
+	root * /srv/ios-app
+	file_server
+}
 ```
 
 Soll die Landingpage einen Blog bekommen, liefert ihn ein eigener Dienst
