@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.354.2] - 2026-10-02
+
+### Geändert
+- Landingpage: Statt des eigenen Knopfs „Im App Store laden“ steht die
+  offizielle Plakette von Apple („Laden im App Store“), unverändert und direkt
+  eingebettet, damit beim Aufruf keine Verbindung zu Apple entsteht.
+
+---
+
 ## [1.354.1] - 2026-10-02
 
 ### Geändert
