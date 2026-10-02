@@ -384,8 +384,21 @@
   @media (max-width:900px){.demo .wrap{grid-template-columns:1fr}}
   .film{padding:96px 0 24px;border-top:1px solid var(--line)}
   .film .head{display:grid;gap:14px;max-width:44em;margin-bottom:32px}
-  .film .frame{border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.1);box-shadow:0 40px 90px rgba(0,0,0,.55);background:var(--bg);aspect-ratio:16/9}
+  .film .frame{position:relative;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.1);box-shadow:0 40px 90px rgba(0,0,0,.55);background:var(--bg);aspect-ratio:16/9}
   .film video{display:block;width:100%;height:100%}
+  .film video::cue{font-family:var(--body);font-size:.8em;background:rgba(6,8,15,.82);color:#f2f4f8}
+  .film .ton{position:absolute;left:16px;top:16px;display:inline-flex;align-items:center;gap:10px;padding:14px 22px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(10,132,255,.92);color:#fff;font:600 16px/1 var(--body);cursor:pointer;box-shadow:0 14px 40px rgba(10,132,255,.35);transition:transform .2s ease,background .2s ease}
+  .film .ton:hover{background:#2b95ff;transform:scale(1.04)}
+  .film .ton:focus-visible{outline:2px solid #fff;outline-offset:3px}
+  .film .ton svg{width:20px;height:20px}
+  .film .ton[hidden]{display:none}
+  .film .sprachen{display:flex;justify-content:center;gap:10px;margin-top:18px}
+  .film .sprachen button{display:inline-flex;align-items:center;gap:9px;padding:9px 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font:500 14px/1 var(--body);cursor:pointer;transition:border-color .2s ease,color .2s ease}
+  .film .sprachen button:hover{color:var(--text)}
+  .film .sprachen button[aria-pressed="true"]{border-color:var(--blue);color:var(--text);box-shadow:0 0 0 1px var(--blue) inset}
+  .film .sprachen button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+  .film .sprachen svg{width:24px;height:16px;border-radius:3px;flex:none}
+  @media (max-width:600px){.film .ton{left:10px;top:10px;padding:8px 12px;font-size:13px;gap:7px}.film .ton svg{width:16px;height:16px}}
 
   /* Enthüllen beim Scrollen */
   .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
@@ -461,12 +474,19 @@
 <section class="film" id="film">
   <div class="wrap">
     <div class="head reveal">
-      <span class="eyebrow">AI Employee in 32 Sekunden</span>
-      <h2>Ein Auftrag, <span class="a">vom Chat bis zur Freigabe</span></h2>
-      <p class="lede">Du schreibst in Alltagssprache, der Agent arbeitet mit echten Werkzeugen, und alles Heikle wartet auf deine Freigabe — im Browser und in der <span style="white-space:nowrap">iOS-App</span>.</p>
+      <span class="eyebrow">AI Employee in 90 Sekunden</span>
+      <h2>Dein KI-Team <span class="a">bei der Arbeit</span></h2>
+      <p class="lede">Ein Auftrag in Alltagssprache, Rechte je Fähigkeit, Freigaben, Zeitpläne und Kosten — gezeigt an der echten Oberfläche, mit einem Demokonto und fiktiven Daten.</p>
     </div>
     <div class="frame reveal">
-      <video id="teaser" src="/landing/ai-employee-teaser.mp4" poster="/landing/ai-employee-teaser.jpg" controls muted playsinline loop preload="metadata" aria-label="Kurzfilm: Ein Agent bekommt einen Auftrag im Chat, recherchiert, legt eine Datei ab und bittet vor dem Versand um Freigabe"></video>
+      <video id="werbefilm" src="/landing/ai-employee-film-de.mp4" poster="/landing/ai-employee-film-de.jpg" controls muted playsinline preload="metadata" aria-label="Film mit Ton: So arbeitest du mit AI Employee — Agenten, Chat, Rechte, Freigaben, Zeitpläne und Kosten">
+        <track kind="subtitles" srclang="de" label="Deutsch" src="/landing/ai-employee-film-de.vtt" default>
+      </video>
+      <button type="button" class="ton" id="film-ton"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></svg><span>Mit Ton ansehen</span></button>
+    </div>
+    <div class="sprachen" role="group" aria-label="Sprache des Films">
+      <button type="button" data-sprache="de" aria-pressed="true" lang="de"><svg viewBox="0 0 5 3" aria-hidden="true"><rect width="5" height="1" fill="#000"/><rect y="1" width="5" height="1" fill="#D00"/><rect y="2" width="5" height="1" fill="#FFCE00"/></svg>Deutsch</button>
+      <button type="button" data-sprache="en" aria-pressed="false" lang="en"><svg viewBox="0 0 60 30" aria-hidden="true"><clipPath id="uk-s"><path d="M0,0 v30 h60 v-30 z"/></clipPath><clipPath id="uk-t"><path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z"/></clipPath><g clip-path="url(#uk-s)"><path d="M0,0 v30 h60 v-30 z" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" stroke-width="6"/><path d="M0,0 L60,30 M60,0 L0,30" clip-path="url(#uk-t)" stroke="#C8102E" stroke-width="4"/><path d="M30,0 v30 M0,15 h60" stroke="#fff" stroke-width="10"/><path d="M30,0 v30 M0,15 h60" stroke="#C8102E" stroke-width="6"/></g></svg>English</button>
     </div>
   </div>
 </section>
@@ -858,12 +878,39 @@
     els.forEach(function(e){io.observe(e)});
   })();
   (function(){
-    // Kurzfilm: stumm abspielen, solange er im Bild ist (nicht bei "Bewegung reduzieren"); Ton per Klick in den Steuerelementen.
-    var v=document.getElementById('teaser');
-    if(!v||!('IntersectionObserver' in window)) return;
+    // Film: stumm mit Untertiteln, solange er im Bild ist (nicht bei "Bewegung reduzieren").
+    // "Mit Ton ansehen" startet ihn von vorn mit Ton; die Flaggen tauschen Film, Vorschaubild und Untertitel.
+    var v=document.getElementById('werbefilm'), ton=document.getElementById('film-ton');
+    if(!v) return;
+    var FILME={
+      de:{label:'Deutsch',knopf:'Mit Ton ansehen',aria:'Film mit Ton: So arbeitest du mit AI Employee — Agenten, Chat, Rechte, Freigaben, Zeitpläne und Kosten'},
+      en:{label:'English',knopf:'Watch with sound',aria:'Film with sound: how you work with AI Employee — agents, chat, permissions, approvals, schedules and costs'}
+    };
+    var sprache='de', mitTon=false;
+    function untertitel(){for(var i=0;i<v.textTracks.length;i++){v.textTracks[i].mode=mitTon?'hidden':'showing'}}
+    function abspielen(){var p=v.play();if(p&&p.catch)p.catch(function(){})}
+    function tonAn(){mitTon=true;v.muted=false;v.currentTime=0;untertitel();if(ton)ton.hidden=true;abspielen()}
+    if(ton) ton.addEventListener('click',tonAn);
+    v.addEventListener('volumechange',function(){if(!v.muted&&!mitTon){mitTon=true;untertitel();if(ton)ton.hidden=true}});
+    v.addEventListener('ended',function(){if(!mitTon){v.currentTime=0;abspielen()}});
+    function wechsel(neu){
+      if(neu===sprache||!FILME[neu]) return;
+      var lief=!v.paused; sprache=neu; var f=FILME[neu];
+      v.pause(); v.innerHTML='';
+      var t=document.createElement('track'); t.kind='subtitles'; t.srclang=neu; t.label=f.label; t.src='/landing/ai-employee-film-'+neu+'.vtt'; t.default=true;
+      v.appendChild(t);
+      v.poster='/landing/ai-employee-film-'+neu+'.jpg'; v.src='/landing/ai-employee-film-'+neu+'.mp4'; v.setAttribute('aria-label',f.aria);
+      if(ton) ton.querySelector('span').textContent=f.knopf;
+      document.querySelectorAll('#film .sprachen button').forEach(function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-sprache')===neu))});
+      v.load(); untertitel(); if(lief) abspielen();
+    }
+    document.querySelectorAll('#film .sprachen button').forEach(function(b){b.addEventListener('click',function(){wechsel(b.getAttribute('data-sprache'))})});
+    v.addEventListener('loadedmetadata',untertitel);
+    if(!('IntersectionObserver' in window)) return;
     if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     new IntersectionObserver(function(es){es.forEach(function(en){
-      if(en.isIntersecting){var p=v.play();if(p&&p.catch)p.catch(function(){})}else{v.pause()}
+      // Mit Ton entscheidet der Mensch, wann es weitergeht; beim Wegscrollen nur anhalten.
+      if(en.isIntersecting){if(!mitTon)abspielen()}else{v.pause()}
     })},{threshold:.5}).observe(v);
   })();
   (function(){

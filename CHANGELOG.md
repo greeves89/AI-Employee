@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.355.1] - 2026-10-02
+
+### Geändert
+- **Landingpage — Film mit Ton:** Der Abschnitt `#film` zeigt jetzt einen Film
+  von rund 90 Sekunden an der echten Oberfläche (Demokonto, fiktive Daten) mit
+  Sprecherstimme und leiser Musik: Agenten, Auftrag im Chat, Rechte und
+  Autonomie-Stufen, Freigaben, Zeitpläne, Kosten. Er startet stumm mit
+  Untertiteln, sobald er im Bild ist; „Mit Ton ansehen“ spielt ihn von vorn mit
+  Ton. Unter dem Film wechseln zwei Flaggen zwischen deutscher und englischer
+  Fassung (Film, Vorschaubild und Untertitel). Dateien unter
+  `docs/ios-app/landing/ai-employee-film-{de,en}.{mp4,jpg,vtt}`; der bisherige
+  32-Sekunden-Kurzfilm ist von der Seite genommen.
+
+### Behoben
+- **Klick-Tutorials:** rechts lief ein gut 6 px breiter weißer Streifen durchs Bild
+  (Rand des Screencasts). Die fünf Videos und Vorschaubilder sind nachgeschnitten,
+  die Anleitung in `docs/benutzerhandbuch/tutorials/README.md` schneidet ihn ab
+  jetzt beim Verkleinern weg.
+
+---
+
 ## [1.355.0] - 2026-10-02
 
 ### Hinzugefügt

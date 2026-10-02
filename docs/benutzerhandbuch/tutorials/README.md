@@ -20,11 +20,13 @@ node <skill>/klickpfad.mjs ../../chatten.mjs --probe     # Selektoren prüfen (f
 node <skill>/klickpfad.mjs ../../chatten.mjs             # → klickpfad.mp4 + kontakt/
 ```
 
-Danach verkleinern und ablegen (ohne Ton, 1280 × 720):
+Danach verkleinern und ablegen (ohne Ton, 1280 × 720). Der Screencast hat rechts einen gut 6 px
+breiten weißen Rand; `crop` schneidet ihn weg, `scale` stellt die Größe wieder her:
 
 ```bash
-ffmpeg -i klickpfad.mp4 -c:v libx264 -preset slow -crf 30 -pix_fmt yuv420p -movflags +faststart -an frontend/public/hilfe/chatten.mp4
-ffmpeg -ss 6 -i klickpfad.mp4 -frames:v 1 -q:v 4 frontend/public/hilfe/chatten.jpg
+R="crop=1272:716:0:0,scale=1280:720:flags=lanczos"
+ffmpeg -i klickpfad.mp4 -vf "$R" -c:v libx264 -preset slow -crf 30 -pix_fmt yuv420p -movflags +faststart -an frontend/public/hilfe/chatten.mp4
+ffmpeg -ss 6 -i klickpfad.mp4 -vf "$R" -frames:v 1 -q:v 4 frontend/public/hilfe/chatten.jpg
 ```
 
 **Nebenwirkungen im Demokonto:** `agent-anlegen` legt den Agenten „Marktbeobachtung“ an (danach
