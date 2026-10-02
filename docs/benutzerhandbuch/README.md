@@ -1486,6 +1486,9 @@ man ihn einschaltet (`docs/BLOG.md`).
    (PNG, JPEG oder WebP bis 1,5 MB). Am hochgeladenen Bild setzt **In den Text**
    es an die Schreibmarke, **Als Titelbild** macht es zum Bild oben im Beitrag
    und auf der Karte in der Übersicht (am besten 1200 × 630).
+
+![Blog: Bilder hochladen, einfügen und als Titelbild wählen](screenshots/f27-blog-bilder.png)
+
 9. Optional **Themen** (mit Komma getrennt) und **Häufige Fragen** ergänzen.
 10. **Speichern** anklicken. Der Beitrag ist jetzt ein **Entwurf**.
 
@@ -2377,7 +2380,7 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 | Settings | `/settings` | `17-settings.png` |
 | Approvals | `/approvals` | `18-approvals.png` |
 | Admin: Users | `/admin` | `19-admin.png` |
-| Admin: Blog der Landingpage | `/admin?tab=blog` | `f25-blog-liste.png`, `f26-blog-editor.png` |
+| Admin: Blog der Landingpage | `/admin?tab=blog` | `f25-blog-liste.png`, `f26-blog-editor.png`, `f27-blog-bilder.png` |
 | Admin: Zuweisungen | `/admin` | `21-admin-zuweisungen.png` |
 | Admin: Verteilen-Modal | `/admin` | `22-verteilen-modal.png` |
 | Admin: Rollen | `/admin` | `23-admin-rollen.png` |
