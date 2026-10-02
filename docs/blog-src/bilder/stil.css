@@ -21,9 +21,10 @@ h1,h2,h3,b.t{font-family:'Sora',sans-serif;letter-spacing:-.02em}
 svg{fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .symbol svg{stroke-width:1.5}
 
-/* Grafiken */
-.grafik{padding:56px 60px 52px}
-.grafik h2{font-size:38px;font-weight:700;margin:10px 0 34px}
+/* Grafiken: schmal gezeichnet, damit die Schrift auch auf dem Handy lesbar bleibt */
+body.schmal{width:900px}
+.grafik{padding:48px 44px 44px}
+.grafik h2{font-size:36px;font-weight:700;margin:10px 0 34px}
 .reihe{display:grid;gap:20px}
 .k2{grid-template-columns:1fr 1fr}.k3{grid-template-columns:repeat(3,1fr)}.k4{grid-template-columns:repeat(4,1fr)}.k5{grid-template-columns:repeat(5,1fr)}
 .box{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:26px}

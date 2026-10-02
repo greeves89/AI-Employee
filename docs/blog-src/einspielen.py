@@ -36,8 +36,8 @@ def rpc(method, params=None):
         return json.loads(r.read())
 
 
-def werkzeug(name, **args):
-    antwort = rpc("tools/call", {"name": name, "arguments": args})["result"]
+def werkzeug(werkzeugname, **args):
+    antwort = rpc("tools/call", {"name": werkzeugname, "arguments": args})["result"]
     return antwort["content"][0]["text"], antwort["isError"]
 
 
