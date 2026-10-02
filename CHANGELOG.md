@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.354.5] - 2026-10-02
+
+### Hinzugefügt
+- Landingpage: Vorschaubild beim Teilen (`og:image`, `twitter:card`,
+  1200 × 630, `docs/ios-app/landing/og.jpg`) und strukturierte Daten als
+  `SoftwareApplication` (Name, Beschreibung, Editionen ab 0 €, App-Store- und
+  GitHub-Verweis), damit Links in sozialen Netzwerken ein Bild zeigen und
+  Suchmaschinen die Seite als Software einordnen.
+
+---
+
 ## [1.354.4] - 2026-10-02
 
 ### Hinzugefügt
