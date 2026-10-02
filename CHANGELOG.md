@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.354.6] - 2026-10-02
+
+### Geändert
+- Seite „Neue Aufgabe“ auf Deutsch: Titel, Felder, Prioritäten (Niedrig,
+  Normal, Hoch, Dringend), Zuweisung, Kostenschätzung und Knöpfe waren noch
+  englisch.
+
+---
+
 ## [1.354.5] - 2026-10-02
 
 ### Hinzugefügt

@@ -12,10 +12,10 @@ import { useToast } from "@/components/ui/dialog-provider";
 import { formatMoney } from "@/lib/money";
 
 const priorityOptions = [
-  { value: 0, label: "Low", color: "text-zinc-400 border-zinc-500/20 bg-zinc-500/10" },
+  { value: 0, label: "Niedrig", color: "text-zinc-400 border-zinc-500/20 bg-zinc-500/10" },
   { value: 1, label: "Normal", color: "text-blue-400 border-blue-500/20 bg-blue-500/10" },
-  { value: 2, label: "High", color: "text-amber-700 dark:text-amber-400 border-amber-500/20 bg-amber-500/10" },
-  { value: 3, label: "Urgent", color: "text-red-400 border-red-500/20 bg-red-500/10" },
+  { value: 2, label: "Hoch", color: "text-amber-700 dark:text-amber-400 border-amber-500/20 bg-amber-500/10" },
+  { value: 3, label: "Dringend", color: "text-red-400 border-red-500/20 bg-red-500/10" },
 ];
 
 export default function NewTaskPage() {
@@ -90,7 +90,7 @@ export default function NewTaskPage() {
       // instead of the task list — no more hunting for the task you just created.
       router.push(`/tasks/${task.id}`);
     } catch (err) {
-      toast.error("Failed to create task", err instanceof Error ? err.message : undefined);
+      toast.error("Aufgabe konnte nicht angelegt werden", err instanceof Error ? err.message : undefined);
     } finally {
       setSubmitting(false);
     }
@@ -99,15 +99,15 @@ export default function NewTaskPage() {
   return (
     <div>
       <Header
-        title="New Task"
-        subtitle="Create a task for an AI agent"
+        title="Neue Aufgabe"
+        subtitle="Einen Auftrag an einen Agenten vergeben"
         actions={
           <button
             onClick={() => router.back()}
             className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back
+            Zurück
           </button>
         }
       />
@@ -123,13 +123,13 @@ export default function NewTaskPage() {
           <div className="space-y-1.5">
             <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Sparkles className="h-3 w-3" />
-              Title
+              Titel
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Short description of the task"
+              placeholder="Kurz: Worum geht es?"
               className="w-full rounded-xl border border-foreground/[0.08] bg-card/80 backdrop-blur-sm px-4 py-3 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/40"
               required
             />
@@ -139,12 +139,12 @@ export default function NewTaskPage() {
           <div className="space-y-1.5">
             <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Send className="h-3 w-3" />
-              Prompt
+              Auftrag
             </label>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Detailed instructions for the AI agent. Be specific about what you want it to build or do."
+              placeholder="Was genau soll der Agent tun? Je genauer, desto besser das Ergebnis."
               rows={8}
               className="w-full rounded-xl border border-foreground/[0.08] bg-card/80 backdrop-blur-sm px-4 py-3 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none placeholder:text-muted-foreground/40"
               required
@@ -157,7 +157,7 @@ export default function NewTaskPage() {
             <div className="space-y-1.5">
               <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <Gauge className="h-3 w-3" />
-                Priority
+                Priorität
               </label>
               <div className="flex gap-1.5">
                 {priorityOptions.map((opt) => (
@@ -189,7 +189,7 @@ export default function NewTaskPage() {
                 onChange={(e) => setAgentId(e.target.value)}
                 className="w-full rounded-xl border border-foreground/[0.08] bg-card/80 backdrop-blur-sm px-4 py-3 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all appearance-none"
               >
-                <option value="">Auto-assign (recommended)</option>
+                <option value="">Automatisch zuweisen (empfohlen)</option>
                 {agents
                   .filter((a) => a.state !== "stopped")
                   .map((agent) => (
@@ -253,7 +253,7 @@ export default function NewTaskPage() {
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <DollarSign className="h-3 w-3" />
-                Cost Estimate
+                Kostenschätzung
               </label>
               <button
                 type="button"
@@ -261,7 +261,7 @@ export default function NewTaskPage() {
                 disabled={estimating || !prompt.trim() || prompt.length < 20}
                 className="text-[11px] text-primary hover:text-primary/80 disabled:text-muted-foreground/40 transition-colors"
               >
-                {estimating ? "Calculating..." : "Estimate cost"}
+                {estimating ? "Wird berechnet …" : "Kosten schätzen"}
               </button>
             </div>
             {costEstimate && (
@@ -275,7 +275,7 @@ export default function NewTaskPage() {
                   <span>{formatMoney(costEstimate.min_usd)}</span>
                 </div>
                 <div className="flex justify-between font-medium">
-                  <span className="text-muted-foreground">Avg</span>
+                  <span className="text-muted-foreground">Mittel</span>
                   <span>{formatMoney(costEstimate.avg_usd)}</span>
                 </div>
                 <div className="flex justify-between">
@@ -284,7 +284,7 @@ export default function NewTaskPage() {
                 </div>
                 {costEstimate.agent_avg_usd !== null && (
                   <div className="flex justify-between border-t border-foreground/[0.06] pt-1 mt-1">
-                    <span className="text-muted-foreground">Agent avg</span>
+                    <span className="text-muted-foreground">Agent im Mittel</span>
                     <span>{formatMoney(costEstimate.agent_avg_usd)}</span>
                   </div>
                 )}
@@ -322,14 +322,14 @@ export default function NewTaskPage() {
               ) : (
                 <Send className="h-4 w-4" />
               )}
-              {submitting ? "Creating..." : dryRun ? "Vorschau erstellen" : "Create Task"}
+              {submitting ? "Wird angelegt …" : dryRun ? "Vorschau erstellen" : "Aufgabe anlegen"}
             </button>
             <button
               type="button"
               onClick={() => router.back()}
               className="rounded-xl px-6 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
             >
-              Cancel
+              Abbrechen
             </button>
           </div>
         </form>
