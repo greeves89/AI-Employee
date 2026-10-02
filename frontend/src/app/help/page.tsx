@@ -12,8 +12,11 @@ import {
   ExternalLink,
   Download,
   Network,
+  PlayCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTutorials } from "@/components/tutorials/tutorial-fenster";
+import { tutorialPoster, tutorialVideo } from "@/lib/tutorials";
 
 // --- Hilfe-Index: alles was als Hilfe/Help identifizierbar ist -------------------
 // Eine Quelle für FAQ + Funktions-How-Tos + Deep-Links. Die Suche filtert client-
@@ -26,12 +29,15 @@ type HelpTopic = {
   keywords: string[];
   href?: string;
   hrefLabel?: string;
+  /** Klick-Tutorial (lib/tutorials.ts), im aufgeklappten Eintrag abspielbar. */
+  tutorial?: string;
 };
 
 const HELP_TOPICS: HelpTopic[] = [
   // --- Erste Schritte -----------------------------------------------------------
   {
     id: "begriffe",
+    tutorial: "chatten",
     category: "Erste Schritte",
     title: "Agent, Chat, Task, Workspace — was ist was?",
     body: "Agent = dein KI-Mitarbeiter (eigener Container + Gedächtnis). Chat = unterhalten (Hin und Her). Task = beauftragen (autonom, auch im Hintergrund). Workspace = privater Dateibereich des Agenten (/workspace), bleibt über Updates erhalten.",
@@ -51,6 +57,7 @@ const HELP_TOPICS: HelpTopic[] = [
   // --- Agenten ------------------------------------------------------------------
   {
     id: "agent-erstellen",
+    tutorial: "agent-anlegen",
     category: "Agenten",
     title: "Neuen Agenten erstellen",
     body: "Auf der Agents-Seite oben rechts einen neuen Agenten anlegen: Name, Symbol (Icon + Farbe), Harness/Modus und Modell wählen. Es werden nur freigegebene Modelle/Accounts angezeigt.",
@@ -66,6 +73,14 @@ const HELP_TOPICS: HelpTopic[] = [
     keywords: ["symbol", "icon", "avatar", "farbe", "bild", "aussehen", "agent"],
     href: "/agents",
     hrefLabel: "Zu den Agents",
+  },
+  {
+    id: "agent-rechte",
+    category: "Agenten",
+    title: "Rechte eines Agenten einstellen",
+    body: "Im Agenten in der Leiste unter dem Chat auf „Rechte“ klicken. Die Autonomie-Stufe (L1 nur lesen bis L4 vollständig autonom) legt fest, was der Agent selbst darf; je Fähigkeit lässt sich erlauben, eine Freigabe verlangen oder verbieten. Änderungen wirken ab der nächsten Aufgabe.",
+    keywords: ["rechte", "autonomie", "freigabe", "erlaubt", "verboten", "stufe", "l1", "l2", "l3", "l4"],
+    tutorial: "rechte",
   },
   {
     id: "voice",
@@ -115,6 +130,7 @@ const HELP_TOPICS: HelpTopic[] = [
   },
   {
     id: "tasks-vs-chat",
+    tutorial: "aufgabe",
     category: "Funktionen",
     title: "Task vs. Chat — wann was?",
     body: "Frag den Agenten im Chat (schnelle Fragen, Hin und Her). Beauftrage ihn als Task (klar umrissener Auftrag, läuft autonom, auch im Hintergrund; Ergebnis später abholen/bewerten).",
@@ -194,6 +210,7 @@ const HELP_TOPICS: HelpTopic[] = [
   },
   {
     id: "faq-approval",
+    tutorial: "rechte",
     category: "Problemlösung (FAQ)",
     title: "Freigabe-Anfrage blockiert den Agenten",
     body: "Unter Approvals bzw. in der Benachrichtigung eine Option wählen — erst dann macht der Agent weiter.",
@@ -203,6 +220,7 @@ const HELP_TOPICS: HelpTopic[] = [
   },
   {
     id: "faq-datei-finden",
+    tutorial: "dateien",
     category: "Problemlösung (FAQ)",
     title: "Datei / Ergebnis finden",
     body: "Im Agenten Workspace-Tab oder unter Explorer; dort herunterladen.",
@@ -226,6 +244,7 @@ export default function HelpPage() {
   // Mitglieder: ohne Admin-Rubrik und Technik-Karten (Architektur, GitHub-Changelog).
   const { simpleMode } = useSimpleMode();
   const [open, setOpen] = useState<string | null>(null);
+  const tutorialsOeffnen = useTutorials((x) => x.oeffnen);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -287,6 +306,16 @@ export default function HelpPage() {
             <div className="text-xs text-muted-foreground truncate">Onboarding-Wizard öffnen</div>
           </div>
         </Link>
+        <button
+          onClick={() => tutorialsOeffnen()}
+          className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card p-4 text-left hover:bg-foreground/[0.04] transition-colors"
+        >
+          <PlayCircle className="h-5 w-5 text-primary shrink-0" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium">Klick-Tutorials</div>
+            <div className="text-xs text-muted-foreground truncate">Kurze Videos zu den wichtigsten Schritten</div>
+          </div>
+        </button>
         {!simpleMode && (<>
         <a
           href="https://github.com/greeves89/AI-Employee/blob/main/CHANGELOG.md"
@@ -357,6 +386,16 @@ export default function HelpPage() {
                     {isOpen && (
                       <div className="px-4 pb-3.5 -mt-1 space-y-2.5">
                         <p className="text-sm text-muted-foreground leading-relaxed">{t.body}</p>
+                        {t.tutorial && (
+                          <video
+                            src={tutorialVideo(t.tutorial)}
+                            poster={tutorialPoster(t.tutorial)}
+                            controls
+                            playsInline
+                            preload="none"
+                            className="aspect-video w-full max-w-2xl rounded-lg border border-foreground/[0.08] bg-black"
+                          />
+                        )}
                         {t.href && (
                           <Link
                             href={t.href}

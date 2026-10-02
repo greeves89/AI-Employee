@@ -67,3 +67,6 @@ class User(Base, TimestampMixin):
     # so a reset actually revokes sessions issued before it (JWTs alone can't
     # be invalidated early; this is the only revocation mechanism in the app).
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # Willkommensfenster mit den Klick-Tutorials: einmal beim ersten Start. Gesetzt,
+    # sobald der Nutzer es schliesst — danach nur noch ueber Hilfe & FAQ.
+    tutorial_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -3210,6 +3210,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   <button
                     onClick={() => sendMessage()}
                     disabled={!isConnected || isUploading || (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0)}
+                    aria-label="Senden"
+                    title="Senden"
                     className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 disabled:opacity-40 disabled:shadow-none"
                   >
                     {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

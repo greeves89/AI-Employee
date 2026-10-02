@@ -17,6 +17,8 @@ export interface AuthUser {
   role: "admin" | "manager" | "member" | "viewer" | "unassigned";
   custom_role_id?: number | null;
   is_active: boolean;
+  /** Willkommensfenster mit den Klick-Tutorials geschlossen (leer = beim Start zeigen). */
+  tutorial_seen_at?: string | null;
 }
 
 interface AuthStore {
@@ -96,6 +98,10 @@ export async function logout(): Promise<void> {
 
 export async function getMe(): Promise<AuthUser> {
   return authFetch<AuthUser>(`${authBase()}/me`);
+}
+
+export async function markTutorialSeen(): Promise<{ tutorial_seen_at: string }> {
+  return authFetch<{ tutorial_seen_at: string }>(`${authBase()}/me/tutorial-seen`, { method: "POST" });
 }
 
 export async function refreshToken(): Promise<AuthUser> {

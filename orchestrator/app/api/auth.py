@@ -93,6 +93,7 @@ class UserResponse(BaseModel):
     approved: bool = True
     last_active_at: datetime | None = None
     monthly_cost_usd: float = 0.0
+    tutorial_seen_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -659,6 +660,21 @@ async def get_me(request: Request, db: AsyncSession = Depends(get_db)):
 
     user = await get_current_user(request, db)
     return UserResponse.model_validate(user).model_dump()
+
+
+@router.post("/me/tutorial-seen")
+async def mark_tutorial_seen(request: Request, db: AsyncSession = Depends(get_db)):
+    """Willkommensfenster mit den Klick-Tutorials gesehen — es oeffnet sich nicht mehr von selbst.
+
+    Nur der eigene Nutzer; ein zweiter Aufruf aendert den ersten Zeitpunkt nicht.
+    """
+    from app.dependencies import get_current_user
+
+    user = await get_current_user(request, db)
+    if not user.tutorial_seen_at:
+        user.tutorial_seen_at = datetime.now(timezone.utc)
+        await db.commit()
+    return {"tutorial_seen_at": user.tutorial_seen_at.isoformat()}
 
 
 @router.get("/me/photo")

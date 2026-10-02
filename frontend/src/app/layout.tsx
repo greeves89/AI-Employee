@@ -6,6 +6,7 @@ import { AuthGuard } from "@/components/auth/auth-guard";
 import { DialogProvider } from "@/components/ui/dialog-provider";
 import { PwaRegistrar } from "@/components/pwa-registrar";
 import { ConciergeWidget } from "@/components/concierge/concierge-widget";
+import { TutorialFenster } from "@/components/tutorials/tutorial-fenster";
 import { FeedbackWidget } from "@/components/feedback/feedback-widget";
 import { cn } from "@/lib/utils";
 import "./globals.css";
@@ -53,6 +54,8 @@ export default function RootLayout({
               {children}
               {/* Nur für Administratoren; blendet sich sonst selbst aus. */}
               <ConciergeWidget />
+              {/* Klick-Tutorials: beim ersten Start von selbst, sonst aus Hilfe & FAQ. */}
+              <TutorialFenster />
               {/* Feedback-Gedöns: auf jeder Route, blendet sich ohne Session aus. */}
               <FeedbackWidget />
             </AuthGuard>
