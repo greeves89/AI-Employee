@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.11] - 2026-10-03
+
+### Geändert
+- **Werbefilm der Landingpage neu aufgenommen (DE/EN):** Die Oberfläche ist größer
+  (Zoom 1,75 statt 1,5), der Chat läuft ohne Gesprächsliste und Aufgabenspalte und
+  mit größerer Schrift — vorher blieb ihm neben drei Spalten nur ein schmaler
+  Streifen. Gezeigt werden jetzt eine Antwort aus dem hinterlegten Wissen, eine
+  offene Freigabe mit ihren Antwortknöpfen und eine Aufgabe mit Tabelle im
+  Ergebnis. Pausen zwischen den Sätzen höchstens gut eine Sekunde. Die Adressen
+  der Filmdateien tragen eine Versionskennung, damit kein alter Stand aus dem
+  Zwischenspeicher kommt.
+
+---
+
 ## [1.356.10] - 2026-10-02
 
 ### Behoben

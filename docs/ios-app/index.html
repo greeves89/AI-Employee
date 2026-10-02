@@ -479,8 +479,8 @@
       <p class="lede">Ein Auftrag in Alltagssprache, Rechte je Fähigkeit, Freigaben, Zeitpläne und Kosten — gezeigt an der echten Oberfläche, mit einem Demokonto und fiktiven Daten.</p>
     </div>
     <div class="frame reveal">
-      <video id="werbefilm" src="/landing/ai-employee-film-de.mp4" poster="/landing/ai-employee-film-de.jpg" controls muted playsinline preload="metadata" aria-label="Film mit Ton: So arbeitest du mit AI Employee — Agenten, Chat, Rechte, Freigaben, Zeitpläne und Kosten">
-        <track kind="subtitles" srclang="de" label="Deutsch" src="/landing/ai-employee-film-de.vtt" default>
+      <video id="werbefilm" src="/landing/ai-employee-film-de.mp4?v=2026-10-03" poster="/landing/ai-employee-film-de.jpg?v=2026-10-03" controls muted playsinline preload="metadata" aria-label="Film mit Ton: So arbeitest du mit AI Employee — Agenten, Chat, Rechte, Freigaben, Zeitpläne und Kosten">
+        <track kind="subtitles" srclang="de" label="Deutsch" src="/landing/ai-employee-film-de.vtt?v=2026-10-03" default>
       </video>
       <button type="button" class="ton" id="film-ton"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></svg><span>Mit Ton ansehen</span></button>
     </div>
@@ -897,9 +897,9 @@
       if(neu===sprache||!FILME[neu]) return;
       var lief=!v.paused; sprache=neu; var f=FILME[neu];
       v.pause(); v.innerHTML='';
-      var t=document.createElement('track'); t.kind='subtitles'; t.srclang=neu; t.label=f.label; t.src='/landing/ai-employee-film-'+neu+'.vtt'; t.default=true;
+      var t=document.createElement('track'); t.kind='subtitles'; t.srclang=neu; t.label=f.label; t.src='/landing/ai-employee-film-'+neu+'.vtt?v=2026-10-03'; t.default=true;
       v.appendChild(t);
-      v.poster='/landing/ai-employee-film-'+neu+'.jpg'; v.src='/landing/ai-employee-film-'+neu+'.mp4'; v.setAttribute('aria-label',f.aria);
+      v.poster='/landing/ai-employee-film-'+neu+'.jpg?v=2026-10-03'; v.src='/landing/ai-employee-film-'+neu+'.mp4?v=2026-10-03'; v.setAttribute('aria-label',f.aria);
       if(ton) ton.querySelector('span').textContent=f.knopf;
       document.querySelectorAll('#film .sprachen button').forEach(function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-sprache')===neu))});
       v.load(); untertitel(); if(lief) abspielen();
