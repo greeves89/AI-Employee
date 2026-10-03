@@ -15,6 +15,7 @@ import {
   Users,
   ChevronDown,
   Target,
+  CirclePause,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { LogEvent } from "@/lib/types";
@@ -194,8 +195,9 @@ interface ChatEvent {
   message_id: string;
   session_id?: string;  // owning session (set by the server) — used to isolate chat tabs
   type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card" | "context"
-    | "approval_request"
-    | "goal";  // /goal gesetzt oder beendet (ws.py) — Anstoß, den Ziel-Stand neu zu laden  // Freigabe angelegt (approvals.py) — Anstoss fuer den Banner-Abgleich
+    | "approval_request"  // Freigabe angelegt (approvals.py) — Anstoss fuer den Banner-Abgleich
+    | "goal"  // /goal gesetzt oder beendet (ws.py) — Anstoß, den Ziel-Stand neu zu laden
+    | "stillstand";  // #891: Zug endete mit einer Ankündigung, danach lief nichts (app/core/ankuendigung.py)
   data: Record<string, unknown>;
   timestamp: string;
 }
@@ -1330,6 +1332,26 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       return;
     }
 
+    // #891: Der Agent hat Arbeit angekündigt, danach lief nichts mehr. Eine
+    // Statuszeile mit „Weitermachen“ statt eines Chats, der nach Arbeit aussieht.
+    if (type === "stillstand") {
+      if (!event.session_id || event.session_id !== activeSessionIdRef.current) return;
+      const zeile = data as { id?: string; content?: string };
+      const id = String(zeile.id || `stillstand-${Date.now()}`);
+      setMessages((prev) =>
+        prev.some((m) => m.id === id)
+          ? prev
+          : [...prev, {
+              id,
+              role: "system" as const,
+              content: String(zeile.content || "Der Agent arbeitet gerade nicht weiter."),
+              timestamp: event.timestamp || new Date().toISOString(),
+              meta: { source: "stillstand" },
+            }],
+      );
+      return;
+    }
+
     if (type === "task_card") {
       const card = data as unknown as TaskCard;
       if (!card?.task_id) return;
@@ -1717,10 +1739,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  const sendMessage = useCallback(async (plan = false) => {
-    const text = input.trim();
-    const imgs = pendingImages;
-    const files = pendingFiles;
+  // ``vorgabe``: fester Text statt des Eingabefelds (Knopf „Weitermachen“, #891) —
+  // Eingabe und Anhänge bleiben dann unangetastet.
+  const sendMessage = useCallback(async (plan = false, vorgabe?: string) => {
+    const ausFeld = vorgabe === undefined;
+    const text = ausFeld ? input.trim() : vorgabe.trim();
+    const imgs = ausFeld ? pendingImages : [];
+    const files = ausFeld ? pendingFiles : [];
     if ((!text && imgs.length === 0 && files.length === 0) || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     // Wer selbst schreibt, will die Antwort sehen — auch wenn er vorher weiter
@@ -1782,9 +1807,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       source: "webapp",
       reasoning,
     }));
-    setInput("");
-    setPendingImages([]);
-    setPendingFiles([]);
+    if (ausFeld) {
+      setInput("");
+      setPendingImages([]);
+      setPendingFiles([]);
+    }
     pendingCountRef.current += 1;
     // Zaehlt als Lebenszeichen — sonst schlaegt die Notbremse waehrend des
     // Anlaufs zu, in dem der Agent noch gar nicht als beschaeftigt gilt.
@@ -2624,6 +2651,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               onFork={forkFrom}
               onRewind={rewindTo}
               onToggleExclude={toggleContextExclusion}
+              // „Weitermachen“ nur, solange die Statuszeile das Letzte im Gespräch ist
+              // und der Agent nicht schon wieder arbeitet.
+              onWeitermachen={idx === arr.length - 1 && !isWaiting
+                ? () => sendMessage(false, "Mach weiter.")
+                : undefined}
             />
           );
         })}
@@ -3342,12 +3374,34 @@ function MessageRow({
   onFork,
   onRewind,
   onToggleExclude,
+  onWeitermachen,
 }: {
   message: ChatMessage;
   onFork?: (messageId: string) => void;
   onRewind?: (messageId: string) => void;
   onToggleExclude?: (messageId: string, scope: "message" | "tool_output", excluded: boolean) => void;
+  onWeitermachen?: () => void;
 }) {
+  // #891: Ankündigung ohne Weiterarbeit — Statuszeile wie eine Goal-Runde, mit Knopf.
+  if (message.role === "system" && message.meta?.source === "stillstand") {
+    return (
+      <div className="flex flex-wrap items-center gap-2 py-1 pl-1 text-xs text-muted-foreground">
+        <CirclePause className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+        <span>{message.content}</span>
+        {onWeitermachen && (
+          <button
+            type="button"
+            onClick={onWeitermachen}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs text-foreground hover:bg-accent"
+          >
+            <Play className="h-3 w-3" />
+            Weitermachen
+          </button>
+        )}
+      </div>
+    );
+  }
+
   if (message.role === "system") {
     if (message.isQueued) {
       return (

@@ -532,6 +532,19 @@ async def _persist_chat_completion(redis: RedisService, data: dict) -> None:
                 )
             except Exception as e:  # noqa: BLE001 — ein Ziel-Fehler darf das Speichern nicht kippen
                 print(f"[Ziel] Runde nach {message_id} nicht fortgeschrieben: {e}")
+            # #891: Endet der Zug mit einer Ankuendigung („… und rendere dann das
+            # Video“) und laeuft danach nichts, sagt eine Statuszeile das (app.core.
+            # ankuendigung). Eingeplant, nicht abgewartet — dieser Lauscher arbeitet
+            # die Fertigmeldungen nacheinander ab. Ebenfalls VOR dem „nicht neu“-Ausstieg.
+            try:
+                from app.core import ankuendigung as _ankuendigung
+                _ankuendigung.nach_zug(
+                    redis.client, agent_id, session_id, message_id, content,
+                    # Abgebrochen: der Mensch hat selbst gestoppt und weiss es.
+                    fehlgeschlagen=str(event_data.get("status") or "") in ("error", "timeout", "cancelled"),
+                )
+            except Exception as e:  # noqa: BLE001 — eine Anzeige darf das Speichern nicht kippen
+                print(f"[Stillstand] Pruefung nach {message_id} nicht eingeplant: {e}")
         if not is_new:
             # Ergaenzt, und der Nutzer hatte den Text schon vor Augen
             # (der Browser hatte die Zeile vollstaendig geschrieben).
