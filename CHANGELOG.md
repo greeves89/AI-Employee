@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.15] - 2026-10-03
+
+### Behoben
+- **Sentinel hielt Agenten wegen des Wortes „Jailbreak“ an:** Das Wort stand in der
+  Liste der eindeutigen Angriffsmuster, ein einziges Vorkommen genügte für einen
+  Stopp. Ein Agent, der einen Blogbeitrag über Prompt Injection schrieb, wurde so
+  dreimal mitten in der Arbeit angehalten. „Jailbreak“ ist ein Fachwort, kein
+  Befehl, und zählt jetzt zu den schwachen Mustern: allein harmlos, zusammen mit
+  weiteren Signalen weiterhin ein Befund.
+
+---
+
 ## [1.356.14] - 2026-10-03
 
 ### Behoben

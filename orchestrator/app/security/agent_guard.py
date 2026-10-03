@@ -41,7 +41,6 @@ EINDEUTIGE_MUSTER = [
     r"you\s+are\s+now\s+",
     r"pretend\s+(you\s+are|to\s+be)",
     r"IMPORTANT:\s*override",
-    r"jailbreak",
     r"DAN\s+mode",
     r"bypass\s+(all\s+)?restrictions",
     r"override\s+(all\s+)?safety",
@@ -67,6 +66,11 @@ SCHWACHE_MUSTER = [
     r"<\s*system\s*>",
     r"new\s+instructions?\s*:",
     r"act\s+as\s+(if\s+)?(you\s+are\s+)?",
+    # Ein Fachwort, kein Befehl: Jeder Text UEBER KI-Sicherheit enthaelt es
+    # („Jailbreak-Angriffe", „Schutz vor Jailbreaks"). Als eindeutiges Muster
+    # hielt es einen Agenten an, der einen Blogbeitrag ueber Prompt Injection
+    # schrieb — dreimal zwischen 02. und 03.10.2026, jedes Mal mitten in der Arbeit.
+    r"jailbreak",
     # Deutsche Entsprechungen der schwachen Klasse — einzeln arglos, im
     # Verbund aussagekräftig.
     r"neue\s+anweisung(en)?\s*:",
