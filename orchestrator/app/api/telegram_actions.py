@@ -123,8 +123,13 @@ async def _tg_request(token: str, method: str, data: dict | None = None, files: 
         # mehr unten und wird beim naechsten Stand nach unten geholt (chat_tail).
         from app.telegram import chat_tail
         bot_id = chat_tail.bot_id_from_token(token)
+        from app.telegram import ausgang
         for chat_id, message_id in chat_tail.sent_message_ids(payload):
             await chat_tail.note(bot_id, chat_id, message_id)
+            # Werkzeug-Sendungen sind keine Chat-Antwort: beim naechsten Zug in
+            # diesem Chat als Vorspann mitgeben (#878). Entwuerfe sind Zwischenstaende.
+            if "Draft" not in method:
+                await ausgang.merken(bot_id, chat_id, ausgang.beschreibung(method, data))
     return payload
 
 

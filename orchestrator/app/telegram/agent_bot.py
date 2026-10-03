@@ -22,7 +22,7 @@ from telegram.ext import (
 
 from app.config import settings
 from app.core.log_redaction import redact_logs
-from app.telegram import chat_tail
+from app.telegram import ausgang, chat_tail
 
 import re as _re
 
@@ -423,7 +423,10 @@ class TelegramAgentBot:
             )
             return
 
-        text = _quoted_context(update.message) + (update.message.text or "")
+        # Was ausserhalb des Gespraechs in diesen Chat ging (Aufgaben, Freigaben),
+        # steht sonst nicht in dieser Sitzung (#878) — einmal als Vorspann.
+        text = (await ausgang.abholen(self._bot_id, chat_id)
+                + _quoted_context(update.message) + (update.message.text or ""))
         user = update.effective_user
 
         target_agent_id = await self._active_target_agent_id(chat_id)
@@ -648,7 +651,7 @@ class TelegramAgentBot:
             "file_id": file_id,
         }
 
-        text = _quoted_context(update.message) + (
+        text = await ausgang.abholen(self._bot_id, chat_id) + _quoted_context(update.message) + (
             f"[Telegram {media_type}] {caption}".strip() if caption
             else f"[Telegram {media_type} received, file_id: {file_id}]"
         )
@@ -861,6 +864,7 @@ class TelegramAgentBot:
                         )
                     else:
                         await self._send_chunked(int(cid), text)
+                    await ausgang.merken(self._bot_id, cid, text)  # #878
                 except Exception:
                     pass
         finally:
@@ -930,6 +934,11 @@ class TelegramAgentBot:
                         )
                 elif text:
                     await self._send_chunked(cid_int, text)
+                else:
+                    continue
+                await ausgang.merken(  # #878
+                    self._bot_id, cid_int,
+                    (f"[Datei {filename}] {caption}" if file_b64 else text).strip())
             except Exception as e:
                 print(redact_logs(f"[Telegram] send_telegram → chat {cid} failed: {e}"))
 
