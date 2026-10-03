@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.16] - 2026-10-03
+
+### Behoben
+- **Chat-Wechsel verlor Antworten bis zum Neuladen der Seite:** Lief in Chat A noch
+  eine Antwort, während Chat B offen war, verwarf die Oberfläche deren Ereignisse.
+  Zurück in A fehlte die Antwort — oder es stand nur ein Bruchstück da —, bis die
+  Seite neu geladen wurde. Jetzt merkt sich die Oberfläche, welche Gespräche Lücken
+  haben, und lädt beim nächsten „fertig“ den gespeicherten Verlauf nach. Außerdem
+  überschreibt ein langsamer Ladevorgang für B nicht mehr die Ansicht von A, und
+  halbfertige Antworten wandern beim Wechseln nicht mehr in ein anderes Gespräch.
+
+---
+
 ## [1.356.15] - 2026-10-03
 
 ### Behoben

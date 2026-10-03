@@ -177,6 +177,8 @@ interface ChatMessage {
   timestamp: string;
   isStreaming?: boolean;
   isQueued?: boolean;
+  /** Gespraech, zu dem eine Live-Blase gehoert — damit sie beim Wechseln nicht mitwandert. */
+  sessionId?: string;
   steps?: AssistantStep[];
   toolCalls?: { tool: string; input: string }[];
   /** Verweist auf eine Auftrags-Kachel; die Zeile wird dann als Kachel gezeichnet. */
@@ -687,6 +689,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const intentionalClose = useRef(false);
   const currentWsSessionId = useRef<string | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
+  // Gespraeche, deren Live-Ereignisse verworfen wurden, weil gerade ein anderes
+  // offen war. Ihr Stand im Fenster ist luckenhaft: Das naechste „fertig“ dort
+  // laedt den gespeicherten Verlauf neu, statt eine halbe Antwort stehen zu lassen.
+  const verpassteSitzungenRef = useRef<Set<string>>(new Set());
   // Stable per-tab id so the backend can keep this tab's socket separate from other
   // tabs/windows chatting with the same agent — without it, opening a 2nd chat kicks the 1st.
   const tabClientIdRef = useRef<string | undefined>(undefined);
@@ -796,9 +802,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       return;
     }
     setHistoryLoaded(false);
+    // Wechselt der Nutzer schneller, als der Verlauf laedt, darf die spaete
+    // Antwort fuer das VORIGE Gespraech die Ansicht des neuen nicht ueberschreiben.
+    let veraltet = false;
     const loadHistory = async () => {
       try {
         const { messages: history, has_more: hasMore } = await api.getChatHistory(agentId, 500, activeSessionId);
+        if (veraltet) return;
         if (hasMore) {
           console.warn("[Chat] More than 500 messages in session - older messages not shown");
         }
@@ -852,6 +862,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               }
             }),
           );
+          if (veraltet) return;
           const abzuschliessen = erledigt.filter(
             (e): e is { id: string; status: string } => e !== null,
           );
@@ -953,8 +964,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             return true;
           });
           // Merge with any currently streaming messages (don't lose active streams)
+          // — aber nur mit denen DIESES Gespraechs. Vorher wanderte die laufende
+          // Blase des verlassenen Gespraechs mit und blieb dort fuer immer haengen.
           setMessages((prev) => {
-            const streaming = prev.filter((m) => m.isStreaming);
+            const streaming = prev.filter(
+              (m) => m.isStreaming && (!m.sessionId || m.sessionId === activeSessionId),
+            );
             if (streaming.length === 0) return deduped;
             // Keep streaming messages, add history that isn't already present
             const streamIds = new Set(streaming.map((m) => m.id));
@@ -977,12 +992,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           setMessageCount(0);
         }
       } catch {
-        setMessages([]);
+        if (!veraltet) setMessages([]);
       } finally {
-        setHistoryLoaded(true);
+        if (!veraltet) setHistoryLoaded(true);
       }
     };
     loadHistory();
+    return () => { veraltet = true; };
   }, [agentId, activeSessionId, historyReloadKey]);
 
   // Beim Wechsel des Gespraechs gehoert der Wartezustand des vorigen nicht mehr
@@ -1241,6 +1257,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     // must NOT bleed into this view.
     const aktiveSitzung = activeSessionIdRef.current || currentWsSessionId.current;
     if (event.session_id && aktiveSitzung && event.session_id !== aktiveSitzung) {
+      verpassteSitzungenRef.current.add(event.session_id);
       return;
     }
     // Neuer Chat, noch ohne Kennung: Bis der Server sie vergibt, ist KEIN
@@ -1262,6 +1279,15 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     if (type === "done" || type === "cancelled" || type === "error") {
       eigenerZugEndeteRef.current = Date.now();
       onTurnChangeRef.current?.();
+      // Lief der Zug teils, waehrend ein anderes Gespraech offen war, fehlt hier
+      // ein Stueck (verworfene Ereignisse). Der gespeicherte Verlauf ist dann die
+      // Wahrheit: kurz warten, bis der Server die Antwort gesichert hat, und
+      // nachladen. Vorher half nur ein Neuladen der Seite.
+      const sitzung = event.session_id || activeSessionIdRef.current;
+      if (sitzung && verpassteSitzungenRef.current.has(sitzung)) {
+        verpassteSitzungenRef.current.delete(sitzung);
+        setTimeout(() => setHistoryReloadKey((k) => k + 1), 800);
+      }
     }
 
     // Ein laufender Zug zeigt sich durch seine Ereignisse, nicht durch eine
@@ -1362,6 +1388,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           content: "",
           timestamp: event.timestamp,
           isStreaming: true,
+          sessionId: event.session_id || activeSessionIdRef.current || undefined,
           steps: [],
         });
         assistantIdx = msgs.length - 1;
