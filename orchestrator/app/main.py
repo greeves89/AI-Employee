@@ -98,9 +98,11 @@ class APIRateLimitMiddleware:
 
         request = Request(scope, receive)
 
-        # Skip rate limiting for health checks and WebSocket upgrades
+        # Skip rate limiting for health checks and WebSocket upgrades. /api/v1/health
+        # fragt die Statusanzeige im Dashboard ab; ein 429 dort zeigte "Degraded",
+        # obwohl das System lief (#879).
         path = request.url.path
-        if path in ("/health", "/healthz") or request.headers.get("upgrade", "").lower() == "websocket":
+        if path in ("/health", "/healthz", "/api/v1/health") or request.headers.get("upgrade", "").lower() == "websocket":
             await self.app(scope, receive, send)
             return
 
@@ -128,12 +130,21 @@ class APIRateLimitMiddleware:
             redis_ok = False
             retry_after: int | None = None  # None => allowed, int => blocked
             try:
-                current = await redis_client.incr(redis_key)
-                if current == 1:
-                    await redis_client.expire(redis_key, self.window)
+                # INCR und EXPIRE in EINER Transaktion, und EXPIRE ... NX bei jedem
+                # Aufruf (#879): Frueher bekam der Zaehler seine Ablaufzeit nur beim
+                # ersten INCR. Ging dieses eine EXPIRE verloren, lief der Schluessel
+                # nie ab und der Nutzer bekam fuer immer 429. NX setzt die Zeit nur,
+                # wenn keine laeuft — das Fenster bleibt fest, ein haengender
+                # Schluessel heilt sich beim naechsten Aufruf selbst.
+                async with redis_client.pipeline(transaction=True) as pipe:
+                    pipe.incr(redis_key)
+                    pipe.expire(redis_key, self.window, nx=True)
+                    pipe.ttl(redis_key)
+                    current, _, ttl = await pipe.execute()
                 if current > self.max_requests:
-                    ttl = await redis_client.ttl(redis_key)
-                    retry_after = max(ttl, 1)
+                    # ttl < 1 (-1 = ohne Ablaufzeit) nie als "Retry-After: 1" melden,
+                    # sonst fragt der Client sofort wieder an.
+                    retry_after = ttl if ttl and ttl > 0 else self.window
                     # Log once per key+window (#521): INCR is monotonic within the
                     # window, so exactly one request hits current == max+1. Logging
                     # only on that first over-limit request avoids the observed

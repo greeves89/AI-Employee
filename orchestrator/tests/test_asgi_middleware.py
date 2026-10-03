@@ -40,21 +40,74 @@ def _build(middleware):
 
 
 class _FakeRedisClient:
-    """Minimal async Redis stub for the distributed rate-limit branch."""
+    """Async Redis stub for the distributed rate-limit branch.
+
+    Tracks a TTL per key like Redis does: -1 = key without expiry, set by
+    EXPIRE; EXPIRE ... NX only sets it while the key has none (#879).
+    """
 
     def __init__(self, ttl: int = 42):
         self._counts: dict[str, int] = {}
-        self._ttl = ttl
+        self._ttls: dict[str, int] = {}
+        self._ttl = ttl  # value reported for keys that have an expiry
 
     async def incr(self, key):
         self._counts[key] = self._counts.get(key, 0) + 1
+        self._ttls.setdefault(key, -1)
         return self._counts[key]
 
-    async def expire(self, key, seconds):
+    async def expire(self, key, seconds, nx=False):
+        if key not in self._counts:
+            return False
+        if nx and self._ttls.get(key, -1) != -1:
+            return False
+        self._ttls[key] = self._ttl if self._ttl > 0 else seconds
         return True
 
     async def ttl(self, key):
-        return self._ttl
+        if key not in self._counts:
+            return -2
+        return self._ttls.get(key, -1)
+
+    def persist(self, key):
+        """Simulates the lost EXPIRE from #879: key exists, no expiry."""
+        self._ttls[key] = -1
+
+    def pipeline(self, transaction=True):
+        return _FakePipeline(self)
+
+
+class _FakePipeline:
+    """MULTI/EXEC stand-in: queues calls, runs them in order on execute()."""
+
+    def __init__(self, client):
+        self._client = client
+        self._calls = []
+
+    def incr(self, key):
+        self._calls.append(("incr", (key,), {}))
+        return self
+
+    def expire(self, key, seconds, nx=False):
+        self._calls.append(("expire", (key, seconds), {"nx": nx}))
+        return self
+
+    def ttl(self, key):
+        self._calls.append(("ttl", (key,), {}))
+        return self
+
+    async def execute(self):
+        results = []
+        for name, args, kwargs in self._calls:
+            results.append(await getattr(self._client, name)(*args, **kwargs))
+        self._calls = []
+        return results
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
 
 
 class _FakeRedisSvc:
@@ -155,6 +208,60 @@ class TestRateLimit:
         blocked = client.get("/x")
         assert blocked.status_code == 429
         assert blocked.headers.get("Retry-After") == "42"
+
+    def test_key_without_expiry_heals_instead_of_locking_out_forever(self):
+        # #879: INCR and EXPIRE were two round trips; if EXPIRE got lost the key
+        # never expired and the user got 429 forever. The next request must put
+        # the expiry back on.
+        redis = _FakeRedisClient(ttl=0)
+        client = _build_with_redis(
+            [Middleware(APIRateLimitMiddleware, max_requests=5, window_seconds=60)],
+            redis,
+        )
+        assert client.get("/x").status_code == 200
+        key = next(iter(redis._counts))
+        redis.persist(key)  # lost EXPIRE, like observed: ttl=-1
+        client.get("/x")
+        assert redis._ttls[key] == 60
+
+    def test_expiry_is_not_extended_on_every_request(self):
+        # The window stays fixed: NX must not reset a running expiry.
+        redis = _FakeRedisClient(ttl=0)
+        client = _build_with_redis(
+            [Middleware(APIRateLimitMiddleware, max_requests=5, window_seconds=60)],
+            redis,
+        )
+        client.get("/x")
+        key = next(iter(redis._counts))
+        redis._ttls[key] = 7  # 53 s of the window already passed
+        client.get("/x")
+        assert redis._ttls[key] == 7
+
+    def test_missing_ttl_never_reports_retry_after_one(self):
+        # ttl=-1 used to become "Retry-After: 1", so clients hammered right back.
+        class _NoExpiry(_FakeRedisClient):
+            async def expire(self, key, seconds, nx=False):
+                return False  # EXPIRE keeps failing
+
+        redis = _NoExpiry()
+        client = _build_with_redis(
+            [Middleware(APIRateLimitMiddleware, max_requests=1, window_seconds=60)],
+            redis,
+        )
+        assert client.get("/x").status_code == 200
+        blocked = client.get("/x")
+        assert blocked.status_code == 429
+        assert blocked.headers.get("Retry-After") == "60"
+
+    def test_api_health_is_never_rate_limited(self):
+        # The dashboard status pill polls /api/v1/health; a 429 there showed
+        # "Degraded" although the system was fine (#879).
+        routes = [Route("/api/v1/health", _ok)]
+        app = Starlette(routes=routes, middleware=[
+            Middleware(APIRateLimitMiddleware, max_requests=1, window_seconds=60)])
+        client = TestClient(app)
+        for _ in range(5):
+            assert client.get("/api/v1/health").status_code == 200
 
     def test_redis_branch_does_not_double_call_app_on_downstream_error(self):
         # Regression for #346: a downstream 500 in the Redis branch must propagate,
