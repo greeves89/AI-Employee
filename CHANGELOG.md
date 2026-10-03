@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.358.3] - 2026-10-03
+
+### Geändert
+- **Rollen bearbeiten übersichtlicher:** Die Rechte einer Rolle stehen in vier
+  Gruppen (Modelle & Konten, Keys & Werkzeuge, Wissen & Daten, Oberfläche & Zugriff)
+  und sind eingeklappt. Jede Zeile zeigt ihren Stand („3 von 7“, „alle“, „keine“),
+  aufgeklappt wird nur, was man ändert. So bleibt die Ansicht auch mit weiteren
+  Rechten lesbar.
+
+---
+
 ## [1.358.2] - 2026-10-03
 
 ### Geändert

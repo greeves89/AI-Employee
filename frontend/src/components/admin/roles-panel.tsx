@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";
-import { ChevronDown, Loader2, Plus, Save, Search, Shield, Trash2, UserPlus, Users, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Plus, Save, Search, Shield, Trash2, UserPlus, Users, X } from "lucide-react";
 import * as api from "@/lib/api";
 import type { CustomRole, RolePermissions, MountCatalogEntry, AgentSecretEntry, McpServerInfo, CustomPage } from "@/lib/api";
 import type { AdminUser, AgentTemplate, AIAccount, Integration } from "@/lib/types";
@@ -392,188 +392,186 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
             />
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            <PermissionBlock title="LLM-Provider">
-              <div className="flex flex-wrap gap-2">
-                {LLM_PROVIDERS.map((provider) => (
-                  <ToggleChip
-                    key={provider}
-                    active={draft.llm_providers == null || draft.llm_providers.includes(provider)}
-                    muted={draft.llm_providers == null}
-                    label={provider}
-                    onClick={() => setDraft((d) => ({
-                      ...d,
-                      llm_providers: toggleListValue(d.llm_providers, provider),
-                    }))}
-                  />
-                ))}
-              </div>
-              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, llm_providers: null }))} />
-            </PermissionBlock>
-
-            <PermissionBlock title="Modelle">
-              <div className="flex flex-wrap gap-2">
-                {modelOptions.length === 0 ? (
-                  <span className="text-[11px] text-muted-foreground/50">Keine Modelle aus AI-Accounts</span>
-                ) : modelOptions.map((model) => (
-                  <ToggleChip
-                    key={model}
-                    active={draft.models == null || draft.models.includes(model)}
-                    muted={draft.models == null}
-                    label={model}
-                    onClick={() => setDraft((d) => ({
-                      ...d,
-                      models: toggleListValue(d.models, model),
-                    }))}
-                  />
-                ))}
-              </div>
-              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, models: null }))} />
-            </PermissionBlock>
-
-            <PermissionBlock title="Mountshares">
-              <div className="flex flex-wrap gap-2">
-                {mounts.map((mount) => (
-                  <ToggleChip
-                    key={mount.label}
-                    active={draft.mount_labels == null || draft.mount_labels.includes(mount.label)}
-                    muted={draft.mount_labels == null}
-                    label={mount.label}
-                    onClick={() => setDraft((d) => ({
-                      ...d,
-                      mount_labels: toggleListValue(d.mount_labels, mount.label),
-                    }))}
-                  />
-                ))}
-              </div>
-              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, mount_labels: null }))} />
-            </PermissionBlock>
-
-            <PermissionBlock title="AI-Accounts (Konten)">
-              <div className="flex flex-wrap gap-2">
-                {aiAccounts.length === 0 && (
-                  <span className="text-[11px] text-muted-foreground/50">Keine AI-Accounts angelegt</span>
-                )}
-                {aiAccounts.map((acc) => (
-                  <ToggleChip
-                    key={acc.id}
-                    active={(draft.ai_account_ids ?? []).includes(acc.id)}
-                    label={acc.name}
-                    onClick={() => setDraft((d) => ({
-                      ...d,
-                      ai_account_ids: toggleNumberValue(d.ai_account_ids, acc.id),
-                    }))}
-                  />
-                ))}
-              </div>
-              <NurFreigegebenHinweis />
-              <AlleAuswaehlenButton onClick={() => setDraft((d) => ({ ...d, ai_account_ids: aiAccounts.map((a) => a.id) }))} />
-            </PermissionBlock>
-
-            <PermissionBlock title="Keys / Secrets">
-              <div className="flex flex-wrap gap-2">
-                {secrets.length === 0 && (
-                  <span className="text-[11px] text-muted-foreground/50">Keine Keys angelegt</span>
-                )}
-                {secrets.map((s) => (
-                  <ToggleChip
-                    key={s.id}
-                    active={(draft.secret_ids ?? []).includes(s.id)}
-                    label={s.name}
-                    onClick={() => setDraft((d) => ({
-                      ...d,
-                      secret_ids: toggleNumberValue(d.secret_ids, s.id),
-                    }))}
-                  />
-                ))}
-              </div>
-              <NurFreigegebenHinweis />
-              <AlleAuswaehlenButton onClick={() => setDraft((d) => ({ ...d, secret_ids: secrets.map((x) => x.id) }))} />
-            </PermissionBlock>
-
-            <PermissionBlock title="MCP-Server / Tools">
-              <div className="flex flex-wrap gap-2">
-                {mcpServers.length === 0 && (
-                  <span className="text-[11px] text-muted-foreground/50">Keine MCP-Server angelegt</span>
-                )}
-                {mcpServers.map((m) => (
-                  <ToggleChip
-                    key={m.id}
-                    active={draft.mcp_server_ids == null || draft.mcp_server_ids.includes(m.id)}
-                    muted={draft.mcp_server_ids == null}
-                    label={m.name}
-                    onClick={() => setDraft((d) => ({
-                      ...d,
-                      mcp_server_ids: toggleNumberValue(d.mcp_server_ids, m.id),
-                    }))}
-                  />
-                ))}
-              </div>
-              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, mcp_server_ids: null }))} />
-            </PermissionBlock>
-
-            <PermissionBlock title="Integrationen (M365 / Exchange)">
-              <div className="flex flex-wrap gap-2">
-                {integrations.length === 0 && (
-                  <span className="text-[11px] text-muted-foreground/50">Keine Integrationen verfügbar</span>
-                )}
-                {integrations.map((it) => (
-                  <ToggleChip
-                    key={it.provider}
-                    active={draft.integration_providers == null || draft.integration_providers.includes(it.provider)}
-                    muted={draft.integration_providers == null}
-                    label={it.display_name || it.provider}
-                    onClick={() => setDraft((d) => ({
-                      ...d,
-                      integration_providers: toggleListValue(d.integration_providers, it.provider),
-                    }))}
-                  />
-                ))}
-              </div>
-              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, integration_providers: null }))} />
-            </PermissionBlock>
-
-            <PermissionBlock title="Menüpfade">
-              <div className="flex flex-wrap gap-2">
-                {menuOptions.map((opt) => (
-                  <ToggleChip
-                    key={opt.path}
-                    active={draft.menu_paths == null || draft.menu_paths.includes(opt.path)}
-                    muted={draft.menu_paths == null}
-                    label={opt.label}
-                    onClick={() => setDraft((d) => ({
-                      ...d,
-                      menu_paths: toggleListValue(d.menu_paths, opt.path),
-                    }))}
-                  />
-                ))}
-              </div>
-              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, menu_paths: null }))} />
-            </PermissionBlock>
-
-            <PermissionBlock title="Templates">
-              <input
-                placeholder="Template-IDs, z.B. 1, 4, 9; leer = alle"
-                value={draft.template_ids}
-                onChange={(e) => setDraft((d) => ({ ...d, template_ids: e.target.value }))}
-                className="w-full rounded-lg border border-foreground/[0.08] bg-background px-3 py-2 text-sm outline-none focus:border-primary/50"
-              />
-              <div className="mt-2 max-h-24 overflow-y-auto text-[11px] text-muted-foreground">
-                {templates.slice(0, 20).map((t) => (
-                  <div key={t.id}>{t.id}: {t.display_name}</div>
-                ))}
-              </div>
-            </PermissionBlock>
-          </div>
-
-          <div className="mt-4">
-            <label className="mb-1 block text-[11px] font-medium text-muted-foreground">URL-Host-Patterns</label>
-            <input
-              placeholder="github.com, *.wikipedia.org; leer = keine Rollenbeschränkung"
-              value={draft.url_host_patterns}
-              onChange={(e) => setDraft((d) => ({ ...d, url_host_patterns: e.target.value }))}
-              className="w-full rounded-lg border border-foreground/[0.08] bg-background px-3 py-2 text-sm outline-none focus:border-primary/50"
-            />
+          <div className="mt-5 space-y-5">
+            <RechteGruppe titel="Modelle & Konten">
+              <PermissionBlock title="LLM-Provider" zusammenfassung={zaehlen(draft.llm_providers, LLM_PROVIDERS.length, "alle")}>
+                <div className="flex flex-wrap gap-2">
+                  {LLM_PROVIDERS.map((provider) => (
+                    <ToggleChip
+                      key={provider}
+                      active={draft.llm_providers == null || draft.llm_providers.includes(provider)}
+                      muted={draft.llm_providers == null}
+                      label={provider}
+                      onClick={() => setDraft((d) => ({
+                        ...d,
+                        llm_providers: toggleListValue(d.llm_providers, provider),
+                      }))}
+                    />
+                  ))}
+                </div>
+                <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, llm_providers: null }))} />
+              </PermissionBlock>
+              <PermissionBlock title="Modelle" zusammenfassung={zaehlen(draft.models, modelOptions.length, "alle")}>
+                <div className="flex flex-wrap gap-2">
+                  {modelOptions.length === 0 ? (
+                    <span className="text-[11px] text-muted-foreground/50">Keine Modelle aus AI-Accounts</span>
+                  ) : modelOptions.map((model) => (
+                    <ToggleChip
+                      key={model}
+                      active={draft.models == null || draft.models.includes(model)}
+                      muted={draft.models == null}
+                      label={model}
+                      onClick={() => setDraft((d) => ({
+                        ...d,
+                        models: toggleListValue(d.models, model),
+                      }))}
+                    />
+                  ))}
+                </div>
+                <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, models: null }))} />
+              </PermissionBlock>
+              <PermissionBlock title="AI-Accounts (Konten)" zusammenfassung={zaehlen(draft.ai_account_ids, aiAccounts.length, "keine")}>
+                <div className="flex flex-wrap gap-2">
+                  {aiAccounts.length === 0 && (
+                    <span className="text-[11px] text-muted-foreground/50">Keine AI-Accounts angelegt</span>
+                  )}
+                  {aiAccounts.map((acc) => (
+                    <ToggleChip
+                      key={acc.id}
+                      active={(draft.ai_account_ids ?? []).includes(acc.id)}
+                      label={acc.name}
+                      onClick={() => setDraft((d) => ({
+                        ...d,
+                        ai_account_ids: toggleNumberValue(d.ai_account_ids, acc.id),
+                      }))}
+                    />
+                  ))}
+                </div>
+                <NurFreigegebenHinweis />
+                <AlleAuswaehlenButton onClick={() => setDraft((d) => ({ ...d, ai_account_ids: aiAccounts.map((a) => a.id) }))} />
+              </PermissionBlock>
+            </RechteGruppe>
+            <RechteGruppe titel="Keys & Werkzeuge">
+              <PermissionBlock title="Keys / Secrets" zusammenfassung={zaehlen(draft.secret_ids, secrets.length, "keine")}>
+                <div className="flex flex-wrap gap-2">
+                  {secrets.length === 0 && (
+                    <span className="text-[11px] text-muted-foreground/50">Keine Keys angelegt</span>
+                  )}
+                  {secrets.map((s) => (
+                    <ToggleChip
+                      key={s.id}
+                      active={(draft.secret_ids ?? []).includes(s.id)}
+                      label={s.name}
+                      onClick={() => setDraft((d) => ({
+                        ...d,
+                        secret_ids: toggleNumberValue(d.secret_ids, s.id),
+                      }))}
+                    />
+                  ))}
+                </div>
+                <NurFreigegebenHinweis />
+                <AlleAuswaehlenButton onClick={() => setDraft((d) => ({ ...d, secret_ids: secrets.map((x) => x.id) }))} />
+              </PermissionBlock>
+              <PermissionBlock title="MCP-Server / Tools" zusammenfassung={zaehlen(draft.mcp_server_ids, mcpServers.length, "alle")}>
+                <div className="flex flex-wrap gap-2">
+                  {mcpServers.length === 0 && (
+                    <span className="text-[11px] text-muted-foreground/50">Keine MCP-Server angelegt</span>
+                  )}
+                  {mcpServers.map((m) => (
+                    <ToggleChip
+                      key={m.id}
+                      active={draft.mcp_server_ids == null || draft.mcp_server_ids.includes(m.id)}
+                      muted={draft.mcp_server_ids == null}
+                      label={m.name}
+                      onClick={() => setDraft((d) => ({
+                        ...d,
+                        mcp_server_ids: toggleNumberValue(d.mcp_server_ids, m.id),
+                      }))}
+                    />
+                  ))}
+                </div>
+                <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, mcp_server_ids: null }))} />
+              </PermissionBlock>
+              <PermissionBlock title="Integrationen (M365 / Exchange)" zusammenfassung={zaehlen(draft.integration_providers, integrations.length, "alle")}>
+                <div className="flex flex-wrap gap-2">
+                  {integrations.length === 0 && (
+                    <span className="text-[11px] text-muted-foreground/50">Keine Integrationen verfügbar</span>
+                  )}
+                  {integrations.map((it) => (
+                    <ToggleChip
+                      key={it.provider}
+                      active={draft.integration_providers == null || draft.integration_providers.includes(it.provider)}
+                      muted={draft.integration_providers == null}
+                      label={it.display_name || it.provider}
+                      onClick={() => setDraft((d) => ({
+                        ...d,
+                        integration_providers: toggleListValue(d.integration_providers, it.provider),
+                      }))}
+                    />
+                  ))}
+                </div>
+                <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, integration_providers: null }))} />
+              </PermissionBlock>
+            </RechteGruppe>
+            <RechteGruppe titel="Wissen & Daten">
+              <PermissionBlock title="Mountshares" zusammenfassung={zaehlen(draft.mount_labels, mounts.length, "alle")}>
+                <div className="flex flex-wrap gap-2">
+                  {mounts.map((mount) => (
+                    <ToggleChip
+                      key={mount.label}
+                      active={draft.mount_labels == null || draft.mount_labels.includes(mount.label)}
+                      muted={draft.mount_labels == null}
+                      label={mount.label}
+                      onClick={() => setDraft((d) => ({
+                        ...d,
+                        mount_labels: toggleListValue(d.mount_labels, mount.label),
+                      }))}
+                    />
+                  ))}
+                </div>
+                <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, mount_labels: null }))} />
+              </PermissionBlock>
+            </RechteGruppe>
+            <RechteGruppe titel="Oberfläche & Zugriff">
+              <PermissionBlock title="Menüpfade" zusammenfassung={zaehlen(draft.menu_paths, menuOptions.length, "alle")}>
+                <div className="flex flex-wrap gap-2">
+                  {menuOptions.map((opt) => (
+                    <ToggleChip
+                      key={opt.path}
+                      active={draft.menu_paths == null || draft.menu_paths.includes(opt.path)}
+                      muted={draft.menu_paths == null}
+                      label={opt.label}
+                      onClick={() => setDraft((d) => ({
+                        ...d,
+                        menu_paths: toggleListValue(d.menu_paths, opt.path),
+                      }))}
+                    />
+                  ))}
+                </div>
+                <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, menu_paths: null }))} />
+              </PermissionBlock>
+              <PermissionBlock title="Templates" zusammenfassung={draft.template_ids.trim() ? `${draft.template_ids.split(",").filter((x) => x.trim()).length} erlaubt` : "alle"}>
+                <input
+                  placeholder="Template-IDs, z.B. 1, 4, 9; leer = alle"
+                  value={draft.template_ids}
+                  onChange={(e) => setDraft((d) => ({ ...d, template_ids: e.target.value }))}
+                  className="w-full rounded-lg border border-foreground/[0.08] bg-background px-3 py-2 text-sm outline-none focus:border-primary/50"
+                />
+                <div className="mt-2 max-h-24 overflow-y-auto text-[11px] text-muted-foreground">
+                  {templates.slice(0, 20).map((t) => (
+                    <div key={t.id}>{t.id}: {t.display_name}</div>
+                  ))}
+                </div>
+              </PermissionBlock>
+              <PermissionBlock title="URL-Host-Patterns" zusammenfassung={draft.url_host_patterns.trim() ? "eingeschränkt" : "keine Einschränkung"}>
+                <input
+                  placeholder="github.com, *.wikipedia.org; leer = keine Rollenbeschränkung"
+                  value={draft.url_host_patterns}
+                  onChange={(e) => setDraft((d) => ({ ...d, url_host_patterns: e.target.value }))}
+                  className="w-full rounded-lg border border-foreground/[0.08] bg-background px-3 py-2 text-sm outline-none focus:border-primary/50"
+                />
+              </PermissionBlock>
+            </RechteGruppe>
           </div>
 
           <div className="mt-5 flex items-center justify-end gap-2">
@@ -719,13 +717,44 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
   );
 }
 
-function PermissionBlock({ title, children }: { title: string; children: React.ReactNode }) {
+/** Ein Recht der Rolle — eingeklappt nur Titel und Stand („3 von 7“, „alle“, „keine“).
+ *  Mit jedem neuen Recht wurde die Ansicht laenger; aufgeklappt wird nur, was man aendert. */
+function PermissionBlock({ title, zusammenfassung, children }: { title: string; zusammenfassung?: string; children: React.ReactNode }) {
+  const [offen, setOffen] = useState(false);
   return (
-    <div className="rounded-lg border border-foreground/[0.06] bg-background/50 p-3">
-      <h4 className="mb-2 text-xs font-semibold">{title}</h4>
-      {children}
+    <div className="rounded-lg border border-foreground/[0.06] bg-background/50">
+      <button
+        type="button"
+        onClick={() => setOffen((o) => !o)}
+        aria-expanded={offen}
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+      >
+        <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", offen && "rotate-90")} />
+        <span className="text-xs font-semibold">{title}</span>
+        {zusammenfassung && (
+          <span className="ml-auto rounded-md bg-foreground/[0.06] px-2 py-0.5 text-[11px] text-muted-foreground">{zusammenfassung}</span>
+        )}
+      </button>
+      {offen && <div className="border-t border-foreground/[0.06] px-3 pb-3 pt-2.5">{children}</div>}
     </div>
   );
+}
+
+function RechteGruppe({ titel, children }: { titel: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{titel}</h3>
+      <div className="space-y-1.5">{children}</div>
+    </section>
+  );
+}
+
+/** Stand einer Liste fuer die Kopfzeile. ``ohneListe``: was „keine Auswahl“ bedeutet —
+ *  bei Keys und KI-Konten „keine“ (default-deny), sonst „alle“. */
+function zaehlen(liste: unknown[] | null | undefined, gesamt: number, ohneListe: "alle" | "keine"): string {
+  if (liste == null) return ohneListe;
+  if (liste.length === 0) return "keine";
+  return gesamt ? `${Math.min(liste.length, gesamt)} von ${gesamt}` : `${liste.length}`;
 }
 
 function ToggleChip({ label, active, muted, onClick }: { label: string; active: boolean; muted?: boolean; onClick: () => void }) {
