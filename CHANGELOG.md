@@ -11,8 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - **Dauerhafte Sperre durch den Rate-Limiter (#879):** Zähler und Ablaufzeit laufen
   jetzt in einer Redis-Transaktion; ein Schlüssel ohne Ablaufzeit heilt sich beim
   nächsten Aufruf selbst. Vorher konnte ein verlorenes `EXPIRE` einen Nutzer für immer
-  mit 429 aussperren. `Retry-After` meldet nie mehr 1 s bei fehlender Ablaufzeit,
-  `/api/v1/health` (Statusanzeige im Dashboard) wird wie `/health` nicht begrenzt.
+  mit 429 aussperren. `Retry-After` meldet nie mehr 1 s bei fehlender Ablaufzeit.
 - **DLP-Standardregeln fehlten (#865):** Stammte die Tabelle `dlp_rules` aus
   `create_all`, scheiterte das Anlegen der Standardregeln bei jedem Start. Jetzt
   repariert der Start die Spalten-Standards und legt die Regeln an.

@@ -98,11 +98,11 @@ class APIRateLimitMiddleware:
 
         request = Request(scope, receive)
 
-        # Skip rate limiting for health checks and WebSocket upgrades. /api/v1/health
-        # fragt die Statusanzeige im Dashboard ab; ein 429 dort zeigte "Degraded",
-        # obwohl das System lief (#879).
+        # Skip rate limiting for health checks and WebSocket upgrades.
+        # /api/v1/health bleibt bewusst begrenzt: er ist ohne Anmeldung erreichbar und
+        # fragt DB, Redis und Docker ab. Die Dauersperre aus #879 ist unten behoben.
         path = request.url.path
-        if path in ("/health", "/healthz", "/api/v1/health") or request.headers.get("upgrade", "").lower() == "websocket":
+        if path in ("/health", "/healthz") or request.headers.get("upgrade", "").lower() == "websocket":
             await self.app(scope, receive, send)
             return
 

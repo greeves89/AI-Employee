@@ -253,16 +253,6 @@ class TestRateLimit:
         assert blocked.status_code == 429
         assert blocked.headers.get("Retry-After") == "60"
 
-    def test_api_health_is_never_rate_limited(self):
-        # The dashboard status pill polls /api/v1/health; a 429 there showed
-        # "Degraded" although the system was fine (#879).
-        routes = [Route("/api/v1/health", _ok)]
-        app = Starlette(routes=routes, middleware=[
-            Middleware(APIRateLimitMiddleware, max_requests=1, window_seconds=60)])
-        client = TestClient(app)
-        for _ in range(5):
-            assert client.get("/api/v1/health").status_code == 200
-
     def test_redis_branch_does_not_double_call_app_on_downstream_error(self):
         # Regression for #346: a downstream 500 in the Redis branch must propagate,
         # not be swallowed and re-dispatched (which double-checks-out a DB conn).
