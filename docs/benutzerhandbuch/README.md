@@ -1,7 +1,7 @@
 # AI Employee
 
 **Dokument:** Benutzerhandbuch — Klick-für-Klick-Anleitung aller Funktionen
-**Version:** 1.357.0
+**Version:** 1.358.1
 **Stand:** 3. Oktober 2026
 **Zielgruppe:** Endanwender & Administratoren
 **Instanz:** ki-chat.example.com
@@ -1060,9 +1060,49 @@ im Klartext im Chat oder Code zu hinterlegen. Seitenleiste → **Secrets**.
 - **Speichern** — legt das Secret an.
 - **Papierkorb** in der Liste — Secret löschen.
 
-**Verwendung:** Welche Secrets ein Agent bekommt, steuerst du über die **Rolle** (Kap.
-22.4 → *Keys / Secrets*) bzw. die Agent-Zuweisung. Im Agenten stehen sie dann als
-Umgebungsvariablen bereit (z. B. damit ein Skript sich an einer fremden API anmeldet).
+**Verwendung:** Ein Agent bekommt einen Key, wenn er ihm **zugewiesen** ist — beim Agenten
+unter **Konnektoren** → *API Keys & Secrets* → **Zuweisen**. Im Agenten steht er dann als
+Umgebungsvariable bereit (z. B. damit ein Skript sich an einer fremden API anmeldet).
+
+**Wer welche Keys nutzen darf** *(seit 1.358.0)*:
+
+| Weg | Wer gibt frei | Für wen |
+|---|---|---|
+| **Eigener Key** | — | Wer ihn angelegt hat |
+| **Freigabe an Personen** | Der Besitzer (oder ein Admin) | Einzelne Personen |
+| **Freigabe über die Rolle** | Nur ein Admin (Kap. 22.4 → *Keys / Secrets*) | Alle Mitglieder einer Rolle |
+
+Nutzer geben ihre Keys nur an Personen frei, nie an Rollen. Wer einen Key freigegeben
+bekommt, kann ihn seinen **eigenen** Agenten zuweisen — den Wert sieht er nicht, ändern,
+löschen oder weitergeben kann er ihn nicht.
+
+#### Einen Key an Personen freigeben
+
+1. Öffne einen deiner Agenten und klick unten auf **Konnektoren**. Unter *API Keys &
+   Secrets* steht dein Key mit dem Hinweis **eigen**. Klick rechts daneben auf das
+   **Personen-Symbol**.
+
+   ![Key freigeben: Personen-Symbol](screenshots/45-key-freigeben-knopf.png)
+   *Abbildung 45: Das Personen-Symbol neben einem eigenen Key*
+
+2. Im Fenster **„… freigeben“** suchst du Personen und setzt bei jeder, die den Key nutzen
+   darf, ein Häkchen. Dann **Freigabe speichern**.
+
+   ![Key freigeben: Personen auswählen](screenshots/46-key-freigeben-dialog.png)
+   *Abbildung 46: Personen auswählen (Namen im Bild erfunden)*
+
+3. Bei den ausgewählten Personen erscheint der Key mit dem Hinweis **„von <dein Name>“**;
+   sie können ihn ihren Agenten zuweisen. Bei dir steht **„an n freigegeben“**.
+
+Admins finden dasselbe Symbol in der Admin-Konsole unter **Compliance → Key Management**.
+
+**Freigabe zurückziehen:** Das Fenster erneut öffnen und das Häkchen entfernen. Der Key
+verschwindet sofort aus den Agenten dieser Person; sie starten dafür kurz neu. Das gilt
+genauso, wenn ein Admin einen Key aus einer Rolle nimmt, eine Rolle löscht oder einer
+Person eine andere Rolle gibt.
+
+> Keys, deren Variable Laufzeit, Netzwerk oder die Plattform steuert (z. B.
+> `HTTPS_PROXY`, `ANTHROPIC_BASE_URL`), lassen sich nicht an Personen freigeben.
 
 > Sicherheitshinweis: Gib Geheimnisse **nie** direkt in den Chat — lege sie als Secret an.
 
@@ -1418,6 +1458,10 @@ Stellschrauben. Klick **+ Neue Rolle** und fülle aus:
   *brain-it_operations*).
 - **AI-Accounts (Konten)** — welche zentralen Modell-Zugänge erlaubt sind (z. B.
   *Firma – Azure*).
+- **Keys / Secrets** — welche Firmen-Keys die Mitglieder nutzen dürfen. **Nur markierte
+  sind freigegeben, ohne Auswahl keiner** (Admins sehen immer alle). **Alle auswählen**
+  markiert alle vorhandenen. Gleiches gilt für *AI-Accounts*. *(Bis 1.357.0 zeigte die
+  Oberfläche „alle“ an, obwohl keiner freigegeben war.)*
 - **Keys / Secrets** — welche hinterlegten Secrets die Gruppe nutzen darf.
 - **MCP-Server / Tools** — welche MCP-Anbindungen erlaubt sind (*SharePoint-MCP, DMS-MCP,
   MediaWiki-MCP*).
