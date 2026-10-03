@@ -19,6 +19,7 @@ from app.services.disk_monitor import DiskMonitorService
 
 def _docker_with_du(du_stdout: str) -> DockerService:
     svc = DockerService.__new__(DockerService)  # bypass __init__ (no docker daemon)
+    svc._platz_gemessen = {}  # Zwischenspeicher der Messungen (sonst setzt ihn __init__)
     container = MagicMock()
     container.exec_run.return_value = (0, (du_stdout.encode("utf-8"), b""))
     client = MagicMock()

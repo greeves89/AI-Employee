@@ -32,6 +32,10 @@ AGENT_VERSION = _read_version()
 class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://ai_employee:devpassword@postgres:5432/ai_employee"
+    # Verbindungspool zur Datenbank (ein Orchestrator-Prozess). Postgres erlaubt 250;
+    # 20 + 40 lassen viel Luft und bleiben weit darunter. Siehe db/session.py.
+    db_pool_size: int = 20
+    db_max_overflow: int = 40
 
     # Redis
     redis_url: str = "redis://redis:6379"

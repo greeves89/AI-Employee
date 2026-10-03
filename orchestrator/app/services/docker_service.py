@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import threading
 import time
 import uuid
 
@@ -416,6 +417,17 @@ finally:
 """
 
 
+def _platz_auswerten(used_mb: float, limit_gb: float) -> dict:
+    """Belegte MB gegen die Quote des Agenten (die kann sich ohne neue Messung aendern)."""
+    limit_mb = max(limit_gb * 1024, 1)
+    return {
+        "disk_usage_mb": round(used_mb, 2),
+        "disk_limit_mb": round(limit_mb, 2),
+        "disk_percent": round(min(used_mb / limit_mb * 100, 100), 2),
+        "disk_available_mb": round(max(limit_mb - used_mb, 0), 2),
+    }
+
+
 class DockerService:
     """Wraps Docker SDK for container management.
 
@@ -430,6 +442,11 @@ class DockerService:
             self.client = docker.DockerClient(base_url=docker_host)
         else:
             self.client = docker.from_env()
+        #: Letzte Arbeitsbereich-Messung je Container: (Zeitpunkt, belegte MB).
+        self._platz_gemessen: dict[str, tuple[float, float]] = {}
+        #: Container, deren Messung gerade laeuft — nie zwei ``du`` nebeneinander.
+        self._platz_laeuft: set[str] = set()
+        self._platz_sperre = threading.Lock()
 
     def create_container(
         self,
@@ -718,16 +735,42 @@ class DockerService:
             if not line:
                 return None
             used_mb = float(line.split()[0])
-            limit_mb = max(limit_gb * 1024, 1)
-            disk_percent = round(min(used_mb / limit_mb * 100, 100), 2)
-            return {
-                "disk_usage_mb": round(used_mb, 2),
-                "disk_limit_mb": round(limit_mb, 2),
-                "disk_percent": disk_percent,
-                "disk_available_mb": round(max(limit_mb - used_mb, 0), 2),
-            }
+            self._platz_gemessen[container_id] = (time.monotonic(), used_mb)
+            return _platz_auswerten(used_mb, limit_gb)
         except Exception:
             return None
+
+    def workspace_disk_usage_cached(
+        self, container_id: str, limit_gb: float, max_alter_s: float = 600,
+    ) -> dict | None:
+        """Belegung aus der letzten Messung — fuer Anfragen, die sofort antworten muessen.
+
+        ``get_workspace_disk_usage`` laeuft mit ``du`` den ganzen Baum ab. Im
+        Request-Pfad (die Agenten-Seite fragt alle paar Sekunden) hielt das je
+        Abfrage einen Thread und eine Datenbankverbindung fest; auf einem
+        11-GB-Arbeitsbereich bei vollem Swap dauerte es Minuten, und am
+        03.10.2026 war der Verbindungspool leer — die ganze App stand.
+
+        Hier wird nie gewartet: Ist die Messung zu alt oder fehlt, startet
+        hoechstens EINE neue je Container in einem eigenen Thread (nicht im
+        Standard-Pool, den auch andere brauchen). Bis dahin gilt der alte Wert —
+        oder ``None``, wenn es noch keinen gibt.
+        """
+        eintrag = self._platz_gemessen.get(container_id)
+        if eintrag is None or time.monotonic() - eintrag[0] > max_alter_s:
+            with self._platz_sperre:
+                starten = container_id not in self._platz_laeuft
+                if starten:
+                    self._platz_laeuft.add(container_id)
+            if starten:
+                def _messen() -> None:
+                    try:
+                        self.get_workspace_disk_usage(container_id, limit_gb)
+                    finally:
+                        with self._platz_sperre:
+                            self._platz_laeuft.discard(container_id)
+                threading.Thread(target=_messen, name=f"du-{container_id[:12]}", daemon=True).start()
+        return _platz_auswerten(eintrag[1], limit_gb) if eintrag else None
 
     def get_image_id(self, image_name: str) -> str | None:
         """Get the current image ID for a given image name."""

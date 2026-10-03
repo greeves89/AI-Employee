@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.12] - 2026-10-03
+
+### Behoben
+- **App wurde unter Last extrem langsam bis zum Stillstand:** Die Agenten-Ansicht
+  maß bei jedem Aufruf den Arbeitsbereich live mit `du`. Bei einem großen
+  Arbeitsbereich (11 GB) und knappem Speicher dauerte das Minuten; weil die Seite
+  alle paar Sekunden nachfragt, hielten die wartenden Abfragen alle
+  Datenbankverbindungen fest, und jede weitere Anfrage endete nach 20 s mit einem
+  Fehler. Die Ansicht liest jetzt die letzte Messung; ist sie älter als zehn
+  Minuten, misst höchstens ein Hintergrund-Thread je Agent nach.
+
+### Geändert
+- **Größerer Datenbank-Verbindungspool:** 20 + 40 statt 10 + 20 Verbindungen,
+  einstellbar über `DB_POOL_SIZE` und `DB_MAX_OVERFLOW`.
+
+---
+
 ## [1.356.11] - 2026-10-03
 
 ### Geändert

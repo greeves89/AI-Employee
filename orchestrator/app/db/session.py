@@ -34,8 +34,15 @@ engine = create_async_engine(
     # Pool-Queue (billig) statt Postgres mit hunderten gleichzeitigen
     # Verbindungsaufbauten zu ueberrennen. Die Tages-Spitze lag bei ~11
     # Verbindungen — 30 sind reichlich Kopffreiheit; PG erlaubt 250.
-    pool_size=10,       # warme Grundmenge
-    max_overflow=20,    # + bis zu 20 unter Last -> hoechstens 30 gleichzeitig
+    #
+    # 2026-10-03: 30 waren doch zu knapp. Ein langsamer Request (live ``du`` auf
+    # einem 11-GB-Arbeitsbereich bei vollem Swap) hielt je Abfrage eine Verbindung,
+    # die Agenten-Seite fragt alle paar Sekunden — Pool leer, jede weitere Anfrage
+    # wartete 20 s und endete mit 500, die ganze App wirkte eingefroren. Die
+    # Ursache ist behoben (Messung aus dem Request-Pfad), der Pool trotzdem
+    # groesser und per DB_POOL_SIZE / DB_MAX_OVERFLOW einstellbar.
+    pool_size=settings.db_pool_size,        # warme Grundmenge (Standard 20)
+    max_overflow=settings.db_max_overflow,  # Reserve unter Last (Standard 40 -> hoechstens 60)
     pool_recycle=900,   # 15 min: seltener neu aufbauen = weniger Handshake-Last
     pool_pre_ping=True, # tote Verbindung vor Nutzung erkennen
     pool_timeout=20,    # so lange auf einen freien Platz warten, bevor es fehlschlaegt

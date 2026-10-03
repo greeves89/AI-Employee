@@ -2787,12 +2787,9 @@ class AgentManager:
                 result["memory_usage_mb"] = None
             try:
                 per_agent_quota = float(agent.config.get("workspace_size_gb") or settings.agent_workspace_size_gb) if agent.config else settings.agent_workspace_size_gb
-                disk = await loop.run_in_executor(
-                    None,
-                    self.docker.get_workspace_disk_usage,
-                    agent.container_id,
-                    per_agent_quota,
-                )
+                # Nie live messen: ``du`` haelt sonst je Abfrage Thread und
+                # DB-Verbindung fest (03.10.2026 Pool leer, App stand).
+                disk = self.docker.workspace_disk_usage_cached(agent.container_id, per_agent_quota)
                 result["disk_usage_mb"] = disk.get("disk_usage_mb")
                 result["disk_limit_mb"] = disk.get("disk_limit_mb")
                 result["disk_percent"] = disk.get("disk_percent")
