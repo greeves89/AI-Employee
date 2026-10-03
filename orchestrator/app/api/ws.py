@@ -237,6 +237,86 @@ async def _warte_hinweis(agent_id: str, status: dict, faden: str | None) -> dict
             "message": f"{name} arbeitet gerade an {woran} — deine Nachricht ist als Nächstes dran."}
 
 
+#: Wie lange Redis die Zuordnung „Nachricht -> Gespraech" haelt. Sie muss den
+#: laengsten Zug samt Wartezeit in der Schlange ueberdauern (gemessen: bis gut
+#: acht Minuten je Zug, dazu womoeglich mehrere Zuege davor), aber nicht ewig
+#: liegen bleiben.
+CHAT_SITZUNG_TTL = 6 * 3600
+
+
+def _sitzung_schluessel(message_id: str) -> str:
+    """Redis-Schluessel der Zuordnung — derselbe, den der Orchestrator fuer
+    Rueckmeldungen von Delegationen setzt (task_router, agents)."""
+    return f"chat:msg:{message_id}:session"
+
+
+async def _merke_sitzung(client, message_id: str, session_id: str) -> None:
+    """Zuordnung neustartfest ablegen.
+
+    Bis hierher lebte sie nur in ``_mid_to_session`` der Verbindung. Ein
+    Neustart des Orchestrators trennt jede Verbindung, die neue kannte die
+    laufende Nachricht nicht und verwarf alles Weitere als fremd: Die Antwort
+    brach im Browser ab, obwohl der Agent weiterarbeitete."""
+    try:
+        await client.setex(_sitzung_schluessel(message_id), CHAT_SITZUNG_TTL, session_id)
+    except Exception:  # noqa: BLE001 — der Chat geht vor, die Zuordnung ist Zugabe
+        logger.debug("[Chat] Zuordnung %s nicht ablegbar", scrub_log(message_id), exc_info=True)
+
+
+async def _sitzung_der_nachricht(client, agent_id: str, message_id: str,
+                                 *, datenbank: bool = True) -> str | None:
+    """Zu welchem Gespraech gehoert diese Nachricht — unabhaengig vom Prozess?
+
+    Erst Redis, dann (fuer Nachrichten von vor diesem Stand) die Nutzerzeile
+    in der Datenbank."""
+    try:
+        roh = await client.get(_sitzung_schluessel(message_id))
+        if roh:
+            return roh.decode() if isinstance(roh, bytes) else str(roh)
+    except Exception:  # noqa: BLE001
+        logger.debug("[Chat] Zuordnung %s nicht lesbar", scrub_log(message_id), exc_info=True)
+    if not datenbank:
+        return None
+    from app.services.chat_persistence import session_for_message
+    return await session_for_message(agent_id, message_id)
+
+
+async def _sitzung_fuer_ereignis(client, agent_id: str, message_id: str,
+                                 aktuelle_sitzung: str | None,
+                                 eigene: dict[str, str], gefunden: dict[str, str],
+                                 db_gefragt: set[str]) -> str | None:
+    """Unter welchem Gespraech geht ein Ereignis an DIESE Verbindung — oder gar nicht?
+
+    ``eigene``: was diese Verbindung selbst gesendet (oder schon zugeordnet) hat.
+    Alles andere geht nur durch, wenn es zum Gespraech gehoert, das die
+    Verbindung gerade zeigt — sonst bliebe die Abschottung der Gespraeche auf
+    der Strecke. Die Datenbank wird je Nachricht hoechstens einmal gefragt;
+    Redis bei jedem Ereignis, weil eine Rueckmeldung ihren Eintrag auch erst
+    nach dem ersten Ereignis bekommen kann."""
+    sid = eigene.get(message_id)
+    if sid:
+        return sid
+    treffer = gefunden.get(message_id)
+    if treffer is None:
+        treffer = await _sitzung_der_nachricht(
+            client, agent_id, message_id, datenbank=message_id not in db_gefragt)
+        db_gefragt.add(message_id)
+        if treffer:
+            gefunden[message_id] = treffer
+    if treffer and treffer == aktuelle_sitzung:
+        eigene[message_id] = treffer
+        return treffer
+    return None
+
+
+def _sitzungskennung(wert) -> str | None:
+    """Eine vom Browser genannte Gespraechskennung — oder ``None``."""
+    if not isinstance(wert, str):
+        return None
+    wert = wert.strip()
+    return wert if 0 < len(wert) <= 128 else None
+
+
 _chat_wake_locks: dict[str, asyncio.Lock] = {}
 
 
@@ -354,9 +434,18 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     # drop responses that belong to no chat of this connection (other sessions,
     # background tasks, voice delegations) instead of bleeding them into the view.
     _mid_to_session: dict[str, str] = {}
+    # Nachgeschlagene Zuordnungen fremder Nachrichten (Redis/Datenbank) und die
+    # Nachrichten, zu denen die Datenbank schon gefragt wurde — siehe
+    # ``_sitzung_fuer_ereignis``.
+    _nachgeschlagen: dict[str, str] = {}
+    _db_gefragt: set[str] = set()
     # Session tracking - defer session creation until first message
     # so the client can provide an existing session_id
     _session: dict[str, str | None] = {"id": None}
+    # Hat diese Verbindung selbst geschrieben (Nachricht oder /reset)? Eine nur
+    # per ``attach`` angehaengte Verbindung hat keinen eigenen Nachlauf: Sie
+    # zeigt nur mit, gesichert wird zentral (main._listen_chat_completions).
+    _hat_gesendet = False
 
     async def _save_chat_message(
         msg_agent_id: str, message_id: str, role: str,
@@ -577,6 +666,12 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 _pending_message_ids.discard(mid)
                 return ("error", mid, str(edata.get("message", "Unknown error")), None)
             elif etype == "done":
+                # Von DIESER Verbindung gesendet? Dann hat sie den Strom von
+                # Anfang an mitgeschrieben. Sonst sah sie ihn erst mittendrin
+                # (Wiederverbindung nach einem Neustart, zweiter Tab) und kennt
+                # nur den Rest — dann gilt der volle Text aus dem ``done``, sonst
+                # ueberschriebe der Rest die fertige Antwort in der Datenbank.
+                eigen = mid in _pending_message_ids
                 _pending_message_ids.discard(mid)
                 resp = _streaming_responses.pop(mid, {})
                 final_text = (
@@ -585,8 +680,10 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     or edata.get("result")
                     or ""
                 )
-                if final_text and not resp.get("content"):
+                if final_text and (not resp.get("content") or not eigen):
                     resp["content"] = str(final_text)
+                if not eigen and isinstance(edata.get("tool_calls"), list) and edata["tool_calls"]:
+                    resp["tool_calls"] = edata["tool_calls"]
                 auto_files = _auto_presented_files_from_text(str(resp.get("content", "")))
                 auto_files.extend(_auto_presented_files_from_tool_calls(resp.get("tool_calls")))
                 if auto_files:
@@ -704,28 +801,22 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                         else:
                             _mid = str(_fwd.get("message_id") or "")
                             if _mid:
-                                _sid = _mid_to_session.get(_mid)
-                                if _sid is None:
-                                    # Nicht von diesem Browser gesendet — aber
-                                    # womoeglich vom Orchestrator angestossen
-                                    # (Fertigmeldung einer Delegation, Antwort
-                                    # eines Kollegen). Der hinterlegt dabei den
-                                    # Zielfaden; ohne diesen Blick verwarf die
-                                    # Abschottung genau die Rueckmeldungen, auf
-                                    # die der Mensch wartet. Sie standen in der
-                                    # Datenbank und nie auf dem Bildschirm.
-                                    try:
-                                        _raw = await _redis.client.get(
-                                            f"chat:msg:{_mid}:session"
-                                        )
-                                        if _raw:
-                                            _looked = (_raw.decode() if isinstance(_raw, bytes)
-                                                       else str(_raw))
-                                            if _looked == _session["id"]:
-                                                _sid = _looked
-                                                _mid_to_session[_mid] = _looked
-                                    except Exception:  # noqa: BLE001
-                                        pass
+                                # Nicht von dieser Verbindung gesendet — aber
+                                # womoeglich vom Orchestrator angestossen
+                                # (Fertigmeldung einer Delegation, Antwort
+                                # eines Kollegen) oder vor einem Neustart von
+                                # einer frueheren Verbindung dieses Fensters.
+                                # Ohne diesen Blick verwarf die Abschottung
+                                # genau die Antworten, auf die der Mensch
+                                # wartet: Sie standen in der Datenbank und nie
+                                # auf dem Bildschirm.
+                                try:
+                                    _sid = await _sitzung_fuer_ereignis(
+                                        _redis.client, agent_id, _mid, _session["id"],
+                                        _mid_to_session, _nachgeschlagen, _db_gefragt,
+                                    )
+                                except Exception:  # noqa: BLE001
+                                    _sid = _mid_to_session.get(_mid)
                                 if _sid is not None:  # own chat → tag + forward
                                     _fwd["session_id"] = _sid
                                     try:
@@ -768,7 +859,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
         if there are still unfinished messages, so we also catch cases where
         the agent hasn't started streaming yet when the user disconnects.
         """
-        if not _session["id"]:
+        if not _session["id"] or not _hat_gesendet:
             return  # Don't persist without a valid session
         has_pending = bool(_pending_message_ids) or bool(_streaming_responses)
         if not has_pending:
@@ -841,6 +932,23 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 }))
                 continue
 
+            # Welches Gespraech zeigt das Fenster? Der Browser sagt es nach jedem
+            # (Wieder-)Verbinden und beim Wechsel. Bis hierher erfuhr der Server
+            # das erst mit der naechsten Nachricht — nach einem Neustart des
+            # Orchestrators gingen alle Ereignisse der laufenden Antwort bis dahin
+            # ins Leere.
+            if action == "attach":
+                sitzung = _sitzungskennung(msg.get("session_id"))
+                if sitzung:
+                    _session["id"] = sitzung
+                    await websocket.send_text(json.dumps({
+                        "type": "attached",
+                        "session_id": sitzung,
+                        "data": {"session_id": sitzung},
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }))
+                continue
+
             text = msg.get("text", "").strip()
 
             # Pasted/attached images: list of {media_type, data(base64)}.
@@ -881,6 +989,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     )
                 continue
 
+            _hat_gesendet = True
             # Handle session switching from client
             if "session_id" in msg and msg["session_id"]:
                 _session["id"] = msg["session_id"]
@@ -943,7 +1052,10 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             _pending_message_ids.add(message_id)
             if _session["id"]:
                 _mid_to_session[message_id] = _session["id"]
-            source = str(msg.get("source") or "webapp")
+                # Neustartfest: VOR dem Einreihen, damit schon das erste Ereignis
+                # des Agenten die Zuordnung in Redis vorfindet.
+                await _merke_sitzung(_redis.client, message_id, _session["id"])
+            source =str(msg.get("source") or "webapp")
             # Per-message model override must belong to the agent's harness — a
             # claude_code agent can't run a GPT model and vice-versa. Drop an
             # incompatible override so the agent falls back to its own model.
