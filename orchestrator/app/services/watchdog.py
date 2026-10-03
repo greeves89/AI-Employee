@@ -6,6 +6,7 @@ docker/redis import chain. The SchedulerService owns the loop, DB sessions and
 alerting; this module owns the "is it stale / missed?" decision.
 """
 
+import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -88,6 +89,61 @@ def as_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def docker_startzeit(roh: str | None) -> datetime | None:
+    """``State.StartedAt`` eines Containers als UTC-Zeitpunkt — oder ``None``.
+
+    Docker liefert Nanosekunden ("...58.662587871Z"); ``fromisoformat`` kann
+    hoechstens Mikrosekunden. "0001-01-01..." heisst: nie gestartet.
+    """
+    if not roh:
+        return None
+    try:
+        text = re.sub(r"(\.\d{6})\d+", r"\1", str(roh)).replace("Z", "+00:00")
+        gestartet = datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+    if gestartet.year < 2000:
+        return None
+    return as_utc(gestartet)
+
+
+#: Container-Zustaende, in denen sicher KEIN Prozess mehr arbeitet. ``fehlt``
+#: heisst: Docker kennt keinen Container dieses Agenten. Bewusst NICHT dabei:
+#: ``paused`` (eingefroren, nicht tot) und ``unbekannt`` (Docker nicht
+#: erreichbar — ein Ausfall der Abfrage ist kein Beweis fuer einen Ausfall des
+#: Agenten).
+_OHNE_PROZESS = frozenset({"fehlt", "exited", "dead", "created", "restarting", "removing"})
+
+
+def lauf_nachweislich_weg(
+    task_started_at: datetime | None,
+    container_zustand: str,
+    container_start: datetime | None,
+) -> bool:
+    """Kann der Prozess, der diese Aufgabe bearbeitet hat, noch existieren?
+
+    ``True`` nur bei BEWEIS, dass er weg ist: der Container laeuft nicht mehr,
+    oder er wurde NACH dem Start der Aufgabe (neu) gestartet — durch Neubau,
+    ``docker restart`` oder die Neustart-Regel nach einem Absturz. Die Aufgabe
+    steckte dann im alten Prozess.
+
+    Alles andere zaehlt als „lebt vielleicht": nach einem reinen
+    Orchestrator-Neustart laeuft der Container unveraendert weiter, und eine
+    Aufgabe, die der frische Container schon aufgenommen hat, hat eine juengere
+    Startzeit als er. Im Zweifel bleibt sie stehen — der Stillstands-Waechter
+    faengt sie dann ueber den fehlenden Herzschlag.
+    """
+    if container_zustand in _OHNE_PROZESS:
+        return True
+    if container_zustand != "running":
+        return False
+    gestartet = as_utc(task_started_at)
+    container = as_utc(container_start)
+    if gestartet is None or container is None:
+        return False
+    return container > gestartet
 
 
 def is_task_stale(task: Task, now: datetime, threshold: timedelta = _STALE_TASK_THRESHOLD) -> bool:

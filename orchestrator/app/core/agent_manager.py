@@ -1404,6 +1404,29 @@ class AgentManager:
         except Exception as e:  # noqa: BLE001 — best effort, never block the restart
             logger.warning(f"Could not cancel open chats for agent {scrub_log(agent_id)}: {scrub_log(e)}")
 
+    async def _verwaiste_aufgaben_beenden(self, agent_id: str) -> None:
+        """Aufgaben beenden, deren Lauf mit dem alten Container verschwunden ist.
+
+        Gegenstueck zu ``_cancel_open_chats`` fuer Aufgaben: ohne das blieben sie
+        nach dem Neubau auf „running", bis der Stillstands-Waechter nach Stunden
+        zuschlaegt. Die Entscheidung trifft ``TaskRouter.beende_verwaiste_laeufe``
+        — dieselbe, die der Waechter-Takt und der Orchestrator-Start benutzen.
+        Aufgaben, die der neue Container schon aufgenommen hat, bleiben stehen.
+        Darf den Neubau nie scheitern lassen; im Zweifel raeumt der naechste Takt.
+        """
+        if self.redis is None:
+            return
+        try:
+            from app.core.load_balancer import LoadBalancer
+            from app.core.task_router import TaskRouter
+
+            router = TaskRouter(self.db, self.redis, LoadBalancer(self.redis), docker_service=self.docker)
+            beendet = await router.beende_verwaiste_laeufe(agent_id)
+            if beendet:
+                logger.info(f"Agent {scrub_log(agent_id)}: {beendet} verwaiste Aufgabe(n) nach Neubau beendet")
+        except Exception as e:  # noqa: BLE001 — der Neubau ist schon fertig
+            logger.warning(f"Verwaiste Aufgaben von {scrub_log(agent_id)} nicht beendet: {scrub_log(e)}")
+
     async def _get_custom_mcp_env(self, agent_config: dict | None = None, agent_id: str | None = None, agent_integrations: list[str] | None = None, *, refresh_oauth: bool = True) -> dict[str, str]:
         """Load custom MCP servers and return as env var dict.
 
@@ -2116,6 +2139,9 @@ class AgentManager:
         agent.config = config
         flag_modified(agent, "config")
         await self.db.commit()
+        # Vor dem refresh: das Beenden laeuft ueber dieselbe Sitzung, und ein
+        # Rollback darin wuerde den Agenten sonst abgelaufen zurueckgeben.
+        await self._verwaiste_aufgaben_beenden(agent_id)
         await self.db.refresh(agent)
 
         logger.info(f"Agent {scrub_log(agent_id)} restarted with fresh config")
@@ -2489,6 +2515,8 @@ class AgentManager:
         agent.config = self._clear_stale_stop_reason(config)
         flag_modified(agent, "config")
         await self.db.commit()
+        # Siehe restart_agent: vor dem refresh.
+        await self._verwaiste_aufgaben_beenden(agent_id)
         await self.db.refresh(agent)
 
         logger.info(f"Agent {scrub_log(agent_id)} updated to new image version")

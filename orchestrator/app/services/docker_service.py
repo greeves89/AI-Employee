@@ -4,6 +4,7 @@ import os
 import threading
 import time
 import uuid
+from datetime import datetime
 
 import docker
 from docker.errors import NotFound, APIError
@@ -876,6 +877,50 @@ class DockerService:
             return container.status
         except (NotFound, APIError):
             return "unknown"
+
+    def agent_container_zustand(
+        self, container_id: str | None, agent_id: str
+    ) -> tuple[str, datetime | None]:
+        """Zustand und Startzeit des Containers eines Agenten.
+
+        Rueckgabe ``(zustand, gestartet)``: ``zustand`` ist der Docker-Status
+        ("running", "exited", ...), ``"fehlt"`` wenn kein Container des Agenten
+        existiert, ``"unbekannt"`` wenn Docker nicht sauber antwortet. Anders als
+        ``get_container_status`` werden diese beiden NICHT vermengt — wer daraus
+        schliesst, dass ein Lauf weg ist, darf einen Docker-Schluckauf nicht fuer
+        einen verschwundenen Container halten.
+
+        Ist die gespeicherte Kennung weg, wird unter dem festen Namen
+        (``ai-agent-<slug>-<agent_id>``) gesucht: waehrend eines Neubaus steht
+        die alte Kennung noch in der Datenbank, der neue Container ist aber
+        schon da und hat womoeglich bereits eine Aufgabe aufgenommen.
+        """
+        from app.services.watchdog import docker_startzeit
+
+        try:
+            container = None
+            if container_id:
+                try:
+                    container = self.client.containers.get(container_id)
+                except NotFound:
+                    container = None
+            if container is None:
+                kandidaten = [
+                    c for c in self.client.containers.list(
+                        all=True, filters={"label": "ai-employee.type=agent"}
+                    )
+                    if str(getattr(c, "name", "")).endswith(f"-{agent_id}")
+                ]
+                if not kandidaten:
+                    return "fehlt", None
+                container = self.client.containers.get(kandidaten[0].id)
+            start = (container.attrs.get("State") or {}).get("StartedAt")
+            return str(container.status), docker_startzeit(start)
+        except NotFound:
+            # Zwischen Auflisten und Nachschlagen entfernt.
+            return "fehlt", None
+        except Exception:  # noqa: BLE001 — APIError, Verbindungsfehler, Proxy
+            return "unbekannt", None
 
     def list_agent_containers(self) -> list:
         containers = self.client.containers.list(
