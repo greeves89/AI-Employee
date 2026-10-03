@@ -194,6 +194,7 @@ services:
       APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-com.da.ai-employee-ios.ai-employee-ios}
       APNS_SANDBOX: ${APNS_SANDBOX:-true}
       AGENT_IMAGE: ai-employee-agent:latest
+      AGENT_MEMORY_LIMIT: ${AGENT_MEMORY_LIMIT-8g}
       # Kiosk voice: enables POST /kiosk/ws-ticket (mints a WS ticket for the local
       # kiosk). Empty by default → endpoint 404s. Set to "true" ONLY on the single-
       # user Pi kiosk, NEVER on multi-tenant boxes.

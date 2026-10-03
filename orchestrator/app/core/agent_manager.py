@@ -2803,13 +2803,12 @@ class AgentManager:
 
         # Add Docker stats if running (run in thread pool to avoid blocking)
         if include_stats and agent.container_id and agent.state in (AgentState.RUNNING, AgentState.IDLE, AgentState.WORKING):
-            loop = asyncio.get_running_loop()
             try:
-                stats = await loop.run_in_executor(
-                    None, self.docker.get_container_stats, agent.container_id
-                )
-                result["cpu_percent"] = stats["cpu_percent"]
-                result["memory_usage_mb"] = stats["memory_usage_mb"]
+                # Nie live messen (~1,5 s je Aufruf): Hintergrund-Messung mit
+                # kurzem Cache; ohne Wert -> None, das Frontend zeigt dann nichts.
+                stats = self.docker.container_stats_cached(agent.container_id) or {}
+                result["cpu_percent"] = stats.get("cpu_percent")
+                result["memory_usage_mb"] = stats.get("memory_usage_mb")
             except Exception:
                 result["cpu_percent"] = None
                 result["memory_usage_mb"] = None

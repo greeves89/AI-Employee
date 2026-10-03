@@ -466,6 +466,10 @@ class DockerService:
         #: Container, deren Messung gerade laeuft — nie zwei ``du`` nebeneinander.
         self._platz_laeuft: set[str] = set()
         self._platz_sperre = threading.Lock()
+        #: Letzte ``docker stats``-Messung je Container: (Zeitpunkt, Werte).
+        self._stats_gemessen: dict[str, tuple[float, dict]] = {}
+        self._stats_laeuft: set[str] = set()
+        self._stats_sperre = threading.Lock()
 
     def create_container(
         self,
@@ -525,7 +529,12 @@ class DockerService:
             environment=environment,
             volumes=volumes,
             network=network,
-            mem_limit=memory_limit,
+            # RAM-Grenze (leer = keine). memswap_limit gleich mem_limit, damit
+            # ein Agent nicht in den Swap ausweicht und den Host zaeh macht.
+            **(
+                {"mem_limit": memory_limit.strip(), "memswap_limit": memory_limit.strip()}
+                if memory_limit and memory_limit.strip() else {}
+            ),
             cpu_quota=cpu_quota,
             # Headless Chrome (HyperFrames video rendering) needs >=256 MB of
             # shared memory; Docker's 64 MB default makes Chrome crash mid-render.
@@ -720,6 +729,36 @@ class DockerService:
             "memory_limit_mb": round(mem_limit / (1024 * 1024), 2),
             "memory_percent": round((mem_usage / mem_limit) * 100, 2) if mem_limit > 0 else 0,
         }
+
+    def container_stats_cached(
+        self, container_id: str, max_alter_s: float = 10,
+    ) -> dict | None:
+        """CPU/RAM aus der letzten ``docker stats``-Messung — antwortet sofort.
+
+        ``get_container_stats`` dauert ~1,5 s (Docker sammelt eine Probe). Die
+        Agenten-Ansicht fragt oft nach; auf kleinen Anlagen (Pi) summiert sich
+        das. Ist die Messung zu alt oder fehlt, startet hoechstens EINE neue
+        je Container im eigenen Thread. Bis dahin gilt der alte Wert — oder
+        ``None``, wenn noch keiner existiert (Aufrufer zeigen dann "keine Werte").
+        """
+        eintrag = self._stats_gemessen.get(container_id)
+        if eintrag is None or time.monotonic() - eintrag[0] > max_alter_s:
+            with self._stats_sperre:
+                starten = container_id not in self._stats_laeuft
+                if starten:
+                    self._stats_laeuft.add(container_id)
+            if starten:
+                def _messen() -> None:
+                    try:
+                        werte = self.get_container_stats(container_id)
+                        self._stats_gemessen[container_id] = (time.monotonic(), werte)
+                    except Exception:
+                        pass
+                    finally:
+                        with self._stats_sperre:
+                            self._stats_laeuft.discard(container_id)
+                threading.Thread(target=_messen, name=f"stats-{container_id[:12]}", daemon=True).start()
+        return eintrag[1] if eintrag else None
 
     def get_workspace_disk_usage(self, container_id: str, limit_gb: float) -> dict | None:
         """Return /workspace disk usage stats for a container.
