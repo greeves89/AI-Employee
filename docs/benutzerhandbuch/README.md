@@ -1,7 +1,7 @@
 # AI Employee
 
 **Dokument:** Benutzerhandbuch — Klick-für-Klick-Anleitung aller Funktionen
-**Version:** 1.358.4
+**Version:** 1.360.0
 **Stand:** 3. Oktober 2026
 **Zielgruppe:** Endanwender & Administratoren
 **Instanz:** ki-chat.example.com
@@ -449,6 +449,25 @@ Runde selbstständig weiter, bis er es erreicht hat.
   den Agenten im Kreis laufen zu lassen.
 - Funktioniert bei allen Agenten, egal welches Modell sie nutzen — im Browser und in der
   iPhone-App. In Telegram setzt du Ziele nicht; dort erklärt `/goal` das kurz.
+
+#### „Der Agent arbeitet gerade nicht weiter“ — Weitermachen mit einem Klick *(seit 1.360.0)*
+
+Manchmal endet eine Antwort mit einer Ankündigung wie *„ich mache das im Hintergrund“*
+oder *„ich melde mich“* — danach passiert aber nichts. Damit du nicht vergeblich wartest,
+prüft AI Employee etwa 20 Sekunden nach der Antwort, ob der Agent wirklich weiterarbeitet
+(laufende Aufgabe, neuer Zug). Ist das nicht der Fall, steht im Verlauf eine schmale Zeile:
+
+1. *„Der Agent arbeitet gerade nicht weiter.“* mit dem Knopf **Weitermachen**.
+
+   ![Hinweis mit Weitermachen-Knopf](screenshots/47-stillstand-weitermachen.png)
+   *Abbildung 47: Der Agent hat angekündigt, aber nicht weitergearbeitet*
+
+2. **Klick auf Weitermachen** — AI Employee schickt *„Mach weiter.“* als deine Nachricht,
+   und der Agent setzt die angekündigte Arbeit um.
+
+**Gut zu wissen:** Bei aktivem `/goal` erscheint die Zeile nicht (das Ziel treibt selbst
+weiter). Der Knopf verschwindet, sobald du etwas anderes schreibst oder der Agent wieder
+arbeitet.
 
 ### 5.2 Todos — die Aufgabenliste des Agenten
 ![Agent · Todos](screenshots/f02-agent-todos.png)

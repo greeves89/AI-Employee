@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.360.0] - 2026-10-03
+
+### Neu
+- **„Der Agent arbeitet gerade nicht weiter“ (#891):** Endet eine Antwort mit einer
+  Ankündigung („ich mache das im Hintergrund“, „ich melde mich“) und läuft danach
+  weder ein Zug noch eine Aufgabe, erscheint nach 20 Sekunden eine Statuszeile mit
+  dem Knopf **Weitermachen**. Serverseitig erkannt, für alle Laufzeiten gleich; nicht
+  bei aktivem `/goal`. Die Agenten-Anleitung verbietet zusätzlich Ankündigungen
+  ohne Umsetzung.
+- **Gesetzes-Crawler abschaltbar (#890):** `GESETZE_CRAWLER_ENABLED` (true/false).
+  Nicht gesetzt: läuft nur, wenn auf der Anlage schon Gesetzesdaten liegen — neue
+  Anlagen tragen die Last nicht mehr ungefragt.
+
+### Behoben
+- **Neustart ohne Chat-Abbruch:** Die Zuordnung Nachricht → Gespräch liegt jetzt in
+  Redis statt im Prozessspeicher; nach einem Neustart des Orchestrators hängt sich der
+  Browser selbst wieder an sein Gespräch und zeigt die laufende bzw. fertige Antwort
+  ohne Neuladen. Bis zu 12 Wiederverbindungsversuche (vorher 5).
+- **Hängende Aufgaben nach Agenten-Neustart:** Aufgaben, deren Container neu erstellt
+  wurde oder nicht mehr läuft, bleiben nicht mehr auf „läuft“, sondern werden beendet
+  und über die Selbstheilung neu eingereiht (nicht bei gestopptem Agenten).
+- **Agentenansicht schneller:** CPU-/RAM-Werte kommen aus einem Zwischenspeicher
+  (10 s), die Ansicht wartet nicht mehr 1,5 s auf `docker stats`. Die RAM-Grenze je
+  Agent (`AGENT_MEMORY_LIMIT`, Standard 8g) gilt jetzt ohne Ausweichen in den Swap
+  und wird an den Orchestrator durchgereicht; wirkt nach „Agent aktualisieren“.
+- **Kosten mit zwei Nachkommastellen:** einheitlich „0,78 €“, unter einem Cent
+  „< 0,01 €“; der genaue Wert steht im Tooltip.
+
+### Sicherheit
+- **Keine fremden E-Mail-Adressen in Freigabe-Dialogen:** Die Personenlisten für
+  App-, Key- und Workflow-Freigaben zeigen Nicht-Admins nur Namen; eine gemeinsame
+  Stelle für alle Verzeichnisse.
+
+---
+
 ## [1.359.1] - 2026-10-03
 
 ### Sicherheit
