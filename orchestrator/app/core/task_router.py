@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import random
@@ -13,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.load_balancer import LoadBalancer
 from app.core.log_redaction import scrub_log
 from app.core.text_preview import truncate_preserving_words
-from app.models.agent import Agent
+from app.models.agent import Agent, AgentState
 from app.models.approval_rule import ApprovalRule
 from app.models.task import Task, TaskStatus, is_terminal_task_status
 from app.models.task_step import TaskStep
@@ -27,6 +28,13 @@ TASK_EVICT_GRACE_SECONDS = int(7 * 24 * 3600)
 # Escalated run lineages a schedule can rack up before it auto-disables
 # instead of paging the human again — see _escalate_exhausted_task.
 _SCHEDULE_AUTO_PAUSE_THRESHOLD = 3
+
+# Fehlertexte fuer Aufgaben, deren Lauf mit dem Container verschwunden ist
+# (``beende_verwaiste_laeufe``). Sie stehen in der Oberflaeche, also deutsch.
+# ``self_healing`` stuft beide als voruebergehend ein: der Auftrag selbst ist in
+# Ordnung, nur sein Prozess ist weg.
+ABBRUCH_NEUSTART = "Agent wurde neu gestartet, Aufgabe abgebrochen."
+ABBRUCH_CONTAINER_WEG = "Agent-Container läuft nicht mehr, Aufgabe abgebrochen."
 
 # Model used for self-reflection rating + improvement suggestions
 _REFLECTION_MODEL = "claude-haiku-4-5-20251001"
@@ -1651,16 +1659,98 @@ class TaskRouter:
             last = last.replace(tzinfo=timezone.utc)
         return last > since
 
+    async def beende_verwaiste_laeufe(self, agent_id: str | None = None) -> int:
+        """Laufende Aufgaben beenden, deren Container nachweislich neu oder weg ist.
+
+        Wird ein Agenten-Container neu gebaut (Aktualisieren, Neustart) oder
+        stirbt er und Docker startet ihn neu, endet jeder Lauf darin — die Zeile
+        stand trotzdem weiter auf RUNNING, bis der Stillstands-Waechter nach
+        ``watchdog_stale_task_minutes`` (Standard 180) zuschlug. Bis dahin lief
+        die Aufgabe in der Oberflaeche „ewig", und der Agent galt als
+        beschaeftigt (kein Ruhe-Stopp, gesperrte Zeitplaene).
+
+        Der Beweis kommt von Docker (``lauf_nachweislich_weg``), nicht aus dem
+        Redis-Status: der ueberlebt den Container und nennt danach weiter
+        Aufgaben, die niemand mehr bearbeitet. Nichts wird angefasst, was noch
+        laufen KOENNTE — nach einem reinen Orchestrator-Neustart laeuft der
+        Container unveraendert weiter.
+
+        Beendet wird ueber ``handle_task_completion``, wie jeder andere
+        Fehlschlag: Job-Checkpoint weg (sonst setzte der naechste Start dieselbe
+        Aufgabe ein zweites Mal fort), Kachel, Rueckmeldung an Auftraggeber und
+        Eltern-Aufgabe. Die Selbstheilung (#390) reiht sie danach neu ein — der
+        Abbruch war nicht ihre Schuld. Ausnahme: der Agent ist gestoppt; ein neuer
+        Versuch wuerde ihn wieder hochfahren, den jemand bewusst angehalten hat.
+
+        ``agent_id`` beschraenkt auf einen Agenten (Neubau seines Containers).
+        """
+        docker = getattr(self, "docker", None)
+        if docker is None or not hasattr(docker, "agent_container_zustand"):
+            return 0
+        from app.services.watchdog import lauf_nachweislich_weg
+
+        abfrage = select(Task).where(Task.status == TaskStatus.RUNNING, Task.agent_id.isnot(None))
+        if agent_id:
+            abfrage = abfrage.where(Task.agent_id == agent_id)
+        laufend = list((await self.db.execute(abfrage)).scalars().all())
+        if not laufend:
+            return 0
+
+        agenten = {
+            a.id: a for a in (await self.db.execute(
+                select(Agent).where(Agent.id.in_({t.agent_id for t in laufend}))
+            )).scalars().all()
+        }
+        beendet = 0
+        for aid, agent in agenten.items():
+            # Docker-SDK blockiert — nicht die Ereignisschleife damit anhalten.
+            zustand, container_start = await asyncio.to_thread(
+                docker.agent_container_zustand, agent.container_id, aid
+            )
+            for task in [t for t in laufend if t.agent_id == aid]:
+                if not lauf_nachweislich_weg(task.started_at, zustand, container_start):
+                    continue
+                # Zwischen Abfrage und hier kann die echte Fertigmeldung
+                # eingetroffen sein — die darf nicht ueberschrieben werden.
+                await self.db.refresh(task)
+                if task.status != TaskStatus.RUNNING:
+                    continue
+                if zustand == "running":
+                    grund = ABBRUCH_NEUSTART
+                else:
+                    grund = ABBRUCH_CONTAINER_WEG
+                if agent.state == AgentState.STOPPED:
+                    meta = dict(task.metadata_ or {})
+                    meta["no_self_healing"] = True
+                    task.metadata_ = meta
+                await self.handle_task_completion({
+                    "task_id": task.id,
+                    "agent_id": aid,
+                    "status": "failed",
+                    "error": grund,
+                })
+                beendet += 1
+                logger.info(
+                    "Verwaiste Aufgabe %s beendet (Agent %s, Container %s)",
+                    scrub_log(task.id), scrub_log(aid), zustand,
+                )
+        return beendet
+
     async def recover_stale_tasks(self, stale_minutes: int = 10) -> int:
         """Recover tasks stuck as QUEUED/RUNNING after orchestrator restart.
 
         Tasks can get stuck when the orchestrator misses Redis PubSub completion
         events (e.g., during a restart). This method:
+        - Ends RUNNING tasks whose container provably restarted or vanished
+          (``beende_verwaiste_laeufe`` — needs ``docker_service``)
         - Re-queues tasks that are still QUEUED but missing from Redis
         - Marks old RUNNING tasks as failed (agent likely crashed)
         """
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)
-        recovered = 0
+        # Zuerst der harte Beweis: Container neu oder weg. Die Pruefung unten
+        # fragt den Redis-Status — der nennt nach einem Absturz weiter die alten
+        # Aufgaben, und sie blieben bis zum Stillstands-Waechter stehen.
+        recovered = await self.beende_verwaiste_laeufe()
 
         # Find tasks stuck as QUEUED for too long
         result = await self.db.execute(

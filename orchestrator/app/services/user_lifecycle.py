@@ -10,7 +10,6 @@ Rules:
 
 import asyncio
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -21,6 +20,7 @@ from app.core.log_redaction import scrub_log
 from app.db.session import resilient_session
 from app.models.agent import Agent, AgentState
 from app.models.user import User
+from app.services.watchdog import docker_startzeit
 
 logger = logging.getLogger(__name__)
 
@@ -152,14 +152,10 @@ def _frisch_gestartet(docker, container_id: str | None, jetzt: datetime, minuten
     if not docker or not container_id:
         return False
     try:
-        roh = docker.get_container(container_id).attrs["State"]["StartedAt"]
-        # Docker liefert Nanosekunden ("...58.662587871Z"); fromisoformat kann
-        # hoechstens Mikrosekunden.
-        roh = re.sub(r"(\.\d{6})\d+", r"\1", roh).replace("Z", "+00:00")
-        gestartet = datetime.fromisoformat(roh)
+        gestartet = docker_startzeit(docker.get_container(container_id).attrs["State"]["StartedAt"])
     except Exception:  # noqa: BLE001
         return False
-    if gestartet.year < 2000:           # "0001-01-01..." = nie gestartet
+    if gestartet is None:               # unlesbar oder nie gestartet
         return False
     return jetzt - gestartet < timedelta(minutes=minuten)
 

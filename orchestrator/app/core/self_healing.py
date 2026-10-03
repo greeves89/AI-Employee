@@ -41,6 +41,10 @@ _TRANSIENT_PATTERNS = (
     r"\bnetwork\b.*\b(error|unreachable)\b", r"\bdns\b", r"\btemporary failure\b",
     r"\bremote end closed\b", r"\bread timeout\b", r"\bssl\b.*\bhandshake\b",
     r"\bdeadlock\b", r"\block wait timeout\b",
+    # Der Container des Agenten wurde neu gebaut oder ist abgestuerzt, waehrend
+    # die Aufgabe lief (task_router.ABBRUCH_*). Der Auftrag ist in Ordnung, nur
+    # sein Prozess ist weg — auch dann wiederholen, wenn `retry_unknown` aus ist.
+    r"\bagent wurde neu gestartet\b", r"\bagent-container läuft nicht mehr\b",
 )
 
 # Dauerhaft: ein zweiter Versuch bringt dasselbe Ergebnis. Wiederholen wäre nur

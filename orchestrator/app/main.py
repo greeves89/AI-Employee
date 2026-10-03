@@ -2206,7 +2206,9 @@ clean Markdown; you don't need to commit.
 
         async with async_session_factory() as db:
             lb = LoadBalancer(app.state.redis)
-            router = TaskRouter(db, app.state.redis, lb)
+            # Mit Docker: nur so laesst sich beweisen, dass der Container einer
+            # laufenden Aufgabe seitdem neu gestartet wurde oder fehlt.
+            router = TaskRouter(db, app.state.redis, lb, docker_service=app.state.docker)
             recovered = await router.recover_stale_tasks(stale_minutes=10)
             if recovered:
                 logger.info(f"Recovered {recovered} stale tasks from previous shutdown")

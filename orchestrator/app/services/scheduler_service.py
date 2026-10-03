@@ -1688,6 +1688,22 @@ class SchedulerService:
         # EINE Quelle, gemeinsam mit der Sperre in _stale_task_count (#838).
         schwelle = self._stale_schwelle()
         now = datetime.now(timezone.utc)
+        # Erst der harte Fall: der Container der Aufgabe wurde neu gestartet
+        # (Absturz + Neustart-Regel, Neubau aus einem Weg ohne eigenes Aufraeumen)
+        # oder laeuft nicht mehr. Dafuer braucht es keine Schwelle — der Lauf ist
+        # nachweislich weg, und die Aufgabe stuende sonst bis zu `schwelle` auf
+        # „running". Der Herzschlag-Teil darunter bleibt fuer den Rest: Prozess
+        # lebt, Aufgabe haengt.
+        if self.docker is not None:
+            try:
+                async with resilient_session() as db:
+                    lb = LoadBalancer(self.redis)
+                    router = TaskRouter(db, self.redis, lb, docker_service=self.docker)
+                    beendet = await router.beende_verwaiste_laeufe()
+                if beendet:
+                    logger.info("[Scheduler] StaleTaskWatchdog: %s verwaiste Aufgabe(n) beendet", beendet)
+            except Exception as e:  # noqa: BLE001 — der Herzschlag-Teil soll trotzdem laufen
+                logger.warning("[Scheduler] StaleTaskWatchdog verwaiste Laeufe: %s", e)
         async with resilient_session() as db:
             stale = await find_stale_tasks(db, now, schwelle)
             if not stale:
