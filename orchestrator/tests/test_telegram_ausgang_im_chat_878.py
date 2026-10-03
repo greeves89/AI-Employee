@@ -185,11 +185,36 @@ class AnschluesseTests(unittest.TestCase):
 
     def test_push_freigaben_und_beide_eingangswege_angeschlossen(self):
         src = _BOT_SRC.read_text()
-        self.assertGreaterEqual(src.count("ausgang.abholen(self._bot_id, chat_id)"), 2)
+        self.assertGreaterEqual(src.count("await self._ausgang_vorspann(chat_id, target_agent_id)"), 2)
         teil = src[src.index("async def send_to_all_authorized"):src.index("async def _listen_telegram_send")]
         self.assertIn("ausgang.merken(", teil)
         teil = src[src.index("async def _deliver_telegram_send"):src.index("async def _listen_responses")]
         self.assertIn("ausgang.merken(", teil)
+
+
+class KeinLeckZwischenAgentenTests(unittest.TestCase):
+    """Leitet der Bot von Agent A per /agent an Agent B weiter, darf B die
+    gemerkten Sendungen von A NICHT bekommen — sie bleiben für A liegen."""
+
+    def setUp(self):
+        self.store = {}
+        p = mock.patch.object(ausgang, "_client", lambda: _FakeRedis(self.store))
+        p.start()
+        self.addCleanup(p.stop)
+        from app.telegram.agent_bot import TelegramAgentBot
+        self.bot = TelegramAgentBot.__new__(TelegramAgentBot)
+        self.bot.agent_id = "agent-a"
+        self.bot._bot_id = "111"
+
+    def test_fremder_zielagent_bekommt_nichts_und_nichts_geht_verloren(self):
+        _run(ausgang.merken("111", 42, "Interner Entwurf von Agent A"))
+        self.assertEqual(_run(self.bot._ausgang_vorspann(42, "agent-b")), "")
+        # Für den eigenen Agenten ist es danach noch da.
+        self.assertIn("Interner Entwurf von Agent A", _run(self.bot._ausgang_vorspann(42, "agent-a")))
+
+    def test_ohne_weiche_gilt_der_eigene_agent(self):
+        _run(ausgang.merken("111", 42, "Artikel fertig"))
+        self.assertIn("Artikel fertig", _run(self.bot._ausgang_vorspann(42, None)))
 
 
 @unittest.skipUnless(_REDIS_URL, "REDIS_URL nicht gesetzt")

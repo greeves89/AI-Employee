@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.359.1] - 2026-10-03
+
+### Sicherheit
+- **Telegram-Vorspann nur für den eigenen Agenten (#878):** Leitet ein Bot per
+  `/agent` an einen anderen Agenten weiter, bekommt dieser die gemerkten Sendungen
+  des Bot-Agenten nicht mehr; sie bleiben liegen, bis wieder der eigene Agent dran ist.
+  Der Vorspann ist als Zitat gekennzeichnet, nicht als Anweisung.
+
+---
+
 ## [1.359.0] - 2026-10-03
 
 ### Behoben

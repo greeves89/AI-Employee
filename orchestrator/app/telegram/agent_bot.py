@@ -423,13 +423,11 @@ class TelegramAgentBot:
             )
             return
 
-        # Was ausserhalb des Gespraechs in diesen Chat ging (Aufgaben, Freigaben),
-        # steht sonst nicht in dieser Sitzung (#878) — einmal als Vorspann.
-        text = (await ausgang.abholen(self._bot_id, chat_id)
-                + _quoted_context(update.message) + (update.message.text or ""))
         user = update.effective_user
 
         target_agent_id = await self._active_target_agent_id(chat_id)
+        text = (await self._ausgang_vorspann(chat_id, target_agent_id)
+                + _quoted_context(update.message) + (update.message.text or ""))
         print(
             f"[Telegram] inbound text chat={chat_id} gateway={self.agent_id} "
             f"target={target_agent_id} message={update.message.message_id}"
@@ -651,7 +649,7 @@ class TelegramAgentBot:
             "file_id": file_id,
         }
 
-        text = await ausgang.abholen(self._bot_id, chat_id) + _quoted_context(update.message) + (
+        text = await self._ausgang_vorspann(chat_id, target_agent_id) + _quoted_context(update.message) + (
             f"[Telegram {media_type}] {caption}".strip() if caption
             else f"[Telegram {media_type} received, file_id: {file_id}]"
         )
@@ -1112,6 +1110,19 @@ class TelegramAgentBot:
             )
         except Exception as e:  # noqa: BLE001 — eine Reaktion ist Beiwerk
             logger.debug("[Telegram] reaction failed chat=%s: %s", chat_id, e)
+
+    async def _ausgang_vorspann(self, chat_id: int, target_agent_id: str | None) -> str:
+        """Was ausserhalb des Gespraechs in diesen Chat ging (Aufgaben, Freigaben),
+        steht sonst nicht in der Telegram-Sitzung (#878) — einmal als Vorspann.
+
+        NUR fuer den eigenen Agenten dieses Bots: Leitet der Bot per /agent an
+        einen ANDEREN Agenten weiter, gehoeren die gemerkten Sendungen (die dieses
+        Bots, also dieses Agenten) nicht in dessen Zug. Dann bleiben sie liegen,
+        bis wieder der eigene Agent dran ist.
+        """
+        if target_agent_id and target_agent_id != self.agent_id:
+            return ""
+        return await ausgang.abholen(self._bot_id, chat_id)
 
     async def _note_inbound(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         msg = update.effective_message
