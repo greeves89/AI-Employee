@@ -8,7 +8,7 @@ startup; admins manage overrides via the /dlp API.
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String, func, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -24,7 +24,13 @@ class DlpRule(Base):
     agent_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     # allow | log | mask | block
     action: Mapped[str] = mapped_column(String(20), nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # server_default: create_all legt die Tabelle auf frischen Anlagen aus diesem
+    # Modell an, und der Seed im Startpfad fuegt per rohem SQL ein. Ohne
+    # Datenbank-Standard scheiterte genau das (#865, app/core/dlp_rules_schema.py).
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=true()
+    )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
     )
