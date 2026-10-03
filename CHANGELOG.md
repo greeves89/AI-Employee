@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.359.0] - 2026-10-03
+
+### Behoben
+- **Dauerhafte Sperre durch den Rate-Limiter (#879):** Zähler und Ablaufzeit laufen
+  jetzt in einer Redis-Transaktion; ein Schlüssel ohne Ablaufzeit heilt sich beim
+  nächsten Aufruf selbst. Vorher konnte ein verlorenes `EXPIRE` einen Nutzer für immer
+  mit 429 aussperren. `Retry-After` meldet nie mehr 1 s bei fehlender Ablaufzeit,
+  `/api/v1/health` (Statusanzeige im Dashboard) wird wie `/health` nicht begrenzt.
+- **DLP-Standardregeln fehlten (#865):** Stammte die Tabelle `dlp_rules` aus
+  `create_all`, scheiterte das Anlegen der Standardregeln bei jedem Start. Jetzt
+  repariert der Start die Spalten-Standards und legt die Regeln an.
+- **Telegram: Nachrichten verschwanden still (#873):** Die Doppelt-Prüfung galt
+  kanalweit; dieselbe `message_id` in zwei Agenten-Bots wurde als Dublette verworfen.
+  Jetzt je Bot und Chat.
+- **Telegram: Antwort landete weiter oben im Verlauf (#874):** Kommt unter der
+  mitwachsenden Antwort eine neue Nachricht an, erscheint die Antwort neu unten.
+- **Telegram: Agent kannte eigene Aufgaben-Nachrichten nicht (#878):** Was eine
+  Aufgabe, eine Freigabe oder ein Werkzeug in einen Chat schickt, bekommt der nächste
+  Chat-Zug dort einmal als Vorspann — in allen Laufzeiten gleich.
+- **Dateinamen beim Schreiben in Agenten-Container (#853):** Die Schreib-Helfer
+  lehnen Namen mit `..`, führendem `/` oder leeren Gliedern selbst ab, bevor
+  irgendetwas geschrieben wird.
+
+---
+
 ## [1.358.4] - 2026-10-03
 
 ### Geändert
