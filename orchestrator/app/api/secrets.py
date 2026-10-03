@@ -18,7 +18,8 @@ from app.core.encryption import decrypt_token, encrypt_token
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
-from app.models.agent_secret import AgentSecret, AgentSecretAssignment, SecretType
+from app.core import secret_zugriff
+from app.models.agent_secret import AgentSecret, AgentSecretAssignment, AgentSecretShare, SecretType
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
@@ -63,19 +64,29 @@ def _mask(value_encrypted: str) -> str:
         return "****"
 
 
-def _serialize(s: AgentSecret, include_mask: bool = True, user=None) -> dict:
+def _serialize(s: AgentSecret, include_mask: bool = True, user=None, *,
+               zugang: str | None = None, besitzer: str | None = None, freigaben: int | None = None) -> dict:
     eigen = bool(user is not None and s.owner_id and s.owner_id == getattr(user, "id", None))
+    verwaltbar = eigen or (user is not None and _ist_admin(user))
     return {
+        # Warum der Aufrufer ihn nutzen darf: admin | eigen | rolle | person.
+        "zugang": zugang or ("eigen" if eigen else None),
+        # Bei an mich freigegebenen Keys: von wem (Name), sonst None.
+        "owner_name": besitzer,
+        # Nur fuer Besitzer/Admin: an wie viele Personen freigegeben.
+        "shared_with_count": freigaben if verwaltbar else None,
         # Fuer die Oberflaeche: eigene Secrets kann man bearbeiten, freigegebene nur nutzen.
         "owned": eigen,
-        "manageable": eigen or (user is not None and _ist_admin(user)),
+        "manageable": verwaltbar,
         "id": s.id,
         "name": s.name,
         "key_name": s.key_name,
         "secret_type": s.secret_type,
         "description": s.description,
         "is_active": s.is_active,
-        "masked_value": _mask(s.value_encrypted) if include_mask else None,
+        # Nur wer den Key verwaltet, sieht eine Andeutung des Werts (erste/letzte 4
+        # Zeichen) — Empfaenger einer Freigabe nicht (Sicherheitspruefung 03.10.2026).
+        "masked_value": _mask(s.value_encrypted) if (include_mask and verwaltbar) else None,
         "created_at": s.created_at.isoformat() if s.created_at else None,
         "assigned_agent_ids": [a.agent_id for a in s.assignments],
     }
@@ -117,22 +128,40 @@ async def list_secrets(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
+    """Alle Keys, die der Aufrufer nutzen darf (core/secret_zugriff.py): Admin alle,
+    sonst eigene, per Rolle und per Person freigegebene. Default-deny."""
+    from app.models.user import User
     result = await db.execute(select(AgentSecret).order_by(AgentSecret.name))
     secrets = result.scalars().all()
+    erlaubt = await secret_zugriff.nutzbare_secret_ids(db, user)
+    if erlaubt is not None:
+        secrets = [s for s in secrets if s.id in erlaubt]
+    uid = str(getattr(user, "id", "") or "")
+    rolle = await secret_zugriff._rollen_ids(db, user) if erlaubt is not None else set()
+    person = await secret_zugriff.personen_ids(db, uid) if erlaubt is not None else set()
+    anzahl: dict[int, int] = {}
+    sichtbar = [s.id for s in secrets]
+    for sid in (await db.execute(
+        select(AgentSecretShare.secret_id).where(AgentSecretShare.secret_id.in_(sichtbar))
+    )).scalars().all() if sichtbar else []:
+        anzahl[sid] = anzahl.get(sid, 0) + 1
+    besitzer_ids = {s.owner_id for s in secrets if s.owner_id and s.owner_id != uid}
+    namen = {}
+    if besitzer_ids:
+        for r in (await db.execute(select(User.id, User.name).where(User.id.in_(besitzer_ids)))).all():
+            namen[r[0]] = r[1]
 
-    # Default-deny: a non-admin sees ONLY secrets explicitly released to them via role
-    # (custom_role.permissions.secret_ids). None = none (not "all") — secrets are
-    # credential-class, mirrors the AI-account default-deny.
-    from app.models.user import UserRole
-    if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        from app.core.permissions import get_effective_permissions
-        perms = await get_effective_permissions(user, db)
-        allowed = perms.get("secret_ids")
-        allowed_set = set(allowed) if allowed is not None else set()
-        # Plus die eigenen: bis v1.343 verschwand ein selbst angelegtes Secret
-        # sofort aus der Liste — es war in keiner Rollen-Freigabe.
-        secrets = [s for s in secrets if s.id in allowed_set or s.owner_id == user.id]
-    return {"secrets": [_serialize(s, user=user) for s in secrets]}
+    def art(s: AgentSecret) -> str:
+        if erlaubt is None:
+            return "admin"
+        if s.owner_id == uid:
+            return "eigen"
+        return "rolle" if s.id in rolle else "person" if s.id in person else ""
+
+    return {"secrets": [
+        _serialize(s, user=user, zugang=art(s), besitzer=namen.get(s.owner_id or ""), freigaben=anzahl.get(s.id, 0))
+        for s in secrets
+    ]}
 
 
 @router.post("", status_code=201)
@@ -172,10 +201,8 @@ async def _agent_besitzer(agent_id: str, db) -> str | None:
 
 
 async def _freigegebene_secret_ids(user, db) -> set[int]:
-    from app.core.permissions import get_effective_permissions
-    perms = await get_effective_permissions(user, db)
-    allowed = perms.get("secret_ids")
-    return set(allowed) if allowed is not None else set()
+    """Was der Aufrufer nutzen darf (eigene, Rolle, Person) — fuer Nicht-Admins."""
+    return await secret_zugriff.nutzbare_secret_ids(db, user) or set()
 
 
 def _ist_admin(user) -> bool:
@@ -184,21 +211,15 @@ def _ist_admin(user) -> bool:
 
 
 async def _assert_secret_allowed(secret_id: int, user, db) -> None:
-    """403 unless the caller may USE this secret (assign it to an own agent).
-    Admin, the owner, or an explicit role allowlist (secret_ids; None = none)."""
-    if _ist_admin(user):
-        return
+    """403 unless the caller may USE this secret (assign it to an own agent):
+    Admin, Besitzer, Rollenfreigabe oder Freigabe an diese Person (core/secret_zugriff.py)."""
     secret = await db.get(AgentSecret, secret_id)
-    if secret is not None and secret.owner_id and secret.owner_id == getattr(user, "id", None):
-        return
-    from app.core.permissions import get_effective_permissions
-    perms = await get_effective_permissions(user, db)
-    allowed = perms.get("secret_ids")
-    allowed_set = set(allowed) if allowed is not None else set()
-    if secret_id not in allowed_set:
+    if secret is None:
+        raise HTTPException(status_code=404, detail="Secret not found")
+    if await secret_zugriff.zugang(db, user, secret) is None:
         raise HTTPException(
             status_code=403,
-            detail="Dieser Key/Secret ist für deine Gruppe nicht freigegeben.",
+            detail="Dieser Key/Secret ist für dich nicht freigegeben.",
         )
 
 
@@ -316,10 +337,12 @@ async def assign_secret(
     # The caller must own the target agent AND be allowed to use the secret (admin bypasses both).
     await _assert_agent_owned(agent_id, user, db)
     await _assert_secret_allowed(secret_id, user, db)
-    # Ein PRIVATES Secret nur an einen EIGENEN Agenten — nicht an einen, der
-    # nur geteilt ist: der Wert laege sonst im Container eines anderen Nutzers.
-    if secret.owner_id and not _ist_admin(user) and await _agent_besitzer(agent_id, db) != user.id:
-        raise HTTPException(status_code=403, detail="Eigene Schlüssel nur an eigene Agenten.")
+    # Nicht-Admins weisen JEDEN Key nur EIGENEN Agenten zu — nicht einem, der nur
+    # geteilt ist. Frueher galt das nur fuer private Keys; ein per Person
+    # freigegebener Firmen-Key liess sich so an den geteilten Agenten eines Admins
+    # haengen, wo er ungefiltert ankam und ausgelesen werden konnte (03.10.2026).
+    if not _ist_admin(user) and await _agent_besitzer(agent_id, db) != user.id:
+        raise HTTPException(status_code=403, detail="Schlüssel nur an eigene Agenten.")
 
     existing = await db.execute(
         select(AgentSecretAssignment).where(
@@ -346,7 +369,10 @@ async def unassign_secret(
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     await _assert_agent_owned(agent_id, user, db)
-    await _assert_secret_allowed(secret_id, user, db)
+    # Abhaengen darf der Besitzer des Agenten immer — auch einen Key, dessen
+    # Freigabe er inzwischen verloren hat (sonst bliebe er haengen).
+    if not _ist_admin(user) and await _agent_besitzer(agent_id, db) != user.id:
+        await _assert_secret_allowed(secret_id, user, db)
     await db.execute(
         delete(AgentSecretAssignment).where(
             AgentSecretAssignment.agent_id == agent_id,
@@ -355,3 +381,106 @@ async def unassign_secret(
     )
     await db.commit()
     await _refresh_agents_for_secret(db, manager, secret_id, [agent_id])
+
+
+# ---------------------------------------------------------------------------
+# Freigabe an Personen
+# ---------------------------------------------------------------------------
+
+class SecretShares(BaseModel):
+    user_ids: list[str]
+
+
+async def _freigaben(db: AsyncSession, secret_id: int) -> list[dict]:
+    from app.models.user import User
+    zeilen = (await db.execute(
+        select(AgentSecretShare.user_id, User.name, User.email)
+        .join(User, User.id == AgentSecretShare.user_id, isouter=True)
+        .where(AgentSecretShare.secret_id == secret_id)
+        .order_by(User.name)
+    )).all()
+    return [{"user_id": r[0], "name": r[1], "email": r[2]} for r in zeilen]
+
+
+@router.get("/{secret_id}/shares")
+async def list_secret_shares(
+    secret_id: int,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """An welche Personen der Key freigegeben ist — nur fuer Besitzer und Admin."""
+    secret = await db.get(AgentSecret, secret_id)
+    if not secret:
+        raise HTTPException(status_code=404, detail="Secret not found")
+    _assert_secret_managed(secret, user)
+    return {"secret_id": secret_id, "shares": await _freigaben(db, secret_id)}
+
+
+@router.put("/{secret_id}/shares")
+async def set_secret_shares(
+    secret_id: int,
+    body: SecretShares,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+    manager: AgentManager = Depends(_get_agent_manager),
+):
+    """Key an genau diese Personen freigeben (ersetzt die bisherige Liste).
+
+    Nur Besitzer und Admin. Freigegeben wird an Personen, nie an Rollen — das macht
+    ein Admin in den Rollenrechten. Wer die Freigabe verliert, verliert den Key auch
+    in seinen Agenten: Die werden neu gestartet und bekommen ihn nicht mehr
+    (agent_manager._get_secrets_env prueft beim Einspielen).
+    """
+    from app.models.agent import Agent
+    from app.models.user import User
+    secret = await db.get(AgentSecret, secret_id)
+    if not secret:
+        raise HTTPException(status_code=404, detail="Secret not found")
+    _assert_secret_managed(secret, user)
+
+    gewuenscht = {str(u).strip() for u in body.user_ids if str(u).strip()}
+    if gewuenscht and secret_zugriff.variable_reserviert(secret.key_name):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Keys mit der Variable {secret.key_name} lassen sich nicht an Personen freigeben "
+                   "(sie steuern Laufzeit, Netzwerk oder die Plattform).",
+        )
+    gewuenscht.discard(str(secret.owner_id or ""))   # an sich selbst freigeben ist sinnlos
+    gewuenscht.discard(str(user.id))
+    if gewuenscht:
+        vorhanden = set((await db.execute(select(User.id).where(User.id.in_(gewuenscht)))).scalars().all())
+        if gewuenscht - vorhanden:
+            raise HTTPException(status_code=422, detail="Freigabe nicht möglich — Person prüfen.")
+
+    bisher = set((await db.execute(
+        select(AgentSecretShare.user_id).where(AgentSecretShare.secret_id == secret_id)
+    )).scalars().all())
+    entzogen = bisher - gewuenscht
+    if entzogen:
+        await db.execute(delete(AgentSecretShare).where(
+            AgentSecretShare.secret_id == secret_id, AgentSecretShare.user_id.in_(entzogen),
+        ))
+    for uid in sorted(gewuenscht - bisher):
+        db.add(AgentSecretShare(secret_id=secret_id, user_id=uid, created_by=str(user.id)))
+    await db.commit()
+
+    refresh = None
+    if entzogen:
+        betroffen = list((await db.execute(
+            select(AgentSecretAssignment.agent_id)
+            .join(Agent, Agent.id == AgentSecretAssignment.agent_id)
+            .where(AgentSecretAssignment.secret_id == secret_id, Agent.user_id.in_(entzogen))
+        )).scalars().all())
+        if betroffen:
+            # Zuweisung loeschen, nicht nur ausblenden: sonst floesse der Key bei
+            # einer erneuten Freigabe still zurueck.
+            await db.execute(delete(AgentSecretAssignment).where(
+                AgentSecretAssignment.secret_id == secret_id,
+                AgentSecretAssignment.agent_id.in_(betroffen),
+            ))
+            await db.commit()
+            refresh = await _refresh_agents_for_secret(db, manager, secret_id, betroffen)
+    freigaben = await _freigaben(db, secret_id)
+    if not _ist_admin(user):
+        freigaben = [{k: v for k, v in f.items() if k != "email"} for f in freigaben]
+    return {"secret_id": secret_id, "shares": freigaben, "refresh": refresh}

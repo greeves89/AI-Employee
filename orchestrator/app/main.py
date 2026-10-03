@@ -1512,6 +1512,32 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure chat_sessions table: {e}")
 
+    # Freigabe eines Keys an Personen (core/secret_zugriff.py). Wie chat_sessions:
+    # bei jedem Start, unabhaengig von Alembic. Idempotent.
+    try:
+        from app.db.session import engine as _eng_sh
+        from sqlalchemy import text as _txt_sh
+        async with _eng_sh.begin() as conn:
+            await conn.execute(_txt_sh(
+                "CREATE TABLE IF NOT EXISTS agent_secret_shares ("
+                "id serial PRIMARY KEY, "
+                "secret_id integer NOT NULL REFERENCES agent_secrets(id) ON DELETE CASCADE, "
+                "user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                "created_by varchar, "
+                "created_at timestamptz NOT NULL DEFAULT now(), "
+                "updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            await conn.execute(_txt_sh(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_secret_shares_secret_user "
+                "ON agent_secret_shares (secret_id, user_id)"
+            ))
+            await conn.execute(_txt_sh(
+                "CREATE INDEX IF NOT EXISTS ix_agent_secret_shares_user_id ON agent_secret_shares (user_id)"
+            ))
+        logger.info("agent_secret_shares table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure agent_secret_shares table: {e}")
+
     # Ensure the per-tenant title uniqueness on knowledge_entries on every
     # startup, independent of Alembic. Die Migration b7c1e93a5f20 loest die
     # GLOBALE Eindeutigkeit auf; scheitert `alembic upgrade head` aber (10 heads,

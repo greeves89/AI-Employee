@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   KeyRound, Plus, Trash2, Eye, EyeOff, Pencil, Check, X,
-  Shield, Server, User, Loader2, Copy,
+  Shield, Server, User, Loader2, Copy, Users,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
@@ -104,6 +104,11 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
     name: "", description: "", value: "", is_active: true, secret_type: "api_key", key_name: "",
   });
   const [saving, setSaving] = useState(false);
+  // Freigabe an Personen (nie an Rollen — das macht ein Admin in den Rollen).
+  const [teilen, setTeilen] = useState<AgentSecretEntry | null>(null);
+  const [personen, setPersonen] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [auswahl, setAuswahl] = useState<Set<string>>(new Set());
+  const [suche, setSuche] = useState("");
 
   const showToast = (type: "success" | "error", message: string) => setToast({ type, message });
 
@@ -117,6 +122,36 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  async function freigabeOeffnen(s: AgentSecretEntry) {
+    setTeilen(s);
+    setSuche("");
+    try {
+      const [{ users }, { shares }] = await Promise.all([api.listAppShareDirectory(), api.getSecretShares(s.id)]);
+      setPersonen(users);
+      setAuswahl(new Set(shares.map((x) => x.user_id)));
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "Freigaben konnten nicht geladen werden");
+      setTeilen(null);
+    }
+  }
+
+  async function freigabeSpeichern() {
+    if (!teilen) return;
+    setSaving(true);
+    try {
+      const { shares } = await api.setSecretShares(teilen.id, [...auswahl]);
+      showToast("success", shares.length
+        ? `„${teilen.name}“ ist für ${shares.length} Person${shares.length === 1 ? "" : "en"} freigegeben.`
+        : `„${teilen.name}“ ist für niemanden mehr freigegeben.`);
+      setTeilen(null);
+      await load();
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "Freigabe fehlgeschlagen");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function handleCreate() {
     if (!form.name || !form.key_name || !form.value) {
@@ -432,7 +467,22 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                             </span>
                             {!s.is_active && (
                               <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08]">
-                                Inactive
+                                Inaktiv
+                              </span>
+                            )}
+                            {s.zugang === "person" && (
+                              <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20">
+                                <Users size={11} /> Freigegeben von {s.owner_name || "einer Person"}
+                              </span>
+                            )}
+                            {s.zugang === "rolle" && (
+                              <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08]">
+                                <Shield size={11} /> Über deine Rolle freigegeben
+                              </span>
+                            )}
+                            {s.manageable && !!s.shared_with_count && (
+                              <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium bg-foreground/[0.04] text-muted-foreground border-foreground/[0.08]">
+                                <Users size={11} /> An {s.shared_with_count} Person{s.shared_with_count === 1 ? "" : "en"} freigegeben
                               </span>
                             )}
                           </div>
@@ -456,12 +506,21 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                           </div>
                           {s.assigned_agent_ids.length > 0 && (
                             <p className="text-[11px] text-muted-foreground/40 mt-1">
-                              Assigned to {s.assigned_agent_ids.length} agent{s.assigned_agent_ids.length !== 1 ? "s" : ""}
+                              Zugewiesen an {s.assigned_agent_ids.length} Agent{s.assigned_agent_ids.length !== 1 ? "en" : ""}
                             </p>
                           )}
                         </div>
                       </div>
+                      {s.manageable && (
                       <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => freigabeOeffnen(s)}
+                          title="An Personen freigeben"
+                          aria-label="An Personen freigeben"
+                          className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+                        >
+                          <Users size={14} />
+                        </button>
                         <button
                           onClick={() => startEdit(s)}
                           className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
@@ -476,6 +535,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                           {deleting === s.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                         </button>
                       </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -484,6 +544,57 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
           </div>
         )}
       </div>
+      {teilen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setTeilen(null)}>
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold">„{teilen.name}“ freigeben</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Wer ihn bekommt, kann ihn eigenen Agenten zuweisen. Den Wert sieht niemand, ändern und
+              weitergeben kann nur der Besitzer. An Rollen gibt nur ein Admin frei (Admin → Nutzer &amp; Rollen).
+            </p>
+            <input
+              value={suche}
+              onChange={(e) => setSuche(e.target.value)}
+              placeholder="Person suchen …"
+              className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            />
+            <div className="mt-2 max-h-64 overflow-y-auto">
+              {personen
+                .filter((p) => `${p.name} ${p.email}`.toLowerCase().includes(suche.trim().toLowerCase()))
+                .map((p) => (
+                  <label key={p.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-foreground/[0.04]">
+                    <input
+                      type="checkbox"
+                      checked={auswahl.has(p.id)}
+                      onChange={() => setAuswahl((alt) => {
+                        const neu = new Set(alt);
+                        if (neu.has(p.id)) neu.delete(p.id); else neu.add(p.id);
+                        return neu;
+                      })}
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm">{p.name}</span>
+                      <span className="block truncate text-[11px] text-muted-foreground">{p.email}</span>
+                    </span>
+                  </label>
+                ))}
+              {personen.length === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">Keine weiteren Personen.</p>}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setTeilen(null)} className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-foreground/[0.04]">
+                Abbrechen
+              </button>
+              <button
+                onClick={freigabeSpeichern}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                {saving && <Loader2 size={13} className="animate-spin" />} Freigabe speichern
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {toast && <Toast type={toast.type} message={toast.message} onClose={() => setToast(null)} />}
     </div>
   );

@@ -6,7 +6,7 @@ into the agent container using the key_name field (e.g. AZURE_AI_SEARCH_KEY).
 
 from enum import Enum
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -46,3 +46,20 @@ class AgentSecretAssignment(Base, TimestampMixin):
     secret_id: Mapped[int] = mapped_column(ForeignKey("agent_secrets.id", ondelete="CASCADE"))
 
     secret: Mapped["AgentSecret"] = relationship(back_populates="assignments")
+
+
+class AgentSecretShare(Base, TimestampMixin):
+    """Freigabe eines Keys an eine bestimmte Person (core/secret_zugriff.py).
+
+    Der Besitzer — oder ein Admin — gibt einen Key an einzelne Nutzer frei; die
+    duerfen ihn ihren eigenen Agenten zuweisen, sehen den Wert aber nie und koennen
+    ihn weder aendern noch weitergeben. An Rollen gibt nur ein Admin frei, und zwar
+    ueber die Rollenrechte (``secret_ids``), nicht hier.
+    """
+    __tablename__ = "agent_secret_shares"
+    __table_args__ = (UniqueConstraint("secret_id", "user_id", name="uq_agent_secret_shares_secret_user"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    secret_id: Mapped[int] = mapped_column(ForeignKey("agent_secrets.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)

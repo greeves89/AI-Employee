@@ -26,8 +26,8 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api import secrets as api
-from app.models.agent_secret import AgentSecret, AgentSecretAssignment
-from app.models.user import UserRole
+from app.models.agent_secret import AgentSecret, AgentSecretAssignment, AgentSecretShare
+from app.models.user import User, UserRole
 
 ADMIN = SimpleNamespace(id="admin", email="admin@example.invalid", role=UserRole.ADMIN)
 MITGLIED = SimpleNamespace(id="m1", email="m1@example.invalid", role=UserRole.MEMBER)
@@ -40,7 +40,8 @@ class SecretsTestBasis(unittest.IsolatedAsyncioTestCase):
         async with self.engine.begin() as conn:
             await conn.run_sync(
                 AgentSecret.metadata.create_all,
-                tables=[AgentSecret.__table__, AgentSecretAssignment.__table__],
+                tables=[AgentSecret.__table__, AgentSecretAssignment.__table__,
+                        AgentSecretShare.__table__, User.__table__],
             )
         self.db = async_sessionmaker(self.engine, expire_on_commit=False)()
         # Rollen-Freigaben: m1 darf Secret "firma" nutzen, m2 nichts.

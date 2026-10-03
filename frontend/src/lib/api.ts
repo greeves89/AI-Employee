@@ -4142,6 +4142,27 @@ export interface AgentSecretEntry {
   owned?: boolean;
   /** Ändern/Löschen erlaubt: eigenes Secret oder Admin. */
   manageable?: boolean;
+  /** Warum ich ihn nutzen darf: admin | eigen | rolle | person. */
+  zugang?: "admin" | "eigen" | "rolle" | "person" | "" | null;
+  /** Bei an mich freigegebenen Keys: Name des Besitzers. */
+  owner_name?: string | null;
+  /** Nur für Besitzer/Admin: an wie viele Personen freigegeben. */
+  shared_with_count?: number | null;
+}
+
+export interface SecretShare { user_id: string; name: string | null; email: string | null }
+
+/** An wen ein Key freigegeben ist (nur Besitzer/Admin). */
+export async function getSecretShares(id: number): Promise<{ shares: SecretShare[] }> {
+  return fetchJSON(`${getBase()}/secrets/${id}/shares`);
+}
+
+/** Key an genau diese Personen freigeben — nie an Rollen (das macht ein Admin in den Rollen). */
+export async function setSecretShares(id: number, userIds: string[]): Promise<{ shares: SecretShare[] }> {
+  return fetchJSON(`${getBase()}/secrets/${id}/shares`, {
+    method: "PUT",
+    body: JSON.stringify({ user_ids: userIds }),
+  });
 }
 
 export async function listSecrets(): Promise<AgentSecretEntry[]> {

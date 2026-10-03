@@ -1524,6 +1524,19 @@ class AgentManager:
                 env["MSGRAPH_ENABLED"] = "true"
         return env
 
+    async def _nutzbare_secrets_des_besitzers(self, agent_id: str) -> set[int] | None:
+        """Keys, die der Besitzer dieses Agenten nutzen darf. None = keine Einschraenkung
+        (Admin-Besitzer oder Agent ohne Besitzer, etwa Plattform-Agenten)."""
+        from app.core.secret_zugriff import nutzbare_secret_ids
+        from app.models.user import User
+        besitzer_id = (await self.db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
+        if not besitzer_id:
+            return None
+        besitzer = await self.db.get(User, besitzer_id)
+        if besitzer is None:
+            return set()   # Besitzer verschwunden: keine Nutzer-Keys (fail-closed)
+        return await nutzbare_secret_ids(self.db, besitzer)
+
     async def _get_secrets_env(self, agent_id: str) -> dict[str, str]:
         """Decrypt and inject KMS secrets assigned to this agent as env vars."""
         result = await self.db.execute(
@@ -1540,8 +1553,23 @@ class AgentManager:
                 AgentSecret.is_active.is_(True),
             )
         )
+        # Nur, was der BESITZER des Agenten (noch) nutzen darf — eigen, Rolle, Person
+        # (core/secret_zugriff.py). Frueher blieb ein entzogener Key in bereits
+        # versorgten Agenten stecken; jetzt faellt er beim naechsten Start weg.
+        erlaubt = await self._nutzbare_secrets_des_besitzers(agent_id)
         env: dict[str, str] = {}
+        besitzer_id = (await self.db.execute(select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
         for secret in s_result.scalars().all():
+            if erlaubt is not None and secret.id not in erlaubt:
+                logger.info("Key %s nicht eingespielt: Besitzer von %s hat keine Freigabe mehr",
+                            secret.key_name, agent_id)
+                continue
+            # Ein FREMDER Nutzer-Key (per Person freigegeben) setzt nie Laufzeit-,
+            # Netzwerk- oder Plattformvariablen (core/secret_zugriff.variable_reserviert).
+            from app.core.secret_zugriff import variable_reserviert
+            if secret.owner_id and secret.owner_id != besitzer_id and variable_reserviert(secret.key_name):
+                logger.warning("Fremder Key %s nicht eingespielt: Variable ist reserviert", secret.key_name)
+                continue
             try:
                 env[secret.key_name] = decrypt_token(secret.value_encrypted)
             except Exception:

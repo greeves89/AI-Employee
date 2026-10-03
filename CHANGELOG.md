@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.358.0] - 2026-10-03
+
+### Neu
+- **Keys an Personen freigeben:** Wer einen Key angelegt hat, kann ihn unter
+  „Secrets“ über das Personen-Symbol an einzelne Nutzer freigeben. Die dürfen ihn
+  ihren **eigenen** Agenten zuweisen, sehen den Wert aber nicht und können ihn weder
+  ändern noch weitergeben. Nutzer geben nur an Personen frei, nie an Rollen; an
+  Rollen gibt weiterhin ein Admin zentral frei (Admin → Nutzer & Rollen). In der
+  Liste steht, woher ein Key kommt („Freigegeben von …“, „Über deine Rolle“).
+- **Entzug wirkt sofort:** Wird eine Freigabe zurückgezogen — an eine Person oder in
+  einer Rolle, auch beim Löschen einer Rolle oder einem Rollenwechsel —, verschwindet
+  der Key aus den betroffenen Agenten; sie starten neu. Beim Start bekommt ein Agent
+  ohnehin nur noch Keys, die sein Besitzer nutzen darf.
+
+### Sicherheit
+- Nicht-Admins weisen Keys nur noch **eigenen** Agenten zu (vorher ließ sich ein
+  freigegebener Firmen-Key an einen nur geteilten Agenten hängen).
+- Die Andeutung des Werts (erste/letzte Zeichen) sehen nur Besitzer und Admin.
+- Keys mit Laufzeit-, Netzwerk- oder Plattformvariablen (z. B. `HTTPS_PROXY`,
+  `ANTHROPIC_BASE_URL`) lassen sich nicht an Personen freigeben und werden als
+  fremde Keys nie eingespielt.
+- Oberfläche: Bearbeiten/Löschen/Freigeben nur, wo es erlaubt ist; „Inactive“ und
+  „Assigned to“ auf Deutsch.
+
+---
+
 ## [1.357.1] - 2026-10-03
 
 ### Behoben
