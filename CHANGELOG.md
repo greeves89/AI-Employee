@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.358.1] - 2026-10-03
+
+### Geändert
+- **Keys freigeben auch beim Agenten:** Mitglieder legen ihre Keys beim Agenten an
+  (Integrationen & Keys) — dort gibt es jetzt ebenfalls das Personen-Symbol zum
+  Freigeben, und an einen freigegebene Keys tragen „von …“. Der Freigabe-Dialog ist
+  eine gemeinsame Komponente für Admin-Konsole und Agent.
+
+---
+
 ## [1.358.0] - 2026-10-03
 
 ### Neu

@@ -6,14 +6,15 @@ import {
   Plug, CheckCircle2, Loader2, RefreshCw, AlertCircle,
   Network, ChevronRight, Wrench, Brain, Bell, Cpu,
   Shield, Plus, Trash2, ChevronDown, KeyRound, ExternalLink,
-  Eye, PenLine, Lock,
+  Eye, PenLine, Lock, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { Integration } from "@/lib/types";
 import type { McpServerInfo, UrlAllowlistEntry, UrlAllowlistTemplate, AgentSecretEntry } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
-import { useConfirm } from "@/components/ui/dialog-provider";
+import { useConfirm, useToast } from "@/components/ui/dialog-provider";
+import { KeyFreigabeDialog } from "@/components/secrets/key-freigabe-dialog";
 
 // Built-in MCP servers that every agent has
 const BUILTIN_MCP_SERVERS = [
@@ -86,6 +87,9 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [allSecrets, setAllSecrets] = useState<AgentSecretEntry[]>([]);
   const [agentSecretIds, setAgentSecretIds] = useState<Set<number>>(new Set());
   const [togglingSecret, setTogglingSecret] = useState<number | null>(null);
+  // Eigenen Key an Personen freigeben (gemeinsamer Dialog mit der Admin-Konsole).
+  const [teilen, setTeilen] = useState<AgentSecretEntry | null>(null);
+  const toast = useToast();
   // Eigene Schlüssel direkt hier anlegen: der frühere Link führte in die
   // Admin-Konsole, in die ein Mitglied gar nicht darf.
   const istAdmin = useAuthStore((st) => st.user?.role) === "admin";
@@ -851,6 +855,14 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                       {secret.owned && (
                         <span className="text-[10px] rounded-full border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-violet-400">eigen</span>
                       )}
+                      {secret.zugang === "person" && (
+                        <span className="text-[10px] rounded-full border border-blue-500/20 bg-blue-500/10 px-1.5 py-0.5 text-blue-600 dark:text-blue-300">
+                          von {secret.owner_name || "einer Person"}
+                        </span>
+                      )}
+                      {secret.owned && !!secret.shared_with_count && (
+                        <span className="text-[10px] text-muted-foreground/60">an {secret.shared_with_count} freigegeben</span>
+                      )}
                     </div>
                     {secret.description && (
                       <p className="text-[10px] text-muted-foreground/40 mt-0.5 truncate">{secret.description}</p>
@@ -874,6 +886,16 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                   </button>
                   {secret.manageable && secret.owned && (
                     <button
+                      onClick={() => setTeilen(secret)}
+                      title="An Personen freigeben"
+                      aria-label="An Personen freigeben"
+                      className="rounded-lg p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  {secret.manageable && secret.owned && (
+                    <button
                       onClick={() => handleDeleteSecret(secret)}
                       title="Schlüssel löschen"
                       className="rounded-lg p-1.5 text-muted-foreground/60 hover:text-red-400 hover:bg-red-500/10 transition-colors"
@@ -887,6 +909,14 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           </div>
         )}
       </div>
+      {teilen && (
+        <KeyFreigabeDialog
+          secret={teilen}
+          onClose={() => setTeilen(null)}
+          onSaved={(meldung) => { toast.success("Freigabe gespeichert", meldung); void load(); }}
+          onError={(meldung) => toast.error("Freigabe fehlgeschlagen", meldung)}
+        />
+      )}
     </div>
   );
 }
