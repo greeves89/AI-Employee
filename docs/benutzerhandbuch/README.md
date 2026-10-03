@@ -1,8 +1,8 @@
 # AI Employee
 
 **Dokument:** Benutzerhandbuch — Klick-für-Klick-Anleitung aller Funktionen
-**Version:** 1.154.0
-**Stand:** 7. August 2026
+**Version:** 1.357.0
+**Stand:** 3. Oktober 2026
 **Zielgruppe:** Endanwender & Administratoren
 **Instanz:** ki-chat.example.com
 
@@ -411,6 +411,44 @@ Tab **Chat**. Das ist das direkte Gespräch (wie ein Messenger).
 - Während der Agent arbeitet, erscheinen **Tool-Bubbles** (kleine Symbole für seine
   Werkzeug-Aufrufe). **Klick darauf** → du siehst genau, *was* er getan hat (welche Datei,
   welche Suche, welches Ergebnis). Bilder/Dateien zeigt er **inline** an.
+
+#### Ziel setzen mit /goal — der Agent arbeitet weiter, bis es erreicht ist *(seit 1.357.0)*
+
+Für Aufträge, die mehrere Schritte brauchen, musst du nicht nach jeder Antwort „weiter“
+schreiben. Mit **/goal** gibst du dem Gespräch ein Ziel, und der Agent arbeitet Runde um
+Runde selbstständig weiter, bis er es erreicht hat.
+
+1. Tippe ins Eingabefeld **/goa** — das Befehlsmenü zeigt den Eintrag **/goal**.
+   Drück **Enter**: Im Feld steht jetzt `/goal `.
+
+   ![/goal im Befehlsmenü](screenshots/42-goal-befehl.png)
+   *Abbildung 42: Der Befehl /goal im Befehlsmenü des Chats*
+
+2. Schreib dein Ziel dahinter — so konkret, dass man prüfen kann, ob es erreicht ist —
+   und schick es ab, z. B. `/goal Lege drei Dateien idee1.md bis idee3.md mit je einer
+   Instagram-Idee an.`
+3. Über dem Eingabefeld erscheint das **Ziel-Banner** mit dem Ziel und der aktuellen
+   **Runde** (höchstens 20). Nach jeder Antwort geht es automatisch weiter; im Verlauf
+   steht dann eine schmale Zeile *„Weiter am Ziel — Runde 2 von 20“*.
+
+   ![Ziel-Banner während der Arbeit](screenshots/43-goal-banner.png)
+   *Abbildung 43: Das Ziel-Banner mit Runde und dem Knopf „Ziel beenden“*
+
+4. Ist das Ziel erfüllt, schreibt der Agent **ZIEL ERREICHT** und das Banner wird grün
+   (*„Ziel erreicht nach 3 Runden“*).
+
+   ![Ziel erreicht](screenshots/44-goal-erreicht.png)
+   *Abbildung 44: Ziel erreicht — der Agent hat nach drei Runden aufgehört*
+
+**Gut zu wissen:**
+- **Rückfrage:** Braucht der Agent eine Entscheidung von dir, schreibt er
+  *„ZIEL PAUSIERT: …“* mit seiner Frage. Deine Antwort setzt das Ziel automatisch fort.
+- **Abbrechen:** Klick im Banner auf **Ziel beenden** oder schreib `/goal stop`.
+  `/goal` ohne Text zeigt den aktuellen Stand.
+- **Sicherheitsnetz:** Nach 20 Runden hält das Ziel an; ein Fehler pausiert es, statt
+  den Agenten im Kreis laufen zu lassen.
+- Funktioniert bei allen Agenten, egal welches Modell sie nutzen — im Browser und in der
+  iPhone-App. In Telegram setzt du Ziele nicht; dort erklärt `/goal` das kurz.
 
 ### 5.2 Todos — die Aufgabenliste des Agenten
 ![Agent · Todos](screenshots/f02-agent-todos.png)
