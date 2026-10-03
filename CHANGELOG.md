@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.17] - 2026-10-03
+
+### Behoben
+- **Antworten des Agenten fehlten im Chat, nur die eigenen Nachrichten standen da:**
+  Die fertige Antwort eines Zuges ging nur über einen flüchtigen Redis-Kanal an
+  den Server. Lief der gerade nicht (etwa während eines Neustarts), war sie weg;
+  im Verlauf blieb höchstens ein Teilstück. Der Agent legt jede fertige Antwort
+  jetzt zusätzlich dauerhaft ab, der Server holt liegengebliebene alle zehn
+  Sekunden nach. Wirkt für einen Agenten nach „Agent aktualisieren“.
+
+---
+
 ## [1.356.16] - 2026-10-03
 
 ### Behoben

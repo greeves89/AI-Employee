@@ -378,6 +378,13 @@ async def _listen_chat_completions(redis: RedisService) -> None:
 
     Ensures chat responses are saved to DB even if the user navigated away
     (WebSocket disconnected) before the agent finished responding.
+
+    Pub/Sub ist fluechtig: Wer im Moment des ``done`` nicht verbunden ist — etwa
+    waehrend eines Orchestrator-Neustarts —, bekommt es nie. Am 03.10.2026 ging so
+    die Schlussantwort eines Agenten verloren; im Chat blieb nur ein Teilstueck.
+    Deshalb legt der Agent jedes ``done`` zusaetzlich in ``agent:{id}:chat:done``
+    ab, und ``_drain_chat_completions`` holt liegengebliebene nach. Doppelt
+    zugestellt schadet nicht: ``upsert_chat_message`` fuehrt zusammen.
     """
     pubsub = await redis.subscribe("chat:completions")
 
@@ -392,139 +399,178 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                     data = json.loads(data)
                 elif isinstance(data, bytes):
                     data = json.loads(data.decode("utf-8"))
-
-                agent_id = data.get("agent_id", "")
-                message_id = data.get("message_id", "")
-                event_data = data.get("data", {})
-                source = data.get("source", "chat")
-
-                if not agent_id or not message_id:
-                    continue
-
-                from app.db.session import async_session_factory
-                from app.models.agent import Agent
-                from app.models.chat_message import ChatMessage
-                from app.models.notification import Notification
-                from app.core.push import push_to_user
-                from sqlalchemy import select as sel
-                from sqlalchemy.exc import IntegrityError
-
-                async with async_session_factory() as db:
-                    # Frueher stand hier "Zeile da? -> ueberspringen". Genau das war
-                    # der Fehler: beim Trennen der Verbindung schreibt der Browser
-                    # einen ZWISCHENSTAND weg — Werkzeugaufrufe schon da, der Text
-                    # noch nicht. Danach kam dieses ``done`` mit dem fertigen Text,
-                    # fand die Zeile und liess sie stehen. Zurueck blieb ein Chat
-                    # mit Werkzeugaufrufen und ohne Antwort. Jetzt wird ergaenzt
-                    # (``upsert_chat_message``), und nur eine WIRKLICH neue Zeile
-                    # loest eine Benachrichtigung aus.
-
-                    # Look up session_id from the user message (normal chat flow).
-                    user_msg = await db.scalar(
-                        sel(ChatMessage).where(
-                            ChatMessage.agent_id == agent_id,
-                            ChatMessage.message_id == message_id,
-                            ChatMessage.role == "user",
-                        )
-                    )
-                    if user_msg:
-                        session_id = user_msg.session_id
-                    elif source == "scheduler":
-                        # Scheduler-originated tasks have no user message. Store
-                        # them in a stable session so app/web history can render
-                        # files delivered via present_file after the fact.
-                        session_id = "scheduler"
-                    else:
-                        print(f"[ChatPersist] No user message found for {message_id}, skipping")
-                        continue
-
-                    content = str(
-                        event_data.get("text")
-                        or event_data.get("content")
-                        or event_data.get("result")
-                        or ""
-                    )
-                    tool_calls = event_data.get("tool_calls")
-                    meta = {
-                        "cost_usd": event_data.get("cost_usd"),
-                        "duration_ms": event_data.get("duration_ms"),
-                        "num_turns": event_data.get("num_turns"),
-                        "presented_files": event_data.get("presented_files"),
-                        "source": source if source != "chat" else None,
-                    }
-                    meta = {k: v for k, v in meta.items() if v is not None}
-
-                    from app.services.chat_persistence import upsert_chat_message
-                    is_new = await upsert_chat_message(
-                        agent_id, session_id, message_id, "assistant",
-                        content=content, tool_calls=tool_calls, meta=meta,
-                    )
-                    if not is_new:
-                        # Ergaenzt, und der Nutzer hatte den Text schon vor Augen
-                        # (der Browser hatte die Zeile vollstaendig geschrieben).
-                        # Nicht noch einmal benachrichtigen, nicht noch einmal
-                        # einbetten. War die Zeile dagegen leer und bekommt hier
-                        # ihren Text, meldet ``upsert_chat_message`` True — dann
-                        # war der Nutzer weg und soll es erfahren.
-                        continue
-                    agent = await db.scalar(sel(Agent).where(Agent.id == agent_id))
-                    title = agent.name if agent else "AI Employee"
-                    body = _chat_notification_body(content, meta)
-                    notif = Notification(
-                        agent_id=agent_id,
-                        type="info",
-                        title=title,
-                        message=body,
-                        priority="normal",
-                        action_url=f"/agents/{agent_id}",
-                        meta={
-                            "type": "chat_message",
-                            "agent_id": agent_id,
-                            "session_id": session_id,
-                            "message_id": message_id,
-                        },
-                    )
-                    db.add(notif)
-                    try:
-                        await db.commit()
-                    except IntegrityError:
-                        await db.rollback()
-                        continue
-                    await db.refresh(notif)
-                    await redis.client.publish(
-                        "notifications:live",
-                        json.dumps({
-                            "type": "notification",
-                            "data": _notification_response(notif),
-                        }),
-                    )
-                    if agent and agent.user_id:
-                        await push_to_user(
-                            db,
-                            agent.user_id,
-                            title,
-                            body,
-                            data=_notification_push_payload(notif),
-                        )
-                    print(
-                        f"[ChatPersist] Saved response for {message_id} "
-                        f"(agent={agent_id}, session={session_id}, source={source})"
-                    )
-                    # Auto-embed this exchange into long-term memory so it's recallable
-                    # across channels (voice/agent search). Skip machine-originated turns.
-                    if source not in ("scheduler",) and session_id != "scheduler":
-                        try:
-                            from app.services.conversation_memory import save_conversation_memory
-                            await save_conversation_memory(
-                                db, agent_id, session_id, source,
-                                getattr(user_msg, "content", "") if user_msg else "",
-                                content,
-                            )
-                        except Exception as _e:  # noqa: BLE001
-                            print(f"[ConvMemory] hook error: {_e}")
+                await _persist_chat_completion(redis, data)
         except Exception as e:
             print(f"[ChatPersist] Error: {e}")
             await asyncio.sleep(1)
+
+
+#: Wie oft die dauerhaften Fertig-Listen der Agenten abgeraeumt werden.
+_COMPLETION_DRAIN_SEKUNDEN = 10
+
+
+async def _drain_chat_completions(redis: RedisService) -> None:
+    """Liegengebliebene ``done`` aus ``agent:{id}:chat:done`` nachtragen.
+
+    Die Agenten-Kennung kommt aus dem SCHLUESSEL, nicht aus der Nutzlast: In
+    seinen eigenen Namensraum kann nur der Agent selbst schreiben (Redis-ACL).
+    """
+    while True:
+        try:
+            async for key in redis.client.scan_iter(match="agent:*:chat:done", count=200):
+                schluessel = key.decode() if isinstance(key, bytes) else key
+                agent_id = schluessel.split(":")[1]
+                for _ in range(200):
+                    roh = await redis.client.lpop(schluessel)
+                    if roh is None:
+                        break
+                    try:
+                        data = json.loads(roh.decode("utf-8") if isinstance(roh, bytes) else roh)
+                    except (ValueError, TypeError):
+                        continue
+                    if not isinstance(data, dict):
+                        continue
+                    data["agent_id"] = agent_id
+                    try:
+                        await _persist_chat_completion(redis, data)
+                    except Exception as e:  # noqa: BLE001 — ein kaputter Eintrag blockiert nicht den Rest
+                        print(f"[ChatPersist] Nachtrag fehlgeschlagen ({schluessel}): {e}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[ChatPersist] Nachtrag-Lauf: {e}")
+        await asyncio.sleep(_COMPLETION_DRAIN_SEKUNDEN)
+
+
+async def _persist_chat_completion(redis: RedisService, data: dict) -> None:
+    """Ein ``done`` eines Agenten als Antwort im Chatverlauf sichern (idempotent)."""
+    agent_id = data.get("agent_id", "")
+    message_id = data.get("message_id", "")
+    event_data = data.get("data", {})
+    source = data.get("source", "chat")
+
+    if not agent_id or not message_id:
+        return
+
+    from app.db.session import async_session_factory
+    from app.models.agent import Agent
+    from app.models.chat_message import ChatMessage
+    from app.models.notification import Notification
+    from app.core.push import push_to_user
+    from sqlalchemy import select as sel
+    from sqlalchemy.exc import IntegrityError
+
+    async with async_session_factory() as db:
+        # Frueher stand hier "Zeile da? -> ueberspringen". Genau das war
+        # der Fehler: beim Trennen der Verbindung schreibt der Browser
+        # einen ZWISCHENSTAND weg — Werkzeugaufrufe schon da, der Text
+        # noch nicht. Danach kam dieses ``done`` mit dem fertigen Text,
+        # fand die Zeile und liess sie stehen. Zurueck blieb ein Chat
+        # mit Werkzeugaufrufen und ohne Antwort. Jetzt wird ergaenzt
+        # (``upsert_chat_message``), und nur eine WIRKLICH neue Zeile
+        # loest eine Benachrichtigung aus.
+
+        # Look up session_id from the user message (normal chat flow).
+        user_msg = await db.scalar(
+            sel(ChatMessage).where(
+                ChatMessage.agent_id == agent_id,
+                ChatMessage.message_id == message_id,
+                ChatMessage.role == "user",
+            )
+        )
+        if user_msg:
+            session_id = user_msg.session_id
+        elif source == "scheduler":
+            # Scheduler-originated tasks have no user message. Store
+            # them in a stable session so app/web history can render
+            # files delivered via present_file after the fact.
+            session_id = "scheduler"
+        else:
+            print(f"[ChatPersist] No user message found for {message_id}, skipping")
+            return
+
+        content = str(
+            event_data.get("text")
+            or event_data.get("content")
+            or event_data.get("result")
+            or ""
+        )
+        tool_calls = event_data.get("tool_calls")
+        meta = {
+            "cost_usd": event_data.get("cost_usd"),
+            "duration_ms": event_data.get("duration_ms"),
+            "num_turns": event_data.get("num_turns"),
+            "presented_files": event_data.get("presented_files"),
+            "source": source if source != "chat" else None,
+        }
+        meta = {k: v for k, v in meta.items() if v is not None}
+
+        from app.services.chat_persistence import upsert_chat_message
+        is_new = await upsert_chat_message(
+            agent_id, session_id, message_id, "assistant",
+            content=content, tool_calls=tool_calls, meta=meta,
+        )
+        if not is_new:
+            # Ergaenzt, und der Nutzer hatte den Text schon vor Augen
+            # (der Browser hatte die Zeile vollstaendig geschrieben).
+            # Nicht noch einmal benachrichtigen, nicht noch einmal
+            # einbetten. War die Zeile dagegen leer und bekommt hier
+            # ihren Text, meldet ``upsert_chat_message`` True — dann
+            # war der Nutzer weg und soll es erfahren.
+            return
+        agent = await db.scalar(sel(Agent).where(Agent.id == agent_id))
+        title = agent.name if agent else "AI Employee"
+        body = _chat_notification_body(content, meta)
+        notif = Notification(
+            agent_id=agent_id,
+            type="info",
+            title=title,
+            message=body,
+            priority="normal",
+            action_url=f"/agents/{agent_id}",
+            meta={
+                "type": "chat_message",
+                "agent_id": agent_id,
+                "session_id": session_id,
+                "message_id": message_id,
+            },
+        )
+        db.add(notif)
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            return
+        await db.refresh(notif)
+        await redis.client.publish(
+            "notifications:live",
+            json.dumps({
+                "type": "notification",
+                "data": _notification_response(notif),
+            }),
+        )
+        if agent and agent.user_id:
+            await push_to_user(
+                db,
+                agent.user_id,
+                title,
+                body,
+                data=_notification_push_payload(notif),
+            )
+        print(
+            f"[ChatPersist] Saved response for {message_id} "
+            f"(agent={agent_id}, session={session_id}, source={source})"
+        )
+        # Auto-embed this exchange into long-term memory so it's recallable
+        # across channels (voice/agent search). Skip machine-originated turns.
+        if source not in ("scheduler",) and session_id != "scheduler":
+            try:
+                from app.services.conversation_memory import save_conversation_memory
+                await save_conversation_memory(
+                    db, agent_id, session_id, source,
+                    getattr(user_msg, "content", "") if user_msg else "",
+                    content,
+                )
+            except Exception as _e:  # noqa: BLE001
+                print(f"[ConvMemory] hook error: {_e}")
 
 
 def _chat_notification_body(content: str, meta: dict) -> str:
@@ -2383,6 +2429,7 @@ clean Markdown; you don't need to commit.
 
     # Start chat completion persistence listener
     chat_persist_task = asyncio.create_task(_listen_chat_completions(app.state.redis))
+    chat_drain_task = asyncio.create_task(_drain_chat_completions(app.state.redis))
 
     # Start task-step persistence listener (time-travel replay, issue #54)
     step_persist_task = asyncio.create_task(_persist_task_steps(app.state.redis))
@@ -2520,6 +2567,7 @@ clean Markdown; you don't need to commit.
     # Cleanup
     completion_task.cancel()
     chat_persist_task.cancel()
+    chat_drain_task.cancel()
     step_persist_task.cancel()
     oauth_refresh_task.cancel()
     mcp_oauth_refresh_task.cancel()

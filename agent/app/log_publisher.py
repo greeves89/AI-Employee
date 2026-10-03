@@ -79,6 +79,16 @@ class LogPublisher:
         # Publish "done" events to global channel for persistence independent of WebSocket
         if event_type == "done":
             await self.redis.publish("chat:completions", message)
+            # Pub/Sub ist fluechtig: War der Orchestrator gerade nicht verbunden
+            # (Neustart), ging die Schlussantwort verloren — im Chat blieb nur ein
+            # Teilstueck (03.10.2026). Zusaetzlich dauerhaft ablegen; der
+            # Orchestrator raeumt die Liste ab (main._drain_chat_completions).
+            try:
+                schluessel = f"agent:{self.agent_id}:chat:done"
+                await self.redis.rpush(schluessel, message)
+                await self.redis.ltrim(schluessel, -200, -1)
+            except Exception:  # noqa: BLE001 — das Live-Ereignis ist schon raus
+                pass
 
     async def publish_status(self, state: str, current_task: str = "", active_sessions: list[str] | None = None) -> None:
         # active_sessions: ALL source keys currently processing (e.g. ["chat:abc", "chat:def"])
