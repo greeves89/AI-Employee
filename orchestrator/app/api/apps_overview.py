@@ -597,17 +597,8 @@ async def app_share_directory(user=Depends(require_auth), db: AsyncSession = Dep
     """Minimale Nutzerliste für den Freigabe-Dialog. Ohne den Aufrufer. Nicht-Admins
     bekommen nur id + Anzeigename — die E-Mail-Adressen der anderen gehen sie nichts
     an; nur Admins sehen sie."""
-    ist_admin = getattr(user, "role", None) == UserRole.ADMIN
-    rows = (await db.execute(select(User.id, User.name, User.email).order_by(User.name))).all()
-    users = []
-    for uid, name, email in rows:
-        if uid == str(user.id):
-            continue
-        eintrag = {"id": uid, "name": name}
-        if ist_admin:
-            eintrag["email"] = email
-        users.append(eintrag)
-    return {"users": users}
+    from app.core.nutzer_verzeichnis import verzeichnis
+    return {"users": await verzeichnis(db, user)}
 
 
 @router.delete("/shares/{share_id}")

@@ -324,11 +324,10 @@ async def import_workflow(body: WorkflowImport, user=Depends(require_auth), db: 
 
 @router.get("/directory")
 async def user_directory(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Minimal id+name+email of users, so an owner can pick who to share with.
-    Excludes the caller. No sensitive fields."""
-    from app.models.user import User
-    rows = (await db.execute(select(User.id, User.name, User.email).order_by(User.name))).all()
-    return {"users": [{"id": r[0], "name": r[1], "email": r[2]} for r in rows if r[0] != str(user.id)]}
+    """Minimale Nutzerliste für den Freigabe-Dialog, ohne den Aufrufer.
+    E-Mail nur für Admins (gleiche Regel wie /apps/directory)."""
+    from app.core.nutzer_verzeichnis import verzeichnis
+    return {"users": await verzeichnis(db, user)}
 
 
 # ── folders ──────────────────────────────────────────────────────────────────

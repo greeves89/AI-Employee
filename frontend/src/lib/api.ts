@@ -3356,7 +3356,7 @@ export interface Workflow {
 }
 export interface WorkflowFolder { id: string; name: string; user_id: string; shared: boolean; created_at: string | null }
 export interface WorkflowShare { id: string; user_id: string; user_name: string | null; role: string; workflow_id: string | null; folder_id: string | null }
-export interface DirectoryUser { id: string; name: string; email: string }
+export interface DirectoryUser { id: string; name: string; email?: string }  // E-Mail nur für Admins
 export interface WorkflowRun {
   id: string;
   workflow_id: string;

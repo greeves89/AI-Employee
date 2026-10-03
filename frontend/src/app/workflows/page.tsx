@@ -269,7 +269,7 @@ function ShareDialog({ workflow, onClose }: { workflow: api.Workflow; onClose: (
         <div className="flex items-center gap-2">
           <select value={userId} onChange={(e) => setUserId(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-foreground/[0.1] bg-foreground/[0.03] px-2.5 py-1.5 text-[13px] outline-none focus:border-primary/40">
             <option value="">Person wählen…</option>
-            {dir.filter((u) => !shares.some((s) => s.user_id === u.id)).map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+            {dir.filter((u) => !shares.some((s) => s.user_id === u.id)).map((u) => <option key={u.id} value={u.id}>{u.name || u.email || u.id}</option>)}
           </select>
           <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-lg border border-foreground/[0.1] bg-foreground/[0.03] px-2 py-1.5 text-[13px] outline-none focus:border-primary/40">
             <option value="viewer">Ansehen</option>
