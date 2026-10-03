@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.358.4] - 2026-10-03
+
+### Geändert
+- Admin-Konsole: Untertitel auf Deutsch. Benutzerhandbuch: Rollenverwaltung mit den
+  neuen Gruppen und eingeklappten Rechten, Key-Freigabe ohne Rollen-Hinweis,
+  Bildschirmfotos erneuert (Namen erfunden), PDF neu.
+
+---
+
 ## [1.358.3] - 2026-10-03
 
 ### Geändert

@@ -1,7 +1,7 @@
 # AI Employee
 
 **Dokument:** Benutzerhandbuch — Klick-für-Klick-Anleitung aller Funktionen
-**Version:** 1.358.1
+**Version:** 1.358.4
 **Stand:** 3. Oktober 2026
 **Zielgruppe:** Endanwender & Administratoren
 **Instanz:** ki-chat.example.com
@@ -1444,8 +1444,21 @@ das ganze Bündel. Tab **Rollen**:
 
 ![Rollen](screenshots/23-admin-rollen.png)
 
-**Links**: Liste der Rollen + **+ Neue Rolle**. **Rechts**: das Formular mit allen
-Stellschrauben. Klick **+ Neue Rolle** und fülle aus:
+**Links**: Liste der Rollen + **+ Neue Rolle**. **Rechts**: oben Name, Max Agents und
+Beschreibung, darunter die Rechte in vier Gruppen *(seit 1.358.3)*:
+
+| Gruppe | Rechte |
+|---|---|
+| **Modelle & Konten** | LLM-Provider, Modelle, AI-Accounts |
+| **Keys & Werkzeuge** | Keys / Secrets, MCP-Server, Integrationen |
+| **Wissen & Daten** | Mountshares |
+| **Oberfläche & Zugriff** | Menüpfade, Templates, URL-Host-Patterns |
+
+Jedes Recht ist **eingeklappt** und zeigt rechts seinen Stand — z. B. **„3 von 7“**,
+**„alle“** oder **„keine“**. Ein Klick auf die Zeile klappt sie auf; dort setzt du die
+Auswahl. So siehst du auf einen Blick, was die Rolle darf, ohne alles aufzuklappen.
+
+Klick **+ Neue Rolle** und fülle aus:
 
 ![Rolle anlegen](screenshots/f12-role-new.png)
 

@@ -463,7 +463,7 @@ export default function AdminPage() {
     <div>
       <Header
         title="Administration"
-        subtitle="User management, agent overview, and system settings"
+        subtitle="Nutzer, Rollen, Agenten und Systemeinstellungen verwalten"
       />
 
       <motion.div
