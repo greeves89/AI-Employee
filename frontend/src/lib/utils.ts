@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { formatMoney } from "./money";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -13,8 +14,9 @@ export function formatDuration(ms: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
+/** Kosten in der eingestellten Anzeigewährung — Alias auf den zentralen Helfer. */
 export function formatCost(usd: number): string {
-  return `$${usd.toFixed(4)}`;
+  return formatMoney(usd);
 }
 
 export function formatBytes(bytes: number): string {

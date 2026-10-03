@@ -71,20 +71,26 @@ function digitsFor(value: number): number {
 /**
  * Formatiert einen in USD gespeicherten Betrag für die Anzeige.
  *
- * Deutsche Schreibweise: Punkt als Tausender-, Komma als Dezimaltrennung.
+ * Deutsche Schreibweise: Punkt als Tausender-, Komma als Dezimaltrennung,
+ * immer zwei Nachkommastellen; 0 ist „0,00 €", alles darunter „< 0,01 €".
  */
 export function formatMoney(usd: number, cfg: MoneyConfig = current): string {
   const n = Number(usd);
   if (!Number.isFinite(n)) return "—";
   const toEur = cfg.currency === "EUR";
   const value = toEur ? n * cfg.rate : n;
-  const digits = digitsFor(value);
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: toEur ? "EUR" : "USD",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(value);
+  const format = (x: number) =>
+    new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency: toEur ? "EUR" : "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(x);
+  // Einheitlich zwei Nachkommastellen. Ein echter Betrag unter einem Cent soll
+  // nicht als „0,00 €" kostenlos aussehen — er heißt „< 0,01 €"; der genaue Wert
+  // steht in `moneyTitle`.
+  if (value !== 0 && Math.abs(value) < 0.01) return `< ${format(0.01)}`;
+  return format(value);
 }
 
 /**

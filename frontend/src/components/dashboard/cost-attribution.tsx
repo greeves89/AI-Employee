@@ -8,9 +8,10 @@ import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/money";
 
 function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
+  const de = (x: number) => x.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  if (n >= 1_000_000) return `${de(n / 1_000_000)} Mio.`;
+  if (n >= 1_000) return `${de(n / 1_000)} Tsd.`;
+  return n.toLocaleString("de-DE");
 }
 
 export function CostAttribution() {
