@@ -127,6 +127,25 @@ class ZielordnerNichtVorbereitbar(ValueError):
     oder mkdir/chown schlugen fehl. Es wurde NICHTS geschrieben."""
 
 
+class UnzulaessigerDateiname(ZielordnerNichtVorbereitbar):
+    """Ein Dateiname zeigt aus dem Zielordner heraus oder ist leer (#853):
+    ``..``-Glied, fuehrender ``/``, leeres Glied. Abgelehnt, bevor irgendetwas
+    angelegt oder geschrieben wird — nicht still normalisiert."""
+
+
+def _pruefe_dateinamen(names) -> None:
+    """Der Schutz sitzt am Schreib-Helfer, nicht bei den Aufrufern (#840, #853):
+    ein Aufrufer, der Namen ungeprueft durchreicht (Skill-Dateien aus der
+    Datenbank), darf nicht still einen Archiv-Eintrag ausserhalb des
+    Zielordners erzeugen. Legitime verschachtelte Namen ("app/src/main.py")
+    gehen durch."""
+    for name in names:
+        glieder = str(name).split("/")
+        if (not name or "\x00" in name or "\\" in name or name.startswith("/")
+                or any(g in ("", ".", "..") for g in glieder)):
+            raise UnzulaessigerDateiname(f"unzulaessiger Dateiname {name!r}")
+
+
 class ZielordnerKompromittiert(ZielordnerNichtVorbereitbar):
     """Die Uebernahme aus dem Zwischenlager in die Zielkette wurde abgelehnt,
     weil sich die Kette seit der Vorbereitung veraendert hat — typischerweise
@@ -877,6 +896,11 @@ class DockerService:
 
         filename = path.split("/")[-1]
         dir_path = "/".join(path.split("/")[:-1]) or "/"
+        # Absoluter Zielpfad ist hier gewollt; ein ".."-Glied darin oder ein
+        # leerer/"."-Dateiname aber nie (#853).
+        if ".." in path.split("/"):
+            raise UnzulaessigerDateiname(f"unzulaessiger Pfad {path!r}")
+        _pruefe_dateinamen([filename])
         staging_name = f"{int(time.time())}-{uuid.uuid4().hex}"
         staging = f"{_IMPORT_STAGING_PARENT}/{_IMPORT_STAGING_DIR}/{staging_name}"
         self.prepare_target_dir(container_id, dir_path, uid, gid, root=root)
@@ -1091,6 +1115,7 @@ class DockerService:
         import io
         import tarfile
 
+        _pruefe_dateinamen(name for name, _ in files)  # vor jeder Seitenwirkung (#853)
         staging_name = f"{int(time.time())}-{uuid.uuid4().hex}"
         staging = f"{_IMPORT_STAGING_PARENT}/{_IMPORT_STAGING_DIR}/{staging_name}"
         self.prepare_target_dir(container_id, target_dir, uid, gid, root=root)
