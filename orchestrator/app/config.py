@@ -111,7 +111,11 @@ class Settings(BaseSettings):
     redis_container_name: str = "ai-employee-redis"
     agent_network: str = "ai-employee-network"
     max_agents: int = 10
-    agent_memory_limit: str = "8g"  # 8g: video renders/builds need >4g (4g forces low-memory render, 1 worker, slow)
+    # Docker-Format ("3g", "512m"); leer = keine Grenze. Gilt als mem_limit UND
+    # memswap_limit (kein Ausweichen in den Swap). Wirkt fuer bestehende Agenten
+    # erst nach "Agent aktualisieren". 8g: Video-Renders/Builds brauchen >4g;
+    # auf kleinen Anlagen (Pi, 8 GB) z. B. AGENT_MEMORY_LIMIT=3g setzen.
+    agent_memory_limit: str = "8g"
     agent_cpu_quota: int = 200000  # 2 CPUs
     agent_workspace_size_gb: float = 10.0
     # Admin-defined mount catalog: newline-separated entries
