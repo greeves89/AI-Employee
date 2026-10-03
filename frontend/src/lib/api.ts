@@ -1249,8 +1249,11 @@ export async function getChatHistory(
 export async function deleteChatSession(
   agentId: string,
   sessionId: string,
+  opts: { force?: boolean } = {},
 ): Promise<{ deleted: number }> {
-  return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions/${sessionId}`, {
+  // force: auch ein angepinntes Gespräch löschen (nach Rückfrage in der Oberfläche).
+  const q = opts.force ? "?force=true" : "";
+  return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions/${sessionId}${q}`, {
     method: "DELETE",
   });
 }

@@ -2852,10 +2852,16 @@ async def get_chat_history(
 async def delete_chat_session(
     agent_id: str,
     session_id: str,
+    force: bool = Query(False),
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete all messages in a chat session. Pinned sessions are protected."""
+    """Delete all messages in a chat session.
+
+    Angepinnte Gespraeche sind geschuetzt (etwa vor „Alle Chats loeschen“). Wer EIN
+    angepinntes Gespraech gezielt loescht, bestaetigt das in der Oberflaeche und
+    schickt ``force=true`` — vorher scheiterte das stumm mit 409.
+    """
     await _check_owner(agent_id, user, db)
     from sqlalchemy import delete as sql_delete, select
     from app.models.chat_session import ChatSession
@@ -2863,7 +2869,7 @@ async def delete_chat_session(
         select(ChatSession)
         .where(ChatSession.agent_id == agent_id, ChatSession.session_id == session_id)
     )).scalar_one_or_none()
-    if cs and cs.pinned:
+    if cs and cs.pinned and not force:
         raise HTTPException(
             status_code=409,
             detail="Angepinnter Chat kann nicht gelöscht werden. Löse den Pin zuerst.",

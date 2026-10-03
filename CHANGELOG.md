@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.14] - 2026-10-03
+
+### Behoben
+- **Angepinnte Chats ließen sich nicht löschen — ohne jede Meldung:** Der Server
+  schützt angepinnte Gespräche (etwa vor „Alle Chats löschen“) und lehnte ab; die
+  Oberfläche verschluckte den Fehler, das X tat scheinbar nichts. Jetzt fragt die
+  App beim Löschen eines angepinnten Chats nach und löscht ihn nach Bestätigung.
+  Schlägt das Löschen fehl, erscheint eine Meldung. Gilt im Chat und im Sprach-Tab.
+
+---
+
 ## [1.356.13] - 2026-10-03
 
 ### Behoben

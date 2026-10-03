@@ -1925,8 +1925,20 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   };
 
   const deleteSession = useCallback(async (sessionId: string) => {
+    // Angepinnte Gespräche schützt der Server; gezielt löschen geht nach Rückfrage.
+    // Vorher scheiterte das stumm (409), und das X tat scheinbar nichts.
+    const angepinnt = sessions.find((s) => s.id === sessionId)?.pinned;
+    if (angepinnt) {
+      const ok = await chatConfirm({
+        title: "Angepinnten Chat löschen?",
+        message: "Das Gespräch ist angepinnt. Es wird mit allen Nachrichten gelöscht.",
+        variant: "destructive",
+        confirmLabel: "Löschen",
+      });
+      if (!ok) return;
+    }
     try {
-      await api.deleteChatSession(agentId, sessionId);
+      await api.deleteChatSession(agentId, sessionId, { force: angepinnt });
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       // If we deleted the active session, switch to the next one or clear
       if (activeSessionId === sessionId) {
@@ -1939,10 +1951,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           setMessages([]);
         }
       }
-    } catch {
-      // Ignore delete errors
+    } catch (e) {
+      chatToast.error("Löschen fehlgeschlagen", e instanceof Error ? e.message : undefined);
     }
-  }, [agentId, activeSessionId, sessions]);
+  }, [agentId, activeSessionId, sessions, chatConfirm, chatToast]);
 
   const renameSession = useCallback(async (sessionId: string, title: string) => {
     setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: title || null } : s)));

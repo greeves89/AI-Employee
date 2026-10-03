@@ -7,6 +7,7 @@ import type { ChatHistoryMessage, ChatSession } from "@/lib/api";
 import { SessionRail } from "./session-rail";
 import { useVoiceSession } from "./voice-session-provider";
 import { setVisibleInterval } from "@/lib/visible-interval";
+import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 
 /** Speech tab: a "Gespräche" rail (shared component with the text chat, incl.
  *  pin/rename/delete) plus the embedded live voice view. Picking a conversation
@@ -15,6 +16,8 @@ import { setVisibleInterval } from "@/lib/visible-interval";
  *  voice and text stay one continuous thread. */
 export function AgentSpeechTab({ agentId, agentName }: { agentId: string; agentName: string }) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const confirm = useConfirm();
+  const toast = useToast();
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [railOpen, setRailOpen] = useState(true);  // collapsible like the chat rail
@@ -91,14 +94,25 @@ export function AgentSpeechTab({ agentId, agentName }: { agentId: string; agentN
   }, [agentId]);
 
   const deleteSession = useCallback(async (sessionId: string) => {
+    // Wie im Chat: angepinnt → Rückfrage, dann gezielt löschen; Fehler sichtbar machen.
+    const angepinnt = sessions.find((s) => s.id === sessionId)?.pinned;
+    if (angepinnt) {
+      const ok = await confirm({
+        title: "Angepinntes Gespräch löschen?",
+        message: "Das Gespräch ist angepinnt. Es wird mit allen Nachrichten gelöscht.",
+        variant: "destructive",
+        confirmLabel: "Löschen",
+      });
+      if (!ok) return;
+    }
     try {
-      await api.deleteChatSession(agentId, sessionId);
+      await api.deleteChatSession(agentId, sessionId, { force: angepinnt });
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       setSelected((cur) => (cur === sessionId ? null : cur));
-    } catch {
-      // ignore delete errors
+    } catch (e) {
+      toast.error("Löschen fehlgeschlagen", e instanceof Error ? e.message : undefined);
     }
-  }, [agentId]);
+  }, [agentId, sessions, confirm, toast]);
 
   return (
     <div className="flex h-full min-h-0 gap-3">
