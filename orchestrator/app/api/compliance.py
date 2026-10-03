@@ -52,6 +52,7 @@ async def gesetze_status(request: Request, user=Depends(require_auth_or_agent)):
     """Stand des letzten Crawl-Laufs je Quelle — fuer den Status-Hinweis im UI-Reiter."""
     crawler = getattr(request.app.state, "gesetz_crawler", None)
     return {
+        "enabled": bool(getattr(crawler, "aktiv", False)),
         "de": {
             "last_crawled_at": getattr(crawler, "last_crawled_at", None),
             "law_count": getattr(crawler, "law_count", 0),

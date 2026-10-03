@@ -147,6 +147,8 @@ services:
       OAUTH_MICROSOFT_TENANT_ID: ${OAUTH_MICROSOFT_TENANT_ID:-common}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       EMBEDDING_ENABLED: ${EMBEDDING_ENABLED:-true}
+      # Gesetze-Crawler: true/false erzwingt; leer = nur bei vorhandenen Gesetzesdaten.
+      GESETZE_CRAWLER_ENABLED: ${GESETZE_CRAWLER_ENABLED:-}
     volumes:
     - ./orchestrator:/app
     - ./VERSION:/VERSION:ro

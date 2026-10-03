@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     # Local embedding service (semantic search). Disable on constrained hosts (Pi)
     # to skip the CPU-heavy model + avoid 30s-retry warning spam → keyword fallback.
     embedding_enabled: bool = True
+    # Gesetze-Crawler (gesamtes Bundesrecht einbetten, dauerhaft CPU-lastig).
+    # "true"/"false" erzwingt; leer = nur wenn schon Gesetzesdaten vorhanden sind.
+    gesetze_crawler_enabled: str = ""
     extended_thinking: bool = False  # Thinking is model-controlled, not a CLI flag
 
     # Model Provider: "anthropic", "bedrock", "vertex", "foundry"

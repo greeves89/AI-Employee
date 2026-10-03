@@ -73,6 +73,41 @@ EU_CURATED_LAWS: list[tuple[str, str]] = [
 ]
 
 
+_AN = {"1", "true", "yes", "on", "ja"}
+_AUS = {"0", "false", "no", "off", "nein"}
+
+
+def crawler_aktiv(einstellung: str | None, bestand_vorhanden: bool) -> tuple[bool, str]:
+    """Soll der Gesetze-Crawler laufen? Reine Entscheidung (#890), gibt
+    (an, Grund) zurueck. Ausdrueckliches true/false gewinnt; ohne Einstellung
+    laeuft er nur, wenn auf der Anlage schon Gesetzesdaten liegen — bestehende
+    Anlagen verlieren nichts, neue Anlagen bleiben ohne die Dauerlast."""
+    wert = (einstellung or "").strip().lower()
+    if wert in _AN:
+        return True, "GESETZE_CRAWLER_ENABLED=true"
+    if wert in _AUS:
+        return False, "GESETZE_CRAWLER_ENABLED=false"
+    if bestand_vorhanden:
+        return True, "GESETZE_CRAWLER_ENABLED nicht gesetzt, aber Gesetzesdaten vorhanden (Bestandsschutz)"
+    return False, "GESETZE_CRAWLER_ENABLED nicht gesetzt und keine Gesetzesdaten vorhanden (Standard: aus)"
+
+
+async def bestand_vorhanden() -> bool:
+    """Liegen auf der Anlage schon indizierte Gesetze (Bund oder EU)?"""
+    from sqlalchemy import text as sa_text
+
+    from app.db.session import async_session_factory
+
+    async with async_session_factory() as db:
+        row = (
+            await db.execute(
+                sa_text("SELECT 1 FROM vault_chunks WHERE brain_label IN (:de, :eu) LIMIT 1"),
+                {"de": BRAIN_LABEL, "eu": EU_BRAIN_LABEL},
+            )
+        ).first()
+    return row is not None
+
+
 def _slug_from_link(link: str) -> str | None:
     """'http://.../betaeubm_v/xml.zip' -> 'betaeubm_v' — the site's own stable id."""
     m = re.search(r"/([^/]+)/xml\.zip$", link.strip())
@@ -233,7 +268,8 @@ class GesetzCrawlerService:
     """Crawls gesetze-im-internet.de (DE) and the curated EU-law list daily,
     indexing both into vault_chunks under their own brain_label."""
 
-    def __init__(self):
+    def __init__(self, aktiv: bool = True):
+        self.aktiv = aktiv
         self.last_crawled_at: str | None = None
         self.law_count: int = 0
         self.eu_last_crawled_at: str | None = None
@@ -242,6 +278,8 @@ class GesetzCrawlerService:
     async def run(self) -> None:
         """Background loop — EU first (fast, higher priority), then the full
         DE crawl (slow), then daily."""
+        if not self.aktiv:
+            return
         while True:
             # EU zuerst: eine Handvoll kuratierter Normen, in Sekunden fertig
             # — genau das, was der Kunde als aktuelle Prioritaet nannte (EU AI

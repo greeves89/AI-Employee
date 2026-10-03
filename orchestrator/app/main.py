@@ -2509,11 +2509,24 @@ clean Markdown; you don't need to commit.
     skill_crawler_task = asyncio.create_task(skill_crawler.run())
 
     # Start Gesetze crawler (daily gesetze-im-internet.de crawl, Compliance feature)
-    from app.services.gesetz_crawler import GesetzCrawlerService
+    # Schwere Funktion (komplettes Bundesrecht einbetten): Schalter
+    # GESETZE_CRAWLER_ENABLED, ohne Einstellung nur bei vorhandenem Bestand (#890).
+    from app.services.gesetz_crawler import (
+        GesetzCrawlerService,
+        bestand_vorhanden,
+        crawler_aktiv,
+    )
 
-    gesetz_crawler = GesetzCrawlerService()
+    try:
+        _gesetze_bestand = await bestand_vorhanden()
+    except Exception as e:
+        logger.warning("Gesetze-Bestand nicht pruefbar (%s) — gilt als nicht vorhanden", e)
+        _gesetze_bestand = False
+    _gesetze_an, _gesetze_grund = crawler_aktiv(settings.gesetze_crawler_enabled, _gesetze_bestand)
+    logger.info("Gesetze-Crawler: %s (%s)", "AN" if _gesetze_an else "AUS", _gesetze_grund)
+    gesetz_crawler = GesetzCrawlerService(aktiv=_gesetze_an)
     app.state.gesetz_crawler = gesetz_crawler
-    gesetz_crawler_task = asyncio.create_task(gesetz_crawler.run())
+    gesetz_crawler_task = asyncio.create_task(gesetz_crawler.run()) if _gesetze_an else None
 
     # On startup: import skills from all running agent containers into DB
     asyncio.create_task(_import_container_skills(app.state.docker))
@@ -2615,7 +2628,8 @@ clean Markdown; you don't need to commit.
         sentinel.stop()
         sentinel_task.cancel()
     skill_crawler_task.cancel()
-    gesetz_crawler_task.cancel()
+    if gesetz_crawler_task is not None:
+        gesetz_crawler_task.cancel()
     improvement_task.cancel()
     self_test_task.cancel()
     user_lifecycle.stop()
