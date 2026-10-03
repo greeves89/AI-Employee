@@ -127,7 +127,10 @@ class TheWatchdogTests(unittest.TestCase):
         die Antwort kam zwei Minuten spaeter. Wartende Faeden meldet der Server
         (``pending_sessions``); fuer sie greift die Notbremse nicht."""
         self.assertIn("pending_sessions", CHAT)
-        self.assertIn("const wartet = Array.isArray(offen) && offen.includes(activeSessionId);", CHAT)
+        # Gelesen ueber ``gespraechsStand`` — dieselbe Auswertung nutzt auch der
+        # Abgleich nach einer Wiederverbindung.
+        self.assertIn("a.pending_sessions.includes(sitzung)", CHAT)
+        self.assertIn("const { busy, wartet } = gespraechsStand(a, activeSessionId);", CHAT)
 
     def test_it_is_deliberately_slow(self):
         """Ein eiliger Abbruch loescht die Anzeige mitten im Denken. Der Anlauf

@@ -195,6 +195,7 @@ interface ChatEvent {
   session_id?: string;  // owning session (set by the server) — used to isolate chat tabs
   type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card" | "context"
     | "approval_request"
+    | "attached"  // Quittung auf {action: "attach"} (ws.py)
     | "goal";  // /goal gesetzt oder beendet (ws.py) — Anstoß, den Ziel-Stand neu zu laden  // Freigabe angelegt (approvals.py) — Anstoss fuer den Banner-Abgleich
   data: Record<string, unknown>;
   timestamp: string;
@@ -317,7 +318,24 @@ import { getWsUrl, getApiUrl } from "@/lib/config";
 import { useVoiceSession } from "./voice-session-provider";
 import { formatMoney } from "@/lib/money";
 import { setVisibleInterval } from "@/lib/visible-interval";
-const MAX_RECONNECT_ATTEMPTS = 5;
+// Ein Neustart des Orchestrators dauert laenger als die frueheren fuenf
+// Versuche (1+2+4+8 s): Danach gab das Fenster auf, obwohl der Agent
+// weiterarbeitete. Zwoelf Versuche mit Deckel 10 s tragen gut anderthalb Minuten.
+const MAX_RECONNECT_ATTEMPTS = 12;
+
+/** Arbeitet der Agent gerade an diesem Gespraech — oder wartet dort eine
+ * Nachricht auf ihn? Gelesen aus ``active_sessions``/``pending_sessions``
+ * der Agenten-Antwort. */
+function gespraechsStand(agent: unknown, sitzung: string): { busy: boolean; wartet: boolean } {
+  const a = agent as { active_sessions?: string[]; pending_sessions?: string[] };
+  return {
+    busy: Array.isArray(a.active_sessions) && a.active_sessions.includes(`chat:${sitzung}`),
+    // Unbeantwortete Nachricht dieses Gespraechs liegt noch beim Agenten
+    // (Warteschlange oder abgeholt). Dann ist „arbeitet nicht hier" KEIN
+    // Zeichen fuer „fertig" — die Nachricht ist nur noch nicht dran.
+    wartet: Array.isArray(a.pending_sessions) && a.pending_sessions.includes(sitzung),
+  };
+}
 
 /* ─── Tool Display Helper ───────────────────────────────────────────── */
 
@@ -699,6 +717,28 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const verpassteSitzungenRef = useRef<Set<string>>(new Set());
   // Gespraechsliste neu laden (Ziel-Stand nach /goal und nach jeder Runde).
   const sitzungenNeuLadenRef = useRef<() => void>(() => {});
+  // Wiederverbindung: Abgleich nach einer Trennung (siehe Effekt weiter unten).
+  // Ueber einen Ref, damit ``connect`` seine Abhaengigkeiten behaelt.
+  const wiederverbundenRef = useRef<() => void>(() => {});
+  // War dieses Fenster schon einmal verbunden? Dann ist das naechste ``onopen``
+  // eine WIEDERverbindung.
+  const warVerbundenRef = useRef(false);
+  // Lief beim Abbruch ein Zug? Haelt das fest, auch wenn die Notbremse die
+  // Anzeige vor der Wiederverbindung schon abgeschlossen hat.
+  const zugBeiTrennungRef = useRef(false);
+
+  // Laufende Anzeige abschliessen: Wartezustand weg, Hinweise „in der
+  // Warteschlange" weg, keine Blase mehr als „schreibt noch" markiert.
+  const laufendeAnzeigeBeenden = useCallback(() => {
+    notBusyStreakRef.current = 0;
+    pendingCountRef.current = 0;
+    setIsWaiting(false);
+    setMessages((prev) =>
+      prev
+        .filter((m) => !m.isQueued)
+        .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
+    );
+  }, []);
   // Stable per-tab id so the backend can keep this tab's socket separate from other
   // tabs/windows chatting with the same agent — without it, opening a 2nd chat kicks the 1st.
   const tabClientIdRef = useRef<string | undefined>(undefined);
@@ -711,6 +751,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // Keep ref in sync with state
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
+    // Wechsel des Gespraechs dem Server melden (siehe ``attach`` in onopen):
+    // Antworten, die eine fruehere Verbindung angestossen hat, kommen dann
+    // auch hier an — nicht erst nach der naechsten eigenen Nachricht.
+    if (activeSessionId && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ action: "attach", session_id: activeSessionId }));
+    }
   }, [activeSessionId]);
 
   // Pick a thinking depth: applies from the next message on AND is remembered
@@ -1034,13 +1080,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     const check = async () => {
       try {
         const a = await api.getAgent(agentId);
-        const list = (a as unknown as { active_sessions?: string[] }).active_sessions;
-        const busy = Array.isArray(list) && list.includes(`chat:${activeSessionId}`);
-        // Unbeantwortete Nachricht dieses Gespraechs liegt noch beim Agenten
-        // (Warteschlange oder abgeholt). Dann ist „arbeitet nicht hier" KEIN
-        // Zeichen fuer „fertig" — die Nachricht ist nur noch nicht dran.
-        const offen = (a as unknown as { pending_sessions?: string[] }).pending_sessions;
-        const wartet = Array.isArray(offen) && offen.includes(activeSessionId);
+        const { busy, wartet } = gespraechsStand(a, activeSessionId);
         if (cancelled) return;
         setInWarteschlange(wartet && !busy);
         // „Arbeitet woanders dran" nur, wenn es nicht der eigene, gerade
@@ -1064,14 +1104,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           notBusyStreakRef.current += 1;
           const ruhe = Date.now() - lastEventAtRef.current;
           if (notBusyStreakRef.current >= 3 && ruhe > 20000) {
-            notBusyStreakRef.current = 0;
-            pendingCountRef.current = 0;
-            setIsWaiting(false);
-            setMessages((prev) =>
-              prev
-                .filter((m) => !m.isQueued)
-                .map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
-            );
+            laufendeAnzeigeBeenden();
           }
         } else {
           notBusyStreakRef.current = 0;
@@ -1081,7 +1114,35 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     check();
     const stop = setVisibleInterval(check, 4000);
     return () => { cancelled = true; stop(); };
-  }, [agentId, activeSessionId]);
+  }, [agentId, activeSessionId, laufendeAnzeigeBeenden]);
+
+  // Nach einer Wiederverbindung (z. B. Neustart des Orchestrators): Was waehrend
+  // der Trennung kam, fehlt im Fenster. Laeuft der Zug noch, kommen die weiteren
+  // Ereignisse wieder an (der Server ordnet sie ueber Redis zu, das Fenster sagt
+  // per ``attach``, was es zeigt) — und das „fertig" laedt den gespeicherten
+  // Verlauf nach, statt die Luecke stehen zu lassen. Ist der Zug waehrend der
+  // Trennung zu Ende gegangen, kommt kein „fertig" mehr: dann die Anzeige
+  // abschliessen und den gespeicherten Verlauf holen. Abschliessen VOR dem
+  // Nachladen, sonst behielte das Zusammenfuehren die halbe Blase statt der
+  // fertigen Antwort.
+  useEffect(() => {
+    wiederverbundenRef.current = () => {
+      const sitzung = activeSessionIdRef.current || currentWsSessionId.current;
+      const zugLief = isWaitingRef.current || zugBeiTrennungRef.current;
+      zugBeiTrennungRef.current = false;
+      if (!sitzung || !zugLief) return;
+      verpassteSitzungenRef.current.add(sitzung);
+      void (async () => {
+        try {
+          const { busy, wartet } = gespraechsStand(await api.getAgent(agentId), sitzung);
+          if (busy || wartet || sitzung !== (activeSessionIdRef.current || currentWsSessionId.current)) return;
+          verpassteSitzungenRef.current.delete(sitzung);
+          laufendeAnzeigeBeenden();
+          setTimeout(() => setHistoryReloadKey((k) => k + 1), 800);
+        } catch { /* der Takt der Live-Abfrage holt es nach */ }
+      })();
+    };
+  }, [agentId, laufendeAnzeigeBeenden]);
 
   const connect = useCallback(async () => {
     if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
@@ -1157,10 +1218,18 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       setMessages((prev) =>
         prev.filter((m) => m.id !== "reconnecting" && m.id !== "connection-failed")
       );
+      // Dem Server sagen, welches Gespraech dieses Fenster zeigt. Eine neue
+      // Verbindung wusste das bisher erst mit der naechsten Nachricht — nach
+      // einem Neustart des Orchestrators verwarf sie so die laufende Antwort.
+      const sitzung = activeSessionIdRef.current || currentWsSessionId.current;
+      if (sitzung) ws.send(JSON.stringify({ action: "attach", session_id: sitzung }));
+      if (warVerbundenRef.current) wiederverbundenRef.current();
+      warVerbundenRef.current = true;
     };
 
     ws.onclose = (event) => {
       setIsConnected(false);
+      if (isWaitingRef.current) zugBeiTrennungRef.current = true;
       // Don't reconnect if we intentionally closed (e.g., navigation / unmount)
       if (intentionalClose.current) {
         intentionalClose.current = false;
@@ -1219,6 +1288,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     ws.onmessage = (event) => {
       try {
         const chatEvent: ChatEvent = JSON.parse(event.data);
+        // Quittung auf ``attach`` — reine Protokollsache, nichts zu zeigen.
+        if (chatEvent.type === "attached") return;
         if (chatEvent.type === "approval_request") {
           // Live-Signal: sofort abgleichen statt auf den naechsten Takt zu warten.
           approvalRecheckRef.current();

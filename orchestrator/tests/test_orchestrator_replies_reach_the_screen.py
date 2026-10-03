@@ -25,27 +25,57 @@ diesem Fenster gehört.
 import inspect
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+from app.api import ws
 
 ROOT = Path(__file__).resolve().parents[2]
-WS = (ROOT / "orchestrator/app/api/ws.py").read_text()
 
 
-class TheForwarderLooksItUpTests(unittest.TestCase):
-    def test_it_checks_the_mapping_before_dropping(self):
-        self.assertIn('f"chat:msg:{_mid}:session"', WS)
+class TheForwarderLooksItUpTests(unittest.IsolatedAsyncioTestCase):
+    """Verhalten des Weiterleiters (``ws._sitzung_fuer_ereignis``), nicht sein
+    Quelltext: Redis-Attrappe so streng wie Redis, Datenbank weiss nichts."""
 
-    def test_it_only_forwards_into_the_matching_session(self):
+    async def asyncSetUp(self):
+        from tests.test_chat_neustart_ohne_abbruch import _StrengesRedis
+
+        self.redis = _StrengesRedis()
+        self._db = patch("app.services.chat_persistence.session_for_message",
+                         AsyncMock(return_value=None))
+        self._db.start()
+        self.eigene, self.gefunden, self.gefragt = {}, {}, set()
+
+    async def asyncTearDown(self):
+        self._db.stop()
+
+    async def _zuordnen(self, mid, aktuell):
+        return await ws._sitzung_fuer_ereignis(
+            self.redis, "a1", mid, aktuell, self.eigene, self.gefunden, self.gefragt)
+
+    async def test_it_checks_the_mapping_before_dropping(self):
+        await self.redis.setex("chat:msg:cb1:session", 3600, "s1")
+        self.assertEqual(await self._zuordnen("cb1", "s1"), "s1")
+
+    async def test_it_only_forwards_into_the_matching_session(self):
         """Sonst waere die Abschottung aufgehoben und fremde Gespraeche blueteten
         in das offene Fenster."""
-        self.assertIn('if _looked == _session["id"]:', WS)
+        await self.redis.setex("chat:msg:cb1:session", 3600, "s-fremd")
+        self.assertIsNone(await self._zuordnen("cb1", "s1"))
+        self.assertIsNone(await self._zuordnen("cb2", "s1"), "unbekannt bleibt draussen")
 
-    def test_the_lookup_is_remembered_for_the_rest_of_the_turn(self):
+    async def test_the_lookup_is_remembered_for_the_rest_of_the_turn(self):
         """Ein Zug erzeugt viele Ereignisse — einmal nachsehen genuegt."""
-        self.assertIn("_mid_to_session[_mid] = _looked", WS)
+        await self.redis.setex("chat:msg:cb1:session", 3600, "s1")
+        await self._zuordnen("cb1", "s1")
+        self.redis.jetzt += 3601  # Eintrag laeuft ab — die Verbindung weiss es noch
+        self.assertEqual(await self._zuordnen("cb1", "s1"), "s1")
 
-    def test_a_broken_lookup_does_not_break_the_stream(self):
-        block = WS.split('f"chat:msg:{_mid}:session"')[1][:700]
-        self.assertIn("except Exception", block)
+    async def test_a_broken_lookup_does_not_break_the_stream(self):
+        async def kaputt(*a, **k):
+            raise ConnectionError("Redis weg")
+
+        self.redis.get = kaputt
+        self.assertIsNone(await self._zuordnen("cb1", "s1"))
 
 
 class TheOrchestratorLeavesTheMappingTests(unittest.TestCase):
