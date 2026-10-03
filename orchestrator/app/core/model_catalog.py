@@ -26,6 +26,14 @@ from __future__ import annotations
 # Curated model lists, mirrored from what the UI already offered so nothing
 # regresses. Ordered newest-first; the first anthropic/codex entry is the
 # natural default for its harness.
+#: Kleinste Claude-Code-CLI, die ALLE Modelle unten kennt. Das Agenten-Abbild
+#: (agent/Dockerfile) muss mindestens diese Fassung mitbringen: Das Startskript holt
+#: zwar im Hintergrund die neueste, aber bis dahin (auf dem Pi unter Last gut zwei
+#: Minuten) scheiterte am 03.10.2026 jeder Aufruf mit Opus 5.5 — samt der
+#: automatischen Kompaktierung, danach hing die ganze Sitzung („Prompt is too long“).
+#: Neues Modell mit hoeherer Mindestfassung → hier anheben, Test prueft das Abbild.
+CLAUDE_CLI_MINDESTENS = "2.1.280"
+
 _CLAUDE_MODELS: dict[str, list[dict]] = {
     # "claude-opus-5"/"claude-sonnet-5" live-verifiziert (14.09.2026): ein echter
     # `claude -p ... --model claude-sonnet-5` Lauf gegen die direkte Anthropic-API

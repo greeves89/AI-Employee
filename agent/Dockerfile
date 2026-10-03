@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 # Version label - change this to trigger update detection for running agents
-LABEL ai-employee.version="1.356.12"
+LABEL ai-employee.version="1.356.13"
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
@@ -32,7 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # baseline for a fresh image -- entrypoint.sh re-installs "@latest" on every
 # container start (i.e. every agent "Update"), so an image rebuild is no
 # longer required just to pick up a newer CLI release.
-RUN npm install -g @anthropic-ai/claude-code@2.1.270
+# Mindestens orchestrator/app/core/model_catalog.py::CLAUDE_CLI_MINDESTENS -- sonst
+# scheitern neue Modelle, bis das Hintergrund-Update durch ist (Test wacht darueber).
+RUN npm install -g @anthropic-ai/claude-code@2.1.288
 
 # Install OpenAI Codex CLI for ChatGPT-subscription backed agents. Same as
 # above: entrypoint.sh keeps this current on every container start.

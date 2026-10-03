@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.356.13] - 2026-10-03
+
+### Behoben
+- **Agenten mit Opus 5.5 scheiterten nach jedem Neustart:** Das Agenten-Abbild
+  brachte Claude Code 2.1.270 mit, Opus 5.5 braucht mindestens 2.1.280. Bis das
+  Startskript im Hintergrund die neueste Fassung geholt hatte (auf dem Pi unter
+  Last gut zwei Minuten), endete jeder Aufruf mit „does not support this model“ —
+  auch die automatische Kompaktierung, danach hing die Sitzung („Prompt is too
+  long“). Das Abbild bringt jetzt 2.1.288 mit; die Mindestfassung steht im
+  Modellkatalog, ein Test prüft das Abbild dagegen.
+
+---
+
 ## [1.356.12] - 2026-10-03
 
 ### Behoben
