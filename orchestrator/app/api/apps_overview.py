@@ -594,10 +594,20 @@ def _share_dict(s: AppShare, name: str | None = None, *, with_token: bool = Fals
 
 @router.get("/directory")
 async def app_share_directory(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """Minimale Nutzerliste (id/name/email) für den Freigabe-Dialog. Ohne den
-    Aufrufer, ohne sensible Felder — analog zum Workflow-Freigabe-Picker."""
+    """Minimale Nutzerliste für den Freigabe-Dialog. Ohne den Aufrufer. Nicht-Admins
+    bekommen nur id + Anzeigename — die E-Mail-Adressen der anderen gehen sie nichts
+    an; nur Admins sehen sie."""
+    ist_admin = getattr(user, "role", None) == UserRole.ADMIN
     rows = (await db.execute(select(User.id, User.name, User.email).order_by(User.name))).all()
-    return {"users": [{"id": r[0], "name": r[1], "email": r[2]} for r in rows if r[0] != str(user.id)]}
+    users = []
+    for uid, name, email in rows:
+        if uid == str(user.id):
+            continue
+        eintrag = {"id": uid, "name": name}
+        if ist_admin:
+            eintrag["email"] = email
+        users.append(eintrag)
+    return {"users": users}
 
 
 @router.delete("/shares/{share_id}")

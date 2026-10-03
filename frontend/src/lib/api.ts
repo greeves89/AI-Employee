@@ -3750,7 +3750,7 @@ export async function revokeAppShare(shareId: string): Promise<{ deleted: string
   return fetchJSON(`${getBase()}/apps/shares/${encodeURIComponent(shareId)}`, { method: "DELETE" });
 }
 
-export async function listAppShareDirectory(): Promise<{ users: { id: string; name: string; email: string }[] }> {
+export async function listAppShareDirectory(): Promise<{ users: { id: string; name: string; email?: string }[] }> {
   return fetchJSON(`${getBase()}/apps/directory`);
 }
 

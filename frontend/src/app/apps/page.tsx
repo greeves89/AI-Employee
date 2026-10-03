@@ -386,7 +386,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
   // 0 Tage = unbefristet. Eigener Zustand statt „days === 0", damit die
   // eingestellte Dauer erhalten bleibt, wenn man den Haken wieder wegnimmt.
   const [neverExpires, setNeverExpires] = useState(false);
-  const [directory, setDirectory] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [directory, setDirectory] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [shareErr, setShareErr] = useState("");
   const [freshLink, setFreshLink] = useState("");
@@ -614,7 +614,7 @@ function DetailModal({ app, onClose, onShowLogs }: {
                         className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
                         <option value="">Person wählen…</option>
                         {directory.map((u) => (
-                          <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                          <option key={u.id} value={u.id}>{u.email ? `${u.name} (${u.email})` : u.name}</option>
                         ))}
                       </select>
                     )}
