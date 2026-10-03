@@ -21,7 +21,7 @@ interface Props {
 }
 
 export function KeyFreigabeDialog({ secret, onClose, onSaved, onError }: Props) {
-  const [personen, setPersonen] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [personen, setPersonen] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [auswahl, setAuswahl] = useState<Set<string>>(new Set());
   const [suche, setSuche] = useState("");
   const [laedt, setLaedt] = useState(true);
@@ -66,7 +66,7 @@ export function KeyFreigabeDialog({ secret, onClose, onSaved, onError }: Props) 
     }
   }
 
-  const treffer = personen.filter((p) => `${p.name} ${p.email}`.toLowerCase().includes(suche.trim().toLowerCase()));
+  const treffer = personen.filter((p) => `${p.name} ${p.email ?? ""}`.toLowerCase().includes(suche.trim().toLowerCase()));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -97,7 +97,7 @@ export function KeyFreigabeDialog({ secret, onClose, onSaved, onError }: Props) 
               />
               <span className="min-w-0">
                 <span className="block truncate text-sm">{p.name}</span>
-                <span className="block truncate text-[11px] text-muted-foreground">{p.email}</span>
+                {p.email && <span className="block truncate text-[11px] text-muted-foreground">{p.email}</span>}
               </span>
             </label>
           ))}

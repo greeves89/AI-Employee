@@ -35,8 +35,7 @@ function fmtMs(ms: number | null | undefined): string {
 }
 
 function fmtCost(usd: number | null | undefined): string {
-  if (!usd) return "$0.00";
-  return formatMoney(usd);
+  return formatMoney(usd ?? 0);
 }
 
 function Stars({ value }: { value: number | null | undefined }) {

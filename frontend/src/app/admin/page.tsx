@@ -1455,7 +1455,7 @@ function BudgetTab({
 
                 {/* Spent */}
                 <div className="w-[90px] shrink-0 text-right">
-                  <p className="text-sm font-mono font-semibold">${spent.toFixed(4)}</p>
+                  <p className="text-sm font-mono font-semibold">{formatMoney(spent)}</p>
                   <p className="text-[10px] text-muted-foreground/50">verbraucht</p>
                 </div>
 
@@ -1473,7 +1473,7 @@ function BudgetTab({
                         />
                       </div>
                       <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-                        {(pct * 100).toFixed(1)}% von ${limit.toFixed(2)}
+                        {(pct * 100).toFixed(1)}% von {formatMoney(limit)}
                       </p>
                     </div>
                   ) : (
@@ -1534,7 +1534,7 @@ function BudgetTab({
                       title="Budget bearbeiten"
                     >
                       <Edit3 className="h-3.5 w-3.5" />
-                      {limit != null ? `$${limit.toFixed(2)}` : "Setzen"}
+                      {limit != null ? formatMoney(limit) : "Setzen"}
                     </button>
                   )}
                 </div>

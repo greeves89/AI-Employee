@@ -229,7 +229,7 @@ function OverviewView({ data, onOpenAgent }: { data: Overview | null; onOpenAgen
           <div className="flex-1 rounded-xl border border-white/5 bg-gradient-to-br from-emerald-500/10 to-cyan-500/5 p-3 flex flex-col items-center justify-center">
             <div className="text-[11px] uppercase tracking-wider text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5 text-emerald-300" />Leistung</div>
             <div className="text-5xl font-bold tabular-nums text-emerald-300 kiosk-glow-text my-1">{power?.watts != null ? nf(power.watts, 1) : "—"}<span className="text-xl text-emerald-400/60">W</span></div>
-            <div className="text-sm text-slate-300">{power?.today_cost_eur != null ? `${nf(power.today_cost_eur, 3)} € heute` : "—"} · {power?.month_cost_eur != null ? `${nf(power.month_cost_eur, 2)} €/Mon` : "—"}</div>
+            <div className="text-sm text-slate-300">{power?.today_cost_eur != null ? `${nf(power.today_cost_eur, 2)} € heute` : "—"} · {power?.month_cost_eur != null ? `${nf(power.month_cost_eur, 2)} €/Mon` : "—"}</div>
           </div>
         </div>
       </div>
@@ -317,7 +317,7 @@ function AgentDetailView({ id, onBack, onChat, onVoice }: { id: string; onBack: 
               <div key={i} className="flex items-center gap-2 text-sm">
                 <span className={`w-1.5 h-1.5 rounded-full ${stateColor(t.status).dot}`} />
                 <span className="truncate flex-1">{t.title}</span>
-                <span className="text-[11px] text-slate-500 tabular-nums">{t.cost_usd != null ? `$${nf(t.cost_usd, 3)}` : ""}</span>
+                <span className="text-[11px] text-slate-500 tabular-nums">{t.cost_usd != null ? `$${nf(t.cost_usd, 2)}` : ""}</span>
                 <span className={`text-[10px] uppercase ${stateColor(t.status).text}`}>{t.status}</span>
               </div>
             ))}
@@ -378,7 +378,7 @@ function SystemView({ data }: { data: Overview | null }) {
             <div className="text-xs text-slate-400 mt-1">aktuelle Leistungsaufnahme (PMIC)</div>
           </div>
           <div className="grid grid-cols-2 gap-2 mt-4">
-            <div className="rounded-lg bg-black/20 py-3 text-center"><div className="text-xl font-semibold tabular-nums">{power?.today_cost_eur != null ? `${nf(power.today_cost_eur, 3)} €` : "—"}</div><div className="text-[11px] text-slate-400">heute · {power?.today_kwh != null ? `${nf(power.today_kwh, 3)} kWh` : "—"}</div></div>
+            <div className="rounded-lg bg-black/20 py-3 text-center"><div className="text-xl font-semibold tabular-nums">{power?.today_cost_eur != null ? `${nf(power.today_cost_eur, 2)} €` : "—"}</div><div className="text-[11px] text-slate-400">heute · {power?.today_kwh != null ? `${nf(power.today_kwh, 3)} kWh` : "—"}</div></div>
             <div className="rounded-lg bg-black/20 py-3 text-center"><div className="text-xl font-semibold tabular-nums">{power?.month_cost_eur != null ? `${nf(power.month_cost_eur, 2)} €` : "—"}</div><div className="text-[11px] text-slate-400">≈ pro Monat</div></div>
           </div>
           <div className="text-center text-xs text-slate-500 mt-3">Tarif {nf(power?.price_eur_kwh ?? 0, 2)} €/kWh · in Einstellungen änderbar</div>
