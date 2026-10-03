@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.357.1] - 2026-10-03
+
+### Behoben
+- **Rollen: „Alle erlauben“ bei Keys und KI-Konten sperrte in Wahrheit alles.**
+  Keys und KI-Konten sind nur freigegeben, wenn sie in der Rolle ausdrücklich
+  stehen; ohne Liste ist keiner freigegeben. Die Rollenverwaltung zeigte in diesem
+  Fall aber alle als freigegeben an, und „Alle erlauben“ setzte genau diesen
+  Zustand. Jetzt zeigen die Schalter, was wirklich freigegeben ist, „Alle
+  auswählen“ trägt alle vorhandenen ein, und ein Hinweis erklärt die Regel.
+- **Skill bearbeiten verwarf Felder:** Beim Ändern eines Skills über die
+  Oberfläche gingen Name, Kategorie, Status, Pfade, Rollen und „öffentlich“
+  stillschweigend verloren, weil das Eingabemodell für Agenten das für Menschen
+  überdeckte.
+
+---
+
 ## [1.357.0] - 2026-10-03
 
 ### Neu

@@ -112,8 +112,12 @@ class SkillPropose(BaseModel):
     task_id: str | None = None  # task that produced this skill
 
 
-class SkillUpdate(BaseModel):
-    """Agent updates an existing skill it created."""
+class AgentSkillUpdate(BaseModel):
+    """Agent updates an existing skill it created.
+
+    Eigener Name: Hiess frueher ebenfalls ``SkillUpdate`` und ueberschrieb damit die
+    Fassung fuer Menschen weiter oben — ``PUT /skills/marketplace/{id}`` verwarf seither
+    still Name, Kategorie, Status, Pfade, Rollen und „öffentlich“ (03.10.2026)."""
     description: str | None = None
     content: str | None = None
     feedback: str | None = None  # human-readable changelog for this update
@@ -1484,7 +1488,7 @@ async def agent_propose_skill(
 @router.patch("/agent/{skill_id}", status_code=200)
 async def agent_update_skill(
     skill_id: int,
-    body: SkillUpdate,
+    body: AgentSkillUpdate,
     db: AsyncSession = Depends(get_db),
     auth: dict = Depends(verify_agent_token),
 ):

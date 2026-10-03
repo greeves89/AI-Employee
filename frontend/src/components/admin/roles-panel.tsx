@@ -457,8 +457,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                 {aiAccounts.map((acc) => (
                   <ToggleChip
                     key={acc.id}
-                    active={draft.ai_account_ids == null || draft.ai_account_ids.includes(acc.id)}
-                    muted={draft.ai_account_ids == null}
+                    active={(draft.ai_account_ids ?? []).includes(acc.id)}
                     label={acc.name}
                     onClick={() => setDraft((d) => ({
                       ...d,
@@ -467,7 +466,8 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                   />
                 ))}
               </div>
-              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, ai_account_ids: null }))} />
+              <NurFreigegebenHinweis />
+              <AlleAuswaehlenButton onClick={() => setDraft((d) => ({ ...d, ai_account_ids: aiAccounts.map((a) => a.id) }))} />
             </PermissionBlock>
 
             <PermissionBlock title="Keys / Secrets">
@@ -478,8 +478,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                 {secrets.map((s) => (
                   <ToggleChip
                     key={s.id}
-                    active={draft.secret_ids == null || draft.secret_ids.includes(s.id)}
-                    muted={draft.secret_ids == null}
+                    active={(draft.secret_ids ?? []).includes(s.id)}
                     label={s.name}
                     onClick={() => setDraft((d) => ({
                       ...d,
@@ -488,7 +487,8 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                   />
                 ))}
               </div>
-              <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, secret_ids: null }))} />
+              <NurFreigegebenHinweis />
+              <AlleAuswaehlenButton onClick={() => setDraft((d) => ({ ...d, secret_ids: secrets.map((x) => x.id) }))} />
             </PermissionBlock>
 
             <PermissionBlock title="MCP-Server / Tools">
@@ -743,6 +743,29 @@ function ToggleChip({ label, active, muted, onClick }: { label: string; active: 
       )}
     >
       {label}
+    </button>
+  );
+}
+
+/** Keys und KI-Konten sind DEFAULT-DENY (secrets.py, ai_accounts.py): keine Liste heisst
+ *  keiner freigegeben. Frueher zeigte die Oberflaeche dann alle als aktiv, und „Alle
+ *  erlauben“ setzte genau diesen Zustand — ein Admin sperrte damit alles (03.10.2026). */
+function NurFreigegebenHinweis() {
+  return (
+    <p className="mt-2 text-[11px] text-muted-foreground">
+      Nur markierte sind für diese Rolle freigegeben. Ohne Auswahl: keiner. Admins sehen immer alle.
+    </p>
+  );
+}
+
+function AlleAuswaehlenButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+    >
+      Alle auswählen
     </button>
   );
 }
