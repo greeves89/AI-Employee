@@ -74,7 +74,7 @@ export function KeyFreigabeDialog({ secret, onClose, onSaved, onError }: Props) 
         <h3 className="text-sm font-semibold">„{secret.name}“ freigeben</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           Wer ihn bekommt, kann ihn eigenen Agenten zuweisen. Den Wert sieht niemand, ändern und
-          weitergeben kann nur der Besitzer. An Rollen gibt nur ein Admin frei (Admin → Nutzer &amp; Rollen).
+          weitergeben kann nur der Besitzer.
         </p>
         <input
           value={suche}

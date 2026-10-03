@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.358.2] - 2026-10-03
+
+### Geändert
+- **Key-Freigabe ohne Rollen-Hinweis:** Das Fenster „… freigeben“ erwähnt keine Rollen
+  mehr — es gibt an Personen frei; Rollen verwaltet ein Admin an anderer Stelle.
+
+---
+
 ## [1.358.1] - 2026-10-03
 
 ### Geändert
