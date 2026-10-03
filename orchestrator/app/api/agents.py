@@ -2721,10 +2721,17 @@ async def get_chat_sessions(
     from app.models.chat_session import ChatSession
     meta_rows = (await db.execute(
         select(ChatSession.session_id, ChatSession.title, ChatSession.pinned,
-               ChatSession.reasoning_level)
+               ChatSession.reasoning_level, ChatSession.goal, ChatSession.goal_status,
+               ChatSession.goal_rounds)
         .where(ChatSession.agent_id == agent_id)
     )).all()
     meta = {m.session_id: (m.title, m.pinned, m.reasoning_level) for m in meta_rows}
+    from app.core.ziel import ZIEL_MAX_RUNDEN
+    ziele = {
+        m.session_id: {"text": m.goal, "status": m.goal_status or "aktiv",
+                       "rounds": m.goal_rounds or 0, "max_rounds": ZIEL_MAX_RUNDEN}
+        for m in meta_rows if m.goal
+    }
 
     # Filter out phantom sessions (no user messages, only empty assistant entries).
     # Ein benanntes Gespraech ist nie ein Phantom: das eigene Gespraech eines
@@ -2750,6 +2757,7 @@ async def get_chat_sessions(
             "title": title,
             "pinned": bool(pinned),
             "reasoning": reasoning_level or "",
+            "goal": ziele.get(s.session_id),
         })
     # Pinned first, then keep the existing recency order (query already desc).
     out.sort(key=lambda x: 0 if x["pinned"] else 1)
@@ -2886,6 +2894,21 @@ async def delete_chat_session(
     )
     await db.commit()
     return {"deleted": result.rowcount}
+
+
+@router.delete("/{agent_id}/chat/sessions/{session_id}/goal")
+async def stop_chat_goal(
+    agent_id: str,
+    session_id: str,
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ziel eines Gespraechs beenden (/goal stop) — der Agent macht keine weitere Runde."""
+    await _check_owner(agent_id, user, db)
+    from app.core import ziel
+    if not await ziel.beenden(db, agent_id, session_id):
+        raise HTTPException(status_code=404, detail="Kein Ziel in diesem Gespräch")
+    return {"stopped": True}
 
 
 @router.delete("/{agent_id}/chat/sessions")

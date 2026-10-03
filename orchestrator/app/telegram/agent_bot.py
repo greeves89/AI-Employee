@@ -196,6 +196,9 @@ class TelegramAgentBot:
         self.app.add_handler(CommandHandler("agent", self._cmd_agent))
         self.app.add_handler(CommandHandler("stop", self._cmd_stop))
         self.app.add_handler(CommandHandler("status", self._cmd_status))
+        # /goal gibt es im App-Chat (app.core.ziel). Ohne eigenen Handler fiel der
+        # Befehl hier stumm unter den Tisch (der Text-Filter schliesst Befehle aus).
+        self.app.add_handler(CommandHandler(["goal", "ziel"], self._cmd_goal))
         self.app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
         )
@@ -366,6 +369,13 @@ class TelegramAgentBot:
         await update.message.reply_text(
             f"Telegram-Ziel gesetzt: {selected.name} ({selected.id}).\n"
             "Deine naechsten Nachrichten gehen an diesen Agent."
+        )
+
+    async def _cmd_goal(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        await update.message.reply_text(
+            "Ziele (/goal) setzt du im Chat der App oder im Browser: Dort arbeitet der Agent "
+            "Runde um Runde weiter, bis das Ziel erreicht ist. Hier in Telegram kannst du ihm "
+            "den Auftrag als normale Nachricht schicken."
         )
 
     async def _cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

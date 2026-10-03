@@ -508,6 +508,19 @@ async def _persist_chat_completion(redis: RedisService, data: dict) -> None:
             agent_id, session_id, message_id, "assistant",
             content=content, tool_calls=tool_calls, meta=meta,
         )
+        # /goal: Hat dieses Gespraech ein aktives Ziel, entscheidet die Antwort, ob
+        # eine weitere Runde folgt (app.core.ziel). VOR dem „nicht neu“-Ausstieg:
+        # meist hat der Browser die Zeile schon geschrieben.
+        if session_id != "scheduler":
+            try:
+                from app.core import ziel as _ziel
+                fehlgeschlagen = str(event_data.get("status") or "") in ("error", "timeout")
+                await _ziel.nach_zug(
+                    db, redis.client, agent_id, session_id, message_id, content,
+                    fehlgeschlagen=fehlgeschlagen,
+                )
+            except Exception as e:  # noqa: BLE001 — ein Ziel-Fehler darf das Speichern nicht kippen
+                print(f"[Ziel] Runde nach {message_id} nicht fortgeschrieben: {e}")
         if not is_new:
             # Ergaenzt, und der Nutzer hatte den Text schon vor Augen
             # (der Browser hatte die Zeile vollstaendig geschrieben).
@@ -1487,6 +1500,14 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt_cs(
                 "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS reasoning_level varchar"
             ))
+            # v1.357.0: /goal — Ziel je Gespraech (app.core.ziel)
+            for _spalte in (
+                "goal text", "goal_status varchar",
+                "goal_rounds integer NOT NULL DEFAULT 0", "goal_last_mid varchar",
+            ):
+                await conn.execute(_txt_cs(
+                    f"ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS {_spalte}"
+                ))
         logger.info("chat_sessions table ensured")
     except Exception as e:
         logger.warning(f"Could not ensure chat_sessions table: {e}")

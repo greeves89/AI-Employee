@@ -207,6 +207,8 @@ PLATFORM_COMMANDS = [
     ("verzweigen", "Ab der letzten Nachricht abzweigen"),
     ("zurückspulen", "Auf die letzte Nachricht zurücksetzen"),
     ("tools", "Werkzeuge dieses Agenten zeigen"),
+    # Mit Text dahinter: /goal <Ziel> — der Agent arbeitet weiter, bis es erreicht ist.
+    ("goal", "Ziel setzen: arbeitet weiter, bis es erreicht ist (/goal stop beendet)"),
 ]
 
 

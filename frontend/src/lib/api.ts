@@ -1157,6 +1157,19 @@ export interface ChatSession {
   title?: string | null;   // custom rename; falls back to preview when null
   pinned?: boolean;
   reasoning?: string | null;  // persisted thinking depth; "" → Auto (harness default)
+  goal?: ChatGoal | null;     // /goal — Ziel dieses Gesprächs
+}
+
+/** Ziel eines Gesprächs (/goal): der Agent arbeitet Runde um Runde, bis er es erreicht. */
+export interface ChatGoal {
+  text: string;
+  status: "aktiv" | "erreicht" | "pausiert" | "gestoppt" | "grenze" | string;
+  rounds: number;
+  max_rounds: number;
+}
+
+export async function stopChatGoal(agentId: string, sessionId: string): Promise<{ stopped: boolean }> {
+  return fetchJSON(`${getBase()}/agents/${agentId}/chat/sessions/${sessionId}/goal`, { method: "DELETE" });
 }
 
 export async function getChatSessions(

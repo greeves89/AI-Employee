@@ -14,6 +14,7 @@ import {
   EyeOff,
   Users,
   ChevronDown,
+  Target,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { LogEvent } from "@/lib/types";
@@ -183,7 +184,7 @@ interface ChatMessage {
   toolCalls?: { tool: string; input: string }[];
   /** Verweist auf eine Auftrags-Kachel; die Zeile wird dann als Kachel gezeichnet. */
   taskCardId?: string;
-  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; context_tokens?: number; presented_files?: ChatFile[]; context_excluded?: boolean; tool_output_excluded?: boolean };
+  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; context_tokens?: number; presented_files?: ChatFile[]; context_excluded?: boolean; tool_output_excluded?: boolean; source?: string; runde?: number };
   images?: ChatImage[];
   files?: ChatFile[];
 }
@@ -193,7 +194,8 @@ interface ChatEvent {
   message_id: string;
   session_id?: string;  // owning session (set by the server) — used to isolate chat tabs
   type: "text" | "tool_call" | "tool_result" | "error" | "system" | "done" | "session" | "cancelled" | "queued" | "image" | "file" | "task_card" | "context"
-    | "approval_request";  // Freigabe angelegt (approvals.py) — Anstoss fuer den Banner-Abgleich
+    | "approval_request"
+    | "goal";  // /goal gesetzt oder beendet (ws.py) — Anstoß, den Ziel-Stand neu zu laden  // Freigabe angelegt (approvals.py) — Anstoss fuer den Banner-Abgleich
   data: Record<string, unknown>;
   timestamp: string;
 }
@@ -226,6 +228,7 @@ interface SessionTab {
   title?: string | null;   // custom rename; falls back to preview
   pinned?: boolean;
   reasoning?: ReasoningLevel;  // persisted thinking depth; "" → Auto
+  goal?: api.ChatGoal | null;  // /goal — Ziel dieses Gesprächs
   isNew?: boolean;
   last_message_at?: string | null;
   message_count?: number;
@@ -434,6 +437,7 @@ const FALLBACK_COMMANDS: api.AgentToolset["commands"] = [
   { name: "zusammenfassen", hint: "In frischem Gespräch weiterreden" },
   { name: "verzweigen", hint: "Ab der letzten Nachricht abzweigen" },
   { name: "zurückspulen", hint: "Auf die letzte Nachricht zurücksetzen" },
+  { name: "goal", hint: "Ziel setzen: arbeitet weiter, bis es erreicht ist (/goal stop beendet)" },
 ];
 
 /** Kontextring — der belegte Anteil des Gesprächsfensters als Kreis.
@@ -693,6 +697,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // offen war. Ihr Stand im Fenster ist luckenhaft: Das naechste „fertig“ dort
   // laedt den gespeicherten Verlauf neu, statt eine halbe Antwort stehen zu lassen.
   const verpassteSitzungenRef = useRef<Set<string>>(new Set());
+  // Gespraechsliste neu laden (Ziel-Stand nach /goal und nach jeder Runde).
+  const sitzungenNeuLadenRef = useRef<() => void>(() => {});
   // Stable per-tab id so the backend can keep this tab's socket separate from other
   // tabs/windows chatting with the same agent — without it, opening a 2nd chat kicks the 1st.
   const tabClientIdRef = useRef<string | undefined>(undefined);
@@ -744,6 +750,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             title: s.title ?? null,
             pinned: !!s.pinned,
             reasoning: asReasoningLevel(s.reasoning),
+            goal: s.goal ?? null,
             last_message_at: s.last_message_at,
             message_count: s.message_count,
           }));
@@ -786,6 +793,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           title: s.title ?? null,
           pinned: !!s.pinned,
           reasoning: asReasoningLevel(s.reasoning),
+          goal: s.goal ?? null,
           last_message_at: s.last_message_at,
           message_count: s.message_count,
         }))
@@ -794,6 +802,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       /* keep current tabs on failure */
     }
   }, [agentId]);
+
+  useEffect(() => { sitzungenNeuLadenRef.current = () => { void refreshSessions(); }; }, [refreshSessions]);
 
   // Load messages when active session changes
   useEffect(() => {
@@ -1038,7 +1048,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         // hinterher — genau deshalb blitzte das Banner nach jeder Antwort auf.
         const frischFertig = Date.now() - eigenerZugEndeteRef.current < 8000;
         setLiveElsewhere(busy && !isWaitingRef.current && !frischFertig);
-        if (prevBusy && !busy) setHistoryReloadKey((k) => k + 1);  // a turn just finished
+        if (prevBusy && !busy) {
+          setHistoryReloadKey((k) => k + 1);  // a turn just finished
+          sitzungenNeuLadenRef.current();     // /goal: Runde und Stand aktualisieren
+        }
         prevBusy = busy;
 
         // Notbremse: der Agent selbst ist die Wahrheit. Meldet er über mehrere
@@ -1279,6 +1292,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     if (type === "done" || type === "cancelled" || type === "error") {
       eigenerZugEndeteRef.current = Date.now();
       onTurnChangeRef.current?.();
+      sitzungenNeuLadenRef.current();  // /goal: Stand nach dieser Runde
       // Lief der Zug teils, waehrend ein anderes Gespraech offen war, fehlt hier
       // ein Stueck (verworfene Ereignisse). Der gespeicherte Verlauf ist dann die
       // Wahrheit: kurz warten, bis der Server die Antwort gesichert hat, und
@@ -1311,6 +1325,11 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     // Kachel eines delegierten Auftrags — eigener Zustand, kein Chatverlauf:
     // sie aktualisiert sich an Ort und Stelle (queued -> done), statt zweimal
     // als Nachricht aufzutauchen.
+    if (type === "goal") {
+      sitzungenNeuLadenRef.current();
+      return;
+    }
+
     if (type === "task_card") {
       const card = data as unknown as TaskCard;
       if (!card?.task_id) return;
@@ -2229,6 +2248,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   }, [agentId, activeSessionId, chatToast]);
 
   const runSlash = useCallback((name: string) => {
+    if (name === "goal") {
+      // Braucht Text: Befehl stehen lassen, der Nutzer schreibt sein Ziel dahinter.
+      setInput("/goal ");
+      inputRef.current?.focus();
+      return;
+    }
     setInput("");
     const lastId = [...messages].reverse().find((m) => m.role !== "system")?.id;
     if (name === "planen") {
@@ -2918,6 +2943,48 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         </div>
       )}
 
+      {(() => {
+        // /goal: Ziel dieses Gesprächs — der Agent arbeitet Runde um Runde, bis er es erreicht.
+        const ziel = sessions.find((t) => t.id === activeSessionId)?.goal;
+        if (!ziel || ziel.status === "gestoppt" || viewMode === "overview") return null;
+        const laeuft = ziel.status === "aktiv" || ziel.status === "pausiert";
+        const stand =
+          ziel.status === "aktiv" ? `Ziel aktiv · Runde ${Math.max(1, ziel.rounds)} von ${ziel.max_rounds}`
+          : ziel.status === "pausiert" ? "Ziel pausiert — der Agent wartet auf deine Antwort"
+          : ziel.status === "erreicht" ? `Ziel erreicht nach ${ziel.rounds} Runde${ziel.rounds === 1 ? "" : "n"}`
+          : `Ziel nach ${ziel.rounds} Runden angehalten (Obergrenze) — schreib, wie es weitergehen soll`;
+        return (
+          <div className={cn(
+            "mx-4 mb-3 flex items-start gap-3 rounded-xl border p-3",
+            ziel.status === "erreicht" ? "border-emerald-500/20 bg-emerald-500/10" : "border-blue-500/20 bg-blue-500/10",
+          )}>
+            {ziel.status === "erreicht"
+              ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              : <Target className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />}
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-muted-foreground">{stand}</p>
+              <p className="mt-0.5 line-clamp-2 text-sm break-words">{ziel.text}</p>
+            </div>
+            {laeuft && activeSessionId && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await api.stopChatGoal(agentId, activeSessionId);
+                    await refreshSessions();
+                  } catch (e) {
+                    chatToast.error("Ziel nicht beendet", e instanceof Error ? e.message : undefined);
+                  }
+                }}
+                className="shrink-0 rounded-lg px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-foreground/[0.06]"
+              >
+                Ziel beenden
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
       {pendingApproval && (
         <div className="mx-4 mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
           <div className="flex items-start gap-3">
@@ -3327,6 +3394,16 @@ function MessageRow({
       excluded={excluded}
     />
   );
+
+  // /goal: automatisch eingereihte Runde — kein „Du“, nur eine Statuszeile.
+  if (message.role === "user" && message.meta?.source === "goal") {
+    return (
+      <div className="flex items-center gap-2 py-1 pl-1 text-xs text-muted-foreground">
+        <Target className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
+        <span>{message.content}</span>
+      </div>
+    );
+  }
 
   if (message.role === "user") {
     return (

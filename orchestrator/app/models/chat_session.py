@@ -39,3 +39,10 @@ class ChatSession(Base, TimestampMixin):
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     # One of REASONING_LEVELS. None → "Auto", the harness default decides.
     reasoning_level: Mapped[str | None] = mapped_column(String, nullable=True)
+    # /goal (app.core.ziel): Ziel dieses Gespraechs; der Agent arbeitet Runde um
+    # Runde weiter, bis er es als erreicht meldet. None → kein Ziel.
+    goal: Mapped[str | None] = mapped_column(Text, nullable=True)
+    goal_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    goal_rounds: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    #: Letzte Antwort, die eine Runde ausgeloest hat — jede genau einmal (Idempotenz).
+    goal_last_mid: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -903,6 +903,35 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 _session["id"] = uuid.uuid4().hex[:12]
                 is_new_session = True
 
+            # /goal — Ziel fuer dieses Gespraech (app.core.ziel). Gesetzt wird es
+            # hier, weitergearbeitet nach jeder fertigen Antwort (main.py). Der
+            # Nutzer sieht seine Eingabe, der Agent bekommt den ausfuehrlichen Auftrag.
+            anzeige_text: str | None = None
+            from app.core import ziel as _ziel
+            ziel_befehl = _ziel.befehl(text)
+            if ziel_befehl:
+                aktion, ziel_text = ziel_befehl
+                from app.db.session import async_session_factory as _sf_ziel
+                async with _sf_ziel() as _db_ziel:
+                    if aktion == "setzen":
+                        await _ziel.setzen(_db_ziel, agent_id, _session["id"], ziel_text)
+                    elif aktion == "stopp":
+                        await _ziel.beenden(_db_ziel, agent_id, _session["id"])
+                    from app.models.chat_session import ChatSession as _CS
+                    stand = _ziel.als_dict(await _db_ziel.scalar(select(_CS).where(
+                        _CS.agent_id == agent_id, _CS.session_id == _session["id"],
+                    )))
+                await websocket.send_text(json.dumps({
+                    "type": "goal",
+                    "session_id": _session["id"],
+                    "data": {"goal": stand, "session_id": _session["id"]},
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }))
+                if aktion != "setzen":
+                    continue
+                anzeige_text = text
+                text = _ziel.auftrag(ziel_text, 1)
+
             # Auto-inject skills for chat too — previously only the task path
             # (task_router.py) did this, so a chat-only agent never picked up
             # path/role-matched skill assignments (#468). Once per session,
@@ -941,7 +970,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             })
 
             # Save user message to DB
-            db_content = text or (f"[{len(images)} Bild(er) angehängt]" if images else "")
+            db_content = anzeige_text or text or (f"[{len(images)} Bild(er) angehängt]" if images else "")
             await _save_chat_message(
                 agent_id, message_id, "user",
                 content=db_content,

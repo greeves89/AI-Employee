@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.357.0] - 2026-10-03
+
+### Neu
+- **`/goal` im Chat — der Agent arbeitet weiter, bis das Ziel erreicht ist:**
+  `/goal <Ziel>` setzt ein Ziel für das Gespräch. Der Agent arbeitet Runde um
+  Runde selbstständig weiter, ohne dass jemand „weiter“ schreiben muss, und
+  beendet mit „ZIEL ERREICHT“, sobald das Ziel erfüllt und geprüft ist. Braucht er
+  eine Entscheidung, pausiert er mit einer Frage; die nächste Antwort setzt das Ziel
+  fort. Über dem Eingabefeld steht ein Banner mit Ziel, Runde und „Ziel beenden“;
+  `/goal stop` beendet es ebenfalls, `/goal` allein zeigt den Stand. Höchstens 20
+  Runden; ein Fehler oder eine Zeitüberschreitung pausiert statt im Kreis zu laufen.
+  Gilt in allen Laufzeiten (Claude Code, Codex, eigenes Modell), weil der Server die
+  Runden steuert. In Telegram erklärt `/goal`, dass Ziele im App-Chat gesetzt werden.
+
+---
+
 ## [1.356.17] - 2026-10-03
 
 ### Behoben
