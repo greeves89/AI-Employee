@@ -440,16 +440,17 @@ export function ZeitplanFormular({ agents, onAngelegt, onAbbrechen }: ZeitplanFo
             </div>
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Agent (optional)</label>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Agent</label>
+            {/* Alle eigenen Agenten, auch gestoppte: der Scheduler startet einen
+                gestoppten Agenten zum Lauf (#632). Vorher standen hier nur laufende —
+                ein Mitglied, dessen Agent gerade ruhte, sah nur „Automatisch“ (#901). */}
             <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className={eingabe}>
               <option value="">Automatisch zuweisen</option>
-              {agents
-                .filter((a) => a.state === "running" || a.state === "idle")
-                .map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.state === "stopped" ? `${a.name} (gestoppt, startet zum Lauf)` : a.name}
+                </option>
+              ))}
             </select>
           </div>
         </div>

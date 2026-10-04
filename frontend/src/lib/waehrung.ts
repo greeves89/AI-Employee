@@ -34,6 +34,23 @@ export function zuUsd(betrag: number, cfg: WaehrungsKonfig): number {
   return euro(cfg) ? betrag / Number(cfg.rate) : betrag;
 }
 
+/**
+ * Summe einer Liste so, wie sie dasteht (#896): jede Zeile wird cent-genau in
+ * der Anzeigewährung gerundet und erst dann addiert. Ergebnis in USD — passend
+ * für ``formatMoney``.
+ *
+ * Die exakte Summe stand vorher neben gerundeten Zeilen und wich um einen Cent
+ * ab (8,70 € über einer Liste, die 8,69 € ergab). Wer nachrechnet, rechnet mit
+ * dem, was er sieht; der exakte Betrag gehört in ``moneyTitle``.
+ */
+export function summeDerZeilen(betraegeUsd: number[], cfg: WaehrungsKonfig): number {
+  const cent = betraegeUsd.reduce((summe, usd) => {
+    const n = Number(usd);
+    return summe + (Number.isFinite(n) ? Math.round(vonUsd(n, cfg) * 100) : 0);
+  }, 0);
+  return zuUsd(cent / 100, cfg);
+}
+
 export function waehrungsCode(cfg: WaehrungsKonfig): "EUR" | "USD" {
   return euro(cfg) ? "EUR" : "USD";
 }

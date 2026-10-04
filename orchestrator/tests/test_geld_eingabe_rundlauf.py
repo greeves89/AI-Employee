@@ -31,6 +31,16 @@ out.vorbelegung_null = w.alsEingabe(null, eur);
 out.zeichen = [w.waehrungsZeichen(eur), w.waehrungsZeichen(usd)];
 out.code = [w.waehrungsCode(eur), w.waehrungsCode(usd)];
 out.kaputter_kurs = w.waehrungsCode({currency: "EUR", rate: 0});
+// Summe wie angezeigt (#896): drei Zeilen zu je 2,896 $ stehen als 2,90 da —
+// die Liste ergibt 8,70, die exakte Summe 8,688 hiesse 8,69.
+const zeilen = [2.896, 2.896, 2.896];
+const cent = (usd, cfg) => Math.round(w.vonUsd(usd, cfg) * 100);
+out.summe_usd_cent = cent(w.summeDerZeilen(zeilen, usd), usd);
+out.zeilen_usd_cent = zeilen.reduce((s, z) => s + cent(z, usd), 0);
+const zeilenEur = [1.234, 5.678, 0.111, 0.004];
+out.summe_eur_cent = cent(w.summeDerZeilen(zeilenEur, eur), eur);
+out.zeilen_eur_cent = zeilenEur.reduce((s, z) => s + cent(z, eur), 0);
+out.summe_leer = w.summeDerZeilen([], eur);
 console.log(JSON.stringify(out));
 """
 
@@ -66,6 +76,14 @@ class Rundlauf(unittest.TestCase):
         self.assertEqual(self.out["zeichen"], ["€", "$"])
         self.assertEqual(self.out["code"], ["EUR", "USD"])
         self.assertEqual(self.out["kaputter_kurs"], "USD")
+
+    def test_summe_passt_zur_liste(self):
+        """Budget-Seite: „Kosten diesen Monat“ 8,70 € neben Zeilen, die 8,69 €
+        ergaben (#896). Die Summe ist jetzt die der angezeigten Zeilen."""
+        self.assertEqual(self.out["summe_usd_cent"], 870)
+        self.assertEqual(self.out["summe_usd_cent"], self.out["zeilen_usd_cent"])
+        self.assertEqual(self.out["summe_eur_cent"], self.out["zeilen_eur_cent"])
+        self.assertEqual(self.out["summe_leer"], 0)
 
 
 if __name__ == "__main__":

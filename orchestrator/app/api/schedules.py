@@ -61,14 +61,85 @@ async def _get_schedule(db: AsyncSession, schedule_id: str) -> Schedule:
     return schedule
 
 
+def _eigener_ohne_agent(schedule: Schedule, user) -> bool:
+    """Ein Zeitplan ohne Agent gehoert dem Menschen, der ihn angelegt hat (#901).
+
+    Ohne diese Regel war ein solcher Zeitplan fuer sein Mitglied unsichtbar —
+    weder pausier- noch loeschbar. Agenten-Token zaehlen nie als Urheber.
+    """
+    return (
+        schedule.agent_id is None
+        and schedule.created_by is not None
+        and not is_agent_principal(user)
+        and schedule.created_by == getattr(user, "id", None)
+    )
+
+
 async def _check_schedule_access(schedule: Schedule, user, db: AsyncSession) -> None:
     """Raise 403 if the calling user does not own the schedule's agent."""
     from app.models.user import UserRole
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         return
+    if _eigener_ohne_agent(schedule, user):
+        return
     allowed = await _get_user_agent_ids(user, db)
     if allowed is not None and schedule.agent_id not in allowed:
         raise HTTPException(status_code=403, detail="Kein Zugriff auf diesen Zeitplan")
+
+
+async def kandidaten_fuer_urheber(db: AsyncSession, created_by: str | None) -> set[str] | None:
+    """Agenten, unter denen ein Zeitplan OHNE Agent beim Feuern waehlen darf.
+
+    Dieselbe Grenze wie fuer einen Auftrag des Urhebers (``_get_user_agent_ids``):
+    ``None`` = keine Grenze (Administrator). Bisher waehlte der Lastverteiler unter
+    ALLEN Agenten der Anlage — der Zeitplan eines Mitglieds konnte auf dem Agenten
+    eines anderen Nutzers laufen (#901).
+
+    ``LookupError``, wenn kein Urheber bekannt ist (Altbestand vor #901) oder sein
+    Konto nicht mehr existiert: dann darf der Zeitplan nirgends laufen.
+    """
+    if not created_by:
+        raise LookupError("Zeitplan ohne Agent und ohne bekannten Urheber")
+    from app.models.user import User
+    urheber = await db.get(User, created_by)
+    if urheber is None:
+        raise LookupError(f"Urheber {created_by} existiert nicht mehr")
+    erlaubt = await _get_user_agent_ids(urheber, db)
+    return None if erlaubt is None else set(erlaubt)
+
+
+_OHNE_EIGENEN_AGENTEN = (
+    "Du hast noch keinen eigenen Agenten. Ein Zeitplan braucht einen "
+    "Agenten, der ihn ausführt — lege zuerst einen Agenten an."
+)
+
+
+async def _automatisch_waehlen(user, erreichbar: set[str], priority: int, redis, db: AsyncSession) -> str:
+    """„Automatisch zuweisen" eines Nicht-Administrators — schon beim Anlegen.
+
+    Gewaehlt wird ausschliesslich unter den erreichbaren Agenten, die EIGENEN
+    zuerst: der Lastverteiler (freiester laufender) erst unter den eigenen, dann
+    unter allen erreichbaren; sind alle gestoppt (der Scheduler weckt ihn zum
+    Lauf), der zuerst angelegte eigene. So steht am Zeitplan immer ein Agent:
+    das Mitglied sieht, wer ihn ausfuehrt, und kann ihn pausieren und loeschen (#901).
+    """
+    from app.core.load_balancer import LoadBalancer
+    from app.models.agent import Agent
+
+    agenten = (await db.execute(
+        select(Agent.id, Agent.user_id).where(Agent.id.in_(erreichbar)).order_by(Agent.created_at)
+    )).all() if erreichbar else []
+    if not agenten:
+        raise HTTPException(status_code=400, detail=_OHNE_EIGENEN_AGENTEN)
+    eigene = [a for a, besitzer in agenten if besitzer == user.id]
+    alle = [a for a, _ in agenten]
+    lastverteiler = LoadBalancer(redis)
+    for kreis in (set(eigene), set(alle)):
+        if kreis:
+            gewaehlt = await lastverteiler.select_agent(priority=priority, kandidaten=kreis)
+            if gewaehlt in kreis:
+                return gewaehlt
+    return (eigene or alle)[0]
 
 
 @router.get("/", response_model=ScheduleListResponse)
@@ -77,7 +148,11 @@ async def list_schedules(user=Depends(require_auth_or_agent), db: AsyncSession =
     if hasattr(user, "role"):
         allowed = await _get_user_agent_ids(user, db)
         if allowed is not None:
-            query = query.where(Schedule.agent_id.in_(allowed))
+            sichtbar = Schedule.agent_id.in_(allowed)
+            if not is_agent_principal(user):
+                # Eigene Zeitplaene ohne Agent (#901) — siehe _eigener_ohne_agent.
+                sichtbar = sichtbar | (Schedule.agent_id.is_(None) & (Schedule.created_by == user.id))
+            query = query.where(sichtbar)
     result = await db.execute(query)
     schedules = list(result.scalars().all())
     return ScheduleListResponse(
@@ -147,7 +222,15 @@ async def create_schedule(
     # Der Zielagent muss zu denen des Aufrufers gehoeren: sonst liesse sich ein
     # wiederkehrender Auftrag auf den Agenten eines anderen Nutzers legen.
     from app.api.tasks import _erreichbare_agenten, _pruefe_zielagent
-    _pruefe_zielagent(agent_id, await _erreichbare_agenten(user, db))
+    erreichbar = await _erreichbare_agenten(user, db)
+    _pruefe_zielagent(agent_id, erreichbar)
+
+    # „Automatisch zuweisen" eines Nicht-Administrators wird SOFORT aufgeloest —
+    # unter seinen eigenen Agenten (#901). Vorher entstand der Zeitplan mit
+    # agent_id NULL: fuer das Mitglied unsichtbar, und beim Feuern waehlte der
+    # Lastverteiler unter allen Agenten der Anlage.
+    if agent_id is None and erreichbar is not None:
+        agent_id = await _automatisch_waehlen(user, erreichbar, data.priority, redis, db)
 
     # Zeitzone: was der Agent NICHT angibt, meint seine eigene. Ein Zeitplan
     # „täglich 07:00", der in UTC gerechnet wird, feuert in Berlin um neun — genau
@@ -188,6 +271,7 @@ async def create_schedule(
         priority=data.priority,
         agent_id=agent_id,
         model=data.model,
+        created_by=None if is_agent_principal(user) else getattr(user, "id", None),
         enabled=True,
         next_run_at=next_run_at,
         total_runs=0,
@@ -218,6 +302,12 @@ async def update_schedule(
     if data.agent_id is not None:
         from app.api.tasks import _erreichbare_agenten, _pruefe_zielagent
         _pruefe_zielagent(data.agent_id, await _erreichbare_agenten(user, db))
+    # Den Agenten wieder abnehmen („Automatisch") darf nur ein Administrator —
+    # sonst entstuende genau der verwaiste Zeitplan aus #901 auf Umwegen.
+    elif "agent_id" in data.model_fields_set and schedule.agent_id is not None:
+        from app.core.ownership import is_admin
+        if not is_admin(user):
+            raise HTTPException(status_code=400, detail="Ein Zeitplan braucht einen Agenten, der ihn ausführt.")
 
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(schedule, field, value)
@@ -263,6 +353,8 @@ async def trigger_schedule(schedule_id: str, user=Depends(require_auth_or_agent)
         is_proactive = schedule.name.startswith("[Proactive]")
         prompt = PROACTIVE_PROMPT if is_proactive else schedule.prompt
 
+        # Ohne Agent waehlt der Lastverteiler — nur unter den Agenten des Ausloesenden.
+        from app.api.tasks import _erreichbare_agenten
         task = await router.create_and_route_task(
             title=f"[Manual] {schedule.name}",
             prompt=prompt,
@@ -270,6 +362,7 @@ async def trigger_schedule(schedule_id: str, user=Depends(require_auth_or_agent)
             agent_id=schedule.agent_id,
             model=schedule.model,
             metadata={"schedule_id": schedule.id, "manual_trigger": True},
+            erlaubte_agenten=await _erreichbare_agenten(user, db),
         )
 
         now = datetime.now(timezone.utc)

@@ -15,7 +15,7 @@ Zwei Ebenen abgesichert:
 
 import unittest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.core.day_plan_store import sync_block_schedule
 from app.models.agent_plan_item import AgentPlanItem
@@ -136,9 +136,11 @@ class TheFiringPathRefusesAnAlreadyDoneBlockTests(unittest.IsolatedAsyncioTestCa
     async def test_ein_laufender_block_wird_ganz_normal_dispatcht(self):
         """Gegenprobe: der Schutz darf nur 'done' treffen, nicht jeden Block."""
         async with self.Session() as db:
+            # Ohne Agent waehlt der Lastverteiler unter den Agenten des Urhebers
+            # (#901) — ohne Urheber liefe der Block gar nicht.
             db.add(Schedule(
                 id="s2", name="[Plan] Andere Sache", prompt="x", interval_seconds=0,
-                agent_id=None, enabled=True, next_run_at=datetime.now(UTC),
+                agent_id=None, created_by="u1", enabled=True, next_run_at=datetime.now(UTC),
             ))
             db.add(AgentPlanItem(
                 id=2, agent_id="agent-1", plan_date=datetime.now(UTC).date(),
@@ -150,7 +152,8 @@ class TheFiringPathRefusesAnAlreadyDoneBlockTests(unittest.IsolatedAsyncioTestCa
             router = MagicMock()
             task = MagicMock(id="t1")
             router.create_and_route_task = AsyncMock(return_value=task)
-            await self.svc._execute_schedule(db, router, schedule, datetime.now(UTC))
+            with patch("app.api.schedules.kandidaten_fuer_urheber", AsyncMock(return_value={"agent-1"})):
+                await self.svc._execute_schedule(db, router, schedule, datetime.now(UTC))
 
         router.create_and_route_task.assert_awaited_once()
 

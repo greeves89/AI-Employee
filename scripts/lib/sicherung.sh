@@ -134,6 +134,37 @@ konfiguration_einpacken() {
     docker run --rm -v "${install_dir}:/quelle:ro" "$image" tar czf - -C /quelle "$@" > "$archiv"
 }
 
+# Zustand eines Sicherungsordners — für restore.sh (was liegt hier?) und für die
+# Aufbewahrung in backup.sh (was zählt als Sicherung?):
+#   vollstaendig    MANIFEST mit format=2, kein ABGEBROCHEN
+#   unvollstaendig  Lauf abgebrochen: ABGEBROCHEN liegt da (backup.sh schreibt es
+#                   beim Abbruch), oder Teile des Formats 2 (postgres.sql.gz,
+#                   konfiguration.tar.gz, volumes/) ohne MANIFEST — das entsteht
+#                   erst ganz am Ende. Fehlt ABGEBROCHEN, kam der Lauf nicht mehr
+#                   zum Aufräumen (kill, Stromausfall).
+#   alt             Format vor #892 (postgres_<db>_<zeit>.sql.gz)
+#   leer            nichts davon
+sicherung_zustand() {
+    local ordner="$1" alt
+    if [ -f "${ordner}/ABGEBROCHEN" ]; then
+        echo unvollstaendig
+    elif [ -f "${ordner}/MANIFEST" ] && grep -qx "format=2" "${ordner}/MANIFEST"; then
+        echo vollstaendig
+    elif [ -e "${ordner}/postgres.sql.gz" ] || [ -e "${ordner}/konfiguration.tar.gz" ] \
+            || [ -d "${ordner}/volumes" ] || [ -e "${ordner}/MANIFEST.tmp" ]; then
+        echo unvollstaendig
+    else
+        alt=$(find "$ordner" -maxdepth 1 -name "postgres_*.sql.gz" 2>/dev/null | head -n 1)
+        if [ -n "$alt" ]; then echo alt; else echo leer; fi
+    fi
+}
+
+# Ist ein gzip-Archiv heil? Ein beim Abbruch abgerissenes Archiv fällt hier auf —
+# in einer unvollständigen Sicherung gibt es keine Prüfsummen, die das täten.
+archiv_heil() {
+    gzip -t "$1" >/dev/null 2>&1
+}
+
 # Gegenstück: Konfiguration zurücklegen — direkt, sonst über einen Hilfscontainer,
 # der root-eigene Dateien (Schlüssel) überschreiben darf und Besitzer erhält.
 #   konfiguration_auspacken <archiv> <install_dir> <image>

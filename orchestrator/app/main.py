@@ -1421,6 +1421,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure workflow tables: {e}")
 
+    # #901: wer einen Zeitplan angelegt hat — ein Zeitplan ohne Agent gehoert ihm
+    # (sichtbar, loeschbar) und laeuft nur auf seinen Agenten. Eigener Block: fehlt
+    # die Spalte, scheitert JEDE Zeitplan-Abfrage ueber das Modell. Der Altbestand
+    # bleibt NULL — der Scheduler haelt ihn beim naechsten Feuern an und meldet ihn
+    # der Administration (SchedulerService._ohne_urheber_anhalten), statt ihn
+    # irgendeinem Agenten der Anlage zuzuteilen. Beim Start wird nichts geloescht.
+    try:
+        from app.db.session import engine as _eng
+        from sqlalchemy import text as _txt
+        async with _eng.begin() as conn:
+            await conn.execute(_txt(
+                "ALTER TABLE schedules ADD COLUMN IF NOT EXISTS created_by varchar"
+            ))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Konnte schedules.created_by nicht anlegen: %s", e)
+
     # App-Freigaben (#467): wer darf eine Agenten-App öffnen. Ohne Zeile hier gilt
     # weiterhin deny — nur der Besitzer kommt rein. Idempotent, wie oben ohne Alembic.
     try:
