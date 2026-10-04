@@ -140,6 +140,36 @@ class LauscherSchreibtKosten(KostenBasis):
         async with self.Session() as db:
             self.assertEqual((await db.execute(select(KostenHistorie))).scalars().all(), [])
 
+    async def test_sammelkanal_bucht_keine_kosten_fuer_fremde_kennung(self):
+        """Auf ``chat:completions`` darf jeder Agent senden — die Kennung in der
+        Nutzlast ist nicht vertrauenswürdig. Ohne Verlaufszeile bucht nur der
+        Nachtrag aus ``agent:{id}:chat:done`` (Kennung aus dem Schlüssel)."""
+        from app import main
+
+        await main._persist_chat_completion(self.redis, _done("tg-79", 400.0), kennung_vertraut=False)
+        async with self.Session() as db:
+            self.assertEqual((await db.execute(select(KostenHistorie))).scalars().all(), [])
+            antworten = (await db.execute(select(ChatMessage).where(
+                ChatMessage.message_id == "tg-79"))).scalars().all()
+        self.assertEqual(antworten, [])
+
+    async def test_sammelkanal_ergaenzt_eigene_nutzernachricht(self):
+        from app import main
+
+        vorher = await self._chatkosten_a1()
+        await self._nutzerzeile("mk9")
+        await main._persist_chat_completion(self.redis, _done("mk9", 0.07), kennung_vertraut=False)
+        self.assertAlmostEqual(await self._chatkosten_a1() - vorher, 0.07)
+
+    async def test_unsinnige_betraege_werden_nicht_gebucht(self):
+        from app import main
+
+        for i, wert in enumerate([-5, float("nan"), float("inf"), 10_000, "viel", True]):
+            await main._persist_chat_completion(self.redis, _done(f"tg-x{i}", wert))
+        async with self.Session() as db:
+            self.assertEqual((await db.execute(select(KostenHistorie))).scalars().all(), [])
+
+
 
 class EineKennzahlenquelle(unittest.TestCase):
     """Browser-Verbindung und Lauscher lesen die Kennzahlen eines ``done`` an EINER Stelle."""
@@ -154,6 +184,17 @@ class EineKennzahlenquelle(unittest.TestCase):
         self.assertEqual(k_["input_tokens"], 7)
         self.assertEqual(k_["cached_tokens"], 4)
         self.assertNotIn("reasoning_tokens", k_, "Nullwerte der Feinaufschlüsselung entfallen")
+
+    def test_betraege_und_anzahlen_werden_geprueft(self):
+        from app.services.chat_persistence import betrag_pruefen, done_kennzahlen
+
+        for unsinn in (-0.01, float("nan"), float("inf"), 501, "x", True, None):
+            self.assertIsNone(betrag_pruefen(unsinn), unsinn)
+        self.assertEqual(betrag_pruefen("0.25"), 0.25)
+        k_ = done_kennzahlen({"cost_usd": -3, "input_tokens": -1, "output_tokens": "zwei"})
+        self.assertIsNone(k_["cost_usd"])
+        self.assertIsNone(k_["input_tokens"])
+        self.assertIsNone(k_["output_tokens"])
 
 
 if __name__ == "__main__":

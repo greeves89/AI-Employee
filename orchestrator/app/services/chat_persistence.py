@@ -49,6 +49,40 @@ AUSGABE_MAX = 1000
 _FEINE_TOKEN = ("reasoning_tokens", "cached_tokens", "context_tokens", "cache_write_tokens")
 
 
+#: Obergrenze fuer den Betrag EINES Laufs. Hoeher ist kein echter Lauf, sondern
+#: ein Fehler oder eine Faelschung — und wuerde das Budget sofort sperren.
+MAX_KOSTEN_JE_LAUF_USD = 500.0
+
+
+def betrag_pruefen(wert) -> float | None:
+    """Gemeldeten Betrag uebernehmen, wenn er einer sein kann — sonst ``None``.
+
+    Der Agent meldet seine Kosten selbst. Negativ, NaN/unendlich, Text oder
+    absurd hoch darf weder das Budget senken noch es kuenstlich aufbrauchen.
+    """
+    import math
+
+    if wert is None or isinstance(wert, bool):
+        return None
+    try:
+        betrag = float(wert)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(betrag) or betrag < 0 or betrag > MAX_KOSTEN_JE_LAUF_USD:
+        return None
+    return betrag
+
+
+def _anzahl_pruefen(wert) -> int | None:
+    if wert is None or isinstance(wert, bool):
+        return None
+    try:
+        zahl = int(wert)
+    except (TypeError, ValueError):
+        return None
+    return zahl if 0 <= zahl <= 100_000_000 else None
+
+
 def done_kennzahlen(edata: dict) -> dict:
     """Kennzahlen eines ``done`` für ``meta`` und die Spalten der Antwortzeile.
 
@@ -61,15 +95,16 @@ def done_kennzahlen(edata: dict) -> dict:
     """
     edata = edata if isinstance(edata, dict) else {}
     aus = {
-        "cost_usd": edata.get("cost_usd"),
-        "duration_ms": edata.get("duration_ms"),
-        "num_turns": edata.get("num_turns"),
-        "input_tokens": edata.get("input_tokens"),
-        "output_tokens": edata.get("output_tokens"),
+        "cost_usd": betrag_pruefen(edata.get("cost_usd")),
+        "duration_ms": _anzahl_pruefen(edata.get("duration_ms")),
+        "num_turns": _anzahl_pruefen(edata.get("num_turns")),
+        "input_tokens": _anzahl_pruefen(edata.get("input_tokens")),
+        "output_tokens": _anzahl_pruefen(edata.get("output_tokens")),
     }
     for feld in _FEINE_TOKEN:
-        if edata.get(feld):
-            aus[feld] = edata[feld]
+        zahl = _anzahl_pruefen(edata.get(feld))
+        if zahl:
+            aus[feld] = zahl
     return aus
 
 

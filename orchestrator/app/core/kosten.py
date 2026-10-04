@@ -222,8 +222,10 @@ async def lauf_ohne_verlauf_buchen(db, agent_id: str, betrag_usd: float) -> bool
     from app.models.agent import Agent
     from app.models.kosten_historie import KostenHistorie
 
-    betrag = float(betrag_usd or 0)
-    if betrag <= 0 or not agent_id:
+    from app.services.chat_persistence import betrag_pruefen
+
+    betrag = betrag_pruefen(betrag_usd)
+    if not betrag or not agent_id:
         return False
     besitzer = await db.scalar(select(Agent.user_id).where(Agent.id == agent_id))
     db.add(KostenHistorie(

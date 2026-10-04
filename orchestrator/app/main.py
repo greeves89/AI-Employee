@@ -412,7 +412,9 @@ async def _listen_chat_completions(redis: RedisService) -> None:
                     data = json.loads(data)
                 elif isinstance(data, bytes):
                     data = json.loads(data.decode("utf-8"))
-                await _persist_chat_completion(redis, data)
+                # Fluechtiger Sammelkanal: die Kennung steht in der NUTZLAST und
+                # ist damit nicht vertrauenswuerdig (jeder Agent darf hier senden).
+                await _persist_chat_completion(redis, data, kennung_vertraut=False)
         except Exception as e:
             print(f"[ChatPersist] Error: {e}")
             await asyncio.sleep(1)
@@ -468,11 +470,10 @@ async def _kosten_ohne_verlauf(redis: RedisService, db, agent_id: str, message_i
     """
     from app.core.kosten import lauf_ohne_verlauf_buchen
 
-    try:
-        betrag = float((event_data or {}).get("cost_usd") or 0)
-    except (TypeError, ValueError):
-        return
-    if betrag <= 0:
+    from app.services.chat_persistence import betrag_pruefen
+
+    betrag = betrag_pruefen((event_data or {}).get("cost_usd"))
+    if not betrag:
         return
     try:
         neu = await redis.client.set(
@@ -488,8 +489,18 @@ async def _kosten_ohne_verlauf(redis: RedisService, db, agent_id: str, message_i
         print(f"[ChatPersist] Kosten fuer {message_id} nicht gebucht: {e}")
 
 
-async def _persist_chat_completion(redis: RedisService, data: dict) -> None:
-    """Ein ``done`` eines Agenten als Antwort im Chatverlauf sichern (idempotent)."""
+async def _persist_chat_completion(redis: RedisService, data: dict, *,
+                                   kennung_vertraut: bool = True) -> None:
+    """Ein ``done`` eines Agenten als Antwort im Chatverlauf sichern (idempotent).
+
+    ``kennung_vertraut=False`` (Sammelkanal ``chat:completions``): die
+    Agenten-Kennung stammt aus der Nutzlast — jeder Agent koennte sich als ein
+    anderer ausgeben. Dann wird nur eine Antwort zu einer VORHANDENEN
+    Nutzernachricht genau dieses Agenten ergaenzt (die ``message_id`` kennt nur,
+    wer die Nachricht bekommen hat). Kosten ohne Verlaufszeile und
+    Scheduler-Eintraege bucht allein der Nachtrag aus ``agent:{id}:chat:done``,
+    dessen Kennung aus dem Schluessel kommt (Sicherheitspruefung v1.362).
+    """
     agent_id = data.get("agent_id", "")
     message_id = data.get("message_id", "")
     event_data = data.get("data", {})
@@ -526,6 +537,8 @@ async def _persist_chat_completion(redis: RedisService, data: dict) -> None:
         )
         if user_msg:
             session_id = user_msg.session_id
+        elif not kennung_vertraut:
+            return  # der Nachtrag aus agent:{id}:chat:done uebernimmt
         elif source == "scheduler":
             # Scheduler-originated tasks have no user message. Store
             # them in a stable session so app/web history can render
