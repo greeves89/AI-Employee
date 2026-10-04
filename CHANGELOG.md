@@ -5,6 +5,52 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.2] - 2026-10-04
+
+Nachbesserungen aus der Abnahme von v1.362.1 auf einer Produktivanlage.
+
+### Behoben
+- **Chat-Kosten wurden nicht erfasst (#896/#898):** Claude-Chats speicherten 0 (falsches
+  Feld), Codex-Chats gar nichts, ohne offenen Browser landete der Betrag nie in der Spalte,
+  Telegram/Sprachfront wurden übergangen. Jetzt je Lauf korrekt (Claude: Differenz der
+  fortlaufenden Summe; Codex/Custom-LLM: Token × Preis aus derselben Preistabelle) — damit
+  greifen Dashboard und Budget auch im Chat. Codex über ein ChatGPT-Konto ist ein Abo ohne
+  Kosten je Aufruf und zeigt deshalb 0.
+- **Fach-Skills kamen nicht an (#893/#894):** Zugewiesene Skills fehlten im Chat aller
+  Laufzeiten; bei Aufträgen fehlte die ID. Jetzt bekommt jede Laufzeit die Liste mit
+  Auslösern und die passende Anleitung vollständig; Vorlagen Buchhaltung und Angebot
+  tragen ihre Muss-Regeln (Brutto bei BU-Schlüssel; erst Firmendaten, nie Platzhalter;
+  Kalkulation getrennt). Neue Golden-Tests „Buchhaltung“, strengere „Angebot“.
+- **PDF:** Fußblock nie allein auf einer Folgeseite; `dokument pruefen` meldet Platzhalter
+  und fast leere letzte Seiten.
+- **Custom-LLM:** übersteht MCP-Werkzeuge mit ungültigem Schema (einzeln entfernt statt
+  Abbruch), verständliche Fehlermeldung statt Roh-JSON, Codex-Modelle über Azure über die
+  Responses-Schnittstelle.
+- **Chat:** „Neues Gespräch“ entfernt das Gespräch aus der Adresse (`?neu=1`); beantwortete
+  Rückfragen zeigen ihr Ergebnis und der Agent fragt nicht erneut; kein falsches
+  „Weitermachen“ nach normalen Antworten; Ziel-Banner verschwindet mit der nächsten
+  Nachricht.
+- **Zeitpläne von Mitgliedern (#901):** eigener Agent wählbar, auch gestoppt; Zeitpläne
+  ohne Agent laufen nur auf Agenten des Erstellers und bleiben für ihn sichtbar.
+- **Sicherung (#892):** abgebrochene Sicherungen werden gekennzeichnet, nicht als gültig
+  gezählt und von `restore.sh` klar als unvollständig gemeldet.
+- **Budget-Seite:** Summe passt zur Liste.
+- **Sprache (#902):** Freigabe-Fenster, Prüfprotokoll (Tabelle scrollt im eigenen Kasten),
+  Integrationen, Admin-Bereiche, Hilfe, Symbolnamen, deutsche Kurztexte für die Skills der
+  Vorlagen, häufige Server-Fehlermeldungen; Telegram-Meldungen ohne Emojis und auf Deutsch.
+- Startreihenfolge: Bereinigung alter Chat-Zeilen läuft nach dem Anlegen aller Spalten.
+
+### Sicherheit
+- Zeitpläne ohne Agent konnten auf Agenten anderer Nutzer laufen — jetzt nur noch auf
+  Agenten des Erstellers; Zeitpläne ohne bekannten Ersteller werden angehalten und den
+  Admins gemeldet.
+- Rollen-Skills nur bekannter Herkunft oder vom Besitzer des Agenten — kein Nutzer kann
+  per Rollenname Anweisungen in fremde Agenten schieben.
+- Gemeldete Kosten werden geprüft (endlich, nicht negativ, gedeckelt); über den
+  Sammelkanal lassen sich keine Kosten unter fremder Kennung buchen.
+
+---
+
 ## [1.362.1] - 2026-10-04
 
 ### Behoben
