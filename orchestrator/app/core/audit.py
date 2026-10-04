@@ -56,6 +56,7 @@ NUR_SERVERSEITIG = frozenset({
     AuditEventType.ROLE_CHANGED.value,
     AuditEventType.MCP_SERVER_CHANGED.value,
     AuditEventType.AUDIT_EXPORTED.value,
+    AuditEventType.RETENTION_PURGED.value,
 })
 
 #: Werkzeugname, unter dem eine reine Rückfrage (ohne Befehl) abgelegt wird —

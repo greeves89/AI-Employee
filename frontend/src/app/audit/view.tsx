@@ -455,6 +455,7 @@ const EVENT_INFO: Record<string, { label: string; desc: string }> = {
   role_changed: { label: "Rolle geändert", desc: "Die Rolle oder Gruppe einer Person bzw. eine Gruppe selbst wurde geändert." },
   mcp_server_changed: { label: "MCP-Server geändert", desc: "Ein MCP-Server wurde angelegt, geändert oder entfernt." },
   audit_exported: { label: "Protokoll exportiert", desc: "Das Prüfprotokoll wurde als CSV heruntergeladen." },
+  retention_purged: { label: "Aufbewahrungsfrist angewendet", desc: "Der tägliche Aufräumlauf hat Protokolleinträge oder Chatverläufe gelöscht, die älter als die eingestellte Frist waren." },
 };
 
 // Friendly labels for common meta keys (raw JSON is still available on demand).
@@ -468,6 +469,9 @@ const META_LABEL: Record<string, string> = {
   decision: "Entscheidung", kanal: "Kanal", risk_level: "Risiko", agent_name: "Agent",
   email: "E-Mail", weg: "Weg", grund: "Grund", keys: "Einstellungen",
   target_email: "Betroffenes Konto", sammelverwerfung: "Alle verworfen",
+  audit_geloescht: "Protokolleinträge gelöscht", audit_frist_tage: "Frist Prüfprotokoll (Tage)",
+  chat_nachrichten_geloescht: "Chatnachrichten gelöscht", chat_sitzungen_geloescht: "Leere Gespräche gelöscht",
+  chat_frist_tage: "Frist Chatverläufe (Tage)",
 };
 
 function fmtMetaValue(v: unknown): string {

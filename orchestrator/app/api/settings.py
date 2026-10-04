@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -631,3 +632,74 @@ async def set_msgraph_read_only(
     logger.info("Microsoft read-only enforcement %s by admin %s",
                 "ENABLED" if enable else "DISABLED", user.id)
     return {"msgraph_read_only": enable}
+
+
+# ── Datenschutz & Aufbewahrung (#892): Fristen + Lebenszeichen ──
+
+class DatenschutzUpdate(BaseModel):
+    """Nur mitgeschickte Felder werden geändert. ``None``/0 bei einer Frist = unbegrenzt."""
+    audit_aufbewahrung_tage: int | None = None
+    chat_aufbewahrung_tage: int | None = None
+    lebenszeichen_aktiv: bool | None = None
+
+
+async def _datenschutz_stand(svc: SettingsService) -> dict:
+    from app.core import aufbewahrung
+    from app.services.license_heartbeat_service import SCHALTER, lebenszeichen_aktiv
+
+    return {
+        "audit_aufbewahrung_tage": aufbewahrung.tage_lesen(await svc.get(aufbewahrung.SCHLUESSEL_AUDIT)),
+        "chat_aufbewahrung_tage": aufbewahrung.tage_lesen(await svc.get(aufbewahrung.SCHLUESSEL_CHAT)),
+        "mindest_tage_audit": aufbewahrung.MINDEST_TAGE_AUDIT,
+        "mindest_tage_chat": aufbewahrung.MINDEST_TAGE_CHAT,
+        "letzter_lauf": await aufbewahrung.letzter_lauf(svc) or None,
+        "lebenszeichen_aktiv": lebenszeichen_aktiv(await svc.get(SCHALTER)),
+    }
+
+
+@router.get("/datenschutz")
+async def get_datenschutz(
+    user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: Aufbewahrungsfristen, letzter Aufräumlauf, Lebenszeichen an/aus."""
+    return await _datenschutz_stand(SettingsService(db))
+
+
+@router.put("/datenschutz")
+async def set_datenschutz(
+    data: DatenschutzUpdate,
+    user=Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: Fristen (Tage, leer = unbegrenzt) und Lebenszeichen schalten.
+
+    Eine Frist unter der Untergrenze wird abgewiesen, nicht still angehoben — wer
+    „5“ einträgt, soll erfahren, dass das nicht gilt.
+    """
+    from app.core import aufbewahrung
+    from app.services.license_heartbeat_service import SCHALTER
+
+    gesetzt = data.model_fields_set
+    try:
+        audit = aufbewahrung.frist_pruefen(
+            data.audit_aufbewahrung_tage, aufbewahrung.MINDEST_TAGE_AUDIT, "Prüfprotokoll")
+        chat = aufbewahrung.frist_pruefen(
+            data.chat_aufbewahrung_tage, aufbewahrung.MINDEST_TAGE_CHAT, "Chatverläufe")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    svc = SettingsService(db)
+    geaendert: list[str] = []
+    if "audit_aufbewahrung_tage" in gesetzt:
+        await svc.set(aufbewahrung.SCHLUESSEL_AUDIT, str(audit or ""))
+        geaendert.append(aufbewahrung.SCHLUESSEL_AUDIT)
+    if "chat_aufbewahrung_tage" in gesetzt:
+        await svc.set(aufbewahrung.SCHLUESSEL_CHAT, str(chat or ""))
+        geaendert.append(aufbewahrung.SCHLUESSEL_CHAT)
+    if "lebenszeichen_aktiv" in gesetzt and data.lebenszeichen_aktiv is not None:
+        await svc.set(SCHALTER, "true" if data.lebenszeichen_aktiv else "false")
+        geaendert.append(SCHALTER)
+    await _einstellungen_protokollieren(db, user, geaendert)
+    await db.commit()
+    return await _datenschutz_stand(svc)

@@ -29,7 +29,10 @@ class ChatMessage(Base):
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Index fuer den Aufraeumlauf der Aufbewahrungsfrist (#892, core/aufbewahrung.py);
+    # auf bestehenden Anlagen per Startup-Ensure in main.py nachgezogen.
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
+        index=True,
     )

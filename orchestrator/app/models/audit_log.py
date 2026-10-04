@@ -79,6 +79,8 @@ class AuditEventType(str, Enum):
     ROLE_CHANGED = "role_changed"                 # Rolle/Gruppe eines Nutzers oder einer Gruppe
     MCP_SERVER_CHANGED = "mcp_server_changed"     # MCP-Server angelegt/geaendert/entfernt
     AUDIT_EXPORTED = "audit_exported"             # Protokoll als CSV exportiert
+    # Aufbewahrungsfrist (#892) — ein Eintrag je Aufraeumlauf mit Loeschungen
+    RETENTION_PURGED = "retention_purged"         # Anzahl + Frist, geschrieben von core/aufbewahrung.py
 
 
 class AuditLog(Base):

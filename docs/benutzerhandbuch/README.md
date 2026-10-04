@@ -2540,15 +2540,16 @@ Es enthält **genau diese Felder** und sonst nichts:
 Keine Inhalte, keine Namen, nichts über einzelne Agenten oder Personen. Die Antwort
 kann einen Hinweistext enthalten (gelber Streifen, Kap. 21.1); sie sperrt nichts.
 
-**Abschalten:** in der Datenbank die Einstellung `usage_ping_enabled` auf `false`
-setzen:
+**Abschalten** (nur Administratoren):
 
-```bash
-docker exec -i ai-employee-postgres psql -U ai_employee ai_employee -c \
-  "INSERT INTO platform_settings (key, value, is_secret, created_at, updated_at)
-   VALUES ('usage_ping_enabled', 'false', false, now(), now())
-   ON CONFLICT (key) DO UPDATE SET value = 'false', updated_at = now();"
-```
+1. **Admin-Konsole → Betrieb → Health** öffnen.
+2. In der Karte **Datenschutz & Aufbewahrung** unten den Schalter
+   **Lebenszeichen an den Anbieter** anklicken, sodass er grau wird.
+3. Die Meldung „Lebenszeichen abgeschaltet“ bestätigt das. Ab sofort wird nichts
+   mehr gesendet; ein Neustart ist nicht nötig. Die Änderung steht im Prüfprotokoll
+   („Einstellungen geändert: usage_ping_enabled“).
+
+Wieder einschalten: denselben Schalter erneut anklicken (grün).
 
 Nur wenn unter **Einstellungen** ein Lizenzserver **und** ein Lizenzschlüssel
 eingetragen sind, kommt alle sechs Stunden ein zweiter Bericht dazu
@@ -2570,6 +2571,35 @@ Lizenzschlüssel). Ohne diese Einträge wird er nicht gesendet.
   „angelegt von“ entfällt.
 - **Sicherungen** enthalten gelöschte Daten weiter, bis sie durch die Aufbewahrung
   (7 Tage / 4 Wochen) herausfallen.
+
+### 37.8 Aufbewahrungsfristen für Prüfprotokoll und Chatverläufe
+
+Ohne Einstellung bewahrt die Anlage Prüfprotokoll und Chatverläufe **unbegrenzt**
+auf. Eine Frist legt ein Administrator so fest:
+
+1. **Admin-Konsole → Betrieb → Health** öffnen.
+2. In der Karte **Datenschutz & Aufbewahrung** die Frist in Tagen eintragen:
+   - **Prüfprotokoll (Tage)** — mindestens 30 Tage, damit niemand das Protokoll
+     versehentlich leert.
+   - **Chatverläufe (Tage)** — mindestens 7 Tage.
+   Ein leeres Feld (oder 0) heißt unbegrenzt.
+3. **Fristen speichern** anklicken. Eine zu kurze Frist wird mit einer Meldung
+   abgewiesen und nicht gespeichert.
+
+Was danach passiert:
+
+- Einmal am Tag löscht ein **Aufräumlauf** auf dem Server alle Protokolleinträge bzw.
+  Chatnachrichten, die älter als die Frist sind — in Stapeln, damit der Betrieb nicht
+  hängt. Gesprächsfäden, in denen danach keine Nachricht mehr steht und die seit der
+  Frist nicht mehr angefasst wurden, verschwinden mit (Titel, Anheften).
+- Jeder Lauf, der etwas gelöscht hat, schreibt **einen** Eintrag ins Prüfprotokoll:
+  „Aufbewahrungsfrist angewendet“ mit Anzahl und Frist. Dieser Eintrag ist selbst
+  jünger als jede Frist und bleibt stehen.
+- Unter den Feldern steht, wann der letzte Lauf war und wie viel er gelöscht hat.
+- Die Frist gilt für die ganze Anlage, für alle Nutzer und Agenten gleich.
+- Aufgaben samt ihren Ergebnissen, das Gedächtnis der Agenten und die Arbeitsordner
+  fallen **nicht** unter diese Frist. Sicherungen enthalten Gelöschtes weiter, bis sie
+  herausfallen (siehe oben).
 
 ---
 

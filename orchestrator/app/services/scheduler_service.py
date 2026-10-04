@@ -369,6 +369,18 @@ class SchedulerService:
                     except Exception as e:
                         logger.warning("[Scheduler] Wochensynthese-Fehler: %s", e)
 
+                    # Aufbewahrungsfristen (#892): Pruefprotokoll und Chatverlaeufe
+                    # aelter als die eingestellte Frist loeschen. Derselbe Takt; der
+                    # Lauf selbst kommt hoechstens einmal am Tag und kostet ohne
+                    # eingestellte Frist zwei Einstellungs-Lesezugriffe.
+                    try:
+                        from app.core import aufbewahrung
+                        aufgeraeumt = await aufbewahrung.tick()
+                        if aufgeraeumt:
+                            logger.info("[Scheduler] Aufbewahrung: %s", aufgeraeumt)
+                    except Exception as e:
+                        logger.warning("[Scheduler] Aufbewahrung-Fehler: %r", e, exc_info=True)
+
                 # Teams-Kanal: eingehende Nachrichten abfragen (Graph kennt kein
                 # getUpdates). Eigener, kuerzerer Takt als die Nachtschicht — eine
                 # Antwort erst nach fuenf Minuten waere kein Gespraech. Billig, wenn
