@@ -779,6 +779,13 @@ class LLMChatHandler:
                     elif event.type == "error":
                         if self._stopping:
                             return await self._finish_cancelled(message_id, start_time, num_turns)
+                        # Ein einzelnes Werkzeug, dessen Schema der Anbieter
+                        # ablehnt, kippte frueher JEDE Anfrage. Streichen und den
+                        # Zug ohne es wiederholen (app/werkzeug_schema.py).
+                        from app.werkzeug_schema import abgelehntes_werkzeug_streichen
+                        if abgelehntes_werkzeug_streichen(self._all_tools, self._activated, event.text):
+                            switched_model = True   # Merker heisst „Zug wiederholen"
+                            break
                         # Gleiche Ausfallsicherheit wie im Auftragslauf (#200) —
                         # im Chat merkt der Mensch einen Ausfall sofort, hier ist
                         # sie also eher wichtiger als dort.
@@ -793,11 +800,22 @@ class LLMChatHandler:
                             switched_model = True
                             provider = self._get_provider()
                             break
+                        # Im Chat ein verstaendlicher Satz, das rohe Fehler-JSON
+                        # des Anbieters ins Log. ``result["error"]`` bleibt roh —
+                        # daran haengen Anmelde- und Kontext-Erkennung.
+                        from app.providers.base import nutzertext_fuer_api_fehler
+                        logger.warning("[Chat] Anbieter-Fehler: %s", event.text)
                         await self.log_publisher.publish_chat(
-                            message_id, "error", {"message": event.text}
+                            message_id, "error", {"message": nutzertext_fuer_api_fehler(event.text)}
                         )
                         self.is_running = False
-                        result = {"status": "error", "error": event.text}
+                        from app.llm_runner import _estimate_cost
+                        result = {
+                            "status": "error", "error": event.text,
+                            # Fruehere Zuege dieser Nachricht sind bezahlt (#896).
+                            "cost_usd": _estimate_cost(
+                                settings.llm_model_name, total_input_tokens, total_output_tokens),
+                        }
                         await self._heal_after_context_overflow(message_id, event.text)
                         # Ein abgelaufener eigener Zugang muss auch HIER sichtbar
                         # werden. Der Aufgaben-Weg meldet ihn seit #660; der

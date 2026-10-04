@@ -109,32 +109,16 @@ class MCPHTTPClient:
             return None
 
     @staticmethod
-    def _normalize_tool_schema(schema: Any) -> dict[str, Any]:
-        """Return an OpenAI-compatible JSON object schema for function parameters."""
-        if not isinstance(schema, dict):
-            return {"type": "object", "properties": {}, "additionalProperties": True}
+    def _normalize_tool_schema(schema: Any) -> dict[str, Any] | None:
+        """Return an OpenAI-compatible JSON object schema for function parameters.
 
-        allowed_keys = {
-            "type",
-            "properties",
-            "required",
-            "additionalProperties",
-            "description",
-            "title",
-            "enum",
-            "items",
-            "anyOf",
-            "oneOf",
-            "allOf",
-        }
-        normalized = {k: v for k, v in schema.items() if k in allowed_keys}
-        if normalized.get("type") != "object":
-            normalized["type"] = "object"
-        if not isinstance(normalized.get("properties"), dict):
-            normalized["properties"] = {}
-        if "required" in normalized and not isinstance(normalized["required"], list):
-            normalized.pop("required", None)
-        return normalized
+        ``None`` = nicht reparierbar; das Werkzeug wird weggelassen. Bisher
+        blieben ``oneOf``/``anyOf``/``allOf`` oben stehen — OpenAI/Azure lehnten
+        daraufhin die GANZE Anfrage ab (siehe app/werkzeug_schema.py).
+        """
+        from app.werkzeug_schema import parameter_fuer_openai
+
+        return parameter_fuer_openai(schema)
 
     async def discover_tools(self) -> list[dict]:
         """Discover tools from all configured MCP servers.
@@ -219,6 +203,17 @@ class MCPHTTPClient:
             original_name = tool.get("name", "")
             prefixed_name = f"mcp_{server_name}_{original_name}"
 
+            parameters = self._normalize_tool_schema(tool.get("inputSchema"))
+            if parameters is None:
+                # Ein einziges unbrauchbares Schema legte frueher den ganzen Agenten
+                # lahm (400 auf jede Anfrage). Jetzt fehlt nur dieses Werkzeug.
+                logger.warning(
+                    "MCP-Werkzeug %s (%s) ausgelassen: Parameter-Schema laesst sich "
+                    "nicht in die von OpenAI geforderte Form bringen",
+                    original_name, server_name,
+                )
+                continue
+
             # Register mapping for later tool calls
             self._tool_registry[prefixed_name] = (server_name, original_name)
 
@@ -227,7 +222,7 @@ class MCPHTTPClient:
                 "function": {
                     "name": prefixed_name,
                     "description": f"[MCP: {server_name}] {tool.get('description', '')}",
-                    "parameters": self._normalize_tool_schema(tool.get("inputSchema")),
+                    "parameters": parameters,
                 },
             })
 

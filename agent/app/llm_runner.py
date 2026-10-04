@@ -484,6 +484,12 @@ class LLMRunner:
                                 task_id, "text", {"text": pending_text}
                             )
                             pending_text = ""
+                        # Ein Werkzeug mit abgelehntem Schema: nur dieses streichen,
+                        # den Zug wiederholen — wie im Chat (app/werkzeug_schema.py).
+                        from app.werkzeug_schema import abgelehntes_werkzeug_streichen
+                        if abgelehntes_werkzeug_streichen(self._all_tools, self._activated, event.text):
+                            switched_model = True   # Merker heisst „Zug wiederholen"
+                            break
                         if await self._retry_after_connection_glitch(task_id, event.text):
                             switched_model = True   # Merker heisst „Zug wiederholen"
                             provider = self._get_provider()
