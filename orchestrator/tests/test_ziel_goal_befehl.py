@@ -41,6 +41,32 @@ class BefehlTests(unittest.TestCase):
         self.assertIn(ziel.ERREICHT, t)
 
 
+class OhneMarkeTests(unittest.TestCase):
+    """#906: Die Schlusszeile ist ein Signal an den Server, kein Text für den Menschen."""
+
+    def test_erreicht_wird_entfernt(self):
+        text, zustand = ziel.ohne_marke("Drei Zeilen geschrieben.\n\n**ZIEL ERREICHT**")
+        self.assertEqual(text, "Drei Zeilen geschrieben.")
+        self.assertEqual(zustand, "erreicht")
+
+    def test_pausiert_behaelt_die_frage(self):
+        text, zustand = ziel.ohne_marke("Halb fertig.\nZIEL PAUSIERT: Welche Farbe?")
+        self.assertEqual(text, "Halb fertig.\nWelche Farbe?")
+        self.assertEqual(zustand, "pausiert")
+
+    def test_gleiche_erkennung_wie_bewerte(self):
+        """Was ``bewerte`` nicht als Meldung zählt, bleibt stehen."""
+        mitten = "Ich melde ZIEL ERREICHT erst am Ende.\nA\nB\nC\nNoch drei Spiele offen."
+        self.assertEqual(ziel.ohne_marke(mitten), (mitten, None))
+        for antwort in ("Fertig.\nZIEL ERREICHT", "x\n> ZIEL PAUSIERT: Frage", "nichts"):
+            _, zustand = ziel.ohne_marke(antwort)
+            urteil = ziel.bewerte(antwort)
+            self.assertEqual(zustand, None if urteil == "weiter" else urteil)
+
+    def test_leer(self):
+        self.assertEqual(ziel.ohne_marke(""), ("", None))
+
+
 class NachZugTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")

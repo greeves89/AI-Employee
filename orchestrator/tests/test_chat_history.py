@@ -150,14 +150,16 @@ class WiringTests(unittest.TestCase):
                 block = src.split(f"async def {name}")[1].split("\n@router")[0]
                 self.assertIn("_check_owner", block)
 
+    # Beide Schreiber (Browser-Verbindung in ws.py und der Lauscher in main.py)
+    # gehen seit #911 ueber EINE Zusammenfuehrung — dort entsteht der Titel.
     def test_title_is_set_on_the_first_user_message(self):
-        src = (ORCH / "app/api/ws.py").read_text()
+        src = (ORCH / "app/services/chat_persistence.py").read_text()
         self.assertIn("ensure_title", src)
         block = src.split("ensure_title")[0][-400:]
         self.assertIn('role == "user"', block)
 
     def test_a_failing_title_never_breaks_the_chat(self):
-        src = (ORCH / "app/api/ws.py").read_text()
+        src = (ORCH / "app/services/chat_persistence.py").read_text()
         block = src.split("from app.core.chat_history import ensure_title")[1][:400]
         self.assertIn("except Exception", block)
 

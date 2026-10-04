@@ -168,17 +168,27 @@ class ShapeTests(unittest.TestCase):
                 for command, _hint in PLATFORM_COMMANDS:
                     self.assertIn(command, names)
 
-    def test_claude_own_commands_are_marked_as_not_ours(self):
-        """Sie laufen in der CLI und sind aus dem kopflosen Betrieb nicht
-        ausloesbar. Sie zu zeigen ist ehrlich; sie als unsere auszugeben nicht."""
+    def test_claude_own_commands_are_kept_apart(self):
+        """#906: Sie laufen in der CLI und sind aus dem kopflosen Betrieb nicht
+        ausloesbar. Im „/"-Menue haben sie nichts zu suchen — sie stehen getrennt
+        in ``laufzeit_befehle`` (nur fuer die /tools-Ansicht)."""
         out = toolset_for(self._agent("claude_code"))
-        runtime_only = [c for c in out["commands"] if c.get("runtime_only")]
-        self.assertTrue(runtime_only)
+        self.assertTrue(out["laufzeit_befehle"])
+        self.assertFalse([c for c in out["commands"] if c.get("runtime_only")])
+        befehle = {c["name"] for c in out["commands"]}
+        for name in ("clear", "cost"):
+            self.assertNotIn(name, befehle)
         # Und NICHT bei den anderen: dort gibt es sie gar nicht.
         for mode in ("codex_cli", "custom_llm"):
             with self.subTest(mode=mode):
-                others = toolset_for(self._agent(mode))["commands"]
-                self.assertFalse([c for c in others if c.get("runtime_only")])
+                self.assertEqual(toolset_for(self._agent(mode))["laufzeit_befehle"], [])
+
+    def test_command_names_are_unique(self):
+        """/compact stand doppelt im Menue (Plattform + Claude Code)."""
+        for mode in ("claude_code", "codex_cli", "custom_llm"):
+            with self.subTest(mode=mode):
+                namen = [c["name"] for c in toolset_for(self._agent(mode))["commands"]]
+                self.assertEqual(len(namen), len(set(namen)))
 
     def test_the_count_matches_the_groups(self):
         out = toolset_for(self._agent("claude_code"))

@@ -16,6 +16,7 @@ import {
   ChevronDown,
   Target,
   CirclePause,
+  Copy,
 } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { LogEvent } from "@/lib/types";
@@ -32,6 +33,8 @@ import { ApprovalPrompt, type ApprovalPromptData } from "@/components/agents/app
 import { useAuthStore } from "@/lib/auth";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { inZwischenablage } from "@/lib/zwischenablage";
+import { ohneZielMarke, type ZielStand } from "@/lib/ziel-marke";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -70,6 +73,9 @@ interface ToolStep {
   id: string;
   tool: string;
   input: Record<string, unknown>;
+  /** Gespeicherte Eingabe, die sich nicht als JSON lesen liess (ältere, auf
+   *  200 Zeichen gekürzte Verläufe, #911) — roh gezeigt statt als ``{}``. */
+  rohEingabe?: string;
   output?: string;
   status: "running" | "done" | "error";
 }
@@ -185,7 +191,7 @@ interface ChatMessage {
   toolCalls?: { tool: string; input: string }[];
   /** Verweist auf eine Auftrags-Kachel; die Zeile wird dann als Kachel gezeichnet. */
   taskCardId?: string;
-  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; context_tokens?: number; presented_files?: ChatFile[]; context_excluded?: boolean; tool_output_excluded?: boolean; source?: string; runde?: number };
+  meta?: { cost_usd?: number; duration_ms?: number; num_turns?: number; input_tokens?: number; output_tokens?: number; reasoning_tokens?: number; cached_tokens?: number; cache_write_tokens?: number; context_tokens?: number; presented_files?: ChatFile[]; context_excluded?: boolean; tool_output_excluded?: boolean; source?: string; runde?: number; anhaenge?: { path: string; filename?: string; media_type?: string; size?: number }[]; plan?: boolean; ziel?: ZielStand };
   images?: ChatImage[];
   files?: ChatFile[];
 }
@@ -417,7 +423,8 @@ function getToolDisplay(tool: string, input: Record<string, unknown>): { label: 
       return {
         label: tool || "Tool",
         description: "",
-        detail: JSON.stringify(inp).slice(0, 300),
+        // Leere Eingabe ist keine Eingabe — kein ``IN {}`` (#911).
+        detail: Object.keys(inp).length > 0 ? JSON.stringify(inp).slice(0, 300) : "",
       };
   }
 }
@@ -434,6 +441,35 @@ function extractResultContent(content: unknown): string {
       .join("\n");
   }
   return typeof content === "object" ? JSON.stringify(content, null, 2) : String(content);
+}
+
+/** Gespeicherte Werkzeug-Eingabe lesen (#911).
+ *
+ * Der Server liefert ein Objekt (aus dem gespeicherten JSON) oder bei unlesbarem
+ * JSON ``{raw: "…"}``; sehr alte Antworten noch eine Zeichenkette. Früher lief
+ * alles durch ``JSON.parse`` — ein Objekt ergab dabei ``{}``, und im Verlauf stand
+ * ``IN {}``. Was sich nicht lesen lässt, wird roh gezeigt. */
+function eingabeAusVerlauf(roh: unknown): { input: Record<string, unknown>; rohEingabe?: string } {
+  if (roh && typeof roh === "object" && !Array.isArray(roh)) {
+    const obj = roh as Record<string, unknown>;
+    const schluessel = Object.keys(obj);
+    if (schluessel.length === 1 && schluessel[0] === "raw" && typeof obj.raw === "string") {
+      return { input: {}, rohEingabe: obj.raw || undefined };
+    }
+    return { input: obj };
+  }
+  if (typeof roh === "string" && roh.trim()) {
+    try {
+      const gelesen: unknown = JSON.parse(roh);
+      if (gelesen && typeof gelesen === "object" && !Array.isArray(gelesen)) {
+        return { input: gelesen as Record<string, unknown> };
+      }
+    } catch {
+      /* gekürzt — roh zeigen */
+    }
+    return { input: {}, rohEingabe: roh };
+  }
+  return { input: {} };
 }
 
 /* ─── Main Component ────────────────────────────────────────────────── */
@@ -486,7 +522,16 @@ function ContextRing({ percent }: { percent: number }) {
   );
 }
 
-export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds, onTurnChange, leiste }: { agentId: string; initialSessionId?: string | null; embedded?: boolean; busySessionIds?: string[]; onTurnChange?: () => void; /** Zusaetzliche Knoepfe in der Fusszeile neben dem Mikrofon. */ leiste?: React.ReactNode }) {
+export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds, onTurnChange, leiste, onSessionChange, zuletztAktives }: {
+  agentId: string; initialSessionId?: string | null; embedded?: boolean; busySessionIds?: string[]; onTurnChange?: () => void;
+  /** Zusaetzliche Knoepfe in der Fusszeile neben dem Mikrofon. */ leiste?: React.ReactNode;
+  /** Meldet das offene Gespräch (null = neues) — die Agentenseite schreibt es in
+   *  die URL (#900). Kein Neuaufbau des Chats, nur eine Meldung nach außen. */
+  onSessionChange?: (sessionId: string | null) => void;
+  /** Ohne ``initialSessionId`` das zuletzt aktive Gespräch öffnen statt eines
+   *  leeren (#900). Ohne diese Angabe bleibt es beim neuen Gespräch. */
+  zuletztAktives?: boolean;
+}) {
   const { simpleMode } = useSimpleMode();
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -803,11 +848,15 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             message_count: s.message_count,
           }));
           setSessions(tabs);
-          // Only auto-select a session if explicitly requested (e.g. from conversation list)
-          // If no initialSessionId → user wants a new chat, don't auto-select
-          if (initialSessionId) {
-            const found = tabs.find((t) => t.id === initialSessionId);
-            const selected = found ?? tabs[0];
+          // Ein angefragtes Gespräch öffnen (URL, Gesprächsliste). Ohne Anfrage
+          // auf der Agentenseite das zuletzt aktive (#900) — vorher stand nach
+          // Neuladen oder Wiederöffnen ein leeres „Neues Gespräch“ da. Sonst
+          // (Chat-Seite) bleibt es beim neuen Gespräch.
+          const zuletzt = [...tabs].sort((a, b) =>
+            String(b.last_message_at || "").localeCompare(String(a.last_message_at || "")))[0];
+          if (initialSessionId || (zuletztAktives && zuletzt)) {
+            const found = initialSessionId ? tabs.find((t) => t.id === initialSessionId) : undefined;
+            const selected = found ?? (zuletztAktives ? zuletzt : tabs[0]);
             setActiveSessionId(selected.id);
             // Restore the chat's stored thinking depth — unless the user already
             // picked one in the short window before this fetch resolved.
@@ -824,7 +873,17 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       }
     };
     loadSessions();
-  }, [agentId, sessionsLoaded, initialSessionId]);
+  }, [agentId, sessionsLoaded, initialSessionId, zuletztAktives]);
+
+  // Das offene Gespräch nach außen melden (URL der Agentenseite, #900). Erst
+  // nach dem Laden der Liste — vorher ist ``null`` nur „noch nicht gewählt“ und
+  // würde den ``session``-Parameter aus der URL löschen, bevor er greift.
+  const onSessionChangeRef = useRef(onSessionChange);
+  useEffect(() => { onSessionChangeRef.current = onSessionChange; }, [onSessionChange]);
+  useEffect(() => {
+    if (!sessionsLoaded) return;
+    onSessionChangeRef.current?.(activeSessionId);
+  }, [activeSessionId, sessionsLoaded]);
 
   // Re-fetch the session list on demand (e.g. after a voice conversation ends) so the
   // freshly persisted voice session shows up as a tab WITHOUT a page reload.
@@ -951,8 +1010,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               steps = [];
               if (m.toolCalls && m.toolCalls.length > 0) {
                 for (const tc of m.toolCalls) {
-                  let parsedInput: Record<string, unknown> = {};
-                  try { parsedInput = JSON.parse(tc.input || "{}"); } catch { /* truncated */ }
+                  const { input: parsedInput, rohEingabe } = eingabeAusVerlauf(tc.input);
                   // Subagenten auch im Verlauf als solche zeigen.
                   //
                   // Der gespeicherte ``input`` ist auf 200 Zeichen gekuerzt und
@@ -974,9 +1032,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                       : subagentAusInput(tc.tool, parsedInput);
                     steps.push({
                       type: "subagent",
-                      id: `hist-${Math.random().toString(36).slice(2, 8)}`,
+                      id: tc.tool_use_id || `hist-${Math.random().toString(36).slice(2, 8)}`,
                       herkunft: helferArt(tc.tool) || "eigen",
                       ...feld,
+                      ergebnis: typeof tc.output === "string" && tc.output ? tc.output : undefined,
                       status: "fertig",
                       gestartet: 0,
                     });
@@ -984,9 +1043,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                   }
                   steps.push({
                     type: "tool_call",
-                    id: `hist-${Math.random().toString(36).slice(2, 8)}`,
+                    id: tc.tool_use_id || `hist-${Math.random().toString(36).slice(2, 8)}`,
                     tool: tc.tool,
                     input: parsedInput,
+                    rohEingabe,
+                    // Gespeicherte Ausgabe (#911) — vorher nach dem Neuladen leer.
+                    output: typeof tc.output === "string" && tc.output ? tc.output : undefined,
                     status: "done",
                   });
                 }
@@ -1008,7 +1070,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               steps,
               meta: m.meta ?? undefined,
               images: m.role === "assistant" && presented?.length ? presented : m.images,
-              files: m.role === "assistant" && presentedFiles?.length ? presentedFiles : undefined,
+              // Assistent: vorgelegte Dateien. Mensch: seine Anhänge (#916) —
+              // als Dateikarte statt als Anweisungstext in der Nachricht.
+              files: m.role === "assistant"
+                ? (presentedFiles?.length ? presentedFiles : undefined)
+                : m.role === "user" && m.meta?.anhaenge?.length
+                  ? m.meta.anhaenge.map((a) => ({ ...a, filename: a.filename || a.path.split("/").pop() || a.path }))
+                  : undefined,
               // Kachel-Zeile: wird als Kachel gezeichnet, nicht als Blase.
               taskCardId: (m.meta as { task_card?: TaskCard } | undefined)?.task_card?.task_id,
             };
@@ -1827,7 +1895,6 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
 
     // Upload attached files to the agent's workspace first — the message only
     // goes out if the upload succeeds (pending chips stay on failure).
-    let agentText = text;
     if (files.length > 0) {
       setIsUploading(true);
       try {
@@ -1841,12 +1908,13 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         return;
       }
       setIsUploading(false);
-      const filePaths = files.map((f) => `/workspace/${f.name}`).join(", ");
-      // Explicit read-instruction (not a passive note) — otherwise the agent treats the
-      // filename as mere context and answers without opening the file (the reported bug:
-      // "PDF im Chat nicht sichtbar"). Full paths + a clear order to read first.
-      agentText = `${text ? `${text}\n\n` : ""}[Angehängte Datei(en) im Workspace: ${filePaths}. WICHTIG: Öffne und lies die Datei(en) ZUERST selbst mit deinem Read-Tool (PDFs und Bilder werden unterstützt; große Textdateien ggf. mit bash/grep) und antworte dann auf Basis des TATSÄCHLICHEN Inhalts — rate NICHT aus dem Dateinamen.]`;
     }
+    // Anhänge als Daten, nicht als Text (#916): Die Lese-Anweisung an das Modell
+    // baut der Server (app/core/chat_auftrag.py) — in jeder Laufzeit gleich. In
+    // Verlauf und Titel steht nur, was hier getippt wurde.
+    const anhaenge = files.map((f) => ({
+      path: `/workspace/${f.name}`, filename: f.name, size: f.size, media_type: f.type || undefined,
+    }));
 
     const msgId = `user-${Date.now()}`;
     setMessages((prev) => [
@@ -1864,15 +1932,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     ]);
     setMessageCount((c) => c + 1);
 
-    // Plan mode (#386): inject a "plan only" instruction so the agent describes the
-    // steps it WOULD take instead of executing. The visible user message stays as
-    // typed; only what the agent receives is wrapped.
-    if (plan) {
-      agentText = `[NUR PLANEN — NICHT AUSFÜHREN] Beschreibe kurz und konkret, welche Schritte du für die folgende Aufgabe gehen würdest (Tools, betroffene Dateien/Befehle, externe Aktionen, grober Aufwand/Risiken). Führe nichts aus, ändere nichts, sende nichts — gib NUR den Plan zurück.\n\nAufgabe: ${agentText}`;
-    }
-
+    // Plan mode (#386): Der Agent beschreibt nur die Schritte. Den Rahmen dafür
+    // setzt der Server (#916); hier geht nur die Kennzeichnung mit.
     wsRef.current.send(JSON.stringify({
-      text: agentText,
+      text,
+      anhaenge,
+      plan,
       images: imgs,
       session_id: activeSessionId || currentWsSessionId.current,
       source: "webapp",
@@ -2366,21 +2431,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     if (name === "zusammenfassen") { void summarizeToNew(); return; }
     if (name === "verzweigen" && lastId) { void forkFrom(lastId); return; }
     if (name === "zurückspulen" && lastId) { void rewindTo(lastId); return; }
-    // Befehle, die IN der Laufzeit stecken (Claude Codes eigenes /compact): wir
-    // können sie von aussen nicht auslösen. Das zu verschweigen wäre schlimmer
-    // als es zu sagen.
-    const known = slashCommands.find((c) => c.name === name);
-    if (known?.runtime_only) {
-      chatToast.info(
-        `/${name} gehört der Laufzeit`,
-        "Der Befehl läuft in der CLI des Agenten und ist von hier nicht auslösbar. " +
-          "Nimm /compact — das verdichtet den hier gespeicherten Verlauf.",
-      );
-      return;
-    }
+    // Befehle, die IN der Laufzeit stecken (Claude Codes /clear, /cost), stehen
+    // seit #906 nicht mehr im Menü — nur noch in der /tools-Ansicht.
     chatToast.info("Geht gerade nicht", "Dafür braucht es mindestens eine Nachricht.");
-  }, [messages, summarizeToNew, forkFrom, rewindTo, chatToast, openCompact,
-      slashCommands]);
+  }, [messages, summarizeToNew, forkFrom, rewindTo, chatToast, openCompact]);
 
   const [inputFocused, setInputFocused] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
@@ -2707,7 +2761,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                       delete next[karte.task_id];
                       return next;
                     })}
-                    className="absolute right-1.5 top-1.5 cursor-pointer rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100"
+                    className="absolute right-1.5 top-1.5 cursor-pointer rounded p-0.5 text-muted-foreground can-hover:opacity-0 transition-opacity hover:bg-accent can-hover:group-hover:opacity-100"
                   >
                     <X className="h-3 w-3" />
                   </span>
@@ -3032,6 +3086,29 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                         </div>
                       </div>
                     ))}
+                    {/* #906: Befehle der CLI selbst. Der Agent hat sie, von hier
+                        lassen sie sich nicht auslösen — deshalb nur als Auskunft. */}
+                    {(toolset.laufzeit_befehle?.length ?? 0) > 0 && (
+                      <div>
+                        <div className="text-[11px] font-medium">
+                          Befehle der Laufzeit
+                          <span className="ml-1.5 font-normal text-muted-foreground/50">
+                            — laufen in der CLI des Agenten, nicht von hier auslösbar
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {toolset.laufzeit_befehle!.map((c) => (
+                            <span
+                              key={c.name}
+                              title={c.hint}
+                              className="rounded border border-foreground/[0.08] bg-foreground/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                            >
+                              /{c.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -3164,7 +3241,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 />
                 <button
                   onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
-                  className="absolute right-0.5 top-0.5 rounded-full bg-black/70 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  className="absolute right-0.5 top-0.5 rounded-full bg-black/70 p-0.5 text-white can-hover:opacity-0 transition-opacity can-hover:group-hover:opacity-100"
                   title="Bild entfernen"
                 >
                   <X className="h-3 w-3" />
@@ -3517,6 +3594,7 @@ function MessageRow({
       onToggleExclude={onToggleExclude}
       excludeScope={excludeScope}
       excluded={excluded}
+      kopierText={message.role === "user" ? message.content : antwortText(message)}
     />
   );
 
@@ -3546,11 +3624,44 @@ function MessageRow({
   return <AssistantResponse message={message} actions={actions} />;
 }
 
+/** Der sichtbare Text einer Antwort — ohne Werkzeuge und ohne Zielmarke. */
+function antwortText(message: ChatMessage): string {
+  const texte = (message.steps || [])
+    .filter((st): st is TextStep => st.type === "text")
+    .map((st) => st.content)
+    .filter((t) => t.trim());
+  const roh = texte.length > 0 ? texte.join("\n\n") : message.content;
+  return ohneZielMarke(roh || "").text;
+}
+
+/** Kopieren-Knopf (#900) — mit Rückfall für Anlagen ohne HTTPS. */
+function KopierenKnopf({ text }: { text: string }) {
+  const [kopiert, setKopiert] = useState(false);
+  useEffect(() => {
+    if (!kopiert) return;
+    const t = setTimeout(() => setKopiert(false), 1500);
+    return () => clearTimeout(t);
+  }, [kopiert]);
+  return (
+    <button
+      type="button"
+      onClick={async () => { if (await inZwischenablage(text)) setKopiert(true); }}
+      title={kopiert ? "Kopiert" : "Text kopieren"}
+      aria-label={kopiert ? "Kopiert" : "Text kopieren"}
+      className="rounded p-1 text-muted-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
+    >
+      {kopiert ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+    </button>
+  );
+}
+
 /** Aktionen an einer einzelnen Nachricht (#538).
 
-    Erscheint erst beim Darüberfahren: dauerhaft sichtbare Knöpfe an jeder Nachricht
-    machen einen langen Verlauf unruhig. Zurückspulen ist rot, weil es als einziges
-    etwas entfernt — auch wenn eine Sicherung angelegt wird. */
+    Mit Maus erscheinen sie erst beim Darüberfahren: dauerhaft sichtbare Knöpfe an
+    jeder Nachricht machen einen langen Verlauf unruhig. Auf Touch-Geräten gibt es
+    kein Darüberfahren — dort stehen sie immer da (Variante ``can-hover``, #900).
+    Zurückspulen ist rot, weil es als einziges etwas entfernt — auch wenn eine
+    Sicherung angelegt wird. */
 function MessageActions({
   messageId,
   onFork,
@@ -3558,6 +3669,7 @@ function MessageActions({
   onToggleExclude,
   excludeScope,
   excluded,
+  kopierText,
 }: {
   messageId?: string;
   onFork?: (id: string) => void;
@@ -3565,11 +3677,14 @@ function MessageActions({
   onToggleExclude?: (id: string, scope: "message" | "tool_output", excluded: boolean) => void;
   excludeScope?: "message" | "tool_output";
   excluded?: boolean;
+  kopierText?: string;
 }) {
-  if (!messageId || (!onFork && !onRewind && !onToggleExclude)) return null;
+  const kopierbar = !!kopierText?.trim();
+  if (!kopierbar && (!messageId || (!onFork && !onRewind && !onToggleExclude))) return null;
   return (
-    <span className="ml-1 inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-      {onFork && (
+    <span className="ml-1 inline-flex items-center gap-0.5 can-hover:opacity-0 transition-opacity can-hover:group-hover:opacity-100 can-hover:focus-within:opacity-100">
+      {kopierbar && <KopierenKnopf text={kopierText!} />}
+      {messageId && onFork && (
         <button
           onClick={() => onFork(messageId)}
           title="Ab hier in einem neuen Gespräch weiterreden — dieses bleibt erhalten"
@@ -3578,7 +3693,7 @@ function MessageActions({
           <GitBranch className="h-3 w-3" />
         </button>
       )}
-      {onToggleExclude && excludeScope && (
+      {messageId && onToggleExclude && excludeScope && (
         <button
           onClick={() => onToggleExclude(messageId, excludeScope, !excluded)}
           title={
@@ -3596,7 +3711,7 @@ function MessageActions({
           {excluded ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
         </button>
       )}
-      {onRewind && (
+      {messageId && onRewind && (
         <button
           onClick={() => onRewind(messageId)}
           title="Bis hierher zurückspulen — alles danach wird entfernt (Sicherung bleibt)"
@@ -3669,19 +3784,48 @@ function UserMessage({ content, images, files, timestamp, actions }: { content: 
 
 /* ─── Assistant Response (Claude CLI Style) ─────────────────────────── */
 
+/** Chip statt der Zeile „ZIEL ERREICHT“ (#906). */
+function ZielChip({ ziel }: { ziel?: ZielStand }) {
+  if (!ziel) return null;
+  return ziel === "erreicht" ? (
+    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-700 dark:text-emerald-400">
+      <Target className="h-3 w-3" />
+      Ziel erreicht
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+      <CirclePause className="h-3 w-3" />
+      Ziel pausiert — wartet auf dich
+    </span>
+  );
+}
+
 function AssistantResponse({ message, actions }: { message: ChatMessage; actions?: React.ReactNode }) {
-  const steps = message.steps || [];
   const { simpleMode } = useSimpleMode();
+  // /goal: Die Schlusszeile ist ein Signal an den Server, kein Text (#906). Sie
+  // steht am Ende der Antwort, also im letzten Textschritt — live wie geladen.
+  const rohSchritte = message.steps || [];
+  const letzterText = rohSchritte.map((st) => st.type).lastIndexOf("text");
+  let zielLive: ZielStand | undefined;
+  const steps: AssistantStep[] = rohSchritte.map((st, i) => {
+    if (i !== letzterText || st.type !== "text") return st;
+    const ohne = ohneZielMarke(st.content, !!message.isStreaming);
+    zielLive = ohne.ziel;
+    return { ...st, content: ohne.text };
+  });
+  const legacy = steps.length === 0 && message.content ? ohneZielMarke(message.content) : null;
+  const ziel: ZielStand | undefined = message.meta?.ziel || zielLive || legacy?.ziel;
 
   // If no steps at all (legacy), show as simple text
-  if (steps.length === 0 && message.content) {
+  if (legacy) {
     return (
       <div className="group pl-1 space-y-2">
         <div className="flex items-center">
           <MsgTime ts={message.timestamp} />
           {actions}
         </div>
-        <MarkdownContent content={message.content} />
+        <MarkdownContent content={legacy.text} />
+        <ZielChip ziel={ziel} />
         <PresentedImages images={message.images} />
         <PresentedFiles agentId={String(message.agentId || "")} files={message.files} />
         {message.meta && !simpleMode && <MetaBar meta={message.meta} />}
@@ -3761,6 +3905,7 @@ function AssistantResponse({ message, actions }: { message: ChatMessage; actions
       {message.isStreaming && !noVisibleContent && (
         <ArbeitetWeiter seit={message.timestamp} />
       )}
+      <ZielChip ziel={ziel} />
       <PresentedImages images={message.images} />
       <PresentedFiles agentId={String(message.agentId || "")} files={message.files} />
       {message.meta && !message.isStreaming && !simpleMode && <MetaBar meta={message.meta} />}
@@ -4498,7 +4643,9 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
   const anzeige = getToolDisplay(step.tool, step.input);
   // Einfache Ansicht: was der Agent tut, nicht wie das Werkzeug heisst.
   const label = simpleMode ? werkzeugAufDeutsch(step.tool) : anzeige.label;
-  const { description, detail } = anzeige;
+  const { description } = anzeige;
+  // Unlesbare (gekürzte) Eingabe roh zeigen; leere gar nicht (#911).
+  const detail = anzeige.detail || step.rohEingabe || "";
   const isRunning = step.status === "running";
   const hasOutput = Boolean(step.output);
 

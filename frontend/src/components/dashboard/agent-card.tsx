@@ -299,7 +299,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
           ) : (
             <span className="text-[11px] text-muted-foreground/50">{simpleMode ? "" : "Keine Warteschlange"}</span>
           )}
-          <div className="flex items-center gap-1 text-[11px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 text-[11px] text-muted-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-opacity">
             Öffnen <ArrowUpRight className="h-3 w-3" />
           </div>
         </div>

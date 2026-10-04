@@ -457,7 +457,7 @@ export function NotificationBell({
                   </div>
 
                   {/* Actions */}
-                  <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex flex-col gap-1 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-opacity">
                     {!notif.read && (
                       <button
                         onClick={() => handleMarkRead(notif.id)}

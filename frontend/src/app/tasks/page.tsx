@@ -332,7 +332,7 @@ function SingleTasksView() {
                             // Bei einer laufenden Aufgabe NICHT erst beim Überfahren
                             // zeigen: wer sie stoppen will, sucht den Knopf sofort.
                             ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20"
-                            : "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 opacity-0 group-hover:opacity-100",
+                            : "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 can-hover:opacity-0 can-hover:group-hover:opacity-100",
                         )}
                         title={läuft
                           ? "Laufende Aufgabe stoppen — der Agent bricht seine Arbeit ab"
@@ -346,7 +346,7 @@ function SingleTasksView() {
                       <button
                         onClick={(e) => handleDelete(e, task.id)}
                         disabled={deleting.has(task.id)}
-                        className="inline-flex items-center rounded-lg p-1.5 text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                        className="inline-flex items-center rounded-lg p-1.5 text-muted-foreground/40 hover:text-red-400 hover:bg-red-500/10 transition-colors can-hover:opacity-0 can-hover:group-hover:opacity-100 disabled:opacity-50 can-hover:disabled:opacity-50"
                         title="Aufgabe löschen"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -774,7 +774,7 @@ function ScheduledTasksView() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1.5 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1.5 ml-4 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => handleTrigger(schedule.id)}
                     disabled={triggering === schedule.id}

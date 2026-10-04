@@ -1008,7 +1008,7 @@ function CodeBlock({ children }: { children: string }) {
       </pre>
       <button
         onClick={copy}
-        className="shrink-0 p-1 rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
+        className="shrink-0 p-1 rounded text-muted-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 hover:text-foreground transition-all"
       >
         {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
       </button>

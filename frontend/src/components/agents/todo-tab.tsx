@@ -511,7 +511,7 @@ function TodoItem({
       {/* Delete */}
       <button
         onClick={() => onDelete(todo.id)}
-        className="mt-0.5 shrink-0 text-muted-foreground/20 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+        className="mt-0.5 shrink-0 text-muted-foreground/20 hover:text-red-400 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all"
       >
         <Trash2 className="h-3.5 w-3.5" />
       </button>

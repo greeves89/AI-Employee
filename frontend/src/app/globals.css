@@ -4,6 +4,14 @@
 /* darkMode: "class" equivalent in Tailwind v4 */
 @custom-variant dark (&:is(.dark *));
 
+/* Geräte mit Maus/Trackpad (#900). Was nur beim Darüberfahren erscheint, steht so:
+   `can-hover:opacity-0 can-hover:group-hover:opacity-100` — auf Touch-Geräten gibt
+   es kein Darüberfahren, dort greift keins von beiden und die Knöpfe sind immer
+   sichtbar. Das Aufdecken MUSS ebenfalls `can-hover:` tragen: eigene Varianten
+   sortiert Tailwind hinter die eingebauten, ein schlichtes `group-hover:opacity-100`
+   verlöre gegen `can-hover:opacity-0` und die Knöpfe blieben auch mit Maus unsichtbar. */
+@custom-variant can-hover (@media (hover: hover) and (pointer: fine));
+
 :root {
   --background: 0 0% 100%;
   --foreground: 224 71% 4%;

@@ -2845,13 +2845,23 @@ async def get_chat_history(
             normalised.append(fixed)
         return normalised
 
+    def _inhalt(msg) -> str:
+        # #916: Anhaenge stehen in ``meta.anhaenge``, nicht mehr im Text. Wer den
+        # Verlauf fuers MODELL nachlaedt (Custom-LLM), bekommt den Vermerk wieder
+        # dazu — sonst wuesste es in der naechsten Runde nicht, welche Datei gemeint
+        # war. Der Mensch sieht Dateikarten statt des Vermerks.
+        if for_model and msg.role == "user":
+            from app.core.chat_auftrag import mit_verlauf_hinweis
+            return mit_verlauf_hinweis(msg.content or "", msg.meta)
+        return msg.content
+
     return {
         "messages": [
             {
                 "id": str(msg.id),
                 "message_id": msg.message_id,
                 "role": msg.role,
-                "content": msg.content,
+                "content": _inhalt(msg),
                 "timestamp": msg.timestamp.isoformat(),
                 "toolCalls": (
                     None if for_model and tool_output_excluded(msg)
