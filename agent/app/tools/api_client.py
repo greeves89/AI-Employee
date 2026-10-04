@@ -875,6 +875,12 @@ class OrchestratorAPIClient:
                 continue  # transient error — keep waiting
             status = str(check.get("status", "")).lower()
             choice = check.get("user_response") or ""
+            # Den Text formuliert der Server (``agent_hint``, approvals.py) — in
+            # allen Laufzeiten derselbe. Eine beantwortete Rueckfrage ist keine
+            # Genehmigung; „APPROVED … proceed“ neben „Abbrechen“ liess Agenten
+            # dieselbe Frage erneut stellen. Eigener Text nur fuer aeltere Server.
+            if status in ("approved", "denied") and check.get("agent_hint"):
+                return str(check.get("agent_hint"))
             if status == "approved":
                 return (
                     "APPROVED by the user."

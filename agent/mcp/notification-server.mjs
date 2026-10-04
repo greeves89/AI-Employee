@@ -441,12 +441,16 @@ export function buildServer() {
           const gewaehlt = antwort && !istNurBestaetigung
             ? ` Antwort des Nutzers: "${antwort}" — richte dich danach.`
             : "";
+          // Den Text formuliert der Server (`agent_hint`, approvals.py) — fuer
+          // alle Laufzeiten gleich. „APPROVED … proceed“ neben der Antwort
+          // „Abbrechen“ liess den Agenten dieselbe Frage erneut stellen. Der
+          // eigene Text bleibt nur fuer einen aelteren Orchestrator.
           return {
             content: [{
               type: "text",
-              text: approved
+              text: decision.agent_hint || (approved
                 ? `User APPROVED the action (approval_id: ${approvalId}). You may proceed.${gewaehlt}`
-                : `User DENIED the action (approval_id: ${approvalId}). Reason: "${antwort || "No reason given"}". Do NOT proceed.`,
+                : `User DENIED the action (approval_id: ${approvalId}). Reason: "${antwort || "No reason given"}". Do NOT proceed.`),
             }],
           };
         } else {

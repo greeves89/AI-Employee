@@ -145,20 +145,31 @@ _ABGESCHLOSSEN = re.compile(
 
 _CODEBLOCK = re.compile(r"```.*?(?:```|$)", re.DOTALL)
 _SATZENDE = re.compile(r"(?<=[.!?…])\s+|\n+")
+#: Ein Codeblock ist geliefertes Ergebnis (Buchungszeile, Skript, CSV). Er bleibt
+#: als eigener Absatz stehen, statt zu verschwinden — sonst wird die Ansage davor
+#: („Ich schreibe dir das Skript jetzt.“) zum Schlusssatz. Ankuendigen kann er
+#: nichts; auch eine Ankuendigung IM Codeblock zaehlt damit weiterhin nicht.
+_CODE_PLATZHALTER = "[codeblock]"
 
 
-def _saetze(antwort: str) -> list[str]:
-    """Die Saetze der letzten beiden Absaetze, ohne Markdown, kleingeschrieben."""
-    text = _CODEBLOCK.sub(" ", antwort or "")
+def _saetze(antwort: str) -> list[tuple[int, str]]:
+    """Die Saetze der letzten beiden Absaetze, ohne Markdown, kleingeschrieben.
+
+    Jeder Satz traegt die Nummer seines Absatzes. Die Absatzgrenze ist wichtig:
+    Der gespeicherte Text eines Zugs setzt nach jedem Werkzeugaufruf einen neuen
+    Absatz (``StromLeser`` in ``agent/app/chat_handler.py``). Eine Ansage im
+    Absatz VOR dem Ergebnis wurde also erfuellt.
+    """
+    text = _CODEBLOCK.sub(f"\n\n{_CODE_PLATZHALTER}\n\n", antwort or "")
     text = text.replace("’", "'").replace("‘", "'")
     absaetze = [a for a in re.split(r"\n\s*\n", text) if a.strip()]
     saetze = []
-    for absatz in absaetze[-2:]:
+    for nummer, absatz in enumerate(absaetze[-2:]):
         for satz in _SATZENDE.split(absatz):
             satz = re.sub(r"^[\s>*_#`\-•]+|[\s*_`]+$", "", satz)
             satz = re.sub(r"[*_`]+", "", satz).strip().lower()
             if satz:
-                saetze.append(satz)
+                saetze.append((nummer, satz))
     return saetze
 
 
@@ -192,19 +203,24 @@ def ist_ankuendigung(antwort: str) -> bool:
       nicht mit, weder dafuer noch dagegen.
     * Von den uebrigen zaehlen die letzten beiden Saetze; meldet der letzte ein
       Ergebnis („Fertig — hier ist …“), war die Ankuendigung davor schon erfuellt.
+    * Der vorletzte Satz zaehlt nur im selben Absatz wie der letzte: Ein Absatz
+      davor ist bei einem Zug mit Werkzeugen die Ansage VOR der Arbeit, der
+      letzte Absatz deren Ergebnis (Abnahme v1.362.1 — „Weitermachen“ nach
+      normal beendeten Antworten).
     """
     saetze = _saetze(antwort)
-    if not saetze or saetze[-1].endswith("?"):
+    if not saetze or saetze[-1][1].endswith("?"):
         return False
-    kandidaten = [s for s in saetze if not _ist_neutral(s)][-2:]
+    kandidaten = [(absatz, s) for absatz, s in saetze if not _ist_neutral(s)][-2:]
     if not kandidaten:
         return False
-    if _kuendigt_an(kandidaten[-1]):
+    if _kuendigt_an(kandidaten[-1][1]):
         return True
     return (
         len(kandidaten) == 2
-        and _kuendigt_an(kandidaten[0])
-        and not _ABGESCHLOSSEN.search(kandidaten[-1])
+        and kandidaten[0][0] == kandidaten[-1][0]
+        and _kuendigt_an(kandidaten[0][1])
+        and not _ABGESCHLOSSEN.search(kandidaten[-1][1])
     )
 
 

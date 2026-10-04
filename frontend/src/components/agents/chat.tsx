@@ -36,6 +36,7 @@ import { UserAvatar } from "@/components/ui/user-avatar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { einfuegenTaste, inZwischenablage } from "@/lib/zwischenablage";
 import { ohneZielMarke, type ZielStand } from "@/lib/ziel-marke";
+import { gemeldetesGespraech, offeneRueckfrage, rueckfrageErgebnis, zielBannerSichtbar } from "@/lib/chat-zustand";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -509,6 +510,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const { simpleMode } = useSimpleMode();
   const [sessions, setSessions] = useState<SessionTab[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  // Kennung aus „Neues Gespräch“, solange darin noch nichts geschrieben wurde —
+  // sie geht nicht in die Adresse (siehe ``gemeldetesGespraech``).
+  const [leereNeueSitzung, setLeereNeueSitzung] = useState<string | null>(null);
   const chatToast = useToast();
   const chatConfirm = useConfirm();
   // Chat management UX
@@ -709,6 +713,14 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // darueber sofort einen Abgleich an; der Takt unten ist nur noch Rueckfall.
   const approvalRecheckRef = useRef<() => void>(() => {});
   const [approvalBusy, setApprovalBusy] = useState(false);
+  // Abnahme v1.362.1: Nach der Antwort verschwand die Karte kommentarlos — stellte
+  // der Agent danach dieselbe Frage erneut, sah es aus, als sei die alte noch
+  // offen. Jetzt bleibt die beantwortete Karte mit ihrem Ergebnis stehen (nicht
+  // mehr bedienbar), bis zur nächsten eigenen Nachricht.
+  const [erledigteRueckfrage, setErledigteRueckfrage] = useState<{ frage: string; ergebnis: string; abgelehnt: boolean } | null>(null);
+  // Hier beantwortete Kennungen: Eine Abfrage, die vor der Antwort losging,
+  // darf sie nicht als offen zurückholen.
+  const erledigteRueckfragenRef = useRef<Set<string>>(new Set());
   const [messageCount, setMessageCount] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -855,12 +867,15 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   // Das offene Gespräch nach außen melden (URL der Agentenseite, #900). Erst
   // nach dem Laden der Liste — vorher ist ``null`` nur „noch nicht gewählt“ und
   // würde den ``session``-Parameter aus der URL löschen, bevor er greift.
+  // Ein leeres neues Gespräch meldet ``null`` — seine Kennung kommt erst mit der
+  // ersten Nachricht in die Adresse (Abnahme v1.362.1: F5 sprang sonst zurück).
   const onSessionChangeRef = useRef(onSessionChange);
   useEffect(() => { onSessionChangeRef.current = onSessionChange; }, [onSessionChange]);
+  const gemeldet = gemeldetesGespraech(activeSessionId, leereNeueSitzung);
   useEffect(() => {
     if (!sessionsLoaded) return;
-    onSessionChangeRef.current?.(activeSessionId);
-  }, [activeSessionId, sessionsLoaded]);
+    onSessionChangeRef.current?.(gemeldet);
+  }, [gemeldet, sessionsLoaded]);
 
   // Re-fetch the session list on demand (e.g. after a voice conversation ends) so the
   // freshly persisted voice session shows up as a tab WITHOUT a page reload.
@@ -1353,6 +1368,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               // würde der Filter oben die Sitzung noch nicht kennen.
               activeSessionIdRef.current = sid;
               setActiveSessionId(sid);
+              // Nach „Neues Gespräch“ ist noch nichts geschrieben: nicht in die
+              // Adresse, bis die erste Nachricht rausgeht (``sendMessage``).
+              if (ersteNachrichtOhneReiterRef.current === null) setLeereNeueSitzung(sid);
             }
             // A brand-new session inherits the currently selected thinking depth
             // ("kein Reset auf Auto") — persist it so it survives reloads. The
@@ -1950,6 +1968,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     // die erste Nachricht macht ein Gespräch daraus (#907).
     const vorschau = (text || files[0]?.name || "Bild").slice(0, 80);
     const sitzung = activeSessionId || currentWsSessionId.current;
+    // Jetzt ist es ein Gespräch: Kennung in die Adresse (``gemeldetesGespraech``).
+    setLeereNeueSitzung(null);
+    // Eine erledigte Rückfrage-Karte gehört zum vorigen Austausch.
+    setErledigteRueckfrage(null);
     if (!sitzung) {
       ersteNachrichtOhneReiterRef.current = vorschau;
     } else {
@@ -2247,6 +2269,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     return () => clearInterval(interval);
   }, [isWaiting, messages, thinkingStartTime]);
 
+  // Eine erledigte Rückfrage-Karte gehört zum Gespräch, in dem sie beantwortet wurde.
+  useEffect(() => { setErledigteRueckfrage(null); }, [activeSessionId]);
+
   const hasPendingApproval = pendingApproval !== null;
   // Poll for approvals that need this chat's attention.
   //
@@ -2272,10 +2297,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         const res = await fetch(`${getApiUrl()}/api/v1/approvals/pending`, { credentials: "include" });
         if (!res.ok || cancelled) return;
         const data = await res.json();
-        const relevant = (data.approvals || []).filter(
-          (a: PendingApproval) => a.agent_id === agentId && a.tool !== "reflection_change"
-        );
-        setPendingApproval(relevant[0] || null);
+        setPendingApproval(offeneRueckfrage<PendingApproval>(data.approvals || [], agentId, erledigteRueckfragenRef.current));
       } catch {}
     };
     approvalRecheckRef.current = check;
@@ -3124,7 +3146,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
       {(() => {
         // /goal: Ziel dieses Gesprächs — der Agent arbeitet Runde um Runde, bis er es erreicht.
         const ziel = sessions.find((t) => t.id === activeSessionId)?.goal;
-        if (!ziel || ziel.status === "gestoppt" || viewMode === "overview") return null;
+        // Ein erreichtes Ziel (oder die Obergrenze) nur bis zur nächsten eigenen
+        // Nachricht — danach steht es als Chip an der Antwort (Abnahme v1.362.1).
+        if (!ziel || !zielBannerSichtbar(ziel.status, messages) || viewMode === "overview") return null;
         const laeuft = ziel.status === "aktiv" || ziel.status === "pausiert";
         const stand =
           ziel.status === "aktiv" ? `Ziel aktiv · Runde ${Math.max(1, ziel.rounds)} von ${ziel.max_rounds}`
@@ -3165,6 +3189,22 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         );
       })()}
 
+      {erledigteRueckfrage && viewMode !== "overview" && (
+        // Beantwortet oder abgelehnt: Zustand zeigen, nichts mehr zum Anklicken.
+        <div
+          className="mx-4 mb-3 flex items-start gap-3 rounded-xl border border-border bg-foreground/[0.03] p-3"
+          aria-live="polite"
+        >
+          {erledigteRueckfrage.abgelehnt
+            ? <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500 dark:text-red-400" />
+            : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />}
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-muted-foreground">{erledigteRueckfrage.ergebnis}</p>
+            <p className="mt-0.5 line-clamp-2 text-sm break-words text-muted-foreground">{erledigteRueckfrage.frage}</p>
+          </div>
+        </div>
+      )}
+
       {pendingApproval && (
         <div className="mx-4 mb-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
           <div className="flex items-start gap-3">
@@ -3173,22 +3213,43 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Der Agent braucht deine Antwort</p>
               <div className="mt-1">
                 <ApprovalPrompt
+                  // Neue Rückfrage = neue Karte (auch bei gleichem Wortlaut):
+                  // keine gewählte Option der vorigen bleibt hängen.
+                  key={pendingApproval.approval_id}
                   request={pendingApproval}
                   busy={approvalBusy}
                   onAnswer={async (antwort) => {
+                    const offen = pendingApproval;
                     setApprovalBusy(true);
                     try {
-                      await api.approveCommand(pendingApproval.approval_id, antwort);
+                      await api.approveCommand(offen.approval_id, antwort);
+                      erledigteRueckfragenRef.current.add(String(offen.approval_id));
+                      setErledigteRueckfrage({
+                        frage: offen.question || offen.reasoning || offen.tool || "Freigabe",
+                        ergebnis: rueckfrageErgebnis("beantwortet", antwort),
+                        abgelehnt: false,
+                      });
                       setPendingApproval(null);
-                    } catch { /* bleibt stehen, damit man es erneut versuchen kann */ }
+                    } catch {
+                      // Bleibt stehen, damit man es erneut versuchen kann — außer
+                      // sie wurde inzwischen anderswo entschieden: gleich abgleichen.
+                      approvalRecheckRef.current();
+                    }
                     finally { setApprovalBusy(false); }
                   }}
                   onDeny={async () => {
+                    const offen = pendingApproval;
                     setApprovalBusy(true);
                     try {
-                      await api.denyCommand(pendingApproval.approval_id, "Vom Nutzer abgelehnt");
+                      await api.denyCommand(offen.approval_id, "Vom Nutzer abgelehnt");
+                      erledigteRueckfragenRef.current.add(String(offen.approval_id));
+                      setErledigteRueckfrage({
+                        frage: offen.question || offen.reasoning || offen.tool || "Freigabe",
+                        ergebnis: rueckfrageErgebnis("abgelehnt"),
+                        abgelehnt: true,
+                      });
                       setPendingApproval(null);
-                    } catch { /* siehe oben */ }
+                    } catch { approvalRecheckRef.current(); /* siehe oben */ }
                     finally { setApprovalBusy(false); }
                   }}
                   compact

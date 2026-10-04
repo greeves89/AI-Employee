@@ -111,6 +111,37 @@ class ErkennungTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertFalse(ankuendigung.ist_ankuendigung(text))
 
+    def test_ansage_vor_einem_werkzeugschritt_ist_keine_ankuendigung(self):
+        """Abnahme v1.362.1: normal beendete Antworten bekamen „Weitermachen“.
+
+        Der gespeicherte Text eines Zugs enthaelt auch die Saetze VOR einem
+        Werkzeugaufruf („Ich erstelle jetzt …“) — als eigenen Absatz, denn ein
+        neuer Textblock beginnt nach jedem Werkzeug mit einer Leerzeile. Was
+        danach kommt, ist das Ergebnis. Bisher zaehlten die letzten beiden Saetze
+        ueber die Absatzgrenze hinweg, und ein Codeblock am Ende verschwand ganz:
+        die Ansage stand dann als „letzter Satz“ da.
+        """
+        for text in (
+            # Ergebnis endet mit einem Codeblock (Buchungszeile, Skript, CSV)
+            "Ich erstelle jetzt den DATEV-Buchungsstapel.\n\nHier die Buchungszeile:\n\n"
+            "```csv\n119,00;S;EUR;4930;70000\n```",
+            "Ich schreibe dir das Skript jetzt.\n\n```python\nprint('hallo')\n```",
+            # Ansage, Werkzeug, kurzes Ergebnis ohne „fertig“
+            "Ich schaue kurz in die Rechnung.\n\nBuchungssatz: 4930 Bürobedarf an 70000 Lieferant",
+            "Ich führe den Befehl jetzt aus.\n\nAusgabe: abnahme-911",
+        ):
+            with self.subTest(text=text):
+                self.assertFalse(ankuendigung.ist_ankuendigung(text))
+
+    def test_ankuendigung_nach_dem_codeblock_zaehlt_weiter(self):
+        self.assertTrue(ankuendigung.ist_ankuendigung(
+            "Hier der Entwurf:\n\n```\nTitel: Sommerfest\n```\n\nIch rendere jetzt das Video."))
+
+    def test_zweiter_satz_desselben_absatzes_zaehlt_weiter(self):
+        """Die Zwei-Satz-Regel bleibt — nur nicht ueber eine Absatzgrenze."""
+        self.assertTrue(ankuendigung.ist_ankuendigung(
+            "Ich passe jetzt die Farben an. Die Startseite bekommt drei Abschnitte."))
+
     def test_nur_das_ende_zaehlt(self):
         # Mitten im Text angekuendigt, am Ende Ergebnis geliefert.
         text = ("Ich schaue jetzt in die Tabelle.\n\nDie Umsätze liegen bei 12 Prozent über Vorjahr.\n\n"

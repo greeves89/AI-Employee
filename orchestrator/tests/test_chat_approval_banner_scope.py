@@ -23,8 +23,15 @@ class ApprovalBannerScopeTests(unittest.TestCase):
 
     def test_reflection_change_is_excluded_from_the_chat_banner(self):
         """Nachtschicht-Freigaben duerfen nie im Chat-Banner landen -- die
-        Approvals-Seite bucket sie schon separat ueber dasselbe tool-Feld."""
-        self.assertIn('a.tool !== "reflection_change"', self.src)
+        Approvals-Seite bucket sie schon separat ueber dasselbe tool-Feld.
+
+        Seit Abnahme v1.362.1 steht die Auswahl in ``lib/chat-zustand.ts``
+        (``offeneRueckfrage``); ihr Verhalten — auch der Ausschluss von
+        ``reflection_change`` — prueft ``test_chat_zustand.py`` mit Node. Hier
+        nur, dass der Chat genau diese Auswahl benutzt."""
+        lib = (REPO / "frontend/src/lib/chat-zustand.ts").read_text()
+        self.assertIn('a.tool !== "reflection_change"', lib)
+        self.assertIn("setPendingApproval(offeneRueckfrage<PendingApproval>(", self.src)
 
     def test_the_banner_no_longer_clears_on_stream_end(self):
         """Der fruehere Bug: `!isWaiting` wischte pendingApproval hart weg,
