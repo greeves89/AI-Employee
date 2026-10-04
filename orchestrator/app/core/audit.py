@@ -36,32 +36,25 @@ AKTEUR_VERWALTUNG = "admin"
 AKTEUR_SYSTEM = "system"
 AKTEURE_OHNE_AGENT = frozenset({AKTEUR_ANMELDUNG, AKTEUR_VERWALTUNG, AKTEUR_SYSTEM, "global", "user"})
 
-#: Was ein Mensch oder die Plattform entscheidet, darf ein Agent nicht über
-#: ``POST /audit/log`` selbst eintragen — sonst könnte er sich eine Freigabe oder
-#: eine Anmeldung ins Protokoll schreiben, die es nie gab.
-NUR_SERVERSEITIG = frozenset({
-    AuditEventType.COMMAND_APPROVED.value,
-    AuditEventType.COMMAND_DENIED.value,
-    AuditEventType.QUESTION_ANSWERED.value,
-    AuditEventType.APPROVAL_CANCELLED.value,
-    AuditEventType.APPROVAL_EXPIRED.value,
-    AuditEventType.LOGIN_SUCCEEDED.value,
-    AuditEventType.LOGIN_FAILED.value,
-    AuditEventType.LOGOUT.value,
-    AuditEventType.USER_CREATED.value,
-    AuditEventType.USER_UPDATED.value,
-    AuditEventType.USER_DELETED.value,
-    AuditEventType.PASSWORD_RESET.value,
-    AuditEventType.SETTINGS_CHANGED.value,
-    AuditEventType.ROLE_CHANGED.value,
-    AuditEventType.MCP_SERVER_CHANGED.value,
-    AuditEventType.AUDIT_EXPORTED.value,
-    AuditEventType.MFA_ENABLED.value,
-    AuditEventType.MFA_DISABLED.value,
-    AuditEventType.MFA_RESET.value,
-    AuditEventType.MFA_CODE_FAILED.value,
-    AuditEventType.RETENTION_PURGED.value,
+#: Was ein Agent über ``POST /audit/log`` selbst eintragen darf — nur, was ER
+#: getan hat oder was ihm verweigert wurde. Bewusst eine Erlaubt-Liste (#908,
+#: Sicherheitsprüfung v1.362.0): Antworten, Freigaben, Anmeldungen, Verwaltung,
+#: Agenten-/Regel-/Wissensänderungen trägt nur der Server ein — sonst könnte ein
+#: Agent sich eine Freigabe oder Änderung ins Protokoll schreiben, die es nie gab,
+#: und jedes NEUE Ereignis wäre automatisch fälschbar.
+AGENT_EREIGNISSE = frozenset({
+    AuditEventType.COMMAND_EXECUTED.value,
+    AuditEventType.COMMAND_BLOCKED.value,
+    AuditEventType.FILE_WRITTEN.value,
+    AuditEventType.NETWORK_REQUEST.value,
+    AuditEventType.URL_BLOCKED.value,
+    AuditEventType.LOGS_READ.value,
 })
+
+#: Obergrenzen für Agenten-Einträge — ein Agent soll das Protokoll nicht mit
+#: Riesen-Einträgen füllen können.
+AGENT_BEFEHL_MAX_ZEICHEN = 4000
+AGENT_META_MAX_BYTES = 16 * 1024
 
 #: Werkzeugname, unter dem eine reine Rückfrage (ohne Befehl) abgelegt wird —
 #: siehe ``api/approvals.request_approval``.

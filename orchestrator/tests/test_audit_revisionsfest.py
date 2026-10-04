@@ -303,6 +303,41 @@ class AgentDarfMenschlicheEreignisseNichtFaelschen(_Basis):
                 )
             self.assertEqual(ctx.exception.status_code, 400)
 
+    # Sicherheitsprüfung v1.362.0, F9: statt einer Sperrliste eine Erlaubt-Liste.
+    # Ein Agent meldet nur, was ER getan hat oder was ihm verweigert wurde —
+    # nicht „Agent angelegt“, „Regel geändert“ oder Ähnliches, das sonst jedes neue
+    # Ereignis automatisch fälschbar machte. Der Agenten-Code selbst ruft
+    # POST /audit/log derzeit nirgends auf (agent/, Brücke, Skills durchsucht).
+    async def test_nur_eigene_handlungen_des_agenten(self):
+        erlaubt = ("command_executed", "command_blocked", "file_written",
+                   "network_request", "url_blocked", "logs_read")
+        async with self.Session() as db:
+            for typ in erlaubt:
+                antwort = await audit_api.create_audit_log(
+                    audit_api.AuditLogCreate(event_type=typ, command="ls"),
+                    agent_auth={"agent_id": "a1"}, db=db,
+                )
+                self.assertEqual(antwort["status"], "logged", typ)
+            for typ in ("agent_created", "approval_rule_updated", "autonomy_level_changed",
+                        "brain_deleted", "dlp_blocked", "mcp_tool_called"):
+                with self.assertRaises(HTTPException) as ctx:
+                    await audit_api.create_audit_log(
+                        audit_api.AuditLogCreate(event_type=typ),
+                        agent_auth={"agent_id": "a1"}, db=db,
+                    )
+                self.assertEqual(ctx.exception.status_code, 400, typ)
+            self.assertEqual(len(await self._eintraege(db, "agent_created")), 0)
+
+    def test_laenge_begrenzt(self):
+        from pydantic import ValidationError
+
+        audit_api.AuditLogCreate(event_type="command_executed", command="x" * 4000,
+                                 meta={"ausgabe": "y" * 15000})
+        with self.assertRaises(ValidationError):
+            audit_api.AuditLogCreate(event_type="command_executed", command="x" * 4001)
+        with self.assertRaises(ValidationError):
+            audit_api.AuditLogCreate(event_type="command_executed", meta={"ausgabe": "y" * 17000})
+
 
 if __name__ == "__main__":
     unittest.main()
