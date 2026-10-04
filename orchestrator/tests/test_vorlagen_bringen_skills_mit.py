@@ -46,7 +46,10 @@ class MitgelieferteSkillsTests(unittest.TestCase):
         for s in skills:
             with self.subTest(s["name"]):
                 self.assertRegex(s["name"], r"^[a-z0-9]+(-[a-z0-9]+)*$")
-                self.assertTrue(20 <= len(s["description"]) <= 400, s["description"])
+                # Bis 700: die Beschreibung trägt seit der Abnahme von v1.362.1 auch die
+                # Auslöser („Auslöser: DATEV, Buchungsstapel …“) — sie sind das, woran
+                # Modell und Server erkennen, WANN der Skill gilt. Claude erlaubt 1024.
+                self.assertTrue(20 <= len(s["description"]) <= 700, s["description"])
                 self.assertGreater(len(s["content"].splitlines()), 30)
                 self.assertEqual(s["source_repo"], ms.QUELLE)
 

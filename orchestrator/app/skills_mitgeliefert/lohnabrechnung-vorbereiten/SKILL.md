@@ -1,6 +1,6 @@
 ---
 name: lohnabrechnung-vorbereiten
-description: "Sammelt und prüft alle abrechnungsrelevanten Änderungen des Monats (Stammdaten, Ein- und Austritte, Fehlzeiten, Zuschläge) und erstellt eine Übergabeliste fürs Lohnbüro. Nutzen, wenn die monatliche Lohn- und Gehaltsabrechnung vorbereitet oder Personaldaten dafür geprüft werden sollen."
+description: "Sammelt und prüft alle abrechnungsrelevanten Änderungen des Monats (Stammdaten, Ein- und Austritte, Fehlzeiten, Zuschläge) und erstellt eine Übergabeliste fürs Lohnbüro. Nutzen, wenn die monatliche Lohn- und Gehaltsabrechnung vorbereitet oder Personaldaten dafür geprüft werden sollen. Auslöser: Lohnabrechnung, Gehaltsabrechnung, Lohnbüro, Lohnbuchhaltung, Lohnsteuer, Sozialversicherung, Fehlzeiten."
 ---
 
 # Lohnabrechnung vorbereiten

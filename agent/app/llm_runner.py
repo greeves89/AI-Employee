@@ -341,6 +341,10 @@ class LLMRunner:
         base_system = base_system + get_identity_context() + MULTIMODAL_CAPABILITY_NOTE
 
         skills_ctx = get_skills_context()
+        # Zugewiesene Fachanleitungen (Liste + zum Auftrag passende Anleitung) — war hier
+        # importiert, aber nie gerufen: Custom-LLM-Auftraege kannten ihre Skills nicht.
+        # In die Nutzernachricht, wie bei den CLI-Laufzeiten (Systemprompt bleibt gleich).
+        fach = get_skill_preload(prompt)
         # Host mounts / Second Brain awareness — custom_llm builds its own system
         # prompt and never reads the instruction file, so inject it here (parity
         # with the CLI runtimes, which get it via the bundle / CLAUDE.md).
@@ -362,7 +366,7 @@ class LLMRunner:
             if skills_ctx:
                 system_prompt += "\n" + skills_ctx
             marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
-            enhanced_prompt = CHAT_STARTUP_PREFIX + marketplace_suggestions + zeit + prompt
+            enhanced_prompt = CHAT_STARTUP_PREFIX + fach + marketplace_suggestions + zeit + prompt
         else:
             memory_preload = get_memory_preload(prompt[:500])
             approval_rules = get_approval_rules_prefix()
@@ -379,7 +383,7 @@ class LLMRunner:
             if skills_ctx:
                 system_prompt += "\n" + skills_ctx
             marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
-            enhanced_prompt = (TASK_STARTUP_PREFIX + marketplace_suggestions + zeit + prompt
+            enhanced_prompt = (TASK_STARTUP_PREFIX + fach + marketplace_suggestions + zeit + prompt
                                + SELF_IMPROVEMENT_SUFFIX)
 
         messages: list[ChatMessage] = [

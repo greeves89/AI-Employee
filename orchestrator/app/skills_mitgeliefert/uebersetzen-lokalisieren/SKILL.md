@@ -1,6 +1,6 @@
 ---
 name: uebersetzen-lokalisieren
-description: "Übersetzt und lokalisiert Texte (u. a. Deutsch, Englisch, Französisch, Spanisch) mit Firmenglossar, passenden Formaten und Anrede, ohne sinnverändernde Kürzungen, mit Prüfung und Markierung unsicherer Stellen. Nutzen, wenn Texte, Dokumente oder Oberflächen in eine andere Sprache sollen."
+description: "Übersetzt und lokalisiert Texte (u. a. Deutsch, Englisch, Französisch, Spanisch) mit Firmenglossar, passenden Formaten und Anrede, ohne sinnverändernde Kürzungen, mit Prüfung und Markierung unsicherer Stellen. Nutzen, wenn Texte, Dokumente oder Oberflächen in eine andere Sprache sollen. Auslöser: Übersetzung, übersetzen, Lokalisierung, Glossar, ins Englische, auf Englisch."
 ---
 
 # Übersetzen und lokalisieren

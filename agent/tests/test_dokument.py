@@ -386,6 +386,133 @@ class AnleitungTests(unittest.TestCase):
         self.assertIn(self.REGEL, (AGENT / "claude-global.md").read_text(encoding="utf-8"))
 
 
+# ─── Seitenumbruch: keine Folgeseite mit nur dem Fußblock (Abnahme v1.362.1) ─────
+#
+# Befund: Seite 2 eines kurzen Angebots enthielt nur den Fußblock (Firma, Register,
+# Bank). Zwei Wege führen dorthin, beide nachgestellt:
+#   * Markdown, das knapp über eine Seite reicht: der Fußblock nach der letzten
+#     Trennlinie rutschte allein (oder zerrissen) auf die nächste Seite;
+#   * eigenes HTML des Agenten mit Seitenbehälter `min-height: 297mm` und absolut
+#     gesetzter Fußzeile: zusammen mit unseren Rändern ist der Behälter höher als
+#     die Seite, die Fußzeile landet allein auf Seite 2.
+
+FUSS = (
+    "Malerbetrieb Beispiel GmbH · Sitz Beispielstadt · Amtsgericht Beispielstadt, HRB 12345 · "
+    "Geschäftsführung: Erika Beispiel\n"
+    "Steuernummer: 12/345/67890 · Beispielbank, IBAN DE00 0000 0000 0000 0000 00, BIC XXXXDEXXXXX\n"
+)
+
+
+def _angebot_md(extra_positionen: int = 0) -> str:
+    zeilen = "".join(
+        f"| 01.{i + 4:02d} | Wandfläche streichen, zwei Anstriche, Dispersionsfarbe weiß "
+        f"| 10,00 | m² | 9,80 € | 98,00 € |\n"
+        for i in range(extra_positionen)
+    )
+    return (
+        "**Malerbetrieb Beispiel GmbH** · Hauptstraße 5 · 12345 Beispielstadt\n\n"
+        "Familie Kunde  \nGartenweg 3  \n12345 Beispielstadt\n\n"
+        "# Angebot 2026-017 – Renovierung Wohnzimmer\n"
+        "Datum: 04.10.2026 · Ihre Anfrage vom 01.10.2026 · Ansprechpartner: Herr Beispiel\n\n"
+        "Sehr geehrte Familie Kunde, vielen Dank für Ihre Anfrage. Wir bieten Ihnen an:\n\n"
+        "| Pos. | Leistung | Menge | Einheit | Einzelpreis netto | Gesamt netto |\n"
+        "|---|---|---|---|---|---|\n"
+        "| 01.01 | Untergrund vorbereiten, Löcher spachteln, Flächen schleifen | 40,00 | m² | 3,50 € | 140,00 € |\n"
+        "| 01.02 | Wandflächen weiß streichen, zwei Anstriche | 40,00 | m² | 9,80 € | 392,00 € |\n"
+        + zeilen +
+        "| 01.03 | Abdecken und Abkleben von Boden, Fenstern und Türen | 1,00 | psch | 85,00 € | 85,00 € |\n\n"
+        "| | Betrag |\n|---|---|\n| Summe netto | 617,00 € |\n| Umsatzsteuer 19 % | 117,23 € |\n"
+        "| **Summe brutto** | 734,23 € |\n\n"
+        "Darin enthaltene Arbeitskosten: 480,00 € (für § 35a EStG).\n\n"
+        "Bindefrist 30 Tage. Zahlbar innerhalb von 14 Tagen nach Rechnungsstellung ohne Abzug. "
+        "Ausführung nach Absprache, voraussichtlich KW 44.\n\n"
+        "Mit freundlichen Grüßen\n\nIhr Malerteam Beispiel\n\n"
+        "---\n" + FUSS
+    )
+
+
+ANGEBOT_HTML_SEITENHOCH = """<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+body { margin: 0; font-family: Arial, sans-serif; font-size: 10pt; }
+.page { min-height: 297mm; padding: 20mm 20mm 30mm 20mm; box-sizing: border-box; position: relative; }
+.footer { position: absolute; bottom: 12mm; left: 20mm; right: 20mm; font-size: 7.5pt; }
+</style></head><body><div class="page">
+<p>Malerbetrieb Beispiel GmbH · Hauptstraße 5 · 12345 Beispielstadt</p>
+<h1>Angebot 2026-017</h1>
+<table><tr><th>Pos.</th><th>Leistung</th><th>GP</th></tr>
+<tr><td>1</td><td>Wände streichen, zwei Anstriche</td><td>392,00 €</td></tr></table>
+<p>Summe brutto 466,48 €</p><p>Mit freundlichen Grüßen</p>
+<div class="footer">Sitz Beispielstadt · HRB 12345 · IBAN DE00 0000 0000 0000 0000 00</div>
+</div></body></html>"""
+
+
+def _seiten(pfad: Path) -> list[str]:
+    from pypdf import PdfReader
+
+    return [(p.extract_text() or "") for p in PdfReader(str(pfad)).pages]
+
+
+class LetzteSeiteFastLeerTests(unittest.TestCase):
+    """Die Erkennung selbst — ohne Browser."""
+
+    def test_nur_fussblock_auf_der_letzten_seite(self):
+        voll = "Position 01.01 Wandfläche streichen 98,00 €\n" * 40
+        self.assertTrue(dokument.letzte_seite_fast_leer([voll, "Sitz Beispielstadt · HRB 12345\nSeite 2 von 2"]))
+
+    def test_gut_gefuellte_letzte_seite_ist_in_ordnung(self):
+        voll = "Position 01.01 Wandfläche streichen 98,00 €\n" * 40
+        self.assertFalse(dokument.letzte_seite_fast_leer([voll, voll[: len(voll) // 2]]))
+
+    def test_eine_seite_ist_nie_fast_leer(self):
+        self.assertFalse(dokument.letzte_seite_fast_leer(["kurz"]))
+
+    def test_platzhalter_in_eckigen_klammern(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pfad = Path(tmp) / "a.pdf"
+            pfad.write_bytes(_mini_pdf(["Angebot von [Ihr Firmenname]", "Seite 1 von 1"]))
+            ergebnis = dokument.pruefe_pdf(pfad)
+        self.assertIn("platzhalter", {f["art"] for f in ergebnis["fehler"]})
+
+
+class SeitenumbruchTests(_MitOrdner):
+    @classmethod
+    def setUpClass(cls):
+        if not _browser_verfuegbar():
+            raise unittest.SkipTest("Kein Chromium für Playwright verfügbar")
+
+    def _pdf_aus(self, name: str, inhalt: str) -> list[str]:
+        quelle = self.ordner / name
+        quelle.write_text(inhalt, encoding="utf-8")
+        ziel = quelle.with_suffix(".pdf")
+        dokument.erzeuge_pdf(quelle, ziel, fusszeile="Malerbetrieb Beispiel GmbH")
+        return _seiten(ziel)
+
+    def test_kurzes_angebot_passt_auf_eine_seite(self):
+        seiten = self._pdf_aus("kurz.md", _angebot_md())
+        self.assertEqual(1, len(seiten), seiten)
+        self.assertIn("Seite 1 von 1", seiten[0])
+        self.assertIn("HRB 12345", seiten[0])
+
+    def test_fussblock_steht_nie_allein_und_nie_zerrissen_auf_der_folgeseite(self):
+        # 5 und 6 Zusatzpositionen: ohne Schutz zerriss der Fußblock bzw. stand
+        # allein auf Seite 2 (nachgemessen vor der Änderung).
+        for extra in (4, 5, 6, 7):
+            with self.subTest(extra=extra):
+                seiten = self._pdf_aus(f"lang{extra}.md", _angebot_md(extra))
+                mit_fuss = [s for s in seiten if "Sitz Beispielstadt" in s]
+                self.assertEqual(1, len(mit_fuss), seiten)
+                self.assertIn("BIC XXXXDEXXXXX", mit_fuss[0], "Fußblock zerrissen")
+                inhalt = ("Ihr Malerteam Beispiel", "Mit freundlichen Grüßen", "Bindefrist", "Summe")
+                self.assertTrue(any(w in mit_fuss[0] for w in inhalt),
+                                f"Seite trägt nur den Fußblock: {mit_fuss[0]!r}")
+
+    def test_eigenes_html_mit_seitenhoehe_bleibt_auf_einer_seite(self):
+        seiten = self._pdf_aus("seitenhoch.html", ANGEBOT_HTML_SEITENHOCH)
+        self.assertEqual(1, len(seiten), seiten)
+        self.assertIn("HRB 12345", seiten[0])
+        self.assertIn("Mit freundlichen Grüßen", seiten[0])
+        self.assertIn("Seite 1 von 1", seiten[0])
+
+
 if __name__ == "__main__":
     os.environ.setdefault("PYTHONPATH", str(AGENT))
     unittest.main()

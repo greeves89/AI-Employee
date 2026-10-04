@@ -1,6 +1,6 @@
 ---
 name: anforderungen-schreiben
-description: "Macht aus Ideen, Wünschen und Anforderungen umsetzbare Pakete – Problem, Zielgruppe, Ziel mit Messgröße, User Stories mit Akzeptanzkriterien, Abgrenzung, Priorisierung und geschnittene Aufgaben für Agenten oder Team. Nutzen, wenn eine Produktidee oder ein Feature konkretisiert werden soll."
+description: "Macht aus Ideen, Wünschen und Anforderungen umsetzbare Pakete – Problem, Zielgruppe, Ziel mit Messgröße, User Stories mit Akzeptanzkriterien, Abgrenzung, Priorisierung und geschnittene Aufgaben für Agenten oder Team. Nutzen, wenn eine Produktidee oder ein Feature konkretisiert werden soll. Auslöser: Anforderung, User Story, Akzeptanzkriterien, Lastenheft, Pflichtenheft, Produktidee, Feature konkretisieren."
 ---
 
 # Anforderungen schreiben

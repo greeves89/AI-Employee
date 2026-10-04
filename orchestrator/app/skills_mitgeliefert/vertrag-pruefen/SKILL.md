@@ -1,6 +1,6 @@
 ---
 name: vertrag-pruefen
-description: "Liest Verträge, prüft sie Klausel für Klausel nach einer Checkliste, markiert Risiken mit einer Ampel und erstellt eine Fragenliste für den Anwalt. Nutzen, wenn ein Vertrag, AGB, eine NDA oder ein AV-Vertrag vor Unterschrift geprüft werden soll."
+description: "Liest Verträge, prüft sie Klausel für Klausel nach einer Checkliste, markiert Risiken mit einer Ampel und erstellt eine Fragenliste für den Anwalt. Nutzen, wenn ein Vertrag, AGB, eine NDA oder ein AV-Vertrag vor Unterschrift geprüft werden soll. Auslöser: Vertrag, Vertragsprüfung, AGB, NDA, Geheimhaltungsvereinbarung, AV-Vertrag, Klausel."
 ---
 
 # Vertrag prüfen

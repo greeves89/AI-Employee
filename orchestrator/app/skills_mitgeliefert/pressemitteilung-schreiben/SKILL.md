@@ -1,6 +1,6 @@
 ---
 name: pressemitteilung-schreiben
-description: "Schreibt Pressemitteilungen, Statements und Antworten auf Presseanfragen mit klarem Aufbau (Lead mit W-Fragen, Zitat, Fakten, Boilerplate) und belegten Angaben, inklusive Freigabe vor Versand. Nutzen, wenn eine Meldung, ein Statement oder eine Presseantwort entstehen soll."
+description: "Schreibt Pressemitteilungen, Statements und Antworten auf Presseanfragen mit klarem Aufbau (Lead mit W-Fragen, Zitat, Fakten, Boilerplate) und belegten Angaben, inklusive Freigabe vor Versand. Nutzen, wenn eine Meldung, ein Statement oder eine Presseantwort entstehen soll. Auslöser: Pressemitteilung, Pressemeldung, Presseanfrage, Medienanfrage, Statement, Journalist."
 ---
 
 # Pressemitteilung schreiben

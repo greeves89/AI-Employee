@@ -1,6 +1,6 @@
 ---
 name: angebot-kalkulieren
-description: "Erstellt aus Anfrage oder Aufmaß ein strukturiertes Leistungsverzeichnis mit Kalkulation (Material, Lohn, Zuschläge nach Firmenwerten) und daraus zwei Dateien: das Kundenangebot als PDF mit echten Firmendaten und die interne Kalkulation. Nutzen, wenn ein Angebot, ein Nachtrag oder eine Preiskalkulation für Handwerks- oder Bauleistungen vorbereitet werden soll."
+description: "Erstellt aus Anfrage oder Aufmaß ein strukturiertes Leistungsverzeichnis mit Kalkulation (Material, Lohn, Zuschläge nach Firmenwerten) und daraus zwei Dateien: das Kundenangebot als PDF mit echten Firmendaten und die interne Kalkulation. Fehlen die Firmendaten, fragt er zuerst einmal gebündelt nach — nie Platzhalter im Kundendokument. Nutzen, wenn ein Angebot, ein Kostenvoranschlag, ein Nachtrag oder eine Preiskalkulation vorbereitet werden soll. Auslöser: Angebot, Kostenvoranschlag, Kalkulation, Nachtrag, Aufmaß, Leistungsverzeichnis, Einheitspreis."
 ---
 
 # Angebot kalkulieren
@@ -23,7 +23,9 @@ Fehlt der Eintrag oder fehlt darin etwas, **frag einmal gebündelt** nach allem,
 
 Die Antwort legst du als Eintrag „Firmenstammdaten“ in der Wissensbasis ab (`brain_contribute`, sonst `memory_save` mit dem Schlüssel `firmenstammdaten`), damit nie wieder gefragt werden muss.
 
-**Kundendaten** (Name, Anschrift, Ansprechpartner) kommen ausschließlich aus der Anfrage oder vom Nutzer. Fehlen sie, fragst du nach. Platzhalter wie „Muster GmbH“, „Max Mustermann“ oder „Musterstraße“ stehen in keinem Dokument, das du erzeugst.
+**Kundendaten** (Name, Anschrift, Ansprechpartner) kommen ausschließlich aus der Anfrage oder vom Nutzer. Fehlen sie, fragst du nach. Platzhalter wie „Muster GmbH“, „Max Mustermann“, „Musterstraße“ oder „[Ihr Firmenname]“ stehen in keinem Dokument, das du erzeugst.
+
+**Reihenfolge:** erst fragen, dann erzeugen. Ein Kundendokument (Markdown, PDF, Word) mit Platzhaltern zu erstellen und erst danach nach den Daten zu fragen, ist der Fehler, den diese Anleitung verhindern soll — die Kalkulation darfst du vorbereiten, das Kundenangebot nicht.
 
 ## Vorgehen
 1. **Firmenwerte laden.** In Wissensbasis und Gedächtnis (`memory_search`) suchen: Stundensätze bzw. Mittellohn, Zuschlagssätze (Gemeinkosten, Wagnis, Gewinn), Materialpreislisten oder Lieferantenkonditionen, Standardtexte, Zahlungs- und Gewährleistungsbedingungen, Bindefrist. **Fehlt ein Wert, setzt du keinen eigenen ein**, sondern trägst „Firmenwert fehlt“ ein und fragst nach.
@@ -73,6 +75,7 @@ Die Antwort legst du als Eintrag „Firmenstammdaten“ in der Wissensbasis ab (
 - Absender oder Kunden erfinden („Muster GmbH“) statt nach den Firmenstammdaten bzw. Kundendaten zu fragen.
 - Interne Hinweise, offene Punkte oder Einkaufspreise im Kundenangebot stehen lassen.
 - Das PDF per Browser drucken (Datum und Dateipfad am Seitenrand) statt mit `dokument pdf`.
+- Das Kundenangebot als eigenes HTML mit Seitenhöhe (`min-height: 297mm`, `100vh`) und absolut gesetzter Fußzeile bauen: die Fußzeile rutscht dann allein auf Seite 2. Schreib das Angebot als Markdown nach dem Ausgabeformat unten; Seitenränder und „Seite X von Y“ setzt `dokument pdf`.
 
 ## Ausgabeformat: zwei Dateien
 
