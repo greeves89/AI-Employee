@@ -52,7 +52,7 @@ const MCP_HEALTH_ORCH_ONLY =
   "trotzdem fehlschlagen (z. B. 401). Agent-Perspektive folgt in #425 Phase 2.";
 
 function formatMcpHealth(server: McpServerInfo): { ok: boolean; label: string; className: string; title: string } {
-  const checked = formatRelativeCheckedAt(server.last_checked_at);
+  const checked = formatRelativeCheckedAt(server.last_checked_at ?? null);
   if (!server.last_status) {
     return {
       ok: false,
@@ -696,6 +696,9 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   // ihn dort anzubieten wäre ein leeres Versprechen.
   const [privateBlocked, setPrivateBlocked] = useState(false);
   const [allowPrivate, setAllowPrivate] = useState(false);
+  // Neue Server sind zunächst nur für Admins (und Rollen mit ausdrücklicher
+  // Freigabe) da. Erst der Haken stellt sie allen Nutzern bereit (#909).
+  const [addFuerAlle, setAddFuerAlle] = useState(false);
   const [removeHeaders, setRemoveHeaders] = useState(false);
   // Eigene Rueckkehr-Adresse für den OAuth-Tanz dieses einen Servers.
   // Ohne dieses Feld wäre der Wert nur per API zu setzen — die Einstellung
@@ -794,6 +797,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     setRemoveHeaders(false);
     setPrivateBlocked(false);
     setAllowPrivate(false);
+    setAddFuerAlle(false);
     setProbeResult(null);
   };
 
@@ -807,7 +811,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     setEditingId(server.id);
     resetForm();
     setAddName(server.name);
-    setAddUrl(server.url);
+    setAddUrl(server.url ?? "");
     setAddCallbackBase(server.oauth_callback_base_url || "");
     setShowForm(true);
   };
@@ -829,6 +833,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
         addName.trim(), addUrl.trim(), addBearer.trim() || undefined,
         Object.keys(headers).length ? headers : undefined,
         allowPrivate,
+        addFuerAlle,
       );
       setServers((prev) => [server, ...prev]);
       closeForm();
@@ -955,6 +960,28 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
       onToast({ type: "error", message: e instanceof Error ? e.message : "Agent-Prüfung fehlgeschlagen" });
     } finally {
       setCheckingAgents(false);
+    }
+  };
+
+  const handleFuerAlle = async (server: McpServerInfo) => {
+    const an = !server.fuer_alle;
+    const ok = await confirm({
+      title: an ? "Allen Nutzern bereitstellen?" : "Nicht mehr allen Nutzern bereitstellen?",
+      message: an
+        ? `„${server.name}“ steht danach jedem Nutzer zur Verfügung und arbeitet mit den hinterlegten Zugangsdaten. Laufende Agenten, die ihn bekommen, starten neu.`
+        : `„${server.name}“ nutzen danach nur Admins und Rollen, die ihn ausdrücklich freigeben. Laufende Agenten, die ihn verlieren, starten neu.`,
+      confirmLabel: an ? "Bereitstellen" : "Zurücknehmen",
+    });
+    if (!ok) return;
+    try {
+      const updated = await api.updateMcpServer(server.id, { fuer_alle: an });
+      setServers((prev) => prev.map((s) => (s.id === server.id ? updated : s)));
+      onToast({
+        type: "success",
+        message: an ? `„${server.name}“ steht allen Nutzern bereit` : `„${server.name}“ ist nur noch für Admins und freigegebene Rollen da`,
+      });
+    } catch (e) {
+      onToast({ type: "error", message: e instanceof Error ? e.message : "Fehler" });
     }
   };
 
@@ -1139,6 +1166,21 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                 </p>
               </div>
             )}
+            {editingId == null && (
+              <label className="flex items-start gap-2 text-[11px] text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={addFuerAlle}
+                  onChange={(e) => setAddFuerAlle(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-border"
+                />
+                <span>
+                  <strong className="text-foreground">Allen Nutzern bereitstellen</strong> — sonst nutzen
+                  ihn nur Admins und Rollen, die ihn ausdrücklich freigeben. Der Server arbeitet mit den
+                  hier hinterlegten Zugangsdaten, also im Namen dieses Kontos.
+                </span>
+              </label>
+            )}
             {editingServer?.has_auth && !addBearer.trim() && !removeToken && (
               <p className="text-[10px] text-muted-foreground/50">
                 Hinweis: Der Verbindungstest nutzt nur ein hier eingegebenes Token — der gespeicherte Token kann dafür nicht ausgelesen werden.
@@ -1249,6 +1291,15 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                         <Wrench className="h-2.5 w-2.5" />
                         {toolCount} Tool{toolCount !== 1 && "s"} entdeckt
                       </span>
+                      {server.fuer_alle && (
+                        <span
+                          title="Steht allen Nutzern bereit"
+                          className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-400"
+                        >
+                          <Users className="h-2.5 w-2.5" />
+                          Für alle
+                        </span>
+                      )}
                       {!server.enabled && (
                         <span className="text-[10px] text-muted-foreground/50">deaktiviert</span>
                       )}
@@ -1277,6 +1328,25 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {server.fuer_alle !== undefined && (
+                      <button
+                        onClick={() => handleFuerAlle(server)}
+                        role="switch"
+                        aria-checked={!!server.fuer_alle}
+                        aria-label="Allen Nutzern bereitstellen"
+                        className={cn(
+                          "flex h-7 w-7 items-center justify-center rounded-lg transition-colors",
+                          server.fuer_alle
+                            ? "text-sky-500 hover:bg-sky-500/15"
+                            : "text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06]"
+                        )}
+                        title={server.fuer_alle
+                          ? "Allen Nutzern bereitgestellt — klicken, um es zurückzunehmen"
+                          : "Allen Nutzern bereitstellen (bisher nur Admins und freigegebene Rollen)"}
+                      >
+                        <Users className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleToggle(server)}
                       className={cn(

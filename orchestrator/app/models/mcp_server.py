@@ -23,6 +23,13 @@ class McpServer(Base, TimestampMixin):
     allow_private_host: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )
+    #: Allen Nutzern bereitgestellt (#909). Aus: nur Admins und Rollen, die den
+    #: Server ausdruecklich in ``mcp_server_ids`` fuehren, sehen und nutzen ihn.
+    #: Neue Server starten aus; bei der Umstellung wurden bestehende auf an gesetzt.
+    #: Wer was nutzen darf, steht an EINER Stelle: core/mcp_zugriff.py.
+    fuer_alle: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     # Optional Bearer token (Fernet-encrypted) sent as `Authorization: Bearer <token>`
     # on discovery and on every agent tool call to this server.
     auth_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)

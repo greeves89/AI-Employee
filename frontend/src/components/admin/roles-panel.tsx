@@ -472,7 +472,12 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                 <NurFreigegebenHinweis />
                 <AlleAuswaehlenButton onClick={() => setDraft((d) => ({ ...d, secret_ids: secrets.map((x) => x.id) }))} />
               </PermissionBlock>
-              <PermissionBlock title="MCP-Server / Tools" zusammenfassung={zaehlen(draft.mcp_server_ids, mcpServers.length, "alle")}>
+              <PermissionBlock
+                title="MCP-Server / Tools"
+                zusammenfassung={draft.mcp_server_ids == null
+                  ? "alle für alle freigegebenen"
+                  : zaehlen(draft.mcp_server_ids, mcpServers.length, "alle")}
+              >
                 <div className="flex flex-wrap gap-2">
                   {mcpServers.length === 0 && (
                     <span className="text-[11px] text-muted-foreground/50">Keine MCP-Server angelegt</span>
@@ -480,7 +485,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                   {mcpServers.map((m) => (
                     <ToggleChip
                       key={m.id}
-                      active={draft.mcp_server_ids == null || draft.mcp_server_ids.includes(m.id)}
+                      active={draft.mcp_server_ids == null ? !!m.fuer_alle : draft.mcp_server_ids.includes(m.id)}
                       muted={draft.mcp_server_ids == null}
                       label={m.name}
                       onClick={() => setDraft((d) => ({
@@ -490,7 +495,15 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                     />
                   ))}
                 </div>
-                <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, mcp_server_ids: null }))} />
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  {draft.mcp_server_ids == null
+                    ? "Keine Liste: alle für alle freigegebenen Server (Schalter „Allen Nutzern bereitstellen“ unter Integrationen)."
+                    : "Nur markierte sind für diese Rolle freigegeben, unabhängig vom Schalter „Allen Nutzern bereitstellen“. Ohne Auswahl: keiner. Admins sehen immer alle."}
+                </p>
+                <SetUnlimitedButton
+                  label="Alle für alle freigegebenen"
+                  onClick={() => setDraft((d) => ({ ...d, mcp_server_ids: null }))}
+                />
               </PermissionBlock>
               <PermissionBlock title="Integrationen (M365 / Exchange)" zusammenfassung={zaehlen(draft.integration_providers, integrations.length, "alle")}>
                 <div className="flex flex-wrap gap-2">
@@ -799,14 +812,14 @@ function AlleAuswaehlenButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function SetUnlimitedButton({ onClick }: { onClick: () => void }) {
+function SetUnlimitedButton({ onClick, label = "Alle erlauben" }: { onClick: () => void; label?: string }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className="mt-2 text-[11px] font-medium text-muted-foreground hover:text-foreground"
     >
-      Alle erlauben
+      {label}
     </button>
   );
 }

@@ -41,7 +41,8 @@ class _FakeAddSession:
 
 def _body(**kw):
     defaults = dict(name="proxy-mcp", url="https://mcp.example.test/mcp",
-                    bearer_token=None, headers=None, allow_private_host=False)
+                    bearer_token=None, headers=None, allow_private_host=False,
+                    fuer_alle=False)
     defaults.update(kw)
     return SimpleNamespace(**defaults)
 

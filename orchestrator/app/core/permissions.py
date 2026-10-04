@@ -9,7 +9,7 @@ Permissions dict shape:
   "mount_labels": list[str] | None,    # None = inherit user_mount_access; listed labels are GRANTED to the group (union with per-user grants)
   "ai_account_ids": list[int] | None,  # listed = the accounts this group may use. NOTE: for AI accounts the gate is DEFAULT-DENY (None = none) — see _allowed_account_ids
   "secret_ids": list[int] | None,      # listed = the secrets this group may use. NOTE: DEFAULT-DENY (None = none) — see secrets.py::_assert_secret_allowed
-  "mcp_server_ids": list[int] | None,  # None = all MCP servers; listed servers are the ones this group's agents may use
+  "mcp_server_ids": list[int] | None,  # None = the servers made available to all (fuer_alle, #909); listed = exactly these — see core/mcp_zugriff.py
   "url_host_patterns": list[str] | None,
   "menu_paths": list[str] | None       # None = all
 }

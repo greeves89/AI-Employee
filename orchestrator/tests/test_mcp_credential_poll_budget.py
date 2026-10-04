@@ -105,7 +105,9 @@ async def test_delayed_connect_errors_do_not_consume_poll_budget():
                  transport=httpx.MockTransport(provider), trust_env=False, **kw)), \
              patch.object(refresh, "decrypt_token", side_effect=lambda x: x), \
              patch.object(refresh, "encrypt_token", side_effect=lambda x: x), \
-             patch("app.core.agent_manager.decrypt_token", side_effect=lambda x: x):
+             patch("app.core.agent_manager.decrypt_token", side_effect=lambda x: x), \
+             patch("app.core.mcp_zugriff.nutzbar_fuer_agent", AsyncMock(return_value=None)):
+            # Freigaben (#909) sind hier nicht Gegenstand: der Agent darf den Server nutzen.
             async with real_client(timeout=15, trust_env=False) as caller, http_endpoint(manager) as url:
                 started = time.monotonic()
                 # Old eb55c141 waits on the provider here and raises ReadTimeout.

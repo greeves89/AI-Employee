@@ -18,7 +18,6 @@ from app.core.log_redaction import scrub_log
 from app.dependencies import make_agent_token
 from app.models.agent import Agent, AgentState
 from app.models.agent_secret import AgentSecretAssignment, AgentSecret
-from app.models.mcp_server import McpServer
 from app.models.oauth_integration import OAuthIntegration, OAuthProvider
 from app.models.schedule import Schedule
 from app.services.docker_service import DockerService
@@ -1434,42 +1433,17 @@ class AgentManager:
     async def _get_custom_mcp_env(self, agent_config: dict | None = None, agent_id: str | None = None, agent_integrations: list[str] | None = None, *, refresh_oauth: bool = True) -> dict[str, str]:
         """Load custom MCP servers and return as env var dict.
 
-        If agent_config contains 'mcp_servers' (list of IDs), only those
-        servers are included. Otherwise all enabled servers are returned.
+        Server selection (assignment + what the owner may use) comes from
+        core/agent_mcp_servers.servers_for_agent.
         Automatically injects the MS Graph MCP server when microsoft is connected.
         Credential polling uses refresh_oauth=False: provider I/O and advisory
         locks belong to the existing background sweep, outside its 15s budget.
         """
-        result = await self.db.execute(
-            select(McpServer).where(McpServer.enabled == True)
-        )
-        servers = result.scalars().all()
-
-        # Per-agent filtering
-        agent_mcp_ids = None
-        if agent_config and "mcp_servers" in agent_config:
-            agent_mcp_ids = set(agent_config["mcp_servers"])
-
-        if agent_mcp_ids is not None:
-            servers = [s for s in servers if s.id in agent_mcp_ids]
-
-        # Role/group restriction: limit to MCP servers the agent owner's group allows
-        # (custom_role.permissions.mcp_server_ids; None = all). Admins are unrestricted.
-        if agent_id:
-            try:
-                from app.models.agent import Agent as _Ag
-                from app.models.user import User as _U
-                from app.core.permissions import get_effective_permissions
-                ag = await self.db.get(_Ag, agent_id)
-                owner = await self.db.get(_U, ag.user_id) if (ag and ag.user_id) else None
-                if owner:
-                    perms = await get_effective_permissions(owner, self.db)
-                    allowed = perms.get("mcp_server_ids")
-                    if allowed is not None:
-                        allowed_set = set(allowed)
-                        servers = [s for s in servers if s.id in allowed_set]
-            except Exception as e:
-                logger.warning(f"MCP role filter failed for agent {scrub_log(agent_id)}: {e}")
+        # Welche Server dieser Agent bekommt, entscheidet EINE Stelle — dieselbe,
+        # aus der die Sprachfront ihre Werkzeuge baut (#909). Hier stand frueher
+        # eine zweite Kopie der Filterlogik.
+        from app.core.agent_mcp_servers import servers_for_agent
+        servers = await servers_for_agent(self.db, agent_id, agent_config)
 
         # OAuth-protected servers (#426): mint/refresh a fresh access token before
         # handing it to the agent, so a short-lived token never arrives already
