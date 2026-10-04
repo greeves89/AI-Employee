@@ -16,6 +16,7 @@ Geprüft wird hier:
   Schlüssel wirklich lesbar?
 """
 
+import gzip
 import subprocess
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -99,6 +100,91 @@ class VolumeAuswahlTests(unittest.TestCase):
         for name in ("backup.sh", "restore.sh", "update.sh", "lib/sicherung.sh"):
             with self.subTest(skript=name):
                 subprocess.run(["bash", "-n", str(REPO / "scripts" / name)], check=True)
+
+
+_DOCKER_ATTRAPPE = r"""#!/usr/bin/env bash
+# Attrappe fuer docker: schreibt jeden Aufruf mit, liefert passende Antworten.
+echo "$*" >> "$ATTRAPPE_LOG"
+case "$*" in
+    "ps -q"*) echo "c0ffee" ;;
+    *pg_dump*)
+        [ "${PG_DUMP_SCHEITERT:-}" = "1" ] && { echo "pg_dump: Verbindung verweigert" >&2; exit 1; }
+        echo "-- Inhalt der bisherigen Datenbank" ;;
+    *"SELECT 1 FROM pg_database"*) [ "${DB_FEHLT:-}" = "1" ] || echo "1" ;;
+    *schluessel_selbsttest*) echo '{"ok": true}' ;;
+    "exec -i"*) cat >/dev/null ;;
+esac
+exit 0
+"""
+
+
+class WiederherstellungSichertVorherTests(unittest.TestCase):
+    """restore.sh warf die laufende Datenbank per DROP weg, ohne sie vorher zu
+    sichern — eine falsche Sicherung oder ein Tippfehler im Pfad, und die
+    aktuellen Daten waren endgueltig fort (#892)."""
+
+    def setUp(self):
+        import os
+        import tempfile
+
+        self.tmp = Path(tempfile.mkdtemp())
+        self.bin = self.tmp / "bin"
+        self.bin.mkdir()
+        for name, inhalt in (("docker", _DOCKER_ATTRAPPE), ("curl", "#!/bin/sh\nexit 0\n")):
+            datei = self.bin / name
+            datei.write_text(inhalt)
+            datei.chmod(0o755)
+        self.sicherung = self.tmp / "sicherung"
+        self.sicherung.mkdir()
+        (self.sicherung / "postgres_20261001_020000.sql.gz").write_bytes(
+            gzip.compress(b"-- Inhalt der Sicherung\n"))
+        self.ziel = self.tmp / "sicherungen"
+        self.log = self.tmp / "docker.log"
+        self.env = {**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}",
+                    "ATTRAPPE_LOG": str(self.log), "BACKUP_DIR": str(self.ziel),
+                    "COMPOSE_PROJECT_NAME": "test"}
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _restore(self, **env):
+        return subprocess.run(
+            ["bash", str(REPO / "scripts" / "restore.sh"), "--backup", str(self.sicherung),
+             "--db-only", "--yes"],
+            env={**self.env, **env}, capture_output=True, text=True, timeout=60,
+        )
+
+    def _aufrufe(self) -> list[str]:
+        return self.log.read_text().splitlines() if self.log.exists() else []
+
+    def test_die_bisherige_datenbank_wird_vor_dem_drop_gesichert(self):
+
+        lauf = self._restore()
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+        kopien = list(self.ziel.glob("vor-wiederherstellung-*/postgres_*.sql.gz"))
+        self.assertEqual(len(kopien), 1)
+        kopie = kopien[0]
+        self.assertIn(b"bisherigen Datenbank", gzip.decompress(kopie.read_bytes()))
+        self.assertEqual(kopie.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(kopie.parent.stat().st_mode & 0o777, 0o700)
+        self.assertIn(str(kopie.parent), lauf.stdout, "der Pfad wird genannt")
+        aufrufe = self._aufrufe()
+        dump = next(i for i, a in enumerate(aufrufe) if "pg_dump" in a)
+        drop = next(i for i, a in enumerate(aufrufe) if "DROP DATABASE" in a)
+        self.assertLess(dump, drop)
+
+    def test_scheitert_die_sicherheitskopie_bleibt_die_datenbank_stehen(self):
+        lauf = self._restore(PG_DUMP_SCHEITERT="1")
+        self.assertNotEqual(lauf.returncode, 0)
+        self.assertFalse([a for a in self._aufrufe() if "DROP DATABASE" in a])
+
+    def test_ohne_vorhandene_datenbank_gibt_es_nichts_zu_sichern(self):
+        """Neuer Rechner: die Datenbank gibt es noch nicht — das ist kein Abbruch."""
+        lauf = self._restore(DB_FEHLT="1")
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+        self.assertFalse([a for a in self._aufrufe() if "pg_dump" in a])
+        self.assertTrue([a for a in self._aufrufe() if "CREATE DATABASE" in a])
 
 
 class AmpelTests(unittest.TestCase):
