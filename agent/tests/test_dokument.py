@@ -186,6 +186,117 @@ class PdfErzeugenTests(_MitOrdner):
         self.assertNotIn("file://", text)
 
 
+class _Zaehler:
+    """Kleiner HTTP-Server, der nur zählt, ob jemand anklopft."""
+
+    def __enter__(self):
+        import http.server
+        import threading
+
+        zaehler = self
+        self.anfragen = 0
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                zaehler.anfragen += 1
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"GEHEIM-AUS-DEM-NETZ")
+
+            def log_message(self, *a):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        return self
+
+    def __exit__(self, *a):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+# Kleinstes gültiges PNG (1×1), für erlaubte und verbotene Bilder.
+PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+    "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082"
+)
+
+
+class RenderHaertungTests(_MitOrdner):
+    """Eingaben können aus fremden Quellen stammen (Webseiten, Prompt-Injektion).
+
+    Das Rendern darf deshalb weder das interne Netz anfragen noch Dateien
+    außerhalb des Ordners des Quelldokuments einbinden (#893, Sicherheitsprüfung).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not _browser_verfuegbar():
+            raise unittest.SkipTest("Kein Chromium für Playwright verfügbar")
+
+    def setUp(self):
+        super().setUp()
+        self.draussen = Path(tempfile.mkdtemp())
+        (self.draussen / "geheim.txt").write_text("GEHEIM-AUS-DER-DATEI", encoding="utf-8")
+        (self.draussen / "geheim.png").write_bytes(PNG)
+        self.doc = self.ordner / "doc"
+        self.doc.mkdir()
+        (self.doc / "erlaubt.png").write_bytes(PNG)
+        os.symlink(self.draussen / "geheim.png", self.doc / "link.png")
+        os.symlink(self.draussen / "geheim.txt", self.doc / "link.txt")
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.draussen, ignore_errors=True)
+        super().tearDown()
+
+    def _rendern(self, name: str, inhalt: str):
+        quelle = self.doc / name
+        quelle.write_text(inhalt, encoding="utf-8")
+        ziel = self.ordner / "aus.pdf"
+        bericht = dokument.erzeuge_pdf(quelle, ziel)
+        return bericht, dokument._pdf_text(ziel)[1]
+
+    def _angriff(self, netz: str) -> str:
+        geheim = (self.draussen / "geheim.txt").as_uri()
+        return (
+            f'<img src="{geheim}">\n'
+            f'<img src="file:///etc/passwd">\n'
+            f'<iframe src="{netz}/orchestrator"></iframe>\n'
+            f'<iframe src="{geheim}"></iframe>\n'
+            f'<object data="{geheim}"></object><embed src="{geheim}">\n'
+            f'<link rel="stylesheet" href="{netz}/meta-data">\n'
+            f'<meta http-equiv="refresh" content="0; url={netz}/weiter">\n'
+            f'<script>fetch("{netz}/js")</script>\n'
+            f'<img src="{netz}/bild.png">\n'
+            f'<div style="background:url({netz}/css.png)">Hintergrund</div>\n'
+            '<img src="link.png"><img src="../../etc/passwd">\n'
+            '<iframe src="link.txt"></iframe>\n'
+            '<img src="erlaubt.png">\n'
+        )
+
+    def test_markdown_mit_angriffen_fragt_nichts_an_und_bindet_nichts_ein(self):
+        with _Zaehler() as netz:
+            bericht, text = self._rendern("a.md", "# Titel\n\n" + self._angriff(netz.url))
+            self.assertEqual(netz.anfragen, 0, "das Rendern hat das Netz angefragt")
+        self.assertNotIn("GEHEIM", text)
+        self.assertIn("Titel", text)
+        self.assertIn("erlaubt.png", " ".join(bericht["erlaubt"]))
+        self.assertFalse(any("link.png" in u for u in bericht["erlaubt"]))
+
+    def test_html_mit_angriffen_fragt_nichts_an_und_bindet_nichts_ein(self):
+        with _Zaehler() as netz:
+            html_text = ("<html><head><base href=\"" + netz.url + "/\"></head><body><h1>Titel</h1>"
+                         + self._angriff(netz.url) + "</body></html>")
+            bericht, text = self._rendern("a.html", html_text)
+            self.assertEqual(netz.anfragen, 0, "das Rendern hat das Netz angefragt")
+        self.assertNotIn("GEHEIM", text)
+        self.assertIn("Titel", text)
+
+
 class DocxTests(_MitOrdner):
     def test_markdown_wird_zu_word_mit_ueberschrift_tabelle_und_liste(self):
         import docx

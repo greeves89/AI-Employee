@@ -26,7 +26,6 @@ import json
 import os
 import re
 import sys
-import tempfile
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -162,6 +161,51 @@ _FUSSZEILE = (
 )
 
 
+#: Herkunft, unter der das Dokument gerendert wird. Gibt es nicht im Netz
+#: (.invalid ist reserviert) — jede Anfrage dorthin beantwortet der Route-
+#: Handler selbst aus dem Ordner des Quelldokuments. Kein file://: so greift
+#: zusätzlich die Sperre des Browsers gegen lokale Dateien aus einer Webseite.
+HERKUNFT = "http://dokument.invalid/"
+_SEITE = "__dokument__.html"
+
+#: Elemente, die nachladen, einbetten, weiterleiten oder Code ausführen. Im
+#: Dokument eines Agenten haben sie nichts verloren; Eingaben können aus
+#: fremden Quellen stammen (Webseiten, Prompt-Injektion).
+_GEFAEHRLICH_PAARE = ("script", "iframe", "object", "frame", "frameset", "noscript", "template", "applet")
+_GEFAEHRLICH_EINZELN = ("embed", "link", "base", "frame", "iframe", "object", "script", "portal")
+
+
+def _entschaerfen(text: str) -> str:
+    """Nachladende/ausführende Elemente und Weiterleitungen entfernen.
+
+    Zweite Linie: die erste ist der Route-Handler beim Rendern, der ohnehin
+    nichts außerhalb des Ordners zulässt, plus abgeschaltetes JavaScript.
+    """
+    for tag in _GEFAEHRLICH_PAARE:
+        text = re.sub(rf"<\s*{tag}\b.*?<\s*/\s*{tag}\s*>", "", text, flags=re.I | re.S)
+    for tag in _GEFAEHRLICH_EINZELN:
+        text = re.sub(rf"<\s*/?\s*{tag}\b[^>]*>", "", text, flags=re.I)
+    # Weiterleitung per <meta http-equiv="refresh">
+    text = re.sub(r"<\s*meta\b[^>]*http-equiv[^>]*>", "", text, flags=re.I)
+    # Ereignis-Attribute (onload=…) und javascript:-Adressen
+    text = re.sub(r"\son[a-z]+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", "", text, flags=re.I)
+    text = re.sub(r"javascript\s*:", "", text, flags=re.I)
+    return text
+
+
+def _im_ordner(basis: Path, relativ: str) -> Path | None:
+    """Datei unterhalb von ``basis`` — nach Auflösung aller Symlinks — oder None."""
+    if not relativ or "\x00" in relativ:
+        return None
+    wurzel = Path(os.path.realpath(basis))
+    kandidat = Path(os.path.realpath(wurzel / relativ))
+    try:
+        kandidat.relative_to(wurzel)
+    except ValueError:
+        return None
+    return kandidat if kandidat.is_file() else None
+
+
 def _markdown_zu_html(text: str) -> str:
     import markdown
 
@@ -179,20 +223,26 @@ def _erste_ueberschrift(html_text: str) -> str | None:
 
 
 def baue_html(eingabe: Path, titel: str | None = None) -> str:
-    """Vollständiges HTML-Dokument (lang=de, Druck-CSS) aus Markdown oder HTML."""
+    """Vollständiges HTML-Dokument (lang=de, Druck-CSS) aus Markdown oder HTML.
+
+    Relative Bilder/Stylesheets lösen gegen ``HERKUNFT`` auf; der Route-Handler
+    in ``erzeuge_pdf`` liefert sie aus dem Ordner des Quelldokuments.
+    """
     roh = eingabe.read_text(encoding="utf-8")
-    basis = eingabe.resolve().parent.as_uri() + "/"
+    basis = f'<base href="{HERKUNFT}">'
     if eingabe.suffix.lower() in (".md", ".markdown", ".txt"):
-        koerper = _markdown_zu_html(roh)
+        # Markdown reicht Roh-HTML durch — deshalb erst NACH der Umwandlung entschärfen.
+        koerper = _entschaerfen(_markdown_zu_html(roh))
         titel = titel or _erste_ueberschrift(koerper) or eingabe.stem
         return (
             '<!doctype html><html lang="de"><head><meta charset="utf-8">'
-            f'<base href="{html.escape(basis)}"><title>{html.escape(titel)}</title>'
+            f"{basis}<title>{html.escape(titel)}</title>"
             f"<style>{DRUCK_CSS}</style></head><body>{koerper}</body></html>"
         )
     # HTML: eigenes CSS des Agenten bleibt maßgeblich — unseres kommt ZUERST,
     # damit es nur füllt, was dort fehlt (A4, Schrift, Tabellenränder).
-    kopf = f'<meta charset="utf-8"><base href="{html.escape(basis)}"><style>{DRUCK_CSS}</style>'
+    roh = _entschaerfen(roh)
+    kopf = f'<meta charset="utf-8">{basis}<style>{DRUCK_CSS}</style>'
     if titel:
         kopf += f"<title>{html.escape(titel)}</title>"
     if re.search(r"<head[^>]*>", roh, re.I):
@@ -217,38 +267,70 @@ def _chromium_pfad() -> str | None:
         return None
 
 
-def erzeuge_pdf(eingabe: Path, ziel: Path, titel: str | None = None, fusszeile: str = "") -> None:
+def erzeuge_pdf(eingabe: Path, ziel: Path, titel: str | None = None, fusszeile: str = "") -> dict:
+    """PDF rendern — abgeschottet. Rückgabe: welche Anfragen erlaubt/blockiert wurden.
+
+    Die Eingabe kann aus fremden Quellen stammen (Webinhalte, Prompt-Injektion),
+    und der Agenten-Container erreicht das interne Netz. Deshalb:
+
+    * kein JavaScript, keine Service Worker;
+    * JEDE Anfrage läuft durch den Route-Handler: beantwortet wird nur die Seite
+      selbst und Dateien INNERHALB des Ordners des Quelldokuments (nach realpath,
+      also auch kein Symlink nach draußen, kein ``..``). Alles andere — http(s),
+      file://, andere Schemata — wird abgebrochen, bevor es das Netz erreicht;
+    * nachladende Elemente (iframe, object, embed, link, script, Weiterleitung)
+      werden vorher entfernt.
+    """
+    from urllib.parse import unquote, urlsplit
+
     from playwright.sync_api import sync_playwright
 
     seite_html = baue_html(eingabe, titel)
+    basis = eingabe.resolve().parent
+    bericht: dict[str, list[str]] = {"erlaubt": [], "blockiert": []}
+
+    def weiche(route):
+        url = route.request.url
+        if url == HERKUNFT + _SEITE:
+            route.fulfill(status=200, content_type="text/html; charset=utf-8", body=seite_html)
+            return
+        if url.startswith(HERKUNFT):
+            teile = urlsplit(url)
+            datei = _im_ordner(basis, unquote(teile.path).lstrip("/"))
+            if datei is not None and not teile.query:
+                bericht["erlaubt"].append(url)
+                route.fulfill(path=str(datei))
+                return
+        bericht["blockiert"].append(url)
+        route.abort("blockedbyclient")
+
     ziel.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", suffix=".html", encoding="utf-8", delete=False) as tmp:
-        tmp.write(seite_html)
-        tmp_pfad = Path(tmp.name)
-    try:
-        with sync_playwright() as pw:
-            pfad = _chromium_pfad()
-            browser = pw.chromium.launch(
-                args=["--no-sandbox", "--disable-dev-shm-usage"],
-                **({"executable_path": pfad} if pfad else {}),
+    with sync_playwright() as pw:
+        pfad = _chromium_pfad()
+        browser = pw.chromium.launch(
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
+            **({"executable_path": pfad} if pfad else {}),
+        )
+        try:
+            kontext = browser.new_context(
+                locale="de-DE", java_script_enabled=False, service_workers="block",
             )
-            try:
-                seite = browser.new_page(locale="de-DE")
-                seite.goto(tmp_pfad.as_uri(), wait_until="networkidle")
-                seite.pdf(
-                    path=str(ziel),
-                    format="A4",
-                    print_background=True,
-                    display_header_footer=True,
-                    # Leere Kopfzeile statt der Standardzeile (Datum + Titel).
-                    header_template="<span></span>",
-                    footer_template=_FUSSZEILE.format(links=html.escape(fusszeile)),
-                    margin={"top": "20mm", "bottom": "22mm", "left": "18mm", "right": "18mm"},
-                )
-            finally:
-                browser.close()
-    finally:
-        tmp_pfad.unlink(missing_ok=True)
+            kontext.route("**/*", weiche)
+            seite = kontext.new_page()
+            seite.goto(HERKUNFT + _SEITE, wait_until="load")
+            seite.pdf(
+                path=str(ziel),
+                format="A4",
+                print_background=True,
+                display_header_footer=True,
+                # Leere Kopfzeile statt der Standardzeile (Datum + Titel).
+                header_template="<span></span>",
+                footer_template=_FUSSZEILE.format(links=html.escape(fusszeile)),
+                margin={"top": "20mm", "bottom": "22mm", "left": "18mm", "right": "18mm"},
+            )
+        finally:
+            browser.close()
+    return bericht
 
 
 # ─── Word erzeugen ────────────────────────────────────────────────────────────
