@@ -372,6 +372,10 @@ async def vorlage_anwenden(agent, template: AgentTemplate, db: AsyncSession, doc
             cfg["onboarding_complete"] = True   # Auftrag steht: er kann sofort planen
             agent.config = cfg
             flag_modified(agent, "config")
+            # Mit Bereichen arbeitet er selbststaendig: System-Zeitplaene anlegen (#913).
+            # Ohne Hinweis — das Anlegen-Fenster hat es schon angekuendigt.
+            from app.core import eigeninitiative
+            await eigeninitiative.abgleichen(db, agent, hinweis=False)
             await db.commit()
             logger.info("Vorlage %s: %d Verantwortungsbereich(e) uebernommen", scrub_log(template.name), len(duties))
 

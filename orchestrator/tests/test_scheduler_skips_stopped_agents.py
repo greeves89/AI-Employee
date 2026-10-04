@@ -81,5 +81,14 @@ class StoppedAgentTests(unittest.TestCase):
         self.assertIn("lost_run=schedule.name", FIRE)
 
 
+    def test_skip_checks_run_before_waking(self):
+        """#912: geweckt wurde, BEVOR feststand, ob der Lauf ueberhaupt stattfindet
+        (keine Bereiche, ausser Dienst, vom Nutzer angehalten) — der Container blieb
+        dann ohne Arbeit an. Verhalten pruefen test_scheduler_wakes_stopped_agent.py;
+        hier nur, dass die Reihenfolge im Feuer-Pfad haelt."""
+        self.assertLess(FIRE.index("self._ueberspringen_vor_dem_wecken("),
+                        FIRE.index("ensure_agent_running(schedule.agent_id"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1918,6 +1918,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to publish builtin templates: {e}")
 
+    # Keine ungefragten Zeitplaene (#913): bis hierher bekam jeder Agent [Proactive] +
+    # zwei [Rhythmus]-Zeitplaene, auch ohne Verantwortungsbereiche — deren Laeufe
+    # wurden ohnehin alle uebersprungen. Den Altbestand raeumen (verhaltensneutral);
+    # Agenten MIT Bereichen bleiben unberuehrt. Idempotent.
+    try:
+        from app.core.eigeninitiative import ohne_bereiche_aufraeumen
+        from app.db.session import async_session_factory as _sf_eigen
+
+        async with _sf_eigen() as db:
+            anzahl = await ohne_bereiche_aufraeumen(db)
+        if anzahl:
+            logger.info(
+                "%d System-Zeitplan/-plaene von Agenten ohne Verantwortungsbereiche entfernt",
+                anzahl,
+            )
+    except Exception as e:  # noqa: BLE001 — darf den Start nicht verhindern
+        logger.warning(f"System-Zeitplaene ohne Bereiche nicht aufgeraeumt: {e}")
+
     # Seed builtin skills (feierabend, morning_briefing, daily_log_check)
     try:
         from app.db.session import async_session_factory as _sf_skills

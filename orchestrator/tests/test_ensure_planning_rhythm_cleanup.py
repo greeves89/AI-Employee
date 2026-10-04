@@ -61,7 +61,11 @@ class EnsurePlanningRhythmCleanupTests(unittest.IsolatedAsyncioTestCase):
 
         now = datetime.now(UTC)
         async with self.Session() as db:
-            db.add(Agent(id="agent-kerstin", name="Kerstin", state=AgentState.STOPPED, config={}))
+            # Mit Verantwortungsbereichen — ohne bekommt er seit #913 keine
+            # Rhythmus-Zeitplaene mehr (siehe test_no_rhythm_without_duties).
+            db.add(Agent(id="agent-kerstin", name="Kerstin", state=AgentState.STOPPED, config={
+                "proactive": {"enabled": True, "responsibilities": [{"title": "Posteingang"}]},
+            }))
             db.add(Schedule(
                 id="proactive-kerstin", name="[Proactive] Kerstin", prompt="x",
                 interval_seconds=3600, agent_id="agent-kerstin",
@@ -106,6 +110,25 @@ class EnsurePlanningRhythmCleanupTests(unittest.IsolatedAsyncioTestCase):
         # Replaced by the two real Rhythmus schedules.
         self.assertEqual(created, 2)
         self.assertTrue(any(n.startswith("[Rhythmus]") for n in names))
+
+
+    async def test_no_rhythm_without_duties(self):
+        """#913: ohne Verantwortungsbereiche keine System-Zeitplaene — die Rhythmus-
+        Laeufe wuerden ohnehin uebersprungen. Das Aufraeumen der Altlasten laeuft
+        trotzdem."""
+        async with self.Session() as db:
+            agent = await db.get(Agent, "agent-kerstin")
+            agent.config = {"proactive": {"enabled": True}}
+            await db.commit()
+
+        with patch("app.db.session.async_session_factory", self.Session):
+            created = await self.svc._ensure_planning_rhythm()
+
+        async with self.Session() as db:
+            names = {s.name for s in (await db.execute(select(Schedule))).scalars().all()}
+        self.assertEqual(created, 0)
+        self.assertFalse(any(n.startswith("[Rhythmus]") for n in names))
+        self.assertNotIn(f"[Plan] Abendplanung: {date.today()} vorbereiten", names)
 
 
 if __name__ == "__main__":

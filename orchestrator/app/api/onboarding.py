@@ -97,6 +97,9 @@ async def complete_onboarding(
         notes=body.notes,
     )
     flag_modified(agent, "config")
+    # Mit den Bereichen kommen die System-Zeitplaene — samt Hinweis an den Besitzer (#913).
+    from app.core import eigeninitiative
+    await eigeninitiative.abgleichen(db, agent)
     await db.commit()
     duties = (agent.config.get("proactive") or {}).get("responsibilities") or []
     logger.info("[Onboarding] agent=%s abgeschlossen, %d Bereiche", scrub_log(agent_id), len(duties))

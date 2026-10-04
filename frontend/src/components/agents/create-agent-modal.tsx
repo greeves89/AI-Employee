@@ -1201,6 +1201,11 @@ export function CreateAgentModal({
                                 {i}
                               </span>
                             ))}
+                            {(selectedTemplate.responsibilities?.length ?? 0) > 0 && (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-400">
+                                Arbeitet selbstständig (stündlich + 21:30 + 07:00)
+                              </span>
+                            )}
                           </div>
                         </div>
                       )}

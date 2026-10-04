@@ -1843,35 +1843,26 @@ class AgentManager:
         await self.db.commit()
         await self.db.refresh(agent)
 
-        # Create proactive schedule (auto-enabled, 1h default)
+        # Eigeninitiative ist an — ihre Zeitplaene ([Proactive] + [Rhythmus]) entstehen
+        # aber erst mit Verantwortungsbereichen (#913). Vorher bekam jeder neue Agent drei
+        # Zeitplaene ungefragt, deren Laeufe ohne Bereiche alle uebersprungen wurden.
+        # Die EINE Stelle dafuer ist core/eigeninitiative; die Vorlage (vorlage_anwenden)
+        # und jede spaetere Bereichs-Aenderung gleichen dort ab.
         try:
-            now = datetime.now(timezone.utc)
-            schedule_id = uuid.uuid4().hex[:8]
-            proactive_schedule = Schedule(
-                id=schedule_id,
-                name=f"[Proactive] {name}",
-                prompt=PROACTIVE_PROMPT,
-                interval_seconds=3600,
-                priority=0,
-                agent_id=agent_id,
-                enabled=True,
-                next_run_at=now + timedelta(minutes=10),
-            )
-            self.db.add(proactive_schedule)
+            from app.core import eigeninitiative
 
             config = dict(agent.config)
             config["proactive"] = {
                 "enabled": True,
-                "schedule_id": schedule_id,
-                "interval_seconds": 3600,
+                "interval_seconds": eigeninitiative.STANDARD_TAKT_SEKUNDEN,
             }
             agent.config = config
             flag_modified(agent, "config")
+            await eigeninitiative.abgleichen(self.db, agent, hinweis=False)
             await self.db.commit()
             await self.db.refresh(agent)
-            logger.info(f"Created proactive schedule {schedule_id} for agent {agent_id}")
         except Exception as e:
-            logger.warning(f"Could not create proactive schedule: {e}")
+            logger.warning(f"Could not initialize proactive config: {e}")
 
         await self._publish_event(agent_id, "system", f"Agent created: {name} (model: {model or 'default'})")
         return agent
