@@ -56,7 +56,7 @@ async def test_failed_scheduled_task_publishes_telegram_alert():
     assert channel == "telegram:notification"
     payload = json.loads(raw)
     assert "Morgen-Podcast 06:00" in payload["text"]
-    assert "fail_count=2" in payload["text"]
+    assert "Fehlversuche: 2" in payload["text"]
     assert "ffmpeg returned non-zero" in payload["text"]
 
 
