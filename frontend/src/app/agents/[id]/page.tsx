@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import * as Dialog from "@radix-ui/react-dialog";
 import Link from "next/link";
@@ -137,8 +137,43 @@ export default function AgentDetailPage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const { tasks, refresh: ladeAufgaben } = useTasks(agentId);
   const [activeSub, setActiveSub] = useState<SubKey>("chat");
-  // When the busy pill (current_task = "chat:<id>") is clicked, jump to that chat.
-  const [chatFocusSession, setChatFocusSession] = useState<string | null>(null);
+  // Welches Gespräch der Chat öffnen soll: aus der URL (``?session=``, #900) oder
+  // per Klick auf „Aktiver Chat“ (current_task = "chat:<id>"). Ein Wechsel hier
+  // baut den Chat neu auf (key) — deshalb ändert ihn NICHT jeder Gesprächswechsel
+  // im Chat, sondern nur ein Sprung von außen.
+  const router = useRouter();
+  const pathname = usePathname();
+  const urlGespraech = searchParams.get("session");
+  const [chatFocusSession, setChatFocusSession] = useState<string | null>(urlGespraech);
+  // Womit der Chat startet, wenn er neu eingehängt wird (Reiterwechsel): das
+  // zuletzt offene Gespräch, nicht das vom ersten Aufruf.
+  const [chatStart, setChatStart] = useState<string | null>(urlGespraech);
+  // Was der Chat gerade zeigt — damit das eigene ``router.replace`` unten nicht
+  // als Sprung von außen gilt.
+  const offenesGespraech = useRef<string | null>(urlGespraech);
+  const springeZuGespraech = useCallback((sid: string) => {
+    offenesGespraech.current = sid;
+    setChatStart(sid);
+    setChatFocusSession(sid);
+    setActiveSub("chat");
+  }, []);
+  const merkeGespraech = useCallback((sid: string | null) => {
+    offenesGespraech.current = sid;
+    setChatStart(sid);
+    const params = new URLSearchParams(window.location.search);
+    if ((params.get("session") || null) === sid) return;
+    if (sid) params.set("session", sid);
+    else params.delete("session");
+    const qs = params.toString();
+    // Nur die Adresse — kein Neuaufbau des Chats, keine neue WebSocket-Verbindung.
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [router, pathname]);
+  // Sprung von außen (Benachrichtigung, Link) auf ein anderes Gespräch.
+  useEffect(() => {
+    if (urlGespraech && urlGespraech !== offenesGespraech.current) {
+      springeZuGespraech(urlGespraech);
+    }
+  }, [urlGespraech, springeZuGespraech]);
   const [restarting, setRestarting] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
@@ -437,7 +472,9 @@ export default function AgentDetailPage() {
               <AgentChat
                 key={chatFocusSession ? `chat-${chatFocusSession}` : "chat"}
                 agentId={agentId}
-                initialSessionId={chatFocusSession}
+                initialSessionId={chatStart}
+                zuletztAktives
+                onSessionChange={merkeGespraech}
                 busySessionIds={busyChatSessions}
                 onTurnChange={nachfassen}
                 leiste={<Schnellzugriff agent={agent} setAgent={setAgent} />}
@@ -504,7 +541,7 @@ export default function AgentDetailPage() {
               if (chatSession) {
                 return (
                   <button
-                    onClick={() => { setChatFocusSession(chatSession); setActiveSub("chat"); }}
+                    onClick={() => springeZuGespraech(chatSession)}
                     title={`Zum laufenden Chat springen (${chatSession.slice(0, 8)}…)`}
                     className={cn(pill, "hover:bg-blue-500/10 transition-colors cursor-pointer")}
                   >
@@ -554,7 +591,9 @@ export default function AgentDetailPage() {
             <AgentChat
               key={chatFocusSession ? `chat-${chatFocusSession}` : "chat"}
               agentId={agentId}
-              initialSessionId={chatFocusSession}
+              initialSessionId={chatStart}
+              zuletztAktives
+              onSessionChange={merkeGespraech}
               busySessionIds={busyChatSessions}
               onTurnChange={nachfassen}
             />
@@ -3428,7 +3467,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             {!isDir && (
               <button
                 onClick={(e) => { e.stopPropagation(); handleDownload(entry.path); }}
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
                 title="Download"
               >
                 <Download className="h-2.5 w-2.5" />
@@ -3437,7 +3476,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             {isDir && (
               <button
                 onClick={(e) => { e.stopPropagation(); window.open(api.getFolderDownloadUrl(agentId, entry.path), "_blank"); }}
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
                 title={`Ordner als ZIP herunterladen (ohne node_modules, .git …)`}
               >
                 <Download className="h-2.5 w-2.5" />
@@ -3446,7 +3485,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             {isDir && (
               <button
                 onClick={(e) => { e.stopPropagation(); setUploadTarget(entry.path); }}
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
                 title={`Hierher hochladen (${entry.path})`}
               >
                 <Upload className="h-2.5 w-2.5" />
@@ -3455,7 +3494,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             {entry.path !== "/workspace" && (
               <button
                 onClick={(e) => { e.stopPropagation(); handleDelete(entry.path, entry.name); }}
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-red-400 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
                 title="Löschen"
               >
                 <Trash2 className="h-2.5 w-2.5" />

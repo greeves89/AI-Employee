@@ -25,15 +25,140 @@ nie einen vorhandenen — ``content or existing.content`` ist genau dafür da.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.core import ziel as _ziel
+from app.core.dlp import mask as _dlp_mask
 from app.db.session import async_session_factory
 from app.models.chat_message import ChatMessage
 
 logger = logging.getLogger(__name__)
+
+#: Wie viel Werkzeug-Ausgabe je Aufruf im Verlauf bleibt (#911). Genug, um nach
+#: dem Neuladen zu sehen, was herauskam — der volle Strom gehoert nicht in die
+#: Datenbank. Dieselbe Groessenordnung wie im Agenten (werkzeug_eintrag.py).
+AUSGABE_MAX = 1000
+
+
+def ausgabe_text(inhalt) -> str:
+    """Ein ``tool_result``-Inhalt als Text — Zeichenkette, Blockliste oder Objekt."""
+    if inhalt is None:
+        return ""
+    if isinstance(inhalt, str):
+        return inhalt
+    if isinstance(inhalt, list):
+        teile = []
+        for block in inhalt:
+            if isinstance(block, str):
+                teile.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                teile.append(str(block.get("text") or ""))
+            elif isinstance(block, dict) and "content" in block:
+                teile.append(ausgabe_text(block.get("content")))
+            else:
+                teile.append(json.dumps(block, ensure_ascii=False, default=str))
+        return "\n".join(t for t in teile if t)
+    if isinstance(inhalt, dict) and "content" in inhalt:
+        return ausgabe_text(inhalt.get("content"))
+    return json.dumps(inhalt, ensure_ascii=False, default=str)
+
+
+def _ausgabe_kuerzen(text: str) -> str:
+    if len(text) <= AUSGABE_MAX:
+        return text
+    return text[:AUSGABE_MAX] + "\n… (gekürzt)"
+
+
+def werkzeug_ergebnis_eintragen(werkzeuge: list, tool_use_id: str, inhalt) -> bool:
+    """Die Ausgabe eines Werkzeugs an SEINEN Eintrag haengen (per ``tool_use_id``).
+
+    Ohne Kennung wird nichts geraten — eine Ausgabe am falschen Aufruf ist
+    schlimmer als keine. Rueckgabe: eingetragen ja/nein.
+    """
+    if not tool_use_id:
+        return False
+    for eintrag in werkzeuge or []:
+        if isinstance(eintrag, dict) and eintrag.get("tool_use_id") == tool_use_id:
+            text = ausgabe_text(inhalt)
+            if text:
+                eintrag["output"] = _ausgabe_kuerzen(text)
+            return True
+    return False
+
+
+def _werkzeuge_bereinigen(werkzeuge):
+    """Vor dem Speichern: Ausgaben ueber die Geheimnis-Maskierung (core/dlp) und
+    auf ``AUSGABE_MAX`` kuerzen. Eintraege ohne Ausgabe bleiben unveraendert."""
+    if not isinstance(werkzeuge, list):
+        return werkzeuge
+    aus = []
+    for eintrag in werkzeuge:
+        if isinstance(eintrag, dict) and eintrag.get("output"):
+            eintrag = dict(eintrag)
+            eintrag["output"] = _ausgabe_kuerzen(
+                _dlp_mask(ausgabe_text(eintrag["output"]), {"secret"}))
+        aus.append(eintrag)
+    return aus
+
+
+def _gewicht(werkzeuge: list) -> tuple[int, int, int]:
+    """Wie viel eine Werkzeugliste weiss: Eintraege, Ausgaben, Zeichen."""
+    eintraege = [e for e in werkzeuge if isinstance(e, dict)]
+    zeichen = sum(
+        len(e["input"] if isinstance(e.get("input"), str) else json.dumps(e.get("input") or {}))
+        + len(str(e.get("output") or ""))
+        for e in eintraege
+    )
+    return len(werkzeuge), sum(1 for e in eintraege if e.get("output")), zeichen
+
+
+def _leer(wert) -> bool:
+    return wert is None or wert == "" or wert == {} or wert == []
+
+
+def werkzeuge_zusammenfuehren(alt, neu):
+    """Zwei Fassungen derselben Werkzeugliste zu einer — nie aermer als die reichere.
+
+    Zwei Schreiber, zwei Fassungen: Der Browser sammelt die volle Eingabe und die
+    Ausgaben aus dem Strom, das ``done`` des Agenten traegt seine eigene Liste
+    (aeltere Agenten: gekuerzte Eingabe ohne Ausgabe). Frueher gewann, wer
+    zuletzt schrieb — und nach dem Neuladen stand ``IN {}`` (#911).
+
+    Die reichere Liste ist die Grundlage; was nur die andere hat (Ausgabe,
+    Subagent-Felder), wird je Eintrag ergaenzt — zugeordnet per ``tool_use_id``,
+    sonst bei gleicher Laenge per Position und gleichem Werkzeug.
+    """
+    if not isinstance(neu, list) or not neu:
+        return alt or (neu or None)
+    if not isinstance(alt, list) or not alt:
+        return neu
+    basis, andere = (neu, alt) if _gewicht(neu) >= _gewicht(alt) else (alt, neu)
+    nach_id = {
+        e["tool_use_id"]: e for e in andere
+        if isinstance(e, dict) and e.get("tool_use_id")
+    }
+    gleich_lang = len(basis) == len(andere)
+    aus = []
+    for index, eintrag in enumerate(basis):
+        if not isinstance(eintrag, dict):
+            aus.append(eintrag)
+            continue
+        gegen = nach_id.get(eintrag.get("tool_use_id")) if eintrag.get("tool_use_id") else None
+        if gegen is None and gleich_lang:
+            kandidat = andere[index]
+            if isinstance(kandidat, dict) and kandidat.get("tool") == eintrag.get("tool"):
+                gegen = kandidat
+        if gegen is not None:
+            eintrag = {
+                **{k: v for k, v in gegen.items() if not _leer(v)},
+                **{k: v for k, v in eintrag.items() if not _leer(v)},
+            }
+        aus.append(eintrag)
+    return aus
 
 async def upsert_chat_message(
     agent_id: str,
@@ -72,6 +197,14 @@ async def upsert_chat_message(
     """
     if not (agent_id and session_id and message_id):
         return False
+    tool_calls = _werkzeuge_bereinigen(tool_calls)
+    # /goal (#906): Die Schlusszeile ist ein Signal an den Server, kein Text fuer
+    # den Menschen. Bewertet hat ``ziel.nach_zug`` den Rohtext; hier wird ohne
+    # Marke gespeichert, der Zustand steht in ``meta.ziel``.
+    if role == "assistant" and content:
+        content, zustand = _ziel.ohne_marke(content)
+        if zustand:
+            meta = {**(meta or {}), "ziel": zustand}
     try:
         for attempt in range(2):
             created = False
@@ -89,7 +222,8 @@ async def upsert_chat_message(
                 if existing:
                     filled = not (existing.content or "").strip() and bool((content or "").strip())
                     existing.content = content or existing.content
-                    existing.tool_calls = tool_calls or existing.tool_calls
+                    existing.tool_calls = werkzeuge_zusammenfuehren(
+                        existing.tool_calls, tool_calls)
                     merged_meta = dict(existing.meta or {})
                     for key, value in (meta or {}).items():
                         if value is None:

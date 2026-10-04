@@ -86,14 +86,52 @@ def bewerte(antwort: str) -> str:
     Nur die letzten Zeilen zaehlen: Erwaehnt der Agent die Marke mitten im Text
     („ich melde ZIEL ERREICHT, sobald …“), ist das keine Meldung.
     """
-    zeilen = [z.strip().strip("*_`> ").strip() for z in (antwort or "").splitlines() if z.strip()]
-    for zeile in zeilen[-3:]:
-        oben = zeile.upper()
+    treffer = _schlusszeile(antwort)
+    return treffer[1] if treffer else "weiter"
+
+
+def _bereinigt(zeile: str) -> str:
+    return zeile.strip().strip("*_`> ").strip()
+
+
+def _schlusszeile(antwort: str) -> tuple[int, str] | None:
+    """(Index der Zeile in ``splitlines()``, ``erreicht``|``pausiert``) oder None.
+
+    EINE Erkennung fuer ``bewerte`` (Urteil) und ``ohne_marke`` (Anzeige), damit
+    nie eine Zeile entfernt wird, die nicht als Meldung zaehlte — und umgekehrt.
+    """
+    zeilen = (antwort or "").splitlines()
+    belegt = [i for i, z in enumerate(zeilen) if z.strip()]
+    for i in belegt[-3:]:
+        oben = _bereinigt(zeilen[i]).upper()
         if oben.startswith(ERREICHT):
-            return "erreicht"
+            return i, "erreicht"
         if oben.startswith(PAUSIERT):
-            return "pausiert"
-    return "weiter"
+            return i, "pausiert"
+    return None
+
+
+def ohne_marke(antwort: str) -> tuple[str, str | None]:
+    """Die Schlusszeile aus dem Text nehmen — (Text, ``erreicht``|``pausiert``|None).
+
+    Die Marke ist ein Signal an den Server, kein Satz fuer den Menschen (#906).
+    Bewertet wird weiter der Rohtext (``bewerte``); gespeichert und angezeigt wird
+    der Text ohne Marke, der Zustand steht in ``meta.ziel``. Bei ``pausiert``
+    bleibt die Frage stehen — nur die Marke davor faellt weg.
+    """
+    treffer = _schlusszeile(antwort)
+    if treffer is None:
+        return antwort or "", None
+    index, zustand = treffer
+    zeilen = (antwort or "").splitlines()
+    rest = ""
+    if zustand == "pausiert":
+        rest = _bereinigt(zeilen[index])[len(PAUSIERT):].lstrip(" :-–—").strip().strip("*_`").strip()
+    if rest:
+        zeilen[index] = rest
+    else:
+        del zeilen[index]
+    return "\n".join(zeilen).rstrip(), zustand
 
 
 async def _zeile(db: AsyncSession, agent_id: str, session_id: str) -> ChatSession:

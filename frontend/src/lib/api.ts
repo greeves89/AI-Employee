@@ -1123,7 +1123,10 @@ export interface ChatHistoryMessage {
   role: "user" | "assistant" | "system" | "error";
   content: string;
   timestamp: string;
-  toolCalls?: { tool: string; input: string }[];
+  /** ``input``: der Server liefert ein Objekt (aus gespeichertem JSON), bei
+   *  unlesbarem JSON ``{raw: "…"}``; ältere Fassungen eine Zeichenkette.
+   *  ``output``: Ausgabe des Werkzeugs (#911), gekürzt und maskiert. */
+  toolCalls?: { tool: string; input: string | Record<string, unknown>; output?: string; tool_use_id?: string }[];
   meta?: {
     cost_usd?: number;
     duration_ms?: number;
@@ -1143,6 +1146,11 @@ export interface ChatHistoryMessage {
     }[];
     context_excluded?: boolean;
     tool_output_excluded?: boolean;
+    /** Dateien, die der Mensch an seine Nachricht gehängt hat (#916). */
+    anhaenge?: { path: string; filename?: string; media_type?: string; size?: number }[];
+    plan?: boolean;
+    /** /goal: Die Antwort meldete das Ziel als erreicht oder pausiert (#906). */
+    ziel?: "erreicht" | "pausiert";
   };
   images?: { media_type: string; data: string }[];
   sessionId?: string;
@@ -2867,7 +2875,11 @@ export async function removeLicense(): Promise<{ status: string; tier: string }>
 /** Werkzeuge und Befehle DIESES Agenten — je nach Laufzeit verschieden. */
 export interface AgentToolset {
   mode: string;
-  commands: { name: string; hint: string; runtime_only?: boolean }[];
+  /** Nur, was sich aus dem Chat auslösen lässt — jeder Name einmal. */
+  commands: { name: string; hint: string }[];
+  /** Befehle, die IN der CLI der Laufzeit stecken (#906) — nur zur Auskunft
+   *  in der /tools-Ansicht, nicht im „/“-Menü. */
+  laufzeit_befehle?: { name: string; hint: string }[];
   groups: { key: string; label: string; note: string; tools: string[] }[];
   total: number;
 }

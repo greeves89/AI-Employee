@@ -503,7 +503,7 @@ export default function AgentsPage() {
                 <AgentCard agent={agent} updating={updatingAgents.has(agent.id)} />
 
                 {/* Floating action buttons */}
-                <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                <div className="absolute top-3 right-3 flex items-center gap-1 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-opacity duration-200 z-10">
                   {actionLoading === agent.id || updatingAgents.has(agent.id) ? (
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-card/90 backdrop-blur-md shadow-sm">
                       <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />

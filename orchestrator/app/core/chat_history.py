@@ -145,7 +145,7 @@ async def ensure_title(db: AsyncSession, agent_id: str, session_id: str) -> str 
         return row.title
 
     first_user = (await db.execute(
-        select(ChatMessage.content)
+        select(ChatMessage.content, ChatMessage.meta)
         .where(
             ChatMessage.agent_id == agent_id,
             ChatMessage.session_id == session_id,
@@ -153,8 +153,14 @@ async def ensure_title(db: AsyncSession, agent_id: str, session_id: str) -> str 
         )
         .order_by(ChatMessage.timestamp, ChatMessage.id)
         .limit(1)
-    )).scalar_one_or_none()
-    title = derive_title(first_user or "")
+    )).first()
+    content, meta = (first_user[0], first_user[1]) if first_user else ("", None)
+    title = derive_title(content or "")
+    if not title:
+        # Nur eine Datei geschickt (#916): Der Titel nennt sie, statt leer zu bleiben.
+        anhaenge = (meta or {}).get("anhaenge") if isinstance(meta, dict) else None
+        if isinstance(anhaenge, list) and anhaenge and isinstance(anhaenge[0], dict):
+            title = derive_title(str(anhaenge[0].get("filename") or ""))
     if not title:
         return None
 

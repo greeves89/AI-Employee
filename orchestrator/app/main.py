@@ -555,7 +555,8 @@ async def _persist_chat_completion(redis: RedisService, data: dict) -> None:
             return
         agent = await db.scalar(sel(Agent).where(Agent.id == agent_id))
         title = agent.name if agent else "AI Employee"
-        body = _chat_notification_body(content, meta)
+        from app.core.ziel import ohne_marke as _ohne_marke
+        body = _chat_notification_body(_ohne_marke(content)[0], meta)
         notif = Notification(
             agent_id=agent_id,
             type="info",
@@ -1144,6 +1145,42 @@ async def lifespan(app: FastAPI):
         logger.info("oauth_clients table ensured")
     except Exception as e:
         logger.warning(f"Could not ensure oauth_clients table: {e}")
+
+    # #916: Nutzerzeilen, in denen der alte Browser die Anweisung an das Modell
+    # mitgespeichert hat ("[Angehängte Datei(en) … WICHTIG …]", "[NUR PLANEN …]"),
+    # einmalig bereinigen: Nutzertext bleibt, Pfade nach meta.anhaenge, betroffene
+    # Auto-Titel neu ableiten. Die Marke verhindert den LIKE-Durchlauf bei jedem Start;
+    # neue Altzeilen entstehen nicht mehr (der Server zerlegt alte Clients selbst).
+    try:
+        from app.db.session import engine as _eng
+        from sqlalchemy import text as _sql_text
+        async with _eng.begin() as conn:
+            await conn.execute(_sql_text(
+                "CREATE TABLE IF NOT EXISTS platform_settings ("
+                " key varchar PRIMARY KEY, value text NOT NULL DEFAULT '',"
+                " is_secret boolean NOT NULL DEFAULT false,"
+                " created_at timestamptz NOT NULL DEFAULT now(),"
+                " updated_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            _marke_916 = (await conn.execute(_sql_text(
+                "SELECT value FROM platform_settings WHERE key = 'chat_auftrag_bereinigt'"
+            ))).scalar()
+        if not _marke_916:
+            from app.core.chat_auftrag import altzeilen_bereinigen
+            from app.db.session import async_session_factory as _sf_916
+            async with _sf_916() as _db_916:
+                _zeilen, _titel = await altzeilen_bereinigen(_db_916)
+            async with _eng.begin() as conn:
+                await conn.execute(_sql_text(
+                    "INSERT INTO platform_settings "
+                    "  (key, value, is_secret, created_at, updated_at) "
+                    "VALUES ('chat_auftrag_bereinigt', '1', false, now(), now()) "
+                    "ON CONFLICT (key) DO NOTHING"
+                ))
+            logger.info("Chat-Altzeilen bereinigt: %s Nachrichten, %s Titel neu abgeleitet",
+                        _zeilen, _titel)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Konnte Chat-Altzeilen nicht bereinigen: %s", e)
 
     # Skill sources (issue #371): admin-managed crawl sources. Added as a model, but
     # create_all only runs in the fresh-DB fallback — ensure it on every startup so

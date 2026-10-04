@@ -276,16 +276,25 @@ def toolset_for(agent, *, skills: list[str] | None = None,
             "tools": sorted(skills),
         })
 
-    commands = [{"name": n, "hint": h} for n, h in PLATFORM_COMMANDS]
-    if mode == "claude_code":
-        commands += [
-            {"name": n, "hint": h, "runtime_only": True}
-            for n, h in CLAUDE_CODE_OWN_COMMANDS
-        ]
+    # Im „/"-Menue steht nur, was sich von hier ausloesen laesst — jeder Name
+    # einmal (#906: /compact stand doppelt, /clear und /cost liefen ins Leere).
+    commands: list[dict] = []
+    gesehen: set[str] = set()
+    for n, h in PLATFORM_COMMANDS:
+        if n not in gesehen:
+            gesehen.add(n)
+            commands.append({"name": n, "hint": h})
+    # Die CLI-eigenen Befehle getrennt: die /tools-Ansicht nennt sie, damit die
+    # Liste ehrlich bleibt, das Menue bietet sie nicht an.
+    laufzeit_befehle = (
+        [{"name": n, "hint": h} for n, h in CLAUDE_CODE_OWN_COMMANDS]
+        if mode == "claude_code" else []
+    )
 
     return {
         "mode": mode,
         "commands": commands,
+        "laufzeit_befehle": laufzeit_befehle,
         "groups": groups,
         "total": sum(len(g["tools"]) for g in groups),
     }

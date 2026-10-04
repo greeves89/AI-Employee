@@ -458,7 +458,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
                   {/* Actions */}
                   <div className={cn(
                     "flex flex-col gap-1",
-                    isEditing ? "opacity-100" : "opacity-0 group-hover:opacity-100 transition-opacity"
+                    isEditing ? "opacity-100" : "can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-opacity"
                   )}>
                     {isEditing ? (
                       <>

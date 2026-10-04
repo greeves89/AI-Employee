@@ -991,7 +991,7 @@ export default function ApprovalsPage() {
                                 </span>
                                 <button
                                   onClick={() => handleDeletePresetRule(level, rule.id)}
-                                  className="rounded-md p-1 text-muted-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover/rule:opacity-100"
+                                  className="rounded-md p-1 text-muted-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-all can-hover:opacity-0 can-hover:group-hover/rule:opacity-100"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>

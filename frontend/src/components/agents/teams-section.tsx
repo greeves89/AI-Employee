@@ -190,7 +190,7 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
                   </div>
 
                   {/* Card actions */}
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <div className="flex items-center gap-1 can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-opacity duration-200">
                     {actionLoading === team.id ? (
                       <div className="flex h-7 w-7 items-center justify-center">
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />

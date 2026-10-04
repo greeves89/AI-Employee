@@ -15,7 +15,6 @@ from app.core.log_redaction import scrub_log
 from app.core.stream_manager import StreamManager
 from app.db.session import async_session_factory
 from app.dependencies import get_current_user_ws, require_auth
-from app.models.chat_message import ChatMessage
 from app.security.agent_guard import chat_rate_limiter, check_chat_message, notify_security_block
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
@@ -478,78 +477,15 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 session_id = await session_for_message(msg_agent_id, message_id)
         if not session_id:
             return  # Lieber gar nicht speichern als in die falsche Unterhaltung
-        try:
-            async with async_session_factory() as db:
-                existing = await db.scalar(
-                    select(ChatMessage)
-                    .where(ChatMessage.agent_id == msg_agent_id)
-                    .where(ChatMessage.session_id == session_id)
-                    .where(ChatMessage.message_id == message_id)
-                    .where(ChatMessage.role == role)
-                    .order_by(ChatMessage.id.asc())
-                    .limit(1)
-                )
-                if existing:
-                    existing.content = content or existing.content
-                    existing.tool_calls = tool_calls or existing.tool_calls
-                    merged_meta = dict(existing.meta or {})
-                    for key, value in (meta or {}).items():
-                        if value is not None:
-                            if key == "presented_files":
-                                existing_files = merged_meta.get("presented_files") or []
-                                new_files = value or []
-                                if not isinstance(existing_files, list):
-                                    existing_files = []
-                                if not isinstance(new_files, list):
-                                    new_files = []
-                                seen_paths = {
-                                    str(item.get("path", ""))
-                                    for item in existing_files
-                                    if isinstance(item, dict)
-                                }
-                                merged_files = list(existing_files)
-                                for item in new_files:
-                                    if not isinstance(item, dict):
-                                        continue
-                                    path = str(item.get("path", ""))
-                                    if path and path not in seen_paths:
-                                        seen_paths.add(path)
-                                        merged_files.append(item)
-                                merged_meta[key] = merged_files
-                            else:
-                                merged_meta[key] = value
-                    existing.meta = merged_meta or None
-                    existing.cost_usd = cost_usd if cost_usd is not None else existing.cost_usd
-                    existing.input_tokens = input_tokens if input_tokens is not None else existing.input_tokens
-                    existing.output_tokens = output_tokens if output_tokens is not None else existing.output_tokens
-                else:
-                    db.add(ChatMessage(
-                        agent_id=msg_agent_id,
-                        session_id=session_id,
-                        message_id=message_id,
-                        role=role,
-                        content=content,
-                        tool_calls=tool_calls,
-                        meta=meta,
-                        cost_usd=cost_usd,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                    ))
-                await db.commit()
-
-                # Titel aus dem ersten Austausch (#538). Die Liste zeigte bis hierher
-                # die rohe letzte Nachricht auf 80 Zeichen gekuerzt — bei drei
-                # Gespraechen zum selben Thema unbrauchbar. Nur bei der ERSTEN
-                # Nutzernachricht, und ein selbst vergebener Titel bleibt unangetastet.
-                if role == "user":
-                    try:
-                        from app.core.chat_history import ensure_title
-                        await ensure_title(db, msg_agent_id, session_id)
-                        await db.commit()
-                    except Exception:  # noqa: BLE001 — ein Titel ist kein Grund, den Chat zu stoeren
-                        logger.debug("[Chat] Titel nicht ableitbar", exc_info=True)
-        except Exception:
-            pass  # Don't break chat if DB write fails
+        # EINE Zusammenfuehrung fuer beide Schreiber (Browser-Verbindung und
+        # serverseitiger Lauscher): reichere Werkzeuglisten, maskierte Ausgaben,
+        # Zielmarke, Titel — alles dort (app.services.chat_persistence).
+        from app.services.chat_persistence import upsert_chat_message
+        await upsert_chat_message(
+            msg_agent_id, session_id, message_id, role,
+            content=content, tool_calls=tool_calls, meta=meta, cost_usd=cost_usd,
+            input_tokens=input_tokens, output_tokens=output_tokens,
+        )
 
     _ws_connected = True
 
@@ -622,6 +558,11 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
     def _process_event(raw_data: str):
         """Process a PubSub event for persistence tracking. Returns tuple on done/error, None otherwise."""
         nonlocal _streaming_responses, _seen_tool_ids, _pending_message_ids
+        # Hier statt oben im Modul: die Tests schneiden diese Funktion heraus und
+        # fuehren sie in einer eigenen Huelle aus (test_context_tokens_persist).
+        from app.services.chat_persistence import (
+            werkzeug_ergebnis_eintragen, werkzeuge_zusammenfuehren,
+        )
         try:
             event = json.loads(raw_data)
             mid = event.get("message_id", "")
@@ -641,7 +582,20 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     _streaming_responses[mid]["tool_calls"].append({
                         "tool": str(edata.get("tool", "")),
                         "input": json.dumps(edata.get("input", {})),
+                        # Damit die Ausgabe (``tool_result``) an IHREN Aufruf
+                        # findet — und beim Zusammenfuehren mit der Liste des
+                        # Agenten derselbe Eintrag erkannt wird (#911).
+                        **({"tool_use_id": tool_use_id} if tool_use_id else {}),
                     })
+            elif etype == "tool_result":
+                # Die Ausgabe gehoerte bisher nur der Live-Anzeige; nach dem
+                # Neuladen war „Befehl ausgefuehrt" leer (#911).
+                resp_tr = _streaming_responses.get(mid)
+                if resp_tr:
+                    werkzeug_ergebnis_eintragen(
+                        resp_tr["tool_calls"], str(edata.get("tool_use_id", "")),
+                        edata.get("content"),
+                    )
             elif etype == "image":
                 if mid not in _streaming_responses:
                     _streaming_responses[mid] = {"content": "", "tool_calls": []}
@@ -683,7 +637,8 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 if final_text and (not resp.get("content") or not eigen):
                     resp["content"] = str(final_text)
                 if not eigen and isinstance(edata.get("tool_calls"), list) and edata["tool_calls"]:
-                    resp["tool_calls"] = edata["tool_calls"]
+                    resp["tool_calls"] = werkzeuge_zusammenfuehren(
+                        resp.get("tool_calls"), edata["tool_calls"])
                 auto_files = _auto_presented_files_from_text(str(resp.get("content", "")))
                 auto_files.extend(_auto_presented_files_from_tool_calls(resp.get("tool_calls")))
                 if auto_files:
@@ -949,7 +904,12 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     }))
                 continue
 
-            text = msg.get("text", "").strip()
+            # #916: Nutzertext, Anhaenge und Plan-Modus kommen getrennt; den
+            # Auftrag an das Modell baut der Server (app.core.chat_auftrag).
+            # Ein alter Browser-Tab schickt den zusammengebauten Text — der wird
+            # zerlegt, damit auch dann nur der Nutzertext gespeichert wird.
+            from app.core import chat_auftrag as _chat_auftrag
+            text, anhaenge, plan = _chat_auftrag.aus_nachricht(msg)
 
             # Pasted/attached images: list of {media_type, data(base64)}.
             # Keep only supported types within the 5 MB / 4-image budget.
@@ -963,7 +923,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 if data and mt in _allowed_types and (len(data) * 3 // 4) <= 5 * 1024 * 1024:
                     images.append({"media_type": mt, "data": data})
 
-            if not text and not images:
+            if not text and not images and not anhaenge:
                 continue
 
             # --- AgentGuard: Rate limiting ---
@@ -1040,6 +1000,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     continue
                 anzeige_text = text
                 text = _ziel.auftrag(ziel_text, 1)
+            nutzer_text = anzeige_text if anzeige_text is not None else text
+            # Was der Agent bekommt: Lese-Anweisung fuer Anhaenge, Plan-Rahmen.
+            text = _chat_auftrag.auftrag(text, anhaenge, plan)
 
             # Auto-inject skills for chat too — previously only the task path
             # (task_router.py) did this, so a chat-only agent never picked up
@@ -1082,11 +1045,19 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             })
 
             # Save user message to DB
-            db_content = anzeige_text or text or (f"[{len(images)} Bild(er) angehängt]" if images else "")
+            # Gespeichert wird, was der MENSCH geschrieben hat — nicht der Auftrag
+            # an das Modell. Anhaenge stehen in ``meta.anhaenge`` (Dateikarten).
+            db_content = nutzer_text or (
+                f"[{len(images)} Bild(er) angehängt]" if images and not anhaenge else "")
             await _save_chat_message(
                 agent_id, message_id, "user",
                 content=db_content,
-                meta={"source": source, **({"reasoning": reasoning} if reasoning else {})},
+                meta={
+                    "source": source,
+                    **({"reasoning": reasoning} if reasoning else {}),
+                    **({"anhaenge": anhaenge} if anhaenge else {}),
+                    **({"plan": True} if plan else {}),
+                },
             )
 
             # Only send session event when a NEW session was created
@@ -1122,7 +1093,7 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                 pass  # Don't break chat if queue-depth check fails
 
             # Publish chat activity event to activity log
-            preview = text[:60] + ("..." if len(text) > 60 else "")
+            preview = nutzer_text[:60] + ("..." if len(nutzer_text) > 60 else "")
             activity_event = json.dumps({
                 "agent_id": agent_id,
                 "task_id": "",

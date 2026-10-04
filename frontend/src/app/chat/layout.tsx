@@ -173,7 +173,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
               </div>
               <button
                 onClick={(e) => deleteConversation(conv, e)}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-foreground/[0.1] transition-all shrink-0"
+                className="can-hover:opacity-0 can-hover:group-hover:opacity-100 p-1 rounded hover:bg-foreground/[0.1] transition-all shrink-0"
               >
                 <Trash2 className="h-3 w-3" />
               </button>

@@ -144,7 +144,7 @@ export function SessionRail({
                     </span>
                   )}
                   {!editing && (
-                    <span className="absolute right-1.5 top-1.5 hidden items-center gap-0.5 rounded-md border border-border bg-card px-0.5 py-0.5 shadow-sm group-hover/sess:flex">
+                    <span className="absolute right-1.5 top-1.5 flex can-hover:hidden items-center gap-0.5 rounded-md border border-border bg-card px-0.5 py-0.5 shadow-sm can-hover:group-hover/sess:flex">
                       <button
                         onClick={(e) => { e.stopPropagation(); onPin(s); }}
                         className="rounded p-0.5 hover:bg-foreground/[0.1]"

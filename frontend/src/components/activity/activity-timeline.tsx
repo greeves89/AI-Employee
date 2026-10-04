@@ -692,7 +692,7 @@ function DayAgenda({
                     dropBlock(item);
                   }}
                   title={dropped ? "Wieder einplanen" : "Streichen — der Agent lässt es dann liegen"}
-                  className="absolute right-1 top-1 hidden rounded p-0.5 text-muted-foreground/50 hover:bg-foreground/10 hover:text-foreground group-hover:block"
+                  className="absolute right-1 top-1 block can-hover:hidden rounded p-0.5 text-muted-foreground/50 hover:bg-foreground/10 hover:text-foreground can-hover:group-hover:block"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -837,7 +837,7 @@ function DayAgenda({
                   type="button"
                   onClick={() => dropBlock(item)}
                   title={item.status === "dropped" ? "Wieder einplanen" : "Streichen"}
-                  className="shrink-0 rounded p-0.5 text-muted-foreground/40 opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground group-hover:opacity-100"
+                  className="shrink-0 rounded p-0.5 text-muted-foreground/40 can-hover:opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground can-hover:group-hover:opacity-100"
                 >
                   <X className="h-3 w-3" />
                 </button>

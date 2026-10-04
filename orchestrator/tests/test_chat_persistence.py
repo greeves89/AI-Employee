@@ -152,6 +152,73 @@ class ChatPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(created)
         self.assertEqual(await self._rows(), [])
 
+    # ── Werkzeugaufrufe (#911) ────────────────────────────────────────────
+
+    async def test_a_poorer_tool_list_never_replaces_a_richer_one(self):
+        """Der Browser hat die volle Eingabe und die Ausgabe gesammelt; das
+        spätere ``done`` des Agenten trägt nur die gekürzte Eingabe. Vorher
+        überschrieb es die reichere Fassung — nach dem Neuladen stand ``IN {}``."""
+        reich = [{"tool": "Bash", "tool_use_id": "t1",
+                  "input": '{"command": "ls -la /workspace"}', "output": "a.txt\nb.txt"}]
+        arm = [{"tool": "Bash", "input": '{"command": "ls -la /wor'}]
+        await self._cp.upsert_chat_message(AGENT, SESSION_A, "m1", "assistant",
+                                           content="x", tool_calls=reich)
+        await self._cp.upsert_chat_message(AGENT, SESSION_A, "m1", "assistant",
+                                           content="x", tool_calls=arm)
+        rows = await self._rows(message_id="m1")
+        self.assertEqual(rows[0].tool_calls[0]["input"], '{"command": "ls -la /workspace"}')
+        self.assertEqual(rows[0].tool_calls[0]["output"], "a.txt\nb.txt")
+
+    async def test_a_richer_list_fills_what_was_missing(self):
+        """Andersherum: Kommt die reichere Fassung später, gewinnt sie — und
+        was nur die ärmere hatte (Subagent-Felder), geht nicht verloren."""
+        arm = [{"tool": "Agent", "tool_use_id": "t1", "input": '{"desc',
+                "subagent": {"description": "Prüfen"}}]
+        reich = [{"tool": "Agent", "tool_use_id": "t1",
+                  "input": '{"description": "Prüfen", "prompt": "lang"}', "output": "fertig"}]
+        await self._cp.upsert_chat_message(AGENT, SESSION_A, "m1", "assistant",
+                                           content="x", tool_calls=arm)
+        await self._cp.upsert_chat_message(AGENT, SESSION_A, "m1", "assistant",
+                                           content="x", tool_calls=reich)
+        eintrag = (await self._rows(message_id="m1"))[0].tool_calls[0]
+        self.assertEqual(eintrag["output"], "fertig")
+        self.assertEqual(eintrag["subagent"], {"description": "Prüfen"})
+        self.assertIn('"prompt"', eintrag["input"])
+
+    async def test_tool_output_is_masked_and_capped_before_saving(self):
+        geheim = "sk-" + "A" * 30
+        lang = "x" * 50_000
+        await self._cp.upsert_chat_message(
+            AGENT, SESSION_A, "m1", "assistant", content="x",
+            tool_calls=[{"tool": "Bash", "input": "{}", "output": f"KEY {geheim}\n{lang}"}])
+        ausgabe = (await self._rows(message_id="m1"))[0].tool_calls[0]["output"]
+        self.assertNotIn(geheim, ausgabe)
+        self.assertLess(len(ausgabe), 5_000)
+
+    def test_tool_result_lands_on_its_own_entry(self):
+        liste = [{"tool": "Read", "tool_use_id": "t1", "input": "{}"},
+                 {"tool": "Bash", "tool_use_id": "t2", "input": "{}"}]
+        self._cp.werkzeug_ergebnis_eintragen(
+            liste, "t2", [{"type": "text", "text": "Ausgabe von Bash"}])
+        self._cp.werkzeug_ergebnis_eintragen(liste, "unbekannt", "geht nirgends hin")
+        self.assertNotIn("output", liste[0])
+        self.assertEqual(liste[1]["output"], "Ausgabe von Bash")
+
+    # ── Zielmarke (#906) ──────────────────────────────────────────────────
+
+    async def test_goal_marker_is_saved_as_meta_not_as_text(self):
+        await self._cp.upsert_chat_message(
+            AGENT, SESSION_A, "m1", "assistant", content="Drei Zeilen.\n\nZIEL ERREICHT")
+        row = (await self._rows(message_id="m1"))[0]
+        self.assertEqual(row.content, "Drei Zeilen.")
+        self.assertEqual(row.meta.get("ziel"), "erreicht")
+
+    async def test_user_text_with_the_words_stays(self):
+        await self._cp.upsert_chat_message(
+            AGENT, SESSION_A, "m1", "user", content="Schreib am Ende ZIEL ERREICHT")
+        row = (await self._rows(message_id="m1", role="user"))[0]
+        self.assertEqual(row.content, "Schreib am Ende ZIEL ERREICHT")
+
     # ── Die vertauschte Unterhaltung ──────────────────────────────────────
 
     async def test_the_session_comes_from_the_user_row(self):
