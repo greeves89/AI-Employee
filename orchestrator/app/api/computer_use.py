@@ -1270,7 +1270,22 @@ async def _authenticate_ws(websocket: WebSocket, token: str) -> str | None:
     try:
         from app.core.auth import decode_token
         payload = decode_token(token)
-        uid = str(payload.get("sub") or payload.get("user_id") or "")
-        return uid or None
     except Exception:
         return None
+    # Wie get_current_user: nur Zugangstoken (kein Refresh-/Zwischen-Token),
+    # aktives, freigeschaltetes Konto, Sitzung nicht widerrufen (token_version).
+    if payload.get("type") != "access":
+        return None
+    uid = str(payload.get("sub") or "")
+    if not uid:
+        return None
+    from app.db.session import async_session_factory
+    from app.models.user import User
+
+    async with async_session_factory() as db:
+        user = await db.get(User, uid)
+    if not user or not user.is_active or not getattr(user, "approved", True):
+        return None
+    if payload.get("tv", 0) != user.token_version:
+        return None
+    return uid

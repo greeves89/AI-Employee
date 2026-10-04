@@ -257,7 +257,20 @@ def api_login(base_url, email, password):
                         bridge.format_fingerprint(fp) if fp else "System-CA")
         ctx = _tls_context(base_url)
     with urllib.request.urlopen(req, timeout=10, context=ctx) as r:
-        return json.loads(r.read())["access_token"]
+        antwort = json.loads(r.read())
+    if antwort.get("mfa_required"):
+        # Zwei-Faktor (#915): die Bridge kann den Code-Schritt nicht. Statt mit
+        # KeyError abzubrechen, klar sagen, was zu tun ist.
+        raise ZweiFaktorNichtUnterstuetzt(
+            "Dieses Konto nutzt die Zwei-Faktor-Anmeldung. Die Bridge kann sich damit "
+            "noch nicht anmelden — bitte ein eigenes Konto ohne zweiten Faktor für die "
+            "Bridge verwenden oder den Administrator fragen."
+        )
+    return antwort["access_token"]
+
+
+class ZweiFaktorNichtUnterstuetzt(RuntimeError):
+    """Anmeldung verlangt einen zweiten Faktor, den die Bridge nicht abfragt."""
 
 
 def api_ws_ticket(base_url, token) -> str:
