@@ -3,9 +3,10 @@
 Der Anlass war OpenWebUI beim Kunden — die Oberflaeche soll nicht "daneben"
 stehen, sondern im selben Menue erreichbar sein wie alles andere. Statt dafuer
 einen Sonderfall zu bauen, ist es hier allgemein: ein Administrator legt eine
-Seite an, sie erscheint als Menuepunkt unter ``/p/<slug>``, und die vorhandene
-Rechtevergabe (``permissions.menu_paths``) entscheidet, wer sie sieht. Also
-KEINE zweite Rechte-Logik neben der bestehenden.
+Seite an, sie erscheint als Menuepunkt unter ``/p/<slug>``. Wer sie sieht,
+entscheidet ``sichtbar_fuer`` zusammen mit der vorhandenen Rechtevergabe
+(``permissions.menu_paths``) — siehe ``darf_seite_sehen`` in
+``api/custom_pages.py``.
 
 ``open_mode``:
   ``iframe`` — die Seite wird in unserer Oberflaeche eingebettet.
@@ -31,6 +32,17 @@ GROUP_KEYS = ("overview", "collab", "automation", "system", "help")
 
 OPEN_MODES = ("iframe", "link")
 
+# Wer eine Seite sehen darf (#904). Die Rollen-Rechtevergabe allein reicht
+# nicht: ``menu_paths = None`` (= alles) ist der Normalfall fuer Mitglieder,
+# also saehe jede neue Seite sofort jeder — auch eine, deren Zugang er gar
+# nicht hat (zweite Anmeldemaske im Rahmen).
+#   ``alle``   — wie bisher: jeder, dessen Rolle den Pfad nicht ausschliesst.
+#   ``admins`` — nur Administratoren. Standard fuer NEUE Seiten.
+#   ``rollen`` — nur, wessen Rolle den Pfad ausdruecklich in ``menu_paths``
+#                fuehrt (eine Liste, nicht "alles").
+# Bestandsseiten bekommen beim Start ``alle``, damit sich nichts aendert.
+SICHTBAR_FUER = ("alle", "admins", "rollen")
+
 
 class CustomPage(Base):
     __tablename__ = "custom_pages"
@@ -51,6 +63,8 @@ class CustomPage(Base):
     # Mikrofon/Kamera an die eingebettete Seite durchreichen — nur wenn der
     # Administrator es fuer diese eine Adresse bewusst erlaubt.
     allow_media: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Siehe ``SICHTBAR_FUER``. Neue Seiten zuerst nur fuer Administratoren.
+    sichtbar_fuer: Mapped[str] = mapped_column(String(10), nullable=False, default="admins")
     created_by: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

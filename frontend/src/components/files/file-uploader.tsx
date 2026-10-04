@@ -70,7 +70,7 @@ export function FileUploader({
       setFiles([]);
       onUploadComplete();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+      setError(e instanceof Error ? e.message : "Hochladen fehlgeschlagen");
     } finally {
       setUploading(false);
     }
@@ -172,11 +172,11 @@ export function FileUploader({
           }`}
         />
         <p className="text-sm text-muted-foreground">
-          Drop files here or{" "}
-          <span className="text-primary font-medium">browse</span>
+          Dateien hierher ziehen oder{" "}
+          <span className="text-primary font-medium">auswählen</span>
         </p>
         <p className="mt-1 text-xs text-muted-foreground/50">
-          Any file type supported
+          Jeder Dateityp möglich
         </p>
         <input
           ref={inputRef}
@@ -228,12 +228,12 @@ export function FileUploader({
           {done && (
             <p className="flex items-center gap-1.5 text-xs text-emerald-400">
               <CheckCircle2 className="h-3.5 w-3.5" />
-              Upload complete
+              Hochgeladen
             </p>
           )}
           {!error && !done && files.length > 0 && (
             <p className="text-xs text-muted-foreground/60">
-              {files.length} file{files.length > 1 ? "s" : ""} selected (
+              {files.length} {files.length > 1 ? "Dateien" : "Datei"} ausgewählt (
               {formatSize(files.reduce((sum, f) => sum + f.size, 0))})
             </p>
           )}
@@ -248,7 +248,7 @@ export function FileUploader({
           ) : (
             <Upload className="h-3.5 w-3.5" />
           )}
-          Upload
+          Hochladen
         </button>
       </div>
     </div>

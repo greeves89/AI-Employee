@@ -139,8 +139,8 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
     <div>
       {!embedded && (
         <Header
-          title="Audit Log"
-          subtitle="Agent actions, command history, and compliance trail"
+          title="Protokoll"
+          subtitle="Aktionen der Agenten, Befehlsverlauf und Nachweis für die Compliance"
           actions={
             <button
               onClick={handleRefresh}

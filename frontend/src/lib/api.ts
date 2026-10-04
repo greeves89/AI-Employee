@@ -1002,6 +1002,8 @@ export async function createSchedule(data: {
   prompt: string;
   interval_seconds?: number;
   cron_expression?: string;
+  /** IANA-Zeitzone; ohne Angabe nimmt der Server die des Agenten (sonst UTC). */
+  timezone?: string;
   priority?: number;
   agent_id?: string;
   model?: string;
@@ -4415,10 +4417,14 @@ export async function getTeamTasks(id: string): Promise<{ tasks: Task[]; total: 
 }
 
 // --- Eigene Menuepunkte: fremde Seiten als Rahmen oder Link -------------------
-// Der Server liefert unter /mine nur, was die Rolle sehen darf (menu_paths) —
+// Der Server liefert unter /mine nur, was der Nutzer sehen darf (sichtbar_fuer + menu_paths) —
 // die Seitenleiste filtert nicht selbst nach, sie zeigt einfach was ankommt.
 
 export type CustomPageOpenMode = "iframe" | "link";
+
+/** Wer eine Seite sieht (#904): alle (wie bisher, nach Rollen-Menüpfaden),
+ *  nur Administratoren, oder nur Rollen, die den Pfad ausdrücklich freigeben. */
+export type CustomPageSichtbarFuer = "alle" | "admins" | "rollen";
 
 export interface CustomPage {
   id: number;
@@ -4432,6 +4438,7 @@ export interface CustomPage {
   sort_order: number;
   enabled: boolean;
   allow_media: boolean;
+  sichtbar_fuer: CustomPageSichtbarFuer;
   menu_path: string;
 }
 
@@ -4446,6 +4453,7 @@ export interface CustomPageInput {
   sort_order?: number;
   enabled?: boolean;
   allow_media?: boolean;
+  sichtbar_fuer?: CustomPageSichtbarFuer;
 }
 
 /** Menuepunkte für den angemeldeten Nutzer (bereits nach Rolle gefiltert). */

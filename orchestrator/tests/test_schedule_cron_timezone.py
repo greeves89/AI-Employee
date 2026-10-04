@@ -240,3 +240,43 @@ def test_short_interval_schedules_are_not_snapped():
     nxt = _calc_next_run(sched, now)
 
     assert nxt == now + timedelta(seconds=1800)
+
+
+# --- #901: die Formular-Auswahl „werktags um 08:00" -------------------------
+# Das Zeitplan-Formular uebersetzt „Wie oft?" in einen Cron-Ausdruck; ob der
+# naechste Lauf stimmt, entscheidet allein ``_calc_next_run``.
+
+
+def test_werktags_0800_berlin_freitag_nachmittag_springt_auf_montag():
+    """Freitag 14:00 Berlin (CEST) → naechster Lauf Montag 08:00 Berlin = 06:00 UTC."""
+    sched = _Sched(cron_expression="0 8 * * 1-5", timezone="Europe/Berlin")
+    freitag_nachmittag = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)  # Fr 14:00 Berlin
+
+    nxt = _calc_next_run(sched, freitag_nachmittag)
+
+    assert nxt == datetime(2026, 10, 5, 6, 0, tzinfo=timezone.utc)  # Mo 08:00 Berlin
+    assert nxt.astimezone(__import__("zoneinfo").ZoneInfo("Europe/Berlin")).weekday() == 0
+
+
+def test_werktags_0800_berlin_am_morgen_vor_acht_noch_heute():
+    """Dienstag 07:30 Berlin → derselbe Tag 08:00 Berlin, nicht erst morgen."""
+    sched = _Sched(cron_expression="0 8 * * 1-5", timezone="Europe/Berlin")
+    dienstag_frueh = datetime(2026, 10, 6, 5, 30, tzinfo=timezone.utc)  # Di 07:30 Berlin
+
+    assert _calc_next_run(sched, dienstag_frueh) == datetime(2026, 10, 6, 6, 0, tzinfo=timezone.utc)
+
+
+def test_werktags_0800_berlin_im_winter_ist_0700_utc():
+    """Nach der Zeitumstellung (CET, +01:00) bleibt es 08:00 Ortszeit."""
+    sched = _Sched(cron_expression="0 8 * * 1-5", timezone="Europe/Berlin")
+    samstag = datetime(2026, 11, 7, 12, 0, tzinfo=timezone.utc)
+
+    assert _calc_next_run(sched, samstag) == datetime(2026, 11, 9, 7, 0, tzinfo=timezone.utc)
+
+
+def test_woechentlich_mo_und_mi_0730():
+    """Mehrfachauswahl Mo+Mi um 07:30 → Montag nach Mittwoch-Vormittag nicht, Mittwoch schon."""
+    sched = _Sched(cron_expression="30 7 * * 1,3", timezone="Europe/Berlin")
+    dienstag = datetime(2026, 10, 6, 10, 0, tzinfo=timezone.utc)  # Di 12:00 Berlin
+
+    assert _calc_next_run(sched, dienstag) == datetime(2026, 10, 7, 5, 30, tzinfo=timezone.utc)  # Mi 07:30

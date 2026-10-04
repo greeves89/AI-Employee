@@ -79,7 +79,7 @@ export function pageIcon(name: string | null | undefined): React.ElementType {
 export const PAGE_GROUPS: { key: string; label: string }[] = [
   { key: "overview", label: "Übersicht" },
   { key: "collab", label: "Zusammenarbeit" },
-  { key: "automation", label: "Automation" },
-  { key: "system", label: "System" },
+  { key: "automation", label: "Automatisierung" },
+  { key: "system", label: "Arbeitsplatz" },
   { key: "help", label: "Hilfe" },
 ];

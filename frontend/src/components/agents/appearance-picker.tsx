@@ -78,7 +78,7 @@ export function AppearancePicker({
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Symbol suchen — z. B. „truck“, „heart“, „chart“"
+              placeholder="Symbol suchen — z. B. „LKW“, „Herz“, „Diagramm“"
               className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 py-1.5 pl-8 pr-3 text-xs outline-none transition-all focus:border-primary/50"
             />
             {loadingCatalog && (
@@ -118,8 +118,8 @@ export function AppearancePicker({
             })}
             {query.trim() && catalog && results.length === 0 && (
               <span className="py-2 text-[11px] text-muted-foreground/60">
-                Kein Symbol mit diesem Namen. lucide benennt englisch — „lkw“ findet
-                nichts, „truck“ schon.
+                Kein passendes Symbol. Versuch ein anderes Wort — englische
+                Namen wie „truck“ gehen auch.
               </span>
             )}
           </div>

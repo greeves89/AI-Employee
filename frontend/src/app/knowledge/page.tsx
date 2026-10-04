@@ -223,7 +223,7 @@ export default function KnowledgePage() {
             </button>
           )}
           <BookOpen className="h-6 w-6 text-primary" />
-          <h1 className="truncate text-xl font-semibold">Knowledge Base</h1>
+          <h1 className="truncate text-xl font-semibold">Wissen</h1>
           <span className="shrink-0 rounded-full bg-foreground/[0.06] px-2.5 py-0.5 text-xs text-muted-foreground">
             {total} entries
           </span>

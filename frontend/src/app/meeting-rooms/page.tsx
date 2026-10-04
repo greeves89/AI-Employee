@@ -151,7 +151,7 @@ export default function MeetingRoomsPage() {
       setCustomStages([{ name: "Eröffnung", rounds: 1 }, { name: "Analyse", rounds: 2 }, { name: "Synthese", rounds: 1 }]);
       router.push(`/meeting-rooms/${room.id}`);
     } catch (e) {
-      toast.error("Meeting room creation failed", String(e));
+      toast.error("Besprechungsraum konnte nicht angelegt werden", String(e));
     } finally {
       setCreating(false);
     }
@@ -159,10 +159,10 @@ export default function MeetingRoomsPage() {
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
-      title: "Delete this meeting room?",
-      message: "All session history will be permanently removed.",
+      title: "Diesen Besprechungsraum löschen?",
+      message: "Der gesamte Gesprächsverlauf wird unwiderruflich entfernt.",
       variant: "destructive",
-      confirmLabel: "Delete",
+      confirmLabel: "Löschen",
     });
     if (!ok) return;
     setActionLoading(id);
@@ -271,8 +271,8 @@ export default function MeetingRoomsPage() {
   return (
     <div>
       <Header
-        title="Meeting Rooms"
-        subtitle="Create group discussions between your agents"
+        title="Besprechungsräume"
+        subtitle="Gruppengespräche zwischen deinen Agenten anlegen"
       />
 
       <div className="p-6">
@@ -631,9 +631,9 @@ export default function MeetingRoomsPage() {
         ) : rooms.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Users className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <h3 className="text-lg font-medium mb-1">No meeting rooms yet</h3>
+            <h3 className="text-lg font-medium mb-1">Noch keine Besprechungsräume</h3>
             <p className="text-sm text-muted-foreground">
-              Create a room to start a group discussion between agents.
+              Lege einen Raum an, um ein Gruppengespräch zwischen Agenten zu starten.
             </p>
           </div>
         ) : (

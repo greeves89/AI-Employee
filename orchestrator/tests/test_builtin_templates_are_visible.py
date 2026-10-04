@@ -160,7 +160,7 @@ class TheVisibilityRuleItselfStaysTests(unittest.TestCase):
         self.assertIn("query.where(AgentTemplate.is_published == True)", API)
 
     def test_starting_from_an_unpublished_template_is_still_refused(self):
-        self.assertIn("This template is not published yet", API)
+        self.assertIn("Diese Vorlage ist noch nicht veröffentlicht.", API)
 
     def test_an_admin_authored_template_still_starts_as_a_draft(self):
         self.assertIn("is_published=False", API)

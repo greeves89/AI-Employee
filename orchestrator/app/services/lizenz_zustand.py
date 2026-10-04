@@ -89,9 +89,12 @@ async def _tage_seit_einrichtung(db: AsyncSession) -> int | None:
 async def lizenzstatus(db: AsyncSession, *, fuer_admin: bool) -> dict:
     """Was die Oberflaeche zum Lizenzstand wissen muss.
 
-    Belegung, Limit und Hinweis gehen nur an Administratoren: sie sind die
+    Belegung, Limit und Hinweise gehen nur an Administratoren: sie sind die
     Einzigen, die etwas daran aendern koennen, und fuer alle anderen waere ein
-    Lizenzhinweis nur Laerm.
+    Lizenzhinweis nur Laerm. Das gilt auch fuer den Hinweis des Anbieters aus
+    der Antwort auf das taegliche Lebenszeichen (``betreiber_hinweis``) — er
+    enthaelt eine Kontaktadresse und stand frueher im oeffentlichen
+    ``/version/`` (#917).
     """
     lic = lizenz.get_current_license()
     status = lic.to_dict()
@@ -100,7 +103,9 @@ async def lizenzstatus(db: AsyncSession, *, fuer_admin: bool) -> dict:
 
     limit, quelle = lizenz.wirksames_agentenlimit()
     agenten = await agentenzahl(db)
-    privat = (await SettingsService(db).get(SCHLUESSEL_PRIVAT) or "").strip().lower() == "true"
+    einstellungen = SettingsService(db)
+    privat = (await einstellungen.get(SCHLUESSEL_PRIVAT) or "").strip().lower() == "true"
+    betreiber_hinweis = (await einstellungen.get("usage_ping_hinweis") or "").strip()
     tage = await _tage_seit_einrichtung(db)
     status.update({
         "agenten": agenten,
@@ -109,6 +114,7 @@ async def lizenzstatus(db: AsyncSession, *, fuer_admin: bool) -> dict:
         "tage_seit_einrichtung": tage,
         "testphase_tage": lizenz.TESTPHASE_TAGE,
         "private_nutzung": privat,
+        "betreiber_hinweis": betreiber_hinweis,
         "hinweis": lizenz.lizenz_hinweis(
             zustand=lic.zustand, agenten=agenten, limit=limit, limit_quelle=quelle,
             tage_seit_einrichtung=tage, privat_erklaert=privat,

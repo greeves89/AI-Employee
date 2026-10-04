@@ -187,7 +187,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
     <div className={embedded ? "" : "min-h-screen"}>
       {!embedded && (
         <Header
-          title="Health & Performance"
+          title="Systemzustand"
           subtitle="System-Gesundheit, Self-Tests und Verbesserungsvorschläge"
         />
       )}
@@ -217,9 +217,9 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
               </div>
               <div>
                 <h2 className="text-2xl font-semibold">
-                  {overallStatus === "healthy" ? "System Gesund" :
-                   overallStatus === "degraded" ? "Eingeschraenkt" :
-                   loading ? "Laden..." : "Probleme erkannt"}
+                  {overallStatus === "healthy" ? "System in Ordnung" :
+                   overallStatus === "degraded" ? "Eingeschränkt" :
+                   loading ? "Wird geladen …" : "Probleme erkannt"}
                 </h2>
                 <p className="text-sm text-muted-foreground">
                   {dashboard?.agent_ratings ? Object.keys(dashboard.agent_ratings).length : 0} Agents registriert

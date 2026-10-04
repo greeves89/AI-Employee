@@ -49,8 +49,6 @@ type NavItem = {
   label: string;
   icon: React.ElementType;
   simpleVisible: boolean;
-  /** Beschriftung in der Mitglieder-Ansicht (siehe useSimpleMode). */
-  simpleLabel?: string;
   /** Gesetzt bei selbst angelegten Menuepunkten der Art "Link": der Eintrag
    *  öffnet die Adresse direkt in einem neuen Tab, statt erst unsere Seite zu
    *  laden, die nur einen Knopf dorthin zeigt. */
@@ -116,8 +114,11 @@ type NavGroup = {
   key: string;
   items: NavItem[];
   adminOnly?: boolean;  // group only shown to admins
-  simpleLabel?: string;
 };
+
+// Ein deutscher Name je Punkt — in der Mitglieder- wie in der Expertenansicht
+// derselbe (#902). Früher gab es englische Namen plus ``simpleLabel``; wer
+// zwischen den Ansichten wechselte, fand seine Punkte unter anderem Namen.
 
 const navGroups: NavGroup[] = [
   {
@@ -125,12 +126,12 @@ const navGroups: NavGroup[] = [
     key: "overview",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, simpleVisible: true },
-      { href: "/agents", label: "Agents", simpleLabel: "Agenten", icon: Cpu, simpleVisible: true },
+      { href: "/agents", label: "Agenten", icon: Cpu, simpleVisible: true },
       // Onboarding vorerst ausgeblendet (Seite bleibt unter /onboarding erreichbar)
       // { href: "/onboarding", label: "Onboarding", icon: Rocket, simpleVisible: true },
-      { href: "/tasks", label: "Tasks", simpleLabel: "Aufgaben", icon: ListTodo, simpleVisible: true },
-      { href: "/activity", label: "Activity", simpleLabel: "Aktivität", icon: Activity, simpleVisible: false },
-      { href: "/analytics", label: "Analytics", simpleLabel: "Auswertung", icon: BarChart3, simpleVisible: false },
+      { href: "/tasks", label: "Aufgaben", icon: ListTodo, simpleVisible: true },
+      { href: "/activity", label: "Aktivität", icon: Activity, simpleVisible: false },
+      { href: "/analytics", label: "Auswertung", icon: BarChart3, simpleVisible: false },
       { href: "/learning", label: "Gelerntes", icon: Sparkles, simpleVisible: false },
     ],
   },
@@ -138,29 +139,28 @@ const navGroups: NavGroup[] = [
     label: "Zusammenarbeit",
     key: "collab",
     items: [
-      { href: "/knowledge", label: "Knowledge", simpleLabel: "Wissen", icon: BookOpen, simpleVisible: false },
-      { href: "/meeting-rooms", label: "Meeting Rooms", icon: Users, simpleVisible: false },
+      { href: "/knowledge", label: "Wissen", icon: BookOpen, simpleVisible: false },
+      { href: "/meeting-rooms", label: "Besprechungsräume", icon: Users, simpleVisible: false },
       { href: "/apps", label: "Apps", icon: AppWindow, simpleVisible: false },
     ],
   },
   {
-    label: "Automation",
+    label: "Automatisierung",
     key: "automation",
     items: [
       { href: "/workflows", label: "Workflows", icon: Workflow, simpleVisible: false },
-      { href: "/skills", label: "Skill Marketplace", icon: Sparkles, simpleVisible: false },
-      { href: "/triggers", label: "Triggers", icon: Zap, simpleVisible: false },
+      { href: "/skills", label: "Skill-Marktplatz", icon: Sparkles, simpleVisible: false },
+      { href: "/triggers", label: "Auslöser", icon: Zap, simpleVisible: false },
       { href: "/evals", label: "Golden-Tests", icon: ClipboardCheck, simpleVisible: false },
     ],
   },
   {
-    label: "System",
-    simpleLabel: "Arbeitsplatz",
+    label: "Arbeitsplatz",
     key: "system",
     items: [
-      { href: "/approvals", label: "Approvals", simpleLabel: "Freigaben", icon: ShieldCheck, simpleVisible: true },
-      { href: "/files", label: "Explorer", simpleLabel: "Dateien", icon: FolderOpen, simpleVisible: true },
-      { href: "/integrations", label: "Integrations", simpleLabel: "Verbindungen", icon: Plug, simpleVisible: false },
+      { href: "/approvals", label: "Freigaben", icon: ShieldCheck, simpleVisible: true },
+      { href: "/files", label: "Dateien", icon: FolderOpen, simpleVisible: true },
+      { href: "/integrations", label: "Integrationen", icon: Plug, simpleVisible: false },
     ],
   },
   {
@@ -171,7 +171,7 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: "Compliance",
+    label: "Verwaltung",
     key: "admin",
     adminOnly: true,
     items: [
@@ -277,7 +277,7 @@ export function Sidebar() {
         external: p.open_mode === "link" ? nurWebAdresse(p.url) : undefined,
       }));
 
-  // Mitglieder-Ansicht: nur die einfachen Punkte, deutsch beschriftet. Hat der
+  // Mitglieder-Ansicht: nur die einfachen Punkte. Hat der
   // Administrator der Rolle ausdruecklich Menuepunkte zugeteilt, gilt seine
   // Liste — sonst verschwaende hier, was er bewusst freigegeben hat.
   const einfach = simpleMode && !permissions?.menu_paths;
@@ -285,10 +285,8 @@ export function Sidebar() {
     .filter((group) => !group.adminOnly || isAdmin)
     .map((group) => ({
       ...group,
-      label: (simpleMode && group.simpleLabel) || group.label,
       items: [...group.items, ...extraItemsFor(group.key)]
-        .filter((item) => canSeePath(item.href) && (!einfach || item.simpleVisible))
-        .map((item) => ({ ...item, label: (simpleMode && item.simpleLabel) || item.label })),
+        .filter((item) => canSeePath(item.href) && (!einfach || item.simpleVisible)),
     }))
     .filter((group) => group.items.length > 0);
 
@@ -527,7 +525,7 @@ export function Sidebar() {
         className={cn(
           "absolute -right-3 top-[54px] z-50 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-card shadow-md text-muted-foreground hover:text-foreground transition-all hover:scale-110 lg:flex"
         )}
-        title={collapsed ? "Sidebar erweitern" : "Sidebar einklappen"}
+        title={collapsed ? "Seitenleiste ausklappen" : "Seitenleiste einklappen"}
       >
         {collapsed ? (
           <ChevronRight className="h-3 w-3" />

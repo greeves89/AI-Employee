@@ -13,14 +13,8 @@ import { useTheme } from "@/components/theme-provider";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { NotificationBell } from "./notification-bell";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { rollenName } from "@/lib/rollen";
 
-const ROLLEN: Record<string, string> = {
-  admin: "Admin",
-  manager: "Manager",
-  member: "Mitglied",
-  viewer: "Betrachter",
-  unassigned: "Ohne Rolle",
-};
 
 export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
   const { user } = useAuthStore();
@@ -174,7 +168,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
                 ? "bg-amber-500/10 text-amber-500"
                 : "bg-blue-500/10 text-blue-500"
             )}>
-              {ROLLEN[user.role] ?? user.role}
+              {rollenName(user.role)}
             </span>
           </div>
           <div className="py-1">

@@ -322,7 +322,7 @@ _PLATFORM_SECTION = (
 BUILTIN_TEMPLATES = [
     {
         "name": "fullstack-developer",
-        "display_name": "Fullstack Developer",
+        "display_name": "Fullstack-Entwicklung",
         "description": "Baut Web-Anwendungen und Windows-Programme (.exe): Oberfläche mit React/Next.js, Server mit Python oder Node",
         "icon": "Code2",
         "category": "dev",
@@ -377,7 +377,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "data-analyst",
-        "display_name": "Data Analyst",
+        "display_name": "Datenanalyse",
         "description": "Wertet Daten aus und liefert Auswertungen, Diagramme und Berichte mit Python/pandas",
         "icon": "BarChart3",
         "category": "data",
@@ -427,7 +427,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "technical-writer",
-        "display_name": "Technical Writer",
+        "display_name": "Technische Dokumentation",
         "description": "Schreibt Dokumentation, Anleitungen und Schnittstellen-Beschreibungen",
         "icon": "FileText",
         "category": "writing",
@@ -480,7 +480,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "meeting-agent",
-        "display_name": "Meeting Agent",
+        "display_name": "Besprechungsprotokoll",
         "description": "Macht aus Mitschrift oder Notizen ein Protokoll mit klaren Aufgaben und Verantwortlichen",
         "icon": "FileText",
         "category": "productivity",
@@ -532,7 +532,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "devops-engineer",
-        "display_name": "DevOps Engineer",
+        "display_name": "Server & Betrieb (DevOps)",
         "description": "Betreut Server, Container, Auslieferung und Überwachung",
         "icon": "Server",
         "category": "ops",
@@ -588,7 +588,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "research-assistant",
-        "display_name": "Research Assistant",
+        "display_name": "Recherche",
         "description": "Recherchiert im Netz und liefert belegte Zusammenfassungen statt Linklisten",
         "icon": "Search",
         "category": "general",
@@ -642,7 +642,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "presentation-designer",
-        "display_name": "Presentation Designer",
+        "display_name": "Präsentationen",
         "description": "Baut Foliensätze: Aufbau, Text und Bilder bis zur fertigen Datei",
         "icon": "Presentation",
         "category": "creative",
@@ -699,7 +699,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "marketing-agent",
-        "display_name": "Marketing Agent",
+        "display_name": "Marketing",
         "description": "Plant Kampagnen und schreibt Beiträge, Newsletter und Redaktionspläne",
         "icon": "Megaphone",
         "category": "marketing",
@@ -752,7 +752,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "first-level-support",
-        "display_name": "First Level Support",
+        "display_name": "Kundenservice (1st Level)",
         "description": "Beantwortet Kundenanfragen, pflegt die Wissensdatenbank und eskaliert sauber",
         "icon": "Headphones",
         "category": "support",
@@ -810,7 +810,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "sales-agent",
-        "display_name": "Sales Agent",
+        "display_name": "Vertrieb",
         "description": "Recherchiert Interessenten, schreibt Angebote und hält die Kundendaten aktuell",
         "icon": "TrendingUp",
         "category": "sales",
@@ -869,7 +869,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "ceo-manager",
-        "display_name": "CEO / Manager",
+        "display_name": "Geschäftsführung",
         "description": "Verteilt Arbeit an die anderen Agenten, verfolgt den Fortschritt und entscheidet",
         "icon": "Crown",
         "category": "management",
@@ -933,7 +933,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "security-auditor",
-        "display_name": "Security Auditor",
+        "display_name": "Sicherheitsprüfung",
         "description": "Prüft Code und Abhängigkeiten auf Schwachstellen und belegt jeden Fund",
         "icon": "ShieldAlert",
         "category": "security",
@@ -980,7 +980,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "code-reviewer",
-        "display_name": "Code Reviewer",
+        "display_name": "Code-Prüfung",
         "description": "Prüft Änderungen vor dem Zusammenführen und begründet jeden Einwand",
         "icon": "GitPullRequest",
         "category": "dev",
@@ -1027,7 +1027,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "qa-tester",
-        "display_name": "QA Tester",
+        "display_name": "Softwaretests",
         "description": "Schreibt und fährt Tests, findet Fehler und beschreibt sie nachvollziehbar",
         "icon": "TestTube2",
         "category": "dev",
@@ -1079,7 +1079,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "seo-specialist",
-        "display_name": "SEO Specialist",
+        "display_name": "Suchmaschinenoptimierung (SEO)",
         "description": "Findet Suchbegriffe, prüft die Technik und macht Seiten auffindbar",
         "icon": "Search",
         "category": "marketing",
@@ -1123,7 +1123,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "social-media-manager",
-        "display_name": "Social Media Manager",
+        "display_name": "Social Media",
         "description": "Schreibt Beiträge je Kanal, plant den Kalender und wertet die Resonanz aus",
         "icon": "Share2",
         "category": "marketing",
@@ -1169,7 +1169,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "legal-assistant",
-        "display_name": "Legal Assistant",
+        "display_name": "Rechtsassistenz",
         "description": "Liest Verträge, prüft Datenschutz und markiert, was ein Anwalt sehen muss",
         "icon": "Scale",
         "category": "general",
@@ -1216,7 +1216,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "recruiter",
-        "display_name": "Recruiter",
+        "display_name": "Personalgewinnung",
         "description": "Schreibt Stellenanzeigen, sichtet Bewerbungen und bereitet Gespräche vor",
         "icon": "UserPlus",
         "category": "general",
@@ -1263,7 +1263,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "translator",
-        "display_name": "Translator",
+        "display_name": "Übersetzung",
         "description": "Übersetzt und lokalisiert Texte zwischen DE, EN, FR, ES und weiteren Sprachen",
         "icon": "Languages",
         "category": "writing",
@@ -1311,7 +1311,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "product-manager",
-        "display_name": "Product Manager",
+        "display_name": "Produktmanagement",
         "description": "Schreibt Anforderungen, schneidet sie in Aufgaben und setzt Prioritäten",
         "icon": "Kanban",
         "category": "management",
@@ -1356,7 +1356,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "database-admin",
-        "display_name": "Database Admin",
+        "display_name": "Datenbankpflege",
         "description": "Entwirft Datenmodelle, beschleunigt Abfragen und führt Schema-Änderungen sicher aus",
         "icon": "Database",
         "category": "ops",
@@ -1401,7 +1401,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "ui-designer",
-        "display_name": "UI/UX Designer",
+        "display_name": "Oberflächengestaltung (UI/UX)",
         "description": "Entwirft Oberflächen: Skizze, Bausteine, Design-System und Barrierefreiheit",
         "icon": "Palette",
         "category": "creative",
@@ -1447,7 +1447,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "api-developer",
-        "display_name": "API Developer",
+        "display_name": "Schnittstellen-Entwicklung (API)",
         "description": "Entwirft und baut Schnittstellen mit sauberer Beschreibung, Anmeldung und Versionierung",
         "icon": "Plug",
         "category": "dev",
@@ -1494,7 +1494,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "content-writer",
-        "display_name": "Content Writer",
+        "display_name": "Texterstellung",
         "description": "Schreibt Blogbeiträge, Seitentexte und E-Mail-Strecken in einer Stimme",
         "icon": "PenTool",
         "category": "writing",
@@ -1540,7 +1540,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "crawler-agent",
-        "display_name": "Web Crawler",
+        "display_name": "Webseiten-Auswertung",
         "description": "Holt Daten von Webseiten, erkennt Änderungen und baut daraus saubere Datensätze",
         "icon": "Globe",
         "category": "data",
@@ -1586,7 +1586,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "automation-agent",
-        "display_name": "Automation Agent",
+        "display_name": "Automatisierung",
         "description": "Automatisiert wiederkehrende Arbeit: Skripte, Zeitpläne, Überwachung von Ordnern",
         "icon": "Zap",
         "category": "ops",
@@ -1634,7 +1634,7 @@ BUILTIN_TEMPLATES = [
     },
     {
         "name": "os-agent",
-        "display_name": "OS Agent (Brain)",
+        "display_name": "Koordination (Brain)",
         "description": "Zerlegt Ziele in Aufgaben, verteilt sie an die Fachagenten und verfolgt den Fortschritt",
         "icon": "Brain",
         "category": "general",

@@ -36,6 +36,15 @@ class TaktTest(unittest.TestCase):
         r = ScheduleResponse.from_schedule(_zeitplan(interval_seconds=3600))
         self.assertEqual(r.takt, "alle 1 Std")
 
+    def test_monatlich(self):
+        """#901: Das Formular bietet „monatlich am 15. um 09:00" an."""
+        r = ScheduleResponse.from_schedule(_zeitplan(cron_expression="0 9 15 * *"))
+        self.assertEqual(r.takt, "monatlich am 15. um 09:00")
+
+    def test_woechentlich_mehrere_tage(self):
+        r = ScheduleResponse.from_schedule(_zeitplan(cron_expression="30 7 * * 1,3"))
+        self.assertEqual(r.takt, "Mo, Mi 07:30")
+
     def test_nie_null_minuten(self):
         """Der alte Fehler: ein Cron-Zeitplan darf nie als Null-Intervall erscheinen."""
         r = ScheduleResponse.from_schedule(_zeitplan(cron_expression="*/15 * * * *"))

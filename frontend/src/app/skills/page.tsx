@@ -390,8 +390,8 @@ function SkillModal({ initial, onClose, onSave }: SkillModalProps) {
   const [error, setError] = useState("");
 
   const handleSave = async () => {
-    if (!form.name.trim()) { setError("Name is required"); return; }
-    if (!form.description.trim()) { setError("Description is required"); return; }
+    if (!form.name.trim()) { setError("Bitte einen Namen angeben."); return; }
+    if (!form.description.trim()) { setError("Bitte eine Beschreibung angeben."); return; }
     setSaving(true);
     setError("");
     try {
@@ -806,7 +806,7 @@ export default function SkillsPage() {
 
   return (
     <div className="min-h-screen">
-      <Header title="Skills" subtitle="Browse, install, and create skills for your agents" />
+      <Header title="Skill-Marktplatz" subtitle="Skills für deine Agenten finden, installieren und selbst anlegen" />
 
       <div className="p-6 space-y-6">
         {isAdmin && <SkillSourcesAdmin />}

@@ -827,7 +827,7 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
           `Im Arbeitsbereich liegt unter /workspace/${ergebnis.ordner} eine gerade ` +
           `importierte App. Der Checkup hat folgende Punkte gefunden:\n\n${maengel}\n\n` +
           `Bitte ergänze, was fehlt, damit die App auf der Plattform startet. ` +
-          `Die Plattform startet Apps ueber docker-compose.yml, compose.yml, ` +
+          `Die Plattform startet Apps über docker-compose.yml, compose.yml, ` +
           `docker-compose.yaml oder compose.yaml im App-Ordner.`,
         agent_id: agentId,
       });
@@ -1030,7 +1030,7 @@ function ImportModal({ onClose, onFertig }: { onClose: () => void; onFertig: () 
                   className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent/50 disabled:opacity-40"
                 >
                   {uebergebe ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Flag className="h-3.5 w-3.5" />}
-                  An Agenten uebergeben
+                  An Agenten übergeben
                 </button>
               )}
               <button onClick={onClose} className="rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground">

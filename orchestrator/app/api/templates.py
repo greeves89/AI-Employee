@@ -145,10 +145,10 @@ async def get_template(
         select(AgentTemplate).where(AgentTemplate.id == template_id)
     )
     if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise HTTPException(status_code=404, detail="Vorlage nicht gefunden")
 
     if user.role not in (UserRole.ADMIN, UserRole.MANAGER) and not template.is_published:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise HTTPException(status_code=404, detail="Vorlage nicht gefunden")
 
     return _mit_skills(template, await _skills_der_vorlagen(db, [template]))
 
@@ -162,13 +162,13 @@ async def create_template(
     """Create a custom template (admin/manager only — drafts are not visible to users yet)."""
     from app.models.user import UserRole
     if user.role not in (UserRole.ADMIN, UserRole.MANAGER):
-        raise HTTPException(status_code=403, detail="Only admins and managers can create templates")
+        raise HTTPException(status_code=403, detail="Nur Administratoren und die Leitung können Vorlagen anlegen.")
 
     existing = await db.scalar(
         select(AgentTemplate).where(AgentTemplate.name == body.name)
     )
     if existing:
-        raise HTTPException(status_code=409, detail=f"Template '{body.name}' already exists")
+        raise HTTPException(status_code=409, detail=f"Eine Vorlage „{body.name}“ gibt es bereits.")
 
     template = AgentTemplate(
         name=body.name,
@@ -209,12 +209,12 @@ async def update_template(
         select(AgentTemplate).where(AgentTemplate.id == template_id)
     )
     if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise HTTPException(status_code=404, detail="Vorlage nicht gefunden")
 
     if template.is_builtin and user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Only admins can modify builtin templates")
+        raise HTTPException(status_code=403, detail="Mitgelieferte Vorlagen können nur Administratoren ändern.")
     if not template.is_builtin and template.created_by != user.id and user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Not your template")
+        raise HTTPException(status_code=403, detail="Das ist nicht deine Vorlage.")
 
     for field in body.model_fields_set:
         setattr(template, field, getattr(body, field))
@@ -232,13 +232,13 @@ async def publish_template(
     """Publish a template so users can see and start agents from it (admin only)."""
     from app.models.user import UserRole
     if user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Only admins can publish templates")
+        raise HTTPException(status_code=403, detail="Nur Administratoren können Vorlagen veröffentlichen.")
 
     template = await db.scalar(
         select(AgentTemplate).where(AgentTemplate.id == template_id)
     )
     if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise HTTPException(status_code=404, detail="Vorlage nicht gefunden")
 
     template.is_published = True
     template.published_at = datetime.now(timezone.utc)
@@ -256,13 +256,13 @@ async def unpublish_template(
     """Unpublish a template — hides it from users (admin only)."""
     from app.models.user import UserRole
     if user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Only admins can unpublish templates")
+        raise HTTPException(status_code=403, detail="Nur Administratoren können Vorlagen zurückziehen.")
 
     template = await db.scalar(
         select(AgentTemplate).where(AgentTemplate.id == template_id)
     )
     if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise HTTPException(status_code=404, detail="Vorlage nicht gefunden")
 
     template.is_published = False
     template.published_at = None
@@ -284,12 +284,12 @@ async def delete_template(
         select(AgentTemplate).where(AgentTemplate.id == template_id)
     )
     if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise HTTPException(status_code=404, detail="Vorlage nicht gefunden")
 
     if template.is_builtin:
-        raise HTTPException(status_code=400, detail="Cannot delete builtin templates")
+        raise HTTPException(status_code=400, detail="Mitgelieferte Vorlagen lassen sich nicht löschen.")
     if template.created_by != user.id and user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Not your template")
+        raise HTTPException(status_code=403, detail="Das ist nicht deine Vorlage.")
 
     await db.delete(template)
     await db.commit()
@@ -309,10 +309,10 @@ async def vorlage_fuer_nutzer(template_id: int, user, db: AsyncSession) -> Agent
 
     template = await db.scalar(select(AgentTemplate).where(AgentTemplate.id == template_id))
     if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise HTTPException(status_code=404, detail="Vorlage nicht gefunden")
     # Users can only start from published templates
     if user.role not in (UserRole.ADMIN, UserRole.MANAGER) and not template.is_published:
-        raise HTTPException(status_code=403, detail="This template is not published yet")
+        raise HTTPException(status_code=403, detail="Diese Vorlage ist noch nicht veröffentlicht.")
     if user.id != "__anonymous__":
         from app.core.permissions import can_use_template, get_effective_permissions
 
@@ -320,7 +320,7 @@ async def vorlage_fuer_nutzer(template_id: int, user, db: AsyncSession) -> Agent
         if not can_use_template(perms, template.id):
             raise HTTPException(
                 status_code=403,
-                detail=f"Template '{template.name}' ist für deine Rolle nicht erlaubt.",
+                detail=f"Die Vorlage „{template.display_name or template.name}“ ist für deine Rolle nicht freigegeben.",
             )
     return template
 

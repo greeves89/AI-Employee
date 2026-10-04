@@ -4,8 +4,9 @@ Zwei Seiten derselben Sache:
 
 * Der Administrator pflegt die Eintraege (``GET/POST/PATCH/DELETE /custom-pages/``).
 * Jeder Angemeldete bekommt unter ``/custom-pages/mine`` NUR die Seiten, die
-  seine Rolle sehen darf — gefiltert mit ``can_access_menu`` gegen denselben
-  ``menu_paths``-Eintrag, der auch die uebrigen Menuepunkte steuert.
+  er sehen darf — entschieden von ``darf_seite_sehen`` aus ``sichtbar_fuer``
+  der Seite und demselben ``menu_paths``-Eintrag, der auch die uebrigen
+  Menuepunkte steuert. Derselbe Helfer riegelt ``/by-slug/`` ab.
 
 Das Filtern passiert hier im Server und nicht erst in der Seitenleiste. Sonst
 waere die Adresse einer fremden Seite fuer jeden abrufbar, der die Liste
@@ -24,7 +25,8 @@ from app.core.permissions import can_access_menu, get_effective_permissions
 from app.db.session import get_db
 from app.dependencies import require_admin, require_auth
 from app.models.audit_log import AuditEventType, AuditLog
-from app.models.custom_page import GROUP_KEYS, OPEN_MODES, CustomPage
+from app.models.custom_page import GROUP_KEYS, OPEN_MODES, SICHTBAR_FUER, CustomPage
+from app.models.user import UserRole
 
 router = APIRouter(prefix="/custom-pages", tags=["custom-pages"])
 
@@ -97,6 +99,7 @@ def _serialize(page: CustomPage) -> dict:
         "sort_order": page.sort_order,
         "enabled": page.enabled,
         "allow_media": page.allow_media,
+        "sichtbar_fuer": page.sichtbar_fuer,
         "menu_path": page.menu_path,
     }
 
@@ -112,6 +115,8 @@ class CustomPageCreate(BaseModel):
     sort_order: int = 0
     enabled: bool = True
     allow_media: bool = False
+    # Neue Seiten zuerst nur fuer Administratoren (#904).
+    sichtbar_fuer: str = "admins"
 
 
 class CustomPageUpdate(BaseModel):
@@ -125,6 +130,28 @@ class CustomPageUpdate(BaseModel):
     sort_order: int | None = None
     enabled: bool | None = None
     allow_media: bool | None = None
+    sichtbar_fuer: str | None = None
+
+
+def darf_seite_sehen(user, permissions: dict, page: CustomPage) -> bool:
+    """Ob ``user`` diese Seite sehen darf — EIN Riegel fuer Liste und Einzelabruf.
+
+    Administratoren sehen jede Seite. Sonst entscheidet ``sichtbar_fuer``:
+    ``admins`` niemand sonst; ``rollen`` nur, wenn die Rolle den Pfad
+    ausdruecklich in ``menu_paths`` fuehrt (``None`` = "alles" reicht hier
+    NICHT); ``alle`` wie bisher ueber ``can_access_menu``. Ein unbekannter Wert
+    schliesst aus statt zu oeffnen.
+    """
+    if getattr(user, "role", None) == UserRole.ADMIN:
+        return True
+    sichtbar = page.sichtbar_fuer or "admins"
+    if sichtbar == "alle":
+        return can_access_menu(permissions, page.menu_path)
+    if sichtbar == "rollen":
+        return isinstance(permissions.get("menu_paths"), list) and can_access_menu(
+            permissions, page.menu_path
+        )
+    return False
 
 
 async def _visible_pages(user, db: AsyncSession) -> list[CustomPage]:
@@ -137,7 +164,7 @@ async def _visible_pages(user, db: AsyncSession) -> list[CustomPage]:
         )
     ).scalars().all()
     permissions = await get_effective_permissions(user, db)
-    return [p for p in rows if can_access_menu(permissions, p.menu_path)]
+    return [p for p in rows if darf_seite_sehen(user, permissions, p)]
 
 
 @router.get("/mine")
@@ -159,7 +186,7 @@ async def get_page_by_slug(
     if not page or not page.enabled:
         raise HTTPException(status_code=404, detail="Seite nicht gefunden")
     permissions = await get_effective_permissions(user, db)
-    if not can_access_menu(permissions, page.menu_path):
+    if not darf_seite_sehen(user, permissions, page):
         raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Seite")
     return _serialize(page)
 
@@ -182,8 +209,9 @@ async def create_page(
     if not title:
         raise HTTPException(status_code=400, detail="Titel fehlt")
     url = _validate_url(body.url)
-    group_key = _validate_choice(body.group_key, GROUP_KEYS, "Menuegruppe")
-    open_mode = _validate_choice(body.open_mode, OPEN_MODES, "Oeffnen-Art")
+    group_key = _validate_choice(body.group_key, GROUP_KEYS, "Menügruppe")
+    open_mode = _validate_choice(body.open_mode, OPEN_MODES, "Öffnen-Art")
+    sichtbar_fuer = _validate_choice(body.sichtbar_fuer, SICHTBAR_FUER, "Sichtbar für")
 
     existing = (
         await db.execute(select(CustomPage).where(CustomPage.slug == slug))
@@ -202,13 +230,14 @@ async def create_page(
         sort_order=body.sort_order,
         enabled=body.enabled,
         allow_media=body.allow_media,
+        sichtbar_fuer=sichtbar_fuer,
         created_by=str(user.id),
     )
     db.add(page)
     await db.flush()
     db.add(_audit(
         user, AuditEventType.CUSTOM_PAGE_CREATED, page.menu_path,
-        {"url": page.url, "open_mode": page.open_mode},
+        {"url": page.url, "open_mode": page.open_mode, "sichtbar_fuer": page.sichtbar_fuer},
     ))
     await db.commit()
     await db.refresh(page)
@@ -249,19 +278,21 @@ async def update_page(
     if body.icon is not None:
         page.icon = body.icon.strip() or "Globe"
     if body.group_key is not None:
-        page.group_key = _validate_choice(body.group_key, GROUP_KEYS, "Menuegruppe")
+        page.group_key = _validate_choice(body.group_key, GROUP_KEYS, "Menügruppe")
     if body.open_mode is not None:
-        page.open_mode = _validate_choice(body.open_mode, OPEN_MODES, "Oeffnen-Art")
+        page.open_mode = _validate_choice(body.open_mode, OPEN_MODES, "Öffnen-Art")
     if body.sort_order is not None:
         page.sort_order = body.sort_order
     if body.enabled is not None:
         page.enabled = body.enabled
     if body.allow_media is not None:
         page.allow_media = body.allow_media
+    if body.sichtbar_fuer is not None:
+        page.sichtbar_fuer = _validate_choice(body.sichtbar_fuer, SICHTBAR_FUER, "Sichtbar für")
 
     db.add(_audit(
         user, AuditEventType.CUSTOM_PAGE_UPDATED, page.menu_path,
-        {"url": page.url, "enabled": page.enabled},
+        {"url": page.url, "enabled": page.enabled, "sichtbar_fuer": page.sichtbar_fuer},
     ))
     await db.commit()
     await db.refresh(page)

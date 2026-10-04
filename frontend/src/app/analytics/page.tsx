@@ -124,8 +124,8 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
             <X className="h-4 w-4" />
           </button>
 
-          <Dialog.Title className="sr-only">Agent Details</Dialog.Title>
-          <Dialog.Description className="sr-only">Agent performance statistics and task history</Dialog.Description>
+          <Dialog.Title className="sr-only">Agenten-Details</Dialog.Title>
+          <Dialog.Description className="sr-only">Leistungszahlen und Aufgabenverlauf des Agenten</Dialog.Description>
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
@@ -158,7 +158,7 @@ function AgentDetailModal({ agentId, days, onClose }: { agentId: string; days: n
               {/* Summary stats */}
               <div className="grid grid-cols-3 gap-3 mb-5">
                 {[
-                  { label: "Tasks", value: String(data.summary.total_tasks) },
+                  { label: "Aufgaben", value: String(data.summary.total_tasks) },
                   { label: "Erfolgsquote", value: `${data.summary.success_rate_pct}%` },
                   { label: "Fehlgeschlagen", value: String(data.summary.failed) },
                   { label: "Ø Dauer", value: fmtMs(data.summary.avg_duration_ms) },
@@ -295,7 +295,7 @@ export default function AnalyticsPage() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
-      <Header title="Analytics" />
+      <Header title="Auswertung" />
       <main className="flex-1 overflow-y-auto p-6 space-y-6">
 
         {/* Toolbar */}
@@ -335,7 +335,7 @@ export default function AnalyticsPage() {
             {/* ── Overview cards ── */}
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
               <StatCard
-                label="Gesamt Tasks"
+                label="Aufgaben gesamt"
                 value={String(overview?.total_tasks ?? 0)}
                 sub={`${overview?.completed_tasks ?? 0} abgeschlossen`}
                 icon={BarChart3}
@@ -362,7 +362,7 @@ export default function AnalyticsPage() {
                 color="cyan"
               />
               <StatCard
-                label="Aktive Agents"
+                label="Aktive Agenten"
                 value={String(overview?.active_agents ?? 0)}
                 icon={Bot}
                 color="purple"
@@ -514,7 +514,7 @@ export default function AnalyticsPage() {
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
                 <div className="flex items-center gap-2 mb-4">
                   <Bot className="h-4 w-4 text-primary" />
-                  <h2 className="text-sm font-semibold">Agent Performance</h2>
+                  <h2 className="text-sm font-semibold">Leistung je Agent</h2>
                   <span className="ml-auto text-[11px] text-muted-foreground">Klicken für Details</span>
                 </div>
                 {agentsData?.agents?.length > 0 ? (

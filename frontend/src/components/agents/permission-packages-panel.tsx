@@ -146,7 +146,7 @@ export function PermissionPackagesPanel({
 
       <div className="px-5 pb-4">
         <p className="text-[11px] text-muted-foreground/50">
-          Ohne Auswahl: nur pip/npm install (kein sudo). Basis-Tools (git, curl, node) sind immer verfuegbar.
+          Ohne Auswahl: nur pip/npm install (kein sudo). Basis-Werkzeuge (git, curl, node) sind immer verfügbar.
         </p>
       </div>
     </div>

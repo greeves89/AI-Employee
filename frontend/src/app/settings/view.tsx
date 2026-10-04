@@ -31,36 +31,36 @@ import type { Settings, ModelProvider, AIAccount } from "@/lib/types";
 // ── Model options per provider ──────────────────────────────
 const MODEL_OPTIONS: Record<ModelProvider, { value: string; label: string; tier: string }[]> = {
   anthropic: [
-    { value: "claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
-    { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-    { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Fast" },
-    { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Legacy" },
-    { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Legacy" },
-    { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Legacy" },
+    { value: "claude-opus-4-8", label: "Opus 4.8 (neueste)", tier: "Am stärksten" },
+    { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Ausgewogen" },
+    { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Schnell" },
+    { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Ältere Version" },
+    { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Ältere Version" },
+    { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Ältere Version" },
   ],
   bedrock: [
-    { value: "anthropic.claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
-    { value: "anthropic.claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-    { value: "anthropic.claude-haiku-4-5-20251001-v1:0", label: "Haiku 4.5", tier: "Fast" },
-    { value: "us.anthropic.claude-opus-4-7-v1:0", label: "Opus 4.7", tier: "Legacy" },
-    { value: "anthropic.claude-opus-4-6-v1", label: "Opus 4.6", tier: "Legacy" },
-    { value: "anthropic.claude-sonnet-4-5-20250929-v1:0", label: "Sonnet 4.5", tier: "Legacy" },
+    { value: "anthropic.claude-opus-4-8", label: "Opus 4.8 (neueste)", tier: "Am stärksten" },
+    { value: "anthropic.claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Ausgewogen" },
+    { value: "anthropic.claude-haiku-4-5-20251001-v1:0", label: "Haiku 4.5", tier: "Schnell" },
+    { value: "us.anthropic.claude-opus-4-7-v1:0", label: "Opus 4.7", tier: "Ältere Version" },
+    { value: "anthropic.claude-opus-4-6-v1", label: "Opus 4.6", tier: "Ältere Version" },
+    { value: "anthropic.claude-sonnet-4-5-20250929-v1:0", label: "Sonnet 4.5", tier: "Ältere Version" },
   ],
   vertex: [
-    { value: "claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
-    { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-    { value: "claude-haiku-4-5@20251001", label: "Haiku 4.5", tier: "Fast" },
-    { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Legacy" },
-    { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Legacy" },
-    { value: "claude-sonnet-4-5@20250929", label: "Sonnet 4.5", tier: "Legacy" },
+    { value: "claude-opus-4-8", label: "Opus 4.8 (neueste)", tier: "Am stärksten" },
+    { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Ausgewogen" },
+    { value: "claude-haiku-4-5@20251001", label: "Haiku 4.5", tier: "Schnell" },
+    { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Ältere Version" },
+    { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Ältere Version" },
+    { value: "claude-sonnet-4-5@20250929", label: "Sonnet 4.5", tier: "Ältere Version" },
   ],
   foundry: [
-    { value: "claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
-    { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-    { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Fast" },
-    { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Legacy" },
-    { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Legacy" },
-    { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Legacy" },
+    { value: "claude-opus-4-8", label: "Opus 4.8 (neueste)", tier: "Am stärksten" },
+    { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Ausgewogen" },
+    { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Schnell" },
+    { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Ältere Version" },
+    { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Ältere Version" },
+    { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Ältere Version" },
   ],
   codex: [
     { value: "gpt-5.5", label: "GPT-5.5", tier: "Codex" },
@@ -95,7 +95,7 @@ const PROVIDERS: {
     icon: Key,
     color: "text-orange-400",
     bgColor: "bg-orange-500/10 border-orange-500/20",
-    description: "Direct API access via API Key or OAuth Token",
+    description: "Direkter Zugang per API-Schlüssel oder OAuth-Token",
   },
   {
     id: "bedrock",
@@ -104,7 +104,7 @@ const PROVIDERS: {
     icon: Cloud,
     color: "text-amber-700 dark:text-amber-400",
     bgColor: "bg-amber-500/10 border-amber-500/20",
-    description: "AWS managed service with IAM credentials",
+    description: "Verwalteter AWS-Dienst mit IAM-Zugangsdaten",
   },
   {
     id: "vertex",
@@ -113,7 +113,7 @@ const PROVIDERS: {
     icon: Globe,
     color: "text-blue-400",
     bgColor: "bg-blue-500/10 border-blue-500/20",
-    description: "GCP managed service with service account",
+    description: "Verwalteter Google-Cloud-Dienst mit Dienstkonto",
   },
   {
     id: "foundry",
@@ -122,7 +122,7 @@ const PROVIDERS: {
     icon: Server,
     color: "text-sky-400",
     bgColor: "bg-sky-500/10 border-sky-500/20",
-    description: "Microsoft Azure managed deployment",
+    description: "Verwaltete Bereitstellung in Microsoft Azure",
   },
   {
     id: "codex",
@@ -131,7 +131,7 @@ const PROVIDERS: {
     icon: Sparkles,
     color: "text-emerald-400",
     bgColor: "bg-emerald-500/10 border-emerald-500/20",
-    description: "Codex CLI via ChatGPT subscription login",
+    description: "Codex über die Anmeldung mit einem ChatGPT-Abo",
   },
 ];
 
@@ -631,7 +631,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         data.smtp_allowed_recipient_domains = smtpAllowedDomains;
       }
       await api.updateSettings(data);
-      setMessage("Settings saved!");
+      setMessage("Einstellungen gespeichert");
       // Clear secret fields
       setApiKey("");
       setOauthToken("");
@@ -650,7 +650,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       const s = await api.getSettings();
       setSettings(s);
     } catch (e) {
-      setMessage(`Error: ${e instanceof Error ? e.message : "Failed"}`);
+      setMessage(`Fehler: ${e instanceof Error ? e.message : "Speichern fehlgeschlagen"}`);
     } finally {
       setSaving(false);
     }
@@ -663,7 +663,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setClaudeAuthState(await startClaudeLogin());
       setClaudeLoginOpen(true);
     } catch (e) {
-      setMessage(`Error: ${e instanceof Error ? e.message : "Failed to start login"}`);
+      setMessage(`Fehler: ${e instanceof Error ? e.message : "Anmeldung konnte nicht gestartet werden"}`);
     }
   };
 
@@ -680,7 +680,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       setCodexLoginOpen(true);
       window.open(session.verification_uri, "_blank");
     } catch (e) {
-      setCodexLoginError(e instanceof Error ? e.message : "Codex device login failed");
+      setCodexLoginError(e instanceof Error ? e.message : "Codex-Anmeldung fehlgeschlagen");
       setCodexLoginOpen(true);
     } finally {
       setCodexLoginLoading(false);
@@ -701,7 +701,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
       const s = await api.getSettings();
       setSettings(s);
     } catch (e) {
-      setCodexLoginError(e instanceof Error ? e.message : "Codex auth import failed");
+      setCodexLoginError(e instanceof Error ? e.message : "Codex-Anmeldedaten konnten nicht übernommen werden");
     } finally {
       setCodexLoginLoading(false);
     }
@@ -739,7 +739,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <div>
-      {!embedded && <Header title="Settings" subtitle="Configure your AI Employee platform" />}
+      {!embedded && <Header title="Einstellungen" subtitle="Deine AI-Employee-Anlage einrichten" />}
 
       <motion.div
         className="px-8 py-8 max-w-5xl mx-auto space-y-6"
@@ -766,7 +766,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             // Stimme), gehoert die Bedingung hier gelockert — nicht der Reiter
             // dauerhaft leer stehen gelassen.
             ...(isAdmin ? [
-              { id: "voice" as const, label: "Voice", icon: Mic },
+              { id: "voice" as const, label: "Sprachassistent", icon: Mic },
               { id: "system" as const, label: "System", icon: Shield },
             ] : []),
           ]).map((t) => {
@@ -814,7 +814,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           <div className="flex items-center gap-2 mb-3">
             <Cpu className="h-4 w-4 text-muted-foreground/60" />
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-              Model Provider
+              Modell-Anbieter
             </h2>
           </div>
 
@@ -861,7 +861,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                       {p.short}
                     </p>
                     <p className="text-[10px] text-muted-foreground/50 leading-tight mt-0.5">
-                      {p.id === "anthropic" ? "Direct API" :
+                      {p.id === "anthropic" ? "Direkte API" :
                        p.id === "bedrock" ? "AWS" :
                        p.id === "vertex" ? "Google Cloud" :
                        p.id === "codex" ? "ChatGPT" : "Azure"}
@@ -888,12 +888,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
               {providerConfigured(provider) ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  Connected
+                  Verbunden
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
-                  Not configured
+                  Nicht eingerichtet
                 </span>
               )}
             </div>
@@ -915,9 +915,9 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     >
                       <span className="flex items-center justify-center gap-1.5">
                         <Key className="h-3 w-3" />
-                        API Key
+                        API-Schlüssel
                       </span>
-                      <span className="block text-[10px] opacity-50 mt-0.5">Pay per token</span>
+                      <span className="block text-[10px] opacity-50 mt-0.5">Abrechnung je Token</span>
                     </button>
                     <button
                       onClick={() => setAuthMethod("oauth_token")}
@@ -930,19 +930,19 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     >
                       <span className="flex items-center justify-center gap-1.5">
                         <Lock className="h-3 w-3" />
-                        OAuth Token
+                        OAuth-Token
                       </span>
                       <span className="block text-[10px] opacity-50 mt-0.5">Claude Pro/Team</span>
                     </button>
                   </div>
                   {authMethod === "api_key" ? (
                     <CredentialField
-                      label="API Key"
+                      label="API-Schlüssel"
                       type="password"
                       value={apiKey}
                       onChange={setApiKey}
                       placeholder="sk-ant-api03-..."
-                      hint="Create an API key at console.anthropic.com"
+                      hint="Einen API-Schlüssel legst du unter console.anthropic.com an"
                       mono
                     />
                   ) : (
@@ -961,7 +961,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                       {settings?.has_oauth_token && (
                         <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
                           <CheckCircle2 className="h-3 w-3" />
-                          OAuth Session aktiv
+                          OAuth-Sitzung aktiv
                         </div>
                       )}
                     </div>
@@ -976,7 +976,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     <div className="rounded-md bg-background shadow-sm px-3 py-2 text-xs font-medium text-foreground">
                       <span className="flex items-center justify-center gap-1.5">
                         <Sparkles className="h-3 w-3" />
-                        ChatGPT Login
+                        ChatGPT-Anmeldung
                       </span>
                       <span className="block text-center text-[10px] opacity-50 mt-0.5">
                         Nutzt deine Codex/ChatGPT Subscription, keinen API-Key
@@ -998,7 +998,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   {settings?.has_codex_oauth && (
                     <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
                       <CheckCircle2 className="h-3 w-3" />
-                      Codex ChatGPT Session aktiv
+                      Codex-Sitzung (ChatGPT) aktiv
                     </div>
                   )}
                 </div>
@@ -1021,7 +1021,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                       type="password"
                       value={awsSecretKey}
                       onChange={setAwsSecretKey}
-                      placeholder="Secret key..."
+                      placeholder="Geheimer Schlüssel …"
                       mono
                     />
                   </div>
@@ -1032,7 +1032,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     options={AWS_REGIONS.map((r) => ({ value: r, label: r }))}
                   />
                   <p className="text-[10px] text-muted-foreground/40 pt-1">
-                    Ensure Claude models are enabled in your AWS Bedrock console for the selected region.
+                    Die Claude-Modelle müssen in der AWS-Bedrock-Konsole für die gewählte Region freigeschaltet sein.
                   </p>
                 </div>
               )}
@@ -1042,7 +1042,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <CredentialField
-                      label="GCP Project ID"
+                      label="GCP-Projekt-ID"
                       value={vertexProjectId}
                       onChange={setVertexProjectId}
                       placeholder="my-project-123456"
@@ -1055,7 +1055,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-medium text-muted-foreground/70">Service Account JSON</label>
+                    <label className="text-[11px] font-medium text-muted-foreground/70">Dienstkonto-JSON</label>
                     <textarea
                       value={vertexCredentials}
                       onChange={(e) => setVertexCredentials(e.target.value)}
@@ -1065,7 +1065,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     />
                   </div>
                   <p className="text-[10px] text-muted-foreground/40 pt-1">
-                    Paste the full JSON of your GCP service account key. Vertex AI API must be enabled.
+                    Das vollständige JSON des GCP-Dienstkontoschlüssels einfügen. Die Vertex-AI-API muss aktiviert sein.
                   </p>
                 </div>
               )}
@@ -1075,24 +1075,24 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <CredentialField
-                      label="Foundry Resource Name"
+                      label="Name der Foundry-Ressource"
                       value={foundryResource}
                       onChange={setFoundryResource}
                       placeholder="my-foundry-resource"
                     />
                     <CredentialField
-                      label="API Key"
+                      label="API-Schlüssel"
                       type="password"
                       value={foundryApiKey}
                       onChange={setFoundryApiKey}
-                      placeholder="Foundry API key..."
+                      placeholder="Foundry-API-Schlüssel …"
                       mono
                     />
                   </div>
                   <p className="text-[10px] text-muted-foreground/40 pt-1">
-                    Configure in Azure AI Foundry portal. Ensure Claude models are deployed in your resource.
+                    Einrichtung im Azure-AI-Foundry-Portal. Die Claude-Modelle müssen in deiner Ressource bereitgestellt sein.
                     {" "}Eigene Deployments (z.&nbsp;B. GPT) werden hier <strong>nicht</strong> automatisch erkannt —
-                    lege sie unter <strong>AI-Accounts</strong> als Provider &bdquo;Azure OpenAI&ldquo; mit dem
+                    lege sie unter <strong>KI-Konten</strong> als Anbieter &bdquo;Azure OpenAI&ldquo; mit dem
                     Deployment-Namen als Modell an.
                   </p>
                 </div>
@@ -1102,7 +1102,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             {/* Footer: configured providers info */}
             <div className="px-5 py-3 bg-foreground/[0.015] border-t border-foreground/[0.04]">
               <p className="text-[10px] text-muted-foreground/40">
-                Modell-Auswahl erfolgt pro Agent in den Agent-Settings.
+                Das Modell wählst du je Agent in dessen Einstellungen.
               </p>
             </div>
           </div>
@@ -1113,7 +1113,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           <div className="flex items-center gap-2 mb-3">
             <Bot className="h-4 w-4 text-muted-foreground/60" />
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-              Agent Configuration
+              Agenten-Einstellungen
             </h2>
           </div>
 
@@ -1121,7 +1121,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Gauge className="h-3.5 w-3.5 text-muted-foreground/50" />
-                <label className="text-[11px] font-medium text-muted-foreground/70">Max Turns per Task</label>
+                <label className="text-[11px] font-medium text-muted-foreground/70">Max. Schritte je Aufgabe</label>
               </div>
               <input
                 type="number"
@@ -1130,14 +1130,14 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                 className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all tabular-nums"
               />
               <p className="text-[10px] text-muted-foreground/40 mt-1.5">
-                Maximum API round-trips per task execution.
+                Höchstzahl der Modellaufrufe je Aufgabe.
               </p>
             </div>
 
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Bot className="h-3.5 w-3.5 text-muted-foreground/50" />
-                <label className="text-[11px] font-medium text-muted-foreground/70">Max Concurrent Agents</label>
+                <label className="text-[11px] font-medium text-muted-foreground/70">Max. gleichzeitige Agenten</label>
               </div>
               <input
                 type="number"
@@ -1146,7 +1146,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                 className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all tabular-nums"
               />
               <p className="text-[10px] text-muted-foreground/40 mt-1.5">
-                Maximum number of agents running simultaneously.
+                So viele Agenten dürfen gleichzeitig laufen.
               </p>
             </div>
 
@@ -1200,7 +1200,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           <div className="flex items-center gap-2 mb-3">
             <Layers className="h-4 w-4 text-muted-foreground/60" />
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-              Agent Templates
+              Agenten-Vorlagen
             </h2>
           </div>
           <TemplateManager isAdmin={isAdmin} />
@@ -1226,9 +1226,9 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         {secTab === "integrationen" && (
         <div className="space-y-6">
         <p className="text-[11px] text-muted-foreground/50">
-          Benachrichtigungskanaele für DICH (E-Mail/Telegram/Teams). Externe
+          Benachrichtigungskanäle für DICH (E-Mail/Telegram/Teams). Externe
           Datenquellen und MCP-Server für deine Agenten verbindest du unter{" "}
-          <Link href="/integrations" className="text-primary hover:underline">Integrations</Link>{" "}
+          <Link href="/integrations" className="text-primary hover:underline">Integrationen</Link>{" "}
           in der Seitenleiste.
         </p>
         {/* ─── Section 4: Notifications ─── */}
@@ -1236,7 +1236,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
           <div className="flex items-center gap-2 mb-3">
             <MessageSquare className="h-4 w-4 text-muted-foreground/60" />
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-              Notifications
+              Benachrichtigungen
             </h2>
           </div>
 
@@ -1272,12 +1272,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
               {settings?.has_telegram ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  Connected
+                  Verbunden
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
-                  Not configured
+                  Nicht eingerichtet
                 </span>
               )}
             </div>
@@ -1299,7 +1299,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                 />
               </div>
               <p className="text-[10px] text-muted-foreground/40 mt-3">
-                Create a bot via @BotFather on Telegram and add it to your group or channel.
+                Lege über @BotFather in Telegram einen Bot an und füge ihn deiner Gruppe oder deinem Kanal hinzu.
               </p>
             </div>
           </div>
@@ -1713,7 +1713,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             <div className="flex items-center gap-2 mb-3">
               <Globe className="h-4 w-4 text-muted-foreground/60" />
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-                OAuth Integrations
+                OAuth-Anbindungen
               </h2>
             </div>
 
@@ -1727,18 +1727,18 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold">Google OAuth</h3>
-                      <p className="text-[11px] text-muted-foreground/60">Gmail, Calendar, Drive</p>
+                      <p className="text-[11px] text-muted-foreground/60">Gmail, Kalender, Drive</p>
                     </div>
                   </div>
                   {settings?.has_google_oauth ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      Configured
+                      Eingerichtet
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
-                      Not configured
+                      Nicht eingerichtet
                     </span>
                   )}
                 </div>
@@ -1771,19 +1771,19 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     <div>
                       <h3 className="text-sm font-semibold">Microsoft 365 — SSO + MS Graph</h3>
                       <p className="text-[11px] text-muted-foreground/60">
-                        Enables: Login with Microsoft &amp; per-user M365 integration (Outlook, Teams, Calendar, OneDrive, To-Do)
+                        Ermöglicht: Anmeldung mit Microsoft &amp; M365-Anbindung je Nutzer (Outlook, Teams, Kalender, OneDrive, To-Do)
                       </p>
                     </div>
                   </div>
                   {settings?.has_microsoft_oauth ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      Active
+                      Aktiv
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
-                      Not configured
+                      Nicht eingerichtet
                     </span>
                   )}
                 </div>
@@ -1840,7 +1840,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                         </li>
                       </ol>
                       <p className="text-[10px] text-muted-foreground/50 pt-1 border-t border-foreground/[0.06]">
-                        Jeder User verbindet sein eigenes M365-Konto unter <strong>Integrations</strong>. Token werden pro User gespeichert, nicht geteilt.
+                        Jeder Nutzer verbindet sein eigenes M365-Konto unter <strong>Integrationen</strong>. Token werden je Nutzer gespeichert, nicht geteilt.
                       </p>
                     </div>
                   )}
@@ -1859,7 +1859,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     type="password"
                     value={microsoftClientSecret}
                     onChange={setMicrosoftClientSecret}
-                    placeholder="Client secret value..."
+                    placeholder="Wert des Client-Secrets …"
                     mono
                   />
                   <div className="col-span-2">
@@ -2036,18 +2036,18 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                     </div>
                     <div>
                       <h3 className="text-sm font-semibold">Apple Sign In</h3>
-                      <p className="text-[11px] text-muted-foreground/60">Apple ID authentication</p>
+                      <p className="text-[11px] text-muted-foreground/60">Anmeldung mit der Apple-ID</p>
                     </div>
                   </div>
                   {settings?.has_apple_oauth ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                      Configured
+                      Eingerichtet
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-500/10 border border-zinc-500/20 px-2.5 py-1 text-[10px] font-medium text-zinc-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
-                      Not configured
+                      Nicht eingerichtet
                     </span>
                   )}
                 </div>
@@ -2231,7 +2231,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             <div className="flex items-center gap-2 mb-3">
               <Shield className="h-4 w-4 text-muted-foreground/60" />
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-                Access Control
+                Zugang
               </h2>
             </div>
 
@@ -2243,12 +2243,12 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   </div>
                   <div>
                     <p className="text-sm font-semibold">
-                      {registrationOpen ? "Registration Open" : "Registration Closed"}
+                      {registrationOpen ? "Registrierung offen" : "Registrierung geschlossen"}
                     </p>
                     <p className="text-[11px] text-muted-foreground/60">
                       {registrationOpen
-                        ? "Anyone can create an account on the login page."
-                        : "Only admins can create new user accounts."}
+                        ? "Jeder kann sich auf der Anmeldeseite ein Konto anlegen."
+                        : "Nur Administratoren können neue Konten anlegen."}
                     </p>
                   </div>
                 </div>
@@ -2449,16 +2449,16 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             ) : (
               <Save className="h-4 w-4" />
             )}
-            {saving ? "Saving..." : "Save Settings"}
+            {saving ? "Wird gespeichert …" : "Einstellungen speichern"}
           </button>
           {message && (
             <span
               className={cn(
                 "inline-flex items-center gap-1.5 text-sm font-medium",
-                message.startsWith("Error") ? "text-red-400" : "text-emerald-400"
+                message.startsWith("Fehler") ? "text-red-400" : "text-emerald-400"
               )}
             >
-              {message.startsWith("Error") ? (
+              {message.startsWith("Fehler") ? (
                 <AlertCircle className="h-4 w-4" />
               ) : (
                 <CheckCircle2 className="h-4 w-4" />
@@ -2519,14 +2519,14 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   </a>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Warte auf Autorisierung...
+                    Warte auf Freigabe …
                   </div>
                 </div>
               )}
 
               <details className="mt-4 rounded-xl border border-foreground/[0.06] bg-foreground/[0.02] p-3">
                 <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
-                  Fallback: auth.json manuell importieren
+                  Ersatzweg: auth.json von Hand übernehmen
                 </summary>
                 <textarea
                   value={codexAuthJson}
@@ -2555,7 +2555,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   ) : (
                     <CheckCircle2 className="h-4 w-4" />
                   )}
-                  Fallback speichern
+                  Übernehmen
                 </button>
                 <button
                   onClick={handleCodexCancel}

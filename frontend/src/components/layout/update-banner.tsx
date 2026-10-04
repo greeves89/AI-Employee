@@ -10,9 +10,6 @@ interface VersionInfo {
   current: string;
   latest: string | null;
   update_available: boolean;
-  /** Hinweis des Anbieters — angezeigt von ``BetreiberHinweis`` als Streifen
-   *  am unteren Rand, nicht hier in der Seitenleiste. */
-  betreiber_hinweis?: string;
 }
 
 interface Commit {

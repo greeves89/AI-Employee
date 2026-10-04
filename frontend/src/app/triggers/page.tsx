@@ -143,7 +143,7 @@ export default function TriggersPage() {
 
   return (
     <div className="px-8 py-8 max-w-6xl mx-auto">
-      <Header title="Event Triggers" subtitle="Webhook-to-task routing rules" />
+      <Header title="Auslöser" subtitle="Regeln, die eingehende Ereignisse (Webhooks) in Aufgaben verwandeln" />
       <div className="space-y-6 mt-6">
         {/* Header row */}
         <div className="flex items-center justify-between">
@@ -204,7 +204,7 @@ export default function TriggersPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground/70">Source Filter</label>
+                    <label className="text-[11px] font-medium text-muted-foreground/70">Filter nach Quelle</label>
                     <div className="mt-1 flex gap-2">
                       <select
                         value={sourceFilter}
@@ -219,7 +219,7 @@ export default function TriggersPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-[11px] font-medium text-muted-foreground/70">Event Type Filter</label>
+                    <label className="text-[11px] font-medium text-muted-foreground/70">Filter nach Ereignisart</label>
                     <div className="mt-1">
                       {eventPresets.length > 0 ? (
                         <select
@@ -318,7 +318,7 @@ export default function TriggersPage() {
         ) : triggers.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
             <Zap className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">Keine Triggers definiert</p>
+            <p className="text-sm">Keine Auslöser angelegt</p>
             <p className="text-xs mt-1">Erstelle einen Trigger um Webhooks automatisch an Agents zu routen.</p>
           </div>
         ) : (

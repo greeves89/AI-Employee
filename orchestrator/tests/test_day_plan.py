@@ -275,7 +275,12 @@ class ScheduleCardTests(unittest.TestCase):
         self.assertIn("m.rhythm", self.ui)
 
     def test_a_planned_run_can_be_opened(self):
-        self.assertIn("/schedules?schedule=", self.ui)
-        page = (REPO / "frontend/src/app/schedules/page.tsx").read_text()
+        # Seit #901 gibt es nur noch die Zeitplan-Ansicht unter „Aufgaben“;
+        # /schedules leitet dorthin weiter und reicht ?schedule= durch.
+        self.assertIn("/tasks?ansicht=zeitplaene&schedule=", self.ui)
+        page = (REPO / "frontend/src/app/tasks/page.tsx").read_text()
         self.assertIn('searchParams.get("schedule")', page)
         self.assertIn("scrollIntoView", page)
+        umleitung = (REPO / "frontend/src/app/schedules/page.tsx").read_text()
+        self.assertIn("params.schedule", umleitung)
+        self.assertIn("redirect(", umleitung)

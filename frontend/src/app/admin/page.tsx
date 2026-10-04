@@ -70,6 +70,7 @@ import { SsoGroupsPanel } from "@/components/admin/sso-groups-panel";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 import { formatMoney } from "@/lib/money";
+import { rollenName } from "@/lib/rollen";
 
 type Tab =
   | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
@@ -219,7 +220,7 @@ export default function AdminPage() {
       await api.updateUser(u.id, { role: newRole });
       await fetchUsers();
     } catch (e) {
-      toast.error("Failed to update user", e instanceof Error ? e.message : undefined);
+      toast.error("Nutzer konnte nicht geändert werden", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -232,7 +233,7 @@ export default function AdminPage() {
       await api.updateUser(u.id, { is_active: !u.is_active });
       await fetchUsers();
     } catch (e) {
-      toast.error("Failed to update user", e instanceof Error ? e.message : undefined);
+      toast.error("Nutzer konnte nicht geändert werden", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -254,10 +255,10 @@ export default function AdminPage() {
   const handleDeleteUser = async (u: AdminUser) => {
     if (u.id === user?.id) return;
     const ok = await confirm({
-      title: `Delete user "${u.name}"?`,
-      message: `${u.email} — this cannot be undone.`,
+      title: `Nutzer „${u.name}“ löschen?`,
+      message: `${u.email} — das lässt sich nicht rückgängig machen.`,
       variant: "destructive",
-      confirmLabel: "Delete",
+      confirmLabel: "Löschen",
     });
     if (!ok) return;
     setActionLoading(u.id);
@@ -265,7 +266,7 @@ export default function AdminPage() {
       await api.deleteUser(u.id);
       await fetchUsers();
     } catch (e) {
-      toast.error("Failed to delete user", e instanceof Error ? e.message : undefined);
+      toast.error("Nutzer konnte nicht gelöscht werden", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -313,10 +314,10 @@ export default function AdminPage() {
 
   const handleRemoveAgent = async (id: string) => {
     const ok = await confirm({
-      title: "Remove this agent?",
-      message: "The container will be stopped and removed. This action cannot be undone.",
+      title: "Diesen Agenten entfernen?",
+      message: "Der Container wird gestoppt und entfernt. Das lässt sich nicht rückgängig machen.",
       variant: "destructive",
-      confirmLabel: "Remove",
+      confirmLabel: "Entfernen",
     });
     if (!ok) return;
     setActionLoading(id);
@@ -331,11 +332,11 @@ export default function AdminPage() {
   const handleCreateUser = async () => {
     setAddUserError(null);
     if (!addUserForm.name.trim() || !addUserForm.email.trim() || !addUserForm.password) {
-      setAddUserError("All fields are required");
+      setAddUserError("Bitte alle Felder ausfüllen.");
       return;
     }
     if (addUserForm.password.length < 12) {
-      setAddUserError("Password must be at least 12 characters");
+      setAddUserError("Das Passwort muss mindestens 12 Zeichen lang sein.");
       return;
     }
     setAddUserLoading(true);
@@ -346,7 +347,7 @@ export default function AdminPage() {
       setShowPassword(false);
       await fetchUsers();
     } catch (e) {
-      setAddUserError(e instanceof Error ? e.message : "Failed to create user");
+      setAddUserError(e instanceof Error ? e.message : "Nutzer konnte nicht angelegt werden");
     } finally {
       setAddUserLoading(false);
     }
@@ -436,19 +437,19 @@ export default function AdminPage() {
   const pendingFeedback = feedbackItems.filter((f) => f.status === "pending").length;
 
   const tabs: { id: Tab; label: string; icon: typeof Users; count?: number }[] = [
-    { id: "users", label: "Users", icon: Users, count: users.length },
+    { id: "users", label: "Nutzer", icon: Users, count: users.length },
     { id: "agents", label: "Alle Agenten", icon: Cpu, count: agents.length },
     { id: "assignments", label: "Zuweisungen", icon: UserCog, count: assignments.length || undefined },
     { id: "roles", label: "Rollen", icon: Shield, count: customRoles.length || undefined },
     { id: "feedback", label: "Feedback", icon: MessageSquare, count: pendingFeedback || undefined },
     { id: "budget", label: "Budget", icon: DollarSign },
     { id: "settings", label: "Einstellungen", icon: SettingsIcon },
-    { id: "ai-accounts", label: "AI-Accounts", icon: Cpu },
+    { id: "ai-accounts", label: "KI-Konten", icon: Cpu },
     { id: "second-brains", label: "Second Brains", icon: Brain },
     { id: "web-search", label: "Websuche", icon: Search },
-    { id: "secrets", label: "Key Management", icon: KeyRound },
-    { id: "health", label: "Health", icon: HeartPulse },
-    { id: "audit", label: "Audit Log", icon: ScrollText },
+    { id: "secrets", label: "Schlüssel & Zugangsdaten", icon: KeyRound },
+    { id: "health", label: "Systemzustand", icon: HeartPulse },
+    { id: "audit", label: "Protokoll", icon: ScrollText },
     { id: "dlp", label: "DLP-Filter", icon: Shield },
     { id: "master-rules", label: "Master-Regeln", icon: ShieldAlert },
     { id: "gesetze", label: "Gesetze", icon: Scale },
@@ -561,7 +562,7 @@ export default function AdminPage() {
                     className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all duration-200"
                   >
                     <Plus className="h-4 w-4" />
-                    Add User
+                    Nutzer anlegen
                   </button>
                 </div>
                 {users.map((u, i) => (
@@ -603,7 +604,7 @@ export default function AdminPage() {
                         <p className="text-sm font-medium truncate">{u.name}</p>
                         {u.id === user?.id && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-blue-500/10 text-blue-500">
-                            You
+                            Du
                           </span>
                         )}
                       </div>
@@ -632,9 +633,7 @@ export default function AdminPage() {
                       )}
                     >
                       {u.role === "admin" ? <ShieldCheck className="h-3 w-3" /> : <UserCog className="h-3 w-3" />}
-                      {u.role === "unassigned"
-                        ? "Ohne Rolle"
-                        : u.role.charAt(0).toUpperCase() + u.role.slice(1)}
+                      {rollenName(u.role)}
                     </span>
 
                     {/* Actions */}
@@ -656,7 +655,7 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleCycleRole(u)}
                               className="p-2 rounded-lg text-xs text-muted-foreground hover:bg-accent transition-colors"
-                              title={`Cycle role (current: ${u.role})`}
+                              title={`Rolle wechseln (derzeit: ${rollenName(u.role)})`}
                             >
                               <Shield className="h-4 w-4" />
                             </button>
@@ -668,7 +667,7 @@ export default function AdminPage() {
                                   ? "text-emerald-500 hover:bg-emerald-500/10"
                                   : "text-red-400 hover:bg-red-500/10"
                               )}
-                              title={u.is_active ? "Deactivate" : "Activate"}
+                              title={u.is_active ? "Deaktivieren" : "Aktivieren"}
                             >
                               {u.is_active ? (
                                 <ToggleRight className="h-4 w-4" />
@@ -679,7 +678,7 @@ export default function AdminPage() {
                             <button
                               onClick={() => setMountUserId(u.id)}
                               className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                              title="Mount-Permissions"
+                              title="Freigegebene Ordner"
                             >
                               <Box className="h-4 w-4" />
                             </button>
@@ -693,7 +692,7 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleDeleteUser(u)}
                               className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                              title="Delete user"
+                              title="Nutzer löschen"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -707,7 +706,7 @@ export default function AdminPage() {
                 {users.length === 0 && (
                   <div className="text-center py-12 text-muted-foreground">
                     <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No users found</p>
+                    <p className="text-sm">Keine Nutzer gefunden</p>
                   </div>
                 )}
               </div>
@@ -758,7 +757,7 @@ export default function AdminPage() {
 
                     {/* Owner */}
                     <div className="shrink-0 text-right">
-                      <p className="text-[11px] text-muted-foreground">Owner</p>
+                      <p className="text-[11px] text-muted-foreground">Besitzer</p>
                       <p className="text-xs font-medium">{getUserName(agent.user_id)}</p>
                     </div>
 
@@ -771,7 +770,7 @@ export default function AdminPage() {
                           {agent.container_id.slice(0, 12)}
                         </p>
                       ) : (
-                        <p className="text-[11px] text-muted-foreground/40">None</p>
+                        <p className="text-[11px] text-muted-foreground/40">Keiner</p>
                       )}
                     </div>
 
@@ -799,7 +798,7 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleStartAgent(agent.id)}
                               className="p-2 rounded-lg text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
-                              title="Start"
+                              title="Starten"
                             >
                               <Container className="h-4 w-4" />
                             </button>
@@ -807,7 +806,7 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleStopAgent(agent.id)}
                               className="p-2 rounded-lg text-muted-foreground hover:text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
-                              title="Stop"
+                              title="Stoppen"
                             >
                               <Container className="h-4 w-4" />
                             </button>
@@ -815,7 +814,7 @@ export default function AdminPage() {
                           <button
                             onClick={() => handleRemoveAgent(agent.id)}
                             className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                            title="Remove"
+                            title="Entfernen"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -828,7 +827,7 @@ export default function AdminPage() {
                 {agents.length === 0 && (
                   <div className="text-center py-12 text-muted-foreground">
                     <Cpu className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No agents created yet</p>
+                    <p className="text-sm">Noch keine Agenten angelegt</p>
                   </div>
                 )}
               </div>
@@ -844,7 +843,7 @@ export default function AdminPage() {
                     <button
                       onClick={() => { setDistResult(null); setShowDistribute(true); }}
                       className="inline-flex items-center gap-2 rounded-xl border border-foreground/[0.1] bg-foreground/[0.03] px-4 py-2 text-sm font-medium hover:bg-foreground/[0.06] transition-all"
-                      title="Einen fertig angelernten Agenten als eigene Kopie an User/Gruppen verteilen"
+                      title="Einen fertig angelernten Agenten als eigene Kopie an Nutzer/Gruppen verteilen"
                     >
                       <Cpu className="h-4 w-4" />
                       Trainierten Agent verteilen
@@ -863,7 +862,7 @@ export default function AdminPage() {
                   <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-12 text-center">
                     <UserCog className="h-8 w-8 mx-auto text-muted-foreground/30 mb-3" />
                     <p className="text-sm text-muted-foreground">Noch keine Zuweisungen</p>
-                    <p className="text-xs text-muted-foreground/50 mt-1">Weise einem User ein Agent-Template zu</p>
+                    <p className="text-xs text-muted-foreground/50 mt-1">Weise einem Nutzer eine Agenten-Vorlage zu</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -876,7 +875,7 @@ export default function AdminPage() {
                           <div>
                             <p className="text-sm font-semibold">{a.agent_name}</p>
                             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                              <span>User: <strong className="text-foreground/80">{a.user_name}</strong></span>
+                              <span>Nutzer: <strong className="text-foreground/80">{a.user_name}</strong></span>
                               <span>•</span>
                               <span>{a.template_name || "Custom"}</span>
                               <span>•</span>
@@ -910,11 +909,11 @@ export default function AdminPage() {
                       className="w-full max-w-md rounded-2xl border border-foreground/[0.08] bg-card p-6 shadow-2xl"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <h3 className="text-base font-semibold mb-4">Agent an User zuweisen</h3>
+                      <h3 className="text-base font-semibold mb-4">Agent an Nutzer zuweisen</h3>
 
                       <div className="space-y-3">
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">User</label>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Nutzer</label>
                           <select
                             value={assignForm.userId}
                             onChange={(e) => setAssignForm({ ...assignForm, userId: e.target.value })}
@@ -928,7 +927,7 @@ export default function AdminPage() {
                         </div>
 
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Template</label>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">Vorlage</label>
                           <select
                             value={assignForm.templateId}
                             onChange={(e) => setAssignForm({ ...assignForm, templateId: Number(e.target.value) })}
@@ -1010,7 +1009,7 @@ export default function AdminPage() {
                           </select>
                         </div>
                         <div>
-                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">…und/oder einzelne User (Strg/Cmd-Klick)</label>
+                          <label className="text-[11px] font-medium text-muted-foreground/70 mb-1 block">…und/oder einzelne Nutzer (Strg/Cmd-Klick)</label>
                           <select
                             multiple
                             size={5}
@@ -1122,7 +1121,7 @@ export default function AdminPage() {
             className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl mx-4"
           >
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-semibold">Add User</h3>
+              <h3 className="text-lg font-semibold">Nutzer anlegen</h3>
               <button
                 onClick={() => { setShowAddUser(false); setAddUserError(null); }}
                 className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
@@ -1138,28 +1137,28 @@ export default function AdminPage() {
                   type="text"
                   value={addUserForm.name}
                   onChange={(e) => setAddUserForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="John Doe"
+                  placeholder="Vor- und Nachname"
                   className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Email</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">E-Mail</label>
                 <input
                   type="email"
                   value={addUserForm.email}
                   onChange={(e) => setAddUserForm((f) => ({ ...f, email: e.target.value }))}
-                  placeholder="john@example.com"
+                  placeholder="name@example.com"
                   className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Password</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Passwort</label>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
                     value={addUserForm.password}
                     onChange={(e) => setAddUserForm((f) => ({ ...f, password: e.target.value }))}
-                    placeholder="Min. 12 characters"
+                    placeholder="Mindestens 12 Zeichen"
                     className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
                   <button
@@ -1199,7 +1198,7 @@ export default function AdminPage() {
                   </div>
                 )}
                 <p className="text-[10px] text-muted-foreground/40 mt-1">
-                  Bestimmt die Rechte des Users (Second Brains, AI-Accounts, Keys, MCP …). Admin-Rechte werden separat in der Userliste vergeben.
+                  Bestimmt die Rechte des Nutzers (Second Brains, KI-Konten, Schlüssel, MCP …). Administratorrechte werden separat in der Nutzerliste vergeben.
                 </p>
               </div>
 
@@ -1217,7 +1216,7 @@ export default function AdminPage() {
                 ) : (
                   <Plus className="h-4 w-4" />
                 )}
-                Create User
+                Nutzer anlegen
               </button>
             </div>
           </motion.div>
@@ -1347,11 +1346,11 @@ function BudgetTab({
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold mb-1">Auto-Stop Idle Agents</h3>
+            <h3 className="text-sm font-semibold mb-1">Untätige Agenten automatisch stoppen</h3>
             <p className="text-xs text-muted-foreground leading-relaxed max-w-xl">
-              Globale Obergrenze. Agents die länger als X Minuten inaktiv sind, werden automatisch gestoppt.
-              User können nur <strong>kürzere</strong> Werte pro Agent setzen, niemals länger.
-              <span className="block mt-1 text-muted-foreground/60">0 = deaktiviert. Worker prüft alle 5 min.</span>
+              Globale Obergrenze. Agenten, die länger als X Minuten untätig sind, werden automatisch gestoppt.
+              Nutzer können nur <strong>kürzere</strong> Werte pro Agent setzen, niemals längere.
+              <span className="block mt-1 text-muted-foreground/60">0 = abgeschaltet. Geprüft wird alle 5 Minuten.</span>
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -1507,7 +1506,7 @@ function BudgetTab({
                         className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] px-2 py-1 text-[11px] outline-none"
                       >
                         <option value="haiku">→ Haiku</option>
-                        <option value="stop">→ Stop</option>
+                        <option value="stop">→ Stoppen</option>
                       </select>
                       <button
                         onClick={() => handleSave(agent.id)}
@@ -1557,10 +1556,10 @@ function BudgetTab({
 // --- Feedback Tab Component ---
 
 const STATUS_OPTIONS: { value: FeedbackStatus; label: string; color: string }[] = [
-  { value: "pending", label: "Pending", color: "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/20" },
-  { value: "reviewed", label: "Reviewed", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
-  { value: "in_progress", label: "In Progress", color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
-  { value: "closed", label: "Closed", color: "text-zinc-400 bg-zinc-500/10 border-zinc-500/20" },
+  { value: "pending", label: "Offen", color: "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/20" },
+  { value: "reviewed", label: "Gesichtet", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
+  { value: "in_progress", label: "In Arbeit", color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
+  { value: "closed", label: "Erledigt", color: "text-zinc-400 bg-zinc-500/10 border-zinc-500/20" },
 ];
 
 const CATEGORY_ICONS: Record<string, typeof Bug> = {
@@ -1912,7 +1911,7 @@ function FeedbackTab({
         <div className="text-center py-12 text-muted-foreground">
           <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
           <p className="text-sm">Noch kein Feedback erhalten</p>
-          <p className="text-xs text-muted-foreground/50 mt-1">Feedback wird hier angezeigt, sobald User welches senden.</p>
+          <p className="text-xs text-muted-foreground/50 mt-1">Feedback erscheint hier, sobald Nutzer welches senden.</p>
         </div>
       )}
 

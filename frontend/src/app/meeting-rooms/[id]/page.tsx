@@ -669,7 +669,7 @@ ${msgHtml}
                   type="text"
                   value={initialMessage}
                   onChange={(e) => setInitialMessage(e.target.value)}
-                  placeholder="Optional: Set the initial topic or question..."
+                  placeholder="Optional: Einstiegsthema oder -frage …"
                   className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {

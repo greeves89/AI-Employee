@@ -1454,6 +1454,13 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt_cp(
                 "CREATE UNIQUE INDEX IF NOT EXISTS ux_custom_pages_slug ON custom_pages (slug)"
             ))
+            # Sichtbarkeit (#904). Bestandsseiten bekommen per DEFAULT "alle"
+            # und verhalten sich damit wie bisher; NEUE Seiten setzt die API
+            # auf "admins".
+            await conn.execute(_txt_cp(
+                "ALTER TABLE custom_pages ADD COLUMN IF NOT EXISTS "
+                "sichtbar_fuer varchar(10) NOT NULL DEFAULT 'alle'"
+            ))
         logger.info("custom_pages table ensured")
     except Exception as e:
         logger.warning(f"Could not ensure custom_pages table: {e}")
