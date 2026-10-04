@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Plus, Bot } from "lucide-react";
@@ -13,6 +15,13 @@ import { CostAttribution } from "@/components/dashboard/cost-attribution";
 import { ReflectionCard } from "@/components/dashboard/reflection-card";
 import { SystemStatusBar } from "@/components/dashboard/system-status-bar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+
+// Derselbe Anlege-Dialog wie auf /agents — „Neuer Agent“ öffnet ihn hier direkt,
+// statt erst auf die Agenten-Seite zu springen (zwei Klicks, #907).
+const CreateAgentModal = dynamic(
+  () => import("@/components/agents/create-agent-modal").then((m) => m.CreateAgentModal),
+  { ssr: false },
+);
 
 const containerVariants = {
   hidden: {},
@@ -29,7 +38,8 @@ const itemVariants = {
 };
 
 export default function DashboardPage() {
-  const { agents, loading: agentsLoading } = useAgents();
+  const { agents, loading: agentsLoading, refresh } = useAgents();
+  const [showCreate, setShowCreate] = useState(false);
   const { tasks } = useTasks();
   const { simpleMode } = useSimpleMode();
 
@@ -39,15 +49,18 @@ export default function DashboardPage() {
         title="Dashboard"
         subtitle="Überblick über deine Agenten"
         actions={
-          <Link
-            href="/agents"
+          <button
+            type="button"
+            onClick={() => setShowCreate(true)}
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all duration-200 hover:shadow-primary/30 hover:-translate-y-0.5"
           >
             <Plus className="h-4 w-4" />
             Neuer Agent
-          </Link>
+          </button>
         }
       />
+
+      <CreateAgentModal open={showCreate} onOpenChange={setShowCreate} onCreated={refresh} />
 
       <motion.div
         className="px-8 py-8 space-y-8"
@@ -90,13 +103,14 @@ export default function DashboardPage() {
                 </div>
               </div>
               <p className="text-muted-foreground mb-4">Noch keine Agenten angelegt</p>
-              <Link
-                href="/agents"
+              <button
+                type="button"
+                onClick={() => setShowCreate(true)}
                 className="inline-flex items-center gap-2 rounded-xl bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 transition-colors"
               >
                 <Plus className="h-4 w-4" />
                 Agent anlegen
-              </Link>
+              </button>
             </div>
           ) : (
             <motion.div
