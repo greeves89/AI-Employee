@@ -13,10 +13,19 @@ E-Mail-Adresse, keine je Absender.
     erster Fehlversuch der neuen Stunde              Zusammenfassung der vorigen Stunde
     ohne Redis                                       dasselbe, Zähler im Prozess
 
-    IP-Grenze (gemeinsam für /auth/login und /auth/mfa/verify)
+    Schreibvariante eines bestehenden Kontos         einzeln, dem Konto zugeordnet
+    Eintrag konnte nicht geschrieben werden          der nächste Fall meldet erneut
+    erfolgreiche Anmeldung nach vielen Fehlern       sichtbar wie immer
+    SSO-Fehler nach Bestätigung durch den Anbieter   einzeln
+    SSO-Fehler davor (z. B. ungültiger state)        gesammelt
+
+    IP-Grenze (gemeinsam für /auth/login und /auth/mfa/verify) — Nachprüfung:
     bis zur Grenze Fehlversuche                      normal (401)
-    danach, auch mit richtigem Passwort              429
-    andere IP                                        unberührt
+    danach, auch mit richtigem Passwort              429 — nur für DIESE Adresse
+    andere IP, auch für dasselbe Konto               unberührt
+    keine / nur Proxy-Adresse ermittelbar            keine IP-Sperre
+    Fenster vorbei                                   wieder frei (gleitend, kurz)
+    hinter vertrautem Proxy mit X-Forwarded-For      je echter Client-Adresse
 """
 
 import time
@@ -25,6 +34,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from starlette.requests import Request
 
 from app.core import anmelde_drossel as drossel
 from app.core import zwei_faktor as zf
@@ -134,3 +144,129 @@ class IpGrenze(_DrosselBasis):
                 await self._verify(db, daten["mfa_token"], zf.code_generieren(geheimnis, time.time()))
             self.assertEqual(ctx.exception.status_code, 429)
 
+
+
+class SchreibvariantenBestehenderKonten(_DrosselBasis):
+    async def test_grossschreibung_wird_dem_konto_zugeordnet(self):
+        async with self.Session() as db:
+            for _ in range(3):
+                await self._fehlversuch(db, "ANNA@example.com")
+            eintraege = await self._fehllogins(db)
+            self.assertEqual(len(eintraege), 3)
+            self.assertTrue(all(e.user_id == "u2" for e in eintraege))
+
+    async def test_leerzeichen_und_unicode_varianten(self):
+        from app.api import auth as auth_api
+
+        async with self.Session() as db:
+            for variante in (" Anna@Example.com ", "\uff41nna@example.com"):
+                await auth_api._fehlanmeldung_protokollieren(db, self.request, email=variante, user=None)
+            eintraege = await self._fehllogins(db)
+            self.assertEqual([e.user_id for e in eintraege], ["u2", "u2"])
+
+
+class KeineStilleLuecke(_DrosselBasis):
+    async def test_misslungener_eintrag_wird_nachgeholt(self):
+        from app.api import auth as auth_api
+
+        echt = auth_api.protokolliere
+        aufrufe = {"n": 0}
+
+        async def erst_kaputt(*args, **kwargs):
+            aufrufe["n"] += 1
+            if aufrufe["n"] == 1:
+                return None  # Eintrag konnte nicht vorgemerkt werden
+            return await echt(*args, **kwargs)
+
+        async with self.Session() as db:
+            with patch("app.api.auth.protokolliere", erst_kaputt):
+                for i in range(2):
+                    self._von(f"198.51.100.{i}")
+                    await self._fehlversuch(db, f"weg-{i}@example.com")
+            self.assertEqual(len(await self._fehllogins(db)), 1)
+
+    async def test_anmeldung_nach_vielen_fehlern_sichtbar(self):
+        async with self.Session() as db:
+            for i in range(30):
+                self._von(f"198.51.100.{i}")
+                await self._fehlversuch(db, f"raten-{i}@example.com")
+            self._von("192.0.2.10")
+            await self._login(db)
+            erfolg = (await db.execute(select(AuditLog).where(
+                AuditLog.event_type == "login_succeeded"))).scalars().all()
+            self.assertEqual([e.user_id for e in erfolg], ["u2"])
+
+
+class SsoFehler(_DrosselBasis):
+    async def test_nach_bestaetigung_einzeln_davor_gesammelt(self):
+        from app.api import auth as auth_api
+
+        async with self.Session() as db:
+            for _ in range(3):
+                await auth_api._sso_fehler_protokollieren(
+                    db, self.request, "microsoft", ValueError("Account is deactivated"))
+            for _ in range(3):
+                await auth_api._sso_fehler_protokollieren(
+                    db, self.request, "microsoft", ValueError("Invalid or expired SSO state"))
+            gruende = [e.meta.get("grund") for e in await self._fehllogins(db)]
+            self.assertEqual(gruende.count("Account is deactivated"), 3)
+            self.assertEqual(gruende.count("Invalid or expired SSO state"), 1)
+
+
+class IpSperreNurFuerDieseAdresse(_DrosselBasis):
+    async def test_konto_bleibt_von_anderer_adresse_erreichbar(self):
+        async with self.Session() as db:
+            for _ in range(6):
+                await self._fehlversuch(db, "bert@example.com")
+            # Von dieser Adresse ist bert jetzt gebremst …
+            self.assertEqual(await self._fehlversuch(db, "bert@example.com", passwort=PASSWORT), 429)
+            # … von einer anderen nicht.
+            self._von("192.0.2.77")
+            daten, _ = await self._login(db, email="bert@example.com")
+            self.assertIn("access_token", daten)
+
+    async def test_ohne_ermittelbare_adresse_keine_ip_sperre(self):
+        async with self.Session() as db:
+            for fall in (None, SimpleNamespace(host="172.18.0.5")):
+                drossel._zuruecksetzen()
+                self.request.client = fall
+                self.request.headers = {"cf-ray": "abc"} if fall else {}
+                for i in range(drossel.IP_MAX_FEHLVERSUCHE + 5):
+                    self.assertEqual(await self._fehlversuch(db, f"p{i}-{id(fall)}@example.com"), 401)
+
+    async def test_sperre_gleitet_ab(self):
+        t0 = 1_800_000_000.0
+        async with self.Session() as db:
+            with patch("app.core.anmelde_drossel.time.time", return_value=t0):
+                for i in range(drossel.IP_MAX_FEHLVERSUCHE):
+                    await self._fehlversuch(db, f"g{i}@example.com")
+                self.assertEqual(await self._fehlversuch(db, "g-x@example.com"), 429)
+            with patch("app.core.anmelde_drossel.time.time",
+                       return_value=t0 + (drossel.IP_FENSTER_MINUTEN + 1) * 60):
+                self.assertEqual(await self._fehlversuch(db, "g-y@example.com"), 401)
+
+    async def test_hinter_vertrautem_proxy_je_echter_adresse(self):
+        from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+        from app.core.client_ip import eindeutige_client_ip
+
+        gesehen = []
+
+        async def innen(scope, receive, send):
+            gesehen.append(eindeutige_client_ip(Request(scope)))
+
+        async def lauf(app, xff):
+            scope = {"type": "http", "method": "POST", "path": "/api/v1/auth/login",
+                     "headers": [(b"x-forwarded-for", xff.encode())], "client": ("172.18.0.2", 5000),
+                     "scheme": "http", "query_string": b"", "server": ("orchestrator", 8000)}
+            await app(scope, None, None)
+
+        vertraut = ProxyHeadersMiddleware(innen, trusted_hosts="*")
+        await lauf(vertraut, "203.0.113.7")
+        await lauf(vertraut, "198.51.100.8")
+        self.assertEqual(gesehen, ["203.0.113.7", "198.51.100.8"])
+        # Nicht vertrauter Absender: X-Forwarded-For zählt nicht, und die interne
+        # Adresse mit Proxy-Spur ist keine eindeutige — also keine IP-Sperre.
+        gesehen.clear()
+        await lauf(ProxyHeadersMiddleware(innen, trusted_hosts="127.0.0.1"), "203.0.113.7")
+        self.assertEqual(gesehen, [None])

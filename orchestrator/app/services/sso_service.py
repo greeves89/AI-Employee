@@ -30,6 +30,23 @@ from app.services.redis_service import RedisService
 
 logger = logging.getLogger(__name__)
 
+#: Anfaenge der Fehlermeldungen von ``handle_callback``, die entstehen, BEVOR der
+#: Identitaetsanbieter jemanden bestaetigt hat (state, Konfiguration, Code-Tausch).
+#: Die lassen sich von aussen beliebig ausloesen — das Pruefprotokoll zaehlt sie
+#: gesammelt (#908). Alles danach (Konto deaktiviert, Registrierung geschlossen …)
+#: betrifft eine echte, bestaetigte Person und wird einzeln protokolliert.
+FEHLER_VOR_IDENTITAET = (
+    "Invalid or expired SSO state",
+    "SSO state mismatch",
+    "SSO not configured",
+    "Token exchange failed",
+    "Failed to fetch user info",
+)
+
+
+def vor_identitaet(fehler: Exception) -> bool:
+    return str(fehler).startswith(FEHLER_VOR_IDENTITAET)
+
 # CSRF state TTL
 SSO_STATE_TTL = 600  # 10 minutes
 
