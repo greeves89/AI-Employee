@@ -87,8 +87,12 @@ melde() {
     else
         json="{\"status\":\"fehler\",\"schritt\":\"${schritt}\",\"dauer_s\":${dauer}}"
     fi
-    if ! curl -fsS -m 15 -X POST "${ORCHESTRATOR_URL}/api/v1/admin/backup-status" \
-        -H "Content-Type: application/json" -H "X-Backup-Token: ${token}" \
+    # Der Schlüssel geht über stdin (`-H @-`), nicht über die Befehlszeile: die
+    # sieht jeder Nutzer des Hosts mit `ps`. printf ist eingebaut — kein eigener
+    # Prozess, also auch dort nicht sichtbar.
+    if ! printf 'X-Backup-Token: %s\n' "$token" | curl -fsS -m 15 -X POST \
+        "${ORCHESTRATOR_URL}/api/v1/admin/backup-status" \
+        -H "Content-Type: application/json" -H @- \
         -d "$json" >/dev/null 2>&1; then
         log "WARNUNG: Herzschlag an ${ORCHESTRATOR_URL} nicht zugestellt (Orchestrator aus oder Schlüssel noch nicht übernommen)."
     fi

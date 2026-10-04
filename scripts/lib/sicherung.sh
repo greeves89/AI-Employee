@@ -67,12 +67,18 @@ env_wert() {
         | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
 }
 
-# Den lokalen Schlüssel für den Herzschlag anlegen, falls er fehlt.
+# Mindestlänge des Herzschlag-Schlüssels — kürzere nimmt der Orchestrator nicht
+# an (orchestrator/app/config.py, BACKUP_TOKEN_MINDESTLAENGE).
+BACKUP_TOKEN_MINDESTLAENGE=32
+
+# Den lokalen Schlüssel für den Herzschlag anlegen, falls er fehlt oder zu kurz
+# ist (ein kurzer würde vom Orchestrator ohnehin ignoriert).
 # Rückgabe 0 = neu angelegt, 1 = war schon da (oder keine .env).
 backup_token_sicherstellen() {
-    local datei="$1" token
+    local datei="$1" token vorhanden
     [ -f "$datei" ] || return 1
-    [ -n "$(env_wert "$datei" BACKUP_STATUS_TOKEN)" ] && return 1
+    vorhanden=$(env_wert "$datei" BACKUP_STATUS_TOKEN)
+    [ "${#vorhanden}" -ge "$BACKUP_TOKEN_MINDESTLAENGE" ] && return 1
     token=$(python3 -c 'import secrets; print(secrets.token_hex(32))' 2>/dev/null \
         || openssl rand -hex 32)
     [ -n "$token" ] || return 1

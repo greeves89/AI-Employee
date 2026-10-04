@@ -187,6 +187,98 @@ class WiederherstellungSichertVorherTests(unittest.TestCase):
         self.assertTrue([a for a in self._aufrufe() if "CREATE DATABASE" in a])
 
 
+_CURL_ATTRAPPE = r"""#!/usr/bin/env bash
+# Attrappe fuer curl: Argumente (= das, was `ps` zeigt) und stdin mitschreiben.
+printf '%s\n' "$@" > "$CURL_ARGS"
+cat > "$CURL_STDIN"
+exit 0
+"""
+
+
+class HerzschlagSchluesselTests(unittest.TestCase):
+    """Der Herzschlag-Schluessel stand als ``-H "X-Backup-Token: …"`` in der
+    Befehlszeile von curl — fuer jeden Nutzer des Hosts per ``ps`` lesbar (#892)."""
+
+    TOKEN = "f" * 64
+
+    def setUp(self):
+        import os
+        import shutil
+        import tempfile
+
+        self.tmp = Path(tempfile.mkdtemp())
+        anlage = self.tmp / "anlage"
+        (anlage / "scripts" / "lib").mkdir(parents=True)
+        shutil.copy(REPO / "scripts" / "backup.sh", anlage / "scripts" / "backup.sh")
+        shutil.copy(HILFSDATEI, anlage / "scripts" / "lib" / "sicherung.sh")
+        (anlage / "orchestrator" / "data").mkdir(parents=True)
+        (anlage / "orchestrator" / "data" / ".encryption_key").write_text("x")
+        (anlage / ".env").write_text(f"BACKUP_STATUS_TOKEN={self.TOKEN}\n")
+        self.anlage = anlage
+        bin_ = self.tmp / "bin"
+        bin_.mkdir()
+        for name, inhalt in (("docker", _DOCKER_ATTRAPPE), ("curl", _CURL_ATTRAPPE)):
+            (bin_ / name).write_text(inhalt)
+            (bin_ / name).chmod(0o755)
+        self.args, self.stdin = self.tmp / "curl.args", self.tmp / "curl.stdin"
+        self.env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}",
+                    "ATTRAPPE_LOG": str(self.tmp / "docker.log"),
+                    "CURL_ARGS": str(self.args), "CURL_STDIN": str(self.stdin),
+                    "COMPOSE_PROJECT_NAME": "test"}
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_schluessel_geht_ueber_stdin_nicht_ueber_die_befehlszeile(self):
+        lauf = subprocess.run(
+            ["bash", str(self.anlage / "scripts" / "backup.sh"), "--dest", str(self.tmp / "ziel")],
+            env=self.env, capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+        argumente = self.args.read_text()
+        self.assertIn("/api/v1/admin/backup-status", argumente, "der Herzschlag ging raus")
+        self.assertNotIn(self.TOKEN, argumente)
+        self.assertIn(f"X-Backup-Token: {self.TOKEN}", self.stdin.read_text())
+
+    def _sicherstellen(self, inhalt: str) -> str:
+        env_datei = self.tmp / "probe.env"
+        env_datei.write_text(inhalt)
+        subprocess.run(
+            ["bash", "-c", f'source "{HILFSDATEI}"; backup_token_sicherstellen "$1" || true',
+             "_", str(env_datei)], check=True, capture_output=True,
+        )
+        return env_datei.read_text()
+
+    def test_zu_kurzer_schluessel_wird_ersetzt(self):
+        neu = self._sicherstellen("A=1\nBACKUP_STATUS_TOKEN=kurz\n")
+        wert = [z for z in neu.splitlines() if z.startswith("BACKUP_STATUS_TOKEN=")][0].split("=", 1)[1]
+        self.assertGreaterEqual(len(wert), 32)
+        self.assertIn("A=1", neu)
+
+    def test_langer_schluessel_bleibt(self):
+        inhalt = f"BACKUP_STATUS_TOKEN={self.TOKEN}\n"
+        self.assertEqual(self._sicherstellen(inhalt), inhalt)
+
+
+class SchluesselMindestlaengeTests(unittest.TestCase):
+    """Ein kurzer Schluessel ist ratbar — der Orchestrator nimmt ihn nicht an."""
+
+    def test_kurzer_schluessel_wird_ignoriert_und_nicht_geloggt(self):
+        from app.config import Settings
+
+        with self.assertLogs("app.config", "WARNING") as protokoll:
+            s = Settings(backup_status_token="kurz-aber-geheim")
+        self.assertEqual(s.backup_status_token, "")
+        self.assertNotIn("kurz-aber-geheim", "\n".join(protokoll.output))
+
+    def test_langer_schluessel_bleibt(self):
+        from app.config import Settings
+
+        self.assertEqual(Settings(backup_status_token="a" * 32).backup_status_token, "a" * 32)
+        self.assertEqual(Settings(backup_status_token="").backup_status_token, "")
+
+
 class AmpelTests(unittest.TestCase):
     def test_frische_sicherung_ist_in_ordnung(self):
         self.assertIsNone(attention.backup_state(JETZT - timedelta(hours=10), None, JETZT))
@@ -219,7 +311,7 @@ class _MitDatenbank(unittest.IsolatedAsyncioTestCase):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         self._token = settings.backup_status_token
-        settings.backup_status_token = "lokaler-schluessel-0123456789"
+        settings.backup_status_token = "lokaler-schluessel-0123456789abcdef"
 
     async def asyncTearDown(self):
         settings.backup_status_token = self._token
