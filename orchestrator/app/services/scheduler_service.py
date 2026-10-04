@@ -977,6 +977,20 @@ class SchedulerService:
         else:
             prompt = schedule.prompt
 
+        # Ohne Agent ("Automatisch") waehlt der Lastverteiler — aber nur unter den
+        # Agenten dessen, der den Zeitplan angelegt hat (#901). Bisher unter ALLEN
+        # Agenten der Anlage: der Auftrag eines Mitglieds lief womoeglich auf dem
+        # Agenten eines anderen Nutzers. Ist kein Urheber bekannt (Altbestand),
+        # wird der Zeitplan angehalten statt irgendwem zugeteilt.
+        kandidaten: set[str] | None = None
+        if not schedule.agent_id:
+            from app.api.schedules import kandidaten_fuer_urheber
+            try:
+                kandidaten = await kandidaten_fuer_urheber(db, getattr(schedule, "created_by", None))
+            except LookupError as grund:
+                await self._ohne_urheber_anhalten(db, schedule, str(grund))
+                return
+
         # Final atomic busy-check immediately before dispatch (#548): the earlier
         # check above (line ~614) only ever covered [Proactive] schedules and
         # even then wasn't atomic — a second scheduler tick could read
@@ -1027,6 +1041,7 @@ class SchedulerService:
                 agent_id=schedule.agent_id,
                 model=schedule.model,
                 metadata={"schedule_id": schedule.id},
+                erlaubte_agenten=kandidaten,
             )
         finally:
             if lock_token:
@@ -1059,6 +1074,32 @@ class SchedulerService:
             "[Scheduler] %s triggered task %s, next run at %s",
             schedule.name, task.id, schedule.next_run_at.isoformat(),
         )
+
+    async def _ohne_urheber_anhalten(self, db: AsyncSession, schedule: Schedule, grund: str) -> None:
+        """Zeitplan ohne Agent und ohne bekannten Urheber: anhalten, Admin benachrichtigen.
+
+        Wer ihn angelegt hat, ist nicht mehr feststellbar (Altbestand vor #901 oder
+        geloeschtes Konto) — also auch nicht, auf wessen Agenten er laufen darf.
+        Geloescht wird nichts: der Administrator sieht ihn in der Zeitplan-Liste
+        und entscheidet (loeschen, mit Agent neu anlegen, oder per API zuweisen). Die Meldung kommt genau einmal,
+        weil der angehaltene Zeitplan nicht wieder faellig wird.
+        """
+        from app.models.notification import Notification
+
+        schedule.enabled = False
+        logger.warning("[Scheduler] %s angehalten — ohne Agent und ohne Urheber (%s)", schedule.name, grund)
+        db.add(Notification(
+            agent_id="system",
+            type="warning",
+            title="Zeitplan ohne Agent angehalten",
+            message=(
+                f"Der Zeitplan „{schedule.name}“ hat keinen Agenten, und wer ihn angelegt hat, "
+                "ist nicht bekannt. Damit er nicht auf dem Agenten eines beliebigen Nutzers läuft, "
+                "wurde er angehalten. Unter Aufgaben → Zeitpläne löschen und bei Bedarf mit "
+                "einem Agenten neu anlegen."
+            ),
+            priority="normal",
+        ))
 
     async def _ohne_auftrag_ueberspringen(
         self, db: AsyncSession, schedule: Schedule, agent, now: datetime,

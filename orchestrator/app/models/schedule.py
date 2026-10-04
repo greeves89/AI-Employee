@@ -40,3 +40,8 @@ class Schedule(Base, TimestampMixin):
     # Kachel. Ohne Herkunft (Formular) schreibt der Zeitplan in ein eigenes
     # Gespraech — siehe task_router.faden_fuer_aufgabe.
     chat_session_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Der Mensch, der den Zeitplan angelegt hat (users.id). Ein Zeitplan ohne Agent
+    # ("Automatisch") gehoert ihm: er sieht, pausiert und loescht ihn, und beim
+    # Feuern waehlt der Lastverteiler nur unter SEINEN Agenten (#901). NULL bei
+    # Agenten-/Systemzeitplaenen und beim Altbestand.
+    created_by: Mapped[str | None] = mapped_column(String, nullable=True)
