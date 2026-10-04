@@ -22,6 +22,22 @@ export const AVATAR_ICONS: Record<string, LucideIcon> = {
   FlaskConical, Bug,
 };
 
+/** Deutsche Anzeige für die kuratierten Symbole (#902). Der Schlüssel bleibt der
+ *  lucide-Name — so steht er auch in der Agenten-Konfiguration. */
+export const AVATAR_ICON_NAMEN: Record<string, string> = {
+  Bot: "Roboter", Cpu: "Prozessor", Brain: "Gehirn", Sparkles: "Funkeln",
+  Rocket: "Rakete", Briefcase: "Aktentasche", Cog: "Zahnrad", MessageSquare: "Sprechblase",
+  Code: "Code", Database: "Datenbank", Mail: "Brief", Calendar: "Kalender",
+  FileText: "Dokument", Headphones: "Kopfhörer", ShieldCheck: "Schild mit Haken",
+  Stethoscope: "Stethoskop", FlaskConical: "Reagenzglas", Bug: "Käfer",
+};
+
+/** Deutsche Anzeige der Palettenfarben — der Schlüssel bleibt die interne Kennung. */
+export const AVATAR_FARBNAMEN: Record<string, string> = {
+  violet: "Violett", blue: "Blau", emerald: "Smaragdgrün", amber: "Bernstein",
+  rose: "Rosa", cyan: "Türkis", fuchsia: "Pink", slate: "Schiefergrau", orange: "Orange",
+};
+
 export const AVATAR_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
   violet: { bg: "bg-violet-500/10", text: "text-violet-400", dot: "bg-violet-500" },
   blue: { bg: "bg-blue-500/10", text: "text-blue-400", dot: "bg-blue-500" },

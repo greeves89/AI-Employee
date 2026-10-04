@@ -669,7 +669,7 @@ async def _preload(agent_id, task_context, room, user, db):
             from app.core.ownership import visible_agent_ids
             sichtbar = await visible_agent_ids(user, db)
             if sichtbar is not None and agent_id not in sichtbar:
-                raise HTTPException(status_code=403, detail="Access denied")
+                raise HTTPException(status_code=403, detail="Kein Zugriff")
     # Selection + grouping live in app.core.memory_preload so the voice front uses
     # exactly the same definition of "what this agent must always know".
     from app.core.memory_preload import collect_preload
@@ -736,7 +736,7 @@ async def list_agent_memories(
             from app.core.ownership import visible_agent_ids
             sichtbar = await visible_agent_ids(user, db)
             if sichtbar is not None and agent_id not in sichtbar:
-                raise HTTPException(status_code=403, detail="Access denied")
+                raise HTTPException(status_code=403, detail="Kein Zugriff")
 
     # Real per-category breakdown across ALL memories, regardless of the
     # active filter — so chip counts stay accurate even while one is selected.
@@ -777,7 +777,7 @@ async def _assert_agent_access(agent_id: str, user, db) -> None:
     from app.models.user import UserRole
     if is_agent_principal(user):
         if user.id != agent_id:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="Kein Zugriff")
         return
     if user.role == UserRole.ADMIN:
         return
@@ -786,7 +786,7 @@ async def _assert_agent_access(agent_id: str, user, db) -> None:
     from app.core.ownership import visible_agent_ids
     sichtbar = await visible_agent_ids(user, db)
     if sichtbar is not None and agent_id not in sichtbar:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
 
 
 @router.put("/{memory_id}")

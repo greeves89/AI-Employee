@@ -2070,7 +2070,7 @@ export function VoiceSessionModal({
               <div className="fixed inset-0 z-[60] flex flex-col bg-background/95 backdrop-blur-sm">
                 <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
                   <Network className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">Knowledge Graph</span>
+                  <span className="text-sm font-medium">Wissensgraph</span>
                   <span className="text-[11px] text-muted-foreground/50">— per Sprache steuerbar („mach den Graphen wieder zu")</span>
                   <button
                     onClick={() => setGraphOverlay(null)}

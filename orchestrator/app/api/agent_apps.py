@@ -145,7 +145,7 @@ async def agent_restart_self(
     try:
         await manager.update_agent(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"status": "restarted", "agent_id": agent_id}

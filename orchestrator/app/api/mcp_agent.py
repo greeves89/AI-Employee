@@ -211,7 +211,7 @@ async def _auth_agent(agent_id: str, request: Request, db: AsyncSession) -> Agen
     """Verify agent exists and Bearer token matches webhook_token."""
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     if not agent.webhook_enabled:
         raise HTTPException(status_code=403, detail="MCP access is not enabled for this agent. Enable via Settings → Externer Zugriff.")

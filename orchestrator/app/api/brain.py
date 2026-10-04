@@ -170,7 +170,7 @@ async def get_related(
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
         if entry.user_id != str(user.id):
             from fastapi import HTTPException
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="Kein Zugriff")
 
     links = (await db.execute(
         select(BrainLink).where(
@@ -563,7 +563,7 @@ async def backfill_brain_links(
 
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
         from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Admins")
 
     from sqlalchemy import text as sa_text
 

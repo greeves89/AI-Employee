@@ -129,21 +129,21 @@ export default function KnowledgePage() {
 
   const handleDelete = useCallback(async (id: number) => {
     const ok = await confirm({
-      title: "Delete this entry?",
-      message: "The knowledge entry will be permanently removed.",
+      title: "Eintrag löschen?",
+      message: "Der Wissenseintrag wird endgültig entfernt.",
       variant: "destructive",
-      confirmLabel: "Delete",
+      confirmLabel: "Löschen",
     });
     if (!ok) return;
     try {
       await deleteKnowledgeEntry(id);
       setViewMode("list");
       setSelectedEntry(null);
-      toast.success("Entry deleted");
+      toast.success("Eintrag gelöscht");
       refresh();
     } catch (e) {
       console.error("Failed to delete:", e);
-      toast.error("Failed to delete entry");
+      toast.error("Eintrag konnte nicht gelöscht werden");
     }
   }, [refresh, confirm, toast]);
 
@@ -242,7 +242,7 @@ export default function KnowledgePage() {
             )}
           >
             <Inbox className="h-4 w-4" />
-            Inbox
+            Eingang
           </button>
           <button
             onClick={() => {
@@ -276,7 +276,7 @@ export default function KnowledgePage() {
             className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20"
           >
             <Plus className="h-4 w-4" />
-            New Entry
+            Neuer Eintrag
           </button>
         </div>
       </div>
@@ -298,7 +298,7 @@ export default function KnowledgePage() {
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
                 <input
                   type="text"
-                  placeholder="Search knowledge base..."
+                  placeholder="Wissen durchsuchen …"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] py-2.5 pl-10 pr-4 text-sm placeholder:text-muted-foreground/40 focus:border-primary/30 focus:outline-none"
@@ -307,7 +307,7 @@ export default function KnowledgePage() {
 
               {activeTag && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-muted-foreground/70">Filtered by:</span>
+                  <span className="text-[11px] text-muted-foreground/70">Gefiltert nach:</span>
                   <button
                     onClick={() => setActiveTag(null)}
                     className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary"
@@ -328,8 +328,8 @@ export default function KnowledgePage() {
                 ) : entries.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
                     <BookOpen className="h-12 w-12 mb-3" />
-                    <p className="text-sm">No entries yet</p>
-                    <p className="text-xs mt-1">Create your first knowledge entry or let agents contribute</p>
+                    <p className="text-sm">Noch keine Einträge</p>
+                    <p className="text-xs mt-1">Lege den ersten Eintrag an oder lass deine Agenten Wissen beitragen</p>
                   </div>
                 ) : (
                   entries.map((entry, idx) => (
@@ -387,7 +387,7 @@ export default function KnowledgePage() {
                 <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
                   <h3 className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">
                     <Tag className="h-3.5 w-3.5" />
-                    Tags
+                    Schlagwörter
                   </h3>
                   <div className="space-y-1">
                     {tags.map((tag) => (
@@ -430,7 +430,7 @@ export default function KnowledgePage() {
                 type="text"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                placeholder="Entry title..."
+                placeholder="Titel des Eintrags …"
                 className="text-lg font-semibold bg-transparent border-none outline-none placeholder:text-muted-foreground/30 flex-1"
               />
               <div className="flex items-center gap-2">
@@ -442,7 +442,7 @@ export default function KnowledgePage() {
                     </span>
                     <span className="flex items-center gap-1 text-[10px] text-muted-foreground/40">
                       <Clock className="h-3 w-3" />
-                      {new Date(selectedEntry.updated_at).toLocaleString()}
+                      {new Date(selectedEntry.updated_at).toLocaleString("de-DE")}
                     </span>
                   </>
                 )}
@@ -453,7 +453,7 @@ export default function KnowledgePage() {
                     showPreview ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-foreground/[0.04]"
                   )}
                 >
-                  {showPreview ? "Edit" : "Preview"}
+                  {showPreview ? "Bearbeiten" : "Vorschau"}
                 </button>
                 {!isNew && selectedEntry && (
                   <button
@@ -468,7 +468,7 @@ export default function KnowledgePage() {
                   disabled={!editTitle.trim()}
                   className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 disabled:opacity-50"
                 >
-                  Save
+                  Speichern
                 </button>
               </div>
             </div>
@@ -479,7 +479,7 @@ export default function KnowledgePage() {
                 type="text"
                 value={editTags}
                 onChange={(e) => setEditTags(e.target.value)}
-                placeholder="Tags (comma-separated): project, decision, contact..."
+                placeholder="Schlagwörter (durch Komma getrennt): Projekt, Entscheidung, Kontakt …"
                 className="flex-1 bg-transparent border-none outline-none text-xs text-muted-foreground placeholder:text-muted-foreground/30"
               />
             </div>
@@ -495,7 +495,7 @@ export default function KnowledgePage() {
                 <textarea
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
-                  placeholder={"Write markdown here...\n\nUse [[Title]] to link to other entries\nUse #tags inline for categorization"}
+                  placeholder={"Hier in Markdown schreiben …\n\n[[Titel]] verlinkt auf andere Einträge\n#schlagwort im Text ordnet den Eintrag zu"}
                   className="flex-1 resize-none rounded-xl border border-foreground/[0.08] bg-foreground/[0.02] p-4 text-sm font-mono placeholder:text-muted-foreground/30 focus:border-primary/30 focus:outline-none"
                 />
               )}
@@ -507,7 +507,7 @@ export default function KnowledgePage() {
                   {selectedEntry.backlinks.length > 0 && (
                     <div>
                       <h4 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
-                        Links to
+                        Verweist auf
                       </h4>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedEntry.backlinks.map((link) => (
@@ -526,7 +526,7 @@ export default function KnowledgePage() {
                   {(selectedEntry.incoming_backlinks || []).length > 0 && (
                     <div>
                       <h4 className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider mb-2">
-                        Linked from
+                        Verlinkt von
                       </h4>
                       <div className="flex flex-wrap gap-1.5">
                         {(selectedEntry.incoming_backlinks || []).map((link) => (
@@ -677,7 +677,7 @@ export default function KnowledgePage() {
                         onClick={() => openEntry(graphPreview.id)}
                         className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
                       >
-                        Edit
+                        Bearbeiten
                       </button>
                       <button
                         onClick={() => setGraphPreview(null)}
@@ -706,7 +706,7 @@ export default function KnowledgePage() {
                     <div className="border-t border-foreground/[0.06] px-4 py-3 space-y-2">
                       {graphPreview.backlinks.length > 0 && (
                         <div>
-                          <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-1.5">Links to</p>
+                          <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-1.5">Verweist auf</p>
                           <div className="flex flex-wrap gap-1">
                             {graphPreview.backlinks.map((link) => (
                               <button
@@ -723,7 +723,7 @@ export default function KnowledgePage() {
                       )}
                       {(graphPreview.incoming_backlinks || []).length > 0 && (
                         <div>
-                          <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-1.5">Linked from</p>
+                          <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-1.5">Verlinkt von</p>
                           <div className="flex flex-wrap gap-1">
                             {(graphPreview.incoming_backlinks || []).map((link) => (
                               <button

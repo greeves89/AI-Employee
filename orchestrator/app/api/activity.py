@@ -64,7 +64,7 @@ async def get_activity_timeline(
 
     vids = await visible_agent_ids(user, db)
     if agent_id and vids is not None and agent_id not in vids:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     if vids is not None and not vids:
         return {"start": _to_iso(start), "end": _to_iso(end), "agents": []}
 
@@ -76,7 +76,7 @@ async def get_activity_timeline(
     agents_query = agents_query.order_by(Agent.name)
     agents = (await db.execute(agents_query)).scalars().all()
     if agent_id and not agents:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     if not agents:
         return {"start": _to_iso(start), "end": _to_iso(end), "agents": []}
 

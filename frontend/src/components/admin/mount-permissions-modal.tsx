@@ -37,7 +37,7 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
         access.grants.forEach((g) => { map[g.mount_label] = g.mode; });
         setGrants(map);
       } catch (e) {
-        toast.error("Mount-Permissions konnten nicht geladen werden", String(e));
+        toast.error("Freigegebene Ordner konnten nicht geladen werden", String(e));
       } finally {
         setLoading(false);
       }
@@ -51,7 +51,7 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
         .filter(([, mode]) => mode !== "none")
         .map(([label, mode]) => ({ mount_label: label, mode: mode as "ro" | "rw" }));
       await api.setUserMountAccess(userId, list);
-      toast.success("Mount-Permissions gespeichert", `${list.length} Mount(s) zugewiesen`);
+      toast.success("Freigegebene Ordner gespeichert", `${list.length} Ordner freigegeben`);
       onClose();
     } catch (e) {
       toast.error("Speichern fehlgeschlagen", String(e));
@@ -90,7 +90,7 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
                     <Box className="h-4.5 w-4.5 text-primary" />
                   </div>
                   <div className="min-w-0">
-                    <Dialog.Title className="text-base font-semibold leading-tight">Mount-Permissions</Dialog.Title>
+                    <Dialog.Title className="text-base font-semibold leading-tight">Freigegebene Ordner</Dialog.Title>
                     <Dialog.Description className="text-xs text-muted-foreground mt-0.5 truncate">
                       {userName ?? userId}
                     </Dialog.Description>
@@ -109,12 +109,12 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
                   </div>
                 ) : catalog.length === 0 ? (
                   <p className="text-center text-sm text-muted-foreground py-12">
-                    Kein Mount-Katalog konfiguriert. Setze <code>AGENT_MOUNT_CATALOG</code> in der Server-Config.
+                    Keine freigebbaren Ordner eingerichtet. Sie werden auf dem Server über <code>AGENT_MOUNT_CATALOG</code> festgelegt.
                   </p>
                 ) : (
                   <div className="space-y-2">
                     <p className="text-xs text-muted-foreground/70 mb-3">
-                      Wähle pro Mount den maximalen Zugriff. Der User kann diese Mounts dann seinen Agents zuweisen.
+                      Wähle je Ordner den höchsten Zugriff. Die Person kann diese Ordner dann ihren Agenten zuweisen.
                     </p>
                     {catalog.map((m) => (
                       <div key={m.label} className="flex items-center justify-between gap-3 rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-3 py-2.5">
@@ -128,7 +128,7 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
                               key={mode}
                               onClick={() => setGrants((g) => ({ ...g, [m.label]: mode }))}
                               className={cn(
-                                "rounded-md px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider transition-colors",
+                                "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
                                 grants[m.label] === mode
                                   ? mode === "none"
                                     ? "bg-zinc-500/20 text-zinc-300"
@@ -138,7 +138,7 @@ export function MountPermissionsModal({ userId, userName, onClose }: Props) {
                                   : "text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.04]"
                               )}
                             >
-                              {mode === "none" ? "—" : mode}
+                              {mode === "none" ? "—" : mode === "ro" ? "Lesen" : "Lesen + Schreiben"}
                             </button>
                           ))}
                         </div>

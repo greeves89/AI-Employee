@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 
 from app.config import settings
 from app.telegram._bridge_auth import authed_client
+from app.telegram.texte import aufgaben_status, bewertung, kennzahlen, zustand_wort
 from app.telegram.active_chats import (
     clear_active_chat,
     get_active_chat,
@@ -29,14 +30,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         settings.telegram_chat_id = chat_id
 
     await update.message.reply_text(
-        "*AI Employee Bot* 🤖\n\n"
-        "Commands:\n"
-        "/status - Agent Status anzeigen\n"
-        "/agents - Alle Agents auflisten\n"
-        "/task <text> - Neuen Task erstellen\n"
-        "/chat - Chat mit einem Agent starten\n"
+        "*AI Employee Bot*\n\n"
+        "Befehle:\n"
+        "/status - Zustand der Agenten anzeigen\n"
+        "/agents - Alle Agenten auflisten\n"
+        "/task <text> - Neue Aufgabe anlegen\n"
+        "/chat - Chat mit einem Agenten starten\n"
         "/stop\\_chat - Chat beenden\n\n"
-        "Oder schreib einfach eine Nachricht um mit dem aktiven Agent zu chatten!",
+        "Oder schreib einfach eine Nachricht, um mit dem aktiven Agenten zu chatten.",
         parse_mode="Markdown",
     )
 
@@ -48,38 +49,30 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             data = resp.json()
 
             if not data["agents"]:
-                await update.message.reply_text("Keine Agents aktiv. Erstelle einen via Web UI.")
+                await update.message.reply_text("Keine Agenten aktiv. Lege einen in der Weboberfläche an.")
                 return
 
-            lines = ["*Agent Status:*\n"]
+            lines = ["*Zustand der Agenten:*\n"]
             for agent in data["agents"]:
-                state_emoji = {
-                    "running": "🟢",
-                    "idle": "🟢",
-                    "working": "🔵",
-                    "stopped": "🔴",
-                    "error": "❌",
-                }.get(agent["state"], "⚪")
-
                 task_info = ""
                 if agent.get("current_task"):
-                    task_info = f"\n  Task: `{agent['current_task']}`"
+                    task_info = f"\n  Aufgabe: `{agent['current_task']}`"
 
                 lines.append(
-                    f"{state_emoji} *{agent['name']}* ({agent['id']})\n"
-                    f"  State: {agent['state']}{task_info}"
+                    f"*{agent['name']}* ({agent['id']})\n"
+                    f"  Zustand: {zustand_wort(agent['state'])}{task_info}"
                 )
 
             await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
         except Exception as e:
-            await update.message.reply_text(f"Error: {e}")
+            await update.message.reply_text(f"Fehler: {e}")
 
 
 async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text(
-            "Usage: /task <beschreibung>\n"
-            "Beispiel: /task Erstelle eine Flask API mit User CRUD"
+            "Aufruf: /task <beschreibung>\n"
+            "Beispiel: /task Erstelle eine Flask-API zum Anlegen und Ändern von Nutzern"
         )
         return
 
@@ -98,18 +91,18 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             data = resp.json()
 
             if resp.status_code == 201:
-                agent_info = f"Agent: `{data.get('agent_id', 'pending')}`"
+                agent_info = f"Agent: `{data.get('agent_id') or 'wird zugewiesen'}`"
                 await update.message.reply_text(
-                    f"✅ *Task erstellt!*\n"
+                    f"*Aufgabe angelegt*\n"
                     f"ID: `{data['id']}`\n"
-                    f"Status: {data['status']}\n"
+                    f"Status: {aufgaben_status(data['status'])}\n"
                     f"{agent_info}",
                     parse_mode="Markdown",
                 )
             else:
-                await update.message.reply_text(f"Error: {data}")
+                await update.message.reply_text(f"Fehler: {data}")
         except Exception as e:
-            await update.message.reply_text(f"Error: {e}")
+            await update.message.reply_text(f"Fehler: {e}")
 
 
 async def cmd_agents(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -120,24 +113,24 @@ async def cmd_agents(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
             if not data["agents"]:
                 await update.message.reply_text(
-                    "Keine Agents vorhanden. Erstelle einen via Web UI."
+                    "Keine Agenten vorhanden. Lege einen in der Weboberfläche an."
                 )
                 return
 
-            lines = ["*Agents:*\n"]
+            lines = ["*Agenten:*\n"]
             for agent in data["agents"]:
-                cpu = f"{agent.get('cpu_percent', 0):.1f}%" if agent.get("cpu_percent") else "N/A"
-                mem = f"{agent.get('memory_usage_mb', 0):.0f}MB" if agent.get("memory_usage_mb") else "N/A"
+                cpu = f"{agent.get('cpu_percent', 0):.1f}%" if agent.get("cpu_percent") else "k. A."
+                mem = f"{agent.get('memory_usage_mb', 0):.0f}MB" if agent.get("memory_usage_mb") else "k. A."
                 lines.append(
                     f"*{agent['name']}* (`{agent['id']}`)\n"
-                    f"  Model: {agent['model']}\n"
-                    f"  CPU: {cpu} | RAM: {mem}\n"
-                    f"  Queue: {agent.get('queue_depth', 0)} tasks"
+                    f"  Modell: {agent['model']}\n"
+                    f"  CPU: {cpu} · RAM: {mem}\n"
+                    f"  Warteschlange: {agent.get('queue_depth', 0)} Aufgaben"
                 )
 
             await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
         except Exception as e:
-            await update.message.reply_text(f"Error: {e}")
+            await update.message.reply_text(f"Fehler: {e}")
 
 
 async def cmd_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -158,7 +151,7 @@ async def cmd_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
             if not data["agents"]:
                 await update.message.reply_text(
-                    "Keine Agents vorhanden. Erstelle zuerst einen via Web UI."
+                    "Keine Agenten vorhanden. Lege zuerst einen in der Weboberfläche an."
                 )
                 return
 
@@ -171,7 +164,7 @@ async def cmd_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             # Show inline keyboard for agent selection
             keyboard = [
                 [InlineKeyboardButton(
-                    f"{a['name']} ({a['state']})",
+                    f"{a['name']} ({zustand_wort(a['state'])})",
                     callback_data=f"chat:{a['id']}"
                 )]
                 for a in data["agents"]
@@ -179,15 +172,15 @@ async def cmd_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ]
 
             if not keyboard:
-                await update.message.reply_text("Keine laufenden Agents gefunden.")
+                await update.message.reply_text("Keine laufenden Agenten gefunden.")
                 return
 
             await update.message.reply_text(
-                "Waehle einen Agent zum Chatten:",
+                "Wähle einen Agenten zum Chatten:",
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
         except Exception as e:
-            await update.message.reply_text(f"Error: {e}")
+            await update.message.reply_text(f"Fehler: {e}")
 
 
 async def cmd_stop_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -227,13 +220,13 @@ async def _handle_rating_callback(query, data: str) -> None:
     try:
         parts = data.split(":")
         if len(parts) != 3:
-            await query.edit_message_text("❌ Ungültiges Rating-Format.")
+            await query.edit_message_text("Ungültige Bewertung.")
             return
 
         task_id = parts[1]
         rating = int(parts[2])
         if rating < 1 or rating > 5:
-            await query.edit_message_text("❌ Rating muss zwischen 1-5 sein.")
+            await query.edit_message_text("Die Bewertung muss zwischen 1 und 5 liegen.")
             return
 
         # Save rating via internal API (authed_client attaches the admin Bearer JWT;
@@ -245,20 +238,19 @@ async def _handle_rating_callback(query, data: str) -> None:
                 timeout=10.0,
             )
 
-        stars = "⭐" * rating
         if resp.status_code in (200, 201):
             await query.edit_message_text(
-                f"{stars} Danke für deine Bewertung! ({rating}/5)"
+                f"Danke für deine Bewertung: {bewertung(rating)}."
             )
         elif resp.status_code == 409:
-            await query.edit_message_text("ℹ️ Du hast diesen Task bereits bewertet.")
+            await query.edit_message_text("Du hast diese Aufgabe bereits bewertet.")
         else:
             await query.edit_message_text(
-                f"{stars} Bewertung gespeichert (lokal).\n"
-                f"API-Fehler: {resp.status_code}"
+                f"Bewertung {bewertung(rating)} konnte nicht gespeichert werden "
+                f"(Fehler {resp.status_code})."
             )
     except Exception as e:
-        await query.edit_message_text(f"❌ Fehler beim Bewerten: {e}")
+        await query.edit_message_text(f"Fehler beim Bewerten: {e}")
 
 
 def _ensure_listener(bot, chat_id: int, agent_id: str, restart: bool = False) -> None:
@@ -288,7 +280,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if agent_id is None:
         # No active chat - show hint
         await update.message.reply_text(
-            "Kein aktiver Chat. Starte mit /chat einen Chat mit einem Agent."
+            "Kein aktiver Chat. Starte mit /chat einen Chat mit einem Agenten."
         )
         return
 
@@ -344,7 +336,7 @@ async def _start_chat_session(
     _ensure_listener(bot, chat_id, agent_id, restart=True)
 
     msg = (
-        f"💬 Chat mit Agent `{agent_id}` gestartet!\n\n"
+        f"Chat mit Agent `{agent_id}` gestartet.\n\n"
         f"Schreib einfach eine Nachricht.\n"
         f"Beenden mit /stop\\_chat"
     )
@@ -377,15 +369,15 @@ async def _listen_agent_responses(bot, chat_id: int, agent_id: str) -> None:
                     response_buffer += str(event_data.get("text", ""))
 
                 elif event_type == "tool_call":
-                    tool = event_data.get("tool", "unknown")
+                    tool = event_data.get("tool", "unbekannt")
                     tool_input = json.dumps(event_data.get("input", {}))[:200]
-                    response_buffer += f"\n🔧 [{tool}] {tool_input}\n"
+                    response_buffer += f"\nWerkzeug [{tool}] {tool_input}\n"
 
                 elif event_type == "error":
-                    error_msg = str(event_data.get("message", "Unknown error"))
+                    error_msg = str(event_data.get("message", "Unbekannter Fehler"))
                     await bot.send_message(
                         chat_id=chat_id,
-                        text=f"❌ Error: {error_msg}",
+                        text=f"Fehler: {error_msg}",
                     )
                     response_buffer = ""
 
@@ -401,16 +393,13 @@ async def _listen_agent_responses(bot, chat_id: int, agent_id: str) -> None:
                             )
                     response_buffer = ""
 
-                    # Show meta info
-                    cost = event_data.get("cost_usd", 0)
-                    duration = event_data.get("duration_ms", 0)
-                    turns = event_data.get("num_turns", 0)
-                    if duration:
-                        meta = f"⏱ {duration/1000:.1f}s"
-                        if cost:
-                            meta += f" | 💰 ${cost:.4f}"
-                        if turns:
-                            meta += f" | 🔄 {turns} turns"
+                    # Kennzahlen des Laufs: „Dauer 3,2 s · Kosten 0,01 $ · 2 Runden“
+                    meta = kennzahlen(
+                        event_data.get("duration_ms", 0),
+                        event_data.get("cost_usd", 0),
+                        event_data.get("num_turns", 0),
+                    )
+                    if meta:
                         await bot.send_message(
                             chat_id=chat_id,
                             text=meta,

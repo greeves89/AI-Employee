@@ -157,7 +157,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
             ) : agent.mode === "custom_llm" && agent.ai_account_id ? (
               <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-violet-500/10 text-violet-400 border-violet-500/20">
                 <Plug className="h-3 w-3" />
-                {agent.ai_account_name || agent.ai_account_provider || "AI-Account"}
+                {agent.ai_account_name || agent.ai_account_provider || "KI-Konto"}
               </div>
             ) : agent.mode === "custom_llm" && agent.llm_config ? (
               <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-violet-500/10 text-violet-400 border-violet-500/20">
@@ -171,7 +171,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
             {!simpleMode && (updating || agent.update_available) && (
               <div className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                 {updating ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpCircle className="h-3 w-3" />}
-                {updating ? "Aktualisiere…" : "Update"}
+                {updating ? "Wird aktualisiert …" : "Aktualisierung"}
               </div>
             )}
             {!simpleMode && !updating && !agent.update_available && agent.image_outdated && (
@@ -180,7 +180,7 @@ export function AgentCard({ agent, updating = false }: AgentCardProps) {
                 className="inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium bg-orange-500/10 text-orange-400 border-orange-500/20"
               >
                 <ArrowUpCircle className="h-3 w-3" />
-                Image veraltet
+                Abbild veraltet
               </div>
             )}
             {agent.config?.stop_reason && (

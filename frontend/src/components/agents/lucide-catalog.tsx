@@ -3,6 +3,8 @@
 import { icons, Cpu, type LucideIcon } from "lucide-react";
 import { stichwortTeile } from "./symbol-stichwoerter";
 
+export { symbolAnzeigename } from "./symbol-stichwoerter";
+
 /**
  * Der vollständige lucide-Satz — bewusst in einer eigenen Datei (#523).
  *

@@ -371,7 +371,7 @@ export function TaskDetail({
 
         {/* Task info cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {!simpleMode && <MiniCard icon={Hash} label="Task ID" value={task.id.slice(0, 8)} />}
+          {!simpleMode && <MiniCard icon={Hash} label="Aufgaben-ID" value={task.id.slice(0, 8)} />}
           {task.agent_id && (
             <Link href={`/agents/${task.agent_id}`}>
               <MiniCard icon={Cpu} label="Agent" value={agentNames[task.agent_id] ?? task.agent_id} clickable />
@@ -406,7 +406,7 @@ export function TaskDetail({
           <div className="rounded-xl bg-red-500/5 border border-red-500/10 px-5 py-4 flex items-start gap-3">
             <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs font-medium text-red-400/70 mb-1">Error</p>
+              <p className="text-xs font-medium text-red-400/70 mb-1">Fehler</p>
               <p className="text-sm text-red-400">{task.error}</p>
             </div>
           </div>
@@ -503,7 +503,7 @@ export function TaskDetail({
                 <div className="flex items-center gap-1.5">
                   <div className={cn("h-1.5 w-1.5 rounded-full", isConnected ? "bg-emerald-500" : "bg-red-500")} />
                   <span className="text-[10px] text-muted-foreground/60">
-                    {isConnected ? "Streaming" : "Disconnected"}
+                    {isConnected ? "Live" : "Getrennt"}
                   </span>
                 </div>
               )}
@@ -511,7 +511,7 @@ export function TaskDetail({
                 onClick={() => setLogs([])}
                 className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
               >
-                Clear
+                Leeren
               </button>
             </div>
           </div>
@@ -546,7 +546,7 @@ export function TaskDetail({
             <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
               <div className="flex items-center gap-2.5">
                 <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground">Decision-Trace · Zeitreise</span>
+                <span className="text-xs font-medium text-muted-foreground">Entscheidungsverlauf · Zeitreise</span>
               </div>
               {!replayLoaded ? (
                 <button
@@ -555,7 +555,7 @@ export function TaskDetail({
                   className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.06] px-3 py-1.5 text-[11px] font-medium text-foreground hover:bg-foreground/[0.1] disabled:opacity-50 transition-colors"
                 >
                   {replayLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                  Trace laden
+                  Verlauf laden
                 </button>
               ) : replaySteps.length > 0 && (
                 <div className="flex items-center gap-1.5">
@@ -620,7 +620,7 @@ export function TaskDetail({
                       <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-2">
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground/70">
                           {trace.summary.cost_usd != null && <span>Kosten <span className="text-foreground">{formatMoney(trace.summary.cost_usd)}</span></span>}
-                          {trace.summary.num_turns != null && <span>Turns <span className="text-foreground">{trace.summary.num_turns}</span></span>}
+                          {trace.summary.num_turns != null && <span>Schritte <span className="text-foreground">{trace.summary.num_turns}</span></span>}
                           {trace.summary.duration_ms != null && <span>Dauer <span className="text-foreground">{formatDuration(trace.summary.duration_ms)}</span></span>}
                           {(trace.summary.input_tokens != null || trace.summary.output_tokens != null) && (
                             <span>Tokens <span className="text-foreground">{(trace.summary.input_tokens ?? 0)} / {(trace.summary.output_tokens ?? 0)}</span></span>

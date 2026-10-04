@@ -391,7 +391,7 @@ export default function AgentDetailPage() {
                   {agent.mode === "custom_llm" ? <Plug className="h-3 w-3 text-violet-400" /> : <Hash className="h-3 w-3 text-violet-400" />}
                   <span className="text-violet-400 font-medium">
                     {agent.mode === "custom_llm" && agent.ai_account_id
-                      ? `${agent.ai_account_name ?? "AI-Account"} / ${agent.model}`
+                      ? `${agent.ai_account_name ?? "KI-Konto"} / ${agent.model}`
                       : agent.mode === "custom_llm" && agent.llm_config
                         ? `${agent.llm_config.provider_type === "openai" ? "OpenAI" : agent.llm_config.provider_type === "google" ? "Google" : "Anthropic"} / ${agent.llm_config.model_name}`
                         : agent.model.split("-").slice(0, 2).join("-")}
@@ -431,7 +431,7 @@ export default function AgentDetailPage() {
             {agent.mode === "custom_llm" && !simpleMode && (
               <div className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium bg-violet-500/10 text-violet-400 border-violet-500/20">
                 <Plug className="h-3 w-3" />
-                Custom LLM
+                Eigenes Modell
               </div>
             )}
             <div className={cn(
@@ -1175,7 +1175,7 @@ function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] })
                   className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-[11px] font-medium text-orange-400 hover:bg-orange-500/20 transition-colors"
                 >
                   <RotateCcw className="h-3 w-3" />
-                  Retry
+                  Erneut versuchen
                 </button>
               )}
             </div>
@@ -1249,7 +1249,7 @@ function AgentSecondBrains({ agentId }: { agentId: string }) {
     return (
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-6 text-center text-sm text-muted-foreground">
         Für diesen Agenten sind (noch) keine Second Brains freigegeben. Ein Admin gibt sie unter
-        <b> Admin → Rollen → Mountshares</b> (pro Gruppe) oder <b>Admin → Users → Mount-Rechte</b> (pro Person) frei.
+        <b> Admin → Rollen → Freigegebene Ordner</b> (pro Gruppe) oder <b>Admin → Nutzer → Freigegebene Ordner</b> (pro Person) frei.
       </div>
     );
 
@@ -1403,7 +1403,7 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
           <div className="flex items-center gap-2">
             <Brain className="h-4 w-4 text-violet-400" />
             <span className="text-sm font-medium">knowledge.md</span>
-            <span className="text-[10px] text-muted-foreground/60">Agent Knowledge Base</span>
+            <span className="text-[10px] text-muted-foreground/60">Wissensbasis des Agenten</span>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1411,7 +1411,7 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
               className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
             >
               <RefreshCw className="h-3 w-3" />
-              Refresh
+              Aktualisieren
             </button>
             {editing ? (
               <>
@@ -1421,13 +1421,13 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
                   className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                 >
                   {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                  Save
+                  Speichern
                 </button>
                 <button
                   onClick={() => setEditing(false)}
                   className="rounded-lg px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
                 >
-                  Cancel
+                  Abbrechen
                 </button>
               </>
             ) : (
@@ -1436,7 +1436,7 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
                 className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
               >
                 <Edit3 className="h-3 w-3" />
-                Edit
+                Bearbeiten
               </button>
             )}
           </div>
@@ -1651,7 +1651,7 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
                   type="password"
                   value={botToken}
                   onChange={(e) => setBotToken(e.target.value)}
-                  placeholder="Neuer Bot Token..."
+                  placeholder="Neuer Bot-Token …"
                   className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20 transition-all"
                 />
                 <button
@@ -1862,7 +1862,7 @@ function AgentSettings({
       await api.updateAgentAIAccount(agent.id, aiAcctSel, aiAcctModel || undefined);
       const fresh = await api.getAgent(agent.id);
       onUpdated(fresh as Agent);
-      setMessage({ type: "success", text: "AI-Account verbunden. Agent wurde neu gestartet." });
+      setMessage({ type: "success", text: "KI-Konto verbunden. Agent wurde neu gestartet." });
     } catch (e) {
       setMessage({ type: "error", text: e instanceof Error ? e.message : "Verbinden fehlgeschlagen" });
     } finally {
@@ -1952,7 +1952,7 @@ function AgentSettings({
       await api.updateLLMConfig(agentId, update as Parameters<typeof api.updateLLMConfig>[1]);
       setLlmNewApiKey("");
       setLlmEditing(false);
-      setMessage({ type: "success", text: "LLM-Konfiguration aktualisiert. Restart empfohlen." });
+      setMessage({ type: "success", text: "Modell-Einstellungen gespeichert. Ein Neustart des Agenten wird empfohlen." });
       const updated = await api.getAgent(agentId);
       onUpdated(updated as Agent);
     } catch (e) {
@@ -1981,36 +1981,36 @@ function AgentSettings({
 
   const CLAUDE_MODELS: Record<string, { value: string; label: string; tier: string }[]> = {
     anthropic: [
-      { value: "claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
-      { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Fast" },
-      { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Legacy" },
-      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Legacy" },
-      { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Legacy" },
+      { value: "claude-opus-4-8", label: "Opus 4.8 (neueste)", tier: "Am stärksten" },
+      { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Ausgewogen" },
+      { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Schnell" },
+      { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Ältere Version" },
+      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Ältere Version" },
+      { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Ältere Version" },
     ],
     bedrock: [
-      { value: "anthropic.claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
-      { value: "anthropic.claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "anthropic.claude-haiku-4-5-20251001-v1:0", label: "Haiku 4.5", tier: "Fast" },
-      { value: "us.anthropic.claude-opus-4-7-v1:0", label: "Opus 4.7", tier: "Legacy" },
-      { value: "anthropic.claude-opus-4-6-v1", label: "Opus 4.6", tier: "Legacy" },
-      { value: "anthropic.claude-sonnet-4-5-20250929-v1:0", label: "Sonnet 4.5", tier: "Legacy" },
+      { value: "anthropic.claude-opus-4-8", label: "Opus 4.8 (neueste)", tier: "Am stärksten" },
+      { value: "anthropic.claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Ausgewogen" },
+      { value: "anthropic.claude-haiku-4-5-20251001-v1:0", label: "Haiku 4.5", tier: "Schnell" },
+      { value: "us.anthropic.claude-opus-4-7-v1:0", label: "Opus 4.7", tier: "Ältere Version" },
+      { value: "anthropic.claude-opus-4-6-v1", label: "Opus 4.6", tier: "Ältere Version" },
+      { value: "anthropic.claude-sonnet-4-5-20250929-v1:0", label: "Sonnet 4.5", tier: "Ältere Version" },
     ],
     vertex: [
-      { value: "claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
-      { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "claude-haiku-4-5@20251001", label: "Haiku 4.5", tier: "Fast" },
-      { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Legacy" },
-      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Legacy" },
-      { value: "claude-sonnet-4-5@20250929", label: "Sonnet 4.5", tier: "Legacy" },
+      { value: "claude-opus-4-8", label: "Opus 4.8 (neueste)", tier: "Am stärksten" },
+      { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Ausgewogen" },
+      { value: "claude-haiku-4-5@20251001", label: "Haiku 4.5", tier: "Schnell" },
+      { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Ältere Version" },
+      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Ältere Version" },
+      { value: "claude-sonnet-4-5@20250929", label: "Sonnet 4.5", tier: "Ältere Version" },
     ],
     foundry: [
-      { value: "claude-opus-4-8", label: "Opus 4.8 (Latest)", tier: "Most Powerful" },
-      { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Balanced" },
-      { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Fast" },
-      { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Legacy" },
-      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Legacy" },
-      { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Legacy" },
+      { value: "claude-opus-4-8", label: "Opus 4.8 (neueste)", tier: "Am stärksten" },
+      { value: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "Ausgewogen" },
+      { value: "claude-haiku-4-5", label: "Haiku 4.5", tier: "Schnell" },
+      { value: "claude-opus-4-7", label: "Opus 4.7", tier: "Ältere Version" },
+      { value: "claude-opus-4-6", label: "Opus 4.6", tier: "Ältere Version" },
+      { value: "claude-sonnet-4-5", label: "Sonnet 4.5", tier: "Ältere Version" },
     ],
   };
 
@@ -2240,7 +2240,7 @@ function AgentSettings({
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <div className="text-sm font-medium">Model-Router</div>
+            <div className="text-sm font-medium">Modell-Router</div>
             <div className="text-[11px] text-muted-foreground/60">
               Wählt je Aufgabe ein passendes Modell nach Schwierigkeit.
             </div>
@@ -2261,7 +2261,7 @@ function AgentSettings({
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {(["simple", "standard", "complex"] as const).map((tier) => (
               <div key={tier}>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1 capitalize">{tier}</label>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">{ROUTER_STUFEN[tier]}</label>
                 <select
                   value={routerRules[tier]}
                   onChange={(e) => {
@@ -2284,7 +2284,7 @@ function AgentSettings({
                     <optgroup key={pr.provider} label={pr.provider}>
                       {pr.models.map((m) => (
                         <option key={m.value} value={m.value}>
-                          {m.label}{m.tier ? ` — ${m.tier}` : ""}
+                          {modellAnzeige(m.label)}{m.tier ? ` — ${modellStufe(m.tier)}` : ""}
                         </option>
                       ))}
                     </optgroup>
@@ -2396,8 +2396,8 @@ function AgentSettings({
                         : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
                     )}
                   >
-                    <span className="block">{m.label}</span>
-                    <span className={cn("block text-[9px] mt-0.5", agentModel === m.value ? "opacity-70" : "opacity-40")}>{m.tier}</span>
+                    <span className="block">{modellAnzeige(m.label)}</span>
+                    <span className={cn("block text-[9px] mt-0.5", agentModel === m.value ? "opacity-70" : "opacity-40")}>{modellStufe(m.tier)}</span>
                   </button>
                 ))}
               </div>
@@ -2420,11 +2420,11 @@ function AgentSettings({
             {([
               { value: "", label: "Auto" },
               { value: "off", label: "Minimal" },
-              { value: "low", label: "Low" },
-              { value: "medium", label: "Medium" },
-              { value: "high", label: "High" },
-              { value: "xhigh", label: "Extra High" },
-              { value: "max", label: "Max" },
+              { value: "low", label: "Niedrig" },
+              { value: "medium", label: "Mittel" },
+              { value: "high", label: "Hoch" },
+              { value: "xhigh", label: "Sehr hoch" },
+              { value: "max", label: "Maximal" },
             ] as { value: string; label: string }[]).map((o) => (
               <button
                 key={o.value || "auto"}
@@ -2465,7 +2465,7 @@ function AgentSettings({
           <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
             <div className="flex items-center gap-2">
               <Plug className="h-4 w-4 text-violet-400" />
-              <span className="text-sm font-medium">AI-Account</span>
+              <span className="text-sm font-medium">KI-Konto</span>
               {agent.ai_account_id && (
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
                   verbunden
@@ -2484,7 +2484,7 @@ function AgentSettings({
           <div className="p-5 space-y-3">
             {aiAccounts.length === 0 ? (
               <p className="text-[12px] text-muted-foreground/70">
-                Keine AI-Accounts vorhanden.{" "}
+                Keine KI-Konten vorhanden.{" "}
                 <Link href="/admin?tab=ai-accounts" className="text-violet-400 hover:text-violet-300">
                   Zuerst einen anlegen →
                 </Link>
@@ -2492,7 +2492,7 @@ function AgentSettings({
             ) : (
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Account</label>
+                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">KI-Konto</label>
                   <select
                     value={aiAcctSel ?? ""}
                     onChange={(e) => {
@@ -2540,7 +2540,7 @@ function AgentSettings({
           <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
             <div className="flex items-center gap-2">
               <Plug className="h-4 w-4 text-violet-400" />
-              <span className="text-sm font-medium">LLM-Konfiguration (inline)</span>
+              <span className="text-sm font-medium">Modell-Einstellungen</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20 font-medium">
                 {providerLabel}
               </span>
@@ -2591,7 +2591,7 @@ function AgentSettings({
                 {/* Editable fields */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">API Endpoint</label>
+                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">API-Endpunkt</label>
                     <input
                       type="text"
                       value={llmEndpoint}
@@ -2635,7 +2635,7 @@ function AgentSettings({
                       type={showApiKey ? "text" : "password"}
                       value={llmNewApiKey}
                       onChange={(e) => setLlmNewApiKey(e.target.value)}
-                      placeholder="Neuen API Key eingeben..."
+                      placeholder="Neuen API-Key eingeben …"
                       className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-3.5 py-2 pr-10 text-sm font-mono outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
                     />
                     <button
@@ -2650,7 +2650,7 @@ function AgentSettings({
 
                 {/* System Prompt */}
                 <div>
-                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">System Prompt</label>
+                  <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Systemanweisung</label>
                   <textarea
                     value={llmSystemPrompt}
                     onChange={(e) => setLlmSystemPrompt(e.target.value)}
@@ -2662,9 +2662,9 @@ function AgentSettings({
                 {/* Tools toggle */}
                 <div className="flex items-center justify-between rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-3">
                   <div>
-                    <p className="text-sm font-medium">Tool-Nutzung</p>
+                    <p className="text-sm font-medium">Werkzeuge nutzen</p>
                     <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                      Shell, Dateien, Memory, TODOs, Notifications, Team-Koordination
+                      Kommandozeile, Dateien, Gedächtnis, To-dos, Benachrichtigungen, Abstimmung im Team
                     </p>
                   </div>
                   <button
@@ -2697,19 +2697,19 @@ function AgentSettings({
                     <p className="text-sm font-medium mt-0.5 font-mono">{agent.llm_config.model_name}</p>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-muted-foreground/60">API Endpoint</span>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">API-Endpunkt</span>
                     <p className="text-sm font-mono text-muted-foreground mt-0.5 truncate">{agent.llm_config.api_endpoint}</p>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-muted-foreground/60">API Key</span>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">API-Key</span>
                     <p className="text-sm text-muted-foreground mt-0.5 font-mono">********</p>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-muted-foreground/60">Temperature</span>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">Temperatur</span>
                     <p className="text-sm tabular-nums mt-0.5">{agent.llm_config.temperature}</p>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-muted-foreground/60">Tools</span>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">Werkzeuge</span>
                     <p className="text-sm mt-0.5">
                       {agent.llm_config.tools_enabled ? (
                         <span className="inline-flex items-center gap-1 text-emerald-400">
@@ -2723,7 +2723,7 @@ function AgentSettings({
                 </div>
                 {agent.llm_config.system_prompt && (
                   <div className="mt-2 pt-3 border-t border-foreground/[0.06]">
-                    <span className="text-[11px] font-medium text-muted-foreground/60">System Prompt</span>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">Systemanweisung</span>
                     <pre className="mt-1.5 text-xs font-mono text-muted-foreground/80 whitespace-pre-wrap bg-foreground/[0.02] rounded-lg p-3 max-h-32 overflow-auto">
                       {agent.llm_config.system_prompt}
                     </pre>
@@ -2831,7 +2831,7 @@ function AgentSettings({
             <>
               {/* Webhook URL */}
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Webhook URL</label>
+                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Webhook-Adresse</label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[11px] font-mono text-muted-foreground truncate">
                     {webhookUrl}
@@ -2900,7 +2900,7 @@ function AgentSettings({
             <svg className="h-4 w-4 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
             </svg>
-            <span className="text-sm font-medium">MCP Endpoint</span>
+            <span className="text-sm font-medium">MCP-Endpunkt</span>
             <span className="ml-auto inline-flex items-center rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-400">
               2025-06-18
             </span>
@@ -2909,7 +2909,7 @@ function AgentSettings({
           <div className="p-5 space-y-3">
             {/* MCP URL */}
             <div>
-              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">MCP URL</label>
+              <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">MCP-Adresse</label>
               <div className="flex items-center gap-2">
                 <code className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-[11px] font-mono text-muted-foreground truncate">
                   {mcpUrl}
@@ -2939,7 +2939,7 @@ function AgentSettings({
             {/* Tools + hint in one row */}
             <div className="flex items-start gap-3">
               <div className="flex-1">
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Tools</label>
+                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Werkzeuge</label>
                 <div className="flex flex-wrap gap-1">
                   {["send_task", "get_task_status", "get_agent_status", "list_recent_tasks"].map((tool) => (
                     <code key={tool} className="rounded-md border border-violet-500/20 bg-violet-500/5 px-2 py-0.5 text-[10px] font-mono text-violet-400">{tool}</code>
@@ -3083,7 +3083,7 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
       <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
         <div className="flex items-center gap-2">
           <HardDrive className="h-4 w-4 text-orange-400" />
-          <span className="text-sm font-medium">Ressource-Limits</span>
+          <span className="text-sm font-medium">Ressourcen-Grenzen</span>
         </div>
         {hasChanges && (
           <button
@@ -3238,7 +3238,7 @@ function MountSelectorSection({ agentId }: { agentId: string }) {
       <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
         <div className="flex items-center gap-2">
           <FolderOpen className="h-4 w-4 text-blue-400" />
-          <span className="text-sm font-medium">Volume Mounts</span>
+          <span className="text-sm font-medium">Eingebundene Ordner</span>
         </div>
         <button
           onClick={handleSave}
@@ -3617,7 +3617,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
               title="Ziel im nächsten Schritt wählbar"
             >
               <Upload className="h-3 w-3" />
-              Upload
+              Hochladen
             </button>
           </div>
           <div className="flex items-center gap-1">
@@ -3700,7 +3700,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
           ) : !treeData["/workspace"] || treeData["/workspace"].length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground/50 font-sans">
               <FolderOpen className="h-8 w-8 mb-2" />
-              <p className="text-sm">Leerer Workspace</p>
+              <p className="text-sm">Leerer Arbeitsbereich</p>
             </div>
           ) : (
             renderTree("/workspace", 0)
@@ -3768,3 +3768,29 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
     </div>
   );
 }
+
+/** Leistungsstufe eines Modells auf Deutsch — der Modellkatalog des Servers
+ *  liefert englische Stufen („Most Powerful“), die er intern auch vergleicht. */
+const MODELL_STUFEN: Record<string, string> = {
+  "Most Powerful": "Am stärksten",
+  Balanced: "Ausgewogen",
+  Fast: "Schnell",
+  Legacy: "Ältere Version",
+};
+
+function modellStufe(stufe: string | undefined | null): string {
+  if (!stufe) return "";
+  return MODELL_STUFEN[stufe] ?? stufe;
+}
+
+/** „Opus 5.5 (Latest)“ aus dem Katalog → „Opus 5.5 (neueste)“. */
+function modellAnzeige(label: string): string {
+  return label.replace(/\(Latest\)/, "(neueste)");
+}
+
+/** Stufen des Modell-Routers (simple/standard/complex) für die Anzeige. */
+const ROUTER_STUFEN: Record<string, string> = {
+  simple: "Einfach",
+  standard: "Standard",
+  complex: "Komplex",
+};

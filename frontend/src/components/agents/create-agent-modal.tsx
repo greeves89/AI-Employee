@@ -116,7 +116,7 @@ function vorlagenSuchtext(t: AgentTemplate): string {
     t.description,
     t.role,
     kategorieName(t.category),
-    ...(t.skills ?? []).flatMap((s) => [skillTitel(s), s.name, s.description]),
+    ...(t.skills ?? []).flatMap((s) => [skillTitel(s), s.name, s.beschreibung ?? "", s.description]),
   ].join(" ").toLowerCase();
 }
 
@@ -165,9 +165,9 @@ function modeForAccountProvider(provider: string): AgentMode {
 function harnessForAccountProvider(provider: string): string {
   if (provider === "anthropic") return "Claude Code";
   if (provider === "openai") return "Codex CLI";
-  if (provider === "google") return "Custom Harness";
-  if (provider === "ollama" || provider === "lm-studio") return "Local Harness";
-  return "Custom Harness";
+  if (provider === "google") return "Eigene Laufzeit";
+  if (provider === "ollama" || provider === "lm-studio") return "Lokale Laufzeit";
+  return "Eigene Laufzeit";
 }
 
 function firstModelName(account?: AIAccount): string {
@@ -435,7 +435,7 @@ export function CreateAgentModal({
     {
       id: "oauth:claude",
       label: "Claude",
-      subtitle: "OAuth/API aus Settings",
+      subtitle: "Anmeldung oder API-Key aus den Einstellungen",
       provider: "anthropic",
       harness: "Claude Code",
       mode: "claude_code",
@@ -445,7 +445,7 @@ export function CreateAgentModal({
     {
       id: "oauth:codex",
       label: "OpenAI Codex",
-      subtitle: "ChatGPT OAuth aus Settings",
+      subtitle: "ChatGPT-Anmeldung aus den Einstellungen",
       provider: "openai",
       harness: "Codex CLI",
       mode: "codex_cli",
@@ -618,7 +618,7 @@ export function CreateAgentModal({
   // verwendet wird.
   const effectiveHarnessLabel =
     accountOptions.find((o) => o.id === selectedAccountKey)?.harness
-    ?? (mode === "codex_cli" ? "Codex CLI" : mode === "custom_llm" ? "Custom Harness" : "Claude Code");
+    ?? (mode === "codex_cli" ? "Codex CLI" : mode === "custom_llm" ? "Eigene Laufzeit" : "Claude Code");
   const effectiveModelId =
     aiAccountId !== null
       ? aiAccountModel
@@ -932,8 +932,8 @@ export function CreateAgentModal({
                                 {selectedTemplate.skills!.map((sk) => (
                                   <li key={sk.id} className="text-[11px] leading-snug">
                                     <span className="font-medium text-foreground/90">{skillTitel(sk)}</span>
-                                    {sk.description && (
-                                      <span className="line-clamp-2 text-muted-foreground">{sk.description}</span>
+                                    {(sk.beschreibung || sk.description) && (
+                                      <span className="line-clamp-2 text-muted-foreground">{sk.beschreibung || sk.description}</span>
                                     )}
                                   </li>
                                 ))}
@@ -947,7 +947,7 @@ export function CreateAgentModal({
                       {!simpleMode && (
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-2.5">
-                          Account & Harness
+                          Konto & Laufzeit
                         </label>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {/* Only show harnesses that are actually available:
@@ -990,7 +990,7 @@ export function CreateAgentModal({
                                         "rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider",
                                         option.connected ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
                                       )}>
-                                        {option.connected ? "ready" : "setup"}
+                                        {option.connected ? "bereit" : "einrichten"}
                                       </span>
                                     </div>
                                     <p className="mt-0.5 text-[11px] text-muted-foreground/70">{option.subtitle}</p>
@@ -1022,14 +1022,14 @@ export function CreateAgentModal({
                               <div>
                                 <p className="text-sm font-medium">Einmalig manuell</p>
                                 <p className="mt-0.5 text-[11px] text-muted-foreground/70">
-                                  Nur für Tests. Besser dauerhaft unter AI Accounts speichern.
+                                  Nur für Tests. Besser dauerhaft unter KI-Konten speichern.
                                 </p>
-                                <p className="mt-2 text-[10px] font-medium text-muted-foreground/60">Custom Harness</p>
+                                <p className="mt-2 text-[10px] font-medium text-muted-foreground/60">Eigene Laufzeit</p>
                               </div>
                             </button>
                           </div>
                           <p className="mt-2 text-[11px] text-muted-foreground/55">
-                            Claude und OpenAI nutzen automatisch ihre CLI-Harnesses. Google, Ollama und LM Studio laufen aktuell über den Custom Harness.
+                            Claude und OpenAI laufen automatisch in ihrer eigenen Kommandozeile (Claude Code, Codex CLI). Google, Ollama und LM Studio laufen über die eigene Laufzeit der Plattform.
                           </p>
                         </div>
                       )}
@@ -1118,7 +1118,7 @@ export function CreateAgentModal({
                           {/* API Endpoint */}
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                              API Endpoint
+                              API-Endpunkt
                             </label>
                             <input
                               type="text"
@@ -1198,10 +1198,10 @@ export function CreateAgentModal({
                                 onChange={(e) => setLlmReasoningEffort(e.target.value as "" | "low" | "medium" | "high")}
                                 className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all"
                               >
-                                <option value="">Standard (API-Default)</option>
-                                <option value="low">Low — schnell, wenig Denkaufwand</option>
-                                <option value="medium">Medium</option>
-                                <option value="high">High — gründlich, langsamer</option>
+                                <option value="">Standard (Vorgabe des Anbieters)</option>
+                                <option value="low">Niedrig — schnell, wenig Denkaufwand</option>
+                                <option value="medium">Mittel</option>
+                                <option value="high">Hoch — gründlich, langsamer</option>
                               </select>
                               <p className="text-[11px] text-muted-foreground/50 mt-1">
                                 Wird von allen anderen Modellen ignoriert.
@@ -1227,9 +1227,9 @@ export function CreateAgentModal({
                           {/* Tools Toggle */}
                           <div className="flex items-center justify-between rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-3">
                             <div>
-                              <p className="text-sm font-medium">Tool-Nutzung</p>
+                              <p className="text-sm font-medium">Werkzeuge nutzen</p>
                               <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                                Shell, Dateien, Memory, TODOs, Notifications, Team-Koordination
+                                Kommandozeile, Dateien, Gedächtnis, To-dos, Benachrichtigungen, Abstimmung im Team
                               </p>
                             </div>
                             <button
@@ -1286,7 +1286,7 @@ export function CreateAgentModal({
                               type="text"
                               value={role}
                               onChange={(e) => setRole(e.target.value)}
-                              placeholder="z.B. Fullstack Developer, Data Analyst, Technical Writer..."
+                              placeholder="z. B. Fullstack-Entwicklung, Datenanalyse, Technische Redaktion …"
                               className={cn(
                                 "w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none transition-all",
                                 mode === "custom_llm"
@@ -1382,7 +1382,7 @@ export function CreateAgentModal({
                             />
                           </div>
                           <p className="text-[11px] text-muted-foreground/50 mt-1">
-                            Max. Kosten pro Monat. Ohne Angabe: unbegrenzt. Reset am 1.
+                            Höchstkosten pro Monat. Ohne Angabe: unbegrenzt. Der Zähler beginnt am 1. jedes Monats neu.
                           </p>
 
                           {budgetUsd && parseFloat(budgetUsd) > 0 && (

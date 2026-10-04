@@ -462,7 +462,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               <PermissionBlock title="Modelle" zusammenfassung={zaehlen(draft.models, modelOptions.length, "alle")}>
                 <div className="flex flex-wrap gap-2">
                   {modelOptions.length === 0 ? (
-                    <span className="text-[11px] text-muted-foreground/50">Keine Modelle aus AI-Accounts</span>
+                    <span className="text-[11px] text-muted-foreground/50">Keine Modelle aus KI-Konten</span>
                   ) : modelOptions.map((model) => (
                     <ToggleChip
                       key={model}
@@ -481,7 +481,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               <PermissionBlock title="KI-Konten" zusammenfassung={zaehlen(draft.ai_account_ids, aiAccounts.length, "keine")}>
                 <div className="flex flex-wrap gap-2">
                   {aiAccounts.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground/50">Keine AI-Accounts angelegt</span>
+                    <span className="text-[11px] text-muted-foreground/50">Keine KI-Konten angelegt</span>
                   )}
                   {aiAccounts.map((acc) => (
                     <ToggleChip

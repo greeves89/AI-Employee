@@ -32,14 +32,14 @@ const SOURCE_CONFIG: Record<string, { label: string; className: string; icon?: t
 };
 
 const CATEGORIES = [
-  { key: "all", label: "All", color: "bg-gray-400" },
-  { key: "preference", label: "Preferences", color: "bg-blue-500" },
-  { key: "contact", label: "Contacts", color: "bg-emerald-500" },
-  { key: "project", label: "Projects", color: "bg-violet-500" },
-  { key: "procedure", label: "Procedures", color: "bg-amber-500" },
-  { key: "decision", label: "Decisions", color: "bg-cyan-500" },
-  { key: "fact", label: "Facts", color: "bg-pink-500" },
-  { key: "learning", label: "Learnings", color: "bg-orange-500" },
+  { key: "all", label: "Alle", color: "bg-gray-400" },
+  { key: "preference", label: "Vorlieben", color: "bg-blue-500" },
+  { key: "contact", label: "Kontakte", color: "bg-emerald-500" },
+  { key: "project", label: "Projekte", color: "bg-violet-500" },
+  { key: "procedure", label: "Abläufe", color: "bg-amber-500" },
+  { key: "decision", label: "Entscheidungen", color: "bg-cyan-500" },
+  { key: "fact", label: "Fakten", color: "bg-pink-500" },
+  { key: "learning", label: "Erkenntnisse", color: "bg-orange-500" },
 ];
 
 interface MemoryTabProps {
@@ -170,9 +170,9 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Brain className="h-5 w-5 text-purple-400" />
-          <h2 className="text-sm font-semibold">Long-term Memory</h2>
+          <h2 className="text-sm font-semibold">Langzeitgedächtnis</h2>
           <span className="text-xs text-muted-foreground">
-            ({totalMemories} {totalMemories === 1 ? "entry" : "entries"})
+            ({totalMemories} {totalMemories === 1 ? "Eintrag" : "Einträge"})
           </span>
         </div>
         <button
@@ -180,7 +180,7 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         >
           <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
-          Refresh
+          Aktualisieren
         </button>
       </div>
 
@@ -230,12 +230,12 @@ export function MemoryTab({ agentId }: MemoryTabProps) {
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <Brain className="h-10 w-10 mb-3 opacity-20" />
           <p className="text-sm font-medium">
-            {reflectionOnly ? "Keine Nachtschicht-Einträge" : "No memories yet"}
+            {reflectionOnly ? "Keine Nachtschicht-Einträge" : "Noch keine Erinnerungen"}
           </p>
           <p className="text-xs mt-1">
             {reflectionOnly
               ? "Der nächtliche Reflexions-Lauf hat hier noch nichts abgelegt."
-              : "This agent will automatically save important information here as it works."}
+              : "Der Agent legt hier während der Arbeit automatisch wichtige Informationen ab."}
           </p>
         </div>
       ) : (

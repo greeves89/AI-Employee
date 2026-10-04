@@ -96,7 +96,7 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
           </div>
           <div>
             <h2 className="text-base font-semibold leading-tight">Teams</h2>
-            <p className="text-xs text-muted-foreground">Agents bündeln, Lead festlegen, Tasks delegieren</p>
+            <p className="text-xs text-muted-foreground">Agenten bündeln, Leitung festlegen, Aufgaben verteilen</p>
           </div>
         </div>
         <button
@@ -104,7 +104,7 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
           className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all duration-200"
         >
           <Plus className="h-4 w-4" />
-          New Team
+          Neues Team
         </button>
       </div>
 
@@ -207,7 +207,7 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
                         <button
                           onClick={() => setDelegateTeam(team)}
                           className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                          title="Task delegieren"
+                          title="Aufgabe delegieren"
                         >
                           <Send className="h-3.5 w-3.5" />
                         </button>

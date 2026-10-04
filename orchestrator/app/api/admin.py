@@ -30,7 +30,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 async def _require_admin(user=Depends(require_auth)):
     if user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Admins")
     return user
 
 
@@ -136,7 +136,7 @@ async def get_agent_admin_stats(
     # Agent info
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     config = agent.config or {}
 
@@ -221,7 +221,7 @@ async def get_agent_admin_stats(
     # Admin sees all, owner sees own, unowned = visible to all
     visibility = []
     if agent.user_id is None:
-        visibility.append({"scope": "all", "reason": "Unowned (legacy agent)"})
+        visibility.append({"scope": "all", "reason": "Ohne Besitzer (älterer Agent)"})
     else:
         visibility.append({"scope": "owner", "user": owner})
         # All admins can see
@@ -459,14 +459,14 @@ async def distribute_agent(
     for uid in target_ids:
         target_user = await db.get(User, uid)
         if not target_user or not target_user.is_active:
-            skipped.append({"user_id": uid, "reason": "user not found or inactive"})
+            skipped.append({"user_id": uid, "reason": "Nutzer nicht gefunden oder gesperrt"})
             continue
         # Idempotent: one copy of a given source per user.
         existing = await db.scalar(
             select(Agent.id).where(Agent.source_agent_id == source.id, Agent.user_id == uid)
         )
         if existing:
-            skipped.append({"user_id": uid, "user_name": target_user.name, "reason": "already has a copy", "agent_id": existing})
+            skipped.append({"user_id": uid, "user_name": target_user.name, "reason": "hat bereits eine Kopie", "agent_id": existing})
             continue
 
         name = _sanitize_agent_name(f"{(body.name_prefix or source.name)} - {target_user.name}")
@@ -518,7 +518,7 @@ async def distribute_agent(
             skipped.append({"user_id": uid, "user_name": target_user.name, "reason": grund})
         except Exception as e:  # noqa: BLE001
             logger.exception(f"Failed to clone source {source.id} for user {scrub_log(uid)}")
-            skipped.append({"user_id": uid, "user_name": target_user.name, "reason": f"error: {e}"})
+            skipped.append({"user_id": uid, "user_name": target_user.name, "reason": f"Fehler: {e}"})
 
     return {
         "status": "distributed",
@@ -595,7 +595,7 @@ async def revoke_assignment(
 
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     manager = AgentManager(db, docker, redis)
     await manager.remove_agent(agent_id, remove_data=False)

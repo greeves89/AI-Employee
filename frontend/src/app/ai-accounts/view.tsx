@@ -57,7 +57,7 @@ function accountHealthBadge(a: AIAccount): { label: string; className: string } 
   if (!a.last_status) return null;
   const map: Record<string, { label: string; className: string }> = {
     ok: { label: "erreichbar", className: "text-emerald-400" },
-    auth_failed: { label: "Auth fehlgeschlagen", className: "text-amber-700 dark:text-amber-400" },
+    auth_failed: { label: "Anmeldung fehlgeschlagen", className: "text-amber-700 dark:text-amber-400" },
     unreachable: { label: "nicht erreichbar", className: "text-red-400" },
     protocol_error: { label: "Protokollfehler", className: "text-red-400" },
     unsupported: { label: "keine Prüfung möglich", className: "text-muted-foreground/50" },
@@ -101,7 +101,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
     try {
       setAccounts(await api.listAIAccounts());
     } catch {
-      showToast("error", "Konnte AI-Accounts nicht laden");
+      showToast("error", "KI-Konten konnten nicht geladen werden");
     } finally {
       setLoading(false);
     }
@@ -240,10 +240,10 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
       };
       if (editingId) {
         await api.updateAIAccount(editingId, payload);
-        showToast("success", "AI-Account aktualisiert");
+        showToast("success", "KI-Konto aktualisiert");
       } else {
         await api.createAIAccount(payload);
-        showToast("success", "AI-Account erstellt");
+        showToast("success", "KI-Konto angelegt");
       }
       setShowForm(false);
       await load();
@@ -267,7 +267,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
     setDeleting(a.id);
     try {
       await api.deleteAIAccount(a.id);
-      showToast("success", "AI-Account gelöscht");
+      showToast("success", "KI-Konto gelöscht");
       await load();
     } catch {
       showToast("error", "Löschen fehlgeschlagen");
@@ -280,29 +280,29 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <div className={embedded ? "" : "min-h-screen"}>
-      {!embedded && <Header title="AI-Accounts" subtitle="Wiederverwendbare Modell-Zugänge — einmal anlegen, an Agents hängen" />}
+      {!embedded && <Header title="KI-Konten" subtitle="Wiederverwendbare Modell-Zugänge — einmal anlegen, an Agenten hängen" />}
       <div className={embedded ? "mx-auto max-w-4xl" : "mx-auto max-w-4xl px-6 py-8"}>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-semibold flex items-center gap-2">
-              <Cpu className="h-5 w-5 text-primary" /> AI-Accounts
+              <Cpu className="h-5 w-5 text-primary" /> KI-Konten
             </h1>
             <p className="text-sm text-muted-foreground/70 mt-1">
-              Wiederverwendbare Modell-Zugänge — einmal anlegen, an beliebige Agents hängen.
+              Wiederverwendbare Modell-Zugänge — einmal anlegen, an beliebige Agenten hängen.
             </p>
           </div>
           <button
             onClick={openCreate}
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20"
           >
-            <Plus className="h-4 w-4" /> Neuer Account
+            <Plus className="h-4 w-4" /> Neues KI-Konto
           </button>
         </div>
 
         {showForm && (
           <div className="mb-6 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">{editingId ? "Account bearbeiten" : "Neuer Account"}</h2>
+              <h2 className="text-sm font-semibold">{editingId ? "KI-Konto bearbeiten" : "Neues KI-Konto"}</h2>
               <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />
               </button>
@@ -315,7 +315,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                   placeholder="z.B. Azure GPT-4o Prod" />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Provider</label>
+                <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1">Anbieter</label>
                 <select className={inputCls} value={form.provider_type}
                   onChange={(e) => setForm({ ...form, provider_type: e.target.value })}>
                   {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
@@ -345,7 +345,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                       </span>
                       <span className="text-[10px] text-muted-foreground/50 truncate flex-1">{m.api_endpoint || "— Endpoint fehlt —"}</span>
                       {discovered && discovered.length > 0 && !discovered.some((d) => d.id === m.name) && (
-                        <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-[10px] text-amber-700 dark:text-amber-400" title="Nicht in der vom Provider abgerufenen Liste">
+                        <span className="shrink-0 rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-[10px] text-amber-700 dark:text-amber-400" title="Nicht in der vom Anbieter abgerufenen Liste">
                           nicht in Liste
                         </span>
                       )}
@@ -373,7 +373,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                 <div className="mb-2 rounded-lg border border-primary/20 bg-primary/[0.03] p-2.5 space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] text-muted-foreground/70">
-                      Modelle direkt vom Provider abrufen (prüft zugleich die Verbindung)
+                      Modelle direkt vom Anbieter abrufen (prüft zugleich die Verbindung)
                     </span>
                     <button type="button" onClick={runDiscovery} disabled={discovering}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-1.5 text-[12px] font-medium text-primary hover:bg-primary/25 disabled:opacity-50 shrink-0">
@@ -423,8 +423,8 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                 </div>
 
                 <p className="text-[10px] text-muted-foreground/50 mt-1.5">
-                  Jedes Modell hat seinen eigenen Endpoint/API-Typ — so deckt <b>ein</b> Account
-                  mehrere Azure-Surfaces ab (Chat, Responses/Codex, Anthropic/Claude).
+                  Jedes Modell hat seinen eigenen Endpoint/API-Typ — so deckt <b>ein</b> KI-Konto
+                  mehrere Azure-Zugänge ab (Chat, Responses/Codex, Anthropic/Claude).
                 </p>
               </div>
               {form.provider_type === "bedrock" && (
@@ -483,7 +483,7 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
         ) : accounts.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <Cpu className="h-8 w-8 mx-auto mb-2 opacity-30" />
-            Noch keine AI-Accounts. Lege den ersten an.
+            Noch keine KI-Konten. Lege das erste an.
           </div>
         ) : (
           <div className="space-y-2">
@@ -521,10 +521,10 @@ export function AIAccountsView({ embedded = false }: { embedded?: boolean }) {
                   className={cn("rounded-lg p-2 hover:bg-foreground/[0.06]", a.is_active ? "text-emerald-400" : "text-muted-foreground")}>
                   <Power className="h-4 w-4" />
                 </button>
-                <button onClick={() => openEdit(a)} className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]">
+                <button onClick={() => openEdit(a)} title="Bearbeiten" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]">
                   <Pencil className="h-4 w-4" />
                 </button>
-                <button onClick={() => remove(a)} disabled={deleting === a.id}
+                <button onClick={() => remove(a)} disabled={deleting === a.id} title="Löschen"
                   className="rounded-lg p-2 text-muted-foreground hover:text-red-400 hover:bg-red-500/[0.06]">
                   {deleting === a.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 </button>

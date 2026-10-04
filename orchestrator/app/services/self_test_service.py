@@ -783,26 +783,26 @@ class SelfTestService:
                 failures_by_cat[cat].append(f"{r.name}: {r.error}")
 
         lines = [
-            f"🏥 Self-Test Report — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+            f"Selbsttest — {datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')}",
             f"",
-            f"{'✅' if failed == 0 else '⚠️'} {passed}/{total} Tests bestanden ({elapsed_ms}ms)",
+            f"{passed}/{total} Tests bestanden ({elapsed_ms} ms)",
         ]
 
         if failed > 0:
-            lines.append(f"❌ {failed} Fehler:")
+            lines.append(f"{failed} Fehler:")
             for cat, fails in failures_by_cat.items():
                 lines.append(f"  [{cat}]")
                 for f in fails:
                     lines.append(f"    • {f}")
 
         if issues_created > 0:
-            lines.append(f"🐛 {issues_created} GitHub Issue(s) erstellt")
+            lines.append(f"{issues_created} GitHub-Issue(s) angelegt")
 
         # Performance highlights
         perf_tests = [r for r in results if r.category == "performance"]
         if perf_tests:
             avg_ms = round(sum(r.duration_ms for r in perf_tests) / len(perf_tests))
-            lines.append(f"⚡ Avg API Response: {avg_ms}ms")
+            lines.append(f"Mittlere Antwortzeit der API: {avg_ms} ms")
 
         return "\n".join(lines)
 

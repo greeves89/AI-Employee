@@ -78,7 +78,7 @@ export function TaskDetailModal({ taskId, onClose }: { taskId: string | null; on
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative z-10 w-full max-w-2xl max-h-[85vh] overflow-auto rounded-2xl border border-foreground/10 bg-card shadow-2xl">
         <div className="sticky top-0 flex items-center justify-between border-b border-foreground/[0.06] bg-card px-5 py-3.5">
-          <h3 className="text-sm font-semibold">Task-Details</h3>
+          <h3 className="text-sm font-semibold">Details der Aufgabe</h3>
           <button onClick={onClose} className="p-1 rounded hover:bg-foreground/[0.06]" title="Schließen">
             <X className="h-4 w-4" />
           </button>

@@ -257,7 +257,7 @@ export default function MeetingRoomsPage() {
       ${summary ? `<div class="summary"><h2>Zusammenfassung</h2>${toMd(summary.content)}</div>` : ""}
       <h2>Gesprächsverlauf</h2>
       ${agentMsgs.map(m => `<div class="msg ${m.role === "moderator" ? "moderator" : ""}">
-        <div class="agent-name">${m.role === "moderator" ? "🎙 Moderator" : (m.agent_id || "Agent")}</div>
+        <div class="agent-name">${m.role === "moderator" ? "Moderation" : (m.agent_id || "Agent")}</div>
         <div>${toMd(m.content)}</div></div>`).join("")}
       </body></html>`;
     const w = window.open("", "_blank");
@@ -291,7 +291,7 @@ export default function MeetingRoomsPage() {
             className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             <Plus className="h-4 w-4" />
-            New Room
+            Neuer Raum
           </button>
         </div>
 
@@ -304,7 +304,7 @@ export default function MeetingRoomsPage() {
               className="w-full max-w-lg max-h-[90dvh] flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
             >
               <h2 className="shrink-0 px-6 pt-6 pb-4 text-lg font-semibold">
-                Create Meeting Room
+                Besprechungsraum anlegen
               </h2>
 
               <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-2 space-y-4">
@@ -315,7 +315,7 @@ export default function MeetingRoomsPage() {
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="z.B. Marketing Strategie Review"
+                    placeholder="z. B. Marketingstrategie besprechen"
                     className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                 </div>
@@ -514,9 +514,9 @@ export default function MeetingRoomsPage() {
                             <ChevronRight className="h-4 w-4 text-emerald-400" />
                           </div>
                           <div>
-                            <p className="text-sm font-medium">Meeting Phasen</p>
+                            <p className="text-sm font-medium">Besprechungsphasen</p>
                             <p className="text-[11px] text-muted-foreground mt-0.5">
-                              Strukturiert das Meeting in Eröffnung, Analyse und Synthese statt endlosem Round-Robin.
+                              Gliedert die Besprechung in Eröffnung, Analyse und Synthese, statt reihum ohne Ende zu reden.
                             </p>
                           </div>
                         </div>
@@ -606,7 +606,7 @@ export default function MeetingRoomsPage() {
                   onClick={() => setShowCreate(false)}
                   className="rounded-lg px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Cancel
+                  Abbrechen
                 </button>
                 <button
                   onClick={handleCreate}
@@ -616,7 +616,7 @@ export default function MeetingRoomsPage() {
                   className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                 >
                   {creating && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Create
+                  Anlegen
                 </button>
               </div>
             </motion.div>
@@ -703,7 +703,7 @@ export default function MeetingRoomsPage() {
                       ) : (
                         <Play className="h-3.5 w-3.5" />
                       )}
-                      Start
+                      Starten
                     </button>
                   ) : room.state === "running" ? (
                     <button
@@ -716,7 +716,7 @@ export default function MeetingRoomsPage() {
                       ) : (
                         <Square className="h-3.5 w-3.5" />
                       )}
-                      Stop
+                      Stoppen
                     </button>
                   ) : null}
                   {room.state === "completed" && (

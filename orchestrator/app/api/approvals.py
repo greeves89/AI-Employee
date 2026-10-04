@@ -362,15 +362,18 @@ async def request_approval(
         pass
 
     # Build a human-readable approval message
-    risk_emoji = {"low": "🟡", "medium": "🟠", "high": "🔴", "critical": "🚨"}.get(body.risk_level, "⚠️")
-    tg_lines = [f"{risk_emoji} *Approval nötig — {agent_name}*"]
+    # Ohne Emojis, Risiko als Wort (#902).
+    risiko = {"low": "gering", "medium": "mittel", "high": "hoch", "critical": "kritisch"}.get(
+        body.risk_level, body.risk_level
+    )
+    tg_lines = [f"*Freigabe nötig — {agent_name}*"]
     if body.question:
-        tg_lines.append(f"\n❓ {body.question}")
+        tg_lines.append(f"\nFrage: {body.question}")
     if body.tool and body.tool != "user_decision":
-        tg_lines.append(f"🔧 Tool: `{body.tool}`")
+        tg_lines.append(f"Werkzeug: `{body.tool}`")
     if reasoning:
         tg_lines.append(f"\n{reasoning}")
-    tg_lines.append(f"\n_Risiko: {body.risk_level}_")
+    tg_lines.append(f"\n_Risiko: {risiko}_")
     tg_message = "\n".join(tg_lines)
 
     # Always notify Telegram — every approval is time-sensitive
@@ -396,7 +399,7 @@ async def request_approval(
     await _push_ios_for_agent(
         db,
         agent_id,
-        f"{risk_emoji} {agent_name}: Approval nötig",
+        f"{agent_name}: Freigabe nötig",
         body.question or reasoning or notif.title,
         data={
             "notification_id": str(notif.id),
@@ -570,7 +573,7 @@ async def check_approval_status(
     approval = result.scalar_one_or_none()
 
     if not approval:
-        raise HTTPException(status_code=404, detail="Approval request not found")
+        raise HTTPException(status_code=404, detail="Freigabe-Anfrage nicht gefunden")
     if approval.agent_id != agent_auth["agent_id"]:
         raise HTTPException(status_code=403, detail="Not authorized for this request")
 
@@ -867,12 +870,12 @@ async def approve_request(
     approval = result.scalar_one_or_none()
 
     if not approval:
-        raise HTTPException(status_code=404, detail="Approval request not found")
+        raise HTTPException(status_code=404, detail="Freigabe-Anfrage nicht gefunden")
 
     await require_agent_access(approval.agent_id, user, db)
 
     if approval.status != ApprovalStatus.PENDING:
-        raise HTTPException(status_code=400, detail=f"Request already {approval.status}")
+        raise HTTPException(status_code=400, detail=f"Die Anfrage ist bereits entschieden ({approval.status})")
 
     # Reflection proposals: applying the change IS the approval effect (no agent
     # container is waiting on Redis). Apply FIRST — if it fails, the approval
@@ -947,16 +950,16 @@ async def deny_request(
     approval = result.scalar_one_or_none()
 
     if not approval:
-        raise HTTPException(status_code=404, detail="Approval request not found")
+        raise HTTPException(status_code=404, detail="Freigabe-Anfrage nicht gefunden")
 
     await require_agent_access(approval.agent_id, user, db)
 
     if approval.status != ApprovalStatus.PENDING:
-        raise HTTPException(status_code=400, detail=f"Request already {approval.status}")
+        raise HTTPException(status_code=400, detail=f"Die Anfrage ist bereits entschieden ({approval.status})")
 
     approval.status = ApprovalStatus.DENIED
     approval.resolved_at = datetime.now(timezone.utc)
-    approval.user_response = decision.reason or "Denied by user"
+    approval.user_response = decision.reason or "Vom Nutzer abgelehnt"
     from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
     await benachrichtigungen_abschliessen(db, [approval])
 
@@ -995,7 +998,7 @@ async def cancel_approval_request(
     approval = result.scalar_one_or_none()
 
     if not approval:
-        raise HTTPException(status_code=404, detail="Approval request not found")
+        raise HTTPException(status_code=404, detail="Freigabe-Anfrage nicht gefunden")
     # Ownership: only the agent's owner/admin may cancel its pending approval
     # (mirrors approve_request/deny_request).
     await require_agent_access(approval.agent_id, user, db)
@@ -1003,11 +1006,11 @@ async def cancel_approval_request(
     # eine laengst getroffene Entscheidung samt Entscheider — im Protokoll stuende
     # dann eine Freigabe, die es so nie gab.
     if approval.status != ApprovalStatus.PENDING:
-        raise HTTPException(status_code=400, detail=f"Request already {approval.status}")
+        raise HTTPException(status_code=400, detail=f"Die Anfrage ist bereits entschieden ({approval.status})")
 
     approval.status = ApprovalStatus.DENIED
     approval.resolved_at = datetime.now(timezone.utc)
-    approval.user_response = "Cancelled by user"
+    approval.user_response = "Vom Nutzer verworfen"
     from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
     await benachrichtigungen_abschliessen(db, [approval])
     await freigabe_entschieden(db, approval, ergebnis="cancelled", user=user)

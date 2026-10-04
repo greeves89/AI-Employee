@@ -24,12 +24,17 @@ class VorlageZeigtSkillsTests(unittest.IsolatedAsyncioTestCase):
             await conn.run_sync(lambda c: AgentTemplate.__table__.create(c))
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.Session() as db:
-            for i, (name, beschr) in enumerate([("docx", "Word-Dateien"), ("buchhaltung-vorkontieren", "Belege vorkontieren")], 1):
+            for i, (name, beschr) in enumerate([("docx", "Word-Dateien"), ("buchhaltung-vorkontieren", "Belege vorkontieren"),
+                                                ("test-driven-development", "Use when implementing any feature or bugfix")], 1):
                 db.add(Skill(id=i, name=name, description=beschr, content="x", category=SkillCategory.TEMPLATE,
                              status=SkillStatus.ACTIVE, created_by="test"))
             db.add(AgentTemplate(name="bookkeeper", display_name="Buchhaltung", description="", icon="", category="finance",
                                  model="", role="", permissions=[], integrations=[], mcp_server_ids=[],
                                  skill_ids=[2, 1, 99], knowledge_template="", is_builtin=True, is_published=True))
+            db.add(AgentTemplate(name="fullstack-developer", display_name="Fullstack-Entwicklung", description="", icon="",
+                                 category="development", model="", role="", permissions=[], integrations=[],
+                                 mcp_server_ids=[], skill_ids=[3], knowledge_template="", is_builtin=True,
+                                 is_published=True))
             await db.commit()
         self.user = SimpleNamespace(id="u1", role=UserRole.ADMIN)
 
@@ -45,9 +50,30 @@ class VorlageZeigtSkillsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_einzelne_vorlage_ebenso(self):
         async with self.Session() as db:
-            tid = (await list_templates(user=self.user, db=db))["templates"][0]["id"]
+            vorlagen = (await list_templates(user=self.user, db=db))["templates"]
+            tid = next(v["id"] for v in vorlagen if v["name"] == "bookkeeper")
             out = await get_template(template_id=tid, user=self.user, db=db)
         self.assertEqual(len(out["skills"]), 2)
+
+    async def test_englischer_fremd_skill_kommt_mit_deutschem_titel_und_text(self):
+        """Skills aus fremden Quellen sind englisch beschrieben (#902). Die Vorlagen-
+        Auswahl bekommt daneben einen deutschen Titel und Kurztext; ``description``
+        bleibt unverändert (Suche, Agenten)."""
+        async with self.Session() as db:
+            vorlagen = (await list_templates(user=self.user, db=db))["templates"]
+        sk = next(v for v in vorlagen if v["name"] == "fullstack-developer")["skills"][0]
+        self.assertEqual(sk["name"], "test-driven-development")
+        self.assertEqual(sk["description"], "Use when implementing any feature or bugfix")
+        self.assertTrue(sk["beschreibung"])
+        self.assertNotIn("Use when", sk["beschreibung"])
+        self.assertNotEqual(sk["titel"], "test-driven-development")
+
+    async def test_deutscher_skill_braucht_keine_zweite_beschreibung(self):
+        async with self.Session() as db:
+            vorlagen = (await list_templates(user=self.user, db=db))["templates"]
+        skills = next(v for v in vorlagen if v["name"] == "bookkeeper")["skills"]
+        eigener = next(s for s in skills if s["name"] == "buchhaltung-vorkontieren")
+        self.assertIsNone(eigener["beschreibung"])
 
 
 if __name__ == "__main__":

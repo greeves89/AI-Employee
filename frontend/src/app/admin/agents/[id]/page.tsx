@@ -20,6 +20,15 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { agentZustand, AUFGABEN_STATUS } from "@/lib/aufgaben-anzeige";
+import { rollenName } from "@/lib/rollen";
+
+/** Wer einen Agenten sieht — die API liefert englische Kennungen. */
+const SICHTBARKEIT: Record<string, string> = {
+  all: "Alle",
+  owner: "Besitzer",
+  admins: "Admins",
+};
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
 import * as api from "@/lib/api";
@@ -78,7 +87,7 @@ export default function AdminAgentDetailPage() {
     api
       .getAdminAgentStats(agentId)
       .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .catch((e) => setError(e instanceof Error ? e.message : "Laden fehlgeschlagen"))
       .finally(() => setLoading(false));
   }, [agentId]);
 
@@ -87,7 +96,7 @@ export default function AdminAgentDetailPage() {
   return (
     <div>
       <Header
-        title="Agent Statistics"
+        title="Agenten-Statistik"
         subtitle={data?.agent.name || agentId}
         actions={
           <div className="flex items-center gap-2">
@@ -144,7 +153,7 @@ export default function AdminAgentDetailPage() {
                         stateColors[data.agent.state] || "text-zinc-500"
                       )}
                     >
-                      {data.agent.state}
+                      {agentZustand(data.agent.state)}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
@@ -166,8 +175,8 @@ export default function AdminAgentDetailPage() {
                     )}
                   </div>
                   <div className="flex flex-wrap gap-4 mt-2 text-xs text-muted-foreground/60">
-                    <span>Created: {formatDate(data.agent.created_at)}</span>
-                    <span>Updated: {formatDate(data.agent.updated_at)}</span>
+                    <span>Angelegt: {formatDate(data.agent.created_at)}</span>
+                    <span>Geändert: {formatDate(data.agent.updated_at)}</span>
                   </div>
                 </div>
               </div>
@@ -177,56 +186,56 @@ export default function AdminAgentDetailPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard
                 icon={ListTodo}
-                label="Total Tasks"
+                label="Aufgaben gesamt"
                 value={data.stats.total_tasks}
                 color="text-blue-500"
                 bg="bg-blue-500/10"
               />
               <StatCard
                 icon={CheckCircle2}
-                label="Completed"
+                label="Erledigt"
                 value={data.stats.completed_tasks}
                 color="text-emerald-500"
                 bg="bg-emerald-500/10"
               />
               <StatCard
                 icon={XCircle}
-                label="Failed"
+                label="Fehlgeschlagen"
                 value={data.stats.failed_tasks}
                 color="text-red-500"
                 bg="bg-red-500/10"
               />
               <StatCard
                 icon={DollarSign}
-                label="Total Cost"
+                label="Kosten gesamt"
                 value={formatMoney(data.stats.total_cost_usd)}
                 color="text-amber-500"
                 bg="bg-amber-500/10"
               />
               <StatCard
                 icon={Clock}
-                label="Total Duration"
+                label="Laufzeit gesamt"
                 value={formatDuration(data.stats.total_duration_ms)}
                 color="text-purple-500"
                 bg="bg-purple-500/10"
               />
               <StatCard
                 icon={RotateCcw}
-                label="Total Turns"
+                label="Schritte gesamt"
                 value={data.stats.total_turns}
                 color="text-cyan-500"
                 bg="bg-cyan-500/10"
               />
               <StatCard
                 icon={MessageSquare}
-                label="Chat Sessions"
+                label="Gespräche"
                 value={data.stats.chat_sessions}
                 color="text-indigo-500"
                 bg="bg-indigo-500/10"
               />
               <StatCard
                 icon={MessageSquare}
-                label="Chat Messages"
+                label="Chatnachrichten"
                 value={data.stats.chat_messages}
                 color="text-pink-500"
                 bg="bg-pink-500/10"
@@ -239,7 +248,7 @@ export default function AdminAgentDetailPage() {
               <div className="rounded-xl border border-border/50 bg-card/50 p-5">
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                   <User className="h-4 w-4 text-muted-foreground" />
-                  Owner
+                  Besitzer
                 </h4>
                 {data.owner ? (
                   <div className="flex items-center gap-3">
@@ -263,11 +272,11 @@ export default function AdminAgentDetailPage() {
                           : "bg-blue-500/10 text-blue-500"
                       )}
                     >
-                      {data.owner.role}
+                      {rollenName(data.owner.role)}
                     </span>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No owner (legacy agent)</p>
+                  <p className="text-sm text-muted-foreground">Ohne Besitzer (älterer Agent)</p>
                 )}
               </div>
 
@@ -275,7 +284,7 @@ export default function AdminAgentDetailPage() {
               <div className="rounded-xl border border-border/50 bg-card/50 p-5">
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                   <Eye className="h-4 w-4 text-muted-foreground" />
-                  Visibility
+                  Sichtbar für
                 </h4>
                 <div className="space-y-2">
                   {data.visibility.map((v, i) => (
@@ -284,7 +293,7 @@ export default function AdminAgentDetailPage() {
                       className="flex items-center gap-2 text-sm"
                     >
                       <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-foreground/5 text-muted-foreground capitalize">
-                        {v.scope}
+                        {SICHTBARKEIT[v.scope] ?? v.scope}
                       </span>
                       {v.reason && (
                         <span className="text-muted-foreground">{v.reason}</span>
@@ -296,7 +305,7 @@ export default function AdminAgentDetailPage() {
                       )}
                       {v.scope === "admins" && v.count !== undefined && (
                         <span className="text-muted-foreground">
-                          {v.count} admin{v.count !== 1 ? "s" : ""}
+                          {v.count} {v.count !== 1 ? "Admins" : "Admin"}
                         </span>
                       )}
                     </div>
@@ -309,10 +318,10 @@ export default function AdminAgentDetailPage() {
             <div className="rounded-xl border border-border/50 bg-card/50 p-5">
               <h4 className="text-sm font-semibold mb-4 flex items-center gap-2">
                 <ListTodo className="h-4 w-4 text-muted-foreground" />
-                Recent Tasks
+                Letzte Aufgaben
               </h4>
               {data.recent_tasks.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">No tasks yet</p>
+                <p className="text-sm text-muted-foreground text-center py-6">Noch keine Aufgaben</p>
               ) : (
                 <div className="space-y-2">
                   {data.recent_tasks.map((task) => (
@@ -333,8 +342,8 @@ export default function AdminAgentDetailPage() {
                         )}
                       />
                       <span className="flex-1 text-sm truncate">{task.title}</span>
-                      <span className="shrink-0 text-[11px] text-muted-foreground capitalize">
-                        {task.status}
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {AUFGABEN_STATUS[task.status] ?? task.status}
                       </span>
                       {task.cost_usd !== null && (
                         <span className="shrink-0 text-[11px] text-muted-foreground">

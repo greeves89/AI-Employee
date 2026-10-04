@@ -167,13 +167,13 @@ async def rate_task(
     result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     # Ownership: only a task of the caller's own agent (admin bypasses) — otherwise the
     # comment-driven follow-up below would inject an attacker task onto a foreign agent.
     from app.core.ownership import visible_agent_ids
     vids = await visible_agent_ids(user, db)
     if vids is not None and task.agent_id not in vids:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
 
     if task.status not in (TaskStatus.COMPLETED, TaskStatus.FAILED):
         raise HTTPException(status_code=400, detail="Can only rate completed or failed tasks")
@@ -317,12 +317,12 @@ async def record_skill_usage(
     task_result = await db.execute(select(Task).where(Task.id == body.task_id))
     task = task_result.scalar_one_or_none()
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
 
     skill_result = await db.execute(select(Skill).where(Skill.id == body.skill_id))
     skill = skill_result.scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     # Deduplicate per task+skill
     existing = await db.execute(
@@ -380,11 +380,11 @@ async def _assert_agent_visible(agent_id: str, user, db) -> None:
     from app.core.ownership import visible_agent_ids
     if is_agent_principal(user):
         if user.id != agent_id:
-            raise HTTPException(status_code=404, detail="Agent not found")
+            raise HTTPException(status_code=404, detail="Agent nicht gefunden")
         return
     vids = await visible_agent_ids(user, db)
     if vids is not None and agent_id not in vids:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.get("/agents/{agent_id}/ratings", response_model=AgentRatingsResponse)
@@ -399,7 +399,7 @@ async def get_agent_ratings(
     # Verify agent exists
     agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
     if not agent_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     await _assert_agent_visible(agent_id, user, db)
 
     # Total count
@@ -444,7 +444,7 @@ async def get_improvement_report(
     agent_result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = agent_result.scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     # Fetch all ratings for this agent, ordered by time
     result = await db.execute(

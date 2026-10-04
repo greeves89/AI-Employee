@@ -16,7 +16,7 @@ router = APIRouter(prefix="/roles", tags=["roles"])
 
 def _require_admin(user):
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Admins")
 
 
 async def _rolle_protokollieren(db: AsyncSession, user, befehl: str, **meta) -> None:

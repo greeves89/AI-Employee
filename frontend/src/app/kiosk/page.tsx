@@ -202,7 +202,7 @@ function OverviewView({ data, onOpenAgent }: { data: Overview | null; onOpenAgen
     <div className="h-full grid grid-rows-[auto_1fr] gap-3">
       <div className="grid grid-cols-4 gap-3">
         <BigStat label="Agenten aktiv" value={`${data?.agents_working ?? 0}/${data?.agents_total ?? 0}`} accent="text-cyan-300" icon={<Bot className="w-4 h-4" />} />
-        <BigStat label="Tasks laufen" value={data?.tasks.running ?? 0} accent="text-emerald-300" icon={<Activity className="w-4 h-4" />} pulse={(data?.tasks.running ?? 0) > 0} />
+        <BigStat label="Aufgaben laufen" value={data?.tasks.running ?? 0} accent="text-emerald-300" icon={<Activity className="w-4 h-4" />} pulse={(data?.tasks.running ?? 0) > 0} />
         <BigStat label="Heute fertig" value={data?.tasks.done_today ?? 0} accent="text-violet-300" icon={<CircleDot className="w-4 h-4" />} />
         <BigStat label="AI-Kosten heute" value={`$${nf(data?.ai_spend.cost_usd_today ?? 0, 2)}`} accent="text-amber-700 dark:text-amber-300" icon={<Euro className="w-4 h-4" />} />
       </div>
@@ -295,12 +295,12 @@ function AgentDetailView({ id, onBack, onChat, onVoice }: { id: string; onBack: 
         <KV icon={<ShieldCheck className="w-4 h-4" />} label="Autonomie" value={d?.autonomy_level ?? "—"} />
         <KV icon={<Coins className="w-4 h-4" />} label="Kosten gesamt" value={d ? `$${nf(d.cost_usd_total, 2)}` : "—"} />
         <KV icon={<Hash className="w-4 h-4" />} label="Tokens" value={d ? nf(d.tokens_in_total + d.tokens_out_total) : "—"} />
-        <KV icon={<ListTodo className="w-4 h-4" />} label="Tasks gesamt" value={d ? String(d.tasks_total) : "—"} />
+        <KV icon={<ListTodo className="w-4 h-4" />} label="Aufgaben gesamt" value={d ? String(d.tasks_total) : "—"} />
         <KV icon={<Server className="w-4 h-4" />} label="Container" value={d ? (d.has_container ? "aktiv" : "keiner") : "—"} />
         {d?.role && <div className="col-span-2"><KV icon={<Users className="w-4 h-4" />} label="Rolle" value={d.role} /></div>}
 
         <div className="col-span-2 kiosk-card p-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2 flex items-center gap-1.5"><Activity className="w-4 h-4 text-violet-400" />Task-Verteilung</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2 flex items-center gap-1.5"><Activity className="w-4 h-4 text-violet-400" />Verteilung der Aufgaben</div>
           <div className="flex flex-wrap gap-2">
             {d && Object.entries(d.tasks_by_status).map(([s, n]) => (
               <span key={s} className={`px-2.5 py-1 rounded-full text-xs ${stateColor(s).text} bg-white/[0.04]`}>{s}: <b>{n}</b></span>
@@ -310,7 +310,7 @@ function AgentDetailView({ id, onBack, onChat, onVoice }: { id: string; onBack: 
         </div>
 
         <div className="col-span-2 kiosk-card p-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2 flex items-center gap-1.5"><ListTodo className="w-4 h-4 text-cyan-400" />Letzte Tasks</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2 flex items-center gap-1.5"><ListTodo className="w-4 h-4 text-cyan-400" />Letzte Aufgaben</div>
           <div className="space-y-1.5">
             {(d?.recent_tasks ?? []).length === 0 && <span className="text-slate-500 text-sm">—</span>}
             {(d?.recent_tasks ?? []).map((t, i) => (
@@ -338,7 +338,7 @@ function TasksView({ data }: { data: Overview | null }) {
         <BigStat label="Wartet" value={data?.tasks.pending ?? 0} accent="text-amber-700 dark:text-amber-300" icon={<ListTodo className="w-4 h-4" />} />
         <BigStat label="Heute fertig" value={data?.tasks.done_today ?? 0} accent="text-cyan-300" icon={<CircleDot className="w-4 h-4" />} />
       </div>
-      <Panel title="Letzte Tasks" icon={<ListTodo className="w-4 h-4 text-cyan-400" />}>
+      <Panel title="Letzte Aufgaben" icon={<ListTodo className="w-4 h-4 text-cyan-400" />}>
         <div className="space-y-1.5 overflow-y-auto h-full kiosk-scroll pr-1">
           {(data?.tasks.recent ?? []).length === 0 && <Empty text="Noch keine Tasks" />}
           {(data?.tasks.recent ?? []).map((t, i) => (
@@ -368,7 +368,7 @@ function SystemView({ data }: { data: Overview | null }) {
           <Bar icon={<HardDrive className="w-3.5 h-3.5" />} label="Disk" value={pi?.disk_used_gb != null && pi?.disk_total_gb ? (pi.disk_used_gb / pi.disk_total_gb) * 100 : null} unit="%" color="from-amber-500 to-orange-400" sub={pi?.disk_used_gb != null ? `${nf(pi.disk_used_gb)}/${nf(pi.disk_total_gb || 0)} GB` : ""} />
           <div className="flex items-center justify-between text-sm pt-1"><span className="flex items-center gap-1.5 text-slate-300"><Thermometer className="w-4 h-4" />Temperatur</span><span className={`font-semibold tabular-nums ${tempColor(pi?.temp_c ?? null)}`}>{pi?.temp_c != null ? `${nf(pi.temp_c, 1)} °C` : "—"}</span></div>
           <div className="flex items-center justify-between text-sm"><span className="flex items-center gap-1.5 text-slate-300"><Clock className="w-4 h-4" />Uptime</span><span className="tabular-nums">{fmtUptime(pi?.uptime_s ?? null)}</span></div>
-          <div className="flex items-center justify-between text-sm"><span className="text-slate-300">Load (1/5/15m)</span><span className="tabular-nums">{pi?.load ? pi.load.map((l) => nf(l, 2)).join("  ") : "—"}</span></div>
+          <div className="flex items-center justify-between text-sm"><span className="text-slate-300">Last (1/5/15 min)</span><span className="tabular-nums">{pi?.load ? pi.load.map((l) => nf(l, 2)).join("  ") : "—"}</span></div>
         </div>
       </Panel>
       <Panel title="Leistung & Stromkosten" icon={<Zap className="w-4 h-4 text-emerald-300" />}>

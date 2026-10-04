@@ -18,7 +18,7 @@ export function useTasks(agentId?: string) {
       setTotal(data.total ?? data.tasks.length);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load tasks");
+      setError(e instanceof Error ? e.message : "Aufgaben konnten nicht geladen werden");
     } finally {
       setLoading(false);
     }

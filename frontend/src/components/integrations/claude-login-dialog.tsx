@@ -79,7 +79,7 @@ export function ClaudeLoginDialog({ open, authState, onClose, onConnected }: Cla
       onClose();
       await onConnected();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Code exchange failed");
+      setError(e instanceof Error ? e.message : "Der Code konnte nicht eingelöst werden");
     } finally {
       setLoading(false);
     }
@@ -92,7 +92,7 @@ export function ClaudeLoginDialog({ open, authState, onClose, onConnected }: Cla
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-md rounded-2xl border border-foreground/[0.08] bg-card p-6 shadow-2xl"
       >
-        <h3 className="text-base font-semibold mb-1">Claude Login Code eingeben</h3>
+        <h3 className="text-base font-semibold mb-1">Anmeldecode von Claude eingeben</h3>
         <p className="text-xs text-muted-foreground/60 mb-4">
           Ein neuer Tab wurde geöffnet. Logge dich dort ein und kopiere den angezeigten Code hierher.
         </p>

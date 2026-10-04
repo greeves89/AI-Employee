@@ -1596,12 +1596,15 @@ class TaskRouter:
                 )
 
             text_lines = [
-                f"⚠️ Schedule failed: *{_md(schedule.name)}*",
-                f"ID: `{schedule.id}` · fail_count={schedule.fail_count}",
+                f"Zeitplan fehlgeschlagen: *{_md(schedule.name)}*",
+                f"ID: `{schedule.id}` · Fehlversuche: {schedule.fail_count}",
             ]
             if error_snippet:
-                text_lines.append(f"Error: {_md(error_snippet)}")
-            text_lines.append(f"Next run: {schedule.next_run_at.isoformat() if schedule.next_run_at else '—'}")
+                text_lines.append(f"Fehler: {_md(error_snippet)}")
+            naechster = (
+                schedule.next_run_at.strftime("%d.%m.%Y %H:%M UTC") if schedule.next_run_at else "—"
+            )
+            text_lines.append(f"Nächster Lauf: {naechster}")
             payload = {"text": "\n".join(text_lines), "parse_mode": "Markdown"}
             await self.redis.client.publish(
                 "telegram:notification", json.dumps(payload)
@@ -2764,21 +2767,22 @@ class TaskRouter:
         try:
             import json
             title = (task.title or "Task")[:50]
-            cost_info = f" (${task.cost_usd:.3f})" if task.cost_usd else ""
+            from app.core.kosten import betrag_anzeigen
+            cost_info = f" ({betrag_anzeigen(task.cost_usd)})" if task.cost_usd else ""
             result_preview = truncate_preserving_words(
                 task.result or task.error or "(kein Ergebnistext)", 300
             )
-            text = f"Task erledigt: {title}{cost_info}\n{result_preview}"
+            text = f"Aufgabe erledigt: {title}{cost_info}\n{result_preview}"
             if fulfilled is False:
-                text = f"ACHTUNG — Selbstpruefung unsicher: {gap}\n\n{text}"
-            text += "\nWie bewertest du das Ergebnis?"
+                text = f"ACHTUNG — Selbstprüfung unsicher: {gap}\n\n{text}"
+            text += "\nWie bewertest du das Ergebnis? (1 = schlecht, 5 = sehr gut)"
             keyboard = {
                 "inline_keyboard": [[
-                    {"text": "⭐1", "callback_data": f"rate:{task.id}:1"},
-                    {"text": "⭐2", "callback_data": f"rate:{task.id}:2"},
-                    {"text": "⭐3", "callback_data": f"rate:{task.id}:3"},
-                    {"text": "⭐4", "callback_data": f"rate:{task.id}:4"},
-                    {"text": "⭐5", "callback_data": f"rate:{task.id}:5"},
+                    {"text": "1", "callback_data": f"rate:{task.id}:1"},
+                    {"text": "2", "callback_data": f"rate:{task.id}:2"},
+                    {"text": "3", "callback_data": f"rate:{task.id}:3"},
+                    {"text": "4", "callback_data": f"rate:{task.id}:4"},
+                    {"text": "5", "callback_data": f"rate:{task.id}:5"},
                 ]]
             }
             # Publish rating request to Redis for Telegram bot to pick up

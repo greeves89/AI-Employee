@@ -252,7 +252,7 @@ async def get_skill_trend(
     skill_result = await db.execute(select(Skill).where(Skill.id == skill_id))
     skill = skill_result.scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     # Usage trend scoped to the caller's own agents (admins see platform-wide).
     vids = await visible_agent_ids(user, db)
@@ -448,11 +448,11 @@ async def get_agent_detail(
 
     agent = await db.get(Agent, agent_id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     # Ownership: a non-admin may only inspect their own/shared agents.
     vids = await visible_agent_ids(user, db)
     if vids is not None and agent_id not in vids:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     # Task summary
     task_row = (await db.execute(
@@ -564,11 +564,11 @@ async def agent_development(
     if not is_admin(user):
         vids = await visible_agent_ids(user, db)
         if vids is not None and agent_id not in vids:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="Kein Zugriff")
 
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=days)

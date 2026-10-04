@@ -84,6 +84,85 @@ class VorlagenSindDeutsch(unittest.TestCase):
                 self.assertEqual(ENGLISCH.findall(t["display_name"]), [], t["display_name"])
 
 
+class FremdSkillsDerVorlagenSindDeutsch(unittest.TestCase):
+    """Jeder Skill aus einer fremden Quelle, den eine mitgelieferte Vorlage
+    mitbringt, hat einen deutschen Titel und Kurztext für die Vorlagen-Auswahl
+    (#902). Ohne Eintrag stünde dort die englische Beschreibung der Quelle."""
+
+    def test_jeder_fremde_vorlagen_skill_hat_deutsche_anzeige(self):
+        from app.core.vorlagen_skills import OEFFENTLICHE_SKILLS, SKILL_ANZEIGE, VORLAGEN_SKILLS
+
+        benutzt = {n for namen in VORLAGEN_SKILLS.values() for n in namen if n in OEFFENTLICHE_SKILLS}
+        for name in sorted(benutzt):
+            with self.subTest(skill=name):
+                self.assertIn(name, SKILL_ANZEIGE)
+                titel, text = SKILL_ANZEIGE[name]
+                self.assertTrue(titel.strip() and text.strip())
+                self.assertNotRegex(text, r"\b(Use when|the|and|with|your|for)\b")
+
+
+#: Kernseiten, die Mitglieder und Admins täglich sehen (#902, Abnahme Runde 2).
+KERNSEITEN = [
+    "frontend/src/components/agents/approval-modal.tsx",
+    "frontend/src/app/approvals/page.tsx",
+    "frontend/src/app/audit/view.tsx",
+    "frontend/src/app/integrations/page.tsx",
+    "frontend/src/components/agents/create-agent-modal.tsx",
+    "frontend/src/app/ai-accounts/view.tsx",
+    "frontend/src/app/health/view.tsx",
+    "frontend/src/app/help/page.tsx",
+    "frontend/src/app/knowledge/page.tsx",
+    "frontend/src/app/meeting-rooms/page.tsx",
+    "frontend/src/app/meeting-rooms/[id]/page.tsx",
+    "frontend/src/app/admin/agents/[id]/page.tsx",
+    "frontend/src/components/agents/skills-tab.tsx",
+    "frontend/src/components/agents/memory-tab.tsx",
+    "frontend/src/components/agents/integration-selector.tsx",
+    "frontend/src/components/agents/command-policies-tab.tsx",
+    "frontend/src/components/layout/notification-bell.tsx",
+    "frontend/src/components/files/file-preview.tsx",
+    "frontend/src/components/admin/mount-permissions-modal.tsx",
+]
+
+#: Englische Bedienwörter, die in der Abnahme sichtbar waren. Nur eindeutig
+#: englische Wörter; Fachbegriffe (Skills, MCP, Token, Client ID …) bleiben erlaubt.
+ENGLISCHE_BEDIENWOERTER = re.compile(
+    r"\b(Approve|Approving|Deny|Denied|Denying|Denial|Cancel|Save|Delete|Edit|Refresh|"
+    r"Retry|Loading|Failed|Total|Events?|Outcomes?|Breakdown|Signed in|Not available|"
+    r"Not configured|Required|Review|Close|Install|Installed|Previous|Next|Clear|"
+    r"No \w+ yet|Search \w+|Enter \w+|Add \w+|Create \w+|Back to|Waiting for)\b"
+)
+
+
+def _sichtbare_texte(quelle: str) -> list[str]:
+    """JSX-Text zwischen Tags und die Texte der Attribute, die Nutzer lesen."""
+    ohne_kommentare = re.sub(r"\{/\*.*?\*/\}|/\*.*?\*/", "", quelle, flags=re.S)
+    ohne_kommentare = re.sub(r"^\s*//.*$", "", ohne_kommentare, flags=re.M)
+    texte = re.findall(r">([^<>{}]*[A-Za-z][^<>{}]*)<", ohne_kommentare)
+    texte += re.findall(r'\b(?:title|placeholder|aria-label|label|confirmLabel)=\{?"([^"]+)"', ohne_kommentare)
+    texte += re.findall(r'\b(?:title|message|label|confirmLabel|description):\s*"([^"]+)"', ohne_kommentare)
+    texte += re.findall(r'toast\.\w+\(\s*"([^"]+)"', ohne_kommentare)
+    return [t.strip() for t in texte if t.strip()]
+
+
+class KernseitenOhneEnglischeBedienwoerter(unittest.TestCase):
+    """In den Kernseiten steht kein englisches Bedienwort mehr (#902). Fällt ein
+    neuer Knopf „Save“ oder ein Hinweis „No entries yet“ hinein, schlägt das hier an."""
+
+    def test_keine_englischen_bedienwoerter(self):
+        for rel in KERNSEITEN:
+            with self.subTest(datei=rel):
+                texte = _sichtbare_texte((ROOT / rel).read_text())
+                treffer = [t for t in texte if ENGLISCHE_BEDIENWOERTER.search(t)]
+                self.assertEqual(treffer, [], rel)
+
+    def test_pruefung_erkennt_englische_reste(self):
+        """Gegenprobe: die Prüfung schlägt bei englischen Texten wirklich an."""
+        probe = '<button title="Delete">x</button><p>No entries yet</p><b>Speichern</b>'
+        treffer = [t for t in _sichtbare_texte(probe) if ENGLISCHE_BEDIENWOERTER.search(t)]
+        self.assertEqual(treffer, ["No entries yet", "Delete"])
+
+
 def _db_ohne_treffer():
     db = MagicMock()
     ergebnis = MagicMock()

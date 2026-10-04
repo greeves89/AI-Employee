@@ -230,7 +230,7 @@ async def kiosk_chat_send(
         raise HTTPException(status_code=400, detail="Empty message")
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     if not agent.container_id:
         raise HTTPException(status_code=409, detail="Agent has no running container")
 
@@ -295,7 +295,7 @@ async def kiosk_ws_ticket(
         raise HTTPException(status_code=503, detail="Redis not available")
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     identity_id = agent.user_id
     if not identity_id:  # owner-less agent → bootstrap fallback to an admin
         admin = await db.scalar(
@@ -346,7 +346,7 @@ async def kiosk_agent_detail(agent_id: str, db: AsyncSession = Depends(get_db)):
     """Full read-only detail for one agent: state, model, task stats, recent tasks."""
     a = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not a:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     status_rows = (await db.execute(
         select(Task.status, func.count()).where(Task.agent_id == agent_id).group_by(Task.status)

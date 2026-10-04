@@ -1284,7 +1284,7 @@ async def set_room_sharing(
     ready-to-use set of agents instead of each user bringing their own."""
     from app.models.user import UserRole
     if getattr(user, "role", None) != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="admin only")
+        raise HTTPException(status_code=403, detail="Nur für Admins")
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
@@ -1321,7 +1321,7 @@ async def set_platform_agent(
     agent carries its owner's memory/knowledge and cannot be pooled."""
     from app.models.user import UserRole
     if getattr(user, "role", None) != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="admin only")
+        raise HTTPException(status_code=403, detail="Nur für Admins")
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")

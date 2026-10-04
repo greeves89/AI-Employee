@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import {
   Download, Loader2, File, FileText, Code,
-  Image as ImageIcon, Eye, FileCode, Pencil, Save,
+  Image as ImageIcon, Eye, FileCode, Pencil, Save, Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -425,9 +425,9 @@ export function FilePreviewEmpty() {
         <FileText className="h-10 w-10 mb-3" />
         <p className="text-sm font-medium text-muted-foreground/60">Vorschau-Bereich</p>
         <p className="text-xs mt-1.5 max-w-xs leading-relaxed">
-          Wähle links eine Datei aus, um sie hier anzuzeigen. Zum Hochladen nutze den
-          <span className="inline-flex items-center mx-1 text-primary/80 font-medium">Upload</span>
-          Button neben dem Agent-Namen.
+          Wähle links eine Datei aus, um sie hier anzuzeigen. Zum Hochladen nutze das
+          Symbol <Upload className="inline h-3.5 w-3.5 mx-1 align-[-2px] text-primary/80" aria-label="Hochladen" />
+          neben dem Namen des Agenten.
         </p>
       </div>
     </>

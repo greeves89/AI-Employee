@@ -205,7 +205,7 @@ export default function MeetingRoomDetailPage() {
       setInitialMessage("");
       await fetchRoom();
     } catch (e) {
-      toast.error("Could not start meeting", String(e));
+      toast.error("Besprechung konnte nicht starten", String(e));
     } finally {
       setActionLoading(false);
     }
@@ -217,7 +217,7 @@ export default function MeetingRoomDetailPage() {
       await api.stopMeetingRoom(roomId);
       await fetchRoom();
     } catch (e) {
-      toast.error("Could not stop meeting", String(e));
+      toast.error("Besprechung konnte nicht gestoppt werden", String(e));
     } finally {
       setActionLoading(false);
     }
@@ -225,17 +225,17 @@ export default function MeetingRoomDetailPage() {
 
   const handleDelete = async () => {
     const ok = await confirm({
-      title: "Delete this meeting room?",
-      message: "All session history will be permanently removed.",
+      title: "Besprechungsraum löschen?",
+      message: "Der gesamte Verlauf wird endgültig entfernt.",
       variant: "destructive",
-      confirmLabel: "Delete",
+      confirmLabel: "Löschen",
     });
     if (!ok) return;
     try {
       await api.deleteMeetingRoom(roomId);
       router.push("/meeting-rooms");
     } catch (e) {
-      toast.error("Delete failed", String(e));
+      toast.error("Löschen fehlgeschlagen", String(e));
     }
   };
 
@@ -278,10 +278,10 @@ export default function MeetingRoomDetailPage() {
         return `<div class="phase-break">${esc(m.content.replace(/\*\*/g, ""))}</div>`;
       }
       if (m.role === "summary") {
-        return `<div class="msg summary"><div class="msg-header summary-header">📋 Meeting-Ergebnis: Action Items</div><div class="msg-body">${mdToHtml(m.content)}</div></div>`;
+        return `<div class="msg summary"><div class="msg-header summary-header">Ergebnis der Besprechung: Aufgaben</div><div class="msg-body">${mdToHtml(m.content)}</div></div>`;
       }
       if (m.role === "moderator") {
-        return `<div class="msg moderator"><div class="msg-header">🎤 Moderator</div><div class="msg-body italic">${esc(m.content)}</div></div>`;
+        return `<div class="msg moderator"><div class="msg-header">Moderation</div><div class="msg-body italic">${esc(m.content)}</div></div>`;
       }
       if (m.role === "reaction") {
         return `<div class="msg reaction"><div class="msg-header">${esc(getName(m.agent_id))} <span class="label">reagiert</span></div><div class="msg-body italic">${esc(m.content)}</div></div>`;
@@ -328,7 +328,7 @@ export default function MeetingRoomDetailPage() {
 </style></head><body>
 <h1>${room.name}</h1>
 <div class="meta">${date} · ${room.rounds_completed}/${room.max_rounds} Runden</div>
-<div class="topic">📋 ${room.topic || "Kein Thema"}</div>
+<div class="topic">${room.topic || "Kein Thema"}</div>
 <div class="participants">Teilnehmer: ${participants}${room.use_moderator ? " + Moderator" : ""}</div>
 <hr>
 ${msgHtml}
@@ -359,7 +359,7 @@ ${msgHtml}
   if (loading) {
     return (
       <div>
-        <Header title="Meeting Room" />
+        <Header title="Besprechungsraum" />
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
@@ -370,14 +370,14 @@ ${msgHtml}
   if (!room) {
     return (
       <div>
-        <Header title="Meeting Room" />
+        <Header title="Besprechungsraum" />
         <div className="flex flex-col items-center justify-center py-20">
-          <p className="text-muted-foreground">Room not found</p>
+          <p className="text-muted-foreground">Raum nicht gefunden</p>
           <button
             onClick={() => router.push("/meeting-rooms")}
             className="mt-4 text-sm text-primary hover:underline"
           >
-            Back to rooms
+            Zurück zu den Räumen
           </button>
         </div>
       </div>
@@ -417,7 +417,7 @@ ${msgHtml}
               className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back
+              Zurück
             </button>
 
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -450,7 +450,7 @@ ${msgHtml}
                 ) : (
                   <Play className="h-4 w-4" />
                 )}
-                {room.state === "paused" ? "Resume" : "Start"}
+                {room.state === "paused" ? "Fortsetzen" : "Starten"}
               </button>
             )}
             {room.state === "running" && (
@@ -464,7 +464,7 @@ ${msgHtml}
                 ) : (
                   <Square className="h-4 w-4" />
                 )}
-                Stop
+                Stoppen
               </button>
             )}
             <button
@@ -566,7 +566,7 @@ ${msgHtml}
                         className="flex w-full items-center gap-2 mb-3 lg:cursor-default"
                       >
                         <ListTodo className="h-4 w-4 text-primary shrink-0" />
-                        <span className="text-sm font-semibold text-primary flex-1 text-left">Meeting-Ergebnis: Action Items</span>
+                        <span className="text-sm font-semibold text-primary flex-1 text-left">Ergebnis der Besprechung: Aufgaben</span>
                         <ChevronDown className={cn("h-4 w-4 text-primary lg:hidden transition-transform", summaryOpen && "rotate-180")} />
                       </button>
                       <div className={cn("text-sm text-foreground/90 leading-relaxed", !summaryOpen && "hidden lg:block")}>
@@ -656,7 +656,7 @@ ${msgHtml}
             {room.state === "running" && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Meeting in progress...
+                Besprechung läuft …
               </div>
             )}
           </div>
@@ -688,7 +688,7 @@ ${msgHtml}
                   ) : (
                     <Send className="h-4 w-4" />
                   )}
-                  Start Meeting
+                  Besprechung starten
                 </button>
               </div>
             </div>

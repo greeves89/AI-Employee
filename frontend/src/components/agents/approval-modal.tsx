@@ -29,32 +29,32 @@ const riskConfig = {
     color: "text-red-400",
     bg: "bg-red-500/10",
     border: "border-red-500/20",
-    label: "BLOCKED",
-    description: "This command is forbidden and cannot be executed.",
+    label: "GESPERRT",
+    description: "Dieser Befehl ist verboten und kann nicht ausgeführt werden.",
   },
   high: {
     icon: AlertCircle,
     color: "text-orange-400",
     bg: "bg-orange-500/10",
     border: "border-orange-500/20",
-    label: "HIGH RISK",
-    description: "This command could cause serious damage. Review carefully.",
+    label: "HOHES RISIKO",
+    description: "Dieser Befehl kann ernsthaften Schaden anrichten. Bitte genau prüfen.",
   },
   medium: {
     icon: AlertTriangle,
     color: "text-amber-700 dark:text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/20",
-    label: "MEDIUM RISK",
-    description: "This command may have unintended effects.",
+    label: "MITTLERES RISIKO",
+    description: "Dieser Befehl kann unbeabsichtigte Folgen haben.",
   },
   low: {
     icon: Info,
     color: "text-blue-400",
     bg: "bg-blue-500/10",
     border: "border-blue-500/20",
-    label: "LOW RISK",
-    description: "This command appears safe.",
+    label: "GERINGES RISIKO",
+    description: "Dieser Befehl wirkt unbedenklich.",
   },
 };
 
@@ -179,12 +179,12 @@ export function ApprovalModal({
                       </div>
                       <div>
                         <Dialog.Title className="text-lg font-semibold">
-                          {isQuestion ? "Agent Approval Required" : "Command Approval Required"}
+                          {isQuestion ? "Der Agent braucht deine Entscheidung" : "Befehl braucht deine Freigabe"}
                         </Dialog.Title>
                         <Dialog.Description className="text-[11px] text-muted-foreground/60">
                           {isQuestion
-                            ? "The agent needs your decision before proceeding"
-                            : "Agent wants to execute a command that requires your approval"}
+                            ? "Erst nach deiner Antwort macht der Agent weiter."
+                            : "Der Agent möchte einen Befehl ausführen, der deine Freigabe braucht."}
                         </Dialog.Description>
                       </div>
                     </div>
@@ -216,7 +216,7 @@ export function ApprovalModal({
                       )}
                     >
                       <p className={cn("text-sm font-medium", config.color)}>
-                        {isQuestion ? "The agent is asking for your decision." : config.description}
+                        {isQuestion ? "Der Agent fragt nach deiner Entscheidung." : config.description}
                       </p>
                     </div>
 
@@ -232,7 +232,7 @@ export function ApprovalModal({
                         {/* Tool */}
                         <div>
                           <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                            Tool
+                            Werkzeug
                           </label>
                           <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm font-mono">
                             {request.tool}
@@ -242,7 +242,7 @@ export function ApprovalModal({
                         {/* Command */}
                         <div>
                           <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                            Command
+                            Befehl
                           </label>
                           <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm font-mono whitespace-pre-wrap break-all">
                             {formatInput(request.input || {})}
@@ -253,7 +253,7 @@ export function ApprovalModal({
                         {request.reasoning && (
                           <div>
                             <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                              Agent&apos;s Reasoning
+                              Begründung des Agenten
                             </label>
                             <div className="rounded-lg bg-foreground/[0.03] border border-foreground/[0.06] px-3.5 py-2.5 text-sm">
                               {request.reasoning}
@@ -265,18 +265,18 @@ export function ApprovalModal({
 
                     {/* Meta */}
                     <div className="text-[10px] text-muted-foreground/40">
-                      Agent: {request.agent_id} &middot; Requested:{" "}
-                      {new Date(request.created_at).toLocaleString()}
+                      Agent: {request.agent_id} &middot; Angefragt:{" "}
+                      {new Date(request.created_at).toLocaleString("de-DE")}
                     </div>
 
                     {/* Deny Reason Form */}
                     {showDenyForm && (
                       <div>
                         <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                          {isQuestion ? "Response / Reason for Denial (Optional)" : "Reason for Denial (Optional)"}
+                          {isQuestion ? "Antwort oder Grund für die Ablehnung (optional)" : "Grund für die Ablehnung (optional)"}
                         </label>
                         <textarea
-                          placeholder={isQuestion ? "Your response to the agent..." : "Why are you denying this command?"}
+                          placeholder={isQuestion ? "Deine Antwort an den Agenten …" : "Warum lehnst du diesen Befehl ab?"}
                           value={denyReason}
                           onChange={(e) => setDenyReason(e.target.value)}
                           rows={3}
@@ -293,7 +293,7 @@ export function ApprovalModal({
                         onClick={onClose}
                         className="rounded-lg px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
                       >
-                        Close
+                        Schließen
                       </button>
                     ) : showDenyForm ? (
                       <>
@@ -305,7 +305,7 @@ export function ApprovalModal({
                           disabled={isSubmitting}
                           className="rounded-lg px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all disabled:opacity-50"
                         >
-                          Cancel
+                          Abbrechen
                         </button>
                         <button
                           onClick={handleDeny}
@@ -315,7 +315,7 @@ export function ApprovalModal({
                           {isSubmitting && (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           )}
-                          {isSubmitting ? "Denying..." : "Confirm Denial"}
+                          {isSubmitting ? "Wird abgelehnt …" : "Ablehnung bestätigen"}
                         </button>
                       </>
                     ) : (
@@ -325,7 +325,7 @@ export function ApprovalModal({
                           disabled={isSubmitting}
                           className="rounded-lg px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all disabled:opacity-50"
                         >
-                          Deny
+                          Ablehnen
                         </button>
                         <button
                           onClick={handleApprove}
@@ -340,7 +340,7 @@ export function ApprovalModal({
                           {isSubmitting && (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           )}
-                          {isSubmitting ? "Approving..." : isQuestion ? "Approve" : "Approve & Execute"}
+                          {isSubmitting ? "Wird freigegeben …" : isQuestion ? "Freigeben" : "Freigeben und ausführen"}
                         </button>
                       </>
                     )}

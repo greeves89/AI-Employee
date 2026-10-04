@@ -82,7 +82,7 @@ class WakeTypingHeartbeatTests(unittest.IsolatedAsyncioTestCase):
             ok = await self.bot._ensure_agent_running(update, "a1")
 
         self.assertTrue(ok)
-        reply_text.assert_awaited_once_with("⏳ Agent fährt hoch, einen Moment...")
+        reply_text.assert_awaited_once_with("Agent fährt hoch, einen Moment …")
         self.assertGreaterEqual(
             send_action.await_count, 3,
             "Der Tipp-Indikator muss waehrend eines laengeren Wakes mehrfach "

@@ -262,7 +262,7 @@ async def _darf_skill_aendern(skill_id: int, user, db: AsyncSession) -> None:
         return
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
     ersteller = skill.created_by or ""
     if ersteller == f"user:{user.id}":
         return
@@ -343,7 +343,7 @@ async def get_skill(
     """Get a single skill with its full content and assigned agents."""
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     # Get assigned agents
     result = await db.execute(
@@ -418,7 +418,7 @@ async def update_skill(
     await _darf_skill_aendern(skill_id, user, db)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     updates = body.model_dump(exclude_unset=True)
     if "content" in updates and updates["content"] != skill.content:
@@ -446,7 +446,7 @@ async def delete_skill(
     await _darf_skill_aendern(skill_id, user, db)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
     await db.execute(delete(AgentSkillAssignment).where(AgentSkillAssignment.skill_id == skill_id))
     await db.delete(skill)
     await db.commit()
@@ -465,7 +465,7 @@ async def approve_skill(
     await _nur_admin(user)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
     skill.status = SkillStatus.ACTIVE
     skill.is_public = True
     await db.commit()
@@ -482,7 +482,7 @@ async def reject_skill(
     await _nur_admin(user)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
     skill.status = SkillStatus.ARCHIVED
     await db.commit()
     return {"id": skill_id, "status": "archived"}
@@ -515,7 +515,7 @@ async def approve_improvement(
     await _nur_admin(user)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
     if skill.improvement_status != "pending_review" or not skill.improvement_proposal:
         raise HTTPException(status_code=400, detail="No pending improvement to approve")
 
@@ -555,7 +555,7 @@ async def reject_improvement(
     await _nur_admin(user)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
     if skill.improvement_status != "pending_review":
         raise HTTPException(status_code=400, detail="No pending improvement to reject")
     skill.improvement_status = None
@@ -577,7 +577,7 @@ async def list_skill_versions(
     """List all historical versions of a skill, newest first."""
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     result = await db.execute(
         select(SkillVersion)
@@ -621,7 +621,7 @@ async def rollback_skill(
     await _darf_skill_aendern(skill_id, user, db)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     target = (await db.execute(
         select(SkillVersion)
@@ -657,7 +657,7 @@ async def _assert_agent_owned(agent_id: str, user, db) -> None:
     from app.core.ownership import visible_agent_ids
     vids = await visible_agent_ids(user, db)
     if vids is not None and agent_id not in vids:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.post("/marketplace/{skill_id}/assign")
@@ -671,7 +671,7 @@ async def assign_skill(
     """Assign a skill to an agent and push any file attachments into the agent workspace."""
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
     await _assert_agent_owned(body.agent_id, user, db)
 
     existing = (await db.execute(
@@ -917,7 +917,7 @@ async def agent_record_skill_usage(
 
     skill = (await db.execute(select(Skill).where(Skill.id == body.skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     is_chat = not body.task_id
     source = "chat" if is_chat else "task"
@@ -1245,7 +1245,7 @@ async def rate_skill(
 
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     if skill.avg_rating is None:
         skill.avg_rating = body.rating
@@ -1274,7 +1274,7 @@ async def set_skill_manual_duration(
     await _darf_skill_aendern(skill_id, user, db)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     skill.manual_duration_seconds = body.manual_duration_seconds
     await db.commit()
@@ -1295,7 +1295,7 @@ async def upload_skill_file(
     await _darf_skill_aendern(skill_id, user, db)
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     try:
         safe_name = validate_filename(file.filename or "upload.bin")
@@ -1352,7 +1352,7 @@ async def list_skill_files(
     """List all file attachments for a skill."""
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     result = await db.execute(
         select(SkillFile).where(SkillFile.skill_id == skill_id).order_by(SkillFile.filename)
@@ -1559,7 +1559,7 @@ async def agent_update_skill(
 
     skill = (await db.execute(select(Skill).where(Skill.id == skill_id))).scalar_one_or_none()
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise HTTPException(status_code=404, detail="Skill nicht gefunden")
 
     # Allow update if the agent created it OR has it assigned (e.g. improvement tasks)
     is_creator = skill.created_by == f"agent:{agent_id}"

@@ -364,7 +364,7 @@ export function NotificationBell({
                   title="Alle als gelesen markieren"
                 >
                   <CheckCheck className="h-3 w-3" />
-                  Read all
+                  Alle gelesen
                 </button>
               )}
               <button
@@ -462,7 +462,7 @@ export function NotificationBell({
                       <button
                         onClick={() => handleMarkRead(notif.id)}
                         className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                        title="Mark as read"
+                        title="Als gelesen markieren"
                       >
                         <Check className="h-3 w-3" />
                       </button>
@@ -470,7 +470,7 @@ export function NotificationBell({
                     <button
                       onClick={() => handleDelete(notif.id)}
                       className="p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-accent transition-colors"
-                      title="Delete"
+                      title="Löschen"
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>

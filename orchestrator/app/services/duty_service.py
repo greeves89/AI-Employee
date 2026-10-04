@@ -64,7 +64,7 @@ async def _publish_telegram(redis, title: str, message: str) -> None:
         await redis.client.publish(
             "telegram:notification",
             json.dumps({
-                "text": f"⚠️ *{md_escape(title)}*\n{md_escape(message)}",
+                "text": f"*{md_escape(title)}*\n{md_escape(message)}",
                 "parse_mode": "Markdown",
             }),
         )

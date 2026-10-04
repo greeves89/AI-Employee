@@ -6,7 +6,9 @@ import { cn } from "@/lib/utils";
 import {
   AgentAvatar,
   AVATAR_ICONS,
+  AVATAR_ICON_NAMEN,
   AVATAR_COLORS,
+  AVATAR_FARBNAMEN,
   HEX_RE,
   isCustomColor,
 } from "./agent-avatar";
@@ -40,6 +42,7 @@ export function AppearancePicker({
     names: string[];
     Icon: React.ComponentType<{ name: string; className?: string }>;
     search: (q: string, limit?: number) => string[];
+    anzeigename: (name: string) => string;
   } | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
 
@@ -52,7 +55,12 @@ export function AppearancePicker({
     setLoadingCatalog(true);
     import("./lucide-catalog")
       .then((m) =>
-        setCatalog({ names: m.ALL_ICON_NAMES, Icon: m.CatalogIcon, search: m.searchIcons }),
+        setCatalog({
+          names: m.ALL_ICON_NAMES,
+          Icon: m.CatalogIcon,
+          search: m.searchIcons,
+          anzeigename: m.symbolAnzeigename,
+        }),
       )
       .finally(() => setLoadingCatalog(false));
   }, [needsCatalog, catalog, loadingCatalog]);
@@ -99,7 +107,7 @@ export function AppearancePicker({
                   key={name}
                   type="button"
                   onClick={() => onChange({ ...value, icon: name })}
-                  title={name}
+                  title={AVATAR_ICON_NAMEN[name] ?? catalog?.anzeigename(name) ?? name}
                   className={cn(
                     "flex items-center justify-center rounded-md border transition-colors",
                     tile,
@@ -132,7 +140,7 @@ export function AppearancePicker({
             key={n}
             type="button"
             onClick={() => onChange({ ...value, color: n })}
-            title={n}
+            title={AVATAR_FARBNAMEN[n] ?? n}
             className={cn(
               "h-5 w-5 rounded-full transition-all",
               c.dot,

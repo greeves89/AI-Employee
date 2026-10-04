@@ -291,7 +291,7 @@ async def update_rule(
         # Non-admins may only touch rules they created; system/global rules
         # (created_by is None) are admin-only.
         if rule.created_by != str(user.id):
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="Kein Zugriff")
     changes = body.model_dump(exclude_unset=True)
     # Dieselbe Pruefung wie beim Anlegen: wer seine eigene Regel auf einen
     # fremden Agenten umhaengt oder das Feld leert, haette sonst eine Regel fuer
@@ -345,7 +345,7 @@ async def delete_rule(
         # Non-admins may only touch rules they created; system/global rules
         # (created_by is None) are admin-only.
         if rule.created_by != str(user.id):
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="Kein Zugriff")
     rule_name = rule.name
     rule_agent = rule.agent_id or "global"
     await db.delete(rule)

@@ -31,14 +31,14 @@ export function LiveTerminal({ agentId }: LiveTerminalProps) {
             className={`h-2 w-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
           />
           <span className="text-xs text-muted-foreground">
-            {isConnected ? "Connected" : "Disconnected"}
+            {isConnected ? "Verbunden" : "Getrennt"}
           </span>
         </div>
         <button
           onClick={clearMessages}
           className="text-xs text-muted-foreground hover:text-foreground"
         >
-          Clear
+          Leeren
         </button>
       </div>
 
@@ -49,7 +49,7 @@ export function LiveTerminal({ agentId }: LiveTerminalProps) {
       >
         {messages.length === 0 ? (
           <div className="text-muted-foreground">
-            Waiting for agent activity...
+            Warte auf Aktivität des Agenten …
           </div>
         ) : (
           messages.map((msg, i) => (

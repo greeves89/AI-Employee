@@ -274,7 +274,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
               className="flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
             >
               <Settings className="h-4 w-4" />
-              Agents verwalten
+              Agenten verwalten
             </Link>
             <div className="flex items-center gap-1 px-1 pt-1">
               <NotificationBell variant="sidebar" />
