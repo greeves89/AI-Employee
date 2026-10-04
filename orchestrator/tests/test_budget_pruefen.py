@@ -36,8 +36,9 @@ class BudgetBasis(unittest.IsolatedAsyncioTestCase):
         except Exception:  # noqa: BLE001 — schon registriert
             pass
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        from app.models.kosten_historie import KostenHistorie  # #896: gelöschte Kosten
         async with self.engine.begin() as conn:
-            for model in (User, Agent, Task, ChatMessage, Notification):
+            for model in (User, Agent, Task, ChatMessage, KostenHistorie, Notification):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         self.einstellungen = patch.multiple(
@@ -187,6 +188,61 @@ class Chatschalter(BudgetBasis):
         self.assertTrue(Settings.model_fields["budget_gilt_fuer_chat"].default)
         self.assertIn("budget_gilt_fuer_chat", SettingsUpdate.model_fields)
         self.assertIn("budget_gilt_fuer_chat", SettingsResponse.model_fields)
+
+
+class AnlagenbudgetOhneBetraege(BudgetBasis):
+    """Die Anlagengrenze verrät Mitgliedern nicht die Gesamtkosten der Installation.
+
+    Der Hinweis geht an jeden, der chattet — auch an Mitglieder. Beträge sehen nur
+    Administratoren (ihre Benachrichtigung, Verwaltung → Budget)."""
+
+    async def _gesperrt(self):
+        await self.agent(budget_usd=None, budget_exceeded_action="stop")
+        await self.kosten(aufgabe=9, chat=3)
+        with patch.object(budget.settings, "platform_budget_usd", 5.0):
+            async with self.Session() as db:
+                agent = await db.get(Agent, "a1")
+                e = await budget.budget_pruefen(db, agent, fuer_chat=True)
+                await budget.sperre_melden(db, agent, e)
+                meldungen = (await db.execute(select(Notification))).scalars().all()
+        return e, meldungen
+
+    async def test_hinweis_ohne_betraege(self):
+        e, _ = await self._gesperrt()
+        self.assertEqual(e.grenze, "anlage")
+        self.assertEqual(e.hinweis, budget.HINWEIS_ANLAGE)
+        self.assertNotRegex(e.hinweis, r"\d")
+        self.assertIn("Administrator", e.hinweis)
+
+    async def test_besitzer_meldung_ohne_betraege_admin_mit(self):
+        _, meldungen = await self._gesperrt()
+        an_besitzer = [m for m in meldungen if m.agent_id == "a1"]
+        an_admins = [m for m in meldungen if m.agent_id == "system"]
+        self.assertEqual(len(an_besitzer), 1)
+        self.assertNotRegex(an_besitzer[0].message, r"\d")
+        self.assertRegex(an_admins[0].message, r"12,00")
+
+    async def test_aufgabenweg_ohne_betraege(self):
+        """Auch wer eine Aufgabe anlegt, erfährt die Gesamtkosten der Anlage nicht."""
+        from app.core.task_router import TaskRouter
+
+        await self.agent(budget_usd=None)
+        await self.kosten(aufgabe=9, chat=3)
+        with patch.object(budget.settings, "platform_budget_usd", 5.0):
+            async with self.Session() as db:
+                router = TaskRouter.__new__(TaskRouter)
+                router.db = db
+                with self.assertRaises(ValueError) as fehler:
+                    await router._check_platform_budget()
+        self.assertNotRegex(str(fehler.exception), r"\d")
+        self.assertIn("Administrator", str(fehler.exception))
+
+    async def test_agentenbudget_nennt_weiter_betraege(self):
+        """Das eigene Agentenbudget ist kein Geheimnis — dort bleiben die Zahlen."""
+        await self.agent(budget_usd=10, budget_exceeded_action="stop")
+        await self.kosten(chat=12)
+        e = await self.pruefen(fuer_chat=True)
+        self.assertRegex(e.hinweis, r"12,00")
 
 
 class AdminWirdBenachrichtigt(BudgetBasis):

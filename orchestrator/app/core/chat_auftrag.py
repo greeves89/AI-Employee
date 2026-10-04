@@ -18,6 +18,9 @@ zerlegt ihn wieder, damit auch dann nur der Nutzertext gespeichert wird; mit
 Und hier liegt der EINE Weg in die Warteschlange ``agent:{id}:chat``:
 ``einreihen`` prüft vorher das Budget (#898) — für Web-Chat, Kiosk, Telegram,
 die Kanäle, die Sprachfront, ``/goal`` und Rückmeldungen gleichermaßen.
+Ebenso für ``agent:{id}:tasks`` (``aufgabe_einreihen``, über
+``RedisService.push_task``) und ``agent:{id}:messages`` (``nachricht_einreihen``):
+Jede Nachricht dort startet beim Empfänger einen Modelllauf.
 """
 
 from __future__ import annotations
@@ -75,8 +78,11 @@ class Einreihung:
     modell: str | None = None
 
 
-async def _budget_entscheid(agent_id: str):
-    """Budgetentscheid für eine Chat-Nachricht; meldet eine Sperre gleich mit.
+async def _budget_entscheid(agent_id: str, *, fuer_chat: bool = True):
+    """Budgetentscheid für einen Auftrag an ``agent_id``; meldet eine Sperre gleich mit.
+
+    ``fuer_chat``: der Schalter „Budget gilt für Chat" darf nur Chat-Nachrichten
+    durchlassen, nie Aufgaben oder Nachrichten zwischen Agenten.
 
     Fail-open: Kann die Prüfung nicht laufen (Datenbank weg), wird zugestellt — ein
     kaputter Zähler soll nicht jede Unterhaltung der Anlage anhalten.
@@ -88,7 +94,7 @@ async def _budget_entscheid(agent_id: str):
     try:
         async with async_session_factory() as db:
             agent = await db.get(Agent, agent_id)
-            entscheid = await budget.budget_pruefen(db, agent, fuer_chat=True)
+            entscheid = await budget.budget_pruefen(db, agent, fuer_chat=fuer_chat)
             if entscheid.art == budget.BLOCKIEREN:
                 try:
                     await budget.sperre_melden(db, agent, entscheid)
@@ -139,6 +145,87 @@ async def einreihen(redis_client, agent_id: str, payload: dict | str) -> Einreih
         payload["model"] = entscheid.modell
     await redis_client.lpush(f"agent:{agent_id}:chat", json.dumps(payload))
     return Einreihung(True, modell=entscheid.modell)
+
+
+def _als_dict(payload: dict | str) -> dict:
+    return dict(json.loads(payload) if isinstance(payload, str) else payload)
+
+
+async def _aufgabe_als_gescheitert(task_id: str, hinweis: str) -> None:
+    """Die schon angelegte Aufgabe ehrlich abschliessen statt ewig „wartet"."""
+    from sqlalchemy import update
+
+    from app.db.session import async_session_factory
+    from app.models.task import Task, TaskStatus
+
+    async with async_session_factory() as db:
+        await db.execute(update(Task).where(
+            Task.id == task_id,
+            Task.status.in_([TaskStatus.PENDING, TaskStatus.QUEUED]),
+        ).values(status=TaskStatus.FAILED, error=hinweis,
+                 completed_at=datetime.now(timezone.utc)))
+        await db.commit()
+
+
+async def aufgabe_einreihen(redis_client, agent_id: str, payload: dict | str) -> Einreihung:
+    """Eine Aufgabe in ``agent:{id}:tasks`` legen — nach Budgetprüfung (#898).
+
+    Aufgerufen über ``RedisService.push_task`` — dem einzigen Weg dorthin. Bis
+    v1.362 schrieben Webhooks und ``send_task`` (MCP) direkt in die Liste, und
+    ``push_task`` selbst prüfte nichts; nur der TaskRouter prüfte vorher.
+
+    * erlaubt → einreihen;
+    * Sparmodus → mit dem günstigeren Modell der Laufzeit;
+    * gesperrt → NICHT einreihen, Besitzer und Administratoren benachrichtigen,
+      die schon angelegte Aufgabe (``payload["id"]``) als gescheitert mit dem
+      deutschen Hinweis abschliessen. Der Aufrufer bekommt ``hinweis``.
+    """
+    from app.core import budget
+
+    payload = _als_dict(payload)
+    entscheid = await _budget_entscheid(agent_id, fuer_chat=False)
+    if entscheid.art == budget.BLOCKIEREN:
+        if payload.get("id"):
+            try:
+                await _aufgabe_als_gescheitert(str(payload["id"]), entscheid.hinweis)
+            except Exception:  # noqa: BLE001 — die Sperre gilt auch ohne Vermerk
+                logger.warning("Gesperrte Aufgabe %s nicht vermerkt", payload.get("id"),
+                               exc_info=True)
+        return Einreihung(False, hinweis=entscheid.hinweis)
+    if entscheid.art == budget.SPARMODELL:
+        payload["model"] = entscheid.modell
+    await redis_client.lpush(f"agent:{agent_id}:tasks", json.dumps(payload))
+    return Einreihung(True, modell=entscheid.modell)
+
+
+async def nachricht_einreihen(
+    redis_client, agent_id: str, payload: dict | str, *, vorne: bool = False,
+) -> Einreihung:
+    """Eine Nachricht in ``agent:{id}:messages`` legen — nach Budgetprüfung (#898).
+
+    Für Nachrichten zwischen Agenten, Besprechungsbeiträge und Rückmeldungen
+    fertiger Teilaufgaben. Jede startet beim Empfänger einen Modelllauf; ein
+    Sparmodell gibt es dort nicht (der Empfänger wählt das Modell selbst), also
+    zählt nur „gesperrt" — dann wird nicht zugestellt. ``vorne``: ans andere
+    Ende (``rpush``), wie es die Besprechungen tun. Ein Empfänger, der kein
+    Agent ist (Moderator einer Besprechung), hat kein Budget und bekommt alles.
+
+    Agenten selbst schreiben über ihren Redis-Zugang auch direkt in fremde
+    Postfächer (``MessageConsumer._send_reply`` im Agenten) — dieser Weg läuft
+    nicht über den Orchestrator und ist hier nicht abgedeckt.
+    """
+    from app.core import budget
+
+    payload = _als_dict(payload)
+    entscheid = await _budget_entscheid(agent_id, fuer_chat=False)
+    if entscheid.art == budget.BLOCKIEREN:
+        return Einreihung(False, hinweis=entscheid.hinweis)
+    schluessel = f"agent:{agent_id}:messages"
+    if vorne:
+        await redis_client.rpush(schluessel, json.dumps(payload))
+    else:
+        await redis_client.lpush(schluessel, json.dumps(payload))
+    return Einreihung(True)
 
 
 def anhaenge_pruefen(roh) -> list[dict]:

@@ -24,6 +24,7 @@ from app.models.knowledge import KnowledgeEntry
 from app.models.brain import BrainLink
 from app.models.agent_message import AgentMessage
 from app.models.task_rating import TaskRating
+from app.models.kosten_historie import KostenHistorie
 from app.models.test_run import TestRun
 from app.models.meeting import Meeting
 from app.models.meeting_room import MeetingRoom
@@ -62,6 +63,7 @@ __all__ = [
     "KnowledgeEntry", "BrainLink",
     "AgentMessage",
     "TaskRating",
+    "KostenHistorie",
     "TestRun",
     "Meeting",
     "MeetingRoom",

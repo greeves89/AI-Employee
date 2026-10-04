@@ -113,7 +113,13 @@ def _zeit(wert) -> datetime | None:
 
 
 async def _in_stapeln_loeschen(db, modell, spalte, grenze: datetime) -> int:
-    """Zeilen älter als ``grenze`` löschen, Stapel für Stapel festgeschrieben."""
+    """Zeilen älter als ``grenze`` löschen, Stapel für Stapel festgeschrieben.
+
+    Chatnachrichten nehmen ihre Kosten nicht mit (#896): je Stapel werden sie vor
+    dem Löschen in der Kostenhistorie verdichtet — im selben Commit.
+    """
+    from app.core import kosten as _kosten
+
     geloescht = 0
     for _ in range(MAX_STAPEL_JE_LAUF):
         ids = (await db.execute(
@@ -121,6 +127,8 @@ async def _in_stapeln_loeschen(db, modell, spalte, grenze: datetime) -> int:
         )).scalars().all()
         if not ids:
             break
+        if modell is ChatMessage:
+            await _kosten.verdichten(db, _kosten.QUELLE_CHAT, ChatMessage.id.in_(ids))
         await db.execute(delete(modell).where(modell.id.in_(ids)))
         await db.commit()
         geloescht += len(ids)

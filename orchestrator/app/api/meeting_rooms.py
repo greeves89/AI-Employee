@@ -791,9 +791,11 @@ async def _moderator_request(room_id: str, mod_id: str, prompt: str, redis, time
 
     ``timeout_rounds`` × 5s = max wait. Quick turn-moderation uses the default (30s);
     the heavier end-of-meeting synthesis passes a larger value."""
-    import json as _json
-    payload = _json.dumps({"type": "meeting", "room_id": room_id, "prompt": prompt})
-    await redis.client.rpush(f"agent:{mod_id}:messages", payload)
+    from app.core.chat_auftrag import nachricht_einreihen
+
+    payload = {"type": "meeting", "room_id": room_id, "prompt": prompt}
+    if not (await nachricht_einreihen(redis.client, mod_id, payload, vorne=True)).eingereiht:
+        return None
 
     response_key = f"meeting:{room_id}:response:{mod_id}"
     for _ in range(timeout_rounds):
@@ -1290,10 +1292,13 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                 # message sits in a queue nobody consumes → "hat nicht geantwortet".
                 woke_up = await _ensure_agent_running(current_agent_id, docker, redis)
 
-                # Send to agent queue
-                await redis.client.rpush(
-                    f"agent:{current_agent_id}:messages",
-                    json.dumps({"type": "meeting", "room_id": room_id, "prompt": prompt}),
+                # Send to agent queue — mit Budgetpruefung (#898). Gesperrt: kein
+                # Beitrag, kein Warten; der Platzhalter sagt, warum.
+                from app.core.chat_auftrag import nachricht_einreihen
+
+                zustellung = await nachricht_einreihen(
+                    redis.client, current_agent_id,
+                    {"type": "meeting", "room_id": room_id, "prompt": prompt}, vorne=True,
                 )
 
                 # Wait for response, but BOUNDED (90s, 3s granularity) so a slow or
@@ -1301,7 +1306,7 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                 # skipped with a placeholder and the meeting always progresses.
                 response_key = f"meeting:{room_id}:response:{current_agent_id}"
                 response = None
-                for _ in range(30):
+                for _ in range(30 if zustellung.eingereiht else 0):
                     result = await redis.client.lpop(response_key)
                     if result:
                         response = result if isinstance(result, str) else result.decode()
@@ -1315,7 +1320,9 @@ async def _run_meeting(room_id: str, redis, mod_agent_id: str | None = None, doc
                     # ein Infrastrukturproblem, kein schweigsamer Agent.
                     _name = agent_name_map.get(current_agent_id, current_agent_id)
                     response = (
-                        f"[{_name} hat nicht geantwortet]"
+                        f"[{_name} setzt aus — Budget aufgebraucht]"
+                        if not zustellung.eingereiht
+                        else f"[{_name} hat nicht geantwortet]"
                         if woke_up
                         else f"[{_name} hat nicht geantwortet — Agent konnte nicht gestartet werden]"
                     )
@@ -1412,10 +1419,14 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
     if not todo_content:
         synthesizer_id = room.agent_ids[0]
         await _ensure_agent_running(synthesizer_id, docker, redis)
-        payload = _json.dumps({"type": "meeting", "room_id": room.id, "prompt": prompt})
-        await redis.client.rpush(f"agent:{synthesizer_id}:messages", payload)
+        from app.core.chat_auftrag import nachricht_einreihen
+
+        zustellung = await nachricht_einreihen(
+            redis.client, synthesizer_id,
+            {"type": "meeting", "room_id": room.id, "prompt": prompt}, vorne=True,
+        )
         response_key = f"meeting:{room.id}:response:{synthesizer_id}"
-        for _ in range(40):
+        for _ in range(40 if zustellung.eingereiht else 0):
             result = await redis.client.lpop(response_key)
             if result:
                 todo_content = _clean_meeting_response(result if isinstance(result, str) else result.decode())

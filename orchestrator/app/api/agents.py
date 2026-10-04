@@ -603,6 +603,13 @@ async def list_agents(
 
     if lite:
         current_agent_version = get_agent_version()
+        # Monatskosten aus der EINEN Kostenquelle (#896) — eine Abfrage fuer die
+        # ganze Liste, dieselbe Zahl wie in der vollen Liste und der Budgetpruefung.
+        # Vorher stand hier fest 0,00.
+        from app.core.kosten import Bereich, kosten as _kosten, monatsbeginn
+
+        monatskosten = (await _kosten(
+            db, Bereich.agenten(a.id for a in agents), seit=monatsbeginn())).je_agent
         agent_responses = []
         for agent in agents:
             config = agent.config or {}
@@ -640,7 +647,7 @@ async def list_agents(
                 update_available=config.get("agent_version") != current_agent_version,
                 budget_usd=agent.budget_usd,
                 budget_exceeded_action=agent.budget_exceeded_action,
-                monthly_cost_usd=0.0,
+                monthly_cost_usd=round(monatskosten.get(agent.id, 0.0), 4),
                 browser_mode=agent.browser_mode,
                 autonomy_level=agent.autonomy_level or "l3",
                 webhook_enabled=agent.webhook_enabled,
@@ -2564,7 +2571,13 @@ async def send_message_to_agent(
                 "Empfaenger nicht laeuft — sie wird erst beim naechsten Start gelesen",
                 message_id, from_id, agent_id,
             )
-        await redis.client.lpush(f"agent:{agent_id}:messages", message_payload)
+        # Mit Budgetpruefung (#898): jede Nachricht startet beim Empfaenger einen
+        # Modelllauf. Gesperrt → nicht zustellen, der Absender bekommt den Hinweis.
+        from app.core.chat_auftrag import nachricht_einreihen
+
+        zustellung = await nachricht_einreihen(redis.client, agent_id, message_payload)
+        if not zustellung.eingereiht:
+            raise HTTPException(status_code=402, detail=zustellung.hinweis)
 
         # Persist in DB for history/visualization
         from app.models.agent_message import AgentMessage as AgentMessageModel
@@ -2759,14 +2772,15 @@ async def get_chat_sessions(
     meta_rows = (await db.execute(
         select(ChatSession.session_id, ChatSession.title, ChatSession.pinned,
                ChatSession.reasoning_level, ChatSession.goal, ChatSession.goal_status,
-               ChatSession.goal_rounds)
+               ChatSession.goal_rounds, ChatSession.goal_reason)
         .where(ChatSession.agent_id == agent_id)
     )).all()
     meta = {m.session_id: (m.title, m.pinned, m.reasoning_level) for m in meta_rows}
     from app.core.ziel import ZIEL_MAX_RUNDEN
     ziele = {
         m.session_id: {"text": m.goal, "status": m.goal_status or "aktiv",
-                       "rounds": m.goal_rounds or 0, "max_rounds": ZIEL_MAX_RUNDEN}
+                       "rounds": m.goal_rounds or 0, "max_rounds": ZIEL_MAX_RUNDEN,
+                       "reason": m.goal_reason}
         for m in meta_rows if m.goal
     }
 
@@ -2929,11 +2943,11 @@ async def delete_chat_session(
             status_code=409,
             detail="Angepinnter Chat kann nicht gelöscht werden. Löse den Pin zuerst.",
         )
-    result = await db.execute(
-        sql_delete(ChatMessage)
-        .where(ChatMessage.agent_id == agent_id)
-        .where(ChatMessage.session_id == session_id)
-    )
+    # Die Kosten bleiben (#896): erst verdichten, dann loeschen — ein Commit.
+    from app.core.kosten import QUELLE_CHAT, verdichten
+    bedingung = (ChatMessage.agent_id == agent_id) & (ChatMessage.session_id == session_id)
+    await verdichten(db, QUELLE_CHAT, bedingung)
+    result = await db.execute(sql_delete(ChatMessage).where(bedingung))
     await db.execute(
         sql_delete(ChatSession)
         .where(ChatSession.agent_id == agent_id)
@@ -2972,10 +2986,13 @@ async def delete_all_chat_sessions(
         select(ChatSession.session_id)
         .where(ChatSession.agent_id == agent_id, ChatSession.pinned.is_(True))
     )).scalars().all())
-    del_msgs = sql_delete(ChatMessage).where(ChatMessage.agent_id == agent_id)
+    bedingung = ChatMessage.agent_id == agent_id
     if pinned_ids:
-        del_msgs = del_msgs.where(ChatMessage.session_id.notin_(pinned_ids))
-    result = await db.execute(del_msgs)
+        bedingung = bedingung & ChatMessage.session_id.notin_(pinned_ids)
+    # Die Kosten bleiben (#896): erst verdichten, dann loeschen — ein Commit.
+    from app.core.kosten import QUELLE_CHAT, verdichten
+    await verdichten(db, QUELLE_CHAT, bedingung)
+    result = await db.execute(sql_delete(ChatMessage).where(bedingung))
     # Keep pinned session rows; drop the rest.
     await db.execute(
         sql_delete(ChatSession)

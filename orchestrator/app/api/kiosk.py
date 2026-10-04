@@ -145,19 +145,17 @@ async def kiosk_overview(db: AsyncSession = Depends(get_db)):
         for r in recent_rows
     ]
 
-    # --- AI spend today (tasks + chat) ---
-    task_cost = await db.scalar(
-        select(func.coalesce(func.sum(Task.cost_usd), 0.0)).where(Task.created_at >= start_today)
-    ) or 0.0
+    # --- AI spend today (tasks + chat) — aus der EINEN Kostenquelle (#896). Der
+    # Kiosk steht am Geraet selbst und zeigt die ganze Anlage.
+    from app.core.kosten import Bereich, kosten
+
+    kosten_heute = await kosten(db, Bereich.anlage(), seit=start_today)
     tokens_in = await db.scalar(
         select(func.coalesce(func.sum(Task.input_tokens), 0)).where(Task.created_at >= start_today)
     ) or 0
     tokens_out = await db.scalar(
         select(func.coalesce(func.sum(Task.output_tokens), 0)).where(Task.created_at >= start_today)
     ) or 0
-    chat_cost = await db.scalar(
-        select(func.coalesce(func.sum(ChatMessage.cost_usd), 0.0)).where(ChatMessage.timestamp >= start_today)
-    ) or 0.0
 
     # --- Host + live power / electricity cost ---
     host = _read_host_metrics()
@@ -196,7 +194,7 @@ async def kiosk_overview(db: AsyncSession = Depends(get_db)):
             "recent": recent,
         },
         "ai_spend": {
-            "cost_usd_today": round(float(task_cost) + float(chat_cost), 4),
+            "cost_usd_today": round(kosten_heute.gesamt, 4),
             "tokens_in_today": int(tokens_in),
             "tokens_out_today": int(tokens_out),
         },
@@ -355,9 +353,10 @@ async def kiosk_agent_detail(agent_id: str, db: AsyncSession = Depends(get_db)):
     )).all()
     by_status = {_state_value(st): int(c) for st, c in status_rows}
 
-    total_cost = await db.scalar(
-        select(func.coalesce(func.sum(Task.cost_usd), 0.0)).where(Task.agent_id == agent_id)
-    ) or 0.0
+    # Seit Beginn, Aufgaben UND Chat — aus der EINEN Kostenquelle (#896).
+    from app.core.kosten import Bereich, kosten
+
+    total_cost = (await kosten(db, Bereich.agent(agent_id))).gesamt
     tin = await db.scalar(
         select(func.coalesce(func.sum(Task.input_tokens), 0)).where(Task.agent_id == agent_id)
     ) or 0

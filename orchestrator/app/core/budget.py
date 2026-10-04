@@ -66,6 +66,14 @@ class Entscheid:
 
 ERLAUBT = Entscheid(ERLAUBEN)
 
+#: Hinweis bei gerissener Anlagengrenze — OHNE Beträge. Er geht an jeden, der
+#: chattet, auch an Mitglieder; die Gesamtkosten der Installation sehen nur
+#: Administratoren (ihre Benachrichtigung, Verwaltung → Budget).
+HINWEIS_ANLAGE = (
+    "Das Budget dieser Installation ist aufgebraucht. "
+    "Bitte wende dich an deinen Administrator."
+)
+
 
 def laufzeit(agent) -> tuple[str, str | None]:
     """(Laufzeit, Anbieter) — ein Claude-Code-Agent über den Codex-Anbieter ist Codex."""
@@ -86,10 +94,11 @@ def sparmodell_fuer_agent(agent) -> str | None:
 
 
 def _hinweis(agent, grenze: str, verbraucht: float, limit: float, sparmodus_fehlt: bool) -> str:
+    if grenze == "anlage":
+        return HINWEIS_ANLAGE
     wer = {
         "agent": f"Das Monatsbudget von „{agent.name}“",
         "nutzer": "Das Monatsbudget deines Kontos",
-        "anlage": "Das Monatsbudget dieser Installation",
     }[grenze]
     satz = (
         f"{wer} ist aufgebraucht ({_kosten.betrag_anzeigen(verbraucht)} von "
@@ -185,11 +194,18 @@ async def sperre_melden(db, agent, entscheid: Entscheid) -> bool:
     """
     if entscheid.art != BLOCKIEREN or agent is None:
         return False
+    folge = (" Neue Nachrichten und Aufgaben bleiben bis zum Monatsende liegen, sofern "
+             "das Budget nicht erhöht wird.")
     text = (
         f"„{agent.name}“ hat einen Auftrag abgelehnt: das Budget ist aufgebraucht "
         f"({_kosten.betrag_anzeigen(entscheid.verbraucht_usd)} von "
-        f"{_kosten.betrag_anzeigen(entscheid.budget_usd)}). Neue Nachrichten und "
-        "Aufgaben bleiben bis zum Monatsende liegen, sofern das Budget nicht erhöht wird."
+        f"{_kosten.betrag_anzeigen(entscheid.budget_usd)})." + folge
+    )
+    # Der Besitzer ist meist ein Mitglied: die Gesamtkosten der Anlage gehen ihn
+    # nichts an, nur die Administratoren bekommen sie.
+    text_besitzer = (
+        f"„{agent.name}“ hat einen Auftrag abgelehnt: {HINWEIS_ANLAGE}"
+        if entscheid.grenze == "anlage" else text
     )
     titel = f"Budget aufgebraucht: {agent.name}"
     neu_admin = await _melden(
@@ -198,7 +214,7 @@ async def sperre_melden(db, agent, entscheid: Entscheid) -> bool:
     )
     neu_besitzer = await _melden(
         db, absender=agent.id, ziel=f"/agents/{agent.id}?budget=gesperrt",
-        typ="error", titel=titel, text=text, agent_id=agent.id,
+        typ="error", titel=titel, text=text_besitzer, agent_id=agent.id,
     )
     if neu_admin or neu_besitzer:
         await db.commit()

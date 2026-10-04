@@ -165,3 +165,126 @@ class NaechsteRundeTests(unittest.IsolatedAsyncioTestCase):
         args, kwargs = zeile.await_args
         self.assertEqual(args[:4], ("a1", "s1", mid, "user"))
         self.assertEqual(kwargs["meta"]["source"], "goal")
+
+
+class BudgetSperrtRundeTests(unittest.IsolatedAsyncioTestCase):
+    """Sperrt das Budget die nächste Runde, darf das Ziel nicht stumm auf „aktiv“
+    stehen bleiben: Es pausiert mit dem Grund „Budget aufgebraucht“, der Hinweis
+    steht im Gespräch, und nach einer Budgeterhöhung setzt die nächste Nachricht
+    es fort — wie jedes pausierte Ziel.
+
+    Gegen eine echte (SQLite-)Datenbank und die echte Budgetprüfung.
+    """
+
+    async def asyncSetUp(self):
+        from datetime import datetime, timezone
+
+        from sqlalchemy.dialects.postgresql import JSONB
+        from sqlalchemy.ext.compiler import compiles
+
+        from app.core import budget
+        from app.models.agent import Agent, AgentState
+        from app.models.chat_message import ChatMessage
+        from app.models.notification import Notification
+        from app.models.task import Task
+        from app.models.user import User, UserRole
+        from tests.test_chat_einreihen_budget import FakeRedis
+
+        try:
+            compiles(JSONB, "sqlite")(lambda *a, **kw: "JSON")
+        except Exception:  # noqa: BLE001 — schon registriert
+            pass
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        from app.models.kosten_historie import KostenHistorie  # #896: gelöschte Kosten
+        async with self.engine.begin() as conn:
+            for model in (User, Agent, Task, ChatMessage, KostenHistorie, Notification, ChatSession):
+                await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+        self.redis = FakeRedis()
+        self.patches = [
+            patch.multiple(budget.settings, platform_budget_usd=0.0, budget_gilt_fuer_chat=True,
+                           model_provider="anthropic", display_currency="EUR", usd_eur_rate=0.5,
+                           create=True),
+            patch("app.db.session.async_session_factory", self.Session),
+            patch("app.services.chat_persistence.async_session_factory", self.Session),
+        ]
+        for p in self.patches:
+            p.start()
+        async with self.Session() as db:
+            db.add(User(id="u1", email="u1@example.invalid", name="U", role=UserRole.MEMBER))
+            db.add(Agent(id="a1", name="Bauer", state=AgentState.IDLE, user_id="u1", config={},
+                         budget_usd=1.0, budget_exceeded_action="stop"))
+            # Budget aufgebraucht — durch Chat, nicht durch Aufgaben.
+            db.add(ChatMessage(agent_id="a1", session_id="alt", message_id="x", role="assistant",
+                               content="x", cost_usd=2.0, timestamp=datetime.now(timezone.utc)))
+            await db.commit()
+            await ziel.setzen(db, "a1", "s1", "Snake fertig")
+
+    async def asyncTearDown(self):
+        for p in reversed(self.patches):
+            p.stop()
+        await self.engine.dispose()
+
+    async def _zeile(self):
+        async with self.Session() as db:
+            return await db.scalar(select(ChatSession))
+
+    async def test_gesperrte_runde_pausiert_mit_grund_und_hinweis(self):
+        from app.models.chat_message import ChatMessage
+
+        async with self.Session() as db:
+            neu = await ziel.nach_zug(db, self.redis, "a1", "s1", "m1", "Snake steht, weiter.")
+        self.assertEqual(neu, ziel.PAUSE)
+        zeile = await self._zeile()
+        self.assertEqual(zeile.goal_status, ziel.PAUSE)
+        self.assertEqual(zeile.goal_reason, ziel.GRUND_BUDGET)
+        self.assertEqual(ziel.als_dict(zeile)["reason"], "Budget aufgebraucht")
+        # Nichts eingereiht.
+        self.assertIsNone(self.redis.listen.get("agent:a1:chat"))
+        # Der Hinweis steht dauerhaft im Gespräch (übersteht ein Neuladen) …
+        async with self.Session() as db:
+            fehler = (await db.execute(select(ChatMessage).where(
+                ChatMessage.session_id == "s1", ChatMessage.role == "error"))).scalars().all()
+        self.assertEqual(len(fehler), 1)
+        self.assertIn("aufgebraucht", fehler[0].content)
+        # … und ein offenes Fenster lädt den Ziel-Stand neu.
+        arten = [e.get("type") for _, e in self.redis.veroeffentlicht]
+        self.assertIn("goal", arten)
+
+    async def test_nach_budgeterhoehung_setzt_die_naechste_nachricht_fort(self):
+        from app.models.agent import Agent
+
+        async with self.Session() as db:
+            await ziel.nach_zug(db, self.redis, "a1", "s1", "m1", "Snake steht, weiter.")
+        async with self.Session() as db:
+            (await db.get(Agent, "a1")).budget_usd = 100.0
+            await db.commit()
+        # Der Mensch schreibt, der Agent antwortet — das Ziel läuft weiter.
+        async with self.Session() as db:
+            neu = await ziel.nach_zug(db, self.redis, "a1", "s1", "m2", "Tetris als Nächstes.")
+        self.assertEqual(neu, ziel.AKTIV)
+        zeile = await self._zeile()
+        self.assertEqual(zeile.goal_status, ziel.AKTIV)
+        self.assertIsNone(zeile.goal_reason)
+        self.assertEqual(len(self.redis.listen["agent:a1:chat"]), 1)
+
+    async def test_neues_ziel_vergisst_den_alten_grund(self):
+        async with self.Session() as db:
+            await ziel.nach_zug(db, self.redis, "a1", "s1", "m1", "weiter")
+            await ziel.setzen(db, "a1", "s1", "Neues Ziel")
+        zeile = await self._zeile()
+        self.assertEqual((zeile.goal_status, zeile.goal_reason), (ziel.AKTIV, None))
+
+    async def test_erste_runde_gesperrt(self):
+        """``/goal`` im Chat (ws.py): Schon die erste Runde kann am Budget scheitern."""
+        await ziel.budget_gesperrt(self.redis, "a1", "s1", "m0", "Das Budget ist aufgebraucht.")
+        zeile = await self._zeile()
+        self.assertEqual((zeile.goal_status, zeile.goal_reason), (ziel.PAUSE, ziel.GRUND_BUDGET))
+
+    async def test_gestopptes_ziel_bleibt_gestoppt(self):
+        """Eine Sperre pausiert nur ein laufendes Ziel — ein beendetes lebt nicht wieder auf."""
+        async with self.Session() as db:
+            await ziel.beenden(db, "a1", "s1")
+        await ziel.budget_gesperrt(self.redis, "a1", "s1", "m0", "Das Budget ist aufgebraucht.")
+        zeile = await self._zeile()
+        self.assertEqual((zeile.goal_status, zeile.goal_reason), (ziel.GESTOPPT, None))

@@ -460,12 +460,16 @@ async def get_agent_detail(
             func.count(Task.id).label("total"),
             func.count(Task.id).filter(Task.status == TaskStatus.COMPLETED).label("completed"),
             func.count(Task.id).filter(Task.status == TaskStatus.FAILED).label("failed"),
-            func.coalesce(func.sum(Task.cost_usd), 0).label("total_cost"),
             func.avg(Task.duration_ms).label("avg_duration_ms"),
             func.avg(Task.num_turns).label("avg_turns"),
         )
         .where(Task.agent_id == agent_id, Task.created_at >= since)
     )).one()
+    # Kosten aus der EINEN Kostenquelle (#896): Aufgaben UND Chat im Zeitraum —
+    # dieselbe Zahl wie in der Agentenliste darueber (``get_agents_analytics``).
+    from app.core.kosten import Bereich, kosten
+
+    kosten_agent = await kosten(db, Bereich.agent(agent_id), seit=since)
 
     # Daily volume
     daily = (await db.execute(
@@ -513,7 +517,9 @@ async def get_agent_detail(
             "completed": task_row.completed or 0,
             "failed": task_row.failed or 0,
             "success_rate_pct": round((task_row.completed or 0) / task_row.total * 100, 1) if task_row.total else 0.0,
-            "total_cost_usd": round(float(task_row.total_cost or 0), 4),
+            "total_cost_usd": round(kosten_agent.gesamt, 4),
+            "task_cost_usd": round(kosten_agent.aufgaben, 4),
+            "chat_cost_usd": round(kosten_agent.chat, 4),
             "avg_duration_ms": int(task_row.avg_duration_ms or 0),
             "avg_turns": round(float(task_row.avg_turns or 0), 1),
         },

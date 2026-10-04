@@ -159,8 +159,9 @@ class VerdictTests(unittest.IsolatedAsyncioTestCase):
             pass
 
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        from app.models.kosten_historie import KostenHistorie  # #896: gelöschte Kosten
         async with self.engine.begin() as conn:
-            for model in (Agent, Task, ChatMessage, CommandApproval, OAuthIntegration, AIAccount):
+            for model in (Agent, Task, ChatMessage, KostenHistorie, CommandApproval, OAuthIntegration, AIAccount):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
 
@@ -306,6 +307,33 @@ class VerdictTests(unittest.IsolatedAsyncioTestCase):
                 user=SimpleNamespace(id="u1", role="admin", email="a@b.c"), db=db
             )
         self.assertIn("budget", self._kinds(out))
+
+    async def test_cost_24h_counts_chat_too(self):
+        """#896: Die 24-Stunden-Kosten kommen aus der einen Kostenquelle — mit Chat.
+        Vorher zählte der Concierge nur Aufgaben."""
+        from datetime import datetime, timedelta, timezone
+        from types import SimpleNamespace
+
+        from app.models.agent import Agent, AgentState
+        from app.models.chat_message import ChatMessage
+        from app.models.task import Task, TaskStatus
+
+        jetzt = datetime.now(timezone.utc)
+        async with self.Session() as db:
+            db.add(Agent(id="ak", name="Fleißig", state=AgentState.RUNNING, user_id="u1", config={}))
+            db.add(Task(id="tk", title="x", prompt="y", status=TaskStatus.COMPLETED,
+                        agent_id="ak", cost_usd=1.5, created_at=jetzt))
+            db.add(ChatMessage(agent_id="ak", session_id="s", message_id="mk", role="assistant",
+                               content="x", cost_usd=0.75, timestamp=jetzt))
+            # Älter als 24 Stunden — zählt nicht.
+            db.add(ChatMessage(agent_id="ak", session_id="s", message_id="ml", role="assistant",
+                               content="x", cost_usd=9.0, timestamp=jetzt - timedelta(days=2)))
+            await db.commit()
+            out = await concierge.concierge_overview(
+                user=SimpleNamespace(id="u1", role="admin", email="a@b.c"), db=db
+            )
+        self.assertAlmostEqual(out["cost_24h_usd"], 2.25)
+        self.assertAlmostEqual(out["stats"]["cost_24h_usd"], 2.25)
 
     async def test_switch_to_stop_is_announced_until_confirmed(self):
         """#898: Bestand mit Budget im Sparmodus bekommt einen Hinweis — bis zum Speichern."""
