@@ -44,6 +44,34 @@ logger = logging.getLogger(__name__)
 #: Datenbank. Dieselbe Groessenordnung wie im Agenten (werkzeug_eintrag.py).
 AUSGABE_MAX = 1000
 
+#: Feinaufschlüsselung der Token — nur gespeichert, wenn die Laufzeit sie gemeldet
+#: hat (> 0), damit die Oberfläche keine leeren Nullwerte zeigt.
+_FEINE_TOKEN = ("reasoning_tokens", "cached_tokens", "context_tokens", "cache_write_tokens")
+
+
+def done_kennzahlen(edata: dict) -> dict:
+    """Kennzahlen eines ``done`` für ``meta`` und die Spalten der Antwortzeile.
+
+    EINE Stelle für beide Schreiber (Browser-Verbindung in ``api/ws.py`` und den
+    Lauscher in ``main.py``). Bis v1.362 baute jeder seine eigene Fassung; der
+    Lauscher kannte weder Token noch schrieb er den Betrag in die Spalte
+    ``cost_usd`` — ohne offenen Browser blieb jeder Chat-Lauf kostenlos (#896).
+    ``context_tokens`` ist der Füllstand nach diesem Zug (letzter Aufruf, nicht
+    die Summe) — gespeichert, damit der Ring nach dem Neuladen stimmt.
+    """
+    edata = edata if isinstance(edata, dict) else {}
+    aus = {
+        "cost_usd": edata.get("cost_usd"),
+        "duration_ms": edata.get("duration_ms"),
+        "num_turns": edata.get("num_turns"),
+        "input_tokens": edata.get("input_tokens"),
+        "output_tokens": edata.get("output_tokens"),
+    }
+    for feld in _FEINE_TOKEN:
+        if edata.get(feld):
+            aus[feld] = edata[feld]
+    return aus
+
 
 def ausgabe_text(inhalt) -> str:
     """Ein ``tool_result``-Inhalt als Text — Zeichenkette, Blockliste oder Objekt."""

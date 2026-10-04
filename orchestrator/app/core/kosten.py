@@ -19,6 +19,8 @@ Chatnachrichten oder Aufgaben verdichtet ``verdichten`` die Beträge in
 ``kosten_historie`` (Tag, Agent, Besitzer, Quelle — kein Inhalt), und ``kosten``
 zählt Historie plus noch vorhandene Zeilen. Verdichtet wird in DERSELBEN
 Transaktion wie gelöscht — sonst zählte ein Betrag doppelt oder gar nicht.
+Ebenfalls dort landen Chat-Läufe ohne eigene Verlaufszeile (Telegram,
+Sprachfront): ``lauf_ohne_verlauf_buchen``.
 
 Nutzertrennung: ``bereich_fuer_nutzer`` liefert für ein Mitglied genau seine
 sichtbaren Agenten (``ownership.visible_agent_ids``), für Administratoren die ganze
@@ -204,6 +206,32 @@ async def verdichten(db, quelle: str, bedingung) -> float:
         summe += betrag
     await db.flush()
     return summe
+
+
+async def lauf_ohne_verlauf_buchen(db, agent_id: str, betrag_usd: float) -> bool:
+    """Kosten eines Chat-Laufs, zu dem es keine Verlaufszeile gibt, festhalten.
+
+    Telegram und die Sprachfront legen keine Zeile in ``chat_messages`` an; das
+    ``done`` ihrer Läufe fand keine Nutzernachricht und wurde samt Kosten
+    übergangen — Budget und Dashboard sahen diese Gespräche nie. Sie landen hier
+    in ``kosten_historie`` (Tag, Agent, Besitzer, Betrag — kein Inhalt) und
+    zählen in ``kosten`` wie jede andere Chat-Antwort. Committet selbst.
+
+    Doppelte Zustellung verhindert der Aufrufer (``main._persist_chat_completion``).
+    """
+    from app.models.agent import Agent
+    from app.models.kosten_historie import KostenHistorie
+
+    betrag = float(betrag_usd or 0)
+    if betrag <= 0 or not agent_id:
+        return False
+    besitzer = await db.scalar(select(Agent.user_id).where(Agent.id == agent_id))
+    db.add(KostenHistorie(
+        tag=datetime.now(timezone.utc).date(), agent_id=agent_id, user_id=besitzer,
+        quelle=QUELLE_CHAT, betrag_usd=betrag,
+    ))
+    await db.commit()
+    return True
 
 
 async def kosten(

@@ -1,6 +1,7 @@
 """Base LLM provider interface."""
 
 import logging
+import re
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -96,6 +97,49 @@ def describe_failure(
     if umstaende:
         teile.append(f"[{', '.join(umstaende)}]")
     return " ".join(teile)
+
+
+_API_FEHLER = re.compile(r"^\s*API error (\d{3})\b", re.S)
+
+
+def nutzertext_fuer_api_fehler(fehlertext: str | None) -> str:
+    """Ein ``API error NNN: {…}`` der Anbieter als Satz für den Menschen im Chat.
+
+    Bis v1.362 stand das rohe Fehler-JSON des Anbieters im Chat — für Nutzer
+    unlesbar. Die Einzelheiten gehören ins Log (der Aufrufer schreibt sie dort
+    hin); hier steht, was passiert ist und was man tun kann. Alles, was kein
+    API-Fehler dieser Form ist, bleibt unverändert.
+    """
+    text = fehlertext or ""
+    m = _API_FEHLER.match(text)
+    if not m:
+        return text
+    code = int(m.group(1))
+    klein = text.lower()
+    if code in (401, 403):
+        satz = ("Der Anbieter des Sprachmodells hat den Zugang abgelehnt. Bitte den "
+                "API-Schlüssel bzw. die Anmeldung im KI-Konto prüfen.")
+    elif code == 404:
+        satz = ("Das Modell bzw. die Bereitstellung wurde beim Anbieter nicht gefunden. "
+                "Bitte Modellname und Endpunkt im KI-Konto prüfen.")
+    elif code == 429:
+        satz = ("Der Anbieter meldet zu viele Anfragen oder ein erschöpftes Kontingent. "
+                "Bitte kurz warten und es dann erneut versuchen.")
+    elif code >= 500:
+        satz = ("Beim Anbieter des Sprachmodells ist ein interner Fehler aufgetreten. "
+                "Bitte später erneut versuchen.")
+    elif "invalid schema for function" in klein or "invalid_function_parameters" in klein:
+        satz = ("Das Sprachmodell hat die Beschreibung eines Werkzeugs nicht angenommen. "
+                "Bitte die Anbindung des betroffenen Werkzeugs (MCP-Server) prüfen.")
+    elif "operationnotsupported" in klein or "operation is unsupported" in klein \
+            or "operation does not work" in klein or "unsupported operation" in klein:
+        satz = ("Das gewählte Modell unterstützt diese Art der Anfrage beim Anbieter nicht. "
+                "Bitte ein anderes Modell wählen oder den Endpunkt im KI-Konto prüfen.")
+    elif "context" in klein and ("length" in klein or "window" in klein or "too long" in klein):
+        satz = "Der Gesprächsverlauf ist für das Modell zu lang geworden."
+    else:
+        satz = "Das Sprachmodell hat die Anfrage abgelehnt."
+    return f"{satz} (Fehler {code}; Einzelheiten stehen im Protokoll des Agenten.)"
 
 
 @dataclass

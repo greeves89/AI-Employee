@@ -46,12 +46,15 @@ async def run_turns_with_steering(
     the handler can resume the session on continuations.
     ``stop_current()`` SIGINTs the running subprocess (graceful; -2 is not an error).
     ``pending_drain()`` pops queued same-channel messages (already prepared text).
-    Returns the LAST turn's result dict.
+    Returns the LAST turn's result dict — mit Kosten und Token ALLER Zuege (#896):
+    jeder eingefaltete Zug ist ein eigener, bezahlter Lauf; nur den letzten zu
+    melden liess die frueheren aus der Abrechnung fallen.
     """
     text = initial_text
     result: dict = {"status": "completed", "text": ""}
     folds = 0
     is_resume = False
+    summen: dict[str, float] = {}
 
     while True:
         stash: list[str] = []
@@ -91,6 +94,11 @@ async def run_turns_with_steering(
                 except Exception:  # noqa: BLE001
                     pass
 
+        for feld in _SUMMENFELDER:
+            wert = result.get(feld) if isinstance(result, dict) else None
+            if isinstance(wert, (int, float)) and not isinstance(wert, bool):
+                summen[feld] = summen.get(feld, 0) + wert
+
         # Collect messages that arrived: stashed by the watcher mid-turn PLUS any that
         # landed right at the boundary (after the watcher's last drain).
         extra = list(stash)
@@ -116,4 +124,12 @@ async def run_turns_with_steering(
             continue
         break
 
+    if folds and isinstance(result, dict) and summen:
+        result = {**result, **summen}
     return result
+
+
+#: Was ueber eingefaltete Zuege addiert wird. Jeder Zug meldet nur seinen
+#: eigenen Anteil (siehe ``model_registry.anteil_seit``), die Summe ist also
+#: die ganze Nachricht.
+_SUMMENFELDER = ("cost_usd", "input_tokens", "output_tokens")

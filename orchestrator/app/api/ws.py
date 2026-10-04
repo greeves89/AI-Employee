@@ -647,28 +647,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     resp.setdefault("files", []).extend(
                         f for f in auto_files if f.get("path") not in existing
                     )
-                meta = {
-                    "cost_usd": edata.get("cost_usd"),
-                    "duration_ms": edata.get("duration_ms"),
-                    "num_turns": edata.get("num_turns"),
-                    "input_tokens": edata.get("input_tokens"),
-                    "output_tokens": edata.get("output_tokens"),
-                    # Feinaufschlüsselung für die Token-Anzeige im Chat — nur setzen,
-                    # wenn der Harness/Provider sie gemeldet hat (>0), sonst weglassen,
-                    # damit die UI keine leeren Nullwerte zeigt.
-                    **({"reasoning_tokens": edata["reasoning_tokens"]}
-                       if edata.get("reasoning_tokens") else {}),
-                    **({"cached_tokens": edata["cached_tokens"]}
-                       if edata.get("cached_tokens") else {}),
-                    # Fuellstand des Fensters nach diesem Zug (letzter Aufruf,
-                    # nicht die Summe). Gespeichert, damit der Ring nach einem
-                    # Neuladen den Stand zeigt, den der Agent wirklich hat —
-                    # ein Neuladen aendert am Kontext des Agenten nichts.
-                    **({"context_tokens": edata["context_tokens"]}
-                       if edata.get("context_tokens") else {}),
-                    **({"cache_write_tokens": edata["cache_write_tokens"]}
-                       if edata.get("cache_write_tokens") else {}),
-                }
+                # Kosten, Dauer, Token — dieselbe Lesart wie der Lauscher in main.py.
+                from app.services.chat_persistence import done_kennzahlen
+                meta = done_kennzahlen(edata)
                 if resp.get("images"):
                     meta["presented_images"] = resp["images"]
                 if resp.get("files"):

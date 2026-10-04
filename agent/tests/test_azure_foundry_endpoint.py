@@ -54,5 +54,46 @@ class TheProjectPathIsStrippedTests(unittest.TestCase):
         self.assertIn("/openai/v1/", _url(f"{BASIS}/openai/v1"))
 
 
+class CodexModelleAufKlassischemAzure(unittest.TestCase):
+    """``gpt-5.3-codex`` über ein klassisches Azure-Konto: Codex-Modelle kann
+    Azure NUR über die Responses-Schnittstelle bedienen. Der Deployment-Pfad
+    (…/chat/completions) antwortete mit 400 „OperationNotSupported — The
+    chatCompletion operation does not work with the specified model". Der
+    Responses-Weg liegt an der Ressource (``/openai/v1/responses``, Modell =
+    Bereitstellungsname im Rumpf, keine api-version nötig)."""
+
+    def _aufloesen(self, endpoint, model):
+        return OpenAIProvider(api_endpoint=endpoint, api_key="x", model_name=model,
+                              is_azure=True)._resolve_url()
+
+    def test_codex_geht_auf_den_responses_weg(self):
+        for ep in ("https://meine.openai.azure.com", f"{BASIS}/api/projects/meinprojekt",
+                   "https://meine.cognitiveservices.azure.com/"):
+            with self.subTest(ep=ep):
+                url, fmt = self._aufloesen(ep, "gpt-5.3-codex")
+                self.assertEqual(fmt, "responses")
+                self.assertTrue(url.endswith("/openai/v1/responses"), url)
+                self.assertNotIn("/api/projects", url)
+                self.assertNotIn("/deployments/", url)
+
+    def test_andere_modelle_bleiben_auf_dem_deployment_pfad(self):
+        url, fmt = self._aufloesen("https://meine.openai.azure.com", "gpt-4o")
+        self.assertEqual(fmt, "chat")
+        self.assertIn("/openai/deployments/gpt-4o/chat/completions", url)
+
+    def test_die_azure_meldung_leitet_um(self):
+        from app.providers import openai_provider as op
+
+        meldung = ('{"error":{"code":"OperationNotSupported","message":"The chatCompletion '
+                   'operation does not work with the specified model, gpt-5.9-neu. Please '
+                   'choose different model and try again."}}')
+        self.assertTrue(op._verlangt_responses_weg(meldung))
+        op._BRAUCHT_RESPONSES.add("gpt-5.9-neu")
+        self.addCleanup(op._BRAUCHT_RESPONSES.discard, "gpt-5.9-neu")
+        url, fmt = self._aufloesen("https://meine.openai.azure.com", "gpt-5.9-neu")
+        self.assertEqual(fmt, "responses")
+        self.assertTrue(url.endswith("/openai/v1/responses"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -73,7 +73,11 @@ def _verlangt_responses_weg(error_text: str) -> bool:
     eng — ein beliebiger 400 darf kein Modell dauerhaft umleiten.
     """
     t = (error_text or "").lower()
-    return "/v1/responses" in t or "use /responses" in t
+    if "/v1/responses" in t or "use /responses" in t:
+        return True
+    # Azure sagt es anders: „The chatCompletion operation does not work with the
+    # specified model" (Code OperationNotSupported) — ebenso eng gefasst.
+    return "chatcompletion operation does not work" in t
 
 #: Paare (Modell, Stufe), die nachweislich abgelehnt wurden. Wird zur Laufzeit
 #: gefuellt, nicht gepflegt — eine handgeschriebene Liste war genau das
@@ -261,14 +265,24 @@ class OpenAIProvider(BaseLLMProvider):
         if azure:
             # Classic Azure OpenAI: the deployment name lives in the path.
             # This surface serves deployments via /chat/completions — the
-            # per-deployment /responses route is not exposed, so always
-            # use chat completions (GPT-5 reasoning params handled below).
+            # per-deployment /responses route is not exposed, so chat
+            # completions is the default (GPT-5 reasoning params handled below).
+            # Responses-only models (codex) go to the resource-level route below.
             # Die Ressourcen-Wurzel gewinnen. Azure AI Foundry zeigt in der
             # Oberflaeche einen PROJEKT-Endpunkt zum Kopieren an
             # (…/api/projects/<name>), und genau den traegt jeder ein. Haengt man
             # daran /openai/deployments/…, antwortet der Dienst mit 400. Der
             # Deployment-Pfad gehoert an die Ressource, nicht ans Projekt.
             root = ep.split("/api/projects")[0].split("/openai")[0].rstrip("/")
+            # Codex-Modelle bedient Azure NUR ueber Responses — auf dem
+            # Deployment-Pfad kam „OperationNotSupported — The chatCompletion
+            # operation does not work with the specified model" (gpt-5.3-codex).
+            # Der Responses-Weg liegt an der Ressource (/openai/v1/responses,
+            # Bereitstellungsname als ``model`` im Rumpf, ohne api-version —
+            # eine fuer Chat eingetragene GA-Version wuerde ihn sonst brechen).
+            # Ebenso fuer jedes Modell, das sich zur Laufzeit so gemeldet hat.
+            if "codex" in self.model_name.lower() or self.model_name in _BRAUCHT_RESPONSES:
+                return f"{root}/openai/v1/responses", "responses"
             url = f"{root}/openai/deployments/{self.model_name}/chat/completions?api-version={self._azure_version()}"
             return url, "chat"
 
@@ -567,9 +581,10 @@ class OpenAIProvider(BaseLLMProvider):
         except _ResponsesWegNoetig:
             # Das Modell hat sich gemeldet (siehe _stream_chat_with_body) und ist
             # jetzt in _BRAUCHT_RESPONSES — _resolve_url waehlt daher den anderen
-            # Weg. Liefert sie trotzdem "chat" (klassisches Azure ohne
-            # Responses-Route), gibt es keinen zweiten Weg: dann nicht im Kreis
-            # laufen, sondern den Fehler wie bisher melden.
+            # Weg (auch bei klassischem Azure: Ressourcen-Route /openai/v1/responses).
+            # Liefert sie trotzdem "chat" (ausdruecklich eingetragener
+            # /chat/completions-Endpunkt), gibt es keinen zweiten Weg: dann nicht im
+            # Kreis laufen, sondern den Fehler wie bisher melden.
             neue_url, fmt = self._resolve_url()
             if fmt != "responses":
                 raise

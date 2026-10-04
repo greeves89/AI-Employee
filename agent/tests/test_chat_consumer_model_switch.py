@@ -72,4 +72,7 @@ async def test_persisted_value_is_json_with_model():
     await consumer._persist_session("webapp:s1", handler, "claude-sonnet-5")
 
     raw = await consumer.redis.get("agent:agent-1:claude_session:webapp:s1")
-    assert json.loads(raw) == {"session_id": "sess-abc", "model": "claude-sonnet-5"}
+    # kosten_stand (#896): die CLI zaehlt ueber --resume weiter — ohne den Stand
+    # waere nach einem Neustart unbekannt, was die naechste Nachricht kostet.
+    assert json.loads(raw) == {"session_id": "sess-abc", "model": "claude-sonnet-5",
+                               "kosten_stand": 0.0}
