@@ -97,7 +97,7 @@ async def get_permission_packages(user=Depends(require_auth)):
     modal can show what "automatisch" will grant without re-implementing the
     rule in TypeScript — it lives once, in core.autonomy_matrix.
     """
-    from app.core.agent_manager import PERMISSION_PACKAGES, DEFAULT_PERMISSIONS
+    from app.core.agent_manager import PERMISSION_PACKAGES
     packages = [
         {
             "id": pkg_id,
@@ -1130,6 +1130,15 @@ async def update_access_policy(
         for cap in body.computer_use_default_capabilities:
             if cap not in CAPABILITY_GROUPS:
                 raise HTTPException(status_code=400, detail=f"Unknown capability group: {cap}")
+        # Shell/Mitschnitt/Browser nur innerhalb der Rollen-Grenze — gemessen an
+        # der (ggf. eben geaenderten) Matrix; Bestand bleibt (Sicherheitspruefung F3).
+        from app.core.autonomie_grenze import pruefe_computer_use
+        await pruefe_computer_use(
+            user, db, body.computer_use_default_capabilities,
+            autonomy_matrix.normalize_matrix(access_policy.get("autonomy_matrix"),
+                                             agent.autonomy_level or level),
+            bisher=autonomy_matrix.computer_use_default_capabilities(agent.access_policy),
+        )
         access_policy["computer_use_default_capabilities"] = body.computer_use_default_capabilities
 
     agent.access_policy = access_policy
