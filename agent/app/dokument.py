@@ -176,11 +176,23 @@ _GEFAEHRLICH_EINZELN = ("embed", "link", "base", "frame", "iframe", "object", "s
 
 
 def _entschaerfen(text: str) -> str:
-    """Nachladende/ausführende Elemente und Weiterleitungen entfernen.
+    """Nachladende/ausführende Elemente und Weiterleitungen entfernen — bis nichts mehr fällt.
 
-    Zweite Linie: die erste ist der Route-Handler beim Rendern, der ohnehin
-    nichts außerhalb des Ordners zulässt, plus abgeschaltetes JavaScript.
+    Wiederholt, weil verschachtelte Eingaben wie ``<ifr<iframe>ame …>`` nach
+    einem Durchgang wieder ein gültiges Element ergeben. Zweite Linie: die
+    erste ist der Route-Handler beim Rendern (nur Bilder/Schriften/Stylesheets
+    aus dem Ordner), plus abgeschaltetes JavaScript.
     """
+    for _ in range(20):
+        neu = _entschaerfen_einmal(text)
+        if neu == text:
+            return neu
+        text = neu
+    # Hört nicht auf zu schrumpfen: lieber gar kein Markup als ein halbes.
+    return html.escape(text)
+
+
+def _entschaerfen_einmal(text: str) -> str:
     for tag in _GEFAEHRLICH_PAARE:
         text = re.sub(rf"<\s*{tag}\b.*?<\s*/\s*{tag}\s*>", "", text, flags=re.I | re.S)
     for tag in _GEFAEHRLICH_EINZELN:
@@ -204,6 +216,35 @@ def _im_ordner(basis: Path, relativ: str) -> Path | None:
     except ValueError:
         return None
     return kandidat if kandidat.is_file() else None
+
+
+#: Was beim Rendern aus dem Ordner nachgeladen werden darf: nur Unterressourcen,
+#: die sichtbar ins PDF gehen, aber keinen Dateiinhalt als Text zeigen können.
+#: Frames/Dokumente (iframe, object) und Textdateien bleiben draußen — sonst
+#: würde ein eingeschleustes ``<iframe src="notizen.txt">`` sie ins PDF drucken.
+_ERLAUBTE_TYPEN = frozenset({"image", "font", "stylesheet"})
+_ERLAUBTE_ENDUNGEN = frozenset({
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico",
+    ".woff", ".woff2", ".ttf", ".otf", ".css",
+})
+
+
+def _ressource_aus_ordner(basis: Path, url: str, typ: str) -> Path | None:
+    """Datei für eine Nachlade-Anfrage beim Rendern — oder None (= blockieren)."""
+    from urllib.parse import unquote, urlsplit
+
+    if typ not in _ERLAUBTE_TYPEN or not url.startswith(HERKUNFT):
+        return None
+    teile = urlsplit(url)
+    if teile.query or teile.fragment:
+        return None
+    datei = _im_ordner(basis, unquote(teile.path).lstrip("/"))
+    if datei is None or datei.suffix.lower() not in _ERLAUBTE_ENDUNGEN:
+        return None
+    # Stylesheet nur als .css, Bild/Schrift nie als .css
+    if (typ == "stylesheet") != (datei.suffix.lower() == ".css"):
+        return None
+    return datei
 
 
 def _markdown_zu_html(text: str) -> str:
@@ -281,8 +322,6 @@ def erzeuge_pdf(eingabe: Path, ziel: Path, titel: str | None = None, fusszeile: 
     * nachladende Elemente (iframe, object, embed, link, script, Weiterleitung)
       werden vorher entfernt.
     """
-    from urllib.parse import unquote, urlsplit
-
     from playwright.sync_api import sync_playwright
 
     seite_html = baue_html(eingabe, titel)
@@ -294,13 +333,11 @@ def erzeuge_pdf(eingabe: Path, ziel: Path, titel: str | None = None, fusszeile: 
         if url == HERKUNFT + _SEITE:
             route.fulfill(status=200, content_type="text/html; charset=utf-8", body=seite_html)
             return
-        if url.startswith(HERKUNFT):
-            teile = urlsplit(url)
-            datei = _im_ordner(basis, unquote(teile.path).lstrip("/"))
-            if datei is not None and not teile.query:
-                bericht["erlaubt"].append(url)
-                route.fulfill(path=str(datei))
-                return
+        datei = _ressource_aus_ordner(basis, url, route.request.resource_type)
+        if datei is not None:
+            bericht["erlaubt"].append(url)
+            route.fulfill(path=str(datei))
+            return
         bericht["blockiert"].append(url)
         route.abort("blockedbyclient")
 

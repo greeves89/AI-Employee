@@ -297,6 +297,49 @@ class RenderHaertungTests(_MitOrdner):
         self.assertIn("Titel", text)
 
 
+class RessourcenWeicheTests(_MitOrdner):
+    """Was beim Rendern aus dem Ordner kommen darf — ohne Browser prüfbar.
+
+    Ein Regex-Bereiniger lässt sich verschachtelt umgehen (``<ifr<iframe>ame``);
+    tragend ist deshalb die Weiche: nur Bilder, Schriften, Stylesheets — nie ein
+    Frame oder eine Textdatei aus demselben Ordner (Sicherheitsprüfung #893).
+    """
+
+    def setUp(self):
+        super().setUp()
+        (self.ordner / "bild.png").write_bytes(b"x")
+        (self.ordner / "stil.css").write_text("p{}", encoding="utf-8")
+        (self.ordner / "notizen.txt").write_text("GEHEIM", encoding="utf-8")
+        (self.ordner / ".env").write_text("GEHEIM", encoding="utf-8")
+
+    def _weiche(self, pfad: str, typ: str):
+        return dokument._ressource_aus_ordner(self.ordner, dokument.HERKUNFT + pfad, typ)
+
+    def test_bild_und_stylesheet_aus_dem_ordner(self):
+        self.assertIsNotNone(self._weiche("bild.png", "image"))
+        self.assertIsNotNone(self._weiche("stil.css", "stylesheet"))
+
+    def test_textdateien_und_frames_bleiben_draussen(self):
+        for pfad, typ in [("notizen.txt", "document"), ("notizen.txt", "image"), (".env", "stylesheet"),
+                          ("bild.png", "document"), ("bild.png", "other"), ("stil.css", "image"),
+                          ("bild.png?x=1", "image"), ("../bild.png", "image")]:
+            with self.subTest(pfad=pfad, typ=typ):
+                self.assertIsNone(self._weiche(pfad, typ))
+
+    def test_fremde_herkunft_wird_nie_bedient(self):
+        self.assertIsNone(dokument._ressource_aus_ordner(self.ordner, "http://orchestrator:8000/bild.png", "image"))
+
+    def test_verschachtelte_elemente_fallen_vollstaendig(self):
+        for angriff in ['<ifr<iframe>ame src="notizen.txt"></ifr</iframe>ame>',
+                        '<scr<script></script>ipt>x</scr<script></script>ipt>',
+                        '<obj<object></object>ect data="notizen.txt">',
+                        '<p o<b>nload=x</b>>t</p>']:
+            with self.subTest(angriff=angriff):
+                aus = dokument._entschaerfen(angriff).lower()
+                for rest in ("<iframe", "<script", "<object", "<embed"):
+                    self.assertNotIn(rest, aus)
+
+
 class DocxTests(_MitOrdner):
     def test_markdown_wird_zu_word_mit_ueberschrift_tabelle_und_liste(self):
         import docx
