@@ -301,9 +301,12 @@ async def concierge_overview(
     )).all()
     task_counts = {str(getattr(s, "value", s)): int(c) for s, c in tasks_24h}
 
-    cost_24h = float((await db.execute(
-        select(func.coalesce(func.sum(Task.cost_usd), 0)).where(Task.created_at >= day_ago)
-    )).scalar() or 0)
+    # Aus der EINEN Kostenquelle (#896): Aufgaben UND Chat der ganzen Anlage —
+    # der Concierge ist nur fuer Administratoren. Vorher nur Aufgaben: ein Tag im
+    # Chat kostete hier nichts.
+    from app.core.kosten import Bereich, kosten
+
+    cost_24h = (await kosten(db, Bereich.anlage(), seit=day_ago)).gesamt
 
     # Offene Freigaben: darauf wartet jemand — die gehören ganz nach oben.
     pending_approvals = 0

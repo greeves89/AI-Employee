@@ -603,6 +603,13 @@ async def list_agents(
 
     if lite:
         current_agent_version = get_agent_version()
+        # Monatskosten aus der EINEN Kostenquelle (#896) — eine Abfrage fuer die
+        # ganze Liste, dieselbe Zahl wie in der vollen Liste und der Budgetpruefung.
+        # Vorher stand hier fest 0,00.
+        from app.core.kosten import Bereich, kosten as _kosten, monatsbeginn
+
+        monatskosten = (await _kosten(
+            db, Bereich.agenten(a.id for a in agents), seit=monatsbeginn())).je_agent
         agent_responses = []
         for agent in agents:
             config = agent.config or {}
@@ -640,7 +647,7 @@ async def list_agents(
                 update_available=config.get("agent_version") != current_agent_version,
                 budget_usd=agent.budget_usd,
                 budget_exceeded_action=agent.budget_exceeded_action,
-                monthly_cost_usd=0.0,
+                monthly_cost_usd=round(monatskosten.get(agent.id, 0.0), 4),
                 browser_mode=agent.browser_mode,
                 autonomy_level=agent.autonomy_level or "l3",
                 webhook_enabled=agent.webhook_enabled,

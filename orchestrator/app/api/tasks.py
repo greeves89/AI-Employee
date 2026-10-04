@@ -335,22 +335,27 @@ async def get_task_summary(
     user=Depends(require_auth_or_agent),
     db: AsyncSession = Depends(get_db),
 ):
-    """Compact aggregate task stats for mobile dashboards."""
+    """Compact aggregate task stats for mobile dashboards.
+
+    Kosten seit Beginn aus der EINEN Kostenquelle (#896): Aufgaben UND Chat, im
+    selben Bereich wie die Zaehler — vorher nur Aufgaben.
+    """
+    from app.core.kosten import Bereich, kosten
+
     agent_ids = await _get_user_agent_ids(user, db) if hasattr(user, "role") else None
     query = select(
         Task.status,
         func.count(Task.id).label("count"),
-        func.coalesce(func.sum(Task.cost_usd), 0).label("cost"),
     ).group_by(Task.status)
     if agent_ids is not None:
         query = query.where(Task.agent_id.in_(agent_ids))
 
     result = await db.execute(query)
     counts = {status: 0 for status in TaskStatus}
-    total_cost = 0.0
     for row in result.all():
         counts[row.status] = int(row.count or 0)
-        total_cost += float(row.cost or 0)
+    bereich = Bereich.anlage() if agent_ids is None else Bereich.agenten(agent_ids)
+    total_cost = (await kosten(db, bereich)).gesamt
 
     active = counts[TaskStatus.PENDING] + counts[TaskStatus.QUEUED] + counts[TaskStatus.RUNNING]
     completed = counts[TaskStatus.COMPLETED]
@@ -402,55 +407,56 @@ async def get_cost_attribution(
             platform_total_input_tokens=0, platform_total_output_tokens=0,
         )
 
-    top_where = [Task.agent_id.isnot(None), Task.cost_usd.isnot(None)]
+    # Kosten aus der EINEN Kostenquelle (#896): Aufgaben UND Chat, seit Beginn.
+    # Die Rangfolge richtet sich nach diesen Kosten; Tokens und Aufgabenzahl
+    # kommen weiter aus den Aufgaben.
+    from app.core.kosten import Bereich, kosten
+
+    erg = await kosten(db, Bereich.anlage() if aids is None else Bereich.agenten(aids))
+    rangliste = sorted(erg.je_agent.items(), key=lambda e: e[1], reverse=True)[:max(0, limit)]
+    top_ids = [agent_id for agent_id, _ in rangliste]
+
+    task_where = [Task.cost_usd.isnot(None)]
     if aids is not None:
-        top_where.append(Task.agent_id.in_(aids))
-    result = await db.execute(
+        task_where.append(Task.agent_id.in_(aids))
+    je_agent_rows = (await db.execute(
         select(
             Task.agent_id,
-            func.sum(Task.cost_usd).label("total_cost"),
-            func.sum(Task.input_tokens).label("total_input"),
-            func.sum(Task.output_tokens).label("total_output"),
-            func.count(Task.id).label("task_count"),
-        )
-        .where(*top_where)
-        .group_by(Task.agent_id)
-        .order_by(func.sum(Task.cost_usd).desc())
-        .limit(limit)
-    )
-    rows = result.all()
-
-    agent_ids = [r.agent_id for r in rows]
-    agents_result = await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))
-    agents_map = {a.id: a.name for a in agents_result.scalars().all()}
-
-    top_agents = [
-        AgentCostEntry(
-            agent_id=r.agent_id,
-            agent_name=agents_map.get(r.agent_id, "Unknown"),
-            total_cost_usd=round(r.total_cost or 0, 4),
-            total_input_tokens=r.total_input or 0,
-            total_output_tokens=r.total_output or 0,
-            task_count=r.task_count,
-        )
-        for r in rows
-    ]
-
-    totals_where = [Task.cost_usd.isnot(None)]
-    if aids is not None:
-        totals_where.append(Task.agent_id.in_(aids))
-    totals = await db.execute(
-        select(
-            func.coalesce(func.sum(Task.cost_usd), 0).label("total_cost"),
             func.coalesce(func.sum(Task.input_tokens), 0).label("total_input"),
             func.coalesce(func.sum(Task.output_tokens), 0).label("total_output"),
-        ).where(*totals_where)
+            func.count(Task.id).label("task_count"),
+        )
+        .where(*task_where, Task.agent_id.in_(top_ids))
+        .group_by(Task.agent_id)
+    )).all() if top_ids else []
+    aufgaben_je_agent = {r.agent_id: r for r in je_agent_rows}
+
+    agents_result = await db.execute(select(Agent).where(Agent.id.in_(top_ids)))
+    agents_map = {a.id: a.name for a in agents_result.scalars().all()}
+
+    top_agents = []
+    for agent_id, betrag in rangliste:
+        r = aufgaben_je_agent.get(agent_id)
+        top_agents.append(AgentCostEntry(
+            agent_id=agent_id,
+            agent_name=agents_map.get(agent_id, "Unknown"),
+            total_cost_usd=round(betrag, 4),
+            total_input_tokens=int(r.total_input) if r else 0,
+            total_output_tokens=int(r.total_output) if r else 0,
+            task_count=int(r.task_count) if r else 0,
+        ))
+
+    totals = await db.execute(
+        select(
+            func.coalesce(func.sum(Task.input_tokens), 0).label("total_input"),
+            func.coalesce(func.sum(Task.output_tokens), 0).label("total_output"),
+        ).where(*task_where)
     )
     t = totals.one()
 
     return CostAttributionResponse(
         top_agents=top_agents,
-        platform_total_usd=round(float(t.total_cost), 4),
+        platform_total_usd=round(erg.gesamt, 4),
         platform_total_input_tokens=int(t.total_input),
         platform_total_output_tokens=int(t.total_output),
     )

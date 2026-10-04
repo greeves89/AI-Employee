@@ -195,8 +195,11 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
               {agents
                 .filter((a) => a.budget_usd != null)
                 .map((agent) => {
-                  const pct = agent.total_cost_usd != null && agent.budget_usd
-                    ? Math.min(100, (agent.total_cost_usd / agent.budget_usd) * 100)
+                  // Monatskosten (Aufgaben + Chat, #896) gegen das MONATSbudget —
+                  // dieselbe Zahl wie die Budgetprüfung, nicht der Zähler seit Beginn.
+                  const spent = agent.monthly_cost_usd ?? 0;
+                  const pct = agent.budget_usd
+                    ? Math.min(100, (spent / agent.budget_usd) * 100)
                     : 0;
                   const color = pct >= 90 ? "bg-red-500" : pct >= 75 ? "bg-amber-500" : "bg-emerald-500";
                   return (
@@ -204,7 +207,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                       <p className="text-xs font-medium truncate mb-1">{agent.name}</p>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-[10px] text-muted-foreground">
-                          {formatMoney(agent.total_cost_usd ?? 0)} / {formatMoney(agent.budget_usd!)}
+                          {formatMoney(spent)} / {formatMoney(agent.budget_usd!)}
                         </span>
                         <span className={cn(
                           "text-[10px] font-bold",
