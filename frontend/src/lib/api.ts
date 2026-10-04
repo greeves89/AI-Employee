@@ -1199,6 +1199,8 @@ export interface ChatGoal {
   status: "aktiv" | "erreicht" | "pausiert" | "gestoppt" | "grenze" | string;
   rounds: number;
   max_rounds: number;
+  /** Warum pausiert, wenn nicht der Agent gefragt hat — z. B. „Budget aufgebraucht“. */
+  reason?: string | null;
 }
 
 export async function stopChatGoal(agentId: string, sessionId: string): Promise<{ stopped: boolean }> {

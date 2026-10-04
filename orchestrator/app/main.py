@@ -1610,6 +1610,8 @@ async def lifespan(app: FastAPI):
             for _spalte in (
                 "goal text", "goal_status varchar",
                 "goal_rounds integer NOT NULL DEFAULT 0", "goal_last_mid varchar",
+                # v1.362: Grund einer Pause, die nicht der Agent ausgeloest hat (Budget)
+                "goal_reason varchar",
             ):
                 await conn.execute(_txt_cs(
                     f"ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS {_spalte}"

@@ -10,7 +10,10 @@ Gespraech mit aktivem Ziel schaut der Server auf die Schlusszeile der Antwort.
 * sonst                       → naechste Runde wird automatisch eingereiht.
 
 Die Grenze ``ZIEL_MAX_RUNDEN`` verhindert Endlosschleifen; ein Fehler oder eine
-Zeitueberschreitung pausiert statt im Kreis zu laufen.
+Zeitueberschreitung pausiert statt im Kreis zu laufen. Sperrt das Budget die
+naechste Runde (#898), pausiert das Ziel ebenfalls — mit dem Grund
+``GRUND_BUDGET`` und einem Hinweis im Gespraech. Nach einer Budgeterhoehung setzt
+die naechste Nachricht des Menschen es fort wie jedes pausierte Ziel.
 
 Warum der Agent selbst urteilt und kein zweites Modell: Er hat den Kontext (Dateien,
 Testergebnisse) und es braucht keinen zusaetzlichen Modellzugang je Anlage. Die
@@ -20,13 +23,18 @@ Harnessen gepflegt werden muesste.
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat_session import ChatSession
+
+logger = logging.getLogger(__name__)
 
 ZIEL_MAX_RUNDEN = 20
 
@@ -35,6 +43,10 @@ PAUSIERT = "ZIEL PAUSIERT"
 
 #: Zustaende. ``aktiv`` ist der einzige, in dem weitergearbeitet wird.
 AKTIV, ERLEDIGT, PAUSE, GESTOPPT, GRENZE = "aktiv", "erreicht", "pausiert", "gestoppt", "grenze"
+
+#: Grund einer Pause, die nicht der Agent ausgeloest hat (``goal_reason``). Steht so
+#: in der Oberflaeche.
+GRUND_BUDGET = "Budget aufgebraucht"
 
 _BEFEHL = re.compile(r"^/(?:goal|ziel)(?:[ \t]+(.*))?$", re.IGNORECASE | re.DOTALL)
 _STOPP_WOERTER = {"stop", "stopp", "aus", "ende", "beenden", "clear", "off", "abbrechen"}
@@ -149,6 +161,7 @@ async def setzen(db: AsyncSession, agent_id: str, session_id: str, ziel: str) ->
     zeile.goal_status = AKTIV
     zeile.goal_rounds = 0
     zeile.goal_last_mid = None
+    zeile.goal_reason = None
     await db.commit()
 
 
@@ -167,7 +180,8 @@ def als_dict(zeile: ChatSession | None) -> dict | None:
     if zeile is None or not zeile.goal:
         return None
     return {"text": zeile.goal, "status": zeile.goal_status or AKTIV,
-            "rounds": zeile.goal_rounds or 0, "max_rounds": ZIEL_MAX_RUNDEN}
+            "rounds": zeile.goal_rounds or 0, "max_rounds": ZIEL_MAX_RUNDEN,
+            "reason": zeile.goal_reason}
 
 
 async def nach_zug(
@@ -180,10 +194,10 @@ async def nach_zug(
     und dauerhafte Liste). Der bedingte UPDATE beansprucht sie genau einmal.
     """
     # Eine PAUSE wird durch die naechste Nachricht des Nutzers beendet: deren
-    # Antwort setzt das Ziel fort.
+    # Antwort setzt das Ziel fort — auch eine Budget-Pause; ihr Grund faellt weg.
     beansprucht = (await db.execute(sa_text(
         "UPDATE chat_sessions SET goal_last_mid = :mid, goal_rounds = COALESCE(goal_rounds, 0) + 1, "
-        "goal_status = :aktiv, updated_at = CURRENT_TIMESTAMP "
+        "goal_status = :aktiv, goal_reason = NULL, updated_at = CURRENT_TIMESTAMP "
         "WHERE agent_id = :a AND session_id = :s AND goal IS NOT NULL "
         "AND goal_status IN (:aktiv, :pause) "
         "AND (goal_last_mid IS NULL OR goal_last_mid <> :mid) "
@@ -209,16 +223,22 @@ async def nach_zug(
     await db.commit()
 
     if neu == AKTIV:
-        await naechste_runde(redis_client, agent_id, session_id, ziel, runden + 1)
+        if await naechste_runde(redis_client, agent_id, session_id, ziel, runden + 1) is None:
+            neu = PAUSE  # Budget gesperrt — ``budget_gesperrt`` hat pausiert
     return neu
 
 
-async def naechste_runde(redis_client, agent_id: str, session_id: str, ziel: str, runde: int) -> str:
+async def naechste_runde(
+    redis_client, agent_id: str, session_id: str, ziel: str, runde: int,
+) -> str | None:
     """Eine Runde einreihen — wie eine Chat-Nachricht, nur ohne Tippen.
 
     Im Verlauf steht eine kurze Zeile (``meta.source = "goal"``), der Agent bekommt
     den ausfuehrlichen Auftrag. Die Zeile ist zugleich die „Nutzernachricht“, an der
     die Antwort beim Speichern ihr Gespraech findet.
+
+    Liefert die Kennung der Runde — oder ``None``, wenn das Budget sie gesperrt
+    hat; das Ziel ist dann pausiert (``budget_gesperrt``).
     """
     from app.services.chat_persistence import upsert_chat_message
 
@@ -229,11 +249,11 @@ async def naechste_runde(redis_client, agent_id: str, session_id: str, ziel: str
         meta={"source": "goal", "runde": runde},
     )
     # Jede Runde kostet wie eine Chat-Nachricht — also auch hier das Budget (#898).
-    # Gesperrt: der Hinweis steht als Fehler im Gespraech, eine weitere Runde
-    # wird dann nicht mehr angestossen (keine Antwort, kein Weiter).
+    # Gesperrt: Bis v1.362 blieb das Ziel dann stumm auf „aktiv“ stehen — ohne
+    # Antwort kam nie eine weitere Runde, und niemand sah, warum.
     from app.core.chat_auftrag import einreihen
 
-    await einreihen(redis_client, agent_id, {
+    einreihung = await einreihen(redis_client, agent_id, {
         "id": message_id,
         "text": auftrag(ziel, runde),
         "model": None,
@@ -242,4 +262,59 @@ async def naechste_runde(redis_client, agent_id: str, session_id: str, ziel: str
         "chat_session_id": session_id,
         "reasoning": "",
     })
+    if not einreihung.eingereiht:
+        await budget_gesperrt(redis_client, agent_id, session_id, message_id, einreihung.hinweis)
+        return None
     return message_id
+
+
+async def budget_gesperrt(
+    redis_client, agent_id: str, session_id: str, message_id: str, hinweis: str,
+) -> bool:
+    """Eine Runde des Ziels scheiterte am Budget: Ziel pausieren, Hinweis ins Gespraech.
+
+    Fuer jede Runde — die automatische (``naechste_runde``) wie die erste nach
+    ``/goal`` im Chat (ws.py). Pausiert wird nur ein laufendes Ziel; ein beendetes
+    lebt nicht wieder auf. Der Hinweis steht als ``error``-Zeile zu genau dieser
+    Runde im Verlauf (uebersteht ein Neuladen), ein offenes Fenster laedt den
+    Ziel-Stand ueber ein ``goal``-Ereignis neu. Fortgesetzt wird wie bei jeder
+    Pause: Die naechste beantwortete Nachricht des Menschen (``nach_zug``).
+
+    Liefert, ob pausiert wurde.
+    """
+    from app.db.session import async_session_factory
+
+    async with async_session_factory() as db:
+        zeile = await db.scalar(select(ChatSession).where(
+            ChatSession.agent_id == agent_id, ChatSession.session_id == session_id,
+        ))
+        if zeile is None or not zeile.goal or (zeile.goal_status or AKTIV) != AKTIV:
+            return False
+        zeile.goal_status = PAUSE
+        zeile.goal_reason = GRUND_BUDGET
+        await db.commit()
+        stand = als_dict(zeile)
+
+    try:
+        from app.services.chat_persistence import upsert_chat_message
+
+        await upsert_chat_message(
+            agent_id, session_id, message_id, "error",
+            content=hinweis or f"Ziel pausiert: {GRUND_BUDGET}.",
+            meta={"source": "goal", "grund": "budget"},
+        )
+    except Exception:  # noqa: BLE001 — die Pause gilt auch ohne Zeile im Verlauf
+        logger.warning("Budget-Hinweis zum Ziel nicht gespeichert", exc_info=True)
+    try:
+        # Ohne ``message_id`` auf oberster Ebene: der Weiterleiter im WS laesst
+        # solche Steuerereignisse an jedes Fenster dieses Agenten durch.
+        await redis_client.publish(f"agent:{agent_id}:chat:response", json.dumps({
+            "type": "goal",
+            "agent_id": agent_id,
+            "session_id": session_id,
+            "data": {"goal": stand, "session_id": session_id},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }))
+    except Exception:  # noqa: BLE001 — Anzeige, keine Voraussetzung
+        logger.debug("Ziel-Ereignis nicht veroeffentlicht", exc_info=True)
+    return True

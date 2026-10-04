@@ -2766,14 +2766,15 @@ async def get_chat_sessions(
     meta_rows = (await db.execute(
         select(ChatSession.session_id, ChatSession.title, ChatSession.pinned,
                ChatSession.reasoning_level, ChatSession.goal, ChatSession.goal_status,
-               ChatSession.goal_rounds)
+               ChatSession.goal_rounds, ChatSession.goal_reason)
         .where(ChatSession.agent_id == agent_id)
     )).all()
     meta = {m.session_id: (m.title, m.pinned, m.reasoning_level) for m in meta_rows}
     from app.core.ziel import ZIEL_MAX_RUNDEN
     ziele = {
         m.session_id: {"text": m.goal, "status": m.goal_status or "aktiv",
-                       "rounds": m.goal_rounds or 0, "max_rounds": ZIEL_MAX_RUNDEN}
+                       "rounds": m.goal_rounds or 0, "max_rounds": ZIEL_MAX_RUNDEN,
+                       "reason": m.goal_reason}
         for m in meta_rows if m.goal
     }
 

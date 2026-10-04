@@ -1072,7 +1072,13 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
             # Ueber den EINEN Einreihen-Weg — dort prueft das Budget (#898). Ist es
             # aufgebraucht, kommt der Hinweis als ``error`` zu genau dieser
             # Nachricht ueber den Antwortkanal, den diese Verbindung abonniert hat.
-            if not (await _chat_auftrag.einreihen(_redis.client, agent_id, chat_payload)).eingereiht:
+            einreihung = await _chat_auftrag.einreihen(_redis.client, agent_id, chat_payload)
+            if not einreihung.eingereiht:
+                # Eben per /goal gesetzt und schon die erste Runde gesperrt: das
+                # Ziel pausiert mit Grund, statt stumm auf „aktiv“ zu stehen.
+                if ziel_befehl:
+                    await _ziel.budget_gesperrt(
+                        _redis.client, agent_id, _session["id"], message_id, einreihung.hinweis)
                 continue
 
             # Ist der Agent beschaeftigt, sofort sagen, WOMIT — statt Stille.

@@ -46,3 +46,6 @@ class ChatSession(Base, TimestampMixin):
     goal_rounds: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     #: Letzte Antwort, die eine Runde ausgeloest hat — jede genau einmal (Idempotenz).
     goal_last_mid: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Warum ein Ziel pausiert, wenn nicht der Agent gefragt hat — z. B. „Budget
+    #: aufgebraucht“ (app.core.ziel.GRUND_BUDGET). None → kein besonderer Grund.
+    goal_reason: Mapped[str | None] = mapped_column(String, nullable=True)

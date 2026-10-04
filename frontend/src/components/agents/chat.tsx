@@ -3128,6 +3128,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         const laeuft = ziel.status === "aktiv" || ziel.status === "pausiert";
         const stand =
           ziel.status === "aktiv" ? `Ziel aktiv · Runde ${Math.max(1, ziel.rounds)} von ${ziel.max_rounds}`
+          : ziel.status === "pausiert" && ziel.reason
+            ? `Ziel pausiert — ${ziel.reason}. Nach einer Budgeterhöhung geht es mit deiner nächsten Nachricht weiter`
           : ziel.status === "pausiert" ? "Ziel pausiert — der Agent wartet auf deine Antwort"
           : ziel.status === "erreicht" ? `Ziel erreicht nach ${ziel.rounds} Runde${ziel.rounds === 1 ? "" : "n"}`
           : `Ziel nach ${ziel.rounds} Runden angehalten (Obergrenze) — schreib, wie es weitergehen soll`;
