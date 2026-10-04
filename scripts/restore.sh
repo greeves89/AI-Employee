@@ -17,6 +17,11 @@
 # Erkennt das alte Sicherungsformat (vor #892: nur Datenbank und Redis, kein
 # Schlüssel, keine Arbeitsordner) und spielt zurück, was darin ist.
 #
+# Erkennt eine UNVOLLSTÄNDIGE Sicherung (Lauf abgebrochen: Datei ABGEBROCHEN oder
+# Teile des Formats 2 ohne MANIFEST, siehe sicherung_zustand). Sie wird nur mit
+# --unvollstaendig-erlauben zurückgespielt, und dann nur die vorhandenen Teile,
+# deren Archiv heil ist — Prüfsummen gibt es ohne MANIFEST nicht.
+#
 # Aufruf:
 #   ./scripts/restore.sh --backup /var/backups/ai-employee/daily/20261004_020000
 #
@@ -24,6 +29,9 @@
 #   --backup PFAD   Sicherungsordner (Pflicht)
 #   --db-only       nur die Datenbank
 #   --dry-run       nur anzeigen, was passieren würde
+#   --unvollstaendig-erlauben
+#                   auch eine abgebrochene Sicherung zurückspielen (nur die
+#                   vorhandenen, unbeschädigten Teile)
 #   --yes           ohne Rückfrage (für Skripte)
 #
 # Umgebungsvariablen: COMPOSE_PROJECT_NAME, PG_CONTAINER, POSTGRES_USER, POSTGRES_DB,
@@ -50,6 +58,7 @@ BACKUP_PATH=""
 DB_ONLY=false
 DRY_RUN=false
 JA=false
+UNVOLLSTAENDIG_ERLAUBEN=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -57,6 +66,7 @@ while [[ $# -gt 0 ]]; do
         --db-only) DB_ONLY=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
         --yes) JA=true; shift ;;
+        --unvollstaendig-erlauben) UNVOLLSTAENDIG_ERLAUBEN=true; shift ;;
         *) echo "Unbekannte Option: $1"; exit 1 ;;
     esac
 done
@@ -78,13 +88,32 @@ command -v docker >/dev/null 2>&1 || die "docker nicht gefunden"
 cd "$INSTALL_DIR"
 
 # ─── Format erkennen ──────────────────────────────────────────────────────────
+# Nicht allein am MANIFEST: das schreibt backup.sh erst ganz am Ende. Ein
+# abgebrochener Lauf galt sonst als ALTES Format, und die Datenbanksicherung
+# darin (postgres.sql.gz) wurde nicht gefunden.
 MANIFEST="${BACKUP_PATH}/MANIFEST"
-FORMAT=1
-if [ -f "$MANIFEST" ] && grep -qx "format=2" "$MANIFEST"; then
-    FORMAT=2
-fi
+ZUSTAND=$(sicherung_zustand "$BACKUP_PATH")
+UNVOLLSTAENDIG=false
+case "$ZUSTAND" in
+    vollstaendig) FORMAT=2 ;;
+    unvollstaendig) FORMAT=2; UNVOLLSTAENDIG=true ;;
+    alt) FORMAT=1 ;;
+    *) die "In $BACKUP_PATH liegt keine Sicherung (weder MANIFEST noch Datenbanksicherung)." ;;
+esac
 
-if [ "$FORMAT" = "2" ]; then
+if $UNVOLLSTAENDIG; then
+    DB_FILE="${BACKUP_PATH}/postgres.sql.gz"
+    SCHRITT_ABBRUCH=$(env_wert "${BACKUP_PATH}/ABGEBROCHEN" schritt)
+    log "UNVOLLSTÄNDIGE Sicherung: der Lauf wurde abgebrochen${SCHRITT_ABBRUCH:+ im Schritt „${SCHRITT_ABBRUCH}“}."
+    log "  Es gibt kein MANIFEST, also keine Prüfsummen. Vorhanden:"
+    [ -f "$DB_FILE" ] && log "    Datenbank (postgres.sql.gz)"
+    [ -f "${BACKUP_PATH}/konfiguration.tar.gz" ] && log "    Konfiguration und Schlüssel (konfiguration.tar.gz)"
+    log "    $(find "${BACKUP_PATH}/volumes" -maxdepth 1 -name '*.tar.gz' 2>/dev/null | wc -l | tr -d ' ') Volume-Archiv(e)"
+    if ! $UNVOLLSTAENDIG_ERLAUBEN; then
+        die "Unvollständige Sicherung — besser eine vollständige wählen. Nur die vorhandenen Teile zurückspielen: --unvollstaendig-erlauben"
+    fi
+    log "  --unvollstaendig-erlauben: es werden nur die vorhandenen, unbeschädigten Teile zurückgespielt."
+elif [ "$FORMAT" = "2" ]; then
     DB_FILE="${BACKUP_PATH}/postgres.sql.gz"
     log "Sicherung (Format 2):"
     grep -E "^(timestamp|version|hostname|compose_projekt|volumes)=" "$MANIFEST" | sed 's/^/    /'
@@ -99,7 +128,13 @@ fi
 [ -n "$DB_FILE" ] && [ -f "$DB_FILE" ] || die "Keine Datenbanksicherung in $BACKUP_PATH"
 
 # ─── 1. Prüfsummen ────────────────────────────────────────────────────────────
-if [ "$FORMAT" = "2" ]; then
+if $UNVOLLSTAENDIG; then
+    # Ohne MANIFEST bleibt nur der Blick ins Archiv: ein beim Abbruch abgerissenes
+    # gzip fällt hier auf. Die Datenbank ist Pflicht — ohne sie kein Rückspielen.
+    archiv_heil "$DB_FILE" \
+        || die "Die Datenbanksicherung ist beschädigt (beim Abbruch abgerissen) — nicht verwendbar, nichts verändert."
+    log "Datenbanksicherung ist heil."
+elif [ "$FORMAT" = "2" ]; then
     log "Prüfe Prüfsummen …"
     if ! (cd "$BACKUP_PATH" && grep -E '^[0-9a-f]{64}  ' MANIFEST | pruefsumme -c - >/dev/null); then
         die "Prüfsummen stimmen nicht — Sicherung beschädigt oder unvollständig."
@@ -166,7 +201,18 @@ else
 fi
 
 # ─── 3. Schlüssel zuerst ──────────────────────────────────────────────────────
+KONFIGURATION_ZURUECK=false
 if [ "$FORMAT" = "2" ] && ! $DB_ONLY; then
+    KONFIGURATION_ZURUECK=true
+    if $UNVOLLSTAENDIG && ! archiv_heil "${BACKUP_PATH}/konfiguration.tar.gz"; then
+        # Abbruch vor (oder während) der Konfiguration: Schlüssel und .env dieser
+        # Anlage bleiben. Passen sie nicht zur Datenbank, meldet es der Selbsttest.
+        log "Konfiguration fehlt in der unvollständigen Sicherung (oder ist beschädigt) —"
+        log "  .env und Schlüssel dieser Anlage bleiben unverändert."
+        KONFIGURATION_ZURUECK=false
+    fi
+fi
+if $KONFIGURATION_ZURUECK; then
     log "=== Konfiguration und Schlüssel ==="
     [ -f "${BACKUP_PATH}/konfiguration.tar.gz" ] || die "konfiguration.tar.gz fehlt in der Sicherung"
     ALTES_DB_PW=$(env_wert .env DB_PASSWORD)
@@ -234,6 +280,10 @@ if ! $DB_ONLY; then
             ziel=$(volume_fuer_archiv "$PROJEKT" "$archiv")
             if [ -z "$(echo "$ziel" | volumes_auswaehlen "$PROJEKT")" ]; then
                 log "WARNUNG: ${archiv} gehört nicht zur Sicherungsliste — übersprungen."
+                continue
+            fi
+            if $UNVOLLSTAENDIG && ! archiv_heil "$datei"; then
+                log "WARNUNG: ${archiv} ist beschädigt (beim Abbruch abgerissen) — übersprungen, Volume bleibt, wie es ist."
                 continue
             fi
             volume_zurueckspielen "$datei" "$ziel"

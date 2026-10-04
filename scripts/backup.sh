@@ -14,7 +14,10 @@
 # Die Sicherung enthält damit Geheimnisse: Ordner 700, Dateien 600. Wer sie
 # außer Haus bringt, verschlüsselt sie dort (z. B. restic, borg).
 #
-# Aufbewahrung: 7 tägliche, 4 wöchentliche (Sonntag).
+# Aufbewahrung: 7 tägliche, 4 wöchentliche (Sonntag). Gezählt werden nur
+# vollständige Sicherungen (mit MANIFEST). Bricht ein Lauf ab, liegt im Ordner
+# die Datei ABGEBROCHEN mit dem Schritt; restore.sh meldet ihn als unvollständig.
+# Abgebrochene Ordner verschwinden, sobald eine neuere vollständige Sicherung da ist.
 #
 # Am Ende meldet das Skript einen Herzschlag an POST /api/v1/admin/backup-status
 # (Schlüssel BACKUP_STATUS_TOKEN aus der .env). Die Karte „Datensicherung“
@@ -102,6 +105,17 @@ beim_ende() {
     local rc=$?
     if [ "$rc" -ne 0 ]; then
         log "FEHLER: Sicherung abgebrochen im Schritt „${SCHRITT}“ (Exit ${rc})."
+        # Den Ordner als unvollständig kennzeichnen — ohne MANIFEST, also noch vor
+        # dessen Abschluss. Bricht später etwas ab (Aufbewahrung), ist die
+        # Sicherung selbst vollständig und bleibt es.
+        if [ -d "$BACKUP_PATH" ] && [ ! -f "${BACKUP_PATH}/MANIFEST" ]; then
+            {
+                echo "schritt=${SCHRITT}"
+                echo "exit=${rc}"
+                echo "zeit=$(date '+%Y-%m-%d %H:%M:%S')"
+            } > "${BACKUP_PATH}/ABGEBROCHEN" 2>/dev/null || true
+            log "Ordner als unvollständig gekennzeichnet: ${BACKUP_PATH}/ABGEBROCHEN"
+        fi
         melde fehler "$SCHRITT" || true
     fi
 }
@@ -161,6 +175,8 @@ konfiguration_einpacken "${BACKUP_PATH}/konfiguration.tar.gz" "$INSTALL_DIR" "$A
 log "Konfiguration gesichert (${TEILE# })"
 
 # ─── 4. Manifest ──────────────────────────────────────────────────────────────
+# Erst in eine Zwischendatei, dann umbenennen: ein MANIFEST gibt es nur, wenn
+# alles davor geklappt hat — daran erkennt restore.sh eine vollständige Sicherung.
 SCHRITT="Manifest"
 {
     echo "format=2"
@@ -172,20 +188,44 @@ SCHRITT="Manifest"
     echo "hostname=$(hostname)"
     echo "volumes=${VOLUME_ANZAHL}"
     # Relative Pfade: die Prüfung klappt auch, wenn die Sicherung verschoben wurde.
-    (cd "$BACKUP_PATH" && find . -type f ! -name MANIFEST | sort | while read -r f; do pruefsumme "$f"; done)
-} > "${BACKUP_PATH}/MANIFEST"
+    (cd "$BACKUP_PATH" && find . -type f ! -name 'MANIFEST*' | sort | while read -r f; do pruefsumme "$f"; done)
+} > "${BACKUP_PATH}/MANIFEST.tmp"
+mv "${BACKUP_PATH}/MANIFEST.tmp" "${BACKUP_PATH}/MANIFEST"
 find "$BACKUP_PATH" -type f -exec chmod 600 {} +
 
 # ─── 5. Aufbewahrung ──────────────────────────────────────────────────────────
 SCHRITT="Aufbewahrung"
+# Nur vollständige Sicherungen (und solche im alten Format) zählen. Vorher zählte
+# jeder Ordner — abgebrochene Läufe verdrängten so die letzten guten Sicherungen.
 aufraeumen() {
-    local art="$1" behalten="$2" basis="${BACKUP_DIR}/$1" anzahl
+    local art="$1" behalten="$2" basis="${BACKUP_DIR}/$1" alle gueltige neueste anzahl
     [ -d "$basis" ] || return 0
-    anzahl=$(find "$basis" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+    alle=$(find "$basis" -mindepth 1 -maxdepth 1 -type d | sort)
+    gueltige=$(echo "$alle" | while IFS= read -r o; do
+        [ -n "$o" ] || continue
+        case "$(sicherung_zustand "$o")" in (vollstaendig|alt) echo "$o" ;; esac
+    done)
+    neueste=$(echo "$gueltige" | tail -n 1)
+    # Ein abgebrochener Lauf ist überholt, sobald es eine neuere vollständige
+    # Sicherung gibt. Ohne eine solche bleibt er liegen — womöglich ist er das
+    # Neueste, was es gibt (restore.sh --unvollstaendig-erlauben).
+    if [ -n "$neueste" ]; then
+        echo "$alle" | while IFS= read -r o; do
+            [ -n "$o" ] || continue
+            case "$(sicherung_zustand "$o")" in
+                unvollstaendig|leer)
+                    if [[ "$o" < "$neueste" ]]; then
+                        log "Entferne abgebrochene ${art}-Sicherung $(basename "$o") (eine neuere ist vollständig)"
+                        rm -rf -- "$o"
+                    fi ;;
+            esac
+        done
+    fi
+    anzahl=$(echo "$gueltige" | grep -c . || true)
     if [ "$anzahl" -gt "$behalten" ]; then
         log "Entferne $((anzahl - behalten)) alte ${art}-Sicherung(en) (behalte ${behalten})"
-        find "$basis" -mindepth 1 -maxdepth 1 -type d | sort | head -n "$((anzahl - behalten))" \
-            | while read -r alt; do rm -rf -- "$alt"; done
+        echo "$gueltige" | head -n "$((anzahl - behalten))" \
+            | while IFS= read -r alt; do rm -rf -- "$alt"; done
     fi
 }
 aufraeumen daily "$KEEP_DAILY"

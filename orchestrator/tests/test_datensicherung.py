@@ -512,5 +512,191 @@ class SchluesselSelbsttestTests(_MitDatenbank):
         self.assertEqual(ergebnis, {"geprueft": 0, "lesbar": 0, "ok": True})
 
 
+class UnvollstaendigeSicherungZurueckspielenTests(unittest.TestCase):
+    """Ein abgebrochener Lauf hinterlässt einen Ordner ohne MANIFEST (das entsteht
+    erst am Ende). ``restore.sh --dry-run`` hielt ihn für das ALTE Format und
+    meldete „Keine Datenbanksicherung“, obwohl ``postgres.sql.gz`` darin lag.
+
+    Jetzt: klar als unvollständig gemeldet, zurückgespielt nur mit ausdrücklichem
+    Schalter — und dann nur die vorhandenen, unbeschädigten Teile."""
+
+    def setUp(self):
+        import os
+        import tempfile
+
+        self.tmp = Path(tempfile.mkdtemp())
+        self.bin = self.tmp / "bin"
+        self.bin.mkdir()
+        for name, inhalt in (("docker", _DOCKER_ATTRAPPE), ("curl", "#!/bin/sh\nexit 0\n")):
+            (self.bin / name).write_text(inhalt)
+            (self.bin / name).chmod(0o755)
+        self.sicherung = self.tmp / "daily" / "20261003_020000"
+        (self.sicherung / "volumes").mkdir(parents=True)
+        (self.sicherung / "postgres.sql.gz").write_bytes(gzip.compress(b"-- Inhalt der Sicherung\n"))
+        # Ein heiles Volume-Archiv und eines, das beim Abbruch mittendrin abriss.
+        (self.sicherung / "volumes" / "workspace-ab12cd34.tar.gz").write_bytes(gzip.compress(b"x" * 100))
+        (self.sicherung / "volumes" / "workspace-ef56ab78.tar.gz").write_bytes(gzip.compress(b"y" * 5000)[:30])
+        self.log = self.tmp / "docker.log"
+        self.env = {**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}",
+                    "ATTRAPPE_LOG": str(self.log), "BACKUP_DIR": str(self.tmp / "vorher"),
+                    "COMPOSE_PROJECT_NAME": "test"}
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _restore(self, *optionen):
+        return subprocess.run(
+            ["bash", str(REPO / "scripts" / "restore.sh"), "--backup", str(self.sicherung), *optionen],
+            env=self.env, capture_output=True, text=True, timeout=60,
+        )
+
+    def _aufrufe(self) -> list[str]:
+        return self.log.read_text().splitlines() if self.log.exists() else []
+
+    def test_probelauf_meldet_unvollstaendig_statt_altes_format(self):
+        lauf = self._restore("--dry-run")
+        ausgabe = lauf.stdout + lauf.stderr
+        self.assertNotEqual(lauf.returncode, 0, "ohne Schalter wird nicht zurückgespielt")
+        self.assertIn("UNVOLLSTÄNDIG", ausgabe)
+        self.assertIn("--unvollstaendig-erlauben", ausgabe, "der Ausweg wird genannt")
+        self.assertNotIn("ALTES Sicherungsformat", ausgabe)
+        self.assertNotIn("Keine Datenbanksicherung", ausgabe)
+
+    def test_ohne_schalter_wird_nichts_angefasst(self):
+        lauf = self._restore("--yes")
+        self.assertNotEqual(lauf.returncode, 0)
+        aufrufe = self._aufrufe()
+        self.assertFalse([a for a in aufrufe if "DROP DATABASE" in a or "compose stop" in a], aufrufe)
+
+    def test_der_abgebrochene_schritt_wird_genannt(self):
+        (self.sicherung / "ABGEBROCHEN").write_text("schritt=Volumes\nexit=1\n")
+        lauf = self._restore("--dry-run")
+        self.assertNotEqual(lauf.returncode, 0)
+        self.assertIn("Volumes", lauf.stdout + lauf.stderr)
+
+    def test_mit_schalter_nur_die_vorhandenen_heilen_teile(self):
+        lauf = self._restore("--unvollstaendig-erlauben", "--yes")
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+        aufrufe = self._aufrufe()
+        self.assertTrue([a for a in aufrufe if "CREATE DATABASE" in a], "die Datenbank kommt zurück")
+        zurueck = [a for a in aufrufe if a.startswith("run --rm") and ":/data " in a + " "]
+        self.assertTrue([a for a in zurueck if "workspace-ab12cd34:/data" in a], "heiles Archiv zurückgespielt")
+        self.assertFalse([a for a in zurueck if "workspace-ef56ab78" in a], "abgerissenes Archiv übersprungen")
+        # Keine Konfiguration in der Sicherung: Schlüssel und .env dieser Anlage bleiben.
+        self.assertFalse([a for a in aufrufe if ":/ziel" in a])
+
+    def test_abgerissene_datenbanksicherung_wird_nicht_eingespielt(self):
+        (self.sicherung / "postgres.sql.gz").write_bytes(gzip.compress(b"z" * 5000)[:20])
+        lauf = self._restore("--unvollstaendig-erlauben", "--yes")
+        self.assertNotEqual(lauf.returncode, 0)
+        self.assertFalse([a for a in self._aufrufe() if "DROP DATABASE" in a])
+
+
+_DOCKER_SICHERN_ATTRAPPE = r"""#!/usr/bin/env bash
+# Attrappe fuer docker beim Sichern: ein Arbeitsordner-Volume, dessen Archiv
+# auf Wunsch scheitert (volle Platte, abgerissene Verbindung …).
+echo "$*" >> "$ATTRAPPE_LOG"
+case "$*" in
+    "ps -q"*) echo "c0ffee" ;;
+    "volume ls"*) echo "workspace-ab12cd34" ;;
+    *pg_dump*) echo "-- Inhalt der Datenbank" ;;
+    "run --rm"*)
+        [ "${VOLUME_SCHEITERT:-}" = "1" ] && { echo "tar: Kein Platz mehr" >&2; exit 1; }
+        ;;
+esac
+exit 0
+"""
+
+
+class AbgebrochenerSicherungslaufTests(unittest.TestCase):
+    """backup.sh kennzeichnet einen abgebrochenen Lauf und zählt ihn bei der
+    Aufbewahrung nicht als Sicherung — sonst verdrängten abgebrochene Ordner die
+    letzten guten."""
+
+    def setUp(self):
+        import os
+        import shutil
+        import tempfile
+
+        self.tmp = Path(tempfile.mkdtemp())
+        anlage = self.tmp / "anlage"
+        (anlage / "scripts" / "lib").mkdir(parents=True)
+        shutil.copy(REPO / "scripts" / "backup.sh", anlage / "scripts" / "backup.sh")
+        shutil.copy(HILFSDATEI, anlage / "scripts" / "lib" / "sicherung.sh")
+        (anlage / "orchestrator" / "data").mkdir(parents=True)
+        (anlage / "orchestrator" / "data" / ".encryption_key").write_text("x")
+        (anlage / ".env").write_text("A=1\n")
+        self.anlage = anlage
+        bin_ = self.tmp / "bin"
+        bin_.mkdir()
+        for name, inhalt in (("docker", _DOCKER_SICHERN_ATTRAPPE), ("curl", "#!/bin/sh\nexit 0\n")):
+            (bin_ / name).write_text(inhalt)
+            (bin_ / name).chmod(0o755)
+        self.ziel = self.tmp / "ziel"
+        # backup.sh legt sonntags unter weekly/ ab, sonst unter daily/.
+        self.art = "weekly" if datetime.now().isoweekday() == 7 else "daily"
+        self.env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}",
+                    "ATTRAPPE_LOG": str(self.tmp / "docker.log"), "COMPOSE_PROJECT_NAME": "test"}
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _sichern(self, **env):
+        return subprocess.run(
+            ["bash", str(self.anlage / "scripts" / "backup.sh"), "--dest", str(self.ziel)],
+            env={**self.env, **env}, capture_output=True, text=True, timeout=60,
+        )
+
+    def _ordner(self) -> list[Path]:
+        basis = self.ziel / self.art
+        return sorted(p for p in basis.iterdir() if p.is_dir()) if basis.exists() else []
+
+    def _vorhanden(self, name: str, vollstaendig: bool) -> Path:
+        ordner = self.ziel / self.art / name
+        (ordner / "volumes").mkdir(parents=True)
+        (ordner / "postgres.sql.gz").write_bytes(gzip.compress(b"--"))
+        if vollstaendig:
+            (ordner / "MANIFEST").write_text("format=2\n")
+        else:
+            (ordner / "ABGEBROCHEN").write_text("schritt=Volumes\n")
+        return ordner
+
+    def test_abbruch_kennzeichnet_den_ordner_mit_dem_schritt(self):
+        lauf = self._sichern(VOLUME_SCHEITERT="1")
+        self.assertNotEqual(lauf.returncode, 0)
+        [ordner] = self._ordner()
+        self.assertFalse((ordner / "MANIFEST").exists())
+        self.assertIn("schritt=Volumes", (ordner / "ABGEBROCHEN").read_text())
+
+    def test_erfolgreicher_lauf_ist_vollstaendig(self):
+        lauf = self._sichern()
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+        [ordner] = self._ordner()
+        self.assertTrue((ordner / "MANIFEST").exists())
+        self.assertFalse((ordner / "ABGEBROCHEN").exists())
+        self.assertFalse((ordner / "MANIFEST.tmp").exists())
+
+    def test_abgebrochene_zaehlen_bei_der_aufbewahrung_nicht(self):
+        """Behalte 2: die alte vollständige bleibt, die abgebrochene geht.
+        Früher zählte die abgebrochene mit — und verdrängte die gute."""
+        gut = self._vorhanden("20200101_020000", vollstaendig=True)
+        kaputt = self._vorhanden("20200102_020000", vollstaendig=False)
+        lauf = self._sichern(BACKUP_KEEP_DAILY="2", BACKUP_KEEP_WEEKLY="2")
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+        ordner = self._ordner()
+        self.assertIn(gut, ordner)
+        self.assertNotIn(kaputt, ordner)
+        self.assertEqual(len(ordner), 2)
+
+    def test_abgebrochener_lauf_ohne_neuere_gute_sicherung_bleibt_liegen(self):
+        """Gibt es nach dem Abbruch keine vollständige, ist er womöglich das
+        Neueste, was es gibt — nicht wegwerfen."""
+        self._vorhanden("20200101_020000", vollstaendig=True)
+        self._sichern(VOLUME_SCHEITERT="1", BACKUP_KEEP_DAILY="1", BACKUP_KEEP_WEEKLY="1")
+        self.assertEqual(len(self._ordner()), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
