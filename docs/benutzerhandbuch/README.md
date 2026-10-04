@@ -1,7 +1,7 @@
 # AI Employee
 
 **Dokument:** Benutzerhandbuch — Klick-für-Klick-Anleitung aller Funktionen
-**Version:** 1.360.0
+**Version:** 1.361.0
 **Stand:** 3. Oktober 2026
 **Zielgruppe:** Endanwender & Administratoren
 **Instanz:** ki-chat.example.com
@@ -1243,6 +1243,33 @@ fängt eigenständig an — statt dass du jeden neuen Agenten von Hand briefst.
 
 Die aufgeklappte Vorlage zeigt die hinterlegten Bereiche in der Übersicht. Änderst du sie,
 gilt das für **neue** Agenten — bestehende behalten ihre eigenen.
+
+#### Mitgelieferte Vorlagen bringen passende Skills mit *(seit 1.361.0)*
+
+Jede der mitgelieferten Vorlagen kommt mit Skills für ihr Fachgebiet — ein Agent aus der
+Vorlage *Buchhaltung* kennt z. B. sofort das Vorkontieren von Belegen, ein *Security
+Auditor* die Sicherheitsprüfung von Code. Du musst nichts einrichten.
+
+1. Seitenleiste → **Settings** → **Agent-Vorlagen** → Vorlage aufklappen.
+2. Unter **Skills** stehen die mitgebrachten Skills.
+
+   ![Vorlage mit Skills](screenshots/48-vorlage-skills.png)
+   *Abbildung 48: Die Vorlage „Buchhaltung“ mit ihren Skills*
+
+3. Legst du einen Agenten aus der Vorlage an, bekommt er genau diese Skills.
+
+**Woher die Skills kommen:**
+- **Mitgeliefert (deutsch):** für Fachgebiete ohne brauchbare öffentliche Skills —
+  Buchhaltung, Lohn, Angebot & Kalkulation, Disposition, Recht & Verträge, Presse,
+  Recruiting, Meeting-Protokoll, Recherche, Support, Übersetzung, Anforderungen,
+  Datenanalyse. Sie sind auf jeder Anlage da, auch ohne Internet.
+- **Aus geprüften öffentlichen Quellen** (Skill-Marktplatz) für Entwicklung, Sicherheit,
+  DevOps, Datenbanken, Marketing, SEO, Design und Office-Dokumente. Sie erscheinen, sobald
+  der Marktplatz seine Quellen abgeholt hat (wöchentlich bzw. nach dem Update).
+
+**Gut zu wissen:** Bestehende Agenten behalten ihre Skills; die Vorlage wirkt für **neue**
+Agenten. Fachliche Skills bereiten vor — bei Steuern, Recht, Lohn und Personal entscheidet
+immer ein Mensch.
 
 ### 20.3 Anzeigewährung: Kosten in Euro *(seit 1.176.0)*
 

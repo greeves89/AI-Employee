@@ -31,6 +31,15 @@ DEFAULT_SKILL_REPOS = [
     "supabase/agent-skills",
     "remotion-dev/skills",
     "squirrelscan/skills",
+    # Für die Skills der mitgelieferten Vorlagen (app/core/vorlagen_skills.py), geprüft
+    # 2026-10-04: Hersteller-Repos, Apache-2.0/MIT, reines Markdown oder nur lokale Skripte.
+    "getsentry/skills",                              # Security Auditor
+    "openai/skills",                                 # Security Auditor
+    "docker/skills",                                 # DevOps
+    "timescale/pg-aiguide",                          # Database Admin
+    "addyosmani/agent-skills",                       # API, DevOps, Technical Writer
+    "microsoft/playwright-cli",                      # QA, Web Crawler
+    "currents-dev/playwright-best-practices-skill",  # QA
 ]
 
 # Backwards-compatible alias (older imports referenced SKILL_REPOS directly).
@@ -220,6 +229,12 @@ class SkillCrawlerService:
             await self.redis.client.set(REDIS_KEY, json.dumps(payload), ex=REDIS_TTL)
 
         await self._sync_to_db(unique)
+        # Neu gecrawlte Skills den mitgelieferten Vorlagen zuordnen (Namen → IDs dieser Anlage).
+        try:
+            from app.core.vorlagen_skills import vorlagen_aktualisieren
+            await vorlagen_aktualisieren()
+        except Exception as e:  # noqa: BLE001 — der Crawl selbst ist gelaufen
+            logger.warning("Vorlagen-Skills nach dem Crawl nicht aktualisiert: %s", e)
         logger.info("Skill crawler: found %d skills", len(unique))
         return unique
 
@@ -396,6 +411,11 @@ class SkillCrawlerService:
                         select(Skill).where(Skill.name == s["name"])
                     )).scalar_one_or_none()
                     if existing:
+                        # Mitgelieferte Skills gehören dem Produkt; eine öffentliche
+                        # Quelle mit gleichem Namen überschreibt sie nicht.
+                        from app.core.mitgelieferte_skills import QUELLE as _MITGELIEFERT
+                        if existing.source_repo == _MITGELIEFERT:
+                            continue
                         if s.get("content") and s["content"] != existing.content:
                             existing.content = s["content"]
                             existing.description = s.get("description", existing.description)

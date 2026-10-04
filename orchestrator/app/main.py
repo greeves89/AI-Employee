@@ -1889,6 +1889,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to seed templates: {e}")
 
+    # Mitgelieferte Skills (app/skills_mitgeliefert) in den Marktplatz und die
+    # Skill-Listen der mitgelieferten Vorlagen auf DIESER Anlage auflösen — die
+    # Vorlagen nennen ihre Skills beim Namen, IDs sind je Anlage verschieden.
+    try:
+        from app.core.mitgelieferte_skills import synchronisieren as _skills_sync
+        from app.core.vorlagen_skills import vorlagen_aktualisieren as _vorlagen_sync
+        _neu, _akt = await _skills_sync()
+        _vorl = await _vorlagen_sync()
+        logger.info(f"Mitgelieferte Skills: {_neu} neu, {_akt} aktualisiert; {_vorl} Vorlagen mit Skills aktualisiert")
+    except Exception as e:
+        logger.error(f"Mitgelieferte Skills/Vorlagen-Skills nicht abgeglichen: {e}")
+
     # Bestehende Anlagen nachziehen: dort stehen die mitgelieferten Vorlagen auf
     # „nicht veroeffentlicht" und sind fuer Nicht-Administratoren unsichtbar.
     # Die Korrektur im Seeder oben erreicht sie nicht, weil sie schon existieren.

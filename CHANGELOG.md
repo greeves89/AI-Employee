@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.361.0] - 2026-10-04
+
+### Neu
+- **Mitgelieferte Vorlagen bringen passende Skills mit:** Vorher hatte keine der 34
+  Vorlagen einen Skill. Jetzt bekommt ein Agent aus einer Vorlage die Skills seines
+  Fachgebiets — z. B. Vorkontieren für *Buchhaltung*, Sicherheitsprüfung für *Security
+  Auditor*, Docker und CI/CD für *DevOps*. Die Vorlagen nennen ihre Skills beim Namen
+  (`core/vorlagen_skills.py`); aufgelöst wird auf jeder Anlage beim Start und nach jedem
+  Crawl, weil Skill-IDs je Anlage verschieden sind.
+- **14 mitgelieferte deutsche Fach-Skills** (`app/skills_mitgeliefert`), auch ohne
+  Internet verfügbar: Buchhaltung vorkontieren (SKR03/04, § 14 UStG), Lohnabrechnung
+  vorbereiten, Angebot kalkulieren, Disposition, Rechtsfrage mit Fundstelle, Vertrag
+  prüfen (inkl. AV-Vertrag nach Art. 28 DSGVO), Pressemitteilung, Stellenanzeige und
+  Bewerbung (AGG), Meeting-Protokoll, Recherche mit Quellen, Support-Antworten,
+  Übersetzen/Lokalisieren, Anforderungen schreiben, Datenanalyse-Bericht. Fachliche
+  Skills bereiten vor; bei Steuern, Recht, Lohn und Personal entscheidet ein Mensch.
+- **Neue geprüfte Skill-Quellen im Marktplatz:** getsentry/skills, openai/skills
+  (Sicherheit), docker/skills (DevOps), timescale/pg-aiguide (PostgreSQL),
+  addyosmani/agent-skills (API, CI/CD, Doku), microsoft/playwright-cli und
+  currents-dev/playwright-best-practices-skill (Tests, Browser).
+
+---
+
 ## [1.360.0] - 2026-10-03
 
 ### Neu
