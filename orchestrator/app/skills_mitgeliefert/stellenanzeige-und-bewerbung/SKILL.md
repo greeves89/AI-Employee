@@ -1,6 +1,6 @@
 ---
 name: stellenanzeige-und-bewerbung
-description: "Schreibt AGG-konforme Stellenanzeigen, sichtet Bewerbungen mit einer fachlichen Kriterienmatrix, erstellt Gesprächsleitfäden und Absagetexte und achtet auf den Datenschutz. Nutzen, wenn eine Stelle ausgeschrieben oder ein Bewerbungsverfahren vorbereitet wird."
+description: "Schreibt AGG-konforme Stellenanzeigen, sichtet Bewerbungen mit einer fachlichen Kriterienmatrix, erstellt Gesprächsleitfäden und Absagetexte und achtet auf den Datenschutz. Nutzen, wenn eine Stelle ausgeschrieben oder ein Bewerbungsverfahren vorbereitet wird. Auslöser: Stellenanzeige, Stellenausschreibung, Bewerbung, Bewerber, Vorstellungsgespräch, Recruiting."
 ---
 
 # Stellenanzeige und Bewerbung

@@ -399,6 +399,11 @@ class MessageConsumer:
                     f"   project. Room filters improve retrieval precision.\n\n"
                 )
 
+                # Zugewiesene Fachanleitungen auch fuer Auftraege von Kollegen — ein
+                # DATEV-Export auf Zuruf eines anderen Agenten braucht dieselbe Anleitung.
+                from app.runner_hooks import get_skill_preload
+                context_prefix += get_skill_preload(text)
+
                 # Build prompt with full conversation context
                 if is_reply:
                     prompt = (

@@ -1,6 +1,6 @@
 ---
 name: recherche-mit-quellen
-description: "Belegte Recherche statt Linkliste – Frage schärfen, Quellen selbst öffnen, Primärquellen bevorzugen, jede Aussage mit Quelle und Abrufdatum, Widersprüche und Sicherheitsgrad offenlegen. Nutzen, wenn Fakten, Marktinfos, Anbieter oder Hintergründe recherchiert werden sollen."
+description: "Belegte Recherche statt Linkliste – Frage schärfen, Quellen selbst öffnen, Primärquellen bevorzugen, jede Aussage mit Quelle und Abrufdatum, Widersprüche und Sicherheitsgrad offenlegen. Nutzen, wenn Fakten, Marktinfos, Anbieter oder Hintergründe recherchiert werden sollen. Auslöser: Recherche, recherchieren, Quellenangabe, Marktüberblick, Anbietervergleich, Faktencheck."
 ---
 
 # Recherche mit Quellen

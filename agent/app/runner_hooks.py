@@ -101,6 +101,11 @@ FIRST STEPS (do these BEFORE starting the actual task):
    (e.g. room="project:<repo-name>/<area>"). Rooms dramatically improve retrieval precision.
 4. Use list_todos to check for pending work items
 5. **MANDATORY SKILL CHECK** — do this BEFORE starting the actual work:
+   0) Your ASSIGNED skills come first: if the task matches one listed under
+      "DEINE FACHANLEITUNGEN", use THAT one (already loaded if it appears under
+      "FACHANLEITUNG FÜR DIESEN AUFTRAG", otherwise skill_install it) and follow it,
+      including its questions and check steps, before producing any result.
+      Only if none fits, continue with a).
    a) Call skill_search with a 2-3 word summary of the task AND task_id=CURRENT_TASK_ID (e.g. skill_search(query="brainstorming ideas", task_id=CURRENT_TASK_ID))
    b) If a skill matches: call skill_install(skill_id=<ID>) to load it. Note the skill_id.
       Then follow the skill content to complete the task.
@@ -147,10 +152,11 @@ MANDATORY STEPS — do these IN ORDER for EVERY real request (not just greetings
 
 STEP 0 — Read /workspace/.agent_state.md if it exists. This is your cross-run memory —
           it tells you what you last did, active work, and standing user directives.
-STEP 1 — Check your INSTALLED SKILLS first (listed above under "YOUR INSTALLED SKILLS").
-          These are YOUR actual skills — already installed and ready to use.
-          If an installed skill matches the request: read it with `read_file` and follow it precisely.
-          If no installed skill fits: call `skill_search` to find new ones from the marketplace.
+STEP 1 — Check your ASSIGNED skills first (listed under "DEINE FACHANLEITUNGEN").
+          If one matches the request: use it — it is already loaded when it appears under
+          "FACHANLEITUNG FÜR DIESEN AUFTRAG", otherwise load it with `skill_install(skill_id=…)` —
+          and follow it precisely, including its questions and check steps.
+          If no assigned skill fits: call `skill_search` to find new ones from the marketplace.
           Note the skill ID if used — call skill_rate (with task_id=CURRENT_TASK_ID) at the end.
 STEP 2 — Call `memory_search` and `brain_search` to check for relevant past learnings + shared knowledge.
 STEP 3 — Execute the task. Call tools — never just describe what you would do.
@@ -636,43 +642,64 @@ def get_approval_rules_prefix() -> str:
         return ""
 
 
-def get_skill_preload() -> str:
-    """Fetch assigned skills from the marketplace for prompt injection.
+#: Merker in ``geladen``: Regel + Liste stehen in dieser Unterhaltung schon.
+_LISTE_GEZEIGT = "__liste__"
 
-    Skills are loaded from the central DB (not filesystem) and injected
-    into the agent's prompt so it knows its available routines/templates.
+
+def fachanleitungen(auftrag: str, geladen: set[str]) -> str:
+    """Die zugewiesenen Fachanleitungen (Skills) für diesen Auftrag — alle Laufzeiten.
+
+    Fragt ``POST /skills/agent/fachanleitungen``: der Orchestrator ordnet den
+    Auftrag den zugewiesenen Skills zu (``core/fachanleitungen``). Zurück kommen
+    die Regel samt Liste (ladbare ID + Auslöser) und die passenden Anleitungen
+    vollständig.
+
+    ``geladen`` gehört zur Unterhaltung: Regel und Liste erscheinen einmal, jede
+    Anleitung auch — ab dann stehen sie im Verlauf. Ohne Antwort des Orchestrators
+    bleibt ``geladen`` unverändert, der nächste Aufruf versucht es wieder.
+
+    Befund, der dazu führte (Abnahme v1.362.1): Ein Buchhaltungs-Agent schrieb im
+    Chat einen DATEV-Stapel mit Nettobetrag bei BU 9 — die zugewiesene Anleitung
+    mit der Brutto-Regel hatte ihn nie erreicht.
     """
     try:
-        url = f"{settings.orchestrator_url}/api/v1/skills/agent/available"
-        req = urllib.request.Request(url, headers={
-            "Authorization": f"Bearer {settings.agent_token}",
-            "X-Agent-ID": settings.agent_id,
-        })
+        url = f"{settings.orchestrator_url}/api/v1/skills/agent/fachanleitungen"
+        req = urllib.request.Request(
+            url,
+            data=_json.dumps({"auftrag": (auftrag or "")[:4000]}).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {settings.agent_token}",
+                "X-Agent-ID": settings.agent_id,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
         with urllib.request.urlopen(req, timeout=5) as response:
             data = _json.loads(response.read())
-
-        skills = data.get("skills", [])
-        if not skills:
-            return ""
-
-        lines = [
-            "",
-            "=== YOUR INSTALLED SKILLS ===",
-            "You have the following skills available. The content is NOT shown here — you MUST",
-            "call skill_install(skill_id=<ID>) to load the full instructions before using a skill.",
-            "This is required so the system can track usage and improve skill quality over time.",
-        ]
-        for s in skills:
-            lines.append(f"  • {s['name']} (skill_id={s.get('id', '?')}) — {s.get('description', '')}")
-        lines.extend([
-            "",
-            "USAGE FLOW: skill_install(skill_id=X) → follow instructions → skill_rate(skill_id=X, task_id=CURRENT_TASK_ID, helpfulness=?, rating=?)",
-            "=== END INSTALLED SKILLS ===",
-            "",
-        ])
-        return "\n".join(lines)
-    except Exception:
+    except Exception:  # noqa: BLE001 — ohne Orchestrator kein Block, kein Absturz
         return ""
+
+    teile: list[str] = []
+    liste = data.get("prompt") or ""
+    if liste and _LISTE_GEZEIGT not in geladen:
+        teile.append(liste)
+    geladen.add(_LISTE_GEZEIGT)
+    for anleitung in data.get("anleitungen") or []:
+        name = str(anleitung.get("name") or "")
+        if not name or name in geladen:
+            continue
+        teile.append(anleitung.get("text") or "")
+        geladen.add(name)
+    return "".join(teile)
+
+
+def get_skill_preload(auftrag: str = "") -> str:
+    """Fachanleitungen für einen einzelnen Auftrag (Liste + passende Anleitungen).
+
+    Für Aufträge und Zeitpläne: jeder Lauf ist eine eigene Unterhaltung, also
+    bekommt er alles. Im Chat führt ``ChatConsumer`` ``geladen`` je Sitzung.
+    """
+    return fachanleitungen(auftrag, set())
 
 
 MULTIMODAL_CAPABILITY_NOTE = (
@@ -872,7 +899,7 @@ def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
             + get_onboarding_context()
             + get_disk_incident_context()
             + get_memory_preload(task_context)
-            + get_skill_preload()
+            + get_skill_preload(prompt)
             + get_skills_context()
             + mounts
             + marketplace
@@ -883,7 +910,7 @@ def compose_prompt_bundle(prompt: str, lightweight: bool) -> str:
         + get_disk_incident_context()
         + get_memory_preload(task_context)
         + get_user_feedback()
-        + get_skill_preload()
+        + get_skill_preload(prompt)
         + get_skills_context()
         + mounts
         + marketplace

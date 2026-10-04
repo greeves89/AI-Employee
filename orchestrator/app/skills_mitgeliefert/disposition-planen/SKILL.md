@@ -1,6 +1,6 @@
 ---
 name: disposition-planen
-description: "Plant Einsätze von Monteuren und Technikern: Aufträge sammeln, Qualifikation, Fahrzeit und Material abgleichen, Wochenplan erstellen, Konflikte melden und Kunden über Termine informieren. Nutzen, wenn Einsätze disponiert, ein Wochenplan erstellt oder bei Ausfällen umgeplant werden soll."
+description: "Plant Einsätze von Monteuren und Technikern: Aufträge sammeln, Qualifikation, Fahrzeit und Material abgleichen, Wochenplan erstellen, Konflikte melden und Kunden über Termine informieren. Nutzen, wenn Einsätze disponiert, ein Wochenplan erstellt oder bei Ausfällen umgeplant werden soll. Auslöser: Disposition, disponieren, Einsatzplanung, Einsatzplan, Wochenplan, Monteur, Techniker, umplanen."
 ---
 
 # Einsätze disponieren

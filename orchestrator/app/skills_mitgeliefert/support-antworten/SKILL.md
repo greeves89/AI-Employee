@@ -1,6 +1,6 @@
 ---
 name: support-antworten
-description: "Beantwortet Kundenanfragen im First Level Support – Anliegen einordnen, Antwort nur aus Wissensbasis und Belegtem, freundlich-klarer Ton, klare Eskalation bei Recht, Geld, Beschwerden, DSGVO-Anfragen und Unsicherheit. Nutzen, wenn Support-Mails, Tickets oder Chatanfragen zu beantworten sind."
+description: "Beantwortet Kundenanfragen im First Level Support – Anliegen einordnen, Antwort nur aus Wissensbasis und Belegtem, freundlich-klarer Ton, klare Eskalation bei Recht, Geld, Beschwerden, DSGVO-Anfragen und Unsicherheit. Nutzen, wenn Support-Mails, Tickets oder Chatanfragen zu beantworten sind. Auslöser: Support, Kundenanfrage, Ticket, Reklamation, Beschwerde, Kundenmail."
 ---
 
 # Support-Anfragen beantworten

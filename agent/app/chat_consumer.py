@@ -481,6 +481,9 @@ class ChatConsumer:
         handler = self._handlers.get(source_key)
         if handler and hasattr(handler, "reset_session"):
             await handler.reset_session()
+        if handler is not None:
+            # Neuer Chat: Fachanleitungen wieder von vorn (Liste + passende Anleitung).
+            handler._fachanleitungen = None
         await self.redis.delete(f"agent:{self.agent_id}:claude_session:{source_key}")
 
     # ------------------------------------------------------------------ #
@@ -588,6 +591,25 @@ class ChatConsumer:
         from app.runner_hooks import get_marketplace_skill_suggestions, get_skills_context
         return get_skills_context() + get_marketplace_skill_suggestions(text[:200])
 
+    @staticmethod
+    def _fachanleitungen(text: str, handler: object, is_new: bool) -> str:
+        """Zugewiesene Fachanleitungen — fuer JEDE Laufzeit und JEDE Nachricht.
+
+        Nicht nur zum Sitzungsbeginn: der DATEV-Auftrag kommt oft erst in der dritten
+        Nachricht. Regel + Liste einmal je Sitzung, jede passende Anleitung einmal —
+        der Merker haengt am Handler (eine Sitzung je Handler, wie ``_last_rules_prefix``).
+        Auch Custom-LLM bekommt ihn hier: sein Systemprompt kennt die zugewiesenen
+        Skills nicht, und eine zweite Stelle fuer dieselbe Sache waere Paritaet auf Zuruf.
+        """
+        from app.runner_hooks import fachanleitungen
+        geladen = getattr(handler, "_fachanleitungen", None) if handler is not None else None
+        # Neue CLI-Sitzung (session_id leer) = neuer Verlauf: alles noch einmal.
+        if not isinstance(geladen, set) or (is_new and hasattr(handler, "session_id")):
+            geladen = set()
+            if handler is not None:
+                handler._fachanleitungen = geladen
+        return fachanleitungen(text, geladen)
+
     def _wrap(self, text: str, telegram_ctx: dict | None, source: str, is_new: bool) -> str:
         if telegram_ctx:
             return _build_telegram_prompt(text, telegram_ctx, is_new_session=is_new)
@@ -615,7 +637,8 @@ class ChatConsumer:
         else:
             rules_prefix = ""
         skills_prefix = self._skills_prefix(text) if is_new else ""
-        return (rules_prefix + skills_prefix + self._wrap(text, telegram_ctx, source, is_new)
+        fach = self._fachanleitungen(text, handler, is_new)
+        return (rules_prefix + skills_prefix + fach + self._wrap(text, telegram_ctx, source, is_new)
                 + self._zeit())
 
     @staticmethod
@@ -634,10 +657,12 @@ class ChatConsumer:
         Telegram-Referenz weglaesst und auf einen Verlauf verweist, den die neue
         Sitzung gar nicht hat.
         """
-        from app.runner_hooks import get_approval_rules_prefix
+        from app.runner_hooks import fachanleitungen, get_approval_rules_prefix
         return (
             get_approval_rules_prefix()
             + self._skills_prefix(text)
+            # Neue Sitzung, neuer Verlauf: Liste und passende Anleitung noch einmal.
+            + fachanleitungen(text, set())
             + self._wrap(text, telegram_ctx, source, True)
             + self._zeit()
         )

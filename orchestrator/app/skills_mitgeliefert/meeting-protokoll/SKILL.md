@@ -1,6 +1,6 @@
 ---
 name: meeting-protokoll
-description: "Erstellt aus Transkript, Mitschrift oder Stichpunkten ein Ergebnisprotokoll mit Teilnehmern, Entscheidungen, Aufgaben (Verantwortlicher + Termin), offenen Punkten und nächstem Termin. Nutzen, wenn ein Meeting nachbereitet oder dessen Aufgaben angelegt werden sollen."
+description: "Erstellt aus Transkript, Mitschrift oder Stichpunkten ein Ergebnisprotokoll mit Teilnehmern, Entscheidungen, Aufgaben (Verantwortlicher + Termin), offenen Punkten und nächstem Termin. Nutzen, wenn ein Meeting nachbereitet oder dessen Aufgaben angelegt werden sollen. Auslöser: Protokoll, Ergebnisprotokoll, Meeting, Besprechung, Transkript, Mitschrift."
 ---
 
 # Ergebnisprotokoll aus einem Meeting

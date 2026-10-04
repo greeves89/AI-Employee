@@ -816,9 +816,44 @@ async def agent_available_skills(
     db: AsyncSession = Depends(get_db),
     auth: dict = Depends(verify_agent_token),
 ):
-    """Get all active skills assigned to this agent (for task-start injection)."""
-    agent_id = auth["agent_id"]
+    """Get all active skills assigned to this agent (for task-start injection).
 
+    Mit ``id``: ohne sie stand im Auftrag ``skill_id=?`` und der Agent konnte den
+    Skill weder laden noch bewerten — die Kette brach an ihrer ersten Stelle."""
+    skills = await _skills_des_agenten(db, auth["agent_id"])
+    return {
+        "skills": [{"id": s.id, "name": s.name, "content": s.content, "description": s.description}
+                   for s in skills],
+        "total": len(skills),
+    }
+
+
+class AgentFachanleitungenBody(BaseModel):
+    auftrag: str = ""
+
+
+@router.post("/agent/fachanleitungen")
+async def agent_fachanleitungen(
+    body: AgentFachanleitungenBody,
+    db: AsyncSession = Depends(get_db),
+    auth: dict = Depends(verify_agent_token),
+):
+    """Die zugewiesenen Fach-Skills dieses Agenten für EINEN Auftrag aufbereitet.
+
+    Liefert die Regel samt Liste (ladbare ID + Auslöser) und, wenn der Auftrag zu
+    einem Auslöser passt, die Anleitung vollständig — für alle Laufzeiten gleich
+    (siehe ``core/fachanleitungen``)."""
+    from app.core.fachanleitungen import fuer_agent
+
+    skills = await _skills_des_agenten(db, auth["agent_id"])
+    return fuer_agent(
+        [{"id": s.id, "name": s.name, "description": s.description, "content": s.content} for s in skills],
+        (body.auftrag or "")[:4000],
+    )
+
+
+async def _skills_des_agenten(db: AsyncSession, agent_id: str) -> list:
+    """Aktive Skills eines Agenten: zugewiesene, dazu die über seine Rolle passenden."""
     # Explicitly assigned skills
     assigned = await db.execute(
         select(Skill)
@@ -843,11 +878,7 @@ async def agent_available_skills(
             for s in role_skills.scalars().all():
                 if s.roles and agent_role in s.roles and s.id not in {sk.id for sk in skills}:
                     skills.append(s)
-
-    return {
-        "skills": [{"name": s.name, "content": s.content, "description": s.description} for s in skills],
-        "total": len(skills),
-    }
+    return skills
 
 
 class AgentRecordUsageBody(BaseModel):

@@ -46,6 +46,18 @@ PLATZHALTER = (
     "Musterstraße 1", "Lorem ipsum", "[Firmenname]", "<Firmenname>",
 )
 
+#: Platzhalter in eckigen Klammern, wie Modelle sie setzen, wenn Daten fehlen:
+#: „[Ihr Firmenname]“, „[Ihre Anschrift]“, „[Kundenname]“ (Abnahme v1.362.1).
+PLATZHALTER_KLAMMER = re.compile(
+    r"\[\s*(?:Ihr|Ihre|Ihren|Ihrem|Firmen|Firma|Kunden|Kunde|Name|Anschrift|Adresse|"
+    r"Straße|PLZ|Datum|IBAN|Steuernummer)[^\]\n]{0,40}\]",
+    re.I,
+)
+
+#: Eine Folgeseite mit weniger Text gilt als „fast leer“ — typischerweise nur der
+#: Fußblock (Firma, Register, Bank) oder dessen zerrissenes Ende.
+FAST_LEER_ZEICHEN = 320
+
 #: A4 in Punkt (1/72 Zoll); Toleranz für Rundung der Erzeuger.
 A4_PT = (595.3, 841.9)
 _TOLERANZ_PT = 3.0
@@ -57,23 +69,42 @@ ANZEIGE_HINWEIS = (
 )
 
 
-def _pdf_text(pfad: str | os.PathLike) -> tuple[list[tuple[float, float]], str]:
-    """(Seitengrößen in pt, gesamter Text). pymupdf im Abbild, sonst pypdf."""
+def _pdf_lesen(pfad: str | os.PathLike) -> tuple[list[tuple[float, float]], list[str]]:
+    """(Seitengrößen in pt, Text je Seite). pymupdf im Abbild, sonst pypdf."""
     try:
         import fitz  # pymupdf
 
         with fitz.open(str(pfad)) as doc:
             groessen = [(p.rect.width, p.rect.height) for p in doc]
-            text = "\n".join(p.get_text() for p in doc)
-        return groessen, text
+            seiten = [p.get_text() for p in doc]
+        return groessen, seiten
     except ImportError:
         pass
     from pypdf import PdfReader
 
     reader = PdfReader(str(pfad))
     groessen = [(float(p.mediabox.width), float(p.mediabox.height)) for p in reader.pages]
-    text = "\n".join((p.extract_text() or "") for p in reader.pages)
-    return groessen, text
+    return groessen, [(p.extract_text() or "") for p in reader.pages]
+
+
+def _pdf_text(pfad: str | os.PathLike) -> tuple[list[tuple[float, float]], str]:
+    """(Seitengrößen in pt, gesamter Text)."""
+    groessen, seiten = _pdf_lesen(pfad)
+    return groessen, "\n".join(seiten)
+
+
+def letzte_seite_fast_leer(seiten: list[str]) -> bool:
+    """Trägt die letzte von mehreren Seiten kaum Inhalt — meist nur den Fußblock?
+
+    Gezählt wird ohne unsere Seitenzahl „Seite X von Y“. Ein Brief, dessen letzte
+    Seite nur Gruß und Unterschrift trägt, ist damit auch „fast leer“ — für ein
+    Angebot oder eine Rechnung ist das ebenso unschön und meist vermeidbar.
+    """
+    if len(seiten) < 2:
+        return False
+    rest = re.sub(r"Seite\s+\d+\s+von\s+\d+", "", seiten[-1])
+    rest = re.sub(r"\s+", " ", rest).strip()
+    return len(rest) < FAST_LEER_ZEICHEN
 
 
 def _ist_a4(breite: float, hoehe: float) -> bool:
@@ -92,7 +123,8 @@ def pruefe_pdf(pfad: str | os.PathLike) -> dict:
     fehler: list[dict] = []
     hinweise: list[str] = []
     try:
-        groessen, text = _pdf_text(pfad)
+        groessen, seiten = _pdf_lesen(pfad)
+        text = "\n".join(seiten)
     except Exception as e:  # noqa: BLE001 — kaputtes PDF ist ein Befund, kein Absturz
         return {
             "ok": False, "seiten": 0, "format": None, "hinweise": [],
@@ -109,11 +141,21 @@ def pruefe_pdf(pfad: str | os.PathLike) -> dict:
     for platzhalter in PLATZHALTER:
         if platzhalter.lower() in klein:
             fehler.append({"art": "platzhalter", "text": f"Platzhalter im Text: „{platzhalter}“"})
+    for treffer in dict.fromkeys(m.group(0) for m in PLATZHALTER_KLAMMER.finditer(text)):
+        if treffer.lower() not in (p.lower() for p in PLATZHALTER):
+            fehler.append({"art": "platzhalter", "text": f"Platzhalter im Text: „{treffer}“"})
 
     alle_a4 = bool(groessen) and all(_ist_a4(b, h) for b, h in groessen)
     if groessen and not alle_a4:
         b, h = groessen[0]
         hinweise.append(f"Papierformat ist nicht A4 ({b:.0f} × {h:.0f} pt).")
+    if letzte_seite_fast_leer(seiten):
+        hinweise.append(
+            f"Die letzte Seite ({len(seiten)}) trägt kaum Inhalt, meist nur den Fußblock. "
+            "Eigenes CSS mit Seitenhöhe (min-height: 297mm, 100vh) oder absolut gesetzter "
+            "Fußzeile entfernen — am einfachsten das Dokument als Markdown schreiben; "
+            "Ränder und „Seite X von Y“ setzt `dokument pdf`."
+        )
 
     rand = [f["text"] for f in fehler if f["art"] == "browser_rand"]
     meldung = None
@@ -149,7 +191,32 @@ code, pre { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; font-
 pre { white-space: pre-wrap; }
 img { max-width: 100%; }
 .seitenumbruch { page-break-after: always; }
+p, li { orphans: 3; widows: 3; }
+h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
+/* Schluss (Gruß, Unterschrift) + Fußblock (Firma, Register, Bank) — alles nach der
+   letzten Trennlinie, siehe _fussblock_markieren: klein, nie zerrissen, nie allein
+   auf einer Folgeseite (nimmt den Absatz davor mit). */
+.schluss { break-inside: avoid; page-break-inside: avoid;
+           break-before: avoid; page-break-before: avoid; }
+.fussblock { margin-top: 14pt; padding-top: 5pt; border-top: 0.6pt solid #9a9a9a;
+             font-size: 8.5pt; line-height: 1.35; color: #444; }
+.fussblock p { margin: 0 0 2pt; }
 """
+
+#: Nachkorrektur für EIGENES HTML, das mit Seitenhöhe gebaut ist (``min-height:
+#: 297mm``, ``100vh``, absolut gesetzte Fußzeile). Zusammen mit unseren Rändern ist
+#: so ein Behälter höher als die Seite — die Fußzeile landet allein auf Seite 2.
+#: Greift nur, wenn der erste Druck genau das ergibt, und wird nur übernommen,
+#: wenn das Ergebnis dadurch kürzer wird (siehe ``erzeuge_pdf``).
+SEITENHOEHE_KORREKTUR_CSS = """
+html, body { height: auto !important; min-height: 0 !important; }
+body * { min-height: 0 !important; }
+body *:not(img):not(svg):not(svg *):not(canvas):not(video) { height: auto !important; }
+body * { position: static !important; }
+"""
+
+#: Länger ist kein Fußblock mehr, sondern ein Abschnitt.
+_FUSSBLOCK_MAX_ZEICHEN = 600
 
 _FUSSZEILE = (
     '<div style="width:100%;font-size:8pt;color:#555;padding:0 18mm;'
@@ -250,10 +317,44 @@ def _ressource_aus_ordner(basis: Path, url: str, typ: str) -> Path | None:
 def _markdown_zu_html(text: str) -> str:
     import markdown
 
+    # nl2br: Ein Zeilenumbruch bleibt einer. Anschrift und Fußblock eines Angebots
+    # stehen Zeile für Zeile da (so geben die Anleitungen sie vor) — ohne nl2br lief
+    # „Firma / Straße / PLZ Ort“ zu einer einzigen Zeile zusammen.
     return markdown.markdown(
-        text, extensions=["tables", "fenced_code", "sane_lists", "attr_list"],
+        text, extensions=["tables", "fenced_code", "sane_lists", "attr_list", "nl2br"],
         output_format="html5",
     )
+
+
+def _fussblock_markieren(html_text: str) -> str:
+    """Was nach der LETZTEN Trennlinie steht, wird zum Fußblock (``<footer class="fussblock">``).
+
+    So schreiben die Anleitungen Angebote und Briefe: Firma, Sitz, Register, Bank
+    unter einem ``---``. Ohne Markierung rutschte dieser Block bei einem Dokument,
+    das knapp über eine Seite reicht, allein — oder zerrissen — auf die Folgeseite
+    (Abnahme v1.362.1). Nur ein kurzer Rest gilt als Fußblock; ein langer Abschnitt
+    nach einer Trennlinie bleibt, wie er ist.
+    """
+    treffer = list(re.finditer(r"<hr\s*/?>", html_text, re.I))
+    if not treffer:
+        return html_text
+    letzte = treffer[-1]
+    rest = html_text[letzte.end():]
+    sichtbar = re.sub(r"<[^>]+>", "", rest).strip()
+    if not sichtbar or len(sichtbar) > _FUSSBLOCK_MAX_ZEICHEN:
+        return html_text
+    davor = html_text[: letzte.start()].rstrip()
+    # Gruß und Unterschrift direkt davor (kurze Absätze) gehören zum Schluss: sie
+    # wandern mit dem Fußblock, statt allein am Seitenende zurückzubleiben.
+    schluss = ""
+    for _ in range(2):
+        m = re.search(r"<p>((?:(?!<p>).){1,120}?)</p>\s*$", davor, re.S)
+        if not m or len(re.sub(r"<[^>]+>", "", m.group(1)).strip()) > 80:
+            break
+        schluss = m.group(0) + schluss
+        davor = davor[: m.start()].rstrip()
+    return (davor + f'<div class="schluss">{schluss}'
+            f'<footer class="fussblock">{rest}</footer></div>')
 
 
 def _erste_ueberschrift(html_text: str) -> str | None:
@@ -273,7 +374,7 @@ def baue_html(eingabe: Path, titel: str | None = None) -> str:
     basis = f'<base href="{HERKUNFT}">'
     if eingabe.suffix.lower() in (".md", ".markdown", ".txt"):
         # Markdown reicht Roh-HTML durch — deshalb erst NACH der Umwandlung entschärfen.
-        koerper = _entschaerfen(_markdown_zu_html(roh))
+        koerper = _fussblock_markieren(_entschaerfen(_markdown_zu_html(roh)))
         titel = titel or _erste_ueberschrift(koerper) or eingabe.stem
         return (
             '<!doctype html><html lang="de"><head><meta charset="utf-8">'
@@ -326,12 +427,14 @@ def erzeuge_pdf(eingabe: Path, ziel: Path, titel: str | None = None, fusszeile: 
 
     seite_html = baue_html(eingabe, titel)
     basis = eingabe.resolve().parent
-    bericht: dict[str, list[str]] = {"erlaubt": [], "blockiert": []}
+    bericht: dict = {"erlaubt": [], "blockiert": []}
+    #: Was der Route-Handler als Seite ausliefert — beim Nachdruck die korrigierte Fassung.
+    aktuell = {"html": seite_html}
 
     def weiche(route):
         url = route.request.url
         if url == HERKUNFT + _SEITE:
-            route.fulfill(status=200, content_type="text/html; charset=utf-8", body=seite_html)
+            route.fulfill(status=200, content_type="text/html; charset=utf-8", body=aktuell["html"])
             return
         datei = _ressource_aus_ordner(basis, url, route.request.resource_type)
         if datei is not None:
@@ -353,21 +456,61 @@ def erzeuge_pdf(eingabe: Path, ziel: Path, titel: str | None = None, fusszeile: 
                 locale="de-DE", java_script_enabled=False, service_workers="block",
             )
             kontext.route("**/*", weiche)
-            seite = kontext.new_page()
-            seite.goto(HERKUNFT + _SEITE, wait_until="load")
-            seite.pdf(
-                path=str(ziel),
-                format="A4",
-                print_background=True,
-                display_header_footer=True,
-                # Leere Kopfzeile statt der Standardzeile (Datum + Titel).
-                header_template="<span></span>",
-                footer_template=_FUSSZEILE.format(links=html.escape(fusszeile)),
-                margin={"top": "20mm", "bottom": "22mm", "left": "18mm", "right": "18mm"},
-            )
+
+            def drucken(pfad: Path) -> None:
+                seite = kontext.new_page()
+                try:
+                    seite.goto(HERKUNFT + _SEITE, wait_until="load")
+                    seite.pdf(
+                        path=str(pfad),
+                        format="A4",
+                        print_background=True,
+                        display_header_footer=True,
+                        # Leere Kopfzeile statt der Standardzeile (Datum + Titel).
+                        header_template="<span></span>",
+                        footer_template=_FUSSZEILE.format(links=html.escape(fusszeile)),
+                        margin={"top": "20mm", "bottom": "22mm", "left": "18mm", "right": "18mm"},
+                    )
+                finally:
+                    seite.close()
+
+            drucken(ziel)
+            if eingabe.suffix.lower() in (".html", ".htm"):
+                _seitenhoehe_nachkorrigieren(ziel, aktuell, drucken, bericht)
         finally:
             browser.close()
     return bericht
+
+
+def _seitenhoehe_nachkorrigieren(ziel: Path, aktuell: dict, drucken, bericht: dict) -> None:
+    """Eigenes HTML, dessen letzte Seite fast leer ist: einmal mit Korrektur-CSS drucken.
+
+    Übernommen wird der Nachdruck nur, wenn er WENIGER Seiten hat — ein Dokument,
+    das ehrlich zwei Seiten braucht, bleibt so, wie der Agent es gestaltet hat.
+    """
+    try:
+        _, seiten = _pdf_lesen(ziel)
+    except Exception:  # noqa: BLE001 — Prüfung ist Zugabe, kein Grund zum Abbruch
+        return
+    if not letzte_seite_fast_leer(seiten):
+        return
+    korrektur = f"<style>{SEITENHOEHE_KORREKTUR_CSS}</style>"
+    if re.search(r"</body\s*>", aktuell["html"], re.I):
+        # Ans Ende des Körpers: nach JEDEM Stylesheet des Agenten, auch im <body>.
+        aktuell["html"] = re.sub(r"(</body\s*>)", lambda m: korrektur + m.group(1),
+                                 aktuell["html"], count=1, flags=re.I)
+    else:
+        aktuell["html"] += korrektur
+    versuch = ziel.with_name(ziel.stem + ".korrektur.pdf")
+    try:
+        drucken(versuch)
+        _, neu = _pdf_lesen(versuch)
+        if len(neu) < len(seiten):
+            os.replace(versuch, ziel)
+            bericht["seitenhoehe_korrigiert"] = True
+    finally:
+        if versuch.exists():
+            versuch.unlink()
 
 
 # ─── Word erzeugen ────────────────────────────────────────────────────────────
@@ -557,9 +700,13 @@ def main(argv: list[str] | None = None) -> int:
     if eingabe.suffix.lower() not in (".md", ".markdown", ".txt", ".html", ".htm"):
         print("Eingabe muss Markdown (.md) oder HTML (.html) sein.", file=sys.stderr)
         return 2
-    erzeuge_pdf(eingabe, ziel, titel=args.titel, fusszeile=args.fusszeile)
+    bericht = erzeuge_pdf(eingabe, ziel, titel=args.titel, fusszeile=args.fusszeile)
     ergebnis = pruefe_pdf(ziel)
     print(f"PDF erstellt: {ziel}")
+    if bericht.get("seitenhoehe_korrigiert"):
+        print("Hinweis: Das HTML war auf Seitenhöhe gebaut (Fußzeile allein auf der Folgeseite) "
+              "und wurde beim Druck auf den Inhalt verkürzt. Für Kundendokumente besser "
+              "Markdown verwenden.")
     print(_bericht(ergebnis))
     return 0 if ergebnis["ok"] else 1
 

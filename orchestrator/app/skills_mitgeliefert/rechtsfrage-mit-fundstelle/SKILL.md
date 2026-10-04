@@ -1,6 +1,6 @@
 ---
 name: rechtsfrage-mit-fundstelle
-description: "Beantwortet Rechtsfragen nur mit belegter Fundstelle (Norm im Wortlaut, Stand, knappe Subsumtion) und zeigt, wann ein Anwalt nötig ist. Nutzen, wenn jemand fragt „Darf ich …?“, „Was sagt das Gesetz zu …?“ oder eine Vorschrift erklärt haben möchte."
+description: "Beantwortet Rechtsfragen nur mit belegter Fundstelle (Norm im Wortlaut, Stand, knappe Subsumtion) und zeigt, wann ein Anwalt nötig ist. Nutzen, wenn jemand fragt „Darf ich …?“, „Was sagt das Gesetz zu …?“ oder eine Vorschrift erklärt haben möchte. Auslöser: Rechtsfrage, Gesetz, Paragraf, Paragraph, Vorschrift, rechtlich, erlaubt."
 ---
 
 # Rechtsfrage mit Fundstelle beantworten

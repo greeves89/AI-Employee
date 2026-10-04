@@ -1,6 +1,6 @@
 ---
 name: buchhaltung-vorkontieren
-description: "Prüft Eingangs- und Ausgangsbelege auf Pflichtangaben, schlägt Konto (SKR03/SKR04) und Steuerbehandlung vor und liefert eine Vorkontierungsliste für Buchhaltung oder Steuerberatung. Nutzen, wenn Belege gesichtet, vorkontiert oder für die Übergabe aufbereitet werden sollen."
+description: "Prüft Eingangs- und Ausgangsbelege auf Pflichtangaben, schlägt Konto (SKR03/SKR04) und Steuerbehandlung vor und liefert eine Vorkontierungsliste oder einen DATEV-Buchungsstapel (mit Prüfschritt: bei BU-Schlüssel immer der Bruttobetrag) für Buchhaltung oder Steuerberatung. Nutzen, wenn Belege gesichtet, vorkontiert, für die Übergabe aufbereitet oder als DATEV-/CSV-Export ausgegeben werden sollen. Auslöser: DATEV, Buchungsstapel, Buchungsliste, Steuerberater, Steuerberatung, BU-Schlüssel, Vorsteuer, Beleg, vorkontieren, Kontierung, Eingangsrechnung, Ausgangsrechnung, SKR03, SKR04."
 ---
 
 # Belege vorkontieren
@@ -11,6 +11,7 @@ Du bereitest Belege so auf, dass die Buchhaltung oder die Steuerberatung sie ohn
 - Ein Stapel Rechnungen, Quittungen oder Gutschriften soll vor der Übergabe gesichtet werden.
 - Jemand fragt „Auf welches Konto gehört das?“ oder „Ist die Rechnung so in Ordnung?“.
 - Monats- oder Quartalsabschluss: offene Belege sollen vollständig und vorkontiert vorliegen.
+- Ein DATEV-Buchungsstapel, eine Buchungsliste oder eine CSV für Steuerberatung/Kanzlei soll entstehen — dann gilt der Abschnitt „Export DATEV-Buchungsstapel“ samt Prüfschritt, auch wenn der Auftrag nur „mach mir die CSV“ lautet.
 
 ## Vorgehen
 1. **Rahmen klären.** Suche in Wissensbasis und Gedächtnis (`memory_search`) nach dem Kontenrahmen der Firma (SKR03, SKR04 oder eigener), nach firmenspezifischen Konten, Kostenstellen und der Frage, ob die Firma Kleinunternehmer ist oder Ist-/Soll-Versteuerung nutzt. Findest du nichts: einmal nachfragen und die Antwort im Gedächtnis ablegen.

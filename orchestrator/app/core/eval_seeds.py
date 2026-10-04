@@ -200,8 +200,42 @@ ANGEBOT: list[dict] = [
             r"(firmenstammdaten|firmendaten|firmenname|absender|rechtsform|"
             r"registergericht|handelsregister|bankverbindung)",
         ],
-        "expect_absent": ["muster gmbh", "max mustermann", "musterstraße", "musterstrasse"],
+        # „Fragt ZUERST": In der Abnahme von v1.362.1 entstand erst ein PDF mit
+        # „[Ihr Firmenname]“, die Frage kam danach. Ein ausgeliefertes Dokument
+        # (present_file) vor der Antwort ist deshalb ein Fehlschlag, auch wenn die
+        # Antwort dann ordentlich fragt.
+        "expect_no_tools": ["present_file"],
+        "expect_absent": ["muster gmbh", "max mustermann", "musterstraße", "musterstrasse",
+                          "[ihr firmenname]", "[firmenname]", "[ihre firma]"],
         "min_length": 40,
+    },
+]
+
+
+# Buchhaltung (#894). In der Abnahme von v1.362.1 schrieb ein Agent der Vorlage
+# „Buchhaltung“ einen DATEV-Buchungsstapel mit dem NETTObetrag bei BU 9 — er hatte
+# die zugewiesene Fachanleitung gar nicht geladen. DATEV rechnet die Steuer bei
+# einem Steuerschlüssel aus dem Umsatz heraus: der Umsatz muss brutto sein.
+BUCHHALTUNG: list[dict] = [
+    {
+        "id": "datev-brutto-bei-bu-schluessel",
+        "title": "Steht im DATEV-Buchungsstapel bei BU 9 der Bruttobetrag?",
+        "weight": 5,
+        "prompt": (
+            "Erstelle mir für diese Eingangsrechnung eine Buchungszeile im DATEV-Format "
+            "für den Steuerberater (Buchungsliste, keine EXTF-Datei): Bürobedarf von "
+            "Lieferant A, Rechnung 2026-0815 vom 15.08.2026, 100,00 € netto zuzüglich "
+            "19 % Umsatzsteuer, 119,00 € brutto, Kontenrahmen SKR03, Aufwand 4930, "
+            "Kreditorensammelkonto 1600, Vorsteuer über BU-Schlüssel 9. Gib die "
+            "CSV-Zeile im Chat aus."
+        ),
+        # Umsatz 119,00 mit S/H-Kennzeichen, Konto, Gegenkonto, BU 9 — Spalten wie im Skill.
+        "expect_regex": [
+            r"119,00\s*;\s*[SH]\s*;\s*\d{4,}\s*;\s*\d{4,}\s*;\s*9\s*;",
+        ],
+        # Der Fehler aus der Abnahme: Nettobetrag in der Umsatzspalte.
+        "expect_absent": ["100,00;s;", "100,00;h;", "100,00; s;", "100,00; h;"],
+        "min_length": 20,
     },
 ]
 
@@ -238,5 +272,16 @@ BUILTIN_EVAL_SETS: list[dict] = [
             "statt Platzhalter wie „Muster GmbH“ einzusetzen?"
         ),
         "items": ANGEBOT,
+    },
+    {
+        "id": "builtin-buchhaltung",
+        "name": "Buchhaltung",
+        "role": "Buchhaltung",
+        "description": (
+            "Für Agenten aus der Vorlage „Buchhaltung“: trägt der DATEV-Buchungsstapel "
+            "bei BU-Schlüssel den Bruttobetrag (100 € + 19 % → 119,00, BU 9) samt "
+            "Soll/Haben-Kennzeichen?"
+        ),
+        "items": BUCHHALTUNG,
     },
 ]

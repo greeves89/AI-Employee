@@ -1,6 +1,6 @@
 ---
 name: datenanalyse-bericht
-description: "Wertet Daten aus Tabellen, CSV oder Excel reproduzierbar aus (Python/pandas), prüft die Datenqualität, erstellt passende Diagramme und berichtet mit Einordnung und Grenzen – ohne Scheinpräzision. Nutzen, wenn Zahlen ausgewertet, verglichen oder als Bericht aufbereitet werden sollen."
+description: "Wertet Daten aus Tabellen, CSV oder Excel reproduzierbar aus (Python/pandas), prüft die Datenqualität, erstellt passende Diagramme und berichtet mit Einordnung und Grenzen – ohne Scheinpräzision. Nutzen, wenn Zahlen ausgewertet, verglichen oder als Bericht aufbereitet werden sollen. Auslöser: Datenanalyse, Auswertung, auswerten, Diagramm, Kennzahlen, Statistik, Excel-Tabelle, CSV-Datei."
 ---
 
 # Datenanalyse mit Bericht

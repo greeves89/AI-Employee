@@ -148,10 +148,15 @@ async def gather_facts(db: AsyncSession, task: Task) -> dict:
             TaskStep.event_type == "tool_call",
         )
     )).scalars().all()
-    tools = sorted({
+    namen = {
         str((d or {}).get("name") or (d or {}).get("tool") or "").strip()
         for d in steps
-    } - {""})
+    } - {""}
+    # Claude Code meldet MCP-Werkzeuge mit Server-Praefix („mcp__notifications__present_file“),
+    # Codex und Custom-LLM mit dem nackten Namen. Die Sammlungen nennen den nackten Namen —
+    # ohne Kurzform lief „expect_no_tools: present_file“ bei Claude Code ins Leere und
+    # „expect_tools: list_my_team“ fiel durch, obwohl das Werkzeug gerufen wurde.
+    tools = sorted(namen | {n.split("__")[-1] for n in namen})
 
     delegated: list[Task] = []
     if task.agent_id and task.started_at:
