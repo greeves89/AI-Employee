@@ -1620,6 +1620,27 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure chat_sessions table: {e}")
 
+    # v1.362: Kostenhistorie (#896) — verdichtete Kosten geloeschter Chats und
+    # Aufgaben. Ohne sie setzte jedes Loeschen das Monatsbudget zurueck.
+    try:
+        from app.db.session import engine as _eng_kh
+        from sqlalchemy import text as _txt_kh
+        async with _eng_kh.begin() as conn:
+            await conn.execute(_txt_kh(
+                "CREATE TABLE IF NOT EXISTS kosten_historie ("
+                "id SERIAL PRIMARY KEY, tag date NOT NULL, agent_id varchar, user_id varchar,"
+                "quelle varchar(20) NOT NULL, betrag_usd double precision NOT NULL,"
+                "created_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            for _index in ("tag", "agent_id", "user_id"):
+                await conn.execute(_txt_kh(
+                    f"CREATE INDEX IF NOT EXISTS ix_kosten_historie_{_index} "
+                    f"ON kosten_historie ({_index})"
+                ))
+        logger.info("kosten_historie table ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure kosten_historie table: {e}")
+
     # Freigabe eines Keys an Personen (core/secret_zugriff.py). Wie chat_sessions:
     # bei jedem Start, unabhaengig von Alembic. Idempotent.
     try:

@@ -239,6 +239,10 @@ async def rewind(db: AsyncSession, agent_id: str, session_id: str,
             role=msg.role, content=msg.content, tool_calls=msg.tool_calls,
             meta={**(msg.meta or {}), "rewound_from": session_id},
             timestamp=msg.timestamp,
+            # Verschoben, nicht kopiert: die Kosten ziehen mit um (#896), sonst
+            # gingen sie mit dem Original verloren.
+            cost_usd=msg.cost_usd, input_tokens=msg.input_tokens,
+            output_tokens=msg.output_tokens,
         ))
         await db.delete(msg)
 

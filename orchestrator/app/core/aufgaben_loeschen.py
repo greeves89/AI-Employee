@@ -10,6 +10,9 @@ Zwei Fremdschlüssel auf ``tasks`` löschen nicht von selbst mit:
 
 Die Müllabfuhr im Scheduler kannte die Bewertungen schon, das Löschen über die
 Oberfläche nicht. Beide rufen jetzt diese Funktion.
+
+Und die Kosten bleiben (#896): Sie werden vor dem Löschen in der Kostenhistorie
+verdichtet. Vorher sank mit jeder gelöschten Aufgabe das Monatsbudget.
 """
 
 from sqlalchemy import delete, update
@@ -23,6 +26,9 @@ async def abhaengiges_loesen(db: AsyncSession, task_ids: list[str]) -> None:
     """Vor ``db.delete(task)`` aufrufen; committet nicht."""
     if not task_ids:
         return
+    from app.core.kosten import QUELLE_AUFGABEN, verdichten
+
+    await verdichten(db, QUELLE_AUFGABEN, Task.id.in_(task_ids))
     await db.execute(delete(TaskRating).where(TaskRating.task_id.in_(task_ids)))
     await db.execute(
         update(Task).where(Task.parent_task_id.in_(task_ids)).values(parent_task_id=None)

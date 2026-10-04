@@ -159,8 +159,9 @@ class VerdictTests(unittest.IsolatedAsyncioTestCase):
             pass
 
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        from app.models.kosten_historie import KostenHistorie  # #896: gelöschte Kosten
         async with self.engine.begin() as conn:
-            for model in (Agent, Task, ChatMessage, CommandApproval, OAuthIntegration, AIAccount):
+            for model in (Agent, Task, ChatMessage, KostenHistorie, CommandApproval, OAuthIntegration, AIAccount):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
 

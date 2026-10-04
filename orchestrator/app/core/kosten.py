@@ -14,6 +14,12 @@ Abgerechnet wird bei den Anbietern in USD, und so wird auch gespeichert. Alle
 Beträge hier sind USD; umgerechnet wird nur für die Anzeige (``betrag_anzeigen``
 serverseitig, ``lib/money.ts`` im Browser).
 
+Gelöschte Zeilen nehmen ihre Kosten nicht mit: Vor jedem Löschen von
+Chatnachrichten oder Aufgaben verdichtet ``verdichten`` die Beträge in
+``kosten_historie`` (Tag, Agent, Besitzer, Quelle — kein Inhalt), und ``kosten``
+zählt Historie plus noch vorhandene Zeilen. Verdichtet wird in DERSELBEN
+Transaktion wie gelöscht — sonst zählte ein Betrag doppelt oder gar nicht.
+
 Nutzertrennung: ``bereich_fuer_nutzer`` liefert für ein Mitglied genau seine
 sichtbaren Agenten (``ownership.visible_agent_ids``), für Administratoren die ganze
 Anlage. Eine leere Menge heisst „nichts" — nie „alles".
@@ -22,7 +28,7 @@ Anlage. Eine leere Menge heisst „nichts" — nie „alles".
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Iterable
 
 from sqlalchemy import func, select
@@ -128,6 +134,78 @@ def _tag(wert) -> str:
     return str(wert)[:10]
 
 
+def _als_datum(wert) -> date:
+    if isinstance(wert, datetime):
+        return wert.date()
+    if isinstance(wert, date):
+        return wert
+    return date.fromisoformat(str(wert)[:10])
+
+
+async def _historie(db, quelle: str, bereich: Bereich, seit, bis, je_tag: bool):
+    """Verdichtete Kosten gelöschter Zeilen — (agent_id, tag, betrag).
+
+    Tagesgenau: ein Zeitraum, der mitten am Tag beginnt, zählt den ganzen Tag
+    (Monatsgrenzen liegen immer auf Tagesgrenzen). Beim Nutzerbudget zählt der
+    Besitzer beim Verdichten — auch wenn der Agent inzwischen gelöscht ist.
+    """
+    from app.models.kosten_historie import KostenHistorie as H
+
+    spalten = [H.agent_id, func.coalesce(func.sum(H.betrag_usd), 0)]
+    gruppe = [H.agent_id]
+    if je_tag:
+        spalten.insert(1, H.tag)
+        gruppe.append(H.tag)
+    stmt = select(*spalten).where(H.quelle == quelle)
+    if seit is not None:
+        stmt = stmt.where(H.tag >= _als_datum(seit))
+    if bis is not None:
+        stmt = stmt.where(H.tag < _als_datum(bis))
+    if bereich.agent_ids is not None:
+        stmt = stmt.where(H.agent_id.in_(sorted(bereich.agent_ids)))
+    elif bereich.besitzer_id is not None:
+        stmt = stmt.where(H.user_id == bereich.besitzer_id)
+    return (await db.execute(stmt.group_by(*gruppe))).all()
+
+
+async def verdichten(db, quelle: str, bedingung) -> float:
+    """Kosten der Zeilen, die gleich gelöscht werden, in die Historie übernehmen.
+
+    ``bedingung``: dieselbe WHERE-Bedingung wie das folgende Löschen (auf
+    ``ChatMessage`` bzw. ``Task``). Committet NICHT — der Aufrufer löscht und
+    schreibt in einem Zug fest. Liefert den übernommenen Betrag (USD).
+    """
+    from app.models.agent import Agent
+    from app.models.chat_message import ChatMessage
+    from app.models.kosten_historie import KostenHistorie
+    from app.models.task import Task
+
+    modell, zeit = (ChatMessage, ChatMessage.timestamp) if quelle == QUELLE_CHAT \
+        else (Task, Task.created_at)
+    tag = func.date(zeit)
+    zeilen = (await db.execute(
+        select(modell.agent_id, tag, func.sum(modell.cost_usd))
+        .where(bedingung, modell.cost_usd.isnot(None))
+        .group_by(modell.agent_id, tag)
+    )).all()
+    zeilen = [(a, t, float(b or 0)) for a, t, b in zeilen if b]
+    if not zeilen:
+        return 0.0
+    agenten = sorted({str(a) for a, _, _ in zeilen if a})
+    besitzer = dict((await db.execute(
+        select(Agent.id, Agent.user_id).where(Agent.id.in_(agenten))
+    )).all()) if agenten else {}
+    summe = 0.0
+    for agent_id, t, betrag in zeilen:
+        db.add(KostenHistorie(
+            tag=_als_datum(t), agent_id=agent_id, user_id=besitzer.get(agent_id),
+            quelle=quelle, betrag_usd=betrag,
+        ))
+        summe += betrag
+    await db.flush()
+    return summe
+
+
 async def kosten(
     db,
     bereich: Bereich,
@@ -166,6 +244,9 @@ async def kosten(
         for row in (await db.execute(stmt)).all():
             tag = row[1] if je_tag else None
             zeilen.append((QUELLE_AUFGABEN, row[0], tag, float(row[-1] or 0)))
+        for row in await _historie(db, QUELLE_AUFGABEN, bereich, seit, bis, je_tag):
+            tag = row[1] if je_tag else None
+            zeilen.append((QUELLE_AUFGABEN, row[0], tag, float(row[-1] or 0)))
 
     if QUELLE_CHAT in quellen:
         spalten = [ChatMessage.agent_id, func.coalesce(func.sum(ChatMessage.cost_usd), 0)]
@@ -180,6 +261,9 @@ async def kosten(
             stmt = stmt.where(ChatMessage.timestamp < bis)
         stmt = _filter(stmt, ChatMessage.agent_id, bereich).group_by(*gruppe)
         for row in (await db.execute(stmt)).all():
+            tag = row[1] if je_tag else None
+            zeilen.append((QUELLE_CHAT, row[0], tag, float(row[-1] or 0)))
+        for row in await _historie(db, QUELLE_CHAT, bereich, seit, bis, je_tag):
             tag = row[1] if je_tag else None
             zeilen.append((QUELLE_CHAT, row[0], tag, float(row[-1] or 0)))
 

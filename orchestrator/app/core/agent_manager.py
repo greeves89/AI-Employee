@@ -2595,7 +2595,11 @@ class AgentManager:
 
         Aufgaben bleiben bewusst (wie beim Löschen ohne Daten nur entkoppelt): sie
         sind Teil der Kostenhistorie und können Unteraufgaben anderer Agenten sein.
+        Die Chatkosten bleiben ebenfalls (#896): sie werden vor dem Löschen in der
+        Kostenhistorie verdichtet, dem Besitzer zugeordnet — sonst setzte „Agent mit
+        Daten löschen“ das Nutzerbudget zurück.
         """
+        from app.core.kosten import QUELLE_CHAT, verdichten
         from app.models.agent_message import AgentMessage
         from app.models.agent_plan_item import AgentPlanItem
         from app.models.agent_todo import AgentTodo
@@ -2617,6 +2621,7 @@ class AgentManager:
             .where(AgentMemory.superseded_by.in_(erinnerungen))
             .values(superseded_by=None)
         )
+        await verdichten(self.db, QUELLE_CHAT, ChatMessage.agent_id == agent_id)
         for modell, bedingung in (
             (AgentMemory, AgentMemory.agent_id == agent_id),
             (ChatMessage, ChatMessage.agent_id == agent_id),

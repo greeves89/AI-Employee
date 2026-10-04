@@ -2943,11 +2943,11 @@ async def delete_chat_session(
             status_code=409,
             detail="Angepinnter Chat kann nicht gelöscht werden. Löse den Pin zuerst.",
         )
-    result = await db.execute(
-        sql_delete(ChatMessage)
-        .where(ChatMessage.agent_id == agent_id)
-        .where(ChatMessage.session_id == session_id)
-    )
+    # Die Kosten bleiben (#896): erst verdichten, dann loeschen — ein Commit.
+    from app.core.kosten import QUELLE_CHAT, verdichten
+    bedingung = (ChatMessage.agent_id == agent_id) & (ChatMessage.session_id == session_id)
+    await verdichten(db, QUELLE_CHAT, bedingung)
+    result = await db.execute(sql_delete(ChatMessage).where(bedingung))
     await db.execute(
         sql_delete(ChatSession)
         .where(ChatSession.agent_id == agent_id)
@@ -2986,10 +2986,13 @@ async def delete_all_chat_sessions(
         select(ChatSession.session_id)
         .where(ChatSession.agent_id == agent_id, ChatSession.pinned.is_(True))
     )).scalars().all())
-    del_msgs = sql_delete(ChatMessage).where(ChatMessage.agent_id == agent_id)
+    bedingung = ChatMessage.agent_id == agent_id
     if pinned_ids:
-        del_msgs = del_msgs.where(ChatMessage.session_id.notin_(pinned_ids))
-    result = await db.execute(del_msgs)
+        bedingung = bedingung & ChatMessage.session_id.notin_(pinned_ids)
+    # Die Kosten bleiben (#896): erst verdichten, dann loeschen — ein Commit.
+    from app.core.kosten import QUELLE_CHAT, verdichten
+    await verdichten(db, QUELLE_CHAT, bedingung)
+    result = await db.execute(sql_delete(ChatMessage).where(bedingung))
     # Keep pinned session rows; drop the rest.
     await db.execute(
         sql_delete(ChatSession)
