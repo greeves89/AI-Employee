@@ -142,7 +142,8 @@ def _set_auth_cookies(response: Response, user: User) -> dict:
 
 async def _anmeldung_protokollieren(
     db: AsyncSession, ereignis: AuditEventType, *, email: str, user: User | None = None,
-    weg: str = "passwort", grund: str | None = None,
+    weg: str = "passwort", grund: str | None = None, befehl: str | None = None,
+    zusatz: dict | None = None,
 ) -> None:
     """Anmeldeereignis festschreiben (#908). NIE mit Passwort — nur E-Mail, Weg, Grund.
 
@@ -152,10 +153,11 @@ async def _anmeldung_protokollieren(
     meta = {"email": email, "weg": weg}
     if grund:
         meta["grund"] = grund
+    meta.update(zusatz or {})
     await protokolliere(
         db, ereignis, agent_id=AKTEUR_ANMELDUNG,
         user_id=getattr(user, "id", None),
-        command=f"{'Abmeldung' if ereignis == AuditEventType.LOGOUT else 'Anmeldung'} ({weg})",
+        command=befehl or f"{'Abmeldung' if ereignis == AuditEventType.LOGOUT else 'Anmeldung'} ({weg})",
         outcome="failure" if ereignis == AuditEventType.LOGIN_FAILED else "success",
         meta=meta,
     )
@@ -167,6 +169,63 @@ async def _anmeldung_protokollieren(
             await db.rollback()
         except Exception:  # noqa: BLE001
             pass
+
+
+async def _fehlanmeldung_protokollieren(
+    db: AsyncSession, request: Request, *, email: str, user: User | None,
+    weg: str = "passwort", grund: str | None = None,
+) -> None:
+    """Fehlanmeldung festschreiben, ohne dass erfundene Adressen das Protokoll fluten.
+
+    Bekannte Konten: jeder Fehlversuch ein Eintrag (die Grenze je E-Mail-Adresse
+    haelt das klein). Unbekannte Adressen: gezaehlt je Stunde — ein Eintrag beim
+    ersten Fall, Zwischenstaende bei 10, 100, 1000 … und beim ersten Fall der
+    naechsten Stunde die Zusammenfassung der vorigen (core/anmelde_drossel).
+    """
+    if user is not None:
+        await _anmeldung_protokollieren(db, AuditEventType.LOGIN_FAILED, email=email, user=user,
+                                        weg=weg, grund=grund)
+        return
+    from app.core import anmelde_drossel
+    from app.core.zwei_faktor import redis_aus_anfrage
+
+    anzahl, melden, vorige = await anmelde_drossel.unbekannte_zaehlen(redis_aus_anfrage(request))
+    if vorige > 1:
+        await _anmeldung_protokollieren(
+            db, AuditEventType.LOGIN_FAILED, email="", weg="gesammelt",
+            befehl=f"{vorige} Fehlanmeldungen mit unbekannter Adresse in der vorigen Stunde",
+            zusatz={"anzahl": vorige, "zusammenfassung": True},
+        )
+    if not melden:
+        return
+    if anzahl == 1:
+        befehl = (f"Fehlanmeldung mit unbekannter Adresse ({weg}) — weitere in dieser "
+                  "Stunde werden nur gezählt")
+    else:
+        befehl = f"{anzahl} Fehlanmeldungen mit unbekannter Adresse in dieser Stunde ({weg})"
+    await _anmeldung_protokollieren(db, AuditEventType.LOGIN_FAILED, email=email, weg=weg,
+                                    grund=grund, befehl=befehl,
+                                    zusatz={"anzahl": anzahl, "unbekannt": True})
+
+
+async def ip_grenze_pruefen(request: Request) -> None:
+    """429, wenn von dieser Adresse zu viele Fehlversuche kamen (Anmeldung + Code)."""
+    from app.core import anmelde_drossel
+    from app.core.zwei_faktor import redis_aus_anfrage
+
+    rest = await anmelde_drossel.ip_gesperrt_fuer(redis_aus_anfrage(request),
+                                                  anmelde_drossel.client_ip(request))
+    if rest:
+        minuten = max(1, (rest + 59) // 60)
+        raise HTTPException(status_code=429,
+                            detail=f"Zu viele Fehlversuche. Bitte in {minuten} Minuten erneut versuchen.")
+
+
+async def ip_fehlversuch_merken(request: Request) -> None:
+    from app.core import anmelde_drossel
+    from app.core.zwei_faktor import redis_aus_anfrage
+
+    await anmelde_drossel.ip_fehlversuch(redis_aus_anfrage(request), anmelde_drossel.client_ip(request))
 
 
 async def _verwaltung(db: AsyncSession, ereignis: AuditEventType, admin, ziel: User | None, **meta):
@@ -270,14 +329,17 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
     if settings.sso_only_login and not settings.emergency_password_login:
         raise HTTPException(status_code=403, detail="Die Anmeldung mit Passwort ist abgeschaltet — bitte über Microsoft anmelden.")
 
-    # Brute-force protection: check rate limit per email
+    # Brute-force protection: je Absender-IP (Fehlversuche ueber alle Adressen,
+    # #908) und je E-Mail-Adresse
+    await ip_grenze_pruefen(request)
     _check_login_rate(body.email)
 
     user = await db.scalar(select(User).where(User.email == body.email))
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
         _record_failed_login(body.email)
-        await _anmeldung_protokollieren(
-            db, AuditEventType.LOGIN_FAILED, email=body.email, user=user,
+        await ip_fehlversuch_merken(request)
+        await _fehlanmeldung_protokollieren(
+            db, request, email=body.email, user=user,
             grund="unbekannte E-Mail" if not user else "falsches Passwort",
         )
         raise HTTPException(status_code=401, detail="E-Mail-Adresse oder Passwort ist falsch.")
@@ -589,8 +651,8 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
         )
     except ValueError as e:
         logger.warning("SAML-Anmeldung fehlgeschlagen: %s", scrub_log(str(e)))
-        await _anmeldung_protokollieren(db, AuditEventType.LOGIN_FAILED, email=email,
-                                        weg=f"sso:{saml_config.PROVIDER_NAME}", grund=str(e)[:200])
+        await _fehlanmeldung_protokollieren(db, request, email=email, user=None,
+                                            weg=f"sso:{saml_config.PROVIDER_NAME}", grund=str(e)[:200])
         return RedirectResponse(url=f"{frontend_url}/login?error={e}")
 
     groups = saml_config.extract_groups(attributes, cfg)
@@ -686,8 +748,8 @@ async def sso_callback(
         user, return_to = await sso_service.handle_callback(provider, code, state)
     except ValueError as e:
         logger.warning(f"SSO callback failed for {scrub_log(provider)}: {e}")
-        await _anmeldung_protokollieren(db, AuditEventType.LOGIN_FAILED, email="",
-                                        weg=f"sso:{provider}", grund=str(e)[:200])
+        await _fehlanmeldung_protokollieren(db, request, email="", user=None,
+                                            weg=f"sso:{provider}", grund=str(e)[:200])
         return _error_redirect(f"error={str(e)}&provider={provider}")
 
     return await finish_sso_login(user, return_to, provider, frontend_url, client=client, redis=redis, db=db)

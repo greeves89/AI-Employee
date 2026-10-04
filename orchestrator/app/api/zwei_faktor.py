@@ -21,7 +21,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import _anmeldung_protokollieren, anmeldung_abschliessen
+from app.api.auth import (
+    _anmeldung_protokollieren,
+    anmeldung_abschliessen,
+    ip_fehlversuch_merken,
+    ip_grenze_pruefen,
+)
 from app.core import zwei_faktor as zf
 from app.core.audit import AKTEUR_ANMELDUNG, protokolliere
 from app.core.qr_svg import qr_svg
@@ -91,6 +96,9 @@ async def _pruefen(request: Request, db: AsyncSession, user: User, code: str, *,
         geheimnis=geheimnis, wiederherstellung_erlaubt=wiederherstellung_erlaubt,
     ))
     if art is None:
+        if anmeldung:
+            # Code-Raten über viele Konten bremst die gemeinsame IP-Grenze (#908).
+            await ip_fehlversuch_merken(request)
         await _fehlschlag(db, user, anmeldung, grund="falscher Bestätigungscode")
         # Mit Sitzung 403 statt 401: auf 401 erneuert die Oberfläche die Sitzung und
         # schickt dieselbe Anfrage noch einmal — das wäre ein zweiter Fehlversuch.
@@ -172,6 +180,7 @@ async def _einrichtung_abschliessen(request: Request, db: AsyncSession, user: Us
 async def verify(body: MfaVerifyRequest, request: Request, response: Response,
                  db: AsyncSession = Depends(get_db)):
     """Zweiter Schritt der Anmeldung: Code aus der App oder Wiederherstellungscode."""
+    await ip_grenze_pruefen(request)
     user = await _nutzer_aus_pending(db, body.mfa_token, zf.ZWECK_CODE)
     if not zf.mfa_aktiv(user):
         raise HTTPException(status_code=401, detail=_UNGUELTIG)
