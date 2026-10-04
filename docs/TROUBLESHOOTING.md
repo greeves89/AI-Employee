@@ -480,7 +480,7 @@ Common causes:
 # Drop and recreate database before restore
 docker exec ai-employee-postgres psql -U postgres -c "DROP DATABASE ai_employee;"
 docker exec ai-employee-postgres psql -U postgres -c "CREATE DATABASE ai_employee OWNER ai_employee;"
-./scripts/restore.sh /var/backups/ai-employee/daily/TIMESTAMP
+./scripts/restore.sh --backup /var/backups/ai-employee/daily/TIMESTAMP
 ```
 
 ---

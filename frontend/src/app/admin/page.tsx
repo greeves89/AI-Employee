@@ -67,6 +67,8 @@ import { FeedbackDetailModal } from "@/components/admin/feedback-detail-modal";
 import { RolesPanel } from "@/components/admin/roles-panel";
 import { PagesPanel } from "@/components/admin/pages-panel";
 import { SsoGroupsPanel } from "@/components/admin/sso-groups-panel";
+import { DatensicherungKarte } from "@/components/admin/datensicherung-karte";
+import { nutzerLoeschenMitRueckfrage } from "@/components/admin/nutzer-loeschen";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 import { formatMoney } from "@/lib/money";
@@ -253,19 +255,11 @@ export default function AdminPage() {
 
   const handleDeleteUser = async (u: AdminUser) => {
     if (u.id === user?.id) return;
-    const ok = await confirm({
-      title: `Delete user "${u.name}"?`,
-      message: `${u.email} — this cannot be undone.`,
-      variant: "destructive",
-      confirmLabel: "Delete",
-    });
-    if (!ok) return;
     setActionLoading(u.id);
     try {
-      await api.deleteUser(u.id);
-      await fetchUsers();
+      if (await nutzerLoeschenMitRueckfrage(u, confirm)) await fetchUsers();
     } catch (e) {
-      toast.error("Failed to delete user", e instanceof Error ? e.message : undefined);
+      toast.error("Nutzer konnte nicht gelöscht werden", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -539,7 +533,7 @@ export default function AdminPage() {
             {tab === "second-brains" && <SecondBrainsView embedded />}
             {tab === "web-search" && <WebSearchView embedded />}
             {tab === "secrets" && <SecretsView embedded />}
-            {tab === "health" && <HealthView embedded />}
+            {tab === "health" && <><DatensicherungKarte /><HealthView embedded /></>}
             {tab === "audit" && <AuditView embedded />}
             {tab === "dlp" && <DlpView embedded />}
             {tab === "master-rules" && <MasterRulesView />}

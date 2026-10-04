@@ -81,6 +81,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 34. [Kanäle: Telegram, Teams, Slack, WhatsApp, Discord](#34-kanäle-telegram-teams-slack-whatsapp-discord)
 35. [Branchen-Pakete: ein fertiges Team in einem Schritt](#35-branchen-pakete-ein-fertiges-team-in-einem-schritt)
 36. [Ausweichmodell, wenn das Hauptmodell streikt](#36-ausweichmodell-wenn-das-hauptmodell-streikt)
+37. [Betrieb & Datenschutz (für IT)](#37-betrieb--datenschutz-für-it)
 
 **Anhang A** — [Was kann ein Agent? (Beispiele)](#a-was-kann-ein-agent-typische-einsätze)
 · **Anhang B** — [Admin-Schnellstart: 3 Rezepte](#b-admin-schnellstart-3-rezepte-ende-zu-ende)
@@ -2403,6 +2404,172 @@ Ausweichmodell bricht der Auftrag dann ab.
 > **Ohne Eintrag ändert sich nichts.** Ein leeres Feld heißt: abbrechen wie bisher.
 >
 > _[Screenshot folgt: Modell-Abschnitt mit zwei Ausweichmodellen]_
+
+---
+
+## 37. Betrieb & Datenschutz (für IT)
+
+Dieses Kapitel richtet sich an die IT, die die Anlage betreibt: was wo liegt, wie
+gesichert, zurückgespielt und aktualisiert wird, welche Daten die Anlage verlassen
+und wie gelöscht wird. Alle Befehle laufen auf dem Server im Installationsordner.
+
+### 37.1 Was liegt wo
+
+| Ort | Inhalt | Gesichert durch `backup.sh` |
+|---|---|---|
+| Docker-Volume `<projekt>_postgres_data` | Datenbank: Nutzer, Agenten, Chats, Gedächtnis, Aufgaben, Wissensbasis, Audit-Log, Einstellungen, verschlüsselte Geheimnisse | ja, als `pg_dump` (`postgres.sql.gz`) |
+| `workspace-<agent-id>` | Arbeitsordner eines Agenten (`/workspace`): Dateien, Ergebnisse, `knowledge.md` | ja |
+| `claude-session-<agent-id>` | Sitzungen und Anmeldungen der Laufzeit eines Agenten | ja |
+| `build-tools-<agent-id>` | installierte Build-Werkzeuge (nur Agenten mit „Windows-Programme bauen“) | ja |
+| `ai-employee-shared` | gemeinsamer Ordner aller Agenten (`/shared`) | ja |
+| `<projekt>_redis_data` | Warteschlangen und kurzlebiger Zustand | ja |
+| `<projekt>_feedback_data` | Rückmeldungen aus der Oberfläche | ja |
+| `.env` im Installationsordner | Passwörter, `ENCRYPTION_KEY`, Zugangsdaten | ja (`konfiguration.tar.gz`) |
+| `orchestrator/data/.encryption_key` | Verschlüsselungsschlüssel, falls er nicht in der `.env` steht | ja (`konfiguration.tar.gz`) |
+| `<projekt>_embedding_models`, `<projekt>_stt_models` | heruntergeladene Modelle (Suche, Spracherkennung) | nein — werden neu geladen |
+
+`<projekt>` ist der Name des Compose-Projekts, ohne Angabe der Name des
+Installationsordners in Kleinbuchstaben (z. B. `ai-employee`).
+
+> **Der Schlüssel ist das Wichtigste.** Alle gespeicherten Geheimnisse (KI-Konten,
+> Keys, OAuth-Zugänge) sind mit dem `ENCRYPTION_KEY` verschlüsselt. Ohne ihn ist eine
+> zurückgespielte Datenbank zwar vollständig, aber jedes Geheimnis darin unlesbar.
+> Den Schlüssel deshalb **nie neu erzeugen**, sondern immer den vorhandenen mitnehmen.
+
+### 37.2 Sichern
+
+1. Einmal von Hand ausprobieren: `sudo ./scripts/backup.sh`
+   (Ziel: `/var/backups/ai-employee`, anderes Ziel mit `--dest /pfad`).
+2. Täglich einplanen: `sudo ./scripts/install-backup-cron.sh` (Cron, 02:00 Uhr) oder
+   `sudo ./scripts/install-backup-cron.sh --systemd` (systemd-Timer).
+3. Kontrolle: **Admin-Konsole → Betrieb → Health**. Oben steht die Karte
+   **Datensicherung** mit Datum, Größe und Anzahl der Volumes der letzten Sicherung.
+   Die Ampel wird **gelb**, wenn 26 Stunden lang keine Sicherung kam oder noch nie
+   gesichert wurde, und **rot** nach drei Tagen oder wenn der letzte Lauf gescheitert
+   ist (mit dem Schritt, an dem es scheiterte). Derselbe Hinweis erscheint im
+   **Concierge** (Kap. 22a).
+
+Was dabei passiert: Die Datenbank wird im laufenden Betrieb per `pg_dump` gesichert,
+die Volumes werden **dynamisch** eingesammelt (jeder neue Agent ist automatisch
+dabei), `.env` und `orchestrator/data/` kommen als `konfiguration.tar.gz` dazu. Ein
+`MANIFEST` enthält Version, Zeitpunkt und Prüfsummen. Aufbewahrt werden 7 tägliche
+und 4 wöchentliche Stände.
+
+Die Sicherung enthält Geheimnisse: Ordner und Dateien sind nur für `root` lesbar
+(700/600). Wer sie außer Haus bringt, verschlüsselt sie dort (z. B. mit restic oder
+borg).
+
+**Herzschlag an die Oberfläche.** Am Ende meldet `backup.sh` das Ergebnis an
+`POST /api/v1/admin/backup-status`. Angemeldet wird mit einem lokalen Schlüssel
+`BACKUP_STATUS_TOKEN` aus der `.env`; `setup.sh` und `backup.sh` legen ihn an, falls er
+fehlt. Der Orchestrator übernimmt einen neu angelegten Schlüssel beim nächsten
+Neustart (`docker compose up -d orchestrator`). Ohne Schlüssel nimmt der Endpunkt
+nichts an.
+
+### 37.3 Zurückspielen
+
+```bash
+sudo ./scripts/restore.sh --backup /var/backups/ai-employee/daily/<zeitstempel>
+```
+
+Das Skript fragt vor dem Überschreiben nach (`ja` eingeben; `--yes` für Skripte,
+`--dry-run` zeigt nur an, was passieren würde) und geht dann so vor:
+
+1. **Prüfsummen** kontrollieren — eine beschädigte Sicherung wird nicht eingespielt.
+2. Orchestrator, Oberfläche, Redis und alle Agenten **anhalten**.
+3. **Schlüssel zuerst**: `.env` und `orchestrator/data/` zurücklegen. Die bisherige
+   `.env` bleibt als `.env.vor-wiederherstellung-<zeitstempel>` liegen. Weicht das
+   Datenbank-Passwort ab (Sicherung von einem anderen Server), wird es übernommen.
+4. **Datenbank** aus dem Dump einspielen.
+5. **Volumes** zurückspielen (Arbeitsordner, Sitzungen, gemeinsamer Ordner, Redis …).
+6. Anlage starten und **Selbsttest**: Ein gespeichertes Geheimnis wird mit dem
+   zurückgelegten Schlüssel entschlüsselt. Scheitert das, meldet das Skript es laut
+   (Exit-Code 2) — dann passt der Schlüssel nicht zur Datenbank.
+
+Ältere Sicherungen (ohne `format=2` im `MANIFEST`) werden erkannt: sie enthalten nur Datenbank und Redis, keine Arbeitsordner und keinen
+Schlüssel. Das Skript spielt dann zurück, was darin ist, und lässt `.env` und
+`orchestrator/data/` der Anlage unverändert.
+
+Auf einem **neuen Server** gibt es danach noch keine Agenten-Container: in der
+Agentenliste je Agent die Aktion **Update** ausführen — die Arbeitsordner bleiben dabei
+erhalten.
+
+### 37.4 Aktualisieren und Rücksprung
+
+```bash
+./scripts/update.sh
+```
+
+`update.sh` **sichert vorher automatisch** und bricht ab, wenn die Sicherung scheitert
+— dann ist noch nichts verändert. Bewusst ohne Sicherung: `--ohne-sicherung` oder
+`UPDATE_OHNE_SICHERUNG=1`. Danach werden Code geholt, das Agenten-Abbild und die
+Dienste neu gebaut; am Ende nennt das Skript die Agenten, die noch auf dem alten
+Abbild laufen, und den Commit vor dem Update.
+
+**Rücksprung** auf den Stand vor dem Update: `git checkout <commit von vorher>`,
+`docker build -t ai-employee-agent:latest ./agent && docker compose up -d --build`, dann
+die Sicherung von vorhin mit `restore.sh` zurückspielen — das Datenbankschema kann sich
+mit dem Update geändert haben.
+
+### 37.5 Welche Daten die Anlage verlassen
+
+- **An den KI-Anbieter**, den ein Administrator unter **AI-Accounts** eingerichtet hat
+  (z. B. Anthropic, OpenAI, Azure OpenAI, AWS Bedrock, Google Vertex oder ein lokales
+  Modell): alles, was ein Agent für seine Antwort braucht — Nachrichten, Aufgaben,
+  Auszüge aus Dateien und Wissen, Ergebnisse seiner Werkzeuge. Welcher Anbieter das
+  ist, legt die Anlage fest, nicht der Agent. Mit einem lokalen Modell verlässt
+  nichts die Anlage. Der **DLP-Filter** (Admin-Konsole → Compliance → DLP) kann
+  personenbezogene Daten und Geheimnisse vor dem Versand erkennen.
+- **An angebundene Dienste** (MCP-Server, Microsoft 365, Kanäle wie Telegram oder
+  Teams) nur das, was ein Agent dort ausdrücklich liest oder schreibt.
+- Suche (Embeddings) und Spracherkennung laufen in eigenen Containern auf der Anlage.
+
+### 37.6 Lebenszeichen an den Anbieter
+
+Einmal am Tag (erstmals etwa zwei Minuten nach dem Start, mit zufälliger Streuung
+von ±10 %) sendet die Anlage ein Lebenszeichen an den Lizenzserver des Anbieters.
+Es enthält **genau diese Felder** und sonst nichts:
+
+| Feld | Inhalt |
+|---|---|
+| `instance_id` | zufällige Kennung, einmalig auf der Anlage erzeugt |
+| `version` | installierte Version |
+| `agent_count` | Anzahl der Agenten als bloße Zahl |
+| `license_key_hash` | nur wenn ein Lizenzschlüssel hinterlegt ist: dessen SHA-256 — nie der Schlüssel selbst |
+
+Keine Inhalte, keine Namen, nichts über einzelne Agenten oder Personen. Die Antwort
+kann einen Hinweistext enthalten (gelber Streifen, Kap. 21.1); sie sperrt nichts.
+
+**Abschalten:** in der Datenbank die Einstellung `usage_ping_enabled` auf `false`
+setzen:
+
+```bash
+docker exec -i ai-employee-postgres psql -U ai_employee ai_employee -c \
+  "INSERT INTO platform_settings (key, value, is_secret, created_at, updated_at)
+   VALUES ('usage_ping_enabled', 'false', false, now(), now())
+   ON CONFLICT (key) DO UPDATE SET value = 'false', updated_at = now();"
+```
+
+Nur wenn unter **Einstellungen** ein Lizenzserver **und** ein Lizenzschlüssel
+eingetragen sind, kommt alle sechs Stunden ein zweiter Bericht dazu
+(`instance_id`, `license_id`, `version`, `active_agent_count`, angemeldet mit dem
+Lizenzschlüssel). Ohne diese Einträge wird er nicht gesendet.
+
+### 37.7 Löschen
+
+- **Agent löschen:** Agentenliste → Agent entfernen. Danach fragt die Oberfläche, ob
+  auch die **Daten** gelöscht werden sollen. **Mit Daten löschen** entfernt Container,
+  Arbeitsordner, Sitzungen und Build-Werkzeuge sowie **Chats, Gesprächsfäden,
+  Gedächtnis, Todos, Plan, Benachrichtigungen und Nachrichten zwischen Agenten** — die
+  Suche findet seine Gespräche danach nicht mehr. Aufgaben bleiben als Kostenhistorie
+  ohne Agentenbezug stehen. **Daten behalten** entfernt nur den Container.
+- **Nutzer löschen:** Admin-Konsole → Users → Löschen. Besitzt die Person noch Agenten,
+  fragt die Oberfläche nach: **Auf mich übertragen** (die Agenten gehen samt Chats und
+  Arbeitsordnern an dich) oder **Agenten löschen** (samt allen Daten, wie oben). Vom
+  Nutzer angelegte Vorlagen und vergebene Freigaben bleiben bestehen, nur der Vermerk
+  „angelegt von“ entfällt.
+- **Sicherungen** enthalten gelöschte Daten weiter, bis sie durch die Aufbewahrung
+  (7 Tage / 4 Wochen) herausfallen.
 
 ---
 

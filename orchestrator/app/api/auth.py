@@ -870,9 +870,29 @@ async def reset_user_password(user_id: str, request: Request, db: AsyncSession =
     return {"user_id": target.id, "email": target.email, "temp_password": temp_password}
 
 
+#: Was mit den Agenten eines Nutzers passiert, der gelöscht wird (#892).
+AGENTEN_BEIM_NUTZERLOESCHEN = ("loeschen", "uebertragen")
+
+
 @router.delete("/users/{user_id}")
-async def delete_user(user_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+async def delete_user(
+    user_id: str,
+    request: Request,
+    agenten: str | None = Query(None, description="Agenten des Nutzers: 'loeschen' (samt Daten) oder 'uebertragen'"),
+    an: str | None = Query(None, description="Ziel beim Übertragen; Standard: der löschende Admin"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Nutzer löschen — mit Rückfrage, wenn er noch Agenten besitzt.
+
+    ``agents.user_id`` verweist ohne ``ON DELETE`` auf den Nutzer: bisher scheiterte
+    das Löschen dann mit HTTP 500. Jetzt kommt eine Rückfrage (409) mit der Liste,
+    und der Admin entscheidet: Agenten samt Daten löschen oder übertragen.
+    """
     from app.dependencies import get_current_user
+    from app.models.agent import Agent
+    from app.models.agent_access import AgentAccess
+    from app.models.agent_template import AgentTemplate
+    from sqlalchemy import update as sql_update
 
     current = await get_current_user(request, db)
     if current.role != UserRole.ADMIN:
@@ -881,10 +901,50 @@ async def delete_user(user_id: str, request: Request, db: AsyncSession = Depends
     if user_id == current.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
 
+    if agenten is not None and agenten not in AGENTEN_BEIM_NUTZERLOESCHEN:
+        raise HTTPException(status_code=400, detail="agenten muss 'loeschen' oder 'uebertragen' sein")
+
     target = await db.scalar(select(User).where(User.id == user_id))
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
+    eigene = (await db.execute(
+        select(Agent).where(Agent.user_id == user_id).order_by(Agent.name)
+    )).scalars().all()
+
+    if eigene and agenten is None:
+        raise HTTPException(status_code=409, detail={
+            "code": "nutzer_hat_agenten",
+            "message": (
+                f"{target.name} besitzt noch {len(eigene)} Agent(en). Übertrage sie an "
+                "eine andere Person oder lösche sie samt Chats, Gedächtnis und Arbeitsordner."
+            ),
+            "agenten": [{"id": a.id, "name": a.name} for a in eigene],
+        })
+
+    if eigene and agenten == "uebertragen":
+        ziel_id = an or current.id
+        if ziel_id == user_id or not await db.get(User, ziel_id):
+            raise HTTPException(status_code=400, detail="Ziel für die Übertragung nicht gefunden")
+        for agent in eigene:
+            agent.user_id = ziel_id
+        await db.flush()
+    elif eigene and agenten == "loeschen":
+        from app.core.agent_manager import AgentManager
+
+        manager = AgentManager(db, request.app.state.docker, request.app.state.redis)
+        for agent in eigene:
+            await manager.remove_agent(agent.id, remove_data=True)
+
+    # Weitere Verweise ohne ON DELETE: wer eine Vorlage angelegt oder einen Zugriff
+    # gewährt hat. Der Eintrag selbst bleibt, nur der Urheber wird vergessen.
+    await db.execute(sql_update(AgentTemplate).where(AgentTemplate.created_by == user_id).values(created_by=None))
+    await db.execute(sql_update(AgentAccess).where(AgentAccess.granted_by == user_id).values(granted_by=None))
+
     await db.delete(target)
     await db.commit()
-    return {"ok": True}
+    logger.info(
+        "Admin %s hat Nutzer %s gelöscht (%d Agent(en), %s)",
+        scrub_log(current.id), scrub_log(user_id), len(eigene), agenten or "keine",
+    )
+    return {"ok": True, "agenten": len(eigene), "agenten_aktion": agenten if eigene else None}

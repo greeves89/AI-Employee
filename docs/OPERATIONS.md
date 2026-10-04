@@ -110,29 +110,29 @@ tail -f /var/backups/ai-employee/backup.log
 BACKUP_DIR=/mnt/external ./scripts/backup.sh
 ```
 
-Backup contents:
-- `postgres_dump.sql.gz` — full database dump
-- `volumes/postgres_data.tar.gz` — PostgreSQL data directory
-- `volumes/redis_data.tar.gz` — Redis AOF data
-- `volumes/letsencrypt_data.tar.gz` — TLS certificates
+Backup contents (format 2, see handbook chapter 37 "Betrieb & Datenschutz"):
+- `postgres.sql.gz` — full database dump (pg_dump)
+- `volumes/*.tar.gz` — agent workspaces (`workspace-*`), runtime sessions (`claude-session-*`),
+  build tools (`build-tools-*`), `ai-employee-shared`, Redis and feedback volumes
+- `konfiguration.tar.gz` — `.env` and `orchestrator/data/` (contains the encryption key)
+- `MANIFEST` — version, timestamp, checksums
+
+At the end the script reports to `POST /api/v1/admin/backup-status` (token
+`BACKUP_STATUS_TOKEN` in `.env`); Admin → Betrieb shows the last backup.
 
 ### Restore from Backup
 
 ```bash
-# Restore from most recent backup
-./scripts/restore.sh
+# Restore a specific backup (asks for confirmation; --yes for scripts, --dry-run to preview)
+./scripts/restore.sh --backup /var/backups/ai-employee/daily/20260219_030000
 
-# Restore from specific backup
-./scripts/restore.sh /var/backups/ai-employee/daily/20260219_030000
-
-# Restore database only (skips volume restore)
-./scripts/restore.sh --db-only /var/backups/ai-employee/daily/20260219_030000
+# Restore database only (skips key, config and volume restore)
+./scripts/restore.sh --db-only --backup /var/backups/ai-employee/daily/20260219_030000
 ```
 
-**Restore procedure:**
-1. Stop services: `docker compose down`
-2. Run restore script
-3. Start services: `docker compose up -d`
+The script stops orchestrator, frontend, Redis and agents itself, restores the key
+first, then database and volumes, starts the stack and runs a self-test that a stored
+secret can be decrypted. Only postgres must be running.
 4. Verify: `curl http://localhost:8000/health`
 
 ### Verify Backup Integrity
@@ -303,7 +303,7 @@ If the upgrade fails:
 docker compose down
 
 # 2. Restore from backup taken before upgrade
-./scripts/restore.sh /var/backups/ai-employee/daily/PRE_UPGRADE_TIMESTAMP
+./scripts/restore.sh --backup /var/backups/ai-employee/daily/PRE_UPGRADE_TIMESTAMP
 
 # 3. Checkout previous version
 git checkout <previous-tag>

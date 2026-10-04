@@ -84,6 +84,8 @@ services:
       MAX_AGENTS: ${MAX_AGENTS:-10}
       # Security (REQUIRED — must be unique per installation!)
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required in .env (32+ random chars)}
+      # Herzschlag von scripts/backup.sh an /admin/backup-status (#892).
+      BACKUP_STATUS_TOKEN: ${BACKUP_STATUS_TOKEN:-}
       API_SECRET_KEY: ${API_SECRET_KEY:?API_SECRET_KEY is required in .env (32+ random chars)}
       # Optional
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}

@@ -258,7 +258,7 @@ docker compose down
 
 ```bash
 # Use the backup timestamp you noted in the pre-upgrade checklist
-./scripts/restore.sh /var/backups/ai-employee/daily/PRE_UPGRADE_TIMESTAMP
+./scripts/restore.sh --backup /var/backups/ai-employee/daily/PRE_UPGRADE_TIMESTAMP
 ```
 
 This restores both the database and Docker volumes.

@@ -1,6 +1,9 @@
 #!/bin/bash
 # AI Employee Platform — Update Script
-# Usage: ./scripts/update.sh
+# Usage: ./scripts/update.sh [--ohne-sicherung]
+#
+# Sichert vorher automatisch (scripts/backup.sh) und bricht ab, wenn das
+# scheitert. Abschalten: --ohne-sicherung oder UPDATE_OHNE_SICHERUNG=1.
 #
 # Rebuilds EVERY image that ships code, including the dynamically-launched
 # agent image (ai-employee-agent:latest) which `docker compose up --build`
@@ -18,6 +21,14 @@ die()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 # ── working directory ─────────────────────────────────────────────────────────
 cd "$(dirname "$0")/.."
 
+OHNE_SICHERUNG="${UPDATE_OHNE_SICHERUNG:-0}"
+for arg in "$@"; do
+    case "$arg" in
+        --ohne-sicherung) OHNE_SICHERUNG=1 ;;
+        *) die "Unbekannte Option: $arg" ;;
+    esac
+done
+
 echo ""
 echo "╔══════════════════════════════════════╗"
 echo "║   AI Employee Platform — Update      ║"
@@ -32,12 +43,25 @@ docker compose version &>/dev/null 2>&1 || die "docker compose plugin not found.
 command -v git &>/dev/null              || die "git not found."
 ok "Docker is running"
 
-# ── 2. Pull latest code ───────────────────────────────────────────────────────
+# ── 2. Sicherung vor dem Update (#892) ────────────────────────────────────────
+# Ein Update ändert Datenbankschema und Abbilder. Geht dabei etwas schief, ist
+# die Sicherung von vorhin der Rückweg. Abschaltbar, aber nicht stillschweigend.
+VORHER_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unbekannt)"
+if [ "$OHNE_SICHERUNG" = "1" ]; then
+    warn "Sicherung vor dem Update übersprungen (--ohne-sicherung / UPDATE_OHNE_SICHERUNG=1)."
+else
+    info "Sichere vor dem Update (scripts/backup.sh)..."
+    ./scripts/backup.sh \
+        || die "Sicherung fehlgeschlagen — Update abgebrochen, nichts verändert. Ursache beheben oder bewusst mit --ohne-sicherung aktualisieren."
+    ok "Sicherung erstellt"
+fi
+
+# ── 3. Pull latest code ───────────────────────────────────────────────────────
 info "Pulling latest code..."
 git pull
-ok "Code up to date"
+ok "Code up to date (vorher: ${VORHER_COMMIT})"
 
-# ── 3. Rebuild the agent image (NOT a compose service — must be built here) ────
+# ── 4. Rebuild the agent image (NOT a compose service — must be built here) ────
 # Capture the current agent image id so we can tell which running agents are
 # still on the old image after the rebuild.
 OLD_AGENT_IMAGE_ID="$(docker images -q ai-employee-agent:latest 2>/dev/null || true)"
@@ -50,7 +74,7 @@ else
     ok "Agent image rebuilt ($NEW_AGENT_IMAGE_ID)"
 fi
 
-# ── 4. Rebuild + restart the compose services (orchestrator, frontend, ...) ────
+# ── 5. Rebuild + restart the compose services (orchestrator, frontend, ...) ────
 info "Rebuilding and restarting the stack..."
 # Bake the current VERSION into the frontend bundle so the running UI can warn
 # when the served bundle is older than the backend (see update-banner.tsx).
@@ -58,7 +82,7 @@ export APP_VERSION="$(cat VERSION 2>/dev/null || echo dev)"
 docker compose up -d --build
 ok "Stack restarted"
 
-# ── 5. Wait for orchestrator ──────────────────────────────────────────────────
+# ── 6. Wait for orchestrator ──────────────────────────────────────────────────
 info "Waiting for orchestrator to be ready..."
 RETRIES=40
 until curl -sf http://localhost:8000/health >/dev/null 2>&1; do
@@ -68,7 +92,7 @@ until curl -sf http://localhost:8000/health >/dev/null 2>&1; do
 done
 ok "Orchestrator is ready"
 
-# ── 6. Report agents still running the OLD image ──────────────────────────────
+# ── 7. Report agents still running the OLD image ──────────────────────────────
 # Agent containers are launched dynamically and labelled ai-employee.type=agent.
 # A rebuild retags ai-employee-agent:latest to a new id but leaves running
 # agents on the old one — they need an explicit recreate (which interrupts
@@ -101,9 +125,13 @@ else
     fi
 fi
 
-# ── 7. Done ───────────────────────────────────────────────────────────────────
+# ── 8. Done ───────────────────────────────────────────────────────────────────
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
 echo "║               Update Complete!                   ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
+info "Rücksprung, falls nötig: git checkout ${VORHER_COMMIT}, dann"
+info "  docker build -t ai-employee-agent:latest ./agent && docker compose up -d --build"
+info "  und die Sicherung von vorhin mit ./scripts/restore.sh --backup <ordner> zurückspielen"
+info "  (das Datenbankschema kann sich geändert haben). Handbuch: Betrieb & Datenschutz."

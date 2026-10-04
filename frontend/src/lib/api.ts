@@ -1740,8 +1740,59 @@ export async function updateUser(
   });
 }
 
-export async function deleteUser(userId: string): Promise<void> {
-  await fetchJSON(`${getBase()}/auth/users/${userId}`, { method: "DELETE" });
+/** Der Nutzer besitzt noch Agenten — der Server fragt zurück (409, #892). */
+export class NutzerHatAgentenError extends Error {
+  constructor(
+    message: string,
+    public agenten: { id: string; name: string }[],
+  ) {
+    super(message);
+    this.name = "NutzerHatAgentenError";
+  }
+}
+
+/**
+ * Nutzer löschen. Besitzt er Agenten, kommt ohne `agenten` ein
+ * {@link NutzerHatAgentenError}; mit "uebertragen" gehen sie an den löschenden
+ * Admin, mit "loeschen" verschwinden sie samt Chats, Gedächtnis und Arbeitsordner.
+ */
+export async function deleteUser(
+  userId: string,
+  agenten?: "loeschen" | "uebertragen",
+): Promise<void> {
+  const query = agenten ? `?agenten=${agenten}` : "";
+  try {
+    await fetchJSON(`${getBase()}/auth/users/${userId}${query}`, { method: "DELETE" });
+  } catch (e) {
+    const text = e instanceof Error ? e.message : "";
+    if (text.startsWith("API Error 409:")) {
+      try {
+        const detail = JSON.parse(text.slice("API Error 409:".length)).detail;
+        if (detail?.code === "nutzer_hat_agenten") {
+          throw new NutzerHatAgentenError(detail.message, detail.agenten ?? []);
+        }
+      } catch (inner) {
+        if (inner instanceof NutzerHatAgentenError) throw inner;
+      }
+    }
+    throw e;
+  }
+}
+
+// Admin → Betrieb: Datensicherung (#892). Gemeldet von scripts/backup.sh.
+export interface BackupStatus {
+  zuletzt_ok: string | null;
+  groesse_bytes: number | null;
+  dauer_s: number | null;
+  volumes: number | null;
+  letzter_fehler: { zeit: string; schritt: string } | null;
+  ampel: "ok" | "gelb" | "rot";
+  /** Ist BACKUP_STATUS_TOKEN beim Orchestrator gesetzt? */
+  eingerichtet: boolean;
+}
+
+export async function getBackupStatus(): Promise<BackupStatus> {
+  return fetchJSON(`${getBase()}/admin/backup-status`);
 }
 
 export async function resetUserPassword(

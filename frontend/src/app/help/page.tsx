@@ -177,6 +177,15 @@ const HELP_TOPICS: HelpTopic[] = [
     href: "/admin",
     hrefLabel: "Zur Admin-Konsole",
   },
+  {
+    id: "betrieb-datenschutz",
+    category: "Admin",
+    title: "Betrieb & Datenschutz (für IT): Sichern, Rückspielen, Update, Löschen",
+    body: "Täglich scripts/backup.sh ausführen (Datenbank, Arbeitsordner der Agenten, .env und Verschlüsselungsschlüssel); die letzte Sicherung steht unter Admin → Betrieb. Rückspielen mit scripts/restore.sh, Update mit scripts/update.sh (sichert vorher automatisch). Was wo liegt, welche Daten an KI-Anbieter gehen, das Lebenszeichen und die Löschwege beschreibt das Handbuch im Kapitel „Betrieb & Datenschutz (für IT)“.",
+    keywords: ["backup", "sicherung", "wiederherstellen", "restore", "update", "datenschutz", "dsgvo", "löschen", "lebenszeichen", "it", "betrieb", "schlüssel"],
+    href: "/admin?tab=health",
+    hrefLabel: "Zur Datensicherung",
+  },
   // --- Problemloesung (FAQ aus dem Benutzerhandbuch) ----------------------------
   {
     id: "faq-keine-agenten",

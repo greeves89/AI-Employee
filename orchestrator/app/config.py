@@ -206,6 +206,9 @@ class Settings(BaseSettings):
 
     # Security
     encryption_key: str = ""
+    # Lokaler Schlüssel, mit dem scripts/backup.sh seinen Herzschlag an
+    # POST /admin/backup-status meldet (#892). Leer = Meldungen werden abgelehnt.
+    backup_status_token: str = ""
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing
     # When True, SentinelService (orchestrator/app/services/sentinel_service.py,
     # Sentinel epic #588 sub-issue #590) subscribes to agents:logs:all and reacts

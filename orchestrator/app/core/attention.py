@@ -108,6 +108,39 @@ def budget_state(spent: float | None, budget: float | None) -> str | None:
     return None
 
 
+#: Eine tägliche Sicherung darf sich etwas verspäten (Neustart, langer Lauf) —
+#: gelb erst, wenn sie einen ganzen Tag plus Puffer ausgeblieben ist.
+BACKUP_WARN_AFTER = timedelta(hours=26)
+#: Drei Tage ohne Sicherung: wer jetzt wiederherstellen muss, verliert Arbeit.
+BACKUP_BROKEN_AFTER = timedelta(days=3)
+
+
+def backup_state(
+    last_ok: datetime | None,
+    last_failure: datetime | None,
+    now: datetime | None = None,
+) -> str | None:
+    """Ampel der Datensicherung (#892): ``BROKEN``, ``WAITING`` oder ``None``.
+
+    Ein gescheiterter Lauf nach dem letzten Erfolg ist rot — er scheitert sonst
+    still, bis jemand die Sicherung braucht. Nie gesichert ist gelb, nicht rot:
+    eine frische Anlage ist kein Notfall, aber für den Regelbetrieb nicht fertig.
+    """
+    now = now or datetime.now(timezone.utc)
+    if last_failure is not None and (last_ok is None or last_failure >= last_ok):
+        return BROKEN
+    if last_ok is None:
+        return WAITING
+    if last_ok.tzinfo is None:
+        last_ok = last_ok.replace(tzinfo=timezone.utc)
+    alter = now - last_ok
+    if alter > BACKUP_BROKEN_AFTER:
+        return BROKEN
+    if alter > BACKUP_WARN_AFTER:
+        return WAITING
+    return None
+
+
 def skips_proactive(config: dict | None) -> bool:
     """Läuft dieser angehaltene Agent seinem Auftrag hinterher?
 

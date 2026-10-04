@@ -2588,6 +2588,8 @@ class AgentManager:
             # Nur vorhanden bei Agenten mit Build-Werkzeugen; fehlt es, ist
             # remove_volume ohnehin still.
             self.docker.remove_volume(build_tools_volume(agent.id))
+        if remove_data:
+            await self._loesche_agentendaten(agent_id)
         # Clear/delete FK references before deleting the agent
         from app.models.task import Task
         from app.models.task_rating import TaskRating
@@ -2606,6 +2608,48 @@ class AgentManager:
         )
         await self.db.delete(agent)
         await self.db.commit()
+
+    async def _loesche_agentendaten(self, agent_id: str) -> None:
+        """„Mit Daten löschen“ heißt: auch Gespräche und Gedächtnis (#892).
+
+        Bis hierhin entfernte „Daten löschen“ nur Container und Volumes. Chats,
+        Gesprächsfäden und Gedächtnis hängen ohne Fremdschlüssel am Agenten und
+        blieben stehen — die Suche fand die Gespräche des gelöschten Agenten weiter.
+
+        Aufgaben bleiben bewusst (wie beim Löschen ohne Daten nur entkoppelt): sie
+        sind Teil der Kostenhistorie und können Unteraufgaben anderer Agenten sein.
+        """
+        from app.models.agent_message import AgentMessage
+        from app.models.agent_plan_item import AgentPlanItem
+        from app.models.agent_todo import AgentTodo
+        from app.models.chat_message import ChatMessage
+        from app.models.chat_session import ChatSession
+        from app.models.memory import AgentMemory, AgentMemoryLink, AgentMemoryTag
+        from app.models.notification import Notification
+
+        erinnerungen = select(AgentMemory.id).where(AgentMemory.agent_id == agent_id)
+        # Tags und Verknüpfungen hängen in Postgres per ON DELETE CASCADE dran —
+        # ausdrücklich gelöscht, damit es nicht an der Datenbank-Einstellung hängt.
+        await self.db.execute(sql_delete(AgentMemoryTag).where(AgentMemoryTag.memory_id.in_(erinnerungen)))
+        await self.db.execute(sql_delete(AgentMemoryLink).where(
+            AgentMemoryLink.source_id.in_(erinnerungen) | AgentMemoryLink.target_id.in_(erinnerungen)
+        ))
+        # Verweise anderer Erinnerungen („ersetzt durch“) zeigen sonst ins Leere.
+        await self.db.execute(
+            sql_update(AgentMemory)
+            .where(AgentMemory.superseded_by.in_(erinnerungen))
+            .values(superseded_by=None)
+        )
+        for modell, bedingung in (
+            (AgentMemory, AgentMemory.agent_id == agent_id),
+            (ChatMessage, ChatMessage.agent_id == agent_id),
+            (ChatSession, ChatSession.agent_id == agent_id),
+            (AgentTodo, AgentTodo.agent_id == agent_id),
+            (AgentPlanItem, AgentPlanItem.agent_id == agent_id),
+            (Notification, Notification.agent_id == agent_id),
+            (AgentMessage, (AgentMessage.from_agent_id == agent_id) | (AgentMessage.to_agent_id == agent_id)),
+        ):
+            await self.db.execute(sql_delete(modell).where(bedingung))
 
     async def _wartende_gespraeche(self, agent_id: str) -> list[str]:
         """Gespraeche mit Nachrichten, die der Agent noch nicht beantwortet hat —
