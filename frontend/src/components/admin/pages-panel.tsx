@@ -1,11 +1,12 @@
 "use client";
 
-/** Verwaltung eigener Menuepunkte: fremde Seiten einbetten oder verlinken.
+/** Verwaltung eigener Menüpunkte: fremde Seiten einbetten oder verlinken.
  *
- *  Wer eine Seite sehen darf, wird NICHT hier entschieden, sondern in den Rollen
- *  unter „Menüpfade" — der angelegte Punkt taucht dort als ``/p/<kurzname>`` auf.
- *  Damit gibt es weiterhin genau eine Stelle für Menue-Rechte statt zweier, die
- *  sich widersprechen koennten.
+ *  Wer eine Seite sehen darf, entscheidet „Sichtbar für“ (#904): alle (wie
+ *  bisher, eingeschränkt nur durch die Rollen-Menüpfade), nur Administratoren
+ *  (Standard für neue Seiten) oder nur Rollen, die ``/p/<kurzname>`` unter
+ *  „Menüpfade“ ausdrücklich freischalten. Geprüft wird im Server
+ *  (``darf_seite_sehen``) — für die Liste und für den direkten Abruf.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -14,6 +15,7 @@ import {
   Eye,
   EyeOff,
   Frame,
+  Info,
   Link2,
   Loader2,
   Plus,
@@ -22,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 import * as api from "@/lib/api";
-import type { CustomPage, CustomPageInput, CustomPageOpenMode } from "@/lib/api";
+import type { CustomPage, CustomPageInput, CustomPageOpenMode, CustomPageSichtbarFuer } from "@/lib/api";
 import { PAGE_GROUPS, PAGE_ICON_NAMES, pageIcon } from "@/lib/page-icons";
 import { cn } from "@/lib/utils";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
@@ -38,7 +40,26 @@ const EMPTY_DRAFT: CustomPageInput = {
   sort_order: 0,
   enabled: true,
   allow_media: false,
+  // Neue Seiten zuerst nur für Administratoren — freigeben ist ein bewusster Schritt.
+  sichtbar_fuer: "admins",
 };
+
+const SICHTBAR_OPTIONEN: { value: CustomPageSichtbarFuer; label: string; hilfe: string }[] = [
+  { value: "admins", label: "Nur Administratoren", hilfe: "Niemand sonst sieht den Menüpunkt oder erreicht die Seite." },
+  {
+    value: "rollen",
+    label: "Nur bestimmte Rollen",
+    hilfe: "Nur Rollen, die den Pfad in der Rollenverwaltung unter „Menüpfade“ ausdrücklich freischalten.",
+  },
+  { value: "alle", label: "Alle Nutzer", hilfe: "Jeder, dessen Rolle den Pfad nicht ausschließt." },
+];
+
+function sichtbarLabel(wert: CustomPageSichtbarFuer | undefined): string {
+  return SICHTBAR_OPTIONEN.find((o) => o.value === wert)?.label ?? "Nur Administratoren";
+}
+
+/** Einmaliger Hinweis zur neuen Auswahl „Sichtbar für“ — je Browser wegklickbar. */
+const SICHTBARKEIT_HINWEIS_SCHLUESSEL = "seiten-sichtbarkeit-hinweis-gesehen";
 
 /** Aus dem Titel einen brauchbaren Kurznamen vorschlagen — solange niemand von
  *  Hand eingegriffen hat. Umlaute bewusst ausgeschrieben statt weggeworfen. */
@@ -60,6 +81,24 @@ export function PagesPanel() {
   const [editingId, setEditingId] = useState<number | "new" | null>(null);
   const [draft, setDraft] = useState<CustomPageInput>(EMPTY_DRAFT);
   const [slugTouched, setSlugTouched] = useState(false);
+  const [hinweisGesehen, setHinweisGesehen] = useState(true);
+
+  useEffect(() => {
+    try {
+      setHinweisGesehen(localStorage.getItem(SICHTBARKEIT_HINWEIS_SCHLUESSEL) === "1");
+    } catch {
+      setHinweisGesehen(false);
+    }
+  }, []);
+
+  const hinweisWegklicken = () => {
+    try {
+      localStorage.setItem(SICHTBARKEIT_HINWEIS_SCHLUESSEL, "1");
+    } catch {
+      // dann nur für diese Ansicht
+    }
+    setHinweisGesehen(true);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +134,7 @@ export function PagesPanel() {
       sort_order: page.sort_order,
       enabled: page.enabled,
       allow_media: page.allow_media,
+      sichtbar_fuer: page.sichtbar_fuer,
     });
     setSlugTouched(true);
     setEditingId(page.id);
@@ -110,7 +150,12 @@ export function PagesPanel() {
     try {
       if (editingId === "new") {
         await api.createCustomPage(draft);
-        toast.success("Seite angelegt", `Jetzt in den Rollen unter „Menüpfade" freischalten: /p/${draft.slug}`);
+        toast.success(
+          "Seite angelegt",
+          draft.sichtbar_fuer === "rollen"
+            ? `Jetzt in den Rollen unter „Menüpfade“ freischalten: /p/${draft.slug}`
+            : `Sichtbar für: ${sichtbarLabel(draft.sichtbar_fuer)}`
+        );
       } else if (typeof editingId === "number") {
         await api.updateCustomPage(editingId, draft);
         toast.success("Seite gespeichert");
@@ -158,8 +203,8 @@ export function PagesPanel() {
           <p className="text-sm font-medium">Seiten & Links im Menü</p>
           <p className="mt-1 max-w-2xl text-[12px] text-muted-foreground">
             Fremde Oberflächen — etwa OpenWebUI — als eigenen Menüpunkt einbinden: eingebettet
-            im Rahmen oder als Link in einem neuen Tab. Sichtbar wird ein Punkt erst, wenn er
-            in einer Rolle unter „Menüpfade" freigeschaltet ist (Administratoren sehen alles).
+            im Rahmen oder als Link in einem neuen Tab. Wer einen Punkt sieht, legst du je Seite
+            unter „Sichtbar für“ fest (Administratoren sehen alles).
           </p>
         </div>
         <button
@@ -170,6 +215,26 @@ export function PagesPanel() {
           Neue Seite
         </button>
       </div>
+
+      {!hinweisGesehen && pages.some((p) => p.sichtbar_fuer === "alle") && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-primary/20 bg-primary/[0.05] px-3 py-2.5 text-[12px] text-muted-foreground">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <p className="min-w-0 flex-1">
+            Neu: Je Seite lässt sich festlegen, wer sie sieht. Bestehende Seiten bleiben für alle
+            Nutzer sichtbar — stelle zum Beispiel eine Seite, für die Mitglieder keinen Zugang
+            haben, auf „Nur Administratoren“. Neue Seiten sind zunächst nur für Administratoren
+            sichtbar.
+          </p>
+          <button
+            type="button"
+            onClick={hinweisWegklicken}
+            aria-label="Hinweis ausblenden"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {editingId !== null && (
         <div className="rounded-2xl border border-primary/20 bg-card p-4">
@@ -218,7 +283,7 @@ export function PagesPanel() {
               <input
                 value={draft.url}
                 onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))}
-                placeholder="https://chat.kunde.de"
+                placeholder="https://chat.example.com"
                 className={cn(inputClass, "font-mono")}
               />
             </Field>
@@ -277,6 +342,24 @@ export function PagesPanel() {
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
+            </Field>
+
+            <Field label="Sichtbar für" className="sm:col-span-2">
+              <select
+                value={draft.sichtbar_fuer ?? "admins"}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, sichtbar_fuer: e.target.value as CustomPageSichtbarFuer }))
+                }
+                className={inputClass}
+              >
+                {SICHTBAR_OPTIONEN.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-muted-foreground/70">
+                {SICHTBAR_OPTIONEN.find((o) => o.value === (draft.sichtbar_fuer ?? "admins"))?.hilfe}
+                {draft.sichtbar_fuer === "rollen" && draft.slug ? ` Pfad: /p/${draft.slug}` : ""}
+              </p>
             </Field>
 
             <Field label="Reihenfolge (kleiner = weiter oben)">
@@ -369,6 +452,9 @@ export function PagesPanel() {
                     </span>
                     <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
                       {group?.label ?? page.group_key} · {page.open_mode === "iframe" ? "eingebettet" : "neuer Tab"}
+                    </span>
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+                      {sichtbarLabel(page.sichtbar_fuer)}
                     </span>
                   </div>
                   <p className="mt-0.5 truncate text-[11px] font-mono text-muted-foreground/70">{page.url}</p>

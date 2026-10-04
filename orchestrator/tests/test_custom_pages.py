@@ -26,17 +26,23 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.custom_pages import (
     CustomPageCreate,
+    CustomPageUpdate,
     _validate_slug,
     _validate_url,
     create_page,
     get_page_by_slug,
     list_my_pages,
+    update_page,
 )
 from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.custom_page import CustomPage
+from app.models.user import UserRole
 
 ADMIN = SimpleNamespace(id="user-admin", role=None)
+# Fuer die Sichtbarkeit (#904) zaehlt die echte Rolle.
+ECHTER_ADMIN = SimpleNamespace(id="user-root", role=UserRole.ADMIN)
+MITGLIED = SimpleNamespace(id="user-member", role=UserRole.MEMBER)
 
 
 def _page(slug: str, **over) -> CustomPage:
@@ -50,12 +56,17 @@ def _page(slug: str, **over) -> CustomPage:
         sort_order=0,
         enabled=True,
         allow_media=False,
+        # Bestandsseiten stehen nach der Umstellung auf "alle" (#904) — die
+        # Tests oben pruefen genau dieses unveraenderte Verhalten.
+        sichtbar_fuer="alle",
     )
     data.update(over)
     return CustomPage(**data)
 
 
-class CustomPageVisibilityTest(unittest.IsolatedAsyncioTestCase):
+class _SeitenDb(unittest.IsolatedAsyncioTestCase):
+    """SQLite im Speicher mit drei Seiten — gemeinsame Grundlage der Tests."""
+
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
@@ -88,6 +99,8 @@ class CustomPageVisibilityTest(unittest.IsolatedAsyncioTestCase):
             return_value={"menu_paths": menu_paths},
         )
 
+
+class CustomPageVisibilityTest(_SeitenDb):
     async def test_ohne_einschraenkung_alle_aktiven_seiten(self):
         with self._perms(None):
             result = await list_my_pages(user=ADMIN, db=self.db)
@@ -138,6 +151,68 @@ class CustomPageVisibilityTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as ctx:
             await create_page(body=body, user=ADMIN, db=self.db)
         self.assertEqual(ctx.exception.status_code, 409)
+
+
+class CustomPageSichtbarkeitTest(_SeitenDb):
+    """#904: ``sichtbar_fuer`` = alle | admins | rollen, fuer Liste UND Einzelabruf."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.db.add_all([
+            _page("nur-admins", sichtbar_fuer="admins", sort_order=5),
+            _page("rollen-seite", sichtbar_fuer="rollen", sort_order=6),
+        ])
+        await self.db.commit()
+
+    async def _mine(self, user, menu_paths):
+        with self._perms(menu_paths):
+            return [p["slug"] for p in (await list_my_pages(user=user, db=self.db))["pages"]]
+
+    async def test_neue_seite_ist_zuerst_nur_fuer_admins(self):
+        body = CustomPageCreate(slug="neu-owui", title="OWUI", url="https://n.example.test")
+        page = await create_page(body=body, user=ECHTER_ADMIN, db=self.db)
+        self.assertEqual(page["sichtbar_fuer"], "admins")
+
+    async def test_admins_seite_fuer_mitglied_unsichtbar_und_403(self):
+        self.assertNotIn("nur-admins", await self._mine(MITGLIED, None))
+        with self._perms(None):
+            with self.assertRaises(HTTPException) as ctx:
+                await get_page_by_slug("nur-admins", user=MITGLIED, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_admin_sieht_alle_seiten(self):
+        slugs = await self._mine(ECHTER_ADMIN, None)
+        self.assertEqual(slugs, ["intranet", "owui", "nur-admins", "rollen-seite"])
+        with self._perms(None):
+            page = await get_page_by_slug("rollen-seite", user=ECHTER_ADMIN, db=self.db)
+        self.assertEqual(page["slug"], "rollen-seite")
+
+    async def test_rollen_seite_nur_mit_ausdruecklicher_freigabe(self):
+        # Ohne Einschraenkung (menu_paths=None) ist die Seite NICHT freigegeben:
+        # "rollen" heisst, eine Rolle muss den Pfad ausdruecklich enthalten.
+        self.assertNotIn("rollen-seite", await self._mine(MITGLIED, None))
+        self.assertNotIn("rollen-seite", await self._mine(MITGLIED, ["/dashboard"]))
+        self.assertIn("rollen-seite", await self._mine(MITGLIED, ["/dashboard", "/p/rollen-seite"]))
+        with self._perms(["/dashboard"]):
+            with self.assertRaises(HTTPException) as ctx:
+                await get_page_by_slug("rollen-seite", user=MITGLIED, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 403)
+        with self._perms(["/p/rollen-seite"]):
+            page = await get_page_by_slug("rollen-seite", user=MITGLIED, db=self.db)
+        self.assertEqual(page["slug"], "rollen-seite")
+
+    async def test_alle_bleibt_wie_bisher(self):
+        self.assertEqual(await self._mine(MITGLIED, None), ["intranet", "owui"])
+
+    async def test_sichtbarkeit_aendern_und_ungueltigen_wert_ablehnen(self):
+        owui = (await list_my_pages(user=ECHTER_ADMIN, db=self.db))["pages"][1]
+        geaendert = await update_page(
+            owui["id"], CustomPageUpdate(sichtbar_fuer="admins"), user=ECHTER_ADMIN, db=self.db)
+        self.assertEqual(geaendert["sichtbar_fuer"], "admins")
+        self.assertNotIn("owui", await self._mine(MITGLIED, None))
+        with self.assertRaises(HTTPException) as ctx:
+            await update_page(owui["id"], CustomPageUpdate(sichtbar_fuer="jeder"), user=ECHTER_ADMIN, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 400)
 
 
 class CustomPageInputTest(unittest.TestCase):
