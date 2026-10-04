@@ -218,11 +218,14 @@ class NoAssignmentTests(unittest.TestCase):
         Haken noch setzen, ein Bestandsagent mit `false` waere fuer immer
         uebersprungen worden."""
         self.assertNotIn("is_onboarded(_agent)", self.sched)
-        self.assertIn("not has_duties(_agent)", self.sched)
-        skip = self.sched.split("not has_duties(_agent)", 1)[1][:600]
+        # Seit #912 eine eigene Pruefung, die auch VOR dem Wecken greift.
+        self.assertIn("_ohne_auftrag_ueberspringen(db, schedule, _agent, now)", self.sched)
+        skip = self.sched.split("async def _ohne_auftrag_ueberspringen", 1)[1].split("async def ", 1)[0]
+        self.assertIn("has_duties(agent)", skip)
+        self.assertNotIn("is_onboarded", skip)
         self.assertIn("_nudge_missing_assignment", skip)
         self.assertIn("schedule.next_run_at = _calc_next_run(schedule, now)", skip)
-        self.assertIn("return", skip)
+        self.assertIn("return True", skip)
 
     def test_owner_gets_a_notification(self):
         self.assertIn("async def _nudge_missing_assignment", self.sched)

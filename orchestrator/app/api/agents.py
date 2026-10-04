@@ -1141,6 +1141,10 @@ async def stop_agent(
 ):
     await _check_owner(agent_id, user, db)
     try:
+        # Bewusst vom Nutzer angehalten: der Scheduler weckt ihn nicht fuer faellige
+        # Zeitplaene (#912). Der Leerlauf-Stopp setzt diese Marke nicht.
+        from app.core import agent_duty
+        agent_duty.nutzerhalt_setzen(await manager._get_agent(agent_id), True)
         agent = await manager.stop_agent(agent_id)
         return {"status": "stopped", "agent_id": agent.id}
     except ValueError:
@@ -1157,6 +1161,10 @@ async def start_agent(
     await _check_owner(agent_id, user, db)
     try:
         agent = await manager.start_agent(agent_id)
+        # Der Nutzer hat ihn wieder gestartet — der Halt aus dem Stopp ist aufgehoben.
+        from app.core import agent_duty
+        agent_duty.nutzerhalt_setzen(agent, False)
+        await db.commit()
         return {"status": "started", "agent_id": agent.id}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -1173,6 +1181,9 @@ async def restart_agent(
     await _check_owner(agent_id, user, db)
     try:
         agent = await manager.restart_agent(agent_id)
+        from app.core import agent_duty
+        agent_duty.nutzerhalt_setzen(agent, False)   # Neustart durch den Nutzer = Start
+        await db.commit()
         metrics = await manager.get_agent_with_metrics(agent.id)
         return AgentResponse(**metrics)
     except ValueError:
@@ -3752,9 +3763,8 @@ async def update_proactive_config(
 ):
     """Enable, disable, or update proactive mode for an agent."""
     await _check_owner(agent_id, user, db)
-    from datetime import timedelta, timezone as tz
+    from datetime import timezone as tz
     from app.models.schedule import Schedule
-    from app.core.agent_manager import PROACTIVE_PROMPT
     from sqlalchemy.orm.attributes import flag_modified
 
     try:
@@ -3788,32 +3798,9 @@ async def update_proactive_config(
             else (proactive or {}).get("responsibilities", [])
         )
 
-        if schedule_id:
-            result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
-            schedule = result.scalar_one_or_none()
-            if schedule:
-                schedule.enabled = body.enabled
-                schedule.interval_seconds = body.interval_seconds
-                if body.enabled:
-                    schedule.next_run_at = now + timedelta(seconds=body.interval_seconds)
-            else:
-                schedule_id = None
-
-        if not schedule_id:
-            schedule_id = uuid.uuid4().hex[:8]
-            schedule = Schedule(
-                id=schedule_id,
-                name=f"[Proactive] {agent.name}",
-                # Base prompt always comes from code at fire time (scheduler);
-                # this stored copy is only a placeholder for the schedule row.
-                prompt=PROACTIVE_PROMPT,
-                interval_seconds=body.interval_seconds,
-                priority=0,
-                agent_id=agent_id,
-                enabled=body.enabled,
-                next_run_at=now + timedelta(seconds=body.interval_seconds),
-            )
-            db.add(schedule)
+        # Die Zeitplaene selbst ([Proactive] + [Rhythmus]) legt hier niemand von Hand
+        # an oder um: unten gleicht core/eigeninitiative sie an Schalter, Takt und
+        # Verantwortungsbereiche an — ohne Bereiche gibt es keine (#913).
 
         # „Tagesplanung am Morgen": frueher legte diese Einstellung einen ZWEITEN
         # Zeitplan an. Seit dem Arbeitsrhythmus (core/plan_rhythm) gibt es den
@@ -3906,9 +3893,11 @@ async def update_proactive_config(
         config["proactive"] = proactive
         agent.config = config
         flag_modified(agent, "config")
+        from app.core import eigeninitiative
+        await eigeninitiative.abgleichen(db, agent, now=now)
         await db.commit()
 
-        return {"agent_id": agent_id, "proactive": proactive, "status": "updated"}
+        return {"agent_id": agent_id, "proactive": agent.config.get("proactive", {}), "status": "updated"}
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -3922,24 +3911,18 @@ async def delete_proactive_config(
 ):
     """Disable and remove proactive mode for an agent."""
     await _check_owner(agent_id, user, db)
-    from app.models.schedule import Schedule
     from sqlalchemy.orm.attributes import flag_modified
 
     try:
         agent = await manager._get_agent(agent_id)
         config = agent.config or {}
-        proactive = config.get("proactive", {})
-        schedule_id = proactive.get("schedule_id")
-
-        if schedule_id:
-            result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
-            schedule = result.scalar_one_or_none()
-            if schedule:
-                await db.delete(schedule)
-
         config.pop("proactive", None)
         agent.config = config
         flag_modified(agent, "config")
+        # Ohne Proaktiv-Block keine Bereiche — der Abgleich entfernt [Proactive] UND
+        # die beiden [Rhythmus]-Zeitplaene (vorher blieben Letztere liegen, #913).
+        from app.core import eigeninitiative
+        await eigeninitiative.abgleichen(db, agent)
         await db.commit()
 
         return {"agent_id": agent_id, "status": "proactive_removed"}

@@ -2,7 +2,6 @@ import asyncio
 import logging
 import math
 import time
-import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -780,6 +779,12 @@ class SchedulerService:
                 # der Lauf verschwand spurlos und der Tick versuchte es alle
                 # 30 s erneut (#632).
                 if schedule.enabled and agent_duty._state_str(duty_agent) not in agent_duty._LIVE_STATES:
+                    # Aber nur, wenn der Lauf danach auch stattfindet (#912): vorher
+                    # wurde geweckt und ERST DANACH uebersprungen — der Container blieb
+                    # an, und vom Nutzer angehaltene Agenten fuhren fuer jeden faelligen
+                    # Zeitplan wieder hoch.
+                    if await self._ueberspringen_vor_dem_wecken(db, schedule, duty_agent, now):
+                        return
                     from app.core.agent_wakeup import ensure_agent_running
                     if await ensure_agent_running(schedule.agent_id, self.docker, self.redis):
                         try:
@@ -905,19 +910,12 @@ class SchedulerService:
             # Einrichtungsgespraech entfallen ist — nichts konnte ihn mehr setzen,
             # also waeren die Laeufe eines Bestandsagenten fuer immer uebersprungen
             # worden.
-            from app.core.onboarding import has_duties, onboarding_note
+            from app.core.onboarding import onboarding_note
             from app.models.agent import Agent as _Agent
             _agent = (await db.execute(
                 select(_Agent).where(_Agent.id == schedule.agent_id)
             )).scalar_one_or_none() if schedule.agent_id else None
-            if _agent is not None and not has_duties(_agent):
-                await self._nudge_missing_assignment(db, _agent)
-                schedule.next_run_at = _calc_next_run(schedule, now)
-                logger.info(
-                    "[Scheduler] %s uebersprungen — Agent %s hat keine "
-                    "Verantwortungsbereiche",
-                    schedule.name, _agent.id,
-                )
+            if _agent is not None and await self._ohne_auftrag_ueberspringen(db, schedule, _agent, now):
                 return
 
             if is_rhythm:
@@ -1047,6 +1045,70 @@ class SchedulerService:
             "[Scheduler] %s triggered task %s, next run at %s",
             schedule.name, task.id, schedule.next_run_at.isoformat(),
         )
+
+    async def _ohne_auftrag_ueberspringen(
+        self, db: AsyncSession, schedule: Schedule, agent, now: datetime,
+    ) -> bool:
+        """[Proactive]/[Rhythmus] ohne Verantwortungsbereiche: nicht laufen lassen.
+
+        Ohne Bereiche kann der Lauf NICHTS zustande bringen. Statt ihn zu starten,
+        bekommt der Besitzer EINE Benachrichtigung, und der Zeitplan rueckt weiter.
+        Gibt zurueck, ob uebersprungen wurde.
+        """
+        from app.core import plan_rhythm
+        from app.core.onboarding import has_duties
+
+        if not (schedule.name.startswith("[Proactive]")
+                or schedule.name.startswith(plan_rhythm.SCHEDULE_PREFIX)):
+            return False
+        if has_duties(agent):
+            return False
+        await self._nudge_missing_assignment(db, agent)
+        schedule.next_run_at = _calc_next_run(schedule, now)
+        logger.info(
+            "[Scheduler] %s uebersprungen — Agent %s hat keine Verantwortungsbereiche",
+            schedule.name, agent.id,
+        )
+        return True
+
+    async def _ueberspringen_vor_dem_wecken(
+        self, db: AsyncSession, schedule: Schedule, agent, now: datetime,
+    ) -> bool:
+        """Die Pruefungen, die einen Lauf ohnehin ueberspringen — VOR dem Wecken (#912).
+
+        * vom Nutzer angehalten: nicht wecken, keine DOWN-Eskalation, weiterruecken.
+          Der Leerlauf-Stopp setzt diese Marke nicht — idle-gestoppte Agenten werden
+          weiter geweckt (#632).
+        * [Proactive]/[Rhythmus] ohne Verantwortungsbereiche: nicht wecken.
+        * ausserhalb seiner Dienstzeit: nicht wecken — wie bei einem laufenden Agenten
+          (OFF_DUTY) kurz nachsetzen, dann weiterruecken.
+
+        Gibt zurueck, ob der Lauf uebersprungen wurde (``next_run_at`` ist dann gesetzt).
+        """
+        from app.core import agent_duty
+
+        if agent_duty.vom_nutzer_angehalten(agent):
+            schedule.next_run_at = _calc_next_run(schedule, now)
+            logger.info(
+                "[Scheduler] %s uebersprungen — Agent %s wurde vom Nutzer angehalten "
+                "und wird nicht geweckt",
+                schedule.name, agent.id,
+            )
+            return True
+        if await self._ohne_auftrag_ueberspringen(db, schedule, agent, now):
+            return True
+        if not agent_duty.is_on_duty(agent, now):
+            schedule.next_run_at = await self._retry_or_advance(
+                schedule, now, reason="off_duty",
+                max_attempts=_TRANSIENT_RETRY_MAX_ATTEMPTS, delay=_TRANSIENT_RETRY_DELAY,
+            )
+            logger.info(
+                "[Scheduler] %s uebersprungen — Agent %s ist gestoppt und ausserhalb "
+                "seiner Dienstzeit, wird nicht geweckt",
+                schedule.name, agent.id,
+            )
+            return True
+        return False
 
     async def _next_run_after_overload(self, schedule: Schedule, now: datetime) -> datetime:
         """Retry briefly for transient overload before giving up on the slot."""
@@ -1404,8 +1466,9 @@ class SchedulerService:
         Ein Agent hatte diesen Rhythmus — er hatte ihn sich im Chat selbst eingerichtet.
         Alle anderen planten irgendwann mitten am Tag oder gar nicht, und der Montag
         blieb leer, weil sonntags niemand plante. Deshalb steht der Rhythmus hier und
-        nicht in einer Anleitung: Wer einen aktiven ``[Proactive]``-Zeitplan hat, bekommt
-        die zwei Rhythmus-Zeitplaene dazu — ueber dieselbe Maschinerie, kein Sonderweg.
+        nicht in einer Anleitung: Wer einen aktiven ``[Proactive]``-Zeitplan UND
+        Verantwortungsbereiche hat, bekommt die zwei Rhythmus-Zeitplaene dazu — ueber
+        dieselbe Maschinerie, kein Sonderweg (#913: ohne Bereiche keine System-Zeitplaene).
 
         Bestehende Rhythmus-Zeitplaene werden nur an die Uhrzeit angepasst, wenn der
         Nutzer die Dienstzeit geaendert hat. Ausgeschaltet lassen kann er sie: ein
@@ -1413,7 +1476,8 @@ class SchedulerService:
         """
         from sqlalchemy import or_
 
-        from app.core import plan_rhythm
+        from app.core import eigeninitiative, plan_rhythm
+        from app.core.onboarding import has_duties
         from app.models.agent import Agent as _Agent
 
         created = 0
@@ -1465,45 +1529,14 @@ class SchedulerService:
             now = datetime.now(timezone.utc)
             for agent_id in agent_ids:
                 agent = agents.get(agent_id)
-                if agent is None:
+                # Ohne Verantwortungsbereiche keine System-Zeitplaene (#913) — die
+                # Rhythmus-Laeufe wuerden ohnehin uebersprungen. Angelegt/angepasst wird
+                # ueber dieselbe Stelle wie beim Abgleich (core/eigeninitiative).
+                if agent is None or not has_duties(agent):
                     continue
-                crons = plan_rhythm.cron_expressions(agent)
-                for name, cron in (
-                    (plan_rhythm.EVENING_SCHEDULE_NAME, crons["evening"]),
-                    (plan_rhythm.MORNING_SCHEDULE_NAME, crons["morning"]),
-                ):
-                    found = by_agent.get((agent_id, name))
-                    if found is not None:
-                        if (found.cron_expression != cron
-                                or found.timezone != crons["timezone"]):
-                            found.cron_expression = cron
-                            found.timezone = crons["timezone"]
-                            found.next_run_at = _calc_next_run(found, now)
-                            logger.info("[Rhythmus] %s fuer %s auf %s (%s) gesetzt",
-                                        name, agent_id, cron, crons["timezone"])
-                        continue
-                    sched = Schedule(
-                        id=uuid.uuid4().hex[:8],
-                        name=name,
-                        # Der Text wird beim Feuern aus dem Code gebaut (siehe
-                        # _execute_schedule) — hier steht nur, was in der UI lesbar ist.
-                        prompt=(
-                            "Wird beim Ausführen aus dem Code gebaut: "
-                            "Tagesplanung am Abend bzw. Durchsicht am Morgen."
-                        ),
-                        interval_seconds=0,
-                        cron_expression=cron,
-                        timezone=crons["timezone"],
-                        priority=0,
-                        agent_id=agent_id,
-                        enabled=True,
-                        next_run_at=now,
-                    )
-                    sched.next_run_at = _calc_next_run(sched, now)
-                    db.add(sched)
-                    created += 1
-                    logger.info("[Rhythmus] %s fuer %s angelegt (%s, %s)",
-                                name, agent_id, cron, crons["timezone"])
+                created += await eigeninitiative.rhythmus_sicherstellen(db, agent, {
+                    name: s for (aid, name), s in by_agent.items() if aid == agent_id
+                }, now)
             await db.commit()
         return created
 

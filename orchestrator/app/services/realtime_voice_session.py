@@ -5556,6 +5556,10 @@ class RealtimeVoiceSession:
                     responsibilities=duties,
                 )
                 flag_modified(agent, "config")
+                # Dieselbe Stelle wie im Text-Weg: Bereiche bringen die
+                # System-Zeitplaene mit (#913).
+                from app.core import eigeninitiative
+                await eigeninitiative.abgleichen(db, agent)
                 await db.commit()
                 titles = [
                     d.get("title", "")

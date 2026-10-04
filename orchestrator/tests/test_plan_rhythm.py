@@ -173,9 +173,13 @@ class WiringTests(unittest.TestCase):
         cls.mgr = (ORCH / "app/core/agent_manager.py").read_text()
 
     def test_scheduler_ensures_the_two_schedules(self):
+        # Angelegt wird an EINER Stelle (core/eigeninitiative, #913) — der Scheduler
+        # ruft sie in seiner Invariante auf.
+        eigen = (ORCH / "app/core/eigeninitiative.py").read_text()
         self.assertIn("_ensure_planning_rhythm", self.sched)
-        self.assertIn("EVENING_SCHEDULE_NAME", self.sched)
-        self.assertIn("MORNING_SCHEDULE_NAME", self.sched)
+        self.assertIn("eigeninitiative.rhythmus_sicherstellen", self.sched)
+        self.assertIn("EVENING_SCHEDULE_NAME", eigen)
+        self.assertIn("MORNING_SCHEDULE_NAME", eigen)
 
     def test_rhythm_runs_are_built_from_code_like_proactive_runs(self):
         self.assertIn("is_rhythm = schedule.name.startswith(plan_rhythm.SCHEDULE_PREFIX)", self.sched)

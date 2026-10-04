@@ -55,6 +55,36 @@ def _state_str(agent) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Vom Nutzer angehalten (#912)
+# ---------------------------------------------------------------------------
+
+# Gestoppt ist nicht gleich gestoppt: der Leerlauf-Stopp (IdleStop, UserLifecycle)
+# spart nur Ressourcen — faellige Zeitplaene wecken den Agenten wieder (#632). Hat
+# der NUTZER ihn angehalten, ist das eine Ansage: der Scheduler weckt ihn nicht, bis
+# der Nutzer ihn selbst wieder startet.
+ANGEHALTEN_VOM_NUTZER = "angehalten_vom_nutzer"
+
+
+def vom_nutzer_angehalten(agent) -> bool:
+    """Hat der Nutzer diesen Agenten bewusst angehalten?"""
+    return bool(_cfg(agent).get(ANGEHALTEN_VOM_NUTZER))
+
+
+def nutzerhalt_setzen(agent, angehalten: bool) -> None:
+    """Halt setzen (Stopp durch den Nutzer) oder aufheben (Start durch den Nutzer).
+
+    Weist eine NEUE ``config`` zu — so erkennt SQLAlchemy die Aenderung am JSON-Feld
+    ohne ``flag_modified``. Speichern muss der Aufrufer.
+    """
+    config = dict(_cfg(agent))
+    if angehalten:
+        config[ANGEHALTEN_VOM_NUTZER] = True
+    else:
+        config.pop(ANGEHALTEN_VOM_NUTZER, None)
+    agent.config = config
+
+
+# ---------------------------------------------------------------------------
 # Dienstzeit DES AGENTEN (nicht die Erreichbarkeit des Menschen)
 # ---------------------------------------------------------------------------
 

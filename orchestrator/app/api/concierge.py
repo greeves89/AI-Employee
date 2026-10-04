@@ -366,12 +366,18 @@ async def concierge_action(
         raise HTTPException(status_code=503, detail="Docker nicht verfuegbar")
     manager = AgentManager(db, docker, redis)
 
+    # Wie die Knoepfe der Oberflaeche: ein Stopp durch den Nutzer haelt den Agenten
+    # an (der Scheduler weckt ihn nicht, #912), ein Start/Neustart hebt das auf.
+    from app.core import agent_duty
+
     if body.action == "restart_agent":
-        await manager.restart_agent(body.agent_id)
+        agent_duty.nutzerhalt_setzen(await manager.restart_agent(body.agent_id), False)
     elif body.action == "stop_agent":
+        agent_duty.nutzerhalt_setzen(agent, True)
         await manager.stop_agent(body.agent_id)
     elif body.action == "start_agent":
-        await manager.start_agent(body.agent_id)
+        agent_duty.nutzerhalt_setzen(await manager.start_agent(body.agent_id), False)
+    await db.commit()
 
     logger.info("[Concierge] %s auf %s durch %s",
                 scrub_log(body.action), scrub_log(body.agent_id), scrub_log(user.id))
