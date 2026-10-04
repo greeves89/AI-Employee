@@ -115,6 +115,29 @@ def pflicht_fuer(user) -> bool:
     return pflicht_aktiv() and bool(getattr(user, "password_hash", None))
 
 
+async def sitzungen_ohne_faktor_beenden(db) -> list[str]:
+    """Die Pflicht wurde eben eingeschaltet: alle Passwort-Konten OHNE eingerichteten
+    zweiten Faktor abmelden (``token_version`` +1). Sonst liefen ihre Sitzungen
+    einfach weiter, und die Pflicht griffe erst bei der nächsten Anmeldung. Wer
+    schon einen Faktor hat, bleibt angemeldet; reine SSO-Konten ebenso (dort gilt
+    die Regel des Identitätsanbieters). Gibt die Kennungen zurück — ohne Commit."""
+    from sqlalchemy import or_, select, update
+
+    from app.models.user import User
+
+    ids = list((await db.execute(
+        select(User.id).where(
+            User.password_hash.is_not(None), User.password_hash != "",
+            or_(User.mfa_enabled_at.is_(None), User.totp_secret_encrypted.is_(None)),
+        )
+    )).scalars().all())
+    if ids:
+        await db.execute(
+            update(User).where(User.id.in_(ids)).values(token_version=User.token_version + 1)
+        )
+    return ids
+
+
 # --- TOTP -----------------------------------------------------------------
 
 

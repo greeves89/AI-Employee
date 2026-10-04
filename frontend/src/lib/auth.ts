@@ -135,16 +135,24 @@ export async function mfaPflichtEinrichtungBestaetigen(
   return { user: sitzungUebernehmen(data), recoveryCodes: data.recovery_codes };
 }
 
-export async function register(name: string, email: string, password: string): Promise<AuthUser> {
-  const data = await authFetch<{ user: AuthUser; access_token: string }>(`${authBase()}/register`, {
+/** Ergebnis der Selbstregistrierung: angemeldet, wartet auf Freischaltung, oder
+ *  — bei Zwei-Faktor-Pflicht (#915) — erst die Einrichtung (wie bei der Anmeldung). */
+export type RegistrierErgebnis = LoginErgebnis | { pending: true };
+
+export async function register(name: string, email: string, password: string): Promise<RegistrierErgebnis> {
+  const data = await authFetch<
+    | SitzungsAntwort
+    | { pending: true }
+    | { mfa_required: true; mfa_setup_required: boolean; mfa_token: string }
+  >(`${authBase()}/register`, {
     method: "POST",
     body: JSON.stringify({ name, email, password }),
   });
-  const store = useAuthStore.getState();
-  store.setUser(data.user);
-  store.setWsToken(data.access_token);
-  store.setSetupMode(false);
-  return data.user;
+  if ("pending" in data && data.pending) return { pending: true };
+  if ("mfa_required" in data && data.mfa_required) {
+    return { mfa: { token: data.mfa_token, setupRequired: Boolean(data.mfa_setup_required) } };
+  }
+  return { user: sitzungUebernehmen(data as SitzungsAntwort) };
 }
 
 export async function logout(): Promise<void> {

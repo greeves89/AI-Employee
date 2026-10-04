@@ -246,6 +246,16 @@ async def register(body: SetupRegisterRequest, response: Response, db: AsyncSess
     if not approved:
         return {"pending": True, "user": UserResponse.model_validate(user).model_dump()}
 
+    # Zwei-Faktor-Pflicht (#915) gilt auch hier: wie beim Login keine Sitzung,
+    # sondern das Zwischen-Token für die Pflicht-Einrichtung.
+    from app.core import zwei_faktor
+    if zwei_faktor.pflicht_fuer(user):
+        return {
+            "mfa_required": True,
+            "mfa_setup_required": True,
+            "mfa_token": zwei_faktor.pending_token_erstellen(user, zwei_faktor.ZWECK_EINRICHTEN),
+        }
+
     tokens = _set_auth_cookies(response, user)
     return {
         "user": UserResponse.model_validate(user).model_dump(),

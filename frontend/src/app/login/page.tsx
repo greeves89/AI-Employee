@@ -3,13 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Cpu, Eye, EyeOff, LogIn, Clock, ShieldCheck, ArrowLeft } from "lucide-react";
-import {
-  login, getSSOProviders, getRegistrationStatus, mfaBestaetigen,
-  mfaPflichtEinrichtungStarten, mfaPflichtEinrichtungBestaetigen,
-  type MfaEinrichtungsDaten, type SSOProvider,
-} from "@/lib/auth";
-import { MfaQrSchritt, Wiederherstellungscodes } from "@/components/settings/zwei-faktor";
+import { Cpu, Eye, EyeOff, LogIn, Clock } from "lucide-react";
+import { login, getSSOProviders, getRegistrationStatus, type SSOProvider } from "@/lib/auth";
+import { MfaAnmeldung } from "@/components/auth/mfa-anmeldung";
 
 import { getApiUrl } from "@/lib/config";
 
@@ -30,9 +26,6 @@ export default function LoginPage() {
   // Zweiter Faktor (#915): nach korrektem Passwort nur ein Zwischen-Token — der
   // Code-Schritt bzw. die Pflicht-Einrichtung, keine Sitzung.
   const [mfa, setMfa] = useState<{ token: string; setupRequired: boolean } | null>(null);
-  const [mfaCode, setMfaCode] = useState("");
-  const [einrichtung, setEinrichtung] = useState<MfaEinrichtungsDaten | null>(null);
-  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
 
   useEffect(() => {
     getRegistrationStatus()
@@ -77,9 +70,6 @@ export default function LoginPage() {
 
   const zurueckZurAnmeldung = () => {
     setMfa(null);
-    setMfaCode("");
-    setEinrichtung(null);
-    setRecoveryCodes(null);
     setPassword("");
     setError("");
   };
@@ -93,44 +83,11 @@ export default function LoginPage() {
       const ergebnis = await login(email, password);
       if ("mfa" in ergebnis) {
         setMfa(ergebnis.mfa);
-        if (ergebnis.mfa.setupRequired) {
-          setEinrichtung(await mfaPflichtEinrichtungStarten(ergebnis.mfa.token));
-        }
         return;
       }
       weiterleiten();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Anmeldung fehlgeschlagen");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleMfaCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!mfa) return;
-    setError("");
-    setLoading(true);
-    try {
-      await mfaBestaetigen(mfa.token, mfaCode.trim());
-      weiterleiten();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Der Code stimmt nicht.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleMfaEinrichtung = async (code: string) => {
-    if (!mfa) return;
-    setError("");
-    setLoading(true);
-    try {
-      const r = await mfaPflichtEinrichtungBestaetigen(mfa.token, code);
-      setEinrichtung(null);
-      setRecoveryCodes(r.recoveryCodes);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Der Code stimmt nicht.");
     } finally {
       setLoading(false);
     }
@@ -178,76 +135,7 @@ export default function LoginPage() {
         )}
 
         {/* Zweiter Faktor (#915): Code eingeben, Pflicht-Einrichtung, Wiederherstellungscodes */}
-        {mfa && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <ShieldCheck className="h-4 w-4 text-primary" />
-              {recoveryCodes
-                ? "Wiederherstellungscodes"
-                : mfa.setupRequired
-                  ? "Zwei-Faktor einrichten"
-                  : "Bestätigungscode"}
-            </div>
-            {recoveryCodes ? (
-              <Wiederherstellungscodes codes={recoveryCodes} onFertig={weiterleiten} />
-            ) : mfa.setupRequired ? (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  Dein Administrator schreibt für Passwort-Anmeldungen einen zweiten Faktor vor.
-                  Richte ihn jetzt ein, um fortzufahren.
-                </p>
-                {einrichtung && (
-                  <MfaQrSchritt daten={einrichtung} onBestaetigen={handleMfaEinrichtung} busy={loading} />
-                )}
-              </>
-            ) : (
-              <form onSubmit={handleMfaCode} className="space-y-4">
-                <div className="space-y-2">
-                  <label htmlFor="mfa-code" className="text-xs font-medium text-muted-foreground">
-                    Code aus deiner Authenticator-App
-                  </label>
-                  <input
-                    id="mfa-code"
-                    value={mfaCode}
-                    onChange={(e) => setMfaCode(e.target.value)}
-                    required
-                    autoFocus
-                    autoComplete="one-time-code"
-                    className="flex h-10 w-full rounded-xl border border-border bg-card px-3 font-mono text-sm tracking-widest transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder="123456"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Kein Zugriff auf dein Telefon? Gib stattdessen einen deiner Wiederherstellungscodes ein.
-                  </p>
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading || !mfaCode.trim()}
-                  className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? (
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
-                  ) : (
-                    <>
-                      <ShieldCheck className="h-4 w-4" />
-                      Bestätigen
-                    </>
-                  )}
-                </button>
-              </form>
-            )}
-            {!recoveryCodes && (
-              <button
-                type="button"
-                onClick={zurueckZurAnmeldung}
-                className="flex w-full items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Zurück zur Anmeldung
-              </button>
-            )}
-          </div>
-        )}
+        {mfa && <MfaAnmeldung mfa={mfa} onAngemeldet={weiterleiten} onZurueck={zurueckZurAnmeldung} />}
 
         {/* Form (password login — hidden when SSO-only is enforced) */}
         {!ssoOnly && !mfa && (
