@@ -138,6 +138,20 @@ def _erlaubte_herkunft() -> set[str]:
     return {QUELLE, *DEFAULT_SKILL_REPOS}
 
 
+def herkunft_vertraut(herkunft: str | None, erstellt: str | None) -> bool:
+    """Skill bekannter Herkunft: mitgeliefert oder aus einer eingebauten Quelle.
+
+    Der Name einer Quelle allein reicht nicht: Eine vom Admin eingetragene Quelle mit
+    gleichem Ort (z. B. anderer Branch) bekäme sonst dieselbe Herkunft. Öffentliche
+    Skills zählen nur aus den eingebauten Quellen (created_by "import:github").
+    Gilt für Vorlagen UND für Skills, die einem Agenten über seine Rolle zufallen."""
+    from app.core.mitgelieferte_skills import QUELLE
+
+    if herkunft == QUELLE:
+        return True
+    return herkunft in _erlaubte_herkunft() and (erstellt or "") == "import:github"
+
+
 async def ids_fuer_namen(db, namen: list[str]) -> list[int]:
     """IDs der aktiven Skills mit diesen Namen (nur bekannte Herkunft), in der Reihenfolge
     der Namen; Fehlende oder fremder Herkunft werden übergangen."""
@@ -151,18 +165,7 @@ async def ids_fuer_namen(db, namen: list[str]) -> list[int]:
         select(Skill.id, Skill.name, Skill.source_repo, Skill.created_by)
         .where(Skill.name.in_(namen), Skill.status == SkillStatus.ACTIVE)
     )).all()
-    from app.core.mitgelieferte_skills import QUELLE
-
-    erlaubt = _erlaubte_herkunft()
-    # Der Name einer Quelle allein reicht nicht: Eine vom Admin eingetragene Quelle mit
-    # gleichem Ort (z. B. anderer Branch) bekäme sonst dieselbe Herkunft. Öffentliche
-    # Skills zählen nur aus den eingebauten Quellen (created_by "import:github").
-    def _vertraut(herkunft, erstellt) -> bool:
-        if herkunft == QUELLE:
-            return True
-        return herkunft in erlaubt and (erstellt or "") == "import:github"
-
-    nach_name = {name: sid for sid, name, herkunft, erstellt in rows if _vertraut(herkunft, erstellt)}
+    nach_name = {name: sid for sid, name, herkunft, erstellt in rows if herkunft_vertraut(herkunft, erstellt)}
     return [nach_name[n] for n in namen if n in nach_name]
 
 

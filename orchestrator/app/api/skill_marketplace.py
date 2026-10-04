@@ -875,8 +875,18 @@ async def _skills_des_agenten(db: AsyncSession, agent_id: str) -> list:
                 .where(Skill.status == SkillStatus.ACTIVE)
                 .where(Skill.roles.isnot(None))
             )
+            from app.core.vorlagen_skills import herkunft_vertraut
+
             for s in role_skills.scalars().all():
-                if s.roles and agent_role in s.roles and s.id not in {sk.id for sk in skills}:
+                if not (s.roles and agent_role in s.roles) or s.id in {sk.id for sk in skills}:
+                    continue
+                # Über die Rolle fällt ein Skill jedem Agenten der Anlage zu — und
+                # seine Anleitung landet im Prompt. Deshalb nur bekannte Herkunft
+                # oder eigene Skills des Besitzers; sonst könnte jeder Nutzer per
+                # Rollenname Anweisungen in fremde Agenten schieben.
+                if herkunft_vertraut(s.source_repo, s.created_by) or (
+                    agent.user_id and s.created_by == agent.user_id
+                ):
                     skills.append(s)
     return skills
 

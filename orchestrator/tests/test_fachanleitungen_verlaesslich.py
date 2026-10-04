@@ -201,3 +201,46 @@ class AnleitungUndVorlagenTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RollenSkillsNurBekannterHerkunft(unittest.IsolatedAsyncioTestCase):
+    """Über die Rolle fällt ein Skill jedem Agenten der Anlage zu, und seine Anleitung
+    landet im Prompt. Ein fremder, selbst angelegter Skill mit passendem Rollennamen
+    darf das nicht (Sicherheitsprüfung v1.362: nutzerübergreifende Einschleusung)."""
+
+    async def asyncSetUp(self):
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from app.models.agent import Agent, AgentState
+        from app.models.skill import AgentSkillAssignment, Skill, SkillCategory, SkillStatus
+
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as conn:
+            for m in (Agent, Skill, AgentSkillAssignment):
+                await conn.run_sync(m.metadata.create_all, tables=[m.__table__])
+        self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
+        from app.core.mitgelieferte_skills import QUELLE
+
+        async with self.Session() as db:
+            db.add(Agent(id="a1", name="Buchhaltung", state=AgentState.RUNNING, user_id="besitzer",
+                         config={"role": "Buchhaltung"}))
+            for i, (name, herkunft, erstellt) in enumerate([
+                ("mitgeliefert", QUELLE, "system"),
+                ("eigener", None, "besitzer"),
+                ("fremder", None, "jemand-anderes"),
+                ("falsche-quelle", "irgendwer/repo", "import:github"),
+            ], 1):
+                db.add(Skill(id=i, name=name, description="d", content="ANLEITUNG " + name,
+                             category=SkillCategory.TEMPLATE, status=SkillStatus.ACTIVE,
+                             created_by=erstellt, source_repo=herkunft, roles=["Buchhaltung"]))
+            await db.commit()
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+
+    async def test_nur_bekannte_herkunft_und_eigene(self):
+        from app.api.skill_marketplace import _skills_des_agenten
+
+        async with self.Session() as db:
+            namen = sorted(s.name for s in await _skills_des_agenten(db, "a1"))
+        self.assertEqual(namen, ["eigener", "mitgeliefert"])
