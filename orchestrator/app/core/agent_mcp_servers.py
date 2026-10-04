@@ -46,34 +46,33 @@ async def servers_for_agent(
     """Die aktiven MCP-Server, die dieser Agent benutzen darf.
 
     Drei Filter, in dieser Reihenfolge: aktiviert, dem Agenten zugewiesen
-    (``config["mcp_servers"]``, sonst alle), und was die Gruppenrechte des
-    Besitzers zulassen (``mcp_server_ids``; ``None`` = alle, Administratoren
-    ohne Schranke).
+    (``config["mcp_servers"]``, sonst alle), und was sein Besitzer nutzen darf
+    (core/mcp_zugriff.py: Admin alle, Rollenliste genau diese, sonst die allen
+    Nutzern bereitgestellten). Ein Agent ohne Besitzer zaehlt wie ein Nutzer ohne
+    Rollenliste. Ohne ``agent_id`` (kein Agent im Spiel) entfaellt der dritte Filter.
+
+    Faellt die Rechtepruefung aus, bekommt der Agent KEINEN Fremdserver — frueher
+    bekam er dann alle, auch die per OAuth mit dem Admin-Konto verbundenen (#909).
     """
     result = await db.execute(select(McpServer).where(McpServer.enabled == True))  # noqa: E712
     servers = list(result.scalars().all())
 
     if agent_config and "mcp_servers" in agent_config:
-        zugewiesen = set(agent_config["mcp_servers"])
+        zugewiesen = set(agent_config["mcp_servers"] or [])
         servers = [s for s in servers if s.id in zugewiesen]
 
     if agent_id:
         try:
-            from app.core.permissions import get_effective_permissions
+            from app.core import mcp_zugriff
             from app.models.agent import Agent
-            from app.models.user import User
 
-            agent = await db.get(Agent, agent_id)
-            besitzer = await db.get(User, agent.user_id) if (agent and agent.user_id) else None
-            if besitzer:
-                rechte = await get_effective_permissions(besitzer, db)
-                erlaubt = rechte.get("mcp_server_ids")
-                if erlaubt is not None:
-                    erlaubt_set = set(erlaubt)
-                    servers = [s for s in servers if s.id in erlaubt_set]
-        except Exception as e:  # noqa: BLE001 — ein Rechtefehler darf den Start nicht kippen
-            logger.warning("MCP-Rechtefilter fuer Agent %s fehlgeschlagen: %s",
+            erlaubt = await mcp_zugriff.nutzbar_fuer_agent(db, await db.get(Agent, agent_id))
+            if erlaubt is not None:
+                servers = [s for s in servers if s.id in erlaubt]
+        except Exception as e:  # noqa: BLE001 — fail-closed: lieber ohne Fremdserver starten
+            logger.warning("MCP-Rechtefilter fuer Agent %s fehlgeschlagen, keine Fremdserver: %s",
                            scrub_log(agent_id), scrub_log(e))
+            servers = []
 
     return servers
 

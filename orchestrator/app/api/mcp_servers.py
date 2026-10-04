@@ -2,6 +2,7 @@
 
 import asyncio
 import json as json_mod
+import logging
 import os
 import re
 import secrets
@@ -18,11 +19,15 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.secrets import _get_agent_manager  # Agenten nach Freigabeaenderung neu starten
+from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_redis_service, require_admin, require_auth
 from app.models.audit_log import AuditEventType, AuditLog
 from app.models.mcp_server import McpServer
 from app.services.redis_service import RedisService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/mcp-servers", tags=["mcp-servers"])
 
@@ -172,6 +177,9 @@ class McpServerCreate(BaseModel):
     #: diese Endpunkte ueberhaupt; der Haken haelt fest, dass die interne Adresse
     #: Absicht war und kein Vertipper.
     allow_private_host: bool = False
+    #: Allen Nutzern bereitstellen (#909). Neue Server starten aus: nur Admins und
+    #: Rollen, die ihn ausdruecklich fuehren, bekommen ihn.
+    fuer_alle: bool = False
     bearer_token: str | None = None  # plaintext on input; stored Fernet-encrypted
     # Custom auth headers {name: value} for servers expecting a non-Bearer key.
     headers: dict[str, str] | None = None
@@ -186,6 +194,7 @@ class McpServerUpdate(BaseModel):
     name: str | None = None
     url: str | None = None
     enabled: bool | None = None
+    fuer_alle: bool | None = None  # Allen Nutzern bereitstellen (#909)
     bearer_token: str | None = None  # "" clears the token; None leaves it unchanged
     headers: dict[str, str] | None = None  # {} clears; None leaves unchanged
     oauth_callback_base_url: str | None = None  # "" clears; None leaves unchanged
@@ -294,6 +303,7 @@ def _serialize_mcp_server(server: McpServer) -> dict:
         "last_status": server.last_status,
         "last_error": server.last_error,
         "allow_private_host": bool(getattr(server, "allow_private_host", False)),
+        "fuer_alle": bool(getattr(server, "fuer_alle", False)),
         "oauth_enabled": bool(getattr(server, "oauth_enabled", False)),
         "oauth_client_id": getattr(server, "oauth_client_id", None),
         "oauth_callback_base_url": getattr(server, "oauth_callback_base_url", None),
@@ -303,6 +313,22 @@ def _serialize_mcp_server(server: McpServer) -> dict:
             server.oauth_access_expires_at.isoformat()
             if getattr(server, "oauth_access_expires_at", None) else None
         ),
+    }
+
+
+def _serialize_fuer_mitglied(server: McpServer) -> dict:
+    """Was ein Nicht-Admin von einem Server sieht: Name und Werkzeuge.
+
+    Keine Adresse, keine Hinweise auf Zugangsdaten oder OAuth, keine Fehlertexte
+    (die nennen oft Host und Pfad). Mitglieder waehlen damit nur aus, ob ihr
+    Agent den Server benutzt — dafuer reicht, was er kann (#909).
+    """
+    return {
+        "id": server.id,
+        "name": server.name,
+        "tools": server.tools or [],
+        "enabled": server.enabled,
+        "last_status": server.last_status,
     }
 
 
@@ -587,15 +613,19 @@ async def _call_tool(
 
 @router.get("")
 async def list_mcp_servers(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
-    """List all registered MCP servers."""
+    """Die MCP-Server, die der Aufrufer nutzen darf (core/mcp_zugriff.py).
+
+    Admin: alle, mit Adresse und Zugangsstatus. Alle anderen: nur die fuer sie
+    nutzbaren, ohne Adresse und ohne Zugangsdaten-Felder (#909).
+    """
+    from app.core.mcp_zugriff import nutzbare_mcp_server_ids
+
     result = await db.execute(select(McpServer).order_by(McpServer.created_at.desc()))
     servers = result.scalars().all()
-    return {
-        "servers": [
-            _serialize_mcp_server(s)
-            for s in servers
-        ]
-    }
+    erlaubt = await nutzbare_mcp_server_ids(db, user)
+    if erlaubt is None:
+        return {"servers": [_serialize_mcp_server(s) for s in servers]}
+    return {"servers": [_serialize_fuer_mitglied(s) for s in servers if s.id in erlaubt]}
 
 
 async def _advertises_oauth(url: str) -> bool:
@@ -672,6 +702,7 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
                 name=body.name, url=body.url, tools=[], enabled=True,
                 oauth_enabled=True,
                 allow_private_host=body.allow_private_host,
+                fuer_alle=body.fuer_alle,
             )
             _mark_health(server, MCP_HEALTH_NEEDS_OAUTH,
                          "OAuth erforderlich — auf 'Verbinden' klicken, um die Autorisierung zu starten")
@@ -694,6 +725,7 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
         name=body.name, url=body.url, tools=tools, enabled=True,
         oauth_enabled=False,
         allow_private_host=body.allow_private_host,
+        fuer_alle=body.fuer_alle,
         auth_token_encrypted=encrypt_token(body.bearer_token) if body.bearer_token else None,
         headers_encrypted=encrypt_token(json_mod.dumps(body.headers)) if body.headers else None,
     )
@@ -744,8 +776,14 @@ async def refresh_mcp_tools(server_id: int, user=Depends(require_admin), db: Asy
 @router.patch("/{server_id}")
 async def update_mcp_server(
     server_id: int, body: McpServerUpdate, user=Depends(require_admin), db: AsyncSession = Depends(get_db),
+    manager=Depends(_get_agent_manager),
 ):
-    """Update an MCP server's config."""
+    """Update an MCP server's config.
+
+    Wird ``fuer_alle`` umgeschaltet, starten die laufenden Agenten neu, deren
+    Server-Auswahl daran haengt — sonst bliebe ein entzogener Server (samt Token)
+    bis zum naechsten Start im Container, ein neu bereitgestellter fehlte (#909).
+    """
     result = await db.execute(select(McpServer).where(McpServer.id == server_id))
     server = result.scalar_one_or_none()
     if not server:
@@ -757,6 +795,9 @@ async def update_mcp_server(
         server.url = body.url
     if body.enabled is not None:
         server.enabled = body.enabled
+    fuer_alle_umgeschaltet = body.fuer_alle is not None and bool(body.fuer_alle) != bool(server.fuer_alle)
+    if body.fuer_alle is not None:
+        server.fuer_alle = body.fuer_alle
     if body.bearer_token is not None:
         from app.core.encryption import encrypt_token
         server.auth_token_encrypted = encrypt_token(body.bearer_token) if body.bearer_token.strip() else None
@@ -774,7 +815,21 @@ async def update_mcp_server(
         server.oauth_callback_base_url = new_base
 
     await db.commit()
+    if fuer_alle_umgeschaltet:
+        await _betroffene_agenten_neu_starten(db, manager, server)
     return _serialize_mcp_server(server)
+
+
+async def _betroffene_agenten_neu_starten(db: AsyncSession, manager, server: McpServer) -> None:
+    """Muster api/roles.py::_keys_neu_pruefen: Rechte geaendert -> Agenten nachziehen."""
+    from app.core.mcp_zugriff import agenten_betroffen_von_fuer_alle
+
+    for agent_id in await agenten_betroffen_von_fuer_alle(db, server):
+        try:
+            await manager.restart_agent(agent_id)
+        except Exception as exc:  # noqa: BLE001 — ein Agent darf die anderen nicht aufhalten
+            logger.warning("Agent %s nach MCP-Freigabeaenderung nicht neu gestartet: %s",
+                           scrub_log(agent_id), scrub_log(exc))
 
 
 @router.delete("/{server_id}")

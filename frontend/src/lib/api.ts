@@ -1553,15 +1553,18 @@ export async function getWebhookEvents(
 export interface McpServerInfo {
   id: number;
   name: string;
-  url: string;
+  /** Nur für Admins — Mitglieder bekommen keine Adresse (#909). */
+  url?: string;
   tools: McpTool[];
   enabled: boolean;
+  /** Allen Nutzern bereitgestellt (#909). Nur in der Admin-Sicht vorhanden. */
+  fuer_alle?: boolean;
   has_auth?: boolean;
   has_headers?: boolean;
-  created_at: string | null;
-  last_checked_at: string | null;
+  created_at?: string | null;
+  last_checked_at?: string | null;
   last_status: "ok" | "auth_failed" | "unreachable" | "protocol_error" | "needs_oauth" | null;
-  last_error: string | null;
+  last_error?: string | null;
   // Client-side OAuth (#426)
   oauth_enabled?: boolean;
   oauth_client_id?: string | null;
@@ -1586,6 +1589,9 @@ export async function addMcpServer(
   /** Private Adresse für DIESEN Server zulassen (Admin-Entscheidung, siehe
    *  Integrationen-Seite). Loopback und Metadaten-Adressen bleiben gesperrt. */
   allowPrivateHost?: boolean,
+  /** Allen Nutzern bereitstellen (#909). Standard: aus — nur Admins und Rollen
+   *  mit ausdrücklicher Freigabe bekommen den Server. */
+  fuerAlle?: boolean,
 ): Promise<McpServerInfo> {
   return fetchJSON(`${getBase()}/mcp-servers`, {
     method: "POST",
@@ -1594,6 +1600,7 @@ export async function addMcpServer(
       ...(bearerToken ? { bearer_token: bearerToken } : {}),
       ...(headers && Object.keys(headers).length ? { headers } : {}),
       ...(allowPrivateHost ? { allow_private_host: true } : {}),
+      ...(fuerAlle ? { fuer_alle: true } : {}),
     }),
   });
 }
@@ -1630,7 +1637,7 @@ export async function getMcpAgentHealth(): Promise<McpAgentHealth> {
 
 export async function updateMcpServer(
   id: number,
-  data: { name?: string; url?: string; enabled?: boolean; bearer_token?: string; headers?: Record<string, string> },
+  data: { name?: string; url?: string; enabled?: boolean; fuer_alle?: boolean; bearer_token?: string; headers?: Record<string, string> },
 ): Promise<McpServerInfo> {
   return fetchJSON(`${getBase()}/mcp-servers/${id}`, {
     method: "PATCH",

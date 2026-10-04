@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from app.api import mcp_servers
 from app.models.mcp_server import McpServer
+from app.models.user import UserRole
 
 
 class _ScalarResult:
@@ -137,7 +138,10 @@ async def test_list_mcp_servers_includes_health_fields():
     )
     db = _FakeListSession([server])
 
-    payload = await mcp_servers.list_mcp_servers(user=SimpleNamespace(id="user"), db=db)
+    # Gesundheitsfelder samt Fehlertext sieht der Admin; Mitglieder bekommen eine
+    # schmale Sicht ohne Adresse und Fehlertexte (#909, test_mcp_fuer_alle.py).
+    payload = await mcp_servers.list_mcp_servers(
+        user=SimpleNamespace(id="admin", role=UserRole.ADMIN), db=db)
 
     assert payload["servers"][0]["last_checked_at"] == checked_at.isoformat()
     assert payload["servers"][0]["last_status"] == "auth_failed"

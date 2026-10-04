@@ -173,7 +173,14 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         promises.push(api.updateAgentIntegrations(agentId, agentIntegrations, msgraphAccess, exchangeAccess));
       }
       if (mcpChanged) {
-        promises.push(api.updateAgentMcpServers(agentId, agentMcpServerIds));
+        // Nur Server, die in der Liste stehen (= die der Nutzer nutzen darf).
+        // Eine alte Zuweisung auf einen inzwischen nicht mehr freigegebenen
+        // Server würde sonst beim Speichern abgelehnt (403).
+        const sichtbar = new Set(mcpServers.map((s) => s.id));
+        const auswahl = agentMcpServerIds === null
+          ? null
+          : agentMcpServerIds.filter((id) => sichtbar.has(id));
+        promises.push(api.updateAgentMcpServers(agentId, auswahl));
       }
       await Promise.all(promises);
       setChanged(false);
@@ -392,9 +399,6 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                     <div className="flex-1 text-left min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{server.name}</span>
-                        <span className="text-[10px] text-muted-foreground/50 truncate max-w-[300px]">
-                          {server.url}
-                        </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground/60 mt-0.5">
                         {toolCount} tool{toolCount !== 1 ? "s" : ""}

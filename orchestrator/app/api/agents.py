@@ -3161,14 +3161,10 @@ async def agent_toolset(
 
     extra_mcp: list[str] = []
     try:
-        from app.models.mcp_server import McpServer
+        from app.core.agent_mcp_servers import servers_for_agent
 
-        wanted = (agent.config or {}).get("mcp_servers")
-        rows = (await db.execute(
-            select(McpServer).where(McpServer.enabled.is_(True))
-        )).scalars().all()
-        if wanted is not None:
-            rows = [r for r in rows if r.id in set(wanted)]
+        # Dieselbe Auswahl wie Container und Sprachfront — samt Freigaben (#909).
+        rows = await servers_for_agent(db, agent_id, agent.config or {})
         extra_mcp = [f"mcp_{r.name}" for r in rows]
     except Exception:  # noqa: BLE001
         logger.debug("MCP-Server nicht ermittelbar", exc_info=True)
@@ -3459,15 +3455,30 @@ async def update_agent_mcp_servers(
     db: AsyncSession = Depends(get_db),
     manager: AgentManager = Depends(_get_agent_manager),
 ):
-    """Update which MCP servers this agent uses. Pass null to use all enabled servers."""
+    """Update which MCP servers this agent uses. Pass null to use all usable servers.
+
+    Zuweisen darf man nur Server, die der Besitzer des Agenten nutzen darf
+    (core/mcp_zugriff.py) — sonst 403 (#909). Massgeblich ist der Besitzer, nicht
+    der Aufrufer: seine Rechte entscheiden, was am Agenten tatsaechlich ankommt.
+    """
     await _check_owner(agent_id, user, db)
     try:
         agent = await manager._get_agent(agent_id)
-        config = agent.config or {}
+        config = dict(agent.config or {})
         mcp_servers = body.get("mcp_servers")
         if mcp_servers is None:
             config.pop("mcp_servers", None)
         else:
+            if not isinstance(mcp_servers, list):
+                raise HTTPException(status_code=422, detail="mcp_servers muss eine Liste oder null sein")
+            try:
+                mcp_servers = [int(x) for x in mcp_servers]
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=422, detail="mcp_servers enthält ungültige Kennungen")
+            from app.core.mcp_zugriff import nutzbar_fuer_agent
+            erlaubt = await nutzbar_fuer_agent(db, agent)
+            if erlaubt is not None and set(mcp_servers) - erlaubt:
+                raise HTTPException(status_code=403, detail="MCP-Server für diesen Agenten nicht freigegeben")
             config["mcp_servers"] = mcp_servers
         agent.config = config
         from sqlalchemy.orm.attributes import flag_modified

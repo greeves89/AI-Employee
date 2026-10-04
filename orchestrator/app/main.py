@@ -1703,6 +1703,15 @@ async def lifespan(app: FastAPI):
             await conn.execute(_txt_mh(
                 "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS oauth_access_expires_at timestamptz"
             ))
+            # Allen Nutzern bereitgestellt (#909). Beim ersten Anlegen bekommen
+            # BESTEHENDE Server true (keine Verhaltensaenderung), danach ist der
+            # Standard false: neue Server sind zunaechst nur fuer Admins da.
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS fuer_alle boolean NOT NULL DEFAULT true"
+            ))
+            await conn.execute(_txt_mh(
+                "ALTER TABLE mcp_servers ALTER COLUMN fuer_alle SET DEFAULT false"
+            ))
         logger.info("mcp_servers auth/header + health + oauth columns ensured")
     except Exception as e:
         logger.warning(f"Could not ensure mcp_servers columns: {e}")
