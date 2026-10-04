@@ -82,7 +82,7 @@ export async function createAgent(
   mode: AgentMode = "claude_code",
   llm_config?: LLMConfig,
   autonomy_level?: string,
-  budget_exceeded_action: "haiku" | "stop" = "haiku",
+  budget_exceeded_action: "haiku" | "stop" = "stop",
   ai_account_id?: number,
   template_id?: number,
   /** Voller Root-Zugriff gilt nur mit ausdrücklicher Bestätigung (#910). */
@@ -1925,7 +1925,10 @@ export interface AdminOverview {
   users: { total: number; active: number };
   agents: { total: number };
   tasks: { total: number; completed: number; failed: number };
-  cost: { total_usd: number };
+  /** Eine Kostenquelle (#896), alles USD, Aufgaben + Chat.
+   *  total_usd = seit Beginn; monat_usd = laufender Monat;
+   *  geloescht_monat_usd = Anteil gelöschter Agenten im laufenden Monat. */
+  cost: { total_usd: number; monat_usd?: number; geloescht_monat_usd?: number };
 }
 
 export async function getAdminOverview(): Promise<AdminOverview> {
@@ -2294,7 +2297,7 @@ export async function createAgentFromTemplate(
   templateId: number,
   name?: string,
   budgetUsd?: number,
-  budgetExceededAction: "haiku" | "stop" = "haiku",
+  budgetExceededAction: "haiku" | "stop" = "stop",
   /** Schlägt die Vorlage vollen Root-Zugriff vor, gilt er nur mit diesem Haken (#910). */
   rootBestaetigt = false,
 ): Promise<Agent> {
@@ -2487,11 +2490,11 @@ export interface HealthDashboard {
   status?: string;
   overall_status?: string;
   uptime_pct?: number;
+  /** Sichtbare Agenten mit Zustand (#896) — dieselbe Liste, die oben gezählt wird. */
   agents?: { id: string; name: string; state: string; health: string }[];
-  agent_ratings?: Record<string, unknown>;
-  recent_tests?: { id: string; status: string; passed: number; failed: number; created_at: string }[];
+  agent_ratings?: { agent_id: string; name: string; avg_rating: number | null; status: string; total_ratings: number }[];
   improvements?: { agent_id: string; suggestion: string; priority: string }[];
-  latest_run?: Record<string, unknown>;
+  latest_run?: TestRun | null;
   pass_rate_trend?: unknown[];
   response_time_trend?: unknown[];
   failure_categories?: Record<string, number>;
@@ -2500,23 +2503,26 @@ export interface HealthDashboard {
   total_tasks_7d?: number;
 }
 
+/** Wie der Server sie liefert (schemas/test_run.py). Früher stand hier
+ *  ``created_at``/``total_tests`` — Felder, die es nie gab („Invalid Date"). */
 export interface TestRun {
-  id: string;
+  id: string | number;
   status: string;
-  total_tests: number;
+  total: number;
   passed: number;
   failed: number;
   skipped: number;
-  duration_ms: number;
-  results: { name: string; status: string; message?: string }[];
-  created_at: string;
+  duration_ms: number | null;
+  results: { name: string; status: string; message?: string; error?: string | null }[] | null;
+  started_at: string;
+  completed_at?: string | null;
 }
 
 export async function getHealthDashboard(): Promise<HealthDashboard> {
   return fetchJSON(`${getBase()}/health/dashboard`);
 }
 
-export async function getTestRuns(): Promise<{ runs: TestRun[]; total: number }> {
+export async function getTestRuns(): Promise<{ test_runs: TestRun[]; total: number }> {
   return fetchJSON(`${getBase()}/health/test-runs`);
 }
 
@@ -2569,7 +2575,12 @@ export interface AgentAutoMetrics {
 export interface AutoMetrics {
   days: number;
   total_tasks: number;
+  /** Aufgaben + Chat im Zeitraum (eine Kostenquelle, #896). */
   total_cost_usd: number;
+  task_cost_usd?: number;
+  chat_cost_usd?: number;
+  /** Kosten je Tag, Aufgaben + Chat. */
+  daily_cost?: { date: string; cost: number }[];
   success_rate: number;
   agents: AgentAutoMetrics[];
 }
@@ -4026,8 +4037,15 @@ export async function getAnalyticsOverview(days = 30) {
     period_days: number;
     total_tasks: number;
     completed_tasks: number;
+    /** Antworten der Agenten im Chat (ein Chat-Auftrag legt keine Aufgabe an). */
+    chat_replies?: number;
+    /** „Erledigt": fertige Aufgaben + Chat-Antworten (#896). */
+    done_total?: number;
     success_rate_pct: number;
+    /** Aufgaben + Chat — eine Kostenquelle (#896). */
     total_cost_usd: number;
+    total_task_cost_usd?: number;
+    total_chat_cost_usd?: number;
     avg_duration_ms: number;
     total_time_saved_seconds: number;
     active_agents: number;

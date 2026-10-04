@@ -175,7 +175,8 @@ class EveryTelegramPathMarksTests(unittest.TestCase):
         start = src.index("async def _handle_media")
         end = src.index("async def _handle_callback", start)
         media = src[start:end]
-        self.assertIn(":chat\", payload)", media)
+        # Eingereiht wird seit #898 ueber chat_auftrag.einreihen (Budgetpruefung).
+        self.assertIn("einreihen(redis, target_agent_id", media)
         self.assertIn("mark_agent_interaction(", media)
 
 

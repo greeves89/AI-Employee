@@ -1198,6 +1198,37 @@ async def lifespan(app: FastAPI):
     except Exception as e:  # noqa: BLE001
         logger.warning("Konnte Chat-Altzeilen nicht bereinigen: %s", e)
 
+    # #898: Vorgabe bei aufgebrauchtem Budget ist jetzt „stop" (vorher „haiku").
+    # Spaltenvorgabe in der Datenbank nachziehen (create_all aendert nichts an
+    # bestehenden Tabellen) und den Bestand EINMAL umstellen: ohne Budget → stop
+    # (wirkungsgleich), mit Budget im Sparmodus → bleibt, Concierge-Hinweis.
+    try:
+        from app.db.session import engine as _eng_898
+        from sqlalchemy import text as _sql_898
+        async with _eng_898.begin() as conn:
+            await conn.execute(_sql_898(
+                "ALTER TABLE agents ALTER COLUMN budget_exceeded_action SET DEFAULT 'stop'"
+            ))
+            _marke_898 = (await conn.execute(_sql_898(
+                "SELECT value FROM platform_settings WHERE key = 'budget_stopp_umgestellt'"
+            ))).scalar()
+        if not _marke_898:
+            from app.core.budget import stopp_vorgabe_umstellen
+            from app.db.session import async_session_factory as _sf_898
+            async with _sf_898() as _db_898:
+                _umgestellt, _hinweise = await stopp_vorgabe_umstellen(_db_898)
+            async with _eng_898.begin() as conn:
+                await conn.execute(_sql_898(
+                    "INSERT INTO platform_settings "
+                    "  (key, value, is_secret, created_at, updated_at) "
+                    "VALUES ('budget_stopp_umgestellt', '1', false, now(), now()) "
+                    "ON CONFLICT (key) DO NOTHING"
+                ))
+            logger.info("Budget-Vorgabe Stopp: %s Agenten ohne Budget umgestellt, "
+                        "%s Sparmodus-Agenten mit Concierge-Hinweis", _umgestellt, _hinweise)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Konnte Budget-Vorgabe nicht umstellen: %s", e)
+
     # Skill sources (issue #371): admin-managed crawl sources. Added as a model, but
     # create_all only runs in the fresh-DB fallback — ensure it on every startup so
     # the admin API + crawler work on already-provisioned DBs. `kind` as varchar (the

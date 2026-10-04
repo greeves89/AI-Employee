@@ -13,12 +13,20 @@
  */
 
 import { getSettings } from "./api";
+import {
+  alsEingabe, ausEingabe, vonUsd, waehrungsCode, waehrungsZeichen, zuUsd,
+  type WaehrungsKonfig,
+} from "./waehrung";
 
-export interface MoneyConfig {
-  /** "EUR" oder "USD" */
-  currency: string;
-  /** USD → EUR. Bei currency === "USD" ohne Belang. */
-  rate: number;
+/** Währung und Kurs — dieselbe Form wie in ``waehrung.ts`` (Eingaben). */
+export type MoneyConfig = WaehrungsKonfig;
+
+// Eingaben in der Anzeigewährung (#896) — eine Stelle für Anzeige UND Eingabe.
+export { alsEingabe, ausEingabe, vonUsd, waehrungsCode, waehrungsZeichen, zuUsd };
+
+/** Zuletzt geladene Konfiguration — für Beschriftungen außerhalb von Hooks. */
+export function currentMoney(): MoneyConfig {
+  return current;
 }
 
 /** Bis die Einstellungen da sind: keine Umrechnung. */
@@ -77,12 +85,11 @@ function digitsFor(value: number): number {
 export function formatMoney(usd: number, cfg: MoneyConfig = current): string {
   const n = Number(usd);
   if (!Number.isFinite(n)) return "—";
-  const toEur = cfg.currency === "EUR";
-  const value = toEur ? n * cfg.rate : n;
+  const value = vonUsd(n, cfg);
   const format = (x: number) =>
     new Intl.NumberFormat("de-DE", {
       style: "currency",
-      currency: toEur ? "EUR" : "USD",
+      currency: waehrungsCode(cfg),
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(x);

@@ -54,6 +54,7 @@ import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { useAuthStore } from "@/lib/auth";
 import { useAutonomieGrenze } from "@/lib/autonomie-grenze";
 import { useConfirm } from "@/components/ui/dialog-provider";
+import { useMoney } from "@/hooks/use-money";
 
 const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
   Bot,
@@ -219,7 +220,10 @@ export function CreateAgentModal({
   const [permissionsMode, setPermissionsMode] = useState<"auto" | "manual">("auto");
   const [derivedPermissions, setDerivedPermissions] = useState<Record<string, string[]>>({});
   const [budgetUsd, setBudgetUsd] = useState<string>("");
-  const [budgetExceededAction, setBudgetExceededAction] = useState<"haiku" | "stop">("haiku");
+  // Vorgabe „Stoppen" (#898) — der Sparmodus ist eine bewusste Wahl.
+  const [budgetExceededAction, setBudgetExceededAction] = useState<"haiku" | "stop">("stop");
+  // Budget wird in der Anzeigewährung eingegeben und als USD gespeichert (#896).
+  const money = useMoney();
   const [packages, setPackages] = useState<PermissionPackage[]>([]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -281,6 +285,7 @@ export function CreateAgentModal({
       setName("");
       setRole("");
       setBudgetUsd("");
+      setBudgetExceededAction("stop");
       setError(null);
       setMode("claude_code");
       setAutonomyLevel("l3");
@@ -458,7 +463,7 @@ export function CreateAgentModal({
     setCreating(true);
     setError(null);
     try {
-      const parsedBudget = budgetUsd ? parseFloat(budgetUsd) : undefined;
+      const parsedBudget = money.fromInput(budgetUsd) ?? undefined;
       // Im Auto-Modus schickt die Oberfläche BEWUSST nichts: erst dadurch leitet
       // der Server die sudo-Pakete aus der Autonomiestufe ab. Eine mitgeschickte
       // Liste heisst "von Hand gewählt" und hängt den Agenten von der Stufe ab.
@@ -1205,18 +1210,18 @@ export function CreateAgentModal({
                       {!simpleMode && (
                         <div>
                           <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                            Budget pro Monat (USD){" "}
+                            Budget pro Monat ({money.code}){" "}
                             <span className="text-muted-foreground/40">(optional)</span>
                           </label>
                           <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground/50">$</span>
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground/50">{money.symbol}</span>
                             <input
                               type="number"
                               step="0.01"
                               min="0"
                               value={budgetUsd}
                               onChange={(e) => setBudgetUsd(e.target.value)}
-                              placeholder="Unlimited"
+                              placeholder="unbegrenzt"
                               className={cn(
                                 "w-full rounded-lg border border-foreground/[0.1] bg-background/80 pl-7 pr-4 py-2.5 text-sm outline-none transition-all tabular-nums",
                                 mode === "custom_llm"
@@ -1239,13 +1244,15 @@ export function CreateAgentModal({
                                 onChange={(e) => setBudgetExceededAction(e.target.value as "haiku" | "stop")}
                                 className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                               >
-                                <option value="haiku">Sparmodus — auf Haiku umschalten</option>
                                 <option value="stop">Stoppen — Agent pausieren</option>
+                                <option value="haiku">Sparmodus — günstigeres Modell</option>
                               </select>
                               <p className="mt-1 text-[11px] text-muted-foreground/60">
                                 {budgetExceededAction === "haiku"
-                                  ? "Agent arbeitet weiter, aber mit dem günstigen Haiku-Modell."
-                                  : "Agent wird gestoppt und nimmt keine neuen Tasks an."}
+                                  ? mode === "claude_code"
+                                    ? "Agent arbeitet weiter, aber mit dem günstigeren Modell seiner Laufzeit."
+                                    : "Diese Laufzeit hat kein günstigeres Modell — bei aufgebrauchtem Budget wird angehalten."
+                                  : "Agent nimmt keine neuen Aufgaben und Chat-Nachrichten mehr an; Admins werden benachrichtigt."}
                               </p>
                             </div>
                           )}

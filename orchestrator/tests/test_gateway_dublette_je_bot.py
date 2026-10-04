@@ -90,7 +90,10 @@ class DoppeltPruefungTests(unittest.IsolatedAsyncioTestCase):
         enqueued = []
 
         async def _enqueue(_redis, message):
+            from app.core.chat_auftrag import Einreihung
+
             enqueued.append(message.agent_id)
+            return Einreihung(True)  # enqueue meldet seit #898 das Ergebnis der Budgetpruefung
 
         async def _nichts(*_a, **_k):
             return None

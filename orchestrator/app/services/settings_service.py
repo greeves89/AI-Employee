@@ -77,6 +77,8 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "skill_builtin_seeded",
     "display_currency",
     "usd_eur_rate",
+    # Monatsbudget auch fuer Chat-Nachrichten (#898), "True"/"False".
+    "budget_gilt_fuer_chat",
     "aws_region",
     "vertex_project_id",
     "vertex_region",

@@ -1582,7 +1582,7 @@ class AgentManager:
             env.setdefault("GH_TOKEN", github_token)
         return env
 
-    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str | None = None,
+    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "stop", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str | None = None,
                            knowledge_md: str | None = None, template_id: int | None = None,
                            root_bestaetigt: bool = False) -> Agent:
         # Lizenz: ZUERST, bevor irgendetwas entsteht — und hier statt in einem
@@ -2739,36 +2739,16 @@ class AgentManager:
                 "reasoning_effort": llm_cfg.get("reasoning_effort", ""),
             }
 
-        # Monthly spend (current calendar month) for budget display.
-        # Uses a separate session — this method runs concurrently per agent.
-        # Counts BOTH task runs and chat messages — chat is real spend too.
+        # Kosten im laufenden Monat fuer die Budgetanzeige — aus der EINEN
+        # Kostenquelle (core/kosten, #896): Aufgaben UND Chat, dieselbe Zahl, mit
+        # der auch die Budgetpruefung rechnet. Eigene Sitzung: diese Methode laeuft
+        # je Agent parallel (asyncio.gather), die Anfrage-Sitzung ist nicht teilbar.
+        from app.core.kosten import Bereich, kosten as _kosten, monatsbeginn
         from app.db.session import async_session_factory
-        from app.models.task import Task as _Task
-        from app.models.chat_message import ChatMessage as _ChatMessage
-        from sqlalchemy import func as _func
-        from datetime import datetime as _dt, timezone as _tz
 
-        _month_start = _dt.now(_tz.utc).replace(
-            day=1, hour=0, minute=0, second=0, microsecond=0
-        )
         async with async_session_factory() as _cost_session:
-            _task_cost = await _cost_session.execute(
-                select(_func.coalesce(_func.sum(_Task.cost_usd), 0)).where(
-                    _Task.agent_id == agent_id,
-                    _Task.cost_usd.isnot(None),
-                    _Task.created_at >= _month_start,
-                )
-            )
-            _chat_cost = await _cost_session.execute(
-                select(_func.coalesce(_func.sum(_ChatMessage.cost_usd), 0)).where(
-                    _ChatMessage.agent_id == agent_id,
-                    _ChatMessage.cost_usd.isnot(None),
-                    _ChatMessage.timestamp >= _month_start,
-                )
-            )
-            monthly_cost_usd = round(
-                float(_task_cost.scalar() or 0) + float(_chat_cost.scalar() or 0), 4
-            )
+            monthly_cost_usd = round((await _kosten(
+                _cost_session, Bereich.agent(agent_id), seit=monatsbeginn())).gesamt, 4)
 
         # Linked AI account name/provider for display (badge on the agent card)
         ai_account_name = None

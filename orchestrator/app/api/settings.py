@@ -66,6 +66,7 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         allow_personal_credentials=settings.allow_personal_credentials,
         display_currency=settings.display_currency,
         usd_eur_rate=settings.usd_eur_rate,
+        budget_gilt_fuer_chat=settings.budget_gilt_fuer_chat,
         sso_only_login=settings.sso_only_login,
         require_user_approval=settings.require_user_approval,
         require_mfa_for_password_accounts=settings.require_mfa_for_password_accounts,
@@ -156,6 +157,9 @@ _FIELD_MAP: dict[str, str] = {
     "allow_team_license": "allow_team_license",
     "display_currency": "display_currency",
     "usd_eur_rate": "usd_eur_rate",
+    # Budget im Chat (#898). Fehlt ein Schalter hier, verwirft die Schleife unten
+    # ihn lautlos — und ohne Eintrag in ALLOWED_KEYS scheitert das Speichern.
+    "budget_gilt_fuer_chat": "budget_gilt_fuer_chat",
     "sso_only_login": "sso_only_login",
     "require_user_approval": "require_user_approval",
     # Zwei-Faktor-Pflicht (#915) — vierter Weg: Schema, diese Map, ALLOWED_KEYS, Antwort.

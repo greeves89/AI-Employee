@@ -1,5 +1,4 @@
 import io
-import json
 import logging
 import tempfile
 
@@ -123,7 +122,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         # Forward transcribed text to agent via Redis (same as handle_message)
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
         message_id = f"tg-voice-{update.message.message_id}"
-        payload = json.dumps({
+        payload = {
             "id": message_id,
             "text": transcript,
             "model": None,
@@ -134,9 +133,14 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 "first_name": update.effective_user.first_name if update.effective_user else "",
                 "media_type": "voice",
             },
-        })
-        await redis.lpush(f"agent:{agent_id}:chat", payload)
+        }
+        # Budget (#898): gesperrt → der Chat-Lauscher meldet den Hinweis.
+        from app.core.chat_auftrag import einreihen
+
+        eingereiht = (await einreihen(redis, agent_id, payload)).eingereiht
         await redis.aclose()
+        if not eingereiht:
+            return
 
         # Show typing indicator while agent processes
         await update.effective_chat.send_action("typing")

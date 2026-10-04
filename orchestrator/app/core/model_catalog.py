@@ -178,6 +178,33 @@ def coerce_model_for_mode(mode: str, model: str | None) -> str | None:
     return default_model_for_mode(mode)
 
 
+#: Stufe im Katalog, die als günstiges Ausweichmodell gilt (Budget-Sparmodus).
+SPAR_STUFE = "Fast"
+
+
+def sparmodell_fuer(mode: str, provider: str | None = None) -> str | None:
+    """Das günstigere Modell dieser Laufzeit — oder ``None``, wenn sie keins hat (#898).
+
+    Der Budget-Sparmodus setzte früher pauschal ein Claude-Haiku. Codex- und
+    Custom-LLM-Agenten können das nicht ausführen; die Modellprüfung setzte es
+    stillschweigend auf das Standardmodell zurück, und das Budget war wirkungslos.
+    Jetzt entscheidet der Katalog: nur wo die Laufzeit ein Modell der Stufe
+    ``SPAR_STUFE`` führt, gibt es einen Sparmodus.
+    """
+    if mode == "claude_code" and provider == "codex":
+        mode = "codex_cli"
+    entry = MODEL_CATALOG.get(mode)
+    if not entry:
+        return None
+    modelle = entry["providers"].get(provider or entry["default_provider"])
+    if modelle is None:
+        return None
+    for modell in modelle:
+        if modell.get("tier") == SPAR_STUFE and is_model_allowed_for_mode(mode, modell["value"]):
+            return modell["value"]
+    return None
+
+
 def catalog_payload() -> dict:
     """Serialisable catalog for ``GET /agents/models`` — the frontend renders
     provider + model dropdowns straight from this, no hardcoded lists."""

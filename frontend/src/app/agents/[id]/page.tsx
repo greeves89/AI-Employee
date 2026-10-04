@@ -50,6 +50,7 @@ import { CommandPoliciesTab } from "@/components/agents/command-policies-tab";
 import { PermissionPackagesPanel } from "@/components/agents/permission-packages-panel";
 import { ComputerUseDefaultPanel } from "@/components/agents/computer-use-default-panel";
 import { useTasks } from "@/hooks/use-tasks";
+import { useMoney } from "@/hooks/use-money";
 import { AUFGABEN_STATUS, aufgabenTitel, istSystemZeitplan } from "@/lib/aufgaben-anzeige";
 import { Fenster } from "@/components/ui/fenster";
 import { MarkdownContent } from "@/components/ui/markdown-content";
@@ -736,7 +737,7 @@ function BudgetBar({ spent, budget, action }: { spent: number; budget: number; a
   // Auslastung weiterhin auf einen Blick, die Zahl bleibt die eigentliche Aussage.
   return (
     <div
-      title={`Bei Erreichen des Budgets: ${action === "stop" ? "Agent anhalten" : "auf Haiku wechseln"}`}
+      title={`Bei Erreichen des Budgets: ${action === "stop" ? "Agent anhalten" : "Sparmodus (günstigeres Modell)"}`}
       className="flex items-center gap-2.5 rounded-lg border border-foreground/[0.06] bg-card/60 px-3 py-1.5"
     >
       <DollarSign className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
@@ -3029,12 +3030,16 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
   const isAdmin = useAuthStore((s) => s.user?.role) === "admin";
   const currentTimeout = agent.config?.idle_timeout_minutes ?? "";
   const currentQuota = agent.config?.workspace_size_gb ?? "";
-  const currentBudget = agent.budget_usd != null ? String(agent.budget_usd) : "";
-  const currentAction = (agent.budget_exceeded_action as "haiku" | "stop") ?? "haiku";
+  // Budget in der Anzeigewährung (#896): Vorbelegung umgerechnet, gespeichert
+  // wird USD. Bis die Währung geladen ist, steht USD — danach nachziehen.
+  const money = useMoney();
+  const currentBudget = money.toInput(agent.budget_usd);
+  const currentAction = (agent.budget_exceeded_action as "haiku" | "stop") ?? "stop";
 
   const [idleTimeout, setIdleTimeout] = useState(String(currentTimeout));
   const [workspaceGb, setWorkspaceGb] = useState(String(currentQuota));
   const [budgetUsd, setBudgetUsd] = useState(currentBudget);
+  useEffect(() => { setBudgetUsd(currentBudget); }, [currentBudget]);
   const [budgetAction, setBudgetAction] = useState<"haiku" | "stop">(currentAction);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -3054,8 +3059,8 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
         });
       }
       if (budgetChanged) {
-        const b = budgetUsd.trim() === "" ? null : parseFloat(budgetUsd);
-        await api.updateAgentBudget(agentId, b, budgetAction);
+        const b = money.fromInput(budgetUsd);
+        if (b !== undefined) await api.updateAgentBudget(agentId, b, budgetAction);
       }
       const updated = await api.getAgent(agentId);
       onUpdated(updated as Agent);
@@ -3145,11 +3150,12 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
           {isAdmin ? (
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">$</span>
+                <span className="text-sm text-muted-foreground">{money.symbol}</span>
                 <input
                   type="number"
                   min="0"
-                  step="1"
+                  step="0.01"
+                  aria-label={`Monatsbudget in ${money.code}`}
                   value={budgetUsd}
                   onChange={(e) => setBudgetUsd(e.target.value)}
                   placeholder="kein Limit"
@@ -3161,15 +3167,15 @@ function ResourceLimitsSection({ agentId, agent, onUpdated }: { agentId: string;
                 onChange={(e) => setBudgetAction(e.target.value as "haiku" | "stop")}
                 className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
               >
-                <option value="haiku">Bei Limit: auf Haiku umschalten</option>
-                <option value="stop">Bei Limit: Agent stoppen</option>
+                <option value="stop">Bei Limit: anhalten (Empfehlung)</option>
+                <option value="haiku">Bei Limit: Sparmodus (günstigeres Modell, falls die Laufzeit eins hat)</option>
               </select>
               <p className="text-xs text-muted-foreground/50">Leer = kein Limit.</p>
             </div>
           ) : (
             <p className="text-sm text-foreground/80">
-              {currentBudget
-                ? `$${currentBudget} / Monat · bei Überschreitung: ${currentAction === "stop" ? "Agent stoppt" : "Haiku-Modus"}`
+              {agent.budget_usd != null
+                ? `${money.fmt(agent.budget_usd)} / Monat · bei Überschreitung: ${currentAction === "stop" ? "Agent hält an" : "Sparmodus"}`
                 : "Kein Budget-Limit gesetzt."}
             </p>
           )}

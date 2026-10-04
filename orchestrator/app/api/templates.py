@@ -13,6 +13,7 @@ from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent_template import AgentTemplate
+from app.schemas.agent import BUDGET_VORGABE, BudgetExceededAction
 from app.services.docker_service import DockerService
 from app.services.redis_service import RedisService
 
@@ -57,7 +58,7 @@ class TemplateUpdate(BaseModel):
 class CreateFromTemplate(BaseModel):
     name: str | None = None  # Override agent name
     budget_usd: float | None = None  # Monthly budget cap (None = unlimited)
-    budget_exceeded_action: str = "haiku"  # "haiku" | "stop"
+    budget_exceeded_action: BudgetExceededAction = BUDGET_VORGABE
     # Schlaegt die Vorlage vollen Root-Zugriff vor, gilt er nur mit diesem Haken (#910).
     root_bestaetigt: bool = False
 

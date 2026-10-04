@@ -1511,6 +1511,10 @@ async def update_agent_budget(
         agent.budget_usd = body.budget_usd
         if body.budget_exceeded_action is not None:
             agent.budget_exceeded_action = body.budget_exceeded_action
+        # Gespeichert = vom Admin bestaetigt: der Concierge-Hinweis zur Umstellung
+        # auf „Stoppen" (#898) ist damit erledigt.
+        from app.core.budget import hinweis_erledigen
+        hinweis_erledigen(agent)
         await db.commit()
         return {
             "agent_id": agent_id,
@@ -2598,19 +2602,18 @@ async def send_message_to_agent(
                         await redis.client.setex(
                             f"chat:msg:{_cb_id}:session", 3600, _origin
                         )
-                    await redis.client.lpush(
-                        f"agent:{agent_id}:chat",
-                        json.dumps({
-                            "id": _cb_id,
-                            "chat_session_id": _origin,
-                            "text": (
-                                f"[Rueckmeldung] {sender} hat auf deine Frage "
-                                f"geantwortet:\n\n{body.text[:1500]}\n\n"
-                                "Berichte dem Menschen kurz, was daraus folgt."
-                            ),
-                            "source": "webapp",
-                        }),
-                    )
+                    from app.core.chat_auftrag import einreihen
+
+                    await einreihen(redis.client, agent_id, {
+                        "id": _cb_id,
+                        "chat_session_id": _origin,
+                        "text": (
+                            f"[Rueckmeldung] {sender} hat auf deine Frage "
+                            f"geantwortet:\n\n{body.text[:1500]}\n\n"
+                            "Berichte dem Menschen kurz, was daraus folgt."
+                        ),
+                        "source": "webapp",
+                    })
                     await redis.client.publish(
                         f"agent:{agent_id}:chat:response",
                         json.dumps({

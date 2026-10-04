@@ -9,10 +9,11 @@ AgentMode = Literal["claude_code", "codex_cli", "custom_llm"]
 AutonomyLevel = Literal["l1", "l2", "l3", "l4", "custom"]
 LLMProviderType = Literal["openai", "anthropic", "google", "ollama", "lm-studio"]
 
-# What happens when an agent's monthly budget is exhausted:
-#   "haiku" = downgrade tasks to the cheap fallback model
-#   "stop"  = block new tasks and stop the agent
+# Was passiert, wenn das Monatsbudget eines Agenten aufgebraucht ist (#898):
+#   "stop"  = keine neuen Aufgaben/Chat-Nachrichten, Admin wird benachrichtigt (Vorgabe)
+#   "haiku" = Sparmodus: guenstigeres Modell der Laufzeit, sofern es eins gibt
 BudgetExceededAction = Literal["haiku", "stop"]
+BUDGET_VORGABE: BudgetExceededAction = "stop"
 
 
 ThinkingMode = Literal["off", "auto", "on"]
@@ -71,7 +72,7 @@ class AgentCreate(BaseModel):
     integrations: list[str] | None = None
     permissions: list[str] | None = None
     budget_usd: float | None = None
-    budget_exceeded_action: BudgetExceededAction = "haiku"
+    budget_exceeded_action: BudgetExceededAction = BUDGET_VORGABE
     mode: AgentMode = "claude_code"
     llm_config: LLMConfig | None = None  # custom_llm: inline config …
     ai_account_id: int | None = None     # … or a reusable, admin-managed AI account
@@ -107,7 +108,7 @@ class AgentResponse(BaseModel):
     permissions: list[str] = []
     update_available: bool = False
     budget_usd: float | None = None
-    budget_exceeded_action: str = "haiku"
+    budget_exceeded_action: str = BUDGET_VORGABE
     monthly_cost_usd: float = 0.0
     browser_mode: bool = False
     autonomy_level: str = "l3"

@@ -855,29 +855,17 @@ async def list_users(request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     users = result.scalars().all()
 
+    # Kosten je Nutzer im laufenden Monat — aus der einen Kostenquelle (#896),
+    # dieselbe Zahl, mit der das Nutzerbudget geprueft wird.
+    from app.core.kosten import Bereich, kosten, monatsbeginn
     from app.models.agent import Agent
-    from app.models.task import Task
-    from app.models.chat_message import ChatMessage
 
-    month_start = datetime.now(timezone.utc).replace(
-        day=1, hour=0, minute=0, second=0, microsecond=0
-    )
-    task_cost_rows = await db.execute(
-        select(Agent.user_id, func.coalesce(func.sum(Task.cost_usd), 0))
-        .join(Task, Task.agent_id == Agent.id)
-        .where(Task.cost_usd.isnot(None), Task.created_at >= month_start)
-        .group_by(Agent.user_id)
-    )
-    chat_cost_rows = await db.execute(
-        select(Agent.user_id, func.coalesce(func.sum(ChatMessage.cost_usd), 0))
-        .join(ChatMessage, ChatMessage.agent_id == Agent.id)
-        .where(ChatMessage.cost_usd.isnot(None), ChatMessage.timestamp >= month_start)
-        .group_by(Agent.user_id)
-    )
+    je_agent = (await kosten(db, Bereich.anlage(), seit=monatsbeginn())).je_agent
+    besitzer = dict((await db.execute(select(Agent.id, Agent.user_id))).all())
     monthly_cost_by_user: dict[str, float] = defaultdict(float)
-    for user_id, cost in [*task_cost_rows.all(), *chat_cost_rows.all()]:
-        if user_id:
-            monthly_cost_by_user[user_id] += float(cost or 0)
+    for agent_id, betrag in je_agent.items():
+        if besitzer.get(agent_id):
+            monthly_cost_by_user[besitzer[agent_id]] += betrag
 
     users_out = []
     for u in users:

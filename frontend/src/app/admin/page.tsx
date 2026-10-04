@@ -84,7 +84,8 @@ import { DatensicherungKarte } from "@/components/admin/datensicherung-karte";
 import { nutzerLoeschenMitRueckfrage } from "@/components/admin/nutzer-loeschen";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, moneyTitle } from "@/lib/money";
+import { useMoney } from "@/hooks/use-money";
 import { rollenName } from "@/lib/rollen";
 
 
@@ -1333,10 +1334,34 @@ function BudgetTab({
   onBudgetChange: (agentId: string, budget: number | null) => void;
 }) {
   const toast = useToast();
+  const money = useMoney();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  const [editAction, setEditAction] = useState<"haiku" | "stop">("haiku");
+  const [editAction, setEditAction] = useState<"haiku" | "stop">("stop");
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  // Budget auch im Chat (#898) — Plattform-Schalter, Vorgabe an.
+  const [chatBudget, setChatBudget] = useState<boolean | null>(null);
+  const [chatBudgetSaving, setChatBudgetSaving] = useState(false);
+  useEffect(() => {
+    api.getSettings()
+      .then((s) => setChatBudget(s.budget_gilt_fuer_chat ?? true))
+      .catch(() => setChatBudget(null));
+  }, []);
+  const handleChatBudgetToggle = async () => {
+    if (chatBudget === null) return;
+    const neu = !chatBudget;
+    setChatBudgetSaving(true);
+    try {
+      await api.updateSettings({ budget_gilt_fuer_chat: neu });
+      setChatBudget(neu);
+      toast.success(neu ? "Budget gilt jetzt auch im Chat" : "Chat ist vom Budget ausgenommen");
+    } catch (e) {
+      toast.error("Konnte die Einstellung nicht speichern", String(e));
+    } finally {
+      setChatBudgetSaving(false);
+    }
+  };
 
   // Idle-Stop global setting
   const [idleMax, setIdleMax] = useState<number>(0);
@@ -1367,7 +1392,11 @@ function BudgetTab({
     }
   };
 
-  const totalCost = overview?.cost.total_usd ?? 0;
+  // „Kosten diesen Monat" = Summe der Liste unten (+ Agenten, die es nicht mehr
+  // gibt, als eigene Zeile). Beides aus derselben Kostenquelle (#896).
+  const geloeschtMonat = overview?.cost.geloescht_monat_usd ?? 0;
+  const monthCost = agents.reduce((s, a) => s + (a.monthly_cost_usd || 0), 0) + geloeschtMonat;
+  const sinceStart = overview?.cost.total_usd ?? 0;
 
   // Sort: over-budget first, then by spend desc
   const sorted = [...agents].sort((a, b) => {
@@ -1379,15 +1408,19 @@ function BudgetTab({
 
   const handleEdit = (agent: Agent) => {
     setEditingId(agent.id);
-    setEditValue(agent.budget_usd != null ? String(agent.budget_usd) : "");
-    setEditAction(agent.budget_exceeded_action ?? "haiku");
+    setEditValue(money.toInput(agent.budget_usd));
+    setEditAction(agent.budget_exceeded_action ?? "stop");
   };
 
   const handleSave = async (agentId: string) => {
     setSavingId(agentId);
     try {
-      const parsed = editValue.trim() === "" ? null : parseFloat(editValue);
-      if (editValue.trim() !== "" && (isNaN(parsed!) || parsed! < 0)) return;
+      // Eingabe in der Anzeigewährung, gespeichert wird USD (#896).
+      const parsed = money.fromInput(editValue);
+      if (parsed === undefined) {
+        toast.error("Ungültiger Betrag", "Bitte eine Zahl ab 0 eingeben oder leer lassen.");
+        return;
+      }
       await api.updateAgentBudget(agentId, parsed, editAction);
       onBudgetChange(agentId, parsed);
       setEditingId(null);
@@ -1451,12 +1484,43 @@ function BudgetTab({
         </div>
       </div>
 
+      {/* Budget auch im Chat (#898) */}
+      <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold mb-1">Budget gilt auch im Chat</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed max-w-xl">
+              Ist das Monatsbudget eines Agenten aufgebraucht, nimmt er auch im Chat keine Nachrichten
+              mehr an (Web, Telegram, Kanäle, Sprache). Der Mensch bekommt einen Hinweis, Admins eine
+              Benachrichtigung. Ausgeschaltet zählen Chat-Kosten weiter, gesperrt werden nur Aufgaben.
+            </p>
+          </div>
+          <button
+            onClick={handleChatBudgetToggle}
+            disabled={chatBudget === null || chatBudgetSaving}
+            title={chatBudget ? "Ausschalten" : "Einschalten"}
+            aria-pressed={chatBudget === true}
+            className="shrink-0 rounded-lg p-1 text-muted-foreground hover:text-foreground disabled:opacity-40"
+          >
+            {chatBudgetSaving ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : chatBudget ? (
+              <ToggleRight className="h-6 w-6 text-emerald-500" />
+            ) : (
+              <ToggleLeft className="h-6 w-6" />
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* Platform summary cards */}
       <div className="grid grid-cols-4 gap-4">
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
-          <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Gesamtkosten</p>
-          <p className="text-2xl font-bold text-foreground">{formatMoney(totalCost)}</p>
-          <p className="text-[10px] text-muted-foreground/50 mt-0.5">alle Agenten</p>
+          <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Kosten diesen Monat</p>
+          <p className="text-2xl font-bold text-foreground" title={moneyTitle(monthCost)}>{formatMoney(monthCost)}</p>
+          <p className="text-[10px] text-muted-foreground/50 mt-0.5" title={moneyTitle(sinceStart)}>
+            Aufgaben und Chat · seit Beginn {formatMoney(sinceStart)}
+          </p>
         </div>
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
           <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Mit Budget-Limit</p>
@@ -1562,9 +1626,12 @@ function BudgetTab({
                   {isEditing ? (
                     <>
                       <div className="flex items-center gap-1 rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] px-2 py-1">
-                        <span className="text-[11px] text-muted-foreground">$</span>
+                        <span className="text-[11px] text-muted-foreground">{money.symbol}</span>
                         <input
                           type="number"
+                          min={0}
+                          step="0.01"
+                          aria-label={`Monatsbudget in ${money.code}`}
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           placeholder="unbegrenzt"
@@ -1582,8 +1649,8 @@ function BudgetTab({
                         title="Aktion wenn Budget aufgebraucht"
                         className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] px-2 py-1 text-[11px] outline-none"
                       >
-                        <option value="haiku">→ Haiku</option>
                         <option value="stop">→ Stoppen</option>
+                        <option value="haiku">→ Sparmodus</option>
                       </select>
                       <button
                         onClick={() => handleSave(agent.id)}
@@ -1617,6 +1684,22 @@ function BudgetTab({
               </div>
             );
           })}
+          {geloeschtMonat > 0 && (
+            <div className="px-5 py-3.5 flex items-center gap-4">
+              <div className="shrink-0">
+                <div className="h-4 w-4 rounded-full border border-muted-foreground/20" />
+              </div>
+              <div className="w-[180px] shrink-0">
+                <p className="text-sm font-medium truncate text-muted-foreground">Gelöschte Agenten</p>
+                <p className="text-[10px] text-muted-foreground/50">nicht mehr vorhanden</p>
+              </div>
+              <div className="w-[90px] shrink-0 text-right">
+                <p className="text-sm font-mono font-semibold" title={moneyTitle(geloeschtMonat)}>{formatMoney(geloeschtMonat)}</p>
+                <p className="text-[10px] text-muted-foreground/50">verbraucht</p>
+              </div>
+              <div className="flex-1 min-w-0" />
+            </div>
+          )}
         </div>
       </div>
 

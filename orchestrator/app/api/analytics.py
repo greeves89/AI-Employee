@@ -15,7 +15,6 @@ from app.core.ownership import visible_agent_ids
 from app.db.session import get_db
 from app.dependencies import require_auth
 from app.models.agent import Agent, AgentState
-from app.models.chat_message import ChatMessage
 from app.models.skill import Skill, SkillTaskUsage
 from app.models.task import Task, TaskStatus
 from app.models.task_rating import TaskRating
@@ -51,7 +50,7 @@ async def get_overview(
         # Fresh user with no agents → everything is zero (never fall through to global).
         return {
             "period_days": days, "total_tasks": 0, "completed_tasks": 0,
-            "success_rate_pct": 0.0, "total_cost_usd": 0.0, "total_task_cost_usd": 0.0,
+            "chat_replies": 0, "done_total": 0, "success_rate_pct": 0.0, "total_cost_usd": 0.0, "total_task_cost_usd": 0.0,
             "total_chat_cost_usd": 0.0, "avg_duration_ms": 0, "total_time_saved_seconds": 0,
             "active_agents": 0, "avg_task_rating": None, "daily_tasks": [],
         }
@@ -64,21 +63,19 @@ async def get_overview(
     task_result = await db.execute(
         _scope_task(select(
             func.count(Task.id).label("total"),
-            func.sum(Task.cost_usd).label("total_cost"),
             func.avg(Task.duration_ms).label("avg_duration_ms"),
         ).where(Task.created_at >= since))
     )
     task_row = task_result.one()
 
-    # Chat cost stats — assistant chat turns are billed too
-    chat_stmt = select(func.sum(ChatMessage.cost_usd)).where(
-        ChatMessage.timestamp >= since,
-        ChatMessage.role == "assistant",
-    )
-    if aids is not None:
-        chat_stmt = chat_stmt.where(ChatMessage.agent_id.in_(aids))
-    chat_result = await db.execute(chat_stmt)
-    chat_cost = float(chat_result.scalar() or 0)
+    # Kosten und Chat-Antworten aus der EINEN Kostenquelle (#896) — dieselben
+    # Zahlen wie Budget und Health. Ein Chat-Auftrag legt keine Aufgabe an; ohne
+    # die Antworten stand im Dashboard „Erledigt 0" trotz eines Arbeitstags im Chat.
+    from app.core.kosten import Bereich, chat_antworten, kosten
+
+    bereich = Bereich.anlage() if aids is None else Bereich.agenten(aids)
+    kosten_zeitraum = await kosten(db, bereich, seit=since, je_tag=True)
+    chat_replies = await chat_antworten(db, bereich, seit=since)
 
     completed_result = await db.execute(
         _scope_task(select(func.count(Task.id)).where(
@@ -116,32 +113,34 @@ async def get_overview(
     avg_rating_result = await db.execute(rating_stmt)
     avg_rating = avg_rating_result.scalar()
 
-    # Daily task volume for sparkline (last `days` days)
-    from sqlalchemy import text as sa_text
-    daily_result = await db.execute(
-        sa_text(f"""
-            SELECT date_trunc('day', created_at) AS day,
-                   COUNT(id) AS count,
-                   COALESCE(SUM(cost_usd), 0) AS cost
-            FROM tasks
-            WHERE created_at >= :since
-                  {"AND agent_id = ANY(:aids)" if aids is not None else ""}
-            GROUP BY date_trunc('day', created_at)
-            ORDER BY date_trunc('day', created_at)
-        """),
-        {"since": since, **({"aids": aids} if aids is not None else {})},
-    )
-    daily_rows = daily_result.all()
-    daily_tasks = [{"date": str(r.day)[:10], "count": r.count, "cost": float(r.cost or 0)} for r in daily_rows]
+    # Daily task volume for sparkline (last `days` days). Tag wie in der
+    # Kostenquelle (``func.date``), damit Anzahl und Kosten denselben Tag meinen.
+    tag = func.date(Task.created_at)
+    daily_rows = (await db.execute(
+        _scope_task(select(tag.label("day"), func.count(Task.id).label("count"))
+                    .where(Task.created_at >= since))
+        .group_by(tag).order_by(tag)
+    )).all()
+    # Tageskosten inklusive Chat (aus ``kosten``); die Zahl der Aufgaben bleibt.
+    je_tag = dict(kosten_zeitraum.je_tag)
+    daily_tasks = [
+        {"date": str(r.day)[:10], "count": r.count, "cost": round(je_tag.pop(str(r.day)[:10], 0.0), 4)}
+        for r in daily_rows
+    ]
+    daily_tasks += [{"date": tag, "count": 0, "cost": round(betrag, 4)} for tag, betrag in je_tag.items()]
+    daily_tasks.sort(key=lambda d: d["date"])
 
     return {
         "period_days": days,
         "total_tasks": total_tasks,
         "completed_tasks": completed,
+        "chat_replies": chat_replies,
+        # „Erledigt" im Dashboard: fertige Aufgaben + Antworten im Chat.
+        "done_total": completed + chat_replies,
         "success_rate_pct": success_rate,
-        "total_cost_usd": round(float(task_row.total_cost or 0) + chat_cost, 4),
-        "total_task_cost_usd": round(float(task_row.total_cost or 0), 4),
-        "total_chat_cost_usd": round(chat_cost, 4),
+        "total_cost_usd": round(kosten_zeitraum.gesamt, 4),
+        "total_task_cost_usd": round(kosten_zeitraum.aufgaben, 4),
+        "total_chat_cost_usd": round(kosten_zeitraum.chat, 4),
         "avg_duration_ms": int(task_row.avg_duration_ms or 0),
         "total_time_saved_seconds": total_time_saved_seconds,
         "active_agents": active_agents,
@@ -386,13 +385,16 @@ async def get_agents_analytics(
             Task.agent_id,
             func.count(Task.id).label("total"),
             func.count(Task.id).filter(Task.status == TaskStatus.COMPLETED).label("completed"),
-            func.coalesce(func.sum(Task.cost_usd), 0).label("total_cost"),
             func.avg(Task.duration_ms).label("avg_duration_ms"),
         )
         .where(Task.agent_id.in_(agent_ids), Task.created_at >= since)
         .group_by(Task.agent_id)
     )
     task_by_agent = {row.agent_id: row for row in task_agg.all()}
+    # Kosten je Agent: Aufgaben UND Chat aus der einen Kostenquelle (#896).
+    from app.core.kosten import Bereich, kosten
+
+    kosten_je_agent = (await kosten(db, Bereich.agenten(agent_ids), seit=since)).je_agent
 
     rating_agg = await db.execute(
         select(
@@ -423,7 +425,7 @@ async def get_agents_analytics(
             "success_rate_pct": round(
                 (t.completed or 0) / total * 100, 1
             ) if total else 0.0,
-            "total_cost_usd": round(float(t.total_cost or 0), 4) if t else 0.0,
+            "total_cost_usd": round(kosten_je_agent.get(agent.id, 0.0), 4),
             "avg_duration_ms": int(t.avg_duration_ms or 0) if t else 0,
             "avg_rating": round(float(r.avg_rating), 2) if r and r.avg_rating else None,
             "rating_count": r.rating_count if r else 0,

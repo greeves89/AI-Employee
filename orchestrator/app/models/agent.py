@@ -57,11 +57,13 @@ class Agent(Base, TimestampMixin):
     # eigenstaendiger, auditierbarer Begriff bleibt (Issue #787 Punkt 1).
     access_policy: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict, server_default="{}")
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)  # None = unlimited; monthly cap
-    # What to do when the monthly budget is exhausted:
-    #   "haiku" = downgrade all tasks to the cheap fallback model
-    #   "stop"  = block new tasks and stop the agent container
+    # Was passiert, wenn das Monatsbudget aufgebraucht ist (#898):
+    #   "stop"  = keine neuen Aufgaben und Chat-Nachrichten, Admin wird benachrichtigt
+    #             (Vorgabe — vorher "haiku")
+    #   "haiku" = Sparmodus: guenstigeres Modell der Laufzeit (core/budget.py);
+    #             hat die Laufzeit keins (Codex, Custom-LLM), greift "stop"
     budget_exceeded_action: Mapped[str] = mapped_column(
-        String, default="haiku", server_default="haiku"
+        String, default="stop", server_default="stop"
     )
     browser_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     autonomy_level: Mapped[str] = mapped_column(String, default="l3", server_default="l3")
