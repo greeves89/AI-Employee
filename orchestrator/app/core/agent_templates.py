@@ -1861,7 +1861,7 @@ BUILTIN_TEMPLATES = [
     {
         "name": "bookkeeper",
         "display_name": "Buchhaltung",
-        "description": "Kontiert Belege vor, ordnet Konten zu, prüft Umsatzsteuer und sammelt Rückfragen",
+        "description": "Kontiert Rechnungen und Belege vor, ordnet Konten zu, prüft Umsatzsteuer und sammelt Rückfragen",
         "icon": "Receipt",
         "category": "finance",
         "model": "claude-sonnet-4-6",
@@ -2225,6 +2225,37 @@ BUILTIN_TEMPLATES = [
         ),
     },
 ]
+
+
+# Reihenfolge der Vorlagen-Kategorien in der Auswahl (#903): Fachbereiche zuerst,
+# Technik danach. Der Server sortiert, damit Web und iOS dieselbe Liste zeigen;
+# die Oberfläche gruppiert in der Reihenfolge, in der die Kategorien ankommen.
+KATEGORIE_REIHENFOLGE: tuple[str, ...] = (
+    "finance",       # Finanzen
+    "general",       # Allgemein (u. a. Angebot & Kalkulation, Disposition)
+    "sales",         # Vertrieb
+    "marketing",
+    "support",       # Kundenservice
+    "management",    # Leitung
+    "writing",       # Texte & Dokumentation
+    "productivity",  # Büro
+    "creative",      # Gestaltung
+    "data",          # ab hier Technik
+    "dev",
+    "ops",
+    "security",
+)
+_KATEGORIE_RANG = {k: i for i, k in enumerate(KATEGORIE_REIHENFOLGE)}
+_UMLAUTE = str.maketrans({"ä": "a", "ö": "o", "ü": "u", "ß": "ss"})
+
+
+def vorlagen_sortierschluessel(kategorie: str | None, anzeigename: str | None) -> tuple[int, str]:
+    """Rang der Kategorie, dann Anzeigename alphabetisch (Umlaute wie ihr Grundlaut).
+
+    Unbekannte Kategorien (eigene Vorlagen) landen hinten — sichtbar, nicht weg.
+    """
+    rang = _KATEGORIE_RANG.get(kategorie or "general", len(KATEGORIE_REIHENFOLGE))
+    return rang, (anzeigename or "").casefold().translate(_UMLAUTE)
 
 
 async def publish_builtin_templates_once(db) -> int:

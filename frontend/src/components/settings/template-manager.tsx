@@ -326,10 +326,10 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
                             {t.skills!.map(sk => (
                               <span
                                 key={sk.id}
-                                title={sk.description}
+                                title={sk.titel && sk.titel !== sk.name ? `${sk.name}: ${sk.description}` : sk.description}
                                 className="rounded-md bg-foreground/[0.06] px-2 py-0.5 text-xs text-foreground/80"
                               >
-                                {sk.name}
+                                {sk.titel || sk.name}
                               </span>
                             ))}
                           </div>

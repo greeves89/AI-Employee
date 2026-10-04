@@ -597,10 +597,13 @@ export interface AgentTemplate {
   model: string;
   role: string;
   permissions: string[];
+  /** Deutsche Namen der Rechte-Pakete in derselben Reihenfolge wie ``permissions`` (#903). */
+  permissions_anzeige?: string[];
   integrations: string[];
   mcp_server_ids: number[];
-  /** Skills, die jeder Agent aus dieser Vorlage mitbekommt (vom Server aufgelöst). */
-  skills?: { id: number; name: string; description: string }[];
+  /** Skills, die jeder Agent aus dieser Vorlage mitbekommt (vom Server aufgelöst).
+   *  ``titel`` ist der lesbare Name („Belege vorkontieren“), ``name`` der Schlüssel. */
+  skills?: { id: number; name: string; titel?: string; description: string }[];
   knowledge_template: string;
   /** Dauerauftraege, die jeder Agent aus dieser Vorlage mitbekommt. */
   responsibilities?: Responsibility[];
