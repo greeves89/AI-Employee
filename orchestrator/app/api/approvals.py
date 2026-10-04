@@ -579,7 +579,53 @@ async def check_approval_status(
         "status": approval.status,
         "user_response": approval.user_response,
         "resolved_at": approval.resolved_at.isoformat() if approval.resolved_at else None,
+        "agent_hint": hinweis_fuer_agent(approval),
     }
+
+
+#: So beginnt ``user_response``, wenn jemand nur bestaetigt und nichts gewaehlt hat.
+_NUR_BESTAETIGT = "Approved by "
+
+
+def hinweis_fuer_agent(approval: CommandApproval) -> str | None:
+    """Was der wartende Agent nach der Entscheidung liest — fuer JEDE Laufzeit gleich.
+
+    Abnahme v1.362.1: Auf die Rueckfrage „Soll ich eine Testnotiz anlegen?“ mit
+    der Antwort „Abbrechen“ las der Agent „User APPROVED the action … You may
+    proceed. Antwort des Nutzers: "Abbrechen"“ — und stellte dieselbe Frage
+    vier Minuten spaeter erneut. Eine Rueckfrage wird nicht genehmigt, sie wird
+    beantwortet. Die Laufzeiten (``notification-server.mjs``, ``api_client.py``)
+    reichen diesen Text nur durch; ohne ihn (aelterer Orchestrator) bleibt ihr
+    eigener.
+
+    ``None``, solange noch niemand entschieden hat.
+    """
+    status = approval.status
+    kennung = f"approval_id: {approval.id}"
+    antwort = (approval.user_response or "").strip()
+    frage = ((approval.meta or {}).get("question") or "").strip()
+    if status == ApprovalStatus.APPROVED:
+        if antwort and not antwort.startswith(_NUR_BESTAETIGT):
+            gefragt = f' your question "{frage}"' if frage else ""
+            return (
+                f'The user answered{gefragt}: "{antwort}" ({kennung}). '
+                "This answer is final: act exactly on it — if it means stop or cancel, "
+                "do not do the action — and do NOT ask this question again."
+            )
+        return f"User APPROVED the action ({kennung}). You may proceed."
+    if status == ApprovalStatus.DENIED:
+        grund = antwort or "No reason given"
+        return (
+            f'The user DECLINED ({kennung}). Reason: "{grund}". Do NOT proceed with '
+            "the action, and do NOT ask the same question again — tell the user what "
+            "you did not do."
+        )
+    if status == ApprovalStatus.EXPIRED:
+        return (
+            f"Nobody answered in time ({kennung}). Do NOT proceed with the action. "
+            "Tell the user you are still waiting for their decision."
+        )
+    return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════

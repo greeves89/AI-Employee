@@ -70,6 +70,7 @@ import { ERGEBNIS_ORDNER, dateiAnzeigeName, fuerExplorer, istErgebnisOrdner, ist
 import { useAutonomieGrenze } from "@/lib/autonomie-grenze";
 import { formatMoney } from "@/lib/money";
 import { setVisibleInterval } from "@/lib/visible-interval";
+import { gespraechsSuche } from "@/lib/chat-zustand";
 
 const statusConfig: Record<string, { icon: typeof CheckCircle2; color: string; badge: string }> = {
   pending: { icon: Clock, color: "text-amber-700 dark:text-amber-400", badge: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" },
@@ -161,16 +162,19 @@ export default function AgentDetailPage() {
     setChatFocusSession(sid);
     setActiveSub("chat");
   }, []);
+  // „Neues Gespräch“ steht als ``?neu=1`` in der Adresse (Abnahme v1.362.1): Ohne
+  // ``session`` öffnet die Seite sonst das zuletzt aktive Gespräch — nach F5 im
+  // frisch gewählten, noch leeren Gespräch landete man wieder im alten. Die neue
+  // Kennung kommt erst mit der ersten Nachricht dazu (``gemeldetesGespraech``).
+  const neuesGespraech = searchParams.get("neu") === "1";
   const merkeGespraech = useCallback((sid: string | null) => {
+    const vorher = offenesGespraech.current;
     offenesGespraech.current = sid;
     setChatStart(sid);
-    const params = new URLSearchParams(window.location.search);
-    if ((params.get("session") || null) === sid) return;
-    if (sid) params.set("session", sid);
-    else params.delete("session");
-    const qs = params.toString();
+    const suche = gespraechsSuche(window.location.search, sid, vorher);
+    if (suche === null) return;
     // Nur die Adresse — kein Neuaufbau des Chats, keine neue WebSocket-Verbindung.
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    router.replace(suche ? `${pathname}?${suche}` : pathname, { scroll: false });
   }, [router, pathname]);
   // Sprung von außen (Benachrichtigung, Link) auf ein anderes Gespräch.
   useEffect(() => {
@@ -477,7 +481,8 @@ export default function AgentDetailPage() {
                 key={chatFocusSession ? `chat-${chatFocusSession}` : "chat"}
                 agentId={agentId}
                 initialSessionId={chatStart}
-                zuletztAktives
+                // Bewusst „Neues Gespräch“ gewählt: nicht durch das letzte ersetzen.
+                zuletztAktives={!neuesGespraech}
                 onSessionChange={merkeGespraech}
                 busySessionIds={busyChatSessions}
                 onTurnChange={nachfassen}
@@ -596,7 +601,7 @@ export default function AgentDetailPage() {
               key={chatFocusSession ? `chat-${chatFocusSession}` : "chat"}
               agentId={agentId}
               initialSessionId={chatStart}
-              zuletztAktives
+              zuletztAktives={!neuesGespraech}
               onSessionChange={merkeGespraech}
               busySessionIds={busyChatSessions}
               onTurnChange={nachfassen}
