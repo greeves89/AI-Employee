@@ -187,6 +187,96 @@ class WiederherstellungSichertVorherTests(unittest.TestCase):
         self.assertTrue([a for a in self._aufrufe() if "CREATE DATABASE" in a])
 
 
+_HILFSCONTAINER_ATTRAPPE = r"""#!/usr/bin/env bash
+# Attrappe: ein Hilfscontainer darf root-eigene Dateien lesen/schreiben.
+echo "$*" >> "$ATTRAPPE_LOG"
+case "$*" in
+    *"/quelle:ro"*) printf 'aus-dem-hilfscontainer' | gzip ;;
+    *"/ziel "*|*"/ziel"*) cat > "$ATTRAPPE_STDIN" ;;
+esac
+exit 0
+"""
+
+
+class KonfigurationMitRootSchluesselTests(unittest.TestCase):
+    """Der Orchestrator legt orchestrator/data/.encryption_key als root mit 600 an.
+    Der erste echte Lauf auf einer Anlage brach deshalb genau beim Schlüssel ab —
+    die Sicherung hätte ohne ihn nichts getaugt (#892)."""
+
+    def setUp(self):
+        import os
+        import tempfile
+
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("als root ist jede Datei lesbar")
+        self.tmp = Path(tempfile.mkdtemp())
+        self.anlage = self.tmp / "anlage"
+        (self.anlage / "orchestrator" / "data").mkdir(parents=True)
+        self.schluessel = self.anlage / "orchestrator" / "data" / ".encryption_key"
+        self.schluessel.write_text("geheim")
+        (self.anlage / ".env").write_text("A=1\n")
+        bin_ = self.tmp / "bin"
+        bin_.mkdir()
+        (bin_ / "docker").write_text(_HILFSCONTAINER_ATTRAPPE)
+        (bin_ / "docker").chmod(0o755)
+        self.log, self.stdin = self.tmp / "docker.log", self.tmp / "docker.stdin"
+        self.env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}",
+                    "ATTRAPPE_LOG": str(self.log), "ATTRAPPE_STDIN": str(self.stdin)}
+
+    def tearDown(self):
+        import shutil
+
+        for p in (self.schluessel, self.schluessel.parent):
+            if p.exists():
+                p.chmod(0o700)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _bash(self, befehl: str, *args: str):
+        return subprocess.run(["bash", "-c", f'umask 077; source "{HILFSDATEI}"; {befehl}', "_", *args],
+                              env=self.env, capture_output=True, text=True, timeout=30)
+
+    def _docker_aufrufe(self):
+        return self.log.read_text().splitlines() if self.log.exists() else []
+
+    def test_lesbarer_schluessel_direkt_ohne_hilfscontainer(self):
+        archiv = self.tmp / "konfiguration.tar.gz"
+        lauf = self._bash('konfiguration_einpacken "$1" "$2" alpine .env orchestrator/data',
+                          str(archiv), str(self.anlage))
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        import tarfile
+        with tarfile.open(archiv) as t:
+            self.assertIn("orchestrator/data/.encryption_key", t.getnames())
+        self.assertEqual(self._docker_aufrufe(), [])
+
+    def test_root_eigener_schluessel_ueber_hilfscontainer(self):
+        self.schluessel.chmod(0o000)
+        archiv = self.tmp / "konfiguration.tar.gz"
+        lauf = self._bash('konfiguration_einpacken "$1" "$2" alpine .env orchestrator/data',
+                          str(archiv), str(self.anlage))
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        self.assertEqual(gzip.decompress(archiv.read_bytes()), b"aus-dem-hilfscontainer")
+        self.assertEqual(archiv.stat().st_mode & 0o777, 0o600, "Geheimnisse bleiben privat")
+        aufruf = self._docker_aufrufe()[0]
+        self.assertIn(f"{self.anlage}:/quelle:ro", aufruf, "nur lesend eingebunden")
+
+    def test_zuruecklegen_ueber_hilfscontainer_wenn_schluessel_root_gehoert(self):
+        import io
+        import tarfile
+
+        archiv = self.tmp / "sicherung.tar.gz"
+        with tarfile.open(archiv, "w:gz") as t:
+            daten = b"neu"
+            info = tarfile.TarInfo("orchestrator/data/.encryption_key")
+            info.size = len(daten)
+            t.addfile(info, io.BytesIO(daten))
+        self.schluessel.chmod(0o400)
+        self.schluessel.parent.chmod(0o500)
+        lauf = self._bash('konfiguration_auspacken "$1" "$2" alpine', str(archiv), str(self.anlage))
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        self.assertIn(f"{self.anlage}:/ziel", self._docker_aufrufe()[0])
+        self.assertEqual(self.stdin.read_bytes(), archiv.read_bytes(), "das Archiv geht an den Container")
+
+
 _CURL_ATTRAPPE = r"""#!/usr/bin/env bash
 # Attrappe fuer curl: Argumente (= das, was `ps` zeigt) und stdin mitschreiben.
 printf '%s\n' "$@" > "$CURL_ARGS"

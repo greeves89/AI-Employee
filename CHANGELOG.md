@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.1] - 2026-10-04
+
+### Behoben
+- **Datensicherung brach beim Schlüssel ab:** Der Orchestrator legt
+  `orchestrator/data/.encryption_key` als root mit Rechten 600 an; `backup.sh` lief als
+  normaler Nutzer und konnte ihn nicht lesen — die Sicherung endete im Schritt
+  „Konfiguration“, ausgerechnet ohne den Schlüssel. Jetzt liest (und `restore.sh`
+  schreibt) in diesem Fall ein Hilfscontainer wie bei den Volumes; das Archiv entsteht
+  weiterhin mit Rechten 600. Gefunden beim ersten echten Lauf auf einer Anlage.
+
+---
+
 ## [1.362.0] - 2026-10-04
 
 Umsetzung der Befunde aus einem Markttest mit vier Testrollen (Geschäftsführung,

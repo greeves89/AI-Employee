@@ -175,7 +175,7 @@ if [ "$FORMAT" = "2" ] && ! $DB_ONLY; then
         run cp -p .env "$SICHERHEITSKOPIE"
         log "Bisherige .env aufgehoben als ${SICHERHEITSKOPIE}"
     fi
-    run tar xzf "${BACKUP_PATH}/konfiguration.tar.gz" -C "$INSTALL_DIR"
+    run konfiguration_auspacken "${BACKUP_PATH}/konfiguration.tar.gz" "$INSTALL_DIR" "$ALPINE_IMAGE"
     run chmod 600 .env
     log "Schlüssel und .env zurückgelegt."
 

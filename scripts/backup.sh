@@ -157,7 +157,7 @@ fi
 [ -f "${INSTALL_DIR}/orchestrator/data/.encryption_key" ] || [ -n "$(env_wert "$ENV_DATEI" ENCRYPTION_KEY)" ] \
     || log "WARNUNG: weder ENCRYPTION_KEY in .env noch orchestrator/data/.encryption_key gefunden."
 # shellcheck disable=SC2086  # TEILE ist eine bewusst getrennte Liste
-tar czf "${BACKUP_PATH}/konfiguration.tar.gz" -C "$INSTALL_DIR" $TEILE
+konfiguration_einpacken "${BACKUP_PATH}/konfiguration.tar.gz" "$INSTALL_DIR" "$ALPINE_IMAGE" $TEILE
 log "Konfiguration gesichert (${TEILE# })"
 
 # ─── 4. Manifest ──────────────────────────────────────────────────────────────

@@ -116,3 +116,32 @@ pruefsumme() {
         shasum -a 256 "$@"
     fi
 }
+
+# Konfiguration (.env, orchestrator/data/) einpacken.
+#
+# Der Orchestrator legt orchestrator/data/ als root an, den Schlüssel mit 600 —
+# als normaler Nutzer ist er nicht lesbar (erster echter Lauf auf einer Anlage:
+# Sicherung brach genau beim Schlüssel ab). Dann liest ein Hilfscontainer wie bei
+# den Volumes; das Archiv schreibt trotzdem die Shell, also mit unseren Rechten.
+#   konfiguration_einpacken <archiv> <install_dir> <image> <teil>...
+konfiguration_einpacken() {
+    local archiv="$1" install_dir="$2" image="$3"
+    shift 3
+    if tar czf "$archiv" -C "$install_dir" "$@" 2>/dev/null; then
+        return 0
+    fi
+    echo "Konfiguration nicht direkt lesbar (Schlüssel gehört root) — lese über Hilfscontainer" >&2
+    docker run --rm -v "${install_dir}:/quelle:ro" "$image" tar czf - -C /quelle "$@" > "$archiv"
+}
+
+# Gegenstück: Konfiguration zurücklegen — direkt, sonst über einen Hilfscontainer,
+# der root-eigene Dateien (Schlüssel) überschreiben darf und Besitzer erhält.
+#   konfiguration_auspacken <archiv> <install_dir> <image>
+konfiguration_auspacken() {
+    local archiv="$1" install_dir="$2" image="$3"
+    if tar xzf "$archiv" -C "$install_dir" 2>/dev/null; then
+        return 0
+    fi
+    echo "Konfiguration nicht direkt schreibbar (Schlüssel gehört root) — lege über Hilfscontainer zurück" >&2
+    docker run --rm -i -v "${install_dir}:/ziel" "$image" tar xzf - -C /ziel < "$archiv"
+}
