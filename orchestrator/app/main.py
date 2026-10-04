@@ -2677,7 +2677,7 @@ clean Markdown; you don't need to commit.
                         "telegram:notification",
                         json.dumps({
                             "text": (
-                                "❌ *Job nach Neustart abgestürzt*\n\n"
+                                "*Job nach Neustart abgestürzt*\n\n"
                                 f"Job '{md_escape(str(job.kind))}' (`{md_escape(str(job.id))}`) hat den "
                                 "Container-Neustart nicht überlebt (kein Heartbeat)."
                             ),

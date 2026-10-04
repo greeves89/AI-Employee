@@ -1690,11 +1690,11 @@ class SchedulerService:
                 )
                 payload = {
                     "text": (
-                        f"⚠️ Schedule *{safe_name}* has {drift} unaccounted runs "
-                        f"(total={s.total_runs}, ok={s.success_count}, "
-                        f"fail={s.fail_count}).\n"
-                        f"Last run {s.last_run_at.isoformat()} "
-                        f"({int(stale_for.total_seconds() // 3600)}h ago)."
+                        f"Zeitplan *{safe_name}* hat {drift} Läufe ohne Ergebnis "
+                        f"(gesamt {s.total_runs}, erfolgreich {s.success_count}, "
+                        f"fehlgeschlagen {s.fail_count}).\n"
+                        f"Letzter Lauf {s.last_run_at.strftime('%d.%m.%Y %H:%M UTC')} "
+                        f"(vor {int(stale_for.total_seconds() // 3600)} h)."
                     ),
                     "parse_mode": "Markdown",
                 }
@@ -1790,7 +1790,7 @@ class SchedulerService:
                 if self.redis and self.redis.client:
                     payload = {
                         "text": (
-                            f"⚠️ Task *{md_escape(task.title)}* stale — kein "
+                            f"Aufgabe *{md_escape(task.title)}* hängt — kein "
                             f"Heartbeat >{minuten} min (id `{task.id}`), als fehlgeschlagen markiert."
                         ),
                         "parse_mode": "Markdown",
@@ -2024,8 +2024,8 @@ class SchedulerService:
             import json as _json
             payload = {
                 "text": (
-                    f"🔴 Scheduler: Datenbank seit ~{outage_min} Minuten nicht "
-                    "erreichbar — faellige Zeitplaene werden gerade nicht geprueft."
+                    f"Zeitplanung: Datenbank seit ~{outage_min} Minuten nicht "
+                    "erreichbar — fällige Zeitpläne werden gerade nicht geprüft."
                 ),
                 "parse_mode": "Markdown",
             }
@@ -2102,7 +2102,7 @@ class SchedulerService:
                 late_min = int((now - as_utc(s.next_run_at)).total_seconds() // 60)
                 payload = {
                     "text": (
-                        f"⚠️ Schedule *{md_escape(s.name)}* verpasst — geplant "
+                        f"Zeitplan *{md_escape(s.name)}* verpasst — geplant "
                         f"{slot_key} (überfällig {late_min} min). Wird nachgeholt."
                     ),
                     "parse_mode": "Markdown",
@@ -2147,9 +2147,9 @@ class SchedulerService:
                     continue
                 payload = {
                     "text": (
-                        f"🔴 Schedule *{md_escape(s.name)}* hat einen faelligen "
+                        f"Zeitplan *{md_escape(s.name)}* hat einen fälligen "
                         f"Termin lautlos verloren — zuletzt gelaufen: {marker}. "
-                        "next_run_at sieht gesund aus, ist es aber nicht."
+                        "Der nächste Termin sieht gesund aus, ist es aber nicht."
                     ),
                     "parse_mode": "Markdown",
                 }

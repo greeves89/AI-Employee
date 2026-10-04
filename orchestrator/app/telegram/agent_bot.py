@@ -23,6 +23,7 @@ from telegram.ext import (
 from app.config import settings
 from app.core.log_redaction import redact_logs
 from app.telegram import ausgang, chat_tail
+from app.telegram.texte import kennzahlen, zustand_wort
 
 import re as _re
 
@@ -281,8 +282,8 @@ class TelegramAgentBot:
             await update.message.reply_text(
                 f"*{self.agent_name}*\n\n"
                 f"Du bist autorisiert. Schreib einfach eine Nachricht!\n\n"
-                f"/status - Agent Status\n"
-                f"/stop - Chat beenden & abmelden",
+                f"/status - Zustand des Agenten\n"
+                f"/stop - Chat beenden und abmelden",
                 parse_mode="Markdown",
             )
         else:
@@ -290,7 +291,7 @@ class TelegramAgentBot:
                 f"*{self.agent_name}*\n\n"
                 f"Bitte autorisiere dich mit deinem Key:\n"
                 f"/auth <DEIN\\_KEY>\n\n"
-                f"Den Key findest du in den Agent-Einstellungen der Web-Oberflaeche.",
+                f"Den Key findest du in den Agent-Einstellungen der Weboberfläche.",
                 parse_mode="Markdown",
             )
 
@@ -349,7 +350,7 @@ class TelegramAgentBot:
             agents = (await db.execute(select(Agent))).scalars().all()
 
         if not query:
-            lines = ["Ziel-Agent waehlen mit /agent <Name oder ID>:", ""]
+            lines = ["Ziel-Agent wählen mit /agent <Name oder ID>:", ""]
             for agent in agents:
                 lines.append(f"- {agent.name} ({agent.id})")
             await update.message.reply_text("\n".join(lines))
@@ -366,7 +367,7 @@ class TelegramAgentBot:
         if not selected:
             selected = next((agent for agent in agents if query_l in agent.name.lower()), None)
         if not selected:
-            await update.message.reply_text(f"Keinen Agent gefunden fuer: {query}")
+            await update.message.reply_text(f"Keinen Agenten gefunden für: {query}")
             return
 
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
@@ -377,7 +378,7 @@ class TelegramAgentBot:
         self._start_listener(chat_id, selected.id)
         await update.message.reply_text(
             f"Telegram-Ziel gesetzt: {selected.name} ({selected.id}).\n"
-            "Deine naechsten Nachrichten gehen an diesen Agent."
+            "Deine nächsten Nachrichten gehen an diesen Agenten."
         )
 
     async def _cmd_goal(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -400,17 +401,13 @@ class TelegramAgentBot:
             async with await authed_client() as client:
                 resp = await client.get(f"http://127.0.0.1:8000/api/v1/agents/{self.agent_id}")
                 data = resp.json()
-                state = data.get("state", "unknown")
-                state_emoji = {
-                    "running": "🟢", "idle": "🟢", "working": "🔵",
-                    "stopped": "🔴", "error": "❌",
-                }.get(state, "⚪")
-                cpu = data.get("cpu_percent", 0)
-                mem = data.get("memory_usage_mb", 0)
+                state = data.get("state")
+                cpu = data.get("cpu_percent") or 0
+                mem = data.get("memory_usage_mb") or 0
                 await update.message.reply_text(
-                    f"{state_emoji} *{self.agent_name}*\n"
-                    f"Status: {state}\n"
-                    f"CPU: {cpu:.1f}% | RAM: {mem:.0f}MB",
+                    f"*{self.agent_name}*\n"
+                    f"Zustand: {zustand_wort(state)}\n"
+                    f"CPU: {cpu:.1f} % · RAM: {mem:.0f} MB",
                     parse_mode="Markdown",
                 )
         except Exception as e:
@@ -492,7 +489,7 @@ class TelegramAgentBot:
 
             await update.effective_chat.send_action("typing")
             if woke_up:
-                await update.message.reply_text("✅ Agent hochgefahren!")
+                await update.message.reply_text("Agent ist hochgefahren.")
         except Exception as e:
             await update.message.reply_text(redact_logs(f"Fehler beim Senden: {e}"))
 
@@ -532,7 +529,7 @@ class TelegramAgentBot:
     async def _ensure_agent_running(self, update: Update, target_agent_id: str | None = None) -> bool:
         """If this agent's container is stopped, wake it up. Returns True if we had to wake.
 
-        Sends user-visible messages: "Agent fährt hoch, einen Moment!" then "Agent hochgefahren!"
+        Sends user-visible messages: "Agent fährt hoch, einen Moment …" then "Agent ist hochgefahren."
         Always verifies actual Docker container state — DB may be stale after a restart.
         """
         try:
@@ -573,7 +570,7 @@ class TelegramAgentBot:
                 # (channel_gateway.already_seen, dedupliziert je Bot-Chat und message_id)
                 # deshalb nicht faengt. Ein aufgefrischter Tipp-Indikator waehrend
                 # des Wartens haelt den Client sichtbar "im Gespraech".
-                await update.message.reply_text("⏳ Agent fährt hoch, einen Moment...")
+                await update.message.reply_text("Agent fährt hoch, einen Moment …")
                 wake_task = asyncio.ensure_future(
                     wake_agent(db, docker, target_agent_id or self.agent_id, wait=True, timeout=20)
                 )
@@ -804,9 +801,9 @@ class TelegramAgentBot:
                         "reason": choice,
                     }))
                 await redis.aclose()
-                await query.answer(f"✓ {choice}")
+                await query.answer(f"Gewählt: {choice}")
                 await query.edit_message_reply_markup(reply_markup=None)
-                await query.message.reply_text(f"✓ Deine Wahl: *{choice}*", parse_mode="Markdown")
+                await query.message.reply_text(f"Deine Wahl: *{choice}*", parse_mode="Markdown")
             except Exception as e:
                 await query.answer(redact_logs(f"Fehler: {e}"))
             return
@@ -1032,9 +1029,9 @@ class TelegramAgentBot:
 
                     elif event_type == "error":
                         self._last_user_msg.pop(chat_id, None)
-                        error_msg = str(event_data.get("message", "Unknown error"))
+                        error_msg = str(event_data.get("message", "Unbekannter Fehler"))
                         await self.app.bot.send_message(
-                            chat_id=chat_id, text=f"❌ {error_msg}"
+                            chat_id=chat_id, text=f"Fehler: {error_msg}"
                         )
                         response_buffer = ""
 
@@ -1068,10 +1065,12 @@ class TelegramAgentBot:
                         await self._maybe_send_voice_reply(chat_id, msg_id, full_response)
                         full_response = ""
 
-                        duration = event_data.get("duration_ms", 0)
-                        turns = event_data.get("num_turns", 0)
-                        if duration:
-                            meta = f"⏱ {duration / 1000:.1f}s | 🔄 {turns} turns"
+                        # „Dauer 3,2 s · 2 Runden“ — dieselbe Zeile wie im Sammel-Bot.
+                        meta = kennzahlen(
+                            event_data.get("duration_ms", 0), None,
+                            event_data.get("num_turns", 0),
+                        )
+                        if meta:
                             await self.app.bot.send_message(
                                 chat_id=chat_id, text=meta
                             )

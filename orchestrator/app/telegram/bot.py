@@ -6,6 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 
 from app.config import settings
+from app.telegram.texte import ohne_emojis
 from app.telegram.handlers.commands import (
     cmd_start,
     cmd_status,
@@ -137,7 +138,9 @@ class TelegramBot:
                     chat_id = settings.telegram_chat_id
                     if not chat_id or not self.app:
                         continue
-                    notif_text = data.get("text", "")
+                    # Sicherheitsnetz (#902): Systemmeldungen gehen ohne Emojis raus,
+                    # egal welcher Teil des Servers sie geschrieben hat.
+                    notif_text = ohne_emojis(data.get("text", ""))
                     # DLP egress filter (#388): scan operator notifications too
                     # (they can carry agent-derived text, e.g. reflection digests).
                     try:
@@ -186,7 +189,7 @@ class TelegramBot:
                     for row in markup_data.get("inline_keyboard", []):
                         keyboard.append([
                             InlineKeyboardButton(
-                                text=btn["text"],
+                                text=ohne_emojis(btn["text"]),
                                 callback_data=btn["callback_data"],
                             )
                             for btn in row
@@ -194,7 +197,7 @@ class TelegramBot:
 
                     await self.app.bot.send_message(
                         chat_id=int(chat_id),
-                        text=data.get("text", "Bitte bewerten:"),
+                        text=ohne_emojis(data.get("text", "Bitte bewerten:")),
                         reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
                     )
                 except Exception as e:

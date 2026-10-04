@@ -261,8 +261,8 @@ class UserLifecycleService:
             import json as _json
             payload = {
                 "text": (
-                    f"🔴 Leerlauf-Ueberwachung: Datenbank seit ~{outage_min} "
-                    "Minuten nicht erreichbar — untaetige Agenten werden gerade "
+                    f"Leerlauf-Überwachung: Datenbank seit ~{outage_min} "
+                    "Minuten nicht erreichbar — untätige Agenten werden gerade "
                     "nicht gestoppt."
                 ),
                 "parse_mode": "Markdown",

@@ -6,7 +6,7 @@ bearbeitete Nachricht bleibt aber an ihrer Stelle im Verlauf stehen. Kommt
 darunter etwas anderes an — der Nutzer schreibt nach, oder der Agent schickt
 waehrenddessen selbst Nachrichten ueber die Werkzeug-API (send-message,
 send-photo-upload …) —, dann waechst die Antwort weiter OBEN, wo niemand
-hinsieht. Unten erscheint am Ende nur die Fusszeile „⏱ 7.7s | 🔄 1 turns".
+hinsieht. Unten erscheint am Ende nur die Fußzeile mit Dauer und Runden.
 
 Gemeldeter Fall (Pi-Anlage, 2026-09-27): Der Agent schickt einen Artikel in
 sechs Teilen per send-message, der Nutzer fragt „bist du noch da?", der Agent

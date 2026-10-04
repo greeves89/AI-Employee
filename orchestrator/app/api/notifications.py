@@ -536,10 +536,15 @@ async def _send_telegram(body: NotificationCreate, redis: RedisService, notif_id
         except Exception:
             reply_markup = None
 
-    emoji = {"info": "ℹ️", "warning": "⚠️", "error": "❌", "success": "✅", "approval": "❓"}.get(body.type, "📢")
-    text = f"{emoji} *{body.title}*"
+    # Art als Wort statt Emoji (#902); Emojis aus Titel/Text fallen weg.
+    from app.telegram.texte import ohne_emojis
+
+    art = {"warning": "Warnung", "error": "Fehler", "approval": "Freigabe"}.get(body.type)
+    text = f"*{ohne_emojis(body.title)}*"
+    if art:
+        text = f"{art}: {text}"
     if body.message:
-        text += f"\n\n{body.message}"
+        text += f"\n\n{ohne_emojis(body.message)}"
 
     # 1. Try per-agent bot first
     try:

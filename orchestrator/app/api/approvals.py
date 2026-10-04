@@ -362,15 +362,18 @@ async def request_approval(
         pass
 
     # Build a human-readable approval message
-    risk_emoji = {"low": "🟡", "medium": "🟠", "high": "🔴", "critical": "🚨"}.get(body.risk_level, "⚠️")
-    tg_lines = [f"{risk_emoji} *Approval nötig — {agent_name}*"]
+    # Ohne Emojis, Risiko als Wort (#902).
+    risiko = {"low": "gering", "medium": "mittel", "high": "hoch", "critical": "kritisch"}.get(
+        body.risk_level, body.risk_level
+    )
+    tg_lines = [f"*Freigabe nötig — {agent_name}*"]
     if body.question:
-        tg_lines.append(f"\n❓ {body.question}")
+        tg_lines.append(f"\nFrage: {body.question}")
     if body.tool and body.tool != "user_decision":
-        tg_lines.append(f"🔧 Tool: `{body.tool}`")
+        tg_lines.append(f"Werkzeug: `{body.tool}`")
     if reasoning:
         tg_lines.append(f"\n{reasoning}")
-    tg_lines.append(f"\n_Risiko: {body.risk_level}_")
+    tg_lines.append(f"\n_Risiko: {risiko}_")
     tg_message = "\n".join(tg_lines)
 
     # Always notify Telegram — every approval is time-sensitive
@@ -396,7 +399,7 @@ async def request_approval(
     await _push_ios_for_agent(
         db,
         agent_id,
-        f"{risk_emoji} {agent_name}: Approval nötig",
+        f"{agent_name}: Freigabe nötig",
         body.question or reasoning or notif.title,
         data={
             "notification_id": str(notif.id),
