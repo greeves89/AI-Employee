@@ -86,6 +86,9 @@ class ToolLabelTests(unittest.TestCase):
         f = ns["_tool_label"]
         self.assertEqual(f("mcp__orchestrator__create_task"), "Orchestrator: create task")
         self.assertEqual(f("Bash"), "Bash")
+        # Laedt eine Fachanleitung, installiert keine Software (#910).
+        self.assertEqual(f("mcp__skills__skill_install"), "Fachanleitung geladen")
+        self.assertEqual(f("skill_install"), "Fachanleitung geladen")
 
     def test_status_line_has_no_markdown(self):
         """Die Nachricht geht ohne parse_mode raus — Unterstriche stünden wörtlich da."""

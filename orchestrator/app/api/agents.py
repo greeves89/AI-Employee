@@ -828,6 +828,8 @@ async def create_agent(
 
         # Don't set user_id for anonymous (setup mode) users
         uid = user.id if user.id != "__anonymous__" else None
+        # Autonomie-Grenze, Sudo-Pakete und Root-Bestaetigung prueft
+        # manager.create_agent selbst (#910) — fuer jeden Anlege-Weg gleich.
         agent = await manager.create_agent(
             name=data.name, model=data.model, role=data.role,
             integrations=data.integrations, permissions=data.permissions,
@@ -839,6 +841,7 @@ async def create_agent(
             browser_mode=data.browser_mode,
             autonomy_level=data.autonomy_level,
             template_id=vorlage.id if vorlage else None,
+            root_bestaetigt=data.root_bestaetigt,
         )
         if vorlage is not None:
             from app.api.templates import vorlage_anwenden
@@ -944,6 +947,10 @@ async def update_autonomy_matrix(
         raise HTTPException(status_code=404, detail="Agent not found")
     level = (agent.autonomy_level or "l3").lower()
     matrix = am.normalize_matrix(body.matrix, level)
+    # Rollen-Obergrenze (403, #910); Bestandsschutz: gemessen am bisherigen Stand.
+    from app.core.autonomie_grenze import pruefe_matrix
+    bisher = am.normalize_matrix((agent.access_policy or {}).get("autonomy_matrix"), level)
+    await pruefe_matrix(user, db, matrix, bisher=bisher)
     # If the edited matrix still equals a preset, keep that level label; else custom.
     matched = next((lvl for lvl in ("l1", "l2", "l3", "l4")
                     if am.matrix_for_level(lvl) == matrix), None)
@@ -991,6 +998,8 @@ class AccessPolicyUpdate(BaseModel):
     permissions_mode: str | None = None
     permissions: list[str] | None = None
     computer_use_default_capabilities: list[str] | None = None
+    # Neuer voller Root-Zugriff nur mit ausdruecklicher Bestaetigung (#910).
+    root_bestaetigt: bool = False
 
 
 @router.get("/{agent_id}/access-policy")
@@ -1069,8 +1078,22 @@ async def update_access_policy(
     level = (agent.autonomy_level or "l3").lower()
     access_policy = dict(agent.access_policy or {})
 
+    # Rollen-Obergrenze (403) und Root nur mit Bestaetigung (#910). Bestandsschutz:
+    # gemessen wird am bisherigen Stand — nur Erhoehen ist gesperrt.
+    from app.core.autonomie_grenze import pruefe_matrix, pruefe_root, pruefe_sudo_pakete
+    bisherige_pakete = autonomy_matrix.effective_permissions(access_policy, level)
+    if body.permissions is not None:
+        await pruefe_sudo_pakete(user, db, body.permissions, bisher=bisherige_pakete)
+        pruefe_root(body.permissions, bisherige_pakete, body.root_bestaetigt)
+    elif (body.permissions_mode or "").lower() == "manual":
+        # Zurueck auf eine frueher gespeicherte Liste ist ebenfalls ein Setzen.
+        gespeichert = access_policy.get("permissions") or []
+        await pruefe_sudo_pakete(user, db, gespeichert, bisher=bisherige_pakete)
+        pruefe_root(gespeichert, bisherige_pakete, body.root_bestaetigt)
     if body.matrix is not None:
         matrix = autonomy_matrix.normalize_matrix(body.matrix, level)
+        await pruefe_matrix(user, db, matrix, bisher=autonomy_matrix.normalize_matrix(
+            access_policy.get("autonomy_matrix"), level))
         access_policy["autonomy_matrix"] = matrix
         # Matrix entspricht noch einem Preset -> dessen Stufen-Etikett behalten,
         # sonst "custom" (identisch zur bisherigen Logik in update_autonomy_matrix).
@@ -3239,6 +3262,8 @@ class PermissionsUpdate(BaseModel):
     permissions: list[str]
     # "manual" (Vorgabe) = die Liste gilt; "auto" = die Autonomiestufe entscheidet.
     mode: str | None = None
+    # Neuer voller Root-Zugriff nur mit ausdruecklicher Bestaetigung (#910).
+    root_bestaetigt: bool = False
 
 
 @router.patch("/{agent_id}/permissions")
@@ -3270,6 +3295,14 @@ async def update_agent_permissions(
 
     try:
         agent = await manager._get_agent(agent_id)
+        if mode == "manual":
+            # Rollen-Obergrenze (403) und Root nur mit Bestaetigung (400, #910);
+            # Bestandsschutz: was der Agent schon hat, bleibt erlaubt.
+            from app.core.autonomie_grenze import pruefe_root, pruefe_sudo_pakete
+            bisher = autonomy_matrix.effective_permissions(
+                agent.access_policy or {}, agent.autonomy_level or "l3")
+            await pruefe_sudo_pakete(user, db, body.permissions, bisher=bisher)
+            pruefe_root(body.permissions, bisher, body.root_bestaetigt)
         access_policy = agent.access_policy or {}
         access_policy["permissions_mode"] = mode
         if mode == "manual":

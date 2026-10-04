@@ -1581,12 +1581,23 @@ class AgentManager:
             env.setdefault("GH_TOKEN", github_token)
         return env
 
-    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str = "l3",
-                           knowledge_md: str | None = None, template_id: int | None = None) -> Agent:
+    async def create_agent(self, name: str, model: str | None = None, role: str | None = None, integrations: list[str] | None = None, permissions: list[str] | None = None, user_id: str | None = None, budget_usd: float | None = None, budget_exceeded_action: str = "haiku", mode: str = "claude_code", llm_config: dict | None = None, ai_account_id: int | None = None, browser_mode: bool = False, autonomy_level: str | None = None,
+                           knowledge_md: str | None = None, template_id: int | None = None,
+                           root_bestaetigt: bool = False) -> Agent:
         # Lizenz: ZUERST, bevor irgendetwas entsteht — und hier statt in einem
         # Endpunkt, weil fuenf Wege diese Methode rufen (#886).
         from app.core.agentenlimit import pruefe_agentenlimit
         await pruefe_agentenlimit(self.db)
+
+        # Autonomie-Grenze der Rolle des Besitzers (#910) — aus demselben Grund
+        # hier: API, Vorlage, Verwaltung und Branchenpakete laufen alle durch.
+        # Ohne Stufenangabe gilt L3, hoechstens die Grenze; ausdruecklich darueber
+        # ist 403. Begrenzte Besitzer bekommen keine handverlesenen Sudo-Pakete,
+        # voller Root-Zugriff nur mit ``root_bestaetigt``.
+        from app.core.autonomie_grenze import fuer_neuen_agenten
+        autonomy_level, permissions = await fuer_neuen_agenten(
+            self.db, user_id, autonomy_level, permissions, root_bestaetigt,
+        )
 
         agent_id = uuid.uuid4().hex[:8]
         # Ein Agent ohne Besitzer ist ein Betriebsunfall, kein Betriebsmodus:

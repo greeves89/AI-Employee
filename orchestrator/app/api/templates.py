@@ -58,6 +58,8 @@ class CreateFromTemplate(BaseModel):
     name: str | None = None  # Override agent name
     budget_usd: float | None = None  # Monthly budget cap (None = unlimited)
     budget_exceeded_action: str = "haiku"  # "haiku" | "stop"
+    # Schlaegt die Vorlage vollen Root-Zugriff vor, gilt er nur mit diesem Haken (#910).
+    root_bestaetigt: bool = False
 
 
 def _template_to_dict(t: AgentTemplate) -> dict:
@@ -442,7 +444,10 @@ async def create_agent_from_template(
             model=template.model,
             role=template.role,
             integrations=template.integrations or [],
-            permissions=template.permissions or [],
+            # ``None`` statt ``[]``: eine leere Liste hiess „von Hand gewaehlt"
+            # und hing JEDEN Vorlagen-Agenten von seiner Autonomiestufe ab (#910).
+            permissions=template.permissions or None,
+            root_bestaetigt=body.root_bestaetigt,
             user_id=uid,
             budget_usd=body.budget_usd,
             budget_exceeded_action=body.budget_exceeded_action,

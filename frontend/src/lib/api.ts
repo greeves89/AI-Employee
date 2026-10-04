@@ -85,10 +85,12 @@ export async function createAgent(
   budget_exceeded_action: "haiku" | "stop" = "haiku",
   ai_account_id?: number,
   template_id?: number,
+  /** Voller Root-Zugriff gilt nur mit ausdrücklicher Bestätigung (#910). */
+  root_bestaetigt = false,
 ): Promise<Agent> {
   return fetchJSON(`${getBase()}/agents/`, {
     method: "POST",
-    body: JSON.stringify({ name, model, role, permissions, budget_usd, mode, llm_config, autonomy_level, budget_exceeded_action, ai_account_id, template_id }),
+    body: JSON.stringify({ name, model, role, permissions, budget_usd, mode, llm_config, autonomy_level, budget_exceeded_action, ai_account_id, template_id, root_bestaetigt }),
   });
 }
 
@@ -355,10 +357,10 @@ export async function getPermissionPackages(): Promise<{ packages: PermissionPac
 
 // `mode: "auto"` gibt die Rechte an die Autonomiestufe zurück — die Liste wird dann
 // ignoriert und der Server leitet sie aus der Matrix ab.
-export async function updateAgentPermissions(agentId: string, permissions: string[], mode: "auto" | "manual" = "manual"): Promise<{ agent_id: string; permissions: string[]; permissions_mode: "auto" | "manual"; warning?: string }> {
+export async function updateAgentPermissions(agentId: string, permissions: string[], mode: "auto" | "manual" = "manual", root_bestaetigt = false): Promise<{ agent_id: string; permissions: string[]; permissions_mode: "auto" | "manual"; warning?: string }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/permissions`, {
     method: "PATCH",
-    body: JSON.stringify({ permissions, mode }),
+    body: JSON.stringify({ permissions, mode, root_bestaetigt }),
   });
 }
 
@@ -727,6 +729,27 @@ export interface RolePermissions {
   integration_providers?: string[] | null;
   url_host_patterns?: string[] | null;
   menu_paths?: string[] | null;
+  /** Höchste Autonomiestufe für die Agenten dieser Rolle (#910). Fehlt = wie die
+   *  Grundrolle (Mitglied L3, Betrachter L1), null = unbegrenzt. */
+  max_autonomy_level?: AutonomieStufe | null;
+}
+
+export type AutonomieStufe = "l1" | "l2" | "l3" | "l4";
+
+export interface AutonomieUeberschreitung {
+  agent_id: string;
+  agent_name: string;
+  user_id: string;
+  user_name: string | null;
+  user_email: string | null;
+  grenze: AutonomieStufe;
+  autonomy_level: string | null;
+  gruende: string[];
+}
+
+/** Agenten, die mehr dürfen, als die Rolle ihres Besitzers heute erlaubt (nur Admin, #910). */
+export async function getAutonomieUeberschreitungen(): Promise<{ agents: AutonomieUeberschreitung[] }> {
+  return fetchJSON(`${getBase()}/admin/autonomie-grenze/ueberschreitungen`);
 }
 
 export interface CustomRole {
@@ -2179,6 +2202,8 @@ export async function createAgentFromTemplate(
   name?: string,
   budgetUsd?: number,
   budgetExceededAction: "haiku" | "stop" = "haiku",
+  /** Schlägt die Vorlage vollen Root-Zugriff vor, gilt er nur mit diesem Haken (#910). */
+  rootBestaetigt = false,
 ): Promise<Agent> {
   return fetchJSON(`${getBase()}/templates/${templateId}/create-agent`, {
     method: "POST",
@@ -2186,6 +2211,7 @@ export async function createAgentFromTemplate(
       name: name || undefined,
       budget_usd: budgetUsd,
       budget_exceeded_action: budgetExceededAction,
+      root_bestaetigt: rootBestaetigt,
     }),
   });
 }

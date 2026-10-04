@@ -132,6 +132,9 @@ async def change_autonomy_level(db: AsyncSession, user, agent_id: str, level: st
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+    # Rollen-Obergrenze (403, #910) — Bestandsschutz: halten oder senken geht immer.
+    from app.core.autonomie_grenze import pruefe_stufe
+    await pruefe_stufe(user, db, level, bisher=agent.autonomy_level)
 
     previous_level = agent.autonomy_level
     agent.autonomy_level = level
