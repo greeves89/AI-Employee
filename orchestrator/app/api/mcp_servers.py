@@ -253,8 +253,14 @@ async def _mcp_aenderung_protokollieren(db: AsyncSession, user, aktion: str, nam
     from app.core.audit import protokolliere
 
     if meta.get("url"):
-        # Ohne Abfrageteil: manche Server tragen ihr Zugriffstoken dort.
-        meta["url"] = str(meta["url"]).split("?", 1)[0]
+        # Nur Schema + Host: Zugangsdaten stehen bei manchen Servern in der
+        # Anmeldung (user:pass@), im Pfad oder im Abfrageteil.
+        from urllib.parse import urlsplit
+        try:
+            teile = urlsplit(str(meta["url"]))
+            meta["url"] = f"{teile.scheme}://{teile.hostname or ''}" + (f":{teile.port}" if teile.port else "")
+        except ValueError:
+            meta["url"] = None
     await protokolliere(
         db, AuditEventType.MCP_SERVER_CHANGED, user_id=getattr(user, "id", None),
         command=f"MCP-Server {aktion}: {name}",

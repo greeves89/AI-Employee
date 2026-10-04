@@ -238,6 +238,18 @@ _EXPORT_SPALTEN = [
 ]
 
 
+def _csv_zelle(wert) -> str:
+    """Zellinhalt so entschärfen, dass Excel/LibreOffice ihn nie als Formel ausführt.
+
+    Befehle und Antworten im Protokoll stammen von Agenten und Nutzern — ein Eintrag
+    wie ``=HYPERLINK(...)`` würde beim Öffnen sonst ausgewertet (CSV-Formel-Einschleusung).
+    """
+    text = "" if wert is None else str(wert)
+    if text and text[0] in "=+-@\t\r":
+        return "'" + text
+    return text
+
+
 @router.get("/logs/export")
 async def export_audit_logs(
     agent_id: Optional[str] = Query(None),
@@ -256,7 +268,7 @@ async def export_audit_logs(
     protokolliert (wer hat wann was mitgenommen).
     """
     if not is_admin(user):
-        raise HTTPException(status_code=403, detail="Nur Administratoren duerfen das Protokoll exportieren.")
+        raise HTTPException(status_code=403, detail="Nur Administratoren dürfen das Protokoll exportieren.")
     import json as _json
 
     base = await _gefiltert(user, db, agent_id=agent_id, task_id=task_id, event_type=event_type,
@@ -271,7 +283,7 @@ async def export_audit_logs(
     writer.writerow([titel for _, titel in _EXPORT_SPALTEN])
     for z in zeilen:
         writer.writerow([
-            _json.dumps(z[k], ensure_ascii=False, default=str) if k == "meta" and z[k] else (z[k] if z[k] is not None else "")
+            _csv_zelle(_json.dumps(z[k], ensure_ascii=False, default=str) if k == "meta" and z[k] else z[k])
             for k, _ in _EXPORT_SPALTEN
         ])
 

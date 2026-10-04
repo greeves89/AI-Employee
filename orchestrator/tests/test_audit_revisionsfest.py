@@ -256,11 +256,41 @@ class Export(_Basis):
             # Der Export selbst steht im Protokoll.
             self.assertEqual(len(await self._eintraege(db, "audit_exported")), 1)
 
+    async def test_formeln_werden_entschaerft(self):
+        async with self.Session() as db:
+            await protokolliere(db, AuditEventType.COMMAND_EXECUTED, agent_id="a1",
+                                command='=HYPERLINK("https://example.invalid","x")')
+            await db.commit()
+            roh = (await self._export(db, _admin(), event_type="command_executed")).body.decode("utf-8")
+            daten = list(csv.reader(io.StringIO(roh.lstrip("\ufeff")), delimiter=";"))[1:]
+            befehl = daten[0][[t for _, t in audit_api._EXPORT_SPALTEN].index("Befehl / Vorgang")]
+            self.assertTrue(befehl.startswith("'="), befehl)
+
+    def test_harmlose_zellen_bleiben_unveraendert(self):
+        for wert, erwartet in [(None, ""), ("grüße", "grüße"), (3, "3"), ("-1", "'-1"), ("@SUM(A1)", "'@SUM(A1)")]:
+            self.assertEqual(audit_api._csv_zelle(wert), erwartet)
+
     async def test_mitglied_darf_nicht_exportieren(self):
         async with self.Session() as db:
             with self.assertRaises(HTTPException) as ctx:
                 await self._export(db, _member())
             self.assertEqual(ctx.exception.status_code, 403)
+
+
+class McpAenderungOhneZugangsdaten(_Basis):
+    async def test_url_nur_mit_schema_und_host(self):
+        from app.api.mcp_servers import _mcp_aenderung_protokollieren
+
+        async with self.Session() as db:
+            await _mcp_aenderung_protokollieren(
+                db, _admin(), "angelegt", "Beispiel",
+                url="https://nutzer:geheim@mcp.example.invalid:8443/t/abc123/mcp?token=xyz",
+            )
+            await db.commit()
+            eintrag = (await self._eintraege(db, "mcp_server_changed"))[0]
+        self.assertEqual(eintrag.meta["url"], "https://mcp.example.invalid:8443")
+        for geheim in ("geheim", "abc123", "xyz", "nutzer"):
+            self.assertNotIn(geheim, str(eintrag.meta))
 
 
 class AgentDarfMenschlicheEreignisseNichtFaelschen(_Basis):
