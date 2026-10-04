@@ -1,14 +1,16 @@
 """API endpoints for agent templates."""
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.agent_manager import AgentManager
+from app.core.agent_manager import PERMISSION_PACKAGES, AgentManager
+from app.core.agent_templates import vorlagen_sortierschluessel
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
@@ -97,13 +99,49 @@ async def _skills_der_vorlagen(db: AsyncSession, vorlagen) -> dict[int, dict]:
     ids = {i for v in vorlagen for i in (v.skill_ids or [])}
     if not ids:
         return {}
-    rows = (await db.execute(select(Skill.id, Skill.name, Skill.description).where(Skill.id.in_(ids)))).all()
-    return {sid: {"id": sid, "name": name, "description": (beschr or "")[:300]} for sid, name, beschr in rows}
+    # Nur der Anfang des Inhalts — dort steht die Überschrift, aus der der Titel kommt.
+    rows = (await db.execute(
+        select(Skill.id, Skill.name, Skill.description, func.substr(Skill.content, 1, 600)).where(Skill.id.in_(ids))
+    )).all()
+    return {
+        sid: {"id": sid, "name": name, "titel": _skill_titel(name, anfang), "description": (beschr or "")[:300]}
+        for sid, name, beschr, anfang in rows
+    }
+
+
+# Datei-Skills heißen wie ihr Format; für Fachanwender steht da, was sie damit können.
+_FORMAT_TITEL = {
+    "docx": "Word-Dokumente",
+    "xlsx": "Excel-Tabellen",
+    "pptx": "PowerPoint-Folien",
+    "pdf": "PDF-Dokumente",
+}
+
+
+def _skill_titel(name: str, inhalt_anfang: str | None) -> str:
+    """Lesbarer Skill-Titel für die Vorlagen-Auswahl (#903): „Belege vorkontieren“
+    statt ``buchhaltung-vorkontieren``. Quelle ist die erste Überschrift der
+    Anleitung; ohne Überschrift bleibt der Name."""
+    if name in _FORMAT_TITEL:
+        return _FORMAT_TITEL[name]
+    text = re.sub(r"^---.*?---\s*", "", inhalt_anfang or "", count=1, flags=re.DOTALL)
+    for zeile in text.splitlines():
+        if zeile.startswith("# "):
+            titel = zeile[2:].strip()
+            return titel[:60] if titel else name
+    return name
+
+
+def _rechte_anzeige(permissions: list[str] | None) -> list[str]:
+    """Deutsche Namen der Rechte-Pakete (#903) — „Paketinstallation“ statt
+    ``package-install``. Die Schlüssel bleiben in ``permissions`` für die Anlage."""
+    return [PERMISSION_PACKAGES.get(p, {}).get("label", p) for p in (permissions or [])]
 
 
 def _mit_skills(t: AgentTemplate, skills: dict[int, dict]) -> dict:
     d = _template_to_dict(t)
     d["skills"] = [skills[i] for i in (t.skill_ids or []) if i in skills]
+    d["permissions_anzeige"] = _rechte_anzeige(t.permissions)
     return d
 
 
@@ -119,18 +157,18 @@ async def list_templates(
     """
     from app.models.user import UserRole
 
-    query = select(AgentTemplate).order_by(
-        AgentTemplate.is_builtin.desc(),
-        AgentTemplate.category,
-        AgentTemplate.display_name,
-    )
+    query = select(AgentTemplate)
 
     # Non-admins only see published templates
     if user.role not in (UserRole.ADMIN, UserRole.MANAGER):
         query = query.where(AgentTemplate.is_published == True)  # noqa: E712
 
     result = await db.execute(query)
-    templates = result.scalars().all()
+    # Fachbereiche zuerst, Technik danach (#903) — eine Reihenfolge für Web und iOS.
+    templates = sorted(
+        result.scalars().all(),
+        key=lambda t: (*vorlagen_sortierschluessel(t.category, t.display_name), t.id),
+    )
     skills = await _skills_der_vorlagen(db, templates)
     return {"templates": [_mit_skills(t, skills) for t in templates]}
 

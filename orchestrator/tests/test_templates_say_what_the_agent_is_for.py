@@ -138,26 +138,18 @@ class WhatTheUserReadsIsGermanTests(unittest.TestCase):
 
 class EveryCategoryHasALabelTests(unittest.TestCase):
     """Zwei Listen, die niemand gegeneinander gehalten hat — dasselbe Muster,
-    das am selben Tag einen Codex-Agenten komplett lahmgelegt hat."""
+    das am selben Tag einen Codex-Agenten komplett lahmgelegt hat.
 
-    BEKANNT = set(re.findall(
-        r"^\s*(\w+):",
-        MODAL.split("CATEGORY_LABELS: Record<string, string> = {", 1)[1].split("};", 1)[0],
-        re.M))
-    FARBEN = set(re.findall(
-        r"^\s*(\w+):",
-        MODAL.split("CATEGORY_COLORS: Record<string, string> = {", 1)[1].split("};", 1)[0],
-        re.M))
+    Seit #903 führt der Anlege-Dialog KEINE eigene Kategorienliste mehr, sondern
+    nutzt die zentrale (``lib/vorlagen-kategorien.ts``). Dass dort jede benutzte
+    Kategorie einen deutschen Namen und eine Farbe hat, prüft
+    ``test_deutsche_anzeigenamen.py``; hier wird nur verhindert, dass im Dialog
+    wieder eine zweite Liste entsteht."""
 
-    def test_every_used_category_has_a_german_label(self):
-        for t in BUILTIN_TEMPLATES:
-            with self.subTest(vorlage=t["name"]):
-                self.assertIn(t["category"], self.BEKANNT)
-
-    def test_every_used_category_has_a_colour(self):
-        for t in BUILTIN_TEMPLATES:
-            with self.subTest(vorlage=t["name"]):
-                self.assertIn(t["category"], self.FARBEN)
+    def test_modal_uses_the_central_category_list(self):
+        self.assertIn('from "@/lib/vorlagen-kategorien"', MODAL)
+        self.assertNotIn("CATEGORY_LABELS: Record<string, string> = {", MODAL)
+        self.assertNotIn("CATEGORY_COLORS: Record<string, string> = {", MODAL)
 
 
 class TheTemplateStaysUsableTests(unittest.TestCase):

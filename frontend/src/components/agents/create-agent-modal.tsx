@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -43,6 +43,13 @@ import {
   Globe,
   Lock,
   ShieldOff,
+  ListChecks,
+  CalendarClock,
+  Calculator,
+  Users,
+  Receipt,
+  Brain,
+  ChevronDown,
 } from "lucide-react";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
@@ -55,6 +62,7 @@ import { useAuthStore } from "@/lib/auth";
 import { useAutonomieGrenze } from "@/lib/autonomie-grenze";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import { useMoney } from "@/hooks/use-money";
+import { VORLAGEN_KATEGORIE_FARBEN, kategorieName } from "@/lib/vorlagen-kategorien";
 
 const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
   Bot,
@@ -83,41 +91,39 @@ const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
   Globe,
   Zap,
   Plug,
+  // Symbole der Fachvorlagen (Buchhaltung, Lohn, Angebot, Disposition, …) —
+  // fehlten bisher, die Kacheln zeigten deshalb nur den Standard-Roboter.
+  ListChecks,
+  CalendarClock,
+  Calculator,
+  Users,
+  Receipt,
+  Brain,
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  dev: "Development",
-  data: "Data & Analytics",
-  writing: "Writing & Docs",
-  ops: "Operations",
-  creative: "Creative",
-  general: "General",
-  marketing: "Marketing",
-  support: "Support",
-  sales: "Sales",
-  management: "Management",
-  security: "Security",
-  // Fehlten bis 2026-08-16: drei Kacheln zeigten den rohen englischen
-  // Schluessel, weil die Vorlage eine Kategorie benutzt, die hier nie
-  // nachgetragen wurde. Ein Test haelt beide Listen jetzt zusammen.
-  productivity: "Produktivität",
-  finance: "Finanzen",
-};
+// Kategorienamen und -farben kommen aus EINER Liste (lib/vorlagen-kategorien.ts,
+// #902/#903) — der Dialog hatte bis dahin eine eigene, englische Kopie.
 
-const CATEGORY_COLORS: Record<string, string> = {
-  dev: "bg-blue-500/10 text-blue-400",
-  data: "bg-emerald-500/10 text-emerald-400",
-  writing: "bg-purple-500/10 text-purple-400",
-  ops: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  creative: "bg-pink-500/10 text-pink-400",
-  general: "bg-gray-500/10 text-gray-400",
-  marketing: "bg-orange-500/10 text-orange-400",
-  support: "bg-cyan-500/10 text-cyan-400",
-  sales: "bg-rose-500/10 text-rose-400",
-  management: "bg-indigo-500/10 text-indigo-400",
-  security: "bg-red-500/10 text-red-400",
-  productivity: "bg-teal-500/10 text-teal-400",
-  finance: "bg-lime-500/10 text-lime-400",
+/** Lesbarer Skill-Name: Titel vom Server („Belege vorkontieren“), sonst der Schlüssel. */
+function skillTitel(s: { name: string; titel?: string }): string {
+  return s.titel || s.name;
+}
+
+/** Alles, wonach jemand eine Vorlage sucht: Name, Beschreibung, Rolle, Bereich, Skills. */
+function vorlagenSuchtext(t: AgentTemplate): string {
+  return [
+    t.display_name,
+    t.description,
+    t.role,
+    kategorieName(t.category),
+    ...(t.skills ?? []).flatMap((s) => [skillTitel(s), s.name, s.description]),
+  ].join(" ").toLowerCase();
+}
+
+const ANBINDUNG_NAMEN: Record<string, string> = {
+  google: "Google",
+  microsoft: "Microsoft 365",
+  github: "GitHub",
 };
 
 const PROVIDER_PRESETS: Record<string, { endpoint: string; models: string[]; noKey?: boolean }> = {
@@ -209,6 +215,11 @@ export function CreateAgentModal({
   // Hinweis, ohne Weg zurück.
   const [vorlagenZustand, setVorlagenZustand] = useState<"laedt" | "da" | "fehler">("laedt");
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
+  // Suche und Bereichs-Filter der Vorlagen-Auswahl (#903).
+  const [suche, setSuche] = useState("");
+  const [kategorieFilter, setKategorieFilter] = useState<string | null>(null);
+  // Modellkatalog nur für die Expertenansicht: „Sonnet 4.6“ statt „claude sonnet“.
+  const [modellKatalog, setModellKatalog] = useState<api.ModelCatalogMode[] | null>(null);
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
   const [avatarIcon, setAvatarIcon] = useState("Cpu");
@@ -282,6 +293,8 @@ export function CreateAgentModal({
     if (open) {
       setStep("template");
       setSelectedTemplate(null);
+      setSuche("");
+      setKategorieFilter(null);
       setName("");
       setRole("");
       setBudgetUsd("");
@@ -326,6 +339,28 @@ export function CreateAgentModal({
       });
     }
   }, [open, ladeVorlagen]);
+
+  useEffect(() => {
+    if (!open || simpleMode || modellKatalog) return;
+    api.getModelCatalog().then((c) => setModellKatalog(c.modes)).catch(() => {});
+  }, [open, simpleMode, modellKatalog]);
+
+  // Bereiche in der Reihenfolge, in der der Server die Vorlagen liefert —
+  // Fachbereiche zuerst (Rangliste in core/agent_templates.py, gleich für iOS).
+  const kategorien = useMemo(
+    () => [...new Set(templates.map((t) => t.category || "general"))],
+    [templates],
+  );
+  const vorlagenGruppen = useMemo(() => {
+    const q = suche.trim().toLowerCase();
+    const passend = templates.filter((t) =>
+      (!kategorieFilter || (t.category || "general") === kategorieFilter)
+      && (!q || vorlagenSuchtext(t).includes(q)),
+    );
+    return kategorien
+      .map((k) => ({ kategorie: k, vorlagen: passend.filter((t) => (t.category || "general") === k) }))
+      .filter((g) => g.vorlagen.length > 0);
+  }, [templates, kategorien, suche, kategorieFilter]);
 
   // Die Vorgabe L3 gilt höchstens bis zur Grenze der eigenen Rolle.
   useEffect(() => {
@@ -584,14 +619,22 @@ export function CreateAgentModal({
   const effectiveHarnessLabel =
     accountOptions.find((o) => o.id === selectedAccountKey)?.harness
     ?? (mode === "codex_cli" ? "Codex CLI" : mode === "custom_llm" ? "Custom Harness" : "Claude Code");
-  const effectiveModelLabel =
+  const effectiveModelId =
     aiAccountId !== null
-      ? aiAccountModel || "Konto-Standardmodell"
+      ? aiAccountModel
       : mode === "codex_cli"
         ? "gpt-5.5"
         : mode === "custom_llm"
-          ? llmModelName || "eigenes Modell"
-          : selectedTemplate?.model || "Standardmodell";
+          ? llmModelName
+          : selectedTemplate?.model || "";
+  // Katalogname statt zerschnittener Kennung (#903): „Sonnet 4.6“, nicht „claude sonnet“.
+  const katalogName = modellKatalog
+    ?.flatMap((m) => m.providers.flatMap((p) => p.models))
+    .find((m) => m.value === effectiveModelId)?.label;
+  const effectiveModelLabel =
+    katalogName
+    || effectiveModelId
+    || (aiAccountId !== null ? "Konto-Standardmodell" : mode === "custom_llm" ? "eigenes Modell" : "Standardmodell");
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -650,73 +693,159 @@ export function CreateAgentModal({
 
                 {/* Step 1: Template Selection */}
                 {step === "template" && (
-                  <div className="px-6 py-5">
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Wähle eine Vorlage für den neuen Agent oder starte ohne Vorlage.
-                    </p>
+                  <div className="px-4 pb-5 sm:px-6">
+                    {/* Suche + Bereiche bleiben beim Scrollen oben (#903). */}
+                    <div className="sticky top-0 z-10 -mx-4 bg-card px-4 pb-3 pt-4 sm:-mx-6 sm:px-6">
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Wähle eine Vorlage für den neuen Agenten oder starte ohne Vorlage.
+                      </p>
+                      {templates.length > 0 && (
+                        <>
+                          <div className="relative">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+                            <input
+                              type="search"
+                              value={suche}
+                              onChange={(e) => setSuche(e.target.value)}
+                              placeholder="Suchen – z. B. Rechnung, Angebot, Social Media"
+                              aria-label="Vorlagen durchsuchen"
+                              className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 py-2.5 pl-9 pr-3 text-sm outline-none transition-all focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+                            />
+                          </div>
+                          {kategorien.length > 1 && (
+                            <div
+                              className="-mx-1 mt-2.5 flex gap-1.5 overflow-x-auto px-1 pb-1 sm:flex-wrap"
+                              role="group"
+                              aria-label="Nach Bereich filtern"
+                            >
+                              {[null, ...kategorien].map((k) => {
+                                const aktiv = kategorieFilter === k;
+                                return (
+                                  <button
+                                    key={k ?? "alle"}
+                                    type="button"
+                                    aria-pressed={aktiv}
+                                    onClick={() => setKategorieFilter(k)}
+                                    className={cn(
+                                      "shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs transition-colors",
+                                      aktiv
+                                        ? "border-primary/50 bg-primary/10 text-primary"
+                                        : "border-foreground/[0.1] text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground",
+                                    )}
+                                  >
+                                    {k === null ? "Alle" : kategorieName(k)}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
 
                     {/* Blank Agent Option */}
                     <button
                       onClick={() => selectTemplate(null)}
-                      className="w-full flex items-center gap-4 rounded-xl border border-dashed border-foreground/[0.15] p-4 mb-4 text-left transition-all duration-200 hover:border-primary/40 hover:bg-primary/[0.04]"
+                      className="w-full flex items-center gap-3 rounded-xl border border-dashed border-foreground/[0.15] p-3 mb-4 text-left transition-all duration-200 hover:border-primary/40 hover:bg-primary/[0.04]"
                     >
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-foreground/[0.06] text-muted-foreground">
-                        <Plus className="h-5 w-5" />
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-foreground/[0.06] text-muted-foreground">
+                        <Plus className="h-4 w-4" />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-medium">Leerer Agent</p>
                         <p className="text-xs text-muted-foreground/70 mt-0.5">
-                          Ohne Vorlage starten - Name und Rolle selbst festlegen
+                          Ohne Vorlage starten – Name und Aufgabe selbst festlegen
                         </p>
                       </div>
                     </button>
 
-                    {/* Template Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {templates.map((tmpl) => {
-                        const Icon = TEMPLATE_ICON_MAP[tmpl.icon] || Bot;
-                        return (
-                          <button
-                            key={tmpl.id}
-                            onClick={() => selectTemplate(tmpl)}
-                            className="flex items-start gap-3 rounded-xl border border-foreground/[0.08] p-4 text-left transition-all duration-200 hover:border-primary/40 hover:bg-primary/[0.04]"
-                          >
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                              <Icon className="h-5 w-5" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-medium truncate">{tmpl.display_name}</p>
-                                <span className={cn(
-                                  "text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
-                                  CATEGORY_COLORS[tmpl.category] || CATEGORY_COLORS.general
-                                )}>
-                                  {CATEGORY_LABELS[tmpl.category] || tmpl.category}
-                                </span>
-                              </div>
-                              <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-2">
-                                {tmpl.description}
-                              </p>
-                              {(tmpl.permissions.length > 0 || tmpl.build_tools) && (
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                  {tmpl.build_tools && (
-                                    <span className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
-                                      <AppWindow className="h-2.5 w-2.5" />
-                                      Windows-Programme (.exe)
-                                    </span>
-                                  )}
-                                  {tmpl.permissions.map((p) => (
-                                    <span key={p} className="text-[9px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground/80">
-                                      {p}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
+                    {/* Vorlagen nach Bereich gruppiert, Fachbereiche zuerst (#903) */}
+                    <div className="space-y-5">
+                      {vorlagenGruppen.map(({ kategorie, vorlagen }) => (
+                        <section key={kategorie} aria-label={kategorieName(kategorie)}>
+                          <h3 className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                            <span className={cn(
+                              "rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                              VORLAGEN_KATEGORIE_FARBEN[kategorie] || VORLAGEN_KATEGORIE_FARBEN.general,
+                            )}>
+                              {kategorieName(kategorie)}
+                            </span>
+                            <span className="text-muted-foreground/50">{vorlagen.length}</span>
+                          </h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {vorlagen.map((tmpl) => {
+                              const Icon = TEMPLATE_ICON_MAP[tmpl.icon] || Bot;
+                              const skills = tmpl.skills ?? [];
+                              // Rechte nur in der Expertenansicht, und dann deutsch.
+                              const rechte = simpleMode ? [] : (tmpl.permissions_anzeige ?? tmpl.permissions);
+                              return (
+                                <button
+                                  key={tmpl.id}
+                                  onClick={() => selectTemplate(tmpl)}
+                                  className="flex min-w-0 items-start gap-3 rounded-xl border border-foreground/[0.08] p-4 text-left transition-all duration-200 hover:border-primary/40 hover:bg-primary/[0.04]"
+                                >
+                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                    <Icon className="h-5 w-5" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium truncate">{tmpl.display_name}</p>
+                                    <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-2">
+                                      {tmpl.description}
+                                    </p>
+                                    {skills.length > 0 && (
+                                      <p
+                                        className="mt-2 flex items-start gap-1 text-[11px] text-foreground/75"
+                                        title={skills.map(skillTitel).join(", ")}
+                                      >
+                                        <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
+                                        <span className="line-clamp-2">
+                                          <span className="font-medium text-primary">
+                                            {skills.length} {skills.length === 1 ? "Fach-Skill" : "Fach-Skills"}:
+                                          </span>{" "}
+                                          {skills.map(skillTitel).join(", ")}
+                                        </span>
+                                      </p>
+                                    )}
+                                    {(rechte.length > 0 || tmpl.build_tools) && (
+                                      <div className="flex flex-wrap gap-1 mt-2">
+                                        {tmpl.build_tools && (
+                                          <span className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                                            <AppWindow className="h-2.5 w-2.5" />
+                                            Windows-Programme (.exe)
+                                          </span>
+                                        )}
+                                        {rechte.map((r) => (
+                                          <span key={r} className="text-[9px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground/80">
+                                            {r}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ))}
                     </div>
+
+                    {vorlagenZustand === "da" && templates.length > 0 && vorlagenGruppen.length === 0 && (
+                      <div className="py-6 text-center">
+                        <p className="text-sm text-muted-foreground">
+                          {suche.trim()
+                            ? <>Keine Vorlage passt zu „{suche.trim()}“.</>
+                            : "In diesem Bereich gibt es keine Vorlage."}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => { setSuche(""); setKategorieFilter(null); }}
+                          className="mt-2 text-xs text-primary hover:underline"
+                        >
+                          Alle Vorlagen zeigen
+                        </button>
+                      </div>
+                    )}
 
                     {/* Solange geladen wird: Platzhalter in genau dem Raster der
                         echten Kacheln. Der Nutzer sieht sofort, WAS kommt und
@@ -781,14 +910,36 @@ export function CreateAgentModal({
                     <div className="px-6 py-5 space-y-5">
                       {/* Selected template badge */}
                       {selectedTemplate && (
-                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/[0.06] border border-primary/20">
-                          {(() => {
-                            const Icon = TEMPLATE_ICON_MAP[selectedTemplate.icon] || Bot;
-                            return <Icon className="h-4 w-4 text-primary" />;
-                          })()}
-                          <span className="text-xs font-medium text-primary">
-                            Vorlage: {selectedTemplate.display_name}
-                          </span>
+                        <div className="rounded-lg bg-primary/[0.06] border border-primary/20 px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const Icon = TEMPLATE_ICON_MAP[selectedTemplate.icon] || Bot;
+                              return <Icon className="h-4 w-4 shrink-0 text-primary" />;
+                            })()}
+                            <span className="text-xs font-medium text-primary">
+                              Vorlage: {selectedTemplate.display_name}
+                            </span>
+                          </div>
+                          {/* Was die Vorlage mitbringt, steht hier beim Namen (#903). */}
+                          {(selectedTemplate.skills?.length ?? 0) > 0 && (
+                            <div className="mt-2 border-t border-primary/10 pt-2">
+                              <p className="flex items-center gap-1 text-[11px] font-medium text-foreground/80">
+                                <Sparkles className="h-3 w-3 text-primary" />
+                                Bringt {selectedTemplate.skills!.length}{" "}
+                                {selectedTemplate.skills!.length === 1 ? "Fach-Skill" : "Fach-Skills"} mit
+                              </p>
+                              <ul className="mt-1 space-y-1">
+                                {selectedTemplate.skills!.map((sk) => (
+                                  <li key={sk.id} className="text-[11px] leading-snug">
+                                    <span className="font-medium text-foreground/90">{skillTitel(sk)}</span>
+                                    {sk.description && (
+                                      <span className="line-clamp-2 text-muted-foreground">{sk.description}</span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -897,7 +1048,7 @@ export function CreateAgentModal({
                           }
                           placeholder={
                             selectedTemplate
-                              ? `z.B. my-${selectedTemplate.name}`
+                              ? `z. B. ${selectedTemplate.display_name}`
                               : mode === "custom_llm"
                               ? "z.B. gpt-coder, gemini-researcher..."
                               : mode === "codex_cli"
@@ -1259,35 +1410,54 @@ export function CreateAgentModal({
                         </div>
                       )}
 
-                      {/* Template info summary */}
-                      {selectedTemplate && (
-                        <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-1.5">
-                          <p className="text-xs font-medium text-muted-foreground">Wird konfiguriert mit:</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-violet-500/10 text-violet-400">
-                              {effectiveHarnessLabel}
-                            </span>
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400">
-                              {effectiveModelLabel.split("-").slice(0, 2).join(" ")}
-                            </span>
-                            {ohneGrenze && selectedTemplate.permissions
-                              .filter((p) => p !== "full-access" || rootBestaetigt)
-                              .map((p) => (
-                                <span key={p} className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">
-                                  {p}
-                                </span>
-                              ))}
-                            {selectedTemplate.integrations.map((i) => (
-                              <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
-                                {i}
-                              </span>
-                            ))}
-                            {(selectedTemplate.responsibilities?.length ?? 0) > 0 && (
-                              <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-400">
-                                Arbeitet selbstständig (stündlich + 21:30 + 07:00)
-                              </span>
-                            )}
-                          </div>
+                      {/* Template info summary — Laufzeit, Modell und Rechte sind Technik:
+                          Fachanwender sehen sie nicht, Admins aufklappbar (#903). */}
+                      {selectedTemplate && ((selectedTemplate.responsibilities?.length ?? 0) > 0 || !simpleMode) && (
+                        <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-2">
+                          {(selectedTemplate.responsibilities?.length ?? 0) > 0 && (
+                            <p className="flex items-center gap-1.5 text-[11px] text-sky-700 dark:text-sky-400">
+                              <CalendarClock className="h-3.5 w-3.5 shrink-0" />
+                              Arbeitet selbstständig (stündlich + 21:30 + 07:00)
+                            </p>
+                          )}
+                          {!simpleMode && (
+                            <details className="group">
+                              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                                <Settings className="h-3.5 w-3.5" />
+                                Technische Details
+                                <ChevronDown className="ml-auto h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                              </summary>
+                              {(() => {
+                                const rechte = selectedTemplate.permissions
+                                  .map((p, i) => ({ id: p, name: selectedTemplate.permissions_anzeige?.[i] ?? p }))
+                                  .filter((r) => r.id !== "full-access" || rootBestaetigt);
+                                return (
+                                  <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[11px]">
+                                    <dt className="text-muted-foreground/70">Laufzeit</dt>
+                                    <dd className="break-words">{effectiveHarnessLabel}</dd>
+                                    <dt className="text-muted-foreground/70">Modell</dt>
+                                    <dd className="break-words">{effectiveModelLabel}</dd>
+                                    {ohneGrenze && rechte.length > 0 && (
+                                      <>
+                                        <dt className="text-muted-foreground/70">Rechte im Container</dt>
+                                        <dd className="break-words text-amber-700 dark:text-amber-400">
+                                          {rechte.map((r) => r.name).join(", ")}
+                                        </dd>
+                                      </>
+                                    )}
+                                    {selectedTemplate.integrations.length > 0 && (
+                                      <>
+                                        <dt className="text-muted-foreground/70">Anbindungen</dt>
+                                        <dd className="break-words">
+                                          {selectedTemplate.integrations.map((i) => ANBINDUNG_NAMEN[i] ?? i).join(", ")}
+                                        </dd>
+                                      </>
+                                    )}
+                                  </dl>
+                                );
+                              })()}
+                            </details>
+                          )}
                         </div>
                       )}
 
