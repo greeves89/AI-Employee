@@ -18,6 +18,8 @@ import {
   getFileColor, formatFileSize, formatModified, formatModifiedFull,
 } from "@/components/files/file-preview";
 import { useOrdnerAbwurf } from "@/components/files/use-ordner-abwurf";
+import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { dateiAnzeigeName, fuerExplorer, istSystemDatei } from "@/lib/datei-ansicht";
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-400",
@@ -34,6 +36,8 @@ export default function FilesPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const { agents } = useAgents();
+  // Mitglieder sehen keine Steuerdateien der Agenten (#907).
+  const { simpleMode } = useSimpleMode();
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [treeData, setTreeData] = useState<Record<string, FileEntry[]>>({});
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
@@ -183,6 +187,7 @@ export default function FilesPage() {
         if (!key.startsWith(`${agent.id}:`)) continue;
         for (const entry of entries) {
           if (entry.type === "file" && entry.name.toLowerCase().includes(query)) {
+            if (simpleMode && istSystemDatei(entry)) continue;
             results.push({ agentId: agent.id, agentName: agent.name, entry });
           }
         }
@@ -192,14 +197,14 @@ export default function FilesPage() {
       const match = results.find(r => r.entry.path === e.path);
       return match!;
     });
-  }, [searchQuery, treeData, runningAgents, sortMode]);
+  }, [searchQuery, treeData, runningAgents, sortMode, simpleMode]);
 
   const renderTree = (agentId: string, path: string, depth: number): React.ReactNode => {
     const key = `${agentId}:${path}`;
     const entries = treeData[key];
     if (!entries) return null;
 
-    return sortEntries(entries).map((entry) => {
+    return fuerExplorer(sortEntries(entries), simpleMode).map((entry) => {
       const isDir = entry.type === "directory";
       const dirKey = `${agentId}:${entry.path}`;
       const isExpanded = expandedDirs.has(dirKey);
@@ -240,7 +245,7 @@ export default function FilesPage() {
             ) : (
               <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
             )}
-            <span className="text-[12px] truncate flex-1 min-w-0">{entry.name}</span>
+            <span className="text-[12px] truncate flex-1 min-w-0" title={entry.path}>{dateiAnzeigeName(entry)}</span>
             {laedtHierher && (
               <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/40 shrink-0" />
             )}

@@ -372,7 +372,7 @@ function FilePreviewInner({
     )
   ) : markdownExtensions.has(ext) && textContent !== null ? (
     // Markdown
-    <div className="p-6 prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-code:text-xs prose-pre:bg-foreground/5 prose-pre:text-foreground/80">
+    <div className="p-6 prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-pre:bg-foreground/5 prose-pre:text-foreground/80">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{textContent}</ReactMarkdown>
     </div>
   ) : textContent !== null ? (

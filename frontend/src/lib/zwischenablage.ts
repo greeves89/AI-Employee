@@ -36,3 +36,20 @@ export async function inZwischenablage(text: string): Promise<boolean> {
     document.body.removeChild(feld);
   }
 }
+
+/**
+ * Tastenkürzel zum Einfügen, wie es auf diesem Gerät heißt — oder ``null`` auf
+ * Touch-Geräten, wo es keins gibt (#907).
+ *
+ * Der Hinweis „Bild mit Strg+V" stand auch auf dem Handy und auf dem Mac, wo
+ * das Kürzel ⌘V heißt. Erkannt wird über dieselbe Abfrage wie die Variante
+ * ``can-hover`` (Maus oder Trackpad vorhanden). Nur im Browser aufrufen — beim
+ * Vorab-Rendern auf dem Server gibt es kein ``window``.
+ */
+export function einfuegenTaste(): string | null {
+  if (typeof window === "undefined") return null;
+  const mitMaus = window.matchMedia?.("(hover: hover) and (pointer: fine)").matches ?? false;
+  if (!mitMaus) return null;
+  const plattform = navigator.platform || navigator.userAgent || "";
+  return /Mac/i.test(plattform) ? "⌘V" : "Strg+V";
+}

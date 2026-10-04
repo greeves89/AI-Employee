@@ -19,6 +19,9 @@ export const MarkdownContent = memo(function MarkdownContent({
     <div
       className={cn(
         "prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed",
+        // Die Typografie-Erweiterung setzt Backticks vor und hinter jedes <code> —
+        // im Chat standen sie dadurch sichtbar um jeden Schnipsel (#907).
+        "prose-code:before:content-none prose-code:after:content-none",
         "text-foreground/80",
         "[&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-3 [&_h1]:mb-1.5 [&_h1]:text-foreground",
         "[&_h2]:text-sm [&_h2]:font-bold [&_h2]:mt-2.5 [&_h2]:mb-1 [&_h2]:text-foreground",

@@ -19,6 +19,9 @@ export interface AuthUser {
   is_active: boolean;
   /** Willkommensfenster mit den Klick-Tutorials geschlossen (leer = beim Start zeigen). */
   tutorial_seen_at?: string | null;
+  /** Gibt es ein Profilfoto abzuholen (Microsoft-Anmeldung)? Ohne Quelle fragt
+   *  der Avatar ``/auth/me/photo`` gar nicht erst ab (#907). */
+  has_photo_source?: boolean;
 }
 
 interface AuthStore {

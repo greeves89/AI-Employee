@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, computed_field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,6 +86,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+#: Einzige Anmeldeart mit Profilfoto (Microsoft Graph).
+FOTO_ANBIETER = "microsoft"
+
+
 class UserResponse(BaseModel):
     id: str
     email: str
@@ -97,8 +101,20 @@ class UserResponse(BaseModel):
     last_active_at: datetime | None = None
     monthly_cost_usd: float = 0.0
     tutorial_seen_at: datetime | None = None
+    #: Nur zum Ableiten von ``has_photo_source`` gelesen, nie ausgeliefert.
+    sso_provider: str | None = Field(default=None, exclude=True)
 
     model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def has_photo_source(self) -> bool:
+        """Gibt es eine Quelle fuer ``/auth/me/photo``? (#907)
+
+        Ohne Quelle fragt die Oberflaeche gar nicht erst nach — vorher stand bei
+        jedem Laden eine 404 in der Konsole.
+        """
+        return self.sso_provider == FOTO_ANBIETER
 
 
 class UserUpdateRequest(BaseModel):
@@ -763,20 +779,23 @@ async def get_me_photo(request: Request, db: AsyncSession = Depends(get_db)):
     """Profile photo of the current user, proxied from Microsoft Graph.
 
     Uses the per-user Graph token captured during Microsoft SSO login.
-    404 when there is no photo source — the frontend falls back to initials.
+    Kein Foto ist kein Fehler: ohne Quelle (oder ohne Bild) kommt 204, die
+    Oberflaeche zeigt dann die Initialen (#907). ``/auth/me`` meldet ueber
+    ``has_photo_source`` vorab, ob sich die Abfrage lohnt.
     """
     import httpx
 
     from app.dependencies import get_current_user
     from app.services.oauth_service import OAuthService
 
+    kein_foto = Response(status_code=204)
     user = await get_current_user(request, db)
-    if user.sso_provider != "microsoft":
-        raise HTTPException(status_code=404, detail="No photo source")
+    if getattr(user, "sso_provider", None) != FOTO_ANBIETER:
+        return kein_foto
     try:
-        token = await OAuthService(db, None).get_valid_token("microsoft", user.id)
+        token = await OAuthService(db, None).get_valid_token(FOTO_ANBIETER, user.id)
     except Exception:
-        raise HTTPException(status_code=404, detail="No photo source")
+        return kein_foto
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
@@ -784,9 +803,9 @@ async def get_me_photo(request: Request, db: AsyncSession = Depends(get_db)):
                 headers={"Authorization": f"Bearer {token}"},
             )
     except httpx.HTTPError:
-        raise HTTPException(status_code=404, detail="No photo")
+        return kein_foto
     if resp.status_code != 200 or not resp.content:
-        raise HTTPException(status_code=404, detail="No photo")
+        return kein_foto
     return Response(
         content=resp.content,
         media_type=resp.headers.get("Content-Type", "image/jpeg"),
