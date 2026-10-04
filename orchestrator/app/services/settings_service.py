@@ -86,6 +86,8 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "sso_auto_provisioning",
     "sso_only_login",
     "require_user_approval",
+    # Zwei-Faktor (TOTP) für alle Passwort-Konten erzwingen (#915).
+    "require_mfa_for_password_accounts",
     "default_new_user_role",
     "revoke_msgraph_on_logout",
     # OAuth non-secret fields

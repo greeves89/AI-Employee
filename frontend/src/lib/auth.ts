@@ -68,16 +68,71 @@ async function authFetch<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export async function login(email: string, password: string): Promise<AuthUser> {
-  const data = await authFetch<{ user: AuthUser; access_token: string }>(`${authBase()}/login`, {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
+/** Ergebnis der Passwort-Anmeldung: entweder angemeldet, oder es fehlt noch der
+ *  zweite Faktor (#915). Im zweiten Fall gibt es KEINE Sitzung, nur ein kurzlebiges
+ *  Zwischen-Token für den Code-Schritt bzw. die Pflicht-Einrichtung. */
+export type LoginErgebnis =
+  | { user: AuthUser }
+  | { mfa: { token: string; setupRequired: boolean } };
+
+type SitzungsAntwort = { user: AuthUser; access_token: string };
+
+function sitzungUebernehmen(data: SitzungsAntwort): AuthUser {
   const store = useAuthStore.getState();
   store.setUser(data.user);
   store.setWsToken(data.access_token);
   store.setSetupMode(false);
   return data.user;
+}
+
+export async function login(email: string, password: string): Promise<LoginErgebnis> {
+  const data = await authFetch<
+    SitzungsAntwort | { mfa_required: true; mfa_setup_required: boolean; mfa_token: string }
+  >(`${authBase()}/login`, {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  if ("mfa_required" in data && data.mfa_required) {
+    return { mfa: { token: data.mfa_token, setupRequired: Boolean(data.mfa_setup_required) } };
+  }
+  return { user: sitzungUebernehmen(data as SitzungsAntwort) };
+}
+
+/** Zweiter Schritt: Code aus der Authenticator-App oder ein Wiederherstellungscode. */
+export async function mfaBestaetigen(
+  token: string,
+  code: string,
+): Promise<{ user: AuthUser; recoveryCodesLeft?: number }> {
+  const data = await authFetch<SitzungsAntwort & { recovery_codes_left?: number }>(`${authBase()}/mfa/verify`, {
+    method: "POST",
+    body: JSON.stringify({ mfa_token: token, code }),
+  });
+  return { user: sitzungUebernehmen(data), recoveryCodesLeft: data.recovery_codes_left };
+}
+
+export interface MfaEinrichtungsDaten {
+  secret: string;
+  otpauth_uri: string;
+  qr_svg: string;
+}
+
+/** Pflicht-Einrichtung direkt nach dem Passwort (Admin erzwingt Zwei-Faktor). */
+export async function mfaPflichtEinrichtungStarten(token: string): Promise<MfaEinrichtungsDaten> {
+  return authFetch<MfaEinrichtungsDaten>(`${authBase()}/mfa/pending/setup`, {
+    method: "POST",
+    body: JSON.stringify({ mfa_token: token }),
+  });
+}
+
+export async function mfaPflichtEinrichtungBestaetigen(
+  token: string,
+  code: string,
+): Promise<{ user: AuthUser; recoveryCodes: string[] }> {
+  const data = await authFetch<SitzungsAntwort & { recovery_codes: string[] }>(`${authBase()}/mfa/pending/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ mfa_token: token, code }),
+  });
+  return { user: sitzungUebernehmen(data), recoveryCodes: data.recovery_codes };
 }
 
 export async function register(name: string, email: string, password: string): Promise<AuthUser> {

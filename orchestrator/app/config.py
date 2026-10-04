@@ -237,6 +237,10 @@ class Settings(BaseSettings):
     # (OpenWebUI-style "Warten auf Freischaltung"). Default off. Admin-created users are
     # always approved.
     require_user_approval: bool = False
+    # Zwei-Faktor (TOTP) für alle Passwort-Anmeldungen erzwingen (#915). Wer noch
+    # keinen zweiten Faktor hat, landet nach dem Passwort direkt in der Einrichtung.
+    # SSO-Anmeldungen sind ausgenommen — dort verantwortet der Identitätsanbieter MFA.
+    require_mfa_for_password_accounts: bool = False
     # Welche Rolle jemand bekommt, der sich SELBST registriert (Passwort oder SSO).
     # Vorgabe "unassigned": angelegt, aber ohne Zugriff, bis ein Administrator eine
     # Rolle zuweist. Das ist der sichere Standard und der Grund, weshalb es die

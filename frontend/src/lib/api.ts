@@ -1841,6 +1841,46 @@ export async function resetUserPassword(
   return fetchJSON(`${getBase()}/auth/users/${userId}/reset-password`, { method: "POST" });
 }
 
+/** Admin: Zwei-Faktor eines Nutzers zurücksetzen (#915) — beendet auch seine Sitzungen. */
+export async function resetUserMfa(userId: string): Promise<{ user_id: string; mfa_enabled: boolean }> {
+  return fetchJSON(`${getBase()}/auth/users/${userId}/mfa-reset`, { method: "POST" });
+}
+
+// Zwei-Faktor in den eigenen Einstellungen (#915)
+export interface MfaStatus {
+  enabled: boolean;
+  enabled_at: string | null;
+  required: boolean;
+  password_account: boolean;
+  recovery_codes_left: number;
+}
+
+export interface MfaEinrichtung {
+  secret: string;
+  otpauth_uri: string;
+  qr_svg: string;
+}
+
+export async function getMfaStatus(): Promise<MfaStatus> {
+  return fetchJSON(`${getBase()}/auth/mfa/status`);
+}
+
+/** Einrichtung beginnen — nur mit dem aktuellen Passwort (die Sitzung allein reicht nicht). */
+export async function startMfaSetup(password: string): Promise<MfaEinrichtung> {
+  return fetchJSON(`${getBase()}/auth/mfa/setup`, { method: "POST", body: JSON.stringify({ password }) });
+}
+
+export async function confirmMfaSetup(code: string): Promise<{ enabled: boolean; recovery_codes: string[] }> {
+  return fetchJSON(`${getBase()}/auth/mfa/confirm`, { method: "POST", body: JSON.stringify({ code }) });
+}
+
+export async function disableMfa(password: string, code: string): Promise<{ enabled: boolean }> {
+  return fetchJSON(`${getBase()}/auth/mfa/disable`, {
+    method: "POST",
+    body: JSON.stringify({ password, code }),
+  });
+}
+
 // Admin: Agent Stats
 export interface AdminAgentStats {
   agent: {

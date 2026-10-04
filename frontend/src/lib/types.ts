@@ -157,6 +157,8 @@ export interface AdminUser {
   approved?: boolean;
   last_active_at?: string | null;
   monthly_cost_usd?: number;
+  /** Zwei-Faktor (TOTP) eingerichtet (#915). */
+  mfa_enabled?: boolean;
 }
 
 export interface Integration {
@@ -311,6 +313,8 @@ export interface Settings {
   master_rules?: string;
   master_rules_enabled?: boolean;
   require_user_approval?: boolean;
+  /** Zwei-Faktor für alle Passwort-Konten erzwingen (#915). */
+  require_mfa_for_password_accounts?: boolean;
   revoke_msgraph_on_logout?: boolean;
   // Meeting → MS Planner + "Dreaming"-Memory
   meeting_planner_plan_id?: string;
