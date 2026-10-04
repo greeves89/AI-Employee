@@ -250,9 +250,14 @@ export interface AuditLog {
   approval_id: string | null;
   event_type: string;
   command: string | null;
-  outcome: "success" | "failure" | "blocked";
+  /** success | failure | blocked — dazu pending, cancelled, expired bei Freigaben. */
+  outcome: string;
   exit_code: number | null;
   user_id: string | null;
+  /** Serverseitig aufgelöst — auch für fremde und gelöschte Agenten. */
+  agent_name?: string;
+  /** Name (oder E-Mail) der handelnden Person, falls es eine gibt. */
+  person?: string | null;
   meta: Record<string, unknown> | null;
   created_at: string;
 }
@@ -271,7 +276,10 @@ export interface Settings {
   default_model: string;
   max_turns: number;
   max_agents: number;
+  /** Nur Passwort-Selbstregistrierung auf der Anmeldeseite (#914). */
   registration_open: boolean;
+  /** Konten bei der ersten SSO-Anmeldung automatisch anlegen (#914). */
+  sso_auto_provisioning?: boolean;
   /** Anzeigewährung ("EUR" | "USD") und Kurs. Gespeichert wird IMMER in USD —
    *  umgerechnet wird nur für die Darstellung, siehe lib/money.ts. */
   display_currency?: string;
@@ -620,8 +628,14 @@ export interface ApprovalRequest {
   // Full meta payload (reflection entries carry kind/change_type/proposal/before)
   meta?: Record<string, unknown> | null;
   // Status
-  status: "pending" | "approved" | "denied";
+  status: "pending" | "approved" | "denied" | "expired";
   created_at: string;
+  /** Nur im Verlauf (#897): wann, von wem, mit welcher Antwort entschieden. */
+  resolved_at?: string | null;
+  resolved_by_user_id?: string | null;
+  resolved_by_name?: string | null;
+  user_response?: string | null;
+  agent_name?: string;
   approved_by?: string;
   approved_at?: string;
   denied_by?: string;

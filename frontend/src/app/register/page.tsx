@@ -43,8 +43,8 @@ export default function RegisterPage() {
       setError("Passwords do not match");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+    if (password.length < 12) {
+      setError("Password must be at least 12 characters");
       return;
     }
 
@@ -157,7 +157,7 @@ export default function RegisterPage() {
                 required
                 autoComplete="new-password"
                 className="flex h-10 w-full rounded-xl border border-border bg-card px-3 pr-10 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="Min. 8 characters"
+                placeholder="Min. 12 characters"
               />
               <button
                 type="button"

@@ -1816,6 +1816,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure users.approved: {e}")
 
+    # Freigaben-Verlauf (#897): wer entschieden hat. Nullable — Altbestand,
+    # Ablauf und Telegram haben keinen bekannten Entscheider.
+    try:
+        from app.db.session import engine as _eng_fv
+        from sqlalchemy import text as _txt_fv
+        async with _eng_fv.begin() as conn:
+            await conn.execute(_txt_fv(
+                "ALTER TABLE command_approvals ADD COLUMN IF NOT EXISTS resolved_by_user_id varchar"
+            ))
+            await conn.execute(_txt_fv(
+                "CREATE INDEX IF NOT EXISTS ix_command_approvals_resolved_by_user_id "
+                "ON command_approvals (resolved_by_user_id)"
+            ))
+        logger.info("command_approvals.resolved_by_user_id ensured")
+    except Exception as e:
+        logger.warning(f"Could not ensure command_approvals.resolved_by_user_id: {e}")
+
     # Seed autonomy preset rules (defaults per level into DB if not yet present)
     try:
         from app.api.approval_rules import seed_autonomy_presets
@@ -2177,6 +2194,18 @@ clean Markdown; you don't need to commit.
             await svc.load_into_config()
     except Exception as e:
         logger.warning(f"Could not load persisted settings: {e}")
+
+    # Registrierungsschalter (#914): Bestandsanlagen behalten ihr bisheriges
+    # Verhalten, neue Anlagen starten geschlossen. Nach dem Laden, damit
+    # Gespeichertes Vorrang hat.
+    try:
+        from app.db.session import async_session_factory as _sf_reg
+        from app.core.registrierung import registrierung_festschreiben
+
+        async with _sf_reg() as db:
+            await registrierung_festschreiben(db)
+    except Exception as e:
+        logger.warning(f"Could not pin registration switches: {e}")
 
     # Load license from DB (falls back to community tier if not present or invalid)
     try:

@@ -212,7 +212,19 @@ async def list_rules(
         )
     result = await db.execute(stmt)
     rules = result.scalars().all()
-    return {"rules": [_to_response(r) for r in rules]}
+    # Agentenname mitliefern (#897): die Autonomie-Stufen legen je Agent Kopien an,
+    # ohne Namen standen in der Liste acht gleiche Zeilen „Auto-Preset“.
+    from app.models.agent import Agent
+    agent_ids = {r.agent_id for r in rules if r.agent_id}
+    namen = dict((await db.execute(
+        select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids))
+    )).all()) if agent_ids else {}
+    out = []
+    for r in rules:
+        d = _to_response(r)
+        d["agent_name"] = (namen.get(r.agent_id) or r.agent_id) if r.agent_id else None
+        out.append(d)
+    return {"rules": out}
 
 
 @router.post("/", status_code=201)

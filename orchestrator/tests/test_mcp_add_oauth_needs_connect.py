@@ -66,9 +66,9 @@ async def test_add_oauth_protected_server_is_created_in_needs_oauth_state(monkey
     assert payload["last_status"] == "needs_oauth"
     assert payload["tools"] == []
     # The server row was actually persisted so the Connect flow can reach it.
-    assert len(db.added) == 1
+    assert len(_created_servers(db)) == 1
     assert db.commits == 1
-    created = db.added[0]
+    created = _created_servers(db)[0]
     assert created.oauth_enabled is True
     # OAuth is the auth mechanism here — no irrelevant static creds get stored.
     assert created.auth_token_encrypted is None
@@ -162,9 +162,9 @@ async def test_add_successful_discovery_still_creates_enabled_server(monkeypatch
     assert payload["oauth_enabled"] is False
     assert payload["last_status"] == "ok"
     assert "needs_oauth" not in payload
-    assert len(db.added) == 1
+    assert len(_created_servers(db)) == 1
     assert db.commits == 1
-    created = db.added[0]
+    created = _created_servers(db)[0]
     assert created.tools == tools
     assert created.oauth_enabled is False
     assert created.last_status == "ok"

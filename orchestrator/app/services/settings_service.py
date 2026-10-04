@@ -83,6 +83,7 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "foundry_resource",
     "telegram_chat_id",
     "registration_open",
+    "sso_auto_provisioning",
     "sso_only_login",
     "require_user_approval",
     "default_new_user_role",

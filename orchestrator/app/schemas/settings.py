@@ -15,6 +15,7 @@ class SettingsUpdate(BaseModel):
     max_turns: int | None = None
     max_agents: int | None = None
     registration_open: bool | None = None
+    sso_auto_provisioning: bool | None = None
     # Anzeigewaehrung: nur die Darstellung, nie die gespeicherten Betraege.
     allow_team_license: bool | None = None
     allow_personal_credentials: bool | None = None
@@ -161,6 +162,7 @@ class SettingsResponse(BaseModel):
     max_turns: int
     max_agents: int
     registration_open: bool
+    sso_auto_provisioning: bool = True
     allow_team_license: bool = True
     allow_personal_credentials: bool = True
     master_rules: str = ""

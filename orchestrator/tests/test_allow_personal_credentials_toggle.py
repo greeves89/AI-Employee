@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.settings import _FIELD_MAP, get_settings, update_settings
 from app.config import settings as _config_settings
+from app.models.audit_log import AuditLog
 from app.models.oauth_integration import OAuthIntegration
 from app.models.platform_settings import PlatformSettings
 from app.schemas.settings import SettingsUpdate
@@ -31,7 +32,7 @@ class AllowPersonalCredentialsToggleTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (PlatformSettings, OAuthIntegration):
+            for model in (PlatformSettings, OAuthIntegration, AuditLog):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         # Singleton nicht ueber Tests hinweg verschleppen.

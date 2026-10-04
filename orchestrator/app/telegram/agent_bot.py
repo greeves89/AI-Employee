@@ -775,6 +775,13 @@ class TelegramAgentBot:
                                 approval.status = ApprovalStatus.DENIED if negative else ApprovalStatus.APPROVED
                                 approval.resolved_at = datetime.now(timezone.utc)
                                 approval.user_response = choice
+                                # Protokoll wie in der Weboberflaeche; eine Person der
+                                # Plattform ist hinter dem Telegram-Knopf nicht bekannt.
+                                from app.core.audit import freigabe_entschieden
+                                await freigabe_entschieden(
+                                    db, approval, ergebnis="denied" if negative else "approved",
+                                    antwort=choice, grund=choice, kanal="telegram",
+                                )
                                 from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
                                 await benachrichtigungen_abschliessen(db, [approval])
                         await db.commit()

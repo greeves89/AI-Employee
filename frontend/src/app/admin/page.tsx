@@ -334,8 +334,8 @@ export default function AdminPage() {
       setAddUserError("All fields are required");
       return;
     }
-    if (addUserForm.password.length < 8) {
-      setAddUserError("Password must be at least 8 characters");
+    if (addUserForm.password.length < 12) {
+      setAddUserError("Password must be at least 12 characters");
       return;
     }
     setAddUserLoading(true);
@@ -1159,7 +1159,7 @@ export default function AdminPage() {
                     type={showPassword ? "text" : "password"}
                     value={addUserForm.password}
                     onChange={(e) => setAddUserForm((f) => ({ ...f, password: e.target.value }))}
-                    placeholder="Min. 8 characters"
+                    placeholder="Min. 12 characters"
                     className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
                   <button

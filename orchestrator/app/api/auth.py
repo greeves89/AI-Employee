@@ -23,8 +23,11 @@ from app.core.auth import (
     hash_password,
     verify_password,
 )
+from app.core.audit import AKTEUR_ANMELDUNG, protokolliere
 from app.core.log_redaction import scrub_log
+from app.core.passwort_regeln import passwort_pruefen
 from app.db.session import get_db
+from app.models.audit_log import AuditEventType
 from app.models.user import User, UserRole
 
 logger = logging.getLogger(__name__)
@@ -119,6 +122,48 @@ def _set_auth_cookies(response: Response, user: User) -> dict:
     return {"access_token": access}
 
 
+async def _anmeldung_protokollieren(
+    db: AsyncSession, ereignis: AuditEventType, *, email: str, user: User | None = None,
+    weg: str = "passwort", grund: str | None = None,
+) -> None:
+    """Anmeldeereignis festschreiben (#908). NIE mit Passwort — nur E-Mail, Weg, Grund.
+
+    Eigenes Festschreiben, weil ein Fehllogin danach mit einer Ausnahme endet:
+    ohne Commit ginge der Eintrag mit der Sitzung verloren.
+    """
+    meta = {"email": email, "weg": weg}
+    if grund:
+        meta["grund"] = grund
+    await protokolliere(
+        db, ereignis, agent_id=AKTEUR_ANMELDUNG,
+        user_id=getattr(user, "id", None),
+        command=f"{'Abmeldung' if ereignis == AuditEventType.LOGOUT else 'Anmeldung'} ({weg})",
+        outcome="failure" if ereignis == AuditEventType.LOGIN_FAILED else "success",
+        meta=meta,
+    )
+    try:
+        await db.commit()
+    except Exception:  # noqa: BLE001 — Protokoll darf die Anmeldung nicht verhindern
+        logger.warning("Anmeldeereignis konnte nicht gespeichert werden", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+async def _verwaltung(db: AsyncSession, ereignis: AuditEventType, admin, ziel: User | None, **meta):
+    """Verwaltungsschritt an einem Nutzer vormerken — wer hat was an wem geaendert."""
+    daten = {k: v for k, v in meta.items() if v is not None}
+    if ziel is not None:
+        daten.setdefault("target_user_id", ziel.id)
+        daten.setdefault("target_email", ziel.email)
+    return await protokolliere(
+        db, ereignis, user_id=getattr(admin, "id", None),
+        command=f"{ereignis.value}: {ziel.email}" if ziel is not None else ereignis.value,
+        meta=daten,
+    )
+
+
 # --- Public Endpoints ---
 
 
@@ -155,9 +200,8 @@ async def register(body: SetupRegisterRequest, response: Response, db: AsyncSess
     if existing:
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    # Validate password
-    if len(body.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    # Passwortregeln — dieselben wie bei Anlage und Zuruecksetzen (core/passwort_regeln).
+    passwort_pruefen(body.password, body.email)
 
     approved = is_first or not settings.require_user_approval
     user = User(
@@ -169,6 +213,12 @@ async def register(body: SetupRegisterRequest, response: Response, db: AsyncSess
         approved=approved,
     )
     db.add(user)
+    await protokolliere(
+        db, AuditEventType.USER_CREATED, user_id=user.id,
+        command=f"Selbstregistrierung: {user.email}",
+        meta={"weg": "registrierung", "target_user_id": user.id, "target_email": user.email,
+              "role": user.role.value, "approved": approved, "erster_nutzer": is_first},
+    )
     await db.commit()
     await db.refresh(user)
 
@@ -198,15 +248,24 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
     user = await db.scalar(select(User).where(User.email == body.email))
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
         _record_failed_login(body.email)
+        await _anmeldung_protokollieren(
+            db, AuditEventType.LOGIN_FAILED, email=body.email, user=user,
+            grund="unbekannte E-Mail" if not user else "falsches Passwort",
+        )
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not user.is_active:
+        await _anmeldung_protokollieren(db, AuditEventType.LOGIN_FAILED, email=body.email,
+                                        user=user, grund="Konto deaktiviert")
         raise HTTPException(status_code=403, detail="Account is deactivated")
     if not getattr(user, "approved", True):
+        await _anmeldung_protokollieren(db, AuditEventType.LOGIN_FAILED, email=body.email,
+                                        user=user, grund="Freischaltung ausstehend")
         raise HTTPException(status_code=403, detail="Dein Konto wartet noch auf Freischaltung durch einen Administrator.")
 
     _clear_login_attempts(body.email)
     tokens = _set_auth_cookies(response, user)
+    await _anmeldung_protokollieren(db, AuditEventType.LOGIN_SUCCEEDED, email=user.email, user=user)
 
     # Update activity + wake user's agents (fire-and-forget)
     from datetime import datetime, timezone
@@ -240,6 +299,16 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
             logger.info(f"Revoked MS Graph token on logout for {user.email}")
         except Exception as e:
             logger.warning(f"MS token revoke on logout skipped: {e}")
+    # Abmeldung protokollieren — nur wenn die Sitzung noch einer Person zuzuordnen
+    # ist. Eine abgelaufene Sitzung abzumelden ist kein Ereignis.
+    try:
+        from app.dependencies import get_current_user
+        abmelder = await get_current_user(request, db)
+    except Exception:  # noqa: BLE001
+        abmelder = None
+    if abmelder is not None:
+        await _anmeldung_protokollieren(db, AuditEventType.LOGOUT, email=abmelder.email,
+                                        user=abmelder, weg="sitzung")
     response.delete_cookie(COOKIE_ACCESS, path="/")
     response.delete_cookie(COOKIE_REFRESH, path="/")
     return {"ok": True}
@@ -466,13 +535,15 @@ async def saml_acs(request: Request, db: AsyncSession = Depends(get_db)):
         )
     except ValueError as e:
         logger.warning("SAML-Anmeldung fehlgeschlagen: %s", scrub_log(str(e)))
+        await _anmeldung_protokollieren(db, AuditEventType.LOGIN_FAILED, email=email,
+                                        weg=f"sso:{saml_config.PROVIDER_NAME}", grund=str(e)[:200])
         return RedirectResponse(url=f"{frontend_url}/login?error={e}")
 
     groups = saml_config.extract_groups(attributes, cfg)
     await sso_service.apply_group_role(user, saml_config.PROVIDER_NAME, groups)
 
     relay = form.get("RelayState") or ""
-    return await finish_sso_login(user, relay, saml_config.PROVIDER_NAME, frontend_url)
+    return await finish_sso_login(user, relay, saml_config.PROVIDER_NAME, frontend_url, db=db)
 
 
 #: Custom URL scheme the native iOS app registers to catch the final SSO redirect.
@@ -561,9 +632,11 @@ async def sso_callback(
         user, return_to = await sso_service.handle_callback(provider, code, state)
     except ValueError as e:
         logger.warning(f"SSO callback failed for {scrub_log(provider)}: {e}")
+        await _anmeldung_protokollieren(db, AuditEventType.LOGIN_FAILED, email="",
+                                        weg=f"sso:{provider}", grund=str(e)[:200])
         return _error_redirect(f"error={str(e)}&provider={provider}")
 
-    return await finish_sso_login(user, return_to, provider, frontend_url, client=client, redis=redis)
+    return await finish_sso_login(user, return_to, provider, frontend_url, client=client, redis=redis, db=db)
 
 
 #: Single-use exchange code TTL — just long enough for the app to receive the
@@ -597,6 +670,7 @@ async def sso_exchange(body: SSOExchangeRequest, request: Request):
 
 async def finish_sso_login(
     user, return_to: str | None, provider: str, frontend_url: str, client: str = "", redis=None,
+    db: AsyncSession | None = None,
 ):
     """Freigabe pruefen, Ziel bestimmen, Sitzung herstellen.
 
@@ -616,12 +690,19 @@ async def finish_sso_login(
     # Freigabe steht aus → keine Sitzung, zurueck zur Anmeldung mit Hinweis.
     if not getattr(user, "approved", True):
         logger.info(f"SSO login blocked (pending approval): {user.email}")
+        if db is not None:
+            await _anmeldung_protokollieren(db, AuditEventType.LOGIN_FAILED, email=user.email,
+                                            user=user, weg=f"sso:{provider}",
+                                            grund="Freischaltung ausstehend")
         if client == "ios":
             return RedirectResponse(url=f"{IOS_SSO_CALLBACK_URL}?pending=1", status_code=302)
         return RedirectResponse(url=f"{frontend_url}/login?pending=1", status_code=302)
 
     access = create_access_token(user.id, user.role.value, user.token_version)
     refresh = create_refresh_token(user.id, user.token_version)
+    if db is not None:
+        await _anmeldung_protokollieren(db, AuditEventType.LOGIN_SUCCEEDED, email=user.email,
+                                        user=user, weg=f"sso:{provider}")
 
     if client == "ios":
         code = secrets.token_urlsafe(32)
@@ -771,6 +852,8 @@ async def update_user(user_id: str, body: UserUpdateRequest, request: Request, d
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
+    alte_rolle = target.role
+    geaendert = sorted(k for k, v in body.model_dump(exclude_unset=True).items() if v is not None)
     if body.name is not None:
         target.name = body.name
     if body.allow_personal_credentials is not None:
@@ -791,6 +874,11 @@ async def update_user(user_id: str, body: UserUpdateRequest, request: Request, d
     if body.approved is not None:
         target.approved = body.approved
 
+    if geaendert:
+        await _verwaltung(db, AuditEventType.USER_UPDATED, current, target, felder=geaendert)
+    if body.role is not None and target.role != alte_rolle:
+        await _verwaltung(db, AuditEventType.ROLE_CHANGED, current, target,
+                          von=getattr(alte_rolle, "value", str(alte_rolle)), nach=target.role.value)
     await db.commit()
     return UserResponse.model_validate(target).model_dump()
 
@@ -813,8 +901,7 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
 
     if not name or not email or not password:
         raise HTTPException(status_code=400, detail="Name, email, and password are required")
-    if len(password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    passwort_pruefen(password, email)
     valid_roles = {r.value for r in UserRole}
     if role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(sorted(valid_roles))}")
@@ -839,6 +926,8 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
         approved=True,  # admin-created users are always approved
     )
     db.add(user)
+    await _verwaltung(db, AuditEventType.USER_CREATED, current, user, weg="verwaltung",
+                      role=user.role.value, custom_role_id=custom_role_id)
     await db.commit()
     await db.refresh(user)
 
@@ -859,11 +948,17 @@ async def reset_user_password(user_id: str, request: Request, db: AsyncSession =
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Dieselben Regeln wie bei Registrierung und Anlage. Ein zufaelliges Passwort
+    # erfuellt sie praktisch immer; die Schleife haelt die Zusage auch im Rest.
+    from app.core.passwort_regeln import passwort_fehler
     temp_password = secrets.token_urlsafe(12)
+    while passwort_fehler(temp_password, target.email):
+        temp_password = secrets.token_urlsafe(12)
     target.password_hash = hash_password(temp_password)
     # Revoke every session issued before this reset — otherwise a compromised
     # account stays reachable via its old, still-valid token for up to 7 days.
     target.token_version += 1
+    await _verwaltung(db, AuditEventType.PASSWORD_RESET, current, target)
     await db.commit()
 
     logger.info(f"Admin {current.email} reset password for user: {target.email}")
@@ -885,6 +980,7 @@ async def delete_user(user_id: str, request: Request, db: AsyncSession = Depends
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
+    await _verwaltung(db, AuditEventType.USER_DELETED, current, target, name=target.name)
     await db.delete(target)
     await db.commit()
     return {"ok": True}
