@@ -552,6 +552,79 @@ class EinrichtenUndAbschalten(_Basis):
             self.assertEqual(ctx.exception.status_code, 401)
 
 
+class PasswortRatenGedrosselt(_Basis):
+    """Sicherheitsprüfung v1.362.0, F4: /setup und /disable prüfen das Passwort.
+    Wer nur ein gestohlenes Sitzungstoken hat, durfte es dort ungebremst raten.
+    Jetzt zählt ein falsches Passwort in dieselbe Sperre wie ein falscher Code
+    (5 Fehlversuche → 15 Minuten), ohne Redis gibt es 503 statt ungebremst."""
+
+    async def _starten(self, db, passwort):
+        from app.api import zwei_faktor as zf_api
+
+        return await zf_api.einrichten_starten(zf_api.MfaPasswortRequest(password=passwort),
+                                               self.request, _Antwort(), db)
+
+    async def test_sperre_nach_fuenf_falschen_passwoertern(self):
+        anna = await EinrichtenUndAbschalten._als(self, "u2")
+        with patch("app.dependencies.get_current_user", AsyncMock(return_value=anna)):
+            async with self.Session() as db:
+                for _ in range(zf.MAX_FEHLVERSUCHE):
+                    with self.assertRaises(HTTPException) as ctx:
+                        await self._starten(db, "Falsch-Falsch-Falsch")
+                    self.assertEqual(ctx.exception.status_code, 403)
+                # Auch das richtige Passwort hilft jetzt nicht mehr.
+                with self.assertRaises(HTTPException) as ctx:
+                    await self._starten(db, PASSWORT)
+                self.assertEqual(ctx.exception.status_code, 429)
+                self.assertIsNone((await db.get(User, "u2")).totp_secret_encrypted)
+
+    async def test_abschalten_teilt_die_sperre(self):
+        from app.api import zwei_faktor as zf_api
+
+        async with self.Session() as db:
+            geheimnis = await self._mfa_aktivieren(db)
+        anna = await EinrichtenUndAbschalten._als(self, "u2")
+        with patch("app.dependencies.get_current_user", AsyncMock(return_value=anna)):
+            async with self.Session() as db:
+                for _ in range(zf.MAX_FEHLVERSUCHE):
+                    with self.assertRaises(HTTPException):
+                        await zf_api.abschalten(zf_api.MfaAbschaltenRequest(
+                            password="Falsch-Falsch-Falsch", code="000000"), self.request, db)
+                with self.assertRaises(HTTPException) as ctx:
+                    await zf_api.abschalten(zf_api.MfaAbschaltenRequest(
+                        password=PASSWORT, code=zf.code_generieren(geheimnis, time.time())),
+                        self.request, db)
+                self.assertEqual(ctx.exception.status_code, 429)
+                self.assertIsNotNone((await db.get(User, "u2")).mfa_enabled_at)
+
+    async def test_richtiges_passwort_hebt_die_code_sperre_nicht_auf(self):
+        """Sonst ließe sich mit bekanntem Passwort der Code beliebig oft raten."""
+        from app.api import zwei_faktor as zf_api
+
+        async with self.Session() as db:
+            await self._mfa_aktivieren(db)
+        anna = await EinrichtenUndAbschalten._als(self, "u2")
+        with patch("app.dependencies.get_current_user", AsyncMock(return_value=anna)):
+            async with self.Session() as db:
+                for _ in range(zf.MAX_FEHLVERSUCHE):
+                    with self.assertRaises(HTTPException):
+                        await zf_api.abschalten(zf_api.MfaAbschaltenRequest(
+                            password=PASSWORT, code="000000"), self.request, db)
+                with self.assertRaises(HTTPException) as ctx:
+                    await zf_api.abschalten(zf_api.MfaAbschaltenRequest(
+                        password=PASSWORT, code="000000"), self.request, db)
+                self.assertEqual(ctx.exception.status_code, 429)
+
+    async def test_ohne_redis_503(self):
+        anna = await EinrichtenUndAbschalten._als(self, "u2")
+        self.request.app.state.redis = SimpleNamespace(client=None)
+        with patch("app.dependencies.get_current_user", AsyncMock(return_value=anna)):
+            async with self.Session() as db:
+                with self.assertRaises(HTTPException) as ctx:
+                    await self._starten(db, "Falsch-Falsch-Falsch")
+                self.assertEqual(ctx.exception.status_code, 503)
+
+
 class Verwaltung(_Basis):
     async def test_admin_setzt_zurueck_und_beendet_sitzungen(self):
         from app.api import auth as auth_api

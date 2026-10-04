@@ -24,7 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import _anmeldung_protokollieren, anmeldung_abschliessen
 from app.core import zwei_faktor as zf
 from app.core.audit import AKTEUR_ANMELDUNG, protokolliere
-from app.core.auth import verify_password
 from app.core.qr_svg import qr_svg
 from app.db.session import get_db
 from app.models.audit_log import AuditEventType
@@ -87,26 +86,32 @@ async def _pruefen(request: Request, db: AsyncSession, user: User, code: str, *,
 
     Gibt die Art (``totp``/``wiederherstellungscode``) zurück oder wirft 401/429/503.
     """
-    try:
-        art = await zf.zweiten_faktor_pruefen(
-            zf.redis_aus_anfrage(request), user, code,
-            geheimnis=geheimnis, wiederherstellung_erlaubt=wiederherstellung_erlaubt,
-        )
-    except zf.ZweiFaktorNichtVerfuegbar:
-        logger.error("Zwei-Faktor-Prüfung ohne Redis nicht möglich")
-        raise HTTPException(status_code=503,
-                            detail="Die Code-Prüfung ist gerade nicht möglich. Bitte später erneut versuchen.")
-    except zf.ZweiFaktorGesperrt as g:
-        await _fehlschlag(db, user, anmeldung, grund="gesperrt nach zu vielen falschen Codes")
-        minuten = max(1, (g.sekunden + 59) // 60)
-        raise HTTPException(status_code=429,
-                            detail=f"Zu viele falsche Codes. Bitte in {minuten} Minuten erneut versuchen.")
+    art = await _mit_sperre(db, user, anmeldung, zf.zweiten_faktor_pruefen(
+        zf.redis_aus_anfrage(request), user, code,
+        geheimnis=geheimnis, wiederherstellung_erlaubt=wiederherstellung_erlaubt,
+    ))
     if art is None:
         await _fehlschlag(db, user, anmeldung, grund="falscher Bestätigungscode")
         # Mit Sitzung 403 statt 401: auf 401 erneuert die Oberfläche die Sitzung und
         # schickt dieselbe Anfrage noch einmal — das wäre ein zweiter Fehlversuch.
         raise HTTPException(status_code=401 if anmeldung else 403, detail=_FALSCHER_CODE)
     return art
+
+
+async def _mit_sperre(db: AsyncSession, user: User, anmeldung: bool, pruefung):
+    """Eine Prüfung unter der gemeinsamen Sperre (Codes UND Passwort) ausführen:
+    ohne Redis 503, während der Sperre 429 (mit Prüfprotokoll-Eintrag)."""
+    try:
+        return await pruefung
+    except zf.ZweiFaktorNichtVerfuegbar:
+        logger.error("Zwei-Faktor-Prüfung ohne Redis nicht möglich")
+        raise HTTPException(status_code=503,
+                            detail="Die Prüfung ist gerade nicht möglich. Bitte später erneut versuchen.")
+    except zf.ZweiFaktorGesperrt as g:
+        await _fehlschlag(db, user, anmeldung, grund="gesperrt nach zu vielen Fehlversuchen")
+        minuten = max(1, (g.sekunden + 59) // 60)
+        raise HTTPException(status_code=429,
+                            detail=f"Zu viele Fehlversuche. Bitte in {minuten} Minuten erneut versuchen.")
 
 
 async def _fehlschlag(db: AsyncSession, user: User, anmeldung: bool, grund: str) -> None:
@@ -228,10 +233,14 @@ async def status(request: Request, db: AsyncSession = Depends(get_db)):
     }
 
 
-async def _passwort_bestaetigen(db: AsyncSession, user: User, passwort: str, grund: str) -> None:
+async def _passwort_bestaetigen(request: Request, db: AsyncSession, user: User, passwort: str,
+                                grund: str) -> None:
     """Eine offene Sitzung allein reicht für Änderungen am zweiten Faktor nicht:
-    wer nur ein gestohlenes Sitzungstoken hat, kennt das Passwort nicht."""
-    if not user.password_hash or not verify_password(passwort or "", user.password_hash):
+    wer nur ein gestohlenes Sitzungstoken hat, kennt das Passwort nicht — und
+    darf es auch nicht ungebremst raten (dieselbe Sperre wie für Codes)."""
+    ok = await _mit_sperre(db, user, False,
+                           zf.passwort_pruefen(zf.redis_aus_anfrage(request), user, passwort))
+    if not ok:
         await _fehlschlag(db, user, anmeldung=False, grund=grund)
         # 403, nicht 401 — siehe _pruefen.
         raise HTTPException(status_code=403, detail="Das Passwort stimmt nicht.")
@@ -243,7 +252,7 @@ async def einrichten_starten(body: MfaPasswortRequest, request: Request, respons
     """Einrichtung beginnen — nur mit dem aktuellen Passwort."""
     user = await _ich(request, db)
     if user.password_hash:
-        await _passwort_bestaetigen(db, user, body.password, "falsches Passwort beim Einrichten")
+        await _passwort_bestaetigen(request, db, user, body.password, "falsches Passwort beim Einrichten")
     daten = _einrichtung_beginnen(user)
     await db.commit()
     response.headers.update(_KEIN_CACHE)
@@ -265,7 +274,7 @@ async def abschalten(body: MfaAbschaltenRequest, request: Request, db: AsyncSess
     user = await _ich(request, db)
     if not zf.mfa_aktiv(user):
         raise HTTPException(status_code=409, detail="Zwei-Faktor ist nicht eingerichtet.")
-    await _passwort_bestaetigen(db, user, body.password, "falsches Passwort beim Abschalten")
+    await _passwort_bestaetigen(request, db, user, body.password, "falsches Passwort beim Abschalten")
     if not (body.code or "").strip():
         raise HTTPException(status_code=400, detail="Bitte den Code aus der App eingeben.")
     await _pruefen(request, db, user, body.code, anmeldung=False)
