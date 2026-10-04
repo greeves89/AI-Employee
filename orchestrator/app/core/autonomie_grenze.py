@@ -53,7 +53,9 @@ async def autonomie_obergrenze(user, db) -> str | None:
 
     perms = await get_effective_permissions(user, db)
     if "max_autonomy_level" not in perms:
-        return None
+        # Unbegrenzt ist nur ein ausdrueckliches None (Admin, Manager, Rolle
+        # "unbegrenzt"). Fehlt die Angabe ganz, schliesst das — nicht offen.
+        return "l1"
     return normalisiere_grenze(perms.get("max_autonomy_level"))
 
 
