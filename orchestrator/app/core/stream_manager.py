@@ -2,11 +2,16 @@ import asyncio
 import json
 
 from fastapi import WebSocket
+from app.core.dlp import werkzeug_ereignis_text_maskieren
 from app.services.redis_service import RedisService
 
 
 class StreamManager:
-    """Bridges Redis PubSub to WebSocket connections for real-time log streaming."""
+    """Bridges Redis PubSub to WebSocket connections for real-time log streaming.
+
+    Werkzeug-Eingaben/-Ausgaben gehen ohne Geheimnisse an den Browser (#911) —
+    Verlauf wie laufende Ereignisse. Redis selbst bleibt unveraendert (der
+    Sentinel liest dort mit)."""
 
     def __init__(self, redis: RedisService):
         self.redis = redis
@@ -37,7 +42,7 @@ class StreamManager:
         for event in events:
             if isinstance(event, bytes):
                 event = event.decode("utf-8")
-            await websocket.send_text(event)
+            await websocket.send_text(werkzeug_ereignis_text_maskieren(event))
 
     async def stream_agent_logs(self, websocket: WebSocket, agent_id: str) -> None:
         channel = f"agent:{agent_id}:logs"
@@ -57,7 +62,7 @@ class StreamManager:
                     data = message["data"]
                     if isinstance(data, bytes):
                         data = data.decode("utf-8")
-                    await websocket.send_text(data)
+                    await websocket.send_text(werkzeug_ereignis_text_maskieren(data))
                 await asyncio.sleep(0.01)
         except Exception:
             pass
@@ -81,7 +86,7 @@ class StreamManager:
                     data = message["data"]
                     if isinstance(data, bytes):
                         data = data.decode("utf-8")
-                    await websocket.send_text(data)
+                    await websocket.send_text(werkzeug_ereignis_text_maskieren(data))
                 await asyncio.sleep(0.01)
         except Exception:
             pass

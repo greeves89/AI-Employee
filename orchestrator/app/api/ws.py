@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, Request
 
+from app.core.dlp import werkzeug_ereignis_maskieren
 from app.core.log_redaction import scrub_log
 from app.core.stream_manager import StreamManager
 from app.db.session import async_session_factory
@@ -773,6 +774,9 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                                 except Exception:  # noqa: BLE001
                                     _sid = _mid_to_session.get(_mid)
                                 if _sid is not None:  # own chat → tag + forward
+                                    # Werkzeug-Eingaben/-Ausgaben ohne Geheimnisse,
+                                    # wie sie auch gespeichert werden (#911).
+                                    _fwd = werkzeug_ereignis_maskieren(_fwd)
                                     _fwd["session_id"] = _sid
                                     try:
                                         await websocket.send_text(json.dumps(_fwd))

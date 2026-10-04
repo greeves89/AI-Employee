@@ -662,6 +662,7 @@ async def _persist_task_steps(redis: RedisService) -> None:
     """
     from datetime import datetime as _dt
 
+    from app.core.dlp import werkzeug_ereignis_maskieren
     from app.db.session import async_session_factory
     from app.models.task_step import TaskStep
     from sqlalchemy import func as _func, select as _sel
@@ -701,11 +702,13 @@ async def _persist_task_steps(redis: RedisService) -> None:
                 except (ValueError, TypeError):
                     ts = _dt.now(timezone.utc)
 
+                # Werkzeug-Eingaben/-Ausgaben ohne Geheimnisse ablegen (#911) —
+                # dieselbe Maskierung wie im Chat-Verlauf und im Live-Strom.
                 db.add(TaskStep(
                     task_id=task_id,
                     sequence=seq,
                     event_type=event_type,
-                    event_data=data.get("data", {}),
+                    event_data=werkzeug_ereignis_maskieren(data).get("data", {}),
                     timestamp=ts,
                 ))
                 try:

@@ -33,6 +33,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core import ziel as _ziel
 from app.core.dlp import mask as _dlp_mask
+from app.core.dlp import werkzeug_eingabe_maskieren as _eingabe_maskieren
 from app.db.session import async_session_factory
 from app.models.chat_message import ChatMessage
 
@@ -91,12 +92,15 @@ def werkzeug_ergebnis_eintragen(werkzeuge: list, tool_use_id: str, inhalt) -> bo
 
 
 def _werkzeuge_bereinigen(werkzeuge):
-    """Vor dem Speichern: Ausgaben ueber die Geheimnis-Maskierung (core/dlp) und
-    auf ``AUSGABE_MAX`` kuerzen. Eintraege ohne Ausgabe bleiben unveraendert."""
+    """Vor dem Speichern: Eingaben und Ausgaben ueber die Geheimnis-Maskierung
+    (core/dlp, nur Klasse ``secret``), Ausgaben auf ``AUSGABE_MAX`` kuerzen. Die
+    Eingabe bleibt dabei gueltiges JSON — die Oberflaeche parst sie."""
     if not isinstance(werkzeuge, list):
         return werkzeuge
     aus = []
     for eintrag in werkzeuge:
+        if isinstance(eintrag, dict) and "input" in eintrag:
+            eintrag = {**eintrag, "input": _eingabe_maskieren(eintrag["input"])}
         if isinstance(eintrag, dict) and eintrag.get("output"):
             eintrag = dict(eintrag)
             eintrag["output"] = _ausgabe_kuerzen(

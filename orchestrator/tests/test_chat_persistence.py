@@ -195,6 +195,19 @@ class ChatPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(geheim, ausgabe)
         self.assertLess(len(ausgabe), 5_000)
 
+    async def test_tool_input_is_masked_and_stays_valid_json(self):
+        """Ein ``curl -H "Authorization: Bearer …"`` stand dauerhaft im Verlauf —
+        sichtbar fuer geteilte Nutzer und in jeder Sicherung (#911)."""
+        import json
+        token = "abcdefghijklmnopqrstuvwxyz0123456789"
+        eingabe = json.dumps({"command": f'curl -H "Authorization: Bearer {token}"'})
+        await self._cp.upsert_chat_message(
+            AGENT, SESSION_A, "m1", "assistant", content="x",
+            tool_calls=[{"tool": "Bash", "tool_use_id": "t1", "input": eingabe}])
+        gespeichert = (await self._rows(message_id="m1"))[0].tool_calls[0]["input"]
+        self.assertNotIn(token, gespeichert)
+        self.assertIn("curl", json.loads(gespeichert)["command"])
+
     def test_tool_result_lands_on_its_own_entry(self):
         liste = [{"tool": "Read", "tool_use_id": "t1", "input": "{}"},
                  {"tool": "Bash", "tool_use_id": "t2", "input": "{}"}]

@@ -8,6 +8,7 @@ Covers:
   * decide(): block wins; mask produces masked output; log/allow pass through.
 """
 
+import json
 import unittest
 from unittest.mock import MagicMock
 
@@ -130,6 +131,71 @@ class ResolveAndDecideTests(unittest.TestCase):
         v = dlp.decide("hallo", {}, {})
         self.assertTrue(v.allowed)
         self.assertEqual(v.effective, "allow")
+
+
+class WerkzeugMaskierungTests(unittest.TestCase):
+    """Werkzeug-Eingaben ohne Geheimnisse (#911) — und weiterhin gueltiges JSON."""
+
+    TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789"
+
+    def test_bearer_am_ende_eines_befehls_bleibt_gueltiges_json(self):
+        roh = json.dumps({"command": f'curl -H "Authorization: Bearer {self.TOKEN}"'})
+        aus = dlp.werkzeug_eingabe_maskieren(roh)
+        self.assertNotIn(self.TOKEN, aus)
+        self.assertIn("curl", json.loads(aus)["command"])
+
+    def test_geheimnis_unter_sprechendem_schluessel(self):
+        aus = json.loads(dlp.werkzeug_eingabe_maskieren(
+            json.dumps({"url": "https://example.invalid", "password": "hunter2-geheim"})))
+        self.assertNotIn("hunter2-geheim", json.dumps(aus))
+        self.assertEqual(aus["url"], "https://example.invalid")
+
+    def test_verschachtelt_und_als_objekt(self):
+        geheim = "sk-" + "B" * 30
+        aus = dlp.werkzeug_eingabe_maskieren({"schritte": [{"env": {"API_KEY": geheim}}]})
+        self.assertIsInstance(aus, dict)
+        self.assertNotIn(geheim, json.dumps(aus))
+
+    def test_unveraenderte_eingabe_bleibt_zeichengleich(self):
+        roh = '{"command":"ls -la /workspace","n":3}'
+        self.assertEqual(dlp.werkzeug_eingabe_maskieren(roh), roh)
+
+    def test_fachliche_daten_bleiben_stehen(self):
+        """Nur Geheimnisse: E-Mail und IBAN sind oft der Gegenstand der Arbeit."""
+        roh = json.dumps({"to": "kunde@example.com", "iban": "DE89370400440532013000"})
+        self.assertEqual(dlp.werkzeug_eingabe_maskieren(roh), roh)
+
+    def test_kein_json_wird_als_text_maskiert(self):
+        aus = dlp.werkzeug_eingabe_maskieren(f'{{"command": "Bearer {self.TOKEN}')
+        self.assertNotIn(self.TOKEN, aus)
+
+    def test_strom_ereignisse(self):
+        geheim = "ghp_" + "C" * 30
+        call = {"type": "tool_call", "message_id": "m1",
+                "data": {"tool": "Bash", "tool_use_id": "t1",
+                         "input": {"command": f"echo {geheim}"}}}
+        result = {"type": "tool_result",
+                  "data": {"tool_use_id": "t1",
+                           "content": [{"type": "text", "text": f"token {geheim}"}]}}
+        done = {"type": "done", "data": {"text": "fertig", "tool_calls": [
+            {"tool": "Bash", "input": json.dumps({"command": f"echo {geheim}"}),
+             "output": geheim}]}}
+        for ereignis in (call, result, done):
+            aus = dlp.werkzeug_ereignis_maskieren(ereignis)
+            self.assertNotIn(geheim, json.dumps(aus))
+            self.assertEqual(aus["type"], ereignis["type"])
+        json.loads(dlp.werkzeug_ereignis_maskieren(done)["data"]["tool_calls"][0]["input"])
+        # Text-Ereignisse bleiben unberuehrt.
+        text = {"type": "text", "data": {"text": "hallo"}}
+        self.assertIs(dlp.werkzeug_ereignis_maskieren(text), text)
+
+    def test_strom_text(self):
+        geheim = "sk-" + "D" * 30
+        roh = json.dumps({"type": "tool_call", "data": {"input": {"k": geheim}}})
+        self.assertNotIn(geheim, dlp.werkzeug_ereignis_text_maskieren(roh))
+        harmlos = json.dumps({"type": "tool_call", "data": {"input": {"k": "v"}}})
+        self.assertEqual(dlp.werkzeug_ereignis_text_maskieren(harmlos), harmlos)
+        self.assertEqual(dlp.werkzeug_ereignis_text_maskieren("kein json"), "kein json")
 
 
 if __name__ == "__main__":
