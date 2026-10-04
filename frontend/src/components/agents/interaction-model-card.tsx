@@ -86,7 +86,7 @@ export function InteractionModelCard({
       setDelegate(value);
       setMsg(
         value === null
-          ? "Plattform-Vorgabe gilt (Einstellungen → Sprache). Ab dem nächsten Gespräch."
+          ? "Plattform-Vorgabe gilt (Admin-Konsole → Sprache). Ab dem nächsten Gespräch."
           : value
             ? "Im Echtzeit-Gespräch antwortet jetzt immer der Agent. Ab dem nächsten Gespräch."
             : "Die Echtzeit-Stimme antwortet jetzt selbst. Ab dem nächsten Gespräch.",
@@ -97,7 +97,7 @@ export function InteractionModelCard({
   };
 
   const DELEGATE_OPTIONS: { value: boolean | null; label: string; hint: string }[] = [
-    { value: null, label: "Plattform-Vorgabe", hint: "wie unter Einstellungen → Sprache" },
+    { value: null, label: "Plattform-Vorgabe", hint: "wie in der Admin-Konsole unter Sprache" },
     { value: true, label: "Immer der Agent", hint: "sein Modell & seine Rechte, einige Sekunden Wartezeit" },
     { value: false, label: "Stimme direkt", hint: "schneller, eigene Werkzeuge der Stimme" },
   ];

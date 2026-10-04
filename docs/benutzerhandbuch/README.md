@@ -58,7 +58,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 17. [Explorer (Dateien)](#17-explorer-dateien)
 18. [Audit-Log](#18-audit-log)
 19. [System-Health](#19-system-health)
-20. [Einstellungen](#20-einstellungen)
+20. [Meine Einstellungen](#20-meine-einstellungen)
 21. [Benachrichtigungen](#21-benachrichtigungen)
 22. [Admin-Konsole](#22-admin-konsole)
 22a. [Concierge: was gerade auf dich wartet (nur Admins)](#22a-concierge-was-gerade-auf-dich-wartet-nur-admins)
@@ -291,7 +291,7 @@ Seitenleiste → **Agents**. Jeder Agent erscheint als **Kachel**. Was du darauf
 - **+ New Agent** — startet den Anlege-Assistenten (nächster Abschnitt).
 
 > Du siehst hier nur **deine eigenen** Agenten. Als Admin findest du **alle** unter
-> **Admin-Konsole → All Agents**.
+> **Admin-Konsole → Alle Agenten**.
 
 ### 4.2 Einen Agenten anlegen — Schritt für Schritt
 
@@ -810,7 +810,7 @@ Reviewer) zusammen ein Ergebnis erarbeiten sollen. Seitenleiste → **Meeting Ro
 > Unterschied zum Chat/Task: Hier reden **mehrere Agenten miteinander**, statt dass du mit
 > einem einzelnen sprichst.
 
-> **Moderator-LLM:** Ist der Moderator aktiv, kannst du im „Neuer Raum"-Dialog wählen, **welches LLM** ihn antreibt. Leer = globaler Standard (Admin → Einstellungen → System → Automatisierung → „Meeting-Moderator — LLM").
+> **Moderator-LLM:** Ist der Moderator aktiv, kannst du im „Neuer Raum"-Dialog wählen, **welches LLM** ihn antreibt. Leer = globaler Standard (Admin-Konsole → System & Lizenz → Automatisierung → „Meeting-Moderator — LLM").
 
 **Was am Ende automatisch passiert:**
 - Der **Moderator** fasst die Ergebnisse als **Action-Item-Liste** zusammen.
@@ -1034,7 +1034,7 @@ steuerst du im **Settings → Integrationen**-Tab, welche er nutzen darf.
 
 Ein **AI-Account** ist ein **zentral hinterlegter Modell-Zugang** (z. B. Azure OpenAI), den
 Agenten nutzen — statt dass jeder User eigene Schlüssel pflegt. Verwaltung in der
-**Admin-Konsole → AI-Accounts** (bzw. der gleichnamigen Seite).
+**Admin-Konsole → KI-Konten**.
 
 ![AI-Accounts](screenshots/12-ai-accounts.png)
 
@@ -1114,7 +1114,7 @@ löschen oder weitergeben kann er ihn nicht.
 3. Bei den ausgewählten Personen erscheint der Key mit dem Hinweis **„von <dein Name>“**;
    sie können ihn ihren Agenten zuweisen. Bei dir steht **„an n freigegeben“**.
 
-Admins finden dasselbe Symbol in der Admin-Konsole unter **Compliance → Key Management**.
+Admins finden dasselbe Symbol in der Admin-Konsole unter **Compliance → Schlüssel & Zugangsdaten**.
 
 **Freigabe zurückziehen:** Das Fenster erneut öffnen und das Häkchen entfernen. Der Key
 verschwindet sofort aus den Agenten dieser Person; sie starten dafür kurz neu. Das gilt
@@ -1183,21 +1183,36 @@ Bei Bedarf den **Self-Test erneut ausführen**, um den aktuellen Stand zu prüfe
 
 ---
 
-## 20. Einstellungen
+## 20. Meine Einstellungen
 
-Unter **Settings** verwaltest du dein **persönliches Profil** und deine Vorlieben.
-Seitenleiste → **Settings**.
+Unter **Meine Einstellungen** steht nur, was **dir selbst** gehört — für alle Nutzer gleich,
+ob Administrator oder Mitglied *(seit 1.362.0)*.
 
-![Einstellungen](screenshots/17-settings.png)
+So öffnest du sie:
+1. Unten in der Seitenleiste auf **deinen Namen** klicken.
+2. Im Menü **Meine Einstellungen** wählen (Adresse `/settings`).
+
+![Meine Einstellungen](screenshots/17-settings.png)
 
 **Was du hier einstellst:**
-- **Profil** — Name/Anzeigedaten.
-- **Anzeige** — z. B. Dark/Light-Mode (auch direkt unten in der Seitenleiste umschaltbar).
-- **Benachrichtigungs-Optionen** — wie/ob du informiert wirst.
-- Nach Änderungen **Speichern**.
+- **Meine KI-Zugänge** — dein eigenes Claude- oder Codex-Abo verbinden (falls die Anlage
+  das erlaubt).
+- **Verfügbare Modelle** — welche Modelle dir freigegeben sind.
+- **Integrationen und Benachrichtigungen** — Browser-Meldungen für diesen Browser an- oder
+  abschalten; eigene Konten (Microsoft 365, Google, MCP-Server) verbindest du über den Link
+  zu **Integrationen**.
+- **Anzeige** — helles oder dunkles Design; Administratoren zusätzlich die
+  **Mitglieder-Ansicht**.
 
-> Plattform-weite Einstellungen (Modelle, Accounts, Rollen, Budgets, Schlüssel) liegen
-> **nicht** hier, sondern in der **Admin-Konsole** (Kap. 22).
+Alles wird sofort übernommen — es gibt keinen Speichern-Knopf.
+
+> Einstellungen für die **ganze Anlage** (Modelle & Anbieter, Integrationen der Anlage,
+> Sprache, System & Lizenz, Rollen, Budgets, Schlüssel) liegen **nicht** hier, sondern in der
+> **Admin-Konsole** (Kap. 22). Administratoren sehen oben auf der Seite einen Hinweis mit dem
+> Knopf **Zur Admin-Konsole**.
+>
+> Alte Lesezeichen wie `/settings?tab=system` führen Administratoren automatisch in den
+> passenden Bereich der Admin-Konsole.
 
 ### 20.1 Microsoft nur lesend (nur Administratoren) *(seit 1.154.0)*
 
@@ -1211,7 +1226,7 @@ gleichermaßen** — unabhängig davon, was bei einem einzelnen Agenten eingeste
 
 So findest du ihn:
 1. Seitenleiste → **Admin-Konsole**.
-2. Reiter **Integrationen** wählen.
+2. Links unter **Anlage** den Bereich **Integrationen (Anlage)** wählen.
 3. Zum Abschnitt **Microsoft 365** scrollen.
 4. Dort der Schalter **Microsoft nur lesend** — grün = aktiv (nur lesen).
 
@@ -1235,7 +1250,7 @@ fängt eigenständig an — statt dass du jeden neuen Agenten von Hand briefst.
 ![Vorlage · Verantwortungsbereiche](screenshots/36-vorlagen-bereiche.png)
 *Abbildung 36: Derselbe Editor wie beim Agenten — hier in der Vorlage*
 
-1. Seitenleiste → **Settings** → Abschnitt **Agent-Vorlagen**.
+1. Seitenleiste → **Admin-Konsole** → links unter **Agenten** den Bereich **Agenten-Vorlagen**.
 2. Die gewünschte Vorlage aufklappen → **Bearbeiten**.
 3. Zum Block **Verantwortungsbereiche** scrollen → **+ Bereich**.
 4. **Titel**, **Takt** (täglich/wöchentlich/monatlich/laufend) und **Priorität** setzen —
@@ -1251,7 +1266,7 @@ Jede der mitgelieferten Vorlagen kommt mit Skills für ihr Fachgebiet — ein Ag
 Vorlage *Buchhaltung* kennt z. B. sofort das Vorkontieren von Belegen, ein *Security
 Auditor* die Sicherheitsprüfung von Code. Du musst nichts einrichten.
 
-1. Seitenleiste → **Settings** → **Agent-Vorlagen** → Vorlage aufklappen.
+1. Seitenleiste → **Admin-Konsole** → **Agenten-Vorlagen** → Vorlage aufklappen.
 2. Unter **Skills** stehen die mitgebrachten Skills.
 
    ![Vorlage mit Skills](screenshots/48-vorlage-skills.png)
@@ -1327,10 +1342,12 @@ Bittet der Anbieter der Software um Kontakt, erscheint am **unteren Rand** ein d
 
 - **Er sperrt nichts** — alle Funktionen laufen unverändert weiter.
 - **Lizenzschlüssel eintragen** (nur für Administratoren sichtbar): der Knopf im Streifen
-  öffnet **Einstellungen → System → Lizenz**. Dort den Schlüssel in das Feld **Lizenzschlüssel**
-  einfügen und **Lizenz eintragen** klicken. Beim nächsten Lebenszeichen ordnet der Anbieter die
-  Anlage damit zu, und der Hinweis verschwindet, sobald er sie freigibt.
-- Direktlink zum Eintragen: **`/settings?tab=system#lizenz`**.
+  öffnet **Admin-Konsole → System & Lizenz**; das Lizenzfeld steht dort ganz oben. Den
+  Schlüssel in das Feld **Lizenzschlüssel** einfügen und **Lizenz eintragen** klicken. Beim
+  nächsten Lebenszeichen ordnet der Anbieter die Anlage damit zu, und der Hinweis
+  verschwindet, sobald er sie freigibt.
+- Direktlink zum Eintragen: **`/admin?tab=lizenz`** (der frühere Link
+  `/settings?tab=system#lizenz` leitet dorthin weiter).
 - **Ausblenden:** das **X** rechts im Streifen. Er bleibt dann für diese Sitzung weg und
   kommt erst wieder, wenn der Anbieter einen **neuen** Text hinterlegt.
 - **Nachlesen:** Administratoren finden denselben Text zusätzlich als Benachrichtigung
@@ -1340,7 +1357,7 @@ Bittet der Anbieter der Software um Kontakt, erscheint am **unteren Rand** ein d
 
 ### 21.2 Lizenz und Agentenlimit (nur Administratoren) *(seit 1.350.0)*
 
-Unter **Einstellungen → System → Lizenz** steht, mit welcher Lizenz die Anlage läuft.
+Unter **Admin-Konsole → System & Lizenz** steht ganz oben, mit welcher Lizenz die Anlage läuft.
 
 ![Lizenzfeld mit Edition, Belegung, Hinweis und Schlüsselfeld](screenshots/f24-lizenz.png)
 
@@ -1352,12 +1369,16 @@ Unter **Einstellungen → System → Lizenz** steht, mit welcher Lizenz die Anla
   Anlage, laufend oder gestoppt.
 
 **Lizenz eintragen — Schritt für Schritt**
-1. **Einstellungen** öffnen, Reiter **System**, zum Abschnitt **Lizenz** blättern.
+1. Seitenleiste → **Admin-Konsole** → links unter **Anlage** den Bereich **System & Lizenz** wählen.
 2. Den Schlüssel in das Feld **Lizenzschlüssel** einfügen.
 3. **Lizenz eintragen** klicken. Edition und Belegung erscheinen sofort.
 
 Ein falscher oder unvollständiger Schlüssel wird abgelehnt; die bisherige Lizenz bleibt
 dabei unverändert bestehen.
+
+Unter dem Schlüsselfeld steht der Verweis auf **Editionen, Preise und Lizenzschlüssel beim
+Anbieter**. Wohin er zeigt, legt der Betreiber der Anlage mit `ANBIETER_URL` (Webseite) und
+`ANBIETER_KONTAKT` (E-Mail) in der `.env` fest.
 
 **Was das Agentenlimit bewirkt**
 - Ist das Limit erreicht, lässt sich **kein weiterer Agent anlegen** — egal auf welchem Weg
@@ -1383,13 +1404,27 @@ Editionen und Preise stehen in der README des Projekts, Abschnitt „License".
 
 ![Admin-Konsole](screenshots/19-admin.png)
 
-Seitenleiste → **Admin-Konsole** (nur Administratoren). Oben die Tabs: **Users**,
-**All Agents**, **Zuweisungen**, **Rollen**, **Feedback**, **Budget**, **Settings**,
-**AI-Accounts**, **Second Brains**, **Key Management**.
+Seitenleiste → **Admin-Konsole** (nur Administratoren). Links stehen **alle Bereiche in einer
+Liste**, nach Gruppen überschrieben — jeder Bereich ist mit **einem Klick** erreichbar
+*(seit 1.362.0)*. Auf schmalen Bildschirmen steht dieselbe Liste als Auswahlfeld oben.
 
-### 22.1 Users
+| Gruppe | Bereiche |
+|---|---|
+| **Nutzer & Rollen** | Nutzer, Rollen, SSO-Gruppen |
+| **Agenten** | Alle Agenten, Zuweisungen, Agenten-Vorlagen |
+| **KI & Wissen** | Modelle & Anbieter, KI-Konten, Sprache (Voice), Second Brains, Websuche |
+| **Anlage** | Integrationen (Anlage), System & Lizenz, Seiten & Links |
+| **Compliance** | Master-Regeln, Schlüssel & Zugangsdaten, DLP-Filter, Protokoll, Gesetze |
+| **Betrieb** | Systemzustand, Budget, Feedback |
 
-Tab **Users** — die Benutzerverwaltung. Die Liste zeigt alle Benutzer mit **Name**,
+Jeder Bereich hat eine eigene Adresse, z. B. `/admin?tab=modelle` oder `/admin?tab=lizenz` —
+gut für Lesezeichen. Der frühere Sammelreiter **Einstellungen** ist aufgeteilt in **Modelle &
+Anbieter**, **Integrationen (Anlage)**, **Sprache (Voice)**, **System & Lizenz** und
+**Agenten-Vorlagen**.
+
+### 22.1 Nutzer
+
+Bereich **Nutzer** — die Benutzerverwaltung. Die Liste zeigt alle Benutzer mit **Name**,
 **E-Mail** und (über das Badge) ihrer **Rolle**.
 
 **Neuen Benutzer anlegen — jedes Feld erklärt.** Klick **+ User hinzufügen**:
@@ -1409,11 +1444,11 @@ Tab **Users** — die Benutzerverwaltung. Die Liste zeigt alle Benutzer mit **Na
 **Passwort zurücksetzen**, **Aktiv/Inaktiv** schalten und **Mount-Rechte** setzen (welche
 Second Brains der Benutzer **lesen/schreiben** darf).
 
-### 22.2 All Agents
+### 22.2 Alle Agenten
 
 ![All Agents](screenshots/26-admin-all-agents.png)
 
-Tab **All Agents** — die **plattform-weite** Sicht auf **alle** Agenten über **alle**
+Bereich **Alle Agenten** — die **plattform-weite** Sicht auf **alle** Agenten über **alle**
 Benutzer hinweg (auf der normalen Agents-Seite sieht jeder nur seine eigenen). Pro Agent
 siehst du Besitzer, Status und Modell.
 - Einen Agenten **anklicken** → öffnen/verwalten.
@@ -1584,9 +1619,9 @@ unter **Wissen** (Kap. 5.5).
 4. Die Mitarbeiter binden es im Agenten (**Wissen**-Tab) an und können darin suchen.
 5. Optional **Stecker-Symbol** → MCP aktivieren, um den Vault auch in n8n/Cursor zu nutzen.
 
-### 22.6 AI-Accounts
-![AI-Accounts](screenshots/25-admin-ai-accounts.png)
-1. Tab **AI-Accounts** → zentrale Modell-/Provider-Zugänge anlegen/verwalten
+### 22.6 KI-Konten
+![KI-Konten](screenshots/25-admin-ai-accounts.png)
+1. Bereich **KI-Konten** → zentrale Modell-/Provider-Zugänge anlegen/verwalten
    (z. B. Azure OpenAI). Siehe Kap. 15.
 
 ### 22.7 Budget
@@ -1598,10 +1633,25 @@ Tab **Budget** — **Kostenkontrolle**.
   günstiges Modell (statt Stopp), damit nichts liegen bleibt.
 - Hier behältst du Verbrauch und Kosten im Blick (ergänzend zu **Analytics**).
 
-### 22.8 Key Management
-Tab **Key Management** — Verwaltung von **API-/Zugangs-Schlüsseln auf Plattformebene**
+### 22.8 Schlüssel & Zugangsdaten
+Bereich **Schlüssel & Zugangsdaten** (Gruppe **Compliance**) — Verwaltung von **API-/Zugangs-Schlüsseln auf Plattformebene**
 (z. B. für Integrationen/Webhooks). Schlüssel anlegen, ansehen (sofern erlaubt) und
 widerrufen. Sensible Werte werden verschlüsselt gehalten.
+
+### 22.9 Anlagenweite Einstellungen *(seit 1.362.0)*
+Was früher als Sammelreiter **Einstellungen** in der Konsole und zusätzlich unter `/settings`
+stand, hat jetzt je einen eigenen Bereich:
+
+| Bereich | Gruppe | Inhalt |
+|---|---|---|
+| **Modelle & Anbieter** | KI & Wissen | Modell-Anbieter, Anmeldung der Plattform, Standards für Agenten, Anzeigewährung, Modelle freischalten |
+| **Sprache (Voice)** | KI & Wissen | Live-Sprachsitzungen, Stimmen, Azure-Speech |
+| **Integrationen (Anlage)** | Anlage | SAML, Teams-Telefonie, Telegram-Bot der Anlage, Google/Microsoft/Apple-Anmeldung, Microsoft nur lesend, Exchange (on-prem), SMTP-Versand |
+| **System & Lizenz** | Anlage | Lizenz (ganz oben), Fernwartung, Automatisierung, Nachtschicht, Zugang und Registrierung, Anmeldung und Sicherheit |
+| **Agenten-Vorlagen** | Agenten | Vorlagen für neue Agenten (Kap. 20.2) |
+
+Änderungen in **Modelle & Anbieter**, **Integrationen (Anlage)** und **System & Lizenz** mit
+**Einstellungen speichern** am Seitenende übernehmen; Schalter wirken sofort.
 
 ---
 
@@ -2048,16 +2098,16 @@ ausgeliefert und laufen auch ohne Internetzugang.
 ## 30. Admin: Exchange on-prem, Azure-Stimmen, Dreaming
 
 **Exchange on-prem (Mail + Kalender):**
-1. **Admin-Konsole → Einstellungen → Integrationen → Exchange (on-prem)**.
+1. **Admin-Konsole → Integrationen (Anlage) → Exchange (on-prem)**.
 2. **Server-URL (EWS)** + **Auth-Modus** (service_account | modern_auth | basic) eintragen.
 3. Danach erscheint **Exchange** bei den Agent-Integrationen; jeder Agent greift nur auf das Postfach **seines Owners** zu.
 
 **Microsoft-/Azure-Stimmen (Speech):**
-1. **Admin-Konsole → Einstellungen → Voice** → **Azure-Speech-Key** + **Region** eintragen.
+1. **Admin-Konsole → Sprache (Voice)** → **Azure-Speech-Key** + **Region** eintragen.
 2. Danach sind Azure-STT/TTS als Sprach-Option wählbar.
 
 **Dreaming-Memory (adaptives Nutzerprofil, optional):**
-1. **Admin-Konsole → Einstellungen → Automatisierung** → **Dreaming** aktivieren.
+1. **Admin-Konsole → System & Lizenz → Automatisierung** → **Dreaming** aktivieren.
 2. Der Scheduler frischt periodisch das adaptive Nutzerprofil aus den Memories auf.
 
 **Meeting → Planner:** unter Automatisierung die **Planner-Plan-ID** hinterlegen (Abschnitt 27).
@@ -2075,7 +2125,7 @@ der Agenten bzw. die Knowledge Base. **Morgens startet jeder Agent schlauer.**
 
 ### 31.1 Aktivieren (Admin)
 
-1. Seitenleiste → **Einstellungen** → Karte **„Nachtschicht (Reflection)"**.
+1. Seitenleiste → **Admin-Konsole** → **System & Lizenz** → Karte **„Nachtschicht (Reflection)"**.
 2. **Aktiviert** einschalten.
 3. **Uhrzeit** wählen (Standard: **3 Uhr nachts**).
 4. **Modus** wählen:
@@ -2085,7 +2135,7 @@ der Agenten bzw. die Knowledge Base. **Morgens startet jeder Agent schlauer.**
    - **Alles freigeben** — keine Änderung ohne deine Freigabe (maximale Kontrolle).
 5. Optional das **Token-Budget** pro Lauf anpassen (Kostendeckel, Standard 200000).
 
-> _[Screenshot folgt: Einstellungen — Karte Nachtschicht mit rotem Kreis auf dem Toggle]_
+> _[Screenshot folgt: Admin-Konsole, System & Lizenz — Karte Nachtschicht mit rotem Kreis auf dem Toggle]_
 
 ### 31.2 Das Ergebnis am Morgen ansehen
 
@@ -2597,15 +2647,15 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 ## B. Admin-Schnellstart: 3 Rezepte (Ende-zu-Ende)
 
 ### Rezept 1 — Modell für alle nutzbar machen
-1. **Admin-Konsole → AI-Accounts → + New** → Provider (z. B. Azure OpenAI), Endpoint, Key,
+1. **Admin-Konsole → KI-Konten → + New** → Provider (z. B. Azure OpenAI), Endpoint, Key,
    Modell eintragen → **Speichern**.
 2. **Admin-Konsole → Rollen → + Neue Rolle** → unter *AI-Accounts* den neuen Account
    wählen, unter *Modelle/Provider* die erlaubten Modelle → **Speichern**.
-3. **Admin-Konsole → Users** → beim Benutzer die **Rolle** zuweisen.
+3. **Admin-Konsole → Nutzer** → beim Benutzer die **Rolle** zuweisen.
    → Der Benutzer kann beim Agenten-Anlegen jetzt dieses Modell wählen.
 
 ### Rezept 2 — Neuen Mitarbeiter komplett einrichten
-1. **Admin-Konsole → Users → + User hinzufügen** → Name, E-Mail, Passwort, **Rolle** wählen
+1. **Admin-Konsole → Nutzer → + User hinzufügen** → Name, E-Mail, Passwort, **Rolle** wählen
    → **Anlegen**.
 2. Optional **Mount-Rechte** setzen (welche **Second Brains** ro/rw).
 3. Optional einen **fertigen Agenten verteilen** (Rezept 3), damit der Mitarbeiter sofort
@@ -2625,7 +2675,7 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 
 | Problem | Lösung |
 |---|---|
-| **Ich sehe keinen Agenten** | Auf der Agents-Seite siehst du nur **deine eigenen**. Admins: **Admin-Konsole → All Agents** für alle. |
+| **Ich sehe keinen Agenten** | Auf der Agents-Seite siehst du nur **deine eigenen**. Admins: **Admin-Konsole → Alle Agenten** für alle. |
 | **Modell/Account nicht wählbar** | Es werden nur **freigegebene** Optionen angezeigt. Admin muss den **AI-Account** anlegen und per **Rolle** freigeben (Rezept 1). |
 | **Agent reagiert nicht / „arbeitet ewig"** | Status auf der Detailseite prüfen; bei Bedarf **Restart**. Lange Aufgaben (Render/Build) brauchen Zeit. |
 | **„Update available"** | Auf **Update Now** klicken — Workspace-Daten bleiben erhalten. |
@@ -2653,19 +2703,19 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 | Schedules | `/schedules` | `10-schedules.png` |
 | Integrations / MCP | `/integrations` | `11-integrations.png` |
 | AI-Accounts | `/ai-accounts` | `12-ai-accounts.png` |
-| Secrets | `/secrets` | `13-secrets.png` |
+| Secrets | `/admin?tab=secrets` | `13-secrets.png` |
 | Explorer | `/files` | `14-files.png` |
-| Audit | `/audit` | `15-audit.png` |
-| Health | `/health` | `16-health.png` |
-| Settings | `/settings` | `17-settings.png` |
+| Audit | `/admin?tab=audit` | `15-audit.png` |
+| Health | `/admin?tab=health` | `16-health.png` |
+| Meine Einstellungen | `/settings` | `17-settings.png` |
 | Approvals | `/approvals` | `18-approvals.png` |
-| Admin: Users | `/admin` | `19-admin.png` |
-| Admin: Zuweisungen | `/admin` | `21-admin-zuweisungen.png` |
-| Admin: Verteilen-Modal | `/admin` | `22-verteilen-modal.png` |
-| Admin: Rollen | `/admin` | `23-admin-rollen.png` |
-| Admin: Second Brains | `/admin` | `24-admin-second-brains.png` |
-| Admin: AI-Accounts | `/admin` | `25-admin-ai-accounts.png` |
-| Admin: All Agents | `/admin` | `26-admin-all-agents.png` |
+| Admin: Nutzer (mit Seitennavigation) | `/admin?tab=users` | `19-admin.png` |
+| Admin: Zuweisungen | `/admin?tab=assignments` | `21-admin-zuweisungen.png` |
+| Admin: Verteilen-Modal | `/admin?tab=assignments` | `22-verteilen-modal.png` |
+| Admin: Rollen | `/admin?tab=roles` | `23-admin-rollen.png` |
+| Admin: Second Brains | `/admin?tab=second-brains` | `24-admin-second-brains.png` |
+| Admin: KI-Konten | `/admin?tab=ai-accounts` | `25-admin-ai-accounts.png` |
+| Admin: Alle Agenten | `/admin?tab=agents` | `26-admin-all-agents.png` |
 | Chat | `/chat` | `20-chat.png` |
 | Apps: Übersicht | `/apps` | `f19-apps-uebersicht.png` |
 | Apps: Detailfenster | `/apps` | `f20-app-detail.png` |
@@ -2674,5 +2724,5 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 | Agent: Tagesplan im Kalender | `/agents/<id>` → Activity → Kalender | `32-tagesplan.png` |
 | Agent: Plan-Block bearbeiten | `/agents/<id>` → Activity → Kalender | `34-block-bearbeiten.png` |
 | Agent: Entwicklung & Probezeit | `/agents/<id>` → Settings | `35-entwicklung.png` |
-| Vorlage: Verantwortungsbereiche | `/settings` → Agent-Vorlagen | `36-vorlagen-bereiche.png` |
-| Admin: Microsoft nur lesend | `/admin` → Settings → Integrationen | `33-microsoft-nur-lesend.png` |
+| Vorlage: Verantwortungsbereiche | `/admin?tab=vorlagen` | `36-vorlagen-bereiche.png` |
+| Admin: Microsoft nur lesend | `/admin?tab=integrationen-anlage` | `33-microsoft-nur-lesend.png` |

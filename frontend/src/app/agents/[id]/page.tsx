@@ -1569,11 +1569,8 @@ function TelegramAgentSection({ agentId }: { agentId: string }) {
         )}
       </div>
       <p className="px-5 pt-3 text-[11px] text-muted-foreground/60">
-        Eigener Bot NUR für diesen Agenten — nicht zu verwechseln mit deinem
-        persoenlichen Telegram-Konto unter{" "}
-        <Link href="/settings" className="text-primary hover:underline">
-          Einstellungen → Integrationen
-        </Link>.
+        Eigener Bot NUR für diesen Agenten — nicht zu verwechseln mit dem
+        Telegram-Bot der Anlage, den die Administration einrichtet.
       </p>
 
       <div className="p-5 space-y-4">

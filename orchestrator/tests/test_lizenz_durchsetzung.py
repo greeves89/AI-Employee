@@ -335,6 +335,32 @@ class LizenzApi(_MitEigenemSchluessel):
         self.assertNotIn("betreiber_hinweis", mitglied)
         self.assertNotIn("kontakt@example.invalid", json.dumps(mitglied, default=str))
 
+    async def test_preisverweis_kommt_aus_der_anbieterangabe(self):
+        """#899: Editionen und Preise verweisen auf den Anbieter der Anlage,
+        nicht auf das Quellcode-Repository. Die Angabe ist einstellbar."""
+        from app.config import settings
+        from app.services import lizenz_zustand
+
+        with patch.object(settings, "anbieter_url", "https://anbieter.example.com/preise"), \
+                patch.object(settings, "anbieter_kontakt", "vertrieb@example.com"), \
+                patch.object(lizenz_zustand, "_tage_seit_einrichtung", AsyncMock(return_value=5)):
+            admin = await lizenz_zustand.lizenzstatus(self.db, fuer_admin=True)
+            mitglied = await lizenz_zustand.lizenzstatus(self.db, fuer_admin=False)
+        self.assertEqual(admin["anbieter"], {
+            "url": "https://anbieter.example.com/preise", "kontakt": "vertrieb@example.com"})
+        self.assertNotIn("anbieter", mitglied)
+
+    def test_hoehere_stufe_verweist_auf_den_anbieter(self):
+        from app.config import settings
+
+        with patch.object(settings, "anbieter_url", "https://anbieter.example.com/preise"), \
+                self.assertRaises(HTTPException) as fehler:
+            lizenz.require_feature("gibt_es_nicht")
+        self.assertEqual(fehler.exception.status_code, 402)
+        meldung = fehler.exception.detail["message"]
+        self.assertIn("https://anbieter.example.com/preise", meldung)
+        self.assertNotIn("github.com", meldung)
+
     async def test_version_ohne_anmeldung_verraet_keinen_hinweis(self):
         """#917: ``GET /version/`` ist oeffentlich — dort darf der Hinweis nicht stehen."""
         from app.api import version as api

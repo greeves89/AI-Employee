@@ -7,6 +7,7 @@ import { getBase } from "@/lib/config";
 import { useAuthStore } from "@/lib/auth";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar";
 import { cn } from "@/lib/utils";
+import { LIZENZ_PFAD } from "@/lib/admin-bereiche";
 
 /** Hoehe des Streifens. Wird als CSS-Variable gesetzt, damit Hauptbereich und
  *  Vollbild-Ansichten (Chat) ihm Platz machen, statt von ihm verdeckt zu werden. */
@@ -16,8 +17,8 @@ const VARIABLE = "--betreiber-hinweis-h";
 /** Alle 30 Minuten nachsehen — im selben Takt wie der Versionscheck. */
 const PRUEF_INTERVALL = 30 * 60 * 1000;
 
-/** Direkt zum Eintragen — Reiter "System", Abschnitt "Lizenz" der Einstellungen. */
-export const LIZENZ_EINTRAGEN_PFAD = "/settings?tab=system#lizenz";
+/** Direkt zum Eintragen — Admin-Konsole, „System & Lizenz“, Lizenz ganz oben (#899). */
+export const LIZENZ_EINTRAGEN_PFAD = LIZENZ_PFAD;
 
 /** Merkt sich das Wegklicken je Text: ein NEUER Hinweis erscheint wieder. */
 const WEGGEKLICKT_SCHLUESSEL = "betreiber-hinweis-weggeklickt";

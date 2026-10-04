@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings as app_settings
 from app.core import license as lizenz
 from app.core.agentenlimit import agentenzahl
 
@@ -115,6 +116,10 @@ async def lizenzstatus(db: AsyncSession, *, fuer_admin: bool) -> dict:
         "testphase_tage": lizenz.TESTPHASE_TAGE,
         "private_nutzung": privat,
         "betreiber_hinweis": betreiber_hinweis,
+        # Editionen, Preise, Kontakt: beim Anbieter der Anlage, nicht im
+        # Quellcode-Repository (#899). Einstellbar ueber die .env.
+        "anbieter": {"url": app_settings.anbieter_url.strip(),
+                     "kontakt": app_settings.anbieter_kontakt.strip()},
         "hinweis": lizenz.lizenz_hinweis(
             zustand=lic.zustand, agenten=agenten, limit=limit, limit_quelle=quelle,
             tage_seit_einrichtung=tage, privat_erklaert=privat,

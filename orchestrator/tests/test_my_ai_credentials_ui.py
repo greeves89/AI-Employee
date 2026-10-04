@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parents[2]
 API = (ROOT / "orchestrator/app/api/my_ai_credentials.py").read_text()
 CLIENT = (ROOT / "frontend/src/lib/api.ts").read_text()
 KOMPONENTE = (ROOT / "frontend/src/components/settings/my-ai-credentials.tsx").read_text()
-VIEW = (ROOT / "frontend/src/app/settings/view.tsx").read_text()
+# Seit #899 die Seite „Meine Einstellungen“ unter /settings.
+VIEW = (ROOT / "frontend/src/app/settings/meine-einstellungen.tsx").read_text()
 MENUE = (ROOT / "frontend/src/components/layout/user-menu.tsx").read_text()
 
 
@@ -90,7 +91,7 @@ class TheChainIsCompleteTests(unittest.TestCase):
 
     def test_the_settings_page_shows_it(self):
         self.assertIn("<MyAiCredentials />", VIEW)
-        self.assertIn('secTab === "meine"', VIEW)
+        self.assertIn('id="meine-ki-zugaenge"', VIEW)
 
     def test_the_page_is_reachable_from_the_user_menu(self):
         """Die Seite existierte schon — sie stand nur in keinem Menue."""

@@ -79,7 +79,7 @@ export function SystemControl() {
           <div className="min-w-0">
             <h3 className="text-sm font-semibold">Dienste</h3>
             <p className="text-[11px] text-muted-foreground/60">
-              Fernwartung: Status & Neustart von außerhalb des Heimnetzes {status?.version ? `· v${status.version}` : ""}
+              Fernwartung: Status & Neustart von außerhalb des Firmennetzes {status?.version ? `· v${status.version}` : ""}
             </p>
           </div>
           <button

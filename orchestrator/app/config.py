@@ -204,6 +204,12 @@ class Settings(BaseSettings):
     contact_to: str = ""
     contact_from: str = ""
 
+    # Anbieter der Anlage (#899): wohin der Lizenzbereich fuer Editionen,
+    # Preise und Kontakt verweist. Ein Wiederverkaeufer setzt hier seine eigene
+    # Adresse (ANBIETER_URL / ANBIETER_KONTAKT in der .env). Leer = kein Verweis.
+    anbieter_url: str = "https://agents.future-app.de"
+    anbieter_kontakt: str = ""
+
     # Security
     encryption_key: str = ""
     # Lokaler Schlüssel, mit dem scripts/backup.sh seinen Herzschlag an

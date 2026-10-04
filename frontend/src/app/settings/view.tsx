@@ -6,27 +6,20 @@ import { motion } from "framer-motion";
 import {
   Key, MessageSquare, Save, Loader2,
   CheckCircle2, AlertCircle, Shield, Bot, Gauge, Coins,
-  UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
+  UserPlus, Cloud, Server, Lock, Globe, Cpu,
   ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles, Network,
-  Plug, Mic, AlertTriangle, Moon, KeyRound, ShieldCheck } from "lucide-react";
+  AlertTriangle, Moon } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
-import { Header } from "@/components/layout/header";
-import { TemplateManager } from "@/components/settings/template-manager";
-import { VoiceSettings } from "@/components/settings/voice-settings";
 import { ModelCatalogAdmin } from "@/components/settings/model-catalog-admin";
 import { SystemControl } from "@/components/settings/system-control";
-import { PushToggle } from "@/components/settings/push-toggle";
 import { SsoAutoProvisioningToggle } from "@/components/settings/sso-auto-provisioning-toggle";
+import { ZweiFaktorPflichtToggle } from "@/components/settings/zwei-faktor";
 import { SamlConfig } from "@/components/settings/saml-config";
 import { TeamsCallingConfig } from "@/components/settings/teams-calling-config";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
-import { apiFehlertext } from "@/lib/api-fehler";
-import { MyAiCredentials } from "@/components/settings/my-ai-credentials";
-import { ZweiFaktorEinstellungen, ZweiFaktorPflichtToggle } from "@/components/settings/zwei-faktor";
-import { AvailableModels } from "@/components/settings/available-models";
+import { LizenzBereich } from "@/components/settings/lizenz-bereich";
 import { ClaudeLoginDialog, startClaudeLogin } from "@/components/integrations/claude-login-dialog";
-import { useConfirm } from "@/components/ui/dialog-provider";
 import type { Settings, ModelProvider, AIAccount } from "@/lib/types";
 
 // ── Model options per provider ──────────────────────────────
@@ -136,8 +129,16 @@ const PROVIDERS: {
   },
 ];
 
-export function SettingsView({ embedded = false }: { embedded?: boolean }) {
-  const confirm = useConfirm();
+/** Anlagenweite Einstellungen, je Bereich der Admin-Konsole (#899).
+ *
+ *  Bis #899 eine eigene Seite mit Unterreitern unter /settings, die Admins und
+ *  Mitglieder gleichermassen oeffneten — mit leeren oder gesperrten Reitern fuer
+ *  Mitglieder. Heute steht jeder Bereich als eigener Eintrag in der Admin-Konsole;
+ *  was dem Nutzer selbst gehoert, liegt unter /settings (MeineEinstellungenView).
+ *  Die Bereiche teilen sich Zustand und Speichern, deshalb eine Komponente. */
+export type AnlagenBereich = "modelle" | "integrationen" | "system";
+
+export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   // Provider
   const [provider, setProvider] = useState<ModelProvider>("anthropic");
@@ -214,7 +215,6 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   // UI state
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [secTab, setSecTab] = useState<"modelle" | "meine" | "konto" | "integrationen" | "voice" | "system">("modelle");
   const user = useAuthStore((s) => s.user);
 
   const toggleMsgraphExt = async (enabled: boolean) => {
@@ -355,35 +355,6 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     }
   };
   const isAdmin = user?.role === "admin";
-  // Wer ohne Adminrechte auf „voice"/„system" landet (alte Verknuepfung,
-  // Adresszeile), bekaeme sonst genau die leere Seite zu sehen, die wir eben
-  // abgeschafft haben.
-  useEffect(() => {
-    if (!isAdmin && (secTab === "voice" || secTab === "system")) setSecTab("modelle");
-  }, [isAdmin, secTab]);
-
-  // Direkt ansteuerbar, z. B. vom Hinweis des Anbieters:
-  // /settings?tab=system#lizenz oeffnet den Reiter und springt zum Abschnitt.
-  useEffect(() => {
-    const tab = new URLSearchParams(window.location.search).get("tab");
-    if (tab === "modelle" || tab === "meine" || tab === "konto" || tab === "integrationen" || tab === "voice" || tab === "system") {
-      setSecTab(tab);
-    }
-  }, []);
-  // License state
-  const [license, setLicense] = useState<import("@/lib/api").License | null>(null);
-  const [licenseKeyInput, setLicenseKeyInput] = useState("");
-  const [licenseBusy, setLicenseBusy] = useState(false);
-  const [licenseError, setLicenseError] = useState("");
-
-  // Sprung zu einem Abschnitt per #anker (z. B. #lizenz vom Hinweis des Anbieters).
-  useEffect(() => {
-    const ziel = window.location.hash.slice(1);
-    if (!ziel) return;
-    // Der Abschnitt entsteht erst, wenn Reiter UND Lizenzdaten da sind.
-    const el = document.getElementById(ziel);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [secTab, license]);
 
   // Provider/model catalog from the backend (single source of truth, live
   // Anthropic/OpenAI discovery + admin-freigeschaltete Zusatzmodelle) — statt
@@ -410,57 +381,6 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
     [provider, effectiveModelOptions]
   );
 
-  const loadLicense = async () => {
-    try {
-      const lic = await api.getLicenseStatus();
-      setLicense(lic);
-    } catch {
-      // ignore — fallback community tier displayed
-    }
-  };
-
-  const handleApplyLicense = async () => {
-    if (!licenseKeyInput.trim()) return;
-    setLicenseBusy(true);
-    setLicenseError("");
-    try {
-      await api.applyLicense(licenseKeyInput.trim());
-      setLicenseKeyInput("");
-      await loadLicense();
-    } catch (e) {
-      setLicenseError(apiFehlertext(e, "Kein gültiger Lizenzschlüssel."));
-    } finally {
-      setLicenseBusy(false);
-    }
-  };
-
-  const handleNutzung = async (privat: boolean) => {
-    setLicenseBusy(true);
-    try {
-      setLicense(await api.setLicenseNutzung(privat));
-    } finally {
-      setLicenseBusy(false);
-    }
-  };
-
-  const handleRemoveLicense = async () => {
-    const ok = await confirm({
-      title: "Lizenz entfernen?",
-      message: "Das Agentenlimit dieser Lizenz gilt weiter, bis eine neue Lizenz eingetragen ist.",
-      variant: "destructive",
-      confirmLabel: "Entfernen",
-    });
-    if (!ok) return;
-    setLicenseBusy(true);
-    try {
-      await api.removeLicense();
-      await loadLicense();
-    } finally {
-      setLicenseBusy(false);
-    }
-  };
-
-
   // Gespeicherte Auswahl übernehmen. Leer bedeutet im Backend „alles" — hier ebenso,
   // sonst saehe der Admin ein leeres Bild, waehrend real alles angefordert wird.
   useEffect(() => {
@@ -473,10 +393,9 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   }, [settings, msScopesTouched]);
 
   useEffect(() => {
-    loadLicense();
-  }, []);
-
-  useEffect(() => {
+    // Moderator-LLM und Nachtschicht stehen nur unter „System & Lizenz“ — die
+    // anderen Bereiche brauchen diese Daten nicht.
+    if (bereich !== "system") return;
     api.listAIAccounts(true).then(setModeratorAccounts).catch(() => {});
     // Current reflection config (enabled/mode/hour) comes from the status endpoint.
     api.getReflectionStatus().then((r) => {
@@ -490,6 +409,9 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         setSynHour(r.synthesis.hour);
       }
     }).catch(() => {});
+  }, [bereich]);
+
+  useEffect(() => {
     api.getSettings().then((s) => {
       setSettings(s);
       setProvider(s.model_provider || "anthropic");
@@ -740,77 +662,14 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <div>
-      {!embedded && <Header title="Einstellungen" subtitle="Deine AI-Employee-Anlage einrichten" />}
-
       <motion.div
-        className="px-8 py-8 max-w-5xl mx-auto space-y-6"
+        className="max-w-5xl space-y-6"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {/* ─── Sub-tab navigation ─── */}
-        <div className="flex gap-1 overflow-x-auto rounded-xl border border-border/50 bg-card/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {([
-            { id: "modelle" as const, label: "Modelle", icon: Cpu },
-            // Der eigene Zugang gehoert dem Nutzer, nicht der Anlage — deshalb
-            // hier und nicht in der Admin-Konsole. Sichtbar für JEDEN, auch
-            // ohne Adminrechte: bis 2026-08-15 gab es dafuer gar keine Seite,
-            // obwohl die Agenten-Anlage ausdruecklich darauf verweist.
-            { id: "meine" as const, label: "Meine KI-Zugänge", icon: KeyRound },
-            // Anmeldesicherheit des eigenen Kontos (#915) — für jeden, nicht nur Admins.
-            { id: "konto" as const, label: "Anmeldung & Sicherheit", icon: ShieldCheck },
-            { id: "integrationen" as const, label: "Integrationen", icon: Plug },
-            // Voice und System enthalten AUSSCHLIESSLICH adminbeschraenkte
-            // Inhalte. Für einen normalen Nutzer waren sie bisher zwei leere
-            // Seiten — er klickte, sah nichts und hielt es für einen Fehler.
-            // Ein Reiter ohne Inhalt ist schlechter als kein Reiter.
-            //
-            // Kommt später etwas Nutzereigenes dazu (etwa eine zugewiesene
-            // Stimme), gehoert die Bedingung hier gelockert — nicht der Reiter
-            // dauerhaft leer stehen gelassen.
-            ...(isAdmin ? [
-              { id: "voice" as const, label: "Sprachassistent", icon: Mic },
-              { id: "system" as const, label: "System", icon: Shield },
-            ] : []),
-          ]).map((t) => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setSecTab(t.id)}
-                className={cn(
-                  "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all",
-                  secTab === t.id
-                    ? "bg-accent text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ─── Tab: Modelle ─── */}
-        {/* Für einen Member ist in diesem Reiter NICHTS einstellbar: Provider,
-            Plattform-Login, Max Turns, gleichzeitige Agenten — alles gehoert der
-            Anlage. Er bekommt deshalb die Frage beantwortet, die er wirklich
-            hat: welche Modelle stehen mir zur Verfügung. */}
-        {secTab === "modelle" && !isAdmin && (
-          <div className="space-y-6">
-            <section>
-              <div className="flex items-center gap-2 mb-3">
-                <Cpu className="h-4 w-4 text-muted-foreground/60" />
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-                  Verfügbare Modelle
-                </h2>
-              </div>
-              <AvailableModels />
-            </section>
-          </div>
-        )}
-        {secTab === "modelle" && isAdmin && (
+        {/* ─── Bereich: Modelle & Anbieter ─── */}
+        {bereich === "modelle" && (
         <div className="space-y-6">
         {/* ─── Section 1: Model Provider ─── */}
         <section>
@@ -1197,55 +1056,16 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
 
         {/* ─── Modelle freischalten (Auto-Discovery + Admin-Toggle) ─── */}
         {isAdmin && <ModelCatalogAdmin />}
-
-        {/* ─── Section 3: Agent Templates ─── */}
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <Layers className="h-4 w-4 text-muted-foreground/60" />
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-              Agenten-Vorlagen
-            </h2>
-          </div>
-          <TemplateManager isAdmin={isAdmin} />
-        </section>
         </div>
         )}
 
-        {/* ─── Tab: Integrationen ─── */}
-        {secTab === "meine" && (
-          <div className="space-y-6">
-            <section>
-              <div className="flex items-center gap-2 mb-3">
-                <KeyRound className="h-4 w-4 text-muted-foreground/60" />
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-                  Meine KI-Zugänge
-                </h2>
-              </div>
-              <MyAiCredentials />
-            </section>
-          </div>
-        )}
-
-        {/* ─── Tab: Anmeldung & Sicherheit (eigenes Konto, #915) ─── */}
-        {secTab === "konto" && (
-          <div className="space-y-6">
-            <section>
-              <div className="flex items-center gap-2 mb-3">
-                <ShieldCheck className="h-4 w-4 text-muted-foreground/60" />
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-                  Anmeldung &amp; Sicherheit
-                </h2>
-              </div>
-              <ZweiFaktorEinstellungen />
-            </section>
-          </div>
-        )}
-
-        {secTab === "integrationen" && (
+        {/* ─── Bereich: Integrationen (Anlage) ─── */}
+        {bereich === "integrationen" && (
         <div className="space-y-6">
         <p className="text-[11px] text-muted-foreground/50">
-          Benachrichtigungskanäle für DICH (E-Mail/Telegram/Teams). Externe
-          Datenquellen und MCP-Server für deine Agenten verbindest du unter{" "}
+          Anbindungen für die ganze Anlage: Anmeldung, Benachrichtigungskanäle,
+          Mail und Kalender. Eigene Konten (Microsoft, Google, MCP-Server) verbindet
+          jeder Nutzer selbst unter{" "}
           <Link href="/integrations" className="text-primary hover:underline">Integrationen</Link>{" "}
           in der Seitenleiste.
         </p>
@@ -1256,12 +1076,6 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
               Benachrichtigungen
             </h2>
-          </div>
-
-          {/* Browser-Meldungen — gilt pro Browser, nicht pro Konto, deshalb ohne
-              Serverspeicherung in den Einstellungen und direkt hier bedienbar. */}
-          <div className="mb-4 rounded-xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm">
-            <PushToggle />
           </div>
 
           {isAdmin && (
@@ -1283,8 +1097,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   <MessageSquare className="h-4 w-4 text-cyan-400" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold">Telegram Bot (dein Konto)</h3>
-                  <p className="text-[11px] text-muted-foreground/60">Für Benachrichtigungen an DICH — nicht zu verwechseln mit einem eigenen Bot je Agent (Agent-Einstellungen)</p>
+                  <h3 className="text-sm font-semibold">Telegram-Bot der Anlage</h3>
+                  <p className="text-[11px] text-muted-foreground/60">Ein Bot für Benachrichtigungen der Anlage — nicht zu verwechseln mit einem eigenen Bot je Agent (Agent-Einstellungen)</p>
                 </div>
               </div>
               {settings?.has_telegram ? (
@@ -1325,17 +1139,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         </div>
         )}
 
-        {/* ─── Tab: Voice ─── */}
-        {secTab === "voice" && (
+        {/* ─── Bereich: System & Lizenz ─── */}
+        {bereich === "system" && (
         <div className="space-y-6">
-        {/* ─── Voice Live-Sessions ─── */}
-        {isAdmin && <VoiceSettings />}
-        </div>
-        )}
-
-        {/* ─── Tab: System ─── */}
-        {secTab === "system" && (
-        <div className="space-y-6">
+        {/* ─── Lizenz zuerst: „Lizenzschlüssel eintragen“ landet ohne Blättern hier ─── */}
+        <LizenzBereich />
         {/* ─── System-Steuerung (Fernwartung: Status + Neustart) ─── */}
         {isAdmin && <SystemControl />}
         {/* ─── Automatisierung ─── */}
@@ -1594,136 +1402,11 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             </div>
           </section>
         )}
-        {/* ─── License ─── */}
-        {isAdmin && (
-          <section id="lizenz" className="scroll-mt-6">
-            <div className="flex items-center gap-2 mb-3">
-              <Lock className="h-4 w-4 text-muted-foreground/60" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-                Lizenz
-              </h2>
-            </div>
-            <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
-              {license && (
-                <div className="mb-4 flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={cn(
-                        "inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider",
-                        license.tier === "enterprise" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" :
-                        license.tier === "business" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
-                        license.tier === "team" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                        license.tier === "starter" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" :
-                        "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
-                      )}>
-                        {license.tier}
-                      </span>
-                      {license.zustand === "aktiv" && (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Aktiv
-                        </span>
-                      )}
-                      {(license.zustand === "abgelaufen" || license.zustand === "widerrufen") && (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-red-400">
-                          <AlertCircle className="h-3 w-3" />
-                          {license.zustand === "widerrufen" ? "Widerrufen" : "Abgelaufen"}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {license.zustand === "ohne"
-                        ? "Community Edition — kostenlos für private und nicht-gewerbliche Nutzung. Unternehmen dürfen 30 Tage testen, danach ist eine Lizenz nötig."
-                        : `Lizenziert für ${license.issued_to}`}
-                    </p>
-                    {typeof license.agenten === "number" && (
-                      <p className="text-[11px] text-muted-foreground/70 mt-1">
-                        {license.agentenlimit
-                          ? `${license.agenten} von ${license.agentenlimit} Agenten belegt`
-                          : `${license.agenten} Agenten, unbegrenzt`}
-                      </p>
-                    )}
-                    {license.expires_at && (
-                      <p className="text-[11px] text-muted-foreground/60 mt-1">
-                        {license.is_expired ? "Abgelaufen am" : "Gültig bis"}: {new Date(license.expires_at).toLocaleDateString("de-DE")}
-                      </p>
-                    )}
-                    {license.hinweis && (
-                      <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-200">
-                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                        <span>{license.hinweis}</span>
-                      </p>
-                    )}
-                    {license.zustand === "ohne" && license.limit_quelle !== "gemerkt" && (
-                      <label className="mt-3 flex items-start gap-2 text-[12px] text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5"
-                          checked={!!license.private_nutzung}
-                          disabled={licenseBusy}
-                          onChange={(e) => handleNutzung(e.target.checked)}
-                        />
-                        <span>Diese Anlage wird ausschließlich privat oder nicht-gewerblich genutzt.</span>
-                      </label>
-                    )}
-                  </div>
-                  {license.zustand !== "ohne" && (
-                    <button
-                      onClick={handleRemoveLicense}
-                      disabled={licenseBusy}
-                      className="shrink-0 text-[11px] text-red-400 hover:text-red-300 underline underline-offset-2"
-                    >
-                      Lizenz entfernen
-                    </button>
-                  )}
-                </div>
-              )}
-              {(!license || license.zustand !== "aktiv") && (
-                <div className="space-y-3 border-t border-foreground/[0.04] pt-4">
-                  <div>
-                    <label className="text-[11px] font-medium text-muted-foreground/70 mb-1.5 block">
-                      Lizenzschlüssel
-                    </label>
-                    <textarea
-                      value={licenseKeyInput}
-                      onChange={(e) => setLicenseKeyInput(e.target.value)}
-                      placeholder="Lizenzschlüssel hier einfügen"
-                      rows={3}
-                      className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-xs font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 resize-none"
-                    />
-                  </div>
-                  {licenseError && (
-                    <p className="text-[11px] text-red-400 flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      {licenseError}
-                    </p>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-muted-foreground/60">
-                      Editionen und Preise:{" "}
-                      <a href="https://github.com/greeves89/AI-Employee#license" target="_blank" rel="noopener" className="text-primary hover:underline">
-                        github.com/greeves89/AI-Employee
-                      </a>
-                    </p>
-                    <button
-                      onClick={handleApplyLicense}
-                      disabled={licenseBusy || !licenseKeyInput.trim()}
-                      className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      {licenseBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                      Lizenz eintragen
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-        )}
         </div>
         )}
 
-        {/* ─── Tab: Integrationen (continued) — OAuth Integrations ─── */}
-        {secTab === "integrationen" && (
+        {/* ─── Integrationen (Anlage), Fortsetzung — OAuth-Anbindungen ─── */}
+        {bereich === "integrationen" && (
         <div className="space-y-6">
         {/* ─── Section 5: OAuth Integrations ─── */}
         {isAdmin && (
@@ -2240,8 +1923,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         </div>
         )}
 
-        {/* ─── Tab: System (continued) — Access Control ─── */}
-        {secTab === "system" && (
+        {/* ─── System & Lizenz, Fortsetzung — Zugang ─── */}
+        {bereich === "system" && (
         <div className="space-y-6">
         {/* ─── Section 6: Access Control (Admin only) ─── */}
         {isAdmin && (
@@ -2453,12 +2136,10 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
         )}
 
         {/* ─── Save Button ─── */}
-                {/* Der Knopf speichert die PLATTFORM-Einstellungen. Auf den
-            Reitern eines Nutzers gibt es nichts zu speichern — „Meine
-            KI-Zugaenge" sichert sofort beim Verbinden. Ein Knopf, der
-            nichts tut, laesst den Nutzer glauben, er haette etwas
-            vergessen. */}
-        {isAdmin && secTab !== "meine" && secTab !== "konto" && (
+        {/* Der Knopf speichert die PLATTFORM-Einstellungen. Die eigenen
+            Bereiche eines Nutzers stehen seit #899 unter /settings und
+            speichern sofort — dort gibt es diesen Knopf nicht. */}
+        {isAdmin && (
 <div className="flex items-center gap-3 pt-2 pb-8">
           <button
             onClick={handleSave}

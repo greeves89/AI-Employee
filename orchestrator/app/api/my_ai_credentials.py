@@ -89,8 +89,9 @@ def _eigene_zugaenge_erlaubt(user=None) -> None:
     if not personal_credentials_allowed(user):
         raise HTTPException(
             status_code=403,
-            detail=("Eigene KI-Zugaenge sind in dieser Anlage nicht freigegeben. "
-                    "Dein Administrator kann das unter Einstellungen aendern."),
+            detail=("Eigene KI-Zugänge sind in dieser Anlage nicht freigegeben. "
+                    "Dein Administrator kann das in der Admin-Konsole unter "
+                    "„System & Lizenz“ ändern."),
         )
 
 

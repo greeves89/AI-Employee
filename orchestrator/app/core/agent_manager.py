@@ -1242,7 +1242,7 @@ class AgentManager:
                     f"freigegebenes Modell."
                 )[:2000],
                 priority="high",
-                action_url="/admin",
+                action_url="/admin?tab=ai-accounts",
             ))
             await self.db.commit()
         except Exception:  # noqa: BLE001

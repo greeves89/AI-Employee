@@ -99,11 +99,11 @@ export default function AdminAgentDetailPage() {
               Zur vollen Agent-Seite
             </button>
             <button
-              onClick={() => router.push("/admin")}
+              onClick={() => router.push("/admin?tab=agents")}
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back to Admin
+              Zurück zu „Alle Agenten“
             </button>
           </div>
         }

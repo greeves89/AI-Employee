@@ -83,8 +83,8 @@ def registrierungs_hinweis() -> TestResult:
     r = TestResult("registrierung_offen", "security")
     if settings.registration_open:
         r.status = "warning"
-        r.error = ("Registrierung offen — schließen: Einstellungen → System → "
-                   "Zugriffskontrolle. Jeder mit dem Link kann sich sonst ein Konto anlegen.")
+        r.error = ("Registrierung offen — schließen: Admin-Konsole → System & Lizenz → "
+                   "Zugang. Jeder mit dem Link kann sich sonst ein Konto anlegen.")
         r.details = {"registration_open": True}
     else:
         r.status = "passed"
@@ -196,7 +196,7 @@ class SelfTestService:
                     title=f"Self-Test: {passed}/{len(results)} passed",
                     message=summary,
                     priority="normal" if failed == 0 else "high",
-                    action_url="/health",
+                    action_url="/admin?tab=health",
                     meta={"type": "self_test", "test_run_id": test_run.id},
                 )
                 db.add(notif)

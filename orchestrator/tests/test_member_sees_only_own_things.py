@@ -23,6 +23,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 API = (ROOT / "orchestrator/app/api/agents.py").read_text()
 VIEW = (ROOT / "frontend/src/app/settings/view.tsx").read_text()
+# Seit #899: /settings zeigt nur noch „Meine Einstellungen“; die anlagenweiten
+# Bereiche (frueher Reiter dort) stehen einzeln in der Admin-Konsole.
+MEINE = (ROOT / "frontend/src/app/settings/meine-einstellungen.tsx").read_text()
+SETTINGS_SEITE = (ROOT / "frontend/src/app/settings/page.tsx").read_text()
+KONSOLE = (ROOT / "frontend/src/app/admin/page.tsx").read_text()
 MANAGER = (ROOT / "orchestrator/app/core/agent_manager.py").read_text()
 
 # 2026-08-27: the SAME "unowned = shared" mistake this file was written to guard
@@ -82,54 +87,26 @@ class UnownedIsNotSharedTests(unittest.TestCase):
         self.assertIn("OHNE Besitzer", MANAGER)
 
 
-def _bracket_close(text: str, open_idx: int) -> int:
-    """Index, der die bei ``open_idx`` geoeffnete Klammer schliesst.
-
-    Behandelt ``()``/``[]``/``{}`` als EINE Verschachtelungsebene — fuer echten,
-    syntaktisch gueltigen Quelltext reicht das, ohne Strings/Kommentare
-    eigens auszuklammern.
-    """
-    tiefe = 0
-    for i in range(open_idx, len(text)):
-        if text[i] in "([{":
-            tiefe += 1
-        elif text[i] in ")]}":
-            tiefe -= 1
-            if tiefe == 0:
-                return i
-    raise ValueError(f"unbalancierte Klammer ab Position {open_idx}")
-
-
 class EmptyTabsAreHiddenTests(unittest.TestCase):
     def test_voice_and_system_are_admin_only(self):
-        """Ein 300-Zeichen-Fenster beweist nur NAEHE, nicht Mitgliedschaft: es
-        haette auch bestanden, wenn Voice/System zufaellig AUSSERHALB der
-        isAdmin-Klammer gestanden haetten, solange sie im Fenster liegen.
-        Stattdessen die Klammer selbst per Tiefenzaehlung abgrenzen und
-        pruefen, WO die beiden IDs wirklich stehen — und wo ausdruecklich
-        nicht (davor, im immer sichtbaren Teil der Liste)."""
-        marker = "...(isAdmin ? ["
-        marker_idx = VIEW.index(marker)
-        open_idx = marker_idx + len(marker) - 1  # Index des '[' selbst
-        admin_block = VIEW[open_idx:_bracket_close(VIEW, open_idx) + 1]
-        immer_sichtbar = VIEW[:marker_idx]
-
-        for tab_id in ('id: "voice"', 'id: "system"'):
-            with self.subTest(tab_id):
-                self.assertIn(tab_id, admin_block)
-                self.assertNotIn(tab_id, immer_sichtbar)
+        """Sprache und System gehoeren der Anlage: sie stehen nur noch in der
+        Admin-Konsole, nicht mehr auf der Seite, die jeder Nutzer oeffnet."""
+        self.assertIn("MeineEinstellungenView", SETTINGS_SEITE)
+        for nur_admin in ("<VoiceSettings", "<SystemControl", "SettingsView", "<LizenzBereich"):
+            with self.subTest(nur_admin):
+                self.assertNotIn(nur_admin, MEINE)
+        self.assertIn('{tab === "sprache" && <VoiceSettings />}', KONSOLE)
 
     def test_the_user_owned_tab_stays_visible(self):
         """„Meine KI-Zugaenge" gehoert JEDEM — sonst kann niemand sein eigenes
         Abo verbinden."""
-        vor = VIEW.split("...(isAdmin ? [", 1)[0]
-        self.assertIn('id: "meine"', vor)
+        self.assertIn("<MyAiCredentials />", MEINE)
 
     def test_a_direct_link_does_not_land_on_an_empty_page(self):
-        """Alte Verknuepfung oder Adresszeile — sonst sieht der Nutzer genau die
-        leere Seite wieder, die wir abgeschafft haben."""
-        self.assertIn('secTab === "voice" || secTab === "system"', VIEW)
-        self.assertIn('setSecTab("modelle")', VIEW)
+        """Alte Verknuepfung oder Adresszeile — das Verhalten der Weiterleitung
+        prueft test_admin_navigation_weiterleitung; hier nur, dass die Seite sie
+        auch benutzt."""
+        self.assertIn("alteEinstellungenWeiterleitung(", MEINE)
 
 
 if __name__ == "__main__":
@@ -149,11 +126,12 @@ class TheModelsTabHasItsOwnMemberViewTests(unittest.TestCase):
     KOMPONENTE = (ROOT / "frontend/src/components/settings/available-models.tsx").read_text()
 
     def test_members_get_a_different_view(self):
-        self.assertIn('secTab === "modelle" && !isAdmin', VIEW)
-        self.assertIn("<AvailableModels />", VIEW)
+        self.assertIn("<AvailableModels />", MEINE)
+        self.assertNotIn("ModelCatalogAdmin", MEINE)
 
     def test_admins_keep_the_configuration(self):
-        self.assertIn('secTab === "modelle" && isAdmin', VIEW)
+        self.assertIn('bereich === "modelle"', VIEW)
+        self.assertIn("<ModelCatalogAdmin />", VIEW)
 
     def test_the_member_view_has_no_controls(self):
         """Kein Speichern, kein Umschalten — sonst ist es wieder eine
@@ -176,4 +154,5 @@ class TheModelsTabHasItsOwnMemberViewTests(unittest.TestCase):
     def test_the_save_button_is_gone_where_nothing_is_saved(self):
         """„Meine KI-Zugaenge" sichert sofort beim Verbinden. Ein Knopf, der
         nichts tut, laesst den Nutzer glauben, er haette etwas vergessen."""
-        self.assertIn('isAdmin && secTab !== "meine"', VIEW)
+        self.assertNotIn("handleSave", MEINE)
+        self.assertNotIn("Einstellungen speichern", MEINE)
