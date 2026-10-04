@@ -520,11 +520,11 @@ async def get_task(
 ):
     task = await router_.get_task(task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     if hasattr(user, "role") and not _agent_delegated_this(user, task):
         allowed = await _get_user_agent_ids(user, db)
         if allowed is not None and task.agent_id not in allowed:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="Kein Zugriff")
     return TaskResponse.model_validate(task)
 
 
@@ -539,11 +539,11 @@ async def get_task_steps(
 
     task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     if hasattr(user, "role") and not _agent_delegated_this(user, task):
         allowed = await _get_user_agent_ids(user, db)
         if allowed is not None and task.agent_id not in allowed:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="Kein Zugriff")
 
     steps = (await db.execute(
         select(TaskStep).where(TaskStep.task_id == task_id).order_by(TaskStep.sequence.asc())
@@ -567,11 +567,11 @@ async def _assert_task_access(task_id: str, user, db: AsyncSession) -> Task:
     """Load a task and enforce ownership (mirrors get_task_steps). 404/403 on failure."""
     task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     if hasattr(user, "role"):
         allowed = await _get_user_agent_ids(user, db)
         if allowed is not None and task.agent_id not in allowed:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="Kein Zugriff")
     return task
 
 
@@ -590,7 +590,7 @@ async def get_zielkette(
     task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
     erreichbar = await _erreichbare_agenten(user, db)
     if not task or (erreichbar is not None and task.agent_id not in erreichbar):
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     kette = await zielkette(db, task)
     zweck = await team_zweck(db, task)
     return {"task_id": task_id, "kette": kette, "team": zweck, "text": als_text(kette, zweck)}
@@ -610,7 +610,7 @@ async def get_task_trace(
     await _assert_task_access(task_id, user, db)
     trace = await assemble_trace(task_id, db)
     if trace is None:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     return trace
 
 
@@ -632,7 +632,7 @@ async def export_task_trace(
     await _assert_task_access(task_id, user, db)
     trace = await assemble_trace(task_id, db)
     if trace is None:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     body = json.dumps(trace, indent=2, ensure_ascii=False)
     return Response(
         content=body,
@@ -685,10 +685,10 @@ async def get_task_artifacts(
 
     task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     allowed = await _get_user_agent_ids(user, db)
     if allowed is not None and task.agent_id not in allowed:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
     if not task.agent_id:
         return {"task_id": task_id, "agent_id": None, "artifacts": []}
 
@@ -753,7 +753,7 @@ async def delete_task(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not deleted:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     return {"ok": True}
 
 
@@ -770,7 +770,7 @@ async def cancel_task(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Aufgabe nicht gefunden")
     return TaskResponse.model_validate(task)
 
 

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Bot, MessageSquare, Users, X, ArrowRight, Crown, Plus, Minus } from "lucide-react";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { agentZustand } from "@/lib/aufgaben-anzeige";
 import * as api from "@/lib/api";
 import type { AgentTeam } from "@/lib/api";
 import { setVisibleInterval } from "@/lib/visible-interval";
@@ -356,8 +357,8 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground/[0.06] mb-4">
           <Bot className="h-7 w-7 text-muted-foreground" />
         </div>
-        <h3 className="text-lg font-semibold mb-1.5">No agents to visualize</h3>
-        <p className="text-sm text-muted-foreground">Create agents to see the network view.</p>
+        <h3 className="text-lg font-semibold mb-1.5">Keine Agenten zum Anzeigen</h3>
+        <p className="text-sm text-muted-foreground">Lege Agenten an, um ihr Zusammenspiel hier zu sehen.</p>
       </div>
     );
   }
@@ -651,7 +652,7 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
 
             {/* Team-Lead crown */}
             {leadIds.has(agent.id) && (
-              <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 h-5 w-5 rounded-full bg-amber-400 grid place-items-center border-2 border-card shadow" title="Team Lead">
+              <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 h-5 w-5 rounded-full bg-amber-400 grid place-items-center border-2 border-card shadow" title="Team-Lead">
                 <Crown className="h-3 w-3 text-amber-950" />
               </div>
             )}
@@ -694,16 +695,16 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
                     </div>
                     <div className="space-y-1">
                       <div className="flex justify-between text-[10px]">
-                        <span className="text-muted-foreground">State</span>
-                        <span className="font-medium capitalize">{agent.state}</span>
+                        <span className="text-muted-foreground">Zustand</span>
+                        <span className="font-medium">{agentZustand(agent.state)}</span>
                       </div>
                       <div className="flex justify-between text-[10px]">
-                        <span className="text-muted-foreground">Model</span>
+                        <span className="text-muted-foreground">Modell</span>
                         <span className="font-mono font-medium">{agent.model.split("-").slice(0, 2).join("-")}</span>
                       </div>
                       {agentConnCount > 0 && (
                         <div className="flex justify-between text-[10px]">
-                          <span className="text-muted-foreground">Connections</span>
+                          <span className="text-muted-foreground">Verbindungen</span>
                           <span className="font-medium text-indigo-400">{agentConnCount}</span>
                         </div>
                       )}
@@ -753,19 +754,19 @@ export function AgentNetworkView({ agents }: AgentNetworkViewProps) {
         <div className="flex items-center gap-4 rounded-lg bg-card/70 backdrop-blur-sm border border-foreground/[0.06] px-3 py-2">
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />
-            <span className="text-[10px] text-muted-foreground">Idle</span>
+            <span className="text-[10px] text-muted-foreground">Bereit</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-blue-400" />
-            <span className="text-[10px] text-muted-foreground">Working</span>
+            <span className="text-[10px] text-muted-foreground">Arbeitet</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-zinc-500" />
-            <span className="text-[10px] text-muted-foreground">Stopped</span>
+            <span className="text-[10px] text-muted-foreground">Gestoppt</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-4 rounded-full bg-gradient-to-r from-indigo-400 to-violet-400 opacity-60" />
-            <span className="text-[10px] text-muted-foreground">Active link</span>
+            <span className="text-[10px] text-muted-foreground">Aktive Verbindung</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-4 rounded-full opacity-80" style={{ backgroundImage: "repeating-linear-gradient(90deg, rgb(251,191,36) 0 3px, transparent 3px 6px)" }} />

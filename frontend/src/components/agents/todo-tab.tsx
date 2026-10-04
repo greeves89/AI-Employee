@@ -280,7 +280,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
             type="text"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="TODO Titel..."
+            placeholder="Titel des To-dos …"
             className="w-full rounded-lg border border-foreground/[0.08] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50"
             autoFocus
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleAdd()}

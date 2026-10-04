@@ -51,7 +51,7 @@ export function ModelCatalogAdmin() {
         setNote(
           `${parts.join(" · ")} — ${d.new_extras} neue Modelle. Neue Modelle sind zunächst deaktiviert. ` +
           `Hinweis: Foundry wird über Ressource + Key aus den Provider-Einstellungen abgefragt; ` +
-          `Bedrock- oder Vertex-Deployments trägst du weiterhin unter AI-Accounts ein.`
+          `Bedrock- oder Vertex-Deployments trägst du weiterhin unter KI-Konten ein.`
         );
       }
     } catch (e) {
@@ -198,7 +198,7 @@ export function ModelCatalogAdmin() {
           <Check className="h-3.5 w-3.5 text-emerald-400/70 mt-0.5 shrink-0" />
           <p className="text-[10px] text-muted-foreground/50">
             Nur freigeschaltete Modelle erscheinen bei der Agent-Erstellung und in den Agent-Einstellungen.
-            Die Harness-Zuordnung (Claude / Codex) wird serverseitig weiterhin hart erzwungen.
+            Welche Laufzeit ein Modell nutzt (Claude Code / Codex), legt weiterhin der Server fest.
           </p>
         </div>
       </div>

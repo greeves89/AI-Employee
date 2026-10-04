@@ -200,7 +200,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
       {!embedded && (
         <Header
           title="Systemzustand"
-          subtitle="System-Gesundheit, Self-Tests und Verbesserungsvorschläge"
+          subtitle="Systemzustand, Selbsttests und Verbesserungsvorschläge"
         />
       )}
 
@@ -252,7 +252,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                 className="rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {triggering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                {triggering ? "Läuft..." : "Self-Test starten"}
+                {triggering ? "Läuft …" : "Selbsttest starten"}
               </button>
             </div>
           </div>
@@ -289,7 +289,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Activity className="w-4 h-4 text-blue-400" />
-                  <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Tasks</span>
+                  <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Aufgaben</span>
                 </div>
                 <p className="text-2xl font-bold">{autoMetrics.total_tasks}</p>
                 <p className="text-[10px] text-muted-foreground/60 mt-1">letzte {days} Tage</p>
@@ -317,10 +317,10 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Bot className="w-4 h-4 text-violet-400" />
-                  <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Aktive Agents</span>
+                  <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">Aktive Agenten</span>
                 </div>
                 <p className="text-2xl font-bold">{autoMetrics.agents.length}</p>
-                <p className="text-[10px] text-muted-foreground/60 mt-1">mit Tasks</p>
+                <p className="text-[10px] text-muted-foreground/60 mt-1">mit Aufgaben</p>
               </div>
             </div>
 
@@ -330,9 +330,9 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
                 <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
                   <Activity className="w-5 h-5 text-blue-400" />
-                  Tasks pro Tag
+                  Aufgaben pro Tag
                 </h3>
-                <p className="text-[11px] text-muted-foreground/60 mb-4">Total vs. erfolgreich</p>
+                <p className="text-[11px] text-muted-foreground/60 mb-4">Gesamt und erfolgreich</p>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={(() => {
@@ -474,7 +474,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                           <span className="text-sm font-medium">{a.agent_name}</span>
                         </div>
                         <div className="flex items-center gap-4 text-xs">
-                          <span className="text-muted-foreground/60">{a.total_tasks} Tasks</span>
+                          <span className="text-muted-foreground/60">{a.total_tasks} Aufgaben</span>
                           <span className={cn(
                             "font-medium",
                             a.success_rate >= 80 ? "text-emerald-400" :
@@ -529,9 +529,9 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
               <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
                 <Star className="w-5 h-5 text-amber-700 dark:text-amber-400" />
-                Rating-Verlauf
+                Verlauf der Bewertungen
               </h3>
-              <p className="text-[11px] text-muted-foreground/60 mb-4">Durchschnitt pro 5 Tasks</p>
+              <p className="text-[11px] text-muted-foreground/60 mb-4">Durchschnitt je 5 Aufgaben</p>
               <div className="h-52">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={combinedRatingData}>
@@ -566,7 +566,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Bot className="w-5 h-5 text-primary" />
-                Agent Performance
+                Leistung je Agent
               </h3>
               <div className="space-y-3">
                 {reports.map((report, i) => (
@@ -666,7 +666,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   <Timer className="w-5 h-5 text-blue-400" />
                   Dauer-Verlauf
                 </h3>
-                <p className="text-[11px] text-muted-foreground/60 mb-4">Durchschnittliche Task-Dauer (Sekunden)</p>
+                <p className="text-[11px] text-muted-foreground/60 mb-4">Durchschnittliche Dauer einer Aufgabe (Sekunden)</p>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={reports[0].duration_trend.map((_, i) => {
@@ -704,9 +704,9 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
         {!loading && reports.length === 0 && (
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-8 text-center">
             <Star className="w-8 h-8 text-amber-700 dark:text-amber-400/40 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground mb-1">Noch keine Performance-Daten</p>
+            <p className="text-sm text-muted-foreground mb-1">Noch keine Leistungsdaten</p>
             <p className="text-[11px] text-muted-foreground/60">
-              Bewerte abgeschlossene Tasks via Telegram (1-5 Sterne), um Charts zu sehen.
+              Bewerte abgeschlossene Aufgaben per Telegram (1–5 Sterne), um hier Diagramme zu sehen.
             </p>
           </div>
         )}
@@ -716,7 +716,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary" />
-              Agent Status
+              Zustand der Agenten
             </h3>
             {loading ? (
               <div className="flex items-center justify-center py-8">
@@ -740,7 +740,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">Keine Agents gefunden</p>
+              <p className="text-sm text-muted-foreground text-center py-4">Keine Agenten gefunden</p>
             )}
           </div>
 
@@ -749,13 +749,13 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-primary" />
-                Letzter Self-Test
+                Letzter Selbsttest
               </h3>
               <button
                 onClick={() => { setShowHistory(true); loadTestRunHistory(); }}
                 className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
               >
-                Alle Runs anzeigen
+                Alle Läufe anzeigen
               </button>
             </div>
             {loading ? (
@@ -846,7 +846,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-foreground/[0.06]">
               <div>
-                <h2 className="text-lg font-semibold">Self-Test Historie</h2>
+                <h2 className="text-lg font-semibold">Verlauf der Selbsttests</h2>
                 <p className="text-[11px] text-muted-foreground/70">Alle bisherigen Test-Durchläufe</p>
               </div>
               <button

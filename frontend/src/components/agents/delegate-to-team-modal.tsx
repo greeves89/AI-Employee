@@ -67,7 +67,7 @@ export function DelegateToTeamModal({
         prompt: finalPrompt,
         priority: parseInt(priority) || undefined,
       });
-      toast.success("Task delegiert", `Task ${res.task_id}`);
+      toast.success("Aufgabe delegiert", `Aufgabe ${res.task_id}`);
       onOpenChange(false);
       onDelegated?.();
     } catch (e) {

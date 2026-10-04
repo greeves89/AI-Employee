@@ -113,7 +113,7 @@ export function VoiceSettings() {
   if (!cfg) {
     return (
       <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-5">
-        <p className="text-sm text-muted-foreground">Lade Voice-Settings…</p>
+        <p className="text-sm text-muted-foreground">Spracheinstellungen werden geladen …</p>
       </div>
     );
   }
@@ -194,8 +194,8 @@ export function VoiceSettings() {
               {models.length === 0 && (
                 <div className="rounded-lg border border-dashed border-foreground/10 px-3.5 py-3 text-[11px] text-muted-foreground/60">
                   Noch kein Echtzeit-Provider eingerichtet. Lege unter{" "}
-                  <a href="/?tab=ai-accounts" className="text-fuchsia-400 hover:underline">
-                    AI-Accounts
+                  <a href="/admin?tab=ai-accounts" className="text-fuchsia-400 hover:underline">
+                    KI-Konten
                   </a>{" "}
                   ein AWS-Bedrock- (Nova Sonic) oder Azure-Realtime-Konto an — dann erscheint es hier.
                 </div>
@@ -291,7 +291,7 @@ export function VoiceSettings() {
                   </button>
                 )}
 
-                <Field label="Speech-to-Text Engine">
+                <Field label="Spracherkennung">
                   <select
                     value={cfg.stt_provider}
                     onChange={(e) => patch({ voice_stt_provider: e.target.value })}
@@ -325,7 +325,7 @@ export function VoiceSettings() {
                   </Field>
                 )}
 
-                <Field label="Text-to-Speech Engine">
+                <Field label="Sprachausgabe">
                   <select
                     value={cfg.tts_provider}
                     onChange={(e) => patch({ voice_tts_provider: e.target.value })}
@@ -411,7 +411,7 @@ export function VoiceSettings() {
                   </Field>
                 )}
 
-                <Field label="Interaction-Agent Modell (klassisch)">
+                <Field label="Modell für die Sprachfront (klassisch)">
                   <select
                     value={cfg.llm_model}
                     onChange={(e) => patch({ voice_llm_model: e.target.value })}

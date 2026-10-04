@@ -160,7 +160,7 @@ export function SystemStatusBar() {
                 : "bg-red-400 animate-pulse"
             )}
           />
-          {loading ? "Checking…" : overallHealthy ? "All Systems Go" : "Degraded"}
+          {loading ? "Wird geprüft …" : overallHealthy ? "Alles in Ordnung" : "Eingeschränkt"}
         </div>
 
         <div className="hidden h-4 w-px bg-foreground/[0.06] sm:block" />
@@ -171,7 +171,7 @@ export function SystemStatusBar() {
             status={apiStatus}
             label="API"
             icon={Wifi}
-            detail={apiStatus === "unhealthy" ? "Orchestrator unreachable" : "Orchestrator API"}
+            detail={apiStatus === "unhealthy" ? "Orchestrator nicht erreichbar" : "Orchestrator-Schnittstelle"}
           />
           <StatusDot
             status={dbStatus}
@@ -179,7 +179,7 @@ export function SystemStatusBar() {
             icon={Database}
             detail={
               health?.checks.database.error ??
-              (dbStatus === "healthy" ? "PostgreSQL healthy" : "Database error")
+              (dbStatus === "healthy" ? "PostgreSQL läuft" : "Datenbankfehler")
             }
           />
           <StatusDot
@@ -188,18 +188,18 @@ export function SystemStatusBar() {
             icon={Radio}
             detail={
               health?.checks.redis.error ??
-              (redisStatus === "healthy" ? "Redis healthy" : "Redis error")
+              (redisStatus === "healthy" ? "Redis läuft" : "Redis-Fehler")
             }
           />
           <StatusDot
             status={dockerStatus}
-            label={agentCount !== undefined ? `${agentCount} Agents` : "Docker"}
+            label={agentCount !== undefined ? `${agentCount} Agenten` : "Docker"}
             icon={Container}
             detail={
               health?.checks.docker.error ??
               (agentCount !== undefined
-                ? `${agentCount} agent container${agentCount !== 1 ? "s" : ""} running`
-                : "Docker healthy")
+                ? `${agentCount} Agenten-Container ${agentCount !== 1 ? "laufen" : "läuft"}`
+                : "Docker läuft")
             }
           />
         </div>
@@ -210,8 +210,8 @@ export function SystemStatusBar() {
           className="ml-auto text-muted-foreground/50 hover:text-muted-foreground transition-colors"
           title={
             lastUpdated
-              ? `Last checked ${lastUpdated.toLocaleTimeString()}`
-              : "Refresh"
+              ? `Zuletzt geprüft um ${lastUpdated.toLocaleTimeString("de-DE")}`
+              : "Aktualisieren"
           }
         >
           <RefreshCw className="h-3.5 w-3.5" />

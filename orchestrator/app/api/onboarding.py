@@ -40,7 +40,7 @@ async def _agent_for(agent_id: str, user, db: AsyncSession) -> Agent:
 
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     if is_agent_principal(user):
         if user.id != agent_id:
             raise HTTPException(status_code=403, detail="Agent can only onboard itself")
@@ -49,7 +49,7 @@ async def _agent_for(agent_id: str, user, db: AsyncSession) -> Agent:
         return agent
     vids = await visible_agent_ids(user, db)
     if vids is not None and agent_id not in vids:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
     return agent
 
 

@@ -10,6 +10,23 @@ export const AUFGABEN_STATUS: Record<string, string> = {
   cancelled: "Abgebrochen",
 };
 
+/** Zustand eines Agenten, wie ihn Nutzer lesen — die API liefert englische
+ *  Schlüssel (AgentState). Dieselben Wörter wie auf den Agentenkarten. */
+export const AGENT_ZUSTAND: Record<string, string> = {
+  created: "Startet",
+  running: "Bereit",
+  idle: "Bereit",
+  working: "Arbeitet",
+  stopped: "Gestoppt",
+  error: "Fehler",
+};
+
+/** Anzeige eines Agentenzustands; Unbekanntes bleibt, wie es kommt. */
+export function agentZustand(state: string | null | undefined): string {
+  if (!state) return "—";
+  return AGENT_ZUSTAND[state] ?? state;
+}
+
 /** Zeitpläne, die die Plattform selbst je Agent anlegt. Ihr Auftrag ist ein
  *  langer, englischer Systemprompt — für Mitglieder steht hier stattdessen ein
  *  Satz, was der Zeitplan tut. Die Präfixe kommen aus dem Orchestrator

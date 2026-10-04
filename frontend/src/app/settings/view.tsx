@@ -1201,9 +1201,9 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                 </div>
               </div>
               <div className="px-5 py-4 border-t border-foreground/[0.04]">
-                <div className="text-sm font-medium">Meeting-Moderator — LLM (Standard)</div>
+                <div className="text-sm font-medium">Moderation von Besprechungen — Modell (Standard)</div>
                 <p className="mt-0.5 mb-2 text-[11px] text-muted-foreground/60">
-                  Welcher AI-Account den Moderator antreibt. Pro Meeting überschreibbar. Leer = erster verfügbarer Account.
+                  Welches KI-Konto den Moderator antreibt. Pro Besprechung überschreibbar. Leer = erstes verfügbares KI-Konto.
                 </p>
                 <select
                   value={moderatorAccountId}
@@ -1211,7 +1211,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                   disabled={moderatorSaving}
                   className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-2 text-sm outline-none focus:border-primary/50 disabled:opacity-40"
                 >
-                  <option value="">Automatisch (erster Account)</option>
+                  <option value="">Automatisch (erstes KI-Konto)</option>
                   {moderatorAccounts.map((a) => (
                     <option key={a.id} value={String(a.id)}>{a.name}</option>
                   ))}
@@ -1980,7 +1980,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
             <div className="flex items-center gap-2 mb-3">
               <Lock className="h-4 w-4 text-muted-foreground/60" />
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
-                Sicherheit / Login
+                Sicherheit / Anmeldung
               </h2>
             </div>
 
@@ -2028,7 +2028,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 text-[12px] font-medium">
                       <Shield className="h-3.5 w-3.5 text-blue-400" />
-                      Nur SSO-Login (Passwort-Login deaktivieren)
+                      Nur Anmeldung per SSO (Anmeldung mit Passwort abschalten)
                     </div>
                     <p className="mt-0.5 text-[10px] text-muted-foreground/60">
                       Blendet die Passwort-Anmeldung auf der Login-Seite aus — nur noch SSO.
@@ -2067,10 +2067,10 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 text-[12px] font-medium">
                       <Shield className="h-3.5 w-3.5 text-blue-400" />
-                      Neue User müssen freigeschaltet werden
+                      Neue Nutzer müssen freigeschaltet werden
                     </div>
                     <p className="mt-0.5 text-[10px] text-muted-foreground/60">
-                      Neu per SSO oder Registrierung angelegte Konten landen auf „Warten auf Freischaltung" — ein Admin gibt sie unter Admin-Konsole → Benutzer frei (wie OpenWebUI).
+                      Neu per SSO oder Registrierung angelegte Konten landen auf „Warten auf Freischaltung“ — ein Admin gibt sie unter Admin-Konsole → Nutzer frei (wie OpenWebUI).
                     </p>
                   </div>
                   <button
@@ -2176,7 +2176,7 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
           authState={claudeAuthState}
           onClose={() => setClaudeLoginOpen(false)}
           onConnected={async () => {
-            setMessage("Claude Login erfolgreich! Bot hat eigene Session.");
+            setMessage("Claude-Anmeldung erfolgreich. Der Bot hat eine eigene Sitzung.");
             setSettings(await api.getSettings());
           }}
         />

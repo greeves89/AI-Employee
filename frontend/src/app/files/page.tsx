@@ -314,7 +314,7 @@ export default function FilesPage() {
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-foreground/[0.06] mb-4">
               <Bot className="h-7 w-7 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold mb-1.5">Keine aktiven Agents</h3>
+            <h3 className="text-lg font-semibold mb-1.5">Keine aktiven Agenten</h3>
             <p className="text-sm text-muted-foreground">
               Starte einen Agenten, um seine Dateien zu durchsuchen.
             </p>

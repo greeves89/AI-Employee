@@ -169,9 +169,9 @@ export function ActivityTimeline({ agentId, showHeading = true }: ActivityTimeli
       <div className="flex items-center justify-between">
         {showHeading ? (
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Activity</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Aktivität</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              What every agent has planned and what it actually did, one day at a time
+              Was jeder Agent geplant und was er tatsächlich getan hat — Tag für Tag
             </p>
           </div>
         ) : (
@@ -182,7 +182,7 @@ export function ActivityTimeline({ agentId, showHeading = true }: ActivityTimeli
             type="button"
             onClick={() => setDay((d) => addCalendarDays(d, -1))}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-foreground/[0.08] text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
-            aria-label="Previous day"
+            aria-label="Vorheriger Tag"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -194,7 +194,7 @@ export function ActivityTimeline({ agentId, showHeading = true }: ActivityTimeli
             type="button"
             onClick={() => setDay((d) => addCalendarDays(d, 1))}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-foreground/[0.08] text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
-            aria-label="Next day"
+            aria-label="Nächster Tag"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -204,7 +204,7 @@ export function ActivityTimeline({ agentId, showHeading = true }: ActivityTimeli
               onClick={() => setDay(startOfDay(new Date()))}
               className="rounded-lg border border-foreground/[0.08] px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
             >
-              Today
+              Heute
             </button>
           )}
         </div>
@@ -216,7 +216,7 @@ export function ActivityTimeline({ agentId, showHeading = true }: ActivityTimeli
         </div>
       ) : agents.length === 0 ? (
         <div className="rounded-2xl border border-foreground/[0.06] bg-card/50 py-16 text-center text-sm text-muted-foreground">
-          No agents visible.
+          Keine Agenten sichtbar.
         </div>
       ) : agentId ? (
         <DayAgenda

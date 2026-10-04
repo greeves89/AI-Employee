@@ -16,7 +16,7 @@ export function useAgents() {
       setAgents(data.agents);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load agents");
+      setError(e instanceof Error ? e.message : "Agenten konnten nicht geladen werden");
     } finally {
       setLoading(false);
     }

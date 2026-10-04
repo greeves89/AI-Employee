@@ -53,6 +53,95 @@ OEFFENTLICHE_SKILLS: set[str] = {
     "playwright-cli", "playwright-best-practices",
 }
 
+#: Deutsche Anzeige der fremden Skills, die Vorlagen mitbringen (#902):
+#: Name -> (Titel, Kurztext). Die Quellen beschreiben ihre Skills englisch; in der
+#: Vorlagen-Auswahl liest ein Fachanwender diesen Text statt der Beschreibung der
+#: Quelle. ``description`` bleibt unverändert (Suche, Agenten). Mitgelieferte Skills
+#: sind schon deutsch und stehen hier nicht. Ein Test prüft, dass jeder fremde
+#: Skill aus ``VORLAGEN_SKILLS`` einen Eintrag hat.
+SKILL_ANZEIGE: dict[str, tuple[str, str]] = {
+    # Dateiformate
+    "docx": ("Word-Dokumente", "Word-Dateien erstellen, bearbeiten und auswerten."),
+    "xlsx": ("Excel-Tabellen", "Tabellen anlegen, rechnen, auswerten und als Excel-Datei liefern."),
+    "pptx": ("PowerPoint-Folien", "Präsentationen als PowerPoint-Datei erstellen und überarbeiten."),
+    "pdf": ("PDF-Dokumente", "PDFs lesen, zusammenführen, ausfüllen und erzeugen."),
+    # Entwicklung
+    "test-driven-development": ("Testgetriebene Entwicklung", "Erst den Test schreiben, dann den Code — für jede Funktion und jeden Fehler."),
+    "systematic-debugging": ("Fehler systematisch suchen", "Ursachen von Fehlern Schritt für Schritt eingrenzen, bevor etwas geändert wird."),
+    "verification-before-completion": ("Prüfen vor dem Abschluss", "Erst nachweisen, dass es funktioniert, dann „fertig“ melden."),
+    "frontend-design": ("Oberflächen gestalten", "Ansprechende, durchdachte Weboberflächen entwerfen und umsetzen."),
+    "vercel-react-best-practices": ("React und Next.js sauber umsetzen", "Bewährte Regeln für schnelle, wartbare React- und Next.js-Anwendungen."),
+    "webapp-testing": ("Webanwendungen testen", "Weboberflächen im Browser automatisch durchklicken und prüfen."),
+    "api-and-interface-design": ("Schnittstellen entwerfen", "Klare, stabile Programmierschnittstellen und Datenformate entwerfen."),
+    "security-and-hardening": ("Absichern und härten", "Anwendungen gegen Angriffe absichern und Schwachstellen schließen."),
+    "mcp-builder": ("MCP-Server bauen", "Eigene MCP-Server entwickeln, über die Agenten neue Werkzeuge bekommen."),
+    "requesting-code-review": ("Code-Prüfung anfordern", "Fertige Änderungen gezielt zur Prüfung vorlegen."),
+    "receiving-code-review": ("Code-Prüfung umsetzen", "Hinweise aus einer Prüfung sorgfältig bewerten und umsetzen."),
+    "find-bugs": ("Fehler aufspüren", "Änderungen gezielt nach Fehlern und Schwachstellen durchsuchen."),
+    "security-review": ("Sicherheitsprüfung", "Code auf Sicherheitslücken prüfen und Funde belegen."),
+    "playwright-best-practices": ("Browser-Tests mit Playwright", "Zuverlässige automatische Browser-Tests mit Playwright schreiben."),
+    "dogfood": ("Anwendung selbst ausprobieren", "Eine Anwendung wie ein Nutzer durchgehen und Auffälligkeiten melden."),
+    "security-best-practices": ("Sicherheitsregeln", "Bewährte Sicherheitsregeln beim Entwickeln einhalten."),
+    "security-threat-model": ("Bedrohungsmodell", "Mögliche Angriffswege einer Anwendung erkennen und bewerten."),
+    "gha-security-review": ("GitHub-Actions prüfen", "Automatisierungen in GitHub Actions auf Sicherheitslücken prüfen."),
+    "docker-project-foundations": ("Docker-Grundlagen", "Projekte sauber für Docker aufsetzen."),
+    "docker-compose-patterns": ("Docker Compose", "Mehrere Dienste mit Docker Compose zuverlässig zusammenspielen lassen."),
+    "docker-build-strategies": ("Docker-Abbilder bauen", "Docker-Abbilder schlank, schnell und reproduzierbar bauen."),
+    "docker-destructive-guardrails": ("Docker ohne Datenverlust", "Gefährliche Docker-Befehle erkennen, bevor Daten verloren gehen."),
+    "ci-cd-and-automation": ("Automatisch bauen und ausliefern", "Abläufe für Bauen, Testen und Ausliefern einrichten."),
+    "observability-and-instrumentation": ("Überwachung und Protokolle", "Anwendungen mit Messwerten und Protokollen beobachtbar machen."),
+    "writing-plans": ("Pläne schreiben", "Vorhaben in klare, überprüfbare Arbeitsschritte zerlegen."),
+    "executing-plans": ("Pläne abarbeiten", "Einen schriftlichen Plan Schritt für Schritt umsetzen und abhaken."),
+    "agent-browser": ("Browser steuern", "Webseiten öffnen, bedienen und Inhalte auslesen."),
+    "postgres": ("PostgreSQL", "Mit PostgreSQL-Datenbanken sicher und effizient arbeiten."),
+    "design-postgres-tables": ("Tabellen entwerfen", "Datenbanktabellen in PostgreSQL sinnvoll anlegen."),
+    "postgres-database-migration": ("Datenbank migrieren", "Änderungen an der Datenbankstruktur sicher einspielen."),
+    "schema-exploration": ("Datenbank erkunden", "Aufbau und Inhalte einer unbekannten Datenbank verstehen."),
+    "supabase-postgres-best-practices": ("Supabase und PostgreSQL", "Bewährte Regeln für Datenbanken mit Supabase und PostgreSQL."),
+    # Daten & Recherche
+    "derive-client": ("Webdaten auslesen", "Aus Webseiten strukturierte Daten gewinnen."),
+    # Design & Präsentation
+    "ui-ux-pro-max": ("Gestaltung und Bedienbarkeit", "Oberflächen nach Gestaltungs- und Bedienregeln entwerfen."),
+    "design-system": ("Gestaltungssystem", "Einheitliche Farben, Schriften und Bausteine festlegen."),
+    "web-design-guidelines": ("Regeln für Webgestaltung", "Weboberflächen auf Gestaltung und Barrierefreiheit prüfen."),
+    "ui-styling": ("Oberflächen gestalten", "Bausteine einer Oberfläche einheitlich gestalten."),
+    "slides": ("Foliensätze", "Präsentationen mit klarer Gliederung und Gestaltung bauen."),
+    "theme-factory": ("Designvorlagen", "Fertige Farb- und Schriftvorlagen auf Dokumente und Folien anwenden."),
+    "brand": ("Markenauftritt", "Inhalte im Erscheinungsbild der eigenen Marke gestalten."),
+    # Text
+    "documentation-and-adrs": ("Dokumentation", "Technische Dokumentation und Entscheidungsprotokolle schreiben."),
+    "doc-coauthoring": ("Dokumente gemeinsam schreiben", "Längere Dokumente Abschnitt für Abschnitt gemeinsam erarbeiten."),
+    "writing-guidelines": ("Schreibregeln", "Klar, knapp und verständlich schreiben."),
+    "copywriting": ("Werbetexte", "Überzeugende Texte für Webseiten, Anzeigen und Angebote schreiben."),
+    "copy-editing": ("Texte überarbeiten", "Vorhandene Texte straffen, korrigieren und verbessern."),
+    "content-strategy": ("Inhaltsstrategie", "Planen, welche Inhalte für wen und wann entstehen."),
+    "ai-seo": ("Sichtbarkeit in KI-Suchen", "Inhalte so aufbereiten, dass KI-Suchdienste sie finden und zitieren."),
+    # Marketing & Vertrieb
+    "marketing-plan": ("Marketingplan", "Ziele, Zielgruppen und Maßnahmen zu einem Plan zusammenführen."),
+    "emails": ("E-Mail-Marketing", "Newsletter und E-Mail-Strecken planen und schreiben."),
+    "launch": ("Produkteinführung", "Die Einführung eines Produkts oder Angebots planen."),
+    "analytics": ("Auswertung", "Kennzahlen festlegen, erfassen und auswerten."),
+    "seo-audit": ("SEO-Prüfung", "Webseiten auf Schwächen bei der Suchmaschinenoptimierung prüfen."),
+    "programmatic-seo": ("SEO-Seiten in Serie", "Viele gleichartige Seiten für Suchanfragen planen."),
+    "schema": ("Strukturierte Daten", "Webseiten mit strukturierten Daten für Suchmaschinen auszeichnen."),
+    "site-architecture": ("Seitenstruktur", "Aufbau und Verlinkung einer Website planen."),
+    "audit-website": ("Website prüfen", "Eine Website auf Technik, Inhalte und Suchmaschinentauglichkeit prüfen."),
+    "social": ("Social Media", "Beiträge für soziale Netzwerke planen und schreiben."),
+    "image": ("Bilder", "Bilder für Beiträge und Kampagnen planen und erzeugen."),
+    "video": ("Videos", "Kurze Videos für Beiträge und Kampagnen planen."),
+    "public-relations": ("Öffentlichkeitsarbeit", "Pressearbeit und Kontakt zu Medien planen."),
+    "prospecting": ("Neukunden finden", "Passende Ansprechpartner und Unternehmen recherchieren."),
+    "cold-email": ("Erstansprache per E-Mail", "Erste E-Mails an neue Kontakte schreiben."),
+    "sales-enablement": ("Vertriebsunterlagen", "Unterlagen und Argumente für den Vertrieb erstellen."),
+    "offers": ("Angebote gestalten", "Angebote so zuschneiden, dass sie überzeugen."),
+    "competitor-profiling": ("Wettbewerber analysieren", "Steckbriefe von Wettbewerbern erstellen und vergleichen."),
+    "customer-research": ("Kunden verstehen", "Bedürfnisse und Meinungen von Kunden auswerten."),
+    # Management & Büro
+    "dispatching-parallel-agents": ("Arbeit verteilen", "Unabhängige Teilaufgaben gleichzeitig an mehrere Agenten geben."),
+    "brainstorming": ("Ideen entwickeln", "Vor dem Umsetzen gemeinsam Ziel, Anforderungen und Lösungsideen klären."),
+    "internal-comms": ("Interne Kommunikation", "Mitteilungen, Rundschreiben und Statusberichte für das eigene Haus schreiben."),
+}
+
 VORLAGEN_SKILLS: dict[str, list[str]] = {
     # Entwicklung
     "fullstack-developer": ["test-driven-development", "systematic-debugging", "verification-before-completion",

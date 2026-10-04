@@ -103,7 +103,7 @@ async def _assert_agent_owned(agent_id: str, user, db) -> None:
     from app.core.ownership import visible_agent_ids
     vids = await visible_agent_ids(user, db)
     if vids is not None and agent_id not in vids:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.get("/agents/{agent_id}/settings")
@@ -116,7 +116,7 @@ async def get_webhook_settings(
     await _assert_agent_owned(agent_id, user, db)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     return {
         "webhook_enabled": agent.webhook_enabled,
         "webhook_token": agent.webhook_token if agent.webhook_enabled else None,
@@ -134,7 +134,7 @@ async def update_webhook_settings(
     await _assert_agent_owned(agent_id, user, db)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     enabled = body.get("webhook_enabled")
     if enabled is not None:
@@ -159,7 +159,7 @@ async def regenerate_webhook_token(
     await _assert_agent_owned(agent_id, user, db)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     if not agent.webhook_enabled:
         raise HTTPException(status_code=400, detail="Webhook is not enabled for this agent")
 
@@ -192,7 +192,7 @@ async def receive_webhook(
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     # --- Per-agent token auth ---
     if not agent.webhook_enabled:

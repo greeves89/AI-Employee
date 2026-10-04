@@ -259,19 +259,19 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Proactive Mode</span>
+              <span className="text-sm font-medium">Eigeninitiative</span>
               {enabled && (
                 <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   </span>
-                  Active
+                  Aktiv
                 </span>
               )}
             </div>
             <p className="text-[11px] text-muted-foreground/60">
-              Agent checks periodically for work to do on its own
+              Der Agent schaut regelmäßig selbst nach, ob es etwas zu tun gibt
             </p>
           </div>
         </div>
@@ -304,7 +304,7 @@ export function ProactiveToggle({ agentId }: ProactiveToggleProps) {
           {/* Interval selector */}
           <div className="flex items-center gap-2">
             <Clock className="h-3 w-3 text-muted-foreground/40" />
-            <span className="text-[11px] text-muted-foreground/60">Check every:</span>
+            <span className="text-[11px] text-muted-foreground/60">Prüfen alle:</span>
             <div className="flex gap-1">
               {INTERVALS.map((opt) => (
                 <button

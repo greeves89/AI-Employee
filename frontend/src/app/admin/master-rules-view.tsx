@@ -240,7 +240,7 @@ export function MasterRulesView() {
         {sperren.length === 0 ? (
           <p className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] px-4 py-6 text-center text-xs text-muted-foreground/50">
             Noch keine globale Sperre. Agenten-spezifische Regeln stehen weiterhin beim
-            jeweiligen Agenten unter „Command Policies".
+            jeweiligen Agenten unter „Befehlsregeln“.
           </p>
         ) : (
           <div className="space-y-2">

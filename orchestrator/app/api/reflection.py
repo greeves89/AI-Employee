@@ -95,7 +95,7 @@ async def list_runs(
 async def run_now(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Manually trigger a reflection run (admin only). Runs in the background."""
     if getattr(user, "role", None) != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Admins")
     if _manual_run_lock.locked():
         raise HTTPException(status_code=409, detail="Ein Lauf ist bereits aktiv")
 

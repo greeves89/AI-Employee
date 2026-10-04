@@ -168,7 +168,7 @@ async def _get_wf(workflow_id: str, user, db: AsyncSession, *, edit: bool = Fals
         raise HTTPException(status_code=404, detail="Workflow not found")
     role = await _access_role(wf, user, db)
     if role is None:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
     if edit and role not in ("owner", "editor"):
         raise HTTPException(status_code=403, detail="Nur Ansehen — keine Bearbeitungsrechte")
     return wf
@@ -367,7 +367,7 @@ async def delete_folder(folder_id: str, user=Depends(require_auth), db: AsyncSes
     if not f:
         raise HTTPException(status_code=404, detail="Folder not found")
     if not _is_admin(user) and f.user_id != str(user.id):
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
     # unassign workflows in this folder, drop its shares, then delete
     for w in (await db.execute(select(Workflow).where(Workflow.folder_id == folder_id))).scalars().all():
         w.folder_id = None
@@ -401,7 +401,7 @@ async def revoke_share(share_id: str, user=Depends(require_auth), db: AsyncSessi
     elif s.folder_id and not _is_admin(user):
         f = (await db.execute(select(WorkflowFolder).where(WorkflowFolder.id == s.folder_id))).scalar_one_or_none()
         if not f or f.user_id != str(user.id):
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="Kein Zugriff")
     await db.delete(s)
     await db.commit()
     return {"deleted": share_id}

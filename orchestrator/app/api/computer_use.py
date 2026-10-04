@@ -906,7 +906,7 @@ async def get_session_status(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if str(user.id) != session["user_id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
 
     now = time.time()
     last_seen = session.get("bridge_last_seen_at")
@@ -944,7 +944,7 @@ async def get_screenshot(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if str(user.id) != session["user_id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
 
     # Return cached screenshot if still fresh
     cached = session.get("last_screenshot")
@@ -995,7 +995,7 @@ def _require_owned_session(session_id: str, user) -> dict:
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     if str(user.id) != session["user_id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
     return session
 
 

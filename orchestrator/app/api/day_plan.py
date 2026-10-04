@@ -95,7 +95,7 @@ async def _assert_access(agent_id: str, user, db: AsyncSession) -> None:
         return
     vids = await visible_agent_ids(user, db)
     if vids is not None and agent_id not in vids:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
 
 
 @router.put("/agents/{agent_id}/day-plan")

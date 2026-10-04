@@ -186,7 +186,7 @@ function McpToolRunner({ serverId, tool }: { serverId: number; tool: McpTool }) 
         onClick={() => setOpen((o) => !o)}
         className="inline-flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300"
       >
-        <Play className="h-3 w-3" /> {open ? "Schließen" : "Tool testen"}
+        <Play className="h-3 w-3" /> {open ? "Schließen" : "Werkzeug testen"}
       </button>
       {open && (
         <div className="mt-1.5 space-y-2 rounded-md bg-foreground/[0.02] border border-foreground/[0.04] p-2.5">
@@ -475,7 +475,7 @@ export default function IntegrationsPage() {
                           <p className="text-xs text-muted-foreground mt-0.5">{integration.description}</p>
                           {integration.connected && integration.account_label && (
                             <p className={cn("text-xs mt-1.5", needsReauth ? "text-muted-foreground" : "text-emerald-400/80")}>
-                              Signed in as {integration.account_label}
+                              Angemeldet als {integration.account_label}
                             </p>
                           )}
                           {needsReauth && (
@@ -494,7 +494,7 @@ export default function IntegrationsPage() {
                           )}
                           {!integration.available && !integration.connected && integration.auth_type !== "pat" && (
                             <p className="text-[10px] text-yellow-500/80 mt-1.5">
-                              Not configured — set OAUTH_{integration.provider.toUpperCase()}_CLIENT_ID in settings
+                              Noch nicht eingerichtet — die Zugangsdaten (Client ID) hinterlegt der Administrator unter Admin-Konsole → Integrationen (Anlage).
                             </p>
                           )}
                           {integration.auth_type === "oauth" && integration.scopes?.trim() && (() => {
@@ -546,7 +546,7 @@ export default function IntegrationsPage() {
                             Trennen
                           </button>
                         ) : integration.auth_type === "pat" ? (
-                          <span className="text-[10px] text-muted-foreground/40">Enter token below</span>
+                          <span className="text-[10px] text-muted-foreground/40">Token unten eingeben</span>
                         ) : integration.available ? (
                           <button
                             onClick={() => handleConnect(integration.provider)}
@@ -557,7 +557,7 @@ export default function IntegrationsPage() {
                             Verbinden
                           </button>
                         ) : (
-                          <span className="text-[10px] text-muted-foreground/40 px-3 py-2">Not available</span>
+                          <span className="text-[10px] text-muted-foreground/40 px-3 py-2">Nicht verfügbar</span>
                         )}
                       </div>
                     </div>
@@ -838,7 +838,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
       setServers((prev) => [server, ...prev]);
       closeForm();
       setExpandedServer(server.id);
-      onToast({ type: "success", message: `MCP Server "${server.name}" hinzugefügt (${server.tools.length} Tools)` });
+      onToast({ type: "success", message: `MCP-Server „${server.name}“ hinzugefügt (${server.tools.length} Werkzeuge)` });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Verbindung fehlgeschlagen";
       // Nur bei einer PRIVATEN Adresse anbieten. Loopback und Metadatenpunkt
@@ -880,7 +880,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
       const updated = await api.updateMcpServer(editingId, data);
       setServers((prev) => prev.map((s) => (s.id === editingId ? updated : s)));
       closeForm();
-      onToast({ type: "success", message: `MCP Server "${updated.name}" aktualisiert` });
+      onToast({ type: "success", message: `MCP-Server „${updated.name}“ aktualisiert` });
     } catch (e) {
       onToast({ type: "error", message: e instanceof Error ? e.message : "Speichern fehlgeschlagen" });
     } finally {
@@ -902,7 +902,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
       );
       setProbeResult({
         ok: true,
-        message: `Verbindung OK — ${res.tool_count} Tool${res.tool_count !== 1 ? "s" : ""} gefunden`,
+        message: `Verbindung steht — ${res.tool_count} Werkzeug${res.tool_count !== 1 ? "e" : ""} gefunden`,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Verbindung fehlgeschlagen";
@@ -918,10 +918,10 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     try {
       const updated = await api.refreshMcpServer(id);
       setServers((prev) => prev.map((s) => (s.id === id ? updated : s)));
-      onToast({ type: "success", message: `Tools aktualisiert (${updated.tools.length} Tools)` });
+      onToast({ type: "success", message: `Werkzeuge aktualisiert (${updated.tools.length})` });
     } catch (e) {
       await loadServers();
-      onToast({ type: "error", message: e instanceof Error ? e.message : "Refresh fehlgeschlagen" });
+      onToast({ type: "error", message: e instanceof Error ? e.message : "Aktualisieren fehlgeschlagen" });
     } finally {
       setRefreshing(null);
     }
@@ -929,7 +929,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
 
   const handleDelete = async (id: number) => {
     const ok = await confirm({
-      title: "MCP Server entfernen?",
+      title: "MCP-Server entfernen?",
       message: "Die Agenten müssen neu gestartet werden, um die Änderung zu übernehmen.",
       variant: "destructive",
       confirmLabel: "Entfernen",
@@ -939,7 +939,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
     try {
       await api.deleteMcpServer(id);
       setServers((prev) => prev.filter((s) => s.id !== id));
-      onToast({ type: "success", message: "MCP Server entfernt" });
+      onToast({ type: "success", message: "MCP-Server entfernt" });
     } catch (e) {
       onToast({ type: "error", message: e instanceof Error ? e.message : "Fehler beim Entfernen" });
     } finally {
@@ -997,7 +997,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">MCP Servers</h2>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">MCP-Server</h2>
         <div className="flex items-center gap-2">
           <button
             onClick={handleCheckAgents}
@@ -1013,7 +1013,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
           >
             <Plus className="h-3 w-3" />
-            MCP Server hinzufügen
+            MCP-Server hinzufügen
           </button>
         </div>
       </div>
@@ -1023,7 +1023,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
         <div className="max-w-3xl mb-4 rounded-xl border border-primary/30 bg-card/80 backdrop-blur-sm p-5">
           <div className="space-y-3">
             <p className="text-xs font-semibold text-foreground">
-              {editingId == null ? "Neuen MCP Server hinzufügen" : `„${editingServer?.name ?? ""}" bearbeiten`}
+              {editingId == null ? "Neuen MCP-Server hinzufügen" : `„${editingServer?.name ?? ""}“ bearbeiten`}
             </p>
             <div>
               <label className="text-[11px] font-medium text-muted-foreground mb-1 block">Name</label>
@@ -1222,7 +1222,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
       ) : servers.length === 0 && !showForm ? (
         <div className="max-w-3xl rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-10 text-center">
           <Globe className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground mb-1">Keine MCP Server konfiguriert</p>
+          <p className="text-sm text-muted-foreground mb-1">Keine MCP-Server eingerichtet</p>
           <p className="text-xs text-muted-foreground/60">
             Verbinde externe MCP-Server, damit deine Agenten deren Werkzeuge nutzen können.
           </p>
@@ -1321,7 +1321,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                     {disagreement && (
                       <div className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400" title="Der Orchestrator erreicht den Server, aber mindestens ein Agent nicht — oft ein pro-Agent-Token, das der Server ablehnt.">
                         <AlertCircle className="h-3 w-3 shrink-0" />
-                        <span className="truncate">Diskrepanz: Orchestrator erreichbar, Agents melden Probleme</span>
+                        <span className="truncate">Abweichung: Orchestrator erreicht den Server, Agenten melden Probleme</span>
                       </div>
                     )}
                   </div>
@@ -1389,7 +1389,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       onClick={() => handleRefresh(server.id)}
                       disabled={refreshing === server.id}
                       className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
-                      title="Tools neu laden"
+                      title="Werkzeuge neu laden"
                     >
                       {refreshing === server.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1416,7 +1416,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                 {isExpanded && (
                   <div className="border-t border-foreground/[0.06] px-4 py-3">
                     {toolCount === 0 ? (
-                      <p className="text-xs text-muted-foreground/50 py-2">Keine Tools gefunden</p>
+                      <p className="text-xs text-muted-foreground/50 py-2">Keine Werkzeuge gefunden</p>
                     ) : (
                       <div className="space-y-1.5">
                         {server.tools.map((tool: McpTool) => (

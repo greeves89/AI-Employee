@@ -41,7 +41,7 @@ async def _get_bot_token(agent_id: str, db: AsyncSession) -> str:
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     config = agent.config or {}
     token = config.get("telegram_bot_token")
     if not token:
@@ -65,7 +65,7 @@ async def _bot_token_for_chat(agent_id: str, chat_id: str, db: AsyncSession) -> 
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     token = (agent.config or {}).get("telegram_bot_token")
     if token:
         return token

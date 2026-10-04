@@ -29,7 +29,7 @@ async function fetchJSON<T>(url: string, options?: RequestInit, _isRetry = false
       if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
         window.location.href = "/login";
       }
-      throw new Error("Session expired");
+      throw new Error("Sitzung abgelaufen");
     }
   }
 
@@ -1092,7 +1092,7 @@ export async function uploadFiles(
   );
   if (!res.ok) {
     const error = await res.text();
-    throw new Error(`Upload failed: ${error}`);
+    throw new Error(`Hochladen fehlgeschlagen: ${error}`);
   }
   return res.json();
 }
@@ -1125,7 +1125,7 @@ export async function deleteFile(agentId: string, path: string): Promise<void> {
   );
   if (!res.ok) {
     const error = await res.text();
-    throw new Error(`Delete failed: ${error}`);
+    throw new Error(`Löschen fehlgeschlagen: ${error}`);
   }
 }
 
@@ -3294,7 +3294,7 @@ export async function uploadSkillFile(skillId: number, file: File): Promise<Skil
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Upload failed: ${res.status}`);
+    throw new Error(err.detail || `Hochladen fehlgeschlagen: ${res.status}`);
   }
   return res.json();
 }
@@ -3307,7 +3307,7 @@ export async function downloadSkillFile(skillId: number, filename: string): Prom
   const res = await fetch(`${base}/skills/marketplace/${skillId}/files/${encodeURIComponent(filename)}`, {
     credentials: "include",
   });
-  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  if (!res.ok) throw new Error(`Herunterladen fehlgeschlagen: ${res.status}`);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

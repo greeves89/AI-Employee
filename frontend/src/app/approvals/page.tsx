@@ -88,28 +88,28 @@ const riskConfig = {
     color: "text-red-400",
     bg: "bg-red-500/10",
     border: "border-red-500/20",
-    label: "BLOCKED",
+    label: "GESPERRT",
   },
   high: {
     icon: AlertCircle,
     color: "text-orange-400",
     bg: "bg-orange-500/10",
     border: "border-orange-500/20",
-    label: "HIGH RISK",
+    label: "HOHES RISIKO",
   },
   medium: {
     icon: AlertTriangle,
     color: "text-amber-700 dark:text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/20",
-    label: "MEDIUM RISK",
+    label: "MITTLERES RISIKO",
   },
   low: {
     icon: Info,
     color: "text-blue-400",
     bg: "bg-blue-500/10",
     border: "border-blue-500/20",
-    label: "LOW RISK",
+    label: "GERINGES RISIKO",
   },
 };
 
@@ -506,7 +506,7 @@ export default function ApprovalsPage() {
           )}
         >
           <Layers className="h-3.5 w-3.5" />
-          Level-Presets
+          Stufen-Vorlagen
         </button>
         <button
           onClick={() => setActiveTab("command-policies")}
@@ -518,7 +518,7 @@ export default function ApprovalsPage() {
           )}
         >
           <ShieldAlert className="h-3.5 w-3.5" />
-          Command Policies
+          Befehlsregeln
         </button>
         </>)}
       </div>
@@ -966,7 +966,7 @@ export default function ApprovalsPage() {
                         onClick={() => openModal(approval)}
                         className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
                       >
-                        Review
+                        Prüfen
                       </button>
                     )}
                   </div>
@@ -1252,7 +1252,10 @@ function VerlaufTab({ agents }: { agents: { id: string; name: string }[] }) {
                       {st.label}
                     </span>
                   </div>
-                  {a.user_response && (
+                  {/* „Approved by <mail>" ist die interne Bestätigung ohne eigene
+                      Antwort (Kennung für die Agentenseite) — wer entschieden hat,
+                      steht schon unten. */}
+                  {a.user_response && !a.user_response.startsWith("Approved by ") && (
                     <p className="mt-1 text-xs text-muted-foreground">
                       {istFrage ? "Antwort: " : "Begründung: "}
                       {a.user_response}

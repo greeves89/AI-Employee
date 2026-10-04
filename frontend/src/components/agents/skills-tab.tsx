@@ -44,20 +44,20 @@ interface CatalogSkill {
 
 // Fallback catalog used when the API hasn't crawled yet
 const FALLBACK_CATALOG: CatalogSkill[] = [
-  { name: "find-skills", repo: "vercel-labs/skills", description: "Discover and install new skills from the community", installs: "", category: "core" },
-  { name: "ui-ux-pro-max", repo: "nextlevelbuilder/ui-ux-pro-max-skill", description: "UI/UX design intelligence with 50+ styles, color palettes, fonts", installs: "", category: "design" },
-  { name: "frontend-design", repo: "anthropics/skills", description: "Guidance for visual interface development", installs: "", category: "design" },
-  { name: "skill-creator", repo: "anthropics/skills", description: "Create new custom skills", installs: "", category: "core" },
+  { name: "find-skills", repo: "vercel-labs/skills", description: "Neue Skills aus der Community finden und installieren", installs: "", category: "core" },
+  { name: "ui-ux-pro-max", repo: "nextlevelbuilder/ui-ux-pro-max-skill", description: "Gestaltungswissen mit über 50 Stilen, Farbpaletten und Schriften", installs: "", category: "design" },
+  { name: "frontend-design", repo: "anthropics/skills", description: "Anleitung für die Gestaltung von Oberflächen", installs: "", category: "design" },
+  { name: "skill-creator", repo: "anthropics/skills", description: "Eigene Skills anlegen", installs: "", category: "core" },
 ];
 
 const CATALOG_CATEGORIES: Record<string, string> = {
-  all: "All",
-  core: "Core",
-  dev: "Development",
+  all: "Alle",
+  core: "Grundlagen",
+  dev: "Entwicklung",
   design: "Design",
   marketing: "Marketing",
-  docs: "Documents",
-  tools: "Tools",
+  docs: "Dokumente",
+  tools: "Werkzeuge",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -144,12 +144,12 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
       if (res.ok) {
         fetchSkills();
       } else {
-        const data = await res.json().catch(() => ({ detail: "Install failed" }));
+        const data = await res.json().catch(() => ({ detail: "Installation fehlgeschlagen" }));
         const detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
-        setInstallError(`${cat.name}: ${detail || "Install failed"}`);
+        setInstallError(`${cat.name}: ${detail || "Installation fehlgeschlagen"}`);
       }
     } catch {
-      setInstallError(`${cat.name}: Network error`);
+      setInstallError(`${cat.name}: Netzwerkfehler`);
     }
     setInstallingSkill(null);
   };
@@ -162,7 +162,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
   }, [showCatalog, fetchCatalog]);
 
   // Build dynamic category list from catalog data
-  const dynamicCategories: Record<string, string> = { all: "All" };
+  const dynamicCategories: Record<string, string> = { all: "Alle" };
   for (const s of catalog) {
     if (s.category && !dynamicCategories[s.category]) {
       dynamicCategories[s.category] = CATALOG_CATEGORIES[s.category] || s.category.charAt(0).toUpperCase() + s.category.slice(1);
@@ -192,11 +192,11 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
         setInstallSkill("");
         fetchSkills();
       } else {
-        const data = await res.json().catch(() => ({ detail: "Install failed" }));
-        setInstallError(data.detail || "Install failed");
+        const data = await res.json().catch(() => ({ detail: "Installation fehlgeschlagen" }));
+        setInstallError(data.detail || "Installation fehlgeschlagen");
       }
     } catch {
-      setInstallError("Network error");
+      setInstallError("Netzwerkfehler");
     }
     setInstalling(false);
   };
@@ -292,7 +292,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
           <Sparkles className="h-5 w-5 text-amber-700 dark:text-amber-400" />
           <h2 className="text-sm font-semibold">Skills</h2>
           <span className="text-xs text-muted-foreground">
-            ({skills.length} {skills.length === 1 ? "skill" : "skills"})
+            ({skills.length} {skills.length === 1 ? "Skill" : "Skills"})
           </span>
           <Link
             href="/skills"
@@ -307,7 +307,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
           >
             <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
-            Refresh
+            Aktualisieren
           </button>
           <button
             onClick={() => {
@@ -318,7 +318,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
             className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium border border-foreground/[0.08] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
           >
             <Github className="h-3.5 w-3.5" />
-            Custom URL
+            Eigene Adresse
           </button>
           <button
             onClick={() => {
@@ -329,7 +329,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
             className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium border border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
           >
             <Store className="h-3.5 w-3.5" />
-            Skill Store
+            Skill-Katalog
           </button>
           <button
             onClick={() => {
@@ -341,18 +341,18 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
             className="rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 inline-flex items-center gap-1.5"
           >
             <Plus className="h-3.5 w-3.5" />
-            Add Skill
+            Skill hinzufügen
           </button>
         </div>
       </div>
 
       {/* Description */}
       <p className="text-xs text-muted-foreground/70">
-        Skills are custom instructions stored as{" "}
+        Skills sind eigene Anleitungen, abgelegt als{" "}
         <code className="text-[11px] px-1 py-0.5 rounded bg-foreground/[0.04] font-mono">
           .claude/skills/&lt;name&gt;/SKILL.md
         </code>{" "}
-        files. The agent can invoke them as slash commands.
+        — der Agent ruft sie als Schrägstrich-Befehl auf.
       </p>
 
       {/* Install from GitHub Form */}
@@ -368,7 +368,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Github className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="text-sm font-medium">Install Skill from GitHub</h3>
+                  <h3 className="text-sm font-medium">Skill von GitHub installieren</h3>
                 </div>
                 <button
                   onClick={() => { setShowInstall(false); setInstallError(""); }}
@@ -381,7 +381,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] font-medium text-muted-foreground/70 block mb-1.5">
-                    GitHub Repository URL
+                    Adresse des GitHub-Repositorys
                   </label>
                   <input
                     type="text"
@@ -393,13 +393,13 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                 </div>
                 <div>
                   <label className="text-[11px] font-medium text-muted-foreground/70 block mb-1.5">
-                    Skill Name
+                    Name des Skills
                   </label>
                   <input
                     type="text"
                     value={installSkill}
                     onChange={(e) => setInstallSkill(e.target.value)}
-                    placeholder="e.g. find-skills"
+                    placeholder="z. B. find-skills"
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
@@ -408,7 +408,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
               {/* Quick-install suggestions */}
               <div>
                 <label className="text-[11px] font-medium text-muted-foreground/70 block mb-2">
-                  Popular Skills
+                  Beliebte Skills
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -441,7 +441,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                   onClick={() => { setShowInstall(false); setInstallError(""); }}
                   className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
                 >
-                  Cancel
+                  Abbrechen
                 </button>
                 <button
                   onClick={handleInstallFromRepo}
@@ -451,12 +451,12 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                   {installing ? (
                     <>
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Installing...
+                      Wird installiert …
                     </>
                   ) : (
                     <>
                       <Download className="h-3.5 w-3.5" />
-                      Install
+                      Installieren
                     </>
                   )}
                 </button>
@@ -479,14 +479,14 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Store className="h-4 w-4 text-amber-700 dark:text-amber-400" />
-                  <h3 className="text-sm font-medium">Skill Store</h3>
-                  <span className="text-[11px] text-muted-foreground/60">from skills.sh</span>
+                  <h3 className="text-sm font-medium">Skill-Katalog</h3>
+                  <span className="text-[11px] text-muted-foreground/60">von skills.sh</span>
                   <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
-                    {catalog.length} skills
+                    {catalog.length} Skills
                   </span>
                   {catalogCrawledAt && (
                     <span className="text-[10px] text-muted-foreground/40">
-                      updated {new Date(catalogCrawledAt).toLocaleDateString()}
+                      aktualisiert am {new Date(catalogCrawledAt).toLocaleDateString("de-DE")}
                     </span>
                   )}
                 </div>
@@ -495,7 +495,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     onClick={fetchCatalog}
                     disabled={catalogLoading}
                     className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                    title="Refresh catalog"
+                    title="Katalog aktualisieren"
                   >
                     <RefreshCw className={cn("h-3.5 w-3.5", catalogLoading && "animate-spin")} />
                   </button>
@@ -516,7 +516,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     type="text"
                     value={catalogSearch}
                     onChange={(e) => setCatalogSearch(e.target.value)}
-                    placeholder="Search skills..."
+                    placeholder="Skills durchsuchen …"
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-9 pr-3.5 py-2 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
@@ -547,7 +547,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                 {catalogLoading && catalog.length <= 4 && (
                   <div className="col-span-full flex items-center justify-center py-8">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    <span className="ml-2 text-sm text-muted-foreground">Loading skill catalog...</span>
+                    <span className="ml-2 text-sm text-muted-foreground">Skill-Katalog wird geladen …</span>
                   </div>
                 )}
                 {filteredCatalog.map((cat) => {
@@ -585,11 +585,11 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                         )}
                       >
                         {isInstalled ? (
-                          <span className="flex items-center gap-1"><Check className="h-3 w-3" /> Installed</span>
+                          <span className="flex items-center gap-1"><Check className="h-3 w-3" /> Installiert</span>
                         ) : isInstalling ? (
-                          <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Installing</span>
+                          <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Wird installiert</span>
                         ) : (
-                          <span className="flex items-center gap-1"><Download className="h-3 w-3" /> Install</span>
+                          <span className="flex items-center gap-1"><Download className="h-3 w-3" /> Installieren</span>
                         )}
                       </button>
                     </div>
@@ -613,7 +613,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
             <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium">
-                  {editingSkill ? "Edit Skill" : "New Skill"}
+                  {editingSkill ? "Skill bearbeiten" : "Neuer Skill"}
                 </h3>
                 <button
                   onClick={resetForm}
@@ -632,35 +632,35 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                     type="text"
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    placeholder="e.g. deploy-to-prod"
+                    placeholder="z. B. auf-produktion-ausrollen"
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                   <p className="text-[10px] text-muted-foreground/50 mt-1">
-                    Lowercase with hyphens. Used as the directory name.
+                    Kleinbuchstaben mit Bindestrichen — daraus wird der Ordnername.
                   </p>
                 </div>
 
                 <div>
                   <label className="text-[11px] font-medium text-muted-foreground/70 block mb-1.5">
-                    Description
+                    Beschreibung
                   </label>
                   <input
                     type="text"
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
-                    placeholder="What this skill does..."
+                    placeholder="Was dieser Skill tut …"
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
 
                 <div>
                   <label className="text-[11px] font-medium text-muted-foreground/70 block mb-1.5">
-                    Instructions (Markdown)
+                    Anleitung (Markdown)
                   </label>
                   <textarea
                     value={formContent}
                     onChange={(e) => setFormContent(e.target.value)}
-                    placeholder="Step-by-step instructions for the agent..."
+                    placeholder="Schritt-für-Schritt-Anleitung für den Agenten …"
                     rows={8}
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary resize-y"
                   />
@@ -672,7 +672,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                   onClick={resetForm}
                   className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
                 >
-                  Cancel
+                  Abbrechen
                 </button>
                 <button
                   onClick={handleSave}
@@ -680,7 +680,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                   className="rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 inline-flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <Save className="h-3.5 w-3.5" />
-                  {saving ? "Saving..." : editingSkill ? "Update" : "Create"}
+                  {saving ? "Wird gespeichert …" : editingSkill ? "Speichern" : "Anlegen"}
                 </button>
               </div>
             </div>
@@ -696,9 +696,9 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
       ) : skills.length === 0 && !showForm ? (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <Sparkles className="h-10 w-10 mb-3 opacity-20" />
-          <p className="text-sm font-medium">No skills defined</p>
+          <p className="text-sm font-medium">Noch keine Skills</p>
           <p className="text-xs mt-1">
-            Add custom skills to give this agent specialized capabilities.
+            Füge eigene Skills hinzu, um diesem Agenten Fachwissen mitzugeben.
           </p>
         </div>
       ) : (
@@ -761,7 +761,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                         startEdit(skill);
                       }}
                       className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                      title="Edit"
+                      title="Bearbeiten"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -771,7 +771,7 @@ export function SkillsTab({ agentId }: SkillsTabProps) {
                         handleDelete(skill.name);
                       }}
                       className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-accent transition-colors"
-                      title="Delete"
+                      title="Löschen"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>

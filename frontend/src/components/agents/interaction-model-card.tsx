@@ -206,11 +206,11 @@ export function InteractionModelCard({
         {/* Den Zugang legt der Admin an — Mitglieder koennen hier nichts tun. */}
         {!loading && models.length === 0 && !simpleMode && (
           <a
-            href="/?tab=ai-accounts"
+            href="/admin?tab=ai-accounts"
             className="flex items-center gap-1.5 text-[11px] text-fuchsia-400 hover:underline"
           >
             <ExternalLink className="h-3 w-3" />
-            Noch kein Realtime-Provider. Lege unter AI-Accounts einen AWS-Bedrock-Zugang an.
+            Noch kein Echtzeit-Anbieter. Lege unter KI-Konten einen AWS-Bedrock-Zugang an.
           </a>
         )}
         {msg && <p className="text-[11px] text-muted-foreground/70">{msg}</p>}

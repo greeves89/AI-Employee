@@ -69,6 +69,7 @@ import {
   type AdminBereich,
 } from "@/lib/admin-bereiche";
 import { cn, timeAgo, formatCost } from "@/lib/utils";
+import { agentZustand } from "@/lib/aufgaben-anzeige";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -819,7 +820,7 @@ export default function AdminPage() {
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium truncate">{agent.name}</p>
                         <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-foreground/5 text-muted-foreground">
-                          {agent.state}
+                          {agentZustand(agent.state)}
                         </span>
                       </div>
                       <div className="flex items-center gap-3 mt-0.5">
@@ -954,13 +955,13 @@ export default function AdminPage() {
                             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                               <span>Nutzer: <strong className="text-foreground/80">{a.user_name}</strong></span>
                               <span>•</span>
-                              <span>{a.template_name || "Custom"}</span>
+                              <span>{a.template_name || "Ohne Vorlage"}</span>
                               <span>•</span>
                               <span className={cn(
                                 "font-medium",
                                 a.state === "running" || a.state === "idle" ? "text-emerald-400" :
                                 a.state === "working" ? "text-blue-400" : "text-zinc-400"
-                              )}>{a.state}</span>
+                              )}>{agentZustand(a.state)}</span>
                             </div>
                           </div>
                         </div>
@@ -1591,7 +1592,7 @@ function BudgetTab({
                 {/* Agent name + state */}
                 <div className="w-[180px] shrink-0">
                   <p className="text-sm font-medium truncate">{agent.name}</p>
-                  <p className="text-[10px] text-muted-foreground/50">{agent.state}</p>
+                  <p className="text-[10px] text-muted-foreground/50">{agentZustand(agent.state)}</p>
                 </div>
 
                 {/* Spent */}

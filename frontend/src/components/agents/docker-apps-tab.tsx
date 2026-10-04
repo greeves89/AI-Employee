@@ -271,7 +271,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
         <Loader2 className="h-6 w-6 animate-spin mb-3" />
-        <span className="text-sm">Scanning workspace for Docker apps...</span>
+        <span className="text-sm">Arbeitsbereich wird nach Docker-Apps durchsucht …</span>
       </div>
     );
   }

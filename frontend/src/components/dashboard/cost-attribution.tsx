@@ -44,7 +44,7 @@ export function CostAttribution() {
             <DollarSign className="h-5 w-5 text-violet-400" />
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">No cost data available yet</p>
+        <p className="text-sm text-muted-foreground">Noch keine Kostendaten vorhanden</p>
       </div>
     );
   }
@@ -58,11 +58,11 @@ export function CostAttribution() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10">
             <TrendingUp className="h-4 w-4 text-violet-400" />
           </div>
-          <h3 className="text-sm font-semibold tracking-tight">Cost Attribution</h3>
+          <h3 className="text-sm font-semibold tracking-tight">Kosten nach Agent</h3>
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Coins className="h-3.5 w-3.5" />
-          <span>Top 5 Agents</span>
+          <span>Die 5 teuersten Agenten</span>
         </div>
       </div>
 
@@ -103,7 +103,7 @@ export function CostAttribution() {
       </div>
 
       <div className="mt-4 pt-3 border-t border-foreground/[0.06] flex items-center justify-between text-xs text-muted-foreground">
-        <span>Platform Total</span>
+        <span>Plattform gesamt</span>
         <div className="flex items-center gap-3 tabular-nums">
           <span>{formatTokens(data.platform_total_input_tokens + data.platform_total_output_tokens)} tok</span>
           <span className="font-semibold text-foreground/80">{formatMoney(data.platform_total_usd)}</span>

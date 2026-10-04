@@ -57,7 +57,7 @@ async def _load_agent(agent_id: str, db: AsyncSession) -> Agent:
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     if not agent.container_id:
         raise HTTPException(status_code=400, detail="Agent has no running container")
     return agent

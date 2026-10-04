@@ -31,7 +31,7 @@ ProviderType = Literal[
 
 def _require_admin(user) -> None:
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Admins")
 
 
 class AIModelEntry(BaseModel):

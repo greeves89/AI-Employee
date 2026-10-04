@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.agent_manager import PERMISSION_PACKAGES, AgentManager
 from app.core.agent_templates import vorlagen_sortierschluessel
 from app.core.log_redaction import scrub_log
+from app.core.vorlagen_skills import SKILL_ANZEIGE
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
 from app.models.agent_template import AgentTemplate
@@ -103,8 +104,18 @@ async def _skills_der_vorlagen(db: AsyncSession, vorlagen) -> dict[int, dict]:
     rows = (await db.execute(
         select(Skill.id, Skill.name, Skill.description, func.substr(Skill.content, 1, 600)).where(Skill.id.in_(ids))
     )).all()
+    # Fremde Skills sind englisch beschrieben — daneben die deutsche Anzeige aus
+    # EINER Stelle (core/vorlagen_skills.SKILL_ANZEIGE, #902). ``description``
+    # bleibt, wie die Quelle ihn liefert; die Oberfläche zeigt ``beschreibung``,
+    # wenn es sie gibt.
     return {
-        sid: {"id": sid, "name": name, "titel": _skill_titel(name, anfang), "description": (beschr or "")[:300]}
+        sid: {
+            "id": sid,
+            "name": name,
+            "titel": SKILL_ANZEIGE[name][0] if name in SKILL_ANZEIGE else _skill_titel(name, anfang),
+            "description": (beschr or "")[:300],
+            "beschreibung": SKILL_ANZEIGE[name][1] if name in SKILL_ANZEIGE else None,
+        }
         for sid, name, beschr, anfang in rows
     }
 

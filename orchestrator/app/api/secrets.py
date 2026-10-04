@@ -191,7 +191,7 @@ async def _assert_agent_owned(agent_id: str, user, db) -> None:
     from app.core.ownership import visible_agent_ids
     vids = await visible_agent_ids(user, db)
     if vids is not None and agent_id not in vids:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 async def _agent_besitzer(agent_id: str, db) -> str | None:

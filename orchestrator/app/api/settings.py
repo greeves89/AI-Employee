@@ -509,7 +509,7 @@ async def list_user_mount_access(
 
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
         from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Admins")
 
     grants = (await db.execute(
         select(UserMountAccess).where(UserMountAccess.user_id == user_id)
@@ -536,7 +536,7 @@ async def set_user_mount_access(
     from fastapi import HTTPException
 
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Admins")
 
     new_grants = body.get("grants", [])
     if not isinstance(new_grants, list):
@@ -594,7 +594,7 @@ async def set_idle_stop_max(
     from fastapi import HTTPException
 
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Admins")
 
     try:
         minutes = int(body.get("max_idle_minutes", 0))

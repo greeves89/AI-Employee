@@ -26,26 +26,39 @@ import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { formatMoney } from "@/lib/money";
 
+// Schlüssel wie im Server-Enum (AuditEventType) — kleingeschrieben. Vorher
+// standen hier GROSSBUCHSTABEN, die nie zu einem Ereignis passten.
 const EVENT_ICONS: Record<string, React.ReactNode> = {
-  COMMAND_EXECUTED: <Terminal className="h-3.5 w-3.5" />,
-  COMMAND_APPROVED: <CheckCircle2 className="h-3.5 w-3.5" />,
-  COMMAND_DENIED: <XCircle className="h-3.5 w-3.5" />,
-  COMMAND_BLOCKED: <Ban className="h-3.5 w-3.5" />,
-  AGENT_STARTED: <Bot className="h-3.5 w-3.5" />,
-  AGENT_STOPPED: <Bot className="h-3.5 w-3.5" />,
-  FILE_WRITTEN: <Activity className="h-3.5 w-3.5" />,
-  NETWORK_REQUEST: <Activity className="h-3.5 w-3.5" />,
+  command_executed: <Terminal className="h-3.5 w-3.5" />,
+  command_approved: <CheckCircle2 className="h-3.5 w-3.5" />,
+  command_denied: <XCircle className="h-3.5 w-3.5" />,
+  command_blocked: <Ban className="h-3.5 w-3.5" />,
+  agent_started: <Bot className="h-3.5 w-3.5" />,
+  agent_stopped: <Bot className="h-3.5 w-3.5" />,
+  file_written: <Activity className="h-3.5 w-3.5" />,
+  network_request: <Activity className="h-3.5 w-3.5" />,
 };
 
 const EVENT_COLORS: Record<string, string> = {
-  COMMAND_EXECUTED: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  COMMAND_APPROVED: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-  COMMAND_DENIED: "text-red-400 bg-red-500/10 border-red-500/20",
-  COMMAND_BLOCKED: "text-orange-400 bg-orange-500/10 border-orange-500/20",
-  AGENT_STARTED: "text-violet-400 bg-violet-500/10 border-violet-500/20",
-  AGENT_STOPPED: "text-slate-400 bg-slate-500/10 border-slate-500/20",
-  FILE_WRITTEN: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
-  NETWORK_REQUEST: "text-indigo-400 bg-indigo-500/10 border-indigo-500/20",
+  command_executed: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+  command_approved: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+  command_denied: "text-red-400 bg-red-500/10 border-red-500/20",
+  command_blocked: "text-orange-400 bg-orange-500/10 border-orange-500/20",
+  agent_started: "text-violet-400 bg-violet-500/10 border-violet-500/20",
+  agent_stopped: "text-slate-400 bg-slate-500/10 border-slate-500/20",
+  file_written: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20",
+  network_request: "text-indigo-400 bg-indigo-500/10 border-indigo-500/20",
+};
+
+// Ergebnis eines Eintrags in Klartext — dieselbe Zuordnung für Filter,
+// Tabelle und Detailfenster.
+const OUTCOME_LABEL: Record<string, string> = {
+  success: "Erfolgreich",
+  failure: "Fehlgeschlagen",
+  blocked: "Blockiert",
+  cancelled: "Verworfen",
+  expired: "Abgelaufen",
+  pending: "Offen",
 };
 
 const OUTCOME_BADGE: Record<string, string> = {
@@ -147,7 +160,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
             >
               <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
-              Refresh
+              Aktualisieren
             </button>
           }
         />
@@ -158,25 +171,25 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
         {summary && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <SummaryCard
-              label="Total Events"
+              label="Einträge gesamt"
               value={summary.total}
               icon={<Activity className="h-4 w-4 text-primary" />}
               color="text-primary"
             />
             <SummaryCard
-              label="Successful"
+              label="Erfolgreich"
               value={summary.by_outcome?.success ?? 0}
               icon={<CheckCircle2 className="h-4 w-4 text-emerald-400" />}
               color="text-emerald-400"
             />
             <SummaryCard
-              label="Blocked"
+              label="Blockiert"
               value={summary.by_outcome?.blocked ?? 0}
               icon={<Ban className="h-4 w-4 text-orange-400" />}
               color="text-orange-400"
             />
             <SummaryCard
-              label="Failed"
+              label="Fehlgeschlagen"
               value={summary.by_outcome?.failure ?? 0}
               icon={<XCircle className="h-4 w-4 text-red-400" />}
               color="text-red-400"
@@ -189,7 +202,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm">
             <div className="flex items-center gap-2 mb-4">
               <DollarSign className="h-4 w-4 text-emerald-400" />
-              <h3 className="text-sm font-semibold">Agent Budgets</h3>
+              <h3 className="text-sm font-semibold">Budgets der Agenten</h3>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {agents
@@ -231,7 +244,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm">
             <div className="flex items-center gap-2 mb-4">
               <ShieldCheck className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold">Event Breakdown</h3>
+              <h3 className="text-sm font-semibold">Einträge nach Art</h3>
             </div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(summary.by_event_type)
@@ -248,7 +261,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                     )}
                   >
                     {EVENT_ICONS[type] ?? <Activity className="h-3 w-3" />}
-                    {type.replace(/_/g, " ")}
+                    {EVENT_INFO[type]?.label ?? type.replace(/_/g, " ")}
                     <span className="opacity-70">{count}</span>
                   </button>
                 ))}
@@ -267,7 +280,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
             onChange={(e) => setAgentFilter(e.target.value)}
             className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/25"
           >
-            <option value="">All agents</option>
+            <option value="">Alle Agenten</option>
             {agents.map((a) => (
               <option key={a.id} value={a.id}>{a.name}</option>
             ))}
@@ -277,20 +290,20 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
             onChange={(e) => setOutcomeFilter(e.target.value)}
             className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/25"
           >
-            <option value="">All outcomes</option>
-            <option value="success">Success</option>
-            <option value="failure">Failure</option>
-            <option value="blocked">Blocked</option>
+            <option value="">Alle Ergebnisse</option>
+            <option value="success">{OUTCOME_LABEL.success}</option>
+            <option value="failure">{OUTCOME_LABEL.failure}</option>
+            <option value="blocked">{OUTCOME_LABEL.blocked}</option>
           </select>
           {(agentFilter || eventTypeFilter || outcomeFilter) && (
             <button
               onClick={() => { setAgentFilter(""); setEventTypeFilter(""); setOutcomeFilter(""); }}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
-              Clear filters
+              Filter zurücksetzen
             </button>
           )}
-          <span className="ml-auto text-xs text-muted-foreground/60">{total} entries</span>
+          <span className="ml-auto text-xs text-muted-foreground/60">{total} Einträge</span>
           {isAdmin && (
             <button
               onClick={handleExport}
@@ -317,24 +330,27 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-foreground/[0.04] mb-4">
               <ShieldCheck className="h-7 w-7 text-muted-foreground/50" />
             </div>
-            <p className="text-sm text-muted-foreground">No audit events found</p>
+            <p className="text-sm text-muted-foreground">Keine Protokolleinträge gefunden</p>
           </div>
         ) : (
           <>
+            {/* Breite Tabelle scrollt in IHREM Kasten waagerecht, nicht die
+                ganze Seite — bei 1440 px lief die Spalte „Ergebnis“ sonst
+                über den Rand und war abgeschnitten. */}
             <motion.div
-              className="rounded-xl border border-foreground/[0.06] overflow-hidden"
+              className="rounded-xl border border-foreground/[0.06] overflow-x-auto"
               initial="hidden"
               animate="visible"
             >
-              <table className="w-full text-xs">
+              <table className="w-full min-w-[720px] text-xs">
                 <thead>
                   <tr className="border-b border-foreground/[0.06] bg-foreground/[0.02]">
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Time</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Agent</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Person</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Event</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Command</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Outcome</th>
+                    <th className="px-3 py-3 text-left font-medium text-muted-foreground/70">Zeit</th>
+                    <th className="px-3 py-3 text-left font-medium text-muted-foreground/70">Agent</th>
+                    <th className="px-3 py-3 text-left font-medium text-muted-foreground/70">Person</th>
+                    <th className="px-3 py-3 text-left font-medium text-muted-foreground/70">Ereignis</th>
+                    <th className="px-3 py-3 text-left font-medium text-muted-foreground/70">Befehl / Vorgang</th>
+                    <th className="px-3 py-3 text-left font-medium text-muted-foreground/70">Ergebnis</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-foreground/[0.04]">
@@ -346,19 +362,19 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                       onClick={() => setSelected(log)}
                       className="cursor-pointer hover:bg-foreground/[0.04] transition-colors"
                     >
-                      <td className="px-4 py-2.5 text-muted-foreground/60 whitespace-nowrap font-mono">
+                      <td className="px-3 py-2.5 text-muted-foreground/60 whitespace-nowrap font-mono">
                         {new Date(log.created_at).toLocaleString("de-DE", {
                           month: "2-digit", day: "2-digit",
                           hour: "2-digit", minute: "2-digit", second: "2-digit",
                         })}
                       </td>
-                      <td className="px-4 py-2.5 font-medium truncate max-w-[140px]">
+                      <td className="px-3 py-2.5 font-medium truncate max-w-[140px]">
                         {logAgentName(log)}
                       </td>
-                      <td className="px-4 py-2.5 truncate max-w-[140px] text-muted-foreground/80">
+                      <td className="px-3 py-2.5 truncate max-w-[140px] text-muted-foreground/80">
                         {log.person ?? "—"}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-3 py-2.5">
                         <span className={cn(
                           "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
                           EVENT_COLORS[log.event_type] ?? "text-muted-foreground bg-foreground/[0.04] border-foreground/[0.06]"
@@ -367,18 +383,18 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                           {EVENT_INFO[log.event_type]?.label ?? log.event_type.replace(/_/g, " ")}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 text-muted-foreground/80 font-mono max-w-[280px] truncate">
+                      <td className="px-3 py-2.5 text-muted-foreground/80 font-mono max-w-[240px] truncate">
                         {log.command ?? "—"}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-3 py-2.5">
                         <span className={cn(
-                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                          "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-medium",
                           OUTCOME_BADGE[log.outcome] ?? "text-muted-foreground"
                         )}>
                           {log.outcome === "success" && <CheckCircle2 className="h-2.5 w-2.5" />}
                           {log.outcome === "failure" && <XCircle className="h-2.5 w-2.5" />}
                           {log.outcome === "blocked" && <AlertTriangle className="h-2.5 w-2.5" />}
-                          {log.outcome}
+                          {OUTCOME_LABEL[log.outcome] ?? log.outcome}
                         </span>
                       </td>
                     </motion.tr>
@@ -395,17 +411,17 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                   disabled={offset === 0}
                   className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
                 >
-                  ← Previous
+                  ← Zurück
                 </button>
                 <span className="text-xs text-muted-foreground/60">
-                  {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+                  {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} von {total}
                 </span>
                 <button
                   onClick={() => setOffset(offset + PAGE_SIZE)}
                   disabled={offset + PAGE_SIZE >= total}
                   className="rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
                 >
-                  Next →
+                  Weiter →
                 </button>
               </div>
             )}
@@ -431,6 +447,34 @@ const DLP_ACTION_LABEL: Record<string, string> = {
 // Plain-language name + one-sentence explanation per event type, so the modal
 // says WHAT happened instead of showing a raw enum value.
 const EVENT_INFO: Record<string, { label: string; desc: string }> = {
+  agent_started: { label: "Agent gestartet", desc: "Der Container eines Agenten wurde gestartet." },
+  agent_stopped: { label: "Agent gestoppt", desc: "Der Container eines Agenten wurde gestoppt." },
+  agent_created: { label: "Agent angelegt", desc: "Ein neuer Agent wurde angelegt." },
+  agent_deleted: { label: "Agent gelöscht", desc: "Ein Agent wurde gelöscht." },
+  approval_rule_created: { label: "Freigaberegel angelegt", desc: "Eine Regel, wann der Agent um Erlaubnis fragen muss, wurde angelegt." },
+  approval_rule_updated: { label: "Freigaberegel geändert", desc: "Eine Freigaberegel wurde ein- oder ausgeschaltet oder bearbeitet." },
+  approval_rule_deleted: { label: "Freigaberegel gelöscht", desc: "Eine Freigaberegel wurde gelöscht." },
+  preset_rule_added: { label: "Stufenregel ergänzt", desc: "Einer Autonomie-Stufe wurde eine erlaubte Aktion hinzugefügt." },
+  preset_rule_deleted: { label: "Stufenregel entfernt", desc: "Aus einer Autonomie-Stufe wurde eine erlaubte Aktion entfernt." },
+  url_allowlist_applied: { label: "Erlaubte Adressen übernommen", desc: "Eine Vorlage erlaubter Internetadressen wurde einem Agenten zugewiesen." },
+  url_blocked: { label: "Adresse blockiert", desc: "Ein Zugriff auf eine nicht freigegebene Internetadresse wurde blockiert." },
+  file_written: { label: "Datei geschrieben", desc: "Eine Datei wurde geschrieben." },
+  network_request: { label: "Netzwerkzugriff", desc: "Ein ausgehender Netzwerkzugriff wurde protokolliert." },
+  skill_file_uploaded: { label: "Skill-Datei hochgeladen", desc: "Eine Datei wurde zu einem Skill hochgeladen." },
+  skill_file_downloaded: { label: "Skill-Datei heruntergeladen", desc: "Eine Datei eines Skills wurde heruntergeladen." },
+  skill_file_deleted: { label: "Skill-Datei gelöscht", desc: "Eine Datei eines Skills wurde gelöscht." },
+  skill_install_blocked: { label: "Skill-Installation blockiert", desc: "Die Sicherheitsprüfung hat die Installation eines Skills abgelehnt." },
+  brain_created: { label: "Second Brain angelegt", desc: "Ein gemeinsames Second Brain wurde angelegt." },
+  brain_updated: { label: "Second Brain geändert", desc: "Ein Second Brain wurde geändert." },
+  brain_deleted: { label: "Second Brain gelöscht", desc: "Ein Second Brain wurde gelöscht." },
+  app_shared: { label: "App freigegeben", desc: "Eine App eines Agenten wurde für Personen, alle Angemeldeten oder öffentlich freigegeben." },
+  app_share_revoked: { label: "App-Freigabe zurückgezogen", desc: "Eine Freigabe einer App wurde zurückgezogen." },
+  custom_page_created: { label: "Eigene Seite angelegt", desc: "Ein Administrator hat eine fremde Seite als Menüpunkt eingebunden." },
+  custom_page_updated: { label: "Eigene Seite geändert", desc: "Eine eingebundene Seite wurde geändert." },
+  custom_page_deleted: { label: "Eigene Seite gelöscht", desc: "Eine eingebundene Seite wurde entfernt." },
+  mcp_tool_called: { label: "MCP-Werkzeug aufgerufen", desc: "Ein Administrator hat ein Werkzeug eines MCP-Servers von Hand aufgerufen." },
+  mcp_tool_call_failed: { label: "MCP-Werkzeug fehlgeschlagen", desc: "Ein von Hand aufgerufenes Werkzeug eines MCP-Servers war nicht erreichbar oder ist gescheitert." },
+  mcp_discovery_failed: { label: "MCP-Abfrage fehlgeschlagen", desc: "Die Werkzeugliste eines MCP-Servers konnte nicht abgerufen werden." },
   reflection_change: { label: "Reflexion — Änderung angewendet", desc: "Die nächtliche Reflexion (Nachtschicht) hat einen Memory- oder Wissens-Eintrag automatisch angelegt oder aktualisiert." },
   reflection_run: { label: "Reflexion — Lauf abgeschlossen", desc: "Ein nächtlicher Reflexions-Lauf über die Gespräche des Tages wurde abgeschlossen." },
   command_executed: { label: "Befehl ausgeführt", desc: "Ein privilegierter/Sudo-Befehl wurde im Agenten-Container ausgeführt." },
@@ -519,14 +563,9 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
           <Row label="Zeit" value={new Date(log.created_at).toLocaleString("de-DE")} />
           <Row label="Agent" value={agentName} />
           {log.person && <Row label="Person" value={log.person} />}
-          <Row label={isDlp ? "Kanal" : "Command / Tool"} value={log.command ?? "—"} mono />
-          <Row label="Ergebnis" value={
-            log.outcome === "success" ? "Erfolgreich"
-              : log.outcome === "blocked" ? "Blockiert"
-              : log.outcome === "failure" ? "Fehlgeschlagen"
-              : log.outcome
-          } />
-          {log.task_id && <Row label="Task" value={log.task_id} mono />}
+          <Row label={isDlp ? "Kanal" : "Befehl / Werkzeug"} value={log.command ?? "—"} mono />
+          <Row label="Ergebnis" value={OUTCOME_LABEL[log.outcome] ?? log.outcome} />
+          {log.task_id && <Row label="Aufgabe" value={log.task_id} mono />}
           {log.exit_code != null && <Row label="Exit-Code" value={String(log.exit_code)} />}
         </dl>
 
@@ -604,7 +643,7 @@ function SummaryCard({ label, value, icon, color }: { label: string; value: numb
         <span className="text-[11px] font-medium text-muted-foreground/70">{label}</span>
         {icon}
       </div>
-      <p className={cn("text-2xl font-bold tabular-nums", color)}>{value.toLocaleString()}</p>
+      <p className={cn("text-2xl font-bold tabular-nums", color)}>{value.toLocaleString("de-DE")}</p>
     </div>
   );
 }

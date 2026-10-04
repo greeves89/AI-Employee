@@ -146,7 +146,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
               )}
             >
               <Star className="h-4 w-4" />
-              <span className="text-[13px] font-medium">Star on GitHub</span>
+              <span className="text-[13px] font-medium">Auf GitHub mit Stern markieren</span>
             </a>}
             <button
               onClick={() => setAboutOpen(true)}

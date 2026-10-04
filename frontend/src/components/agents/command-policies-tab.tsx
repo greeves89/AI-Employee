@@ -79,7 +79,7 @@ function PolicyRow({
           </span>
           {readOnly && (
             <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              inherited
+              geerbt
             </span>
           )}
         </div>
@@ -97,7 +97,7 @@ function PolicyRow({
               "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
               policy.is_active ? "bg-primary" : "bg-foreground/15",
             )}
-            title={policy.is_active ? "Disable policy" : "Enable policy"}
+            title={policy.is_active ? "Regel ausschalten" : "Regel einschalten"}
           >
             <span className={cn(
               "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
@@ -107,7 +107,7 @@ function PolicyRow({
           <button
             onClick={() => onDelete(policy.id)}
             className="rounded-lg p-2 text-muted-foreground/50 transition-all hover:bg-red-500/10 hover:text-red-400"
-            title="Delete policy"
+            title="Regel löschen"
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -186,7 +186,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
         <Loader2 className="mb-3 h-6 w-6 animate-spin" />
-        <span className="text-sm">Command Policies laden...</span>
+        <span className="text-sm">Befehlsregeln werden geladen …</span>
       </div>
     );
   }
@@ -195,9 +195,9 @@ export function CommandPoliciesTab({ agentId }: Props) {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Command Policies</h2>
+          <h2 className="text-lg font-semibold">Befehlsregeln</h2>
           <p className="mt-1 text-sm text-muted-foreground/60">
-            Regex-Regeln für Bash-Befehle: blockieren, erlauben oder automatisch Approval anfordern.
+            Regeln (Regex) für Befehle in der Kommandozeile: blockieren, erlauben oder automatisch eine Freigabe anfordern.
           </p>
         </div>
         <button
@@ -205,7 +205,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
           className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" />
-          {mode === "agent" ? "Override" : "Policy"}
+          {mode === "agent" ? "Eigene Regel" : "Regel"}
         </button>
       </div>
 
@@ -213,7 +213,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
         <div className="rounded-xl border border-foreground/[0.08] bg-card/80 p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-semibold">
-              {mode === "agent" ? "Agent Override anlegen" : "Globale Policy anlegen"}
+              {mode === "agent" ? "Eigene Regel für diesen Agenten anlegen" : "Globale Regel anlegen"}
             </h3>
             <button
               onClick={() => setShowForm(false)}
@@ -226,7 +226,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
             <input
               value={draft.name}
               onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-              placeholder="Name, z.B. git force push"
+              placeholder="Name, z. B. Erzwungenes git push"
               className="rounded-xl border border-foreground/[0.08] bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary/40"
             />
             <input
@@ -248,7 +248,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
             <input
               value={draft.sort_order}
               onChange={(event) => setDraft({ ...draft, sort_order: event.target.value })}
-              placeholder="Sort order"
+              placeholder="Reihenfolge"
               className="rounded-xl border border-foreground/[0.08] bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary/40"
             />
             <input
@@ -281,7 +281,7 @@ export function CommandPoliciesTab({ agentId }: Props) {
         <section>
           <div className="mb-3 flex items-center gap-2 text-sm font-medium text-muted-foreground/70">
             <Lock className="h-4 w-4" />
-            Globale Policies geerbt
+            Geerbte globale Regeln
             <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[10px]">{globalPolicies.length}</span>
           </div>
           <div className="space-y-2">
@@ -295,12 +295,12 @@ export function CommandPoliciesTab({ agentId }: Props) {
       <section>
         <div className="mb-3 flex items-center gap-2 text-sm font-medium">
           <Shield className="h-4 w-4 text-primary/70" />
-          {mode === "agent" ? "Agent Overrides" : "Globale Policies"}
+          {mode === "agent" ? "Eigene Regeln dieses Agenten" : "Globale Regeln"}
           <span className="rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[10px] text-muted-foreground">{ownPolicies.length}</span>
         </div>
         {ownPolicies.length === 0 ? (
           <div className="rounded-xl border border-dashed border-foreground/[0.08] bg-card/30 p-8 text-center text-sm text-muted-foreground/50">
-            Keine Command Policies konfiguriert.
+            Keine Befehlsregeln eingerichtet.
           </div>
         ) : (
           <div className="space-y-2">

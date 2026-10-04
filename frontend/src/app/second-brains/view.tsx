@@ -332,7 +332,7 @@ export function SecondBrainsView({ embedded = false }: { embedded?: boolean }) {
             </h1>
             <p className="text-sm text-muted-foreground/70 mt-1">
               Geteilte Wissens-Vaults pro Abteilung. Rechte (lesen/schreiben) pro Person setzt du
-              unter <b>Users → Mount-Rechte</b>; zuweisen tut der User in den Agent-Einstellungen.
+              unter <b>Nutzer → Freigegebene Ordner</b>; zuweisen tut der Nutzer in den Agent-Einstellungen.
             </p>
           </div>
           <button

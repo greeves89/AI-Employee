@@ -130,7 +130,7 @@ async def _get_owned_meeting(meeting_id: str, user, db: AsyncSession) -> Meeting
     if meeting is None:
         raise HTTPException(status_code=404, detail="Meeting not found")
     if meeting.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
     return meeting
 
 

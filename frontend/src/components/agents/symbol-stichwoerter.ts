@@ -208,6 +208,25 @@ export const SYMBOL_STICHWOERTER: Record<string, string[]> = {
   senden: ["send"],
 };
 
+/** Abkürzungen und Schreibweisen, die nicht einfach groß anfangen. */
+const ANZEIGE_SONDERFAELLE: Record<string, string> = {
+  lkw: "LKW", ki: "KI", wlan: "WLAN", email: "E-Mail",
+};
+
+/** Deutscher Anzeigename eines lucide-Symbols (#902) — für den Tooltip.
+ *  Nimmt das erste Stichwort, dessen Liste genau diesen Namen enthält
+ *  („Truck“ → „LKW“). Ohne Treffer bleibt der lucide-Name stehen; die interne
+ *  Kennung ändert sich in keinem Fall. */
+export function symbolAnzeigename(name: string): string {
+  const kennung = name.toLowerCase().replace(/-/g, "");
+  for (const [wort, liste] of Object.entries(SYMBOL_STICHWOERTER)) {
+    if (liste.includes(kennung)) {
+      return ANZEIGE_SONDERFAELLE[wort] ?? wort.charAt(0).toUpperCase() + wort.slice(1);
+    }
+  }
+  return name;
+}
+
 /** Namensteile zu einer Eingabe — aus allen Stichwörtern, die mit ihr beginnen.
  *  Ab zwei Zeichen, sonst trifft „a“ die halbe Liste. */
 export function stichwortTeile(eingabe: string): string[] {

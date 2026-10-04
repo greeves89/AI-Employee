@@ -570,7 +570,7 @@ async def check_approval_status(
     approval = result.scalar_one_or_none()
 
     if not approval:
-        raise HTTPException(status_code=404, detail="Approval request not found")
+        raise HTTPException(status_code=404, detail="Freigabe-Anfrage nicht gefunden")
     if approval.agent_id != agent_auth["agent_id"]:
         raise HTTPException(status_code=403, detail="Not authorized for this request")
 
@@ -821,12 +821,12 @@ async def approve_request(
     approval = result.scalar_one_or_none()
 
     if not approval:
-        raise HTTPException(status_code=404, detail="Approval request not found")
+        raise HTTPException(status_code=404, detail="Freigabe-Anfrage nicht gefunden")
 
     await require_agent_access(approval.agent_id, user, db)
 
     if approval.status != ApprovalStatus.PENDING:
-        raise HTTPException(status_code=400, detail=f"Request already {approval.status}")
+        raise HTTPException(status_code=400, detail=f"Die Anfrage ist bereits entschieden ({approval.status})")
 
     # Reflection proposals: applying the change IS the approval effect (no agent
     # container is waiting on Redis). Apply FIRST — if it fails, the approval
@@ -901,16 +901,16 @@ async def deny_request(
     approval = result.scalar_one_or_none()
 
     if not approval:
-        raise HTTPException(status_code=404, detail="Approval request not found")
+        raise HTTPException(status_code=404, detail="Freigabe-Anfrage nicht gefunden")
 
     await require_agent_access(approval.agent_id, user, db)
 
     if approval.status != ApprovalStatus.PENDING:
-        raise HTTPException(status_code=400, detail=f"Request already {approval.status}")
+        raise HTTPException(status_code=400, detail=f"Die Anfrage ist bereits entschieden ({approval.status})")
 
     approval.status = ApprovalStatus.DENIED
     approval.resolved_at = datetime.now(timezone.utc)
-    approval.user_response = decision.reason or "Denied by user"
+    approval.user_response = decision.reason or "Vom Nutzer abgelehnt"
     from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
     await benachrichtigungen_abschliessen(db, [approval])
 
@@ -949,7 +949,7 @@ async def cancel_approval_request(
     approval = result.scalar_one_or_none()
 
     if not approval:
-        raise HTTPException(status_code=404, detail="Approval request not found")
+        raise HTTPException(status_code=404, detail="Freigabe-Anfrage nicht gefunden")
     # Ownership: only the agent's owner/admin may cancel its pending approval
     # (mirrors approve_request/deny_request).
     await require_agent_access(approval.agent_id, user, db)
@@ -957,11 +957,11 @@ async def cancel_approval_request(
     # eine laengst getroffene Entscheidung samt Entscheider — im Protokoll stuende
     # dann eine Freigabe, die es so nie gab.
     if approval.status != ApprovalStatus.PENDING:
-        raise HTTPException(status_code=400, detail=f"Request already {approval.status}")
+        raise HTTPException(status_code=400, detail=f"Die Anfrage ist bereits entschieden ({approval.status})")
 
     approval.status = ApprovalStatus.DENIED
     approval.resolved_at = datetime.now(timezone.utc)
-    approval.user_response = "Cancelled by user"
+    approval.user_response = "Vom Nutzer verworfen"
     from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
     await benachrichtigungen_abschliessen(db, [approval])
     await freigabe_entschieden(db, approval, ergebnis="cancelled", user=user)

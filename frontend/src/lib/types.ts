@@ -609,7 +609,8 @@ export interface AgentTemplate {
   mcp_server_ids: number[];
   /** Skills, die jeder Agent aus dieser Vorlage mitbekommt (vom Server aufgelöst).
    *  ``titel`` ist der lesbare Name („Belege vorkontieren“), ``name`` der Schlüssel. */
-  skills?: { id: number; name: string; titel?: string; description: string }[];
+  /** ``beschreibung``: deutscher Kurztext fremder Skills (#902) — Vorrang vor ``description``. */
+  skills?: { id: number; name: string; titel?: string; description: string; beschreibung?: string | null }[];
   knowledge_template: string;
   /** Dauerauftraege, die jeder Agent aus dieser Vorlage mitbekommt. */
   responsibilities?: Responsibility[];

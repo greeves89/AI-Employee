@@ -19,25 +19,25 @@ import { KeyFreigabeDialog } from "@/components/secrets/key-freigabe-dialog";
 // Built-in MCP servers that every agent has
 const BUILTIN_MCP_SERVERS = [
   {
-    name: "Memory",
+    name: "Gedächtnis",
     icon: Brain,
     color: "text-purple-400",
     iconBg: "bg-purple-500/10",
     tools: [
-      { name: "memory_save", description: "Save important information to categorized memory" },
-      { name: "memory_search", description: "Search memories by keyword and/or category" },
-      { name: "memory_list", description: "List all memories, filtered by category" },
-      { name: "memory_delete", description: "Delete a specific memory" },
+      { name: "memory_save", description: "Wichtige Informationen nach Kategorie im Gedächtnis ablegen" },
+      { name: "memory_search", description: "Erinnerungen nach Stichwort und/oder Kategorie durchsuchen" },
+      { name: "memory_list", description: "Alle Erinnerungen auflisten, nach Kategorie gefiltert" },
+      { name: "memory_delete", description: "Eine bestimmte Erinnerung löschen" },
     ],
   },
   {
-    name: "Notifications",
+    name: "Benachrichtigungen",
     icon: Bell,
     color: "text-amber-700 dark:text-amber-400",
     iconBg: "bg-amber-500/10",
     tools: [
-      { name: "notify_user", description: "Send notification (Web UI + Telegram for high/urgent)" },
-      { name: "request_approval", description: "Ask for explicit approval before critical actions" },
+      { name: "notify_user", description: "Benachrichtigung senden (Weboberfläche, bei hoher Dringlichkeit auch Telegram)" },
+      { name: "request_approval", description: "Vor heiklen Aktionen ausdrücklich um Freigabe bitten" },
     ],
   },
   {
@@ -46,10 +46,10 @@ const BUILTIN_MCP_SERVERS = [
     color: "text-blue-400",
     iconBg: "bg-blue-500/10",
     tools: [
-      { name: "create_task", description: "Create tasks for self or other agents" },
-      { name: "list_team", description: "See all team members with roles and status" },
-      { name: "send_message", description: "Send a text message to another agent" },
-      { name: "create_schedule", description: "Create recurring task schedules" },
+      { name: "create_task", description: "Aufgaben für sich selbst oder andere Agenten anlegen" },
+      { name: "list_team", description: "Alle Teammitglieder mit Rolle und Status sehen" },
+      { name: "send_message", description: "Einem anderen Agenten eine Nachricht schicken" },
+      { name: "create_schedule", description: "Wiederkehrende Zeitpläne für Aufgaben anlegen" },
     ],
   },
 ];
@@ -292,14 +292,14 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
           <div className="flex items-center gap-2">
             <Network className="h-4 w-4 text-violet-400" />
-            <span className="text-sm font-medium">MCP Tools</span>
+            <span className="text-sm font-medium">MCP-Werkzeuge</span>
             <span className="text-[10px] text-muted-foreground/60">
-              Tool servers available to this agent
+              Werkzeug-Server, die dieser Agent nutzen kann
             </span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
-              {totalMcpCount} servers active
+              {totalMcpCount} Server aktiv
             </span>
             {mcpChanged && (
               <button
@@ -308,7 +308,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-                Save
+                Speichern
               </button>
             )}
           </div>
@@ -445,9 +445,9 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         {enabledMcpServers.length === 0 && (
           <div className="border-t border-foreground/[0.04] px-5 py-3">
             <p className="text-[11px] text-muted-foreground/50">
-              Add external MCP servers on the{" "}
-              <a href="/integrations" className="text-primary hover:underline">Integrations</a>{" "}
-              page, then restart the agent to activate them.
+              Externe MCP-Server legst du auf der Seite{" "}
+              <a href="/integrations" className="text-primary hover:underline">Integrationen</a>{" "}
+              an; danach den Agenten neu starten, damit er sie nutzt.
             </p>
           </div>
         )}
@@ -456,7 +456,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           <div className="border-t border-foreground/[0.06] px-5 py-3">
             <p className="text-[10px] text-yellow-500/80 flex items-center gap-1.5">
               <AlertCircle className="h-3 w-3" />
-              Changes require an agent restart to take effect
+              Änderungen wirken erst nach einem Neustart des Agenten
             </p>
           </div>
         )}
@@ -467,10 +467,10 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
           <div className="flex items-center gap-2">
             <Plug className="h-4 w-4 text-blue-400" />
-            <span className="text-sm font-medium">Integrations</span>
+            <span className="text-sm font-medium">Integrationen</span>
             <span className="text-[10px] text-muted-foreground/60">
-              Select which services this agent can access — neue
-              Verbindungen anlegen: <Link href="/integrations" className="text-primary hover:underline">Integrations</Link> (Seitenleiste)
+              Wähle, auf welche Dienste dieser Agent zugreifen darf — neue
+              Verbindungen anlegen: <Link href="/integrations" className="text-primary hover:underline">Integrationen</Link> (Seitenleiste)
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -479,7 +479,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
             >
               <RefreshCw className="h-3 w-3" />
-              Refresh
+              Aktualisieren
             </button>
             {changed && (
               <button
@@ -488,7 +488,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-                Save
+                Speichern
               </button>
             )}
           </div>
@@ -498,13 +498,13 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           {connectedIntegrations.length === 0 ? (
             <div className="text-center py-6 text-muted-foreground">
               <AlertCircle className="h-6 w-6 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No integrations connected</p>
+              <p className="text-sm">Keine Integrationen verbunden</p>
               <p className="text-xs mt-1">
-                Go to{" "}
+                Verbinde zuerst unter{" "}
                 <a href="/integrations" className="text-primary hover:underline">
-                  Integrations
+                  Integrationen
                 </a>{" "}
-                to connect your accounts first
+                deine Konten
               </p>
             </div>
           ) : (
@@ -556,7 +556,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                           )}
                         >
                           <Eye className="h-3 w-3" />
-                          Read
+                          Lesen
                         </button>
                         <button
                           type="button"
@@ -571,13 +571,13 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                           )}
                         >
                           {msReadOnly ? <Lock className="h-3 w-3" /> : <PenLine className="h-3 w-3" />}
-                          Read + Write
+                          Lesen + Schreiben
                         </button>
                       </div>
                       <p className="text-[11px] text-muted-foreground/60 mt-2">
                         {msReadOnly
                           ? "Microsoft ist plattformweit auf Nur-Lesen gestellt. Kein Agent kann senden oder ändern — ein Administrator löst das in den Einstellungen."
-                          : "Read+Write: Agent darf schreiben — ausgehende Mail wird als Entwurf angelegt."}
+                          : "Lesen + Schreiben: Der Agent darf schreiben — ausgehende Mail wird als Entwurf angelegt."}
                       </p>
                     </div>
                   )}
@@ -596,7 +596,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                           )}
                         >
                           <Eye className="h-3 w-3" />
-                          Read
+                          Lesen
                         </button>
                         <button
                           type="button"
@@ -611,13 +611,13 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                           )}
                         >
                           {msReadOnly ? <Lock className="h-3 w-3" /> : <PenLine className="h-3 w-3" />}
-                          Read + Write
+                          Lesen + Schreiben
                         </button>
                       </div>
                       <p className="text-[11px] text-muted-foreground/60 mt-2">
                         {msReadOnly
                           ? "Microsoft ist plattformweit auf Nur-Lesen gestellt — das gilt auch für das on-prem-Postfach."
-                          : "Read+Write: Agent darf im on-prem-Postfach senden/ändern (Mail + Kalender)."}
+                          : "Lesen + Schreiben: Der Agent darf im on-prem-Postfach senden und ändern (Mail + Kalender)."}
                       </p>
                     </div>
                   )}
@@ -631,7 +631,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
           <div className="border-t border-foreground/[0.06] px-5 py-3">
             <p className="text-[10px] text-yellow-500/80 flex items-center gap-1.5">
               <AlertCircle className="h-3 w-3" />
-              Changes require an agent restart to take effect
+              Änderungen wirken erst nach einem Neustart des Agenten
             </p>
           </div>
         )}
@@ -641,15 +641,15 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         <div className="flex items-center justify-between border-b border-foreground/[0.06] px-5 py-3">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-emerald-400" />
-            <span className="text-sm font-medium">URL Allowlist</span>
+            <span className="text-sm font-medium">Erlaubte Adressen</span>
             <span className="text-[10px] text-muted-foreground/60">
-              Restrict which URLs this agent can access
+              Lege fest, welche Internetadressen dieser Agent aufrufen darf
             </span>
           </div>
           <div className="flex items-center gap-2">
             {allowlist.length > 0 && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                {allowlist.length} {allowlist.length === 1 ? "rule" : "rules"}
+                {allowlist.length} {allowlist.length === 1 ? "Regel" : "Regeln"}
               </span>
             )}
             <button
@@ -657,7 +657,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
             >
               <ChevronDown className={cn("h-3 w-3 transition-transform", showTemplates && "rotate-180")} />
-              Templates
+              Vorlagen
             </button>
           </div>
         </div>
@@ -665,7 +665,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         {/* Template picker */}
         {showTemplates && (
           <div className="border-b border-foreground/[0.06] px-5 py-3 space-y-2">
-            <p className="text-[10px] text-muted-foreground/60 mb-2">Apply a preset — entries will be added to existing rules</p>
+            <p className="text-[10px] text-muted-foreground/60 mb-2">Vorlage übernehmen — die Einträge kommen zu den bestehenden Regeln dazu</p>
             {templates.map((t) => (
               <button
                 key={t.id}
@@ -676,7 +676,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                 <div>
                   <span className="text-[11px] font-medium">{t.name}</span>
                   {t.is_builtin && (
-                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground/60">built-in</span>
+                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-foreground/[0.06] text-muted-foreground/60">mitgeliefert</span>
                   )}
                   <p className="text-[10px] text-muted-foreground/60 mt-0.5">{t.description}</p>
                 </div>
@@ -693,7 +693,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
         <div className="divide-y divide-foreground/[0.04]">
           {allowlist.length === 0 ? (
             <div className="px-5 py-4 text-center">
-              <p className="text-[11px] text-muted-foreground/50">No rules — agent can access all URLs</p>
+              <p className="text-[11px] text-muted-foreground/50">Keine Regeln — der Agent darf alle Adressen aufrufen</p>
             </div>
           ) : (
             allowlist.map((entry) => (
@@ -724,14 +724,14 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleAddUrl()}
-              placeholder="https://api.example.com/* or *.github.com"
+              placeholder="https://api.example.com/* oder *.github.com"
               className="flex-1 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-[11px] font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:border-emerald-500/40"
             />
             <input
               type="text"
               value={newUrlDesc}
               onChange={(e) => setNewUrlDesc(e.target.value)}
-              placeholder="Description (optional)"
+              placeholder="Beschreibung (optional)"
               className="w-36 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-[11px] placeholder:text-muted-foreground/40 focus:outline-none focus:border-emerald-500/40"
             />
             <button
@@ -740,7 +740,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors disabled:opacity-40"
             >
               {addingUrl ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-              Add
+              Hinzufügen
             </button>
           </div>
         </div>

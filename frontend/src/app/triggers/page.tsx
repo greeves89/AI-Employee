@@ -79,7 +79,7 @@ export default function TriggersPage() {
         try {
           conditions = JSON.parse(conditionsJson);
         } catch {
-          toast.error("Invalid JSON", "Payload conditions must be valid JSON.");
+          toast.error("Ungültiges JSON", "Die Bedingungen an die Nutzdaten müssen gültiges JSON sein.");
           setCreating(false);
           return;
         }
@@ -227,7 +227,7 @@ export default function TriggersPage() {
                           onChange={(e) => setEventTypeFilter(e.target.value)}
                           className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm"
                         >
-                          <option value="">Alle Events</option>
+                          <option value="">Alle Ereignisse</option>
                           {eventPresets.map((e) => (
                             <option key={e} value={e}>{e}</option>
                           ))}
@@ -246,7 +246,7 @@ export default function TriggersPage() {
 
                 <div>
                   <label className="text-[11px] font-medium text-muted-foreground/70">
-                    Payload Conditions (JSON, optional)
+                    Bedingungen an die Nutzdaten (JSON, optional)
                   </label>
                   <input
                     value={conditionsJson}
@@ -267,7 +267,7 @@ export default function TriggersPage() {
                     value={promptTemplate}
                     onChange={(e) => setPromptTemplate(e.target.value)}
                     rows={3}
-                    placeholder={"Review PR: {{payload.pull_request.title}} by {{payload.pull_request.user.login}}\n\nPlease review the changes and provide feedback."}
+                    placeholder={"PR prüfen: {{payload.pull_request.title}} von {{payload.pull_request.user.login}}\n\nBitte die Änderungen prüfen und Rückmeldung geben."}
                     className="mt-1 w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3.5 py-2.5 text-sm font-mono"
                   />
                   <p className="mt-1 text-[10px] text-muted-foreground/50">

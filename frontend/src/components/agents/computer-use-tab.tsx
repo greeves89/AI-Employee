@@ -72,56 +72,56 @@ interface CapabilityMeta {
 const CAPABILITY_META: CapabilityMeta[] = [
   {
     id: "screenshots",
-    label: "Screenshots",
-    description: "Capture your screen to observe what's happening",
+    label: "Bildschirmfotos",
+    description: "Bildschirm aufnehmen, um zu sehen, was gerade passiert",
     icon: <Camera className="h-3.5 w-3.5" />,
     risk: "low",
     defaultOn: true,
   },
   {
     id: "accessibility",
-    label: "Accessibility Tree",
-    description: "Read UI element hierarchy (titles, roles, positions)",
+    label: "Aufbau der Oberfläche",
+    description: "Elemente der Oberfläche auslesen (Titel, Rollen, Positionen)",
     icon: <Eye className="h-3.5 w-3.5" />,
     risk: "low",
     defaultOn: true,
   },
   {
     id: "mouse",
-    label: "Mouse Control",
-    description: "Move cursor, click, scroll, and drag",
+    label: "Maus steuern",
+    description: "Zeiger bewegen, klicken, scrollen und ziehen",
     icon: <MousePointer2 className="h-3.5 w-3.5" />,
     risk: "medium",
     defaultOn: true,
   },
   {
     id: "keyboard",
-    label: "Keyboard Input",
-    description: "Type text and press keyboard shortcuts",
+    label: "Tastatureingabe",
+    description: "Text tippen und Tastenkürzel drücken",
     icon: <Keyboard className="h-3.5 w-3.5" />,
     risk: "medium",
     defaultOn: true,
   },
   {
     id: "apps",
-    label: "App Control",
-    description: "Open and close applications",
+    label: "Programme steuern",
+    description: "Programme öffnen und schließen",
     icon: <FolderOpen className="h-3.5 w-3.5" />,
     risk: "medium",
     defaultOn: true,
   },
   {
     id: "clipboard",
-    label: "Clipboard Access",
-    description: "Read and write clipboard contents",
+    label: "Zwischenablage",
+    description: "Zwischenablage lesen und beschreiben",
     icon: <Clipboard className="h-3.5 w-3.5" />,
     risk: "medium",
     defaultOn: false,
   },
   {
     id: "shell",
-    label: "Shell Commands",
-    description: "Execute terminal commands on your machine",
+    label: "Befehle in der Kommandozeile",
+    description: "Befehle im Terminal deines Rechners ausführen",
     icon: <TerminalIcon className="h-3.5 w-3.5" />,
     risk: "high",
     defaultOn: false,
@@ -292,7 +292,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
               <Globe className={cn("h-4.5 w-4.5", browserMode ? "text-blue-400" : "text-muted-foreground")} />
             </div>
             <div>
-              <p className="text-sm font-medium text-foreground">Browser Automation (Playwright)</p>
+              <p className="text-sm font-medium text-foreground">Browser-Automatisierung (Playwright)</p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Headless browser inside the container —{" "}
                 <code className="text-blue-400">browser_navigate</code>,{" "}
@@ -351,7 +351,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
             className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-1.5 text-xs font-medium text-violet-400 hover:bg-violet-500/20 transition-all disabled:opacity-50"
           >
             <Plus className={cn("h-3 w-3", creating && "animate-spin")} />
-            Neue Session
+            Neue Sitzung
           </button>
         </div>
       </div>
@@ -366,9 +366,9 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-foreground/[0.1] py-12 gap-3">
           <Monitor className="h-8 w-8 text-muted-foreground/40" />
           <div className="text-center">
-            <p className="text-sm font-medium text-muted-foreground">Noch keine Sessions</p>
+            <p className="text-sm font-medium text-muted-foreground">Noch keine Sitzungen</p>
             <p className="text-xs text-muted-foreground/60 mt-1">
-              Erstelle eine Session und verbinde danach die Bridge-App.
+              Lege eine Sitzung an und verbinde danach die Bridge-App.
             </p>
           </div>
           <button
@@ -377,7 +377,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
             className="inline-flex items-center gap-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 px-4 py-2 text-xs font-medium text-violet-400 hover:bg-violet-500/20 transition-all"
           >
             <Plus className="h-3.5 w-3.5" />
-            Session erstellen
+            Sitzung anlegen
           </button>
         </div>
       ) : (
@@ -449,7 +449,7 @@ export function ComputerUseTab({ agentId, browserMode: initialBrowserMode = fals
                   <AlertCircle className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-700 dark:text-amber-400/80">
                     Die Bridge kann Maus, Tastatur und Bildschirm steuern. Nur verbinden, wenn du dem Agent vertraust.
-                    Erlaubte Aktionen kannst du per Session einschränken.
+                    Erlaubte Aktionen kannst du je Sitzung einschränken.
                   </p>
                 </div>
               </div>
@@ -658,7 +658,7 @@ function SessionCard({
                         "text-[9px] font-medium uppercase",
                         cap.risk === "high" ? "text-red-400/60" : cap.risk === "medium" ? "text-amber-700 dark:text-amber-400/60" : "text-emerald-400/60"
                       )}>
-                        {cap.risk === "high" ? "⚠ hoch" : cap.risk === "medium" ? "mittel" : "gering"}
+                        {cap.risk === "high" ? "hoch" : cap.risk === "medium" ? "mittel" : "gering"}
                       </span>
                       <button
                         disabled={savingCaps}
@@ -689,7 +689,7 @@ function SessionCard({
       {/* WS URL */}
       <div className="px-4 pb-3 space-y-1 border-t border-foreground/[0.04]">
         <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider pt-3">
-          Bridge Connection URL
+          Verbindungsadresse der Bridge
         </p>
         <div className="flex items-center gap-2 rounded-lg bg-foreground/[0.04] border border-foreground/[0.06] px-3 py-2">
           <code className="flex-1 text-[11px] text-foreground/70 truncate">{wsUrl}</code>
@@ -727,7 +727,7 @@ function SessionCard({
       {isConnected && (
         <div className="px-4 pb-4 border-t border-foreground/[0.04]">
           <div className="flex items-center justify-between pt-3 mb-2">
-            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Live Screen</p>
+            <p className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Live-Bildschirm</p>
             <div className="flex items-center gap-1.5">
               {liveView && screenshotLoading && (
                 <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />
@@ -779,7 +779,7 @@ function SessionCard({
                 ) : screenshotSrc ? (
                   <img
                     src={screenshotSrc}
-                    alt="Desktop screenshot"
+                    alt="Bildschirmfoto des Desktops"
                     className="w-full rounded-lg border border-foreground/[0.08] object-contain bg-black"
                   />
                 ) : (

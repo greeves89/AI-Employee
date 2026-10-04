@@ -13,7 +13,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AI Employee",
-  description: "Autonomous Claude Code Agents in Docker",
+  description: "KI-Mitarbeiter, die selbstständig in eigenen Containern arbeiten",
   // PWA: installierbar auf iOS/Android und als eigenes Fenster am Rechner.
   manifest: "/manifest.json",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "AI Employee" },

@@ -79,7 +79,7 @@ def _seed_file(path: str, content: str, mode: int = 0o666) -> None:
 
 def _require_admin(user) -> None:
     if not (hasattr(user, "role") and user.role == UserRole.ADMIN):
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Admins")
 
 
 def _slugify(raw: str) -> str:
