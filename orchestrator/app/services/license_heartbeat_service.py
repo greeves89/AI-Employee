@@ -46,7 +46,8 @@ _STARTUP_DELAY = 30
 # * Die Antwort kann einen Hinweistext enthalten, den die Oberflaeche als
 #   Streifen zeigt. Sie sperrt NICHTS: Eine laufende Anlage darf nie von
 #   aussen gestoppt werden — derselbe Grundsatz wie oben.
-# * Ein Administrator kann es abschalten (``usage_ping_enabled`` = "false").
+# * Ein Administrator kann es abschalten: Admin-Konsole → Betrieb → Health,
+#   Karte „Datenschutz & Aufbewahrung“ (``usage_ping_enabled`` = "false", #892).
 #
 #: Einmal am Tag. Begruendung fuer genau diesen Takt:
 #:
@@ -67,6 +68,15 @@ PING_START_VERZUG = 120
 PING_STREUUNG = 0.1
 #: Voreinstellung — ueberschreibbar ueber ``usage_ping_url``.
 PING_STANDARD_URL = "https://lizenzen.future-app.de"
+
+
+#: Einstellung, mit der ein Administrator das Lebenszeichen abschaltet.
+SCHALTER = "usage_ping_enabled"
+
+
+def lebenszeichen_aktiv(wert: str | None) -> bool:
+    """Voreinstellung an; nur ein ausdrueckliches "false" schaltet ab."""
+    return (wert or "true").strip().lower() != "false"
 
 
 def _mit_streuung(sekunden: float) -> float:
@@ -112,7 +122,7 @@ class LicenseHeartbeatService:
 
         async with resilient_session(session_factory=self._sf) as db:
             svc = SettingsService(db)
-            if (await svc.get("usage_ping_enabled") or "true").strip().lower() == "false":
+            if not lebenszeichen_aktiv(await svc.get(SCHALTER)):
                 return  # vom Betreiber abgeschaltet
 
             ziel = (await svc.get("usage_ping_url") or PING_STANDARD_URL).strip()

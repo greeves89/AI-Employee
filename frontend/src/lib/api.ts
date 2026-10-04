@@ -1835,6 +1835,37 @@ export async function getBackupStatus(): Promise<BackupStatus> {
   return fetchJSON(`${getBase()}/admin/backup-status`);
 }
 
+/** Datenschutz & Aufbewahrung (#892): Fristen in Tagen (null = unbegrenzt) und
+ *  das tägliche Lebenszeichen an den Lizenzserver. Nur für Administratoren. */
+export interface DatenschutzStand {
+  audit_aufbewahrung_tage: number | null;
+  chat_aufbewahrung_tage: number | null;
+  mindest_tage_audit: number;
+  mindest_tage_chat: number;
+  letzter_lauf: {
+    zeit: string;
+    audit_geloescht: number;
+    chat_nachrichten_geloescht: number;
+    chat_sitzungen_geloescht: number;
+  } | null;
+  lebenszeichen_aktiv: boolean;
+}
+
+export async function getDatenschutz(): Promise<DatenschutzStand> {
+  return fetchJSON(`${getBase()}/settings/datenschutz`);
+}
+
+export async function setDatenschutz(aenderung: {
+  audit_aufbewahrung_tage?: number | null;
+  chat_aufbewahrung_tage?: number | null;
+  lebenszeichen_aktiv?: boolean;
+}): Promise<DatenschutzStand> {
+  return fetchJSON(`${getBase()}/settings/datenschutz`, {
+    method: "PUT",
+    body: JSON.stringify(aenderung),
+  });
+}
+
 export async function resetUserPassword(
   userId: string,
 ): Promise<{ user_id: string; email: string; temp_password: string }> {

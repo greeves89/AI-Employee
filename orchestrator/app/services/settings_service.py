@@ -117,6 +117,12 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "usage_ping_url",
     "usage_ping_hinweis",
     "usage_ping_bewertung",
+    # Aufbewahrungsfristen (#892, core/aufbewahrung.py): Tage, leer/0 = unbegrenzt,
+    # und der Stand des letzten taeglichen Aufraeumlaufs (JSON). Ohne Eintrag hier
+    # scheitert das Speichern still.
+    "retention_audit_days",
+    "retention_chat_days",
+    "retention_last_run",
     # Lifecycle configuration
     "agent_idle_timeout_minutes",
     # Expose MS Graph MCP server to external LLM clients (OpenWebUI)

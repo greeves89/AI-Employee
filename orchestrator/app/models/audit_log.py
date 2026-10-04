@@ -84,6 +84,8 @@ class AuditEventType(str, Enum):
     MFA_DISABLED = "mfa_disabled"                 # Nutzer hat TOTP abgeschaltet (Passwort + Code)
     MFA_RESET = "mfa_reset"                       # Admin hat TOTP eines Nutzers zurückgesetzt
     MFA_CODE_FAILED = "mfa_code_failed"           # falscher Code bei Einrichtung/Abschalten
+    # Aufbewahrungsfrist (#892) — ein Eintrag je Aufraeumlauf mit Loeschungen
+    RETENTION_PURGED = "retention_purged"         # Anzahl + Frist, geschrieben von core/aufbewahrung.py
 
 
 class AuditLog(Base):

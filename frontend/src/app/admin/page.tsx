@@ -81,6 +81,7 @@ import { RolesPanel } from "@/components/admin/roles-panel";
 import { PagesPanel } from "@/components/admin/pages-panel";
 import { SsoGroupsPanel } from "@/components/admin/sso-groups-panel";
 import { DatensicherungKarte } from "@/components/admin/datensicherung-karte";
+import { DatenschutzKarte } from "@/components/admin/datenschutz-karte";
 import { nutzerLoeschenMitRueckfrage } from "@/components/admin/nutzer-loeschen";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
@@ -602,7 +603,7 @@ export default function AdminPage() {
             {tab === "second-brains" && <SecondBrainsView embedded />}
             {tab === "web-search" && <WebSearchView embedded />}
             {tab === "secrets" && <SecretsView embedded />}
-            {tab === "health" && <><DatensicherungKarte /><HealthView embedded /></>}
+            {tab === "health" && <><DatensicherungKarte /><DatenschutzKarte /><HealthView embedded /></>}
             {tab === "audit" && <AuditView embedded />}
             {tab === "dlp" && <DlpView embedded />}
             {tab === "master-rules" && <MasterRulesView />}

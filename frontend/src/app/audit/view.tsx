@@ -459,6 +459,7 @@ const EVENT_INFO: Record<string, { label: string; desc: string }> = {
   mfa_disabled: { label: "Zwei-Faktor abgeschaltet", desc: "Eine Person hat den zweiten Faktor mit Passwort und Code abgeschaltet." },
   mfa_reset: { label: "Zwei-Faktor zurückgesetzt", desc: "Ein Administrator hat den zweiten Faktor eines Kontos zurückgesetzt; alte Sitzungen sind damit ungültig." },
   mfa_code_failed: { label: "Zwei-Faktor-Code abgelehnt", desc: "Beim Einrichten oder Abschalten wurde ein falscher Code oder ein falsches Passwort eingegeben. Der Code wird nie gespeichert." },
+  retention_purged: { label: "Aufbewahrungsfrist angewendet", desc: "Der tägliche Aufräumlauf hat Protokolleinträge oder Chatverläufe gelöscht, die älter als die eingestellte Frist waren." },
 };
 
 // Friendly labels for common meta keys (raw JSON is still available on demand).
@@ -472,6 +473,9 @@ const META_LABEL: Record<string, string> = {
   decision: "Entscheidung", kanal: "Kanal", risk_level: "Risiko", agent_name: "Agent",
   email: "E-Mail", weg: "Weg", grund: "Grund", keys: "Einstellungen",
   target_email: "Betroffenes Konto", sammelverwerfung: "Alle verworfen",
+  audit_geloescht: "Protokolleinträge gelöscht", audit_frist_tage: "Frist Prüfprotokoll (Tage)",
+  chat_nachrichten_geloescht: "Chatnachrichten gelöscht", chat_sitzungen_geloescht: "Leere Gespräche gelöscht",
+  chat_frist_tage: "Frist Chatverläufe (Tage)",
 };
 
 function fmtMetaValue(v: unknown): string {
