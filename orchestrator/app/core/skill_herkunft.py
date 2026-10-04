@@ -55,15 +55,20 @@ def herkunft(created_by: str | None, source_repo: str | None) -> str:
 # sollen einen Menschen vor der Freigabe aufmerksam machen, nichts sperren (gesperrt
 # wird ausschließlich durch core/skill_security).
 _RISIKO_MUSTER: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"(curl|wget)[^\n|]*\|\s*(sudo\s+)?(ba|z)?sh\b", re.I),
+    # Quantoren begrenzt ({0,300}) und Text gekürzt (siehe unten): ein ungebundenes
+    # ``[^\n|]*`` vor ``\|`` läuft bei langen Zeilen quadratisch (ReDoS).
+    (re.compile(r"(curl|wget)[^\n|]{0,300}\|\s{0,5}(sudo\s{1,5})?(ba|z)?sh\b", re.I),
      "Lädt Programme aus dem Netz und führt sie sofort aus."),
     (re.compile(r"\brm\s+-[a-z]*r[a-z]*f|\brm\s+-[a-z]*f[a-z]*r", re.I),
      "Enthält Befehle, die Dateien unwiderruflich löschen."),
     (re.compile(r"\bsudo\b", re.I),
      "Verlangt erhöhte Rechte (sudo)."),
-    (re.compile(r"base64\s+(-d|--decode)[^\n]*\|\s*(ba|z)?sh\b|\beval\s*\(", re.I),
+    (re.compile(r"base64\s{1,5}(-d|--decode)[^\n]{0,300}\|\s{0,5}(ba|z)?sh\b|\beval\s{0,5}\(", re.I),
      "Führt verschleierten oder zusammengesetzten Code aus."),
 )
+
+
+_PRUEF_ZEICHEN = 200_000  # Hinweise, keine Sperre — mehr muss nicht durchsucht werden
 
 
 def risiko_hinweise(content: str | None, art: str) -> list[str]:
@@ -84,7 +89,8 @@ def risiko_hinweise(content: str | None, art: str) -> list[str]:
         check_skill_content(content)
     except SkillSecurityError:
         hinweise.append("Enthält ein Installationsskript (package.json) und wird beim Installieren blockiert.")
+    probe = content[:_PRUEF_ZEICHEN]
     for muster, text in _RISIKO_MUSTER:
-        if muster.search(content):
+        if muster.search(probe):
             hinweise.append(text)
     return hinweise

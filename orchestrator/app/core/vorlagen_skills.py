@@ -148,11 +148,21 @@ async def ids_fuer_namen(db, namen: list[str]) -> list[int]:
     from app.models.skill import Skill, SkillStatus
 
     rows = (await db.execute(
-        select(Skill.id, Skill.name, Skill.source_repo)
+        select(Skill.id, Skill.name, Skill.source_repo, Skill.created_by)
         .where(Skill.name.in_(namen), Skill.status == SkillStatus.ACTIVE)
     )).all()
+    from app.core.mitgelieferte_skills import QUELLE
+
     erlaubt = _erlaubte_herkunft()
-    nach_name = {name: sid for sid, name, herkunft in rows if herkunft in erlaubt}
+    # Der Name einer Quelle allein reicht nicht: Eine vom Admin eingetragene Quelle mit
+    # gleichem Ort (z. B. anderer Branch) bekäme sonst dieselbe Herkunft. Öffentliche
+    # Skills zählen nur aus den eingebauten Quellen (created_by "import:github").
+    def _vertraut(herkunft, erstellt) -> bool:
+        if herkunft == QUELLE:
+            return True
+        return herkunft in erlaubt and (erstellt or "") == "import:github"
+
+    nach_name = {name: sid for sid, name, herkunft, erstellt in rows if _vertraut(herkunft, erstellt)}
     return [nach_name[n] for n in namen if n in nach_name]
 
 

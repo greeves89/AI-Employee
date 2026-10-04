@@ -84,8 +84,13 @@ class _Db:
         self._herkunft = herkunft
 
     async def execute(self, _stmt):
-        return _Ergebnis([(v[0], n, v[1]) if isinstance(v, tuple) else (v, n, self._herkunft)
-                          for n, v in self._skills.items()])
+        zeilen = []
+        for n, v in self._skills.items():
+            sid, herkunft, erstellt = (v + ("import:github",))[:3] if isinstance(v, tuple) else (v, self._herkunft, "import:github")
+            if herkunft == ms.QUELLE and not (isinstance(v, tuple) and len(v) > 2):
+                erstellt = "import:mitgeliefert"
+            zeilen.append((sid, n, herkunft, erstellt))
+        return _Ergebnis(zeilen)
 
 
 class AufloesungTests(unittest.TestCase):
@@ -101,6 +106,13 @@ class AufloesungTests(unittest.TestCase):
                   "buchhaltung-vorkontieren": (8, ms.QUELLE), "fremd": (9, "irgendwer/skills")})
         ids = asyncio.run(vs.ids_fuer_namen(db, ["vertrag-pruefen", "docx", "buchhaltung-vorkontieren", "fremd"]))
         self.assertEqual(ids, [7, 8])
+
+    def test_admin_quelle_mit_gleichem_ort_zaehlt_nicht(self):
+        # Eine vom Admin eingetragene Quelle "getsentry/skills" (eigener Branch) hat
+        # created_by "import:source:<id>" — ihre Skills dürfen keine Vorlage füllen.
+        db = _Db({"find-bugs": (4, "getsentry/skills", "import:source:7"),
+                  "docx": (7, "anthropics/skills", "import:github")})
+        self.assertEqual(asyncio.run(vs.ids_fuer_namen(db, ["find-bugs", "docx"])), [7])
 
     def test_ohne_namen_keine_abfrage(self):
         class _Leer:
