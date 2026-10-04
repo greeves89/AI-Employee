@@ -13,13 +13,13 @@ from app.log_publisher import LogPublisher
 
 class DoneDauerhaftTests(unittest.IsolatedAsyncioTestCase):
     def _publisher(self):
-        pub = LogPublisher.__new__(LogPublisher)
-        pub.agent_id = "a1"
-        pub.redis = MagicMock()
-        pub.redis.publish = AsyncMock()
-        pub.redis.rpush = AsyncMock()
-        pub.redis.ltrim = AsyncMock()
-        return pub
+        # Ueber den echten Konstruktor: seit #900 haelt der Publisher einen
+        # Textpuffer, den ``__new__`` allein nicht anlegt.
+        redis = MagicMock()
+        redis.publish = AsyncMock()
+        redis.rpush = AsyncMock()
+        redis.ltrim = AsyncMock()
+        return LogPublisher(redis, "a1")
 
     async def test_done_kommt_in_die_liste_des_agenten(self):
         pub = self._publisher()

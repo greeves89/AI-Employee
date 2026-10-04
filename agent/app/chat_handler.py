@@ -8,7 +8,6 @@ import os
 import signal
 from typing import AsyncIterator
 
-from app.subagent_felder import subagent_felder
 from app.config import get_oauth_token, settings
 from app.ai_credential_status import is_auth_error, report_result_status
 from app.log_publisher import LogPublisher
@@ -75,6 +74,178 @@ class TextBloecke:
         self._gesehen = len(text)
         wechsel, self._wechsel = self._wechsel, False
         return neu, wechsel
+
+
+_DATEI_MARKE = "__AI_EMPLOYEE_PRESENT_FILE__"
+
+
+def _erster_text(inhalt) -> str:
+    """Erster Text eines Werkzeugergebnisses (dort steht die Datei-Markierung)."""
+    if isinstance(inhalt, str):
+        return inhalt
+    if isinstance(inhalt, dict):
+        if isinstance(inhalt.get("text"), str):
+            return inhalt["text"]
+        if "content" in inhalt:
+            return _erster_text(inhalt["content"])
+    if isinstance(inhalt, list):
+        for block in inhalt:
+            text = _erster_text(block)
+            if text:
+                return text
+    return ""
+
+
+class StromLeser:
+    """Liest den stream-json-Strom von Claude Code und sagt, was in den Chat geht.
+
+    Rein und ohne Ein-/Ausgabe: ``ereignis()`` nimmt eine geparste Zeile und gibt
+    die zu veroeffentlichenden Chat-Ereignisse als ``(typ, daten)`` zurueck. Die
+    Form nach aussen ist dieselbe wie vor #900 (``text`` mit ``neuer_block``,
+    ``tool_call``, ``tool_result``, ``file``).
+
+    Mit ``--include-partial-messages`` kommt jeder Text ZWEIMAL: erst stueckweise
+    als ``stream_event``/``text_delta`` (sofort sichtbar), danach im
+    vollstaendigen ``assistant``-Ereignis. Je Nachrichten-ID zaehlt der Leser,
+    wie viele Zeichen auf jedem der beiden Wege angekommen sind, und
+    veroeffentlicht nur, was ueber das bereits Veroeffentlichte hinausgeht — egal
+    in welcher Reihenfolge die beiden Wege eintreffen. Ohne Teilstuecke (aeltere
+    CLI) verhaelt er sich wie bisher.
+
+    Ereignisse mit ``parent_tool_use_id`` stammen von einem Helfer (Subagent).
+    Sie werden verworfen: Der Helfer schreibt nicht in die Antwort des Agenten,
+    und seine ``message_start``-Ereignisse duerfen die Blockgrenzen des Agenten
+    nicht verschieben. Der Aufruf des Helfers selbst und sein Ergebnis gehoeren
+    dem Agenten und bleiben sichtbar.
+    """
+
+    def __init__(self) -> None:
+        from app.werkzeug_eintrag import WerkzeugListe
+
+        #: Der Text, wie er gespeichert wird — neue Bloecke als eigener Absatz.
+        self.text = ""
+        self.werkzeuge = WerkzeugListe()
+        self._bloecke = TextBloecke()
+        self._strom: dict[str | None, int] = {}   # Zeichen aus Teilstuecken je Nachricht
+        self._voll: dict[str | None, int] = {}    # Zeichen aus vollstaendigen Ereignissen
+        self._strom_id: str | None = None
+        self._strom_wechsel = False
+        self._dateien: set[str] = set()
+
+    # -- Text ---------------------------------------------------------------
+
+    def _bisher(self, mid: str | None) -> int:
+        return max(self._strom.get(mid, 0), self._voll.get(mid, 0))
+
+    def _text(self, stueck: str, neuer_block: bool) -> list[tuple[str, dict]]:
+        # Gespeichert wird wie angezeigt: ein neuer Zug ist ein neuer Absatz.
+        # Live trennte die Oberflaeche die Bloecke schon, im gespeicherten
+        # Verlauf klebten sie nach dem Neuladen zusammen ("...an.Erledigt!",
+        # 27.09.2026).
+        if neuer_block and self.text and not self.text.endswith("\n"):
+            self.text += "\n\n"
+        self.text += stueck
+        self._strom_wechsel = False
+        # ``neuer_block`` trennt EIGENSTAENDIGE Antworten von der blossen
+        # Fortsetzung derselben — sonst klebt die Oberflaeche mehrere
+        # Zwischenmeldungen zu einem Fliesstext ohne Luecke (22.09.2026).
+        return [("text", {"text": stueck, "neuer_block": neuer_block})]
+
+    def _teilstueck(self, event: dict) -> list[tuple[str, dict]]:
+        art = event.get("type")
+        if art == "message_start":
+            mid = (event.get("message") or {}).get("id")
+            if self._strom_id is not None and mid != self._strom_id:
+                self._strom_wechsel = True
+            self._strom_id = mid
+            return []
+        if art == "content_block_start":
+            # Ein zweiter Textblock in derselben Nachricht ist ein neuer Gedanke.
+            if ((event.get("content_block") or {}).get("type") == "text"
+                    and self._bisher(self._strom_id) > 0):
+                self._strom_wechsel = True
+            return []
+        if art != "content_block_delta":
+            return []
+        delta = event.get("delta") or {}
+        if delta.get("type") != "text_delta" or not delta.get("text"):
+            return []
+        stueck = delta["text"]
+        mid = self._strom_id
+        vorher = self._bisher(mid)
+        self._strom[mid] = self._strom.get(mid, 0) + len(stueck)
+        ueber = self._strom[mid] - vorher
+        if ueber <= 0:
+            return []
+        return self._text(stueck[-ueber:], self._strom_wechsel)
+
+    def _vollstaendig(self, message: dict) -> list[tuple[str, dict]]:
+        stueck = self._bloecke.neu(message)
+        if not stueck:
+            return []
+        neu, wechsel = stueck
+        mid = message.get("id")
+        vorher = self._bisher(mid)
+        self._voll[mid] = self._voll.get(mid, 0) + len(neu)
+        ueber = self._voll[mid] - vorher
+        if ueber <= 0:
+            return []    # schon live als Teilstueck veroeffentlicht
+        # Nur der Rest ist neu; beginnt er mitten im Text, ist er Fortsetzung.
+        return self._text(neu[-ueber:], wechsel if ueber == len(neu) else False)
+
+    # -- Werkzeuge ----------------------------------------------------------
+
+    def _ergebnis(self, tool_use_id: str, inhalt) -> list[tuple[str, dict]]:
+        raus: list[tuple[str, dict]] = []
+        marke = _erster_text(inhalt)
+        datei = marke.startswith(_DATEI_MARKE)
+        if datei:
+            roh = marke.removeprefix(_DATEI_MARKE)
+            if roh not in self._dateien:
+                try:
+                    raus.append(("file", json.loads(roh)))
+                    self._dateien.add(roh)
+                except Exception:
+                    logger.debug("Could not parse present_file payload", exc_info=True)
+        inhalt = "File presented to the user." if datei else inhalt
+        self.werkzeuge.ergebnis(tool_use_id, inhalt)
+        raus.append(("tool_result", {"tool_use_id": tool_use_id, "content": inhalt}))
+        return raus
+
+    # -- Einstieg -----------------------------------------------------------
+
+    def ereignis(self, event: dict) -> list[tuple[str, dict]]:
+        if event.get("parent_tool_use_id"):
+            return []    # Helfer (Subagent): nicht Teil der Antwort
+        art = event.get("type")
+        if art == "stream_event":
+            return self._teilstueck(event.get("event") or {})
+        if art == "assistant":
+            message = event.get("message") or {}
+            raus: list[tuple[str, dict]] = []
+            for block in message.get("content", []):
+                if block.get("type") != "tool_use":
+                    continue
+                name = block.get("name", "unknown")
+                eingabe = block.get("input", {})
+                tool_id = block.get("id", "")
+                if self.werkzeuge.aufruf(name, eingabe, tool_id) is None:
+                    continue    # derselbe Aufruf wurde schon gemeldet
+                raus.append(("tool_call", {"tool_use_id": tool_id, "tool": name, "input": eingabe}))
+            raus.extend(self._vollstaendig(message))
+            return raus
+        if art == "tool_result":
+            return self._ergebnis(event.get("tool_use_id", ""), event.get("content", ""))
+        if art == "user":
+            # Claude Code meldet (MCP-)Werkzeugergebnisse als synthetische
+            # Nutzernachricht mit ``tool_result``-Bloecken.
+            raus = []
+            for block in (event.get("message") or {}).get("content", []):
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    raus.extend(self._ergebnis(block.get("tool_use_id", ""), block.get("content", "")))
+            return raus
+        return []
+
 
 class ChatHandler:
     """Handles interactive chat sessions using Claude Code CLI with --resume."""
@@ -251,6 +422,11 @@ class ChatHandler:
             "-p",
             "--output-format", "stream-json",
             "--verbose",
+            # Teilstuecke live (#900): ohne den Schalter kommen nur fertige
+            # Bloecke, und eine lange Antwort stand nach 30 s auf einmal da.
+            # Doppelte Lieferung (Teilstueck + vollstaendiges Ereignis) loest
+            # der StromLeser auf.
+            "--include-partial-messages",
             "--dangerously-skip-permissions",
             # AskUserQuestion is a CLI-builtin that expects an interactive
             # terminal. Headless (-p) there is nobody to answer, so it returns
@@ -279,38 +455,8 @@ class ChatHandler:
         self._interrupted = False  # set by stop_current() when steering cuts this turn short
         result_data: dict = {"status": "completed", "text": ""}
         stream_had_error = False
-        accumulated_tool_calls: list[dict] = []  # Track tool calls for persistence
         stderr_lines: list[str] = []  # Collect stderr concurrently
-        seen_file_payloads: set[str] = set()
-
-        async def _publish_present_file_if_marker(marker_text: str) -> bool:
-            if not marker_text.startswith("__AI_EMPLOYEE_PRESENT_FILE__"):
-                return False
-            payload_raw = marker_text.removeprefix("__AI_EMPLOYEE_PRESENT_FILE__")
-            if payload_raw in seen_file_payloads:
-                return True
-            try:
-                payload = json.loads(payload_raw)
-                seen_file_payloads.add(payload_raw)
-                await self.log_publisher.publish_chat(message_id, "file", payload)
-            except Exception:
-                logger.debug("Could not parse present_file payload", exc_info=True)
-            return True
-
-        def _first_text_from_tool_result_content(content) -> str:
-            if isinstance(content, str):
-                return content
-            if isinstance(content, dict):
-                if isinstance(content.get("text"), str):
-                    return content["text"]
-                if "content" in content:
-                    return _first_text_from_tool_result_content(content["content"])
-            if isinstance(content, list):
-                for block in content:
-                    text = _first_text_from_tool_result_content(block)
-                    if text:
-                        return text
-            return ""
+        leser = StromLeser()  # Teilstuecke, Bloecke, Werkzeuge, Helfer — siehe dort
 
         async def _collect_stderr(proc: asyncio.subprocess.Process) -> None:
             """Read stderr concurrently so it's not lost when process exits."""
@@ -343,9 +489,6 @@ class ChatHandler:
             )
             stderr_task = asyncio.create_task(_collect_stderr(self._process))
 
-            full_text = ""
-            bloecke = TextBloecke()  # neue Textstuecke + Zugwechsel erkennen
-            seen_tool_ids: set[str] = set()  # Deduplicate tool_use blocks
             async for event in self._stream_output(self._process):
                 event_type = event.get("type", "unknown")
 
@@ -354,106 +497,10 @@ class ChatHandler:
                     self.session_id = event["session_id"]
                     logger.info(f"Captured session_id: {self.session_id}")
 
-                if event_type == "assistant":
-                    message = event.get("message", {})
-                    for block in message.get("content", []):
-                        if block.get("type") == "tool_use":
-                            tool_id = block.get("id", "")
-                            if tool_id and tool_id in seen_tool_ids:
-                                continue  # Skip already-published tool calls
-                            seen_tool_ids.add(tool_id)
-                            tool_name = block.get("name", "unknown")
-                            tool_input = block.get("input", {})
-                            eintrag = {
-                                "tool": tool_name,
-                                "input": json.dumps(tool_input)[:200],
-                            }
-                            # Subagenten zusaetzlich UNGEKUERZT festhalten.
-                            #
-                            # Der 200-Zeichen-Schnitt oben ist fuer gewoehnliche
-                            # Werkzeugaufrufe richtig — bei einem Subagenten
-                            # faellt dabei aber genau das weg, was ihn
-                            # ausmacht: Beschreibung und Art. Nach dem Neuladen
-                            # stand in der Uebersicht dann ein namenloser
-                            # Helfer. Der Auftragstext selbst bleibt gekuerzt;
-                            # er kann sehr lang werden und wird zur Anzeige
-                            # nicht gebraucht.
-                            # Eigene Subagenten UND Delegationen an andere
-                            # Agenten: siehe app/subagent_felder.py.
-                            felder = subagent_felder(tool_name, tool_input)
-                            if felder:
-                                eintrag["subagent"] = felder
-                            accumulated_tool_calls.append(eintrag)
-                            await self.log_publisher.publish_chat(
-                                message_id,
-                                "tool_call",
-                                {
-                                    "tool_use_id": tool_id,
-                                    "tool": tool_name,
-                                    "input": tool_input,
-                                },
-                            )
-                    # Only send NEW text (delta since last event)
-                    stueck = bloecke.neu(message)
-                    if stueck:
-                        new_text, neuer_block = stueck
-                        # Gespeichert wird wie angezeigt: ein neuer Zug ist ein
-                        # neuer Absatz. Live trennte die Oberflaeche die Bloecke
-                        # schon, im gespeicherten Verlauf klebten sie nach dem
-                        # Neuladen zusammen ("...an.Erledigt!", 27.09.2026).
-                        if neuer_block and full_text and not full_text.endswith("\n"):
-                            full_text += "\n\n"
-                        full_text += new_text
-                        # ``neuer_block`` trennt EIGENSTAENDIGE Antworten von der
-                        # blossen Fortsetzung derselben. Innerhalb einer Antwort
-                        # kommen echte Teilstuecke, die aneinandergehoeren;
-                        # beginnt aber ein neuer Zug, ist es ein neuer Gedanke.
-                        #
-                        # Ohne diese Unterscheidung klebte die Oberflaeche beides
-                        # zusammen, und aus mehreren Zwischenmeldungen wurde ein
-                        # Fliesstext ohne Luecke: "...in Intervallen.Beide noch in
-                        # der Warteschlange...". Am 22.09.2026 vom Nutzer gemeldet.
-                        await self.log_publisher.publish_chat(
-                            message_id, "text",
-                            {"text": new_text, "neuer_block": neuer_block},
-                        )
+                for art, daten in leser.ereignis(event):
+                    await self.log_publisher.publish_chat(message_id, art, daten)
 
-                elif event_type == "tool_result":
-                    content = event.get("content", "")
-                    marker_text = _first_text_from_tool_result_content(content)
-                    is_present_file = await _publish_present_file_if_marker(marker_text)
-                    await self.log_publisher.publish_chat(
-                        message_id,
-                        "tool_result",
-                        {
-                            "tool_use_id": event.get("tool_use_id", ""),
-                            "content": "File presented to the user."
-                            if is_present_file else content,
-                        },
-                    )
-
-                elif event_type == "user":
-                    # Claude Code stream-json may emit MCP tool results as a
-                    # synthetic user message with content blocks of type
-                    # "tool_result" instead of a top-level tool_result event.
-                    message = event.get("message", {})
-                    for block in message.get("content", []):
-                        if not isinstance(block, dict) or block.get("type") != "tool_result":
-                            continue
-                        content = block.get("content", "")
-                        marker_text = _first_text_from_tool_result_content(content)
-                        is_present_file = await _publish_present_file_if_marker(marker_text)
-                        await self.log_publisher.publish_chat(
-                            message_id,
-                            "tool_result",
-                            {
-                                "tool_use_id": block.get("tool_use_id", ""),
-                                "content": "File presented to the user."
-                                if is_present_file else content,
-                            },
-                        )
-
-                elif event_type == "result":
+                if event_type == "result":
                     if event.get("is_error"):
                         errors = event.get("errors", [])
                         error_msg = (
@@ -472,7 +519,7 @@ class ChatHandler:
                             )
                     else:
                         # Use accumulated text, fallback to result field
-                        final_text = full_text or event.get("result", "")
+                        final_text = leser.text or event.get("result", "")
                         # Token-Nutzung aus dem Claude-CLI-Result (steht im
                         # `usage`-Block) — bisher NICHT ausgelesen, deshalb zeigte
                         # die Chat-Meta-Zeile bei Claude-Code-Agenten nur
@@ -489,10 +536,11 @@ class ChatHandler:
                             "output_tokens": _usage.get("output_tokens") or 0,
                             "cache_write_tokens": _usage.get("cache_creation_input_tokens") or 0,
                             "cached_tokens": _usage.get("cache_read_input_tokens") or 0,
-                            "tool_calls": accumulated_tool_calls or None,
+                            # Eingabe als gueltiges JSON, Ausgabe am Eintrag (#911).
+                            "tool_calls": leser.werkzeuge.liste(),
                         }
                         # If we got text from result but didn't stream it yet, send it now
-                        if not full_text and final_text:
+                        if not leser.text and final_text:
                             await self.log_publisher.publish_chat(
                                 message_id, "text", {"text": final_text}
                             )

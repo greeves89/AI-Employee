@@ -35,11 +35,18 @@ class PersistenzTest(unittest.TestCase):
         self.quelle = _HANDLER.read_text(encoding="utf-8")
 
     def test_subagenten_tragen_ihre_felder_gesondert(self):
-        """Seit 1.346.2 in app/subagent_felder.py (auch fuer Delegationen);
-        der Handler muss sie dort holen und gesondert ablegen."""
-        self.assertIn('eintrag["subagent"]', self.quelle,
-                      "Ohne eigenes Feld ueberlebt die Beschreibung die Kuerzung nicht.")
-        self.assertIn("subagent_felder(tool_name, tool_input)", self.quelle)
+        """Seit 1.346.2 in app/subagent_felder.py (auch fuer Delegationen); seit
+        #911 legt sie der gemeinsame Werkzeug-Eintrag aller Laufzeiten ab."""
+        from app.chat_handler import StromLeser
+
+        leser = StromLeser()
+        leser.ereignis({"type": "assistant", "message": {"id": "m1", "content": [
+            {"type": "tool_use", "id": "t1", "name": "Agent",
+             "input": {"description": "Review", "subagent_type": "reviewer", "prompt": "p" * 5000}},
+        ]}})
+        eintrag = leser.werkzeuge.liste()[0]
+        self.assertEqual(eintrag["subagent"]["description"], "Review",
+                         "Ohne eigenes Feld ueberlebt die Beschreibung die Kuerzung nicht.")
         from app.subagent_felder import subagent_felder
         felder = subagent_felder("Agent", {"description": "d", "subagent_type": "s", "run_in_background": True})
         for feld in ("description", "subagent_type", "run_in_background"):
@@ -53,8 +60,13 @@ class PersistenzTest(unittest.TestCase):
         self.assertIsNotNone(subagent_felder("Task", {}))
 
     def test_die_kuerzung_bleibt_fuer_gewoehnliche_werkzeuge(self):
-        """Ein Bash-Aufruf soll den Verlauf nicht aufblaehen."""
-        self.assertIn('json.dumps(tool_input)[:200]', self.quelle)
+        """Ein Bash-Aufruf soll den Verlauf nicht aufblaehen — gekuerzt wird
+        weiterhin, aber seit #911 so, dass das JSON lesbar bleibt."""
+        from app.werkzeug_eintrag import EINGABE_GRENZE, eingabe_json
+
+        gekuerzt = eingabe_json({"command": "x" * 50_000})
+        self.assertLessEqual(len(gekuerzt), EINGABE_GRENZE)
+        json.loads(gekuerzt)
 
 
 @unittest.skipUnless(_CHAT.exists(), "Frontend nicht vorhanden")

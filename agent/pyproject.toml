@@ -28,6 +28,10 @@ dependencies = [
     # Faehigkeit gilt bei uns erst als vorhanden, wenn sie ueberall vorhanden ist.
     # Chromium liegt bereits im Image, es kommt also nur die Steuerung dazu.
     "playwright>=1.49",
+    # Zeitzonendaten fuer zoneinfo (Datum/Wochentag im Prompt, #905). Das
+    # schlanke Python-Abbild bringt /usr/share/zoneinfo nicht verlaesslich mit;
+    # ohne Daten fiele runner_hooks.zeitkontext() auf UTC zurueck.
+    "tzdata>=2024.1",
 ]
 
 [build-system]

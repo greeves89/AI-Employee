@@ -199,11 +199,14 @@ class CodexAgentRunner:
         self.is_running = True
 
         task_id_line = f"CURRENT_TASK_ID: {task_id}\n\n"
+        from app.runner_hooks import zeitkontext
         # Unified context bundle (shared via runner_hooks) — same blocks as the
         # Claude and custom_llm runtimes, incl. host mounts / Second Brain awareness.
         enhanced_prompt = (
             task_id_line
             + compose_prompt_bundle(prompt, lightweight)
+            # Datum/Wochentag/Uhrzeit (#905) — sonst raet das Modell das Jahr.
+            + zeitkontext() + "\n\n"
             + prompt
             + SELF_IMPROVEMENT_SUFFIX
         )
@@ -260,6 +263,10 @@ class CodexAgentRunner:
         text_output: list[str] = []
         result_data: dict = {"status": "completed", "result": ""}
         completed_seen = False
+        # Werkzeugaufrufe mit Eingabe und Ausgabe fuer den gespeicherten Verlauf —
+        # dieselbe Form wie Claude Code und Custom-LLM (#911).
+        from app.werkzeug_eintrag import WerkzeugListe
+        werkzeuge = WerkzeugListe()
 
         async def collect_stderr(proc: asyncio.subprocess.Process) -> None:
             if not proc.stderr:
@@ -305,6 +312,7 @@ class CodexAgentRunner:
                 tool_call = _extract_tool_call(event)
                 if tool_call:
                     name, args, tool_id = tool_call
+                    werkzeuge.aufruf(name, args, tool_id)
                     await _publish(
                         self.log_publisher,
                         stream,
@@ -316,6 +324,7 @@ class CodexAgentRunner:
                 tool_result = _extract_tool_result(event)
                 if tool_result:
                     tool_id, output = tool_result
+                    werkzeuge.ergebnis(tool_id, output)
                     await _publish(
                         self.log_publisher,
                         stream,
@@ -349,6 +358,7 @@ class CodexAgentRunner:
             letzte = text_output[-1].strip("\n") if text_output else ""
             result_data["result"] = letzte if stream == "task" else final_text
             result_data["text"] = final_text
+            result_data["tool_calls"] = werkzeuge.liste()
 
             if returncode in (-2, -15, 130) or getattr(self, "_interrupted", False):
                 # Interrupt for live steering (a new message arrived and we cut the turn

@@ -1,8 +1,17 @@
+import asyncio
 import json
 import time
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
+
+#: Gemeinsamer kleiner Puffer fuer Chat-Text (#900). Mit Live-Streaming kommen
+#: Teilstuecke von wenigen Zeichen; jedes einzeln waeren hunderte Redis- und
+#: WebSocket-Nachrichten je Antwort. Gesammelt wird hoechstens so lange bzw. so
+#: viel — das Auge merkt die Verzoegerung nicht, die Leitung schon.
+PUFFER_SEKUNDEN = 0.08
+PUFFER_ZEICHEN = 200
+_TEXT_FELDER = {"text", "neuer_block"}
 
 
 class LogPublisher:
@@ -18,6 +27,12 @@ class LogPublisher:
         #: eine fleissige Aufgabe den Herzschlag einer laengst klemmenden am
         #: Leben haelt — genau die Blindstelle, die #730 beseitigen soll.
         self.last_activity_by_task: dict[str, float] = {}
+        #: Noch nicht gesendeter Chat-Text je Nachricht (siehe ``publish_chat``).
+        self._puffer: dict[str, dict] = {}
+        self._puffer_uhr: dict[str, asyncio.Task] = {}
+        #: Haelt die Reihenfolge: gepufferter Text geht IMMER vor dem naechsten
+        #: Ereignis derselben Nachricht raus, auch wenn die Uhr gerade sendet.
+        self._sende_sperre = asyncio.Lock()
 
     def notiere_fortschritt(self, task_id: str | None) -> None:
         """Haelt fest, dass an dieser Aufgabe gerade wirklich etwas passiert ist."""
@@ -64,8 +79,54 @@ class LogPublisher:
         Werkzeugaufruf, ein Zwischenstand — setzt die Stillstandsuhr zurueck. Der
         Wachhund im ChatConsumer bricht nur ab, wenn wirklich nichts mehr kommt,
         statt nach einer festen Gesamtdauer mitten in die Arbeit zu schneiden.
+
+        Text wird kurz gepuffert (``PUFFER_SEKUNDEN``/``PUFFER_ZEICHEN``) und als
+        EIN ``text``-Ereignis derselben Form gesendet. Ein neuer Block
+        (``neuer_block``) beginnt ein neues Ereignis, jedes andere Ereignis
+        derselben Nachricht schiebt den gepufferten Text vorher hinaus. Gilt fuer
+        alle Laufzeiten, die hier veroeffentlichen (Claude Code, Codex, Custom-LLM).
         """
         self.last_activity_at = time.monotonic()
+        async with self._sende_sperre:
+            if event_type == "text" and isinstance(data, dict) and set(data) <= _TEXT_FELDER:
+                puffer = self._puffer.get(message_id)
+                if puffer is not None and data.get("neuer_block"):
+                    await self._puffer_leeren(message_id)
+                    puffer = None
+                if puffer is None:
+                    self._puffer[message_id] = dict(data, text=str(data.get("text", "")))
+                    self._uhr_stellen(message_id)
+                else:
+                    puffer["text"] += str(data.get("text", ""))
+                if len(self._puffer[message_id]["text"]) >= PUFFER_ZEICHEN:
+                    await self._puffer_leeren(message_id)
+                return
+            await self._puffer_leeren(message_id)
+            await self._senden(message_id, event_type, data)
+
+    def _uhr_stellen(self, message_id: str) -> None:
+        async def uhr() -> None:
+            await asyncio.sleep(PUFFER_SEKUNDEN)
+            async with self._sende_sperre:
+                if self._puffer_uhr.get(message_id) is asyncio.current_task():
+                    self._puffer_uhr.pop(message_id, None)
+                await self._puffer_leeren(message_id)
+
+        alt = self._puffer_uhr.pop(message_id, None)
+        if alt is not None:
+            alt.cancel()
+        self._puffer_uhr[message_id] = asyncio.create_task(uhr())
+
+    async def _puffer_leeren(self, message_id: str) -> None:
+        """Gepufferten Text dieser Nachricht senden (nur unter ``_sende_sperre``)."""
+        uhr = self._puffer_uhr.pop(message_id, None)
+        if uhr is not None and uhr is not asyncio.current_task():
+            uhr.cancel()
+        puffer = self._puffer.pop(message_id, None)
+        if puffer is not None and puffer.get("text"):
+            await self._senden(message_id, "text", puffer)
+
+    async def _senden(self, message_id: str, event_type: str, data: dict | str) -> None:
         message = json.dumps(
             {
                 "agent_id": self.agent_id,
