@@ -11,7 +11,11 @@ export type Group = { title: string; items: string[] };
 export const API_GROUPS: Group[] = [
   { title: "Auth & Users (/auth)", items: [
     "POST /auth/register — Registrierung (Setup-Token für ersten Admin) [public]",
-    "POST /auth/login — Login [public]",
+    "POST /auth/login — Login; mit Zwei-Faktor nur Zwischen-Token (mfa_required) [public]",
+    "POST /auth/mfa/verify — zweiter Faktor: TOTP- oder Wiederherstellungscode [public, Zwischen-Token]",
+    "POST /auth/mfa/pending/setup|confirm — Pflicht-Einrichtung nach dem Passwort [public, Zwischen-Token]",
+    "GET /auth/mfa/status · POST /auth/mfa/setup|confirm|disable — eigener Zwei-Faktor [auth]",
+    "POST /auth/users/{user_id}/mfa-reset — Zwei-Faktor eines Nutzers zurücksetzen [admin]",
     "POST /auth/logout — Logout [public]",
     "POST /auth/refresh — Token-Refresh [public]",
     "GET /auth/registration-status — ob Registrierung offen ist [public]",

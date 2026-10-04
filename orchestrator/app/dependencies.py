@@ -85,7 +85,7 @@ class _AnonymousUser:
 # dass die Oberflaeche erfahren kann, warum sie leer bleibt, und dass man sich wieder
 # abmelden kann. Alles andere ist zu.
 _ALLOWED_WHILE_UNASSIGNED = re.compile(
-    r"^/api/v1/(auth/(me|logout|refresh|providers)|version|health)(/.*)?$"
+    r"^/api/v1/(auth/(me|logout|refresh|providers|mfa)|version|health)(/.*)?$"
 )
 
 

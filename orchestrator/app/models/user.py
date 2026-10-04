@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -70,3 +70,15 @@ class User(Base, TimestampMixin):
     # Willkommensfenster mit den Klick-Tutorials: einmal beim ersten Start. Gesetzt,
     # sobald der Nutzer es schliesst — danach nur noch ueber Hilfe & FAQ.
     tutorial_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Zwei-Faktor per TOTP (#915) — nur für Passwort-Anmeldungen. Das Geheimnis liegt
+    # Fernet-verschlüsselt (core/encryption). Gesetzt, aber ohne ``mfa_enabled_at``
+    # = Einrichtung begonnen, noch nicht bestätigt. Wiederherstellungscodes nur als
+    # JSON-Liste von SHA-256-Hashes; jeder eingelöste fällt heraus.
+    totp_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mfa_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    mfa_recovery_codes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    @property
+    def mfa_enabled(self) -> bool:
+        """Zwei-Faktor eingerichtet und bestätigt."""
+        return bool(self.mfa_enabled_at and self.totp_secret_encrypted)

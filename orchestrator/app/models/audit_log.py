@@ -79,6 +79,11 @@ class AuditEventType(str, Enum):
     ROLE_CHANGED = "role_changed"                 # Rolle/Gruppe eines Nutzers oder einer Gruppe
     MCP_SERVER_CHANGED = "mcp_server_changed"     # MCP-Server angelegt/geaendert/entfernt
     AUDIT_EXPORTED = "audit_exported"             # Protokoll als CSV exportiert
+    # Zwei-Faktor (#915) — nie mit Code oder Geheimnis, nur wer/was/Ergebnis
+    MFA_ENABLED = "mfa_enabled"                   # Nutzer hat TOTP eingerichtet
+    MFA_DISABLED = "mfa_disabled"                 # Nutzer hat TOTP abgeschaltet (Passwort + Code)
+    MFA_RESET = "mfa_reset"                       # Admin hat TOTP eines Nutzers zurückgesetzt
+    MFA_CODE_FAILED = "mfa_code_failed"           # falscher Code bei Einrichtung/Abschalten
 
 
 class AuditLog(Base):

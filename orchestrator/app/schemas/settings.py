@@ -26,6 +26,8 @@ class SettingsUpdate(BaseModel):
     usd_eur_rate: float | None = None
     sso_only_login: bool | None = None
     require_user_approval: bool | None = None
+    #: Zwei-Faktor für alle Passwort-Konten erzwingen (#915).
+    require_mfa_for_password_accounts: bool | None = None
     revoke_msgraph_on_logout: bool | None = None
     # Provider
     model_provider: str | None = None
@@ -171,6 +173,7 @@ class SettingsResponse(BaseModel):
     usd_eur_rate: float = 0.92
     sso_only_login: bool = False
     require_user_approval: bool = False
+    require_mfa_for_password_accounts: bool = False
     revoke_msgraph_on_logout: bool = False
     # Provider
     model_provider: str

@@ -8,7 +8,7 @@ import {
   CheckCircle2, AlertCircle, Shield, Bot, Gauge, Coins,
   UserPlus, Cloud, Server, Lock, Globe, Cpu, Layers,
   ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles, Network,
-  Plug, Mic, AlertTriangle, Moon, KeyRound } from "lucide-react";
+  Plug, Mic, AlertTriangle, Moon, KeyRound, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { Header } from "@/components/layout/header";
 import { TemplateManager } from "@/components/settings/template-manager";
@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
 import { MyAiCredentials } from "@/components/settings/my-ai-credentials";
+import { ZweiFaktorEinstellungen, ZweiFaktorPflichtToggle } from "@/components/settings/zwei-faktor";
 import { AvailableModels } from "@/components/settings/available-models";
 import { ClaudeLoginDialog, startClaudeLogin } from "@/components/integrations/claude-login-dialog";
 import { useConfirm } from "@/components/ui/dialog-provider";
@@ -213,7 +214,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   // UI state
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [secTab, setSecTab] = useState<"modelle" | "meine" | "integrationen" | "voice" | "system">("modelle");
+  const [secTab, setSecTab] = useState<"modelle" | "meine" | "konto" | "integrationen" | "voice" | "system">("modelle");
   const user = useAuthStore((s) => s.user);
 
   const toggleMsgraphExt = async (enabled: boolean) => {
@@ -365,7 +366,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   // /settings?tab=system#lizenz oeffnet den Reiter und springt zum Abschnitt.
   useEffect(() => {
     const tab = new URLSearchParams(window.location.search).get("tab");
-    if (tab === "modelle" || tab === "meine" || tab === "integrationen" || tab === "voice" || tab === "system") {
+    if (tab === "modelle" || tab === "meine" || tab === "konto" || tab === "integrationen" || tab === "voice" || tab === "system") {
       setSecTab(tab);
     }
   }, []);
@@ -756,6 +757,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             // ohne Adminrechte: bis 2026-08-15 gab es dafuer gar keine Seite,
             // obwohl die Agenten-Anlage ausdruecklich darauf verweist.
             { id: "meine" as const, label: "Meine KI-Zugänge", icon: KeyRound },
+            // Anmeldesicherheit des eigenen Kontos (#915) — für jeden, nicht nur Admins.
+            { id: "konto" as const, label: "Anmeldung & Sicherheit", icon: ShieldCheck },
             { id: "integrationen" as const, label: "Integrationen", icon: Plug },
             // Voice und System enthalten AUSSCHLIESSLICH adminbeschraenkte
             // Inhalte. Für einen normalen Nutzer waren sie bisher zwei leere
@@ -1219,6 +1222,21 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                 </h2>
               </div>
               <MyAiCredentials />
+            </section>
+          </div>
+        )}
+
+        {/* ─── Tab: Anmeldung & Sicherheit (eigenes Konto, #915) ─── */}
+        {secTab === "konto" && (
+          <div className="space-y-6">
+            <section>
+              <div className="flex items-center gap-2 mb-3">
+                <ShieldCheck className="h-4 w-4 text-muted-foreground/60" />
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  Anmeldung &amp; Sicherheit
+                </h2>
+              </div>
+              <ZweiFaktorEinstellungen />
             </section>
           </div>
         )}
@@ -2393,6 +2411,9 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                 </div>
               </div>
 
+              {/* Zwei-Faktor-Pflicht für Passwort-Konten (#915) — speichert sofort */}
+              <ZweiFaktorPflichtToggle />
+
               {/* MS-Graph-Token bei Logout entfernen */}
               <div className="p-5 pt-3 border-t border-foreground/[0.04]">
                 <div className="flex items-center justify-between gap-3">
@@ -2437,7 +2458,7 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
             KI-Zugaenge" sichert sofort beim Verbinden. Ein Knopf, der
             nichts tut, laesst den Nutzer glauben, er haette etwas
             vergessen. */}
-        {isAdmin && secTab !== "meine" && (
+        {isAdmin && secTab !== "meine" && secTab !== "konto" && (
 <div className="flex items-center gap-3 pt-2 pb-8">
           <button
             onClick={handleSave}

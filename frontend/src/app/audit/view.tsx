@@ -455,6 +455,10 @@ const EVENT_INFO: Record<string, { label: string; desc: string }> = {
   role_changed: { label: "Rolle geändert", desc: "Die Rolle oder Gruppe einer Person bzw. eine Gruppe selbst wurde geändert." },
   mcp_server_changed: { label: "MCP-Server geändert", desc: "Ein MCP-Server wurde angelegt, geändert oder entfernt." },
   audit_exported: { label: "Protokoll exportiert", desc: "Das Prüfprotokoll wurde als CSV heruntergeladen." },
+  mfa_enabled: { label: "Zwei-Faktor eingerichtet", desc: "Eine Person hat die Anmeldung mit Authenticator-App eingerichtet." },
+  mfa_disabled: { label: "Zwei-Faktor abgeschaltet", desc: "Eine Person hat den zweiten Faktor mit Passwort und Code abgeschaltet." },
+  mfa_reset: { label: "Zwei-Faktor zurückgesetzt", desc: "Ein Administrator hat den zweiten Faktor eines Kontos zurückgesetzt; alte Sitzungen sind damit ungültig." },
+  mfa_code_failed: { label: "Zwei-Faktor-Code abgelehnt", desc: "Beim Einrichten oder Abschalten wurde ein falscher Code oder ein falsches Passwort eingegeben. Der Code wird nie gespeichert." },
 };
 
 // Friendly labels for common meta keys (raw JSON is still available on demand).

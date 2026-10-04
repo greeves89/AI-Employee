@@ -1124,6 +1124,22 @@ async def lifespan(app: FastAPI):
     # Run Alembic migrations to create/update tables (fallback rules: #796).
     await _migrate_or_fallback()
 
+    # Zwei-Faktor (#915): Spalten am Nutzer. Gleich nach den Migrationen, weil das
+    # Modell sie kennt — jede Abfrage auf ``users`` scheitert, solange sie fehlen.
+    try:
+        from app.db.session import engine as _eng_mfa
+        from sqlalchemy import text as _txt_mfa
+        async with _eng_mfa.begin() as conn:
+            for _spalte in (
+                "totp_secret_encrypted text",
+                "mfa_enabled_at timestamptz",
+                "mfa_recovery_codes text",
+            ):
+                await conn.execute(_txt_mfa(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {_spalte}"))
+        logger.info("users: Zwei-Faktor-Spalten sichergestellt")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Could not ensure users MFA columns: {e}")
+
     # Ensure the oauth_clients table (built-in MCP authorization server) exists on
     # every startup, independent of Alembic — no migration ships for it. Idempotent.
     try:

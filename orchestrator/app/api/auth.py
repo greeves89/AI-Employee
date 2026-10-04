@@ -97,6 +97,8 @@ class UserResponse(BaseModel):
     last_active_at: datetime | None = None
     monthly_cost_usd: float = 0.0
     tutorial_seen_at: datetime | None = None
+    #: Zwei-Faktor eingerichtet (#915) — für die Nutzerverwaltung und die eigene Ansicht.
+    mfa_enabled: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -264,11 +266,37 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
         raise HTTPException(status_code=403, detail="Dein Konto wartet noch auf Freischaltung durch einen Administrator.")
 
     _clear_login_attempts(body.email)
+
+    # Zweiter Faktor (#915): Passwort richtig heißt noch nicht drin. Statt der
+    # Sitzung gibt es ein kurzlebiges Zwischen-Token, das NUR für den Code-Schritt
+    # bzw. die Pflicht-Einrichtung taugt — kein Cookie, kein Zugangstoken.
+    from app.core import zwei_faktor
+
+    schritt = zwei_faktor.naechster_schritt(
+        sso_anmeldung=False, passwort_ok=True,
+        mfa_aktiv=zwei_faktor.mfa_aktiv(user), erzwungen=zwei_faktor.pflicht_fuer(user),
+    )
+    if schritt in (zwei_faktor.Schritt.CODE, zwei_faktor.Schritt.EINRICHTEN):
+        einrichten = schritt == zwei_faktor.Schritt.EINRICHTEN
+        zweck = zwei_faktor.ZWECK_EINRICHTEN if einrichten else zwei_faktor.ZWECK_CODE
+        return {
+            "mfa_required": True,
+            "mfa_setup_required": einrichten,
+            "mfa_token": zwei_faktor.pending_token_erstellen(user, zweck),
+        }
+
+    return await anmeldung_abschliessen(user, request, response, db)
+
+
+async def anmeldung_abschliessen(user: User, request: Request, response: Response,
+                                 db: AsyncSession, weg: str = "passwort") -> dict:
+    """Sitzung herstellen — die gemeinsame Endstrecke der Passwort-Anmeldung, mit
+    oder ohne zweiten Faktor (#915). Cookies, Protokoll, Aktivität, Agenten wecken."""
     tokens = _set_auth_cookies(response, user)
-    await _anmeldung_protokollieren(db, AuditEventType.LOGIN_SUCCEEDED, email=user.email, user=user)
+    await _anmeldung_protokollieren(db, AuditEventType.LOGIN_SUCCEEDED, email=user.email,
+                                    user=user, weg=weg)
 
     # Update activity + wake user's agents (fire-and-forget)
-    from datetime import datetime, timezone
     from app.services.user_lifecycle import wake_user_agents
     user.last_active_at = datetime.now(timezone.utc)
     await db.commit()
@@ -963,6 +991,42 @@ async def reset_user_password(user_id: str, request: Request, db: AsyncSession =
 
     logger.info(f"Admin {current.email} reset password for user: {target.email}")
     return {"user_id": target.id, "email": target.email, "temp_password": temp_password}
+
+
+@router.post("/users/{user_id}/mfa-reset")
+async def reset_user_mfa(user_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """Admin-only: Zwei-Faktor eines Nutzers zurücksetzen (#915) — etwa bei verlorenem Telefon.
+
+    Geheimnis und Wiederherstellungscodes fallen weg, ``token_version`` steigt: alle
+    bestehenden Sitzungen UND offene Zwischen-Tokens des Kontos werden ungültig. Ist
+    die Pflicht an, richtet der Nutzer bei der nächsten Anmeldung neu ein.
+    """
+    from app.dependencies import get_current_user
+
+    current = await get_current_user(request, db)
+    if current.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    if user_id == current.id:
+        # Den eigenen zweiten Faktor schaltet man in den Einstellungen ab — dort
+        # mit Passwort UND Code. Hier ginge es mit der Sitzung allein.
+        raise HTTPException(status_code=400,
+                            detail="Den eigenen zweiten Faktor schaltest du in den Einstellungen ab.")
+
+    target = await db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    war_aktiv = bool(target.mfa_enabled)
+    target.totp_secret_encrypted = None
+    target.mfa_enabled_at = None
+    target.mfa_recovery_codes = None
+    target.token_version += 1
+    await _verwaltung(db, AuditEventType.MFA_RESET, current, target, war_aktiv=war_aktiv)
+    await db.commit()
+
+    logger.info(f"Admin {current.email} reset MFA for user: {target.email}")
+    return {"user_id": target.id, "mfa_enabled": False}
 
 
 @router.delete("/users/{user_id}")

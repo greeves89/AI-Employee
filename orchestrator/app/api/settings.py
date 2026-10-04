@@ -68,6 +68,7 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         usd_eur_rate=settings.usd_eur_rate,
         sso_only_login=settings.sso_only_login,
         require_user_approval=settings.require_user_approval,
+        require_mfa_for_password_accounts=settings.require_mfa_for_password_accounts,
         revoke_msgraph_on_logout=settings.revoke_msgraph_on_logout,
         # Provider info
         model_provider=settings.model_provider,
@@ -157,6 +158,8 @@ _FIELD_MAP: dict[str, str] = {
     "usd_eur_rate": "usd_eur_rate",
     "sso_only_login": "sso_only_login",
     "require_user_approval": "require_user_approval",
+    # Zwei-Faktor-Pflicht (#915) — vierter Weg: Schema, diese Map, ALLOWED_KEYS, Antwort.
+    "require_mfa_for_password_accounts": "require_mfa_for_password_accounts",
     "revoke_msgraph_on_logout": "revoke_msgraph_on_logout",
     # Fehlte hier komplett — die PATCH-Schleife unten ueberspringt ein Feld
     # lautlos, wenn es nicht in dieser Map steht. Der Schalter "Eigene

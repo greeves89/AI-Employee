@@ -1324,24 +1324,10 @@ async def _safe_get(url: str, *, timeout: float, max_bytes: int = _MAX_FETCH_BYT
 
 
 def _qr_svg(data: str) -> str:
-    """Render `data` as a QR code SVG (no image deps — we build the SVG from the matrix)."""
-    import qrcode
+    """Render `data` as a QR code SVG — shared helper in app/core/qr_svg.py."""
+    from app.core.qr_svg import qr_svg
 
-    qr = qrcode.QRCode(border=2, box_size=1)
-    qr.add_data(data)
-    qr.make(fit=True)
-    matrix = qr.get_matrix()
-    n = len(matrix)
-    rects = [
-        f'<rect x="{x}" y="{y}" width="1" height="1"/>'
-        for y, row in enumerate(matrix) for x, cell in enumerate(row) if cell
-    ]
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" '
-        f'shape-rendering="crispEdges" width="320" height="320">'
-        f'<rect width="{n}" height="{n}" fill="#fff"/>'
-        f'<g fill="#000">{"".join(rects)}</g></svg>'
-    )
+    return qr_svg(data)
 
 
 async def _probe_embeddable(url: str) -> bool:

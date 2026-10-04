@@ -8,6 +8,7 @@ import {
   Container,
   Shield, ShieldAlert,
   ShieldCheck,
+  ShieldOff,
   ShieldX,
   Trash2,
   Loader2,
@@ -286,6 +287,29 @@ export default function AdminPage() {
       setResetPasswordResult({ email: res.email, tempPassword: res.temp_password });
     } catch (e) {
       toast.error("Passwort-Reset fehlgeschlagen", e instanceof Error ? e.message : undefined);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Zwei-Faktor zurücksetzen (#915) — etwa bei verlorenem Telefon. Beendet auch
+  // alle Sitzungen des Kontos; ist die Pflicht an, richtet es neu ein.
+  const handleResetMfa = async (u: AdminUser) => {
+    if (u.id === user?.id) return;
+    const ok = await confirm({
+      title: `Zwei-Faktor für "${u.name}" zurücksetzen?`,
+      message: `${u.email} — die Authenticator-App und alle Wiederherstellungscodes werden ungültig, bestehende Sitzungen enden sofort.`,
+      variant: "destructive",
+      confirmLabel: "Zurücksetzen",
+    });
+    if (!ok) return;
+    setActionLoading(u.id);
+    try {
+      await api.resetUserMfa(u.id);
+      toast.success("Zwei-Faktor zurückgesetzt", u.email);
+      await fetchUsers();
+    } catch (e) {
+      toast.error("Zwei-Faktor-Zurücksetzen fehlgeschlagen", e instanceof Error ? e.message : undefined);
     } finally {
       setActionLoading(null);
     }
@@ -618,6 +642,11 @@ export default function AdminPage() {
                           Wartet auf Freischaltung
                         </span>
                       )}
+                      {u.mfa_enabled && (
+                        <span className="mt-1 ml-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+                          <ShieldCheck className="h-3 w-3" /> Zwei-Faktor aktiv
+                        </span>
+                      )}
                     </div>
 
                     {/* Role badge */}
@@ -690,6 +719,15 @@ export default function AdminPage() {
                             >
                               <KeyRound className="h-4 w-4" />
                             </button>
+                            {u.mfa_enabled && (
+                              <button
+                                onClick={() => handleResetMfa(u)}
+                                className="p-2 rounded-lg text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10 transition-colors"
+                                title="Zwei-Faktor zurücksetzen"
+                              >
+                                <ShieldOff className="h-4 w-4" />
+                              </button>
+                            )}
                             <button
                               onClick={() => handleDeleteUser(u)}
                               className="p-2 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
