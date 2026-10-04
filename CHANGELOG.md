@@ -5,6 +5,104 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.0] - 2026-10-04
+
+Umsetzung der Befunde aus einem Markttest mit vier Testrollen (Geschäftsführung,
+Buchhaltung, IT-Leitung, Marketing). Issues #892–#917.
+
+### Wichtig beim Update
+- **Anmeldung mit Zwei-Faktor:** `POST /auth/login` liefert bei aktivem oder
+  vorgeschriebenem zweiten Faktor `{"mfa_required": true, "mfa_token": …}` statt einer
+  Sitzung; danach `POST /auth/mfa/verify`. Eigene Clients (App, Skripte) entsprechend
+  anpassen. Die Windows-Bridge meldet solche Konten verständlich.
+- **Budget-Vorgabe ist jetzt „Stoppen“** statt „auf Haiku umschalten“, und das Budget gilt
+  auch im Chat. Agenten mit Budget und Sparmodus bleiben unverändert (Hinweis im Concierge).
+- **Registrierung:** Auf neuen Anlagen ist die Selbstregistrierung nach dem ersten Admin
+  geschlossen. Bestehende Anlagen behalten ihr Verhalten (beim Start festgeschrieben).
+  SSO-Kontoanlage hat einen eigenen Schalter. Passwörter: mindestens 12 Zeichen.
+- **Einstellungen aufgeteilt:** `/settings` zeigt nur noch eigene Einstellungen; alles für
+  die ganze Anlage liegt in der Admin-Konsole (`/admin?tab=…`). Alte Adressen leiten weiter.
+- **Agenten-Abbild neu bauen und alle Agenten aktualisieren** (Streaming, Datum,
+  `dokument`-Werkzeug, Schriften).
+- **Datensicherung:** `BACKUP_STATUS_TOKEN` in `.env` (wird von `setup.sh`/`backup.sh`
+  erzeugt); Orchestrator neu starten.
+
+### Vertrauen und Kontrolle
+- **Prüfprotokoll revisionsfest (#908):** Rückfragen werden als Antwort protokolliert, nicht
+  als Freigabe; Verwerfen und Ablauf erscheinen; jede Entscheidung mit handelnder Person;
+  Anmeldungen, Nutzer-, Rollen-, Einstellungs- und MCP-Änderungen; Export als CSV (Excel,
+  Umlaute) für Admins. Agenten können keine menschlichen Ereignisse eintragen.
+- **Freigaben-Verlauf (#897):** Reiter „Verlauf“ mit Entscheider, Filtern; automatische
+  Regel-Kopien ausgeblendet bzw. nach Agent gruppiert.
+- **MCP-Server nicht mehr automatisch für alle (#909):** Schalter „Allen Nutzern
+  bereitstellen“ je Server; Mitglieder sehen keine Server-Adressen.
+- **Autonomie (#910):** Höchste Stufe je Rolle (Mitglied L3), geprüft auf allen
+  Anlege- und Änderungswegen; voller Root-Zugriff nur mit ausdrücklicher Bestätigung;
+  ehrliche Stufentexte; Admin-Liste „Agenten über der Rollengrenze“.
+- **Zwei-Faktor-Anmeldung (#915):** Authenticator-App für Passwort-Konten,
+  Wiederherstellungscodes, Admin-Schalter zum Erzwingen, Zurücksetzen durch Admin.
+- **Registrierung und Passwortregeln (#914)**, siehe oben.
+- **Scheduler (#912/#913):** Gestoppte Agenten werden nicht mehr für übersprungene Läufe
+  geweckt; System-Zeitpläne entstehen nur noch bei Verantwortungsbereichen.
+- **Lizenzhinweis (#917)** nur für Admins, nicht mehr über das öffentliche `/version`.
+- **Eigene Seiten (#904):** Sichtbarkeit „alle / nur Admins / Rollen“, neue Seiten nur Admins.
+- **Skill-Quellen (#895):** abschaltbar, Trend-Funde getrennt, Herkunft und Risiko sichtbar.
+
+### Chat und Ergebnisse
+- **Chat (#900, #911, #916, #906):** Antworten erscheinen live; Kopieren-Knopf; Gespräch
+  bleibt in der Adresse; Werkzeugaufrufe mit Eingabe und Ausgabe; interne Hinweise nach
+  Datei-Upload nicht mehr in Nachricht und Titel; Befehlsmenü ohne Dubletten.
+- **Datum (#905):** Alle Laufzeiten kennen Datum, Wochentag und Zeitzone.
+- **Versandfertige Ergebnisse (#893):** Werkzeug `dokument` (PDF in A4 ohne Browser-Kopf-
+  und Fußzeile, Seitenzahlen; Word); Anzeige weist PDFs mit Browser-Rändern ab; Angebote
+  mit echten Firmendaten statt erfundener Absender.
+- **DATEV (#894):** Buchungsstapel mit Bruttobetrag bei BU-Schlüssel.
+
+### Kosten und Budget
+- **Eine Kostenquelle (#896):** Dashboard, Budget, Health und Liste rechnen gleich,
+  Chat inklusive; Eingabe in Anzeigewährung; Health ohne „Invalid Date“.
+- **Budget gilt im Chat (#898):** auf allen Wegen (Web, Telegram, Kiosk, Kanäle,
+  Sprachfront, Ziele); Sparmodell nur, wo die Laufzeit eines hat.
+
+### Oberfläche und Sprache
+- **Durchgehend Deutsch (#902):** Anmeldung, Admin, Einstellungen, Vorlagen, Explorer,
+  Rollen, Symbolsuche, Fehlermeldungen.
+- **Zeitpläne (#901):** ein Formular mit Wochentag/Uhrzeit, monatlich, Freitext mit
+  Vorschau; Handy-tauglich; Löschen mit Rückfrage.
+- **Vorlagen-Auswahl (#903):** Fachvorlagen zuerst, Suche, Bereiche, Fach-Skills sichtbar,
+  Technik nur unter „Technische Details“; „Neuer Agent“ mit einem Klick.
+- **Admin-Konsole mit einer Ebene (#899).**
+- **Mobil und Kleinkram (#907):** Datei-Karten, Untertitel, Beschriftungen, Ergebnisordner
+  oben, keine Systemdateien für Mitglieder, kein 404 beim Profilfoto.
+
+### Betrieb und Datenschutz (#892)
+- `backup.sh` sichert Arbeitsordner, Sitzungen und den Schlüssel; `restore.sh` mit
+  Prüfsummen und Selbsttest; `update.sh` sichert vor dem Update.
+- Datensicherungs-Status in der Admin-Konsole; Nutzer löschen mit „Agenten übertragen oder
+  löschen“; Agent „mit Daten“ löschen entfernt Chats und Gedächtnis.
+- Aufbewahrungsfristen für Prüfprotokoll und Chats (Standard unbegrenzt); Lebenszeichen an
+  den Anbieter in der Oberfläche abschaltbar.
+- Handbuch-Kapitel „Betrieb & Datenschutz (für IT)“.
+
+### Sicherheit
+- PDF-Rendern abgeschottet (kein Netz, nur Bilder/Schriften/Stylesheets aus dem Ordner).
+- CSV-Export entschärft Formeln; MCP-Protokoll speichert nur Schema und Host.
+- Bridge-WebSocket nimmt nur gültige Zugangstoken an.
+- Ergebnisse einer Sicherheitsprüfung des Releases behoben: Computer-Use-Voreinstellung
+  unter der Autonomie-Grenze; Rolle ohne Grenze gilt als L1; „mit Daten löschen“ nur für
+  Besitzer und Admin; Passwortprüfung in der Zwei-Faktor-Verwaltung gedrosselt;
+  Zwei-Faktor-Pflicht greift auch bei Registrierung und meldet Konten ohne zweiten Faktor
+  ab; Fehlanmeldungen mit unbekannter Adresse werden gesammelt protokolliert, Grenze je
+  Adresse und je Konto; Agenten tragen nur eigene Handlungen ins Prüfprotokoll ein;
+  Geheimnisse in Werkzeug-Eingaben werden maskiert (gespeichert und live);
+  `restore.sh` sichert die laufende Datenbank vor dem Zurückspielen; Backup-Schlüssel
+  nicht mehr in der Prozessliste; Profilfoto nur als Bild.
+- Budget: Webhooks, Agenten-Nachrichten und Besprechungen laufen durch die Budgetprüfung;
+  gelöschte Chats und Aufgaben behalten ihre Kosten (inhaltslose Kostenhistorie);
+  ein gesperrtes Ziel (`/goal`) pausiert mit Grund.
+
+---
+
 ## [1.361.1] - 2026-10-04
 
 ### Neu

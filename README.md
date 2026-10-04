@@ -167,6 +167,7 @@ Database migrations run on start. Data lives in named Docker volumes and survive
 - **Browser automation** — agents drive a headless browser, in all three runtimes.
 - **Computer Bridge** — a tray app for macOS and Windows that lets an agent work on your desktop, with granular permissions and folder restrictions.
 - **Single sign-on** — Microsoft Entra, Google, OIDC and SAML 2.0 with group mapping.
+- **Two-factor sign-in** — authenticator app (TOTP) with recovery codes for password accounts; administrators can enforce it.
 - **Ticket systems** — Matrix42 and a generic REST profile.
 
 ### Operations
@@ -174,7 +175,7 @@ Database migrations run on start. Data lives in named Docker volumes and survive
 - **Idle lifecycle** — agents stop when idle and wake on login, chat or a scheduled task; individual agents can be kept always on.
 - **Health and self-test** — checks for Redis, Postgres, Docker, the embedding service and every agent, plus an administrator overview of what needs attention.
 - **Monitoring** — Prometheus metrics and Grafana dashboards (`docker-compose.monitoring.yml`).
-- **Backups** — scripts for database dumps and volume archives, with a cron installer.
+- **Backups** — `backup.sh` saves the database, agent workspaces, sessions and the encryption key; `restore.sh` verifies checksums and runs a self-test; `update.sh` backs up before every update. Backup status, retention periods and the usage ping are managed in the admin console.
 - **Reverse proxy** — Caddy and Traefik configurations with TLS.
 - **High availability** — an optional multi-node setup (`deploy/docker-compose.ha.yml`).
 - **Mobile** — an installable PWA with web push, and a native iOS app (beta).
