@@ -149,7 +149,7 @@ async def _collect_attention(
                 f"KI-Konto „{row.name}“",
                 f"Letzte Prüfung: {row.last_status}"
                 + (f" — {row.last_error}" if row.last_error else ""),
-                link="/ai-accounts",
+                link="/admin?tab=ai-accounts",
             ))
     except Exception:  # noqa: BLE001
         logger.debug("KI-Konten nicht pruefbar", exc_info=True)

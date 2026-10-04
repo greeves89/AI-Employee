@@ -381,6 +381,12 @@ def require_feature(feature: str) -> None:
     lic = get_current_license()
     if not lic.has_feature(feature):
         from fastapi import HTTPException
+
+        from app.config import settings
+
+        # Editionen und Preise nennt der Anbieter der Anlage (#899), nicht das
+        # Quellcode-Repository.
+        anbieter = settings.anbieter_url.strip()
         raise HTTPException(
             status_code=402,  # Payment Required
             detail={
@@ -388,9 +394,8 @@ def require_feature(feature: str) -> None:
                 "feature": feature,
                 "current_tier": lic.tier,
                 "message": (
-                    f"The feature '{feature}' requires a higher license tier. "
-                    f"You are on '{lic.tier}'. "
-                    f"See https://github.com/greeves89/AI-Employee for upgrade options."
+                    f"Die Funktion „{feature}“ ist in der Edition „{lic.tier}“ nicht enthalten."
+                    + (f" Editionen und Preise: {anbieter}" if anbieter else "")
                 ),
             },
         )

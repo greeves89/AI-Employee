@@ -101,7 +101,7 @@ async def transcribe_chunk(
         raise HTTPException(
             status_code=502,
             detail="Transkription fehlgeschlagen: kein STT-Service erreichbar und kein "
-                   "OpenAI-Key für den Fallback konfiguriert (Einstellungen → voice_openai_api_key).",
+                   "OpenAI-Key für den Fallback konfiguriert (Admin-Konsole → Sprache (Voice)).",
         )
     try:
         return {"text": await _transcribe_openai(raw, filename, content_type, api_key)}

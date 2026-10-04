@@ -181,7 +181,7 @@ export function UserMenu({ collapsed = false }: { collapsed?: boolean }) {
               className="flex w-full items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
             >
               <Settings className="h-3.5 w-3.5" />
-              Einstellungen
+              Meine Einstellungen
             </button>
             <button
               onClick={handleLogout}

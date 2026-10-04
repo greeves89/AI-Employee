@@ -2880,6 +2880,8 @@ export interface License {
   private_nutzung?: boolean;
   /** Der eine Satz zum Lizenzstand, falls es etwas zu sagen gibt. */
   hinweis?: string | null;
+  /** Wohin Editionen, Preise und Kontakt verweisen (ANBIETER_URL / ANBIETER_KONTAKT). */
+  anbieter?: { url: string; kontakt: string };
 }
 
 /** Erklärung des Administrators: private / nicht-gewerbliche Nutzung. */

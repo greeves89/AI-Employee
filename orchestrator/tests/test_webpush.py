@@ -210,8 +210,8 @@ class PwaTests(unittest.TestCase):
         self.assertIn('manifest: "/manifest.json"', src)
 
     def test_settings_offer_the_switch(self):
-        src = (REPO / "frontend/src/app/settings/view.tsx").read_text()
-        self.assertIn("PushToggle", src)
+        src = (REPO / "frontend/src/app/settings/meine-einstellungen.tsx").read_text()
+        self.assertIn("<PushToggle />", src)
 
     def test_endpoints_exist(self):
         src = (ORCH / "app/api/notifications.py").read_text()

@@ -33,7 +33,6 @@ import {
   Check,
   CheckCircle2,
   Edit3,
-  Settings as SettingsIcon,
   KeyRound,
   HeartPulse,
   ScrollText,
@@ -42,6 +41,10 @@ import {
   Search,
   Download,
   Scale,
+  Layers,
+  Mic,
+  Plug,
+  Lock,
 } from "lucide-react";
 import { Github } from "@/components/icons/github";
 
@@ -55,6 +58,15 @@ import { DlpView } from "@/app/admin/dlp-view";
 import { GesetzeView } from "@/app/admin/gesetze-view";
 import { WebSearchView } from "@/app/admin/web-search-view";
 import { MasterRulesView } from "@/app/admin/master-rules-view";
+import { VoiceSettings } from "@/components/settings/voice-settings";
+import { TemplateManager } from "@/components/settings/template-manager";
+import {
+  ADMIN_GRUPPEN,
+  ADMIN_BEREICH_NAMEN,
+  adminBereichAusTab,
+  adminPfad,
+  type AdminBereich,
+} from "@/lib/admin-bereiche";
 import { cn, timeAgo, formatCost } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/lib/auth";
@@ -72,32 +84,41 @@ import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
 import { formatMoney } from "@/lib/money";
 import { rollenName } from "@/lib/rollen";
 
-type Tab =
-  | "users" | "agents" | "assignments" | "roles" | "feedback" | "budget"
-  | "settings" | "ai-accounts" | "second-brains" | "secrets" | "health" | "audit" | "dlp"
-  | "master-rules" | "web-search" | "gesetze"
-  | "pages" | "sso-groups";
 
-// Tabs whose content is a full embedded page component (rendered without
-// their own <Header>). They don't depend on the admin page's own data load.
-const EMBEDDED_TABS: Tab[] = ["settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp", "master-rules", "web-search", "gesetze"];
+type Tab = AdminBereich;
 
-const ALLE_TABS: Tab[] = [
-  "users", "agents", "assignments", "roles", "feedback", "budget",
-  "settings", "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp",
-  "master-rules", "web-search", "gesetze", "pages", "sso-groups",
+// Bereiche, deren Inhalt eine eigene, vollstaendige Ansicht ist. Sie haengen
+// nicht an den Daten, die diese Seite selbst laedt (Nutzer, Agenten).
+const EMBEDDED_TABS: Tab[] = [
+  "modelle", "integrationen-anlage", "system", "sprache", "vorlagen",
+  "ai-accounts", "second-brains", "secrets", "health", "audit", "dlp",
+  "master-rules", "web-search", "gesetze",
 ];
 
-// Das Menüband ist zweistufig: oben die Themengruppe, darunter deren Unterreiter.
-// So bleiben alle Bereiche sichtbar, ohne dass 13 Reiter in einer Zeile scrollen.
-const TAB_GROUPS: { id: string; label: string; icon: typeof Users; tabs: Tab[] }[] = [
-  { id: "people", label: "Nutzer & Rollen", icon: Users, tabs: ["users", "roles", "sso-groups"] },
-  { id: "agents", label: "Agenten", icon: Cpu, tabs: ["agents", "assignments"] },
-  { id: "ki", label: "KI & Wissen", icon: Brain, tabs: ["ai-accounts", "second-brains", "web-search"] },
-  { id: "security", label: "Compliance", icon: Shield, tabs: ["master-rules", "secrets", "dlp", "audit", "gesetze"] },
-  { id: "ops", label: "Betrieb", icon: HeartPulse, tabs: ["health", "budget", "feedback"] },
-  { id: "system", label: "System", icon: SettingsIcon, tabs: ["settings", "pages"] },
-];
+const BEREICH_SYMBOLE: Record<Tab, typeof Users> = {
+  users: Users,
+  roles: Shield,
+  "sso-groups": KeyRound,
+  agents: Cpu,
+  assignments: UserCog,
+  vorlagen: Layers,
+  modelle: Brain,
+  "ai-accounts": Cpu,
+  sprache: Mic,
+  "second-brains": Brain,
+  "web-search": Search,
+  "integrationen-anlage": Plug,
+  system: Lock,
+  pages: AppWindow,
+  "master-rules": ShieldAlert,
+  secrets: KeyRound,
+  dlp: Shield,
+  audit: ScrollText,
+  gesetze: Scale,
+  health: HeartPulse,
+  budget: DollarSign,
+  feedback: MessageSquare,
+};
 
 const stateColors: Record<string, string> = {
   running: "bg-emerald-500",
@@ -116,14 +137,20 @@ export default function AdminPage() {
   const user = useAuthStore((s) => s.user);
   const [mountUserId, setMountUserId] = useState<string | null>(null);
   const [resetPasswordResult, setResetPasswordResult] = useState<{ email: string; tempPassword: string } | null>(null);
-  // Direkt in einen Reiter springen können (z.B. von der Seitenleiste aus
-  // "Rechte" -> Rollen), statt immer erst auf der Nutzerliste zu landen.
-  // Ein fremder/kaputter Query-Parameter darf keinen unbekannten Reiter setzen.
+  // Jeder Bereich ist per ?tab= direkt ansteuerbar (Lesezeichen, Handbuch,
+  // Benachrichtigungen). Alte Kennungen (settings, lizenz, voice) loest
+  // lib/admin-bereiche auf; Unbekanntes faellt auf die Nutzerliste.
   const angefragterReiter = searchParams.get("tab");
-  const initialTab = (ALLE_TABS.includes(angefragterReiter as Tab)
-    ? (angefragterReiter as Tab)
-    : "users");
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const [tab, setTab] = useState<Tab>(() => adminBereichAusTab(angefragterReiter).bereich);
+  // Ein Link auf einen anderen Bereich, waehrend die Konsole schon offen ist,
+  // aendert nur die Adresse — der Bereich muss trotzdem folgen.
+  useEffect(() => {
+    setTab(adminBereichAusTab(angefragterReiter).bereich);
+  }, [angefragterReiter]);
+  const waehleBereich = (bereich: Tab) => {
+    setTab(bereich);
+    router.replace(adminPfad(bereich), { scroll: false });
+  };
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -436,29 +463,17 @@ export default function AdminPage() {
 
   const pendingFeedback = feedbackItems.filter((f) => f.status === "pending").length;
 
-  const tabs: { id: Tab; label: string; icon: typeof Users; count?: number }[] = [
-    { id: "users", label: "Nutzer", icon: Users, count: users.length },
-    { id: "agents", label: "Alle Agenten", icon: Cpu, count: agents.length },
-    { id: "assignments", label: "Zuweisungen", icon: UserCog, count: assignments.length || undefined },
-    { id: "roles", label: "Rollen", icon: Shield, count: customRoles.length || undefined },
-    { id: "feedback", label: "Feedback", icon: MessageSquare, count: pendingFeedback || undefined },
-    { id: "budget", label: "Budget", icon: DollarSign },
-    { id: "settings", label: "Einstellungen", icon: SettingsIcon },
-    { id: "ai-accounts", label: "KI-Konten", icon: Cpu },
-    { id: "second-brains", label: "Second Brains", icon: Brain },
-    { id: "web-search", label: "Websuche", icon: Search },
-    { id: "secrets", label: "Schlüssel & Zugangsdaten", icon: KeyRound },
-    { id: "health", label: "Systemzustand", icon: HeartPulse },
-    { id: "audit", label: "Protokoll", icon: ScrollText },
-    { id: "dlp", label: "DLP-Filter", icon: Shield },
-    { id: "master-rules", label: "Master-Regeln", icon: ShieldAlert },
-    { id: "gesetze", label: "Gesetze", icon: Scale },
-    { id: "pages", label: "Seiten & Links", icon: AppWindow },
-    { id: "sso-groups", label: "SSO-Gruppen", icon: KeyRound },
-  ];
+  const anzahl: Partial<Record<Tab, number | undefined>> = {
+    users: users.length,
+    agents: agents.length,
+    assignments: assignments.length || undefined,
+    roles: customRoles.length || undefined,
+    feedback: pendingFeedback || undefined,
+  };
 
-  const tabById = new Map(tabs.map((t) => [t.id, t]));
-  const activeGroup = TAB_GROUPS.find((g) => g.tabs.includes(tab)) ?? TAB_GROUPS[0];
+  // Ein Mitglied wird oben weggeleitet — bis dahin nichts zeigen und keinen
+  // Bereich laden, dessen Schnittstellen ihm ohnehin verwehrt sind.
+  if (user && user.role !== "admin") return null;
 
   return (
     <div>
@@ -473,69 +488,97 @@ export default function AdminPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {/* Menüband, zweistufig: Themengruppe oben, Unterreiter darunter */}
-        <div className="mb-5">
-          <div className="flex gap-1 overflow-x-auto rounded-xl border border-border/50 bg-card/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {TAB_GROUPS.map((g) => {
-              const Icon = g.icon;
-              const active = activeGroup.id === g.id;
-              const alert = g.tabs.includes("feedback") && pendingFeedback > 0;
-              return (
-                <button
-                  key={g.id}
-                  onClick={() => { if (!g.tabs.includes(tab)) setTab(g.tabs[0]); }}
-                  className={cn(
-                    "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-medium transition-all",
-                    active
-                      ? "bg-accent text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {g.label}
-                  {alert && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />}
-                </button>
-              );
-            })}
+        {/* Eine Ebene (#899): links alle Bereiche, nach Gruppen ueberschrieben —
+            jeder Bereich mit einem Klick. Auf schmalen Bildschirmen dieselbe
+            Liste als Auswahlfeld. */}
+        <div className="lg:grid lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:gap-8">
+        <nav aria-label="Bereiche der Admin-Konsole" className="mb-5 lg:mb-0">
+          <label className="lg:hidden">
+            <span className="sr-only">Bereich wählen</span>
+            <select
+              value={tab}
+              onChange={(e) => waehleBereich(e.target.value as Tab)}
+              className="w-full rounded-xl border border-border/50 bg-card/50 px-3.5 py-2.5 text-sm font-medium outline-none focus:border-primary/50"
+            >
+              {ADMIN_GRUPPEN.map((g) => (
+                <optgroup key={g.id} label={g.titel}>
+                  {g.bereiche.map((id) => (
+                    <option key={id} value={id}>
+                      {ADMIN_BEREICH_NAMEN[id]}
+                      {anzahl[id] ? ` (${anzahl[id]})` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+
+          <div className="hidden lg:sticky lg:top-6 lg:block space-y-4">
+            {ADMIN_GRUPPEN.map((g) => (
+              <div key={g.id}>
+                <h2 className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  {g.titel}
+                </h2>
+                <ul className="space-y-0.5">
+                  {g.bereiche.map((id) => {
+                    const Icon = BEREICH_SYMBOLE[id];
+                    const zahl = anzahl[id];
+                    const aktiv = tab === id;
+                    return (
+                      <li key={id}>
+                        <button
+                          type="button"
+                          onClick={() => waehleBereich(id)}
+                          aria-current={aktiv ? "page" : undefined}
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] font-medium transition-colors",
+                            aktiv
+                              ? "bg-accent text-foreground"
+                              : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
+                          )}
+                        >
+                          <Icon className="h-3.5 w-3.5 shrink-0" />
+                          <span className="min-w-0 flex-1 truncate">{ADMIN_BEREICH_NAMEN[id]}</span>
+                          {zahl != null && zahl > 0 && (
+                            <span className={cn(
+                              "rounded px-1.5 py-0.5 text-[10px] tabular-nums",
+                              id === "feedback" ? "bg-amber-500/20 text-amber-700 dark:text-amber-400" : "bg-foreground/10"
+                            )}>
+                              {zahl}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
           </div>
+        </nav>
 
-          {activeGroup.tabs.length > 1 && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5 px-1">
-              {activeGroup.tabs.map((id) => {
-                const t = tabById.get(id);
-                if (!t) return null;
-                const Icon = t.icon;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => setTab(id)}
-                    className={cn(
-                      "flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all",
-                      tab === id
-                        ? "border-primary/40 bg-primary/10 text-primary"
-                        : "border-transparent text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
-                    )}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {t.label}
-                    {t.count != null && t.count > 0 && (
-                      <span className={cn(
-                        "rounded px-1.5 py-0.5 text-[10px]",
-                        id === "feedback" ? "bg-amber-500/20 text-amber-700 dark:text-amber-400" : "bg-foreground/10"
-                      )}>
-                        {t.count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
+        <div className="min-w-0">
         {EMBEDDED_TABS.includes(tab) ? (
           <div>
-            {tab === "settings" && <SettingsView embedded />}
+            {/* key: jeder Bereich laedt seine Daten selbst */}
+            {(tab === "modelle" || tab === "integrationen-anlage" || tab === "system") && (
+              <SettingsView
+                key={tab}
+                bereich={tab === "integrationen-anlage" ? "integrationen" : tab}
+              />
+            )}
+            {tab === "sprache" && <VoiceSettings />}
+            {tab === "vorlagen" && (
+              <section>
+                <div className="flex items-center gap-2 mb-3">
+                  <Layers className="h-4 w-4 text-muted-foreground/60" />
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    Agenten-Vorlagen
+                  </h2>
+                </div>
+                <TemplateManager isAdmin />
+              </section>
+            )}
             {tab === "ai-accounts" && <AIAccountsView embedded />}
             {tab === "second-brains" && <SecondBrainsView embedded />}
             {tab === "web-search" && <WebSearchView embedded />}
@@ -1110,6 +1153,8 @@ export default function AdminPage() {
             )}
           </>
         )}
+        </div>
+        </div>
       </motion.div>
 
       {/* Add User Modal */}
@@ -1652,7 +1697,7 @@ function FeedbackTab({
     if (githubConnected === false) {
       toast.warning(
         "GitHub nicht verbunden",
-        "Bitte zuerst unter Einstellungen → Integrationen einen GitHub-Account (PAT) verbinden."
+        "Bitte zuerst unter Integrationen (Seitenleiste) einen GitHub-Account (PAT) verbinden."
       );
       return;
     }
@@ -1667,7 +1712,7 @@ function FeedbackTab({
         setGithubConnected(null);
         toast.warning(
           "GitHub nicht verbunden",
-          "Bitte zuerst unter Einstellungen → Integrationen einen GitHub-Account (PAT) verbinden."
+          "Bitte zuerst unter Integrationen (Seitenleiste) einen GitHub-Account (PAT) verbinden."
         );
       } else {
         toast.error("GitHub Issue konnte nicht erstellt werden", msg);
@@ -1850,7 +1895,7 @@ function FeedbackTab({
                       )}
                       title={
                         githubConnected === false
-                          ? "GitHub nicht verbunden — unter Einstellungen → Integrationen verbinden"
+                          ? "GitHub nicht verbunden — unter Integrationen (Seitenleiste) verbinden"
                           : "GitHub Issue erstellen"
                       }
                     >

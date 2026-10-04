@@ -103,10 +103,10 @@ export function ReflectionCard() {
         <div className="text-center py-4">
           <p className="text-sm text-muted-foreground/60">Nachtschicht ist deaktiviert</p>
           <Link
-            href="/settings"
+            href="/admin?tab=system"
             className="mt-2 inline-flex text-[12px] text-primary hover:text-primary/80 transition-colors"
           >
-            In den Einstellungen aktivieren
+            In der Admin-Konsole aktivieren
           </Link>
         </div>
       ) : (

@@ -132,6 +132,10 @@ services:
       APNS_TEAM_ID: ${APNS_TEAM_ID:-}
       APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-com.da.ai-employee-ios.ai-employee-ios}
       APNS_SANDBOX: ${APNS_SANDBOX:-true}
+      # Anbieter der Anlage: Ziel des Verweises auf Editionen, Preise und Kontakt
+      # im Lizenzbereich der Admin-Konsole. Leer gesetzt = kein Verweis.
+      ANBIETER_URL: ${ANBIETER_URL-https://agents.future-app.de}
+      ANBIETER_KONTAKT: ${ANBIETER_KONTAKT:-}
       AGENT_IMAGE: ai-employee-agent:latest
       KIOSK_VOICE_ENABLED: ${KIOSK_VOICE_ENABLED:-}
       KIOSK_ENABLED: ${KIOSK_ENABLED:-false}

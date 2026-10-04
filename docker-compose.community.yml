@@ -98,6 +98,10 @@ services:
       APNS_TEAM_ID: ${APNS_TEAM_ID:-}
       APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-com.da.ai-employee-ios.ai-employee-ios}
       APNS_SANDBOX: ${APNS_SANDBOX:-true}
+      # Anbieter der Anlage: Ziel des Verweises auf Editionen, Preise und Kontakt
+      # im Lizenzbereich der Admin-Konsole. Leer gesetzt = kein Verweis.
+      ANBIETER_URL: ${ANBIETER_URL-https://agents.future-app.de}
+      ANBIETER_KONTAKT: ${ANBIETER_KONTAKT:-}
       OAUTH_REDIRECT_BASE_URL: ${OAUTH_REDIRECT_BASE_URL:-http://localhost:8000}
       # Agent image this orchestrator spawns
       AGENT_IMAGE: "ghcr.io/greeves89/ai-employee-agent:${AI_EMPLOYEE_VERSION:-latest}"

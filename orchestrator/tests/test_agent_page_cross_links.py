@@ -15,14 +15,17 @@ FRONTEND = REPO / "frontend/src"
 
 
 class TelegramCrossLinkTests(unittest.TestCase):
-    def test_per_agent_section_points_at_the_personal_settings(self):
+    def test_per_agent_section_names_the_other_bot(self):
+        # #899: Der globale Bot ist eine Einstellung der Anlage (nur Admins
+        # speichern sie). Der Agent nennt ihn, verlinkt aber nicht in die
+        # Admin-Konsole — die Seite sehen auch Mitglieder.
         src = (FRONTEND / "app/agents/[id]/page.tsx").read_text()
-        self.assertIn('href="/settings"', src)
         self.assertIn("NUR für diesen Agenten", src)
+        self.assertIn("Telegram-Bot der Anlage", src)
 
-    def test_global_settings_clarifies_it_is_the_personal_bot(self):
+    def test_global_settings_clarifies_it_is_the_installation_bot(self):
         src = (FRONTEND / "app/settings/view.tsx").read_text()
-        self.assertIn("Telegram Bot (dein Konto)", src)
+        self.assertIn("Telegram-Bot der Anlage", src)
 
 
 class IntegrationsCrossLinkTests(unittest.TestCase):
