@@ -88,6 +88,8 @@ class LoginRequest(BaseModel):
 
 #: Einzige Anmeldeart mit Profilfoto (Microsoft Graph).
 FOTO_ANBIETER = "microsoft"
+#: Inhaltsarten, die ``/me/photo`` durchreicht — Rasterbilder, kein SVG.
+FOTO_INHALTSARTEN = frozenset({"image/jpeg", "image/png", "image/gif", "image/webp"})
 
 
 class UserResponse(BaseModel):
@@ -834,10 +836,17 @@ async def get_me_photo(request: Request, db: AsyncSession = Depends(get_db)):
         return kein_foto
     if resp.status_code != 200 or not resp.content:
         return kein_foto
+    # Nur echte Rasterbilder durchreichen: die Inhaltsart kommt von aussen, und
+    # ein ``text/html`` oder ``image/svg+xml`` liefe sonst unter der Adresse der
+    # Anlage als Seite bzw. Skript. Ohne passende Art: kein Foto.
+    art = (resp.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+    if art not in FOTO_INHALTSARTEN:
+        return kein_foto
     return Response(
         content=resp.content,
-        media_type=resp.headers.get("Content-Type", "image/jpeg"),
-        headers={"Cache-Control": "private, max-age=3600"},
+        media_type=art,
+        headers={"Cache-Control": "private, max-age=3600",
+                 "X-Content-Type-Options": "nosniff"},
     )
 
 

@@ -57,5 +57,43 @@ class FotoEndpunktTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(antwort.status_code, 204)
 
 
+class FotoInhaltsartTests(unittest.IsolatedAsyncioTestCase):
+    """Die Inhaltsart kam ungeprueft von Microsoft Graph durch — ein ``text/html``
+    waere unter der Adresse der Anlage als Seite ausgeliefert worden (#907)."""
+
+    async def _abruf(self, content_type):
+        antwort_graph = SimpleNamespace(
+            status_code=200, content=b"\x89PNG-Bilddaten",
+            headers={"Content-Type": content_type} if content_type else {},
+        )
+        client = MagicMock()
+        client.get = AsyncMock(return_value=antwort_graph)
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        dienst = MagicMock()
+        dienst.get_valid_token = AsyncMock(return_value="token")
+        with patch("app.dependencies.get_current_user", AsyncMock(return_value=_nutzer("microsoft"))), \
+                patch("app.services.oauth_service.OAuthService", return_value=dienst), \
+                patch("httpx.AsyncClient", return_value=client):
+            return await get_me_photo(SimpleNamespace(), SimpleNamespace())
+
+    async def test_bildformate_werden_ausgeliefert(self):
+        for art in ("image/jpeg", "image/png", "image/gif", "image/webp", "IMAGE/PNG; charset=binary"):
+            with self.subTest(art=art):
+                antwort = await self._abruf(art)
+                self.assertEqual(antwort.status_code, 200)
+                self.assertEqual(antwort.body, b"\x89PNG-Bilddaten")
+                self.assertTrue(antwort.media_type.startswith("image/"))
+                self.assertEqual(antwort.headers.get("x-content-type-options"), "nosniff")
+
+    async def test_andere_inhaltsarten_ergeben_kein_foto(self):
+        for art in ("text/html", "image/svg+xml", "application/javascript",
+                    "application/octet-stream", None):
+            with self.subTest(art=art):
+                antwort = await self._abruf(art)
+                self.assertEqual(antwort.status_code, 204)
+                self.assertEqual(antwort.body, b"")
+
+
 if __name__ == "__main__":
     unittest.main()
