@@ -6,6 +6,7 @@ import json
 import logging
 import secrets
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -76,6 +77,25 @@ class WebhookTrigger(BaseModel):
 
 
 # --- Per-agent webhook settings ---
+
+async def _auftrag_zustellen(redis: RedisService, agent_id: str, task: Task, payload: dict) -> dict:
+    """Webhook-Auftrag einreihen — über ``push_task``, also mit Budgetprüfung (#898).
+
+    Bis v1.362 schrieb der Webhook direkt in ``agent:{id}:tasks``, am Budget vorbei.
+    Gesperrt: nicht eingereiht, die (hier noch nicht gespeicherte) Aufgabe steht als
+    gescheitert mit dem deutschen Hinweis da, und der Aufrufer liest ihn in der
+    Antwort. Sparmodus: die Aufgabe nennt das Modell, mit dem sie wirklich laeuft.
+    """
+    einreihung = await redis.push_task(agent_id, payload)
+    if not einreihung.eingereiht:
+        task.status = TaskStatus.FAILED
+        task.error = einreihung.hinweis
+        task.completed_at = datetime.now(timezone.utc)
+        return {"eingereiht": False, "hinweis": einreihung.hinweis}
+    if einreihung.modell:
+        task.model = einreihung.modell
+    return {"eingereiht": True}
+
 
 async def _assert_agent_owned(agent_id: str, user, db) -> None:
     """404 unless the caller owns/shares the agent (admin bypass). Defense-in-depth
@@ -288,15 +308,15 @@ async def receive_webhook(
                 metadata_={"source": "webhook", "trigger": trigger.name},
             )
             db.add(task)
-            task_payload = json.dumps({
+            zustellung = await _auftrag_zustellen(redis, agent_id, task, {
                 "id": task_id,
                 "prompt": prompt,
                 "title": title,
                 "model": trigger.model,
                 "priority": trigger.priority,
             })
-            await redis.client.lpush(f"agent:{agent_id}:tasks", task_payload)
-            tasks_created.append({"task_id": task_id, "trigger_id": trigger.id, "trigger_name": trigger.name})
+            tasks_created.append({"task_id": task_id, "trigger_id": trigger.id,
+                                  "trigger_name": trigger.name, **zustellung})
     else:
         # No triggers defined — fall back to default behavior (create task with raw payload)
         prompt = sanitize_webhook_payload(payload, str(source), str(event_type))
@@ -311,14 +331,14 @@ async def receive_webhook(
             metadata_={"source": "webhook"},
         )
         db.add(task)
-        task_payload = json.dumps({
+        zustellung = await _auftrag_zustellen(redis, agent_id, task, {
             "id": task_id,
             "prompt": prompt,
             "title": title,
             "model": None,
         })
-        await redis.client.lpush(f"agent:{agent_id}:tasks", task_payload)
-        tasks_created.append({"task_id": task_id, "trigger_id": None, "trigger_name": None})
+        tasks_created.append({"task_id": task_id, "trigger_id": None, "trigger_name": None,
+                              **zustellung})
 
     # Update webhook event with first task link. Seit #392 kann ein Auslöser
     # statt eines Auftrags einen Workflow starten — dann gibt es hier keinen

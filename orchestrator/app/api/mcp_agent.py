@@ -428,13 +428,20 @@ async def _call_tool(name: str, args: dict, agent: Agent, db: AsyncSession, redi
         )
         db.add(task_obj)
         await db.commit()
-        payload = json.dumps({
+        # Ueber ``push_task`` — mit Budgetpruefung (#898). Bisher direkt in die
+        # Liste, am Budget vorbei. Gesperrt: die Aufgabe ist als gescheitert
+        # vermerkt, der Aufrufer bekommt den deutschen Hinweis als Fehler.
+        einreihung = await redis.push_task(agent.id, {
             "id": task_id,
             "prompt": prompt,
             "title": title,
             "model": None,
         })
-        await redis.client.lpush(f"agent:{agent.id}:tasks", payload)
+        if not einreihung.eingereiht:
+            return _tool_result(einreihung.hinweis, is_error=True)
+        if einreihung.modell:
+            task_obj.model = einreihung.modell
+            await db.commit()
         hint = ("A POST will be sent to your callback_url when it finishes."
                 if callback_url
                 else f"Use get_task_status(task_id='{task_id}') to check progress.")

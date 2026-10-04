@@ -2571,7 +2571,13 @@ async def send_message_to_agent(
                 "Empfaenger nicht laeuft — sie wird erst beim naechsten Start gelesen",
                 message_id, from_id, agent_id,
             )
-        await redis.client.lpush(f"agent:{agent_id}:messages", message_payload)
+        # Mit Budgetpruefung (#898): jede Nachricht startet beim Empfaenger einen
+        # Modelllauf. Gesperrt → nicht zustellen, der Absender bekommt den Hinweis.
+        from app.core.chat_auftrag import nachricht_einreihen
+
+        zustellung = await nachricht_einreihen(redis.client, agent_id, message_payload)
+        if not zustellung.eingereiht:
+            raise HTTPException(status_code=402, detail=zustellung.hinweis)
 
         # Persist in DB for history/visualization
         from app.models.agent_message import AgentMessage as AgentMessageModel

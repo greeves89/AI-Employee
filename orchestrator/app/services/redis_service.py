@@ -225,12 +225,21 @@ class RedisService:
 
     MAX_QUEUE_SIZE = 100  # Backpressure: auto-evict oldest tasks beyond this depth
 
-    async def push_task(self, agent_id: str, task_payload: str) -> None:
+    async def push_task(self, agent_id: str, task_payload: str | dict):
+        """Aufgabe einreihen — der EINE Weg in ``agent:{id}:tasks``.
+
+        Prüft vorher das Budget (``chat_auftrag.aufgabe_einreihen``, #898). Gesperrt:
+        nicht eingereiht, die Aufgabe ist als gescheitert vermerkt, Besitzer und
+        Administratoren sind benachrichtigt. Rückgabe: ``Einreihung``.
+        """
         if not self.client:
             raise RuntimeError("Redis not connected")
+        from app.core.chat_auftrag import aufgabe_einreihen
+
+        einreihung = await aufgabe_einreihen(self.client, agent_id, task_payload)
+        if not einreihung.eingereiht:
+            return einreihung
         queue_key = f"agent:{agent_id}:tasks"
-        # Push the new task
-        await self.client.lpush(queue_key, task_payload)
         # Auto-trim: keep only the newest MAX_QUEUE_SIZE tasks (FIFO rollover).
         # LTRIM keeps indices 0..N-1 (newest first since we LPUSH).
         depth = await self.client.llen(queue_key)
@@ -242,6 +251,7 @@ class RedisService:
                 f"Queue {scrub_log(queue_key)} exceeded {self.MAX_QUEUE_SIZE} — "
                 f"evicted {evicted} oldest task(s)"
             )
+        return einreihung
 
     async def get_queue_depth(self, agent_id: str) -> int:
         if not self.client:

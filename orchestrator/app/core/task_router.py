@@ -626,7 +626,11 @@ class TaskRouter:
                 "priority": priority,
             }
         )
-        await self.redis.push_task(agent_id, task_payload)
+        einreihung = await self.redis.push_task(agent_id, task_payload)
+        if einreihung is not None and not einreihung.eingereiht:
+            # Selten: das Budget riss zwischen Pruefung und Einreihen. Die Aufgabe
+            # ist schon als gescheitert vermerkt — wie oben mit deutschem Hinweis.
+            raise ValueError(einreihung.hinweis)
 
         # Publish activity event
         await self._publish_activity(agent_id, f"Task queued: {title} (priority: {priority})")
@@ -1365,7 +1369,11 @@ class TaskRouter:
             "model": task.model,
             "priority": task.priority,
         })
-        await self.redis.push_task(agent_id, payload)
+        einreihung = await self.redis.push_task(agent_id, payload)
+        if einreihung is not None and not einreihung.eingereiht:
+            logger.info("[Selbstheilung] %s nicht abgeschickt: Budget aufgebraucht",
+                        scrub_log(task.id))
+            return False
         await self._publish_activity(agent_id, f"Selbstheilung: {task.title}")
         logger.info("[Selbstheilung] %s abgeschickt", scrub_log(task.id))
         return True
@@ -2311,9 +2319,11 @@ class TaskRouter:
             })
 
             if self.redis.client:
-                await self.redis.client.lpush(
-                    f"agent:{parent_task.agent_id}:messages", message
-                )
+                # Mit Budgetpruefung (#898): die Nachricht startet beim Empfaenger
+                # einen Modelllauf. Das Ergebnis steht ohnehin in der Aufgabe.
+                from app.core.chat_auftrag import nachricht_einreihen
+
+                await nachricht_einreihen(self.redis.client, parent_task.agent_id, message)
                 logger.info(
                     f"Subtask {subtask.id} ({status}) → notified parent agent "
                     f"{parent_task.agent_id} (parent task {parent_task.id})"
@@ -2370,9 +2380,10 @@ class TaskRouter:
                 })
 
                 if self.redis.client:
-                    await self.redis.client.lpush(
-                        f"agent:{parent_task.agent_id}:messages", batch_message
-                    )
+                    from app.core.chat_auftrag import nachricht_einreihen
+
+                    await nachricht_einreihen(
+                        self.redis.client, parent_task.agent_id, batch_message)
                     logger.info(
                         f"ALL {len(all_siblings)} subtasks done for parent {parent_task.id} "
                         f"→ sent aggregated summary to agent {parent_task.agent_id} "
@@ -2663,9 +2674,10 @@ class TaskRouter:
             })
 
             if self.redis.client:
-                await self.redis.client.lpush(
-                    f"agent:{delegator_agent_id}:messages", message
-                )
+                # Mit Budgetpruefung (#898), wie die Chat-Warteschlange unten.
+                from app.core.chat_auftrag import nachricht_einreihen
+
+                await nachricht_einreihen(self.redis.client, delegator_agent_id, message)
 
                 # Auch in die Chat-Warteschlange, damit der Lead die Fertigmeldung
                 # aufgreift und dem Menschen berichtet.
