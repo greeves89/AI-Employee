@@ -190,6 +190,11 @@ class CodexAgentRunner:
         self._process: asyncio.subprocess.Process | None = None
         self._runner: CodexAgentRunner | None = None
         self.is_running = False
+        # Token-Stand des Fadens nach dem letzten Lauf (#896). Codex meldet in
+        # ``turn.completed`` die SUMME des Fadens — nach ``exec resume``
+        # inklusive aller frueheren Zuege (am 04.10.2026 nachgemessen: 13130,
+        # dann 27506 Eingabe-Token; der zweite Zug selbst hatte 14376).
+        self._nutzung_stand: dict[str, int] = {}
 
     async def execute_task(
         self, task_id: str, prompt: str, model: str | None = None,
@@ -222,6 +227,9 @@ class CodexAgentRunner:
 
     async def _run_codex(self, target_id: str, prompt: str, model: str, stream: str, resume: bool = False) -> dict:
         self._interrupted = False  # set by interrupt() when a steering message cuts this turn short
+        if not resume:
+            # Neuer Faden: die Summe der CLI beginnt bei null.
+            self._nutzung_stand = {}
 
         auth_problem = _codex_auth_problem()
         if auth_problem:
@@ -335,16 +343,11 @@ class CodexAgentRunner:
 
                 if str(event.get("type", "")).endswith("completed"):
                     completed_seen = True
+                if event.get("type") == "turn.completed":
+                    # Nur hier steht die Nutzung — ``item.completed`` hat keine
+                    # und hat die Zahlen bisher wieder auf None gesetzt.
                     usage = event.get("usage", {}) if isinstance(event.get("usage"), dict) else {}
-                    result_data.update({
-                        "input_tokens": usage.get("input_tokens"),
-                        "output_tokens": usage.get("output_tokens"),
-                        # Feinaufschlüsselung, sofern Codex sie meldet (GPT-Modelle):
-                        # gecachte Eingabe + „nachgedachte" Ausgabe.
-                        "cached_tokens": usage.get("cached_input_tokens") or 0,
-                        "reasoning_tokens": usage.get("reasoning_output_tokens") or 0,
-                        "cache_write_tokens": 0,
-                    })
+                    result_data.update(self._nutzung_dieses_laufs(usage, model))
 
             returncode = await self._process.wait()
             await stderr_task
@@ -406,6 +409,42 @@ class CodexAgentRunner:
             logger.debug("Codex-Erneuerung konnte nicht gesichert werden", exc_info=True)
 
         return result_data
+
+    #: ``turn.completed.usage`` → Feld im Ergebnis (dieselben Namen wie Claude
+    #: Code und Custom-LLM, damit Chat-Anzeige und Abrechnung sie lesen).
+    _NUTZUNGSFELDER = {
+        "input_tokens": "input_tokens",
+        "output_tokens": "output_tokens",
+        # Feinaufschlüsselung, sofern Codex sie meldet (GPT-Modelle):
+        # gecachte Eingabe + „nachgedachte" Ausgabe.
+        "cached_input_tokens": "cached_tokens",
+        "reasoning_output_tokens": "reasoning_tokens",
+    }
+
+    def _nutzung_dieses_laufs(self, usage: dict, model: str) -> dict:
+        """Token und Kosten DIESES Laufs aus der Fadensumme von Codex.
+
+        Codex meldet keine Kosten (#896: im Chat stand ``NULL``). Sie entstehen
+        hier aus Token × Preis — ueber ``model_registry``, dieselbe Tabelle wie
+        bei Custom-LLM. Die Token sind die fortlaufende Summe des Fadens; der
+        Anteil dieses Laufs ist die Differenz zum Stand nach dem vorigen.
+        """
+        from app import model_registry
+
+        aus: dict = {"cache_write_tokens": 0}
+        neuer_stand: dict[str, int] = {}
+        for quelle, ziel in self._NUTZUNGSFELDER.items():
+            gesamt = int(usage.get(quelle) or 0)
+            neuer_stand[quelle] = gesamt
+            aus[ziel] = int(model_registry.anteil_seit(
+                gesamt, self._nutzung_stand.get(quelle, 0)) or 0)
+        self._nutzung_stand = neuer_stand
+        # Gecachte Eingabe steckt in input_tokens (OpenAI-Zaehlweise) und wird
+        # hier zum vollen Preis gerechnet — lieber zu hoch als ein Budget, das
+        # unbemerkt reisst.
+        aus["cost_usd"] = model_registry.estimate_cost(
+            model, aus["input_tokens"], aus["output_tokens"])
+        return aus
 
     async def interrupt(self) -> None:
         self._interrupted = True

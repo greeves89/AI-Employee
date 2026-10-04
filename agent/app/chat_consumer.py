@@ -447,10 +447,15 @@ class ChatConsumer:
         if stored and hasattr(handler, "session_id"):
             stored = stored.decode() if isinstance(stored, bytes) else stored
             session_id, stored_model = stored, None
+            # Kostenstand der Sitzung (#896): ohne ihn ist unbekannt, was die
+            # naechste Nachricht kostet — die CLI zaehlt ueber --resume weiter.
+            kosten_stand = None
             try:
                 parsed = json.loads(stored)
                 if isinstance(parsed, dict):
                     session_id, stored_model = parsed.get("session_id"), parsed.get("model")
+                    if isinstance(parsed.get("kosten_stand"), (int, float)):
+                        kosten_stand = float(parsed["kosten_stand"])
             except (TypeError, ValueError):
                 pass  # legacy bare-string value (pre-model-tracking) — no model to compare
             if stored_model and stored_model != model:
@@ -461,6 +466,8 @@ class ChatConsumer:
                 await self.redis.delete(key)
             elif session_id:
                 handler.session_id = session_id
+                if hasattr(handler, "_kosten_stand"):
+                    handler._kosten_stand = kosten_stand
                 logger.info("Restored Claude session %s for %s", handler.session_id, source_key)
 
         self._handlers[source_key] = handler
@@ -473,7 +480,8 @@ class ChatConsumer:
             await self.redis.setex(
                 f"agent:{self.agent_id}:claude_session:{source_key}",
                 self._CLAUDE_SESSION_TTL,
-                json.dumps({"session_id": session_id, "model": model}),
+                json.dumps({"session_id": session_id, "model": model,
+                            "kosten_stand": getattr(handler, "_kosten_stand", None)}),
             )
 
     async def _reset_handler(self, source_key: str) -> None:

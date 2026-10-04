@@ -253,6 +253,11 @@ class ChatHandler:
     def __init__(self, log_publisher: LogPublisher):
         self.log_publisher = log_publisher
         self.session_id: str | None = None
+        # Fortlaufende Kostensumme der CLI-Sitzung nach dem letzten Lauf (#896).
+        # ``total_cost_usd`` zaehlt ueber ``--resume`` weiter; was EINE Nachricht
+        # gekostet hat, ist die Differenz hierzu. ``None`` = unbekannt (Sitzung
+        # aus Redis ohne gemerkten Stand) — siehe ``_kosten_dieses_laufs``.
+        self._kosten_stand: float | None = 0.0
         self._process: asyncio.subprocess.Process | None = None
         self.is_running = False
         # Live steering: set by the ChatConsumer to an async callable returning the
@@ -416,6 +421,9 @@ class ChatHandler:
         # Resume previous session for conversation continuity
         if self.session_id:
             cmd.extend(["--resume", self.session_id])
+        else:
+            # Neue Sitzung: die Kostensumme der CLI beginnt bei null.
+            self._kosten_stand = 0.0
 
         # Prompt via stdin, not argv — avoids "Argument list too long" on large input.
         cmd.extend([
@@ -501,6 +509,8 @@ class ChatHandler:
                     await self.log_publisher.publish_chat(message_id, art, daten)
 
                 if event_type == "result":
+                    # Auch ein Fehlerlauf hat gekostet — der Betrag gilt fuer beide Zweige.
+                    kosten = self._kosten_dieses_laufs(event, model)
                     if event.get("is_error"):
                         errors = event.get("errors", [])
                         error_msg = (
@@ -512,7 +522,8 @@ class ChatHandler:
                         if error_msg.startswith("[ede_diagnostic]") or error_msg.startswith("[diagnostic]"):
                             logger.debug(f"Suppressed CLI diagnostic: {error_msg}")
                         else:
-                            result_data = {"status": "error", "error": error_msg}
+                            result_data = {"status": "error", "error": error_msg,
+                                           "cost_usd": kosten}
                             stream_had_error = True
                             await self.log_publisher.publish_chat(
                                 message_id, "error", {"message": error_msg}
@@ -529,7 +540,7 @@ class ChatHandler:
                         result_data = {
                             "status": "completed",
                             "text": final_text,
-                            "cost_usd": event.get("cost_usd", 0),
+                            "cost_usd": kosten,
                             "duration_ms": event.get("duration_ms", 0),
                             "num_turns": event.get("num_turns", 0),
                             "input_tokens": _usage.get("input_tokens") or 0,
@@ -571,6 +582,36 @@ class ChatHandler:
             )
 
         return result_data
+
+    def _kosten_dieses_laufs(self, event: dict, model: str) -> float:
+        """Was DIESER CLI-Lauf gekostet hat (USD), und den Stand nachfuehren.
+
+        ``total_cost_usd`` ist die fortlaufende Summe der Sitzung — nach
+        ``--resume`` inklusive aller frueheren Nachrichten. Gespeichert als
+        Kosten der Nachricht haette jede Antwort den ganzen Verlauf noch einmal
+        gezaehlt. Deshalb die Differenz zum Stand nach dem vorigen Lauf.
+
+        Stand unbekannt (Sitzung aus der Zeit vor diesem Feld): Token dieses
+        Laufs × Preis aus ``model_registry`` — eher zu niedrig (nur die
+        Hauptschleife) als den Verlauf ein zweites Mal zu berechnen.
+        """
+        from app import model_registry
+
+        gesamt = model_registry.claude_gesamtkosten(event)
+        if gesamt <= 0:
+            # „Crash/startup-error results may carry zeroed values" — kein
+            # Neubeginn der Summe, der Stand bleibt.
+            return 0.0
+        anteil = model_registry.anteil_seit(gesamt, self._kosten_stand)
+        self._kosten_stand = gesamt
+        if anteil is not None:
+            return round(anteil, 6)
+        usage = event.get("usage") or {}
+        return model_registry.estimate_cost(
+            model,
+            int(usage.get("input_tokens") or 0) + int(usage.get("cache_creation_input_tokens") or 0),
+            int(usage.get("output_tokens") or 0),
+        )
 
     async def _stream_output(
         self, process: asyncio.subprocess.Process

@@ -453,6 +453,41 @@ async def _drain_chat_completions(redis: RedisService) -> None:
         await asyncio.sleep(_COMPLETION_DRAIN_SEKUNDEN)
 
 
+#: Wie lange ein schon abgerechneter Lauf ohne Verlaufszeile gemerkt wird. Die
+#: dauerhafte Fertig-Liste wird alle 10 s abgeraeumt — ein Tag ist reichlich.
+_KOSTEN_GEBUCHT_TTL = 24 * 3600
+
+
+async def _kosten_ohne_verlauf(redis: RedisService, db, agent_id: str, message_id: str,
+                               event_data: dict) -> None:
+    """Kosten eines Laufs ohne Gespraechszeile buchen — genau einmal.
+
+    Dasselbe ``done`` kommt zweimal an (Pub/Sub und ``agent:{id}:chat:done``).
+    Die Zeile im Verlauf fuehrt zusammen; hier gibt es keine, also merkt sich
+    Redis, was schon gebucht ist. Ohne Redis lieber einmal zu viel als nie.
+    """
+    from app.core.kosten import lauf_ohne_verlauf_buchen
+
+    try:
+        betrag = float((event_data or {}).get("cost_usd") or 0)
+    except (TypeError, ValueError):
+        return
+    if betrag <= 0:
+        return
+    try:
+        neu = await redis.client.set(
+            f"kosten:gebucht:{agent_id}:{message_id}", "1", nx=True, ex=_KOSTEN_GEBUCHT_TTL,
+        )
+    except Exception:  # noqa: BLE001
+        neu = True
+    if not neu:
+        return
+    try:
+        await lauf_ohne_verlauf_buchen(db, agent_id, betrag)
+    except Exception as e:  # noqa: BLE001 — eine Buchung darf das Speichern nicht kippen
+        print(f"[ChatPersist] Kosten fuer {message_id} nicht gebucht: {e}")
+
+
 async def _persist_chat_completion(redis: RedisService, data: dict) -> None:
     """Ein ``done`` eines Agenten als Antwort im Chatverlauf sichern (idempotent)."""
     agent_id = data.get("agent_id", "")
@@ -497,6 +532,9 @@ async def _persist_chat_completion(redis: RedisService, data: dict) -> None:
             # files delivered via present_file after the fact.
             session_id = "scheduler"
         else:
+            # Kein Gespraech im Verlauf (Telegram, Sprachfront) — gekostet hat der
+            # Lauf trotzdem, und das Budget muss es sehen (#896/#898).
+            await _kosten_ohne_verlauf(redis, db, agent_id, message_id, event_data)
             print(f"[ChatPersist] No user message found for {message_id}, skipping")
             return
 
@@ -507,19 +545,24 @@ async def _persist_chat_completion(redis: RedisService, data: dict) -> None:
             or ""
         )
         tool_calls = event_data.get("tool_calls")
+        from app.services.chat_persistence import done_kennzahlen, upsert_chat_message
+        kennzahlen = done_kennzahlen(event_data)
         meta = {
-            "cost_usd": event_data.get("cost_usd"),
-            "duration_ms": event_data.get("duration_ms"),
-            "num_turns": event_data.get("num_turns"),
+            **kennzahlen,
             "presented_files": event_data.get("presented_files"),
             "source": source if source != "chat" else None,
         }
         meta = {k: v for k, v in meta.items() if v is not None}
 
-        from app.services.chat_persistence import upsert_chat_message
+        # Der Betrag gehoert in die SPALTE — die summieren Dashboard und Budget
+        # (core.kosten). Bis v1.362 stand er nur in ``meta``: ohne offenen Browser
+        # blieb jeder Chat-Lauf kostenlos.
         is_new = await upsert_chat_message(
             agent_id, session_id, message_id, "assistant",
             content=content, tool_calls=tool_calls, meta=meta,
+            cost_usd=kennzahlen.get("cost_usd"),
+            input_tokens=kennzahlen.get("input_tokens"),
+            output_tokens=kennzahlen.get("output_tokens"),
         )
         # /goal: Hat dieses Gespraech ein aktives Ziel, entscheidet die Antwort, ob
         # eine weitere Runde folgt (app.core.ziel). VOR dem „nicht neu“-Ausstieg:

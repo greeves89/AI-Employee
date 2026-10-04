@@ -99,3 +99,38 @@ def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 def is_known(model: str) -> bool:
     """Whether the model is present in the registry."""
     return _lookup(model) is not None
+
+
+# ── Kosten eines Laufs aus fortlaufenden Summen (#896/#898) ─────────────────
+
+
+def claude_gesamtkosten(event: dict) -> float:
+    """Betrag aus dem ``result``-Ereignis der Claude-CLI.
+
+    Die CLI meldet ``total_cost_usd``; ``cost_usd`` nur als Altform. Im Chat
+    wurde lange ``cost_usd`` gelesen — das Feld gibt es dort nicht, jede Antwort
+    stand mit 0 in der Datenbank.
+    """
+    try:
+        return float(event.get("total_cost_usd", event.get("cost_usd", 0)) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def anteil_seit(gesamt: float, stand: float | None) -> float | None:
+    """Was seit ``stand`` hinzukam, wenn ``gesamt`` eine fortlaufende Summe ist.
+
+    Claude Code (``total_cost_usd``) und Codex (``usage`` in ``turn.completed``)
+    zaehlen ueber eine fortgesetzte Sitzung WEITER: das erste Ergebnis nach
+    ``--resume`` traegt schon alle frueheren Zuege. Die Kosten einer Nachricht
+    sind deshalb die Differenz zum Stand nach der vorigen.
+
+    * ``stand`` unbekannt → ``None`` (der Aufrufer schaetzt anders);
+    * ``gesamt`` kleiner als ``stand`` → die Summe hat neu begonnen (/clear,
+      Verlauf ohne gespeicherte Summe) — dann ist ``gesamt`` der Anteil.
+    """
+    if stand is None:
+        return None
+    if gesamt >= stand:
+        return gesamt - stand
+    return gesamt

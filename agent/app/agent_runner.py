@@ -5,6 +5,7 @@ import os
 import signal
 from typing import AsyncIterator
 
+from app import model_registry
 from app.config import get_oauth_token, settings
 from app.ai_credential_status import (
     report_result_status, zugang_verloren,
@@ -219,7 +220,7 @@ class AgentRunner:
                         "duration_ms": event.get("duration_ms"),
                         "num_turns": event.get("num_turns"),
                         # CLI emits "total_cost_usd"; keep "cost_usd" as legacy fallback
-                        "cost_usd": event.get("total_cost_usd", event.get("cost_usd", 0)) or 0,
+                        "cost_usd": model_registry.claude_gesamtkosten(event),
                         "input_tokens": usage.get("input_tokens"),
                         "output_tokens": usage.get("output_tokens"),
                         "result": result_text,
@@ -365,7 +366,7 @@ class AgentRunner:
                 task_id,
                 "result",
                 {
-                    "cost_usd": event.get("total_cost_usd", event.get("cost_usd", 0)) or 0,
+                    "cost_usd": model_registry.claude_gesamtkosten(event),
                     "input_tokens": _usage.get("input_tokens"),
                     "output_tokens": _usage.get("output_tokens"),
                     "duration_ms": event.get("duration_ms", 0),
