@@ -3,6 +3,10 @@
 Scans GitHub Search API and Hacker News daily for trending AI/agent/MCP repos.
 For each new repo, fetches the README and uses Claude to generate a SKILL.md.
 Generated skills are saved as DRAFT (needs user review) in the skill catalog.
+
+Seit #895: nur wenn ``skill_trend_scan_enabled`` an ist (Standard aus); der Zeitpunkt
+des letzten Laufs steht in den Einstellungen und überlebt einen Neustart. Die Funde
+sind README-Hüllen und werden NIE selbst aktiv — nur ein Administrator gibt sie frei.
 """
 
 import logging
@@ -10,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from app.core.skill_herkunft import CREATED_BY_TREND
 from app.db.session import resilient_session
 from app.models.skill import Skill, SkillCategory, SkillStatus
 
@@ -30,6 +35,8 @@ _MIN_STARS = 50
 _MIN_HN_POINTS = 80
 _README_MAX_CHARS = 6000
 
+SETTING_LETZTER_LAUF = "skill_trend_last_run"
+
 
 class TrendService:
     def __init__(self, redis_service=None, github_token: str | None = None):
@@ -43,16 +50,51 @@ class TrendService:
             h["Authorization"] = f"Bearer {self._github_token}"
         return h
 
+    @staticmethod
+    def _aktiv() -> bool:
+        from app.config import settings
+        return bool(getattr(settings, "skill_trend_scan_enabled", False))
+
+    async def _letzter_lauf(self) -> datetime | None:
+        """Zeitpunkt des letzten Laufs — aus den Einstellungen, damit ein Neustart
+        nicht jedes Mal einen neuen Lauf auslöst (#895)."""
+        if self._last_run:
+            return self._last_run
+        from app.services.settings_service import SettingsService
+        try:
+            async with resilient_session() as db:
+                roh = await SettingsService(db).get(SETTING_LETZTER_LAUF)
+            if roh:
+                self._last_run = datetime.fromisoformat(roh)
+        except Exception as e:  # noqa: BLE001 — ohne Merkzettel gilt: noch nie gelaufen
+            logger.debug(f"[TrendService] letzter Lauf nicht lesbar: {e}")
+        return self._last_run
+
+    async def _lauf_merken(self, zeit: datetime) -> None:
+        from app.services.settings_service import SettingsService
+        self._last_run = zeit
+        try:
+            async with resilient_session() as db:
+                await SettingsService(db).set(SETTING_LETZTER_LAUF, zeit.isoformat())
+                await db.commit()
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[TrendService] letzter Lauf nicht gespeichert: {e}")
+
     async def tick(self) -> dict:
-        """Run a trend scan if 24h have passed since the last run."""
+        """Run a trend scan if enabled and 24h have passed since the last run."""
+        if not self._aktiv():
+            return {"skipped": True, "disabled": True}
         now = datetime.now(timezone.utc)
-        if self._last_run and (now - self._last_run) < timedelta(hours=23):
+        letzter = await self._letzter_lauf()
+        if letzter and (now - letzter) < timedelta(hours=23):
             return {"skipped": True}
-        self._last_run = now
+        await self._lauf_merken(now)
         return await self.scan()
 
     async def scan(self) -> dict:
         """Fetch trending repos and generate skills for new ones."""
+        if not self._aktiv():
+            return {"scanned": 0, "new": 0, "generated": 0, "errors": 0, "disabled": True}
         repos = await self._collect_trending_repos()
         existing = await self._get_existing_source_repos()
         new_repos = [r for r in repos if r["full_name"] not in existing]
@@ -230,7 +272,7 @@ class TrendService:
         }
 
     async def _save_skill(self, skill: dict) -> None:
-        """Persist a generated skill as DRAFT."""
+        """Persist a generated skill as DRAFT — nie als aktiv: es ist nur ein README-Auszug."""
         from sqlalchemy import select
         async with resilient_session() as db:
             # Skip if name already exists
@@ -243,7 +285,7 @@ class TrendService:
                 content=skill["content"],
                 category=SkillCategory.TOOL,
                 status=SkillStatus.DRAFT,
-                created_by="auto:trending",
+                created_by=CREATED_BY_TREND,
                 source_repo=skill["source_repo"],
                 source_url=skill["source_url"],
                 is_public=False,

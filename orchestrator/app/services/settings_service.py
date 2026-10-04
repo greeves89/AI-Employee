@@ -68,6 +68,13 @@ ALLOWED_KEYS = SECRET_KEYS | {
     # Bewusst KEIN Geheimnis — sie sollen im Klartext nachlesbar sein.
     "master_rules",
     "master_rules_enabled",
+    # Skill-Quellen (#895): Trend-Scanner-Schalter, Zeitpunkt des letzten Laufs und
+    # die Orte eingebauter Quellen, die schon einmal angelegt wurden (damit eine
+    # gelöschte Quelle beim nächsten Start nicht wiederkommt). Ohne Eintrag hier
+    # scheitert das Speichern still.
+    "skill_trend_scan_enabled",
+    "skill_trend_last_run",
+    "skill_builtin_seeded",
     "display_currency",
     "usd_eur_rate",
     "aws_region",

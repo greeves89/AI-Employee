@@ -106,10 +106,32 @@ VORLAGEN_SKILLS: dict[str, list[str]] = {
 }
 
 
+def vorlagen_je_skill() -> dict[str, list[str]]:
+    """Skill-Name -> Anzeigenamen der mitgelieferten Vorlagen, die ihn nutzen.
+
+    Für den Hinweis „von Vorlage X genutzt“ bei Skills und Skill-Quellen (#895);
+    dieselbe Zuordnung wie oben, nur umgedreht — keine zweite Pflegestelle.
+    """
+    from app.core.agent_templates import BUILTIN_TEMPLATES
+
+    anzeige = {t["name"]: t.get("display_name") or t["name"] for t in BUILTIN_TEMPLATES}
+    out: dict[str, list[str]] = {}
+    for vorlage, namen in VORLAGEN_SKILLS.items():
+        for n in namen:
+            out.setdefault(n, []).append(anzeige.get(vorlage, vorlage))
+    return out
+
+
 def _erlaubte_herkunft() -> set[str]:
     """Nur Skills dieser Herkunft dürfen an Vorlagen hängen: mitgeliefert oder aus den
-    fest eingebauten Crawler-Quellen. Sonst könnte jemand mit einem gleichnamigen
-    selbst angelegten Skill die Vorlagen ALLER Nutzer der Anlage übernehmen."""
+    eingebauten Crawler-Quellen. Sonst könnte jemand mit einem gleichnamigen
+    selbst angelegten Skill die Vorlagen ALLER Nutzer der Anlage übernehmen.
+
+    Die eingebauten Quellen stehen seit #895 zusätzlich als Zeilen (``system:builtin``)
+    in ``skill_sources`` und sind dort abschaltbar. Maßgeblich bleibt trotzdem die feste
+    Liste ``DEFAULT_SKILL_REPOS``: Ein Administrator kann die Zeile ändern oder löschen,
+    ohne dass damit beliebige Herkunft für Vorlagen zugelassen würde, und schon
+    importierte Skills bleiben gültig, auch wenn die Quelle abgeschaltet ist."""
     from app.core.mitgelieferte_skills import QUELLE
     from app.services.skill_crawler import DEFAULT_SKILL_REPOS
 

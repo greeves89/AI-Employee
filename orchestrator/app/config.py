@@ -319,6 +319,10 @@ class Settings(BaseSettings):
     # default → behaviour identical to the previous hardcoded list.
     skill_repos: str = ""
 
+    # Trend-Scanner (GitHub-Suche + Hacker News → Skill-Entwürfe). Standard AUS: er
+    # legt sonst von selbst Entwürfe an, die niemand angefordert hat (#895).
+    skill_trend_scan_enabled: bool = False
+
     # Per-provider OAuth scope overrides — comma-separated, empty = use built-in defaults.
     # Example: OAUTH_MICROSOFT_SCOPES="openid,email,profile,offline_access,User.Read,Mail.Read"
     oauth_google_scopes: str = ""

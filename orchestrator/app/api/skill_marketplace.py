@@ -16,6 +16,7 @@ from app.dependencies import require_auth, require_admin, verify_agent_token
 from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage, SkillVersion
 from app.models.task import Task
 from app.models.audit_log import AuditLog, AuditEventType
+from app.core.skill_herkunft import CREATED_BY_TREND
 from app.core.skill_file_storage import validate_filename, save_file, read_file, delete_file, get_all_files_for_agent
 from app.core.skill_security import (
     SkillSecurityError,
@@ -136,7 +137,14 @@ class SkillRate(BaseModel):
 
 
 def _to_response(skill: Skill, assigned_agents: list[str] | None = None) -> dict:
+    from app.core.skill_herkunft import herkunft as _herkunft, risiko_hinweise as _hinweise
+    from app.core.vorlagen_skills import vorlagen_je_skill
+
+    art = _herkunft(skill.created_by, skill.source_repo)
     return {
+        "herkunft": art,
+        "risiko_hinweise": _hinweise(skill.content, art),
+        "vorlagen": vorlagen_je_skill().get(skill.name, []),
         "id": skill.id,
         "name": skill.name,
         "description": skill.description,
@@ -272,6 +280,7 @@ async def list_skills(
     status: str | None = Query(None, description="Filter by status (draft/active/archived)"),
     q: str | None = Query(None),
     agent_id: str | None = Query(None, description="Show assignment status for this agent"),
+    quelle: str | None = Query(None, description="'trend' = nur Trend-Funde, 'ohne_trend' = alles andere"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     user=Depends(require_auth),
@@ -287,6 +296,11 @@ async def list_skills(
         query = query.where(Skill.is_public.is_(True) | Skill.created_by.in_(eigene))
     if category:
         query = query.where(Skill.category == category)
+    # Trend-Funde (README-Hüllen) gehören in ihren eigenen Reiter, nicht unter „Ausstehend“.
+    if quelle == "trend":
+        query = query.where(Skill.created_by == CREATED_BY_TREND)
+    elif quelle == "ohne_trend":
+        query = query.where(Skill.created_by.is_(None) | (Skill.created_by != CREATED_BY_TREND))
     if status:
         query = query.where(Skill.status == status)
     else:
@@ -1624,17 +1638,27 @@ def _source_out(s) -> dict:
 
 @router.get("/sources")
 async def list_skill_sources(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    """List admin-configured sources PLUS the built-in/env GitHub defaults (read-only),
-    so the admin sees EVERYTHING that gets crawled — not just their own additions."""
+    """Alle Quellen als Zeilen: die eingebauten (``builtin: true``, abschaltbar wie jede
+    andere) und die vom Admin eingetragenen. ``builtin`` in der Antwort enthält nur noch
+    Repos, die allein über die Umgebung (SKILL_REPOS) kommen und keine Zeile haben.
+    Je Quelle: von welchen Vorlagen ihre Skills genutzt werden (#895)."""
     from app.models.skill import SkillSource
-    from app.services.skill_crawler import _configured_repos, DEFAULT_SKILL_REPOS
+    from app.core.vorlagen_skills import vorlagen_je_skill
+    from app.services.skill_crawler import _env_repos, BUILTIN_CREATED_BY
     rows = (await db.execute(select(SkillSource).order_by(SkillSource.id))).scalars().all()
-    defaults = set(DEFAULT_SKILL_REPOS)
-    builtin = [
-        {"location": r, "kind": "github", "from_env": r not in defaults}
-        for r in _configured_repos()
-    ]
-    return {"sources": [_source_out(s) for s in rows], "builtin": builtin}
+    namen_je_quelle: dict[str, list[str]] = {}
+    for name, repo in (await db.execute(
+        select(Skill.name, Skill.source_repo).where(Skill.source_repo.in_([r.location for r in rows]))
+    )).all():
+        namen_je_quelle.setdefault(repo, []).append(name)
+    je_skill = vorlagen_je_skill()
+    out = []
+    for r in rows:
+        vorlagen = sorted({v for n in namen_je_quelle.get(r.location, []) for v in je_skill.get(n, [])})
+        out.append({**_source_out(r), "builtin": r.created_by == BUILTIN_CREATED_BY, "vorlagen": vorlagen})
+    bekannt = {r.location for r in rows}
+    env = [{"location": r, "kind": "github", "from_env": True} for r in _env_repos() if r not in bekannt]
+    return {"sources": out, "builtin": env}
 
 
 @router.post("/sources", status_code=201)
@@ -1674,6 +1698,11 @@ async def update_skill_source(source_id: int, body: SkillSourcePatch,
     s = await db.get(SkillSource, source_id)
     if not s:
         raise HTTPException(status_code=404, detail="Source not found")
+    if s.created_by == "system:builtin" and (
+        body.kind is not None or body.location is not None
+        or body.ref is not None or body.subdir is not None or body.credential is not None
+    ):
+        raise HTTPException(status_code=400, detail="Bei eingebauten Quellen lassen sich nur Schalter und Name ändern.")
     if body.name is not None:
         s.name = body.name.strip()
     if body.kind in ("github", "git"):
@@ -1719,3 +1748,51 @@ async def recrawl_skill_sources(request: Request, user=Depends(require_admin)):
         raise HTTPException(status_code=503, detail="Skill crawler not running")
     _asyncio.create_task(crawler.crawl())
     return {"status": "started"}
+
+
+
+# --- Trend-Scanner (#895): Schalter, Funde verwerfen ---
+
+class TrendSchalter(BaseModel):
+    enabled: bool
+
+
+@router.get("/trend")
+async def trend_status(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Schalter, letzter Lauf und Zahl der offenen Trend-Funde."""
+    from app.services.settings_service import SettingsService
+    from app.services.trend_service import SETTING_LETZTER_LAUF
+    from app.config import settings as _settings
+    offen = (await db.execute(
+        select(func.count()).select_from(Skill)
+        .where(Skill.created_by == CREATED_BY_TREND, Skill.status == SkillStatus.DRAFT)
+    )).scalar() or 0
+    return {
+        "enabled": bool(_settings.skill_trend_scan_enabled),
+        "last_run": await SettingsService(db).get(SETTING_LETZTER_LAUF) or None,
+        "open": offen,
+    }
+
+
+@router.put("/trend")
+async def trend_umschalten(body: TrendSchalter, user=Depends(require_admin),
+                           db: AsyncSession = Depends(get_db)):
+    from app.services.settings_service import SettingsService
+    from app.config import settings as _settings
+    _settings.skill_trend_scan_enabled = body.enabled
+    await SettingsService(db).set("skill_trend_scan_enabled", "true" if body.enabled else "false")
+    await db.commit()
+    return {"enabled": body.enabled}
+
+
+@router.post("/trend/discard-all")
+async def trend_alle_verwerfen(user=Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Alle offenen Trend-Funde ablehnen (archivieren — wie „Ablehnen“ einzeln, damit der
+    Scanner dieselben Repos nicht wieder vorschlägt). Andere Entwürfe bleiben unberührt."""
+    ergebnis = await db.execute(
+        update(Skill)
+        .where(Skill.created_by == CREATED_BY_TREND, Skill.status == SkillStatus.DRAFT)
+        .values(status=SkillStatus.ARCHIVED)
+    )
+    await db.commit()
+    return {"discarded": ergebnis.rowcount or 0}

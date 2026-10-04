@@ -62,6 +62,72 @@ def _configured_repos() -> list[str]:
             repos.append(entry)
     return repos
 
+
+def _env_repos() -> list[str]:
+    """Nur die per Umgebung (SKILL_REPOS) gesetzten Repos, ohne die eingebauten."""
+    from app.config import settings
+
+    out: list[str] = []
+    for entry in (settings.skill_repos or "").split(","):
+        entry = entry.strip()
+        if entry and entry not in DEFAULT_SKILL_REPOS and entry not in out:
+            out.append(entry)
+    return out
+
+
+# Eingebaute Quellen sind Zeilen in skill_sources (#895): dort abschaltbar, mit Status,
+# wie jede andere Quelle. DEFAULT_SKILL_REPOS bleibt die Vorlage dafür.
+BUILTIN_CREATED_BY = "system:builtin"
+SETTING_BUILTIN_GEMERKT = "skill_builtin_seeded"
+
+
+def fehlende_eingebaute_quellen(defaults: list[str], gemerkt: set[str], vorhandene: set[str]) -> list[str]:
+    """Welche eingebauten Orte jetzt als Zeile angelegt werden müssen.
+
+    Ein Ort, der schon einmal angelegt wurde (``gemerkt``), kommt NIE wieder: Hat ihn
+    ein Administrator gelöscht, ist das Absicht. Ein Ort, den es bereits als Zeile gibt
+    (``vorhandene``, etwa von Hand eingetragen), wird nicht doppelt angelegt."""
+    return [loc for loc in defaults if loc not in gemerkt and loc not in vorhandene]
+
+
+async def eingebaute_quellen_anlegen(db) -> int:
+    """Idempotent beim Start und vor jedem Crawl: fehlende eingebaute Quellen anlegen.
+
+    Gemerkt wird in der Einstellung ``skill_builtin_seeded`` (JSON-Liste der Orte).
+    Gibt die Zahl neu angelegter Zeilen zurück."""
+    from sqlalchemy import select
+
+    from app.models.skill import SkillSource, SkillSourceKind
+    from app.services.settings_service import SettingsService
+
+    svc = SettingsService(db)
+    try:
+        gemerkt = {str(x) for x in json.loads(await svc.get(SETTING_BUILTIN_GEMERKT) or "[]")}
+    except (ValueError, TypeError):
+        gemerkt = set()
+    vorhandene = set((await db.execute(select(SkillSource.location))).scalars().all())
+    neu = fehlende_eingebaute_quellen(list(DEFAULT_SKILL_REPOS), gemerkt, vorhandene)
+    for loc in neu:
+        db.add(SkillSource(
+            name=loc, kind=SkillSourceKind.GITHUB, location=loc, enabled=True,
+            trusted=False, created_by=BUILTIN_CREATED_BY,
+        ))
+    alle = gemerkt | set(DEFAULT_SKILL_REPOS)
+    if alle != gemerkt:
+        await svc.set(SETTING_BUILTIN_GEMERKT, json.dumps(sorted(alle)))
+    await db.commit()
+    return len(neu)
+
+
+def plane_crawl(zeilen: list[dict], env_repos: list[str]) -> tuple[list[str], list[dict]]:
+    """Was dieser Crawl abruft: (Umgebungs-Repos, aktive Quellen aus der Datenbank).
+
+    Ein Umgebungs-Repo, das es als Zeile gibt, folgt dem Schalter dieser Zeile — ist die
+    Zeile aus, wird nichts abgerufen (auch nicht über die Umgebung)."""
+    bekannt = {z["location"] for z in zeilen}
+    return [r for r in env_repos if r not in bekannt], [z for z in zeilen if z.get("enabled", True)]
+
+
 # Category heuristics — values MUST match SkillCategory enum (uppercase)
 CATEGORY_KEYWORDS = {
     "WORKFLOW": ["design", "ui", "ux", "css", "style", "visual", "interface", "web-design",
@@ -122,9 +188,9 @@ def _parse_frontmatter(content: str) -> dict:
 class SkillCrawlerService:
     """Crawls configured sources for SKILL.md files and caches the catalog.
 
-    Sources = built-in defaults + env ``SKILL_REPOS`` (public GitHub, owner/repo)
-    PLUS admin-managed DB rows (``SkillSource``): GitHub repos with a ref/subdir, or
-    ANY Git URL cloned shallowly (self-hosted Forgejo/GitLab/Gitea, private repos via
+    Sources = DB rows (``SkillSource``; the built-in ones as ``system:builtin`` rows,
+    switchable like any other, #895) PLUS env ``SKILL_REPOS`` (public GitHub, owner/repo).
+    DB rows are GitHub repos with a ref/subdir, or ANY Git URL cloned shallowly (self-hosted Forgejo/GitLab/Gitea, private repos via
     a masked encrypted credential). Crawled skills pass the same security gate (#192)
     as API-imported ones and carry provenance (source_repo/source_url). Issue #371.
     """
@@ -142,20 +208,26 @@ class SkillCrawlerService:
             await asyncio.sleep(CRAWL_INTERVAL)
 
     async def _load_db_sources(self) -> list[dict]:
-        """Load ENABLED admin-configured skill sources (issue #371 phase 3)."""
+        """ALLE Quellen aus der Datenbank (auch abgeschaltete — ``plane_crawl`` filtert).
+
+        Eingebaute Quellen werden vorher angelegt, falls sie fehlen (#895)."""
         try:
             from app.db.session import resilient_session
             from app.models.skill import SkillSource
             from sqlalchemy import select
             async with resilient_session() as db:
-                rows = (await db.execute(
-                    select(SkillSource).where(SkillSource.enabled.is_(True))
-                )).scalars().all()
+                try:
+                    await eingebaute_quellen_anlegen(db)
+                except Exception as e:  # noqa: BLE001 — der Crawl läuft mit dem Bestand weiter
+                    logger.warning("Skill crawler: eingebaute Quellen nicht angelegt: %s", e)
+                    await db.rollback()
+                rows = (await db.execute(select(SkillSource).order_by(SkillSource.id))).scalars().all()
                 return [{
                     "id": r.id, "name": r.name,
                     "kind": r.kind.value if hasattr(r.kind, "value") else str(r.kind),
                     "location": r.location, "ref": r.ref, "subdir": r.subdir,
                     "credential_encrypted": r.credential_encrypted, "trusted": bool(r.trusted),
+                    "enabled": bool(r.enabled), "created_by": r.created_by,
                 } for r in rows]
         except Exception as e:
             logger.warning("Skill crawler: could not load DB sources: %s", e)
@@ -163,10 +235,10 @@ class SkillCrawlerService:
 
     async def crawl(self) -> list[dict]:
         """Crawl all sources (env/default GitHub + admin DB sources) and cache."""
-        github_repos = _configured_repos()
-        db_sources = await self._load_db_sources()
-        logger.info("Skill crawler: %d built-in/env repos + %d DB sources",
-                    len(github_repos), len(db_sources))
+        zeilen = await self._load_db_sources()
+        github_repos, db_sources = plane_crawl(zeilen, _env_repos())
+        logger.info("Skill crawler: %d env repos + %d aktive Quellen (von %d)",
+                    len(github_repos), len(db_sources), len(zeilen))
 
         all_skills: list[dict] = []
         from app.config import settings
@@ -175,7 +247,8 @@ class SkillCrawlerService:
             headers["Authorization"] = f"Bearer {settings.github_token}"
 
         async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-            # 1. Built-in + env GitHub repos (public → untrusted provenance).
+            # 1. Per Umgebung (SKILL_REPOS) gesetzte Repos ohne eigene Zeile
+            #    (public → untrusted provenance).
             for repo in github_repos:
                 try:
                     skills = await self._crawl_github(client, repo)
@@ -188,7 +261,8 @@ class SkillCrawlerService:
                 except Exception as e:
                     logger.warning("Failed to crawl %s: %s", repo, e)
 
-            # 2. Admin-managed DB sources (GitHub-with-config or any Git host).
+            # 2. Quellen aus der Datenbank: eingebaute (system:builtin) und vom Admin
+            #    eingetragene (GitHub-with-config or any Git host).
             for src in db_sources:
                 try:
                     if src["kind"] == "git":
@@ -201,7 +275,9 @@ class SkillCrawlerService:
                     for s in skills:
                         s["source_repo"] = src["location"]
                         s["source_url"] = url
-                        s["created_by"] = f"import:source:{src['id']}"
+                        # Eingebaute Quellen bleiben „öffentlich“, nur eigene sind „eigene Quelle“.
+                        s["created_by"] = ("import:github" if src.get("created_by") == BUILTIN_CREATED_BY
+                                           else f"import:source:{src['id']}")
                         s["trusted"] = src["trusted"]
                     all_skills.extend(skills)
                     await self._update_source_status(src["id"], f"ok: {len(skills)} skills")
@@ -210,7 +286,7 @@ class SkillCrawlerService:
                                    src["name"], src["location"], e)
                     await self._update_source_status(src["id"], f"error: {str(e)[:180]}")
 
-        # Deduplicate by name (env/default win over DB sources for name clashes).
+        # Deduplicate by name (env repos win over DB sources for name clashes).
         seen: set = set()
         unique: list[dict] = []
         for s in all_skills:

@@ -11,6 +11,16 @@ from app.models.skill import Skill, SkillStatus
 router = APIRouter(prefix="/skills", tags=["skills-catalog"])
 
 
+def _herkunft_felder(created_by, source_repo, content, name) -> dict:
+    """Herkunft, Risiko-Hinweise und Vorlagen — dieselben Felder wie im Marktplatz (#895)."""
+    from app.core.skill_herkunft import herkunft, risiko_hinweise
+    from app.core.vorlagen_skills import vorlagen_je_skill
+
+    art = herkunft(created_by, source_repo)
+    return {"herkunft": art, "risiko_hinweise": risiko_hinweise(content, art),
+            "vorlagen": vorlagen_je_skill().get(name or "", [])}
+
+
 @router.get("/catalog")
 async def get_skill_catalog(request: Request, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Return merged catalog: crawled GitHub skills + DB marketplace skills.
@@ -36,6 +46,7 @@ async def get_skill_catalog(request: Request, user=Depends(require_auth), db: As
             "category": s.category.value if hasattr(s.category, "value") else str(s.category),
             "source": s.created_by or "marketplace",
             "source_repo": s.source_repo,
+            **_herkunft_felder(s.created_by, s.source_repo, s.content, s.name),
             "avg_rating": s.avg_rating,
             "usage_count": s.usage_count,
             "id": s.id,
@@ -57,7 +68,10 @@ async def get_skill_catalog(request: Request, user=Depends(require_auth), db: As
             except Exception:
                 catalog = None
         if catalog:
-            crawled_entries = catalog.get("skills", [])
+            crawled_entries = [
+                {**e, **_herkunft_felder(e.get("created_by"), e.get("source_repo"), e.get("content"), e.get("name"))}
+                for e in catalog.get("skills", [])
+            ]
             crawled_at = catalog.get("crawled_at")
 
     # Merge: DB skills first, then crawled (skip duplicates by name)

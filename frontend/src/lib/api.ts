@@ -2673,6 +2673,11 @@ export interface MarketplaceSkill {
   avg_agent_duration_ms: number | null;
   manual_duration_seconds: number | null;
   is_public: boolean;
+  /** mitgeliefert | eigene Quelle | öffentlich | Trend | Agent | Nutzer */
+  herkunft?: string;
+  risiko_hinweise?: string[];
+  /** Mitgelieferte Vorlagen, die diesen Skill nutzen. */
+  vorlagen?: string[];
   assigned_agents: string[];
   assigned_to_agent?: boolean;
   created_at: string | null;
@@ -2692,12 +2697,14 @@ export interface MarketplaceSkill {
 
 export async function getMarketplaceSkills(params?: {
   category?: string; status?: string; q?: string; agent_id?: string;
+  quelle?: "trend" | "ohne_trend";
 }): Promise<{ skills: MarketplaceSkill[]; total: number }> {
   const sp = new URLSearchParams();
   if (params?.category) sp.set("category", params.category);
   if (params?.status) sp.set("status", params.status);
   if (params?.q) sp.set("q", params.q);
   if (params?.agent_id) sp.set("agent_id", params.agent_id);
+  if (params?.quelle) sp.set("quelle", params.quelle);
   const qs = sp.toString() ? `?${sp}` : "";
   return fetchJSON(`${getBase()}/skills/marketplace${qs}`);
 }
@@ -2740,6 +2747,10 @@ export interface SkillSource {
   last_crawled_at: string | null;
   last_status: string | null;
   created_by: string;
+  /** Eingebaute Quelle (system:builtin): abschaltbar, aber nicht umbenennbar im Ort. */
+  builtin?: boolean;
+  /** Anzeigenamen der Vorlagen, die Skills aus dieser Quelle nutzen. */
+  vorlagen?: string[];
 }
 
 export interface SkillSourceInput {
@@ -2769,6 +2780,20 @@ export async function updateSkillSource(id: number, data: Partial<SkillSourceInp
 
 export async function deleteSkillSource(id: number): Promise<void> {
   return fetchJSON(`${getBase()}/skills/sources/${id}`, { method: "DELETE" });
+}
+
+export interface TrendStatus { enabled: boolean; last_run: string | null; open: number }
+
+export async function getTrendStatus(): Promise<TrendStatus> {
+  return fetchJSON(`${getBase()}/skills/trend`);
+}
+
+export async function setTrendScan(enabled: boolean): Promise<{ enabled: boolean }> {
+  return fetchJSON(`${getBase()}/skills/trend`, { method: "PUT", body: JSON.stringify({ enabled }) });
+}
+
+export async function discardAllTrendSkills(): Promise<{ discarded: number }> {
+  return fetchJSON(`${getBase()}/skills/trend/discard-all`, { method: "POST" });
 }
 
 export async function recrawlSkillSources(): Promise<{ status: string }> {
@@ -2960,6 +2985,9 @@ export interface CatalogSkill {
   install_cmd: string;
   id?: number;
   type?: "db" | "github";
+  herkunft?: string;
+  risiko_hinweise?: string[];
+  vorlagen?: string[];
 }
 
 export interface AgentSkill {

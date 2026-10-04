@@ -1175,6 +1175,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Could not ensure skill_sources table: {e}")
 
+    # Eingebaute Skill-Quellen als Zeilen (#895): idempotent, gelöschte kommen nicht wieder.
+    try:
+        from app.db.session import resilient_session as _rs_quellen
+        from app.services.skill_crawler import eingebaute_quellen_anlegen
+        async with _rs_quellen() as _db_quellen:
+            _neu_quellen = await eingebaute_quellen_anlegen(_db_quellen)
+        if _neu_quellen:
+            logger.info(f"{_neu_quellen} eingebaute Skill-Quellen angelegt")
+    except Exception as e:
+        logger.warning(f"Could not seed builtin skill sources: {e}")
+
     # Memory auto-linker columns (#157): added to AgentMemoryLink, but create_all
     # never ALTERs an existing table. Ensure idempotently so the /related endpoint
     # and the semantic memory graph work on already-provisioned DBs.

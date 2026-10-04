@@ -8,6 +8,7 @@ import {
   CheckCircle2, Bot, ChevronDown, Plus, Pencil, Trash2, X, Save,
   Paperclip, Upload, File as FileIcon,
   Server, Globe, ShieldCheck, ChevronRight,
+  TrendingUp, User as UserIcon, AlertTriangle,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,45 @@ const CATEGORY_CONFIG: Record<string, { label: string; icon: typeof Code2; color
 };
 
 const EMPTY_SKILL = { name: "", description: "", content: "" };
+
+const HERKUNFT_STIL: Record<string, { icon: typeof Package; klasse: string }> = {
+  "mitgeliefert": { icon: Package, klasse: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
+  "eigene Quelle": { icon: Server, klasse: "border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-400" },
+  "öffentlich": { icon: Globe, klasse: "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400" },
+  "Trend": { icon: TrendingUp, klasse: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+  "Agent": { icon: Bot, klasse: "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400" },
+  "Nutzer": { icon: UserIcon, klasse: "border-foreground/15 bg-foreground/[0.04] text-muted-foreground" },
+};
+
+/** Abzeichen für die Herkunft eines Skills, darunter Risiko-Hinweise und „von Vorlage X genutzt“. */
+function HerkunftAbzeichen({ herkunft, hinweise, vorlagen }: { herkunft?: string; hinweise?: string[]; vorlagen?: string[] }) {
+  if (!herkunft) return null;
+  const stil = HERKUNFT_STIL[herkunft] || HERKUNFT_STIL["Nutzer"];
+  const Ico = stil.icon;
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium", stil.klasse)}>
+          <Ico className="h-3 w-3" /> {herkunft}
+        </span>
+        {vorlagen && vorlagen.length > 0 && (
+          <span className="text-[10px] text-muted-foreground/70">
+            Von Vorlage {vorlagen.slice(0, 2).join(", ")}{vorlagen.length > 2 ? ` und ${vorlagen.length - 2} weiteren` : ""} genutzt
+          </span>
+        )}
+      </div>
+      {hinweise && hinweise.length > 0 && (
+        <ul className="space-y-0.5">
+          {hinweise.map((h) => (
+            <li key={h} className="flex items-start gap-1 text-[10px] text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="mt-px h-3 w-3 shrink-0" /> {h}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /** Download a skill as a SKILL.md file (client-side, no backend needed). */
 function downloadSkillAsMd(skill: { name?: string; description?: string; content?: string }) {
@@ -164,6 +204,7 @@ function SkillDetailModal({ skill, onClose }: SkillDetailModalProps) {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <HerkunftAbzeichen herkunft={skill.herkunft} hinweise={skill.risiko_hinweise} vorlagen={skill.vorlagen} />
           {/* Metadata */}
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div className="rounded-lg border border-foreground/[0.06] bg-foreground/[0.02] p-3 space-y-1">
@@ -530,7 +571,7 @@ function SkillSourcesAdmin() {
           {loading ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Lade…</div>
           ) : sources.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Keine eigenen Quellen. Die eingebauten GitHub-Defaults werden trotzdem gecrawlt.</p>
+            <p className="text-xs text-muted-foreground">Keine Quellen eingetragen.</p>
           ) : (
             <div className="space-y-2">
               {sources.map((s) => (
@@ -539,6 +580,7 @@ function SkillSourcesAdmin() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-medium truncate">{s.name}</span>
+                      {s.builtin && <span className="rounded border border-sky-500/30 px-1 text-[10px] text-sky-600 dark:text-sky-400">eingebaut</span>}
                       {s.trusted && <span className="flex items-center gap-0.5 text-[10px] text-emerald-400"><ShieldCheck className="h-3 w-3" />trusted</span>}
                       {s.has_credential && <span className="text-[10px] text-amber-700 dark:text-amber-400">Credential</span>}
                     </div>
@@ -546,6 +588,11 @@ function SkillSourcesAdmin() {
                       {s.location}{s.ref ? `#${s.ref}` : ""}{s.subdir ? ` /${s.subdir}` : ""}
                       {s.last_status ? ` · ${s.last_status}` : ""}
                     </div>
+                    {s.vorlagen && s.vorlagen.length > 0 && (
+                      <div className="text-[10px] text-muted-foreground/70 truncate">
+                        Von Vorlage {s.vorlagen.slice(0, 3).join(", ")}{s.vorlagen.length > 3 ? ` und ${s.vorlagen.length - 3} weiteren` : ""} genutzt
+                      </div>
+                    )}
                   </div>
                   <button onClick={() => toggle(s)} className={cn("rounded px-2 py-1 text-[11px] border", s.enabled ? "border-emerald-500/40 text-emerald-400" : "border-foreground/10 text-muted-foreground")}>
                     {s.enabled ? "aktiv" : "aus"}
@@ -559,12 +606,12 @@ function SkillSourcesAdmin() {
           {builtin.length > 0 && (
             <div className="rounded-lg border border-foreground/[0.05] bg-foreground/[0.01] p-2.5">
               <p className="mb-1.5 text-[11px] uppercase tracking-wide text-muted-foreground/60">
-                Eingebaut ({builtin.length}) — werden immer gecrawlt (nur Lesen)
+                Über die Umgebung gesetzt ({builtin.length}) — werden gecrawlt (SKILL_REPOS, nur Lesen)
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {builtin.map((b) => (
                   <span key={b.location} className="flex items-center gap-1 rounded border border-foreground/[0.06] bg-foreground/[0.02] px-2 py-0.5 text-[11px] text-muted-foreground">
-                    <Globe className="h-3 w-3 text-sky-400/70" /> {b.location}{b.from_env ? " (env)" : ""}
+                    <Globe className="h-3 w-3 text-sky-400/70" /> {b.location}
                   </span>
                 ))}
               </div>
@@ -617,8 +664,11 @@ export default function SkillsPage() {
   const [agentSkills, setAgentSkills] = useState<AgentSkill[]>([]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"catalog" | "mine" | "pending" | "improvements">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "mine" | "pending" | "trend" | "improvements">("catalog");
   const [pendingSkills, setPendingSkills] = useState<MarketplaceSkill[]>([]);
+  const [trendSkills, setTrendSkills] = useState<MarketplaceSkill[]>([]);
+  const [trendStatus, setTrendStatus] = useState<api.TrendStatus | null>(null);
+  const [trendBusy, setTrendBusy] = useState(false);
   const [improvementSkills, setImprovementSkills] = useState<MarketplaceSkill[]>([]);
   const [reviewing, setReviewing] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -637,13 +687,20 @@ export default function SkillsPage() {
     setAgentSkills(skills);
   }, []);
 
+  // Trend-Funde sieht nur der Administrator; die Rolle steht ggf. erst nach dem Anmelden fest.
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.getMarketplaceSkills({ status: "draft", quelle: "trend" }).then((r) => setTrendSkills(r.skills || [])).catch(() => {});
+    api.getTrendStatus().then(setTrendStatus).catch(() => {});
+  }, [isAdmin]);
+
   useEffect(() => {
     const load = async () => {
       try {
         const [catalogData, agentsData, pendingData, improvementData] = await Promise.all([
           api.getSkillCatalog(),
           api.getAgents(),
-          api.getMarketplaceSkills({ status: "draft" }),
+          api.getMarketplaceSkills({ status: "draft", quelle: "ohne_trend" }),
           api.getPendingImprovements().catch(() => ({ skills: [] })),
         ]);
         setCatalog(catalogData.skills || []);
@@ -837,6 +894,7 @@ export default function SkillsPage() {
             { id: "catalog" as const, label: `Katalog (${catalog.length})` },
             { id: "mine" as const, label: `Meine Skills (${agentSkills.length})` },
             { id: "pending" as const, label: pendingSkills.length > 0 ? `Ausstehend (${pendingSkills.length})` : "Ausstehend" },
+            ...(isAdmin ? [{ id: "trend" as const, label: trendSkills.length > 0 ? `Trend-Funde (${trendSkills.length})` : "Trend-Funde" }] : []),
             { id: "improvements" as const, label: improvementSkills.length > 0 ? `Verbesserungen (${improvementSkills.length})` : "Verbesserungen" },
           ].map((tab) => (
             <button
@@ -947,6 +1005,8 @@ export default function SkillsPage() {
                       {skill.description || "No description available"}
                     </p>
 
+                    <HerkunftAbzeichen herkunft={skill.herkunft} hinweise={skill.risiko_hinweise} vorlagen={skill.vorlagen} />
+
                     <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => { e.stopPropagation(); handleInstall(skill); }}
@@ -986,7 +1046,7 @@ export default function SkillsPage() {
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <p className="text-sm">Keine ausstehenden Skills</p>
               <p className="text-xs mt-1 text-muted-foreground/60">
-                Der Trend-Scanner läuft täglich und sucht neue Tools automatisch.
+                Hier landen Entwürfe von Agenten und Nutzern, die auf Freigabe warten.
               </p>
             </div>
           ) : (
@@ -1012,9 +1072,7 @@ export default function SkillsPage() {
                         </a>
                       )}
                     </div>
-                    <span className="shrink-0 text-[10px] rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2 py-0.5">
-                      Auto-generiert
-                    </span>
+                    <HerkunftAbzeichen herkunft={skill.herkunft} hinweise={skill.risiko_hinweise} vorlagen={skill.vorlagen} />
                   </div>
                   <div className="text-xs text-foreground/70 bg-foreground/[0.03] rounded-lg p-3 font-mono whitespace-pre-wrap line-clamp-6 border border-foreground/[0.05]">
                     {skill.content?.slice(0, 400)}
@@ -1053,6 +1111,101 @@ export default function SkillsPage() {
               ))}
             </div>
           )
+        ) : activeTab === "trend" ? (
+          /* Trend-Funde: README-Hüllen aus GitHub/Hacker News, nie von selbst aktiv */
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-foreground/[0.08] bg-card/60 px-4 py-3">
+              <div className="text-xs">
+                <p className="font-medium">Trend-Scanner {trendStatus?.enabled ? "ist an" : "ist aus"}</p>
+                <p className="text-muted-foreground/70">
+                  Sucht täglich nach neuen Tools auf GitHub und Hacker News und legt Entwürfe an.
+                  {trendStatus?.last_run ? ` Letzter Lauf: ${new Date(trendStatus.last_run).toLocaleString("de-DE")}.` : " Noch nie gelaufen."}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={trendBusy}
+                  onClick={async () => {
+                    setTrendBusy(true);
+                    try {
+                      const r = await api.setTrendScan(!trendStatus?.enabled);
+                      setTrendStatus((t) => (t ? { ...t, enabled: r.enabled } : { enabled: r.enabled, last_run: null, open: 0 }));
+                    } finally { setTrendBusy(false); }
+                  }}
+                  className={cn("rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50",
+                    trendStatus?.enabled ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400" : "border-foreground/15 text-muted-foreground")}
+                >
+                  {trendStatus?.enabled ? "Ausschalten" : "Einschalten"}
+                </button>
+                <button
+                  disabled={trendBusy || trendSkills.length === 0}
+                  onClick={async () => {
+                    if (!confirm(`Alle ${trendSkills.length} Trend-Funde verwerfen?`)) return;
+                    setTrendBusy(true);
+                    try {
+                      await api.discardAllTrendSkills();
+                      setTrendSkills([]);
+                    } finally { setTrendBusy(false); }
+                  }}
+                  className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+                >
+                  Alle verwerfen
+                </button>
+              </div>
+            </div>
+            {trendSkills.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <p className="text-sm">Keine Trend-Funde</p>
+                <p className="text-xs mt-1 text-muted-foreground/60">
+                  Ein Fund ist nur ein README-Auszug und wird nie von selbst aktiv — erst die Freigabe macht ihn nutzbar.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {trendSkills.map((skill) => (
+                  <div
+                    key={skill.id}
+                    className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex flex-col gap-3 cursor-pointer hover:border-amber-500/30 transition-all"
+                    onClick={() => setDetailSkill(skill)}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{skill.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{skill.description}</p>
+                    </div>
+                    <HerkunftAbzeichen herkunft={skill.herkunft} hinweise={skill.risiko_hinweise} vorlagen={skill.vorlagen} />
+                    <div className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={async () => {
+                          setReviewing(skill.id);
+                          try {
+                            await api.rejectSkill(skill.id);
+                            setTrendSkills((p) => p.filter((x) => x.id !== skill.id));
+                          } finally { setReviewing(null); }
+                        }}
+                        disabled={reviewing === skill.id}
+                        className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+                      >
+                        Verwerfen
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setReviewing(skill.id);
+                          try {
+                            await api.approveSkill(skill.id);
+                            setTrendSkills((p) => p.filter((x) => x.id !== skill.id));
+                          } finally { setReviewing(null); }
+                        }}
+                        disabled={reviewing === skill.id}
+                        className="rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50"
+                      >
+                        Freigeben
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         ) : activeTab === "improvements" ? (
           /* Skill improvement proposals awaiting review */
           improvementSkills.length === 0 ? (
