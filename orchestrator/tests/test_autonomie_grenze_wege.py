@@ -261,6 +261,55 @@ class ZugriffsRichtlinie(unittest.IsolatedAsyncioTestCase):
         agent = self._agent({"permissions": ["full-access"], "permissions_mode": "manual"})
         await self._policy(MITGLIED, agent, permissions=["full-access"])
 
+    # Computer-Use-Standard (Sicherheitspruefung v1.362.0, F3): Shell auf dem
+    # Rechner des Menschen, Tastatur-/Mikrofon-Mitschnitt und Browser in einer
+    # angemeldeten Sitzung sind mindestens so viel wie Shell im Container. Ein
+    # begrenzter Nutzer schaltet sie nur frei, wenn die Matrix seines Agenten
+    # ``shell_exec`` ohne Rueckfrage erlaubt.
+    #
+    #   Fall                                      Grenze   Matrix shell_exec   Ergebnis
+    #   Mitglied, Agent L2, neu „shell"           L3       ask                 403
+    #   Mitglied, Agent L3, neu „shell"           L3       allow               ok
+    #   Mitglied, Agent L2, nur harmlose Gruppen  L3       ask                 ok
+    #   Mitglied, Agent L2, „shell" schon da      L3       ask                 ok (Bestand)
+    #   Admin, Agent L1, neu „ego_browser"        -        ask                 ok
+    #   Mitglied, gleichzeitig Matrix gesenkt     L3       ask (neu)           403
+    async def test_computer_use_sensible_gruppe_ohne_shell_freigabe(self):
+        for gruppe in ("shell", "input_capture", "voice_capture", "browser", "ego_browser"):
+            agent = SimpleNamespace(id="a1", autonomy_level="l2", access_policy={}, container_id=None)
+            with self.assertRaises(HTTPException) as f:
+                await self._policy(MITGLIED, agent, computer_use_default_capabilities=["screenshots", gruppe])
+            self.assertEqual(f.exception.status_code, 403, gruppe)
+            self.assertNotIn("computer_use_default_capabilities", agent.access_policy)
+
+    async def test_computer_use_shell_wenn_matrix_shell_erlaubt(self):
+        agent = self._agent()  # L3: shell_exec = allow
+        await self._policy(MITGLIED, agent, computer_use_default_capabilities=["shell", "browser"])
+        self.assertEqual(agent.access_policy["computer_use_default_capabilities"], ["shell", "browser"])
+
+    async def test_computer_use_harmlose_gruppen_immer(self):
+        agent = SimpleNamespace(id="a1", autonomy_level="l1", access_policy={}, container_id=None)
+        await self._policy(BETRACHTER, agent, computer_use_default_capabilities=["screenshots", "mouse"])
+        self.assertEqual(agent.access_policy["computer_use_default_capabilities"], ["screenshots", "mouse"])
+
+    async def test_computer_use_bestand_bleibt(self):
+        agent = SimpleNamespace(id="a1", autonomy_level="l2", container_id=None,
+                                access_policy={"computer_use_default_capabilities": ["shell", "mouse"]})
+        await self._policy(MITGLIED, agent, computer_use_default_capabilities=["shell"])
+        self.assertEqual(agent.access_policy["computer_use_default_capabilities"], ["shell"])
+
+    async def test_computer_use_admin_unbegrenzt(self):
+        agent = SimpleNamespace(id="a1", autonomy_level="l1", access_policy={}, container_id=None)
+        await self._policy(ADMIN, agent, computer_use_default_capabilities=["ego_browser"])
+        self.assertEqual(agent.access_policy["computer_use_default_capabilities"], ["ego_browser"])
+
+    async def test_computer_use_gegen_die_neue_matrix_geprueft(self):
+        agent = self._agent()  # L3
+        with self.assertRaises(HTTPException) as f:
+            await self._policy(MITGLIED, agent, matrix=am.matrix_for_level("l2"),
+                               computer_use_default_capabilities=["shell"])
+        self.assertEqual(f.exception.status_code, 403)
+
     async def test_patch_permissions_root_braucht_bestaetigung(self):
         from app.api import agents as api
 
@@ -332,6 +381,12 @@ class UeberDerGrenze(unittest.TestCase):
         self.assertEqual(gruende, ["Sudo: full-access"])
         custom = ag.ueberschreitung("custom", {"autonomy_matrix": dict(am.matrix_for_level("l3"), purchases="allow")}, "l3")
         self.assertEqual(custom, ["Matrix freizügiger: purchases"])
+
+    def test_computer_use_ueber_der_grenze_wird_gemeldet(self):
+        policy = {"computer_use_default_capabilities": ["mouse", "shell"]}
+        self.assertEqual(ag.ueberschreitung("l2", policy, "l3"), ["Computer-Use: shell"])
+        self.assertEqual(ag.ueberschreitung("l3", policy, "l3"), [])
+        self.assertEqual(ag.ueberschreitung("l2", policy, None), [])
 
 
 class RollenPflege(unittest.IsolatedAsyncioTestCase):

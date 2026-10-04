@@ -63,6 +63,30 @@ class ObergrenzeTests(unittest.TestCase):
     def test_ungueltige_grenze_schliesst(self):
         self.assertEqual(self.grenze(SONDERROLLE, {"max_autonomy_level": "l9"}), "l1")
 
+    def test_alle_eingebauten_rollen(self):
+        erwartet = {UserRole.ADMIN: None, UserRole.MANAGER: None, UserRole.MEMBER: "l3",
+                    UserRole.VIEWER: "l1", UserRole.UNASSIGNED: "l1"}
+        for rolle, grenze in erwartet.items():
+            nutzer = SimpleNamespace(id="x", role=rolle, custom_role_id=None)
+            self.assertEqual(self.grenze(nutzer), grenze, rolle)
+
+    def test_admin_mit_sonderrolle_bleibt_unbegrenzt(self):
+        admin = SimpleNamespace(id="a", role=UserRole.ADMIN, custom_role_id=7)
+        self.assertIsNone(self.grenze(admin, {"max_autonomy_level": "l1"}))
+
+    def test_fehlende_angabe_schliesst(self):
+        """Sicherheitspruefung v1.362.0, F15: fehlt der Schluessel in den
+        Rechten ganz (kuenftiger Weg, der ihn nicht befuellt), gilt L1 —
+        geschlossen, nicht offen. Unbegrenzt ist nur ein ausdrueckliches None."""
+        from unittest.mock import AsyncMock, patch
+
+        with patch("app.core.permissions.get_effective_permissions",
+                   AsyncMock(return_value={"max_agents": 3})):
+            self.assertEqual(self.grenze(MITGLIED), "l1")
+        with patch("app.core.permissions.get_effective_permissions",
+                   AsyncMock(return_value={"max_autonomy_level": None})):
+            self.assertIsNone(self.grenze(MITGLIED))
+
 
 class StufeTests(unittest.TestCase):
     def pruefe(self, user, stufe, rollen_rechte=None):

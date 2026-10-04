@@ -148,6 +148,63 @@ class AgentMitDatenLoeschenTests(_Basis):
         self.assertEqual(await self._zaehle(AgentMemory, agent_id="ag1"), 2)
 
 
+class MitDatenNurBesitzerOderAdminTests(_Basis):
+    """Sicherheitsprüfung v1.362.0, F7: „mit Daten“ löscht ALLE Chats und das
+    Gedächtnis des Besitzers. Das darf nur er selbst oder ein Admin — wer den
+    Agenten nur geteilt bekam oder ihn als Manager sieht, bekommt 403 (statt
+    still ohne Daten zu löschen: die Oberfläche hätte sonst „mit Daten gelöscht“
+    gemeldet, obwohl alles noch da ist).
+
+        Aufrufer                         mit Daten   ohne Daten
+        Besitzer (Mitglied)              ok          ok
+        Admin                            ok          ok
+        geteilt (AgentAccess)            403         ok
+        Manager, nicht Besitzer          403         ok
+    """
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        async with self.Session() as db:
+            db.add(User(id="u2", email="u2@example.invalid", name="Geteilt",
+                        password_hash="x", role=UserRole.MEMBER))
+            db.add(User(id="mgr", email="mgr@example.invalid", name="Manager",
+                        password_hash="x", role=UserRole.MANAGER))
+            await db.flush()
+            db.add(AgentAccess(agent_id="ag1", user_id="u2", granted_by="u1"))
+            await db.commit()
+
+    async def _loeschen(self, nutzer_id, remove_data):
+        from app.api import agents as agents_api
+
+        async with self.Session() as db:
+            nutzer = await db.get(User, nutzer_id)
+            manager = AgentManager(db, _docker(), _redis())
+            return await agents_api.remove_agent("ag1", remove_data=remove_data,
+                                                 user=nutzer, db=db, manager=manager)
+
+    async def test_geteilt_mit_daten_403_und_nichts_geloescht(self):
+        for nutzer_id in ("u2", "mgr"):
+            with self.assertRaises(HTTPException) as fehler:
+                await self._loeschen(nutzer_id, True)
+            self.assertEqual(fehler.exception.status_code, 403, nutzer_id)
+        self.assertEqual(await self._zaehle(Agent, id="ag1"), 1)
+        self.assertEqual(await self._zaehle(ChatMessage, agent_id="ag1"), 1)
+        self.assertEqual(await self._zaehle(AgentMemory, agent_id="ag1"), 2)
+
+    async def test_geteilt_ohne_daten_bleibt_erlaubt(self):
+        await self._loeschen("u2", False)
+        self.assertEqual(await self._zaehle(Agent, id="ag1"), 0)
+        self.assertEqual(await self._zaehle(ChatMessage, agent_id="ag1"), 1)
+
+    async def test_besitzer_mit_daten(self):
+        await self._loeschen("u1", True)
+        self.assertEqual(await self._zaehle(ChatMessage, agent_id="ag1"), 0)
+
+    async def test_admin_mit_daten(self):
+        await self._loeschen("admin", True)
+        self.assertEqual(await self._zaehle(AgentMemory, agent_id="ag1"), 0)
+
+
 class NutzerLoeschenTests(_Basis):
     async def _loesche(self, agenten=None, an=None):
         async with self.Session() as db:

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Cpu, Eye, EyeOff, UserPlus } from "lucide-react";
 import { getRegistrationStatus, getSSOProviders, register, type SSOProvider } from "@/lib/auth";
+import { MfaAnmeldung } from "@/components/auth/mfa-anmeldung";
 
 import { getApiUrl } from "@/lib/config";
 
@@ -20,6 +21,9 @@ export default function RegisterPage() {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [registrationClosed, setRegistrationClosed] = useState(false);
   const [ssoProviders, setSsoProviders] = useState<SSOProvider[]>([]);
+  // Zwei-Faktor-Pflicht (#915): statt einer Sitzung erst die Einrichtung —
+  // derselbe Ablauf wie auf der Anmeldeseite.
+  const [mfa, setMfa] = useState<{ token: string; setupRequired: boolean } | null>(null);
 
   useEffect(() => {
     getRegistrationStatus().then((status) => {
@@ -50,7 +54,16 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      await register(name, email, password);
+      const ergebnis = await register(name, email, password);
+      if ("pending" in ergebnis) {
+        // Die Anmeldeseite zeigt den Hinweis „Warten auf Freischaltung“.
+        router.push("/login?pending=1");
+        return;
+      }
+      if ("mfa" in ergebnis) {
+        setMfa(ergebnis.mfa);
+        return;
+      }
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registrierung fehlgeschlagen");
@@ -103,7 +116,16 @@ export default function RegisterPage() {
           </div>
         </div>
 
+        {mfa && (
+          <MfaAnmeldung
+            mfa={mfa}
+            onAngemeldet={() => router.push("/dashboard")}
+            onZurueck={() => router.push("/login")}
+          />
+        )}
+
         {/* Form */}
+        {!mfa && (
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
@@ -200,9 +222,10 @@ export default function RegisterPage() {
             )}
           </button>
         </form>
+        )}
 
         {/* SSO Buttons (not shown in setup mode) */}
-        {!needsSetup && ssoProviders.length > 0 && (
+        {!needsSetup && !mfa && ssoProviders.length > 0 && (
           <div className="space-y-3">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -244,7 +267,7 @@ export default function RegisterPage() {
           </div>
         )}
 
-        {!needsSetup && (
+        {!needsSetup && !mfa && (
           <p className="text-center text-xs text-muted-foreground">
             Schon ein Konto?{" "}
             <Link href="/login" className="text-primary hover:underline">

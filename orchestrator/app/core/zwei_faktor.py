@@ -115,6 +115,29 @@ def pflicht_fuer(user) -> bool:
     return pflicht_aktiv() and bool(getattr(user, "password_hash", None))
 
 
+async def sitzungen_ohne_faktor_beenden(db) -> list[str]:
+    """Die Pflicht wurde eben eingeschaltet: alle Passwort-Konten OHNE eingerichteten
+    zweiten Faktor abmelden (``token_version`` +1). Sonst liefen ihre Sitzungen
+    einfach weiter, und die Pflicht griffe erst bei der nächsten Anmeldung. Wer
+    schon einen Faktor hat, bleibt angemeldet; reine SSO-Konten ebenso (dort gilt
+    die Regel des Identitätsanbieters). Gibt die Kennungen zurück — ohne Commit."""
+    from sqlalchemy import or_, select, update
+
+    from app.models.user import User
+
+    ids = list((await db.execute(
+        select(User.id).where(
+            User.password_hash.is_not(None), User.password_hash != "",
+            or_(User.mfa_enabled_at.is_(None), User.totp_secret_encrypted.is_(None)),
+        )
+    )).scalars().all())
+    if ids:
+        await db.execute(
+            update(User).where(User.id.in_(ids)).values(token_version=User.token_version + 1)
+        )
+    return ids
+
+
 # --- TOTP -----------------------------------------------------------------
 
 
@@ -294,6 +317,36 @@ async def zeitschritt_verbrauchen(redis, uid: str, schritt: int) -> bool:
     return bool(await redis.set(_k_schritt(uid, schritt), 1, ex=gueltig_noch, nx=True))
 
 
+async def _sperre_pruefen(redis, uid: str) -> None:
+    """Ohne Redis ``ZweiFaktorNichtVerfuegbar``, während der Sperre ``ZweiFaktorGesperrt``."""
+    if redis is None:
+        raise ZweiFaktorNichtVerfuegbar()
+    try:
+        rest = await gesperrt_fuer(redis, uid)
+    except Exception as e:  # noqa: BLE001 — Redis-Fehler heißt: nicht prüfbar
+        raise ZweiFaktorNichtVerfuegbar() from e
+    if rest:
+        raise ZweiFaktorGesperrt(rest)
+
+
+async def passwort_pruefen(redis, user, passwort: str) -> bool:
+    """Passwort vor Änderungen am zweiten Faktor (Einrichten, Abschalten) prüfen.
+
+    Dieselbe Sperre wie für Codes: ein falsches Passwort zählt als Fehlversuch —
+    sonst ließe es sich mit einem gestohlenen Sitzungstoken ungebremst raten.
+    Ein richtiges Passwort setzt den Zähler bewusst NICHT zurück: wer das
+    Passwort kennt, könnte sonst beim Abschalten den Code beliebig oft raten.
+    """
+    from app.core.auth import verify_password
+
+    uid = str(user.id)
+    await _sperre_pruefen(redis, uid)
+    if user.password_hash and verify_password(passwort or "", user.password_hash):
+        return True
+    await fehlversuch_merken(redis, uid)
+    return False
+
+
 async def zweiten_faktor_pruefen(redis, user, code: str, *, geheimnis: str | None = None,
                                  wiederherstellung_erlaubt: bool = True) -> str | None:
     """Den zweiten Faktor prüfen — die eine Stelle für Anmeldung, Einrichtung, Abschalten.
@@ -303,15 +356,8 @@ async def zweiten_faktor_pruefen(redis, user, code: str, *, geheimnis: str | Non
     der Sperre und ``ZweiFaktorNichtVerfuegbar`` ohne Redis. ``geheimnis``
     überschreibt das gespeicherte (Bestätigung einer neuen Einrichtung).
     """
-    if redis is None:
-        raise ZweiFaktorNichtVerfuegbar()
     uid = str(user.id)
-    try:
-        rest = await gesperrt_fuer(redis, uid)
-    except Exception as e:  # noqa: BLE001 — Redis-Fehler heißt: nicht prüfbar
-        raise ZweiFaktorNichtVerfuegbar() from e
-    if rest:
-        raise ZweiFaktorGesperrt(rest)
+    await _sperre_pruefen(redis, uid)
 
     art = None
     g = geheimnis or geheimnis_entschluesseln(user)

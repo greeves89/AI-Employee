@@ -169,7 +169,8 @@ class _Basis(unittest.IsolatedAsyncioTestCase):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         self._vorher = {k: getattr(settings, k) for k in
-                        ("require_mfa_for_password_accounts", "sso_only_login")}
+                        ("require_mfa_for_password_accounts", "sso_only_login",
+                         "registration_open", "require_user_approval", "setup_token")}
         settings.require_mfa_for_password_accounts = False
         settings.sso_only_login = False
         # Echte Fernet-Verschlüsselung mit einem Testschlüssel — nur im Speicher.
@@ -550,6 +551,180 @@ class EinrichtenUndAbschalten(_Basis):
             with self.assertRaises(HTTPException) as ctx:
                 await self._verify(db, token, "000000")
             self.assertEqual(ctx.exception.status_code, 401)
+
+
+class PasswortRatenGedrosselt(_Basis):
+    """Sicherheitsprüfung v1.362.0, F4: /setup und /disable prüfen das Passwort.
+    Wer nur ein gestohlenes Sitzungstoken hat, durfte es dort ungebremst raten.
+    Jetzt zählt ein falsches Passwort in dieselbe Sperre wie ein falscher Code
+    (5 Fehlversuche → 15 Minuten), ohne Redis gibt es 503 statt ungebremst."""
+
+    async def _starten(self, db, passwort):
+        from app.api import zwei_faktor as zf_api
+
+        return await zf_api.einrichten_starten(zf_api.MfaPasswortRequest(password=passwort),
+                                               self.request, _Antwort(), db)
+
+    async def test_sperre_nach_fuenf_falschen_passwoertern(self):
+        anna = await EinrichtenUndAbschalten._als(self, "u2")
+        with patch("app.dependencies.get_current_user", AsyncMock(return_value=anna)):
+            async with self.Session() as db:
+                for _ in range(zf.MAX_FEHLVERSUCHE):
+                    with self.assertRaises(HTTPException) as ctx:
+                        await self._starten(db, "Falsch-Falsch-Falsch")
+                    self.assertEqual(ctx.exception.status_code, 403)
+                # Auch das richtige Passwort hilft jetzt nicht mehr.
+                with self.assertRaises(HTTPException) as ctx:
+                    await self._starten(db, PASSWORT)
+                self.assertEqual(ctx.exception.status_code, 429)
+                self.assertIsNone((await db.get(User, "u2")).totp_secret_encrypted)
+
+    async def test_abschalten_teilt_die_sperre(self):
+        from app.api import zwei_faktor as zf_api
+
+        async with self.Session() as db:
+            geheimnis = await self._mfa_aktivieren(db)
+        anna = await EinrichtenUndAbschalten._als(self, "u2")
+        with patch("app.dependencies.get_current_user", AsyncMock(return_value=anna)):
+            async with self.Session() as db:
+                for _ in range(zf.MAX_FEHLVERSUCHE):
+                    with self.assertRaises(HTTPException):
+                        await zf_api.abschalten(zf_api.MfaAbschaltenRequest(
+                            password="Falsch-Falsch-Falsch", code="000000"), self.request, db)
+                with self.assertRaises(HTTPException) as ctx:
+                    await zf_api.abschalten(zf_api.MfaAbschaltenRequest(
+                        password=PASSWORT, code=zf.code_generieren(geheimnis, time.time())),
+                        self.request, db)
+                self.assertEqual(ctx.exception.status_code, 429)
+                self.assertIsNotNone((await db.get(User, "u2")).mfa_enabled_at)
+
+    async def test_richtiges_passwort_hebt_die_code_sperre_nicht_auf(self):
+        """Sonst ließe sich mit bekanntem Passwort der Code beliebig oft raten."""
+        from app.api import zwei_faktor as zf_api
+
+        async with self.Session() as db:
+            await self._mfa_aktivieren(db)
+        anna = await EinrichtenUndAbschalten._als(self, "u2")
+        with patch("app.dependencies.get_current_user", AsyncMock(return_value=anna)):
+            async with self.Session() as db:
+                for _ in range(zf.MAX_FEHLVERSUCHE):
+                    with self.assertRaises(HTTPException):
+                        await zf_api.abschalten(zf_api.MfaAbschaltenRequest(
+                            password=PASSWORT, code="000000"), self.request, db)
+                with self.assertRaises(HTTPException) as ctx:
+                    await zf_api.abschalten(zf_api.MfaAbschaltenRequest(
+                        password=PASSWORT, code="000000"), self.request, db)
+                self.assertEqual(ctx.exception.status_code, 429)
+
+    async def test_ohne_redis_503(self):
+        anna = await EinrichtenUndAbschalten._als(self, "u2")
+        self.request.app.state.redis = SimpleNamespace(client=None)
+        with patch("app.dependencies.get_current_user", AsyncMock(return_value=anna)):
+            async with self.Session() as db:
+                with self.assertRaises(HTTPException) as ctx:
+                    await self._starten(db, "Falsch-Falsch-Falsch")
+                self.assertEqual(ctx.exception.status_code, 503)
+
+
+class PflichtGreiftSofort(_Basis):
+    """Sicherheitsprüfung v1.362.0, F11: Die Pflicht zum zweiten Faktor griff
+    weder bei der Selbstregistrierung (sofort eine Sitzung) noch bei schon
+    angemeldeten Konten (Sitzungen liefen weiter).
+
+        Fall                                         Ergebnis
+        Registrierung, Pflicht an                     Zwischen-Token zur Einrichtung, keine Sitzung
+        Registrierung, Pflicht aus                    Sitzung wie bisher
+        Registrierung, Pflicht an, Freischaltung      wartet auf Freischaltung (kein Token)
+        Pflicht einschalten                           Sitzungen der Passwort-Konten OHNE Faktor enden
+                                                      (mit Faktor / reines SSO: bleiben), Protokoll
+        Pflicht ist schon an / wird ausgeschaltet     niemand wird abgemeldet
+    """
+
+    async def _registrieren(self, db, email="neu@example.com"):
+        from app.api import auth as auth_api
+
+        antwort = _Antwort()
+        daten = await auth_api.register(
+            auth_api.SetupRegisterRequest(name="Neu", email=email, password=PASSWORT), antwort, db)
+        return daten, antwort
+
+    async def test_registrierung_mit_pflicht_fuehrt_in_die_einrichtung(self):
+        from app.api import zwei_faktor as zf_api
+
+        settings.require_mfa_for_password_accounts = True
+        settings.registration_open = True
+        settings.require_user_approval = False
+        async with self.Session() as db:
+            daten, antwort = await self._registrieren(db)
+            self.assertTrue(daten["mfa_required"])
+            self.assertTrue(daten["mfa_setup_required"])
+            self.assertNotIn("access_token", daten)
+            self.assertEqual(antwort.cookies, {})
+            # Das Zwischen-Token taugt für die Pflicht-Einrichtung — und meldet danach an.
+            start = await zf_api.pending_einrichtung_starten(
+                zf_api.MfaTokenRequest(mfa_token=daten["mfa_token"]), _Antwort(), db)
+            fertig = await zf_api.pending_einrichtung_bestaetigen(
+                zf_api.MfaVerifyRequest(mfa_token=daten["mfa_token"],
+                                        code=zf.code_generieren(start["secret"], time.time())),
+                self.request, _Antwort(), db)
+            self.assertIn("access_token", fertig)
+
+    async def test_registrierung_ohne_pflicht_wie_bisher(self):
+        settings.registration_open = True
+        settings.require_user_approval = False
+        async with self.Session() as db:
+            daten, antwort = await self._registrieren(db)
+            self.assertIn("access_token", daten)
+            self.assertIn("access_token", antwort.cookies)
+
+    async def test_registrierung_mit_freischaltung_wartet(self):
+        settings.require_mfa_for_password_accounts = True
+        settings.registration_open = True
+        settings.require_user_approval = True
+        async with self.Session() as db:
+            daten, antwort = await self._registrieren(db)
+            self.assertTrue(daten["pending"])
+            self.assertNotIn("mfa_token", daten)
+            self.assertEqual(antwort.cookies, {})
+
+    async def _pflicht(self, db, an: bool):
+        from app.api import settings as settings_api
+        from app.schemas.settings import SettingsUpdate
+
+        admin = await db.get(User, "u1")
+        return await settings_api.update_settings(
+            SettingsUpdate(require_mfa_for_password_accounts=an), user=admin, db=db)
+
+    async def _versionen(self, db):
+        return {u.id: u.token_version for u in (await db.execute(select(User))).scalars().all()}
+
+    async def test_einschalten_beendet_sitzungen_ohne_zweiten_faktor(self):
+        async with self.Session() as db:
+            await self._mfa_aktivieren(db, "u3")
+            db.add(User(id="u4", email="sso@example.com", name="SSO", role=UserRole.MEMBER,
+                        password_hash=None, sso_provider="microsoft", sso_subject="sub-sso"))
+            await db.commit()
+            vorher = await self._versionen(db)
+            await self._pflicht(db, True)
+            db.expire_all()
+            nachher = await self._versionen(db)
+            self.assertEqual(nachher["u1"], vorher["u1"] + 1)   # Admin ohne Faktor: auch er
+            self.assertEqual(nachher["u2"], vorher["u2"] + 1)
+            self.assertEqual(nachher["u3"], vorher["u3"])       # hat schon einen Faktor
+            self.assertEqual(nachher["u4"], vorher["u4"])       # reines SSO-Konto
+            eintraege = await self._eintraege(db, "settings_changed")
+            beendet = [e for e in eintraege if (e.meta or {}).get("sitzungen_beendet") is not None]
+            self.assertEqual(len(beendet), 1)
+            self.assertEqual(beendet[0].meta["sitzungen_beendet"], 2)
+
+    async def test_schon_an_oder_ausschalten_meldet_niemanden_ab(self):
+        settings.require_mfa_for_password_accounts = True
+        async with self.Session() as db:
+            vorher = await self._versionen(db)
+            await self._pflicht(db, True)
+            await self._pflicht(db, False)
+            db.expire_all()
+            self.assertEqual(await self._versionen(db), vorher)
 
 
 class Verwaltung(_Basis):

@@ -391,7 +391,8 @@ export function ZweiFaktorPflichtToggle() {
           <p className="mt-0.5 text-[10px] text-muted-foreground/60">
             Wer sich mit Passwort anmeldet und noch keinen zweiten Faktor hat, richtet ihn direkt nach dem
             Passwort ein — vorher gibt es keinen Zugang. SSO-Anmeldungen sind ausgenommen, dort gilt die
-            Mehrfaktor-Regel des Identitätsanbieters. Bereits angemeldete Sitzungen laufen bis zu ihrem Ablauf weiter.
+            Mehrfaktor-Regel des Identitätsanbieters. Beim Einschalten werden alle Passwort-Konten ohne
+            zweiten Faktor sofort abgemeldet — auch du, falls du noch keinen eingerichtet hast.
           </p>
         </div>
         <button

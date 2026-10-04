@@ -107,7 +107,9 @@ class APIRateLimitMiddleware:
             return
 
         # Identify caller: user_id from JWT cookie, fallback to IP
-        key = request.client.host if request.client else "unknown"
+        # Dieselbe Ermittlung wie die Anmelde-Bremse (core/client_ip).
+        from app.core.client_ip import client_ip
+        key = client_ip(request) or "unknown"
         access_token = request.cookies.get("access_token")
         if access_token:
             try:

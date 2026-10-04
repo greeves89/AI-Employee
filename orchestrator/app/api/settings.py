@@ -229,6 +229,9 @@ async def update_settings(
             detail="Aktualität: pd, pw, pm, py oder YYYY-MM-DDtoYYYY-MM-DD.",
         )
 
+    from app.core import zwei_faktor as zf
+    mfa_pflicht_vorher = zf.pflicht_aktiv()
+
     # Handle simple mapped fields
     for field_name, config_attr in _FIELD_MAP.items():
         value = getattr(data, field_name, None)
@@ -356,8 +359,29 @@ async def update_settings(
     # Pruefprotokoll (#908): WELCHE Einstellungen geaendert wurden — nur die
     # Schluesselnamen. Werte gehoeren nicht hinein: darunter sind Geheimnisse.
     await _einstellungen_protokollieren(db, user, sorted(data.model_dump(exclude_unset=True)))
+
+    # Zwei-Faktor-Pflicht eben eingeschaltet (#915): Sitzungen der Passwort-Konten
+    # ohne zweiten Faktor enden jetzt — nicht erst bei ihrer naechsten Anmeldung.
+    antwort: dict = {"status": "updated"}
+    if data.require_mfa_for_password_accounts and not mfa_pflicht_vorher:
+        beendet = await zf.sitzungen_ohne_faktor_beenden(db)
+        await _mfa_pflicht_protokollieren(db, user, beendet)
+        antwort["sitzungen_beendet"] = len(beendet)
     await db.commit()
-    return {"status": "updated"}
+    return antwort
+
+
+async def _mfa_pflicht_protokollieren(db: AsyncSession, user, beendet: list[str]) -> None:
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
+    await protokolliere(
+        db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
+        command=(f"Zwei-Faktor-Pflicht eingeschaltet: {len(beendet)} Passwort-Konten "
+                 "ohne zweiten Faktor abgemeldet"),
+        meta={"aktion": "mfa_pflicht_eingeschaltet", "sitzungen_beendet": len(beendet),
+              "user_ids": beendet[:500]},
+    )
 
 
 async def _einstellungen_protokollieren(db: AsyncSession, user, schluessel: list[str]) -> None:

@@ -18,6 +18,11 @@ nichts. Gesperrt wird nur das ERHOEHEN — gemessen am bisherigen Stand
 (``bisher``). Welche Agenten ueber der Grenze stehen, zeigt
 ``agenten_ueber_der_grenze`` dem Administrator.
 
+Computer-Use: Shell auf dem Rechner des Menschen, Tastatur-/Mikrofon-Mitschnitt
+und Browser in einer angemeldeten Sitzung (``SENSIBLE_COMPUTER_USE``) schaltet ein
+begrenzter Nutzer nur frei, wenn die Matrix seines Agenten ``shell_exec`` ohne
+Rueckfrage erlaubt — es ist mindestens so viel wie Shell im Container.
+
 Voller Root-Zugriff (``full-access``) entsteht nie nebenbei: nur mit
 ausdruecklicher Bestaetigung (``root_bestaetigt``) und nur fuer Rollen ohne
 Grenze. Vorlagen duerfen ihn vorschlagen, aber nicht still vergeben.
@@ -35,6 +40,12 @@ logger = logging.getLogger(__name__)
 STUFEN = ("l1", "l2", "l3", "l4")
 _RANG = {am.DENY: 0, am.ASK: 1, am.ALLOW: 2}
 
+# Computer-Use-Gruppen (``api/computer_use.py::CAPABILITY_GROUPS``), die ueber
+# Bildschirm, Maus und Tastatur hinausgehen: Shell auf dem Rechner, Mitschnitt von
+# Eingaben und Mikrofon, Browser (eigenes Profil bzw. die ECHTE angemeldete
+# Sitzung). Alle standardmaessig aus.
+SENSIBLE_COMPUTER_USE = frozenset({"shell", "input_capture", "voice_capture", "browser", "ego_browser"})
+
 
 async def autonomie_obergrenze(user, db) -> str | None:
     """Die hoechste erlaubte Stufe fuer diesen Nutzer, ``None`` = unbegrenzt."""
@@ -42,7 +53,9 @@ async def autonomie_obergrenze(user, db) -> str | None:
 
     perms = await get_effective_permissions(user, db)
     if "max_autonomy_level" not in perms:
-        return None
+        # Unbegrenzt ist nur ein ausdrueckliches None (Admin, Manager, Rolle
+        # "unbegrenzt"). Fehlt die Angabe ganz, schliesst das — nicht offen.
+        return "l1"
     return normalisiere_grenze(perms.get("max_autonomy_level"))
 
 
@@ -136,6 +149,30 @@ async def pruefe_sudo_pakete(user, db, pakete, bisher=None) -> None:
         return
     if await autonomie_obergrenze(user, db) is not None:
         raise HTTPException(status_code=403, detail="Sudo-Pakete setzt ein Administrator.")
+
+
+def zu_freie_computer_use(gruppen, matrix: dict, grenze: str | None, bisher=None) -> list[str]:
+    """Sensible Computer-Use-Gruppen, die ein begrenzter Nutzer nicht (neu) setzen
+    darf: nur ohne Grenze oder wenn die Matrix ``shell_exec`` ohne Rueckfrage
+    erlaubt. Bestandsschutz: was in ``bisher`` schon steht, bleibt erlaubt."""
+    if grenze is None or (matrix or {}).get("shell_exec") == am.ALLOW:
+        return []
+    return sorted((set(gruppen or ()) & SENSIBLE_COMPUTER_USE) - set(bisher or ()))
+
+
+async def pruefe_computer_use(user, db, gruppen, matrix: dict, bisher=None) -> None:
+    """Computer-Use-Standard eines Agenten: sensible Gruppen nur innerhalb der
+    Grenze (siehe ``zu_freie_computer_use``) — sonst 403."""
+    if not set(gruppen or ()) & SENSIBLE_COMPUTER_USE:
+        return
+    grenze = await autonomie_obergrenze(user, db)
+    zu_frei = zu_freie_computer_use(gruppen, matrix, grenze, bisher)
+    if zu_frei:
+        raise HTTPException(
+            status_code=403,
+            detail=("Diese Computer-Use-Fähigkeiten brauchen einen Agenten, der Befehle "
+                    f"ohne Rückfrage ausführen darf: {', '.join(zu_frei)}."),
+        )
 
 
 def pruefe_root(pakete, bisher=None, root_bestaetigt: bool = False) -> None:
@@ -233,6 +270,11 @@ def ueberschreitung(stufe: str | None, access_policy: dict | None, grenze: str |
     )
     if zuviel:
         gruende.append(f"Sudo: {', '.join(zuviel)}")
+    computer_use = zu_freie_computer_use(
+        am.computer_use_default_capabilities(policy),
+        am.normalize_matrix(policy.get("autonomy_matrix"), stufe), grenze)
+    if computer_use:
+        gruende.append(f"Computer-Use: {', '.join(computer_use)}")
     return gruende
 
 

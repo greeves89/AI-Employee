@@ -97,7 +97,7 @@ async def get_permission_packages(user=Depends(require_auth)):
     modal can show what "automatisch" will grant without re-implementing the
     rule in TypeScript — it lives once, in core.autonomy_matrix.
     """
-    from app.core.agent_manager import PERMISSION_PACKAGES, DEFAULT_PERMISSIONS
+    from app.core.agent_manager import PERMISSION_PACKAGES
     packages = [
         {
             "id": pkg_id,
@@ -1137,6 +1137,15 @@ async def update_access_policy(
         for cap in body.computer_use_default_capabilities:
             if cap not in CAPABILITY_GROUPS:
                 raise HTTPException(status_code=400, detail=f"Unknown capability group: {cap}")
+        # Shell/Mitschnitt/Browser nur innerhalb der Rollen-Grenze — gemessen an
+        # der (ggf. eben geaenderten) Matrix; Bestand bleibt (Sicherheitspruefung F3).
+        from app.core.autonomie_grenze import pruefe_computer_use
+        await pruefe_computer_use(
+            user, db, body.computer_use_default_capabilities,
+            autonomy_matrix.normalize_matrix(access_policy.get("autonomy_matrix"),
+                                             agent.autonomy_level or level),
+            bisher=autonomy_matrix.computer_use_default_capabilities(agent.access_policy),
+        )
         access_policy["computer_use_default_capabilities"] = body.computer_use_default_capabilities
 
     agent.access_policy = access_policy
@@ -2040,6 +2049,20 @@ async def remove_agent(
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     await _check_owner(agent_id, user, db)
+    if remove_data:
+        # „Mit Daten“ loescht alle Chats und das Gedaechtnis des BESITZERS — das
+        # darf nur er selbst oder ein Admin, nicht wer den Agenten nur geteilt
+        # bekam oder als Manager sieht. Bewusst 403 statt still ohne Daten: die
+        # Oberflaeche meldete sonst „mit Daten geloescht“, obwohl alles noch da ist.
+        from app.models.user import UserRole
+        besitzer = (await db.execute(
+            select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
+        if getattr(user, "role", None) != UserRole.ADMIN and (not besitzer or besitzer != user.id):
+            raise HTTPException(
+                status_code=403,
+                detail="Nur der Besitzer oder ein Admin darf einen Agenten samt Chats und "
+                       "Gedächtnis löschen. Ohne Daten löschen ist möglich.",
+            )
     try:
         await manager.remove_agent(agent_id, remove_data=remove_data)
         return {"status": "removed", "agent_id": agent_id}

@@ -8,11 +8,17 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.audit import AKTEURE_OHNE_AGENT, NUR_SERVERSEITIG, protokolliere
+from app.core.audit import (
+    AGENT_BEFEHL_MAX_ZEICHEN,
+    AGENT_EREIGNISSE,
+    AGENT_META_MAX_BYTES,
+    AKTEURE_OHNE_AGENT,
+    protokolliere,
+)
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.core.ownership import is_admin, visible_agent_ids
@@ -30,13 +36,24 @@ router = APIRouter(prefix="/audit", tags=["audit"])
 
 class AuditLogCreate(BaseModel):
     """Agent reports a command execution for audit."""
-    event_type: str  # AuditEventType value
-    command: Optional[str] = None
-    outcome: str = "success"   # success, failure, blocked
+    event_type: str = Field(max_length=64)  # AuditEventType value, siehe AGENT_EREIGNISSE
+    command: Optional[str] = Field(default=None, max_length=AGENT_BEFEHL_MAX_ZEICHEN)
+    outcome: str = Field(default="success", max_length=32)   # success, failure, blocked
     exit_code: Optional[int] = None
-    task_id: Optional[str] = None
-    approval_id: Optional[str] = None
+    task_id: Optional[str] = Field(default=None, max_length=64)
+    approval_id: Optional[str] = Field(default=None, max_length=64)
     meta: Optional[dict] = None
+
+    @field_validator("meta")
+    @classmethod
+    def _meta_begrenzt(cls, wert):
+        if wert is not None:
+            import json
+
+            groesse = len(json.dumps(wert, default=str, ensure_ascii=False).encode("utf-8"))
+            if groesse > AGENT_META_MAX_BYTES:
+                raise ValueError(f"meta ist zu groß ({groesse} Bytes, höchstens {AGENT_META_MAX_BYTES}).")
+        return wert
 
 
 class AuditLogResponse(BaseModel):
@@ -74,10 +91,9 @@ async def create_audit_log(
     """
     agent_id = agent_auth["agent_id"]
 
-    # Validate event_type. Was ein Mensch oder die Plattform entscheidet (Antworten,
-    # Freigaben, Anmeldungen, Verwaltung), traegt nur der Server ein — sonst koennte
-    # ein Agent sich eine Freigabe ins Protokoll schreiben, die es nie gab (#908).
-    valid_types = {e.value for e in AuditEventType} - NUR_SERVERSEITIG
+    # Nur eigene Handlungen des Agenten (Erlaubt-Liste, core/audit.AGENT_EREIGNISSE).
+    # Was ein Mensch oder die Plattform entscheidet, traegt nur der Server ein (#908).
+    valid_types = AGENT_EREIGNISSE
     if body.event_type not in valid_types:
         raise HTTPException(
             status_code=400,
