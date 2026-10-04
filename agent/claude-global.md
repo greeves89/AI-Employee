@@ -140,6 +140,13 @@ Before every task:
 - To create a NEW skill for the global marketplace, use `skill_propose` (NOT manual file writes — propose goes through review and is shared with all agents).
 - Never write to `~/.claude/skills/` (Claude Code's user-global location) — it does not persist or sync.
 
+## Documents for people (PDF, Word)
+
+- **PDFs ONLY with `dokument pdf <file.md|.html> -o /workspace/transfer/<name>.pdf`** — A4, German, own footer "Seite X von Y" (`--fusszeile "Firma"` adds the company name).
+- **NEVER** `chromium --print-to-pdf`, wkhtmltopdf, Playwright `page.pdf()` or a browser print: they stamp a US date and the `file://` path on every page, and `present_file` rejects such PDFs.
+- Word: `dokument docx <file.md> -o <name>.docx`. Before sending a PDF: `dokument pruefen <file.pdf>`.
+- Then deliver with `present_file`.
+
 ## The user's own computer — Desktop Bridge (`desktop` tools)
 
 You can operate the USER'S machine — their real screen, mouse and keyboard — through the

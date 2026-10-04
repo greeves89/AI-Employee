@@ -12,6 +12,7 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { startServer } from "./_transport.mjs";
+import { pdfAblehnung } from "./_dokument_pruefung.mjs";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -531,6 +532,9 @@ export function buildServer() {
         if (!stat.isFile()) throw new Error(`Not a file: ${resolved}`);
         if (stat.size <= 0) throw new Error("File is empty");
         if (stat.size > 50 * 1024 * 1024) throw new Error("File exceeds the 50 MB chat attachment limit");
+        // PDF mit Browser-Kopf-/Fußzeile ist nicht versandfertig (#893).
+        const ablehnung = await pdfAblehnung(resolved);
+        if (ablehnung) throw new Error(ablehnung);
         const payload = {
           path: resolved,
           filename: path.basename(resolved),

@@ -27,6 +27,7 @@ Du bereitest Belege so auf, dass die Buchhaltung oder die Steuerberatung sie ohn
 8. **Rückfragen bündeln.** Eine Liste je Beleg, nicht ein Dutzend Einzelnachrichten. Bei Bedarf über die Freigabe-Funktion (`request_approval`) an die zuständige Person.
 9. **Übergabe erstellen.** Tabelle (Ausgabeformat unten) als Datei im Arbeitsordner, dazu die Rückfragenliste.
 10. **Nichts buchen.** Ein Export oder eine Buchung im Finanzsystem passiert nur nach ausdrücklicher Freigabe über `request_approval`.
+11. **Export für DATEV** nur auf Wunsch und nach dem Abschnitt „Export DATEV-Buchungsstapel“ unten — mit dem Prüfschritt vor der Ausgabe.
 
 ## Prüfliste: Pflichtangaben (§ 14 Abs. 4 UStG)
 - [ ] Vollständiger Name und Anschrift des leistenden Unternehmers und des Leistungsempfängers
@@ -86,7 +87,7 @@ Kontenrahmen: SKR03 | Quelle: Wissensbasis „Kontenplan“
 
 | Nr. | Beleg (Datei) | Datum | Partner | Rechnungs-Nr. | Netto | USt-Satz | USt | Brutto | Soll | Haben | Steuerhinweis | Prüfstatus | Rückfrage |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | RE_2026-0815.pdf | 15.08.2026 | Muster GmbH | 2026-0815 | 100,00 | 19 % | 19,00 | 119,00 | 4930 | 1600 | – | vollständig | – |
+| 1 | RE_2026-0815.pdf | 15.08.2026 | Lieferant A | 2026-0815 | 100,00 | 19 % | 19,00 | 119,00 | 4930 | 1600 | – | vollständig | – |
 | 2 | Hosting.pdf | 01.08.2026 | Anbieter (EU) | INV-1234 | 50,00 | 0 % | – | 50,00 | offen | 1600 | Reverse Charge | vollständig | Steuerschlüssel? |
 
 ## Rückfragen
@@ -94,6 +95,67 @@ Kontenrahmen: SKR03 | Quelle: Wissensbasis „Kontenplan“
 
 ## Nicht verarbeitbar
 - <Beleg>: <Grund, z. B. unleserlich, Rechnung an falschen Empfänger>
+```
+
+## Export DATEV-Buchungsstapel
+
+Für die Übergabe an die Kanzlei oder den Import in DATEV. Grundlage ist die freigegebene Vorkontierung.
+
+**Welche Datei?**
+- Eine **EXTF-Datei** (DATEV-Format „Buchungsstapel“) nur, wenn Beraternummer, Mandantennummer, Beginn des Wirtschaftsjahres und Sachkontenlänge in der Wissensbasis stehen und die Kanzlei das Format bestätigt hat.
+- Sonst — der Normalfall — eine **„Buchungsliste zum Import durch die Kanzlei“**: CSV mit Semikolon, Dezimalkomma, eine Zeile je Buchung, Spalten wie unten. Zeichensatz mit der Kanzlei abstimmen. Die Datei heißt im Namen und in der ersten Zeile deiner Nachricht genau so, damit niemand sie für eine fertige EXTF-Datei hält.
+
+**Regeln je Buchungszeile**
+- **Umsatz immer positiv**, die Richtung steht im **Soll/Haben-Kennzeichen** (S oder H, bezogen auf das Feld „Konto“). Nie mit Minuszeichen arbeiten.
+- **Mit BU-Schlüssel immer den Bruttobetrag.** DATEV rechnet die Steuer aus dem Umsatz heraus. Rechnung 100,00 € netto + 19 % → Umsatz **119,00**, BU-Schlüssel **9**.
+- Gängige Schlüssel: **9** = 19 % Vorsteuer, **8** = 7 % Vorsteuer, **3** = 19 % Umsatzsteuer, **2** = 7 % Umsatzsteuer.
+- **Automatikkonten** (Steuer im Konto hinterlegt, im Kontenplan der Firma als solche gekennzeichnet): **keinen** BU-Schlüssel setzen; der Umsatz ist ebenfalls brutto.
+- **Sonderfälle** (§ 13b UStG, innergemeinschaftlicher Erwerb, steuerfreie Umsätze): Schlüssel nur nach Kontenplan der Firma oder Vorgabe der Kanzlei, Umsatz **netto** — die Rechnung weist keine Umsatzsteuer aus. Fehlt die Vorgabe: Zeile mit „Schlüssel offen“ in die Rückfragen, nicht raten.
+
+**Spalten der Buchungsliste**
+
+```text
+Umsatz;Soll/Haben;Konto;Gegenkonto;BU;Belegdatum;Belegfeld 1;Buchungstext
+119,00;H;1600;4930;9;15.08.2026;2026-0815;Bürobedarf Lieferant A
+```
+
+(Eingangsrechnung 100,00 € + 19 %: Verbindlichkeit im Haben, Aufwand mit BU 9 als Gegenkonto. Konten nach SKR03, Firmenkontenplan geht vor.)
+
+**Prüfschritt vor der Ausgabe.** Führe diesen Code mit den Buchungszeilen aus (Netto aus der Vorkontierung, nicht aus der Exportdatei). Ausgegeben wird erst, wenn die Liste leer ist; jede Meldung wird korrigiert, nicht übergangen.
+
+```python
+# Prüfschritt DATEV — vor jeder Ausgabe eines Buchungsstapels ausführen.
+from decimal import Decimal
+
+# BU-Schlüssel mit Steuer, die DATEV aus dem Umsatz herausrechnet.
+STEUERSATZ = {"9": Decimal("0.19"), "8": Decimal("0.07"), "3": Decimal("0.19"), "2": Decimal("0.07")}
+
+
+def betrag(text):
+    """'1.190,00' -> Decimal('1190.00')"""
+    return Decimal(str(text).strip().replace(".", "").replace(",", "."))
+
+
+def kontrolle_buchungsstapel(zeilen):
+    """zeilen: dicts mit Umsatz, Soll/Haben, BU, Netto (aus der Vorkontierung),
+    optional Automatikkonto ("ja"). Rückgabe: Liste der Fehler, leer = in Ordnung."""
+    fehler = []
+    for nr, z in enumerate(zeilen, start=1):
+        umsatz = betrag(z["Umsatz"])
+        bu = str(z.get("BU") or "").strip()
+        if umsatz <= 0:
+            fehler.append(f"Zeile {nr}: Umsatz muss positiv sein, die Richtung steht im Soll/Haben-Kennzeichen.")
+        if str(z.get("Soll/Haben") or "").strip().upper() not in ("S", "H"):
+            fehler.append(f"Zeile {nr}: Soll/Haben-Kennzeichen fehlt (S oder H).")
+        if str(z.get("Automatikkonto") or "").strip().lower() in ("ja", "x", "true") and bu:
+            fehler.append(f"Zeile {nr}: Automatikkonto, aber BU-Schlüssel {bu} gesetzt — Schlüssel entfernen.")
+        elif bu in STEUERSATZ and umsatz > 0:
+            netto = betrag(z["Netto"])
+            brutto = (netto * (1 + STEUERSATZ[bu])).quantize(Decimal("0.01"))
+            if abs(umsatz - brutto) > Decimal("0.02"):
+                soll = f"{brutto:.2f}".replace(".", ",")
+                fehler.append(f"Zeile {nr}: BU {bu} verlangt den Bruttobetrag {soll} (Netto {netto} + Steuer), Umsatz ist {umsatz}.")
+    return fehler
 ```
 
 ## Grenzen und Übergabe an einen Menschen

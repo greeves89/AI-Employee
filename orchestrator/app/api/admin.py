@@ -2,13 +2,15 @@
 
 import asyncio
 import logging
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_agent_version, settings
+from app.core import datensicherung
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import get_docker_service, get_redis_service, require_auth
@@ -567,3 +569,50 @@ async def revoke_assignment(
     await manager.remove_agent(agent_id, remove_data=False)
 
     return {"status": "revoked", "agent_id": agent_id}
+
+
+# ── Datensicherung (#892) ──────────────────────────────────────────────────────
+# scripts/backup.sh läuft auf dem Host und meldet sich am Ende hier. Ohne diesen
+# Herzschlag konnte niemand in der Oberfläche sehen, ob überhaupt gesichert wird.
+class BackupMeldung(BaseModel):
+    status: Literal["ok", "fehler"]
+    groesse_bytes: int | None = Field(None, ge=0)
+    dauer_s: int | None = Field(None, ge=0)
+    volumes: int | None = Field(None, ge=0)
+    schritt: str | None = Field(None, max_length=200)
+
+
+@router.post("/backup-status")
+async def backup_status_melden(
+    body: BackupMeldung,
+    x_backup_token: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Herzschlag des Sicherungsskripts — angemeldet über den lokalen Schlüssel.
+
+    Kein Nutzer-Login: das Skript läuft per Cron auf dem Host. Stattdessen der
+    ``BACKUP_STATUS_TOKEN`` aus der ``.env``; ist keiner eingerichtet, wird
+    nichts angenommen.
+    """
+    if not datensicherung.token_passt(x_backup_token, settings.backup_status_token):
+        raise HTTPException(status_code=401, detail="Ungültiger Sicherungsschlüssel")
+    await datensicherung.melde(
+        db,
+        status=body.status,
+        groesse_bytes=body.groesse_bytes,
+        dauer_s=body.dauer_s,
+        volumes=body.volumes,
+        schritt=body.schritt,
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+@router.get("/backup-status")
+async def backup_status_lesen(
+    user=Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Für die Karte „Datensicherung“ unter Admin → Betrieb."""
+    stand = await datensicherung.lese(db)
+    return datensicherung.ansicht(stand, eingerichtet=bool(settings.backup_status_token))

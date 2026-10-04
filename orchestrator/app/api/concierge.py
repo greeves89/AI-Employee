@@ -192,6 +192,28 @@ async def _collect_attention(
             link=f"/agents/{entry['id']}",
         ))
 
+    # 8 · Datensicherung (#892). Scheitert sie oder bleibt sie aus, merkt das
+    #     sonst erst, wer wiederherstellen muss.
+    try:
+        from app.core import datensicherung
+
+        stand = await datensicherung.lese(db)
+        state = datensicherung.zustand(stand, now)
+        if state is not None:
+            fehler = stand.get("letzter_fehler") or {}
+            if fehler:
+                detail = f"Der letzte Lauf ist gescheitert ({fehler.get('schritt') or 'ohne Angabe'})."
+            elif stand.get("zuletzt_ok"):
+                detail = "Die letzte erfolgreiche Sicherung ist über einen Tag alt."
+            else:
+                detail = ("Noch keine Sicherung gemeldet — scripts/backup.sh einrichten "
+                          "(Handbuch: Betrieb & Datenschutz).")
+            items.append(attention.item(
+                "backup", state, "Datensicherung", detail, link="/admin?tab=health",
+            ))
+    except Exception:  # noqa: BLE001
+        logger.debug("Datensicherung nicht auswertbar", exc_info=True)
+
     # Kaputtes zuerst, danach in der Reihenfolge des Einsammelns — Eskalationen
     # stehen dadurch vor den restlichen Wartepunkten.
     items.sort(key=lambda i: 0 if i["severity"] == attention.BROKEN else 1)

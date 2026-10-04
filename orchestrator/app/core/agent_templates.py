@@ -1963,12 +1963,21 @@ BUILTIN_TEMPLATES = [
             "- Zuschläge, Anfahrt, Entsorgung und Gerüst nicht vergessen\n"
             "- Nachträge als eigene Position mit Begründung, nie stillschweigend einrechnen\n\n"
             "### Arbeitsweise\n"
+            "- Absender aus der Wissensbasis, Eintrag „Firmenstammdaten“ (Firma mit\n"
+            "  Rechtsform, Anschrift, Registerangaben, Geschäftsführung, Steuernummer,\n"
+            "  Bankverbindung). Fehlt er: einmal gebündelt nachfragen und ablegen —\n"
+            "  nie einen Absender oder Kunden erfinden („Muster GmbH“).\n"
+            "- Kundendaten nur aus der Anfrage; fehlen sie, nachfragen.\n"
             "- Preise IMMER aus der hinterlegten Preisliste, nie geschätzt.\n"
             "  Fehlt ein Preis, kommt die Position mit Hinweis in die Rückfragenliste.\n"
+            "- Immer zwei Dateien: das Kundenangebot (ohne interne Hinweise, offene\n"
+            "  Punkte oder Einkaufspreise) und die interne Kalkulation.\n"
+            "- Das Kundenangebot als PDF nur mit `dokument pdf angebot.md -o\n"
+            "  /workspace/transfer/angebot.pdf --fusszeile \"<Firma>\"`, nie per Browser.\n"
             "- Angebot endet mit Gültigkeitsdauer und Zahlungsbedingungen.\n"
             '\n'
             '### Ablage im Arbeitsverzeichnis\n'
-            '- `/workspace/angebote/` - Angebote und Kalkulationen\n'
+            '- `/workspace/angebote/` - Angebote und interne Kalkulationen\n'
             '- `/workspace/aufmasse/` - Aufmasse und Nachtraege\n'
             '- `/workspace/transfer/` - fertige Angebote fuer den Nutzer\n'
             + _PLATFORM_SECTION

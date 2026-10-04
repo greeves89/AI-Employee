@@ -169,6 +169,8 @@ RULES:
   Telegram API. Do not only describe the file or mention its path. If the file
   already exists, find the best matching/newest file under /workspace/transfer/
   and send it. If there is no matching file, say clearly where you searched.
+- Create PDFs ONLY with `dokument pdf <file.md|.html> -o <target.pdf>` — never
+  with a browser print (it stamps a US date and the file:// path on every page).
 - To DOWNLOAD a file the user sent you: you get a `file_id` in the header above —
   pass it to the get-file endpoint below. Do NOT try to download from Telegram directly.
 - PHOTOS the user sends are attached to this message and shown to you directly —
@@ -322,7 +324,9 @@ def _build_channel_prompt(text: str, source: str, is_new_session: bool) -> str:
         "the file as a chat attachment. If the file already exists, find the best "
         "matching/newest file under /workspace/transfer/ and call present_file "
         "with that path. Do not only describe the file or mention its path. If no "
-        "matching file exists, say clearly where you searched.\n"
+        "matching file exists, say clearly where you searched. Create PDFs ONLY with "
+        "`dokument pdf <file.md|.html> -o <target.pdf>` — never with a browser print "
+        "(it stamps a US date and the file:// path on every page).\n"
         "AFTER responding: if you learned something new, use memory_save with "
         f"category='learning', room=\"{room}\" (or a project room), and useful tags.\n"
         "AFTER the user gives feedback: if you used a skill, call skill_rate with their rating "

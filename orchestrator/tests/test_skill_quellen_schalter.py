@@ -158,7 +158,7 @@ class HerkunftTests(unittest.TestCase):
 class VorlagenHinweisTests(unittest.TestCase):
     def test_skill_nennt_vorlagen_die_ihn_nutzen(self):
         je = vs.vorlagen_je_skill()
-        self.assertIn("Fullstack Developer", je["test-driven-development"])
+        self.assertIn("Fullstack-Entwicklung", je["test-driven-development"])
         self.assertNotIn("nicht-vorhanden", je)
 
     def test_erlaubte_herkunft_bleibt_fest(self):

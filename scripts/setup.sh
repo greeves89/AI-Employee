@@ -82,6 +82,13 @@ if grep -qE "^REDIS_PASSWORD=changeme-redis-password" .env; then
     ok "Generated REDIS_PASSWORD"
 fi
 
+# Lokaler Schlüssel für den Herzschlag der Datensicherung (#892)
+# shellcheck source=scripts/lib/sicherung.sh
+. scripts/lib/sicherung.sh
+if backup_token_sicherstellen .env; then
+    ok "Generated BACKUP_STATUS_TOKEN"
+fi
+
 ok ".env ready"
 
 # ── 3. Claude auth ────────────────────────────────────────────────────────────

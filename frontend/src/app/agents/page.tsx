@@ -290,11 +290,21 @@ export default function AgentsPage() {
       message: "Der Container wird gestoppt und entfernt. Das lässt sich nicht rückgängig machen.",
       variant: "destructive",
       confirmLabel: "Entfernen",
+      cancelLabel: "Abbrechen",
     });
     if (!ok) return;
+    // Löschkonzept (#892): mit Daten verschwinden auch Chats, Gedächtnis und
+    // Arbeitsordner — ohne bleiben sie für eine spätere Auswertung erhalten.
+    const mitDaten = await confirm({
+      title: "Daten ebenfalls löschen?",
+      message: "Chats, Gedächtnis und Arbeitsordner dieses Agenten endgültig löschen. Ohne bleiben sie in der Datenbank erhalten.",
+      variant: "destructive",
+      confirmLabel: "Mit Daten löschen",
+      cancelLabel: "Daten behalten",
+    });
     setActionLoading(id);
     try {
-      await api.removeAgent(id);
+      await api.removeAgent(id, mitDaten);
       await refresh();
     } finally {
       setActionLoading(null);

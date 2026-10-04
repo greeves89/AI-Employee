@@ -60,6 +60,8 @@ RUN npm install -g hyperframes
 # ohne das waere der gemeinsame Ort genauso unerreichbar wie /root/.cache.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 
+# fonts-dejavu-core + fonts-liberation: Schriften fuer `dokument pdf` (#893).
+# Ohne sie setzt Chromium im schlanken Abbild Ersatzzeichen statt Umlauten.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     chromium \
@@ -80,6 +82,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libpango-1.0-0 \
     libcairo2 \
+    fonts-dejavu-core \
+    fonts-liberation \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && npx -y @playwright/mcp@latest --version 2>/dev/null || true \
     && npx -y playwright install chromium --with-deps 2>/dev/null || true \
@@ -104,6 +108,12 @@ RUN chmod -R a+rX /opt/agent/app/
 # Install ai-team CLI helper (allows agents to call orchestrator API)
 COPY scripts/ai-team /usr/local/bin/ai-team
 RUN chmod +x /usr/local/bin/ai-team
+
+# Versandfertige Dokumente (#893): `dokument pdf|docx|pruefen`. PDFs nur
+# hiermit — `chromium --print-to-pdf` druckt Datum und file://-Pfad auf jede
+# Seite. Die Umsetzung liegt in app/dokument.py (oben installiert).
+COPY scripts/dokument /usr/local/bin/dokument
+RUN chmod +x /usr/local/bin/dokument
 
 # Build-Werkzeuge fuer Windows-Programme (.exe): Go, Rust, .NET, llvm-mingw.
 # Nicht im Abbild — das waeren 2-3 GB fuer jeden Agenten. Agenten aus einer
