@@ -361,6 +361,10 @@ def describe_schedule(schedule) -> str:
                         tage.append(_WEEKDAY_NAMES[int(token)])
                 if tage:
                     return f"{', '.join(tage)} {zeit}"
+            # „monatlich am 15." — so bietet es das Zeitplan-Formular an (#901).
+            if (minute.isdigit() and hour.isdigit() and dom.isdigit()
+                    and mon == "*" and dow == "*"):
+                return f"monatlich am {int(dom)}. um {int(hour):02d}:{int(minute):02d}"
         return f"Cron {cron}"
     seconds = schedule.interval_seconds or 0
     if seconds <= 0:

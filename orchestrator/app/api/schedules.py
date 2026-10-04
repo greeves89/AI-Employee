@@ -57,7 +57,7 @@ async def _get_schedule(db: AsyncSession, schedule_id: str) -> Schedule:
     result = await db.execute(select(Schedule).where(Schedule.id == schedule_id))
     schedule = result.scalar_one_or_none()
     if not schedule:
-        raise HTTPException(status_code=404, detail="Schedule not found")
+        raise HTTPException(status_code=404, detail="Zeitplan nicht gefunden")
     return schedule
 
 
@@ -68,7 +68,7 @@ async def _check_schedule_access(schedule: Schedule, user, db: AsyncSession) -> 
         return
     allowed = await _get_user_agent_ids(user, db)
     if allowed is not None and schedule.agent_id not in allowed:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf diesen Zeitplan")
 
 
 @router.get("/", response_model=ScheduleListResponse)

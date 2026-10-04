@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Plus, CheckCircle2, XCircle, Clock, Loader2, RotateCcw, Timer,
-  Hash, Cpu, Trash2, Ban, Pause, Play, PlayCircle, CalendarClock, Sparkles,
+  Hash, Cpu, Trash2, Ban, Pause, Play, PlayCircle, CalendarClock,
   GitBranch, ChevronRight, Bot,
 } from "lucide-react";
 import { useTasks } from "@/hooks/use-tasks";
@@ -17,6 +18,9 @@ import * as api from "@/lib/api";
 import type { Schedule } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { AUFGABEN_STATUS, zeitplanAnzeige } from "@/lib/aufgaben-anzeige";
+import { ZeitplanFormular } from "@/components/schedules/zeitplan-formular";
+import { useConfirm, useToast } from "@/components/ui/dialog-provider";
+import { apiFehlertext } from "@/lib/api-fehler";
 
 /* ─── Single Tasks Config ─────────────────────────────────────────── */
 
@@ -72,25 +76,35 @@ function formatRelative(dateStr: string | null): string {
     const h = Math.round(absDiff / 3600000);
     return diffMs > 0 ? `in ${h} Std` : `vor ${h} Std`;
   }
-  return date.toLocaleDateString();
+  // Weiter weg: Wochentag + Datum + Uhrzeit — „Nächster: Mo., 05.10., 07:30"
+  // sagt mehr als nur das Datum.
+  return date.toLocaleString("de-DE", {
+    weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
 }
-
-const INTERVAL_PRESETS = [
-  { label: "5 min", seconds: 300 },
-  { label: "15 min", seconds: 900 },
-  { label: "30 min", seconds: 1800 },
-  { label: "1 Std", seconds: 3600 },
-  { label: "6 Std", seconds: 21600 },
-  { label: "12 Std", seconds: 43200 },
-  { label: "24 Std", seconds: 86400 },
-];
 
 /* ─── Main Page ────────────────────────────────────────────────────── */
 
 type ViewMode = "single" | "scheduled";
 
+// `useSearchParams` braucht eine Suspense-Grenze, sonst bricht der statische
+// Build dieser Seite ab.
 export default function TasksPage() {
-  const [viewMode, setViewMode] = useState<ViewMode>("single");
+  return (
+    <Suspense fallback={null}>
+      <TasksPageInner />
+    </Suspense>
+  );
+}
+
+function TasksPageInner() {
+  // `/schedules` (und der Kalender mit ?schedule=<id>) leiten hierher um:
+  // ?ansicht=zeitplaene öffnet die Zeitpläne, ?schedule=<id> hebt einen hervor.
+  const searchParams = useSearchParams();
+  const hervorgehoben = searchParams.get("schedule") || "";
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    searchParams.get("ansicht") === "zeitplaene" || hervorgehoben ? "scheduled" : "single"
+  );
 
   return (
     <div>
@@ -110,7 +124,7 @@ export default function TasksPage() {
         }
       />
 
-      <div className="px-8 py-6">
+      <div className="px-4 py-6 sm:px-8">
         {/* View mode toggle */}
         <div className="mb-6 flex gap-1 p-1 rounded-xl bg-foreground/[0.03] border border-foreground/[0.06] w-fit">
           <button
@@ -140,7 +154,7 @@ export default function TasksPage() {
           </button>
         </div>
 
-        {viewMode === "single" ? <SingleTasksView /> : <ScheduledTasksView />}
+        {viewMode === "single" ? <SingleTasksView /> : <ScheduledTasksView hervorgehoben={hervorgehoben} />}
       </div>
     </div>
   );
@@ -402,24 +416,19 @@ function SingleTasksView() {
 
 /* ─── Scheduled Tasks View ─────────────────────────────────────────── */
 
-function ScheduledTasksView() {
+function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [creating, setCreating] = useState(false);
   const [triggering, setTriggering] = useState<string | null>(null);
+  const confirm = useConfirm();
+  const toast = useToast();
+  const hervorRef = useRef<HTMLDivElement | null>(null);
   const { simpleMode } = useSimpleMode();
   const { agents } = useAgents();
   //: Welche Agenten aufgeklappt sind. Startet LEER — bei einem Dutzend Agenten
   //: mit je mehreren Zeitplaenen ist eine flache Liste nicht mehr lesbar.
   const [offeneGruppen, setOffeneGruppen] = useState<Set<string>>(new Set());
-
-  // Create form state
-  const [name, setName] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [intervalSeconds, setIntervalSeconds] = useState(3600);
-  const [priority, setPriority] = useState(1);
-  const [agentId, setAgentId] = useState("");
 
   //: Nach Agent gruppiert, Gruppen alphabetisch, Zeitplaene innerhalb nach dem
   //: nächsten Lauf — was als naechstes dran ist, steht oben.
@@ -476,36 +485,33 @@ function ScheduledTasksView() {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  const handleCreate = async () => {
-    if (!name.trim() || !prompt.trim()) return;
-    setCreating(true);
-    try {
-      await api.createSchedule({
-        name: name.trim(),
-        prompt: prompt.trim(),
-        interval_seconds: intervalSeconds,
-        priority,
-        agent_id: agentId || undefined,
-      });
-      setName("");
-      setPrompt("");
-      setIntervalSeconds(3600);
-      setPriority(1);
-      setAgentId("");
-      setShowCreate(false);
-      await refresh();
-    } finally {
-      setCreating(false);
+  // Kommt man mit ?schedule=<id> (Kalender, Aktivität), muss der gemeinte
+  // Zeitplan aufgeklappt und im Blick sein — nicht in einer zugeklappten Gruppe.
+  useEffect(() => {
+    if (!hervorgehoben) return;
+    const plan = schedules.find((s) => s.id === hervorgehoben);
+    if (!plan) return;
+    const gruppe = plan.agent_id ?? "";
+    setOffeneGruppen((vorher) => (vorher.has(gruppe) ? vorher : new Set(vorher).add(gruppe)));
+  }, [hervorgehoben, schedules]);
+
+  useEffect(() => {
+    if (hervorgehoben && hervorRef.current) {
+      hervorRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-  };
+  }, [hervorgehoben, offeneGruppen]);
 
   const handleToggle = async (schedule: Schedule) => {
-    if (schedule.enabled) {
-      await api.pauseSchedule(schedule.id);
-    } else {
-      await api.resumeSchedule(schedule.id);
+    try {
+      if (schedule.enabled) {
+        await api.pauseSchedule(schedule.id);
+      } else {
+        await api.resumeSchedule(schedule.id);
+      }
+      await refresh();
+    } catch (e) {
+      toast.error(schedule.enabled ? "Pausieren fehlgeschlagen" : "Fortsetzen fehlgeschlagen", apiFehlertext(e));
     }
-    await refresh();
   };
 
   const handleTrigger = async (id: string) => {
@@ -513,14 +519,27 @@ function ScheduledTasksView() {
     try {
       await api.triggerSchedule(id);
       await refresh();
+    } catch (e) {
+      toast.error("Ausführen fehlgeschlagen", apiFehlertext(e));
     } finally {
       setTriggering(null);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    await api.deleteSchedule(id);
-    await refresh();
+  const handleDelete = async (schedule: Schedule) => {
+    const ok = await confirm({
+      title: `Zeitplan „${zeitplanAnzeige(schedule, simpleMode).titel}“ löschen?`,
+      message: "Der Zeitplan läuft danach nicht mehr. Bereits erledigte Aufgaben bleiben erhalten.",
+      variant: "destructive",
+      confirmLabel: "Löschen",
+    });
+    if (!ok) return;
+    try {
+      await api.deleteSchedule(schedule.id);
+      await refresh();
+    } catch (e) {
+      toast.error("Löschen fehlgeschlagen", apiFehlertext(e));
+    }
   };
 
   return (
@@ -541,131 +560,16 @@ function ScheduledTasksView() {
         </button>
       </div>
 
-      {/* Create Form */}
+      {/* Anlegen — ein gemeinsames Formular (#901) */}
       {showCreate && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          exit={{ opacity: 0, height: 0 }}
-          className="overflow-hidden rounded-2xl border border-foreground/[0.06] bg-card/80 p-6 backdrop-blur-sm"
-        >
-          <div className="mb-4 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold">Create Recurring Task</h3>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                Name
-              </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="z. B. Wochenbericht"
-                className="w-full rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] px-4 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/25"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                Auftrag
-              </label>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={3}
-                placeholder="Was soll der Agent jedes Mal tun?"
-                className="w-full rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] px-4 py-2.5 text-sm placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/25 resize-none"
-              />
-            </div>
-
-            {/* Interval Picker */}
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                Intervall
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {INTERVAL_PRESETS.map((preset) => (
-                  <button
-                    key={preset.seconds}
-                    onClick={() => setIntervalSeconds(preset.seconds)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                      intervalSeconds === preset.seconds
-                        ? "bg-primary/20 text-primary border border-primary/30"
-                        : "bg-foreground/[0.04] text-muted-foreground border border-foreground/[0.06] hover:bg-foreground/[0.08]"
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Priority + Agent */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                  Priorität
-                </label>
-                <div className="flex gap-2">
-                  {[
-                    { value: 0, label: "Niedrig", color: "text-slate-400" },
-                    { value: 1, label: "Normal", color: "text-blue-400" },
-                    { value: 2, label: "Hoch", color: "text-amber-700 dark:text-amber-400" },
-                    { value: 3, label: "Dringend", color: "text-red-400" },
-                  ].map((p) => (
-                    <button
-                      key={p.value}
-                      onClick={() => setPriority(p.value)}
-                      className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-all ${
-                        priority === p.value
-                          ? `bg-foreground/[0.08] ${p.color} border border-foreground/[0.12]`
-                          : "bg-foreground/[0.03] text-muted-foreground border border-foreground/[0.06] hover:bg-foreground/[0.06]"
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                  Agent (optional)
-                </label>
-                <select
-                  value={agentId}
-                  onChange={(e) => setAgentId(e.target.value)}
-                  className="w-full rounded-xl border border-foreground/[0.06] bg-foreground/[0.03] px-4 py-2.5 text-sm focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/25"
-                >
-                  <option value="">Automatisch zuweisen</option>
-                  {agents
-                    .filter((a) => a.state === "running" || a.state === "idle")
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                onClick={() => setShowCreate(false)}
-                className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Abbrechen
-              </button>
-              <button
-                onClick={handleCreate}
-                disabled={!name.trim() || !prompt.trim() || creating}
-                className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-all hover:brightness-110 disabled:opacity-50"
-              >
-                {creating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Zeitplan anlegen
-              </button>
-            </div>
-          </div>
-        </motion.div>
+        <ZeitplanFormular
+          agents={agents}
+          onAbbrechen={() => setShowCreate(false)}
+          onAngelegt={async () => {
+            setShowCreate(false);
+            await refresh();
+          }}
+        />
       )}
 
       {/* Schedule List */}
@@ -734,7 +638,7 @@ function ScheduledTasksView() {
                   </span>
                 )}
                 {!offen && gruppe.plaene[0] && (
-                  <span title="Nächster Lauf in dieser Gruppe">
+                  <span title="Nächster Lauf in dieser Gruppe" className="hidden sm:inline">
                     Nächster: {formatRelative(gruppe.plaene[0].next_run_at)}
                   </span>
                 )}
@@ -744,10 +648,16 @@ function ScheduledTasksView() {
             {offen && gruppe.plaene.map((schedule) => (
             <motion.div
               key={schedule.id}
+              ref={schedule.id === hervorgehoben ? hervorRef : undefined}
               variants={itemVariants}
-              className="group ml-4 rounded-2xl border border-foreground/[0.06] bg-card/80 p-5 backdrop-blur-sm transition-all hover:border-foreground/[0.1]"
+              className={cn(
+                "ml-2 sm:ml-4 rounded-2xl border bg-card/80 p-4 sm:p-5 backdrop-blur-sm transition-all",
+                schedule.id === hervorgehoben
+                  ? "border-emerald-500/60 ring-2 ring-emerald-500/30"
+                  : "border-foreground/[0.06] hover:border-foreground/[0.1]"
+              )}
             >
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3">
                     <h3 className="text-sm font-semibold tracking-tight truncate">
@@ -773,12 +683,13 @@ function ScheduledTasksView() {
                   </p>
                 </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-1.5 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                {/* Aktionen — immer sichtbar: am Handy gibt es kein Überfahren mit der Maus. */}
+                <div className="flex shrink-0 items-center gap-1.5">
                   <button
                     onClick={() => handleTrigger(schedule.id)}
                     disabled={triggering === schedule.id}
                     title="Jetzt ausführen"
+                    aria-label="Jetzt ausführen"
                     className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 backdrop-blur-sm transition-colors disabled:opacity-50"
                   >
                     {triggering === schedule.id ? (
@@ -789,6 +700,8 @@ function ScheduledTasksView() {
                   </button>
                   <button
                     onClick={() => handleToggle(schedule)}
+                    title={schedule.enabled ? "Pausieren" : "Fortsetzen"}
+                    aria-label={schedule.enabled ? "Pausieren" : "Fortsetzen"}
                     className={`flex h-8 w-8 items-center justify-center rounded-lg border backdrop-blur-sm transition-colors ${
                       schedule.enabled
                         ? "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400 hover:bg-amber-500/20"
@@ -802,7 +715,9 @@ function ScheduledTasksView() {
                     )}
                   </button>
                   <button
-                    onClick={() => handleDelete(schedule.id)}
+                    onClick={() => handleDelete(schedule)}
+                    title="Löschen"
+                    aria-label="Zeitplan löschen"
                     className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 backdrop-blur-sm transition-colors"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -811,7 +726,7 @@ function ScheduledTasksView() {
               </div>
 
               {/* Stats Row */}
-              <div className="mt-4 flex items-center gap-6 text-xs text-muted-foreground">
+              <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
                 <div className="flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5" />
                   <span title={schedule.cron_expression ?? undefined}>{schedule.takt || formatInterval(schedule.interval_seconds)}</span>

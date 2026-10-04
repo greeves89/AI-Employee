@@ -18,7 +18,7 @@ def _validate_cron(expr: str) -> str:
     try:
         from croniter import croniter
         if not croniter.is_valid(expr):
-            raise ValueError(f"Invalid cron expression: {expr!r}")
+            raise ValueError(f"Ungültiger Cron-Ausdruck: {expr!r}")
     except ImportError:
         pass  # croniter not installed yet; validate at runtime
     return expr
@@ -30,7 +30,7 @@ def _validate_timezone(tz: str) -> str:
     try:
         ZoneInfo(tz)
     except (ZoneInfoNotFoundError, ValueError, KeyError):
-        raise ValueError(f"Invalid timezone: {tz!r}")
+        raise ValueError(f"Unbekannte Zeitzone: {tz!r}")
     return tz
 
 
@@ -54,14 +54,15 @@ class ScheduleCreate(BaseModel):
     def validate_timing(self) -> "ScheduleCreate":
         if self.run_in_seconds is not None:
             if self.run_in_seconds < 30:
-                raise ValueError("run_in_seconds must be at least 30")
+                raise ValueError("run_in_seconds muss mindestens 30 Sekunden sein")
             # One-shot: no recurring config; interval 0 + no cron → scheduler disables
             # it after the single fire.
             self.interval_seconds = 0
             self.cron_expression = None
         elif not self.cron_expression and self.interval_seconds < 60:
             raise ValueError(
-                "Provide run_in_seconds (one-shot), a valid cron_expression, or interval_seconds >= 60"
+                "Bitte run_in_seconds (einmalig), einen gültigen cron_expression "
+                "oder interval_seconds >= 60 angeben"
             )
         if self.cron_expression:
             self.cron_expression = _validate_cron(self.cron_expression)
@@ -96,7 +97,7 @@ class ScheduleUpdate(BaseModel):
     @classmethod
     def validate_interval(cls, v: int | None) -> int | None:
         if v is not None and v < 60:
-            raise ValueError("Interval must be at least 60 seconds")
+            raise ValueError("Das Intervall muss mindestens 60 Sekunden betragen")
         return v
 
     @field_validator("cron_expression")

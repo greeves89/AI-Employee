@@ -713,11 +713,11 @@ function DayAgenda({
                 key={`${m.schedule_id}-${i}`}
                 role="button"
                 tabIndex={0}
-                onClick={() => router.push(`/schedules?schedule=${m.schedule_id}`)}
+                onClick={() => router.push(`/tasks?ansicht=zeitplaene&schedule=${m.schedule_id}`)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    router.push(`/schedules?schedule=${m.schedule_id}`);
+                    router.push(`/tasks?ansicht=zeitplaene&schedule=${m.schedule_id}`);
                   }
                 }}
                 title={`${m.schedule_name} — ${fmtTime(m.time)}${m.rhythm ? ` (${m.rhythm})` : ""} — klicken zum Bearbeiten`}

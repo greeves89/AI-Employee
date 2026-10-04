@@ -1002,6 +1002,8 @@ export async function createSchedule(data: {
   prompt: string;
   interval_seconds?: number;
   cron_expression?: string;
+  /** IANA-Zeitzone; ohne Angabe nimmt der Server die des Agenten (sonst UTC). */
+  timezone?: string;
   priority?: number;
   agent_id?: string;
   model?: string;

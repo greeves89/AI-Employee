@@ -19,7 +19,7 @@ const NAV_ROUTES: Record<string, string> = {
   dashboard: "/", tasks: "/tasks", agents: "/agents", meeting_rooms: "/meeting-rooms",
   knowledge: "/knowledge", skills: "/skills", triggers: "/triggers", approvals: "/approvals",
   integrations: "/integrations", settings: "/settings", analytics: "/analytics",
-  apps: "/apps", audit: "/audit", health: "/health", schedules: "/schedules",
+  apps: "/apps", audit: "/audit", health: "/health", schedules: "/tasks?ansicht=zeitplaene",
 };
 
 /** Anzeigename fürs Panel — der rohe Routenname stünde sonst als Überschrift da. */
