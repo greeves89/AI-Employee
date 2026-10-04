@@ -50,7 +50,7 @@ async def provision_pack(
             model=template.model,
             role=template.role,
             integrations=template.integrations or [],
-            permissions=template.permissions or [],
+            permissions=template.permissions or None,  # None = folgt der Stufe (#910)
             user_id=user_id,
         )
 

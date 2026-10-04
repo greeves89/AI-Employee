@@ -44,6 +44,9 @@ const NAMEN: Record<string, string> = {
   list_team: "Team abgerufen",
   knowledge_search: "Wissen durchsucht",
   present_file: "Datei bereitgestellt",
+  // Lädt eine geprüfte Fachanleitung (Skill) — installiert keine Software (#910).
+  skill_install: "Fachanleitung geladen",
+  skill_search: "Fachanleitungen durchsucht",
 };
 
 export function werkzeugAufDeutsch(tool: string | null | undefined): string {

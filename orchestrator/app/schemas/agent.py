@@ -76,7 +76,11 @@ class AgentCreate(BaseModel):
     llm_config: LLMConfig | None = None  # custom_llm: inline config …
     ai_account_id: int | None = None     # … or a reusable, admin-managed AI account
     browser_mode: bool = False  # Enable Playwright browser control inside agent container
-    autonomy_level: AutonomyLevel = "l3"  # constrained: no free strings → no fail-open level
+    # constrained: no free strings → no fail-open level. ``None`` = Vorgabe (L3,
+    # hoechstens die Autonomie-Grenze der Rolle, #910).
+    autonomy_level: AutonomyLevel | None = None
+    # Voller Root-Zugriff (``full-access``) nur mit ausdruecklicher Bestaetigung (#910).
+    root_bestaetigt: bool = False
     # Aus welcher Vorlage — das Anlegen-Fenster nimmt diesen Weg, sobald ein KI-Konto,
     # Codex oder Custom-LLM gewaehlt ist. Die Vorlage bestimmt u. a. Build-Werkzeuge.
     template_id: int | None = None

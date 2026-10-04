@@ -43,7 +43,12 @@ async def db():
 
 
 _NO_OWNER_CHECK = patch("app.api.agents._check_owner", new=AsyncMock(return_value=None))
-_FAKE_USER = type("U", (), {"id": "u1"})()
+# Administrator: hier geht es um die Buendelung, nicht um die Autonomie-Grenze
+# der Rolle (#910, eigene Tests in test_autonomie_grenze_wege.py) — ein Nutzer
+# ohne Rolle zaehlte dort als Mitglied und duerfte keine Sudo-Pakete setzen.
+from app.models.user import UserRole  # noqa: E402
+
+_FAKE_USER = type("U", (), {"id": "u1", "role": UserRole.ADMIN, "custom_role_id": None})()
 
 
 @pytest.mark.asyncio
@@ -198,7 +203,7 @@ async def test_full_access_without_an_explicit_mode_still_pins_to_manual(db):
     manager = AsyncMock()
     with _NO_OWNER_CHECK, patch("app.api.agents.asyncio.to_thread", new=AsyncMock(return_value=None)):
         result = await update_access_policy(
-            "a8", AccessPolicyUpdate(permissions=["full-access"]),
+            "a8", AccessPolicyUpdate(permissions=["full-access"], root_bestaetigt=True),
             user=_FAKE_USER, db=db, manager=manager,
         )
 

@@ -66,6 +66,7 @@ import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { Agent, AIAccount, FileEntry, PermissionPackage } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { ERGEBNIS_ORDNER, dateiAnzeigeName, fuerExplorer, istErgebnisOrdner, istSystemDatei } from "@/lib/datei-ansicht";
+import { useAutonomieGrenze } from "@/lib/autonomie-grenze";
 import { formatMoney } from "@/lib/money";
 import { setVisibleInterval } from "@/lib/visible-interval";
 
@@ -1746,6 +1747,11 @@ function AgentSettings({
   const [derivedPermissions, setDerivedPermissions] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "warning" | "error"; text: string } | null>(null);
+  // Sudo-Pakete und Root nur ohne Rollen-Grenze; Root nur nach ausdrücklicher
+  // Bestätigung (#910) — der Server lehnt beides sonst ab.
+  const { ohneGrenze } = useAutonomieGrenze();
+  const [rootBestaetigt, setRootBestaetigt] = useState(false);
+  const confirmRoot = useConfirm();
 
   // LLM Config state (for custom_llm agents)
   const [llmEditing, setLlmEditing] = useState(false);
@@ -1877,7 +1883,17 @@ function AgentSettings({
     }
   }, [agent.llm_config]);
 
-  const togglePermission = (id: string) => {
+  const togglePermission = async (id: string) => {
+    if (id === "full-access" && !selected.includes(id) && !currentPermissions.includes(id)) {
+      const ok = await confirmRoot({
+        title: "Vollen Root-Zugriff gewähren?",
+        message: "Der Agent darf im Container alles als Administrator (sudo ohne Einschränkung): Software, Systemdateien, Sicherheitseinstellungen. Nur für Entwicklung und Tests.",
+        confirmLabel: "Root-Zugriff gewähren",
+        variant: "destructive",
+      });
+      if (!ok) return;
+      setRootBestaetigt(true);
+    }
     setSelected((prev) => {
       if (id === "full-access") {
         return prev.includes(id) ? [] : ["full-access"];
@@ -1897,7 +1913,10 @@ function AgentSettings({
     setSaving(true);
     setMessage(null);
     try {
-      const result = await api.updateAgentPermissions(agentId, selected, permissionsMode);
+      const result = await api.updateAgentPermissions(
+        agentId, selected, permissionsMode, rootBestaetigt && selected.includes("full-access"),
+      );
+      setRootBestaetigt(false);
       if (result.warning) {
         setMessage({ type: "warning", text: result.warning });
       } else {
@@ -2959,8 +2978,8 @@ function AgentSettings({
         </div>
       </div>
 
-      {/* Permissions */}
-      <PermissionPackagesPanel
+      {/* Permissions — Sudo/Root-Bereich nur für Rollen ohne Autonomie-Grenze (#910) */}
+      {ohneGrenze && <PermissionPackagesPanel
         packages={packages}
         autonomyLevel={agent.autonomy_level ?? "l3"}
         derivedPermissions={derivedPermissions}
@@ -2978,7 +2997,7 @@ function AgentSettings({
             Speichern
           </button>
         }
-      />
+      />}
 
       {/* Computer-Use-Standard: dauerhafter Fähigkeits-Deckel je Agent, den
           jede Desktop-Session dieses Agenten erbt und nie überschreiten kann

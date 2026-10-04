@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";
-import { ChevronDown, ChevronRight, Loader2, Plus, Save, Search, Shield, Trash2, UserPlus, Users, X } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ChevronRight, Loader2, Plus, Save, Search, Shield, ShieldAlert, Trash2, UserPlus, Users, X } from "lucide-react";
 import * as api from "@/lib/api";
-import type { CustomRole, RolePermissions, MountCatalogEntry, AgentSecretEntry, McpServerInfo, CustomPage } from "@/lib/api";
+import type { AutonomieStufe, AutonomieUeberschreitung, CustomRole, RolePermissions, MountCatalogEntry, AgentSecretEntry, McpServerInfo, CustomPage } from "@/lib/api";
 import type { AdminUser, AgentTemplate, AIAccount, Integration } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/dialog-provider";
@@ -29,6 +30,24 @@ const MENU_PATHS = [
   "/ai-accounts",
   "/settings",
 ];
+
+// Höchste Autonomiestufe einer Rolle (#910). „erbt" = Schlüssel fehlt, dann gilt
+// die Grundrolle (Mitglied L3, Betrachter/ohne Rolle L1); „unbegrenzt" = null.
+type GrenzWahl = "erbt" | "unbegrenzt" | AutonomieStufe;
+const GRENZ_OPTIONEN: { value: GrenzWahl; label: string }[] = [
+  { value: "erbt", label: "Wie die Grundrolle (Mitglied L3, Betrachter L1)" },
+  { value: "l1", label: "L1 — Nur lesen" },
+  { value: "l2", label: "L2 — Empfehlungen" },
+  { value: "l3", label: "L3 — Selbstständig im eigenen Bereich, fragt vor Außenwirkung" },
+  { value: "l4", label: "L4 — Vollständig autonom" },
+  { value: "unbegrenzt", label: "Unbegrenzt (inklusive Sudo-Pakete und Root)" },
+];
+
+function grenzZusammenfassung(wahl: GrenzWahl): string {
+  if (wahl === "erbt") return "wie Grundrolle";
+  if (wahl === "unbegrenzt") return "unbegrenzt";
+  return `höchstens ${wahl.toUpperCase()}`;
+}
 
 const LLM_PROVIDERS = ["anthropic", "bedrock", "vertex", "foundry", "openai", "google", "ollama", "lm-studio"];
 
@@ -73,6 +92,7 @@ interface RoleDraft {
   integration_providers: string[] | null;
   url_host_patterns: string;
   menu_paths: string[] | null;
+  max_autonomy_level: GrenzWahl;
 }
 
 function draftFromRole(role?: CustomRole): RoleDraft {
@@ -92,6 +112,9 @@ function draftFromRole(role?: CustomRole): RoleDraft {
     integration_providers: p.integration_providers ?? null,
     url_host_patterns: listToText(p.url_host_patterns),
     menu_paths: p.menu_paths ?? null,
+    max_autonomy_level: !("max_autonomy_level" in p)
+      ? "erbt"
+      : p.max_autonomy_level == null ? "unbegrenzt" : p.max_autonomy_level,
   };
 }
 
@@ -109,6 +132,10 @@ function permissionsFromDraft(draft: RoleDraft): RolePermissions {
     integration_providers: draft.integration_providers,
     url_host_patterns: parseStringList(draft.url_host_patterns),
     menu_paths: draft.menu_paths,
+    // Fehlt der Schlüssel, erbt die Rolle die Grenze ihrer Grundrolle.
+    ...(draft.max_autonomy_level === "erbt"
+      ? {}
+      : { max_autonomy_level: draft.max_autonomy_level === "unbegrenzt" ? null : draft.max_autonomy_level }),
   };
 }
 
@@ -137,6 +164,8 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
   const [addOpen, setAddOpen] = useState(false);
   const [memberQuery, setMemberQuery] = useState("");
   const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  // Nach jedem Speichern neu laden: eine geänderte Grenze verschiebt die Liste.
+  const [grenzStand, setGrenzStand] = useState(0);
 
   // Model names offered for the per-group allowlist — gathered from the configured AI accounts.
   const modelOptions = useMemo(() => {
@@ -260,6 +289,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
         setRoles(next);
         onRolesChanged?.(next);
         setDraft(draftFromRole(updated));
+        setGrenzStand((n) => n + 1);
         toast.success("Rolle gespeichert", name);
       } else {
         const created = await api.createRole(name, draft.description, permissions);
@@ -393,6 +423,24 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
           </div>
 
           <div className="mt-5 space-y-5">
+            <RechteGruppe titel="Autonomie">
+              <PermissionBlock title="Höchste Autonomiestufe" zusammenfassung={grenzZusammenfassung(draft.max_autonomy_level)}>
+                <select
+                  value={draft.max_autonomy_level}
+                  onChange={(e) => setDraft((d) => ({ ...d, max_autonomy_level: e.target.value as GrenzWahl }))}
+                  className="w-full rounded-lg border border-foreground/[0.08] bg-background px-3 py-2 text-sm outline-none focus:border-primary/50"
+                >
+                  {GRENZ_OPTIONEN.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  So selbstständig dürfen Mitglieder dieser Rolle ihre Agenten höchstens einstellen — beim Anlegen
+                  und beim Ändern. Sudo-Pakete und Root-Zugriff gibt es nur ohne Grenze. Bestehende Agenten werden
+                  nicht zurückgestuft; sie stehen unten in der Liste.
+                </p>
+              </PermissionBlock>
+            </RechteGruppe>
             <RechteGruppe titel="Modelle & Konten">
               <PermissionBlock title="Sprachmodell-Anbieter" zusammenfassung={zaehlen(draft.llm_providers, LLM_PROVIDERS.length, "alle")}>
                 <div className="flex flex-wrap gap-2">
@@ -725,7 +773,65 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
             </div>
           )}
         </div>
+
+        <AgentenUeberDerGrenze stand={grenzStand} />
       </div>
+    </div>
+  );
+}
+
+/** Agenten, die mehr dürfen, als die Rolle ihres Besitzers heute erlaubt (#910).
+ *  Sie werden nicht zurückgestuft (Bestandsschutz) — der Administrator entscheidet. */
+function AgentenUeberDerGrenze({ stand }: { stand: number }) {
+  const [liste, setListe] = useState<AutonomieUeberschreitung[] | null>(null);
+  const [fehler, setFehler] = useState(false);
+
+  useEffect(() => {
+    let aktiv = true;
+    api.getAutonomieUeberschreitungen()
+      .then((r) => { if (aktiv) { setListe(r.agents); setFehler(false); } })
+      .catch(() => { if (aktiv) setFehler(true); });
+    return () => { aktiv = false; };
+  }, [stand]);
+
+  return (
+    <div className="rounded-xl border border-foreground/[0.08] bg-card/70 p-5">
+      <div className="flex items-center gap-2">
+        <ShieldAlert className="h-4 w-4 text-amber-700 dark:text-amber-400" />
+        <h3 className="text-sm font-semibold">Agenten über der Rollengrenze</h3>
+        {liste && (
+          <span className="rounded-md bg-foreground/10 px-1.5 py-0.5 text-[11px] text-muted-foreground">{liste.length}</span>
+        )}
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        Diese Agenten dürfen mehr, als die Rolle ihres Besitzers heute erlaubt. Sie bleiben, wie sie sind;
+        erhöhen lässt sich nichts mehr. Zurückstufen geht in den Einstellungen des Agenten.
+      </p>
+      {fehler ? (
+        <p className="mt-3 text-xs text-red-400">Liste konnte nicht geladen werden.</p>
+      ) : liste == null ? (
+        <Loader2 className="mt-3 h-4 w-4 animate-spin text-muted-foreground" />
+      ) : liste.length === 0 ? (
+        <p className="mt-3 text-xs text-muted-foreground">Keine — alle Agenten liegen innerhalb der Grenze ihrer Rolle.</p>
+      ) : (
+        <div className="mt-3 space-y-1.5">
+          {liste.map((a) => (
+            <Link
+              key={a.agent_id}
+              href={`/agents/${a.agent_id}`}
+              className="flex items-center justify-between gap-3 rounded-lg border border-foreground/[0.06] bg-background/60 px-3 py-2 transition-colors hover:bg-foreground/[0.04]"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{a.agent_name}</p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {a.user_name || a.user_email || a.user_id} · Grenze {a.grenze.toUpperCase()}
+                </p>
+              </div>
+              <span className="shrink-0 text-right text-[11px] text-amber-700 dark:text-amber-400">{a.gruende.join(" · ")}</span>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

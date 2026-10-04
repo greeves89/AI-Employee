@@ -90,7 +90,10 @@ AUTONOMY_DEFAULTS: dict[str, list[dict]] = {
 LEVEL_META: dict[str, dict] = {
     "l1": {"label": "L1 — Nur lesen", "description": "Erlaubt: Lesen, Recherche, Analysen ausgeben. Alles andere → Freigabe erforderlich."},
     "l2": {"label": "L2 — Empfehlungen", "description": "Erlaubt: Lesen, Recherche, Dateien in /workspace/ schreiben, Entwürfe erstellen. Shell & Extern → Freigabe."},
-    "l3": {"label": "L3 — Ausführen mit Freigabe", "description": "Erlaubt: Lesen, Schreiben, Shell, Pakete installieren. Externe Kommunikation & Käufe → Freigabe."},
+    "l3": {"label": "L3 — Arbeitet selbstständig im eigenen Bereich, fragt vor Außenwirkung",
+           "description": "Erlaubt im eigenen Container ohne Rückfrage: Lesen, Schreiben, Shell-Befehle, "
+                          "Pakete installieren; Nachrichten an den eigenen Nutzer. Außenwirkung "
+                          "(E-Mail/M365, externe APIs, git push, Käufe) → Freigabe."},
     "l4": {"label": "L4 — Vollständig autonom", "description": "Alles erlaubt — keine Freigaben nötig."},
 }
 
@@ -243,6 +246,12 @@ async def create_rule(
             raise HTTPException(status_code=403, detail="Agent gehört dir nicht.")
     elif not is_admin(user):
         raise HTTPException(status_code=403, detail="Nur Admins können globale Regeln anlegen.")
+    if body.agent_id:
+        # Eine Regel am Agenten ist eine Freischaltung (der Executor nimmt ihre
+        # Kategorie in die Erlaubt-Liste) — sie darf nicht ueber die
+        # Autonomie-Grenze der Rolle hinaus (#910).
+        from app.core.autonomie_grenze import pruefe_freigaberegel
+        await pruefe_freigaberegel(user, db, body.category)
     rule = ApprovalRule(
         name=body.name,
         description=body.description,
@@ -295,6 +304,16 @@ async def update_rule(
                 raise HTTPException(status_code=403, detail="Agent gehört dir nicht.")
         elif not is_admin(user):
             raise HTTPException(status_code=403, detail="Nur Admins können globale Regeln anlegen.")
+    # Autonomie-Grenze (#910): geprueft wird, was die Regel NACH der Aenderung
+    # freischaltet — aber nur, wenn sich daran etwas aendert (Bestandsschutz).
+    ziel_agent = changes.get("agent_id", rule.agent_id)
+    ziel_aktiv = changes.get("is_active", rule.is_active)
+    ziel_kategorie = changes.get("category", rule.category)
+    if ziel_agent and ziel_aktiv and (
+        {"category", "agent_id"} & set(changes) or (changes.get("is_active") and not rule.is_active)
+    ):
+        from app.core.autonomie_grenze import pruefe_freigaberegel
+        await pruefe_freigaberegel(user, db, ziel_kategorie)
     for field, value in changes.items():
         setattr(rule, field, value)
     await db.commit()

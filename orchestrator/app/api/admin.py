@@ -344,7 +344,10 @@ async def assign_agent_to_user(
         model=template.model,
         role=template.role,
         integrations=template.integrations or [],
-        permissions=template.permissions or [],
+        # ``None`` statt ``[]`` (#910): ohne Paketliste folgt der Container der
+        # Stufe. Vollen Root-Zugriff vergibt dieser Weg nie — es gibt hier keine
+        # Bestaetigung; die Grenze der Rolle des Empfaengers prueft create_agent.
+        permissions=template.permissions or None,
         user_id=body.user_id,
         budget_usd=body.budget_usd,
         mode="claude_code",
@@ -463,7 +466,11 @@ async def distribute_agent(
                 model=source.model,
                 role=cfg.get("role", ""),
                 integrations=cfg.get("integrations", []),
-                permissions=cfg.get("permissions", []),
+                # Nur eine bewusst von Hand gewaehlte Liste wandert mit; sonst
+                # folgt auch die Kopie ihrer Stufe. Grenze des Empfaengers und
+                # Root-Bestaetigung prueft create_agent (#910).
+                permissions=list((source.access_policy or {}).get("permissions") or [])
+                if (source.access_policy or {}).get("permissions_mode") == "manual" else None,
                 user_id=uid,
                 budget_usd=source.budget_usd,
                 budget_exceeded_action=source.budget_exceeded_action,
@@ -512,6 +519,21 @@ async def distribute_agent(
         "created_count": len(created),
         "skipped_count": len(skipped),
     }
+
+
+@router.get("/autonomie-grenze/ueberschreitungen")
+async def agenten_ueber_der_rollengrenze(
+    user=Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Agenten, die mehr duerfen, als die Rolle ihres Besitzers heute erlaubt (#910).
+
+    Bestandsschutz: sie werden nicht zurueckgestuft — der Administrator sieht sie
+    hier und entscheidet selbst, ob er nachzieht.
+    """
+    from app.core.autonomie_grenze import agenten_ueber_der_grenze
+
+    return {"agents": await agenten_ueber_der_grenze(db)}
 
 
 @router.get("/assignments")

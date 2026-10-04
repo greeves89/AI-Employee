@@ -28,6 +28,36 @@ async def _rolle_protokollieren(db: AsyncSession, user, befehl: str, **meta) -> 
                         command=befehl, meta={k: v for k, v in meta.items() if v is not None})
 
 
+_GRENZWERTE = (None, "l1", "l2", "l3", "l4")
+
+
+def _grenze_pruefen(permissions) -> None:
+    """``max_autonomy_level``: fehlt = erbt von der Grundrolle, ``None`` = unbegrenzt,
+    sonst L1–L4. Alles andere wuerde still als L1 gelesen — lieber gleich sagen."""
+    if isinstance(permissions, dict) and "max_autonomy_level" in permissions:
+        wert = permissions["max_autonomy_level"]
+        if (wert.lower() if isinstance(wert, str) else wert) not in _GRENZWERTE:
+            raise HTTPException(status_code=422, detail="max_autonomy_level muss l1, l2, l3, l4 oder leer sein.")
+        if isinstance(wert, str):
+            permissions["max_autonomy_level"] = wert.lower()
+
+
+def _grenze_text(permissions) -> str:
+    if not isinstance(permissions, dict) or "max_autonomy_level" not in permissions:
+        return "wie Grundrolle"
+    wert = permissions["max_autonomy_level"]
+    return "unbegrenzt" if wert is None else str(wert).upper()
+
+
+async def _grenze_protokollieren(db: AsyncSession, user, gruppe: str, vorher, nachher) -> None:
+    """Aenderung der Autonomie-Grenze einer Gruppe als eigener Eintrag (#910) —
+    sie entscheidet, wie weit Agenten ohne Rueckfrage handeln duerfen."""
+    alt, neu = _grenze_text(vorher), _grenze_text(nachher)
+    if alt != neu:
+        await _rolle_protokollieren(db, user, f"Autonomie-Grenze geändert: {gruppe}: {alt} → {neu}",
+                                    aktion="autonomie_grenze", gruppe=gruppe, von=alt, nach=neu)
+
+
 @router.get("/")
 async def list_roles(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """List all custom roles. Visible to all authenticated users."""
@@ -56,6 +86,7 @@ async def create_role(body: dict, user=Depends(require_auth), db: AsyncSession =
     name = (body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="name is required")
+    _grenze_pruefen(body.get("permissions"))
     if (await db.execute(select(CustomRole).where(CustomRole.name == name))).scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"role '{name}' already exists")
     r = CustomRole(
@@ -66,6 +97,8 @@ async def create_role(body: dict, user=Depends(require_auth), db: AsyncSession =
     )
     db.add(r)
     await _rolle_protokollieren(db, user, f"Gruppe angelegt: {name}", aktion="angelegt", gruppe=name)
+    if "max_autonomy_level" in (r.permissions or {}):
+        await _grenze_protokollieren(db, user, name, {}, r.permissions)
     await db.commit()
     await db.refresh(r)
     return {"id": r.id, "name": r.name, "description": r.description, "permissions": r.permissions}
@@ -118,7 +151,11 @@ async def set_user_budget(user_id: str, body: dict, user=Depends(require_auth), 
 @router.get("/me/permissions")
 async def my_permissions(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """Return the effective permissions for the calling user."""
-    perms = await get_effective_permissions(user, db)
+    perms = dict(await get_effective_permissions(user, db))
+    # So, wie die Pruefung sie liest (#910): Unbekanntes zaehlt als L1 — die
+    # Oberflaeche graut genau das aus, was der Server ablehnt.
+    from app.core.autonomie_grenze import autonomie_obergrenze
+    perms["max_autonomy_level"] = await autonomie_obergrenze(user, db)
     return {"permissions": perms, "custom_role_id": getattr(user, "custom_role_id", None)}
 
 
@@ -137,6 +174,8 @@ async def update_role(role_id: int, body: dict, user=Depends(require_auth), db: 
         r.description = body["description"]
     entzogen: set[int] = set()
     if "permissions" in body and isinstance(body["permissions"], dict):
+        _grenze_pruefen(body["permissions"])
+        await _grenze_protokollieren(db, user, r.name, r.permissions or {}, body["permissions"])
         vorher = set((r.permissions or {}).get("secret_ids") or [])
         nachher = set(body["permissions"].get("secret_ids") or [])
         entzogen = vorher - nachher

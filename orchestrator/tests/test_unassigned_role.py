@@ -52,8 +52,10 @@ class PermissionTests(unittest.TestCase):
     def test_unassigned_grants_nothing_at_all(self):
         perms = DEFAULT_PERMISSIONS_BY_ROLE[UserRole.UNASSIGNED]
         self.assertEqual(perms["max_agents"], 0)
+        # Keine Liste, sondern eine Stufe: die engste (#910). None hiesse unbegrenzt.
+        self.assertEqual(perms["max_autonomy_level"], "l1")
         for key, value in perms.items():
-            if key == "max_agents":
+            if key in ("max_agents", "max_autonomy_level"):
                 continue
             with self.subTest(key=key):
                 self.assertEqual(value, [], f"{key} muss leer sein, nicht None (= alles)")

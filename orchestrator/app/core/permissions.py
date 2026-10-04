@@ -35,6 +35,9 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "integration_providers": None,
         "url_host_patterns": None,
         "menu_paths": None,
+        # Hoechste Autonomiestufe, die diese Rolle ihren Agenten geben darf
+        # (None = unbegrenzt). Siehe app/core/autonomie_grenze.py.
+        "max_autonomy_level": None,
     },
     UserRole.MANAGER: {
         "max_agents": 20,
@@ -48,6 +51,9 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "integration_providers": None,
         "url_host_patterns": None,
         "menu_paths": None,
+        # Hoechste Autonomiestufe, die diese Rolle ihren Agenten geben darf
+        # (None = unbegrenzt). Siehe app/core/autonomie_grenze.py.
+        "max_autonomy_level": None,
     },
     UserRole.MEMBER: {
         "max_agents": 5,
@@ -61,6 +67,9 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "integration_providers": None,
         "url_host_patterns": None,
         "menu_paths": None,
+        # Hoechste Autonomiestufe, die diese Rolle ihren Agenten geben darf
+        # (None = unbegrenzt). Siehe app/core/autonomie_grenze.py.
+        "max_autonomy_level": "l3",
     },
     UserRole.VIEWER: {
         "max_agents": 0,
@@ -74,6 +83,9 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "integration_providers": [],
         "url_host_patterns": [],
         "menu_paths": ["/dashboard", "/agents", "/tasks"],  # read-only views
+        # Hoechste Autonomiestufe, die diese Rolle ihren Agenten geben darf
+        # (None = unbegrenzt). Siehe app/core/autonomie_grenze.py.
+        "max_autonomy_level": "l1",
     },
     # Ohne Zuweisung: nichts. Die Liste steht hier trotzdem vollstaendig da, statt
     # sich auf einen Sonderfall im Code zu verlassen — wer spaeter ein Recht
@@ -94,6 +106,9 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         "integration_providers": [],
         "url_host_patterns": [],
         "menu_paths": [],
+        # Hoechste Autonomiestufe, die diese Rolle ihren Agenten geben darf
+        # (None = unbegrenzt). Siehe app/core/autonomie_grenze.py.
+        "max_autonomy_level": "l1",
     },
 }
 
@@ -108,18 +123,25 @@ async def get_effective_permissions(user, db: AsyncSession) -> dict[str, Any]:
     if hasattr(user, "role") and user.role == UserRole.ADMIN:
         return DEFAULT_PERMISSIONS_BY_ROLE[UserRole.ADMIN]
 
-    custom_role_id = getattr(user, "custom_role_id", None)
-    if custom_role_id:
-        role = await db.get(CustomRole, custom_role_id)
-        if role and role.permissions:
-            return _merge_defaults(role.permissions)
-
     role_enum = getattr(user, "role", UserRole.MEMBER)
     if not isinstance(role_enum, UserRole):
         try:
             role_enum = UserRole(role_enum)
         except Exception:
             role_enum = UserRole.MEMBER
+
+    custom_role_id = getattr(user, "custom_role_id", None)
+    if custom_role_id:
+        role = await db.get(CustomRole, custom_role_id)
+        if role and role.permissions:
+            merged = _merge_defaults(role.permissions)
+            # Die Autonomie-Grenze erbt eine eigene Rolle von ihrer Grundrolle,
+            # solange sie keine eigene Angabe macht — sonst haette ein Mitglied mit
+            # Sonderrolle WENIGER Schranken als eines ohne (None hiesse unbegrenzt).
+            if "max_autonomy_level" not in role.permissions:
+                merged["max_autonomy_level"] = DEFAULT_PERMISSIONS_BY_ROLE[role_enum].get("max_autonomy_level")
+            return merged
+
     return DEFAULT_PERMISSIONS_BY_ROLE[role_enum]
 
 

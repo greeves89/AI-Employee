@@ -154,6 +154,10 @@ def _tool_detail(tool: str, raw_input) -> str:
 def _tool_label(raw: str) -> str:
     """Werkzeugnamen lesbar machen — im Chat stand „mcp__orchestrator__create_task"."""
     name = (raw or "").strip()
+    # ``skill_install`` laedt eine gepruefte Fachanleitung in den Agenten — es
+    # installiert KEINE Software. Der Rohname las sich wie das Gegenteil (#910).
+    if name.split("__")[-1] == "skill_install":
+        return "Fachanleitung geladen"
     if name.startswith("mcp__"):
         parts = name.split("__")
         server = parts[1].replace("_", " ").strip() if len(parts) > 1 else ""

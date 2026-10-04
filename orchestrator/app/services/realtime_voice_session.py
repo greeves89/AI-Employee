@@ -1096,8 +1096,10 @@ SET_AUTONOMY_TOOL = {
         "name": "set_autonomy",
         "description": (
             "Change MY autonomy level when the user asks for it. l1 = very cautious "
-            "(asks before almost everything), l2 = cautious, l3 = balanced (default), "
-            "l4 = highly autonomous. Only call when the user clearly wants to change how "
+            "(asks before almost everything), l2 = cautious, l3 = works on its own inside "
+            "its own container (files, shell, packages) and asks before anything with an "
+            "outside effect (default), l4 = fully autonomous, also outside. The user's role "
+            "may cap the level. Only call when the user clearly wants to change how "
             "autonomously I act. Confirm the new level in your spoken reply."
         ),
         "inputSchema": {"json": json.dumps({

@@ -77,7 +77,9 @@ _ALLOW_BY_LEVEL: dict[str, set[str]] = {
 LEVEL_LABELS = {
     "l1": "L1 — Nur lesen",
     "l2": "L2 — Empfehlungen",
-    "l3": "L3 — Ausführen mit Freigabe",
+    # Bis #910 hiess L3 „Ausführen mit Freigabe" — dabei laufen Shell und Pakete
+    # im eigenen Container OHNE Rückfrage; nur Außenwirkung braucht eine Freigabe.
+    "l3": "L3 — Arbeitet selbstständig im eigenen Bereich, fragt vor Außenwirkung",
     "l4": "L4 — Vollständig autonom",
 }
 

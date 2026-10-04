@@ -41,6 +41,8 @@ import {
   Palette,
   PenTool,
   Globe,
+  Lock,
+  ShieldOff,
 } from "lucide-react";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
@@ -50,6 +52,8 @@ import { AppearancePicker } from "@/components/agents/appearance-picker";
 import { PermissionPackagesPanel } from "@/components/agents/permission-packages-panel";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { useAuthStore } from "@/lib/auth";
+import { useAutonomieGrenze } from "@/lib/autonomie-grenze";
+import { useConfirm } from "@/components/ui/dialog-provider";
 
 const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
   Bot,
@@ -174,6 +178,22 @@ interface CreateAgentModalProps {
 
 type Step = "template" | "configure";
 
+// Ehrliche Stufen-Texte (#910): L3 arbeitet im eigenen Container OHNE Rückfrage
+// (Dateien, Befehle, Pakete) und fragt erst vor Außenwirkung.
+const STUFEN_OPTIONEN = [
+  { value: "l1", label: "L1 — Nur lesen & suchen", text: "Agent kann nur lesen und suchen — keine Aktionen." },
+  { value: "l2", label: "L2 — Empfehlungen erstellen", text: "Agent erstellt Empfehlungen und Entwürfe als Dateien — führt sonst nichts aus." },
+  {
+    value: "l3",
+    label: "L3 — Selbstständig im eigenen Bereich (Standard)",
+    text: "Arbeitet selbstständig im eigenen Bereich (Dateien, Befehle, Pakete im Container), fragt vor Außenwirkung wie E-Mail, externen Diensten, Git-Push oder Käufen.",
+  },
+  { value: "l4", label: "L4 — Vollständig autonom", text: "Agent handelt vollständig eigenständig — auch nach außen, ohne Rückfragen." },
+];
+
+const ROOT_WARNUNG =
+  "Der Agent darf im Container alles als Administrator (sudo ohne Einschränkung): Software, Systemdateien, Sicherheitseinstellungen. Nur für Entwicklung und Tests.";
+
 export function CreateAgentModal({
   open,
   onOpenChange,
@@ -212,6 +232,13 @@ export function CreateAgentModal({
 
   // Autonomy level
   const [autonomyLevel, setAutonomyLevel] = useState("l3");
+  // Rollen-Grenze (#910): Stufen darüber sind ausgegraut, Sudo-Pakete und Root
+  // gibt es nur ohne Grenze. Der Server prüft dasselbe noch einmal.
+  const { grenze, ueber, ohneGrenze } = useAutonomieGrenze();
+  // Voller Root-Zugriff nur mit ausdrücklicher Bestätigung — nie vorausgewählt,
+  // auch nicht, wenn die Vorlage ihn vorschlägt.
+  const [rootBestaetigt, setRootBestaetigt] = useState(false);
+  const confirm = useConfirm();
 
   // Custom LLM fields
   const [llmProvider, setLlmProvider] = useState<LLMProviderType>("openai");
@@ -257,6 +284,7 @@ export function CreateAgentModal({
       setError(null);
       setMode("claude_code");
       setAutonomyLevel("l3");
+      setRootBestaetigt(false);
       setAiAccountId(null);
       setAiAccountModel("");
       setSelectedAccountKey("oauth:claude");
@@ -294,15 +322,28 @@ export function CreateAgentModal({
     }
   }, [open, ladeVorlagen]);
 
+  // Die Vorgabe L3 gilt höchstens bis zur Grenze der eigenen Rolle.
+  useEffect(() => {
+    if (open && grenze && ueber(autonomyLevel)) setAutonomyLevel(grenze);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, grenze]);
+
   const selectTemplate = (template: AgentTemplate | null) => {
     setSelectedTemplate(template);
+    setRootBestaetigt(false);
     if (template) {
       setName("");
       setRole(template.role);
       // Eine Vorlage MIT Paketliste ist eine bewusste Vorgabe ihres Autors — die
-      // schaltet auf "manuell". Ohne Liste bleibt es bei der Autonomiestufe.
+      // schaltet auf "manuell" und steht sichtbar in „Wird konfiguriert mit".
+      // Vollen Root-Zugriff übernimmt sie NIE still: der braucht den Haken
+      // unten (#910).
       setPermissionsMode(template.permissions.length > 0 ? "manual" : "auto");
-      setSelectedPermissions(template.permissions.length > 0 ? template.permissions : ["package-install"]);
+      setSelectedPermissions(
+        template.permissions.length > 0
+          ? template.permissions.filter((p) => p !== "full-access")
+          : ["package-install"],
+      );
       // Pre-fill system prompt from template for Custom LLM usage
       const templatePrompt = template.knowledge_template
         ? `Du bist ein ${template.display_name}.\n\nRolle: ${template.role}\n\n${template.knowledge_template}`
@@ -318,7 +359,17 @@ export function CreateAgentModal({
     setStep("configure");
   };
 
-  const togglePermission = (id: string) => {
+  const togglePermission = async (id: string) => {
+    if (id === "full-access" && !selectedPermissions.includes(id)) {
+      const ok = await confirm({
+        title: "Vollen Root-Zugriff gewähren?",
+        message: ROOT_WARNUNG,
+        confirmLabel: "Root-Zugriff gewähren",
+        variant: "destructive",
+      });
+      if (!ok) return;
+      setRootBestaetigt(true);
+    }
     setSelectedPermissions((prev) => {
       if (id === "full-access") {
         return prev.includes(id) ? [] : ["full-access"];
@@ -411,7 +462,10 @@ export function CreateAgentModal({
       // Im Auto-Modus schickt die Oberfläche BEWUSST nichts: erst dadurch leitet
       // der Server die sudo-Pakete aus der Autonomiestufe ab. Eine mitgeschickte
       // Liste heisst "von Hand gewählt" und hängt den Agenten von der Stufe ab.
-      const permissionsPayload = permissionsMode === "manual" ? selectedPermissions : undefined;
+      // Mit Rollen-Grenze gibt es keine handverlesenen Pakete — der Container
+      // folgt der (erlaubten) Stufe (#910).
+      const permissionsPayload = ohneGrenze && permissionsMode === "manual" ? selectedPermissions : undefined;
+      const rootFuerAnlage = rootBestaetigt && (permissionsPayload ?? []).includes("full-access");
 
       let created: Awaited<ReturnType<typeof api.createAgent>> | undefined;
       if (aiAccountId !== null) {
@@ -427,6 +481,7 @@ export function CreateAgentModal({
           budgetExceededAction,
           aiAccountId,
           selectedTemplate?.id,
+          rootFuerAnlage,
         );
       } else if (selectedTemplate && mode === "claude_code") {
         created = await api.createAgentFromTemplate(
@@ -434,6 +489,7 @@ export function CreateAgentModal({
           name.trim() || undefined,
           parsedBudget && parsedBudget > 0 ? parsedBudget : undefined,
           budgetExceededAction,
+          ohneGrenze && rootBestaetigt,
         );
       } else if (mode === "codex_cli") {
         created = await api.createAgent(
@@ -448,6 +504,7 @@ export function CreateAgentModal({
           budgetExceededAction,
           undefined,
           selectedTemplate?.id,
+          rootFuerAnlage,
         );
       } else if (mode === "custom_llm") {
         const llmConfig: LLMConfig = {
@@ -473,6 +530,7 @@ export function CreateAgentModal({
           budgetExceededAction,
           undefined,
           selectedTemplate?.id,
+          rootFuerAnlage,
         );
       } else {
         created = await api.createAgent(
@@ -485,6 +543,9 @@ export function CreateAgentModal({
           undefined,
           autonomyLevel,
           budgetExceededAction,
+          undefined,
+          undefined,
+          rootFuerAnlage,
         );
       }
       if (created?.id) {
@@ -1103,29 +1164,40 @@ export function CreateAgentModal({
                               onChange={(e) => setAutonomyLevel(e.target.value)}
                               className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                             >
-                              <option value="l1">L1 — Nur lesen &amp; suchen</option>
-                              <option value="l2">L2 — Empfehlungen erstellen</option>
-                              <option value="l3">L3 — Aktionen mit Freigabe (Standard)</option>
-                              <option value="l4">L4 — Vollständig autonom</option>
+                              {STUFEN_OPTIONEN.map((o) => (
+                                <option key={o.value} value={o.value} disabled={ueber(o.value)}>
+                                  {o.label}{ueber(o.value) ? " (nicht für deine Rolle)" : ""}
+                                </option>
+                              ))}
                             </select>
                             <p className="mt-1 text-[11px] text-muted-foreground/60">
-                              {autonomyLevel === "l1" && "Agent kann nur lesen und suchen — keine Aktionen."}
-                              {autonomyLevel === "l2" && "Agent erstellt Empfehlungen und Entwuerfe — fuehrt nichts aus."}
-                              {autonomyLevel === "l3" && "Agent fragt vor jeder Aktion um Erlaubnis (empfohlen)."}
-                              {autonomyLevel === "l4" && "Agent handelt vollstaendig eigenstnadig ohne Rückfragen."}
+                              {STUFEN_OPTIONEN.find((o) => o.value === autonomyLevel)?.text}
                             </p>
+                            {grenze && (
+                              <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground/60">
+                                <Lock className="h-3 w-3" />
+                                Deine Rolle erlaubt höchstens Stufe {grenze.toUpperCase()}.
+                              </p>
+                            )}
                           </div>
 
-                          {/* Permission Packages — folgen standardmäßig der Autonomiestufe */}
-                          <PermissionPackagesPanel
-                            packages={packages}
-                            autonomyLevel={autonomyLevel}
-                            derivedPermissions={derivedPermissions}
-                            permissionsMode={permissionsMode}
-                            onPermissionsModeChange={setPermissionsMode}
-                            selected={selectedPermissions}
-                            onTogglePermission={togglePermission}
-                          />
+                          {/* Permission Packages — folgen standardmäßig der Autonomiestufe.
+                              Selbst wählen (bis Root) nur ohne Rollen-Grenze (#910). */}
+                          {ohneGrenze ? (
+                            <PermissionPackagesPanel
+                              packages={packages}
+                              autonomyLevel={autonomyLevel}
+                              derivedPermissions={derivedPermissions}
+                              permissionsMode={permissionsMode}
+                              onPermissionsModeChange={setPermissionsMode}
+                              selected={selectedPermissions}
+                              onTogglePermission={togglePermission}
+                            />
+                          ) : (
+                            <p className="text-[11px] text-muted-foreground/60">
+                              Die Rechte im Container folgen der Autonomiestufe. Sudo-Pakete setzt ein Administrator.
+                            </p>
+                          )}
                         </>
                       )}
 
@@ -1191,11 +1263,13 @@ export function CreateAgentModal({
                             <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400">
                               {effectiveModelLabel.split("-").slice(0, 2).join(" ")}
                             </span>
-                            {selectedTemplate.permissions.map((p) => (
-                              <span key={p} className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">
-                                {p}
-                              </span>
-                            ))}
+                            {ohneGrenze && selectedTemplate.permissions
+                              .filter((p) => p !== "full-access" || rootBestaetigt)
+                              .map((p) => (
+                                <span key={p} className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                                  {p}
+                                </span>
+                              ))}
                             {selectedTemplate.integrations.map((i) => (
                               <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
                                 {i}
@@ -1208,6 +1282,38 @@ export function CreateAgentModal({
                             )}
                           </div>
                         </div>
+                      )}
+
+                      {/* Vorlage schlägt Root vor: nur per Haken, nie vorausgewählt,
+                          nur ohne Rollen-Grenze (#910). */}
+                      {selectedTemplate && selectedTemplate.permissions.includes("full-access") && (
+                        ohneGrenze ? (
+                          <label className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={rootBestaetigt}
+                              onChange={(e) => {
+                                const an = e.target.checked;
+                                setRootBestaetigt(an);
+                                setSelectedPermissions((prev) => an
+                                  ? [...prev.filter((p) => p !== "full-access"), "full-access"]
+                                  : prev.filter((p) => p !== "full-access"));
+                              }}
+                              className="mt-0.5 h-4 w-4 accent-amber-500"
+                            />
+                            <span className="min-w-0">
+                              <span className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                                <ShieldOff className="h-3.5 w-3.5" />
+                                Vollen Root-Zugriff gewähren (von der Vorlage vorgeschlagen)
+                              </span>
+                              <span className="mt-0.5 block text-[11px] text-muted-foreground">{ROOT_WARNUNG}</span>
+                            </span>
+                          </label>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground/60">
+                            Die Vorlage schlägt Sudo-Rechte vor. Für deine Rolle folgen die Rechte im Container der Autonomiestufe.
+                          </p>
+                        )
                       )}
 
                       {/* Error */}
