@@ -14,6 +14,7 @@ import { useConfirm } from "@/components/ui/dialog-provider";
 import { getAgentTag } from "@/components/agents/agent-avatar";
 import { AgentFilterBar, type GroupBy, type SortBy } from "@/components/agents/agent-filter-bar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { useAuthStore } from "@/lib/auth";
 import { apiFehlertext } from "@/lib/api-fehler";
 type ViewMode = "grid" | "network" | "teams";
 
@@ -42,7 +43,8 @@ const AgentNetworkView = dynamic(
 export default function AgentsPage() {
   const { agents, loading, refresh } = useAgents();
   const confirm = useConfirm();
-  const { simpleMode } = useSimpleMode();
+  const { simpleMode, istAdmin } = useSimpleMode();
+  const meineId = useAuthStore((s) => s.user?.id);
   const [showCreate, setShowCreate] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -295,7 +297,11 @@ export default function AgentsPage() {
     if (!ok) return;
     // Löschkonzept (#892): mit Daten verschwinden auch Chats, Gedächtnis und
     // Arbeitsordner — ohne bleiben sie für eine spätere Auswertung erhalten.
-    const mitDaten = await confirm({
+    // Das darf nur der Besitzer oder ein Admin (der Server lehnt sonst mit 403
+    // ab) — wer den Agenten nur geteilt bekam, wird gar nicht erst gefragt.
+    const agent = agents.find((a) => a.id === id);
+    const darfMitDaten = istAdmin || (!!meineId && agent?.user_id === meineId);
+    const mitDaten = darfMitDaten && await confirm({
       title: "Daten ebenfalls löschen?",
       message: "Chats, Gedächtnis und Arbeitsordner dieses Agenten endgültig löschen. Ohne bleiben sie in der Datenbank erhalten.",
       variant: "destructive",

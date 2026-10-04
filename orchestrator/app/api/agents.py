@@ -2042,6 +2042,20 @@ async def remove_agent(
     manager: AgentManager = Depends(_get_agent_manager),
 ):
     await _check_owner(agent_id, user, db)
+    if remove_data:
+        # „Mit Daten“ loescht alle Chats und das Gedaechtnis des BESITZERS — das
+        # darf nur er selbst oder ein Admin, nicht wer den Agenten nur geteilt
+        # bekam oder als Manager sieht. Bewusst 403 statt still ohne Daten: die
+        # Oberflaeche meldete sonst „mit Daten geloescht“, obwohl alles noch da ist.
+        from app.models.user import UserRole
+        besitzer = (await db.execute(
+            select(Agent.user_id).where(Agent.id == agent_id))).scalar_one_or_none()
+        if getattr(user, "role", None) != UserRole.ADMIN and (not besitzer or besitzer != user.id):
+            raise HTTPException(
+                status_code=403,
+                detail="Nur der Besitzer oder ein Admin darf einen Agenten samt Chats und "
+                       "Gedächtnis löschen. Ohne Daten löschen ist möglich.",
+            )
     try:
         await manager.remove_agent(agent_id, remove_data=remove_data)
         return {"status": "removed", "agent_id": agent_id}
