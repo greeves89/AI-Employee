@@ -591,6 +591,8 @@ export interface AgentTemplate {
   permissions: string[];
   integrations: string[];
   mcp_server_ids: number[];
+  /** Skills, die jeder Agent aus dieser Vorlage mitbekommt (vom Server aufgelöst). */
+  skills?: { id: number; name: string; description: string }[];
   knowledge_template: string;
   /** Dauerauftraege, die jeder Agent aus dieser Vorlage mitbekommt. */
   responsibilities?: Responsibility[];

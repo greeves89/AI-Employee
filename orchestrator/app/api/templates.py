@@ -86,6 +86,24 @@ def _template_to_dict(t: AgentTemplate) -> dict:
     }
 
 
+async def _skills_der_vorlagen(db: AsyncSession, vorlagen) -> dict[int, dict]:
+    """Name + Beschreibung der Skills aller übergebenen Vorlagen, in EINER Abfrage —
+    damit die Oberfläche zeigt, was eine Vorlage mitbringt (nur IDs sagen niemandem etwas)."""
+    from app.models.skill import Skill
+
+    ids = {i for v in vorlagen for i in (v.skill_ids or [])}
+    if not ids:
+        return {}
+    rows = (await db.execute(select(Skill.id, Skill.name, Skill.description).where(Skill.id.in_(ids)))).all()
+    return {sid: {"id": sid, "name": name, "description": (beschr or "")[:300]} for sid, name, beschr in rows}
+
+
+def _mit_skills(t: AgentTemplate, skills: dict[int, dict]) -> dict:
+    d = _template_to_dict(t)
+    d["skills"] = [skills[i] for i in (t.skill_ids or []) if i in skills]
+    return d
+
+
 @router.get("")
 async def list_templates(
     user=Depends(require_auth),
@@ -110,7 +128,8 @@ async def list_templates(
 
     result = await db.execute(query)
     templates = result.scalars().all()
-    return {"templates": [_template_to_dict(t) for t in templates]}
+    skills = await _skills_der_vorlagen(db, templates)
+    return {"templates": [_mit_skills(t, skills) for t in templates]}
 
 
 @router.get("/{template_id}")
@@ -131,7 +150,7 @@ async def get_template(
     if user.role not in (UserRole.ADMIN, UserRole.MANAGER) and not template.is_published:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    return _template_to_dict(template)
+    return _mit_skills(template, await _skills_der_vorlagen(db, [template]))
 
 
 @router.post("", status_code=201)

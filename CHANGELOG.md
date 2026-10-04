@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.361.1] - 2026-10-04
+
+### Neu
+- **Vorlagen zeigen ihre Skills:** Settings → Agent-Vorlagen → Vorlage aufklappen zeigt
+  unter „Skills“, was jeder Agent aus dieser Vorlage mitbekommt (Beschreibung beim
+  Überfahren). Die API liefert dafür Name und Beschreibung statt nur IDs.
+
+---
+
 ## [1.361.0] - 2026-10-04
 
 ### Neu

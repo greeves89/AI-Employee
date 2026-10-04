@@ -342,6 +342,24 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
                             : "– (Agenten aus dieser Vorlage starten ohne Auftrag)"}
                         </p>
                       </div>
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground/60 text-xs">Skills</span>
+                        {(t.skills?.length ?? 0) > 0 ? (
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {t.skills!.map(sk => (
+                              <span
+                                key={sk.id}
+                                title={sk.description}
+                                className="rounded-md bg-foreground/[0.06] px-2 py-0.5 text-xs text-foreground/80"
+                              >
+                                {sk.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-foreground/80">–</p>
+                        )}
+                      </div>
                     </div>
                     {t.knowledge_template && (
                       <div>
