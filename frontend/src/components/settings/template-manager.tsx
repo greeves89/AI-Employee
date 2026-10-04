@@ -14,6 +14,7 @@ import * as api from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import type { AgentTemplate, Responsibility } from "@/lib/types";
 import { ResponsibilitiesEditor } from "@/components/agents/responsibilities-editor";
+import { VORLAGEN_KATEGORIEN, VORLAGEN_KATEGORIE_FARBEN } from "@/lib/vorlagen-kategorien";
 
 const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
   Bot, Code2, BarChart3, FileText, Server, Search, Presentation,
@@ -22,33 +23,9 @@ const TEMPLATE_ICON_MAP: Record<string, React.ElementType> = {
   Languages, Kanban, Database, Palette, PenTool, Globe, Zap, Plug,
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  dev: "Development",
-  data: "Data & Analytics",
-  writing: "Writing & Docs",
-  ops: "Operations",
-  creative: "Creative",
-  general: "General",
-  marketing: "Marketing",
-  support: "Support",
-  sales: "Sales",
-  management: "Management",
-  security: "Security",
-};
-
-const CATEGORY_COLORS: Record<string, string> = {
-  dev: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  data: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  writing: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-  ops: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
-  creative: "bg-pink-500/10 text-pink-400 border-pink-500/20",
-  general: "bg-gray-500/10 text-gray-400 border-gray-500/20",
-  marketing: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  support: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-  sales: "bg-rose-500/10 text-rose-400 border-rose-500/20",
-  management: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
-  security: "bg-red-500/10 text-red-400 border-red-500/20",
-};
+// Eine Liste für alle Ansichten (#902) — siehe lib/vorlagen-kategorien.ts.
+const CATEGORY_LABELS = VORLAGEN_KATEGORIEN;
+const CATEGORY_COLORS = VORLAGEN_KATEGORIE_FARBEN;
 
 const AVAILABLE_PERMISSIONS = [
   { id: "package-install", label: "Paket-Installation", desc: "apt-get, dpkg" },
@@ -57,7 +34,7 @@ const AVAILABLE_PERMISSIONS = [
 ];
 
 const AVAILABLE_INTEGRATIONS = [
-  { id: "google", label: "Google", desc: "Gmail, Calendar, Drive" },
+  { id: "google", label: "Google", desc: "Gmail, Kalender, Drive" },
   { id: "github", label: "GitHub", desc: "Repos, Issues, PRs" },
 ];
 
@@ -164,7 +141,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
     setSaving(true);
     try {
       await api.updateTemplate(id, editState);
-      setMessage({ type: "success", text: "Template gespeichert" });
+      setMessage({ type: "success", text: "Vorlage gespeichert" });
       setEditingId(null);
       setEditState(null);
       await fetchTemplates();
@@ -181,7 +158,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
         ? await api.unpublishTemplate(t.id)
         : await api.publishTemplate(t.id);
       setTemplates(prev => prev.map(x => x.id === t.id ? updated : x));
-      setMessage({ type: "success", text: t.is_published ? "Template zurückgezogen" : "Template freigegeben ✓" });
+      setMessage({ type: "success", text: t.is_published ? "Vorlage zurückgezogen" : "Vorlage freigegeben" });
     } catch (e) {
       setMessage({ type: "error", text: `Fehler: ${e}` });
     }
@@ -189,7 +166,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
 
   const handleDelete = async (id: number) => {
     const ok = await confirm({
-      title: "Template löschen?",
+      title: "Vorlage löschen?",
       message: "Diese Aktion kann nicht rückgängig gemacht werden.",
       variant: "destructive",
       confirmLabel: "Löschen",
@@ -197,7 +174,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
     if (!ok) return;
     try {
       await api.deleteTemplate(id);
-      setMessage({ type: "success", text: "Template gelöscht" });
+      setMessage({ type: "success", text: "Vorlage gelöscht" });
       setExpandedId(null);
       await fetchTemplates();
     } catch (e) {
@@ -213,7 +190,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
     setSaving(true);
     try {
       await api.createTemplate(newTemplate);
-      setMessage({ type: "success", text: "Template erstellt" });
+      setMessage({ type: "success", text: "Vorlage angelegt" });
       setCreating(false);
       setNewTemplate({
         name: "", display_name: "", description: "", icon: "Bot",
@@ -363,7 +340,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
                     </div>
                     {t.knowledge_template && (
                       <div>
-                        <span className="text-muted-foreground/60 text-xs">Knowledge Template</span>
+                        <span className="text-muted-foreground/60 text-xs">Wissensvorlage</span>
                         <pre className="mt-1 max-h-48 overflow-auto rounded-lg bg-background/60 p-3 text-xs text-foreground/70 font-mono whitespace-pre-wrap">
                           {t.knowledge_template}
                         </pre>
@@ -409,14 +386,14 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
       {/* Create new template */}
       {creating ? (
         <div className="rounded-xl border border-emerald-500/20 bg-card/80 p-4 space-y-4">
-          <h3 className="text-sm font-medium text-emerald-400">Neues Template erstellen</h3>
+          <h3 className="text-sm font-medium text-emerald-400">Neue Vorlage anlegen</h3>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-muted-foreground/60">Slug (eindeutig)</label>
+              <label className="text-xs text-muted-foreground/60">Kurzname (eindeutig)</label>
               <input
                 value={newTemplate.name}
                 onChange={e => setNewTemplate(s => ({ ...s, name: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") }))}
-                placeholder="my-template"
+                placeholder="z. B. meine-vorlage"
                 className="mt-1 w-full rounded-lg bg-background/60 border border-foreground/[0.08] px-3 py-2 text-sm"
               />
             </div>
@@ -425,7 +402,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
               <input
                 value={newTemplate.display_name}
                 onChange={e => setNewTemplate(s => ({ ...s, display_name: e.target.value }))}
-                placeholder="Mein Template"
+                placeholder="z. B. Meine Vorlage"
                 className="mt-1 w-full rounded-lg bg-background/60 border border-foreground/[0.08] px-3 py-2 text-sm"
               />
             </div>
@@ -445,7 +422,7 @@ export function TemplateManager({ isAdmin }: TemplateManagerProps) {
           onClick={() => setCreating(true)}
           className="w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-foreground/[0.1] py-3 text-sm text-muted-foreground/60 hover:border-foreground/[0.2] hover:text-muted-foreground transition-colors"
         >
-          <Plus className="h-4 w-4" /> Neues Template erstellen
+          <Plus className="h-4 w-4" /> Neue Vorlage anlegen
         </button>
       )}
     </div>
@@ -537,7 +514,7 @@ function TemplateEditForm({
         <input
           value={state.role}
           onChange={e => onChange({ ...state, role: e.target.value })}
-          placeholder="Senior Developer with expertise in..."
+          placeholder="z. B. Erfahrene Entwicklerin mit Schwerpunkt …"
           className="mt-1 w-full rounded-lg bg-background/60 border border-foreground/[0.08] px-3 py-2 text-sm"
         />
       </div>
@@ -600,11 +577,11 @@ function TemplateEditForm({
 
       {/* Knowledge Template */}
       <div>
-        <label className="text-xs text-muted-foreground/60">Knowledge Template (Markdown)</label>
+        <label className="text-xs text-muted-foreground/60">Wissensvorlage (Markdown)</label>
         <textarea
           value={state.knowledge_template}
           onChange={e => onChange({ ...state, knowledge_template: e.target.value })}
-          placeholder="## Role: ...\n\n### Skills\n- ..."
+          placeholder="## Rolle: …\n\n### Fähigkeiten\n- …"
           rows={12}
           className="mt-1 w-full rounded-lg bg-background/60 border border-foreground/[0.08] px-3 py-2 text-xs font-mono resize-y min-h-[200px]"
         />

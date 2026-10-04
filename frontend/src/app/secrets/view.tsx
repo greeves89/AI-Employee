@@ -12,9 +12,9 @@ import type { AgentSecretEntry } from "@/lib/api";
 import { KeyFreigabeDialog } from "@/components/secrets/key-freigabe-dialog";
 
 const TYPE_LABELS: Record<string, { label: string; Icon: typeof KeyRound }> = {
-  api_key: { label: "API Key", Icon: KeyRound },
-  sso_profile: { label: "SSO Profile", Icon: User },
-  oauth_token: { label: "OAuth Token", Icon: Shield },
+  api_key: { label: "API-Schlüssel", Icon: KeyRound },
+  sso_profile: { label: "SSO-Profil", Icon: User },
+  oauth_token: { label: "OAuth-Token", Icon: Shield },
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -25,26 +25,26 @@ const TYPE_COLORS: Record<string, string> = {
 
 const TYPE_COPY = {
   api_key: {
-    namePlaceholder: "GitHub PAT",
+    namePlaceholder: "z. B. GitHub-Zugangstoken",
     envPlaceholder: "GIT_PAT",
-    valueLabel: "API Key",
-    valuePlaceholder: "ghp_... / sk-... / token...",
-    descriptionPlaceholder: "Injected into assigned agent containers as an environment variable",
+    valueLabel: "API-Schlüssel",
+    valuePlaceholder: "ghp_… / sk-… / Token …",
+    descriptionPlaceholder: "Wird den zugewiesenen Agenten als Umgebungsvariable mitgegeben",
   },
   sso_profile: {
-    namePlaceholder: "Supabase SSO Profile",
+    namePlaceholder: "z. B. SSO-Profil Supabase",
     envPlaceholder: "SSO_PROFILE_SUPABASE",
-    valueLabel: "SSO Profile / Secret",
+    valueLabel: "SSO-Profil / Geheimnis",
     valuePlaceholder:
       '{\n  "provider": "supabase",\n  "server_url": "https://example.com",\n  "token": "paste-secret-here"\n}',
-    descriptionPlaceholder: "SSO credentials/profile used by assigned agents to authenticate against a server",
+    descriptionPlaceholder: "Zugangsdaten, mit denen sich die zugewiesenen Agenten an einem Server anmelden",
   },
   oauth_token: {
-    namePlaceholder: "OpenAI OAuth Token",
+    namePlaceholder: "z. B. OpenAI-OAuth-Token",
     envPlaceholder: "OPENAI_OAUTH_TOKEN",
-    valueLabel: "OAuth Token / Auth JSON",
-    valuePlaceholder: "Paste OAuth token or auth JSON...",
-    descriptionPlaceholder: "OAuth token or auth payload injected into assigned agent containers",
+    valueLabel: "OAuth-Token / Anmelde-JSON",
+    valuePlaceholder: "OAuth-Token oder Anmelde-JSON einfügen …",
+    descriptionPlaceholder: "Token oder Anmeldedaten, die den zugewiesenen Agenten mitgegeben werden",
   },
 } as const;
 
@@ -124,19 +124,19 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
 
   async function handleCreate() {
     if (!form.name || !form.key_name || !form.value) {
-      showToast("error", "Name, Env-Var Name and Value are required");
+      showToast("error", "Name, Variablenname und Wert werden benötigt.");
       return;
     }
     setSaving(true);
     try {
       await api.createSecret(form);
-      showToast("success", "Secret created");
+      showToast("success", "Schlüssel angelegt");
       setShowCreate(false);
       setForm({ name: "", key_name: "", value: "", secret_type: "api_key", description: "" });
       setKeyNameTouched(false);
       await load();
     } catch {
-      showToast("error", "Failed to create secret");
+      showToast("error", "Schlüssel konnte nicht angelegt werden");
     } finally {
       setSaving(false);
     }
@@ -146,10 +146,10 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
     setDeleting(id);
     try {
       await api.deleteSecret(id);
-      showToast("success", "Secret deleted");
+      showToast("success", "Schlüssel gelöscht");
       await load();
     } catch {
-      showToast("error", "Failed to delete secret");
+      showToast("error", "Schlüssel konnte nicht gelöscht werden");
     } finally {
       setDeleting(null);
     }
@@ -177,11 +177,11 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
       };
       if (editForm.value) payload.value = editForm.value;
       await api.updateSecret(id, payload);
-      showToast("success", "Secret updated");
+      showToast("success", "Schlüssel gespeichert");
       setEditingId(null);
       await load();
     } catch {
-      showToast("error", "Failed to update secret");
+      showToast("error", "Schlüssel konnte nicht gespeichert werden");
     } finally {
       setSaving(false);
     }
@@ -197,24 +197,24 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
 
   async function copyMasked(s: AgentSecretEntry) {
     await navigator.clipboard.writeText(s.key_name);
-    showToast("success", `Copied env-var name: ${s.key_name}`);
+    showToast("success", `Variablenname kopiert: ${s.key_name}`);
   }
 
   const createCopy = TYPE_COPY[form.secret_type];
 
   return (
     <div className={embedded ? "" : "flex flex-col h-screen bg-background"}>
-      {!embedded && <Header title="Key Management" subtitle="Encrypted API keys, SSO profiles and OAuth tokens" />}
+      {!embedded && <Header title="Schlüssel & Zugangsdaten" subtitle="Verschlüsselte API-Schlüssel, SSO-Profile und OAuth-Token" />}
       <div className={embedded ? "max-w-4xl mx-auto w-full" : "flex-1 overflow-auto p-6 max-w-4xl mx-auto w-full"}>
         {/* Page header */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-semibold flex items-center gap-2">
               <KeyRound size={20} className="text-primary" />
-              Key Management
+              Schlüssel & Zugangsdaten
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Encrypted API keys, SSO profiles and OAuth tokens — injected as env vars when agents start.
+              Verschlüsselte API-Schlüssel, SSO-Profile und OAuth-Token — beim Start der Agenten als Umgebungsvariablen mitgegeben.
             </p>
           </div>
           <button
@@ -222,17 +222,17 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
             className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20"
           >
             <Plus size={16} />
-            New Secret
+            Neuer Schlüssel
           </button>
         </div>
 
         {/* Create form */}
         {showCreate && (
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-5 mb-4">
-            <h2 className="text-sm font-semibold mb-4">New Secret</h2>
+            <h2 className="text-sm font-semibold mb-4">Neuer Schlüssel</h2>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-muted-foreground/70">Type</label>
+                <label className="text-[11px] font-medium text-muted-foreground/70">Art</label>
                 <div className="grid grid-cols-3 gap-2">
                   {(["api_key", "sso_profile", "oauth_token"] as const).map(type => {
                     const { label, Icon } = TYPE_LABELS[type];
@@ -279,7 +279,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-muted-foreground/70">Env-Var Name</label>
+                <label className="text-[11px] font-medium text-muted-foreground/70">Name der Umgebungsvariable</label>
                 <input
                   placeholder={createCopy.envPlaceholder}
                   value={form.key_name}
@@ -301,7 +301,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                 />
               </div>
               <div className="col-span-2 flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-muted-foreground/70">Description (optional)</label>
+                <label className="text-[11px] font-medium text-muted-foreground/70">Beschreibung (optional)</label>
                 <input
                   placeholder={createCopy.descriptionPlaceholder}
                   value={form.description}
@@ -310,17 +310,17 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                 />
               </div>
               <p className="col-span-2 text-[11px] leading-relaxed text-muted-foreground/60">
-                Assigned agents receive the secret value as <span className="font-mono text-muted-foreground">{form.key_name || createCopy.envPlaceholder}</span>.
-                The model should use the variable name in tools/scripts and must not print the secret value.
+                Zugewiesene Agenten bekommen den Wert als <span className="font-mono text-muted-foreground">{form.key_name || createCopy.envPlaceholder}</span>.
+                Das Modell nutzt den Variablennamen in Werkzeugen und Skripten und gibt den Wert nie aus.
               </p>
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setShowCreate(false)} className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]">
-                Cancel
+                Abbrechen
               </button>
               <button onClick={handleCreate} disabled={saving} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 disabled:opacity-50">
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                Create
+                Anlegen
               </button>
             </div>
           </div>
@@ -330,12 +330,12 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
         {loading ? (
           <div className="flex items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="animate-spin mr-2" size={20} />
-            Loading secrets…
+            Schlüssel werden geladen …
           </div>
         ) : secrets.length === 0 ? (
           <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-12 text-center">
             <KeyRound size={32} className="mx-auto mb-3 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">No secrets yet. Add an API key or SSO profile above.</p>
+            <p className="text-sm text-muted-foreground">Noch keine Schlüssel. Lege oben einen API-Schlüssel oder ein SSO-Profil an.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -354,7 +354,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                           {TYPE_LABELS[editForm.secret_type]?.label ?? editForm.secret_type}
                         </span>
                         <span className="text-xs text-muted-foreground/50">
-                          Value is encrypted. Leave replacement empty to keep the current secret.
+                          Der Wert ist verschlüsselt. Bleibt das Ersatzfeld leer, gilt der bisherige.
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
@@ -376,7 +376,7 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                         </div>
                         <div className="col-span-2 flex flex-col gap-1">
                           <label className="text-[11px] font-medium text-muted-foreground/70">
-                            Replace {editCopy.valueLabel} (leave blank to keep)
+                            {editCopy.valueLabel} ersetzen (leer lassen = behalten)
                           </label>
                           <textarea
                             rows={editForm.secret_type === "api_key" ? 3 : 8}
@@ -387,14 +387,14 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                           />
                           {editForm.secret_type === "sso_profile" && (
                             <p className="text-[11px] leading-relaxed text-muted-foreground/60">
-                              For SSO profiles, store all runtime details here as JSON, for example server URL/IP,
-                              issuer, audience, token, and optional headers. The assigned agent can read it from
+                              Für SSO-Profile alle Angaben hier als JSON hinterlegen, etwa Server-Adresse,
+                              Aussteller, Zielgruppe, Token und optionale Header. Der zugewiesene Agent liest sie aus
                               <span className="font-mono text-muted-foreground"> ${editForm.key_name}</span>.
                             </p>
                           )}
                         </div>
                         <div className="col-span-2 flex flex-col gap-1">
-                          <label className="text-[11px] font-medium text-muted-foreground/70">Description</label>
+                          <label className="text-[11px] font-medium text-muted-foreground/70">Beschreibung</label>
                           <input
                             value={editForm.description}
                             onChange={e => setEditForm(p => ({ ...p, description: e.target.value }))}
@@ -409,15 +409,15 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                             checked={editForm.is_active}
                             onChange={e => setEditForm(p => ({ ...p, is_active: e.target.checked }))}
                           />
-                          Active
+                          Aktiv
                         </label>
                         <div className="flex gap-2">
                           <button onClick={() => setEditingId(null)} className="rounded-xl px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]">
-                            Cancel
+                            Abbrechen
                           </button>
                           <button onClick={() => handleUpdate(s.id)} disabled={saving} className="flex items-center gap-2 rounded-xl bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 disabled:opacity-50">
                             {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                            Save
+                            Speichern
                           </button>
                         </div>
                       </div>
@@ -492,12 +492,16 @@ export function SecretsView({ embedded = false }: { embedded?: boolean }) {
                         </button>
                         <button
                           onClick={() => startEdit(s)}
+                          title="Bearbeiten"
+                          aria-label="Bearbeiten"
                           className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
                         >
                           <Pencil size={14} />
                         </button>
                         <button
                           onClick={() => handleDelete(s.id)}
+                          title="Löschen"
+                          aria-label="Löschen"
                           disabled={deleting === s.id}
                           className="rounded-lg p-2 text-muted-foreground hover:text-red-400 hover:bg-red-500/[0.06] transition-colors disabled:opacity-40"
                         >

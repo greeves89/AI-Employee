@@ -38,21 +38,21 @@ interface DockerAppsTabProps {
 
 const statusConfig = {
   running: {
-    label: "Running",
+    label: "Läuft",
     color: "text-emerald-400",
     bg: "bg-emerald-500/10",
     border: "border-emerald-500/20",
     dot: "bg-emerald-400",
   },
   stopped: {
-    label: "Stopped",
+    label: "Gestoppt",
     color: "text-zinc-400",
     bg: "bg-zinc-500/10",
     border: "border-zinc-500/20",
     dot: "bg-zinc-500",
   },
   partial: {
-    label: "Partial",
+    label: "Teilweise",
     color: "text-amber-700 dark:text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/20",
@@ -62,10 +62,10 @@ const statusConfig = {
 
 // Phases shown during start
 const BUILD_PHASES = [
-  "Preparing environment...",
-  "Building images...",
-  "Pulling dependencies...",
-  "Starting containers...",
+  "Umgebung wird vorbereitet …",
+  "Images werden gebaut …",
+  "Abhängigkeiten werden geladen …",
+  "Container werden gestartet …",
 ];
 
 // Reach a deployed app THROUGH the platform (Cloudflare+Caddy already forward /api/*
@@ -282,19 +282,19 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
         <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center max-w-lg">
           <Container className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
           <p className="text-sm font-medium text-muted-foreground/60 mb-1">
-            No Docker Apps Found
+            Keine Docker-Apps gefunden
           </p>
           <p className="text-[11px] text-muted-foreground/40 leading-relaxed">
-            When your agent creates a project with a docker-compose.yml file,
-            it will appear here. You can then start, stop, and monitor the app
-            directly from this panel. (Nur Apps DIESES Agenten — die globale
-            Uebersicht aller Agenten-Apps liegt unter "Apps" in der Seitenleiste.)
+            Legt dein Agent ein Projekt mit einer docker-compose.yml an, erscheint
+            es hier. Du kannst die App dann direkt von hier starten, stoppen und
+            beobachten. (Nur Apps DIESES Agenten — die Übersicht aller
+            Agenten-Apps liegt unter „Apps“ in der Seitenleiste.)
           </p>
           <button
             onClick={() => { setLoading(true); fetchApps(); }}
             className="mt-4 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
           >
-            <RefreshCw className="h-3 w-3" /> Rescan
+            <RefreshCw className="h-3 w-3" /> Neu suchen
           </button>
         </div>
       </div>
@@ -308,7 +308,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
         <div className="flex items-center gap-2">
           <Container className="h-4 w-4 text-muted-foreground/60" />
           <span className="text-sm font-medium">
-            {apps.length} {apps.length === 1 ? "App" : "Apps"} found
+            {apps.length} {apps.length === 1 ? "App" : "Apps"} gefunden
           </span>
           <span className="text-[10px] text-muted-foreground/40">
             — nur dieser Agent
@@ -370,7 +370,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                         </span>
                         {isBuilding ? (
                           <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-blue-500/10 text-blue-400 border-blue-500/20">
-                            {actionType === "rebuild" ? "Rebuilding" : "Starting"}
+                            {actionType === "rebuild" ? "Wird neu gebaut" : "Wird gestartet"}
                           </span>
                         ) : (
                           <span
@@ -418,7 +418,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                         )}
                       >
                         <ScrollText className="h-3.5 w-3.5" />
-                        Logs
+                        Protokolle
                       </button>
                     )}
 
@@ -430,12 +430,12 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                         className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
                       >
                         <Play className="h-3.5 w-3.5" />
-                        Start
+                        Starten
                       </button>
                     ) : isBuilding ? (
                       <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 px-3.5 py-1.5 text-xs font-medium text-blue-400">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        {actionType === "rebuild" ? "Rebuilding..." : "Building..."}
+                        {actionType === "rebuild" ? "Wird neu gebaut …" : "Wird gebaut …"}
                       </span>
                     ) : (
                       <>
@@ -443,14 +443,14 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                           onClick={() => handleRebuild(app)}
                           disabled={isActionLoading}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-50"
-                          title="Rebuild images & recreate containers"
+                          title="Images neu bauen und Container neu anlegen"
                         >
                           {isActionLoading && actionLoading === app.path ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           ) : (
                             <Wrench className="h-3.5 w-3.5" />
                           )}
-                          Rebuild
+                          Neu bauen
                         </button>
                         <button
                           onClick={() => handleStop(app)}
@@ -462,7 +462,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                           ) : (
                             <Square className="h-3.5 w-3.5" />
                           )}
-                          {isActionLoading ? "Stopping..." : "Stop"}
+                          {isActionLoading ? "Wird gestoppt …" : "Stoppen"}
                         </button>
                       </>
                     )}
@@ -525,7 +525,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                     ? "text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.08]"
                                     : "text-emerald-400/60 hover:text-emerald-400 hover:bg-emerald-500/10"
                                 )}
-                                title={`${isRunning ? "Restart" : "Start"} ${svc.name}`}
+                                title={`${svc.name} ${isRunning ? "neu starten" : "starten"}`}
                               >
                                 {restartingService === svc.name ? (
                                   <Loader2 className="h-2.5 w-2.5 animate-spin" />
@@ -580,7 +580,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                   >
                     <div className="border-t border-foreground/[0.04] px-4 py-3 space-y-2">
                       <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
-                        Services
+                        Dienste
                       </span>
                       {app.services.map((svc) => {
                         // Find matching container
@@ -642,7 +642,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                 <span
                                   key={ep}
                                   className="inline-flex items-center rounded-md bg-amber-500/5 border border-amber-500/15 px-2 py-0.5 text-[10px] font-mono text-amber-700 dark:text-amber-400/60"
-                                  title="Exposed but not mapped to host"
+                                  title="Freigegeben, aber nicht auf den Rechner weitergeleitet"
                                 >
                                   {ep}
                                 </span>
@@ -662,7 +662,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                       ? "text-muted-foreground/50 hover:text-foreground hover:bg-foreground/[0.06]"
                                       : "text-emerald-400/70 hover:text-emerald-400 hover:bg-emerald-500/10"
                                   )}
-                                  title={`${isRunning ? "Restart" : "Start"} ${svc.name}`}
+                                  title={`${svc.name} ${isRunning ? "neu starten" : "starten"}`}
                                 >
                                   {restartingService === svc.name ? (
                                     <Loader2 className="h-2.5 w-2.5 animate-spin" />
@@ -671,7 +671,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                                   ) : (
                                     <Play className="h-2.5 w-2.5" />
                                   )}
-                                  {isRunning ? "Restart" : "Start"}
+                                  {isRunning ? "Neu starten" : "Starten"}
                                 </button>
                               )}
                             </div>
@@ -698,12 +698,12 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                       <div className="flex items-center justify-between px-4 py-2 bg-foreground/[0.02]">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">
-                            Logs
+                            Protokolle
                           </span>
                           {isBuilding && (
                             <span className="inline-flex items-center gap-1 text-[10px] text-blue-400">
                               <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                              auto-refreshing
+                              aktualisiert sich selbst
                             </span>
                           )}
                         </div>
@@ -714,7 +714,7 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                             className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all"
                           >
                             <RefreshCw className={cn("h-2.5 w-2.5", logsLoading && "animate-spin")} />
-                            Refresh
+                            Aktualisieren
                           </button>
                           <button
                             onClick={() => { setLogsApp(null); setLogs([]); }}
@@ -733,16 +733,16 @@ export function DockerAppsTab({ agentId }: DockerAppsTabProps) {
                         {isBuilding && logs.length === 0 ? (
                           <div className="flex items-center gap-2 py-4 text-blue-400/60">
                             <Loader2 className="h-3 w-3 animate-spin" />
-                            Building &amp; starting containers... logs will appear here shortly
+                            Container werden gebaut und gestartet … die Protokolle erscheinen gleich hier
                           </div>
                         ) : logsLoading && logs.length === 0 ? (
                           <div className="flex items-center gap-2 py-4 text-muted-foreground/40">
                             <Loader2 className="h-3 w-3 animate-spin" />
-                            Loading logs...
+                            Protokolle werden geladen …
                           </div>
                         ) : logs.length === 0 ? (
                           <div className="py-4 text-muted-foreground/30 text-center">
-                            No logs available
+                            Keine Protokolle vorhanden
                           </div>
                         ) : (
                           logs.map((log, i) => (

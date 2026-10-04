@@ -40,11 +40,11 @@ export default function RegisterPage() {
     setError("");
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError("Die Passwörter stimmen nicht überein.");
       return;
     }
     if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+      setError("Das Passwort muss mindestens 8 Zeichen lang sein.");
       return;
     }
 
@@ -53,7 +53,7 @@ export default function RegisterPage() {
       await register(name, email, password);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      setError(err instanceof Error ? err.message : "Registrierung fehlgeschlagen");
     } finally {
       setLoading(false);
     }
@@ -67,16 +67,16 @@ export default function RegisterPage() {
             <Cpu className="h-6 w-6 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold">Registration Closed</h1>
+            <h1 className="text-xl font-semibold">Registrierung geschlossen</h1>
             <p className="text-sm text-muted-foreground mt-2">
-              New registrations are currently disabled. Contact your administrator.
+              Neue Registrierungen sind derzeit abgeschaltet. Wende dich an deinen Administrator.
             </p>
           </div>
           <Link
             href="/login"
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
-            Go to Login
+            Zur Anmeldung
           </Link>
         </div>
       </div>
@@ -93,12 +93,12 @@ export default function RegisterPage() {
           </div>
           <div className="text-center">
             <h1 className="text-xl font-semibold tracking-tight">
-              {needsSetup ? "Setup Admin Account" : "Create Account"}
+              {needsSetup ? "Administratorkonto einrichten" : "Konto anlegen"}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               {needsSetup
-                ? "Create the first admin account to get started"
-                : "Register for AI Employee"}
+                ? "Lege das erste Administratorkonto an, um loszulegen"
+                : "Registrierung für AI Employee"}
             </p>
           </div>
         </div>
@@ -124,13 +124,13 @@ export default function RegisterPage() {
               autoComplete="name"
               autoFocus
               className="flex h-10 w-full rounded-xl border border-border bg-card px-3 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="Your name"
+              placeholder="Dein Name"
             />
           </div>
 
           <div className="space-y-2">
             <label htmlFor="email" className="text-xs font-medium text-muted-foreground">
-              Email
+              E-Mail
             </label>
             <input
               id="email"
@@ -140,13 +140,13 @@ export default function RegisterPage() {
               required
               autoComplete="email"
               className="flex h-10 w-full rounded-xl border border-border bg-card px-3 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="you@example.com"
+              placeholder="name@example.com"
             />
           </div>
 
           <div className="space-y-2">
             <label htmlFor="password" className="text-xs font-medium text-muted-foreground">
-              Password
+              Passwort
             </label>
             <div className="relative">
               <input
@@ -157,7 +157,7 @@ export default function RegisterPage() {
                 required
                 autoComplete="new-password"
                 className="flex h-10 w-full rounded-xl border border-border bg-card px-3 pr-10 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="Min. 8 characters"
+                placeholder="Mindestens 8 Zeichen"
               />
               <button
                 type="button"
@@ -171,7 +171,7 @@ export default function RegisterPage() {
 
           <div className="space-y-2">
             <label htmlFor="confirmPassword" className="text-xs font-medium text-muted-foreground">
-              Confirm Password
+              Passwort wiederholen
             </label>
             <input
               id="confirmPassword"
@@ -181,7 +181,7 @@ export default function RegisterPage() {
               required
               autoComplete="new-password"
               className="flex h-10 w-full rounded-xl border border-border bg-card px-3 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="Repeat password"
+              placeholder="Passwort wiederholen"
             />
           </div>
 
@@ -195,7 +195,7 @@ export default function RegisterPage() {
             ) : (
               <>
                 <UserPlus className="h-4 w-4" />
-                {needsSetup ? "Create Admin Account" : "Register"}
+                {needsSetup ? "Administratorkonto anlegen" : "Registrieren"}
               </>
             )}
           </button>
@@ -209,7 +209,7 @@ export default function RegisterPage() {
                 <span className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs">
-                <span className="bg-background px-2 text-muted-foreground">or sign up with</span>
+                <span className="bg-background px-2 text-muted-foreground">oder registrieren mit</span>
               </div>
             </div>
 
@@ -246,9 +246,9 @@ export default function RegisterPage() {
 
         {!needsSetup && (
           <p className="text-center text-xs text-muted-foreground">
-            Already have an account?{" "}
+            Schon ein Konto?{" "}
             <Link href="/login" className="text-primary hover:underline">
-              Sign in
+              Anmelden
             </Link>
           </p>
         )}

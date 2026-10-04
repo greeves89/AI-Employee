@@ -30,7 +30,7 @@ export default function LoginPage() {
       .catch(() => {});
     const ssoError = searchParams.get("error");
     if (ssoError) {
-      setError(`SSO login failed: ${ssoError}`);
+      setError(`SSO-Anmeldung fehlgeschlagen: ${ssoError}`);
     }
     if (searchParams.get("pending")) {
       setPending(true);
@@ -60,7 +60,7 @@ export default function LoginPage() {
         router.push("/dashboard");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Anmeldung fehlgeschlagen");
     } finally {
       setLoading(false);
     }
@@ -76,7 +76,7 @@ export default function LoginPage() {
           </div>
           <div className="text-center">
             <h1 className="text-xl font-semibold tracking-tight">AI Employee</h1>
-            <p className="text-sm text-muted-foreground mt-1">Sign in to your account</p>
+            <p className="text-sm text-muted-foreground mt-1">Melde dich bei deinem Konto an</p>
           </div>
         </div>
 
@@ -112,7 +112,7 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="email" className="text-xs font-medium text-muted-foreground">
-              Email
+              E-Mail
             </label>
             <input
               id="email"
@@ -123,13 +123,13 @@ export default function LoginPage() {
               autoComplete="email"
               autoFocus
               className="flex h-10 w-full rounded-xl border border-border bg-card px-3 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="you@example.com"
+              placeholder="name@example.com"
             />
           </div>
 
           <div className="space-y-2">
             <label htmlFor="password" className="text-xs font-medium text-muted-foreground">
-              Password
+              Passwort
             </label>
             <div className="relative">
               <input
@@ -140,7 +140,7 @@ export default function LoginPage() {
                 required
                 autoComplete="current-password"
                 className="flex h-10 w-full rounded-xl border border-border bg-card px-3 pr-10 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                placeholder="Enter your password"
+                placeholder="Passwort eingeben"
               />
               <button
                 type="button"
@@ -162,7 +162,7 @@ export default function LoginPage() {
             ) : (
               <>
                 <LogIn className="h-4 w-4" />
-                Sign In
+                Anmelden
               </>
             )}
           </button>
@@ -185,7 +185,7 @@ export default function LoginPage() {
                 <span className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs">
-                <span className="bg-background px-2 text-muted-foreground">or continue with</span>
+                <span className="bg-background px-2 text-muted-foreground">oder weiter mit</span>
               </div>
             </div>
             )}
@@ -223,9 +223,9 @@ export default function LoginPage() {
 
         {!ssoOnly && (
           <p className="text-center text-xs text-muted-foreground">
-            Don&apos;t have an account?{" "}
+            Noch kein Konto?{" "}
             <Link href="/register" className="text-primary hover:underline">
-              Register
+              Registrieren
             </Link>
           </p>
         )}

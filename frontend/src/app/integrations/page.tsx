@@ -107,7 +107,7 @@ function formatAgentHealth(
   }
   if (entry.agent_status === "connected") {
     return {
-      label: `Agent-Sicht: verbunden (${entry.connected}/${total} Agents)`,
+      label: `Agent-Sicht: verbunden (${entry.connected}/${total} Agenten)`,
       className: "text-emerald-400",
       ok: true,
     };
@@ -283,12 +283,12 @@ export default function IntegrationsPage() {
     const connected = searchParams.get("connected");
     const error = searchParams.get("error");
     if (connected) {
-      setToast({ type: "success", message: `Successfully connected ${connected}!` });
+      setToast({ type: "success", message: `${connected} verbunden` });
       loadIntegrations();
       window.history.replaceState({}, "", "/integrations");
     }
     if (error) {
-      setToast({ type: "error", message: `Connection failed: ${error}` });
+      setToast({ type: "error", message: `Verbindung fehlgeschlagen: ${error}` });
       window.history.replaceState({}, "", "/integrations");
     }
   }, [searchParams]);
@@ -307,7 +307,7 @@ export default function IntegrationsPage() {
         setClaudeAuthState(await startClaudeLogin());
         setClaudeLoginOpen(true);
       } catch (e) {
-        setToast({ type: "error", message: e instanceof Error ? e.message : "Failed to start OAuth flow" });
+        setToast({ type: "error", message: e instanceof Error ? e.message : "Anmeldung konnte nicht gestartet werden" });
       }
       return;
     }
@@ -316,27 +316,27 @@ export default function IntegrationsPage() {
       const { auth_url } = await api.getAuthUrl(provider);
       window.location.href = auth_url;
     } catch (e) {
-      setToast({ type: "error", message: e instanceof Error ? e.message : "Failed to start OAuth flow" });
+      setToast({ type: "error", message: e instanceof Error ? e.message : "Anmeldung konnte nicht gestartet werden" });
       setConnecting(null);
     }
   };
 
   const handleDisconnect = async (provider: string) => {
     const ok = await confirm({
-      title: `Disconnect ${provider}?`,
-      message: "Agents using this integration will lose access.",
+      title: `Verbindung zu ${provider} trennen?`,
+      message: "Agenten, die diese Verbindung nutzen, verlieren den Zugriff.",
       variant: "destructive",
-      confirmLabel: "Disconnect",
+      confirmLabel: "Trennen",
     });
     if (!ok) return;
     setDisconnecting(provider);
     try {
       await api.disconnectIntegration(provider);
-      setToast({ type: "success", message: `Disconnected ${provider}` });
+      setToast({ type: "success", message: `Verbindung zu ${provider} getrennt` });
       setPatToken("");
       await loadIntegrations();
     } catch (e) {
-      setToast({ type: "error", message: e instanceof Error ? e.message : "Failed to disconnect" });
+      setToast({ type: "error", message: e instanceof Error ? e.message : "Trennen fehlgeschlagen" });
     } finally {
       setDisconnecting(null);
     }
@@ -348,14 +348,14 @@ export default function IntegrationsPage() {
     try {
       const baseUrl = patSelfHosted ? patBaseUrl.trim() : "";
       const result = await api.savePatToken(provider, patToken.trim(), baseUrl);
-      setToast({ type: "success", message: `Connected to ${provider} as ${result.account_label || "unknown"}` });
+      setToast({ type: "success", message: `Mit ${provider} verbunden als ${result.account_label || "unbekannt"}` });
       setPatToken("");
       setPatBaseUrl("");
       setPatSelfHosted(false);
       setPatVisible(false);
       await loadIntegrations();
     } catch (e) {
-      setToast({ type: "error", message: e instanceof Error ? e.message : "Invalid token" });
+      setToast({ type: "error", message: e instanceof Error ? e.message : "Ungültiges Token" });
     } finally {
       setPatSaving(null);
     }
@@ -363,7 +363,7 @@ export default function IntegrationsPage() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <Header title="Integrations" subtitle="Connect external services and MCP servers for your agents" />
+      <Header title="Integrationen" subtitle="Externe Dienste und MCP-Server für deine Agenten verbinden" />
 
       {/* Claude-Login per Code (Anthropic leitet nicht zurueck) */}
       <ClaudeLoginDialog
@@ -371,7 +371,7 @@ export default function IntegrationsPage() {
         authState={claudeAuthState}
         onClose={() => setClaudeLoginOpen(false)}
         onConnected={async () => {
-          setToast({ type: "success", message: "Claude verbunden – der neue Token gilt ab sofort für alle Agents." });
+          setToast({ type: "success", message: "Claude verbunden – das neue Token gilt ab sofort für alle Agenten." });
           await loadIntegrations();
         }}
       />
@@ -395,7 +395,7 @@ export default function IntegrationsPage() {
 
         {/* OAuth Integrations Section */}
         <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">OAuth Integrations</h2>
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">OAuth-Anbindungen</h2>
           {loading ? (
             <div className="flex items-center justify-center h-40">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -403,8 +403,8 @@ export default function IntegrationsPage() {
           ) : integrations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
               <Plug className="h-8 w-8 mb-2" />
-              <p className="text-sm">No integrations available</p>
-              <p className="text-xs mt-1">Configure OAuth credentials in your .env file</p>
+              <p className="text-sm">Keine Anbindungen verfügbar</p>
+              <p className="text-xs mt-1">Die OAuth-Zugangsdaten richtet der Administrator in den Einstellungen ein</p>
             </div>
           ) : (
             <div className="grid gap-4 max-w-3xl">
@@ -450,7 +450,7 @@ export default function IntegrationsPage() {
                             {isHealthy && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
                                 <CheckCircle2 className="h-2.5 w-2.5" />
-                                Connected
+                                Verbunden
                               </span>
                             )}
                             {isExpired && (
@@ -468,7 +468,7 @@ export default function IntegrationsPage() {
                             {integration.per_user && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-400 border border-blue-500/20">
                                 <Users className="h-2.5 w-2.5" />
-                                Per user
+                                Je Nutzer
                               </span>
                             )}
                           </div>
@@ -543,7 +543,7 @@ export default function IntegrationsPage() {
                             className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-500/10 border border-red-500/20 hover:border-red-500/30 transition-all disabled:opacity-50"
                           >
                             {isDisconnecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unplug className="h-3 w-3" />}
-                            Disconnect
+                            Trennen
                           </button>
                         ) : integration.auth_type === "pat" ? (
                           <span className="text-[10px] text-muted-foreground/40">Enter token below</span>
@@ -554,7 +554,7 @@ export default function IntegrationsPage() {
                             className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all disabled:opacity-50"
                           >
                             {isConnecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
-                            Connect
+                            Verbinden
                           </button>
                         ) : (
                           <span className="text-[10px] text-muted-foreground/40 px-3 py-2">Not available</span>
@@ -570,14 +570,14 @@ export default function IntegrationsPage() {
                           className="flex items-center gap-2 text-[11px] font-medium text-blue-400 hover:text-blue-300 transition-colors"
                         >
                           <Info className="h-3.5 w-3.5" />
-                          How to set up Microsoft 365 (Azure App Registration)
+                          So richtest du Microsoft 365 ein (Azure-App-Registrierung)
                           <ChevronRight className={cn("h-3 w-3 transition-transform", setupExpanded === "microsoft" && "rotate-90")} />
                         </button>
                         {setupExpanded === "microsoft" && (
                           <div className="mt-3 rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 space-y-3 text-xs text-muted-foreground">
                             <ol className="list-decimal list-inside space-y-2">
-                              <li>Open <strong className="text-foreground">portal.azure.com</strong> → Azure Active Directory → App registrations → New registration</li>
-                              <li>Set Redirect URI (Web) to:
+                              <li><strong className="text-foreground">portal.azure.com</strong> öffnen → Microsoft Entra ID → App-Registrierungen → Neue Registrierung</li>
+                              <li>Umleitungs-URI (Web) setzen auf:
                                 <div className="mt-1 flex items-center gap-2 rounded-md border border-foreground/10 bg-background/50 px-3 py-1.5 font-mono text-[10px]">
                                   <span className="flex-1 text-emerald-400 break-all">{redirectUrl}</span>
                                   <button
@@ -588,15 +588,15 @@ export default function IntegrationsPage() {
                                   </button>
                                 </div>
                               </li>
-                              <li>Under <strong className="text-foreground">API Permissions</strong> → Add permission → Microsoft Graph → Delegated:<br />
+                              <li>Unter <strong className="text-foreground">API-Berechtigungen</strong> → Berechtigung hinzufügen → Microsoft Graph → Delegiert:<br />
                                 <span className="text-[10px] font-mono text-blue-300/80">User.Read, Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, Files.ReadWrite, Chat.ReadWrite, Chat.ReadBasic, ChannelMessage.Read.All, ChannelMessage.Send, Team.ReadBasic.All, Tasks.ReadWrite, Contacts.ReadWrite, People.Read, offline_access</span>
-                                <p className="mt-1 text-amber-700 dark:text-amber-400/80">→ Then click <strong>&quot;Grant admin consent&quot;</strong></p>
+                                <p className="mt-1 text-amber-700 dark:text-amber-400/80">→ Danach auf <strong>„Administratorzustimmung erteilen“</strong> klicken</p>
                               </li>
-                              <li>Under <strong className="text-foreground">Certificates &amp; Secrets</strong> create a new Client Secret</li>
-                              <li>Enter <strong className="text-foreground">Client ID &amp; Secret</strong> in <strong className="text-foreground">Settings → OAuth → Microsoft 365</strong></li>
+                              <li>Unter <strong className="text-foreground">Zertifikate &amp; Geheimnisse</strong> einen neuen geheimen Clientschlüssel anlegen</li>
+                              <li><strong className="text-foreground">Client-ID &amp; Secret</strong> unter <strong className="text-foreground">Einstellungen → Integrationen → Microsoft 365</strong> eintragen</li>
                             </ol>
                             <p className="text-[10px] text-muted-foreground/60">
-                              Admin setup is done once. Each user then connects their own account here — tokens are stored per user, not shared.
+                              Der Administrator richtet das einmal ein. Danach verbindet jeder Nutzer hier sein eigenes Konto — Token werden je Nutzer gespeichert, nicht geteilt.
                             </p>
                           </div>
                         )}
@@ -607,7 +607,7 @@ export default function IntegrationsPage() {
                     {integration.auth_type === "pat" && !integration.connected && (
                       <div className="mt-4 pt-4 border-t border-foreground/[0.06]">
                         <label className="text-[11px] font-medium text-muted-foreground mb-1.5 block">
-                          Personal Access Token
+                          Persönliches Zugangstoken
                         </label>
                         <div className="flex items-center gap-2">
                           <div className="relative flex-1">
@@ -615,7 +615,7 @@ export default function IntegrationsPage() {
                               type={patVisible ? "text" : "password"}
                               value={patToken}
                               onChange={(e) => setPatToken(e.target.value)}
-                              placeholder="ghp_… (dein Personal Access Token)"
+                              placeholder="ghp_… (dein persönliches Zugangstoken)"
                               className="w-full rounded-lg border border-foreground/[0.08] bg-background/50 px-3 py-2 pr-9 text-sm font-mono outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                               onKeyDown={(e) => e.key === "Enter" && handleSavePat(integration.provider)}
                             />
@@ -637,11 +637,11 @@ export default function IntegrationsPage() {
                             ) : (
                               <Save className="h-3 w-3" />
                             )}
-                            Save
+                            Speichern
                           </button>
                         </div>
                         <p className="text-[10px] text-muted-foreground/50 mt-1.5">
-                          Create a token at github.com/settings/tokens with repo, workflow, and read:org scopes
+                          Ein Token legst du unter github.com/settings/tokens mit den Rechten repo, workflow und read:org an
                         </p>
 
                         {integration.provider === "github" && (
@@ -653,7 +653,7 @@ export default function IntegrationsPage() {
                                 onChange={(e) => setPatSelfHosted(e.target.checked)}
                                 className="h-3 w-3"
                               />
-                              Self-hosted (GitHub Enterprise Server)
+                              Selbst betrieben (GitHub Enterprise Server)
                             </label>
                             {patSelfHosted && (
                               <input
@@ -925,7 +925,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
   const handleDelete = async (id: number) => {
     const ok = await confirm({
       title: "MCP Server entfernen?",
-      message: "Agents müssen neu gestartet werden um die Änderung zu übernehmen.",
+      message: "Die Agenten müssen neu gestartet werden, um die Änderung zu übernehmen.",
       variant: "destructive",
       confirmLabel: "Entfernen",
     });
@@ -949,7 +949,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
       setAgentHealth(health);
       onToast({
         type: "success",
-        message: `Agent-Sicht geprüft (${health.agents_checked}/${health.agents_total} Agents)`,
+        message: `Agent-Sicht geprüft (${health.agents_checked}/${health.agents_total} Agenten)`,
       });
     } catch (e) {
       onToast({ type: "error", message: e instanceof Error ? e.message : "Agent-Prüfung fehlgeschlagen" });
@@ -975,7 +975,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
           <button
             onClick={handleCheckAgents}
             disabled={checkingAgents}
-            title="Führt in jedem laufenden Agent-Container `claude mcp list` aus und zeigt, wie die Agents die Server sehen (unabhängig von der Orchestrator-Prüfung)."
+            title="Führt in jedem laufenden Agent-Container `claude mcp list` aus und zeigt, wie die Agenten die Server sehen (unabhängig von der Orchestrator-Prüfung)."
             className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-foreground border border-foreground/[0.1] hover:bg-foreground/[0.06] disabled:opacity-50 transition-all"
           >
             {checkingAgents ? <Loader2 className="h-3 w-3 animate-spin" /> : <Users className="h-3 w-3" />}
@@ -1182,7 +1182,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
           <Globe className="h-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground mb-1">Keine MCP Server konfiguriert</p>
           <p className="text-xs text-muted-foreground/60">
-            Verbinde externe MCP Server, damit deine Agents deren Tools nutzen können.
+            Verbinde externe MCP-Server, damit deine Agenten deren Werkzeuge nutzen können.
           </p>
         </div>
       ) : (
@@ -1367,7 +1367,7 @@ function McpServersSection({ onToast }: { onToast: (t: { type: "success" | "erro
                       </div>
                     )}
                     <p className="text-[10px] text-muted-foreground/40 mt-3">
-                      Agents müssen neu gestartet werden, um neue MCP Server zu nutzen.
+                      Die Agenten müssen neu gestartet werden, um neue MCP-Server zu nutzen.
                     </p>
                   </div>
                 )}

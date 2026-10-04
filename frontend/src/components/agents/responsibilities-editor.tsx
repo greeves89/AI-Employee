@@ -133,7 +133,7 @@ export function ResponsibilitiesEditor({
       )}
       <div className="mt-1.5 text-[10px] text-muted-foreground/40">
         {footnote ??
-          "Dauerauftraege, keine Todos: der Lauf leitet daraus die Aufgaben des Tages ab (STEP 1). Ein Bereich wird nie „fertig\" — abgehakt wird der heutige Durchgang."}
+          "Daueraufträge, keine Todos: der Lauf leitet daraus die Aufgaben des Tages ab (STEP 1). Ein Bereich wird nie „fertig\" — abgehakt wird der heutige Durchgang."}
       </div>
     </div>
   );

@@ -33,7 +33,7 @@ const AgentNetworkView = dynamic(
     ssr: false,
     loading: () => (
       <div className="rounded-xl border border-foreground/[0.06] bg-card/50 p-8 text-sm text-muted-foreground">
-        Loading network view...
+        Netzwerkansicht wird geladen …
       </div>
     ),
   },
@@ -189,9 +189,9 @@ export default function AgentsPage() {
   const handleUpdateAll = async () => {
     const ok = await confirm({
       title: `${agentsNeedingUpdate.length} Agent(s) aktualisieren?`,
-      message: "Alle markierten Agents werden auf die neueste Version aktualisiert. Daten bleiben erhalten.",
+      message: "Alle markierten Agenten werden auf die neueste Version aktualisiert. Daten bleiben erhalten.",
       variant: "warning",
-      confirmLabel: "Update",
+      confirmLabel: "Aktualisieren",
     });
     if (!ok) return;
     setUpdatingAll(true);
@@ -209,8 +209,8 @@ export default function AgentsPage() {
 
   const handleStopAll = async () => {
     const ok = await confirm({
-      title: "Alle Agents stoppen?",
-      message: "Alle aktuell laufenden Agents werden gestoppt.",
+      title: "Alle Agenten stoppen?",
+      message: "Alle laufenden Agenten werden gestoppt.",
       variant: "warning",
       confirmLabel: "Alle stoppen",
     });
@@ -230,7 +230,7 @@ export default function AgentsPage() {
     if (stopped.length === 0) return;
     const ok = await confirm({
       title: `${stopped.length} Agent(s) starten?`,
-      message: "Alle gestoppten Agents werden gestartet.",
+      message: "Alle gestoppten Agenten werden gestartet.",
       variant: "default",
       confirmLabel: "Alle starten",
     });
@@ -250,7 +250,7 @@ export default function AgentsPage() {
     const ok = await confirm({
       title: `${active.length} Agent(s) neu starten?`,
       message:
-        "Alle aktiven Agents werden mit frischen Umgebungsvariablen (MCP-Server, Integrationen) neu erstellt. Alle aktuell laufenden Aufgaben werden dabei abgebrochen. Daten (Volumes, Wissen, Konfiguration) bleiben erhalten.",
+        "Alle aktiven Agenten werden mit frischen Umgebungsvariablen (MCP-Server, Integrationen) neu erstellt. Alle aktuell laufenden Aufgaben werden dabei abgebrochen. Daten (Volumes, Wissen, Konfiguration) bleiben erhalten.",
       variant: "warning",
       confirmLabel: "Alle neu starten",
     });
@@ -286,10 +286,10 @@ export default function AgentsPage() {
 
   const handleRemove = async (id: string) => {
     const ok = await confirm({
-      title: "Remove this agent?",
-      message: "The container will be stopped and removed. This action cannot be undone.",
+      title: "Diesen Agenten entfernen?",
+      message: "Der Container wird gestoppt und entfernt. Das lässt sich nicht rückgängig machen.",
       variant: "destructive",
-      confirmLabel: "Remove",
+      confirmLabel: "Entfernen",
     });
     if (!ok) return;
     setActionLoading(id);
@@ -304,8 +304,8 @@ export default function AgentsPage() {
   return (
     <div>
       <Header
-        title={simpleMode ? "Agenten" : "Agents"}
-        subtitle={simpleMode ? "Deine KI-Mitarbeiter — Klick auf einen öffnet den Chat" : "Manage your Claude Code agent containers"}
+        title="Agenten"
+        subtitle={simpleMode ? "Deine KI-Mitarbeiter — Klick auf einen öffnet den Chat" : "Deine Agenten verwalten: starten, stoppen, aktualisieren"}
         actions={
           <div className="flex items-center gap-2">
             {/* Ansichten und Sammelaktionen sind Betrieb, nicht Alltag —
@@ -319,7 +319,7 @@ export default function AgentsPage() {
                   "rounded-lg px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all duration-200",
                   viewMode === "grid" && "bg-foreground/[0.08] text-foreground"
                 )}
-                title="Grid View"
+                title="Kachelansicht"
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
@@ -329,7 +329,7 @@ export default function AgentsPage() {
                   "rounded-lg px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all duration-200",
                   viewMode === "network" && "bg-foreground/[0.08] text-foreground"
                 )}
-                title="Network View"
+                title="Netzwerkansicht"
               >
                 <Network className="h-4 w-4" />
               </button>
@@ -339,7 +339,7 @@ export default function AgentsPage() {
                   "rounded-lg px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all duration-200",
                   viewMode === "teams" && "bg-foreground/[0.08] text-foreground"
                 )}
-                title="Teams View"
+                title="Teamansicht"
               >
                 <Users className="h-4 w-4" />
               </button>
@@ -353,7 +353,7 @@ export default function AgentsPage() {
                 className="inline-flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-all duration-200"
               >
                 {updatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpCircle className="h-4 w-4" />}
-                Update All ({agentsNeedingUpdate.length})
+                Alle aktualisieren ({agentsNeedingUpdate.length})
               </button>
             )}
 
@@ -365,7 +365,7 @@ export default function AgentsPage() {
                 className="inline-flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-all duration-200"
               >
                 {startingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                Start All
+                Alle starten
               </button>
             )}
 
@@ -377,7 +377,7 @@ export default function AgentsPage() {
                 className="inline-flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 disabled:opacity-50 transition-all duration-200"
               >
                 {restartingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-                Restart All
+                Alle neu starten
               </button>
             )}
 
@@ -389,7 +389,7 @@ export default function AgentsPage() {
                 className="inline-flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-all duration-200"
               >
                 {stoppingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <StopCircle className="h-4 w-4" />}
-                Stop All
+                Alle stoppen
               </button>
             )}
             </>)}
@@ -399,7 +399,7 @@ export default function AgentsPage() {
               className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all duration-200"
             >
               <Plus className="h-4 w-4" />
-              {simpleMode ? "Neuer Agent" : "New Agent"}
+              Neuer Agent
             </button>
           </div>
         }

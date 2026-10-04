@@ -130,7 +130,7 @@ export default function FilesPage() {
       await api.uploadFiles(agentId, "/workspace", files);
       await loadDir(agentId, "/workspace");
     } catch (e) {
-      toast.error("Upload failed", e instanceof Error ? e.message : undefined);
+      toast.error("Hochladen fehlgeschlagen", e instanceof Error ? e.message : undefined);
     } finally {
       setUploading(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -258,7 +258,7 @@ export default function FilesPage() {
               <button
                 onClick={(e) => { e.stopPropagation(); handleDownload(agentId, entry.path); }}
                 className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                title="Download"
+                title="Herunterladen"
               >
                 <Download className="h-2.5 w-2.5" />
               </button>
@@ -288,7 +288,7 @@ export default function FilesPage() {
 
   return (
     <div>
-      <Header title="Explorer" subtitle="Agent Workspace Dateien durchsuchen" />
+      <Header title="Dateien" subtitle="Die Arbeitsordner deiner Agenten durchsuchen" />
 
       <motion.div
         className="px-8 py-8"
@@ -311,7 +311,7 @@ export default function FilesPage() {
             </div>
             <h3 className="text-lg font-semibold mb-1.5">Keine aktiven Agents</h3>
             <p className="text-sm text-muted-foreground">
-              Starte einen Agent, um seine Workspace-Dateien zu durchsuchen.
+              Starte einen Agenten, um seine Dateien zu durchsuchen.
             </p>
           </div>
         ) : (
@@ -326,7 +326,7 @@ export default function FilesPage() {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Dateien suchen..."
+                    placeholder="Dateien suchen …"
                     className="w-full rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] pl-8 pr-8 py-1.5 text-[12px] placeholder:text-muted-foreground/30 focus:outline-none focus:border-primary/30 transition-colors"
                   />
                   {searchQuery && (
@@ -456,7 +456,7 @@ export default function FilesPage() {
                         {isExpanded && treeData[wsKey] && renderTree(agent.id, "/workspace", 1)}
                         {isExpanded && treeData[wsKey]?.length === 0 && (
                           <div className="py-2 pl-12 text-[11px] text-muted-foreground/40 font-sans">
-                            Leerer Workspace
+                            Leerer Arbeitsordner
                           </div>
                         )}
                       </div>

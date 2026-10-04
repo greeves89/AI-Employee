@@ -34,15 +34,14 @@ import type { SsoGroupRoleMapping, SsoObservedGroup, SsoProvider, SsoTargetKind 
 import type { CustomRole } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
+import { ROLLEN_NAMEN } from "@/lib/rollen";
 
 const PROVIDER_TABS: { id: SsoProvider; label: string; hint: string }[] = [
   { id: "microsoft", label: "Microsoft / Entra ID", hint: "Normaler Microsoft-SSO-Login (OIDC)" },
   { id: "saml", label: "SAML 2.0", hint: "ADFS, Keycloak, Entra ID via SAML" },
 ];
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Administrator", manager: "Manager", member: "Mitglied", viewer: "Betrachter",
-};
+const ROLE_LABELS: Record<string, string> = ROLLEN_NAMEN;
 
 interface TargetDraft {
   kind: SsoTargetKind;

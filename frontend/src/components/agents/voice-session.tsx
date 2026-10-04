@@ -24,11 +24,11 @@ const NAV_ROUTES: Record<string, string> = {
 
 /** Anzeigename fürs Panel — der rohe Routenname stünde sonst als Überschrift da. */
 const NAV_LABELS: Record<string, string> = {
-  dashboard: "Dashboard", tasks: "Tasks", agents: "Agenten", meeting_rooms: "Meeting Rooms",
-  knowledge: "Knowledge Base", skills: "Skill Marketplace", triggers: "Triggers",
+  dashboard: "Dashboard", tasks: "Aufgaben", agents: "Agenten", meeting_rooms: "Besprechungsräume",
+  knowledge: "Wissen", skills: "Skill-Marktplatz", triggers: "Auslöser",
   approvals: "Freigaben", integrations: "Integrationen", settings: "Einstellungen",
-  analytics: "Analytics", apps: "Apps", audit: "Audit-Log", health: "System-Health",
-  schedules: "Schedules",
+  analytics: "Auswertung", apps: "Apps", audit: "Audit-Log", health: "Systemzustand",
+  schedules: "Zeitpläne",
 };
 
 type Turn = { role: "user" | "assistant"; text: string };

@@ -142,22 +142,22 @@ async def register(body: SetupRegisterRequest, response: Response, db: AsyncSess
         if body.setup_token != settings.setup_token:
             raise HTTPException(
                 status_code=403,
-                detail="Setup token required for first admin registration. "
-                "Provide the SETUP_TOKEN from your .env file.",
+                detail="Für das erste Administratorkonto wird der Einrichtungsschlüssel "
+                "benötigt (SETUP_TOKEN aus der .env-Datei).",
             )
 
     # If not first user, check if registration is open
     if not is_first and not settings.registration_open:
-        raise HTTPException(status_code=403, detail="Registration is closed")
+        raise HTTPException(status_code=403, detail="Die Registrierung ist geschlossen.")
 
     # Check duplicate email
     existing = await db.scalar(select(User).where(User.email == body.email))
     if existing:
-        raise HTTPException(status_code=409, detail="Email already registered")
+        raise HTTPException(status_code=409, detail="Diese E-Mail-Adresse ist bereits registriert.")
 
     # Validate password
     if len(body.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        raise HTTPException(status_code=400, detail="Das Passwort muss mindestens 8 Zeichen lang sein.")
 
     approved = is_first or not settings.require_user_approval
     user = User(
@@ -190,7 +190,7 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
     # SSO-only mode: password login disabled (only Microsoft SSO + MFA). The env
     # break-glass (EMERGENCY_PASSWORD_LOGIN) re-enables it for lockout recovery.
     if settings.sso_only_login and not settings.emergency_password_login:
-        raise HTTPException(status_code=403, detail="Password login is disabled — please sign in with Microsoft.")
+        raise HTTPException(status_code=403, detail="Die Anmeldung mit Passwort ist abgeschaltet — bitte über Microsoft anmelden.")
 
     # Brute-force protection: check rate limit per email
     _check_login_rate(body.email)
@@ -198,10 +198,10 @@ async def login(body: LoginRequest, request: Request, response: Response, db: As
     user = await db.scalar(select(User).where(User.email == body.email))
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
         _record_failed_login(body.email)
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=401, detail="E-Mail-Adresse oder Passwort ist falsch.")
 
     if not user.is_active:
-        raise HTTPException(status_code=403, detail="Account is deactivated")
+        raise HTTPException(status_code=403, detail="Dieses Konto ist deaktiviert.")
     if not getattr(user, "approved", True):
         raise HTTPException(status_code=403, detail="Dein Konto wartet noch auf Freischaltung durch einen Administrator.")
 
@@ -588,7 +588,7 @@ async def sso_exchange(body: SSOExchangeRequest, request: Request):
     key = f"sso:exchange:{body.code}"
     stored = await redis.client.get(key)
     if not stored:
-        raise HTTPException(status_code=400, detail="Invalid or expired code")
+        raise HTTPException(status_code=400, detail="Der Code ist ungültig oder abgelaufen.")
     await redis.client.delete(key)
     if isinstance(stored, bytes):
         stored = stored.decode()
@@ -722,7 +722,7 @@ async def list_users(request: Request, db: AsyncSession = Depends(get_db)):
 
     user = await get_current_user(request, db)
     if user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Administratoren.")
 
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     users = result.scalars().all()
@@ -765,11 +765,11 @@ async def update_user(user_id: str, body: UserUpdateRequest, request: Request, d
 
     current = await get_current_user(request, db)
     if current.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Administratoren.")
 
     target = await db.scalar(select(User).where(User.id == user_id))
     if not target:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Nutzer nicht gefunden.")
 
     if body.name is not None:
         target.name = body.name
@@ -782,11 +782,11 @@ async def update_user(user_id: str, body: UserUpdateRequest, request: Request, d
                 select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
             )
             if admin_count <= 1:
-                raise HTTPException(status_code=400, detail="Cannot remove last admin")
+                raise HTTPException(status_code=400, detail="Der letzte Administrator kann nicht entfernt werden.")
         target.role = new_role
     if body.is_active is not None:
         if target.id == current.id:
-            raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
+            raise HTTPException(status_code=400, detail="Du kannst dich nicht selbst deaktivieren.")
         target.is_active = body.is_active
     if body.approved is not None:
         target.approved = body.approved
@@ -802,7 +802,7 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
 
     current = await get_current_user(request, db)
     if current.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Administratoren.")
 
     body_raw = await request.json()
     name = body_raw.get("name", "").strip()
@@ -812,9 +812,9 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
     custom_role_id = body_raw.get("custom_role_id")
 
     if not name or not email or not password:
-        raise HTTPException(status_code=400, detail="Name, email, and password are required")
+        raise HTTPException(status_code=400, detail="Name, E-Mail und Passwort werden benötigt.")
     if len(password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        raise HTTPException(status_code=400, detail="Das Passwort muss mindestens 8 Zeichen lang sein.")
     valid_roles = {r.value for r in UserRole}
     if role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(sorted(valid_roles))}")
@@ -823,11 +823,11 @@ async def create_user(request: Request, db: AsyncSession = Depends(get_db)):
     if custom_role_id is not None:
         from app.models.custom_role import CustomRole
         if not await db.get(CustomRole, custom_role_id):
-            raise HTTPException(status_code=400, detail="custom_role_id not found")
+            raise HTTPException(status_code=400, detail="Die gewählte Rolle gibt es nicht.")
 
     existing = await db.scalar(select(User).where(User.email == email))
     if existing:
-        raise HTTPException(status_code=409, detail="Email already registered")
+        raise HTTPException(status_code=409, detail="Diese E-Mail-Adresse ist bereits registriert.")
 
     user = User(
         id=uuid.uuid4().hex[:12],
@@ -853,11 +853,11 @@ async def reset_user_password(user_id: str, request: Request, db: AsyncSession =
 
     current = await get_current_user(request, db)
     if current.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Administratoren.")
 
     target = await db.get(User, user_id)
     if not target:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Nutzer nicht gefunden.")
 
     temp_password = secrets.token_urlsafe(12)
     target.password_hash = hash_password(temp_password)
@@ -876,14 +876,14 @@ async def delete_user(user_id: str, request: Request, db: AsyncSession = Depends
 
     current = await get_current_user(request, db)
     if current.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin only")
+        raise HTTPException(status_code=403, detail="Nur für Administratoren.")
 
     if user_id == current.id:
-        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+        raise HTTPException(status_code=400, detail="Du kannst dich nicht selbst löschen.")
 
     target = await db.scalar(select(User).where(User.id == user_id))
     if not target:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Nutzer nicht gefunden.")
 
     await db.delete(target)
     await db.commit()

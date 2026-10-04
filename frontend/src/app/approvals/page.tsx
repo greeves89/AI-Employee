@@ -679,7 +679,7 @@ export default function ApprovalsPage() {
       {isLoading && approvals.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground/50">
           <Loader2 className="h-6 w-6 animate-spin mb-3" />
-          <span className="text-sm">Loading approvals...</span>
+          <span className="text-sm">Freigaben werden geladen …</span>
         </div>
       ) : shownApprovals.length === 0 ? (
         <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">

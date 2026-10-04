@@ -84,7 +84,7 @@ async def _check_owner_or_self(agent_id: str, user, db: AsyncSession) -> None:
     from app.dependencies import is_agent_principal
     if is_agent_principal(user):
         if user.id != agent_id:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=403, detail="Kein Zugriff auf diesen Agenten")
         return
     await _check_owner(agent_id, user, db)
 
@@ -192,7 +192,7 @@ async def read_agent_logs(
 
     target = (await db.execute(select(Agent).where(Agent.id == target_id))).scalar_one_or_none()
     if not target:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     if not target.container_id:
         raise HTTPException(status_code=409, detail="Agent hat keinen laufenden Container")
 
@@ -461,7 +461,7 @@ async def get_agent_conversation(
 
     if is_agent_principal(user):
         if user.id not in {agent_a, agent_b}:
-            raise HTTPException(status_code=403, detail="Agents may only read their own conversations")
+            raise HTTPException(status_code=403, detail="Agenten dürfen nur ihre eigenen Gespräche lesen.")
     else:
         # User principal: both agents must be the caller's own (admin = all).
         from app.core.ownership import visible_agent_ids
@@ -520,7 +520,7 @@ async def poll_reply(
     Requires a valid agent token. The requesting agent must be the recipient (to_agent_id).
     """
     if agent["agent_id"] != to_agent_id:
-        raise HTTPException(status_code=403, detail="Agents may only poll their own messages")
+        raise HTTPException(status_code=403, detail="Agenten dürfen nur ihre eigenen Nachrichten abrufen.")
     import asyncio
     from sqlalchemy import select, and_
     from app.models.agent_message import AgentMessage as AgentMessageModel
@@ -728,11 +728,11 @@ async def create_agent(
             from app.models.ai_account import AIAccount
             account = await db.get(AIAccount, data.ai_account_id)
             if not account:
-                raise HTTPException(status_code=422, detail="AI account not found")
+                raise HTTPException(status_code=422, detail="KI-Zugang nicht gefunden")
             if not account.is_active:
-                raise HTTPException(status_code=422, detail="AI account is inactive")
+                raise HTTPException(status_code=422, detail="Dieser KI-Zugang ist abgeschaltet.")
             if not account.models:
-                raise HTTPException(status_code=422, detail="AI account has no models configured")
+                raise HTTPException(status_code=422, detail="Für diesen KI-Zugang sind keine Modelle eingetragen.")
             account_provider_type = account.provider_type
             from app.api.ai_accounts import enabled_model_names
             _model_names = enabled_model_names(account.models)
@@ -862,7 +862,7 @@ async def get_agent(
     try:
         return await manager.get_agent_with_metrics(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 class AutonomyLevelUpdate(BaseModel):
@@ -912,7 +912,7 @@ async def get_autonomy_matrix(
         select(Agent.autonomy_level, Agent.access_policy).where(Agent.id == agent_id)
     )).first()
     if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     level = (agent[0] or "l3").lower()
     matrix = am.normalize_matrix((agent[1] or {}).get("autonomy_matrix"), level)
     return {
@@ -941,7 +941,7 @@ async def update_autonomy_matrix(
     from app.core import autonomy_matrix as am
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     level = (agent.autonomy_level or "l3").lower()
     matrix = am.normalize_matrix(body.matrix, level)
     # If the edited matrix still equals a preset, keep that level label; else custom.
@@ -1013,7 +1013,7 @@ async def get_access_policy(
 
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     level = (agent.autonomy_level or "l3").lower()
     access_policy = agent.access_policy or {}
@@ -1064,7 +1064,7 @@ async def update_access_policy(
 
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     level = (agent.autonomy_level or "l3").lower()
     access_policy = dict(agent.access_policy or {})
@@ -1144,7 +1144,7 @@ async def stop_agent(
         agent = await manager.stop_agent(agent_id)
         return {"status": "stopped", "agent_id": agent.id}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.post("/{agent_id}/start")
@@ -1159,7 +1159,7 @@ async def start_agent(
         agent = await manager.start_agent(agent_id)
         return {"status": "started", "agent_id": agent.id}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.post("/{agent_id}/restart")
@@ -1176,7 +1176,7 @@ async def restart_agent(
         metrics = await manager.get_agent_with_metrics(agent.id)
         return AgentResponse(**metrics)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.post("/{agent_id}/update")
@@ -1217,7 +1217,7 @@ async def update_agent(
         metrics = await manager.get_agent_with_metrics(agent.id)
         return AgentResponse(**metrics)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1237,7 +1237,7 @@ async def set_room_sharing(
         raise HTTPException(status_code=403, detail="admin only")
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     # DATA-LEAK GUARD: only "standard" agents may enter the shared pool — i.e. agents
     # with no personal owner, or owned by the acting admin. A regular user's personal
     # agent carries that user's accumulated knowledge/memory; exposing it to everyone
@@ -1274,7 +1274,7 @@ async def set_platform_agent(
         raise HTTPException(status_code=403, detail="admin only")
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     if is_platform_agent and agent.user_id and str(agent.user_id) != str(user.id):
         raise HTTPException(
             status_code=400,
@@ -1302,7 +1302,7 @@ async def set_favorite(
     await _check_owner(agent_id, user, db)
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     if favorite and agent.user_id:
         await db.execute(
             update(Agent)
@@ -1327,7 +1327,7 @@ async def update_llm_config(
     try:
         agent = await manager._get_agent(agent_id)
         if agent.mode != "custom_llm":
-            raise HTTPException(status_code=400, detail="Agent is not in custom_llm mode")
+            raise HTTPException(status_code=400, detail="Der Agent läuft nicht mit eigenem Sprachmodell (custom_llm).")
         provider_type = body.provider_type or (agent.llm_config or {}).get("provider_type")
         from app.core.permissions import get_effective_permissions, can_use_llm_provider
         perms = await get_effective_permissions(user, db)
@@ -1340,7 +1340,7 @@ async def update_llm_config(
         updated = await manager.update_llm_config(agent_id, body.model_dump(exclude_none=True))
         return {"agent_id": agent_id, "llm_config": updated}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.patch("/{agent_id}/model")
@@ -1359,7 +1359,7 @@ async def update_agent_model(
         )
         return {**result, "status": "updated"}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 class AgentAppearanceUpdate(BaseModel):
@@ -1388,7 +1388,7 @@ async def update_agent_appearance(
     try:
         agent = await manager._get_agent(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     try:
         config = apply_appearance(
@@ -1437,7 +1437,7 @@ async def rename_agent(
     try:
         agent = await manager._get_agent(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     agent.name = name
     await db.commit()
     # Keep the team registry display name in sync so team listings show the new name
@@ -1485,7 +1485,7 @@ async def update_agent_budget(
             "status": "updated",
         }
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 class AgentAIAccountUpdate(BaseModel):
@@ -1507,17 +1507,17 @@ async def update_agent_ai_account(
 
     account = await db.get(AIAccount, body.ai_account_id)
     if not account:
-        raise HTTPException(status_code=404, detail="AI account not found")
+        raise HTTPException(status_code=404, detail="KI-Zugang nicht gefunden")
     # Default-deny: owning the agent is not enough — the caller must also be allowed
     # to USE this AI account (else a user could bind their agent to a foreign/shared one).
     from app.api.ai_accounts import _allowed_account_ids
     allowed_acc = await _allowed_account_ids(user, db)  # None = admin/all
     if allowed_acc is not None and body.ai_account_id not in allowed_acc:
-        raise HTTPException(status_code=404, detail="AI account not found")
+        raise HTTPException(status_code=404, detail="KI-Zugang nicht gefunden")
     if not account.is_active:
-        raise HTTPException(status_code=422, detail="AI account is inactive")
+        raise HTTPException(status_code=422, detail="Dieser KI-Zugang ist abgeschaltet.")
     if not account.models:
-        raise HTTPException(status_code=422, detail="AI account has no models configured")
+        raise HTTPException(status_code=422, detail="Für diesen KI-Zugang sind keine Modelle eingetragen.")
     from app.api.ai_accounts import enabled_model_names
     _model_names = enabled_model_names(account.models)
     if not _model_names:
@@ -1534,7 +1534,7 @@ async def update_agent_ai_account(
     try:
         agent = await manager._get_agent(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     mode = _mode_for_ai_account_provider(account.provider_type)
     config = dict(agent.config or {})
@@ -1607,7 +1607,7 @@ async def update_agent_idle_stop(
         await db.commit()
         return {"agent_id": agent_id, "idle_stop_minutes": minutes if minutes > 0 else None}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.patch("/{agent_id}/default-reasoning")
@@ -1656,7 +1656,7 @@ async def update_agent_default_reasoning(
             "applies_after": "recreate",
         }
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.patch("/{agent_id}/always-on")
@@ -1687,7 +1687,7 @@ async def update_agent_always_on(
         await db.commit()
         return {"agent_id": agent_id, "always_on": always_on}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.patch("/{agent_id}/model-router")
@@ -1720,7 +1720,7 @@ async def update_agent_model_router(
         await db.commit()
         return {"agent_id": agent_id, "model_router": cfg["model_router"]}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.get("/{agent_id}/self-healing")
@@ -1742,7 +1742,7 @@ async def get_agent_self_healing(
     try:
         agent = await manager._get_agent(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     return {
         "agent_id": agent_id,
         "policy": policy_for(agent.config),
@@ -1771,7 +1771,7 @@ async def update_agent_self_healing(
     try:
         agent = await manager._get_agent(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     unknown = set(body) - set(DEFAULT_POLICY)
     if unknown:
@@ -1809,7 +1809,7 @@ async def get_agent_confidence(
     try:
         agent = await manager._get_agent(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     return {
         "agent_id": agent_id,
         "enabled": is_enabled(agent.config),
@@ -1839,7 +1839,7 @@ async def update_agent_confidence(
     try:
         agent = await manager._get_agent(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     unknown = set(body) - {"enabled", "threshold"}
     if unknown:
@@ -1944,7 +1944,7 @@ async def update_agent_interaction_model(
             "interaction_voice": voice,
         }
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.put("/{agent_id}/voice-delegate")
@@ -1973,7 +1973,7 @@ async def update_agent_voice_delegate(
     try:
         agent = await manager._get_agent(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     cfg = dict(agent.config or {})
     if raw is None:
         cfg.pop(_vd.CONFIG_KEY, None)
@@ -1999,7 +1999,7 @@ async def remove_agent(
         await manager.remove_agent(agent_id, remove_data=remove_data)
         return {"status": "removed", "agent_id": agent_id}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
     except Exception as e:
         import logging
         logging.getLogger(__name__).exception(f"Failed to remove agent {scrub_log(agent_id)}: {scrub_log(e)}")
@@ -2020,7 +2020,7 @@ async def agent_stats(
     try:
         return await manager.get_agent_with_metrics(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.get("/{agent_id}/knowledge", response_model=KnowledgeResponse)
@@ -2036,7 +2036,7 @@ async def get_agent_knowledge(
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
+            raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
 
         try:
             _, content = docker.exec_in_container(
@@ -2051,7 +2051,7 @@ async def get_agent_knowledge(
             metrics=config.get("metrics", {}),
         )
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.put("/{agent_id}/knowledge")
@@ -2068,14 +2068,14 @@ async def update_agent_knowledge(
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
+            raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
 
         docker.write_file_in_container(
             agent.container_id, "/workspace/knowledge.md", body.content
         )
         return {"status": "updated", "agent_id": agent_id}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.post("/{agent_id}/files/upload")
@@ -2093,7 +2093,7 @@ async def upload_files(
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
+            raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
 
         file_data: list[tuple[str, bytes]] = []
         for f in files:
@@ -2119,10 +2119,10 @@ async def browse_files(
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
+            raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
         return {"path": path, "entries": file_mgr.list_directory(agent.container_id, path)}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.get("/{agent_id}/files/download")
@@ -2140,7 +2140,7 @@ async def download_file(
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
+            raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
         content = file_mgr.read_file(agent.container_id, path)
         filename = path.split("/")[-1]
         return Response(
@@ -2177,7 +2177,7 @@ async def video_thumbnail(
     await _check_owner(agent_id, user, db)
     agent = await manager._get_agent(agent_id)
     if not agent.container_id:
-        raise HTTPException(status_code=400, detail="Agent has no container")
+        raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
     try:
         bild = file_mgr.video_standbild(agent.container_id, path)
     except (ValueError, FileNotFoundError) as e:
@@ -2218,7 +2218,7 @@ async def save_file_content(
     await _check_owner(agent_id, user, db)
     agent = await manager._get_agent(agent_id)
     if not agent.container_id:
-        raise HTTPException(status_code=400, detail="Agent has no container")
+        raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
     try:
         geschrieben = file_mgr.write_file(agent.container_id, body.path, body.content)
     except ValueError as e:
@@ -2251,7 +2251,7 @@ async def download_folder(
     await _check_owner(agent_id, user, db)
     agent = await manager._get_agent(agent_id)
     if not agent.container_id:
-        raise HTTPException(status_code=400, detail="Agent has no container")
+        raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
     try:
         daten, anzahl = await asyncio.to_thread(
             file_mgr.export_folder_zip, agent.container_id, path
@@ -2299,7 +2299,7 @@ async def import_folder(
     await _check_owner(agent_id, user, db)
     agent = await manager._get_agent(agent_id)
     if not agent.container_id:
-        raise HTTPException(status_code=400, detail="Agent has no container")
+        raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
 
     daten = await file.read()
     try:
@@ -2341,10 +2341,10 @@ async def delete_file(
     await _check_owner(agent_id, user, db)
     agent = await manager._get_agent(agent_id)
     if not agent.container_id:
-        raise HTTPException(status_code=400, detail="Agent has no container")
+        raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
     # Safety: only allow deletion within /workspace
     if not path.startswith("/workspace/") or ".." in path:
-        raise HTTPException(status_code=400, detail="Path must be inside /workspace/")
+        raise HTTPException(status_code=400, detail="Der Pfad muss in /workspace/ liegen.")
     try:
         import docker as docker_sdk
         client = docker_sdk.from_env()
@@ -2463,7 +2463,7 @@ async def send_message_to_agent(
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
+            raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
 
         target_status = _decode_redis_hash(await redis.client.hgetall(f"agent:{agent_id}:status"))
         target_busy = _is_busy_with_task(target_status)
@@ -2633,7 +2633,7 @@ async def send_message_to_agent(
             "target_running": target_running,
         }
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.get("/{agent_id}/chat/sessions")
@@ -3070,7 +3070,7 @@ async def chat_session_context(
     await _check_owner(agent_id, user, db)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     messages = await messages_of(db, agent_id, session_id)
     live = [m for m in messages if not excluded_from_model(m)]
@@ -3141,7 +3141,7 @@ async def agent_toolset(
     await _check_owner(agent_id, user, db)
     agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     skills: list[str] = []
     try:
@@ -3278,7 +3278,7 @@ async def update_agent_permissions(
 
         return {"agent_id": agent_id, "permissions": effective, "permissions_mode": mode}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 class BrowserModeUpdate(BaseModel):
@@ -3302,7 +3302,7 @@ async def update_agent_browser_mode(
         note = " Restart the agent for the change to take effect." if agent.container_id else ""
         return {"browser_mode": body.browser_mode, "note": note.strip()}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 class AgentResourceLimits(BaseModel):
@@ -3358,7 +3358,7 @@ async def get_agent_integrations(
             "microsoft_read_only": ms_access.read_only_enabled(),
         }
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.patch("/{agent_id}/integrations")
@@ -3428,7 +3428,7 @@ async def update_agent_integrations(
             "microsoft_read_only": ms_read_only,
         }
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 # --- Per-Agent MCP Servers ---
@@ -3448,7 +3448,7 @@ async def get_agent_mcp_servers(
         config = agent.config or {}
         return {"agent_id": agent_id, "mcp_servers": config.get("mcp_servers", None)}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.patch("/{agent_id}/mcp-servers")
@@ -3480,7 +3480,7 @@ async def update_agent_mcp_servers(
 
         return {"agent_id": agent_id, "mcp_servers": config.get("mcp_servers", None)}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 _MCP_CREDENTIAL_LOOKUP_TIMEOUT = 10.0  # leave headroom for the agent's 15s HTTP timeout
@@ -3502,7 +3502,7 @@ async def get_agent_mcp_credentials(
     and only re-runs `claude mcp add` for servers whose credentials changed.
     """
     if agent_auth["agent_id"] != agent_id:
-        raise HTTPException(status_code=403, detail="Agent token does not match target agent")
+        raise HTTPException(status_code=403, detail="Das Agenten-Token passt nicht zum Zielagenten.")
     try:
         # Only reads are cancellable here. Never wrap a rotating token request
         # or its commit in this deadline: losing that response can lose the grant.
@@ -3510,7 +3510,7 @@ async def get_agent_mcp_credentials(
             try:
                 agent = await manager._get_agent(agent_id)
             except ValueError:
-                raise HTTPException(status_code=404, detail="Agent not found")
+                raise HTTPException(status_code=404, detail="Agent nicht gefunden")
             config = agent.config or {}
             mcp_env = await manager._get_custom_mcp_env(
                 agent_config=config, agent_id=agent_id,
@@ -3542,7 +3542,7 @@ async def get_agent_mounts(
         config = agent.config or {}
         return {"agent_id": agent_id, "mounts": config.get("mounts", [])}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.patch("/{agent_id}/mounts")
@@ -3617,7 +3617,7 @@ async def update_agent_mounts(
 
         return {"agent_id": agent_id, "mounts": new_mounts, "mount_modes": effective_modes}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 # --- Proactive Mode ---
@@ -3728,7 +3728,7 @@ async def get_proactive_config(
             "base_prompt": PROACTIVE_PROMPT,
         }
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.post("/{agent_id}/proactive")
@@ -3899,7 +3899,7 @@ async def update_proactive_config(
 
         return {"agent_id": agent_id, "proactive": proactive, "status": "updated"}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.delete("/{agent_id}/proactive")
@@ -3933,7 +3933,7 @@ async def delete_proactive_config(
 
         return {"agent_id": agent_id, "status": "proactive_removed"}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 # --- Per-Agent Telegram Bot ---
@@ -3985,7 +3985,7 @@ async def get_agent_telegram(
             "bot_running": bot_running,
         }
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.put("/{agent_id}/telegram")
@@ -4010,7 +4010,7 @@ async def set_agent_telegram(
     if not _TELEGRAM_TOKEN_RE.match(bot_token):
         raise HTTPException(
             status_code=400,
-            detail="Invalid bot token format. Paste only the token (e.g. 123456:AA...), not the whole BotFather message.",
+            detail="Ungültiges Bot-Token. Bitte nur das Token einfügen (z. B. 123456:AA…), nicht die ganze Nachricht von BotFather.",
         )
 
     try:
@@ -4056,7 +4056,7 @@ async def set_agent_telegram(
             "bot_running": bot_running,
         }
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.delete("/{agent_id}/telegram")
@@ -4090,7 +4090,7 @@ async def remove_agent_telegram(
 
         return {"agent_id": agent_id, "status": "telegram_removed"}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 class TelegramSendMessage(BaseModel):
@@ -4111,14 +4111,14 @@ async def report_ai_credential_status(
 ):
     """Let an agent report the real status of its owner's personal AI credential."""
     if agent_auth["agent_id"] != agent_id:
-        raise HTTPException(status_code=403, detail="Agent token does not match target agent")
+        raise HTTPException(status_code=403, detail="Das Agenten-Token passt nicht zum Zielagenten.")
     if body.status not in {"ok", "auth_failed"}:
         raise HTTPException(status_code=422, detail="status must be ok or auth_failed")
 
     try:
         agent = await manager._get_agent(agent_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     config = agent.config or {}
     mode = agent.mode or "claude_code"
@@ -4155,7 +4155,7 @@ async def send_telegram_message(
     messages in an agent's name.
     """
     if agent_auth["agent_id"] != agent_id:
-        raise HTTPException(status_code=403, detail="Agent token does not match target agent")
+        raise HTTPException(status_code=403, detail="Das Agenten-Token passt nicht zum Zielagenten.")
     sent_to = 0
     try:
         import app.main as main_mod
@@ -4260,7 +4260,7 @@ async def regenerate_telegram_key(
         config = agent.config or {}
 
         if not config.get("telegram_bot_token"):
-            raise HTTPException(status_code=400, detail="Telegram not configured for this agent")
+            raise HTTPException(status_code=400, detail="Für diesen Agenten ist kein Telegram-Bot eingerichtet.")
 
         new_key = generate_auth_key()
         config["telegram_auth_key"] = new_key
@@ -4286,7 +4286,7 @@ async def regenerate_telegram_key(
 
         return {"agent_id": agent_id, "auth_key": new_key}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 # --- Skills (Claude Code SKILL.md files) ---
@@ -4340,7 +4340,7 @@ async def list_skills(
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
+            raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
 
         # Find all SKILL.md files (scan multiple known locations)
         try:
@@ -4385,7 +4385,7 @@ async def list_skills(
 
         return skills
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.post("/{agent_id}/skills", response_model=SkillResponse, status_code=201)
@@ -4402,7 +4402,7 @@ async def create_skill(
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
+            raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
 
         skill_dir = f"/workspace/.claude/skills/{body.name}"
         docker.exec_in_container(agent.container_id, f"mkdir -p '{skill_dir}'")
@@ -4414,7 +4414,7 @@ async def create_skill(
 
         return SkillResponse(name=body.name, description=body.description, content=body.content)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.put("/{agent_id}/skills/{skill_name}", response_model=SkillResponse)
@@ -4432,7 +4432,7 @@ async def update_skill(
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
+            raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
 
         skill_path = f"/workspace/.claude/skills/{skill_name}/SKILL.md"
 
@@ -4451,7 +4451,7 @@ async def update_skill(
 
         return SkillResponse(name=body.name, description=body.description, content=body.content)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 @router.delete("/{agent_id}/skills/{skill_name}", status_code=204)
@@ -4468,7 +4468,7 @@ async def delete_skill(
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
+            raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
         safe_name = skill_name.replace("'", "").replace(";", "").replace("&", "").replace("/", "")
         docker.exec_in_container(
             agent.container_id,
@@ -4476,7 +4476,7 @@ async def delete_skill(
         )
         return None
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 class SkillInstall(BaseModel):
@@ -4499,7 +4499,7 @@ async def install_skill_from_repo(
     try:
         agent = await manager._get_agent(agent_id)
         if not agent.container_id:
-            raise HTTPException(status_code=400, detail="Agent has no container")
+            raise HTTPException(status_code=400, detail="Der Agent hat keinen laufenden Container.")
 
         skill_name = body.skill.replace("'", "").replace(";", "").replace("&", "").replace("/", "-")
         skill_dir = f"/workspace/.claude/skills/{skill_name}"
@@ -4534,7 +4534,7 @@ async def install_skill_from_repo(
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Skill install failed: {str(e)[:300]}")
         else:
-            raise HTTPException(status_code=400, detail="Either repo or content must be provided")
+            raise HTTPException(status_code=400, detail="Bitte ein Repository oder einen Inhalt angeben.")
 
         # Verify by reading the installed SKILL.md
         try:
@@ -4546,7 +4546,7 @@ async def install_skill_from_repo(
         except Exception:
             return SkillResponse(name=body.skill, description="Installed from marketplace", content=body.content or "")
     except ValueError:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
 
 
@@ -4619,7 +4619,7 @@ async def rotate_agent_webhook_token(
 
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     plaintext = secrets.token_urlsafe(32)  # ~43 chars, cryptographically random
     agent.webhook_token_hash = _hash_token(plaintext)
@@ -4646,7 +4646,7 @@ async def revoke_agent_webhook_token(
 
     agent = await db.scalar(select(Agent).where(Agent.id == agent_id))
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise HTTPException(status_code=404, detail="Agent nicht gefunden")
 
     agent.webhook_token_hash = None
     await db.commit()

@@ -371,7 +371,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               />
             </div>
             <div>
-              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Max Agents</label>
+              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Max. Agenten</label>
               <input
                 type="number"
                 min={0}
@@ -394,7 +394,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
 
           <div className="mt-5 space-y-5">
             <RechteGruppe titel="Modelle & Konten">
-              <PermissionBlock title="LLM-Provider" zusammenfassung={zaehlen(draft.llm_providers, LLM_PROVIDERS.length, "alle")}>
+              <PermissionBlock title="Sprachmodell-Anbieter" zusammenfassung={zaehlen(draft.llm_providers, LLM_PROVIDERS.length, "alle")}>
                 <div className="flex flex-wrap gap-2">
                   {LLM_PROVIDERS.map((provider) => (
                     <ToggleChip
@@ -430,7 +430,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                 </div>
                 <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, models: null }))} />
               </PermissionBlock>
-              <PermissionBlock title="AI-Accounts (Konten)" zusammenfassung={zaehlen(draft.ai_account_ids, aiAccounts.length, "keine")}>
+              <PermissionBlock title="KI-Konten" zusammenfassung={zaehlen(draft.ai_account_ids, aiAccounts.length, "keine")}>
                 <div className="flex flex-wrap gap-2">
                   {aiAccounts.length === 0 && (
                     <span className="text-[11px] text-muted-foreground/50">Keine AI-Accounts angelegt</span>
@@ -452,10 +452,10 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               </PermissionBlock>
             </RechteGruppe>
             <RechteGruppe titel="Keys & Werkzeuge">
-              <PermissionBlock title="Keys / Secrets" zusammenfassung={zaehlen(draft.secret_ids, secrets.length, "keine")}>
+              <PermissionBlock title="Schlüssel & Zugangsdaten" zusammenfassung={zaehlen(draft.secret_ids, secrets.length, "keine")}>
                 <div className="flex flex-wrap gap-2">
                   {secrets.length === 0 && (
-                    <span className="text-[11px] text-muted-foreground/50">Keine Keys angelegt</span>
+                    <span className="text-[11px] text-muted-foreground/50">Keine Schlüssel angelegt</span>
                   )}
                   {secrets.map((s) => (
                     <ToggleChip
@@ -514,7 +514,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
               </PermissionBlock>
             </RechteGruppe>
             <RechteGruppe titel="Wissen & Daten">
-              <PermissionBlock title="Mountshares" zusammenfassung={zaehlen(draft.mount_labels, mounts.length, "alle")}>
+              <PermissionBlock title="Freigegebene Ordner" zusammenfassung={zaehlen(draft.mount_labels, mounts.length, "alle")}>
                 <div className="flex flex-wrap gap-2">
                   {mounts.map((mount) => (
                     <ToggleChip
@@ -550,7 +550,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                 </div>
                 <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, menu_paths: null }))} />
               </PermissionBlock>
-              <PermissionBlock title="Templates" zusammenfassung={draft.template_ids.trim() ? `${draft.template_ids.split(",").filter((x) => x.trim()).length} erlaubt` : "alle"}>
+              <PermissionBlock title="Vorlagen" zusammenfassung={draft.template_ids.trim() ? `${draft.template_ids.split(",").filter((x) => x.trim()).length} erlaubt` : "alle"}>
                 <input
                   placeholder="Template-IDs, z.B. 1, 4, 9; leer = alle"
                   value={draft.template_ids}
@@ -563,7 +563,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                   ))}
                 </div>
               </PermissionBlock>
-              <PermissionBlock title="URL-Host-Patterns" zusammenfassung={draft.url_host_patterns.trim() ? "eingeschränkt" : "keine Einschränkung"}>
+              <PermissionBlock title="Erlaubte Webadressen" zusammenfassung={draft.url_host_patterns.trim() ? "eingeschränkt" : "keine Einschränkung"}>
                 <input
                   placeholder="github.com, *.wikipedia.org; leer = keine Rollenbeschränkung"
                   value={draft.url_host_patterns}
@@ -619,7 +619,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
             <div className="border-t border-foreground/[0.06] p-5 pt-4">
               {!selectedRole ? (
                 <p className="text-xs text-muted-foreground">
-                  Rolle zuerst speichern — danach lassen sich hier User zuweisen.
+                  Rolle zuerst speichern — danach lassen sich hier Nutzer zuweisen.
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -673,7 +673,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                       </div>
                       <div className="max-h-56 space-y-1 overflow-y-auto">
                         {candidates.length === 0 ? (
-                          <p className="px-1 py-2 text-xs text-muted-foreground">Kein passender User.</p>
+                          <p className="px-1 py-2 text-xs text-muted-foreground">Kein passender Nutzer.</p>
                         ) : candidates.map((u) => (
                           <button
                             key={u.id}
@@ -704,7 +704,7 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                       className="inline-flex items-center gap-2 rounded-lg border border-foreground/[0.08] px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                     >
                       <UserPlus className="h-3.5 w-3.5" />
-                      User hinzufügen
+                      Nutzer hinzufügen
                     </button>
                   )}
                 </div>

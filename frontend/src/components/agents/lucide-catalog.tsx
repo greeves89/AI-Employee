@@ -1,6 +1,7 @@
 "use client";
 
 import { icons, Cpu, type LucideIcon } from "lucide-react";
+import { stichwortTeile } from "./symbol-stichwoerter";
 
 /**
  * Der vollständige lucide-Satz — bewusst in einer eigenen Datei (#523).
@@ -32,18 +33,21 @@ export function CatalogIcon({
   return <Icon className={className} />;
 }
 
-/** Namenssuche für die Auswahl: „mess" findet MessageSquare, MessagesSquare, … */
+/** Namenssuche für die Auswahl: „mess" findet MessageSquare, MessagesSquare, …
+ *  Deutsche Stichwörter zuerst (#902): „LKW" findet Truck, „Herz" Heart. */
 export function searchIcons(query: string, limit = 120): string[] {
   const q = query.trim().toLowerCase();
   if (!q) return ALL_ICON_NAMES.slice(0, limit);
+  const teile = stichwortTeile(q);
+  const deutsch: string[] = [];
   const starts: string[] = [];
   const contains: string[] = [];
   for (const name of ALL_ICON_NAMES) {
     const lower = name.toLowerCase();
-    if (lower.startsWith(q)) starts.push(name);
+    if (teile.some((t) => lower.includes(t))) deutsch.push(name);
+    else if (lower.startsWith(q)) starts.push(name);
     else if (lower.includes(q)) contains.push(name);
-    if (starts.length >= limit) break;
   }
-  // Treffer am Wortanfang zuerst — wer „bug" tippt, meint Bug, nicht Debug.
-  return [...starts, ...contains].slice(0, limit);
+  // Treffer am Wortanfang vor Treffern mittendrin — wer „bug" tippt, meint Bug, nicht Debug.
+  return [...deutsch, ...starts, ...contains].slice(0, limit);
 }

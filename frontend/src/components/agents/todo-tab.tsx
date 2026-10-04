@@ -312,7 +312,7 @@ export function TodoTab({ agentId }: TodoTabProps) {
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-muted-foreground">Prioritaet:</span>
+              <span className="text-[11px] text-muted-foreground">Priorität:</span>
               {[1, 2, 3, 4, 5].map((p) => (
                 <button
                   key={p}

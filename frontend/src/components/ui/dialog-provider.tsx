@@ -133,14 +133,14 @@ const VARIANT_STYLES: Record<ConfirmVariant, {
     iconColor: "text-red-400",
     Icon: Trash2,
     confirmBg: "bg-red-500 hover:bg-red-600 shadow-red-500/30",
-    defaultLabel: "Delete",
+    defaultLabel: "Löschen",
   },
   warning: {
     iconBg: "bg-amber-500/10",
     iconColor: "text-amber-700 dark:text-amber-400",
     Icon: AlertTriangle,
     confirmBg: "bg-amber-500 hover:bg-amber-600 shadow-amber-500/30 text-amber-950",
-    defaultLabel: "Confirm",
+    defaultLabel: "Bestätigen",
   },
   default: {
     iconBg: "bg-primary/10",
@@ -200,7 +200,7 @@ function ConfirmDialog({ pending, onClose }: { pending: PendingConfirm | null; o
                       onClick={() => onClose(false)}
                       className="rounded-xl px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
                     >
-                      {opts?.cancelLabel ?? "Cancel"}
+                      {opts?.cancelLabel ?? "Abbrechen"}
                     </button>
                     <button
                       onClick={() => onClose(true)}
