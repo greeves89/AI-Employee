@@ -2238,7 +2238,8 @@ class TaskRouter:
     async def _check_platform_budget(self) -> None:
         """ValueError, wenn das Monatsbudget der Anlage aufgebraucht ist (Aufgaben + Chat)."""
         from app.config import settings
-        from app.core.kosten import Bereich, betrag_anzeigen, kosten, monatsbeginn
+        from app.core.budget import HINWEIS_ANLAGE
+        from app.core.kosten import Bereich, kosten, monatsbeginn
 
         cap = settings.platform_budget_usd
         if not cap or cap <= 0:
@@ -2246,11 +2247,9 @@ class TaskRouter:
 
         monthly_spend = (await kosten(self.db, Bereich.anlage(), seit=monatsbeginn())).gesamt
         if monthly_spend >= cap:
-            raise ValueError(
-                f"Das Monatsbudget dieser Installation ist aufgebraucht "
-                f"({betrag_anzeigen(monthly_spend)} von {betrag_anzeigen(cap)}). "
-                "Neue Aufgaben werden bis zum Monatsende nicht bearbeitet."
-            )
+            # Ohne Betraege: die Meldung bekommt jeder, der eine Aufgabe anlegt —
+            # die Gesamtkosten der Anlage sehen nur Administratoren.
+            raise ValueError(HINWEIS_ANLAGE)
 
     async def _eltern_ist_auftraggeber(self, task: Task, delegator_id: str | None) -> bool:
         """Gehoert der Eltern-Auftrag dem Agenten, der diesen Auftrag vergeben hat?"""
