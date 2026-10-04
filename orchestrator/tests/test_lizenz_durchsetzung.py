@@ -323,6 +323,28 @@ class LizenzApi(_MitEigenemSchluessel):
         for feld in ("agenten", "agentenlimit", "hinweis", "tage_seit_einrichtung"):
             self.assertNotIn(feld, mitglied)
 
+    async def test_betreiber_hinweis_nur_fuer_admins_ueber_license(self):
+        """#917: Der Hinweis des Anbieters (mit Kontaktadresse) geht nur an Admins."""
+        from app.services import lizenz_zustand
+
+        self.gespeichert["usage_ping_hinweis"] = "Bitte melden Sie sich unter kontakt@example.invalid"
+        with patch.object(lizenz_zustand, "_tage_seit_einrichtung", AsyncMock(return_value=5)):
+            admin = await lizenz_zustand.lizenzstatus(self.db, fuer_admin=True)
+            mitglied = await lizenz_zustand.lizenzstatus(self.db, fuer_admin=False)
+        self.assertIn("kontakt@example.invalid", admin["betreiber_hinweis"])
+        self.assertNotIn("betreiber_hinweis", mitglied)
+        self.assertNotIn("kontakt@example.invalid", json.dumps(mitglied, default=str))
+
+    async def test_version_ohne_anmeldung_verraet_keinen_hinweis(self):
+        """#917: ``GET /version/`` ist oeffentlich — dort darf der Hinweis nicht stehen."""
+        from app.api import version as api
+
+        self.gespeichert["usage_ping_hinweis"] = "Bitte melden Sie sich unter kontakt@example.invalid"
+        with patch.object(api, "_fetch_latest_version", AsyncMock(return_value=None)):
+            antwort = await api.check_version()
+        self.assertNotIn("betreiber_hinweis", antwort)
+        self.assertNotIn("kontakt@example.invalid", json.dumps(antwort, default=str))
+
     async def test_erklaerung_zur_privaten_nutzung(self):
         from app.api import license as api
         from app.services import lizenz_zustand
