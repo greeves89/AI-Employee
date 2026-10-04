@@ -16,6 +16,7 @@ import { VoiceSettings } from "@/components/settings/voice-settings";
 import { ModelCatalogAdmin } from "@/components/settings/model-catalog-admin";
 import { SystemControl } from "@/components/settings/system-control";
 import { PushToggle } from "@/components/settings/push-toggle";
+import { SsoAutoProvisioningToggle } from "@/components/settings/sso-auto-provisioning-toggle";
 import { SamlConfig } from "@/components/settings/saml-config";
 import { TeamsCallingConfig } from "@/components/settings/teams-calling-config";
 import { cn } from "@/lib/utils";
@@ -2266,6 +2267,8 @@ export function SettingsView({ embedded = false }: { embedded?: boolean }) {
                   />
                 </button>
               </div>
+              {/* #914: SSO-Kontoanlage ist ein eigener Schalter (speichert sofort) */}
+              <SsoAutoProvisioningToggle />
             </div>
           </section>
         )}

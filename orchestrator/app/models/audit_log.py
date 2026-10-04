@@ -64,6 +64,21 @@ class AuditEventType(str, Enum):
     MCP_TOOL_CALLED = "mcp_tool_called"           # admin invoked a tool by hand (tools/call)
     MCP_TOOL_CALL_FAILED = "mcp_tool_call_failed" # manual tool invocation could not reach/run
     MCP_DISCOVERY_FAILED = "mcp_discovery_failed" # add/refresh/probe tools/list handshake failed
+    # Revisionsfestes Protokoll (#908) — geschrieben ueber core/audit.py
+    QUESTION_ANSWERED = "question_answered"       # Rueckfrage beantwortet (Antwort + Option), KEINE Freigabe
+    APPROVAL_CANCELLED = "approval_cancelled"     # Freigabe verworfen (einzeln oder „alle verwerfen“)
+    APPROVAL_EXPIRED = "approval_expired"         # Freigabe unbeantwortet abgelaufen
+    LOGIN_SUCCEEDED = "login_succeeded"
+    LOGIN_FAILED = "login_failed"                 # nie mit Passwort, nur E-Mail + Grund
+    LOGOUT = "logout"
+    USER_CREATED = "user_created"
+    USER_UPDATED = "user_updated"
+    USER_DELETED = "user_deleted"
+    PASSWORD_RESET = "password_reset"
+    SETTINGS_CHANGED = "settings_changed"         # nur Schluesselnamen, nie Werte
+    ROLE_CHANGED = "role_changed"                 # Rolle/Gruppe eines Nutzers oder einer Gruppe
+    MCP_SERVER_CHANGED = "mcp_server_changed"     # MCP-Server angelegt/geaendert/entfernt
+    AUDIT_EXPORTED = "audit_exported"             # Protokoll als CSV exportiert
 
 
 class AuditLog(Base):

@@ -61,6 +61,7 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         max_turns=settings.max_turns,
         max_agents=settings.max_agents,
         registration_open=settings.registration_open,
+        sso_auto_provisioning=settings.sso_auto_provisioning,
         allow_team_license=settings.allow_team_license,
         allow_personal_credentials=settings.allow_personal_credentials,
         display_currency=settings.display_currency,
@@ -150,6 +151,7 @@ _FIELD_MAP: dict[str, str] = {
     "max_turns": "max_turns",
     "max_agents": "max_agents",
     "registration_open": "registration_open",
+    "sso_auto_provisioning": "sso_auto_provisioning",
     "allow_team_license": "allow_team_license",
     "display_currency": "display_currency",
     "usd_eur_rate": "usd_eur_rate",
@@ -343,8 +345,24 @@ async def update_settings(
         if value is not None:
             await svc.set(field_name, str(value))
 
+    # Pruefprotokoll (#908): WELCHE Einstellungen geaendert wurden — nur die
+    # Schluesselnamen. Werte gehoeren nicht hinein: darunter sind Geheimnisse.
+    await _einstellungen_protokollieren(db, user, sorted(data.model_dump(exclude_unset=True)))
     await db.commit()
     return {"status": "updated"}
+
+
+async def _einstellungen_protokollieren(db: AsyncSession, user, schluessel: list[str]) -> None:
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
+    if not schluessel:
+        return
+    await protokolliere(
+        db, AuditEventType.SETTINGS_CHANGED, user_id=getattr(user, "id", None),
+        command="Einstellungen geändert: " + ", ".join(schluessel)[:500],
+        meta={"keys": schluessel},
+    )
 
 
 @router.get("/voice", response_model=VoiceSettings)
@@ -558,6 +576,7 @@ async def set_idle_stop_max(
         ps.value = str(minutes)
     else:
         db.add(PlatformSettings(key="max_idle_minutes", value=str(minutes)))
+    await _einstellungen_protokollieren(db, user, ["max_idle_minutes"])
     await db.commit()
     return {"max_idle_minutes": minutes}
 
@@ -584,6 +603,7 @@ async def set_msgraph_mcp_external(
         )
     svc = SettingsService(db)
     await svc.set("msgraph_mcp_external_enabled", "true" if enable else "false")
+    await _einstellungen_protokollieren(db, user, ["msgraph_mcp_external_enabled"])
     await db.commit()  # SettingsService.set() does not commit; persist explicitly
     settings.msgraph_mcp_external_enabled = enable  # live effect, no restart needed
     return {"msgraph_mcp_external_enabled": enable}
@@ -605,6 +625,7 @@ async def set_msgraph_read_only(
     enable = bool(body.get("read_only", True))
     svc = SettingsService(db)
     await svc.set("msgraph_read_only", "true" if enable else "false")
+    await _einstellungen_protokollieren(db, user, ["msgraph_read_only"])
     await db.commit()  # SettingsService.set() does not commit; persist explicitly
     settings.msgraph_read_only = enable  # live effect, no restart needed
     logger.info("Microsoft read-only enforcement %s by admin %s",

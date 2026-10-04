@@ -2454,6 +2454,8 @@ export interface ApprovalRule {
   threshold: number | null;
   is_active: boolean;
   agent_id: string | null;
+  /** Name des Agenten bei agentenbezogenen Regeln (auch automatisch erzeugten Kopien). */
+  agent_name?: string | null;
   created_by: string | null;
   is_preset: boolean;
   created_at: string | null;
@@ -2930,6 +2932,26 @@ export async function getPendingApprovals(): Promise<{ approvals: ApprovalReques
   return fetchJSON(`${getBase()}/approvals/pending`);
 }
 
+/** Entschiedene Freigaben mit Entscheider (#897). Datumsangaben als YYYY-MM-DD. */
+export async function getApprovalHistory(params?: {
+  status?: "approved" | "denied" | "expired";
+  agent_id?: string;
+  von?: string;
+  bis?: string;
+  offset?: number;
+  limit?: number;
+}): Promise<{ approvals: ApprovalRequest[]; total: number }> {
+  const q = new URLSearchParams();
+  if (params?.status) q.set("status", params.status);
+  if (params?.agent_id) q.set("agent_id", params.agent_id);
+  if (params?.von) q.set("von", params.von);
+  if (params?.bis) q.set("bis", params.bis);
+  if (params?.offset != null) q.set("offset", String(params.offset));
+  if (params?.limit != null) q.set("limit", String(params.limit));
+  const qs = q.toString();
+  return fetchJSON(`${getBase()}/approvals/history${qs ? `?${qs}` : ""}`);
+}
+
 // `answer` ist die gewaehlte Antwortmoeglichkeit (oder freier Text), wenn der
 // Agent eine Rueckfrage mit Optionen gestellt hat. Ohne sie verhaelt sich der
 // Aufruf wie bisher — der Server nimmt dann „Approved by <mail>".
@@ -3302,23 +3324,46 @@ export async function synthesizeNow(): Promise<{
 }
 
 // Audit Logs
-export async function getAuditLogs(params?: {
+export interface AuditLogFilter {
   agent_id?: string;
   event_type?: string;
   outcome?: string;
   since?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<{ logs: AuditLog[]; total: number }> {
+  until?: string;
+}
+
+function auditQuery(params?: AuditLogFilter & { limit?: number; offset?: number }): string {
   const q = new URLSearchParams();
   if (params?.agent_id) q.set("agent_id", params.agent_id);
   if (params?.event_type) q.set("event_type", params.event_type);
   if (params?.outcome) q.set("outcome", params.outcome);
   if (params?.since) q.set("since", params.since);
+  if (params?.until) q.set("until", params.until);
   if (params?.limit != null) q.set("limit", String(params.limit));
   if (params?.offset != null) q.set("offset", String(params.offset));
   const qs = q.toString();
-  return fetchJSON(`${getBase()}/audit/logs${qs ? `?${qs}` : ""}`);
+  return qs ? `?${qs}` : "";
+}
+
+export async function getAuditLogs(
+  params?: AuditLogFilter & { limit?: number; offset?: number },
+): Promise<{ logs: AuditLog[]; total: number }> {
+  return fetchJSON(`${getBase()}/audit/logs${auditQuery(params)}`);
+}
+
+/** Prüfprotokoll als CSV herunterladen (nur Administratoren, gleiche Filter wie die Liste). */
+export async function exportAuditLogs(params?: AuditLogFilter): Promise<void> {
+  const res = await fetch(`${getBase()}/audit/logs/export${auditQuery(params)}`, { credentials: "include" });
+  if (!res.ok) throw new Error(`Export fehlgeschlagen: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `pruefprotokoll-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function getAuditSummary(): Promise<AuditSummary> {

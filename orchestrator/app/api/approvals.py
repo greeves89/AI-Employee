@@ -7,18 +7,19 @@ A Notification is created on each new request so the user sees it in the bell + 
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import freigabe_entschieden, protokolliere
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
 from app.dependencies import require_agent_access, require_auth, verify_agent_token
 from app.models.agent import Agent
-from app.models.audit_log import AuditLog, AuditEventType
+from app.models.audit_log import AuditEventType
 from app.models.command_approval import ApprovalStatus, CommandApproval
 from app.models.notification import Notification
 from app.services.redis_service import RedisService
@@ -191,6 +192,7 @@ def _approval_to_dict(a: CommandApproval) -> dict:
         "meta": meta,
         "created_at": a.created_at.isoformat(),
         "resolved_at": a.resolved_at.isoformat() if a.resolved_at else None,
+        "resolved_by_user_id": getattr(a, "resolved_by_user_id", None),
         "user_response": a.user_response,
     }
 
@@ -426,15 +428,12 @@ async def request_approval(
         except Exception as e:
             logger.warning(f"Failed to publish approval to chat WS: {e}")
 
-    audit_entry = AuditLog(
-        agent_id=agent_id,
-        approval_id=str(approval.id),
-        event_type=AuditEventType.APPROVAL_REQUESTED,
-        command=approval_tool,
-        outcome="pending",
+    await protokolliere(
+        db, AuditEventType.APPROVAL_REQUESTED,
+        agent_id=agent_id, approval_id=approval.id, task_id=body.task_id,
+        command=approval_tool, outcome="pending",
         meta={"risk_level": body.risk_level, "reasoning": reasoning, **meta},
     )
-    db.add(audit_entry)
     await db.commit()
 
     # Sentinel event (#591): command submitted + policy verdict + approval
@@ -705,6 +704,10 @@ async def clear_pending_approvals(
         approval.status = ApprovalStatus.DENIED
         approval.resolved_at = now
         approval.user_response = f"Sammelverwerfung durch {user.email}"
+        # Je Freigabe ein Eintrag: „alle verwerfen“ ist fuer die Pruefspur nicht
+        # EINE Handlung, sondern so viele Entscheidungen, wie es Anfragen gab.
+        await freigabe_entschieden(db, approval, ergebnis="cancelled", user=user,
+                                   sammelverwerfung=True)
     from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
     await benachrichtigungen_abschliessen(db, rows)
     await db.commit()
@@ -739,6 +742,72 @@ async def list_all_approvals(
     result = await db.execute(query)
     approvals = result.scalars().all()
     return {"approvals": [_approval_to_dict(a) for a in approvals], "count": len(approvals)}
+
+
+#: Was der Verlauf zeigt — alles Entschiedene, nichts Offenes. ``denied`` umfasst
+#: auch Verworfenes (einzeln oder „alle verwerfen“), so wie es gespeichert wird.
+VERLAUF_STATUS = (ApprovalStatus.APPROVED.value, ApprovalStatus.DENIED.value, ApprovalStatus.EXPIRED.value)
+
+
+@router.get("/history")
+async def approval_history(
+    status: str | None = Query(None, description="approved | denied | expired"),
+    agent_id: str | None = Query(None),
+    von: date | None = Query(None, description="ab diesem Tag (einschliesslich)"),
+    bis: date | None = Query(None, description="bis zu diesem Tag (einschliesslich)"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    user=Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Entschiedene Freigaben mit Entscheider (#897).
+
+    Dieselbe Sichtbarkeitsregel wie die offene Liste (``_visible_agent_ids``):
+    ein Mitglied sieht nur, was zu seinen eigenen Agenten gehoert.
+    """
+    from app.models.user import User
+
+    if status is not None and status not in VERLAUF_STATUS:
+        raise HTTPException(status_code=400, detail=f"status muss einer von {list(VERLAUF_STATUS)} sein")
+
+    bedingungen = [CommandApproval.status.in_([status] if status else list(VERLAUF_STATUS))]
+    allowed = await _visible_agent_ids(user, db)
+    if allowed is not None:
+        bedingungen.append(CommandApproval.agent_id.in_(allowed))
+    if agent_id:
+        bedingungen.append(CommandApproval.agent_id == agent_id)
+    if von:
+        bedingungen.append(CommandApproval.created_at >= datetime.combine(von, time.min, tzinfo=timezone.utc))
+    if bis:
+        bedingungen.append(CommandApproval.created_at
+                           < datetime.combine(bis + timedelta(days=1), time.min, tzinfo=timezone.utc))
+
+    total = int((await db.execute(
+        select(func.count(CommandApproval.id)).where(*bedingungen)
+    )).scalar() or 0)
+    zeilen = (await db.execute(
+        select(CommandApproval).where(*bedingungen)
+        .order_by(func.coalesce(CommandApproval.resolved_at, CommandApproval.created_at).desc(),
+                  CommandApproval.id.desc())
+        .offset(offset).limit(limit)
+    )).scalars().all()
+
+    agent_ids = {z.agent_id for z in zeilen}
+    namen = dict((await db.execute(
+        select(Agent.id, Agent.name).where(Agent.id.in_(agent_ids))
+    )).all()) if agent_ids else {}
+    person_ids = {z.resolved_by_user_id for z in zeilen if z.resolved_by_user_id}
+    personen = {uid: (name or mail) for uid, name, mail in (await db.execute(
+        select(User.id, User.name, User.email).where(User.id.in_(person_ids))
+    )).all()} if person_ids else {}
+
+    eintraege = []
+    for z in zeilen:
+        d = _approval_to_dict(z)
+        d["agent_name"] = namen.get(z.agent_id) or z.agent_id
+        d["resolved_by_name"] = personen.get(z.resolved_by_user_id) if z.resolved_by_user_id else None
+        eintraege.append(d)
+    return {"approvals": eintraege, "total": total}
 
 
 @router.post("/{approval_id}/approve")
@@ -782,17 +851,12 @@ async def approve_request(
     from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
     await benachrichtigungen_abschliessen(db, [approval])
 
-    audit_entry = AuditLog(
-        agent_id=approval.agent_id,
-        approval_id=approval_id,
-        event_type=AuditEventType.COMMAND_APPROVED,
-        command=f"{approval.command} {(approval.meta or {}).get('input', {})}",
-        outcome="success",
-        user_id=str(user.id),
-        meta={"risk_level": approval.risk_level, "reasoning": approval.description,
-              **({"applied": applied} if applied else {})},
+    # Entscheider + Protokoll an EINER Stelle. Eine Rueckfrage wird dort als
+    # beantwortet vermerkt, nicht als genehmigt (#908).
+    await freigabe_entschieden(
+        db, approval, ergebnis="approved", user=user, antwort=antwort,
+        zusatz={"applied": applied} if applied else None,
     )
-    db.add(audit_entry)
     await db.commit()
 
     # Notify agent via Redis so it can stop polling
@@ -850,16 +914,7 @@ async def deny_request(
     from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
     await benachrichtigungen_abschliessen(db, [approval])
 
-    audit_entry = AuditLog(
-        agent_id=approval.agent_id,
-        approval_id=approval_id,
-        event_type=AuditEventType.COMMAND_DENIED,
-        command=f"{approval.command} {(approval.meta or {}).get('input', {})}",
-        outcome="blocked",
-        user_id=str(user.id),
-        meta={"risk_level": approval.risk_level, "deny_reason": decision.reason},
-    )
-    db.add(audit_entry)
+    await freigabe_entschieden(db, approval, ergebnis="denied", user=user, grund=decision.reason)
     await db.commit()
 
     redis = _get_redis()
@@ -898,12 +953,18 @@ async def cancel_approval_request(
     # Ownership: only the agent's owner/admin may cancel its pending approval
     # (mirrors approve_request/deny_request).
     await require_agent_access(approval.agent_id, user, db)
+    # Nur Offenes laesst sich verwerfen. Vorher ueberschrieb ein spaetes Verwerfen
+    # eine laengst getroffene Entscheidung samt Entscheider — im Protokoll stuende
+    # dann eine Freigabe, die es so nie gab.
+    if approval.status != ApprovalStatus.PENDING:
+        raise HTTPException(status_code=400, detail=f"Request already {approval.status}")
 
     approval.status = ApprovalStatus.DENIED
     approval.resolved_at = datetime.now(timezone.utc)
     approval.user_response = "Cancelled by user"
     from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
     await benachrichtigungen_abschliessen(db, [approval])
+    await freigabe_entschieden(db, approval, ergebnis="cancelled", user=user)
     await db.commit()
 
     # Sentinel event (#591): a cancel is also a resolution outcome — a Sentinel

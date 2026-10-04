@@ -239,6 +239,20 @@ async def _write_audit(
         await db.rollback()
 
 
+async def _mcp_aenderung_protokollieren(db: AsyncSession, user, aktion: str, name: str, **meta) -> None:
+    """Konfigurationsaenderung eines MCP-Servers vormerken (#908) — committet der Aufrufer."""
+    from app.core.audit import protokolliere
+
+    if meta.get("url"):
+        # Ohne Abfrageteil: manche Server tragen ihr Zugriffstoken dort.
+        meta["url"] = str(meta["url"]).split("?", 1)[0]
+    await protokolliere(
+        db, AuditEventType.MCP_SERVER_CHANGED, user_id=getattr(user, "id", None),
+        command=f"MCP-Server {aktion}: {name}",
+        meta={"aktion": aktion, "name": name, **{k: v for k, v in meta.items() if v is not None}},
+    )
+
+
 def _audit_discovery_failure(db: AsyncSession, command: str, user_id: str, meta: dict) -> None:
     """Stage an MCP_DISCOVERY_FAILED row without committing.
 
@@ -676,6 +690,7 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
             _mark_health(server, MCP_HEALTH_NEEDS_OAUTH,
                          "OAuth erforderlich — auf 'Verbinden' klicken, um die Autorisierung zu starten")
             db.add(server)
+            await _mcp_aenderung_protokollieren(db, user, "angelegt", body.name, url=body.url)
             await db.commit()
             await db.refresh(server)
             return {**_serialize_mcp_server(server), "needs_oauth": True}
@@ -699,6 +714,7 @@ async def add_mcp_server(body: McpServerCreate, user=Depends(require_admin), db:
     )
     _mark_health(server, MCP_HEALTH_OK)
     db.add(server)
+    await _mcp_aenderung_protokollieren(db, user, "angelegt", body.name, url=body.url)
     await db.commit()
     await db.refresh(server)
 
@@ -773,6 +789,11 @@ async def update_mcp_server(
             server.oauth_client_secret_encrypted = None
         server.oauth_callback_base_url = new_base
 
+    # Nur Feldnamen — Token und Kopfzeilen sind Geheimnisse.
+    await _mcp_aenderung_protokollieren(
+        db, user, "geändert", server.name,
+        felder=sorted(k for k, v in body.model_dump(exclude_unset=True).items() if v is not None),
+    )
     await db.commit()
     return _serialize_mcp_server(server)
 
@@ -785,6 +806,7 @@ async def delete_mcp_server(server_id: int, user=Depends(require_admin), db: Asy
     if not server:
         raise HTTPException(status_code=404, detail="MCP server not found")
 
+    await _mcp_aenderung_protokollieren(db, user, "entfernt", server.name, url=server.url)
     await db.delete(server)
     await db.commit()
     return {"deleted": True}

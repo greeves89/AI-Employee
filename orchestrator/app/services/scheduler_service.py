@@ -583,6 +583,8 @@ class SchedulerService:
                 approval.user_response = (
                     f"Nicht beantwortet, nach {_APPROVAL_TTL_HOURS} h verfallen"
                 )
+                from app.core.audit import freigabe_entschieden
+                await freigabe_entschieden(db, approval, ergebnis="expired", kanal="ablauf")
             from app.core.freigabe_benachrichtigung import benachrichtigungen_abschliessen
             await benachrichtigungen_abschliessen(db, rows)
             await db.commit()

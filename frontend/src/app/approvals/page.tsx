@@ -8,6 +8,7 @@ import {
   getPendingApprovals, approveCommand, denyCommand,
   getApprovalRules, createApprovalRule, updateApprovalRule, deleteApprovalRule,
   getLevelPresets, addPresetRule, deletePresetRule, clearPendingApprovals,
+  getApprovalHistory,
 } from "@/lib/api";
 import type { ApprovalRequest, ReflectionChangeMeta } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
@@ -36,6 +37,12 @@ import {
   Layers,
   ChevronDown,
   ChevronRight,
+  History,
+  Bot,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
@@ -140,7 +147,7 @@ export default function ApprovalsPage() {
   const confirm = useConfirm();
   const toast = useToast();
   const { simpleMode } = useSimpleMode();
-  const [activeTab, setActiveTab] = useState<"pending" | "escalations" | "reflection" | "rules" | "command-policies" | "presets">("pending");
+  const [activeTab, setActiveTab] = useState<"pending" | "escalations" | "reflection" | "history" | "rules" | "command-policies" | "presets">("pending");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   // Name statt Kennung unter jeder Karte: „Agent: e225cbe0“ sagt niemandem etwas.
   const { agents } = useAgents();
@@ -153,6 +160,19 @@ export default function ApprovalsPage() {
   // Rules state
   const [rules, setRules] = useState<ApprovalRule[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
+  // Automatisch erzeugte Regel-Kopien (je Agent aus der Autonomie-Stufe) sind
+  // standardmäßig ausgeblendet — sonst stehen acht gleiche „Auto-Preset“-Zeilen da.
+  const [showAutoRules, setShowAutoRules] = useState(false);
+  const isAutoRule = (r: ApprovalRule) => r.is_preset && Boolean(r.agent_id);
+  const ownRules = rules.filter((r) => !isAutoRule(r));
+  const autoRules = rules.filter(isAutoRule);
+  const autoRuleGroups = Object.entries(
+    autoRules.reduce<Record<string, ApprovalRule[]>>((acc, r) => {
+      const key = r.agent_name || r.agent_id || "—";
+      (acc[key] ??= []).push(r);
+      return acc;
+    }, {}),
+  ).sort(([a], [b]) => a.localeCompare(b, "de"));
 
   // Presets state
   const [presets, setPresets] = useState<Record<string, LevelPreset>>({});
@@ -359,7 +379,10 @@ export default function ApprovalsPage() {
     }
     if (activeTab === "rules") loadRules();
     if (activeTab === "presets") loadPresets();
+    // Verlauf lädt sich selbst — neu einhängen heißt neu laden.
+    if (activeTab === "history") setHistoryKey((k) => k + 1);
   };
+  const [historyKey, setHistoryKey] = useState(0);
 
   const reflectionApprovals = approvals.filter(isReflectionApproval);
   const escalationApprovals = approvals.filter(isEscalation);
@@ -447,6 +470,19 @@ export default function ApprovalsPage() {
           <Moon className="h-3.5 w-3.5" />
           Nachtschicht ({reflectionApprovals.length})
         </button>
+        <button
+          onClick={() => setActiveTab("history")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium rounded-lg transition-all inline-flex items-center gap-1.5",
+            activeTab === "history"
+              ? "bg-background shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+          title="Erledigte, abgelehnte und abgelaufene Anfragen — mit Datum, Agent und wer entschieden hat"
+        >
+          <History className="h-3.5 w-3.5" />
+          Verlauf
+        </button>
         {/* Regeln, Stufen-Vorlagen und Befehlsrichtlinien stellt der Admin ein */}
         {!simpleMode && (<>
         <button
@@ -458,7 +494,7 @@ export default function ApprovalsPage() {
               : "text-muted-foreground hover:text-foreground"
           )}
         >
-          Regeln ({rules.length})
+          Regeln ({ownRules.length})
         </button>
         <button
           onClick={() => setActiveTab("presets")}
@@ -488,6 +524,8 @@ export default function ApprovalsPage() {
       </div>
 
       {activeTab === "command-policies" && <CommandPoliciesTab />}
+
+      {activeTab === "history" && <VerlaufTab key={historyKey} agents={agents} />}
 
       {/* Rules Tab */}
       {activeTab === "rules" && (
@@ -599,7 +637,7 @@ export default function ApprovalsPage() {
               <Loader2 className="h-6 w-6 animate-spin mb-3" />
               <span className="text-sm">Lade Regeln...</span>
             </div>
-          ) : rules.length === 0 ? (
+          ) : ownRules.length === 0 && autoRules.length === 0 ? (
             <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
               <ShieldCheck className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
               <p className="text-sm text-muted-foreground/50">Noch keine Regeln definiert</p>
@@ -609,12 +647,23 @@ export default function ApprovalsPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {rules.map((rule) => {
+              {[...ownRules, ...(showAutoRules ? autoRuleGroups.flatMap(([, list]) => list) : [])].map((rule, idx, all) => {
                 const cfg = CATEGORY_CONFIG[rule.category] || CATEGORY_CONFIG.custom;
+                // Kopfzeile je Agent vor seiner ersten automatisch erzeugten Regel.
+                const groupHeader =
+                  isAutoRule(rule) && (idx === 0 || all[idx - 1].agent_id !== rule.agent_id || !isAutoRule(all[idx - 1]))
+                    ? (rule.agent_name || rule.agent_id)
+                    : null;
                 const Icon = cfg.icon;
                 return (
+                  <div key={rule.id}>
+                  {groupHeader && (
+                    <p className="mt-4 mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground/70">
+                      <Bot className="h-3.5 w-3.5" />
+                      {groupHeader} — automatisch aus der Autonomie-Stufe
+                    </p>
+                  )}
                   <div
-                    key={rule.id}
                     className={cn(
                       "rounded-xl border bg-card/80 backdrop-blur-sm p-4 flex items-start gap-3",
                       rule.is_active ? "border-foreground/[0.06]" : "border-foreground/[0.04] opacity-60"
@@ -666,8 +715,20 @@ export default function ApprovalsPage() {
                       </button>
                     </div>
                   </div>
+                  </div>
                 );
               })}
+              {autoRules.length > 0 && (
+                <button
+                  onClick={() => setShowAutoRules(!showAutoRules)}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-colors"
+                >
+                  {showAutoRules ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  {showAutoRules
+                    ? "Automatisch erzeugte Regeln ausblenden"
+                    : `Automatisch erzeugte Regeln anzeigen (${autoRules.length} bei ${autoRuleGroups.length} Agent${autoRuleGroups.length === 1 ? "" : "en"})`}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1069,6 +1130,156 @@ export default function ApprovalsPage() {
         onApprove={handleApprove}
         onDeny={handleDeny}
       />
+    </div>
+  );
+}
+
+
+/**
+ * Verlauf (#897): entschiedene Anfragen mit Datum, Agent, Entscheidung und
+ * Person. Der Server wendet dieselbe Sichtbarkeitsregel an wie bei den offenen
+ * Anfragen — ein Mitglied sieht nur, was zu seinen Agenten gehört.
+ */
+const VERLAUF_STATUS: { value: "" | "approved" | "denied" | "expired"; label: string }[] = [
+  { value: "", label: "Alle Entscheidungen" },
+  { value: "approved", label: "Erledigt" },
+  { value: "denied", label: "Abgelehnt / verworfen" },
+  { value: "expired", label: "Abgelaufen" },
+];
+const VERLAUF_SEITE = 50;
+
+function verlaufStatus(a: ApprovalRequest): { label: string; icon: typeof CheckCircle2; color: string } {
+  if (a.status === "approved") return { label: "Erledigt", icon: CheckCircle2, color: "text-emerald-400" };
+  if (a.status === "expired") return { label: "Abgelaufen", icon: Clock, color: "text-muted-foreground" };
+  return { label: "Abgelehnt", icon: XCircle, color: "text-red-400" };
+}
+
+function VerlaufTab({ agents }: { agents: { id: string; name: string }[] }) {
+  const [eintraege, setEintraege] = useState<ApprovalRequest[]>([]);
+  const [total, setTotal] = useState(0);
+  const [laedt, setLaedt] = useState(true);
+  const [fehler, setFehler] = useState<string | null>(null);
+  const [status, setStatus] = useState<"" | "approved" | "denied" | "expired">("");
+  const [agentId, setAgentId] = useState("");
+  const [von, setVon] = useState("");
+  const [bis, setBis] = useState("");
+
+  const laden = async (offset: number) => {
+    setLaedt(true);
+    setFehler(null);
+    try {
+      const res = await getApprovalHistory({
+        status: status || undefined,
+        agent_id: agentId || undefined,
+        von: von || undefined,
+        bis: bis || undefined,
+        offset,
+        limit: VERLAUF_SEITE,
+      });
+      setEintraege((alt) => (offset === 0 ? res.approvals : [...alt, ...res.approvals]));
+      setTotal(res.total);
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : "Verlauf konnte nicht geladen werden");
+    } finally {
+      setLaedt(false);
+    }
+  };
+
+  useEffect(() => {
+    laden(0);
+  }, [status, agentId, von, bis]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const feld = "rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] px-3 py-1.5 text-xs outline-none focus:border-primary/50";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className={feld}>
+          {VERLAUF_STATUS.map((s) => (
+            <option key={s.value} value={s.value}>{s.label}</option>
+          ))}
+        </select>
+        <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className={feld}>
+          <option value="">Alle Agenten</option>
+          {agents.map((a) => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          von
+          <input type="date" value={von} onChange={(e) => setVon(e.target.value)} className={feld} />
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          bis
+          <input type="date" value={bis} onChange={(e) => setBis(e.target.value)} className={feld} />
+        </label>
+        <span className="ml-auto text-xs text-muted-foreground/60">{total} Einträge</span>
+      </div>
+
+      {fehler && <p className="text-xs text-red-400">{fehler}</p>}
+
+      {laedt && eintraege.length === 0 ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/50" />
+        </div>
+      ) : eintraege.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
+          <History className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground/50">Keine entschiedenen Anfragen für diese Auswahl</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {eintraege.map((a) => {
+            const st = verlaufStatus(a);
+            const Icon = st.icon;
+            const istFrage = Boolean(a.question) && (!a.tool || a.tool === "user_decision");
+            const zeitpunkt = a.resolved_at || a.created_at;
+            return (
+              <div
+                key={a.approval_id}
+                className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4 flex items-start gap-3"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-foreground/[0.04]">
+                  {istFrage ? <MessageSquare className="h-4 w-4 text-primary" /> : <Icon className={cn("h-4 w-4", st.color)} />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium truncate">
+                      {istFrage ? a.question : a.tool}
+                    </span>
+                    <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium", st.color)}>
+                      <Icon className="h-3 w-3" />
+                      {st.label}
+                    </span>
+                  </div>
+                  {a.user_response && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {istFrage ? "Antwort: " : "Begründung: "}
+                      {a.user_response}
+                    </p>
+                  )}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground/60">
+                    <span>{new Date(zeitpunkt).toLocaleString("de-DE")}</span>
+                    <span>Agent: {a.agent_name || a.agent_id}</span>
+                    <span>
+                      Entschieden von: {a.resolved_by_name || (a.status === "expired" ? "niemand (abgelaufen)" : "unbekannt")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {eintraege.length < total && (
+            <button
+              onClick={() => laden(eintraege.length)}
+              disabled={laedt}
+              className="w-full rounded-lg py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] disabled:opacity-50 transition-colors"
+            >
+              {laedt ? "Lädt …" : `Weitere laden (${total - eintraege.length})`}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

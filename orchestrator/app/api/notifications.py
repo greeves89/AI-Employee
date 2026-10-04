@@ -399,6 +399,12 @@ async def respond_to_approval(
                 approval.status = ApprovalStatus.DENIED if negative else ApprovalStatus.APPROVED
                 approval.resolved_at = datetime.now(timezone.utc)
                 approval.user_response = body.choice
+                # Entscheider + Protokoll — derselbe Helfer wie in api/approvals.
+                from app.core.audit import freigabe_entschieden
+                await freigabe_entschieden(
+                    db, approval, ergebnis="denied" if negative else "approved", user=user,
+                    antwort=body.choice, grund=body.choice, kanal="benachrichtigung",
+                )
         except Exception as e:
             logger.warning(f"Could not update command approval {approval_id}: {e}")
     await db.commit()

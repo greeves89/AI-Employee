@@ -221,7 +221,14 @@ class Settings(BaseSettings):
     # unverified-against-a-live-Redis infrastructure — flip only after a real
     # redis-server ACL smoke test (part of Sentinel epic #588, sub-issue #589).
     redis_acl_enabled: bool = False
-    registration_open: bool = True  # Allow new user registration
+    # Passwort-Selbstregistrierung auf der Anmeldeseite (#914). Standard AUS fuer
+    # neue Anlagen; Bestandsanlagen behalten ihren bisherigen Wert (Startup-
+    # Migration core/registrierung.py). Steuert NICHT mehr die SSO-Kontoanlage.
+    registration_open: bool = False
+    # Neue Konten bei der ersten SSO-Anmeldung automatisch anlegen (#914). Standard
+    # an: wer sich ueber den Identitaetsanbieter anmeldet, ist dort schon geprueft.
+    # Die Rolle bleibt „ohne Rolle“ bzw. kommt aus den SSO-Gruppen.
+    sso_auto_provisioning: bool = True
     # When True, new self-registered users (SSO or password) land in "pending approval"
     # (approved=False) and must be unlocked by an admin before they can use the app
     # (OpenWebUI-style "Warten auf Freischaltung"). Default off. Admin-created users are

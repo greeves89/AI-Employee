@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Cpu, Eye, EyeOff, LogIn, Clock } from "lucide-react";
-import { login, getSSOProviders, type SSOProvider } from "@/lib/auth";
+import { login, getSSOProviders, getRegistrationStatus, type SSOProvider } from "@/lib/auth";
 
 import { getApiUrl } from "@/lib/config";
 
@@ -19,6 +19,15 @@ export default function LoginPage() {
   const [ssoProviders, setSsoProviders] = useState<SSOProvider[]>([]);
   const [ssoOnly, setSsoOnly] = useState(false);
   const [pending, setPending] = useState(false);
+  // #914: Link zur Selbstregistrierung nur, wenn sie offen ist. Vorgabe zu —
+  // lieber kurz kein Link als ein Link, der auf eine Absage führt.
+  const [registrationOpen, setRegistrationOpen] = useState(false);
+
+  useEffect(() => {
+    getRegistrationStatus()
+      .then((s) => setRegistrationOpen(Boolean(s.registration_open)))
+      .catch(() => setRegistrationOpen(false));
+  }, []);
 
   // Load SSO providers and check for SSO errors / pending-approval in URL
   useEffect(() => {
@@ -221,7 +230,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {!ssoOnly && (
+        {!ssoOnly && registrationOpen && (
           <p className="text-center text-xs text-muted-foreground">
             Don&apos;t have an account?{" "}
             <Link href="/register" className="text-primary hover:underline">

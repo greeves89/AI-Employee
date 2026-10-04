@@ -19,6 +19,15 @@ def _require_admin(user):
         raise HTTPException(status_code=403, detail="Admin only")
 
 
+async def _rolle_protokollieren(db: AsyncSession, user, befehl: str, **meta) -> None:
+    """Rollen-/Gruppenaenderung vormerken (#908) — committet der Aufrufer."""
+    from app.core.audit import protokolliere
+    from app.models.audit_log import AuditEventType
+
+    await protokolliere(db, AuditEventType.ROLE_CHANGED, user_id=getattr(user, "id", None),
+                        command=befehl, meta={k: v for k, v in meta.items() if v is not None})
+
+
 @router.get("/")
 async def list_roles(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     """List all custom roles. Visible to all authenticated users."""
@@ -56,6 +65,7 @@ async def create_role(body: dict, user=Depends(require_auth), db: AsyncSession =
         is_system=False,
     )
     db.add(r)
+    await _rolle_protokollieren(db, user, f"Gruppe angelegt: {name}", aktion="angelegt", gruppe=name)
     await db.commit()
     await db.refresh(r)
     return {"id": r.id, "name": r.name, "description": r.description, "permissions": r.permissions}
@@ -76,7 +86,14 @@ async def assign_user_role(user_id: str, body: dict, user=Depends(require_auth),
             raise HTTPException(status_code=422, detail="role not found")
     alte = await db.get(CustomRole, target.custom_role_id) if target.custom_role_id else None
     alte_keys = set(((alte.permissions if alte else None) or {}).get("secret_ids") or [])
+    vorher_id = target.custom_role_id
     target.custom_role_id = role_id
+    if vorher_id != role_id:
+        await _rolle_protokollieren(
+            db, user, f"Gruppe zugewiesen: {target.email}", aktion="zugewiesen",
+            target_user_id=target.id, target_email=target.email,
+            von=vorher_id, nach=role_id,
+        )
     await db.commit()
     if alte_keys:
         await _keys_neu_pruefen(db, manager, [target], alte_keys)
@@ -126,6 +143,8 @@ async def update_role(role_id: int, body: dict, user=Depends(require_auth), db: 
         r.permissions = body["permissions"]
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(r, "permissions")
+    await _rolle_protokollieren(db, user, f"Gruppe geändert: {r.name}", aktion="geändert",
+                                gruppe=r.name, felder=sorted(k for k in body if k in ("name", "description", "permissions")))
     await db.commit()
     if entzogen:
         await _key_entzug_fuer_rolle(db, manager, role_id, entzogen)
@@ -184,6 +203,8 @@ async def delete_role(role_id: int, user=Depends(require_auth), db: AsyncSession
     # Users with this role get reset (FK ON DELETE SET NULL)
     alte_keys = set((r.permissions or {}).get("secret_ids") or [])
     mitglieder_ids = list((await db.execute(select(User.id).where(User.custom_role_id == role_id))).scalars().all())
+    await _rolle_protokollieren(db, user, f"Gruppe gelöscht: {r.name}", aktion="gelöscht",
+                                gruppe=r.name, betroffene=len(mitglieder_ids))
     await db.delete(r)
     await db.commit()
     if alte_keys and mitglieder_ids:

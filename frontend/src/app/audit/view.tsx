@@ -15,9 +15,12 @@ import {
   Activity,
   Bot,
   X,
+  Download,
+  Loader2,
 } from "lucide-react";
 import * as api from "@/lib/api";
 import { useAgents } from "@/hooks/use-agents";
+import { useAuthStore } from "@/lib/auth";
 import type { AuditLog, AuditSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
@@ -49,6 +52,9 @@ const OUTCOME_BADGE: Record<string, string> = {
   success: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
   failure: "text-red-400 bg-red-500/10 border-red-500/20",
   blocked: "text-orange-400 bg-orange-500/10 border-orange-500/20",
+  cancelled: "text-slate-400 bg-slate-500/10 border-slate-500/20",
+  expired: "text-slate-400 bg-slate-500/10 border-slate-500/20",
+  pending: "text-amber-700 dark:text-amber-400 bg-amber-500/10 border-amber-500/20",
 };
 
 const itemVariants = {
@@ -72,6 +78,25 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
   const [selected, setSelected] = useState<AuditLog | null>(null);
 
   const { agents } = useAgents();
+  // Export nur für Administratoren — der Server prüft das ohnehin (403).
+  const isAdmin = useAuthStore((s) => s.user?.role) === "admin";
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await api.exportAuditLogs({
+        agent_id: agentFilter || undefined,
+        event_type: eventTypeFilter || undefined,
+        outcome: outcomeFilter || undefined,
+      });
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Export fehlgeschlagen");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const load = useCallback(async (resetOffset = false) => {
     const off = resetOffset ? 0 : offset;
@@ -107,6 +132,8 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
   };
 
   const agentName = (id: string) => agents.find((a) => a.id === id)?.name || id;
+  // Der Server löst Namen auf — auch für fremde und gelöschte Agenten.
+  const logAgentName = (log: AuditLog) => log.agent_name || agentName(log.agent_id);
 
   return (
     <div>
@@ -261,7 +288,19 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
             </button>
           )}
           <span className="ml-auto text-xs text-muted-foreground/60">{total} entries</span>
+          {isAdmin && (
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              title="Gefilterte Einträge als CSV herunterladen (öffnet in Excel)"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] disabled:opacity-50 transition-colors"
+            >
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              Als CSV exportieren
+            </button>
+          )}
         </div>
+        {exportError && <p className="text-xs text-red-400">{exportError}</p>}
 
         {/* Log Table */}
         {loading ? (
@@ -289,6 +328,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                   <tr className="border-b border-foreground/[0.06] bg-foreground/[0.02]">
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Time</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Agent</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Person</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Event</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Command</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground/70">Outcome</th>
@@ -310,7 +350,10 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                         })}
                       </td>
                       <td className="px-4 py-2.5 font-medium truncate max-w-[140px]">
-                        {agentName(log.agent_id)}
+                        {logAgentName(log)}
+                      </td>
+                      <td className="px-4 py-2.5 truncate max-w-[140px] text-muted-foreground/80">
+                        {log.person ?? "—"}
                       </td>
                       <td className="px-4 py-2.5">
                         <span className={cn(
@@ -318,7 +361,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
                           EVENT_COLORS[log.event_type] ?? "text-muted-foreground bg-foreground/[0.04] border-foreground/[0.06]"
                         )}>
                           {EVENT_ICONS[log.event_type]}
-                          {log.event_type.replace(/_/g, " ")}
+                          {EVENT_INFO[log.event_type]?.label ?? log.event_type.replace(/_/g, " ")}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 text-muted-foreground/80 font-mono max-w-[280px] truncate">
@@ -368,7 +411,7 @@ export function AuditView({ embedded = false }: { embedded?: boolean }) {
       </div>
 
       {selected && (
-        <AuditDetailModal log={selected} agentName={agentName(selected.agent_id)} onClose={() => setSelected(null)} />
+        <AuditDetailModal log={selected} agentName={logAgentName(selected)} onClose={() => setSelected(null)} />
       )}
     </div>
   );
@@ -398,6 +441,20 @@ const EVENT_INFO: Record<string, { label: string; desc: string }> = {
   dlp_blocked: { label: "DLP — Nachricht blockiert", desc: "Eine ausgehende Nachricht wurde blockiert, weil sie sensible Daten (z. B. ein Secret) enthielt." },
   dlp_masked: { label: "DLP — Daten maskiert", desc: "In einer ausgehenden Nachricht wurden sensible Daten geschwärzt, bevor sie gesendet wurde." },
   dlp_flagged: { label: "DLP — erkannt & protokolliert", desc: "Sensible Daten wurden erkannt und protokolliert, die Nachricht aber durchgelassen." },
+  question_answered: { label: "Rückfrage beantwortet", desc: "Eine Person hat eine Rückfrage des Agenten beantwortet. Das ist eine Antwort, keine Freigabe eines Befehls." },
+  approval_cancelled: { label: "Freigabe verworfen", desc: "Eine offene Anfrage wurde verworfen — einzeln oder über „Alle verwerfen“." },
+  approval_expired: { label: "Freigabe abgelaufen", desc: "Eine Anfrage blieb unbeantwortet und ist nach Ablauf der Frist verfallen." },
+  login_succeeded: { label: "Anmeldung", desc: "Eine Person hat sich angemeldet." },
+  login_failed: { label: "Fehlgeschlagene Anmeldung", desc: "Ein Anmeldeversuch ist gescheitert. Das Passwort wird nie gespeichert." },
+  logout: { label: "Abmeldung", desc: "Eine Person hat sich abgemeldet." },
+  user_created: { label: "Nutzer angelegt", desc: "Ein Konto wurde angelegt — durch einen Administrator, per Registrierung oder per SSO." },
+  user_updated: { label: "Nutzer geändert", desc: "Angaben oder Rechte eines Kontos wurden geändert." },
+  user_deleted: { label: "Nutzer gelöscht", desc: "Ein Konto wurde gelöscht." },
+  password_reset: { label: "Passwort zurückgesetzt", desc: "Ein Administrator hat ein neues Passwort für ein Konto erzeugt; alte Sitzungen sind damit ungültig." },
+  settings_changed: { label: "Einstellungen geändert", desc: "Plattform-Einstellungen wurden geändert. Protokolliert werden nur die Namen, nie die Werte." },
+  role_changed: { label: "Rolle geändert", desc: "Die Rolle oder Gruppe einer Person bzw. eine Gruppe selbst wurde geändert." },
+  mcp_server_changed: { label: "MCP-Server geändert", desc: "Ein MCP-Server wurde angelegt, geändert oder entfernt." },
+  audit_exported: { label: "Protokoll exportiert", desc: "Das Prüfprotokoll wurde als CSV heruntergeladen." },
 };
 
 // Friendly labels for common meta keys (raw JSON is still available on demand).
@@ -407,6 +464,10 @@ const META_LABEL: Record<string, string> = {
   reason: "Grund", old_level: "Vorheriges Level", new_level: "Neues Level",
   old_model: "Vorheriges Modell", new_model: "Neues Modell", url: "URL",
   title: "Titel", kind: "Art", source: "Quelle",
+  question: "Frage", answer: "Antwort", option: "Gewählte Option", options: "Optionen",
+  decision: "Entscheidung", kanal: "Kanal", risk_level: "Risiko", agent_name: "Agent",
+  email: "E-Mail", weg: "Weg", grund: "Grund", keys: "Einstellungen",
+  target_email: "Betroffenes Konto", sammelverwerfung: "Alle verworfen",
 };
 
 function fmtMetaValue(v: unknown): string {
@@ -446,6 +507,7 @@ function AuditDetailModal({ log, agentName, onClose }: { log: AuditLog; agentNam
         <dl className="space-y-2 border-t border-foreground/[0.06] pt-3 text-[13px]">
           <Row label="Zeit" value={new Date(log.created_at).toLocaleString("de-DE")} />
           <Row label="Agent" value={agentName} />
+          {log.person && <Row label="Person" value={log.person} />}
           <Row label={isDlp ? "Kanal" : "Command / Tool"} value={log.command ?? "—"} mono />
           <Row label="Ergebnis" value={
             log.outcome === "success" ? "Erfolgreich"

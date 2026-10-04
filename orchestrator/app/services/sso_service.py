@@ -486,12 +486,15 @@ class SSOService:
                 )
             return user
 
-        # 3. Check if registration is open
+        # 3. Darf SSO ein Konto anlegen? Eigener Schalter (#914): frueher hing das an
+        # ``registration_open`` — wer die Passwort-Selbstregistrierung schloss,
+        # sperrte damit auch jede neue Microsoft-Anmeldung aus. Die Rolle des neuen
+        # Kontos bleibt „ohne Rolle“ bzw. kommt aus den SSO-Gruppen.
         from sqlalchemy import func
         user_count = await self.db.scalar(select(func.count()).select_from(User))
         is_first = user_count == 0
 
-        if not is_first and not settings.registration_open:
+        if not is_first and not settings.sso_auto_provisioning:
             raise ValueError("Registration is closed. Contact an admin for access.")
 
         # 4. Create new user. When admin-approval is required, non-first users land
@@ -509,6 +512,14 @@ class SSOService:
             sso_subject=subject,
         )
         self.db.add(user)
+        from app.core.audit import protokolliere
+        from app.models.audit_log import AuditEventType
+        await protokolliere(
+            self.db, AuditEventType.USER_CREATED, user_id=user.id,
+            command=f"Konto per SSO angelegt: {email}",
+            meta={"weg": f"sso:{provider_name}", "target_user_id": user.id, "target_email": email,
+                  "role": user.role.value, "approved": approved, "erster_nutzer": is_first},
+        )
         await self.db.commit()
         await self.db.refresh(user)
 

@@ -65,9 +65,31 @@ class TestResult:
             "status": self.status,
             "duration_ms": self.duration_ms,
             "error": self.error,
+            # Die Systemseite zeigt ``message`` neben dem Testnamen.
+            "message": self.error,
             "details": self.details,
             "github_issue_url": self.github_issue_url,
         }
+
+
+def registrierungs_hinweis() -> TestResult:
+    """Offene Passwort-Selbstregistrierung melden (#914).
+
+    Bewusst ``warning`` und nicht ``failed``: es ist eine Einstellung, kein
+    Defekt — ein Fehlschlag wuerde ein Ticket im Produkt-Repository anlegen und
+    jeden Lauf als gescheitert zaehlen. Der Hinweis steht in der Testliste der
+    Systemseite, mit dem Weg zum Schliessen.
+    """
+    r = TestResult("registrierung_offen", "security")
+    if settings.registration_open:
+        r.status = "warning"
+        r.error = ("Registrierung offen — schließen: Einstellungen → System → "
+                   "Zugriffskontrolle. Jeder mit dem Link kann sich sonst ein Konto anlegen.")
+        r.details = {"registration_open": True}
+    else:
+        r.status = "passed"
+        r.details = {"registration_open": False}
+    return r
 
 
 class SelfTestService:
@@ -281,6 +303,9 @@ class SelfTestService:
             r.error = str(e)
         r.duration_ms = int((time.monotonic() - start) * 1000)
         results.append(r)
+
+        # 5b. Sicherheitshinweis: offene Registrierung (#914)
+        results.append(registrierungs_hinweis())
 
         # 6. Anthropic API key validation — only if an API key is configured
         r = TestResult("anthropic_api_key", "health")

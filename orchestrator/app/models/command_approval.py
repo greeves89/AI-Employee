@@ -37,3 +37,7 @@ class CommandApproval(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    #: Wer entschieden hat (#897). Gesetzt in core/audit.freigabe_entschieden —
+    #: derselben Stelle, die den Protokolleintrag schreibt. Leer bei Ablauf und
+    #: bei Telegram (dort ist keine Person der Plattform bekannt).
+    resolved_by_user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
