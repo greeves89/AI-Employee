@@ -1,16 +1,29 @@
 ---
 name: angebot-kalkulieren
-description: "Erstellt aus Anfrage oder Aufmaß ein strukturiertes Leistungsverzeichnis mit Kalkulation (Material, Lohn, Zuschläge nach Firmenwerten) und ein Angebotsgerüst. Nutzen, wenn ein Angebot, ein Nachtrag oder eine Preiskalkulation für Handwerks- oder Bauleistungen vorbereitet werden soll."
+description: "Erstellt aus Anfrage oder Aufmaß ein strukturiertes Leistungsverzeichnis mit Kalkulation (Material, Lohn, Zuschläge nach Firmenwerten) und daraus zwei Dateien: das Kundenangebot als PDF mit echten Firmendaten und die interne Kalkulation. Nutzen, wenn ein Angebot, ein Nachtrag oder eine Preiskalkulation für Handwerks- oder Bauleistungen vorbereitet werden soll."
 ---
 
 # Angebot kalkulieren
 
-Du machst aus einer Anfrage oder einem Aufmaß ein prüfbares Angebot. Preise, Zuschläge und Vertragsbedingungen kommen aus den Firmenwerten, nicht von dir. Versendet wird erst nach Freigabe durch einen Menschen.
+Du machst aus einer Anfrage oder einem Aufmaß ein prüfbares Angebot. Preise, Zuschläge, Vertragsbedingungen und der Absender kommen aus den Firmenwerten, nicht von dir. Versendet wird erst nach Freigabe durch einen Menschen.
 
 ## Wann nutzen
 - Eine Kundenanfrage, ein Aufmaß, ein Leistungsverzeichnis oder Planunterlagen liegen vor und sollen zu einem Angebot werden.
 - Ein Nachtrag zu einem laufenden Auftrag soll kalkuliert werden.
 - Ein bestehendes Angebot soll überprüft oder angepasst werden.
+
+## Firmenstammdaten (Absender) — zuerst, und nie erfunden
+Ein Angebot ist ein Geschäftsbrief. Der Absender steht in der Wissensbasis im Eintrag **„Firmenstammdaten“** (`brain_search` nach „Firmenstammdaten“; ist die Wissensbasis nicht angebunden: `memory_search`).
+
+Fehlt der Eintrag oder fehlt darin etwas, **frag einmal gebündelt** nach allem, was fehlt, und erstelle bis zur Antwort kein Kundendokument:
+- Firma mit Rechtsform, Anschrift, Telefon, E-Mail, Webseite
+- Pflichtangaben im Geschäftsbrief je nach Rechtsform: Sitz, Registergericht und Registernummer; bei GmbH und UG alle Geschäftsführer; bei nicht eingetragenen Einzelunternehmen Vor- und Nachname des Inhabers
+- Steuernummer oder Umsatzsteuer-Identifikationsnummer, Bankverbindung (IBAN, BIC)
+- Ansprechpartner für das Angebot, Logo (Datei), falls gewünscht
+
+Die Antwort legst du als Eintrag „Firmenstammdaten“ in der Wissensbasis ab (`brain_contribute`, sonst `memory_save` mit dem Schlüssel `firmenstammdaten`), damit nie wieder gefragt werden muss.
+
+**Kundendaten** (Name, Anschrift, Ansprechpartner) kommen ausschließlich aus der Anfrage oder vom Nutzer. Fehlen sie, fragst du nach. Platzhalter wie „Muster GmbH“, „Max Mustermann“ oder „Musterstraße“ stehen in keinem Dokument, das du erzeugst.
 
 ## Vorgehen
 1. **Firmenwerte laden.** In Wissensbasis und Gedächtnis (`memory_search`) suchen: Stundensätze bzw. Mittellohn, Zuschlagssätze (Gemeinkosten, Wagnis, Gewinn), Materialpreislisten oder Lieferantenkonditionen, Standardtexte, Zahlungs- und Gewährleistungsbedingungen, Bindefrist. **Fehlt ein Wert, setzt du keinen eigenen ein**, sondern trägst „Firmenwert fehlt“ ein und fragst nach.
@@ -20,8 +33,8 @@ Du machst aus einer Anfrage oder einem Aufmaß ein prüfbares Angebot. Preise, Z
 5. **Mengen übernehmen und plausibilisieren** (Prüfliste unten). Rechenansatz je Menge nachvollziehbar notieren.
 6. **Kalkulieren** je Position: Material (Menge × Preis, Verschnitt nur nach Firmenwert), Lohn (Zeitansatz × Stundensatz aus der Wissensbasis), Geräte und Fremdleistungen, darauf die Zuschläge nach Firmenwerten. Zeitansätze, die du schätzt, kennzeichnest du als Schätzung.
 7. **Nachträge trennen.** Leistungen außerhalb des ursprünglichen Auftrags in eigenen Nachtragspositionen mit eigener Nummer und Begründung (geänderte oder zusätzliche Leistung, Anlass, Datum der Anordnung). Nie in Hauptpositionen einrechnen.
-8. **Angebotsgerüst bauen** (Ausgabeformat unten) als Datei im Arbeitsordner.
-9. **Freigabe einholen** über `request_approval`, mit Summen, offenen Punkten und den markierten Schätzungen. Erst danach versenden oder in ein anderes System übertragen.
+8. **Zwei Dateien erzeugen** (Ausgabeformat unten): das **Kundenangebot** ohne jede interne Angabe und die **interne Kalkulation** mit allem, was nur ihr braucht. Das Kundenangebot als PDF ausschließlich mit `dokument pdf angebot-<Nr>.md -o /workspace/transfer/angebot-<Nr>.pdf --fusszeile "<Firma>"`, danach `dokument pruefen` auf das PDF. Nie per Browser drucken.
+9. **Freigabe einholen** über `request_approval`, mit Summen, offenen Punkten und den markierten Schätzungen aus der internen Kalkulation. Erst danach versenden oder in ein anderes System übertragen. Dem Nutzer zeigst du beide Dateien mit `present_file`.
 
 ## Prüfliste: Mengen und Positionen
 - [ ] Jede Position hat Menge und Einheit; Einheiten passen zur Leistung (m, m², m³, Stk, h, psch).
@@ -57,36 +70,56 @@ Du machst aus einer Anfrage oder einem Aufmaß ein prüfbares Angebot. Preise, Z
 - Eventualpositionen in die Angebotssumme rechnen.
 - Materialpreise ohne Datum oder Quelle übernehmen.
 - Das Angebot ohne Freigabe verschicken.
+- Absender oder Kunden erfinden („Muster GmbH“) statt nach den Firmenstammdaten bzw. Kundendaten zu fragen.
+- Interne Hinweise, offene Punkte oder Einkaufspreise im Kundenangebot stehen lassen.
+- Das PDF per Browser drucken (Datum und Dateipfad am Seitenrand) statt mit `dokument pdf`.
 
-## Ausgabeformat
+## Ausgabeformat: zwei Dateien
+
+### 1. Kundenangebot (`angebot-<Nr>.md`, daraus das PDF)
+Nur, was der Kunde lesen soll: keine Hinweisspalte, keine offenen Punkte, keine Schätzungsvermerke, keine Zuschlagssätze, keine Einkaufspreise.
 
 ```markdown
-# Angebot <Nr.> – <Bauvorhaben>, Entwurf vom <Datum>
-Kunde: Muster GmbH, <Anschrift> | Grundlage: Anfrage vom <Datum>, Aufmaß vom <Datum>
-Vertragsgrundlage: <laut Vereinbarung prüfen: VOB/B oder BGB-Werkvertrag>
+**<Firma mit Rechtsform>** · <Straße Nr.> · <PLZ Ort>
 
-| OZ | Kurztext | Menge | Einheit | Material EP | Lohn EP | EP netto | GP netto | Hinweis |
-|---|---|---|---|---|---|---|---|---|
-| 01 | Titel: Vorarbeiten | | | | | | | |
-| 01.01 | Untergrund vorbereiten | 42,50 | m² | … | … | … | … | Menge aus Aufmaß Raum 1–3 |
-| 01.02 | Eventualposition … | 1 | psch | … | … | … | (nicht in Summe) | Eventualposition |
+<Kunde laut Anfrage>
+<Anschrift laut Anfrage>
 
-| Summe | Betrag |
+# Angebot <Nr.> – <Bauvorhaben>
+Datum: <TT.MM.JJJJ> · Ihre Anfrage vom <TT.MM.JJJJ> · Ansprechpartner: <aus Firmenstammdaten>
+
+Sehr geehrte …, vielen Dank für Ihre Anfrage. Wir bieten Ihnen an:
+
+| Pos. | Leistung | Menge | Einheit | Einzelpreis netto | Gesamt netto |
+|---|---|---|---|---|---|
+| 01.01 | Untergrund vorbereiten | 42,50 | m² | … € | … € |
+
+Eventualpositionen (nur auf Abruf, nicht in der Summe):
+| Pos. | Leistung | Menge | Einheit | Einzelpreis netto |
+|---|---|---|---|---|
+
+| | Betrag |
 |---|---|
-| Summe netto | … |
-| Umsatzsteuer 19 % | … |
-| Summe brutto | … |
+| Summe netto | … € |
+| Umsatzsteuer 19 % | … € |
+| **Summe brutto** | … € |
 
-## Nachträge (getrennt vom Hauptauftrag)
-| N-Nr. | Bezug | Anlass/Anordnung | Kurztext | Menge | Einheit | EP netto | GP netto |
-|---|---|---|---|---|---|---|---|
+Bei Privatkunden zusätzlich: darin enthaltene Arbeitskosten … € (für § 35a EStG).
 
-## Offene Punkte und Annahmen
-- <fehlender Firmenwert / geschätzter Zeitansatz / Rückfrage an den Kunden>
+Bindefrist, Zahlungsbedingungen, Ausführungszeitraum, Ausschlüsse: <laut Firmenstammdaten>
 
-## Bedingungen
-Bindefrist, Zahlungsbedingungen, Ausschlüsse: <laut Firmenvorgabe>
+---
+<Firma> · Sitz <Ort> · <Registergericht, Registernummer> · Geschäftsführung: <Namen>
+Steuernummer/USt-IdNr.: <…> · <Bank, IBAN, BIC>
 ```
+
+### 2. Interne Kalkulation (`/workspace/angebote/kalkulation-<Nr>.xlsx` oder `.md`)
+Geht nicht an den Kunden.
+
+| OZ | Kurztext | Menge | Einheit | Rechenansatz | Material EP | Zeitansatz | Lohn EP | Geräte/Fremd | Zuschläge | EP netto | GP netto | Herkunft der Werte | Hinweis |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+
+Dazu: Nachträge (N-Nr., Bezug, Anlass/Anordnung), offene Punkte und Annahmen, geschätzte Zeitansätze, fehlende Firmenwerte, Prüfpunkte (Vertragsgrundlage, § 13b UStG).
 
 ## Grenzen und Übergabe an einen Menschen
 - Preise, Nachlässe, Vertragsbedingungen und Versand entscheidet die Geschäftsführung oder Kalkulation; du holst die Freigabe über `request_approval` ein.

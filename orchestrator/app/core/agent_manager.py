@@ -719,6 +719,7 @@ I MUST keep my workspace organized with proper directories:
 **Rules:**
 - NEVER dump files directly in /workspace root - always use subdirectories
 - When creating files the user requested (PDFs, reports, exports): put in `/workspace/transfer/`
+- **PDFs ONLY with `dokument pdf <file.md|.html> -o /workspace/transfer/<name>.pdf`** (A4, own footer "Seite X von Y"). NEVER `chromium --print-to-pdf` or a browser print — they stamp a US date and the file:// path on every page, and `present_file` rejects them. Word: `dokument docx`. Check: `dokument pruefen <file.pdf>`.
 - When creating scripts: put in `/workspace/scripts/`
 - Create additional subdirectories as needed
 - Use `mkdir -p` to create directories before writing files

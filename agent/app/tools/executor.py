@@ -739,6 +739,15 @@ class ToolExecutor:
         if size > 50 * 1024 * 1024:
             return f"Error: file is {size // 1024 // 1024} MB, exceeds the 50 MB chat attachment limit"
 
+        # Ein PDF mit der Kopf-/Fußzeile eines Browsers (US-Datum, file://-Pfad)
+        # ist nicht versandfertig (#893). Dieselbe Prüfung wie im MCP-Server.
+        if resolved.lower().endswith(".pdf"):
+            from app.dokument import pruefe_pdf
+
+            pruefung = await asyncio.to_thread(pruefe_pdf, resolved)
+            if pruefung.get("anzeige_meldung"):
+                return "Error: " + pruefung["anzeige_meldung"]
+
         payload = {
             "path": resolved,
             "filename": os.path.basename(resolved),
