@@ -26,6 +26,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   addyosmani/agent-skills (API, CI/CD, Doku), microsoft/playwright-cli und
   currents-dev/playwright-best-practices-skill (Tests, Browser).
 
+### Sicherheit
+- Vorlagen binden nur Skills bekannter Herkunft (mitgeliefert oder fest eingebaute
+  Quellen) — ein gleichnamiger selbst angelegter Skill kann keine Vorlage übernehmen.
+- Der Crawler überschreibt keine selbst angelegten Skills gleichen Namens mehr.
+
 ---
 
 ## [1.360.0] - 2026-10-03

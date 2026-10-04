@@ -416,6 +416,12 @@ class SkillCrawlerService:
                         from app.core.mitgelieferte_skills import QUELLE as _MITGELIEFERT
                         if existing.source_repo == _MITGELIEFERT:
                             continue
+                        # Selbst angelegte Skills (Nutzer, Agent) nie mit Crawl-Inhalt
+                        # überschreiben — nur Importe derselben Art werden nachgezogen.
+                        if not (existing.created_by or "").startswith("import:"):
+                            logger.warning("Crawled skill '%s': Name gehört einem selbst angelegten Skill — nicht überschrieben",
+                                           s["name"])
+                            continue
                         if s.get("content") and s["content"] != existing.content:
                             existing.content = s["content"]
                             existing.description = s.get("description", existing.description)

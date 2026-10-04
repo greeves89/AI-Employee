@@ -77,13 +77,15 @@ class _Ergebnis:
 
 
 class _Db:
-    """Nur die eine Abfrage: (id, name) aktiver Skills mit Namen aus der Liste."""
+    """Nur die eine Abfrage: (id, name, source_repo) aktiver Skills mit Namen aus der Liste."""
 
-    def __init__(self, skills):
-        self._skills = skills  # name -> id
+    def __init__(self, skills, herkunft="anthropics/skills"):
+        self._skills = skills  # name -> id oder name -> (id, herkunft)
+        self._herkunft = herkunft
 
     async def execute(self, _stmt):
-        return _Ergebnis([(i, n) for n, i in self._skills.items()])
+        return _Ergebnis([(v[0], n, v[1]) if isinstance(v, tuple) else (v, n, self._herkunft)
+                          for n, v in self._skills.items()])
 
 
 class AufloesungTests(unittest.TestCase):
@@ -91,6 +93,14 @@ class AufloesungTests(unittest.TestCase):
         db = _Db({"docx": 7, "pdf": 3, "xlsx": 9})
         ids = asyncio.run(vs.ids_fuer_namen(db, ["pdf", "fehlt", "docx"]))
         self.assertEqual(ids, [3, 7])
+
+    def test_gleichnamiger_selbst_angelegter_skill_kapert_keine_vorlage(self):
+        # Ein Nutzer legt vorher "vertrag-pruefen" selbst an (source_repo leer) —
+        # die Vorlage darf ihn NICHT bekommen, nur den mitgelieferten bzw. öffentlichen.
+        db = _Db({"vertrag-pruefen": (5, None), "docx": (7, "anthropics/skills"),
+                  "buchhaltung-vorkontieren": (8, ms.QUELLE), "fremd": (9, "irgendwer/skills")})
+        ids = asyncio.run(vs.ids_fuer_namen(db, ["vertrag-pruefen", "docx", "buchhaltung-vorkontieren", "fremd"]))
+        self.assertEqual(ids, [7, 8])
 
     def test_ohne_namen_keine_abfrage(self):
         class _Leer:

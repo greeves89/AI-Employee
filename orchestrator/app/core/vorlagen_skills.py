@@ -61,20 +61,19 @@ VORLAGEN_SKILLS: dict[str, list[str]] = {
                       "verification-before-completion", "security-and-hardening", "mcp-builder"],
     "code-reviewer": ["requesting-code-review", "receiving-code-review", "find-bugs", "security-review",
                       "verification-before-completion"],
-    "qa-tester": ["playwright-best-practices", "playwright-cli", "webapp-testing", "dogfood",
+    "qa-tester": ["playwright-best-practices", "webapp-testing", "dogfood",
                   "test-driven-development", "systematic-debugging"],
     "security-auditor": ["security-review", "security-best-practices", "security-threat-model", "find-bugs",
                          "gha-security-review", "security-and-hardening"],
     "devops-engineer": ["docker-project-foundations", "docker-compose-patterns", "docker-build-strategies",
                         "docker-destructive-guardrails", "ci-cd-and-automation", "observability-and-instrumentation",
                         "systematic-debugging"],
-    "automation-agent": ["writing-plans", "verification-before-completion", "agent-browser", "playwright-cli",
-                         "xlsx"],
+    "automation-agent": ["writing-plans", "verification-before-completion", "agent-browser", "xlsx"],
     "database-admin": ["postgres", "design-postgres-tables", "postgres-database-migration", "schema-exploration",
                        "supabase-postgres-best-practices"],
     # Daten
     "data-analyst": ["datenanalyse-bericht", "xlsx", "pdf"],
-    "crawler-agent": ["agent-browser", "playwright-cli", "derive-client", "recherche-mit-quellen", "xlsx"],
+    "crawler-agent": ["agent-browser", "derive-client", "recherche-mit-quellen", "xlsx"],
     # Design & Präsentation
     "ui-designer": ["ui-ux-pro-max", "frontend-design", "design-system", "web-design-guidelines", "ui-styling"],
     "presentation-designer": ["pptx", "slides", "theme-factory", "brand"],
@@ -107,8 +106,19 @@ VORLAGEN_SKILLS: dict[str, list[str]] = {
 }
 
 
+def _erlaubte_herkunft() -> set[str]:
+    """Nur Skills dieser Herkunft dürfen an Vorlagen hängen: mitgeliefert oder aus den
+    fest eingebauten Crawler-Quellen. Sonst könnte jemand mit einem gleichnamigen
+    selbst angelegten Skill die Vorlagen ALLER Nutzer der Anlage übernehmen."""
+    from app.core.mitgelieferte_skills import QUELLE
+    from app.services.skill_crawler import DEFAULT_SKILL_REPOS
+
+    return {QUELLE, *DEFAULT_SKILL_REPOS}
+
+
 async def ids_fuer_namen(db, namen: list[str]) -> list[int]:
-    """IDs der aktiven Skills mit diesen Namen, in der Reihenfolge der Namen; Fehlende übergehen."""
+    """IDs der aktiven Skills mit diesen Namen (nur bekannte Herkunft), in der Reihenfolge
+    der Namen; Fehlende oder fremder Herkunft werden übergangen."""
     if not namen:
         return []
     from sqlalchemy import select
@@ -116,9 +126,11 @@ async def ids_fuer_namen(db, namen: list[str]) -> list[int]:
     from app.models.skill import Skill, SkillStatus
 
     rows = (await db.execute(
-        select(Skill.id, Skill.name).where(Skill.name.in_(namen), Skill.status == SkillStatus.ACTIVE)
+        select(Skill.id, Skill.name, Skill.source_repo)
+        .where(Skill.name.in_(namen), Skill.status == SkillStatus.ACTIVE)
     )).all()
-    nach_name = {name: sid for sid, name in rows}
+    erlaubt = _erlaubte_herkunft()
+    nach_name = {name: sid for sid, name, herkunft in rows if herkunft in erlaubt}
     return [nach_name[n] for n in namen if n in nach_name]
 
 
