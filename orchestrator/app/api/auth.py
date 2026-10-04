@@ -39,8 +39,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # nur je Konto liesse sich von aussen gegen ein fremdes Konto richten — wer von
 # einer anderen Adresse kommt, bleibt unberuehrt. Ohne eindeutige Adresse (hinter
 # einem Proxy) gilt die Grenze je Konto wie bisher.
+#
+# Dazu EINE Obergrenze je Konto ueber alle Adressen: die Absender-Adresse ist
+# hinter einem Proxy faelschbar (uvicorn vertraut X-Forwarded-For), mit
+# wechselnden Adressen liefe die Grenze je Konto+Adresse sonst ins Leere — fuer
+# das Raten eines Passworts wie fuer das Fluten des Pruefprotokolls. Grosszuegiger
+# als die Grenze je Adresse, damit niemand mit fuenf Fehlversuchen ein fremdes
+# Konto sperrt.
 _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW_SECONDS = 300  # 5 minutes
+_LOGIN_MAX_ATTEMPTS_KONTO = 20
+_LOGIN_WINDOW_SECONDS_KONTO = 900  # 15 Minuten
+_ALLE_ADRESSEN = "*"
 _login_attempts: dict[str, list[float]] = defaultdict(list)
 
 
@@ -57,19 +67,25 @@ def _login_key(email: str, ip: str | None) -> str:
 
 
 def _check_login_rate(email: str, ip: str | None = None) -> None:
-    """Block login if too many failed attempts for this email from this address."""
+    """Sperrt nach zu vielen Fehlversuchen — je Konto+Adresse und je Konto insgesamt."""
     now = time.time()
-    key = _login_key(email, ip)
-    _login_attempts[key] = [t for t in _login_attempts[key] if now - t < _LOGIN_WINDOW_SECONDS]
-    if len(_login_attempts[key]) >= _LOGIN_MAX_ATTEMPTS:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Zu viele Anmeldeversuche. Bitte in {_LOGIN_WINDOW_SECONDS // 60} Minuten erneut versuchen.",
-        )
+    for key, maximum, fenster in (
+        (_login_key(email, ip), _LOGIN_MAX_ATTEMPTS, _LOGIN_WINDOW_SECONDS),
+        (_login_key(email, _ALLE_ADRESSEN), _LOGIN_MAX_ATTEMPTS_KONTO, _LOGIN_WINDOW_SECONDS_KONTO),
+    ):
+        _login_attempts[key] = [t for t in _login_attempts[key] if now - t < fenster]
+        if len(_login_attempts[key]) >= maximum:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Zu viele Anmeldeversuche. Bitte in {fenster // 60} Minuten erneut versuchen.",
+            )
 
 
 def _record_failed_login(email: str, ip: str | None = None) -> None:
-    _login_attempts[_login_key(email, ip)].append(time.time())
+    jetzt = time.time()
+    _login_attempts[_login_key(email, ip)].append(jetzt)
+    if ip != _ALLE_ADRESSEN:
+        _login_attempts[_login_key(email, _ALLE_ADRESSEN)].append(jetzt)
 
 
 def _clear_login_attempts(email: str, ip: str | None = None) -> None:

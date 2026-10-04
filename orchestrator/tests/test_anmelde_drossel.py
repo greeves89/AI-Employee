@@ -270,3 +270,37 @@ class IpSperreNurFuerDieseAdresse(_DrosselBasis):
         gesehen.clear()
         await lauf(ProxyHeadersMiddleware(innen, trusted_hosts="127.0.0.1"), "203.0.113.7")
         self.assertEqual(gesehen, [None])
+
+
+class ObergrenzeJeKontoUeberAlleAdressen(_DrosselBasis):
+    """Die Absender-Adresse ist hinter einem Proxy fälschbar. Mit wechselnden
+    Adressen darf weder das Raten eines Passworts noch das Fluten des
+    Prüfprotokolls unbegrenzt gehen (Nachprüfung v1.362.0)."""
+
+    async def test_wechselnde_adressen_enden_an_der_kontogrenze(self):
+        from app.api import auth as auth_api
+
+        auth_api._login_attempts.clear()
+        async with self.Session() as db:
+            codes = []
+            for i in range(auth_api._LOGIN_MAX_ATTEMPTS_KONTO + 5):
+                self._von(f"198.51.100.{i + 1}")
+                codes.append(await self._fehlversuch(db, "bert@example.com"))
+            self.assertEqual(codes[:auth_api._LOGIN_MAX_ATTEMPTS_KONTO],
+                             [401] * auth_api._LOGIN_MAX_ATTEMPTS_KONTO)
+            self.assertEqual(set(codes[auth_api._LOGIN_MAX_ATTEMPTS_KONTO:]), {429})
+            # Protokoll wächst nur bis zur Grenze.
+            self.assertLessEqual(len(await self._fehllogins(db)), auth_api._LOGIN_MAX_ATTEMPTS_KONTO)
+        auth_api._login_attempts.clear()
+
+    async def test_unter_der_kontogrenze_bleibt_das_konto_von_anderswo_erreichbar(self):
+        from app.api import auth as auth_api
+
+        auth_api._login_attempts.clear()
+        async with self.Session() as db:
+            for _ in range(auth_api._LOGIN_MAX_ATTEMPTS + 1):
+                await self._fehlversuch(db, "bert@example.com")
+            self._von("192.0.2.88")
+            daten, _ = await self._login(db, email="bert@example.com")
+            self.assertIn("access_token", daten)
+        auth_api._login_attempts.clear()
