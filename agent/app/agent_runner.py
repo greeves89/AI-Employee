@@ -95,6 +95,7 @@ class AgentRunner:
         self.is_running = True
 
         task_id_line = f"CURRENT_TASK_ID: {task_id}\n\n"
+        from app.runner_hooks import zeitkontext
 
         # Unified context bundle (shared by all runtimes via runner_hooks): startup
         # prefix + memory + skills + host mounts/Second Brain + marketplace + (full:
@@ -102,6 +103,8 @@ class AgentRunner:
         enhanced_prompt = (
             task_id_line
             + compose_prompt_bundle(prompt, lightweight)
+            # Datum/Wochentag/Uhrzeit (#905) — sonst raet das Modell das Jahr.
+            + zeitkontext() + "\n\n"
             + prompt
             + SELF_IMPROVEMENT_SUFFIX
         )

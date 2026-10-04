@@ -8,7 +8,7 @@ import time
 
 from app import context_compressor, model_registry, multimodal
 from app import announcement_guard
-from app.subagent_felder import subagent_felder
+from app.werkzeug_eintrag import WerkzeugListe
 from app.loop_detector import LoopDetector
 from app.config import settings
 from app.ai_credential_status import report_result_status
@@ -694,7 +694,9 @@ class LLMChatHandler:
 
         tools = await self._get_tools()
         full_text = ""
-        accumulated_tool_calls: list[dict] = []
+        # Eingabe als gueltiges JSON, Ausgabe am Eintrag — dieselbe Form wie
+        # Claude Code und der Auftragslauf (#911, app/werkzeug_eintrag.py).
+        werkzeuge = WerkzeugListe()
         num_turns = 0
         max_turns = _max_turns()
         total_input_tokens = 0
@@ -750,16 +752,8 @@ class LLMChatHandler:
                             "name": event.tool_name,
                             "input": event.tool_input,
                         })
-                        eintrag = {
-                            "tool": event.tool_name,
-                            "input": json.dumps(event.tool_input)[:200],
-                        }
-                        # Helfer mit vollen Kernfeldern (wie bei Claude Code) —
-                        # siehe app/subagent_felder.py.
-                        felder = subagent_felder(event.tool_name, event.tool_input)
-                        if felder:
-                            eintrag["subagent"] = felder
-                        accumulated_tool_calls.append(eintrag)
+                        # Helfer behalten ihre Kernfelder (app/subagent_felder.py).
+                        werkzeuge.aufruf(event.tool_name, event.tool_input, event.tool_id)
                         await self.log_publisher.publish_chat(
                             message_id, "tool_call",
                             {
@@ -951,14 +945,15 @@ class LLMChatHandler:
                             await self.log_publisher.publish_chat(message_id, "file", payload)
                         except Exception:
                             pass
+                    angezeigt = (
+                        "File presented to the user."
+                        if result_text.startswith("__AI_EMPLOYEE_PRESENT_FILE__")
+                        else multimodal.log_summary(result_text)
+                    )
+                    werkzeuge.ergebnis(tc["id"], angezeigt)
                     await self.log_publisher.publish_chat(
                         message_id, "tool_result",
-                        {
-                            "tool_use_id": tc["id"],
-                            "content": "File presented to the user."
-                            if result_text.startswith("__AI_EMPLOYEE_PRESENT_FILE__")
-                            else multimodal.log_summary(result_text),
-                        },
+                        {"tool_use_id": tc["id"], "content": angezeigt},
                     )
                     self._history.append(
                         multimodal.tool_message(result_text, tc["id"], tc["name"])
@@ -1038,7 +1033,7 @@ class LLMChatHandler:
             "reasoning_tokens": total_reasoning_tokens,
             "cached_tokens": total_cached_tokens,
             "cache_write_tokens": total_cache_write_tokens,
-            "tool_calls": accumulated_tool_calls or None,
+            "tool_calls": werkzeuge.liste(),
             # Fuellstand des Fensters = der LETZTE Aufruf, nicht die Summe.
             # input_tokens oben addiert alle Aufrufe des Zuges (richtig fuer
             # die Kosten); fuer die Anzeige "wie voll ist der Kontext" waere

@@ -611,7 +611,15 @@ class ChatConsumer:
         else:
             rules_prefix = ""
         skills_prefix = self._skills_prefix(text) if is_new else ""
-        return rules_prefix + skills_prefix + self._wrap(text, telegram_ctx, source, is_new)
+        return (rules_prefix + skills_prefix + self._wrap(text, telegram_ctx, source, is_new)
+                + self._zeit())
+
+    @staticmethod
+    def _zeit() -> str:
+        """Datum/Uhrzeit an JEDE Nachricht (#905) — erst hier, also nach dem
+        Speichern der Nutzernachricht: im Verlauf sieht man sie nicht."""
+        from app.runner_hooks import zeitkontext
+        return "\n\n" + zeitkontext()
 
     def _fresh_session_text(self, text: str, telegram_ctx: dict | None, source: str) -> str:
         """Dieselbe Nachricht, aber als ERSTE einer neuen Sitzung aufbereitet.
@@ -627,6 +635,7 @@ class ChatConsumer:
             get_approval_rules_prefix()
             + self._skills_prefix(text)
             + self._wrap(text, telegram_ctx, source, True)
+            + self._zeit()
         )
 
     def _save_images(self, message_id: str, images: list[dict]) -> list[str]:

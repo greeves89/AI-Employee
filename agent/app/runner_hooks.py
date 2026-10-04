@@ -330,6 +330,50 @@ long tasks get detailed ones — but ALL tasks end with memory_save + rate_task 
 """
 
 
+_WOCHENTAGE = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
+_MONATE = ("Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August",
+           "September", "Oktober", "November", "Dezember")
+#: Gilt, wenn ``TZ`` fehlt oder unbekannt ist (die Plattform setzt ``TZ`` je Agent).
+ZEITZONE_STANDARD = "Europe/Berlin"
+
+
+def zeitkontext(jetzt=None) -> str:
+    """Datum, Wochentag und Uhrzeit fuer den Prompt (#905).
+
+    Ohne diese Zeile raet das Modell aus seinem Trainingsstand — im Markttest
+    nannten Agenten „2025" statt 2026 und falsche Wochentage. Angehaengt in der
+    gemeinsamen Chat-Strecke (``chat_consumer._prepare_text`` /
+    ``_fresh_session_text``: Web, Telegram, alle Laufzeiten) und in den drei
+    Auftrags-Runnern. Wochentag und Monat bewusst aus eigener Liste, nicht aus
+    der Locale — im Container ist keine deutsche Locale installiert.
+
+    ``jetzt`` nur fuer Tests (feste Uhr); ohne Zeitzone gilt es als UTC.
+    """
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    if jetzt is None:
+        jetzt = datetime.now(timezone.utc)
+    elif jetzt.tzinfo is None:
+        jetzt = jetzt.replace(tzinfo=timezone.utc)
+
+    name = (os.environ.get("TZ") or "").strip().lstrip(":") or ZEITZONE_STANDARD
+    zone = None
+    for kandidat in (name, ZEITZONE_STANDARD):
+        try:
+            zone = ZoneInfo(kandidat)
+            name = kandidat
+            break
+        except (ZoneInfoNotFoundError, ValueError):
+            continue
+    if zone is None:   # gar keine Zeitzonendaten (tzdata fehlt) — dann ehrlich UTC
+        zone, name = timezone.utc, "UTC"
+
+    ort = jetzt.astimezone(zone)
+    return (f"[Jetzt: {_WOCHENTAGE[ort.weekday()]}, {ort.day}. {_MONATE[ort.month - 1]} "
+            f"{ort.year}, {ort:%H:%M} Uhr, {name}]")
+
+
 # Cap on the instruction file we inline. AGENT.md runs ~20 KB; the CLI runtimes read it
 # from disk on their own, the custom_llm runtime has to carry it in the prompt, and a
 # voice/chat turn should not spend 6k tokens on it. The rest stays readable via read_file.

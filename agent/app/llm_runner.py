@@ -26,6 +26,7 @@ from app.runner_hooks import (
     get_skills_context,
 )
 from app.tools.definitions import TOOL_DEFINITIONS
+from app.werkzeug_eintrag import WerkzeugListe
 from app.tools.executor import ToolExecutor
 from app.tools.mcp_client import MCPHTTPClient
 # Lazy tool loading (shared with the chat handler) — keeps the per-request tool
@@ -345,6 +346,11 @@ class LLMRunner:
         # with the CLI runtimes, which get it via the bundle / CLAUDE.md).
         mounts_ctx = get_mounts_context()
 
+        # Datum/Wochentag/Uhrzeit (#905) in die Nutzernachricht, nicht in den
+        # Systemprompt — der bleibt so ueber Laeufe hinweg gleich (Cache).
+        from app.runner_hooks import zeitkontext
+        zeit = zeitkontext() + "\n\n"
+
         if lightweight:
             from app.runner_hooks import CHAT_STARTUP_PREFIX
             # Chat/Telegram deserves the same recall as a task run — the user's standing
@@ -356,7 +362,7 @@ class LLMRunner:
             if skills_ctx:
                 system_prompt += "\n" + skills_ctx
             marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
-            enhanced_prompt = CHAT_STARTUP_PREFIX + marketplace_suggestions + prompt
+            enhanced_prompt = CHAT_STARTUP_PREFIX + marketplace_suggestions + zeit + prompt
         else:
             memory_preload = get_memory_preload(prompt[:500])
             approval_rules = get_approval_rules_prefix()
@@ -373,7 +379,8 @@ class LLMRunner:
             if skills_ctx:
                 system_prompt += "\n" + skills_ctx
             marketplace_suggestions = get_marketplace_skill_suggestions(prompt[:200])
-            enhanced_prompt = TASK_STARTUP_PREFIX + marketplace_suggestions + prompt + SELF_IMPROVEMENT_SUFFIX
+            enhanced_prompt = (TASK_STARTUP_PREFIX + marketplace_suggestions + zeit + prompt
+                               + SELF_IMPROVEMENT_SUFFIX)
 
         messages: list[ChatMessage] = [
             ChatMessage(role="system", content=system_prompt),
@@ -394,7 +401,9 @@ class LLMRunner:
         compaction_floor = 0
         num_turns = 0
         full_text = ""
-        accumulated_tool_calls: list[dict] = []
+        # Eingabe als gueltiges JSON, Ausgabe am Eintrag — dieselbe Form wie
+        # in den Chat-Laufzeiten (#911, app/werkzeug_eintrag.py).
+        werkzeuge = WerkzeugListe()
         tools_called: set[str] = set()      # every tool name used this task
         compliance_nudges = 0               # bounded: nudge missing closing steps once
         empty_turns = 0                     # bounded: retry empty LLM responses, then fail visibly
@@ -442,10 +451,7 @@ class LLMRunner:
                             "name": event.tool_name,
                             "input": event.tool_input,
                         })
-                        accumulated_tool_calls.append({
-                            "tool": event.tool_name,
-                            "input": json.dumps(event.tool_input)[:200],
-                        })
+                        werkzeuge.aufruf(event.tool_name, event.tool_input, event.tool_id)
                         await self.log_publisher.publish(
                             task_id, "tool_call",
                             {
@@ -633,9 +639,11 @@ class LLMRunner:
                 # Add results in original order
                 for tc in turn_tool_calls:
                     result = results_map[tc["id"]]
+                    zusammenfassung = multimodal.log_summary(result)
+                    werkzeuge.ergebnis(tc["id"], zusammenfassung)
                     await self.log_publisher.publish(
                         task_id, "tool_result",
-                        {"tool_use_id": tc["id"], "content": multimodal.log_summary(result)},
+                        {"tool_use_id": tc["id"], "content": zusammenfassung},
                     )
                     messages.append(
                         multimodal.tool_message(result, tc["id"], tc["name"])
@@ -729,7 +737,7 @@ class LLMRunner:
             "cost_usd": cost_usd,
             "input_tokens": total_input_tokens,
             "output_tokens": total_output_tokens,
-            "tool_calls": accumulated_tool_calls or None,
+            "tool_calls": werkzeuge.liste(),
         }
 
     async def interrupt(self) -> None:
