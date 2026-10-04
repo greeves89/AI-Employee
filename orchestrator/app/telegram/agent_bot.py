@@ -701,14 +701,18 @@ class TelegramAgentBot:
         try:
             redis = aioredis.from_url(settings.redis_url, decode_responses=True)
             message_id = f"tg-{update.message.message_id}"
-            payload = json.dumps({
+            # Budget (#898): gesperrt → der Lauscher (oben gestartet) zeigt den Hinweis.
+            from app.core.chat_auftrag import einreihen
+
+            if not (await einreihen(redis, target_agent_id, {
                 "id": message_id,
                 "text": text,
                 "model": None,
                 "telegram": tg_context,
                 "images": images,
-            })
-            await redis.lpush(f"agent:{target_agent_id}:chat", payload)
+            })).eingereiht:
+                await redis.aclose()
+                return
             # Der Medien-Pfad geht nicht durch channel_gateway.deliver — ohne
             # eigene Markierung haelt der Leerlauf-Sweep den Agenten trotz eines
             # gerade geschickten Fotos oder einer Sprachnachricht fuer verwaist.
@@ -823,13 +827,14 @@ class TelegramAgentBot:
         try:
             redis = aioredis.from_url(settings.redis_url, decode_responses=True)
             message_id = f"tg-cb-{query.id}"
-            payload = json.dumps({
+            from app.core.chat_auftrag import einreihen
+
+            await einreihen(redis, self.agent_id, {
                 "id": message_id,
                 "text": text,
                 "model": None,
                 "telegram": tg_context,
             })
-            await redis.lpush(f"agent:{self.agent_id}:chat", payload)
             await redis.aclose()
             # Acknowledge the callback (prevents loading spinner)
             await query.answer()

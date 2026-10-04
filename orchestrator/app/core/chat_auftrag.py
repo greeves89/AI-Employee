@@ -14,15 +14,25 @@ Die Oberfläche zeichnet daraus Dateikarten.
 Ein alter Browser-Tab schickt weiter den zusammengebauten Text. ``aus_nachricht``
 zerlegt ihn wieder, damit auch dann nur der Nutzertext gespeichert wird; mit
 ``altzeilen_bereinigen`` werden bestehende Zeilen einmalig umgeschrieben.
+
+Und hier liegt der EINE Weg in die Warteschlange ``agent:{id}:chat``:
+``einreihen`` prüft vorher das Budget (#898) — für Web-Chat, Kiosk, Telegram,
+die Kanäle, die Sprachfront, ``/goal`` und Rückmeldungen gleichermaßen.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import posixpath
 import re
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 #: Wurzel, unter der Anhänge liegen (Upload-Ziel der Oberfläche).
 WURZEL = "/workspace"
@@ -50,6 +60,85 @@ _ALT_ANHANG = re.compile(
     re.DOTALL,
 )
 _STEUERZEICHEN = re.compile(r"[\x00-\x1f\x7f]")
+
+
+# ── Einreihen: der EINE Weg in ``agent:{id}:chat`` (#898) ────────────────────
+
+
+@dataclass(frozen=True)
+class Einreihung:
+    """Ergebnis von ``einreihen``. ``hinweis`` ist der Text an den Menschen, wenn
+    die Nachricht NICHT eingereiht wurde."""
+
+    eingereiht: bool
+    hinweis: str = ""
+    modell: str | None = None
+
+
+async def _budget_entscheid(agent_id: str):
+    """Budgetentscheid für eine Chat-Nachricht; meldet eine Sperre gleich mit.
+
+    Fail-open: Kann die Prüfung nicht laufen (Datenbank weg), wird zugestellt — ein
+    kaputter Zähler soll nicht jede Unterhaltung der Anlage anhalten.
+    """
+    from app.core import budget
+    from app.db.session import async_session_factory
+    from app.models.agent import Agent
+
+    try:
+        async with async_session_factory() as db:
+            agent = await db.get(Agent, agent_id)
+            entscheid = await budget.budget_pruefen(db, agent, fuer_chat=True)
+            if entscheid.art == budget.BLOCKIEREN:
+                try:
+                    await budget.sperre_melden(db, agent, entscheid)
+                except Exception:  # noqa: BLE001 — die Sperre gilt auch ohne Meldung
+                    logger.warning("Budget-Meldung fuer %s fehlgeschlagen", agent_id, exc_info=True)
+            return entscheid
+    except Exception:  # noqa: BLE001
+        logger.warning("Budgetpruefung fuer %s nicht moeglich — Nachricht geht durch",
+                       agent_id, exc_info=True)
+        return budget.ERLAUBT
+
+
+async def einreihen(redis_client, agent_id: str, payload: dict | str) -> Einreihung:
+    """Eine Nachricht in die Chat-Warteschlange des Agenten legen — nach Budgetprüfung.
+
+    Bis v1.362 schrieben Web-Chat, Kiosk, Telegram, die Kanäle, die Sprachfront,
+    ``/goal`` und die Rückmeldungen delegierter Aufträge je für sich in
+    ``agent:{id}:chat`` — und am Budget vorbei, das nur der Aufgabenweg prüfte.
+    Jetzt geht jede dieser Stellen hier durch (ein Test wacht darüber):
+
+    * erlaubt → einreihen wie bisher;
+    * Sparmodus → mit dem günstigeren Modell der Laufzeit einreihen;
+    * gesperrt → NICHT einreihen. Ein offener Chat (Browser, Telegram, Sprachfront)
+      bekommt ein ``error``-Ereignis mit dem deutschen Hinweis zu genau dieser
+      Nachricht; Wege, die selbst antworten (Kanäle, Kiosk), nehmen ``hinweis``.
+    """
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    payload = dict(payload)
+
+    from app.core import budget
+
+    entscheid = await _budget_entscheid(agent_id)
+    if entscheid.art == budget.BLOCKIEREN:
+        try:
+            await redis_client.publish(f"agent:{agent_id}:chat:response", json.dumps({
+                "agent_id": agent_id,
+                "message_id": str(payload.get("id") or ""),
+                "type": "error",
+                "data": {"message": entscheid.hinweis, "grund": "budget"},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }))
+        except Exception:  # noqa: BLE001 — der Hinweis ist Beiwerk, die Sperre nicht
+            logger.debug("Budget-Hinweis nicht veroeffentlicht", exc_info=True)
+        return Einreihung(False, hinweis=entscheid.hinweis)
+
+    if entscheid.art == budget.SPARMODELL:
+        payload["model"] = entscheid.modell
+    await redis_client.lpush(f"agent:{agent_id}:chat", json.dumps(payload))
+    return Einreihung(True, modell=entscheid.modell)
 
 
 def anhaenge_pruefen(roh) -> list[dict]:

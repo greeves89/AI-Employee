@@ -101,6 +101,10 @@ class Settings(BaseSettings):
 
     # Platform-wide spending cap (0 = unlimited)
     platform_budget_usd: float = 0.0
+    # Gilt das Monatsbudget auch für Chat-Nachrichten (#898)? Bis v1.362 lief der
+    # Chat ungeprüft am Budget vorbei. Vorgabe an; wer den Chat ausnehmen will,
+    # schaltet das unter Verwaltung → Budget bewusst ab.
+    budget_gilt_fuer_chat: bool = True
 
     # Docker
     agent_image: str = "ai-employee-agent:latest"

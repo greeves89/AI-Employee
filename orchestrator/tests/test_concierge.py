@@ -148,6 +148,7 @@ class VerdictTests(unittest.IsolatedAsyncioTestCase):
 
         from app.models.agent import Agent
         from app.models.ai_account import AIAccount
+        from app.models.chat_message import ChatMessage  # Budget zählt Chat mit (#896)
         from app.models.command_approval import CommandApproval
         from app.models.oauth_integration import OAuthIntegration
         from app.models.task import Task
@@ -159,7 +160,7 @@ class VerdictTests(unittest.IsolatedAsyncioTestCase):
 
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (Agent, Task, CommandApproval, OAuthIntegration, AIAccount):
+            for model in (Agent, Task, ChatMessage, CommandApproval, OAuthIntegration, AIAccount):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
 
@@ -286,6 +287,46 @@ class VerdictTests(unittest.IsolatedAsyncioTestCase):
                 user=SimpleNamespace(id="u1", role="admin", email="a@b.c"), db=db
             )
         self.assertIn("budget", self._kinds(out))
+
+    async def test_budget_counts_chat_too(self):
+        """#896: Chatkosten zählen fürs Budget — vorher sah der Concierge nur Aufgaben."""
+        from datetime import datetime, timezone
+        from types import SimpleNamespace
+
+        from app.models.agent import Agent, AgentState
+        from app.models.chat_message import ChatMessage
+
+        async with self.Session() as db:
+            db.add(Agent(id="ac", name="Plaudernd", state=AgentState.RUNNING, user_id="u1",
+                         config={}, budget_usd=1.0))
+            db.add(ChatMessage(agent_id="ac", session_id="s", message_id="m", role="assistant",
+                               content="x", cost_usd=2.0, timestamp=datetime.now(timezone.utc)))
+            await db.commit()
+            out = await concierge.concierge_overview(
+                user=SimpleNamespace(id="u1", role="admin", email="a@b.c"), db=db
+            )
+        self.assertIn("budget", self._kinds(out))
+
+    async def test_switch_to_stop_is_announced_until_confirmed(self):
+        """#898: Bestand mit Budget im Sparmodus bekommt einen Hinweis — bis zum Speichern."""
+        from types import SimpleNamespace
+
+        from app.core import budget
+        from app.models.agent import Agent, AgentState
+
+        async with self.Session() as db:
+            db.add(Agent(id="as", name="Sparsam", state=AgentState.RUNNING, user_id="u1",
+                         config={}, budget_usd=50.0, budget_exceeded_action="haiku"))
+            await db.commit()
+            await budget.stopp_vorgabe_umstellen(db)
+            admin = SimpleNamespace(id="u1", role="admin", email="a@b.c")
+            out = await concierge.concierge_overview(user=admin, db=db)
+            self.assertIn("budget_vorgabe", self._kinds(out))
+            agent = await db.get(Agent, "as")
+            budget.hinweis_erledigen(agent)
+            await db.commit()
+            out = await concierge.concierge_overview(user=admin, db=db)
+        self.assertNotIn("budget_vorgabe", self._kinds(out))
 
     async def test_quiet_platform_has_an_empty_list(self):
         """Ist nichts zu tun, steht da nichts — und nicht vier Kacheln mit Zahlen."""

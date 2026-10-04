@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import {
   HeartPulse, CheckCircle2, XCircle, AlertTriangle,
   Play, Loader2, Clock, Zap, TrendingUp, RefreshCw,
-  Star, DollarSign, Timer, Bot, Activity, AlertOctagon,
+  Star, DollarSign, Timer, Bot, Activity, AlertOctagon, CirclePause,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line,
@@ -15,8 +15,17 @@ import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { HealthDashboard, TestRun, ImprovementReport, AutoMetrics } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
+import { useMoney } from "@/hooks/use-money";
 
-function StatusBadge({ status }: { status: string }) {
+/** Zustand eines Agenten in Worten (die Farbe kommt aus ``health``). */
+const AGENT_ZUSTAND: Record<string, string> = {
+  healthy: "läuft",
+  warning: "eingeschränkt",
+  error: "Fehler",
+  stopped: "angehalten",
+};
+
+function StatusBadge({ status, label }: { status: string; label?: string }) {
   const colors: Record<string, string> = {
     healthy: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
     passing: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -28,13 +37,14 @@ function StatusBadge({ status }: { status: string }) {
     failed: "bg-red-500/10 text-red-400 border-red-500/20",
     critical: "bg-red-500/10 text-red-400 border-red-500/20",
     running: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    stopped: "bg-gray-500/10 text-gray-400 border-gray-500/20",
   };
   return (
     <span className={cn(
       "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium",
       colors[status?.toLowerCase()] || "bg-gray-500/10 text-gray-400 border-gray-500/20"
     )}>
-      {status}
+      {label ?? status}
     </span>
   );
 }
@@ -43,6 +53,7 @@ function StatusIcon({ status }: { status: string }) {
   const s = status?.toLowerCase();
   if (s === "healthy" || s === "passed" || s === "passing") return <CheckCircle2 className="w-5 h-5 text-emerald-400" />;
   if (s === "warning" || s === "degraded") return <AlertTriangle className="w-5 h-5 text-amber-700 dark:text-amber-400" />;
+  if (s === "stopped") return <CirclePause className="w-5 h-5 text-muted-foreground" />;
   return <XCircle className="w-5 h-5 text-red-400" />;
 }
 
@@ -63,6 +74,7 @@ function ChartTooltip({ active, payload, label }: any) {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 export function HealthView({ embedded = false }: { embedded?: boolean }) {
+  const money = useMoney();
   const [dashboard, setDashboard] = useState<HealthDashboard | null>(null);
   const [latestRun, setLatestRun] = useState<TestRun | null>(null);
   const [reports, setReports] = useState<ImprovementReport[]>([]);
@@ -79,7 +91,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
   const loadTestRunHistory = async () => {
     try {
       const data = await api.getTestRuns();
-      setTestRuns(data.runs || []);
+      setTestRuns(data.test_runs || []);
     } catch {
       // ignore
     }
@@ -222,7 +234,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                    loading ? "Laden..." : "Probleme erkannt"}
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  {dashboard?.agent_ratings ? Object.keys(dashboard.agent_ratings).length : 0} Agents registriert
+                  {dashboard?.agents?.length ?? 0} Agenten registriert
                 </p>
               </div>
             </div>
@@ -299,7 +311,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                 </div>
                 <p className="text-2xl font-bold">{formatMoney(autoMetrics.total_cost_usd)}</p>
                 <p className="text-[10px] text-muted-foreground/60 mt-1">
-                  {formatMoney(autoMetrics.total_tasks > 0 ? autoMetrics.total_cost_usd / autoMetrics.total_tasks : 0)}/Task
+                  inkl. Chat {formatMoney(autoMetrics.chat_cost_usd ?? 0)} · letzte {days} Tage
                 </p>
               </div>
               <div className="rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm p-4">
@@ -354,17 +366,13 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   <DollarSign className="w-5 h-5 text-amber-700 dark:text-amber-400" />
                   Kosten pro Tag
                 </h3>
-                <p className="text-[11px] text-muted-foreground/60 mb-4">USD je Tag</p>
+                <p className="text-[11px] text-muted-foreground/60 mb-4">{money.code} je Tag, Aufgaben und Chat</p>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={(() => {
-                      const allDays = new Set<string>();
-                      autoMetrics.agents.forEach((a) => a.daily.forEach((d) => allDays.add(d.date)));
-                      return Array.from(allDays).sort().map((date) => {
-                        const cost = autoMetrics.agents.reduce((s, a) => s + (a.daily.find((d) => d.date === date)?.cost || 0), 0);
-                        return { date: date.slice(5), Kosten: Math.round(cost * 10000) / 10000 };
-                      });
-                    })()}>
+                    <AreaChart data={(autoMetrics.daily_cost ?? []).map((d) => ({
+                      date: d.date.slice(5),
+                      Kosten: Math.round(money.value(d.cost) * 10000) / 10000,
+                    }))}>
                       <defs>
                         <linearGradient id="costGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#fbbf24" stopOpacity={0.4} />
@@ -621,13 +629,14 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   <DollarSign className="w-5 h-5 text-emerald-400" />
                   Kosten-Verlauf
                 </h3>
-                <p className="text-[11px] text-muted-foreground/60 mb-4">Durchschnittliche Task-Kosten (USD)</p>
+                <p className="text-[11px] text-muted-foreground/60 mb-4">Durchschnittliche Kosten je Aufgabe ({money.code})</p>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={reports[0].cost_trend.map((_, i) => {
                       const point: Record<string, number | string | null> = { period: `#${i + 1}` };
                       for (const report of reports) {
-                        point[report.agent_name] = report.cost_trend[i];
+                        const c = report.cost_trend[i];
+                        point[report.agent_name] = c == null ? null : money.value(c);
                       }
                       return point;
                     })}>
@@ -724,7 +733,9 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                         <p className="text-[11px] text-muted-foreground/70">{agent.id}</p>
                       </div>
                     </div>
-                    <StatusBadge status={agent.health || agent.state} />
+                    <span title={agent.state}>
+                      <StatusBadge status={agent.health} label={AGENT_ZUSTAND[agent.health] ?? agent.state} />
+                    </span>
                   </div>
                 ))}
               </div>
@@ -757,7 +768,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                   <StatusBadge status={latestRun.status} />
                   <span className="text-[11px] text-muted-foreground/70 flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {new Date(latestRun.created_at).toLocaleString("de-DE")}
+                    {latestRun.started_at ? new Date(latestRun.started_at).toLocaleString("de-DE") : "—"}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
@@ -774,7 +785,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                     <p className="text-[11px] text-muted-foreground/70">Übersprungen</p>
                   </div>
                 </div>
-                {latestRun.results?.length > 0 && (
+                {(latestRun.results?.length ?? 0) > 0 && latestRun.results && (
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {latestRun.results.map((r, i) => (
                       <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-foreground/[0.02] text-sm">
@@ -867,7 +878,7 @@ export function HealthView({ embedded = false }: { embedded?: boolean }) {
                               {run.passed}/{run.passed + run.failed + run.skipped} passed
                             </p>
                             <p className="text-[10px] text-muted-foreground/60">
-                              {new Date(run.created_at).toLocaleString("de-DE")}
+                              {run.started_at ? new Date(run.started_at).toLocaleString("de-DE") : "—"}
                               {run.duration_ms && ` · ${run.duration_ms}ms`}
                             </p>
                           </div>

@@ -166,11 +166,10 @@ async def get_agent_admin_stats(
             task_base.where(Task.status == TaskStatus.FAILED).subquery()
         )
     )
-    total_cost = await db.scalar(
-        select(func.coalesce(func.sum(Task.cost_usd), 0.0)).where(
-            Task.agent_id == agent_id
-        )
-    )
+    # Seit Beginn, Aufgaben UND Chat — aus der einen Kostenquelle (#896).
+    from app.core.kosten import Bereich, kosten
+
+    agent_kosten = await kosten(db, Bereich.agent(agent_id))
     total_duration = await db.scalar(
         select(func.coalesce(func.sum(Task.duration_ms), 0)).where(
             Task.agent_id == agent_id
@@ -247,7 +246,9 @@ async def get_agent_admin_stats(
             "total_tasks": total_tasks or 0,
             "completed_tasks": completed_tasks or 0,
             "failed_tasks": failed_tasks or 0,
-            "total_cost_usd": float(total_cost or 0),
+            "total_cost_usd": round(agent_kosten.gesamt, 4),
+            "task_cost_usd": round(agent_kosten.aufgaben, 4),
+            "chat_cost_usd": round(agent_kosten.chat, 4),
             "total_duration_ms": int(total_duration or 0),
             "total_turns": int(total_turns or 0),
             "chat_sessions": chat_sessions or 0,
@@ -272,9 +273,13 @@ async def get_admin_overview(
     )
     total_agents = await db.scalar(select(func.count()).select_from(Agent))
     total_tasks = await db.scalar(select(func.count()).select_from(Task))
-    total_cost = await db.scalar(
-        select(func.coalesce(func.sum(Task.cost_usd), 0.0))
-    )
+    # Eine Kostenquelle (#896). Die Budget-Seite zeigt „Kosten diesen Monat" — das
+    # ist die Summe ihrer Liste (je Agent) plus ``geloescht_monat_usd`` (Agenten,
+    # die es nicht mehr gibt); „seit Beginn" steht klein darunter.
+    from app.core.kosten import Bereich, kosten, monatsbeginn
+
+    seit_beginn = await kosten(db, Bereich.anlage())
+    monat = await kosten(db, Bereich.anlage(), seit=monatsbeginn())
     completed_tasks = await db.scalar(
         select(func.count()).select_from(
             select(Task).where(Task.status == TaskStatus.COMPLETED).subquery()
@@ -294,7 +299,12 @@ async def get_admin_overview(
             "completed": completed_tasks or 0,
             "failed": failed_tasks or 0,
         },
-        "cost": {"total_usd": float(total_cost or 0)},
+        "cost": {
+            # seit Beginn, Aufgaben + Chat, inklusive geloeschter Agenten
+            "total_usd": round(seit_beginn.gesamt, 4),
+            "monat_usd": round(monat.gesamt, 4),
+            "geloescht_monat_usd": round(monat.geloescht, 4),
+        },
     }
 
 

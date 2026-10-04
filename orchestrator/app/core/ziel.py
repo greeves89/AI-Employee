@@ -20,7 +20,6 @@ Harnessen gepflegt werden muesste.
 
 from __future__ import annotations
 
-import json
 import re
 import uuid
 
@@ -229,7 +228,12 @@ async def naechste_runde(redis_client, agent_id: str, session_id: str, ziel: str
         content=f"Weiter am Ziel — Runde {runde} von {ZIEL_MAX_RUNDEN}",
         meta={"source": "goal", "runde": runde},
     )
-    await redis_client.lpush(f"agent:{agent_id}:chat", json.dumps({
+    # Jede Runde kostet wie eine Chat-Nachricht — also auch hier das Budget (#898).
+    # Gesperrt: der Hinweis steht als Fehler im Gespraech, eine weitere Runde
+    # wird dann nicht mehr angestossen (keine Antwort, kein Weiter).
+    from app.core.chat_auftrag import einreihen
+
+    await einreihen(redis_client, agent_id, {
         "id": message_id,
         "text": auftrag(ziel, runde),
         "model": None,
@@ -237,5 +241,5 @@ async def naechste_runde(redis_client, agent_id: str, session_id: str, ziel: str
         "source": "webapp",
         "chat_session_id": session_id,
         "reasoning": "",
-    }))
+    })
     return message_id

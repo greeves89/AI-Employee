@@ -25,6 +25,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/health", tags=["health"])
 
 
+#: Zustand eines Agenten → Ampel der Health-Seite.
+_AGENT_HEALTH = {
+    "running": "healthy",
+    "idle": "healthy",
+    "working": "healthy",
+    "created": "warning",
+    "stopped": "stopped",
+    "error": "error",
+}
+
+
 def _run_to_response(run: TestRun) -> dict:
     return {
         "id": run.id,
@@ -211,9 +222,19 @@ async def get_health_dashboard(
         agents_stmt = agents_stmt.where(Agent.id.in_(sichtbar))
     agents_result = await db.execute(agents_stmt)
     agents = list(agents_result.scalars().all())
+    agent_list = []
     for agent in agents:
         config = agent.config or {}
         improvement = config.get("improvement", {})
+        # Die Seite las ``agents`` schon immer — geliefert wurde es nie, deshalb
+        # stand dort „Keine Agents gefunden" unter „13 Agents registriert" (#896).
+        state = getattr(agent.state, "value", agent.state) or "created"
+        agent_list.append({
+            "id": agent.id,
+            "name": agent.name,
+            "state": state,
+            "health": _AGENT_HEALTH.get(state, "warning"),
+        })
         avg_result = await db.execute(
             select(func.avg(TaskRating.rating)).where(TaskRating.agent_id == agent.id)
         )
@@ -227,17 +248,16 @@ async def get_health_dashboard(
         })
 
     # --- Cost & task summary (7 days) ---
+    # Kosten aus der EINEN Kostenquelle (#896): Aufgaben UND Chat, nutzergetrennt.
+    from app.core.kosten import Bereich, kosten
+
     seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    cost_stmt = select(
-        func.sum(Task.cost_usd),
-        func.count(Task.id),
-    ).where(Task.completed_at >= seven_days_ago)
+    bereich = Bereich.anlage() if sichtbar is None else Bereich.agenten(sichtbar)
+    total_cost_7d = round((await kosten(db, bereich, seit=seven_days_ago)).gesamt, 4)
+    count_stmt = select(func.count(Task.id)).where(Task.completed_at >= seven_days_ago)
     if sichtbar is not None:
-        cost_stmt = cost_stmt.where(Task.agent_id.in_(sichtbar))
-    cost_result = await db.execute(cost_stmt)
-    cost_row = cost_result.one()
-    total_cost_7d = round(float(cost_row[0]), 4) if cost_row[0] else None
-    total_tasks_7d = cost_row[1] or 0
+        count_stmt = count_stmt.where(Task.agent_id.in_(sichtbar))
+    total_tasks_7d = int((await db.execute(count_stmt)).scalar() or 0)
 
     # --- Open auto-test issues (count from latest run) ---
     open_issues = 0
@@ -255,6 +275,7 @@ async def get_health_dashboard(
         "response_time_trend": response_time_trend,
         "failure_categories": failure_categories,
         "agent_ratings": agent_ratings_list,
+        "agents": agent_list,
         "open_auto_issues": open_issues,
         "total_cost_7d": total_cost_7d,
         "total_tasks_7d": total_tasks_7d,
@@ -372,14 +393,28 @@ async def get_auto_metrics(
 
     # Platform totals
     total_tasks = sum(m["total_tasks"] for m in agent_metrics)
-    total_cost = sum(m["total_cost_usd"] or 0 for m in agent_metrics)
     total_succeeded = sum(m["succeeded"] for m in agent_metrics)
     overall_success_rate = round(total_succeeded / total_tasks * 100, 1) if total_tasks else 0
+
+    # Kosten aus der EINEN Kostenquelle (#896): Aufgaben UND Chat, im selben
+    # Bereich wie die Agentenliste. Vorher nur Aufgaben — die Seite widersprach
+    # dem Budget und dem Dashboard.
+    from app.core.kosten import Bereich, kosten
+
+    bereich = Bereich.anlage() if sichtbar is None else Bereich.agenten(sichtbar)
+    gesamt = await kosten(db, bereich, seit=since, je_tag=True)
+    for m in agent_metrics:
+        m["total_cost_usd"] = round(gesamt.je_agent.get(m["agent_id"], 0.0), 4)
 
     return {
         "days": days,
         "total_tasks": total_tasks,
-        "total_cost_usd": round(total_cost, 4),
+        "total_cost_usd": round(gesamt.gesamt, 4),
+        "task_cost_usd": round(gesamt.aufgaben, 4),
+        "chat_cost_usd": round(gesamt.chat, 4),
+        "daily_cost": [
+            {"date": tag, "cost": round(betrag, 4)} for tag, betrag in sorted(gesamt.je_tag.items())
+        ],
         "success_rate": overall_success_rate,
         "agents": agent_metrics,
     }

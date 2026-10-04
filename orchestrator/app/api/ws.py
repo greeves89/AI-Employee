@@ -1069,7 +1069,11 @@ async def ws_agent_chat(websocket: WebSocket, agent_id: str, token: str | None =
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }))
 
-            await _redis.client.lpush(f"agent:{agent_id}:chat", chat_payload)
+            # Ueber den EINEN Einreihen-Weg — dort prueft das Budget (#898). Ist es
+            # aufgebraucht, kommt der Hinweis als ``error`` zu genau dieser
+            # Nachricht ueber den Antwortkanal, den diese Verbindung abonniert hat.
+            if not (await _chat_auftrag.einreihen(_redis.client, agent_id, chat_payload)).eingereiht:
+                continue
 
             # Ist der Agent beschaeftigt, sofort sagen, WOMIT — statt Stille.
             # Bisher hiess es immer „steering current agent turn"; das stimmt nur,

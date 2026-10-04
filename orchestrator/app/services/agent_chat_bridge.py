@@ -5,7 +5,8 @@ This is the single seam both voice paths use to hand work to the container agent
 - the staged STT→LLM→TTS pipeline (``VoiceSession._delegate_to_container``)
 - the Nova Sonic realtime front (``RealtimeVoiceSession`` — the ``ask_agent`` tool)
 
-It mirrors the WS chat handler exactly: LPUSH to ``agent:{id}:chat`` and read the
+It mirrors the WS chat handler exactly: enqueue via ``chat_auftrag.einreihen`` (budget
+check, #898) into ``agent:{id}:chat`` and read the
 per-message stream on ``agent:{id}:chat:response`` until ``done``. No new agent
 mechanism — the agent can't tell whether it's answering text chat, the staged
 voice pipeline, or Nova Sonic.
@@ -52,9 +53,20 @@ async def ask_agent_via_chat(
     if chat_session_id:
         payload["chat_session_id"] = chat_session_id
 
+    from app.core.chat_auftrag import einreihen
+
     channel = f"agent:{agent_id}:chat:response"
     pubsub = await redis.subscribe(channel)
-    await redis.client.lpush(f"agent:{agent_id}:chat", json.dumps(payload))
+    ergebnis = await einreihen(redis.client, agent_id, payload)
+    if not ergebnis.eingereiht:
+        # Budget aufgebraucht (#898): nichts abzuwarten — die Sprachfront spricht
+        # den Hinweis, statt 90 s auf eine Antwort zu warten, die nicht kommt.
+        try:
+            await pubsub.unsubscribe(channel)
+            await pubsub.aclose()
+        except Exception:  # noqa: BLE001
+            pass
+        return ergebnis.hinweis
 
     collected: list[str] = []
     deadline = asyncio.get_running_loop().time() + timeout

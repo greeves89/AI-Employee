@@ -12,9 +12,14 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   DEFAULT_MONEY,
+  alsEingabe,
+  ausEingabe,
   formatMoney,
   loadMoneyConfig,
   moneyTitle,
+  vonUsd,
+  waehrungsCode,
+  waehrungsZeichen,
   type MoneyConfig,
 } from "@/lib/money";
 
@@ -38,6 +43,16 @@ export function useMoney() {
       fmt: (usd: number) => formatMoney(usd, cfg),
       /** Der Originalbetrag als `title` — gehört an jede umgerechnete Zahl. */
       title: (usd: number) => moneyTitle(usd, cfg),
+      /** „€" oder „$" — für Beschriftungen von Feldern und Achsen. */
+      symbol: waehrungsZeichen(cfg),
+      /** „EUR" oder „USD" — für Beschriftungen wie „EUR je Tag". */
+      code: waehrungsCode(cfg),
+      /** USD → Zahl in der Anzeigewährung (Diagramme). */
+      value: (usd: number) => vonUsd(usd, cfg),
+      /** Vorbelegung eines Geldfelds (leer = kein Limit). */
+      toInput: (usd: number | null | undefined) => alsEingabe(usd, cfg),
+      /** Feldinhalt → USD zum Speichern; null = kein Limit, undefined = ungültig. */
+      fromInput: (text: string) => ausEingabe(text, cfg),
     }),
     [cfg],
   );

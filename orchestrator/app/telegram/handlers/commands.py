@@ -304,7 +304,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         redis = aioredis.from_url(settings.redis_url, decode_responses=True)
         message_id = f"tg-{update.message.message_id}"
-        payload = json.dumps({
+        payload = {
             "id": message_id,
             "text": text,
             "model": None,
@@ -314,9 +314,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 "username": update.effective_user.username if update.effective_user else "",
                 "first_name": update.effective_user.first_name if update.effective_user else "",
             },
-        })
-        await redis.lpush(f"agent:{agent_id}:chat", payload)
+        }
+        # Budget (#898): gesperrt → der Lauscher oben bekommt den Hinweis als ``error``.
+        from app.core.chat_auftrag import einreihen
+
+        eingereiht = (await einreihen(redis, agent_id, payload)).eingereiht
         await redis.aclose()
+        if not eingereiht:
+            return
 
         # Show typing indicator
         await update.effective_chat.send_action("typing")

@@ -157,14 +157,19 @@ async def capture_if_worthwhile(message: InboundMessage) -> None:
         logger.warning("[Gateway] Auto-Capture fehlgeschlagen: %s", e)
 
 
-async def enqueue(redis, message: InboundMessage) -> None:
+async def enqueue(redis, message: InboundMessage):
     """In die Warteschlange des Agenten legen — dieselbe, die auch der Web-Chat nutzt.
 
     Es gibt bewusst keine zweite Warteschlange je Kanal: der Agent soll eine
     Unterhaltung führen, nicht vier getrennte, und die Live-Steuerung (Nachricht
     mitten im Lauf) hängt an genau dieser einen Liste.
+
+    Eingereiht wird über ``chat_auftrag.einreihen`` — dort prüft das Budget (#898).
+    Rückgabe ist deren ``Einreihung``.
     """
-    payload = json.dumps({
+    from app.core.chat_auftrag import einreihen
+
+    payload = {
         "id": message.queue_message_id,
         "text": message.text,
         "model": None,
@@ -175,8 +180,10 @@ async def enqueue(redis, message: InboundMessage) -> None:
         "channel": message.channel,
         message.channel: message.context,
         **({"telegram": message.context} if message.channel == CHANNEL_TELEGRAM else {}),
-    })
-    await redis.client.lpush(f"agent:{message.agent_id}:chat", payload)
+    }
+    ergebnis = await einreihen(redis.client, message.agent_id, payload)
+    if not ergebnis.eingereiht:
+        return ergebnis
 
     # Den Kanal-Kontext getrennt hinterlegen. Die Laufzeiten reichen ihn nicht
     # zuverlaessig bis in die Antwort durch; ohne diesen Rueckgriff wuesste der
@@ -190,6 +197,7 @@ async def enqueue(redis, message: InboundMessage) -> None:
         )
     except Exception:  # noqa: BLE001 — Zustellung geht vor
         logger.debug("[Gateway] Kontext konnte nicht hinterlegt werden", exc_info=True)
+    return ergebnis
 
 
 async def send_reply(channel: str, agent, context: dict, text: str) -> bool:
@@ -366,7 +374,25 @@ async def deliver(redis, message: InboundMessage, *, capture: bool = True) -> bo
     await persist_message(message)
     if capture:
         await capture_if_worthwhile(message)
-    await enqueue(redis, message)
+    ergebnis = await enqueue(redis, message)
+    if not ergebnis.eingereiht:
+        # Budget aufgebraucht (#898). Telegram zeigt den Hinweis über seinen
+        # Lauscher (``error``-Ereignis); die gesammelten Kanäle kennen nur fertige
+        # Antworten — sie bekommen ihn hier direkt, statt still zu bleiben.
+        if message.channel != CHANNEL_TELEGRAM:
+            try:
+                from app.db.session import async_session_factory
+                from app.models.agent import Agent
+
+                async with async_session_factory() as db:
+                    agent = await db.get(Agent, message.agent_id)
+                if agent:
+                    await send_reply(message.channel, agent, message.context, ergebnis.hinweis)
+            except Exception:  # noqa: BLE001
+                logger.warning("[Gateway] Budget-Hinweis an %s nicht zustellbar", message.channel)
+        logger.info("[Gateway] %s -> Agent %s abgelehnt: Budget aufgebraucht",
+                    message.channel, message.agent_id)
+        return False
     # Sonst haelt der Leerlauf-Sweep den Agenten fuer verwaist und stoppt ihn
     # mitten im Gespraech — er kennt nur Aktivitaet in der Web-Oberflaeche.
     from app.services.user_lifecycle import mark_agent_interaction

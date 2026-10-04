@@ -156,26 +156,49 @@ async def _collect_attention(
 
     # 6 · Budgets. Aufgebraucht heisst je nach Einstellung: heruntergestuft oder
     #     gestoppt — beides sollte man wissen, bevor jemand fragt.
+    #     Gezählt über die eine Kostenquelle (#896): Aufgaben UND Chat.
     try:
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        spent_rows = (await db.execute(
-            select(Task.agent_id, func.coalesce(func.sum(Task.cost_usd), 0))
-            .where(Task.created_at >= month_start, Task.agent_id.isnot(None))
-            .group_by(Task.agent_id)
-        )).all()
-        spent = {aid: float(total or 0) for aid, total in spent_rows}
+        from app.core import budget as _budget
+        from app.core.kosten import Bereich, betrag_anzeigen, kosten, monatsbeginn
+
+        spent = (await kosten(db, Bereich.anlage(), seit=monatsbeginn(now))).je_agent
         for agent in agents:
             state = attention.budget_state(spent.get(agent.id), agent.budget_usd)
             if state is None:
                 continue
+            if state == attention.BROKEN:
+                folge = ("Sparmodus (günstigeres Modell)"
+                         if agent.budget_exceeded_action == _budget.AKTION_SPARMODUS
+                         and _budget.sparmodell_fuer_agent(agent)
+                         else "angehalten, nimmt keine Aufträge an")
+                detail = (f"Monatsbudget aufgebraucht ({betrag_anzeigen(spent.get(agent.id, 0))} "
+                          f"von {betrag_anzeigen(agent.budget_usd)}) — Folge: {folge}")
+            else:
+                detail = (f"Monatsbudget zu über 90 % verbraucht "
+                          f"({betrag_anzeigen(spent.get(agent.id, 0))} von "
+                          f"{betrag_anzeigen(agent.budget_usd)})")
             items.append(attention.item(
-                "budget", state, agent.name,
-                (f"Monatsbudget aufgebraucht ({spent.get(agent.id, 0):.2f} von "
-                 f"{agent.budget_usd:.2f} $) — Folge: {agent.budget_exceeded_action}"
-                 if state == attention.BROKEN
-                 else f"Monatsbudget zu über 90 % verbraucht "
-                      f"({spent.get(agent.id, 0):.2f} von {agent.budget_usd:.2f} $)"),
+                "budget", state, agent.name, detail,
                 agent_id=agent.id, link=f"/agents/{agent.id}",
+            ))
+
+        # Umstellung auf „Stoppen" (#898): Bestandsagenten mit Budget im Sparmodus
+        # behalten ihre Einstellung — einmal bestätigen (speichern), dann ist Ruhe.
+        offen = [a for a in agents
+                 if _budget.hinweis_offen(a) and a.budget_exceeded_action == _budget.AKTION_SPARMODUS]
+        if offen:
+            ohne_sparmodell = [a.name for a in offen if not _budget.sparmodell_fuer_agent(a)]
+            detail = (
+                "Neue Agenten halten bei aufgebrauchtem Budget an. Diese Agenten schalten "
+                "weiter auf ein günstigeres Modell: " + ", ".join(a.name for a in offen) + "."
+            )
+            if ohne_sparmodell:
+                detail += (" Ohne günstigeres Modell in ihrer Laufzeit (hier wird angehalten): "
+                           + ", ".join(ohne_sparmodell) + ".")
+            detail += " Einstellung unter Budget prüfen und speichern."
+            items.append(attention.item(
+                "budget_vorgabe", attention.WAITING, "Budget: Vorgabe ist jetzt Stoppen",
+                detail, link="/admin?tab=budget", count=len(offen),
             ))
     except Exception:  # noqa: BLE001
         logger.debug("Budgets nicht auswertbar", exc_info=True)

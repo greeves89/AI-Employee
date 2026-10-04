@@ -24,6 +24,8 @@ class SettingsUpdate(BaseModel):
     master_rules_enabled: bool | None = None
     display_currency: str | None = None
     usd_eur_rate: float | None = None
+    #: Gilt das Monatsbudget auch im Chat (#898)?
+    budget_gilt_fuer_chat: bool | None = None
     sso_only_login: bool | None = None
     require_user_approval: bool | None = None
     revoke_msgraph_on_logout: bool | None = None
@@ -169,6 +171,7 @@ class SettingsResponse(BaseModel):
     master_rules_enabled: bool = True
     display_currency: str = "EUR"
     usd_eur_rate: float = 0.92
+    budget_gilt_fuer_chat: bool = True
     sso_only_login: bool = False
     require_user_approval: bool = False
     revoke_msgraph_on_logout: bool = False

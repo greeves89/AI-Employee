@@ -1,9 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Cpu, Zap, CheckCircle2, Clock, DollarSign } from "lucide-react";
 import type { Agent, Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, moneyTitle } from "@/lib/money";
+import { getAnalyticsOverview } from "@/lib/api";
+
+/** Zeitraum der Kennzahlen „Erledigt" und „Kosten" — vom Server gerechnet. */
+const KENNZAHLEN_TAGE = 30;
 
 interface StatsOverviewProps {
   agents: Agent[];
@@ -37,7 +42,7 @@ const statConfig = [
   },
   {
     key: "completed",
-    label: "Erledigt",
+    label: `Erledigt (${KENNZAHLEN_TAGE} Tage)`,
     icon: CheckCircle2,
     color: "text-emerald-400",
     gradient: "from-emerald-500/20 via-emerald-500/5 to-transparent",
@@ -45,7 +50,7 @@ const statConfig = [
   },
   {
     key: "cost",
-    label: "Kosten gesamt",
+    label: `Kosten (${KENNZAHLEN_TAGE} Tage)`,
     icon: DollarSign,
     color: "text-violet-400",
     gradient: "from-violet-500/20 via-violet-500/5 to-transparent",
@@ -53,23 +58,48 @@ const statConfig = [
   },
 ];
 
+/** Erledigt + Kosten kommen vom Server (#896): fertige Aufgaben UND Antworten im
+ *  Chat, Kosten aus Aufgaben UND Chat, nur die eigenen Agenten. Vorher zählte der
+ *  Browser die geladenen Aufgaben — nach einem Tag im Chat stand „Erledigt 0". */
+function useKennzahlen() {
+  const [werte, setWerte] = useState<{ erledigt: number; kosten: number } | null>(null);
+  useEffect(() => {
+    let aktiv = true;
+    getAnalyticsOverview(KENNZAHLEN_TAGE)
+      .then((o) => {
+        if (aktiv) {
+          setWerte({
+            erledigt: o.done_total ?? o.completed_tasks + (o.chat_replies ?? 0),
+            kosten: o.total_cost_usd,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => { aktiv = false; };
+  }, []);
+  return werte;
+}
+
 export function StatsOverview({ agents, tasks }: StatsOverviewProps) {
+  const kennzahlen = useKennzahlen();
   const activeAgents = agents.filter(
     (a) => a.state === "running" || a.state === "idle" || a.state === "working"
   ).length;
   const workingAgents = agents.filter((a) => a.state === "working").length;
-  const completedTasks = tasks.filter((t) => t.status === "completed").length;
   const runningTasks = tasks.filter(
     (t) => t.status === "running" || t.status === "queued"
   ).length;
-  const totalCost = tasks.reduce((sum, t) => sum + (t.cost_usd || 0), 0);
 
   const values: Record<string, string | number> = {
     active: activeAgents,
     working: workingAgents,
     running: runningTasks,
-    completed: completedTasks,
-    cost: formatMoney(totalCost),
+    completed: kennzahlen ? kennzahlen.erledigt : "–",
+    cost: kennzahlen ? formatMoney(kennzahlen.kosten) : "–",
+  };
+  const titles: Record<string, string | undefined> = {
+    cost: kennzahlen ? moneyTitle(kennzahlen.kosten) : undefined,
+    completed: "Fertige Aufgaben und Antworten im Chat",
   };
 
   return (
@@ -96,7 +126,10 @@ export function StatsOverview({ agents, tasks }: StatsOverviewProps) {
             <p className="text-[11px] font-medium text-muted-foreground mb-0.5">
               {stat.label}
             </p>
-            <p className={cn("text-2xl font-bold tabular-nums leading-none tracking-tight", stat.color)}>
+            <p
+              title={titles[stat.key]}
+              className={cn("text-2xl font-bold tabular-nums leading-none tracking-tight", stat.color)}
+            >
               {values[stat.key]}
             </p>
           </div>

@@ -248,16 +248,25 @@ async def kiosk_chat_send(
     ))
     await db.commit()
 
-    await redis.client.lpush(
-        f"agent:{agent_id}:chat",
-        json.dumps({
-            "id": message_id,
-            "text": text,
-            "source": "webapp",
-            "chat_session_id": session_id,
-        }),
-    )
-    return {"session_id": session_id, "message_id": message_id}
+    from app.core.chat_auftrag import einreihen
+
+    ergebnis = await einreihen(redis.client, agent_id, {
+        "id": message_id,
+        "text": text,
+        "source": "webapp",
+        "chat_session_id": session_id,
+    })
+    if not ergebnis.eingereiht:
+        # Budget aufgebraucht (#898). Der Kiosk liest den Verlauf per Abfrage —
+        # also steht der Hinweis dort als Fehlerzeile, statt dass er wartet.
+        db.add(ChatMessage(
+            agent_id=agent_id, session_id=session_id, message_id=message_id,
+            role="error", content=ergebnis.hinweis, meta={"grund": "budget"},
+        ))
+        await db.commit()
+        return {"session_id": session_id, "message_id": message_id,
+                "eingereiht": False, "hinweis": ergebnis.hinweis}
+    return {"session_id": session_id, "message_id": message_id, "eingereiht": True}
 
 
 @router.post("/ws-ticket/{agent_id}")

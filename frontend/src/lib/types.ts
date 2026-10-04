@@ -284,6 +284,8 @@ export interface Settings {
    *  umgerechnet wird nur für die Darstellung, siehe lib/money.ts. */
   display_currency?: string;
   usd_eur_rate?: number;
+  /** Gilt das Monatsbudget auch im Chat (#898)? Vorgabe an. */
+  budget_gilt_fuer_chat?: boolean;
   // Provider info
   model_provider: ModelProvider;
   has_bedrock: boolean;
