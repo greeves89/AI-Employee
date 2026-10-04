@@ -14,7 +14,7 @@
 
 import { getSettings } from "./api";
 import {
-  alsEingabe, ausEingabe, vonUsd, waehrungsCode, waehrungsZeichen, zuUsd,
+  alsEingabe, ausEingabe, summeDerZeilen, vonUsd, waehrungsCode, waehrungsZeichen, zuUsd,
   type WaehrungsKonfig,
 } from "./waehrung";
 
@@ -23,6 +23,14 @@ export type MoneyConfig = WaehrungsKonfig;
 
 // Eingaben in der Anzeigewährung (#896) — eine Stelle für Anzeige UND Eingabe.
 export { alsEingabe, ausEingabe, vonUsd, waehrungsCode, waehrungsZeichen, zuUsd };
+
+/**
+ * Summe einer Liste, die zu ihren angezeigten Zeilen passt (#896) — siehe
+ * ``summeDerZeilen``. Ergebnis in USD, für ``formatMoney``.
+ */
+export function summeWieAngezeigt(betraegeUsd: number[], cfg: MoneyConfig = current): number {
+  return summeDerZeilen(betraegeUsd, cfg);
+}
 
 /** Zuletzt geladene Konfiguration — für Beschriftungen außerhalb von Hooks. */
 export function currentMoney(): MoneyConfig {

@@ -85,7 +85,7 @@ import { DatenschutzKarte } from "@/components/admin/datenschutz-karte";
 import { nutzerLoeschenMitRueckfrage } from "@/components/admin/nutzer-loeschen";
 import type { AdminOverview } from "@/lib/api";
 import type { AdminUser, Agent, Feedback, FeedbackStatus } from "@/lib/types";
-import { formatMoney, moneyTitle } from "@/lib/money";
+import { formatMoney, moneyTitle, summeWieAngezeigt } from "@/lib/money";
 import { useMoney } from "@/hooks/use-money";
 import { rollenName } from "@/lib/rollen";
 
@@ -1394,9 +1394,13 @@ function BudgetTab({
   };
 
   // „Kosten diesen Monat" = Summe der Liste unten (+ Agenten, die es nicht mehr
-  // gibt, als eigene Zeile). Beides aus derselben Kostenquelle (#896).
+  // gibt, als eigene Zeile). Beides aus derselben Kostenquelle (#896). Addiert
+  // werden die Zeilen, wie sie dastehen (cent-genau gerundet) — die exakte Summe
+  // wich sonst um einen Cent von der Liste ab; sie steht im Tooltip.
   const geloeschtMonat = overview?.cost.geloescht_monat_usd ?? 0;
-  const monthCost = agents.reduce((s, a) => s + (a.monthly_cost_usd || 0), 0) + geloeschtMonat;
+  const monatsZeilen = [...agents.map((a) => a.monthly_cost_usd || 0), geloeschtMonat];
+  const monthCostExakt = monatsZeilen.reduce((s, b) => s + b, 0);
+  const monthCost = summeWieAngezeigt(monatsZeilen, money.cfg);
   const sinceStart = overview?.cost.total_usd ?? 0;
 
   // Sort: over-budget first, then by spend desc
@@ -1518,7 +1522,7 @@ function BudgetTab({
       <div className="grid grid-cols-4 gap-4">
         <div className="rounded-xl border border-foreground/[0.06] bg-card/80 p-4">
           <p className="text-[11px] font-medium text-muted-foreground/70 mb-1">Kosten diesen Monat</p>
-          <p className="text-2xl font-bold text-foreground" title={moneyTitle(monthCost)}>{formatMoney(monthCost)}</p>
+          <p className="text-2xl font-bold text-foreground" title={moneyTitle(monthCostExakt)}>{formatMoney(monthCost)}</p>
           <p className="text-[10px] text-muted-foreground/50 mt-0.5" title={moneyTitle(sinceStart)}>
             Aufgaben und Chat · seit Beginn {formatMoney(sinceStart)}
           </p>
