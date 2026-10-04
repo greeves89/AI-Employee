@@ -22,10 +22,11 @@ import { useWebSocket } from "@/hooks/use-websocket";
 import type { LogEvent } from "@/lib/types";
 import { ChatOverview } from "./chat-overview";
 import { SessionRail } from "./session-rail";
+import { ChatSymbolKnopf } from "./chat-symbol-knopf";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { aufgabenTitel } from "@/lib/aufgaben-anzeige";
 import { istKontingentMeldung, kontingentWiederAb } from "@/lib/kontingent";
-import { werkzeugAufDeutsch } from "@/lib/werkzeug-namen";
+import { werkzeugAufDeutsch, werkzeugKurzname } from "@/lib/werkzeug-namen";
 import { cn, formatBytes } from "@/lib/utils";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import * as api from "@/lib/api";
@@ -33,7 +34,7 @@ import { ApprovalPrompt, type ApprovalPromptData } from "@/components/agents/app
 import { useAuthStore } from "@/lib/auth";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
-import { inZwischenablage } from "@/lib/zwischenablage";
+import { einfuegenTaste, inZwischenablage } from "@/lib/zwischenablage";
 import { ohneZielMarke, type ZielStand } from "@/lib/ziel-marke";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
@@ -313,7 +314,7 @@ function LiveActivity({ agentId }: { agentId: string }) {
   return (
     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/70 tabular-nums">
       <Wrench className="h-3 w-3 shrink-0" />
-      <span className="font-medium text-muted-foreground/90">{tool}</span>
+      <span className="font-medium text-muted-foreground/90" title={tool}>{werkzeugKurzname(tool)}</span>
       {target && (
         <span className="truncate max-w-[220px]">· {target}</span>
       )}
@@ -347,81 +348,54 @@ function gespraechsStand(agent: unknown, sitzung: string): { busy: boolean; wart
 
 /* ─── Tool Display Helper ───────────────────────────────────────────── */
 
+/** Anzeige eines Werkzeugaufrufs: deutscher Kurzname (zentral in
+ *  ``lib/werkzeug-namen``), kurze Beschreibung, Detail. Die interne Kennung
+ *  (``Edit``, ``TodoWrite`` …) bleibt unangetastet und steht im Tooltip. */
 function getToolDisplay(tool: string, input: Record<string, unknown>): { label: string; description: string; detail: string } {
   const inp = input || {};
+  const label = werkzeugKurzname(tool);
+  const dateiName = (rueckfall: string) => String(inp.file_path || "").split("/").pop() || rueckfall;
   switch (tool) {
     case "Bash":
     case "bash":
-      return {
-        label: "Bash",
-        description: String(inp.description || ""),
-        detail: String(inp.command || ""),
-      };
+      return { label, description: String(inp.description || ""), detail: String(inp.command || "") };
     case "Read":
     case "read":
-      return {
-        label: "Read",
-        description: String(inp.file_path || "").split("/").pop() || "Read file",
-        detail: String(inp.file_path || ""),
-      };
+      return { label, description: dateiName("Datei lesen"), detail: String(inp.file_path || "") };
     case "Write":
     case "write":
-      return {
-        label: "Write",
-        description: String(inp.file_path || "").split("/").pop() || "Write file",
-        detail: String(inp.file_path || ""),
-      };
+      return { label, description: dateiName("Datei schreiben"), detail: String(inp.file_path || "") };
     case "Edit":
     case "edit":
-      return {
-        label: "Edit",
-        description: String(inp.file_path || "").split("/").pop() || "Edit file",
-        detail: String(inp.file_path || ""),
-      };
+      return { label, description: dateiName("Datei bearbeiten"), detail: String(inp.file_path || "") };
     case "Grep":
     case "grep":
       return {
-        label: "Grep",
-        description: `Search: ${String(inp.pattern || "")}`,
+        label,
+        description: `Suche: ${String(inp.pattern || "")}`,
         detail: `${inp.pattern || ""}${inp.path ? ` in ${inp.path}` : ""}`,
       };
     case "Glob":
     case "glob":
-      return {
-        label: "Glob",
-        description: String(inp.pattern || ""),
-        detail: String(inp.pattern || ""),
-      };
+      return { label, description: String(inp.pattern || ""), detail: String(inp.pattern || "") };
     case "WebSearch":
     case "web_search":
-      return {
-        label: "WebSearch",
-        description: String(inp.query || "Search"),
-        detail: String(inp.query || ""),
-      };
+      return { label, description: String(inp.query || "Websuche"), detail: String(inp.query || "") };
     case "WebFetch":
     case "web_fetch":
-      return {
-        label: "WebFetch",
-        description: "Fetch URL",
-        detail: String(inp.url || ""),
-      };
+      return { label, description: "Webseite abrufen", detail: String(inp.url || "") };
     case "Task":
     case "task":
       return {
-        label: "Task",
-        description: String(inp.description || "Run subagent"),
+        label,
+        description: String(inp.description || "Helfer starten"),
         detail: String(inp.prompt || "").slice(0, 300),
       };
     case "TodoWrite":
-      return {
-        label: "TodoWrite",
-        description: "Update tasks",
-        detail: "",
-      };
+      return { label, description: "Arbeitsliste aktualisieren", detail: "" };
     default:
       return {
-        label: tool || "Tool",
+        label,
         description: "",
         // Leere Eingabe ist keine Eingabe — kein ``IN {}`` (#911).
         detail: Object.keys(inp).length > 0 ? JSON.stringify(inp).slice(0, 300) : "",
@@ -758,6 +732,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const intentionalClose = useRef(false);
   const currentWsSessionId = useRef<string | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
+  // Erste Nachricht ging raus, bevor der Server die Gesprächskennung gemeldet
+  // hat: deren Vorschau, bis das ``session``-Ereignis den Reiter anlegt (#907).
+  const ersteNachrichtOhneReiterRef = useRef<string | null>(null);
   // Gespraeche, deren Live-Ereignisse verworfen wurden, weil gerade ein anderes
   // offen war. Ihr Stand im Fenster ist luckenhaft: Das naechste „fertig“ dort
   // laedt den gespeicherten Verlauf neu, statt eine halbe Antwort stehen zu lassen.
@@ -1222,7 +1199,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         {
           id: "connection-failed",
           role: "error",
-          content: "Could not connect to agent. The container may be stopped or removed.",
+          content: "Keine Verbindung zum Agenten. Er ist vermutlich gestoppt oder wurde entfernt.",
           timestamp: new Date().toISOString(),
         },
       ]);
@@ -1269,7 +1246,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           {
             id: "connection-failed",
             role: "error",
-            content: "Could not authenticate the connection. Please refresh the page and sign in again.",
+            content: "Die Verbindung konnte nicht angemeldet werden. Bitte Seite neu laden und erneut anmelden.",
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -1314,7 +1291,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           {
             id: "agent-unavailable",
             role: "error",
-            content: event.reason || "Agent is not available. Container may be stopped or removed.",
+            content: event.reason || "Der Agent ist nicht erreichbar. Er ist vermutlich gestoppt oder wurde entfernt.",
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -1332,7 +1309,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               id: "reconnecting",
               role: "system",
               content: isContainerDown
-                ? `Agent container is starting… reconnecting (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`
+                ? `Agent startet … verbinde neu (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`
                 : `Verbinde neu … (${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS})`,
               timestamp: new Date().toISOString(),
             },
@@ -1346,7 +1323,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           {
             id: "connection-failed",
             role: "error",
-            content: "Could not connect to agent. The container may be stopped or removed.",
+            content: "Keine Verbindung zum Agenten. Er ist vermutlich gestoppt oder wurde entfernt.",
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -1385,11 +1362,19 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             if (inherited) {
               api.updateChatSession(agentId, sid, { reasoning: inherited }).catch(() => {});
             }
-            // Only add to session tabs if truly new (not already in list)
-            setSessions((prev) => {
-              if (prev.some((s) => s.id === sid)) return prev;
-              return [{ id: sid, label: `Chat ${prev.length + 1}`, preview: "", reasoning: inherited, isNew: true }, ...prev];
-            });
+            // Einen Reiter gibt es erst mit der ersten Nachricht (#907). Nach
+            // „Neues Gespräch" meldet der Server die neue Kennung sofort — wer
+            // dann nichts schrieb und erneut „Neues Gespräch" wählte, hatte
+            // leere „Chat 2", „Chat 3" in der Liste. Ging die erste Nachricht
+            // schon vor dieser Meldung raus, legt sie den Reiter hier an.
+            const vorschau = ersteNachrichtOhneReiterRef.current;
+            ersteNachrichtOhneReiterRef.current = null;
+            if (vorschau !== null) {
+              setSessions((prev) => {
+                if (prev.some((s) => s.id === sid)) return prev;
+                return [{ id: sid, label: `Chat ${prev.length + 1}`, preview: vorschau, reasoning: inherited, isNew: true }, ...prev];
+              });
+            }
           }
           return;
         }
@@ -1961,13 +1946,19 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
     onTurnChangeRef.current?.();
     inputRef.current?.focus();
 
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === (activeSessionId || currentWsSessionId.current)
-          ? { ...s, preview: (text || files[0]?.name || "Bild").slice(0, 80) }
-          : s
-      )
-    );
+    // Reiter des Gesprächs: Vorschau setzen — oder ihn jetzt anlegen, denn erst
+    // die erste Nachricht macht ein Gespräch daraus (#907).
+    const vorschau = (text || files[0]?.name || "Bild").slice(0, 80);
+    const sitzung = activeSessionId || currentWsSessionId.current;
+    if (!sitzung) {
+      ersteNachrichtOhneReiterRef.current = vorschau;
+    } else {
+      setSessions((prev) =>
+        prev.some((s) => s.id === sitzung)
+          ? prev.map((s) => (s.id === sitzung ? { ...s, preview: vorschau } : s))
+          : [{ id: sitzung, label: `Chat ${prev.length + 1}`, preview: vorschau, reasoning: reasoning || undefined, isNew: true }, ...prev]
+      );
+    }
   }, [input, pendingImages, pendingFiles, activeSessionId, agentId, reasoning]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
@@ -2439,6 +2430,10 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
   const [inputFocused, setInputFocused] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const contextRef = useRef<HTMLDivElement | null>(null);
+  // Einfüge-Kürzel des Geräts (⌘V/Strg+V), auf Touch-Geräten keins (#907).
+  // Erst nach dem Einhängen ermittelt — der Server kennt das Gerät nicht.
+  const [einfuegen, setEinfuegen] = useState<string | null>(null);
+  useEffect(() => { setEinfuegen(einfuegenTaste()); }, []);
   useEffect(() => {
     if (!contextOpen) return;
     const onDown = (e: MouseEvent) => {
@@ -2529,6 +2524,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
           onClick={() => setRailOpen((o) => !o)}
           className="rounded-lg p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] transition-all shrink-0"
           title={railOpen ? "Gesprächsliste ausblenden" : "Gesprächsliste einblenden"}
+          aria-label={railOpen ? "Gesprächsliste ausblenden" : "Gesprächsliste einblenden"}
         >
           {railOpen ? <PanelLeftClose className="h-3.5 w-3.5" /> : <PanelLeft className="h-3.5 w-3.5" />}
         </button>
@@ -2544,6 +2540,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             disabled={!activeSessionId || messages.length < 6}
             className="mr-0.5 rounded-lg p-1.5 text-muted-foreground/60 transition-all hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-30"
             title="In einem frischen Gespräch weiterreden — mit dem Stand von hier"
+            aria-label="In frischem Gespräch weiterreden"
           >
             <SummarizeIcon className="h-3.5 w-3.5" />
           </button>
@@ -2556,14 +2553,15 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 : "text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06]"
             )}
             title={viewMode === "overview" ? "Zur Chat-Ansicht" : "Chat-Übersicht (Kacheln)"}
+            aria-label={viewMode === "overview" ? "Zur Chat-Ansicht" : "Chat-Übersicht"}
           >
             <LayoutGrid className="h-3.5 w-3.5" />
           </button>
-          <button onClick={() => changeFontScale(-0.1)} disabled={fontScale <= 0.85} className="rounded px-1 py-0.5 text-[11px] font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift kleiner">A−</button>
+          <button onClick={() => changeFontScale(-0.1)} disabled={fontScale <= 0.85} className="rounded px-1 py-0.5 text-[11px] font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift kleiner" aria-label="Schrift kleiner">A−</button>
           <Type className="h-3 w-3 text-muted-foreground/40" />
-          <button onClick={() => changeFontScale(0.1)} disabled={fontScale >= 1.4} className="rounded px-1 py-0.5 text-[13px] font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift größer">A+</button>
+          <button onClick={() => changeFontScale(0.1)} disabled={fontScale >= 1.4} className="rounded px-1 py-0.5 text-[13px] font-semibold text-muted-foreground/60 hover:text-foreground hover:bg-foreground/[0.06] disabled:opacity-30" title="Schrift größer" aria-label="Schrift größer">A+</button>
           {sessions.length > 0 && (
-            <button onClick={deleteAllSessions} className="ml-1 rounded p-1 text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-all" title="Alle Chats löschen">
+            <button onClick={deleteAllSessions} className="ml-1 rounded p-1 text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-all" title="Alle Chats löschen" aria-label="Alle Chats löschen">
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           )}
@@ -2584,7 +2582,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
             {isConnected ? "Online" : connectionFailed ? "Offline" : "..."}
           </span>
           {connectionFailed && (
-            <button onClick={retryConnect} className="text-[10px] text-yellow-500 hover:text-yellow-400 transition-colors">
+            <button onClick={retryConnect} title="Neu verbinden" aria-label="Neu verbinden" className="text-[10px] text-yellow-500 hover:text-yellow-400 transition-colors">
               <RotateCcw className="h-3 w-3" />
             </button>
           )}
@@ -2621,16 +2619,16 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
         {messages.length === 0 && !connectionFailed && !historyLoaded && (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin mb-2" />
-            <p className="text-xs">Loading chat history...</p>
+            <p className="text-xs">Verlauf wird geladen …</p>
           </div>
         )}
         {messages.length === 0 && connectionFailed && (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <WifiOff className="h-8 w-8 mb-2 text-red-400" />
-            <p className="text-sm text-red-400">Agent is not reachable</p>
-            <p className="text-xs mt-1">The container may be stopped or removed</p>
+            <p className="text-sm text-red-400">Agent nicht erreichbar</p>
+            <p className="text-xs mt-1">Er ist vermutlich gestoppt oder wurde entfernt.</p>
             <button onClick={retryConnect} className="mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-              <RotateCcw className="h-3 w-3" /> Retry Connection
+              <RotateCcw className="h-3 w-3" /> Neu verbinden
             </button>
           </div>
         )}
@@ -3272,10 +3270,12 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               onBlur={() => setInputFocused(false)}
               placeholder={
                 connectionFailed
-                  ? "Agent not connected"
+                  ? "Agent nicht verbunden"
                   : isWaiting
                   ? "Agent arbeitet… (du kannst trotzdem schreiben)"
-                  : "Nachricht… — / für Befehle, Bild mit Strg+V"
+                  : einfuegen
+                  ? `Nachricht… — / für Befehle, Bild mit ${einfuegen}`
+                  : "Nachricht… — / für Befehle"
               }
               disabled={!isConnected}
               className="max-h-48 w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-1.5 text-sm outline-none transition-all placeholder:text-muted-foreground/30 disabled:opacity-40"
@@ -3318,15 +3318,17 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
               offen={subagentenOffen}
               setOffen={setSubagentenOffen}
             />
-            <button
+            <ChatSymbolKnopf
+              beschriftung="Anhängen"
+              titel="Dateien anhängen"
               onClick={() => fileInputRef.current?.click()}
               disabled={!isConnected || isUploading}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/70 transition-all hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-40"
-              title="Dateien anhängen"
             >
               {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
-            </button>
-            <button
+            </ChatSymbolKnopf>
+            <ChatSymbolKnopf
+              beschriftung="Sprechen"
+              titel="Live-Sprachsession starten"
               onClick={() => {
                 voiceSession.startSession({
                   agentId,
@@ -3336,11 +3338,9 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 });
               }}
               disabled={!isConnected}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/70 transition-all hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-40"
-              title="Live-Sprachsession starten"
             >
               <Mic className="h-4 w-4" />
-            </button>
+            </ChatSymbolKnopf>
             {leiste}
 
             {!simpleMode && (
@@ -3420,6 +3420,7 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 <button
                   onClick={() => setContextOpen((o) => !o)}
                   title="Kontext: belegter Anteil des Gesprächsfensters"
+                  aria-label="Kontext: belegter Anteil des Gesprächsfensters"
                   className="flex h-8 items-center gap-1.5 rounded-lg px-1.5 text-[10px] tabular-nums text-muted-foreground/70 transition-all hover:bg-foreground/[0.06] hover:text-foreground"
                 >
                   <ContextRing percent={contextPercent} />
@@ -3479,7 +3480,8 @@ export function AgentChat({ agentId, initialSessionId, embedded, busySessionIds,
                 <button
                   onClick={stopGeneration}
                   className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/90 text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-500"
-                  title="Stop"
+                  title="Anhalten"
+                  aria-label="Anhalten"
                 >
                   <Square className="h-4 w-4 fill-current" />
                 </button>
@@ -3556,7 +3558,7 @@ function MessageRow({
         <div className="text-center py-1">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-3 py-1 text-[10px] text-amber-500/80">
             <Clock className="h-3 w-3" />
-            Message received — steering current agent turn
+            Nachricht angekommen — fließt in die laufende Antwort ein
           </span>
         </div>
       );
@@ -3744,7 +3746,7 @@ function UserMessage({ content, images, files, timestamp, actions }: { content: 
   return (
     <div className="group flex items-start gap-3 pl-1">
       <UserAvatar name={user?.name || "Du"} className="h-6 w-6 rounded-md text-[10px] shrink-0 mt-0.5" />
-      <div className="text-sm text-foreground leading-relaxed pt-0.5 space-y-2">
+      <div className="min-w-0 flex-1 text-sm text-foreground leading-relaxed pt-0.5 space-y-2">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-medium text-muted-foreground">Du</span>
           {actions}
@@ -3766,7 +3768,7 @@ function UserMessage({ content, images, files, timestamp, actions }: { content: 
         {files && files.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {files.map((file, i) => (
-              <span key={`${file.filename}-${i}`} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-xs" title={file.path}>
+              <span key={`${file.filename}-${i}`} className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-xs" title={file.path}>
                 <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="max-w-[200px] truncate">{file.filename}</span>
                 {typeof file.size === "number" && (
@@ -4241,7 +4243,9 @@ function DateiAnhang({ agentId, file }: { agentId: string; file: ChatFile }) {
       type="button"
       onClick={holen}
       disabled={laedt}
-      className="flex max-w-md items-center gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-left transition-colors hover:bg-muted/55 disabled:opacity-70"
+      // w-full: Ein <button> ist sonst so breit wie sein Inhalt — mit langem
+      // Dateinamen breiter als das Handy, die Karte ragte aus der Blase (#907).
+      className="flex w-full max-w-full min-w-0 items-center gap-3 rounded-lg border border-border bg-muted/35 px-3 py-2 text-left transition-colors hover:bg-muted/55 disabled:opacity-70 sm:max-w-md"
     >
       {laedt ? (
         <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
@@ -4250,7 +4254,7 @@ function DateiAnhang({ agentId, file }: { agentId: string; file: ChatFile }) {
       )}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-foreground">{file.filename}</span>
-        <span className="block text-xs text-muted-foreground">
+        <span className="block truncate text-xs text-muted-foreground">
           {fehler
             ? fehler
             : laedt
@@ -4491,7 +4495,7 @@ function AudioAttachment({ agentId, file }: { agentId: string; file: ChatFile })
           onClick={toggle}
           disabled={loading}
           className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-blue-500 text-white transition hover:bg-blue-400 disabled:opacity-70"
-          aria-label={playing ? "Pause audio" : "Play audio"}
+          aria-label={playing ? "Audio anhalten" : "Audio abspielen"}
         >
           {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 translate-x-0.5" />}
         </button>
@@ -4575,7 +4579,7 @@ function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: 
           onClick={() => setExpanded(false)}
           className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
         >
-          <ChevronRight className="h-3 w-3 rotate-90" /> {steps.length} {simpleMode ? (steps.length === 1 ? "Schritt" : "Schritte") : "Tool-Aufrufe"} einklappen
+          <ChevronRight className="h-3 w-3 rotate-90" /> {steps.length} {simpleMode ? (steps.length === 1 ? "Schritt" : "Schritte") : (steps.length === 1 ? "Werkzeugaufruf" : "Werkzeugaufrufe")} einklappen
         </button>
         {steps.map((s) => (
           <ToolCallBlock key={s.id} step={s} />
@@ -4591,7 +4595,7 @@ function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: 
     <button
       onClick={() => setExpanded(true)}
       className="group flex items-center gap-2.5 rounded-full py-0.5 pr-2 transition-colors hover:bg-foreground/[0.04]"
-      title="Tool-Aufrufe ansehen"
+      title="Werkzeugaufrufe ansehen"
     >
       <div className="flex items-center">
         {shown.map((s, idx) => {
@@ -4599,7 +4603,7 @@ function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: 
           return (
             <span
               key={s.id}
-              title={label}
+              title={`${label} (${s.tool})`}
               className={cn(
                 "flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-card shadow-sm",
                 idx > 0 && "-ml-2.5"
@@ -4631,7 +4635,7 @@ function ToolCluster({ steps, isStreaming }: { steps: ToolStep[]; isStreaming?: 
         {anyRunning && <Loader2 className="h-3 w-3 animate-spin text-amber-500" />}
         {simpleMode
           ? (anyRunning && letzter ? `Arbeitet … zuletzt: ${werkzeugAufDeutsch(letzter.tool)}` : `${steps.length} ${steps.length === 1 ? "Schritt" : "Schritte"}`)
-          : (anyRunning ? "Arbeitet…" : `${steps.length} ${steps.length === 1 ? "Tool" : "Tools"}`)} · Details
+          : (anyRunning ? "Arbeitet…" : `${steps.length} ${steps.length === 1 ? "Werkzeug" : "Werkzeuge"}`)} · Details
       </span>
     </button>
   );
@@ -4671,7 +4675,7 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
         </span>
 
         {/* Tool label */}
-        <span className="text-[13px] font-semibold text-foreground">{label}</span>
+        <span className="text-[13px] font-semibold text-foreground" title={step.tool}>{label}</span>
 
         {/* Description */}
         {description && (
@@ -4706,7 +4710,7 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
               <span className="text-[10px] text-muted-foreground/50 w-10 shrink-0 text-right pr-2 pt-1.5 font-mono select-none">OUT</span>
               <pre className="text-[12px] font-mono text-muted-foreground bg-muted/80 dark:bg-muted/40 border border-border rounded-md px-3 py-2 overflow-x-auto max-w-full flex-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-all">
                 {(step.output || "").length > 2000
-                  ? step.output!.slice(0, 2000) + "\n... (truncated)"
+                  ? step.output!.slice(0, 2000) + "\n… (gekürzt)"
                   : step.output}
               </pre>
             </div>
@@ -4716,7 +4720,7 @@ function ToolCallBlock({ step, isStreaming }: { step: ToolStep; isStreaming?: bo
           {isRunning && !hasOutput && (
             <div className="flex items-center gap-2 ml-10 text-muted-foreground/60 text-xs">
               <Loader2 className="h-3 w-3 animate-spin" />
-              <span>Running...</span>
+              <span>Läuft …</span>
             </div>
           )}
         </div>
@@ -4731,14 +4735,14 @@ function MetaBar({ meta }: { meta: { cost_usd?: number; duration_ms?: number; nu
   const parts: string[] = [];
   if (meta.duration_ms) parts.push(`${(meta.duration_ms / 1000).toFixed(1)}s`);
   if (meta.cost_usd) parts.push(formatMoney(meta.cost_usd));
-  if (meta.num_turns) parts.push(`${meta.num_turns} turns`);
+  if (meta.num_turns) parts.push(`${meta.num_turns} ${meta.num_turns === 1 ? "Runde" : "Runden"}`);
   // Feinaufschlüsselung — macht sichtbar, ob die Reasoning-Stufe den Verbrauch
   // verändert (der eigentliche Wunsch): „Denk"-Tokens + Cache-Treffer.
-  if (meta.reasoning_tokens) parts.push(`${meta.reasoning_tokens} reasoning`);
-  if (meta.cached_tokens) parts.push(`${meta.cached_tokens} cached`);
-  if (meta.cache_write_tokens) parts.push(`${meta.cache_write_tokens} cache-write`);
+  if (meta.reasoning_tokens) parts.push(`${meta.reasoning_tokens} Denk-Tokens`);
+  if (meta.cached_tokens) parts.push(`${meta.cached_tokens} aus Cache`);
+  if (meta.cache_write_tokens) parts.push(`${meta.cache_write_tokens} in Cache`);
   if (meta.input_tokens || meta.output_tokens)
-    parts.push(`${meta.input_tokens ?? 0} ↑ / ${meta.output_tokens ?? 0} ↓ tok`);
+    parts.push(`${meta.input_tokens ?? 0} ↑ / ${meta.output_tokens ?? 0} ↓ Tokens`);
   if (parts.length === 0) return null;
 
   return (

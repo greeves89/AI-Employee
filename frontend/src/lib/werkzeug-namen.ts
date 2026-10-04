@@ -56,3 +56,37 @@ export function werkzeugAufDeutsch(tool: string | null | undefined): string {
   const lesbar = kurz.replace(/[_-]+/g, " ").trim();
   return lesbar.charAt(0).toUpperCase() + lesbar.slice(1);
 }
+
+/** Kurze Anzeigenamen für die ausführliche Ansicht (Admins).
+ *
+ * Dort stand bisher der Rohname der Laufzeit („Edit", „Task", „TodoWrite").
+ * Gezeigt wird jetzt ein deutsches Wort; die interne Kennung bleibt unverändert
+ * und steht im Tooltip — wer im Protokoll sucht, findet sie dort.
+ */
+const KURZNAMEN: Record<string, string> = {
+  bash: "Befehl",
+  shell: "Befehl",
+  exec_command: "Befehl",
+  read: "Lesen",
+  write: "Schreiben",
+  edit: "Bearbeiten",
+  multiedit: "Bearbeiten",
+  apply_patch: "Bearbeiten",
+  notebookedit: "Notebook bearbeiten",
+  grep: "Textsuche",
+  glob: "Dateisuche",
+  websearch: "Websuche",
+  web_search: "Websuche",
+  webfetch: "Webseite",
+  web_fetch: "Webseite",
+  task: "Helfer",
+  agent: "Helfer",
+  todowrite: "Arbeitsliste",
+  toolsearch: "Werkzeugsuche",
+};
+
+export function werkzeugKurzname(tool: string | null | undefined): string {
+  const roh = (tool || "").trim();
+  const kurz = roh.includes("__") ? roh.split("__").pop() || roh : roh;
+  return KURZNAMEN[kurz.toLowerCase()] ?? werkzeugAufDeutsch(roh);
+}

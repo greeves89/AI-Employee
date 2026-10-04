@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft, Network, Boxes, GitBranch, ShieldCheck, Server, Database, Plug, Mic, KeyRound } from "lucide-react";
 import { Mermaid } from "@/components/help/mermaid";
+import { Header } from "@/components/layout/header";
 import {
   API_GROUPS, GRAPH_GROUPS, MCP_GROUPS, VOICE_TOOLS, WS_EVENTS, DB_GROUPS, FRONTEND_ROUTES, type Group,
 } from "./data";
@@ -131,20 +132,22 @@ function SectionTitle({ icon: Icon, children, hint }: { icon: typeof Network; ch
 
 export default function ArchitecturePage() {
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6 p-6">
-      <div className="flex items-center gap-3">
-        <Link href="/help" className="flex h-9 w-9 items-center justify-center rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] hover:bg-foreground/[0.06]">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Architektur &amp; Schnittstellen</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Vollständige technische Referenz: Komponenten, Datenflüsse, API-Endpunkte, Tools, WebSockets und Datenmodelle.
-          </p>
-        </div>
-      </div>
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Gemeinsame Kopfzeile — hält Platz für den Menüknopf frei (#907). */}
+      <Header
+        title="Architektur & Schnittstellen"
+        subtitle="Vollständige technische Referenz: Komponenten, Datenflüsse, API-Endpunkte, Tools, WebSockets und Datenmodelle."
+        actions={
+          <Link
+            href="/help"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] px-2.5 py-1.5 text-xs hover:bg-foreground/[0.06]"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> Zur Hilfe
+          </Link>
+        }
+      />
 
-      <div className="flex-1 space-y-8 overflow-y-auto pb-8">
+      <div className="flex-1 space-y-8 overflow-y-auto p-6 pb-8">
         {/* System-Overview */}
         <section className="space-y-3">
           <SectionTitle icon={Boxes} hint="Wie die Bausteine zusammenspielen">Systemüberblick</SectionTitle>

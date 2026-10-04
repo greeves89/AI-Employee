@@ -30,6 +30,7 @@ import { useOrdnerAbwurf } from "@/components/files/use-ordner-abwurf";
 import { FileUploader } from "@/components/files/file-uploader";
 import { LiveTerminal } from "@/components/terminal/live-terminal";
 import { AgentChat } from "@/components/agents/chat";
+import { ChatSymbolKnopf } from "@/components/agents/chat-symbol-knopf";
 import { AutonomyMatrix } from "@/components/agents/autonomy-matrix";
 import { InteractionModelCard } from "@/components/agents/interaction-model-card";
 import { AgentSpeechTab } from "@/components/agents/agent-speech-tab";
@@ -64,6 +65,7 @@ import type { SecondBrain } from "@/lib/types";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import type { Agent, AIAccount, FileEntry, PermissionPackage } from "@/lib/types";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
+import { ERGEBNIS_ORDNER, dateiAnzeigeName, fuerExplorer, istErgebnisOrdner, istSystemDatei } from "@/lib/datei-ansicht";
 import { formatMoney } from "@/lib/money";
 import { setVisibleInterval } from "@/lib/visible-interval";
 
@@ -100,31 +102,31 @@ const tabGroups: TabGroup[] = [
   { key: "chat", label: "Chat", icon: MessageSquare, subs: [
     { key: "chat", label: "Chat", icon: MessageSquare },
   ] },
-  { key: "speech", label: "Speech", icon: AudioLines, subs: [
-    { key: "speech", label: "Speech", icon: AudioLines },
+  { key: "speech", label: "Sprache", icon: AudioLines, subs: [
+    { key: "speech", label: "Sprache", icon: AudioLines },
   ] },
-  { key: "activity", label: "Activity", icon: Activity, subs: [
-    { key: "todos", label: "Todos", icon: ListTodo },
+  { key: "activity", label: "Aktivität", icon: Activity, subs: [
+    { key: "todos", label: "To-dos", icon: ListTodo },
     { key: "calendar", label: "Kalender", icon: CalendarDays },
     { key: "terminal", label: "Live", icon: Activity },
     { key: "history", label: "Verlauf", icon: History },
   ] },
-  { key: "workspace", label: "Workspace", icon: FolderOpen, subs: [
-    { key: "files", label: "Files", icon: FolderOpen },
+  { key: "workspace", label: "Arbeitsbereich", icon: FolderOpen, subs: [
+    { key: "files", label: "Dateien", icon: FolderOpen },
     { key: "apps", label: "Apps", icon: Container },
-    { key: "computer-use", label: "Computer-Use", icon: Monitor },
+    { key: "computer-use", label: "Computer-Steuerung", icon: Monitor },
     { key: "browser", label: "Browser", icon: Globe },
   ] },
   { key: "wissen", label: "Wissen", icon: Brain, subs: [
-    { key: "knowledge", label: "Knowledge", icon: Brain },
+    { key: "knowledge", label: "Wissensbasis", icon: Brain },
     { key: "secondbrain", label: "Second Brain", icon: Brain },
-    { key: "memory", label: "Memory", icon: MemoryStick },
+    { key: "memory", label: "Gedächtnis", icon: MemoryStick },
     { key: "skills", label: "Skills", icon: Sparkles },
   ] },
-  { key: "settings", label: "Settings", icon: Settings, subs: [
+  { key: "settings", label: "Einstellungen", icon: Settings, subs: [
     { key: "settings", label: "Allgemein", icon: Settings },
-    { key: "integrations", label: "Integrations", icon: Plug },
-    { key: "command-policies", label: "Command Policies", icon: ShieldAlert },
+    { key: "integrations", label: "Integrationen", icon: Plug },
+    { key: "command-policies", label: "Befehlsregeln", icon: ShieldAlert },
   ] },
 ];
 
@@ -637,10 +639,10 @@ function UpdateBanner({ agentId, onUpdated }: { agentId: string; onUpdated: (age
 
   const handleUpdate = async () => {
     const ok = await confirm({
-      title: "Update this agent?",
-      message: "The container will be recreated, but all data (knowledge, files, sessions) will be preserved.",
+      title: "Agent aktualisieren?",
+      message: "Der Container wird neu erstellt. Alle Daten (Wissen, Dateien, Gespräche) bleiben erhalten.",
       variant: "warning",
-      confirmLabel: "Update",
+      confirmLabel: "Aktualisieren",
     });
     if (!ok) return;
     setUpdating(true);
@@ -665,8 +667,8 @@ function UpdateBanner({ agentId, onUpdated }: { agentId: string; onUpdated: (age
           <ArrowUpCircle className="h-4 w-4 text-amber-700 dark:text-amber-400" />
         </div>
         <div>
-          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Update available</p>
-          <p className="text-xs text-muted-foreground">A new agent image version is available. Your data will be preserved.</p>
+          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Aktualisierung verfügbar</p>
+          <p className="text-xs text-muted-foreground">Eine neue Version des Agenten liegt bereit. Deine Daten bleiben erhalten.</p>
         </div>
       </div>
       <button
@@ -679,7 +681,7 @@ function UpdateBanner({ agentId, onUpdated }: { agentId: string; onUpdated: (age
         ) : (
           <ArrowUpCircle className="h-3.5 w-3.5" />
         )}
-        {updating ? "Updating..." : "Update Now"}
+        {updating ? "Wird aktualisiert …" : "Jetzt aktualisieren"}
       </button>
     </motion.div>
   );
@@ -773,14 +775,9 @@ function Schnellzugriff({ agent, setAgent }: { agent: Agent; setAgent: (a: Agent
   return (
     <>
       {SCHNELL.map(({ key, titel, icon: Icon }) => (
-        <button
-          key={key}
-          onClick={() => setOffen(key)}
-          title={titel}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/70 transition-all hover:bg-foreground/[0.06] hover:text-foreground"
-        >
+        <ChatSymbolKnopf key={key} beschriftung={titel} onClick={() => setOffen(key)}>
           <Icon className="h-4 w-4" />
-        </button>
+        </ChatSymbolKnopf>
       ))}
       <Fenster offen={offen !== null} schliessen={zu} titel={aktiv?.titel}>
         <div className="p-5">
@@ -1132,7 +1129,7 @@ function TaskHistory({ tasks }: { tasks: ReturnType<typeof useTasks>["tasks"] })
     return (
       <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-12 text-center">
         <History className="h-8 w-8 text-muted-foreground/50 mx-auto mb-3" />
-        <p className="text-sm text-muted-foreground">No tasks executed by this agent yet.</p>
+        <p className="text-sm text-muted-foreground">Dieser Agent hat noch keine Aufgaben ausgeführt.</p>
       </div>
     );
   }
@@ -1362,25 +1359,25 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
           <div className="flex items-center gap-5 text-xs">
             {metrics.total !== undefined && (
               <span className="tabular-nums">
-                <span className="text-muted-foreground">Tasks:</span>{" "}
+                <span className="text-muted-foreground">Aufgaben:</span>{" "}
                 <span className="font-medium">{metrics.total}</span>
               </span>
             )}
             {metrics.success !== undefined && (
               <span className="tabular-nums">
-                <span className="text-muted-foreground">Success:</span>{" "}
+                <span className="text-muted-foreground">Erfolgreich:</span>{" "}
                 <span className="font-medium text-emerald-400">{metrics.success}</span>
               </span>
             )}
             {metrics.fail !== undefined && metrics.fail > 0 && (
               <span className="tabular-nums">
-                <span className="text-muted-foreground">Failed:</span>{" "}
+                <span className="text-muted-foreground">Fehlgeschlagen:</span>{" "}
                 <span className="font-medium text-red-400">{metrics.fail}</span>
               </span>
             )}
             {metrics.success_rate !== undefined && (
               <span className="tabular-nums">
-                <span className="text-muted-foreground">Rate:</span>{" "}
+                <span className="text-muted-foreground">Quote:</span>{" "}
                 <span className={cn(
                   "font-medium",
                   metrics.success_rate >= 0.8 ? "text-emerald-400" : metrics.success_rate >= 0.5 ? "text-amber-700 dark:text-amber-400" : "text-red-400"
@@ -1451,8 +1448,8 @@ function KnowledgePanel({ agentId }: { agentId: string }) {
         ) : (
           <div className="flex flex-col items-center justify-center flex-1 min-h-[12rem] text-muted-foreground/50">
             <Brain className="h-8 w-8 mb-2" />
-            <p className="text-sm">No knowledge base yet</p>
-            <p className="text-xs text-muted-foreground/40 mt-1">Run a task to start building knowledge</p>
+            <p className="text-sm">Noch keine Wissensbasis</p>
+            <p className="text-xs text-muted-foreground/40 mt-1">Sie entsteht mit der ersten erledigten Aufgabe.</p>
           </div>
         )}
       </div>
@@ -2364,7 +2361,7 @@ function AgentSettings({
             )}
             {/* Model */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground/70">Model</label>
+              <label className="text-[11px] font-medium text-muted-foreground/70">Modell</label>
               <div className="flex gap-1.5">
                 {modelOptions.map((m) => (
                   <button
@@ -2581,7 +2578,7 @@ function AgentSettings({
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Model</label>
+                    <label className="block text-[11px] font-medium text-muted-foreground/70 mb-1.5">Modell</label>
                     <input
                       type="text"
                       value={llmModel}
@@ -2674,7 +2671,7 @@ function AgentSettings({
                     <p className="text-sm font-medium mt-0.5">{providerLabel}</p>
                   </div>
                   <div>
-                    <span className="text-[11px] font-medium text-muted-foreground/60">Model</span>
+                    <span className="text-[11px] font-medium text-muted-foreground/60">Modell</span>
                     <p className="text-sm font-medium mt-0.5 font-mono">{agent.llm_config.model_name}</p>
                   </div>
                   <div>
@@ -3296,6 +3293,8 @@ type FileSortMode = "name" | "date" | "size";
 function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 0 }: { agentId: string; diskUsageMb?: number; diskLimitMb?: number; diskPercent?: number }) {
   const confirm = useConfirm();
   const toast = useToast();
+  // Mitglieder sehen keine Steuerdateien des Agenten (#907).
+  const { simpleMode } = useSimpleMode();
   const [loading, setLoading] = useState(true);
   const [treeData, setTreeData] = useState<Record<string, FileEntry[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["/workspace"]));
@@ -3308,18 +3307,28 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
   // immer im Transfer-Wurzelordner.
   const [uploadTarget, setUploadTarget] = useState<string | null>(null);
 
-  const loadDir = async (path: string) => {
+  const loadDir = async (path: string): Promise<FileEntry[]> => {
     try {
       const data = await api.getFiles(agentId, path);
       setTreeData((prev) => ({ ...prev, [path]: data.entries }));
+      return data.entries;
     } catch {
       setTreeData((prev) => ({ ...prev, [path]: [] }));
+      return [];
     }
   };
 
   useEffect(() => {
     setLoading(true);
-    loadDir("/workspace").finally(() => setLoading(false));
+    // Die Ergebnisse gleich aufgeklappt zeigen — sie sind meist der Grund,
+    // warum jemand hier hineinschaut (#907).
+    loadDir("/workspace")
+      .then(async (eintraege) => {
+        if (!eintraege.some(istErgebnisOrdner)) return;
+        setExpanded((prev) => new Set(prev).add(ERGEBNIS_ORDNER));
+        await loadDir(ERGEBNIS_ORDNER);
+      })
+      .finally(() => setLoading(false));
   }, [agentId]);
 
   // Ziehen und Fallenlassen aus dem Betriebssystem — dieselbe Mechanik wie im
@@ -3402,18 +3411,19 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
     for (const entries of Object.values(treeData)) {
       for (const entry of entries) {
         if (entry.type === "file" && entry.name.toLowerCase().includes(query)) {
+          if (simpleMode && istSystemDatei(entry)) continue;
           results.push(entry);
         }
       }
     }
     return sortEntries(results);
-  }, [searchQuery, treeData, sortMode]);
+  }, [searchQuery, treeData, sortMode, simpleMode]);
 
   const renderTree = (path: string, depth: number): React.ReactNode => {
     const entries = treeData[path];
     if (!entries) return null;
 
-    return sortEntries(entries).map((entry) => {
+    return fuerExplorer(sortEntries(entries), simpleMode).map((entry) => {
       const isDir = entry.type === "directory";
       const isExpanded = expanded.has(entry.path);
       const isSelected = selectedFile?.path === entry.path;
@@ -3453,7 +3463,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             ) : (
               <File className={cn("h-3.5 w-3.5 shrink-0", getFileColor(entry.name))} />
             )}
-            <span className="text-[12px] truncate flex-1 min-w-0">{entry.name}</span>
+            <span className="text-[12px] truncate flex-1 min-w-0" title={entry.path}>{dateiAnzeigeName(entry)}</span>
             {!isDir && entry.modified > 0 && (
               <span className="text-[10px] text-muted-foreground/30 tabular-nums shrink-0" title={formatModifiedFull(entry.modified)}>
                 {formatModified(entry.modified)}
@@ -3468,7 +3478,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
               <button
                 onClick={(e) => { e.stopPropagation(); handleDownload(entry.path); }}
                 className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/30 hover:text-foreground can-hover:opacity-0 can-hover:group-hover:opacity-100 transition-all shrink-0"
-                title="Download"
+                title="Herunterladen"
               >
                 <Download className="h-2.5 w-2.5" />
               </button>
@@ -3516,9 +3526,11 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
   const diskLimitLabel = diskLimitMb >= 1024 ? `${(diskLimitMb / 1024).toFixed(0)} GB` : `${diskLimitMb.toFixed(0)} MB`;
 
   return (
-    <div className="flex gap-4 h-full">
+    // Handy: Baum und Vorschau untereinander statt 380 px Baum neben der
+    // Vorschau — das passte nicht auf 375 px (#907).
+    <div className="flex h-full min-h-0 flex-col gap-4 md:flex-row">
       {/* Tree panel */}
-      <div className="w-[380px] shrink-0 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
+      <div className="w-full min-h-0 max-md:flex-1 md:w-[380px] shrink-0 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
         {/* Disk usage bar */}
         {diskLimitMb > 0 && (
           <div className="border-b border-foreground/[0.06] px-3 py-2 space-y-1">
@@ -3568,7 +3580,7 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
             <button
               onClick={refreshAll}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-foreground/[0.06] transition-colors shrink-0"
-              title="Refresh"
+              title="Aktualisieren"
             >
               <RefreshCw className="h-3 w-3" />
             </button>
@@ -3669,8 +3681,11 @@ function FileBrowser({ agentId, diskUsageMb = 0, diskLimitMb = 0, diskPercent = 
         </div>
       </div>
 
-      {/* File preview panel */}
-      <div className="flex-1 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden">
+      {/* File preview panel — auf dem Handy erst, wenn eine Datei gewählt ist */}
+      <div className={cn(
+        "flex-1 min-h-0 rounded-xl border border-foreground/[0.06] bg-card/80 backdrop-blur-sm flex flex-col overflow-hidden",
+        !selectedFile && "max-md:hidden",
+      )}>
         {selectedFile ? (
           <FilePreview
             agentId={agentId}

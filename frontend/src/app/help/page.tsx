@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import {
-  HelpCircle,
   Search,
   BookOpen,
   Rocket,
@@ -16,6 +15,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Header } from "@/components/layout/header";
 import { useTutorials } from "@/components/tutorials/tutorial-fenster";
 import { TutorialVideo } from "@/components/tutorials/tutorial-video";
 import { TUTORIALS } from "@/lib/tutorials";
@@ -268,152 +268,144 @@ export default function HelpPage() {
   }, [filtered]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6 p-6">
-      {/* Titel */}
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-foreground/[0.08] bg-foreground/[0.03]">
-          <HelpCircle className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Hilfe &amp; FAQ</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Anleitungen, Antworten und Direktlinks zu allen Funktionen.
-          </p>
-        </div>
-      </div>
-
-      {/* Klick-Tutorials: der schnellste Einstieg, deshalb breit über dem Schnellzugriff */}
-      <button
-        onClick={() => tutorialsOeffnen()}
-        className="group flex w-full items-center gap-4 rounded-2xl border border-primary/25 bg-card p-5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
-      >
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
-          <PlayCircle className="h-6 w-6 text-primary" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-base font-semibold">Klick-Tutorials</div>
-          <div className="text-sm text-muted-foreground">
-            Der schnellste Einstieg: {TUTORIALS.length} kurze Videos mit Sprecher, der Reihe nach.
-          </div>
-        </div>
-        <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-      </button>
-
-      {/* Schnellzugriff */}
-      <div className={cn("grid gap-3 sm:grid-cols-2", !simpleMode && "lg:grid-cols-4")}>
-        <a
-          href="/benutzerhandbuch.pdf"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card p-4 hover:bg-foreground/[0.04] transition-colors"
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Gemeinsame Kopfzeile: sie hält links Platz für den Menüknopf frei.
+          Der eigene Titel mit Symbol lag auf dem Handy darunter (#907). */}
+      <Header title="Hilfe & FAQ" subtitle="Anleitungen, Antworten und Direktlinks zu allen Funktionen." />
+      <div className="flex min-h-0 flex-1 flex-col gap-6 p-6">
+        {/* Klick-Tutorials: der schnellste Einstieg, deshalb breit über dem Schnellzugriff */}
+        <button
+          onClick={() => tutorialsOeffnen()}
+          className="group flex w-full items-center gap-4 rounded-2xl border border-primary/25 bg-card p-5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
         >
-          <BookOpen className="h-5 w-5 text-primary shrink-0" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium flex items-center gap-1.5">
-              Benutzerhandbuch <Download className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <div className="text-xs text-muted-foreground truncate">Klick-für-Klick-Anleitung (PDF)</div>
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+            <PlayCircle className="h-6 w-6 text-primary" />
           </div>
-        </a>
-        <Link
-          href="/onboarding"
-          className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card p-4 hover:bg-foreground/[0.04] transition-colors"
-        >
-          <Rocket className="h-5 w-5 text-primary shrink-0" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium">Schnellstart</div>
-            <div className="text-xs text-muted-foreground truncate">Onboarding-Wizard öffnen</div>
-          </div>
-        </Link>
-        {!simpleMode && (<>
-        <a
-          href="https://github.com/greeves89/AI-Employee/blob/main/CHANGELOG.md"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card p-4 hover:bg-foreground/[0.04] transition-colors"
-        >
-          <ExternalLink className="h-5 w-5 text-primary shrink-0" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium">Was ist neu?</div>
-            <div className="text-xs text-muted-foreground truncate">Changelog ansehen</div>
-          </div>
-        </a>
-        <Link
-          href="/help/architecture"
-          className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card p-4 hover:bg-foreground/[0.04] transition-colors"
-        >
-          <Network className="h-5 w-5 text-primary shrink-0" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium">Architektur &amp; Schnittstellen</div>
-            <div className="text-xs text-muted-foreground truncate">Diagramme, API, Tools, Modelle</div>
-          </div>
-        </Link>
-        </>)}
-      </div>
-
-      {/* Suche */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Hilfe durchsuchen... (z. B. Skill herunterladen, Exchange, Symbol)"
-          className="w-full rounded-xl border border-foreground/[0.08] bg-card pl-10 pr-4 py-3 text-sm outline-none focus:border-primary/40"
-        />
-      </div>
-
-      {/* Ergebnisse */}
-      <div className="flex-1 overflow-y-auto space-y-6 pb-4">
-        {byCategory.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/60">
-            <Search className="h-8 w-8 mb-2" />
-            <p className="text-sm">Kein Treffer für diese Suche.</p>
-          </div>
-        )}
-        {byCategory.map(([category, topics]) => (
-          <div key={category}>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-2">
-              {category}
-            </div>
-            <div className="space-y-2">
-              {topics.map((t) => {
-                const isOpen = open === t.id || query.trim().length > 0;
-                return (
-                  <div key={t.id} className="rounded-xl border border-foreground/[0.08] bg-card overflow-hidden">
-                    <button
-                      onClick={() => setOpen(open === t.id ? null : t.id)}
-                      className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-foreground/[0.03] transition-colors"
-                    >
-                      <span className="text-sm font-medium">{t.title}</span>
-                      <ChevronDown
-                        className={cn(
-                          "h-4 w-4 text-muted-foreground shrink-0 transition-transform",
-                          isOpen && "rotate-180",
-                        )}
-                      />
-                    </button>
-                    {isOpen && (
-                      <div className="px-4 pb-3.5 -mt-1 space-y-2.5">
-                        <p className="text-sm text-muted-foreground leading-relaxed">{t.body}</p>
-                        {t.tutorial && (
-                          <TutorialVideo id={t.tutorial} preload="none" className="max-w-2xl rounded-lg" />
-                        )}
-                        {t.href && (
-                          <Link
-                            href={t.href}
-                            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-                          >
-                            {t.hrefLabel || "Öffnen"} <ExternalLink className="h-3 w-3" />
-                          </Link>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-semibold">Klick-Tutorials</div>
+            <div className="text-sm text-muted-foreground">
+              Der schnellste Einstieg: {TUTORIALS.length} kurze Videos mit Sprecher, der Reihe nach.
             </div>
           </div>
-        ))}
+          <ArrowRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+        </button>
+
+        {/* Schnellzugriff */}
+        <div className={cn("grid gap-3 sm:grid-cols-2", !simpleMode && "lg:grid-cols-4")}>
+          <a
+            href="/benutzerhandbuch.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card p-4 hover:bg-foreground/[0.04] transition-colors"
+          >
+            <BookOpen className="h-5 w-5 text-primary shrink-0" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium flex items-center gap-1.5">
+                Benutzerhandbuch <Download className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+              <div className="text-xs text-muted-foreground truncate">Klick-für-Klick-Anleitung (PDF)</div>
+            </div>
+          </a>
+          <Link
+            href="/onboarding"
+            className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card p-4 hover:bg-foreground/[0.04] transition-colors"
+          >
+            <Rocket className="h-5 w-5 text-primary shrink-0" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Schnellstart</div>
+              <div className="text-xs text-muted-foreground truncate">Onboarding-Wizard öffnen</div>
+            </div>
+          </Link>
+          {!simpleMode && (<>
+          <a
+            href="https://github.com/greeves89/AI-Employee/blob/main/CHANGELOG.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card p-4 hover:bg-foreground/[0.04] transition-colors"
+          >
+            <ExternalLink className="h-5 w-5 text-primary shrink-0" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Was ist neu?</div>
+              <div className="text-xs text-muted-foreground truncate">Changelog ansehen</div>
+            </div>
+          </a>
+          <Link
+            href="/help/architecture"
+            className="flex items-center gap-3 rounded-xl border border-foreground/[0.08] bg-card p-4 hover:bg-foreground/[0.04] transition-colors"
+          >
+            <Network className="h-5 w-5 text-primary shrink-0" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Architektur &amp; Schnittstellen</div>
+              <div className="text-xs text-muted-foreground truncate">Diagramme, API, Tools, Modelle</div>
+            </div>
+          </Link>
+          </>)}
+        </div>
+
+        {/* Suche */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Hilfe durchsuchen... (z. B. Skill herunterladen, Exchange, Symbol)"
+            className="w-full rounded-xl border border-foreground/[0.08] bg-card pl-10 pr-4 py-3 text-sm outline-none focus:border-primary/40"
+          />
+        </div>
+
+        {/* Ergebnisse */}
+        <div className="flex-1 overflow-y-auto space-y-6 pb-4">
+          {byCategory.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/60">
+              <Search className="h-8 w-8 mb-2" />
+              <p className="text-sm">Kein Treffer für diese Suche.</p>
+            </div>
+          )}
+          {byCategory.map(([category, topics]) => (
+            <div key={category}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-2">
+                {category}
+              </div>
+              <div className="space-y-2">
+                {topics.map((t) => {
+                  const isOpen = open === t.id || query.trim().length > 0;
+                  return (
+                    <div key={t.id} className="rounded-xl border border-foreground/[0.08] bg-card overflow-hidden">
+                      <button
+                        onClick={() => setOpen(open === t.id ? null : t.id)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-foreground/[0.03] transition-colors"
+                      >
+                        <span className="text-sm font-medium">{t.title}</span>
+                        <ChevronDown
+                          className={cn(
+                            "h-4 w-4 text-muted-foreground shrink-0 transition-transform",
+                            isOpen && "rotate-180",
+                          )}
+                        />
+                      </button>
+                      {isOpen && (
+                        <div className="px-4 pb-3.5 -mt-1 space-y-2.5">
+                          <p className="text-sm text-muted-foreground leading-relaxed">{t.body}</p>
+                          {t.tutorial && (
+                            <TutorialVideo id={t.tutorial} preload="none" className="max-w-2xl rounded-lg" />
+                          )}
+                          {t.href && (
+                            <Link
+                              href={t.href}
+                              className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                            >
+                              {t.hrefLabel || "Öffnen"} <ExternalLink className="h-3 w-3" />
+                            </Link>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

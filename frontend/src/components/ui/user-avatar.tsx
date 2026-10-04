@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { getBase } from "@/lib/config";
+import { useAuthStore } from "@/lib/auth";
 
 /**
  * Profile photo of the logged-in user (from SSO via /auth/me/photo),
@@ -10,6 +11,10 @@ import { getBase } from "@/lib/config";
  *
  * The photo is fetched once per page load and shared across all instances
  * (module-level cache) — chat renders one avatar per message bubble.
+ *
+ * Nur wenn ``/auth/me`` eine Fotoquelle meldet (``has_photo_source``). Vorher
+ * ging die Abfrage bei jedem Laden raus und endete ohne Microsoft-Anmeldung in
+ * einer 404 (#907). Kein Foto beantwortet der Server mit 204.
  */
 
 let cachedUrl: string | null | undefined; // undefined = not fetched yet, null = no photo
@@ -18,7 +23,7 @@ let inflight: Promise<string | null> | null = null;
 async function fetchPhoto(): Promise<string | null> {
   try {
     const res = await fetch(`${getBase()}/auth/me/photo`, { credentials: "include" });
-    if (!res.ok) return null;
+    if (res.status !== 200) return null;
     const blob = await res.blob();
     // data: URI statt blob: URL — Safari kann blob: URLs aus manchen Kontexten
     // (u.a. html-to-image beim Feedback-Screenshot) nicht zuverlaessig erneut
@@ -35,8 +40,13 @@ async function fetchPhoto(): Promise<string | null> {
 }
 
 function useUserPhoto(): string | null {
+  const hatQuelle = useAuthStore((s) => !!s.user?.has_photo_source);
   const [url, setUrl] = useState<string | null>(cachedUrl ?? null);
   useEffect(() => {
+    if (!hatQuelle) {
+      setUrl(null);
+      return;
+    }
     if (cachedUrl !== undefined) {
       setUrl(cachedUrl);
       return;
@@ -54,7 +64,7 @@ function useUserPhoto(): string | null {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [hatQuelle]);
   return url;
 }
 
