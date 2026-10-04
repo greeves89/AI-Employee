@@ -1,7 +1,12 @@
+import logging
 import os
 import pathlib
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+#: Mindestlänge des Herzschlag-Schlüssels der Datensicherung (#892). Dieselbe
+#: Zahl steht in scripts/lib/sicherung.sh, das kürzere Schlüssel ersetzt.
+BACKUP_TOKEN_MINDESTLAENGE = 32
 
 def _read_version() -> str:
     for candidate in [
@@ -218,7 +223,22 @@ class Settings(BaseSettings):
     encryption_key: str = ""
     # Lokaler Schlüssel, mit dem scripts/backup.sh seinen Herzschlag an
     # POST /admin/backup-status meldet (#892). Leer = Meldungen werden abgelehnt.
+    # Kürzer als BACKUP_TOKEN_MINDESTLAENGE = wie leer (ratbar), mit Warnung.
     backup_status_token: str = ""
+
+    @field_validator("backup_status_token", mode="after")
+    @classmethod
+    def _kurzer_backup_token_zaehlt_nicht(cls, v: str) -> str:
+        """Ein kurzer Schlüssel ist per Durchprobieren zu erraten — dann lieber
+        gar keiner: der Endpunkt lehnt ab und die Karte zeigt „nicht
+        eingerichtet". Der Wert selbst kommt nie ins Protokoll."""
+        if v and len(v) < BACKUP_TOKEN_MINDESTLAENGE:
+            logging.getLogger(__name__).warning(
+                "BACKUP_STATUS_TOKEN ist kürzer als %d Zeichen und wird ignoriert — "
+                "Herzschläge der Datensicherung werden abgelehnt. scripts/backup.sh "
+                "legt beim nächsten Lauf einen neuen an.", BACKUP_TOKEN_MINDESTLAENGE)
+            return ""
+        return v
     api_secret_key: str = "change-me-in-production"  # Used for agent HMAC tokens + JWT signing
     # When True, SentinelService (orchestrator/app/services/sentinel_service.py,
     # Sentinel epic #588 sub-issue #590) subscribes to agents:logs:all and reacts

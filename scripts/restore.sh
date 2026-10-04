@@ -8,7 +8,8 @@
 #   2. Orchestrator, Oberfläche, Redis und alle Agenten anhalten
 #   3. SCHLÜSSEL ZUERST: .env und orchestrator/data/ zurücklegen — ohne den
 #      passenden ENCRYPTION_KEY wären alle Geheimnisse danach unlesbar
-#   4. Datenbank aus dem pg_dump
+#   4. Datenbank aus dem pg_dump — vorher (gleich nach dem Anhalten) eine
+#      Sicherheitskopie der bisherigen Datenbank; scheitert sie, Abbruch
 #   5. Volumes (Arbeitsordner, Sitzungen, gemeinsamer Ordner, Redis …)
 #   6. Anlage starten und Selbsttest: ist ein gespeichertes Geheimnis mit dem
 #      zurückgelegten Schlüssel lesbar?
@@ -25,7 +26,9 @@
 #   --dry-run       nur anzeigen, was passieren würde
 #   --yes           ohne Rückfrage (für Skripte)
 #
-# Umgebungsvariablen: COMPOSE_PROJECT_NAME, PG_CONTAINER, POSTGRES_USER, POSTGRES_DB
+# Umgebungsvariablen: COMPOSE_PROJECT_NAME, PG_CONTAINER, POSTGRES_USER, POSTGRES_DB,
+#   BACKUP_DIR (Ziel der Sicherheitskopie der bisherigen Datenbank,
+#   Standard /var/backups/ai-employee — Unterordner vor-wiederherstellung-<zeit>)
 
 set -euo pipefail
 umask 077
@@ -39,6 +42,9 @@ ORCH_CONTAINER="${ORCH_CONTAINER:-ai-employee-orchestrator}"
 POSTGRES_USER="${POSTGRES_USER:-ai_employee}"
 POSTGRES_DB="${POSTGRES_DB:-ai_employee}"
 ALPINE_IMAGE="${ALPINE_IMAGE:-alpine:3.21}"
+# Hierhin kommt vor dem Rückspielen die Sicherheitskopie der BISHERIGEN
+# Datenbank (derselbe Standard wie in backup.sh).
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/ai-employee}"
 
 BACKUP_PATH=""
 DB_ONLY=false
@@ -105,7 +111,9 @@ fi
 if ! $DRY_RUN && ! $JA; then
     echo ""
     echo "ACHTUNG: Die aktuellen Daten dieser Anlage werden durch die Sicherung ersetzt"
-    echo "         (Datenbank$($DB_ONLY || echo ", Arbeitsordner, Konfiguration")). Das lässt sich nicht rückgängig machen."
+    echo "         (Datenbank$($DB_ONLY || echo ", Arbeitsordner, Konfiguration"))."
+    echo "         Die bisherige Datenbank wird vorher nach ${BACKUP_DIR}/vor-wiederherstellung-…"
+    echo "         gesichert$($DB_ONLY || echo "; Arbeitsordner werden ohne Kopie ersetzt")."
     printf "Weiter? Bitte 'ja' eingeben: "
     read -r antwort
     [ "$antwort" = "ja" ] || die "Abgebrochen."
@@ -123,6 +131,38 @@ AGENTEN=$(docker ps -q --filter "label=ai-employee.type=agent" || true)
 if [ -n "$AGENTEN" ]; then
     # shellcheck disable=SC2086
     run docker stop $AGENTEN >/dev/null
+fi
+
+# ─── Sicherheitskopie der bisherigen Datenbank ────────────────────────────────
+# Weiter unten wird die laufende Datenbank per DROP verworfen. War die gewählte
+# Sicherung die falsche (Tippfehler im Pfad, zu alt), wären die aktuellen Daten
+# sonst endgültig fort. Scheitert die Kopie, wird abgebrochen — noch bevor
+# Schlüssel, Passwort oder Datenbank angefasst sind.
+VORHER_ZEIT=$(date +%Y%m%d_%H%M%S)
+VORHER_ORDNER="${BACKUP_DIR}/vor-wiederherstellung-${VORHER_ZEIT}"
+# Name im alten Sicherungsformat: so spielt `restore.sh --backup <ordner>
+# --db-only` die Kopie ohne Umweg wieder zurück.
+VORHER_DATEI="${VORHER_ORDNER}/postgres_${VORHER_ZEIT}.sql.gz"
+DB_VORHANDEN=$(docker exec -i "$PG_CONTAINER" psql -tA -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \
+    -c "SELECT 1 FROM pg_database WHERE datname = '${POSTGRES_DB}';") \
+    || die "Postgres antwortet nicht — Wiederherstellung abgebrochen, nichts verändert."
+if [ "$(echo "$DB_VORHANDEN" | tr -d '[:space:]')" != "1" ]; then
+    log "Datenbank ${POSTGRES_DB} gibt es noch nicht — keine Sicherheitskopie nötig."
+    VORHER_DATEI=""
+elif $DRY_RUN; then
+    echo "[PROBELAUF] pg_dump ${POSTGRES_DB} | gzip > ${VORHER_DATEI}"
+else
+    log "Sichere die bisherige Datenbank nach ${VORHER_ORDNER} …"
+    mkdir -p "$VORHER_ORDNER" || die "Ordner ${VORHER_ORDNER} nicht anlegbar — nichts verändert."
+    chmod 700 "$VORHER_ORDNER"
+    if ! docker exec "$PG_CONTAINER" pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" \
+            | gzip > "$VORHER_DATEI"; then
+        rm -f "$VORHER_DATEI"
+        die "Sicherheitskopie der bisherigen Datenbank gescheitert — Wiederherstellung abgebrochen, nichts verändert. Anlage wieder starten: docker compose up -d"
+    fi
+    chmod 600 "$VORHER_DATEI"
+    log "Bisherige Datenbank gesichert: ${VORHER_DATEI}"
+    log "  Zurück zum bisherigen Stand: ./scripts/restore.sh --backup ${VORHER_ORDNER} --db-only"
 fi
 
 # ─── 3. Schlüssel zuerst ──────────────────────────────────────────────────────
@@ -241,6 +281,7 @@ else
 fi
 
 log "=== Wiederherstellung fertig ==="
+[ -n "$VORHER_DATEI" ] && log "Die Datenbank vor der Wiederherstellung liegt in ${VORHER_DATEI}."
 log "Agenten starten beim nächsten Auftrag von selbst. Gibt es auf dieser Anlage"
 log "noch keine Container (neuer Rechner), in der Agentenliste je Agent die Aktion"
 log "„Update“ ausführen (oder POST /agents/{id}/update) — die Arbeitsordner bleiben erhalten."

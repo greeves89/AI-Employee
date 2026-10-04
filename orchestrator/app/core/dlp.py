@@ -17,6 +17,7 @@ deployments are unaffected until an admin turns it on. Fail-open on internal err
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -165,6 +166,110 @@ def mask(text: str, classes: set[str]) -> str:
     if "de_tax_id" in classes:
         out = _DE_TAX.sub("[REDACTED_ID]", out)
     return out
+
+
+# ── Werkzeugaufrufe: Eingaben und Ausgaben ohne Geheimnisse (#911) ──────────
+#
+# Ein ``curl -H "Authorization: Bearer …"`` stand im Klartext im Verlauf
+# (``chat_messages.tool_calls``), damit bei geteilten Nutzern und in jeder
+# Sicherung — und vorher schon im Live-Strom im Browser. Maskiert wird NUR die
+# Klasse ``secret``: E-Mail-Adressen, IBANs und Nummern sind in Werkzeugaufrufen
+# meist der Gegenstand der Arbeit (Mail senden, Buchung anlegen); sie zu
+# schwaerzen machte den Verlauf unbrauchbar, ohne ein Geheimnis zu schuetzen.
+#
+# Maskiert wird je WERT, nicht auf dem JSON-Text: ``Bearer \S+`` frisst sonst ein
+# schliessendes ``\"`` mit, und die Oberflaeche bekommt kaputtes JSON (``IN {}``).
+
+
+def _werte_maskieren(wert, schluessel: str | None = None):
+    """Kopie von ``wert`` mit maskierten Strings; die Struktur bleibt gleich.
+
+    Steht ein String unter einem sprechenden Schluessel (``password``,
+    ``API_KEY`` …), greift dieselbe ``KEY=VALUE``-Regel wie im Text — sonst sieht
+    sie den Schluessel nie, weil der Wert allein harmlos aussieht.
+    """
+    if isinstance(wert, str):
+        neu = redact_logs(wert)
+        if neu == wert and schluessel and wert:
+            probe = f"{schluessel}={wert}"
+            if redact_logs(probe) != probe:
+                return "[REDACTED]"
+        return neu
+    if isinstance(wert, list):
+        return [_werte_maskieren(w) for w in wert]
+    if isinstance(wert, dict):
+        return {k: _werte_maskieren(v, str(k)) for k, v in wert.items()}
+    return wert
+
+
+def werkzeug_eingabe_maskieren(eingabe):
+    """Werkzeug-Eingabe ohne Geheimnisse — als JSON-Text oder als Objekt.
+
+    Ein JSON-Text bleibt gueltiges JSON (und zeichengleich, wenn nichts zu
+    maskieren war). Text, der kein JSON ist (Altbestand, abgeschnitten), wird als
+    Text maskiert.
+    """
+    if isinstance(eingabe, str):
+        try:
+            objekt = json.loads(eingabe)
+        except ValueError:
+            return redact_logs(eingabe)
+        neu = _werte_maskieren(objekt)
+        return eingabe if neu == objekt else json.dumps(neu, ensure_ascii=False)
+    return _werte_maskieren(eingabe)
+
+
+def werkzeug_liste_maskieren(werkzeuge):
+    """Eine Liste von Werkzeug-Eintraegen (``{"tool","input","output",…}``)."""
+    if not isinstance(werkzeuge, list):
+        return werkzeuge
+    aus = []
+    for eintrag in werkzeuge:
+        if isinstance(eintrag, dict):
+            eintrag = dict(eintrag)
+            if "input" in eintrag:
+                eintrag["input"] = werkzeug_eingabe_maskieren(eintrag["input"])
+            if eintrag.get("output"):
+                eintrag["output"] = _werte_maskieren(eintrag["output"])
+        aus.append(eintrag)
+    return aus
+
+
+def werkzeug_ereignis_maskieren(ereignis):
+    """Ein Strom-Ereignis (``{"type","data",…}``) fuer den Browser bzw. die Ablage.
+
+    ``tool_call`` → Eingabe, ``tool_result`` → Ausgabe, ``done``/``result`` →
+    die mitgelieferte Werkzeugliste. Alles andere kommt unveraendert (dasselbe
+    Objekt) zurueck.
+    """
+    if not isinstance(ereignis, dict):
+        return ereignis
+    typ = ereignis.get("type")
+    daten = ereignis.get("data")
+    if not isinstance(daten, dict):
+        return ereignis
+    if typ == "tool_call" and "input" in daten:
+        neu = {**daten, "input": werkzeug_eingabe_maskieren(daten["input"])}
+    elif typ == "tool_result" and "content" in daten:
+        neu = {**daten, "content": _werte_maskieren(daten["content"])}
+    elif typ in ("done", "result") and isinstance(daten.get("tool_calls"), list):
+        neu = {**daten, "tool_calls": werkzeug_liste_maskieren(daten["tool_calls"])}
+    else:
+        return ereignis
+    return {**ereignis, "data": neu}
+
+
+def werkzeug_ereignis_text_maskieren(roh: str) -> str:
+    """Wie ``werkzeug_ereignis_maskieren``, fuer ein Ereignis als JSON-Text.
+
+    Zeichengleich zurueck, wenn nichts zu maskieren war oder es kein Ereignis ist.
+    """
+    try:
+        ereignis = json.loads(roh)
+    except (TypeError, ValueError):
+        return roh
+    neu = werkzeug_ereignis_maskieren(ereignis)
+    return roh if neu == ereignis else json.dumps(neu)
 
 
 @dataclass
