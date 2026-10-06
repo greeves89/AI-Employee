@@ -83,25 +83,25 @@ class DieAclWirdBeimStartWiederhergestelltTests(unittest.TestCase):
     def test_es_gibt_den_aufruf_ueberhaupt(self):
         # Im kommentarfreien if-Block, nicht in der ganzen Datei: dort bestuende
         # auch ein auskommentierter Aufruf.
-        self.assertIn("await app.state.redis.ensure_agent_acl_user(_aid)", _block())
+        self.assertIn("await app.state.redis.ensure_agent_acl_user(", _block())
 
     def test_er_laeuft_nach_der_redis_verbindung(self):
         """Vorher gibt es keine Verbindung, ueber die man Regeln setzen koennte."""
         verbinden = _MAIN.index("await app.state.redis.connect()")
-        setzen = _MAIN.index("ensure_agent_acl_user(_aid)")
+        setzen = _MAIN.index("app.state.redis.ensure_agent_acl_user(")
         self.assertLess(verbinden, setzen)
 
     def test_er_gilt_fuer_ALLE_agenten(self):
         """Nur die laufenden zu behandeln waere zu wenig: ein spaeter
         gestarteter Agent traefe wieder auf einen fehlenden Nutzer."""
-        self.assertIn("_sel_acl(_AgentACL.id)", _block())
+        self.assertIn("_sel_acl(_AgentACL.id, _AgentACL.config)", _block())
 
     def test_er_laeuft_nur_bei_eingeschalteter_acl(self):
         """Ohne ACL gibt es keine Nutzer, und der Aufruf wuerde nur Fehler
         erzeugen."""
         self.assertIn("if settings.redis_acl_enabled:", _MAIN)
         vor = _MAIN.index("if settings.redis_acl_enabled:")
-        setzen = _MAIN.index("ensure_agent_acl_user(_aid)")
+        setzen = _MAIN.index("app.state.redis.ensure_agent_acl_user(")
         self.assertLess(vor, setzen)
 
     def test_ein_einzelner_fehlschlag_stoppt_die_uebrigen_nicht(self):
@@ -182,10 +182,11 @@ class AuchEinReinerRedisNeustartWirdGeheiltTests(unittest.TestCase):
 
     class _Redis:
         def __init__(self, client):
-            self.client, self.gesetzt = client, []
+            self.client, self.gesetzt, self.alt = client, [], {}
 
-        async def ensure_agent_acl_user(self, agent_id):
+        async def ensure_agent_acl_user(self, agent_id, *, altes_postfach=False):
             self.gesetzt.append(agent_id)
+            self.alt[agent_id] = altes_postfach
 
     def _vorbereitet(self, *, ids, vorhanden, acl_an=True, fehler=None):
         from app.services import scheduler_service as ss
@@ -208,7 +209,8 @@ class AuchEinReinerRedisNeustartWirdGeheiltTests(unittest.TestCase):
                 return self_
 
             def all(self_):
-                return list(planer._ids)
+                # (Kennung, config) — der Takt liest die Version des Abbilds mit (#918).
+                return [(a, getattr(planer, "_versionen", {}).get(a)) for a in planer._ids]
 
         class _Db:
             async def execute(self_, *_):

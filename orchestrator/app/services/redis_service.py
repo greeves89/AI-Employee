@@ -54,7 +54,6 @@ _AGENT_ACL_CHANNEL_PATTERNS = [
     "agent:{id}:*",
     "agents:logs:all",
     "chat:completions",
-    "agent:messages:persist",
     # task_consumer.py publishes task lifecycle events on these globals.
     "task:started",
     "task:completions",
@@ -79,29 +78,55 @@ _AGENT_ACL_COMMAND_RULES = [
     "+@read", "+@write", "+@pubsub", "+@connection", "-@admin", "-@dangerous",
 ]
 
-# The inter-agent inbox (message_consumer.py's send_message tool does
-# `LPUSH agent:{to_agent_id}:messages`) needs to stay reachable across ALL
-# agent ids, not just this agent's own — but granting the broad +@read/+@write
-# above on that wildcard would also let any agent LRANGE/LREM/LPOP another
-# agent's inbox. Redis 7 ACL selectors scope an independent command+key rule
-# alongside the user's root permissions, so this selector grants exactly one
-# command (LPUSH) on exactly this pattern, with no read/delete access.
-_CROSS_AGENT_INBOX_SELECTOR = "(~agent:*:messages +lpush)"
+# Fremde Postfaecher (#918). Bis v1.362.6 antwortete ein Agent seinem Kollegen,
+# indem er selbst `LPUSH agent:{to}:messages` ausfuehrte und die Nachricht ueber
+# den Kanal `agent:messages:persist` zum Speichern meldete. Beides lief am
+# Orchestrator vorbei: keine Budgetpruefung, keine Pruefung, wem der Empfaenger
+# gehoert, und der Verlauf liess sich mit beliebigem Absender fuellen. Seit
+# v1.362.7 antwortet der Agent ueber die API (`POST /agents/{id}/message`).
+#
+# Die alte Erlaubnis bekommen nur noch Agenten, deren Abbild aelter ist — sie
+# koennten sonst bis zu ihrer Aktualisierung nicht mehr antworten. Mit dem
+# Update des Agenten faellt sie weg.
+_ALTES_POSTFACH_SELECTOR = "(~agent:*:messages +lpush)"
+_ALTES_POSTFACH_KANAL = "agent:messages:persist"
+ANTWORT_UEBER_API_AB = (1, 362, 7)
 
 
-def build_agent_acl_setuser_args(agent_id: str) -> list[str]:
+def braucht_altes_postfach(agent_version: str | None) -> bool:
+    """Laeuft der Agent noch mit einem Abbild, das direkt in Postfaecher schreibt?
+
+    Unbekannte oder unlesbare Version zaehlt als alt: solche Agenten stammen aus
+    der Zeit davor, und ihnen die Erlaubnis zu nehmen, liesse ihre Antworten
+    stumm verschwinden.
+    """
+    try:
+        teile = tuple(int(t) for t in str(agent_version or "").strip().lstrip("v").split(".")[:3])
+    except ValueError:
+        return True
+    if len(teile) < 3:
+        return True
+    return teile < ANTWORT_UEBER_API_AB
+
+
+def build_agent_acl_setuser_args(agent_id: str, *, altes_postfach: bool = False) -> list[str]:
     """Build the `ACL SETUSER` argument list for one agent's scoped user.
 
     Split out as a pure function (no I/O) so the exact rule set can be unit
     tested without a live Redis — and so the same args can be pasted into
     `redis-cli ACL SETUSER ...` for a manual live smoke test before this is
     enabled by default (settings.redis_acl_enabled).
+
+    ``altes_postfach``: nur fuer Agenten mit aelterem Abbild, siehe oben.
     """
     args = ["reset", "on", f">{agent_acl_password(agent_id)}", "resetkeys", "resetchannels"]
     args += [f"~{p.format(id=agent_id)}" for p in _AGENT_ACL_KEY_PATTERNS]
     args += [f"&{p.format(id=agent_id)}" for p in _AGENT_ACL_CHANNEL_PATTERNS]
+    if altes_postfach:
+        args.append(f"&{_ALTES_POSTFACH_KANAL}")
     args += _AGENT_ACL_COMMAND_RULES
-    args.append(_CROSS_AGENT_INBOX_SELECTOR)
+    if altes_postfach:
+        args.append(_ALTES_POSTFACH_SELECTOR)
     return args
 
 
@@ -165,7 +190,7 @@ class RedisService:
         if self.client:
             await self.client.aclose()
 
-    async def ensure_agent_acl_user(self, agent_id: str) -> str:
+    async def ensure_agent_acl_user(self, agent_id: str, *, altes_postfach: bool = False) -> str:
         """Create/update the least-privilege Redis ACL user for one agent.
 
         Idempotent (ACL SETUSER replaces the user's rules wholesale each
@@ -178,7 +203,10 @@ class RedisService:
         if not self.client:
             raise RuntimeError("Redis not connected")
         username = agent_acl_username(agent_id)
-        await self.client.execute_command("ACL", "SETUSER", username, *build_agent_acl_setuser_args(agent_id))
+        await self.client.execute_command(
+            "ACL", "SETUSER", username,
+            *build_agent_acl_setuser_args(agent_id, altes_postfach=altes_postfach),
+        )
         return self._scoped_url(username, agent_acl_password(agent_id))
 
     async def revoke_agent_acl_user(self, agent_id: str) -> None:

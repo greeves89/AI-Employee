@@ -2487,6 +2487,31 @@ async def _session_of_message(db: AsyncSession, message_id: str | None) -> str |
         return None
 
 
+async def _ist_antwort_an_fragenden(db: AsyncSession, *, absender: str, empfaenger: str,
+                                    reply_to: str | None) -> bool:
+    """Darf ``absender`` dem ``empfaenger`` antworten, obwohl der nicht zu seinen Kollegen zählt?
+
+    Ja, wenn er genau auf eine Nachricht antwortet, die ihm dieser Empfänger
+    geschickt hat (#918). Erreichbarkeit ist nicht symmetrisch — einen
+    Plattform-Agenten darf jeder ansprechen, der kennt den Fragenden aber nicht
+    als Kollegen. Seit die Antwort über die API läuft statt direkt über Redis,
+    muss dieser Rückweg hier ausdrücklich offen sein; mehr als die Antwort auf
+    eine echte, gespeicherte Frage öffnet er nicht.
+    """
+    if not reply_to:
+        return False
+    from app.models.agent_message import AgentMessage as _Nachricht
+
+    frage = (await db.execute(
+        select(_Nachricht.id).where(
+            _Nachricht.message_id == reply_to,
+            _Nachricht.from_agent_id == empfaenger,
+            _Nachricht.to_agent_id == absender,
+        ).limit(1)
+    )).first()
+    return frage is not None
+
+
 @router.post("/{agent_id}/message")
 async def send_message_to_agent(
     agent_id: str,
@@ -2505,7 +2530,9 @@ async def send_message_to_agent(
         # SEINEM Namen: der Absender stand bisher im Request und liess sich
         # frei waehlen.
         from app.api.tasks import _erreichbare_agenten
-        if agent_id not in await _erreichbare_agenten(user, db):
+        if agent_id not in await _erreichbare_agenten(user, db) and not await _ist_antwort_an_fragenden(
+            db, absender=user.id, empfaenger=agent_id, reply_to=body.reply_to,
+        ):
             raise HTTPException(status_code=403, detail="Dieser Agent gehört nicht zu deinen Kollegen.")
         body.from_agent_id = user.id
 
@@ -2576,6 +2603,10 @@ async def send_message_to_agent(
             "to_agent_id": agent_id,
             "message_type": body.message_type or "message",
             "reply_to": body.reply_to,
+            # Daran erkennt der Empfänger eine Antwort (und antwortet nicht
+            # seinerseits — sonst spielen zwei Agenten Ping-Pong). Bis v1.362.6
+            # setzte der antwortende Agent das Feld selbst (#918).
+            "is_reply": (body.message_type or "") == "response",
         })
         # Erst wecken, dann zustellen. Die Warteschlange wird nur gelesen, solange
         # der Container laeuft — einem idle ausgestiegenen Agenten etwas

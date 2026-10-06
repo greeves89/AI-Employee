@@ -57,9 +57,29 @@ def test_build_agent_acl_setuser_args_scopes_keys_to_own_agent_and_meeting_respo
     assert "*" not in key_patterns
 
 
-def test_build_agent_acl_setuser_args_grants_lpush_only_selector_for_cross_agent_inbox():
-    args = build_agent_acl_setuser_args("abc123")
-    assert "(~agent:*:messages +lpush)" in args
+def test_fremde_postfaecher_nur_noch_fuer_agenten_mit_altem_abbild():
+    """#918: Bis v1.362.6 durfte jeder Agent in jedes Postfach schreiben und den
+    Verlauf über ``agent:messages:persist`` mit beliebigem Absender füllen — am
+    Orchestrator (Budget, Besitz) vorbei. Jetzt antwortet der Agent über die API."""
+    neu = build_agent_acl_setuser_args("abc123")
+    assert "(~agent:*:messages +lpush)" not in neu
+    assert "&agent:messages:persist" not in neu
+    assert not any("agent:*" in a for a in neu), neu
+
+    alt = build_agent_acl_setuser_args("abc123", altes_postfach=True)
+    assert "(~agent:*:messages +lpush)" in alt
+    assert "&agent:messages:persist" in alt
+    # Reihenfolge: der Selektor steht NACH den Befehlsregeln (sonst gilt er nicht).
+    assert alt.index("(~agent:*:messages +lpush)") > alt.index("-@dangerous")
+
+
+def test_altes_abbild_wird_an_der_version_erkannt():
+    from app.services.redis_service import braucht_altes_postfach
+
+    for version, alt in [("1.362.6", True), ("1.361.1", True), ("1.99.4", True), (None, True),
+                         ("", True), ("unbekannt", True), ("1.362", True),
+                         ("1.362.7", False), ("v1.362.7", False), ("1.363.0", False), ("2.0.0", False)]:
+        assert braucht_altes_postfach(version) is alt, version
 
 
 def test_build_agent_acl_setuser_args_scopes_channels_to_own_agent_and_globals():
@@ -69,7 +89,6 @@ def test_build_agent_acl_setuser_args_scopes_channels_to_own_agent_and_globals()
     for global_channel in (
         "agents:logs:all",
         "chat:completions",
-        "agent:messages:persist",
         "task:started",
         "task:completions",
     ):

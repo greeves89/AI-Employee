@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.7] - 2026-10-06
+
+### Sicherheit
+- **Agenten schreiben nicht mehr in fremde Postfächer (#918):** Bisher antwortete ein
+  Agent einem Kollegen, indem er selbst in dessen Redis-Postfach schrieb und die Nachricht
+  über einen Sammelkanal zum Speichern meldete — am Orchestrator vorbei: ohne
+  Budgetprüfung, ohne Prüfung, wem der Empfänger gehört, und mit frei wählbarem Absender
+  im Verlauf. Antworten laufen jetzt über die API (`POST /agents/{id}/message`); die
+  Redis-Rechte der Agenten enthalten die Ausnahme nicht mehr. Agenten mit älterem Abbild
+  behalten sie bis zu ihrer Aktualisierung, damit ihre Antworten nicht verloren gehen.
+  Der Rückweg ist nur für die Antwort auf eine echte, gespeicherte Frage offen.
+
+### Behoben
+- **Kosten von Nachrichten-Läufen (#919):** Läufe auf eine Nachricht eines Kollegen oder in
+  einer Besprechung meldeten in keiner Laufzeit Kosten. Sie zählen jetzt für Budget,
+  Dashboard und Systemzustand.
+
+### Wichtig beim Update
+- Agenten-Abbild neu bauen und Agenten aktualisieren: Erst danach antwortet ein Agent über
+  die API und verliert das Schreibrecht auf fremde Postfächer.
+
+---
+
 ## [1.362.6] - 2026-10-06
 
 ### Behoben

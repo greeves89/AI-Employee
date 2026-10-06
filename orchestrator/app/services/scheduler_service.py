@@ -1878,8 +1878,12 @@ class SchedulerService:
         from app.models.agent import Agent as _AgentACL
         from app.services.redis_service import agent_acl_username
 
+        from app.services.redis_service import braucht_altes_postfach
+
         async with resilient_session() as db:
-            ids = (await db.execute(select(_AgentACL.id))).scalars().all()
+            zeilen = (await db.execute(select(_AgentACL.id, _AgentACL.config))).all()
+        ids = [z[0] for z in zeilen]
+        version = {z[0]: (z[1] or {}).get("agent_version") for z in zeilen}
         if not ids:
             return
         try:
@@ -1894,7 +1898,9 @@ class SchedulerService:
         wieder = 0
         for aid in fehlend:
             try:
-                await self.redis.ensure_agent_acl_user(aid)
+                await self.redis.ensure_agent_acl_user(
+                    aid, altes_postfach=braucht_altes_postfach(version.get(aid)),
+                )
                 wieder += 1
             except Exception as e:  # noqa: BLE001
                 logger.warning("[Scheduler] Redis-ACL fuer %s nicht gesetzt: %s", aid, e)

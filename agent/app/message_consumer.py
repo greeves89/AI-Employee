@@ -127,9 +127,16 @@ class MessageConsumer:
                 ChatMessage(role="user", content=prompt),
             ]
             text = ""
+            modell = model if (model and model != "default") else settings.llm_model_name
             async for event in provider.stream_completion(messages, []):
-                if getattr(event, "type", None) == "text_delta":
+                art = getattr(event, "type", None)
+                if art == "text_delta":
                     text += event.text
+                elif art == "done":
+                    # Jeder Aufruf wird einzeln abgerechnet (#919).
+                    from app import model_registry
+                    self._lauf_kosten += model_registry.estimate_cost(
+                        modell or "", event.input_tokens or 0, event.output_tokens or 0)
             # 12000 chars (~3000 tokens, within llm_max_tokens) — the old 2000 cap cut off
             # meeting syntheses (the Action-Item list) mid-sentence. Prompts control brevity.
             return text[:12000]
@@ -138,6 +145,46 @@ class MessageConsumer:
             return ""
 
     async def _execute_cli(self, prompt: str, model: str | None = None) -> str:
+        """Lauf ausführen und seine Kosten melden (#919).
+
+        Läufe auf eine Nachricht eines Kollegen oder in einer Besprechung legten
+        weder eine Aufgabe noch eine Chatzeile an — ihre Kosten fehlten in Budget
+        und Dashboard, in allen drei Laufzeiten.
+        """
+        self._lauf_kosten = 0.0
+        try:
+            return await self._execute_cli_roh(prompt, model)
+        finally:
+            await self._kosten_melden()
+
+    async def _kosten_melden(self) -> None:
+        """Kosten des letzten Laufs in die eigene Fertig-Liste legen.
+
+        Derselbe Weg wie bei Chat-Läufen ohne Verlaufszeile (Telegram,
+        Sprachfront): der Orchestrator räumt ``agent:{id}:chat:done`` ab, liest
+        die Agenten-Kennung aus dem SCHLÜSSEL und bucht den Betrag genau einmal.
+        """
+        betrag = float(getattr(self, "_lauf_kosten", 0.0) or 0.0)
+        if betrag <= 0 or not self.redis:
+            return
+        import uuid
+        from datetime import datetime, timezone
+
+        try:
+            schluessel = f"agent:{self.agent_id}:chat:done"
+            await self.redis.rpush(schluessel, json.dumps({
+                "agent_id": self.agent_id,
+                "message_id": f"nachricht-{uuid.uuid4().hex[:12]}",
+                "type": "done",
+                "source": "nachricht",
+                "data": {"status": "completed", "cost_usd": round(betrag, 6)},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }))
+            await self.redis.ltrim(schluessel, -200, -1)
+        except Exception as e:  # noqa: BLE001 — eine Buchung darf die Antwort nicht kippen
+            logger.warning(f"Kosten des Nachrichten-Laufs nicht gemeldet: {e}")
+
+    async def _execute_cli_roh(self, prompt: str, model: str | None = None) -> str:
         """Run the agent's runtime with the prompt and return the text response."""
         import os
 
@@ -217,6 +264,15 @@ class MessageConsumer:
                             except json.JSONDecodeError:
                                 continue
                             if isinstance(ev, dict):
+                                if ev.get("type") == "turn.completed" and isinstance(ev.get("usage"), dict):
+                                    # Frischer ``codex exec`` je Nachricht: die Summe ist dieser Lauf.
+                                    from app import model_registry
+                                    nutzung = ev["usage"]
+                                    self._lauf_kosten += model_registry.estimate_cost(
+                                        (model if (model and model != "default") else settings.default_model) or "",
+                                        int(nutzung.get("input_tokens") or 0),
+                                        int(nutzung.get("output_tokens") or 0),
+                                    )
                                 t = _extract_text(ev)
                                 if t:
                                     parts.append(t)
@@ -224,6 +280,10 @@ class MessageConsumer:
                         # "nothing to add" placeholder instead of a JSON dump.
                         return "".join(parts).strip()[:4000]
                     data = json.loads(decoded)
+                    if isinstance(data, dict):
+                        # Ohne --resume ist ``total_cost_usd`` genau dieser Lauf.
+                        from app import model_registry
+                        self._lauf_kosten += model_registry.claude_gesamtkosten(data)
                     return data.get("result", data.get("text", stdout.decode()[:500]))
                 except json.JSONDecodeError:
                     return stdout.decode("utf-8", errors="replace")[:500]
@@ -247,29 +307,48 @@ class MessageConsumer:
             return f"[Error] {str(e)[:200]}"
 
     async def _send_reply(self, to_agent_id: str, message: str, reply_to: str | None = None) -> bool:
-        """Send reply back to the sender agent via Redis queue + persist event."""
-        try:
-            import uuid
+        """Antwort an den Absender — über den Orchestrator, nicht direkt über Redis.
 
-            if not self.redis:
-                return False
-            payload = {
-                "id": uuid.uuid4().hex[:12],
-                "from_agent_id": self.agent_id,
-                "from_name": settings.agent_name,
+        Bis v1.362.6 schrieb der Agent selbst in ``agent:{to}:messages`` (#918):
+        am Orchestrator vorbei, also ohne Budgetprüfung, ohne Prüfung, wem der
+        Empfänger gehört, und mit frei wählbarem Absender im gespeicherten
+        Verlauf. Die API stellt zu, speichert und prüft; in ein fremdes Postfach
+        darf dieser Agent seitdem gar nicht mehr schreiben.
+        """
+        try:
+            return await asyncio.get_running_loop().run_in_executor(
+                None, self._antwort_senden, to_agent_id, message, reply_to,
+            )
+        except Exception as e:  # noqa: BLE001 — eine Antwort darf den Consumer nicht kippen
+            logger.warning(f"Failed to send reply to {to_agent_id}: {e}")
+            return False
+
+    def _antwort_senden(self, to_agent_id: str, message: str, reply_to: str | None) -> bool:
+        import urllib.error
+        import urllib.request
+
+        req = urllib.request.Request(
+            f"{settings.orchestrator_url}/api/v1/agents/{to_agent_id}/message",
+            data=json.dumps({
                 "text": message,
-                "to_agent_id": to_agent_id,
                 "message_type": "response",
                 "reply_to": reply_to,
-                "is_reply": True,
-            }
-            # Push to recipient's message queue
-            await self.redis.lpush(f"agent:{to_agent_id}:messages", json.dumps(payload))
-            # Publish for DB persistence (orchestrator listens on this channel)
-            await self.redis.publish("agent:messages:persist", json.dumps(payload))
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to send reply to {to_agent_id}: {e}")
+                "from_name": settings.agent_name,
+            }).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {settings.agent_token}",
+                "X-Agent-ID": settings.agent_id,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as antwort:
+                return 200 <= antwort.status < 300
+        except urllib.error.HTTPError as e:
+            # 402 = Budget des Empfängers aufgebraucht, 403 = kein Kollege,
+            # 429 = zu viele Nachrichten: alles bewusste Absagen, kein Fehler hier.
+            logger.warning(f"Reply to {to_agent_id} rejected by orchestrator: HTTP {e.code}")
             return False
 
     async def start(self) -> None:
@@ -359,7 +438,8 @@ class MessageConsumer:
                 from_name = msg.get("from_name", "Unknown Agent")
                 text = msg.get("text", "")
                 message_id = msg.get("id", "msg-unknown")
-                is_reply = msg.get("is_reply", False)
+                # Auch am Typ erkannt: ein älterer Orchestrator setzt ``is_reply`` nicht.
+                is_reply = bool(msg.get("is_reply")) or msg.get("message_type") == "response"
 
                 logger.info(f"[Message] {'Reply' if is_reply else 'New'} from {from_name} ({from_agent_id}): {text[:80]}...")
 

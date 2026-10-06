@@ -2474,12 +2474,18 @@ clean Markdown; you don't need to commit.
             from app.models.agent import Agent as _AgentACL
             from sqlalchemy import select as _sel_acl
 
+            from app.services.redis_service import braucht_altes_postfach as _alt_acl
+
             async with _sf_acl() as _db_acl:
-                _ids = (await _db_acl.execute(_sel_acl(_AgentACL.id))).scalars().all()
+                _zeilen_acl = (await _db_acl.execute(_sel_acl(_AgentACL.id, _AgentACL.config))).all()
+            _ids = [z[0] for z in _zeilen_acl]
             _ok = 0
-            for _aid in _ids:
+            for _aid, _cfg in _zeilen_acl:
                 try:
-                    await app.state.redis.ensure_agent_acl_user(_aid)
+                    # #918: fremde Postfaecher nur noch fuer Agenten mit aelterem Abbild.
+                    await app.state.redis.ensure_agent_acl_user(
+                        _aid, altes_postfach=_alt_acl((_cfg or {}).get("agent_version")),
+                    )
                     _ok += 1
                 except Exception as e:  # noqa: BLE001
                     logger.warning("Redis-ACL fuer %s nicht gesetzt: %s", _aid, e)
