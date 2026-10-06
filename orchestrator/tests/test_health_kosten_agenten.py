@@ -106,5 +106,25 @@ class AutoMetriken(HealthBasis):
         self.assertAlmostEqual(out["total_cost_usd"], 1.5)
 
 
+
+class AntwortschemaTraegtAlleFelder(unittest.TestCase):
+    """Die Tests oben rufen die Funktion direkt auf. Über HTTP läuft die Antwort durch
+    ``response_model`` — ein Feld, das dort fehlt, verschwindet stumm (Fund beim
+    Handbuch-Bild: „0 Agenten registriert“ neben 13 Agenten)."""
+
+    def test_schema_laesst_die_agentenliste_durch(self):
+        from app.schemas.test_run import HealthDashboardResponse
+
+        roh = {
+            "overall_status": "healthy", "uptime_pct": None, "latest_run": None,
+            "pass_rate_trend": [], "response_time_trend": [], "failure_categories": {},
+            "agent_ratings": [], "open_auto_issues": 0, "total_cost_7d": 0.0, "total_tasks_7d": 0,
+            "agents": [{"id": "a1", "name": "Buchhaltung", "state": "running", "health": "healthy"}],
+        }
+        aus = HealthDashboardResponse(**roh).model_dump()
+        self.assertEqual(aus["agents"], roh["agents"])
+        self.assertEqual(set(roh), set(aus) & set(roh), "kein geliefertes Feld geht verloren")
+
+
 if __name__ == "__main__":
     unittest.main()

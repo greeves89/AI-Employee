@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.6] - 2026-10-06
+
+### Behoben
+- **Systemzustand zeigte „0 Agenten registriert“:** Der Server berechnete die
+  Agentenliste, das Antwortschema des Endpunkts kannte das Feld aber nicht und schnitt es
+  ab. Ein Test prüft jetzt das Schema selbst, nicht nur die Funktion dahinter.
+
+### Dokumentation
+- Benutzerhandbuch: die neuen Oberflächen aus v1.362 Klick für Klick, 21 neue und
+  8 erneuerte Abbildungen, PDF neu erzeugt.
+
+---
+
 ## [1.362.5] - 2026-10-06
 
 Reste aus der Nachabnahme von v1.362.2.

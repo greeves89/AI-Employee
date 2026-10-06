@@ -55,6 +55,9 @@ class HealthDashboardResponse(BaseModel):
 
     # Agent health from improvement engine
     agent_ratings: list[dict[str, Any]]  # [{agent_id, name, avg_rating, status}]
+    # Agenten des Aufrufers mit Zustand (#896). Fehlte hier, also schnitt FastAPI
+    # das Feld aus der Antwort: die Seite zeigte „0 Agenten registriert“.
+    agents: list[dict[str, Any]] = []  # [{id, name, state, health}]
 
     # Open issues
     open_auto_issues: int
