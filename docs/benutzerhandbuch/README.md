@@ -96,6 +96,20 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 2. **E-Mail** und **Passwort** eingeben.
 3. Auf **Anmelden** klicken. Du landest auf dem **Dashboard**. Die Sitzung bleibt sicher
    aktiv (verschlüsseltes Cookie), bis du dich abmeldest oder sie abläuft.
+4. **Hast du die Zwei-Faktor-Anmeldung eingerichtet** (Kap. 20.4) oder verlangt die Anlage
+   sie *(seit 1.362.0)*, folgt nach dem Passwort ein zweiter Schritt **Bestätigungscode**:
+   Öffne die Authenticator-App auf deinem Telefon, tippe den **sechsstelligen Code** ein
+   und bestätige. Der Code wechselt alle 30 Sekunden. Hast du dein Telefon verloren,
+   nimm einen **Wiederherstellungscode** (siehe Kap. 20.4) oder bitte einen Administrator
+   darum, den zweiten Faktor zurückzusetzen (Kap. 22.1). Nach mehreren falschen Eingaben
+   bremst die Anlage weitere Versuche kurz aus.
+5. **Schreibt der Administrator den zweiten Faktor vor und du hast ihn noch nicht**, richtest
+   du ihn direkt nach dem Passwort ein: QR-Code mit der Authenticator-App scannen, den
+   angezeigten Code eingeben und die **Wiederherstellungscodes** sichern. Erst danach bist du
+   angemeldet.
+
+> Eine Abbildung dieses Schritts gibt es nicht: Er erscheint nur bei einem Konto mit
+> aktivem zweiten Faktor, und dessen Einrichtung bleibt der Person selbst vorbehalten.
 
 ### 1.2 Die Seitenleiste — dein Hauptmenü
 Die **linke Seitenleiste** ist auf jeder Seite dein Navigationszentrum (im Screenshot
@@ -300,23 +314,36 @@ zuerst die **Vorlagen-Auswahl**:
 
 ![Vorlage wählen](screenshots/f01-new-agent-modal.png)
 
-Hier entscheidest du, *womit* dein Agent startet — das spart Konfiguration:
+Hier entscheidest du, *womit* dein Agent startet — das spart Konfiguration. Du findest
+die passende Vorlage auf drei Wegen *(seit 1.362.0)*:
 
-- **Leerer Agent** — startet ohne Vorlage; du vergibst nur Name und Rolle selbst.
-  Nimm das, wenn du den Agenten komplett selbst einrichten willst.
-- **Fertige Vorlagen** — vorkonfigurierte Profile mit Rolle, Werkzeugen und Skills, nach
-  Kategorie sortiert:
-  - *CREATIVE* — z. B. **Presentation Designer** (Folien/Decks).
-  - *DATA & ANALYTICS* — z. B. **Data Analyst** (Auswertungen, Diagramme, Python/Pandas),
-    **Web Crawler**.
-  - *DEVELOPMENT* — **API Developer**, **Code Reviewer**, **Fullstack Developer**,
-    **QA Tester**.
-  - *GENERAL* — **Legal Assistant**, **OS Agent (Brain)**, **Recruiter**,
-    **Research Assistant**.
-  - Die kleinen Tags **package install** / **system config** zeigen an, dass die Vorlage
-    zusätzliche Pakete bzw. Systemkonfiguration mitbringt.
+1. **Suchfeld** — oben tippen, z. B. **Rechnung**, **Angebot** oder **Social Media**. Die
+   Liste zeigt sofort nur Vorlagen, in deren Name, Beschreibung oder Fach-Skills das Wort
+   vorkommt. Das Kreuz im Feld leert die Suche wieder.
+2. **Bereichs-Chips** — darunter stehen Chips wie **Finanzen**, **Allgemein**, **Vertrieb**,
+   **Marketing**, **Kundenservice**, **Leitung**, **Texte & Dokumentation**,
+   **Produktivität**, **Gestaltung**, **Daten & Auswertung**, **Entwicklung**, **Betrieb** und
+   **Sicherheit**. Ein Klick auf einen Chip zeigt nur diesen Bereich, **Alle** hebt den Filter
+   auf.
+3. **Kacheln** — jede Vorlage ist eine Kachel mit Name, Kurzbeschreibung und der blauen
+   Zeile **„N Fach-Skills“**. Das sind die Fähigkeiten, die der Agent von Anfang an
+   mitbringt — bei **Buchhaltung** z. B. *Belege vorkontieren, Excel-Tabellen,
+   PDF-Dokumente*.
 
-Klicke auf die gewünschte Karte (oder **Leerer Agent**).
+![Vorlagen-Auswahl mit Suchfeld, Bereichs-Chips und Fach-Skills](screenshots/59-neuer-agent-vorlagen-suche.png)
+
+Die Suche nach **Rechnung** findet zum Beispiel die Vorlagen **Buchhaltung** und
+**Lohnbuchhaltung**:
+
+![Suche nach „Rechnung“](screenshots/60-neuer-agent-suche-rechnung.png)
+
+- **Leerer Agent** — startet ohne Vorlage; du vergibst nur Name und Aufgabe selbst. Nimm
+  das, wenn du den Agenten komplett selbst einrichten willst.
+- **Fertige Vorlagen** — vorkonfigurierte Profile mit Rolle, Werkzeugen und Fach-Skills.
+  Welche Vorlagen du siehst, hängt von deiner **Rolle** ab (Kap. 22.4); ein Administrator
+  sieht alle.
+
+Klicke auf die gewünschte Kachel (oder **Leerer Agent**).
 
 **Schritt 2 — Konfigurieren.** Danach legst du die Eckdaten fest:
 - **Name** — frei wählbar (erscheint überall in der Oberfläche).
@@ -328,6 +355,37 @@ Klicke auf die gewünschte Karte (oder **Leerer Agent**).
   Aufgabe* ist (bei Vorlagen vorausgefüllt).
 - **Berechtigungen / Integrationen** — welche Werkzeuge/Dienste er nutzen darf.
 - **Budget** (optional) — monatliche Kostenobergrenze (kann der Admin vorgeben).
+
+**Was du bei einer Vorlage in Schritt 2 siehst** *(seit 1.362.0)*:
+
+- Oben steht ein blauer Kasten **„Bringt N Fach-Skills mit“** mit jedem Skill und seiner
+  Kurzbeschreibung. Du musst nichts auswählen — die Skills werden beim Erstellen
+  automatisch eingerichtet.
+- Als **Mitglied** (einfache Ansicht, Kap. 1.4) bleibt der Schritt bewusst klein: **Name**,
+  **Symbol & Farbe**, **Schlagwort**, dann **Agent erstellen**. Modell, Rechte und
+  Budget legt die Anlage für dich fest.
+
+![Schritt 2 als Mitglied: Kasten „Bringt 3 Fach-Skills mit“](screenshots/61-neuer-agent-schritt2-fachskills.png)
+
+**Als Administrator** kommen **Konto & Laufzeit**, **Budget pro Monat** und die
+**Technischen Details** hinzu. Trägst du ein Budget ein, erscheint darunter die Auswahl
+**Wenn Budget aufgebraucht**:
+
+- **Stoppen — Agent pausieren** (Vorgabe): Der Agent nimmt keine neuen Aufgaben und
+  Chat-Nachrichten mehr an; Administratoren werden benachrichtigt.
+- **Sparmodus — günstigeres Modell**: Der Agent arbeitet mit einem günstigeren Modell weiter.
+
+![Budget mit „Stoppen — Agent pausieren“](screenshots/62-neuer-agent-budget-stoppen.png)
+
+**Vorlage mit Root-Vorschlag (z. B. Server & Betrieb / DevOps).** Schlägt eine Vorlage
+vollen Administratorzugriff im Container vor, ist der Haken **„Vollen Root-Zugriff gewähren
+(von der Vorlage vorgeschlagen)“** **nicht gesetzt** — er wird nie still vorausgewählt.
+Darunter steht die Warnung, was Root bedeutet (alles als Administrator, nur für Entwicklung
+und Tests). Ohne Haken bekommt der Agent nur die Rechte seiner Autonomiestufe. Liegt deine
+Rolle unter dieser Stufe, steht stattdessen ein Hinweis, dass die Rechte der Autonomiestufe
+folgen — der Haken fehlt dann ganz.
+
+![Vorlage Server & Betrieb mit Root-Haken und Warnung](screenshots/63-neuer-agent-devops-root.png)
 
 **Schritt 3 — Erstellen.** Auf **Erstellen** klicken. Der Container wird provisioniert und
 startet automatisch; nach wenigen Sekunden erscheint der neue Agent als Kachel mit Status
@@ -409,9 +467,35 @@ Tab **Chat**. Das ist das direkte Gespräch (wie ein Messenger).
   Dateiauswahl). Tipp: Bilder kannst du mit Strg/Cmd+V einfügen.
 - **Mikrofon** — Anweisung diktieren statt tippen.
 - **Token-Zähler** unten (z. B. *0 / 200k tokens*) — wie viel Kontext gerade belegt ist.
-- Während der Agent arbeitet, erscheinen **Tool-Bubbles** (kleine Symbole für seine
-  Werkzeug-Aufrufe). **Klick darauf** → du siehst genau, *was* er getan hat (welche Datei,
-  welche Suche, welches Ergebnis). Bilder/Dateien zeigt er **inline** an.
+- Während der Agent arbeitet, erscheinen **Werkzeugaufrufe** als kleine Zeilen. **Klick
+  darauf** → du siehst genau, *was* er getan hat (siehe unten). Bilder/Dateien zeigt er
+  **inline** an.
+
+#### Gespräche, Kopieren und Werkzeugaufrufe *(seit 1.362.0)*
+
+Links neben dem Chat steht die Liste **Gespräche**. Jedes Gespräch hat einen eigenen Verlauf,
+so bleibt ein Thema beisammen.
+
+1. **Neues Gespräch beginnen** — klicke oben in der Liste auf das blaue **+** (oder auf
+   **Neues Gespräch**). Das Eingabefeld ist danach leer, das alte Gespräch bleibt in der
+   Liste erhalten. Ein noch leeres neues Gespräch wird beim Neuladen der Seite nicht
+   durch das letzte alte ersetzt.
+2. **Eine Nachricht kopieren** — fahre mit der Maus über eine Nachricht; unter ihr
+   erscheint eine Symbolleiste. Das Symbol **Text kopieren** (zwei Blätter) legt den Text
+   in die Zwischenablage; das Häkchen bestätigt es. Daneben stehen **Ab hier in einem
+   neuen Gespräch weiterreden** (verzweigt, das alte Gespräch bleibt), **Nachricht aus
+   dem Kontext nehmen** (bleibt sichtbar, geht aber nicht mehr ans Modell) und **Bis hierher
+   zurückspulen**.
+
+![Gesprächsliste mit „Neues Gespräch“ und der Symbolleiste „Text kopieren“](screenshots/64-chat-kopieren-neues-gespraech.png)
+
+3. **Werkzeugaufruf ansehen** — hat der Agent etwas ausgeführt, steht über seiner Antwort
+   z. B. **„1 Schritt · Details“**. Klicke darauf, dann auf die Zeile des Schritts (z. B.
+   **Befehl ausgeführt**). Es klappen **IN** (die **Eingabe**, hier der Befehl) und **OUT**
+   (die **Ausgabe**) auf. So prüfst du, was wirklich passiert ist. Passwörter und
+   Zugangsdaten werden dort nicht im Klartext gespeichert oder angezeigt.
+
+![Aufgeklappter Werkzeugaufruf mit Eingabe und Ausgabe](screenshots/65-chat-werkzeugaufruf.png)
 
 #### Ziel setzen mit /goal — der Agent arbeitet weiter, bis es erreicht ist *(seit 1.357.0)*
 
@@ -839,6 +923,40 @@ Seitenleiste → **Skill Marketplace**.
 > Viele **Vorlagen** (Kap. 4.2) bringen bereits passende Skills mit. Eigene Skills entstehen
 > auch dadurch, dass ein Agent sich beim Arbeiten neue Routinen „anlernt".
 
+### 10.2 Woher ein Skill kommt: das Herkunftsabzeichen *(seit 1.362.0)*
+
+Jede Skill-Kachel trägt ein **Abzeichen**, das zeigt, wer den Skill geschrieben hat:
+
+| Abzeichen | Bedeutung |
+|---|---|
+| **mitgeliefert** | gehört zur Plattform |
+| **eigene Quelle** | stammt aus einer Quelle, die ein Administrator selbst eingetragen hat |
+| **öffentlich** | stammt aus einer öffentlichen Quelle |
+| **Trend** | ein Fund aus dem Trend-Reiter, nie von selbst aktiv |
+| **Agent** | ein Agent hat den Skill selbst verfasst |
+| **Nutzer** | ein Mensch hat den Skill angelegt |
+
+Darunter stehen **Hinweise** in Orange, wenn etwas zu beachten ist — z. B. *„Von einem Agenten
+verfasst, nicht gegengelesen“*. Lies solche Skills, bevor du sie einem Agenten gibst.
+Bei Skills aus Quellen steht zusätzlich, **von welchen Vorlagen** sie genutzt werden.
+
+![Kacheln mit Herkunftsabzeichen „Agent“ und Hinweis](screenshots/69-skill-herkunft.png)
+
+### 10.3 Skill-Quellen verwalten (nur Administratoren) *(seit 1.362.0)*
+
+Oben im Skill-Marktplatz klappt der Kasten **Skill-Quellen (Admin)** auf:
+
+1. Klicke auf **Skill-Quellen (Admin)**. Die Liste zeigt jede Quelle mit Namen, Zustand
+   (*„ok: 9 skills“*) und — falls vorhanden — den Vorlagen, die ihre Skills nutzen.
+2. Die **eingebauten** Quellen tragen das Kennzeichen **eingebaut**. Sie sind öffentliche
+   Sammlungen, die mit der Plattform ausgeliefert werden.
+3. Der Schalter **aktiv** schaltet eine Quelle ein oder aus (*aus* = ihre Skills erscheinen
+   nicht mehr im Katalog). Der Papierkorb entfernt eine Quelle.
+4. **Jetzt crawlen** liest alle Quellen neu ein. **Quelle hinzufügen** legt eine eigene an —
+   GitHub oder ein selbst betriebener Git-Server (Forgejo, GitLab).
+
+![Skill-Quellen mit Kennzeichen „eingebaut“ und Schalter „aktiv“](screenshots/68-skill-quellen.png)
+
 ### 10.1 Szenario: Präsentations-Skill nutzen
 1. **Skill Marketplace** → „Präsentation" suchen → Skill öffnen → **einem Agenten
    zuweisen**.
@@ -909,37 +1027,50 @@ Im Workflow stehen die Daten des Ereignisses als Platzhalter bereit:
 
 ## 12. Schedules
 
-**Schedules** sind **wiederkehrende, zeitgesteuerte Tasks** — der Agent erledigt etwas
-automatisch in festem Takt (z. B. täglicher Bericht). Seitenleiste → **Schedules** (oder
-**Tasks → Scheduled**).
+**Zeitpläne** sind **wiederkehrende Aufgaben**, die ein Agent von selbst erledigt — z. B. ein
+Wochenbericht. Du findest sie unter **Aufgaben → Zeitpläne** (Adresse
+`/tasks?ansicht=zeitplaene`). Jeder Nutzer sieht und legt Zeitpläne nur für **eigene
+Agenten** an; ein Zeitplan eines Mitglieds läuft nur auf dessen Agenten.
 
-![Schedules](screenshots/10-schedules.png)
+![Zeitpläne](screenshots/10-schedules.png)
 
-**Neuen Schedule anlegen — jedes Feld erklärt.** Klick **+ New Schedule** →
-*Create Recurring Task*:
+**Einen Zeitplan anlegen — Klick für Klick** *(seit 1.362.0)*:
 
-![Schedule anlegen](screenshots/f15-schedule-new.png)
+1. Seitenleiste → **Aufgaben**, oben auf den Reiter **Zeitpläne**.
+2. Auf **+ Neuer Zeitplan** klicken. Das Formular klappt auf.
+3. **Name** eintragen (z. B. *Wochenbericht Belege*) und im Feld **Auftrag** beschreiben,
+   was der Agent jedes Mal tun soll.
+4. Unter **Wie oft?** den Takt wählen: **Alle X Min./Std.**, **Täglich**, **Werktags**,
+   **Wöchentlich**, **Monatlich** oder **In eigenen Worten** (Freitext, z. B. *jeden ersten
+   Montag im Monat*).
+5. Für **Wöchentlich** erscheinen die Wochentage **Mo bis So**: klicke die gewünschten an
+   (z. B. **Mo** und **Mi**), und stelle bei **um … Uhr** die Zeit ein (z. B. **07:30**).
+6. Unter dem Feld steht eine **Vorschau in Klartext**, hier *„Wöchentlich am Mo, Mi um
+   07:30 (Zeitzone Europe/Berlin)“*. Prüfe sie — sie ist genau das, was die Anlage ausführt.
+7. **Priorität** (Niedrig bis Dringend) und **Agent** wählen — **Automatisch zuweisen**
+   sucht einen passenden eigenen Agenten.
+8. **Zeitplan anlegen** klicken. **Abbrechen** verwirft das Formular.
 
-- **Name** — Bezeichnung (z. B. „Daily Code Review").
-- **Prompt** — *was der Agent jedes Mal tun soll* (wie bei einem Task, nur wiederkehrend).
-- **Schedule Type** — **Every X Minutes/Hours** (Intervall per Klick: *5 min, 15 min,
-  30 min, 1h, 6h, 12h, 24h*) **oder** **Cron Expression** (für genaue Zeitpläne, z. B.
-  „jeden Montag 8 Uhr").
-- **Priority** — Low / Normal / High / Urgent.
-- **Agent (optional)** — wer ausführt (*Auto-assign* oder gezielt).
-- **Create Schedule** — aktiviert den Plan; **Cancel** verwirft.
+![Formular „Neuer Zeitplan“ mit Wöchentlich, Mo+Mi, 07:30 und Vorschau](screenshots/66-zeitplan-neu-woechentlich.png)
 
-**In der Liste** zeigt jeder Schedule **Intervall**, **nächste**/**letzte** Ausführung,
-Anzahl Läufe und **Erfolgsquote**. Über den **Aktiv-Schalter** pausierst du ihn,
-**Papierkorb** löscht ihn.
+**In der Liste** stehen die Zeitpläne nach Agent gruppiert (**Alle aufklappen / zuklappen**).
+Jede Zeile zeigt den Takt, die **nächste** und die **letzte** Ausführung. Die Knöpfe rechts:
+**Jetzt ausführen**, **Pausieren** und **Zeitplan löschen**.
+
+**Löschen mit Rückfrage:** Ein Klick auf **Zeitplan löschen** öffnet die Frage *„Zeitplan
+‚…‘ löschen?“* mit dem Hinweis, dass der Zeitplan danach nicht mehr läuft und bereits
+erledigte Aufgaben erhalten bleiben. Erst **Löschen** entfernt ihn; **Abbrechen** lässt alles
+wie es war.
+
+![Rückfrage beim Löschen eines Zeitplans](screenshots/67-zeitplan-loeschen-rueckfrage.png)
 
 > Beispiel: Der **Proactive Mode** eines Agenten (Kap. 5.6) erzeugt intern solche
-> wiederkehrenden Läufe — Schedules sind die manuelle, gezielte Variante davon.
+> wiederkehrenden Läufe — Zeitpläne sind die manuelle, gezielte Variante davon.
 
 ### 12.1 Szenario: Täglicher Status um 8 Uhr
-1. **Schedules → + New Schedule** → Name „Täglicher IT-Status".
-2. **Prompt** „Fasse offene Tickets zusammen und poste die 3 dringendsten.", **Schedule
-   Type** *Cron* `0 8 * * *`, **Agent** = IT-Helfer → **Create Schedule**.
+1. **Aufgaben → Zeitpläne → + Neuer Zeitplan** → Name „Täglicher IT-Status".
+2. **Auftrag** „Fasse offene Tickets zusammen und poste die 3 dringendsten.", **Wie oft?**
+   *Täglich* um *08:00*, **Agent** = IT-Helfer → **Zeitplan anlegen**.
 
 ---
 
@@ -971,6 +1102,22 @@ entscheidest. Seitenleiste → **Approvals**.
 
 Freigaben werden zusätzlich per **Telegram** und **iOS-Push** zugestellt, damit du sie auch
 unterwegs beantworten kannst.
+
+### 13.1 Der Reiter „Verlauf“ *(seit 1.362.0)*
+
+Oben auf der Seite stehen die Reiter **Ausstehend**, **Eskalationen**, **Nachtschicht**,
+**Verlauf**, **Regeln**, **Stufen-Vorlagen** und **Befehlsregeln**. Unter **Verlauf** findest
+du alle **bereits entschiedenen** Anfragen — wer wann was entschieden hat:
+
+1. Klicke auf den Reiter **Verlauf**.
+2. Grenze die Liste mit den **Filtern** ein: **Alle Entscheidungen** (z. B. nur *Abgelehnt*,
+   *Erledigt* oder *Abgelaufen*), **Alle Agenten**, und der Zeitraum **von / bis**.
+3. Jeder Eintrag zeigt die **Frage**, die **Entscheidung**, die **Antwort bzw. Begründung**,
+   den **Zeitpunkt**, den **Agenten** und **„Entschieden von“** — eine Person oder
+   *niemand (abgelaufen)*, wenn nicht rechtzeitig geantwortet wurde.
+4. **Weitere laden** am Listenende holt ältere Einträge; rechts oben steht die Gesamtzahl.
+
+![Reiter „Verlauf“ mit den Filtern](screenshots/57-freigaben-verlauf.png)
 
 > Willst du gar nicht gefragt werden, kannst du den Agenten auf **L4 (vollständig autonom)**
 > stellen — oder auf **L2/L1**, wenn er gar nicht selbst handeln soll (Kap. 5.6).
@@ -1008,6 +1155,24 @@ hinzufügen** → das Formular:
 - **Aktualisieren** — Tools neu laden (falls der Server neue Tools bekommen hat).
 - **Bearbeiten** — Name/URL/Token ändern.
 - **Löschen** (Papierkorb) — Anbindung entfernen.
+
+### 14.1a MCP-Server für alle Nutzer bereitstellen (nur Administratoren) *(seit 1.362.0)*
+
+Ein MCP-Server, den ein Administrator einträgt, nutzen zunächst nur Administratoren und
+Rollen, die ihn ausdrücklich freigeben (Kap. 22.4). Soll **jeder Nutzer** ihn bekommen:
+
+1. **Integrationen** öffnen und beim Server auf das **Personen-Symbol** (*Allen Nutzern
+   bereitstellen*) klicken. Beim Anlegen gibt es dafür denselben Haken **Allen Nutzern
+   bereitstellen** im Formular.
+2. Die Rückfrage *„Allen Nutzern bereitstellen?“* lesen und **Bereitstellen** klicken. Das
+   Abzeichen **Für alle** erscheint an der Kachel.
+3. Zurücknehmen: dasselbe Symbol noch einmal, dann **Zurücknehmen**.
+
+> **Wichtig:** Der Server arbeitet mit den **hinterlegten Zugangsdaten**, also im Namen des
+> Kontos, das sie eingetragen hat. Stelle deshalb nur Server für alle bereit, bei denen das
+> gewollt ist. Laufende Agenten, die den Server dadurch bekommen oder verlieren, starten neu.
+
+![MCP-Server mit dem Schalter „Allen Nutzern bereitstellen“](screenshots/58-integrationen-allen-nutzern.png)
 
 ### 14.2 OAuth-Dienste verbinden
 Im Bereich **OAUTH INTEGRATIONS**:
@@ -1163,6 +1328,21 @@ Seitenleiste → **Audit** (Admin).
 > Beispiel: Wurde ein Agent gelöscht, steht hier, *wann* und *durch wen* — hilfreich bei
 > „wo ist mein Agent hin?".
 
+### 18.1 Spalte „Person“ und Export als CSV *(seit 1.362.0)*
+
+Die Tabelle hat die Spalten **Zeit**, **Agent**, **Person**, **Ereignis**, **Befehl / Vorgang**
+und **Ergebnis**. In **Person** steht, wer die Handlung ausgelöst hat (ein Strich heißt:
+kein Mensch, z. B. der automatische Nachtlauf).
+
+So lädst du das Protokoll herunter (nur Administratoren):
+
+1. Mit den **Filtern** (Agent, Ergebnis, Ereignisart) die gewünschten Einträge eingrenzen.
+2. Rechts über der Tabelle auf **Als CSV exportieren** klicken.
+3. Die Datei enthält genau die gefilterten Einträge und öffnet sich in Excel. Der Export
+   steht selbst als Eintrag **Protokoll exportiert** im Protokoll.
+
+![Protokoll mit „Als CSV exportieren“ und der Spalte „Person“](screenshots/56-admin-protokoll-csv.png)
+
 ---
 
 ## 19. System-Health
@@ -1180,6 +1360,17 @@ um schnell zu sehen, ob „alles grün" ist. Seitenleiste → **Health**.
 - **Anzahl Bewertungen / Charts** — Qualitäts-Kennzahlen, sofern Tasks bewertet wurden.
 
 Bei Bedarf den **Self-Test erneut ausführen**, um den aktuellen Stand zu prüfen.
+
+**Oben auf der Seite** stehen seit 1.362.0 zwei Karten *(Administratoren)*:
+
+- **Datensicherung** — Zeitpunkt, Größe und Zahl der Volumes der letzten Sicherung. Ein grünes
+  Häkchen heißt: aktuell. Gelb oder rot zeigt eine ausgebliebene oder gescheiterte Sicherung
+  (Kap. 37.2).
+- **Datenschutz & Aufbewahrung** — die Fristen für **Prüfprotokoll (Tage)** und
+  **Chatverläufe (Tage)** mit **Fristen speichern** (Kap. 37.8) und darunter der Schalter
+  **Lebenszeichen an den Anbieter** (Kap. 37.6).
+
+![Karten Datensicherung und Datenschutz & Aufbewahrung](screenshots/52-admin-sicherung-datenschutz.png)
 
 ---
 
@@ -1309,6 +1500,35 @@ automatisch mehr Nachkommastellen, damit ein Aufruf für einen Drittel-Cent nich
 > keine Buchhaltung. Damit das nachvollziehbar bleibt, steht der **Originalbetrag in
 > US-Dollar samt verwendetem Kurs** als Beschriftung an jeder umgerechneten Zahl — Maus
 > darüber halten.
+
+### 20.4 Anmeldung & Sicherheit: Zwei-Faktor einrichten *(seit 1.362.0)*
+
+Der Abschnitt **Anmeldung & Sicherheit** in **Meine Einstellungen** schützt dein Konto
+zusätzlich zum Passwort mit einem Code aus einer Authenticator-App (z. B. Microsoft
+Authenticator oder Google Authenticator).
+
+![Anmeldung & Sicherheit mit „Zwei-Faktor einrichten“](screenshots/49-einstellungen-zwei-faktor.png)
+
+**Einrichten — Klick für Klick:**
+
+1. **Meine Einstellungen** öffnen (Kap. 20) und zu **Anmeldung & Sicherheit** blättern. Das
+   Abzeichen oben rechts zeigt **Aus**.
+2. Im Feld **Passwort** dein Passwort eintippen und auf **Zwei-Faktor einrichten** klicken.
+3. Öffne die Authenticator-App, **scanne den QR-Code** (oder tippe den **Schlüssel zum
+   Abtippen** ein).
+4. Gib den **sechsstelligen Code** der App im Feld **Bestätigungscode** ein und klicke auf
+   **Zwei-Faktor aktivieren**.
+5. Es erscheinen **Wiederherstellungscodes**. Sie werden **nur dieses eine Mal** angezeigt:
+   herunterladen oder abschreiben und sicher aufbewahren. Mit einem Code kommst du auch ohne
+   Telefon hinein; jeder Code gilt einmal.
+
+![Einrichtung mit QR-Code und Feld „Bestätigungscode“ (QR-Code und Schlüssel hier unkenntlich gemacht)](screenshots/50-einstellungen-zwei-faktor-qr.png)
+
+Danach steht dort **Aktiv** und wie viele Wiederherstellungscodes übrig sind. **Abschalten**
+geht nur mit **Passwort und einem aktuellen Code** (oder einem Wiederherstellungscode). Brichst du die Einrichtung ab, indem du die Seite
+verlässt, bleibt der zweite Faktor aus. Verlierst du
+Telefon und Codes, setzt ein Administrator den zweiten Faktor zurück (Kap. 22.1); danach
+richtest du ihn neu ein. Wie du dich mit Code anmeldest, steht in Kap. 1.1.
 
 ---
 
@@ -1444,6 +1664,12 @@ Bereich **Nutzer** — die Benutzerverwaltung. Die Liste zeigt alle Benutzer mit
 **Passwort zurücksetzen**, **Aktiv/Inaktiv** schalten und **Mount-Rechte** setzen (welche
 Second Brains der Benutzer **lesen/schreiben** darf).
 
+Hat eine Person den zweiten Faktor eingerichtet, trägt ihre Zeile das Abzeichen
+**Zwei-Faktor aktiv**. Hat sie ihr Telefon verloren, klickst du in ihrer Zeile auf **Zwei-Faktor
+zurücksetzen**: Der zweite Faktor wird abgeschaltet und alle ihre Sitzungen enden. Die Person
+meldet sich mit dem Passwort an und richtet ihn neu ein (Kap. 20.4). Der Vorgang steht im
+Prüfprotokoll (*Zwei-Faktor zurückgesetzt*).
+
 ### 22.2 Alle Agenten
 
 ![All Agents](screenshots/26-admin-all-agents.png)
@@ -1535,6 +1761,30 @@ Beschreibung, darunter die Rechte in vier Gruppen *(seit 1.358.3)*:
 | **Keys & Werkzeuge** | Keys / Secrets, MCP-Server, Integrationen |
 | **Wissen & Daten** | Mountshares |
 | **Oberfläche & Zugriff** | Menüpfade, Templates, URL-Host-Patterns |
+
+Neu *(seit 1.362.0)* ist oben die Gruppe **Autonomie** mit dem Feld **Höchste Autonomiestufe**.
+Sie legt fest, **wie selbstständig** Mitglieder dieser Rolle ihre Agenten höchstens einstellen
+dürfen — beim Anlegen und beim Ändern. So setzt du sie:
+
+1. Rolle in der Liste links anklicken (oder **+ Neue Rolle**).
+2. Unter **Autonomie** auf **Höchste Autonomiestufe** klicken, sodass die Zeile aufklappt.
+3. Eine Stufe wählen: **Wie die Grundrolle** (Mitglied L3, Betrachter L1), **L1 — Nur lesen**,
+   **L2 — Empfehlungen**, **L3 — Selbstständig im eigenen Bereich, fragt vor Außenwirkung**,
+   **L4 — Vollständig autonom** oder **Unbegrenzt** (inklusive Sudo-Paketen und Root).
+4. **Speichern**.
+
+Höhere Stufen sind beim Anlegen eines Agenten ausgegraut (*„nicht für deine Rolle“*);
+Sudo-Pakete und Root gibt es nur **ohne** Grenze.
+
+![Rollen: Feld „Höchste Autonomiestufe“](screenshots/54-admin-rollen-autonomie.png)
+
+**Agenten über der Rollengrenze:** Senkst du die Grenze, bleiben bestehende Agenten unverändert
+— sie werden nicht zurückgestuft. Unter dem Rollenformular listet der Kasten **Agenten über
+der Rollengrenze**, welche Agenten mehr dürfen, als die Rolle ihres Besitzers heute erlaubt
+(Agent, Besitzer, Grenze und die aktuelle Stufe). Erhöhen lässt sich dort nichts mehr;
+**zurückstufen** geht in den Einstellungen des jeweiligen Agenten.
+
+![Kasten „Agenten über der Rollengrenze“](screenshots/55-admin-rollen-grenze.png)
 
 Jedes Recht ist **eingeklappt** und zeigt rechts seinen Stand — z. B. **„3 von 7“**,
 **„alle“** oder **„keine“**. Ein Klick auf die Zeile klappt sie auf; dort setzt du die
@@ -1633,6 +1883,21 @@ Tab **Budget** — **Kostenkontrolle**.
   günstiges Modell (statt Stopp), damit nichts liegen bleibt.
 - Hier behältst du Verbrauch und Kosten im Blick (ergänzend zu **Analytics**).
 
+**Neu seit 1.362.0:**
+
+- **Kosten diesen Monat** — die erste Kachel zeigt die Summe aus **Aufgaben und Chat** für den
+  laufenden Monat und darunter die Summe *seit Beginn*. Daneben: **Mit Budget-Limit**,
+  **Budget überschritten** und **Nahe am Limit** (über 75 % verbraucht). Die Monatssumme
+  entspricht der Summe der Zeilen darunter.
+- **Budget gilt auch im Chat** — der Schalter oben. **An:** Ist das Monatsbudget eines
+  Agenten aufgebraucht, nimmt er auch im Chat (Web, Telegram, Kanäle, Sprache) keine
+  Nachrichten mehr an; die Person bekommt einen Hinweis, Administratoren eine Benachrichtigung.
+  **Aus:** Chat-Kosten zählen weiter, gesperrt werden nur Aufgaben.
+- Beim Anlegen eines Agenten wählst du unter **Wenn Budget aufgebraucht** zwischen
+  **Stoppen — Agent pausieren** und **Sparmodus** (Kap. 4.2).
+
+![Budget: Schalter „Budget gilt auch im Chat“ und Kachel „Kosten diesen Monat“](screenshots/53-admin-budget.png)
+
 ### 22.8 Schlüssel & Zugangsdaten
 Bereich **Schlüssel & Zugangsdaten** (Gruppe **Compliance**) — Verwaltung von **API-/Zugangs-Schlüsseln auf Plattformebene**
 (z. B. für Integrationen/Webhooks). Schlüssel anlegen, ansehen (sofern erlaubt) und
@@ -1652,6 +1917,23 @@ stand, hat jetzt je einen eigenen Bereich:
 
 Änderungen in **Modelle & Anbieter**, **Integrationen (Anlage)** und **System & Lizenz** mit
 **Einstellungen speichern** am Seitenende übernehmen; Schalter wirken sofort.
+
+**Zugang und Sicherheit** (System & Lizenz, weiter unten) — hier schaltest du die Regeln für
+die Anmeldung ein oder aus. Klicke zum Umstellen auf den **Schalter** in der jeweiligen Zeile:
+
+- **Registrierung offen** — jeder kann sich auf der Anmeldeseite selbst ein Konto anlegen.
+- **Konten bei SSO-Anmeldung anlegen** — wer sich zum ersten Mal per SSO anmeldet,
+  bekommt automatisch ein Konto (ohne Rolle bzw. mit der Rolle aus den SSO-Gruppen).
+- **Zwei-Faktor für alle Passwort-Konten erzwingen** — wer sich mit Passwort anmeldet und
+  noch keinen zweiten Faktor hat, richtet ihn direkt nach dem Passwort ein. SSO-Anmeldungen
+  sind ausgenommen. **Achtung:** Beim Einschalten werden alle Passwort-Konten ohne zweiten
+  Faktor **sofort abgemeldet** — auch du, wenn du ihn noch nicht eingerichtet hast. Richte
+  deinen eigenen zuerst ein (Kap. 20.4). Dieser Schalter speichert sofort.
+
+Außerdem dort: **Eigene KI-Zugänge der Mitarbeiter erlauben**, **Nur Anmeldung per SSO**,
+**Neue Nutzer müssen freigeschaltet werden** und **MS-Graph-Token bei Logout entfernen**.
+
+![Zugang und Sicherheit: Registrierung, SSO-Kontoanlage, Zwei-Faktor-Pflicht](screenshots/51-admin-system-sicherheit.png)
 
 ---
 
@@ -2756,3 +3038,25 @@ Damit klar wird, **wofür** du Agenten nutzt — ein paar Beispiele, die du einf
 | Agent: Entwicklung & Probezeit | `/agents/<id>` → Settings | `35-entwicklung.png` |
 | Vorlage: Verantwortungsbereiche | `/admin?tab=vorlagen` | `36-vorlagen-bereiche.png` |
 | Admin: Microsoft nur lesend | `/admin?tab=integrationen-anlage` | `33-microsoft-nur-lesend.png` |
+| Meine Einstellungen: Zwei-Faktor einrichten | `/settings` → Anmeldung & Sicherheit | `49-einstellungen-zwei-faktor.png` |
+| Zwei-Faktor: QR-Code und Bestätigungscode | `/settings` → Anmeldung & Sicherheit | `50-einstellungen-zwei-faktor-qr.png` |
+| Admin: Zugang und Sicherheit (Registrierung, SSO, Zwei-Faktor-Pflicht) | `/admin?tab=system` | `51-admin-system-sicherheit.png` |
+| Admin: Lizenz | `/admin?tab=lizenz` | `f24-lizenz.png` |
+| Admin: Datensicherung, Datenschutz & Aufbewahrung | `/admin?tab=health` | `52-admin-sicherung-datenschutz.png` |
+| Admin: Budget (Kosten diesen Monat, Budget gilt auch im Chat) | `/admin?tab=budget` | `53-admin-budget.png` |
+| Admin: Rollen, Höchste Autonomiestufe | `/admin?tab=roles` | `54-admin-rollen-autonomie.png` |
+| Admin: Agenten über der Rollengrenze | `/admin?tab=roles` | `55-admin-rollen-grenze.png` |
+| Admin: Protokoll mit CSV-Export und Spalte Person | `/admin?tab=audit` | `56-admin-protokoll-csv.png` |
+| Freigaben: Verlauf mit Filtern | `/approvals` → Verlauf | `57-freigaben-verlauf.png` |
+| Integrationen: Allen Nutzern bereitstellen | `/integrations` | `58-integrationen-allen-nutzern.png` |
+| Neuer Agent: Vorlagen mit Suche, Bereichs-Chips, Fach-Skills | `/agents` → Neuer Agent | `59-neuer-agent-vorlagen-suche.png` |
+| Neuer Agent: Suche „Rechnung“ | `/agents` → Neuer Agent | `60-neuer-agent-suche-rechnung.png` |
+| Neuer Agent: Schritt 2 mit „Bringt N Fach-Skills mit“ | `/agents` → Neuer Agent | `61-neuer-agent-schritt2-fachskills.png` |
+| Neuer Agent: Budget „Stoppen“ (Administrator) | `/agents` → Neuer Agent | `62-neuer-agent-budget-stoppen.png` |
+| Neuer Agent: Vorlage DevOps mit Root-Haken und Warnung | `/agents` → Neuer Agent | `63-neuer-agent-devops-root.png` |
+| Zeitpläne: Neuer Zeitplan (Wöchentlich, Vorschau) | `/tasks?ansicht=zeitplaene` | `66-zeitplan-neu-woechentlich.png` |
+| Zeitpläne: Löschen mit Rückfrage | `/tasks?ansicht=zeitplaene` | `67-zeitplan-loeschen-rueckfrage.png` |
+| Chat: Neues Gespräch, Text kopieren | `/agents/<id>` | `64-chat-kopieren-neues-gespraech.png` |
+| Chat: Werkzeugaufruf mit Eingabe und Ausgabe | `/agents/<id>` | `65-chat-werkzeugaufruf.png` |
+| Skill-Marktplatz: Skill-Quellen | `/skills` | `68-skill-quellen.png` |
+| Skill-Marktplatz: Herkunftsabzeichen | `/skills` | `69-skill-herkunft.png` |
