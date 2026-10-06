@@ -176,3 +176,56 @@ konfiguration_auspacken() {
     echo "Konfiguration nicht direkt schreibbar (Schlüssel gehört root) — lege über Hilfscontainer zurück" >&2
     docker run --rm -i -v "${install_dir}:/ziel" "$image" tar xzf - -C /ziel < "$archiv"
 }
+
+# Freier Platz dort, wo Docker seine Volumes ablegt (Kilobyte).
+platz_frei_kb() {
+    local ort
+    ort=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)
+    [ -d "${ort:-}" ] || ort="/"
+    df -Pk "$ort" 2>/dev/null | awk 'NR==2 {print $4}'
+}
+
+# Bedarf einer Sicherung beim Zurückspielen (Kilobyte, entpackt).
+# Neue Sicherungen schreiben ihn ins MANIFEST; bei älteren wird geschätzt:
+# Archive entpacken sich erfahrungsgemäß auf das Drei- bis Vierfache, ein
+# Datenbank-Dump auf das Fünf- bis Sechsfache.
+#   platz_bedarf_kb <sicherungsordner> <datenbankdatei> <nur_datenbank true|false>
+platz_bedarf_kb() {
+    local ordner="$1" db_datei="$2" nur_db="$3" entpackt="" datenbank="" kb
+    if [ -f "${ordner}/MANIFEST" ]; then
+        entpackt=$(grep -E '^entpackt_kb=[0-9]+$' "${ordner}/MANIFEST" | head -n 1 | cut -d= -f2 || true)
+        datenbank=$(grep -E '^datenbank_kb=[0-9]+$' "${ordner}/MANIFEST" | head -n 1 | cut -d= -f2 || true)
+    fi
+    if [ -z "$datenbank" ] || [ "$datenbank" = "0" ]; then
+        kb=$(du -k "$db_datei" 2>/dev/null | cut -f1)
+        datenbank=$(( ${kb:-0} * 6 ))
+    fi
+    if [ "$nur_db" = "true" ]; then
+        entpackt=0
+    elif [ -z "$entpackt" ]; then
+        kb=$(du -sk "${ordner}/volumes" 2>/dev/null | cut -f1)
+        entpackt=$(( ${kb:-0} * 4 ))
+    fi
+    echo $(( entpackt + datenbank ))
+}
+
+# Abbruch, wenn der Platz nicht reicht — bevor irgendetwas angehalten oder
+# überschrieben wird. 2 GB Reserve, damit die Platte nicht randvoll läuft.
+#   platz_pruefen <sicherungsordner> <datenbankdatei> <nur_datenbank> <ignorieren>
+platz_pruefen() {
+    local bedarf frei reserve=2097152
+    bedarf=$(platz_bedarf_kb "$1" "$2" "$3")
+    frei=$(platz_frei_kb)
+    frei="${frei:-0}"
+    echo "Platzbedarf: etwa $(( (bedarf + 1048575) / 1048576 )) GB, frei: $(( frei / 1048576 )) GB."
+    if [ $(( bedarf + reserve )) -gt "$frei" ]; then
+        if [ "$4" = "true" ]; then
+            echo "WARNUNG: Der Platz reicht voraussichtlich nicht — fortgesetzt wegen --platz-ignorieren."
+            return 0
+        fi
+        echo "FEHLER: Zu wenig freier Platz für diese Sicherung — nichts verändert." >&2
+        echo "        Platz schaffen oder (wenn bestehende Arbeitsordner ohnehin ersetzt werden und" >&2
+        echo "        dadurch Platz frei wird) mit --platz-ignorieren wiederholen." >&2
+        exit 1
+    fi
+}

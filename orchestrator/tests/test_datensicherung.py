@@ -331,6 +331,71 @@ class VolumeArchiveGehoerenDemNutzerTests(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class PlatzPruefungVorDemZurueckspielenTests(unittest.TestCase):
+    """Beim ersten echten Zurückspielen füllten die entpackten Arbeitsordner die
+    Platte (57 GB statt der 17 GB der Archive) — die Datenbank auf demselben
+    Rechner stürzte in einer Schleife ab. Geprüft wird jetzt VOR allem anderen (#892)."""
+
+    def setUp(self):
+        import tempfile
+
+        self.tmp = Path(tempfile.mkdtemp())
+        self.sicherung = self.tmp / "s"
+        (self.sicherung / "volumes").mkdir(parents=True)
+        self.db = self.sicherung / "postgres.sql.gz"
+        self.db.write_bytes(b"x" * 4096)
+        (self.sicherung / "volumes" / "workspace-a.tar.gz").write_bytes(b"y" * 8192)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _bash(self, befehl: str):
+        return subprocess.run(
+            ["bash", "-c", f'source "{HILFSDATEI}"; {befehl}', "_", str(self.sicherung), str(self.db)],
+            capture_output=True, text=True, timeout=30,
+        )
+
+    def test_bedarf_steht_im_manifest(self):
+        (self.sicherung / "MANIFEST").write_text("format=2\nentpackt_kb=5000\ndatenbank_kb=700\n")
+        self.assertEqual(self._bash('platz_bedarf_kb "$1" "$2" false').stdout.strip(), "5700")
+        self.assertEqual(self._bash('platz_bedarf_kb "$1" "$2" true').stdout.strip(), "700",
+                         "nur die Datenbank: Arbeitsordner zählen nicht")
+
+    def test_aeltere_sicherung_wird_vorsichtig_geschaetzt(self):
+        bedarf = int(self._bash('platz_bedarf_kb "$1" "$2" false').stdout.strip())
+        archive_kb = 8 + 4  # 8 KB Volumes, 4 KB Dump (auf Blockgröße gerundet eher mehr)
+        self.assertGreaterEqual(bedarf, archive_kb * 3, "Schätzung deutlich über der Archivgröße")
+
+    def test_zu_wenig_platz_bricht_ab_bevor_etwas_geschieht(self):
+        (self.sicherung / "MANIFEST").write_text("format=2\nentpackt_kb=50000000\ndatenbank_kb=1000\n")
+        lauf = self._bash('platz_frei_kb() { echo 10000000; }; platz_pruefen "$1" "$2" false false; echo WEITER')
+        self.assertNotEqual(lauf.returncode, 0)
+        self.assertNotIn("WEITER", lauf.stdout)
+        self.assertIn("nichts verändert", lauf.stderr)
+
+    def test_genug_platz_laeuft_weiter(self):
+        (self.sicherung / "MANIFEST").write_text("format=2\nentpackt_kb=1000\ndatenbank_kb=1000\n")
+        lauf = self._bash('platz_frei_kb() { echo 10000000; }; platz_pruefen "$1" "$2" false false; echo WEITER')
+        self.assertEqual(lauf.returncode, 0, lauf.stderr)
+        self.assertIn("WEITER", lauf.stdout)
+
+    def test_reserve_bleibt_frei(self):
+        """Genau passend reicht nicht — 2 GB bleiben frei."""
+        (self.sicherung / "MANIFEST").write_text("format=2\nentpackt_kb=9000000\ndatenbank_kb=0\n")
+        lauf = self._bash('platz_frei_kb() { echo 9500000; }; platz_pruefen "$1" "$2" true false; echo WEITER')
+        # nur_db=true und datenbank_kb=0 -> Schätzung aus dem Dump (klein) -> passt
+        self.assertIn("WEITER", lauf.stdout)
+        lauf = self._bash('platz_frei_kb() { echo 9500000; }; platz_pruefen "$1" "$2" false false; echo WEITER')
+        self.assertNotIn("WEITER", lauf.stdout)
+
+    def test_bewusstes_uebergehen(self):
+        (self.sicherung / "MANIFEST").write_text("format=2\nentpackt_kb=50000000\ndatenbank_kb=1000\n")
+        lauf = self._bash('platz_frei_kb() { echo 10000000; }; platz_pruefen "$1" "$2" false true; echo WEITER')
+        self.assertIn("WEITER", lauf.stdout)
+        self.assertIn("WARNUNG", lauf.stdout)
+
+
 _CURL_ATTRAPPE = r"""#!/usr/bin/env bash
 # Attrappe fuer curl: Argumente (= das, was `ps` zeigt) und stdin mitschreiben.
 printf '%s\n' "$@" > "$CURL_ARGS"

@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.10] - 2026-10-07
+
+Befunde aus dem ersten echten Zurückspielen einer Sicherung (abgetrennte Testumgebung).
+
+### Behoben
+- **`restore.sh` prüft den Platz, bevor es etwas anfasst (#892):** Entpackte Arbeitsordner
+  sind oft ein Mehrfaches ihrer Archive (gemessen: 57 GB statt 17 GB). Ohne Prüfung lief
+  die Platte voll — das reißt jede Datenbank auf demselben Rechner in eine
+  Absturzschleife. `backup.sh` schreibt jetzt die entpackte Größe und die Größe der
+  Datenbank ins MANIFEST; `restore.sh` bricht bei zu wenig Platz (mit 2 GB Reserve) ab,
+  bevor es etwas anhält oder überschreibt. Ältere Sicherungen werden vorsichtig
+  geschätzt. Bewusst übergehen: `--platz-ignorieren`.
+- **Neuer Rechner:** `restore.sh` startet die Datenbank selbst, statt mit einem Hinweis
+  abzubrechen.
+
+---
+
 ## [1.362.9] - 2026-10-06
 
 ### Sicherheit

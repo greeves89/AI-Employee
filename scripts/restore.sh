@@ -59,6 +59,7 @@ DB_ONLY=false
 DRY_RUN=false
 JA=false
 UNVOLLSTAENDIG_ERLAUBEN=false
+PLATZ_IGNORIEREN=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -67,6 +68,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run) DRY_RUN=true; shift ;;
         --yes) JA=true; shift ;;
         --unvollstaendig-erlauben) UNVOLLSTAENDIG_ERLAUBEN=true; shift ;;
+        --platz-ignorieren) PLATZ_IGNORIEREN=true; shift ;;
         *) echo "Unbekannte Option: $1"; exit 1 ;;
     esac
 done
@@ -151,6 +153,12 @@ elif [ "$FORMAT" = "2" ]; then
     log "Prüfsummen in Ordnung."
 fi
 
+# ─── Reicht der Platz? ────────────────────────────────────────────────────────
+# VOR allem anderen: eine volle Platte beim Zurückspielen reißt jede Datenbank
+# auf demselben Rechner in eine Absturzschleife (so geschehen beim ersten echten
+# Test: entpackte Arbeitsordner 57 GB statt der 17 GB der Archive).
+platz_pruefen "$BACKUP_PATH" "$DB_FILE" "$DB_ONLY" "$PLATZ_IGNORIEREN"
+
 # ─── Rückfrage ────────────────────────────────────────────────────────────────
 if ! $DRY_RUN && ! $JA; then
     echo ""
@@ -163,8 +171,20 @@ if ! $DRY_RUN && ! $JA; then
     [ "$antwort" = "ja" ] || die "Abgebrochen."
 fi
 
-[ -n "$(docker ps -q --filter "name=^${PG_CONTAINER}\$")" ] \
-    || die "Postgres-Container ${PG_CONTAINER} läuft nicht — zuerst: docker compose up -d postgres"
+# Neuer Rechner: die Datenbank läuft noch nicht — dann selbst starten, statt mit
+# einem Hinweis abzubrechen (erster echter Test auf einer leeren Anlage).
+if [ -z "$(docker ps -q --filter "name=^${PG_CONTAINER}\$")" ]; then
+    log "Postgres läuft nicht — starte ihn."
+    run docker compose up -d postgres
+    if ! $DRY_RUN; then
+        WARTEN=30
+        until docker exec "$PG_CONTAINER" pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; do
+            WARTEN=$((WARTEN - 1))
+            [ "$WARTEN" -le 0 ] && die "Postgres startet nicht — docker compose logs postgres. Nichts verändert."
+            sleep 2
+        done
+    fi
+fi
 PROJEKT=$(compose_projekt "$INSTALL_DIR")
 log "Compose-Projekt: ${PROJEKT}"
 

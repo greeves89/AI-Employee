@@ -144,13 +144,23 @@ log "Datenbank ${POSTGRES_DB} …"
 docker exec "$PG_CONTAINER" pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" \
     | gzip > "${BACKUP_PATH}/postgres.sql.gz"
 log "Datenbank gesichert ($(du -sh "${BACKUP_PATH}/postgres.sql.gz" | cut -f1))"
+# Größe der Datenbank auf der Platte — restore.sh prüft damit VOR dem Zurückspielen,
+# ob der Platz reicht (eine volle Platte reißt die laufende Datenbank mit).
+DATENBANK_KB=$(docker exec "$PG_CONTAINER" psql -tA -U "$POSTGRES_USER" -d postgres \
+    -c "SELECT pg_database_size('${POSTGRES_DB}') / 1024;" 2>/dev/null | tr -dc '0-9' || true)
+DATENBANK_KB="${DATENBANK_KB:-0}"
 
 # ─── 2. Volumes ───────────────────────────────────────────────────────────────
 SCHRITT="Volumes"
 AUSWAHL=$(docker volume ls --format '{{.Name}}' | volumes_auswaehlen "$PROJEKT")
+ENTPACKT_KB=0
 while read -r archiv volume; do
     [ -z "${archiv:-}" ] && continue
     log "Volume ${volume} …"
+    # Entpackte Größe mitschreiben: ein Arbeitsordner ist entpackt oft ein
+    # Mehrfaches seines Archivs (gemessen: 57 GB statt 17 GB).
+    kb=$(docker run --rm -v "${volume}:/data:ro" "$ALPINE_IMAGE" du -sk /data 2>/dev/null | cut -f1 | tr -dc '0-9' || true)
+    ENTPACKT_KB=$((ENTPACKT_KB + ${kb:-0}))
     # Das Archiv schreibt die Shell, nicht der Container: sonst gehört es root,
     # und das abschließende chmod 600 scheitert für einen normalen Nutzer
     # (zweiter echter Lauf auf einer Anlage: Abbruch im Schritt „Manifest“).
@@ -189,6 +199,9 @@ SCHRITT="Manifest"
     echo "version=$(cat "${INSTALL_DIR}/VERSION" 2>/dev/null || echo unbekannt)"
     echo "hostname=$(hostname)"
     echo "volumes=${VOLUME_ANZAHL}"
+    # Platzbedarf beim Zurückspielen (Kilobyte, entpackt).
+    echo "entpackt_kb=${ENTPACKT_KB}"
+    echo "datenbank_kb=${DATENBANK_KB}"
     # Relative Pfade: die Prüfung klappt auch, wenn die Sicherung verschoben wurde.
     (cd "$BACKUP_PATH" && find . -type f ! -name 'MANIFEST*' | sort | while read -r f; do pruefsumme "$f"; done)
 } > "${BACKUP_PATH}/MANIFEST.tmp"
