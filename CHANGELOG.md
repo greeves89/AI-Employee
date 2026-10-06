@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.3] - 2026-10-06
+
+### Behoben
+- **Fenster „Subagenten dieser Sitzung“ war durchsichtig:** Der Chat schien durch die
+  Liste, weil die Themenfarbe `popover` im Design fehlte. Sie ist jetzt definiert
+  (deckend wie eine Karte); damit ist auch der Tooltip der Statusleiste im Dashboard
+  deckend. Ein Test prüft, dass jede benutzte Themenfarbe definiert ist.
+
+---
+
 ## [1.362.2] - 2026-10-04
 
 Nachbesserungen aus der Abnahme von v1.362.1 auf einer Produktivanlage.

@@ -83,6 +83,10 @@
   --color-accent-foreground: hsl(var(--accent-foreground));
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
+  /* Schwebende Fenster (Subagenten-Liste, Tooltips): deckend wie eine Karte.
+     Ohne diese Farbe blieb `bg-popover` durchsichtig und der Chat schien durch. */
+  --color-popover: hsl(var(--card));
+  --color-popover-foreground: hsl(var(--card-foreground));
   --color-success: hsl(var(--success));
   --color-warning: hsl(var(--warning));
   --color-info: hsl(var(--info));
