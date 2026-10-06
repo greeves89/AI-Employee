@@ -151,11 +151,13 @@ AUSWAHL=$(docker volume ls --format '{{.Name}}' | volumes_auswaehlen "$PROJEKT")
 while read -r archiv volume; do
     [ -z "${archiv:-}" ] && continue
     log "Volume ${volume} …"
+    # Das Archiv schreibt die Shell, nicht der Container: sonst gehört es root,
+    # und das abschließende chmod 600 scheitert für einen normalen Nutzer
+    # (zweiter echter Lauf auf einer Anlage: Abbruch im Schritt „Manifest“).
     docker run --rm \
         -v "${volume}:/data:ro" \
-        -v "${BACKUP_PATH}/volumes:/backup" \
         "$ALPINE_IMAGE" \
-        tar czf "/backup/${archiv}.tar.gz" -C /data .
+        tar czf - -C /data . > "${BACKUP_PATH}/volumes/${archiv}.tar.gz"
     VOLUME_ANZAHL=$((VOLUME_ANZAHL + 1))
 done <<< "$AUSWAHL"
 log "${VOLUME_ANZAHL} Volume(s) gesichert"

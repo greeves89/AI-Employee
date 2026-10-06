@@ -277,6 +277,60 @@ class KonfigurationMitRootSchluesselTests(unittest.TestCase):
         self.assertEqual(self.stdin.read_bytes(), archiv.read_bytes(), "das Archiv geht an den Container")
 
 
+_VOLUME_ATTRAPPE = r"""#!/usr/bin/env bash
+# Attrappe: ein Volume vorhanden; der Hilfscontainer schreibt nach stdout.
+echo "$*" >> "$ATTRAPPE_LOG"
+case "$*" in
+    "ps -q"*) echo "c0ffee" ;;
+    "volume ls"*) echo "workspace-abc12345" ;;
+    *pg_dump*) echo "-- dump" ;;
+    *"/data:ro"*) printf 'inhalt-des-volumes' | gzip ;;
+esac
+exit 0
+"""
+
+
+class VolumeArchiveGehoerenDemNutzerTests(unittest.TestCase):
+    """Der Hilfscontainer läuft als root. Schrieb er das Archiv selbst in den
+    Sicherungsordner, gehörte es root — das abschließende ``chmod 600`` scheiterte
+    für einen normalen Nutzer und die Sicherung brach im letzten Schritt ab (#892)."""
+
+    def test_archiv_schreibt_die_shell_nicht_der_container(self):
+        import os
+        import shutil
+        import tempfile
+
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            anlage = tmp / "anlage"
+            (anlage / "scripts" / "lib").mkdir(parents=True)
+            shutil.copy(REPO / "scripts" / "backup.sh", anlage / "scripts" / "backup.sh")
+            shutil.copy(HILFSDATEI, anlage / "scripts" / "lib" / "sicherung.sh")
+            (anlage / ".env").write_text("BACKUP_STATUS_TOKEN=" + "f" * 64 + "\n")
+            bin_ = tmp / "bin"
+            bin_.mkdir()
+            for name, inhalt in (("docker", _VOLUME_ATTRAPPE), ("curl", "#!/bin/sh\ncat >/dev/null\nexit 0\n")):
+                (bin_ / name).write_text(inhalt)
+                (bin_ / name).chmod(0o755)
+            log = tmp / "docker.log"
+            lauf = subprocess.run(
+                ["bash", str(anlage / "scripts" / "backup.sh"), "--dest", str(tmp / "ziel")],
+                env={**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "ATTRAPPE_LOG": str(log),
+                     "COMPOSE_PROJECT_NAME": "test"},
+                capture_output=True, text=True, timeout=60,
+            )
+            self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+            archive = list((tmp / "ziel").glob("*/*/volumes/*.tar.gz"))
+            self.assertEqual(len(archive), 1, lauf.stdout)
+            self.assertEqual(gzip.decompress(archive[0].read_bytes()), b"inhalt-des-volumes")
+            self.assertEqual(archive[0].stat().st_mode & 0o777, 0o600)
+            aufruf = next(a for a in log.read_text().splitlines() if "/data:ro" in a)
+            self.assertNotIn(":/backup", aufruf, "der Sicherungsordner wird nicht in den Container gereicht")
+            self.assertTrue(list((tmp / "ziel").glob("*/*/MANIFEST")), "der Lauf kommt bis zum Manifest")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 _CURL_ATTRAPPE = r"""#!/usr/bin/env bash
 # Attrappe fuer curl: Argumente (= das, was `ps` zeigt) und stdin mitschreiben.
 printf '%s\n' "$@" > "$CURL_ARGS"

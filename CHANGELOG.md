@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.4] - 2026-10-06
+
+### Behoben
+- **Datensicherung brach im letzten Schritt ab:** Der Hilfscontainer schrieb die
+  Volume-Archive als root in den Sicherungsordner; das abschließende Setzen der Rechte
+  scheiterte für einen normalen Nutzer („Operation not permitted“, Schritt „Manifest“).
+  Die Archive schreibt jetzt die Shell — sie gehören dem ausführenden Nutzer und
+  entstehen mit Rechten 600. Gefunden beim zweiten echten Lauf auf einer Anlage.
+
+---
+
 ## [1.362.3] - 2026-10-06
 
 ### Behoben
