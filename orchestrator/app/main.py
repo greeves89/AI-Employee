@@ -801,7 +801,11 @@ async def _persist_agent_messages(redis: RedisService) -> None:
                         from_agent_name=data.get("from_name", ""),
                         to_agent_id=data.get("to_agent_id", ""),
                         text=data.get("text", ""),
-                        message_type=data.get("message_type") or ("response" if data.get("is_reply") else "message"),
+                        # Über diesen Kanal melden nur noch Agenten mit älterem Abbild
+                        # ihre ANTWORTEN (#918). Der Typ wird deshalb festgeschrieben:
+                        # sonst ließe sich hier eine „Frage“ mit beliebigem Absender
+                        # hinterlegen, auf die sich später jemand als Rückweg beruft.
+                        message_type="response",
                         reply_to=data.get("reply_to"),
                     ))
                     await db.commit()

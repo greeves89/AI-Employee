@@ -2488,17 +2488,23 @@ async def _session_of_message(db: AsyncSession, message_id: str | None) -> str |
 
 
 async def _ist_antwort_an_fragenden(db: AsyncSession, *, absender: str, empfaenger: str,
-                                    reply_to: str | None) -> bool:
+                                    reply_to: str | None, message_type: str | None = "response") -> bool:
     """Darf ``absender`` dem ``empfaenger`` antworten, obwohl der nicht zu seinen Kollegen zählt?
 
     Ja, wenn er genau auf eine Nachricht antwortet, die ihm dieser Empfänger
     geschickt hat (#918). Erreichbarkeit ist nicht symmetrisch — einen
     Plattform-Agenten darf jeder ansprechen, der kennt den Fragenden aber nicht
     als Kollegen. Seit die Antwort über die API läuft statt direkt über Redis,
-    muss dieser Rückweg hier ausdrücklich offen sein; mehr als die Antwort auf
-    eine echte, gespeicherte Frage öffnet er nicht.
+    muss dieser Rückweg hier ausdrücklich offen sein. Er ist eng:
+
+    * nur für eine ANTWORT (``message_type == "response"``) — keine Rückfrage,
+      keine Übergabe, die beim Empfänger Arbeit auslöst;
+    * nur auf eine gespeicherte Nachricht dieses Empfängers an diesen Absender,
+      die selbst keine Antwort war (Antworten älterer Agenten kommen über einen
+      Sammelkanal in die Tabelle — darauf darf sich niemand berufen);
+    * genau einmal je Nachricht.
     """
-    if not reply_to:
+    if not reply_to or (message_type or "") != "response":
         return False
     from app.models.agent_message import AgentMessage as _Nachricht
 
@@ -2507,9 +2513,19 @@ async def _ist_antwort_an_fragenden(db: AsyncSession, *, absender: str, empfaeng
             _Nachricht.message_id == reply_to,
             _Nachricht.from_agent_id == empfaenger,
             _Nachricht.to_agent_id == absender,
+            _Nachricht.message_type != "response",
         ).limit(1)
     )).first()
-    return frage is not None
+    if frage is None:
+        return False
+    schon_beantwortet = (await db.execute(
+        select(_Nachricht.id).where(
+            _Nachricht.reply_to == reply_to,
+            _Nachricht.from_agent_id == absender,
+            _Nachricht.to_agent_id == empfaenger,
+        ).limit(1)
+    )).first()
+    return schon_beantwortet is None
 
 
 @router.post("/{agent_id}/message")
@@ -2532,6 +2548,7 @@ async def send_message_to_agent(
         from app.api.tasks import _erreichbare_agenten
         if agent_id not in await _erreichbare_agenten(user, db) and not await _ist_antwort_an_fragenden(
             db, absender=user.id, empfaenger=agent_id, reply_to=body.reply_to,
+            message_type=body.message_type,
         ):
             raise HTTPException(status_code=403, detail="Dieser Agent gehört nicht zu deinen Kollegen.")
         body.from_agent_id = user.id

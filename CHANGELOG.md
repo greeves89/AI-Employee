@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.8] - 2026-10-06
+
+### Sicherheit
+- **Rückweg für Agenten-Antworten enger gefasst (#918):** Die Ausnahme „antworten darf,
+  wer gefragt wurde“ gilt nur noch für eine Antwort (keine Rückfrage, keine Übergabe),
+  genau einmal je Frage und nie auf eine Nachricht, die selbst eine Antwort war.
+  Nachrichten, die Agenten mit älterem Abbild über den Sammelkanal melden, werden immer
+  als Antwort gespeichert — dort lässt sich keine „Frage“ mit fremdem Absender hinterlegen.
+
+---
+
 ## [1.362.7] - 2026-10-06
 
 ### Sicherheit

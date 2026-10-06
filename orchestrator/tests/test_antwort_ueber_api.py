@@ -39,6 +39,28 @@ class RueckwegNurFuerEchteFragen(unittest.IsolatedAsyncioTestCase):
     async def test_ohne_bezug_keine_ausnahme(self):
         self.assertFalse(await self._darf(absender="plattform", empfaenger="frager", reply_to=None))
 
+    async def test_nur_eine_antwort_keine_rueckfrage_oder_uebergabe(self):
+        for typ in ("question", "handoff", "message", None):
+            self.assertFalse(await self._darf(absender="plattform", empfaenger="frager",
+                                              reply_to="m1", message_type=typ), typ)
+
+    async def test_genau_einmal_je_frage(self):
+        async with self.Session() as db:
+            db.add(AgentMessage(message_id="a1", from_agent_id="plattform", from_agent_name="P",
+                                to_agent_id="frager", text="Antwort", message_type="response",
+                                reply_to="m1"))
+            await db.commit()
+        self.assertFalse(await self._darf(absender="plattform", empfaenger="frager", reply_to="m1"))
+
+    async def test_auf_eine_antwort_kann_sich_niemand_berufen(self):
+        """Antworten älterer Agenten gelangen über einen Sammelkanal in die Tabelle
+        — eine dort hinterlegte Zeile darf keinen Rückweg öffnen."""
+        async with self.Session() as db:
+            db.add(AgentMessage(message_id="gefaelscht", from_agent_id="opfer", from_agent_name="O",
+                                to_agent_id="angreifer", text="x", message_type="response"))
+            await db.commit()
+        self.assertFalse(await self._darf(absender="angreifer", empfaenger="opfer", reply_to="gefaelscht"))
+
     async def test_fremde_frage_oeffnet_nichts(self):
         """Die Kennung einer fremden Nachricht reicht nicht — sie muss vom
         Empfänger an genau diesen Absender gegangen sein."""
