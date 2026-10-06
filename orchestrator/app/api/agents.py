@@ -2487,6 +2487,11 @@ async def _session_of_message(db: AsyncSession, message_id: str | None) -> str |
         return None
 
 
+#: So lange merkt sich Redis, dass auf eine Frage geantwortet wurde. Danach hält
+#: die gespeicherte Antwort in der Datenbank die Grenze.
+_ANTWORT_EINMAL_SEKUNDEN = 7 * 24 * 3600
+
+
 async def _ist_antwort_an_fragenden(db: AsyncSession, *, absender: str, empfaenger: str,
                                     reply_to: str | None, message_type: str | None = "response") -> bool:
     """Darf ``absender`` dem ``empfaenger`` antworten, obwohl der nicht zu seinen Kollegen zählt?
@@ -2540,17 +2545,31 @@ async def send_message_to_agent(
     """Send a message to an agent's chat queue (for inter-agent or external messaging)."""
     if not is_agent_principal(user):
         await _check_owner(agent_id, user, db)
+        # Ein Mensch schreibt nie unter der Kennung eines Agenten. Das Feld kam
+        # bisher ungeprüft aus der Anfrage: damit ließ sich im Verlauf eine
+        # Nachricht eines FREMDEN Agenten an den eigenen vortäuschen — und der
+        # eigene Agent hätte ihm darauf „antworten“ dürfen (#918).
+        body.from_agent_id = None
     else:
         # Ein Agent schreibt den Agenten seines Besitzers und seinen
         # Team-Kollegen — nicht jedem Agenten der Anlage. Und er schreibt unter
         # SEINEM Namen: der Absender stand bisher im Request und liess sich
         # frei waehlen.
         from app.api.tasks import _erreichbare_agenten
-        if agent_id not in await _erreichbare_agenten(user, db) and not await _ist_antwort_an_fragenden(
-            db, absender=user.id, empfaenger=agent_id, reply_to=body.reply_to,
-            message_type=body.message_type,
-        ):
-            raise HTTPException(status_code=403, detail="Dieser Agent gehört nicht zu deinen Kollegen.")
+        if agent_id not in await _erreichbare_agenten(user, db):
+            if not await _ist_antwort_an_fragenden(
+                db, absender=user.id, empfaenger=agent_id, reply_to=body.reply_to,
+                message_type=body.message_type,
+            ):
+                raise HTTPException(status_code=403, detail="Dieser Agent gehört nicht zu deinen Kollegen.")
+            # Genau einmal — unteilbar. Die Prüfung in der Datenbank allein ließe
+            # zwei gleichzeitige Antworten durch (beide lesen „noch keine“).
+            einmal = await redis.client.set(
+                f"antwort:einmal:{user.id}:{agent_id}:{body.reply_to}", "1",
+                nx=True, ex=_ANTWORT_EINMAL_SEKUNDEN,
+            )
+            if not einmal:
+                raise HTTPException(status_code=403, detail="Auf diese Nachricht wurde bereits geantwortet.")
         body.from_agent_id = user.id
 
         # Rueckfragen und Uebergaben brauchen Kontext (#884); der Server haengt

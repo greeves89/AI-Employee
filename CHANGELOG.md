@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.9] - 2026-10-06
+
+### Sicherheit
+- **Absender eines Menschen nicht mehr frei wählbar (#918):** Wer als Mensch eine Nachricht
+  an seinen Agenten schickte, konnte einen beliebigen Agenten als Absender angeben — und
+  damit eine „Frage“ eines fremden Agenten vortäuschen, auf die der eigene Agent hätte
+  antworten dürfen. Das Feld wird für Menschen nicht mehr übernommen.
+- **Einmal-Grenze für Antworten unteilbar:** Zwei gleichzeitige Antworten auf dieselbe Frage
+  kommen nicht mehr beide durch.
+
+---
+
 ## [1.362.8] - 2026-10-06
 
 ### Sicherheit

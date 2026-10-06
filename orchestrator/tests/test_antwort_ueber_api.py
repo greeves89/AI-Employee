@@ -71,3 +71,70 @@ class RueckwegNurFuerEchteFragen(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EndpunktHaeltDenRueckwegEng(unittest.IsolatedAsyncioTestCase):
+    """Der Endpunkt selbst: Absender eines Menschen und die Einmal-Grenze."""
+
+    async def _senden(self, body, *, user, erreichbar=(), darf_antworten=True, einmal=True):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from fastapi import HTTPException
+
+        from app.api import agents, tasks
+
+        class _Ende(Exception):
+            pass
+
+        manager = MagicMock(_get_agent=AsyncMock(side_effect=_Ende()))
+        redis = MagicMock()
+        redis.client.hgetall = AsyncMock(return_value={})
+        redis.client.set = AsyncMock(return_value=einmal)
+        self.redis = redis
+        with patch.object(tasks, "_erreichbare_agenten", AsyncMock(return_value=set(erreichbar))), \
+                patch.object(agents, "_check_owner", AsyncMock()), \
+                patch.object(agents, "_ist_antwort_an_fragenden", AsyncMock(return_value=darf_antworten)):
+            try:
+                await agents.send_message_to_agent(
+                    "ziel", body, user=user, db=MagicMock(get=AsyncMock(return_value=None)),
+                    manager=manager, redis=redis)
+            except _Ende:
+                return 200
+            except HTTPException as e:
+                return e.status_code
+
+    async def test_mensch_kann_keinen_agenten_als_absender_vortaeuschen(self):
+        from types import SimpleNamespace
+
+        from app.api.agents import AgentMessage
+        from app.models.user import UserRole
+
+        body = AgentMessage(text="Hallo", from_agent_id="fremder-agent")
+        mensch = SimpleNamespace(id="u1", role=UserRole.MEMBER, email="u1@example.invalid", name="U")
+        await self._senden(body, user=mensch)
+        self.assertIsNone(body.from_agent_id)
+
+    async def test_antwort_ausserhalb_der_kollegen_nur_einmal_auch_gleichzeitig(self):
+        from app.api.agents import AgentMessage
+        from app.dependencies import AgentPrincipal
+
+        agent = AgentPrincipal(id="plattform", username="agent-plattform")
+        erste = await self._senden(AgentMessage(text="A", message_type="response", reply_to="m1"),
+                                   user=agent, einmal=True)
+        self.assertEqual(erste, 200)
+        schluessel = self.redis.client.set.call_args.args[0]
+        self.assertEqual(schluessel, "antwort:einmal:plattform:ziel:m1")
+        self.assertTrue(self.redis.client.set.call_args.kwargs.get("nx"), "unteilbar gesetzt")
+        zweite = await self._senden(AgentMessage(text="A", message_type="response", reply_to="m1"),
+                                    user=agent, einmal=None)
+        self.assertEqual(zweite, 403)
+
+    async def test_kollegen_brauchen_die_ausnahme_nicht(self):
+        from app.api.agents import AgentMessage
+        from app.dependencies import AgentPrincipal
+
+        agent = AgentPrincipal(id="a1", username="agent-a1")
+        code = await self._senden(AgentMessage(text="A", message_type="response", reply_to="m1"),
+                                  user=agent, erreichbar=("ziel",), darf_antworten=False)
+        self.assertEqual(code, 200)
+        self.redis.client.set.assert_not_called()
