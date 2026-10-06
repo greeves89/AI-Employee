@@ -137,6 +137,26 @@ _NEUTRAL = [re.compile(m) for m in (
     r"\bi can also\b",
 )]
 
+#: Der Agent wartet auf den Menschen: Was danach kommt, haengt an dessen Antwort —
+#: „Sobald ich das habe, liefere ich das Angebot direkt als PDF“ ist keine
+#: Ankuendigung liegengebliebener Arbeit (Nachabnahme v1.362.2: dreimal falsch
+#: „Weitermachen“ nach Rueckfragen).
+_WARTET_AUF_MENSCH = [re.compile(m) for m in (
+    r"\bsobald (?:du|ihr|sie mir)\b",
+    r"\bsobald ich\b[^.!?]{0,60}\b(?:habe|hab|bekomme|erhalte|weiß|weiss|kenne)\b",
+    r"\bsobald (?:mir )?[^.!?]{0,40}\bvorlieg(?:t|en)\b",
+    r"\bwenn (?:ich|du mir|sie mir)\b[^.!?]{0,80}\b(?:habe|hab|bekomme|erhalte|schickst|gibst|nennst|sagst|lieferst|bestätigst|bestaetigst)\b",
+    r"\b(?:ich brauche|brauche ich|mir fehl(?:t|en)|fehl(?:t|en) mir)\b[^.!?]{0,40}\bnoch\b",
+    r"\bbitte (?:nenn|schick|gib|teil|sag|bestätig|bestaetig|lade|lad)\w*\b",
+    r"\b(?:once|as soon as) (?:i|you)\b",
+    r"\bplease (?:provide|send|share|confirm|tell)\b",
+)]
+
+#: Dauerregel statt Vorhaben: „ab jetzt frage ich immer erst nach“.
+_DAUERREGEL = re.compile(
+    r"\b(?:ab (?:jetzt|sofort|nun|heute)|von nun an|künftig|kuenftig|in zukunft|from now on|going forward)\b"
+)
+
 #: Der Schlusssatz meldet ein Ergebnis.
 _ABGESCHLOSSEN = re.compile(
     r"\b(?:fertig|erledigt|abgeschlossen|geschafft|hier (?:ist|sind|findest)|"
@@ -174,7 +194,11 @@ def _saetze(antwort: str) -> list[tuple[int, str]]:
 
 
 def _ist_neutral(satz: str) -> bool:
-    return any(m.search(satz) for m in _NEUTRAL)
+    return any(m.search(satz) for m in _NEUTRAL) or bool(_DAUERREGEL.search(satz))
+
+
+def _wartet_auf_mensch(satz: str) -> bool:
+    return any(m.search(satz) for m in _WARTET_AUF_MENSCH)
 
 
 def _kuendigt_an(satz: str) -> bool:
@@ -210,6 +234,9 @@ def ist_ankuendigung(antwort: str) -> bool:
     """
     saetze = _saetze(antwort)
     if not saetze or saetze[-1][1].endswith("?"):
+        return False
+    # Haengt der Schluss an einer Antwort des Menschen, wartet der Agent zu Recht.
+    if any(_wartet_auf_mensch(s) for _, s in saetze):
         return False
     kandidaten = [(absatz, s) for absatz, s in saetze if not _ist_neutral(s)][-2:]
     if not kandidaten:

@@ -73,6 +73,15 @@ done
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 die() { log "FEHLER: $*"; exit 1; }
+# Vollzugsmeldung. Im Probelauf ist nichts geschehen — das muss dastehen, sonst
+# liest sich die Ausgabe wie eine echte Wiederherstellung.
+erledigt() {
+    if $DRY_RUN; then
+        log "[PROBELAUF] nicht ausgeführt — im Ernstfall: $*"
+    else
+        log "$*"
+    fi
+}
 run() {
     if $DRY_RUN; then
         echo "[PROBELAUF] $*"
@@ -219,11 +228,11 @@ if $KONFIGURATION_ZURUECK; then
     if [ -f .env ]; then
         SICHERHEITSKOPIE=".env.vor-wiederherstellung-$(date +%Y%m%d_%H%M%S)"
         run cp -p .env "$SICHERHEITSKOPIE"
-        log "Bisherige .env aufgehoben als ${SICHERHEITSKOPIE}"
+        erledigt "Bisherige .env aufgehoben als ${SICHERHEITSKOPIE}"
     fi
     run konfiguration_auspacken "${BACKUP_PATH}/konfiguration.tar.gz" "$INSTALL_DIR" "$ALPINE_IMAGE"
     run chmod 600 .env
-    log "Schlüssel und .env zurückgelegt."
+    erledigt "Schlüssel und .env zurückgelegt."
 
     # Das Datenbank-Passwort steht in der .env, gilt aber für die Rolle in der
     # LAUFENDEN Datenbank. Kommt die Sicherung von einer anderen Anlage, käme der
@@ -252,7 +261,7 @@ else
         psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null \
         || die "Datenbank ließ sich nicht zurückspielen (siehe Meldung oben). Die Sicherung ist unverändert — nach Behebung erneut aufrufen."
 fi
-log "Datenbank zurückgespielt."
+erledigt "Datenbank zurückgespielt."
 
 # ─── 5. Volumes ───────────────────────────────────────────────────────────────
 volume_zurueckspielen() {
@@ -298,7 +307,7 @@ if ! $DB_ONLY; then
             ANZAHL=1
         fi
     fi
-    log "${ANZAHL} Volume(s) zurückgespielt."
+    erledigt "${ANZAHL} Volume(s) zurückgespielt."
 fi
 
 # ─── 6. Starten und Selbsttest ────────────────────────────────────────────────

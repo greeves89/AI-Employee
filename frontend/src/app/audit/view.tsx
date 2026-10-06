@@ -506,6 +506,13 @@ const EVENT_INFO: Record<string, { label: string; desc: string }> = {
   mfa_disabled: { label: "Zwei-Faktor abgeschaltet", desc: "Eine Person hat den zweiten Faktor mit Passwort und Code abgeschaltet." },
   mfa_reset: { label: "Zwei-Faktor zurückgesetzt", desc: "Ein Administrator hat den zweiten Faktor eines Kontos zurückgesetzt; alte Sitzungen sind damit ungültig." },
   mfa_code_failed: { label: "Zwei-Faktor-Code abgelehnt", desc: "Beim Einrichten oder Abschalten wurde ein falscher Code oder ein falsches Passwort eingegeben. Der Code wird nie gespeichert." },
+  // Altbestand: Der Blog gehörte bis v1.354 zum Produkt; die Einträge bleiben im Protokoll.
+  blog_post_saved: { label: "Blogbeitrag gespeichert", desc: "Ein Blogbeitrag wurde angelegt oder geändert (frühere Blog-Funktion)." },
+  blog_post_published: { label: "Blogbeitrag veröffentlicht", desc: "Ein Blogbeitrag wurde veröffentlicht (frühere Blog-Funktion)." },
+  blog_post_unpublished: { label: "Blogbeitrag zurückgezogen", desc: "Ein Blogbeitrag wurde zurückgezogen (frühere Blog-Funktion)." },
+  blog_post_deleted: { label: "Blogbeitrag gelöscht", desc: "Ein Blogbeitrag wurde gelöscht (frühere Blog-Funktion)." },
+  blog_image_saved: { label: "Blogbild gespeichert", desc: "Ein Bild für einen Blogbeitrag wurde hochgeladen (frühere Blog-Funktion)." },
+  blog_image_deleted: { label: "Blogbild gelöscht", desc: "Ein Bild eines Blogbeitrags wurde gelöscht (frühere Blog-Funktion)." },
   retention_purged: { label: "Aufbewahrungsfrist angewendet", desc: "Der tägliche Aufräumlauf hat Protokolleinträge oder Chatverläufe gelöscht, die älter als die eingestellte Frist waren." },
 };
 

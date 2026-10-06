@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.5] - 2026-10-06
+
+Reste aus der Nachabnahme von v1.362.2.
+
+### Behoben
+- **Kein „Weitermachen“, wenn der Agent auf eine Antwort wartet:** Sätze wie „Sobald ich
+  das habe, liefere ich das Angebot“ oder „Bitte nenne mir …“ und Dauerregeln („ab jetzt
+  frage ich immer erst nach“) galten als liegengebliebene Ankündigung.
+- **Prüfprotokoll:** deutsche Namen für die Einträge der früheren Blog-Funktion.
+- **`restore.sh --dry-run`:** Vollzugsmeldungen sind im Probelauf als nicht ausgeführt
+  gekennzeichnet.
+
+---
+
 ## [1.362.4] - 2026-10-06
 
 ### Behoben

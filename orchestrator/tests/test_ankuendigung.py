@@ -133,6 +133,28 @@ class ErkennungTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertFalse(ankuendigung.ist_ankuendigung(text))
 
+    def test_wartet_auf_die_antwort_des_menschen(self):
+        """Nachabnahme v1.362.2: Der Agent hatte nachgefragt und wartete zu Recht."""
+        for text in (
+            "Dafür brauche ich noch deine Firmendaten und den Kunden.\n\n"
+            "Sobald ich das habe, kalkuliere ich das Angebot und liefere es dir direkt als PDF.",
+            "Mir fehlen noch Rechnungsnummer und Datum. Sobald ich diese Angaben habe, erstelle ich "
+            "die Buchungszeile. Dann liefere ich dir sofort die CSV.",
+            "Bitte nenne mir den Empfänger. Ich schreibe die Mail dann gleich.",
+            "Wenn du mir die Datei schickst, werte ich sie sofort aus.",
+            "Verstanden — ich frage dich ab jetzt immer erst per Rückfrage, bevor ich eine Notiz anlege.",
+        ):
+            with self.subTest(text=text):
+                self.assertFalse(ankuendigung.ist_ankuendigung(text))
+
+    def test_echte_ankuendigung_bleibt_erkannt(self):
+        for text in (
+            "Ich rendere jetzt das Video.",
+            "Die Daten habe ich. Ich baue jetzt die Auswertung und melde mich gleich.",
+        ):
+            with self.subTest(text=text):
+                self.assertTrue(ankuendigung.ist_ankuendigung(text))
+
     def test_ankuendigung_nach_dem_codeblock_zaehlt_weiter(self):
         self.assertTrue(ankuendigung.ist_ankuendigung(
             "Hier der Entwurf:\n\n```\nTitel: Sommerfest\n```\n\nIch rendere jetzt das Video."))
