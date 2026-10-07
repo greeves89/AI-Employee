@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.12] - 2026-10-07
+
+### Sicherheit
+- **Sprachsteuerung:** Die Marke „ohne Gedächtnis starten“ gilt je Agent und Person statt je
+  Agent. Wer einen Agenten mitbenutzt, kann dem Besitzer damit nicht mehr das Gedächtnis in
+  Sprachsitzungen nehmen, indem das eigene Gespräch den Filter des Anbieters auslöst.
+
+---
+
 ## [1.362.11] - 2026-10-07
 
 ### Behoben

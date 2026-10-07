@@ -1864,7 +1864,7 @@ class RealtimeVoiceSession:
         try:
             from app.core import voice_inhaltsfilter as _vf
             from app.core.memory_preload import as_prompt_block
-            if await _vf.ohne_gedaechtnis(self.redis.client, self.agent_id):
+            if await _vf.ohne_gedaechtnis(self.redis.client, self.agent_id, self.user_id):
                 # Der Anbieter hat den Aufbau zuletzt blockiert und die Ursache steht
                 # noch nicht fest: lieber ohne Vorwissen sprechen als gar nicht.
                 self._schlank = True
@@ -2512,7 +2512,7 @@ class RealtimeVoiceSession:
                 noch_nichts_gesagt = not self._last_user_ts
                 if noch_nichts_gesagt and not self._schlank:
                     from app.core import voice_inhaltsfilter as _vf
-                    await _vf.ohne_gedaechtnis_merken(self.redis.client, self.agent_id)
+                    await _vf.ohne_gedaechtnis_merken(self.redis.client, self.agent_id, self.user_id)
                     asyncio.create_task(self._beanstandete_eintraege_finden())
                     await self._emit({"type": "error", "data": {
                         "message": (
@@ -2570,7 +2570,7 @@ class RealtimeVoiceSession:
                 eintraege, lambda text: _anbieter_blockiert(creds, text),
             )
             if gefunden:
-                await _vf.gesperrte_merken(self.redis.client, self.agent_id, gefunden)
+                await _vf.gesperrte_merken(self.redis.client, self.agent_id, gefunden, self.user_id)
                 logger.warning(
                     "[Sprache] Anbieter beanstandet %d Gedaechtniseintrag/-eintraege von Agent %s — "
                     "sie bleiben in Sprachsitzungen weg: %s",

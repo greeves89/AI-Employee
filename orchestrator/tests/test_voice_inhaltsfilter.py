@@ -43,17 +43,19 @@ class _Redis:
 class MerkenUndLesen(unittest.IsolatedAsyncioTestCase):
     async def test_schlanker_start_wird_gemerkt(self):
         r = _Redis()
-        self.assertFalse(await vf.ohne_gedaechtnis(r, "a1"))
-        await vf.ohne_gedaechtnis_merken(r, "a1")
-        self.assertTrue(await vf.ohne_gedaechtnis(r, "a1"))
-        self.assertFalse(await vf.ohne_gedaechtnis(r, "a2"), "nur dieser Agent")
+        self.assertFalse(await vf.ohne_gedaechtnis(r, "a1", "u1"))
+        await vf.ohne_gedaechtnis_merken(r, "a1", "u1")
+        self.assertTrue(await vf.ohne_gedaechtnis(r, "a1", "u1"))
+        self.assertFalse(await vf.ohne_gedaechtnis(r, "a2", "u1"), "nur dieser Agent")
+        self.assertFalse(await vf.ohne_gedaechtnis(r, "a1", "u2"),
+                         "nur diese Person — ein Mitbenutzer nimmt dem Besitzer nicht das Gedächtnis")
 
     async def test_beanstandete_merken_hebt_den_schlanken_start_auf(self):
         r = _Redis()
-        await vf.ohne_gedaechtnis_merken(r, "a1")
-        await vf.gesperrte_merken(r, "a1", ["eintrag_x"])
+        await vf.ohne_gedaechtnis_merken(r, "a1", "u1")
+        await vf.gesperrte_merken(r, "a1", ["eintrag_x"], "u1")
         self.assertEqual(await vf.gesperrte(r, "a1"), frozenset({"eintrag_x"}))
-        self.assertFalse(await vf.ohne_gedaechtnis(r, "a1"), "der Rest des Gedächtnisses kommt zurück")
+        self.assertFalse(await vf.ohne_gedaechtnis(r, "a1", "u1"), "der Rest des Gedächtnisses kommt zurück")
         await vf.gesperrte_merken(r, "a1", ["eintrag_y"])
         self.assertEqual(await vf.gesperrte(r, "a1"), frozenset({"eintrag_x", "eintrag_y"}))
 
@@ -61,7 +63,7 @@ class MerkenUndLesen(unittest.IsolatedAsyncioTestCase):
         kaputt = MagicMock()
         kaputt.exists = AsyncMock(side_effect=RuntimeError("weg"))
         kaputt.get = AsyncMock(side_effect=RuntimeError("weg"))
-        self.assertFalse(await vf.ohne_gedaechtnis(kaputt, "a1"))
+        self.assertFalse(await vf.ohne_gedaechtnis(kaputt, "a1", "u1"))
         self.assertEqual(await vf.gesperrte(kaputt, "a1"), frozenset())
 
 
@@ -114,6 +116,7 @@ class SitzungReagiertAufDenBlock(unittest.IsolatedAsyncioTestCase):
 
         s = object.__new__(RealtimeVoiceSession)
         s.agent_id, s.session_id, s._planned = "a1", "s1", []
+        s.user_id = "u1"
         s._schlank = schlank
         s._last_user_ts = 5.0 if gesprochen else 0.0
         s.redis = MagicMock(client=_Redis())
@@ -135,7 +138,7 @@ class SitzungReagiertAufDenBlock(unittest.IsolatedAsyncioTestCase):
         daten = s.gesendet[0]["data"]
         self.assertTrue(daten["retryable"], "der Client verbindet neu")
         self.assertEqual(daten["reason"], "content_filter_start")
-        self.assertTrue(await vf.ohne_gedaechtnis(s.redis.client, "a1"))
+        self.assertTrue(await vf.ohne_gedaechtnis(s.redis.client, "a1", "u1"))
         s._beanstandete_eintraege_finden.assert_called_once()
 
     async def test_schlanke_sitzung_laeuft_nicht_im_kreis(self):
@@ -150,7 +153,7 @@ class SitzungReagiertAufDenBlock(unittest.IsolatedAsyncioTestCase):
         s = self._sitzung(gesprochen=True)
         await s._on_nova_event("error", {"message": BLOCK})
         self.assertFalse(s.gesendet[0]["data"]["retryable"])
-        self.assertFalse(await vf.ohne_gedaechtnis(s.redis.client, "a1"))
+        self.assertFalse(await vf.ohne_gedaechtnis(s.redis.client, "a1", "u1"))
 
 
 class UrsachensucheMerktDieEintraege(unittest.IsolatedAsyncioTestCase):
@@ -159,9 +162,10 @@ class UrsachensucheMerktDieEintraege(unittest.IsolatedAsyncioTestCase):
 
         s = object.__new__(rvs.RealtimeVoiceSession)
         s.agent_id = "a1"
+        s.user_id = "u1"
         s._creds_fuer_pruefung = {"engine": "nova_sonic", "region": "r", "access_key": "k", "secret_key": "s"}
         s.redis = MagicMock(client=_Redis())
-        await vf.ohne_gedaechtnis_merken(s.redis.client, "a1")
+        await vf.ohne_gedaechtnis_merken(s.redis.client, "a1", "u1")
         eintraege = [{"key": "gut", "category": "l", "content": "ok"},
                      {"key": "boese", "category": "l", "content": "schlimm"}]
 
@@ -180,7 +184,7 @@ class UrsachensucheMerktDieEintraege(unittest.IsolatedAsyncioTestCase):
                 patch.object(rvs, "_anbieter_blockiert", blockiert):
             await s._beanstandete_eintraege_finden()
         self.assertEqual(json.loads(s.redis.client.d["voice:filter:gesperrt:a1"]), ["boese"])
-        self.assertFalse(await vf.ohne_gedaechtnis(s.redis.client, "a1"))
+        self.assertFalse(await vf.ohne_gedaechtnis(s.redis.client, "a1", "u1"))
 
 
 if __name__ == "__main__":

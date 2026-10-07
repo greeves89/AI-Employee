@@ -28,8 +28,11 @@ OHNE_GEDAECHTNIS_SEKUNDEN = 24 * 3600
 GESPERRT_SEKUNDEN = 7 * 24 * 3600
 
 
-def _ohne(agent_id: str) -> str:
-    return f"voice:filter:ohne_gedaechtnis:{agent_id}"
+def _ohne(agent_id: str, user_id: str | None) -> str:
+    # Je Agent UND Person: den schlanken Start löst auch der geladene VERLAUF aus,
+    # und der gehört dem, der gerade spricht. Eine Marke nur je Agent nähme sonst
+    # dem Besitzer das Gedächtnis, weil ein Mitbenutzer etwas Beanstandetes sagte.
+    return f"voice:filter:ohne_gedaechtnis:{agent_id}:{user_id or 'unbekannt'}"
 
 
 def _gesperrt(agent_id: str) -> str:
@@ -40,16 +43,16 @@ def ist_inhaltsfilter(meldung: str) -> bool:
     return "content filter" in (meldung or "").lower()
 
 
-async def ohne_gedaechtnis(redis_client, agent_id: str) -> bool:
+async def ohne_gedaechtnis(redis_client, agent_id: str, user_id: str | None) -> bool:
     try:
-        return bool(await redis_client.exists(_ohne(agent_id)))
+        return bool(await redis_client.exists(_ohne(agent_id, user_id)))
     except Exception:  # noqa: BLE001 — ohne Redis lieber mit Gedächtnis als gar nicht
         return False
 
 
-async def ohne_gedaechtnis_merken(redis_client, agent_id: str) -> None:
+async def ohne_gedaechtnis_merken(redis_client, agent_id: str, user_id: str | None) -> None:
     try:
-        await redis_client.set(_ohne(agent_id), "1", ex=OHNE_GEDAECHTNIS_SEKUNDEN)
+        await redis_client.set(_ohne(agent_id, user_id), "1", ex=OHNE_GEDAECHTNIS_SEKUNDEN)
     except Exception as e:  # noqa: BLE001
         logger.warning("[Sprache] Schlanker Start nicht gemerkt (agent=%s): %s", agent_id, e)
 
@@ -69,12 +72,15 @@ async def gesperrte(redis_client, agent_id: str) -> frozenset[str]:
     return frozenset(str(w) for w in werte if w) if isinstance(werte, list) else frozenset()
 
 
-async def gesperrte_merken(redis_client, agent_id: str, schluessel) -> None:
-    """Beanstandete Einträge festhalten und den schlanken Start wieder aufheben."""
+async def gesperrte_merken(redis_client, agent_id: str, schluessel, user_id: str | None = None) -> None:
+    """Beanstandete Einträge festhalten und den schlanken Start (dieser Person) aufheben.
+
+    Die Liste gilt je Agent: sie stammt aus Prüfungen der Gedächtniseinträge beim
+    Anbieter, nicht aus dem, was jemand gesagt hat."""
     alle = sorted(set(await gesperrte(redis_client, agent_id)) | {str(s) for s in schluessel if s})
     try:
         await redis_client.set(_gesperrt(agent_id), json.dumps(alle), ex=GESPERRT_SEKUNDEN)
-        await redis_client.delete(_ohne(agent_id))
+        await redis_client.delete(_ohne(agent_id, user_id))
     except Exception as e:  # noqa: BLE001
         logger.warning("[Sprache] Beanstandete Einträge nicht gemerkt (agent=%s): %s", agent_id, e)
 
