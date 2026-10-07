@@ -321,13 +321,13 @@ export function AgentListView({
                     data-testid={`col-${c}`}
                     aria-sort={active ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}
                     className={cn(
-                      "sticky top-0 z-10 h-10 whitespace-nowrap border-b border-foreground/[0.06] bg-card px-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
+                      "sticky top-0 z-10 h-10 whitespace-nowrap border-b border-foreground/[0.06] bg-card p-0 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
                       cellVisibility(c),
                     )}
                   >
                     <button
                       onClick={() => onSort(c)}
-                      className={cn("inline-flex items-center gap-1 hover:text-foreground", active && "text-foreground")}
+                      className={cn("flex h-full w-full items-center gap-1 px-3 uppercase hover:text-foreground", active && "text-foreground")}
                       title={`Nach ${COLUMN_LABELS[c]} sortieren`}
                     >
                       {COLUMN_LABELS[c]}
@@ -358,7 +358,7 @@ export function AgentListView({
                       <button
                         onClick={() => toggleGroup(g.key)}
                         aria-expanded={!isCollapsed}
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold"
+                        className="flex w-full items-center gap-1.5 text-left text-xs font-semibold"
                       >
                         {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                         {g.name}
