@@ -7,8 +7,9 @@ import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, computed_field
 from sqlalchemy import func, select
@@ -955,6 +956,48 @@ async def mark_tutorial_seen(request: Request, db: AsyncSession = Depends(get_db
         user.tutorial_seen_at = datetime.now(timezone.utc)
         await db.commit()
     return {"tutorial_seen_at": user.tutorial_seen_at.isoformat()}
+
+
+@router.get("/me/ui-preferences")
+async def get_ui_preferences(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
+    """Eigene Oberflaechen-Einstellungen (core/ui_einstellungen) — nichts gespeichert: ``{}``."""
+    from app.dependencies import get_current_user
+
+    user = await get_current_user(request, db)
+    return getattr(user, "ui_preferences", None) or {}
+
+
+@router.patch("/me/ui-preferences")
+async def patch_ui_preferences(
+    request: Request,
+    body: dict[str, Any] = Body(...),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Die uebergebenen Schluessel ersetzen, alle anderen bleiben; Antwort: das Ganze.
+
+    Nur das eigene Konto — es gibt keinen Weg, eine fremde Nutzer-ID zu nennen.
+    Unbekannter Schluessel, kein Objekt als Wert oder mehr als 32 KB: 422.
+    """
+    from app.core.ui_einstellungen import UngueltigeEinstellungen, zusammenfuehren
+    from app.dependencies import get_current_user
+
+    user = await get_current_user(request, db)
+    if not isinstance(user, User):
+        # Einrichtungsmodus (noch kein Konto): es gibt keine Zeile, an der das hinge.
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    # Zeile sperren: zwei Geraete, die gleichzeitig verschiedene Schluessel
+    # schreiben, sollen sich nicht gegenseitig den Stand ueberschreiben.
+    user = await db.scalar(
+        select(User).where(User.id == user.id).with_for_update().execution_options(populate_existing=True)
+    )
+    try:
+        neu = zusammenfuehren(user.ui_preferences, body)
+    except UngueltigeEinstellungen as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    # Neues Objekt zuweisen — SQLAlchemy erkennt Aenderungen IM JSON-Feld nicht.
+    user.ui_preferences = neu
+    await db.commit()
+    return neu
 
 
 @router.get("/me/photo")

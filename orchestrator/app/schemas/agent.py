@@ -107,6 +107,9 @@ class AgentResponse(BaseModel):
     integrations: list[str] = []
     permissions: list[str] = []
     update_available: bool = False
+    # Container laeuft auf einem aelteren Abbild als ai-employee-agent:latest (#433).
+    # Stand schon im Ergebnis von get_agent_with_metrics, fiel hier aber heraus.
+    image_outdated: bool = False
     budget_usd: float | None = None
     budget_exceeded_action: str = BUDGET_VORGABE
     monthly_cost_usd: float = 0.0
@@ -127,6 +130,11 @@ class AgentResponse(BaseModel):
     user_id: str | None = None
     created_at: datetime
     updated_at: datetime
+    # Zuletzt aktiv (Aufgabe, Chat-Antwort, Kanal-Nachricht) — core/agent_aktivitaet.
+    last_active_at: datetime | None = None
+    # Vom Menschen angehalten (Halt-Flag aus core/agent_duty) — unterscheidet in der
+    # Liste „Gestoppt“ vom Leerlauf-Stopp („Schläft“). Keine eigene Speicherung.
+    stopped_by_user: bool = False
 
     # Per-agent resource overrides (from agent.config JSON)
     config: dict | None = None

@@ -94,6 +94,9 @@ async def mark_agent_interaction(redis, agent_id: str, now: datetime | None = No
         )
     except Exception:  # noqa: BLE001
         logger.debug("[UserLifecycle] Kanal-Aktivitaet nicht gespeichert", exc_info=True)
+    # Dieselbe Stelle fuettert „Zuletzt aktiv“ der Agentenliste (gedrosselt).
+    from app.core.agent_aktivitaet import aktivitaet_vermerken
+    await aktivitaet_vermerken(redis, agent_id, now)
 
 
 async def _last_interaction(redis, agent_id: str) -> datetime | None:
