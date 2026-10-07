@@ -11,6 +11,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.agent_aktivitaet import aktivitaet_vermerken
 from app.core.load_balancer import LoadBalancer
 from app.core.log_redaction import scrub_log
 from app.core.text_preview import truncate_preserving_words
@@ -764,6 +765,7 @@ class TaskRouter:
         task.started_at = datetime.now(timezone.utc)
         await self.db.commit()
         logger.info(f"Task {task_id} is now running on agent {data.get('agent_id')}")
+        await aktivitaet_vermerken(self.redis, data.get("agent_id") or task.agent_id)
 
         # Persist a job-state checkpoint so a task interrupted mid-run by a
         # container restart can be re-enqueued instead of silently lost (#211/#282).
@@ -946,6 +948,9 @@ class TaskRouter:
         task.notified = True
         if not task.retain:
             task.evict_after = datetime.now(timezone.utc) + timedelta(seconds=TASK_EVICT_GRACE_SECONDS)
+
+        if agent_id or task.agent_id:
+            await aktivitaet_vermerken(self.redis, agent_id or task.agent_id)
 
         # Update agent metrics for self-improvement tracking
         if agent_id:

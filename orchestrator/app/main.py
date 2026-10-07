@@ -535,6 +535,11 @@ async def _persist_chat_completion(redis: RedisService, data: dict, *,
                 ChatMessage.role == "user",
             )
         )
+        # „Zuletzt aktiv“ — nur mit belastbarer Kennung: auf dem Sammelkanal
+        # koennte sich sonst jeder Agent als ein anderer ausgeben.
+        if user_msg or kennung_vertraut:
+            from app.core.agent_aktivitaet import aktivitaet_vermerken
+            await aktivitaet_vermerken(redis, agent_id)
         if user_msg:
             session_id = user_msg.session_id
         elif not kennung_vertraut:

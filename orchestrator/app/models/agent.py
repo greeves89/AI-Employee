@@ -1,6 +1,7 @@
 import enum
+from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -92,6 +93,10 @@ class Agent(Base, TimestampMixin):
     # dashboard). At most one true per user — enforced in the endpoint, not the
     # DB, matching every other flag on this model.
     favorite: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Wann der Agent zuletzt etwas getan hat: Aufgabe gestartet/beendet, im Chat
+    # geantwortet, Kanal-Nachricht erhalten. Gedrosselt fortgeschrieben
+    # (core/agent_aktivitaet) — eine Anzeige, keine Abrechnungsgroesse.
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     tasks: Mapped[list["Task"]] = relationship(back_populates="agent")  # noqa: F821
     owner: Mapped["User | None"] = relationship("User")  # noqa: F821
