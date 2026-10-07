@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.13] - 2026-10-07
+
+### Behoben
+- **Embedding-Dienst startete nach einem Neubau nicht mehr.** `transformers` wurde nicht
+  gepinnt und kam über `sentence-transformers` in der jeweils neuesten Version ins Image.
+  Version 5.19 setzt ein neueres `torch` voraus als das gepinnte `2.6.0+cpu` und bricht schon
+  beim Import ab („Cannot access accelerator device when none is available“) – der Container
+  hing in einer Neustart-Schleife, Gedächtnis- und Wissenssuche fielen aus. Jetzt ist
+  `transformers>=5.17,<5.19` gepinnt (5.17 und 5.18 gegen das bestehende Image geprüft).
+
+---
+
 ## [1.362.12] - 2026-10-07
 
 ### Sicherheit

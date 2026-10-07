@@ -1,6 +1,11 @@
 fastapi==0.141.1
 uvicorn[standard]==0.53.0
 sentence-transformers==6.1.0
+# transformers kommt sonst ungepinnt ueber sentence-transformers. 5.19 setzt ein
+# neueres torch voraus als das hier gepinnte 2.6.0+cpu und bricht beim Import ab
+# ("Cannot access accelerator device when none is available"). Pin anheben
+# erst zusammen mit torch im Dockerfile.
+transformers>=5.17,<5.19
 pydantic==2.13.5
 # NOTE: torch is installed separately in the Dockerfile from the CPU-only
 # PyTorch index — the default PyPI wheel bundles ~2 GB of NVIDIA CUDA
