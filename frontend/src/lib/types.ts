@@ -122,6 +122,10 @@ export interface Agent {
   user_id: string | null;
   created_at: string;
   updated_at: string;
+  /** Zuletzt aktiv (Aufgabe, Chat-Antwort, Kanal-Nachricht); null = noch nie. */
+  last_active_at: string | null;
+  /** Vom Menschen angehalten — „Gestoppt“ statt „Schläft“ (Leerlauf-Stopp). */
+  stopped_by_user: boolean;
   current_task: string | null;
   active_sessions?: string[];  // all "chat:<session>" the agent is processing now
   cpu_percent: number | null;

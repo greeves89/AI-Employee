@@ -5,6 +5,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.363.0] - 2026-10-07
+
+### Neu
+- **Agenten als Liste:** Neben Karten, Netzwerk und Teams gibt es auf der Seite „Agenten“
+  eine kompakte Listenansicht (eine Zeile je Agent, stehende Kopfzeile) — gedacht für 100
+  und mehr Agenten. Spalten: Name, Status, Aufgabe/Warteschlange, Gruppe, Zuletzt aktiv,
+  Kosten im Monat (rot bei erreichtem Budget) und Hinweise (Update, veraltetes Image,
+  Budget-Stopp, keine Verantwortlichkeiten). Sortieren per Klick auf den Spaltenkopf,
+  Reihenfolge über „Spalten anordnen“, Gruppen (Team, Schlagwort oder keine) einklappbar.
+  Mehrfachauswahl mit Starten, Stoppen und Neu starten (höchstens 5 gleichzeitig,
+  Fehlschläge einzeln gemeldet). Auf schmalen Bildschirmen nur Name, Status, Zuletzt aktiv.
+  Karten bleiben der Standard.
+- **Status-Filter und gespeicherte Filter** (Liste und Karten): `Arbeitet`, `Bereit`,
+  `Schläft`, `Gestoppt`, `Fehler`, mehrfach wählbar. Ein aktiver Filter lässt sich unter
+  einem Namen speichern (höchstens 20) und per Klick wieder anwenden.
+- **Einstellungen am Konto:** `GET/PATCH /api/v1/auth/me/ui-preferences` (Schlüssel
+  `agents_page`, höchstens 32 KB). Ansicht, Spalten, Sortierung, Gruppierung und
+  gespeicherte Filter gelten damit auf jedem Gerät.
+- **„Zuletzt aktiv“ je Agent** (`last_active_at`): gesetzt bei Aufgabenstart und -ende,
+  Chat-Antwort und Kanal-Nachricht (Telegram, Teams, Slack), höchstens ein Schreibvorgang
+  je Agent und Minute.
+- **`stopped_by_user`** in jeder Agent-Antwort: unterscheidet „vom Menschen gestoppt“ vom
+  Leerlauf-Stopp („Schläft“). Abgeleitet aus dem vorhandenen Halt-Flag.
+
+### Behoben
+- `image_outdated` fiel aus der Agent-Antwort heraus (das Antwortmodell kannte das Feld
+  nicht) — die Karte konnte „Image veraltet“ nie zeigen.
+- Ansicht-Umschalter auch in der einfachen Ansicht (Karten und Liste).
+
+### Wichtig beim Update
+- Migration `c7e2a9d4f1b3`: neue Spalten `users.ui_preferences` und `agents.last_active_at`.
+
+---
+
 ## [1.362.12] - 2026-10-07
 
 ### Sicherheit
