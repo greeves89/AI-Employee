@@ -1688,6 +1688,39 @@ def _ist_voruebergehend(meldung: str) -> bool:
     return any(m in text for m in _VORUEBERGEHEND)
 
 
+async def _anbieter_blockiert(creds: dict, text: str, warte_sekunden: float = 10.0) -> bool:
+    """Mini-Sitzung beim Anbieter: beanstandet er diesen Text im Systemprompt?"""
+    from app.services.voice_providers.realtime_nova_sonic import NovaSonicSession
+
+    ereignisse: list[tuple[str, str]] = []
+
+    async def merken(kind: str, data: dict) -> None:
+        ereignisse.append((kind, str((data or {}).get("message") or "")))
+
+    sitzung = NovaSonicSession(
+        region=creds["region"], access_key=creds["access_key"], secret_key=creds["secret_key"],
+        session_token=creds.get("session_token"),
+        system_prompt="Du bist ein hilfreicher Assistent.\nWAS DU WEISST:\n" + text,
+        tools=[], voice_id="matthew", on_event=merken, model_id=creds.get("model_id") or "",
+    )
+    try:
+        await sitzung.open()
+        await sitzung.inject_user_text("Sag kurz Hallo.")
+        ende = time.monotonic() + warte_sekunden
+        while time.monotonic() < ende:
+            await asyncio.sleep(0.4)
+            if any(k == "error" for k, _ in ereignisse) or any(k in ("text", "done") for k, _ in ereignisse):
+                break
+    finally:
+        try:
+            await sitzung.close()
+        except Exception:  # noqa: BLE001
+            pass
+    from app.core.voice_inhaltsfilter import ist_inhaltsfilter
+
+    return any(k == "error" and ist_inhaltsfilter(m) for k, m in ereignisse)
+
+
 @dataclass
 class RealtimeVoiceSession:
     agent_id: str
@@ -1720,6 +1753,10 @@ class RealtimeVoiceSession:
     _cm_user: str = ""          # last user turn text, for conversation-memory pairing
     _cm_assistant: str = ""     # last assistant turn text
     _resume_summary: str = ""  # prior conversation context when continuing a session
+    # Schlanker Start: ohne Gedaechtnis und Verlauf, weil der Anbieter den Aufbau zuletzt
+    # blockiert hat (core/voice_inhaltsfilter). Verhindert auch die Endlosschleife.
+    _schlank: bool = False
+    _creds_fuer_pruefung: dict | None = None
     _resumed_from_earlier_call: bool = False  # summary came from an EARLIER call, not this session
     #: Der Nutzer hat ausdruecklich ein NEUES Gespraech gestartet. Dann wird das
     #: letzte Gespraech nicht nachgeladen — sonst begruesst ein frischer
@@ -1825,14 +1862,27 @@ class RealtimeVoiceSession:
         # (app.core.memory_preload), minus credentials. It saves memories after every
         # turn; until now nothing ever read them back at the start of a call.
         try:
+            from app.core import voice_inhaltsfilter as _vf
             from app.core.memory_preload import as_prompt_block
-            self._memory_context = await as_prompt_block(db, self.agent_id)
+            if await _vf.ohne_gedaechtnis(self.redis.client, self.agent_id):
+                # Der Anbieter hat den Aufbau zuletzt blockiert und die Ursache steht
+                # noch nicht fest: lieber ohne Vorwissen sprechen als gar nicht.
+                self._schlank = True
+                self._memory_context = ""
+                self._resume_summary = ""
+                logger.info("[Sprache] Schlanker Start ohne Gedaechtnis agent=%s", self.agent_id)
+            else:
+                self._memory_context = await as_prompt_block(
+                    db, self.agent_id,
+                    ohne_schluessel=await _vf.gesperrte(self.redis.client, self.agent_id),
+                )
         except Exception:  # noqa: BLE001
             logger.debug("voice memory preload failed agent=%s", self.agent_id, exc_info=True)
 
         # Credentials: prefer the linked AI-Account (encrypted, customer-configurable),
         # then a platform-default account, then env vars (the Pi bootstrap).
         creds = await self._resolve_credentials(db, cfg)
+        self._creds_fuer_pruefung = creds
         if not creds:
             raise RuntimeError(
                 "Realtime-Sprache ist aktiv, aber es sind keine Zugangsdaten hinterlegt. "
@@ -2454,22 +2504,36 @@ class RealtimeVoiceSession:
             # Schluckauf von Hand neu starten.
             meldung = str(data.get("message", "Realtime-Fehler"))
             if "content filter" in meldung.lower():
-                # AWS blockt hier fast immer den beim Aufbau injizierten
-                # Gespraechsverlauf (_greet mit _resume_summary) — deterministisch,
-                # bei jedem Verbindungsaufbau derselben Sitzung wieder. Ein
-                # Reconnect ist zwecklos; was hilft, ist ein frisches Gespraech
-                # ohne den beanstandeten Verlauf. Das muss die Meldung sagen,
-                # sonst startet der Nutzer achtmal dasselbe neu.
-                await self._emit({"type": "error", "data": {
-                    "message": (
-                        "Der Modell-Anbieter blockiert Inhalte dieses Gespraechs "
-                        "(Content-Filter) — das betrifft den geladenen Verlauf, "
-                        "nicht deine Frage. Starte ein neues Gespraech, dann "
-                        "laeuft die Sprachsteuerung wieder."
-                    ),
-                    "retryable": False,
-                    "reason": "content_filter",
-                }})
+                # Der Anbieter beanstandet etwas, das WIR beim Aufbau mitschicken:
+                # den Gedaechtnisblock des Agenten (bei JEDER Sitzung dabei) oder den
+                # geladenen Verlauf. Am 07.10.2026 sperrten zwei harmlose Eintraege
+                # so die Sprachsteuerung eines ganzen Agenten — ein neues Gespraech,
+                # wie die alte Meldung riet, konnte nicht helfen.
+                noch_nichts_gesagt = not self._last_user_ts
+                if noch_nichts_gesagt and not self._schlank:
+                    from app.core import voice_inhaltsfilter as _vf
+                    await _vf.ohne_gedaechtnis_merken(self.redis.client, self.agent_id)
+                    asyncio.create_task(self._beanstandete_eintraege_finden())
+                    await self._emit({"type": "error", "data": {
+                        "message": (
+                            "Der Modell-Anbieter hat einen Teil meines Gedächtnisses "
+                            "beanstandet. Ich verbinde mich ohne diese Einträge neu — "
+                            "falls es nicht von selbst weitergeht, starte die "
+                            "Sprachsteuerung bitte noch einmal."
+                        ),
+                        "retryable": True,
+                        "reason": "content_filter_start",
+                    }})
+                else:
+                    await self._emit({"type": "error", "data": {
+                        "message": (
+                            "Der Modell-Anbieter blockiert Inhalte dieses Gesprächs "
+                            "(Content-Filter). Das betrifft meist den bisherigen "
+                            "Verlauf, nicht deine Frage — starte ein neues Gespräch."
+                        ),
+                        "retryable": False,
+                        "reason": "content_filter",
+                    }})
             else:
                 await self._emit({"type": "error", "data": {
                     "message": meldung,
@@ -2478,6 +2542,48 @@ class RealtimeVoiceSession:
         elif kind == "done":
             await self._emit({"type": "done", "data": {}})
             await self._emit(None)  # end the outbound stream
+
+    async def _beanstandete_eintraege_finden(self) -> None:
+        """Im Hintergrund: welche Gedaechtniseintraege beanstandet der Anbieter?
+
+        Jeder Eintrag wird einzeln in einer Mini-Sitzung geprueft. Die beanstandeten
+        bleiben kuenftig weg, der Rest des Gedaechtnisses kommt in der naechsten
+        Sitzung zurueck. Findet sich keiner (dann lag es am Verlauf), bleibt es fuer
+        einen Tag beim schlanken Start.
+        """
+        from app.core import voice_inhaltsfilter as _vf
+        from app.core.memory_preload import sprach_eintraege
+        from app.db.session import async_session_factory
+
+        creds = self._creds_fuer_pruefung or {}
+        if (creds.get("engine") or "nova_sonic") != "nova_sonic":
+            return
+        try:
+            async with async_session_factory() as db:
+                eintraege = await sprach_eintraege(
+                    db, self.agent_id,
+                    ohne_schluessel=await _vf.gesperrte(self.redis.client, self.agent_id),
+                )
+            if not eintraege:
+                return
+            gefunden = await _vf.beanstandete_finden(
+                eintraege, lambda text: _anbieter_blockiert(creds, text),
+            )
+            if gefunden:
+                await _vf.gesperrte_merken(self.redis.client, self.agent_id, gefunden)
+                logger.warning(
+                    "[Sprache] Anbieter beanstandet %d Gedaechtniseintrag/-eintraege von Agent %s — "
+                    "sie bleiben in Sprachsitzungen weg: %s",
+                    len(gefunden), self.agent_id, ", ".join(gefunden),
+                )
+            else:
+                logger.warning(
+                    "[Sprache] Inhaltsfilter beim Aufbau, aber kein Gedaechtniseintrag beanstandet "
+                    "(agent=%s) — vermutlich der geladene Verlauf; schlanker Start bleibt.",
+                    self.agent_id,
+                )
+        except Exception as e:  # noqa: BLE001 — die Pruefung darf nie eine Sitzung stoeren
+            logger.warning("[Sprache] Ursachensuche zum Inhaltsfilter gescheitert: %s", e)
 
     @staticmethod
     def _engine_safe(text: str, limit: int = 4000) -> str:

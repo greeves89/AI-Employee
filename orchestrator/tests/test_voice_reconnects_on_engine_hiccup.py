@@ -121,13 +121,15 @@ class ContentFilterBlockTests(unittest.IsolatedAsyncioTestCase):
             emitted.append(evt)
 
         session._emit = fake_emit
+        # Mitten im Gespräch (der Nutzer hat schon gesprochen): der Verlauf ist es.
+        session._last_user_ts = 123.0
         await session._on_nova_event("error", {"message": self.BLOCK})
 
         self.assertEqual(len(emitted), 1)
         data = emitted[0]["data"]
         self.assertFalse(data["retryable"])
         self.assertEqual(data["reason"], "content_filter")
-        self.assertIn("neues Gespraech", data["message"])
+        self.assertIn("neues Gespräch", data["message"])
 
     async def test_andere_fehler_bleiben_unveraendert(self):
         from app.services.realtime_voice_session import RealtimeVoiceSession

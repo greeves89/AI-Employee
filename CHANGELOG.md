@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.11] - 2026-10-07
+
+### Behoben
+- **Sprachsteuerung: ein beanstandeter Gedächtniseintrag sperrte den ganzen Agenten.** Der
+  Sprach-Anbieter lehnte jede Sitzung schon beim Aufbau ab („blocked by our content
+  filters“) — auch leere und nach einem Gesprächswechsel. Ursache war nicht der Verlauf,
+  sondern der Gedächtnisblock des Agenten, der bei jeder Sitzung mitgeschickt wird; zwei
+  harmlose Einträge lösten den Filter aus. Jetzt verbindet sich die Sitzung bei einem
+  Block beim Aufbau sofort ohne Gedächtnis neu, der Server ermittelt im Hintergrund die
+  beanstandeten Einträge und lässt künftig nur diese weg (für sieben Tage, danach neuer
+  Versuch). Die Meldung rät nicht mehr zu einem neuen Gespräch, wenn das nicht helfen kann.
+
+---
+
 ## [1.362.10] - 2026-10-07
 
 Befunde aus dem ersten echten Zurückspielen einer Sicherung (abgetrennte Testumgebung).
