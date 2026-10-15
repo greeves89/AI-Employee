@@ -11,6 +11,7 @@ from app.ai_credential_status import (
     report_result_status, zugang_verloren,
 )
 from app.log_publisher import LogPublisher
+from app.proc_watchdog import prozessgruppe_beenden
 from app.pids_budget import exhaustion_message, find_fork_exhaustion
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
@@ -183,6 +184,8 @@ class AgentRunner:
                 stderr=asyncio.subprocess.PIPE,
                 cwd=settings.workspace_dir,
                 env=env,
+                # Eigene Prozessgruppe: bei einem Abbruch gehen alle Kinder mit (#926).
+                start_new_session=True,
             )
 
             # Feed the prompt via stdin and read stderr, both in the background.
@@ -273,8 +276,12 @@ class AgentRunner:
 
         except asyncio.CancelledError:
             await self.interrupt()
+            await prozessgruppe_beenden(self._process)
             result_data = {"status": "cancelled"}
         except Exception as e:
+            # Erst den Lauf wirklich beenden, dann „gescheitert“ melden: sonst
+            # arbeitet er weiter, waehrend der Neuversuch schon startet (#926).
+            await prozessgruppe_beenden(self._process)
             result_data = {"status": "error", "error": str(e)}
             await self.log_publisher.publish(
                 task_id, "error", {"message": str(e)}

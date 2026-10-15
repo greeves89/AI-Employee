@@ -39,6 +39,10 @@ UTC = timezone.utc
 class _FakeRedisClient:
     def __init__(self):
         self.published: list[tuple[str, str]] = []
+        self.status: dict[str, dict] = {}
+
+    async def hgetall(self, key):  # noqa: ANN001
+        return self.status.get(key, {})
 
     async def publish(self, channel, payload):  # noqa: ANN001
         self.published.append((channel, payload))
@@ -239,6 +243,50 @@ class SelfHealingE2E(unittest.IsolatedAsyncioTestCase):
             sent = await self._router(db).dispatch_due_retries()
             self.assertEqual(sent, 0)
             self.assertEqual(self.redis.pushed, [])
+
+    async def test_neuversuch_wartet_solange_der_vorige_noch_laeuft(self):
+        """#926: Der Erstlauf galt nach einer Redis-Stoerung als gescheitert, sein
+        Prozess arbeitete aber weiter — der Neuversuch lief parallel im selben
+        Arbeitsordner. Massgeblich ist, was der AGENT meldet, nicht die Datenbank."""
+        async with self.Session() as db:
+            await self._seed(db)
+            faellig = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
+            db.add(Task(
+                id="t3", title="Bericht (Versuch 3)", prompt="p", status=TaskStatus.PENDING, agent_id="a1",
+                metadata_={"heal_due_at": faellig, "heal_of": "t1",
+                           "heal_history": [{"task_id": "t1"}, {"task_id": "t2"}]},
+            ))
+            await db.commit()
+            # Versuch 2 laeuft beim Agenten noch.
+            self.redis.client.status["agent:a1:status"] = {
+                b"current_task": b"t2", b"active_sessions": b'["t2"]'}
+
+            self.assertEqual(await self._router(db).dispatch_due_retries(), 0)
+            self.assertEqual(self.redis.pushed, [], "kein zweiter Lauf parallel")
+            task = await db.get(Task, "t3")
+            self.assertEqual(task.status, TaskStatus.PENDING)
+            self.assertGreater(datetime.fromisoformat(task.metadata_["heal_due_at"]),
+                               datetime.now(UTC), "wird spaeter erneut versucht")
+
+            # Versuch 2 ist fertig — jetzt geht Versuch 3 los.
+            self.redis.client.status["agent:a1:status"] = {b"current_task": b"", b"active_sessions": b"[]"}
+            meta = dict(task.metadata_)
+            meta["heal_due_at"] = faellig
+            task.metadata_ = meta
+            await db.commit()
+            self.assertEqual(await self._router(db).dispatch_due_retries(), 1)
+
+    async def test_andere_aufgabe_des_agenten_haelt_den_neuversuch_nicht_auf(self):
+        async with self.Session() as db:
+            await self._seed(db)
+            db.add(Task(
+                id="t3", title="x (Versuch 2)", prompt="p", status=TaskStatus.PENDING, agent_id="a1",
+                metadata_={"heal_due_at": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+                           "heal_of": "t1", "heal_history": [{"task_id": "t1"}]},
+            ))
+            await db.commit()
+            self.redis.client.status["agent:a1:status"] = {b"current_task": b"fremd", b"active_sessions": b'["fremd"]'}
+            self.assertEqual(await self._router(db).dispatch_due_retries(), 1)
 
     async def test_due_retry_is_sent_once_and_not_again(self):
         """Bliebe die Faelligkeit stehen, ginge derselbe Auftrag in jedem Takt

@@ -18,6 +18,7 @@ from app import codex_auth_sync
 from app.config import settings
 from app.ai_credential_status import report_result_status
 from app.log_publisher import LogPublisher
+from app.proc_watchdog import prozessgruppe_beenden
 from app.llm_chat_handler import DESKTOP_MCP_ACTIVE_ENV
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
@@ -298,6 +299,8 @@ class CodexAgentRunner:
                 stderr=asyncio.subprocess.PIPE,
                 cwd=settings.workspace_dir,
                 env=env,
+                # Eigene Prozessgruppe: bei einem Abbruch gehen alle Kinder mit (#926).
+                start_new_session=True,
             )
             # Feed the prompt via stdin, then close so codex starts processing.
             if self._process.stdin is not None:
@@ -395,8 +398,12 @@ class CodexAgentRunner:
                     await _publish(self.log_publisher, stream, target_id, "error", {"message": error})
         except asyncio.CancelledError:
             await self.interrupt()
+            await prozessgruppe_beenden(self._process)
             result_data = {"status": "cancelled"}
         except Exception as e:
+            # Erst den Lauf wirklich beenden, dann „gescheitert“ melden: sonst
+            # arbeitet er weiter, waehrend der Neuversuch schon startet (#926).
+            await prozessgruppe_beenden(self._process)
             result_data = {"status": "error", "error": str(e)}
             await _publish(self.log_publisher, stream, target_id, "error", {"message": str(e)})
 

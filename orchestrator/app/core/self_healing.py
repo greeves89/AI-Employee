@@ -61,6 +61,13 @@ _PERMANENT_PATTERNS = (
     r"\bmodel .* (not supported|does not exist)\b",
     r"\bnicht unterstützt\b", r"\bungültig",
     r"\bvalidation ?error\b", r"\binvalid request\b", r"\b400\b",
+    # Abgelaufene Anmeldung oder erschoepftes Kontingent: ein Neuversuch Minuten
+    # spaeter scheitert genauso (am 09.–14.10.2026 je dreimal am Morgen). Der
+    # Mensch muss sich neu anmelden bzw. das Kontingent erholt sich erst Stunden
+    # spaeter — also sofort melden statt wiederholen (#926).
+    r"anmeldedaten\b.*\babgelaufen", r"\bbitte neu anmelden\b", r"\bdevice-auth\b",
+    r"\bkontingent ersch(ö|oe)pft\b", r"\b(usage|weekly|monthly) limit\b",
+    r"\bquota (exceeded|exhausted)\b", r"\brefresh_token_reused\b",
 )
 
 _TRANSIENT_RE = re.compile("|".join(_TRANSIENT_PATTERNS), re.IGNORECASE)

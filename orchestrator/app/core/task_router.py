@@ -65,6 +65,8 @@ _ID_ALPHABET = string.digits + string.ascii_lowercase
 # schon selbst ein "(Versuch 2)"-Suffix trug) — ohne diese Bereinigung stapeln
 # sich die Suffixe bei jedem weiteren Fehlschlag ("(Versuch 2) (Versuch 3) (Versuch 4)").
 _RETRY_TITLE_SUFFIX_RE = re.compile(r"\s*\(Versuch \d+\)\s*$")
+#: So lange wartet ein faelliger Neuversuch, wenn der vorige noch laeuft (#926).
+_NEUVERSUCH_WARTEN = 60
 
 
 class UnknownAgentError(Exception):
@@ -1337,6 +1339,35 @@ class TaskRouter:
                 break
         return sent
 
+    async def _vorgaenger_laeuft_noch(self, task: Task, agent_id: str) -> bool:
+        """Arbeitet der Agent gerade noch an einem frueheren Versuch derselben Kette?
+
+        Massgeblich ist, was der Agent selbst meldet (``agent:{id}:status`` →
+        ``active_sessions``/``current_task``), nicht der Status in der Datenbank:
+        genau der war am 10.10.2026 falsch („gescheitert“, Prozess lebte).
+        """
+        meta = task.metadata_ or {}
+        kette = {str(meta.get("heal_of") or "")} | {
+            str(h.get("task_id") or "") for h in (meta.get("heal_history") or []) if isinstance(h, dict)
+        }
+        kette.discard("")
+        if not kette:
+            return False
+        try:
+            roh = await self.redis.client.hgetall(f"agent:{agent_id}:status")
+        except Exception:  # noqa: BLE001 — ohne Auskunft lieber warten als doppelt laufen
+            return True
+        status = {
+            (k.decode() if isinstance(k, bytes) else str(k)): (v.decode() if isinstance(v, bytes) else str(v))
+            for k, v in (roh or {}).items()
+        }
+        laufend = {status.get("current_task") or ""}
+        try:
+            laufend |= {str(x) for x in json.loads(status.get("active_sessions") or "[]")}
+        except (ValueError, TypeError):
+            pass
+        return bool(kette & laufend)
+
     async def _send_retry(self, task: Task) -> bool:
         """Einen faelligen Wiederholungsauftrag in die Warteschlange legen."""
         agent_id = task.agent_id
@@ -1353,6 +1384,19 @@ class TaskRouter:
                 await wake_agent(self.db, self.docker, agent_id)
             except Exception as e:  # noqa: BLE001
                 logger.warning("[Selbstheilung] Agent nicht geweckt: %s", scrub_log(e))
+
+        # Laeuft ein frueherer Versuch derselben Kette beim Agenten noch, wartet der
+        # neue (#926). Am 10.10.2026 galt ein Lauf nach einer kurzen Redis-Stoerung
+        # als gescheitert, sein Prozess arbeitete aber weiter — der Neuversuch lief
+        # parallel im selben Arbeitsordner, beide ueberschrieben sich gegenseitig.
+        if await self._vorgaenger_laeuft_noch(task, agent_id):
+            meta = dict(task.metadata_ or {})
+            meta["heal_due_at"] = (datetime.now(timezone.utc) + timedelta(seconds=_NEUVERSUCH_WARTEN)).isoformat()
+            task.metadata_ = meta
+            await self.db.commit()
+            logger.info("[Selbstheilung] %s wartet: der vorige Versuch laeuft beim Agenten noch",
+                        scrub_log(task.id))
+            return False
 
         # Die Faelligkeit wird entfernt, BEVOR abgeschickt wird: bliebe sie stehen
         # und der Zeitgeber liefe erneut, ginge derselbe Auftrag zweimal los.

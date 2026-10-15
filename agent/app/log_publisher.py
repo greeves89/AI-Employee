@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import time
 from datetime import datetime, timezone
 
@@ -12,6 +13,9 @@ import redis.asyncio as aioredis
 PUFFER_SEKUNDEN = 0.08
 PUFFER_ZEICHEN = 200
 _TEXT_FELDER = {"text", "neuer_block"}
+
+
+logger = logging.getLogger(__name__)
 
 
 class LogPublisher:
@@ -65,12 +69,19 @@ class LogPublisher:
             }
         )
         channel = f"agent:{self.agent_id}:logs"
-        await self.redis.publish(channel, message)
-        await self.redis.publish("agents:logs:all", message)
-        # Store in activity history (keep last 200 events)
-        history_key = f"agent:{self.agent_id}:activity"
-        await self.redis.rpush(history_key, message)
-        await self.redis.ltrim(history_key, -200, -1)
+        # Mitschreiben ist Nebensache. Bis v1.362.12 brach eine kurze Redis-Stoerung
+        # hier den ganzen Lauf ab: der Runner meldete „gescheitert“, der Prozess
+        # arbeitete aber weiter — und der Neuversuch lief parallel im selben
+        # Arbeitsordner (#926). Ein verlorenes Protokollereignis ist harmlos.
+        try:
+            await self.redis.publish(channel, message)
+            await self.redis.publish("agents:logs:all", message)
+            # Store in activity history (keep last 200 events)
+            history_key = f"agent:{self.agent_id}:activity"
+            await self.redis.rpush(history_key, message)
+            await self.redis.ltrim(history_key, -200, -1)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Protokollereignis nicht gesendet (Lauf geht weiter): %s", e)
 
     async def publish_chat(self, message_id: str, event_type: str, data: dict | str) -> None:
         """Publish chat events to a dedicated chat channel.
