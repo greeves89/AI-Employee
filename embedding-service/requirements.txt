@@ -1,5 +1,5 @@
 fastapi==0.141.1
-uvicorn[standard]==0.53.0
+uvicorn[standard]==0.54.0
 sentence-transformers==6.1.0
 # transformers kommt sonst ungepinnt ueber sentence-transformers. 5.19 setzt ein
 # neueres torch voraus als das hier gepinnte 2.6.0+cpu und bricht beim Import ab
