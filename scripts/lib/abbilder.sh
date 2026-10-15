@@ -16,11 +16,163 @@
 
 ABBILD_DIENSTE="orchestrator frontend embedding-service stt-service"
 
+# ---------------------------------------------------------------------------
+# Signaturpruefung der geholten Abbilder (#938)
+#
+# Die Abbilder sind oeffentlich und wurden allein anhand des Versions-TAGS
+# geholt: wer Konto oder Bau-Vorgang uebernimmt, kann unter einem gueltigen Tag
+# ein fremdes Abbild ablegen. images.yml signiert deshalb jedes Manifest
+# schluessellos ueber GitHub OIDC; hier wird geprueft, BEVOR ein Abbild benutzt
+# wird. Schlaegt die Pruefung fehl, wird das geholte Abbild entfernt und lokal
+# gebaut.
+#
+# cosign ist eine neue Abhaengigkeit und deshalb OPTIONAL: fehlt es, steht ein
+# Hinweis im Protokoll und es bleibt beim bisherigen Verhalten.
+#   AI_EMPLOYEE_SIGNATUR_PRUEFEN=0        Pruefung abschalten
+#   AI_EMPLOYEE_SIGNATUR_IDENTITAET=...   eigene Identitaet (eigener Spiegel)
+#   AI_EMPLOYEE_SIGNATUR_AUSSTELLER=...   eigener OIDC-Aussteller
+# ---------------------------------------------------------------------------
+SIGNATUR_AUSSTELLER="https://token.actions.githubusercontent.com"
+# Repo-Name im Zertifikat des Bau-Vorgangs. Ohne ihn wuerde JEDES andere Repo
+# desselben Kontos mit einer images.yml als Unterzeichner durchgehen.
+SIGNATUR_REPO="AI-Employee"
+
+# abbilder_env <NAME> — Wert der Variablen, ersatzweise aus .env.
+#
+# setup.sh und update.sh laden .env NICHT (das macht docker compose selbst).
+# AI_EMPLOYEE_REGISTRY steht laut Handbuch aber genau dort: ohne diese Zeilen
+# holt Compose vom Spiegel, waehrend dieses Skript die ghcr-Vorgabe pruefte —
+# die Abbilder lagen dort nie, und jede Spiegel-Anlage baute ab sofort bei
+# jedem Update alles selbst. Gelesen werden nur die drei eigenen Namen, nie
+# ausgefuehrt.
+abbilder_env() {
+    local name="$1" wert
+    wert="${!name:-}"
+    if [ -z "$wert" ] && [ -f .env ]; then
+        wert="$(sed -n "s/^[[:space:]]*${name}=//p" .env | tail -n1)"
+        wert="${wert%\"}"; wert="${wert#\"}"
+        wert="${wert%\'}"; wert="${wert#\'}"
+    fi
+    printf '%s' "$wert"
+}
+
+# abbilder_besitzer_zulaessig <registry> — Konto-Name aus ghcr.io/<konto>/...
+abbilder_besitzer_zulaessig() {
+    local besitzer="${1#ghcr.io/}"
+    besitzer="${besitzer%%/*}"
+    case "$besitzer" in
+        ""|*[!A-Za-z0-9._-]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+# abbilder_identitaet <registry> <version> -> erwartete Unterzeichner-Identitaet
+#
+# Besitzer kommt aus der Registry (ghcr.io/<besitzer>/...), damit ein Fork ohne
+# Anpassung funktioniert. Gebunden sind Besitzer, Repo, Workflow UND der
+# Versions-Tag: eine Signatur vom Hauptzweig, aus einem anderen Repo desselben
+# Kontos oder von einer anderen Version zaehlt nicht. Nur der Name selbst ist
+# gross-/kleinschreibungsfrei (ghcr.io schreibt klein, GitHub nicht) — der
+# Dateiname images.yml NICHT, denn Images.yml waere eine andere Datei.
+abbilder_identitaet() {
+    local besitzer="${1#ghcr.io/}" version="$2"
+    besitzer="${besitzer%%/*}"
+    # Nur der Punkt ist hier ein Regexp-Zeichen; alles andere laesst
+    # abbilder_besitzer_zulaessig gar nicht erst durch.
+    besitzer="${besitzer//./\\.}"
+    printf '^https://github\\.com/(?i:%s/%s)/\\.github/workflows/images\\.yml@refs/tags/v%s$' \
+        "$besitzer" "$SIGNATUR_REPO" "${version//./\\.}"
+}
+
+# abbilder_signatur_pruefen <registry> <version> <dienst...>
+# 0 = alle geprueft oder bewusst uebersprungen, 1 = mindestens eine ungueltig
+abbilder_signatur_pruefen() {
+    local registry="$1" version="$2" identitaet aussteller dienst ref digest
+    shift 2
+    # Nur ausdrueckliches Aus schaltet aus. "true"/"ja" hiess hier sonst
+    # stillschweigend "keine Pruefung" — ein Sicherheitsschalter, dessen
+    # Ein-Schreibweisen Aus bedeuten.
+    case "$(abbilder_env AI_EMPLOYEE_SIGNATUR_PRUEFEN)" in
+        0|false|False|nein|no|off|aus) return 0 ;;
+    esac
+    if [ "$version" = "latest" ]; then
+        echo "Hinweis: ohne VERSION-Datei keine versionsgebundene Signaturpruefung (#938)."
+        return 0
+    fi
+    identitaet="$(abbilder_env AI_EMPLOYEE_SIGNATUR_IDENTITAET)"
+    if [ -z "$identitaet" ]; then
+        case "$registry" in
+            ghcr.io/*)
+               # Der Besitzer wandert in ein Regexp. Nur zulaessige GitHub-Namen
+               # durchlassen, statt zu hoffen, dass niemand Metazeichen in
+               # AI_EMPLOYEE_REGISTRY schreibt.
+               if ! abbilder_besitzer_zulaessig "$registry"; then
+                   echo "Hinweis: ${registry} ergibt keinen gueltigen Konto-Namen — Signaturen werden NICHT geprueft (#938)."
+                   return 0
+               fi
+               identitaet="$(abbilder_identitaet "$registry" "$version")" ;;
+            # Eigener Spiegel ohne hinterlegte Identitaet: die ghcr-Signatur
+            # liegt dort nicht. Ein Abbruch wuerde jede Spiegel-Anlage zum
+            # Dauer-Lokalbau verurteilen — also Hinweis statt Fehlschlag.
+            *) echo "Hinweis: Signaturen von ${registry} werden NICHT geprueft — AI_EMPLOYEE_SIGNATUR_IDENTITAET ist nicht gesetzt (#938)."
+               return 0 ;;
+        esac
+    fi
+    if ! command -v cosign >/dev/null 2>&1; then
+        echo "Hinweis: cosign ist nicht installiert — Abbild-Signaturen werden NICHT geprueft (#938)."
+        echo "         Nachinstallieren: https://docs.sigstore.dev/cosign/system_config/installation/"
+        return 0
+    fi
+    aussteller="$(abbilder_env AI_EMPLOYEE_SIGNATUR_AUSSTELLER)"
+    aussteller="${aussteller:-$SIGNATUR_AUSSTELLER}"
+    for dienst in "$@"; do
+        ref="${registry}/ai-employee-${dienst}:${version}"
+        # Den geholten Digest pruefen, nicht den Tag: so ist das geprueft, was
+        # hier liegt, und nicht, worauf der Tag zwischenzeitlich zeigt.
+        digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$ref" 2>/dev/null \
+            | grep -F "${ref%:*}@" | head -n1)"
+        if [ -z "$digest" ]; then
+            echo "Kein Digest fuer ${ref} — Signatur nicht pruefbar, baue lokal (#938)."
+            return 1
+        fi
+        # -a dienst=...: ohne die Zusage ist nur der Digest signiert, nicht
+        # WOFUER. Sonst liesse sich ein signiertes Manifest samt Signatur auf
+        # den Tag eines anderen Dienstes kopieren — der Agent liefe dann als
+        # Orchestrator, mit dessen Zugaengen.
+        if ! cosign verify \
+                --certificate-oidc-issuer "$aussteller" \
+                --certificate-identity-regexp "$identitaet" \
+                -a "dienst=${dienst}" \
+                "$digest" >/dev/null; then
+            echo "Signatur von ${digest} ist NICHT gueltig oder nicht abrufbar — Abbild wird nicht benutzt, baue lokal (#938)."
+            echo "         Erwartet: ${identitaet} (Aussteller ${aussteller}, dienst=${dienst})"
+            return 1
+        fi
+    done
+    echo "Signaturen aller Abbilder ${version} geprueft (cosign)."
+    return 0
+}
+
+# abbilder_verwerfen <registry> <version> <dienst...>
+#
+# docker compose pull legt die Abbilder unter genau den Referenzen ab, die
+# docker-compose.yml als image: fuehrt. Ein abgelehntes Abbild bliebe sonst
+# liegen, und ein spaeteres `docker compose up -d` von Hand wuerde es starten —
+# der lokale Bau ueberschreibt nur, wenn er auch durchlaeuft.
+abbilder_verwerfen() {
+    local registry="$1" version="$2" dienst
+    shift 2
+    for dienst in "$@"; do
+        docker image rm -f "${registry}/ai-employee-${dienst}:${version}" >/dev/null 2>&1 || true
+    done
+}
+
 abbilder_bereitstellen() {
     local lokal_bauen="${1:-0}" version registry
     version="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
     version="${version:-latest}"
-    registry="${AI_EMPLOYEE_REGISTRY:-ghcr.io/greeves89}"
+    registry="$(abbilder_env AI_EMPLOYEE_REGISTRY)"
+    registry="${registry:-ghcr.io/greeves89}"
     export AI_EMPLOYEE_VERSION="$version"
     # Fuer den lokalen Bau: Version ins Frontend-Bundle (update-banner.tsx).
     export APP_VERSION="$version"
@@ -38,11 +190,18 @@ abbilder_bereitstellen() {
         # shellcheck disable=SC2086  # bewusst getrennte Liste
         if docker compose pull -q $ABBILD_DIENSTE \
             && docker pull -q "${registry}/ai-employee-agent:${version}" >/dev/null; then
-            docker tag "${registry}/ai-employee-agent:${version}" ai-employee-agent:latest
-            ABBILD_QUELLE="registry"
-            return 0
+            # Erst pruefen, dann benutzen (#938).
+            # shellcheck disable=SC2086  # bewusst getrennte Liste
+            if abbilder_signatur_pruefen "$registry" "$version" $ABBILD_DIENSTE agent; then
+                docker tag "${registry}/ai-employee-agent:${version}" ai-employee-agent:latest
+                ABBILD_QUELLE="registry"
+                return 0
+            fi
+            # shellcheck disable=SC2086  # bewusst getrennte Liste
+            abbilder_verwerfen "$registry" "$version" $ABBILD_DIENSTE agent
+        else
+            echo "Abbilder ${version} nicht abrufbar (Registry nicht erreichbar oder Version noch nicht gebaut) — baue lokal."
         fi
-        echo "Abbilder ${version} nicht abrufbar (Registry nicht erreichbar oder Version noch nicht gebaut) — baue lokal."
     fi
     docker build -t ai-employee-agent:latest ./agent
     docker compose build
