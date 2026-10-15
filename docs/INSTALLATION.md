@@ -220,10 +220,28 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for more detailed debugging steps.
 ## Updating
 
 ```bash
+./scripts/update.sh
+```
+
+`update.sh` takes a backup first (and aborts if that fails), pulls the repository, fetches
+the ready-made images of that version, verifies their signature before using them (building
+locally on a mismatch), restarts the stack and waits for the orchestrator to report healthy.
+The pending database migrations are applied by the orchestrator itself on start, so no
+separate step is needed. Afterwards it names any agent container still running on the old
+image — those have to be recreated.
+
+By hand, step by step — check each step before running the next one, and do **not** start
+the stack if the image step failed:
+
+```bash
+./scripts/backup.sh
 git pull
-docker compose pull
-docker compose up -d --build
+. scripts/lib/abbilder.sh && abbilder_bereitstellen 0
+docker compose up -d
+# only if the orchestrator came up but the automatic migration run failed:
 docker compose exec orchestrator alembic upgrade head
 ```
 
-See [UPGRADE.md](UPGRADE.md) for version-specific instructions.
+A plain `docker compose pull` performs no signature check, so it is not an update route.
+See [UPGRADE.md](UPGRADE.md) for the details, the switches and version-specific
+instructions.

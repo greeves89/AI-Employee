@@ -338,11 +338,15 @@ Open a GitHub issue with:
 To get security patches in base images without a full version upgrade:
 
 ```bash
-# Pull latest base images
-docker compose pull
+# Pull the third-party images only. A bare `docker compose pull` would also fetch OUR
+# four service images straight from the registry, bypassing the signature check that
+# `abbilder_bereitstellen` performs (see "Signature check" above).
+docker compose pull postgres redis docker-socket-proxy caddy
+# cloudflared and autoheal only exist in the "tunnel" profile:
+docker compose --profile tunnel pull cloudflared autoheal
 
-# Rebuild services that depend on pulled images
-docker compose build --no-cache
+# Rebuild our own services on the new base images
+docker compose build --pull --no-cache orchestrator embedding-service stt-service frontend
 
 # Rolling restart
 docker compose up -d --no-deps orchestrator
