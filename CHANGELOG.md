@@ -22,9 +22,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   eine neuere Node-Version, scheitert der Bau sofort, statt nur eine Warnung auszugeben,
   die niemand liest. Dasselbe gilt für das CLI-Update beim Start eines Agenten: Passt eine
   neue Fassung nicht zur Node-Version im Image, bleibt die vorhandene Fassung installiert.
+  Auch der Bau des Agent-Images installiert seine CLIs jetzt mit `--engine-strict`.
 
 ### Intern
-- Neuer Workflow „Frischer Image-Bau“ für den Embedding-Dienst und den Orchestrator. Er
+- Neuer Workflow „Frischer Image-Bau“ für den Embedding-Dienst, den Orchestrator und das
+  Agent-Image. Er
   baut ohne Cache, scheitert hart und prüft danach den echten Startweg: Modell laden und
   einmal kodieren bzw. Node- und CLI-Versionen. Er läuft bei Änderungen an diesen Images
   und zusätzlich jede Nacht, denn der Bruch vom 06.10. kam ohne einen einzigen Commit, nur

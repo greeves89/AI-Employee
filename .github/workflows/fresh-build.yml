@@ -23,6 +23,8 @@ on:
       - "embedding-service/**"
       - "orchestrator/Dockerfile"
       - "orchestrator/pyproject.toml"
+      - "agent/Dockerfile"
+      - "agent/pyproject.toml"
       - ".github/workflows/fresh-build.yml"
   pull_request:
     branches: [main]
@@ -30,6 +32,8 @@ on:
       - "embedding-service/**"
       - "orchestrator/Dockerfile"
       - "orchestrator/pyproject.toml"
+      - "agent/Dockerfile"
+      - "agent/pyproject.toml"
       - ".github/workflows/fresh-build.yml"
   schedule:
     - cron: "17 3 * * *"
@@ -68,6 +72,15 @@ jobs:
               node -e "const m=+process.versions.node.split('.')[0];
               if(m<22){console.error('Node '+process.versions.node+' < 22');process.exit(1)}"
               && node --version && claude --version && codex --version
+          - name: agent
+            context: ./agent
+            # Gleiche Fehlerklasse: codex und hyperframes kommen ungepinnt ueber npm,
+            # jede neue Fassung kann eine neuere Node-Version verlangen.
+            probe: >-
+              node -e "const m=+process.versions.node.split('.')[0];
+              if(m<22){console.error('Node '+process.versions.node+' < 22');process.exit(1)}"
+              && node --version && claude --version && codex --version
+              && python -c "import redis, aiohttp, pydantic_settings, httpx, pandas, fitz, docx, pptx, matplotlib, numpy; print('python deps ok')"
     steps:
       - uses: actions/checkout@v7
       - name: Bauen (ohne Cache)
