@@ -35,6 +35,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.363.2] - 2026-10-15
+
+### Behoben
+- **Gesetze über 2 MB fehlten dauerhaft in der Wissensbasis** (#866). Das SGB V war als eine
+  Datei größer als die Grenze je Datei und wurde bei jedem täglichen Lauf verworfen; wer danach
+  suchte, bekam keinen Treffer. Zu große Gesetze werden jetzt in Teile von höchstens 1,5 MB
+  aufgeteilt (`<kennung>.md`, `<kennung>.teil-2.md` …, Überschrift „Teil i von n“), jeder
+  Paragraph steht genau einmal. Teile eines früheren, längeren Stands werden aus Ordner und
+  Suchindex entfernt.
+- Die Sammelmeldung des Crawlers nennt jetzt die betroffenen Gesetze und sagt, wenn derselbe
+  Fehlschlag seit mehreren Läufen unverändert besteht.
+
+---
+
 ## [1.363.1] - 2026-10-15
 
 ### Behoben
