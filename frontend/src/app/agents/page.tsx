@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, Network, Users, StopCircle, ArrowUpCircle, Crown, RotateCw } from "lucide-react";
+import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, List, Network, Users, StopCircle, ArrowUpCircle, Crown, RotateCw } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
@@ -13,10 +13,20 @@ import type { AgentTeam } from "@/lib/api";
 import { useConfirm } from "@/components/ui/dialog-provider";
 import { getAgentTag } from "@/components/agents/agent-avatar";
 import { AgentFilterBar, type GroupBy, type SortBy } from "@/components/agents/agent-filter-bar";
+import { AgentListView } from "@/components/agents/agent-list-view";
+import { useAgentsPagePrefs } from "@/hooks/use-agents-page-prefs";
+import {
+  MAX_SAVED_FILTERS,
+  agentStatusKey,
+  newFilterId,
+  type ListColumn,
+  type SavedFilter,
+  type StatusFilter,
+  type ViewMode,
+} from "@/lib/agents-page-prefs";
 import { useSimpleMode } from "@/hooks/use-simple-mode";
 import { useAuthStore } from "@/lib/auth";
 import { apiFehlertext } from "@/lib/api-fehler";
-type ViewMode = "grid" | "network" | "teams";
 
 const CreateAgentModal = dynamic(
   () => import("@/components/agents/create-agent-modal").then((m) => m.CreateAgentModal),
@@ -40,6 +50,13 @@ const AgentNetworkView = dynamic(
   },
 );
 
+const VIEW_BUTTONS: { mode: ViewMode; title: string; Icon: typeof LayoutGrid; expert: boolean }[] = [
+  { mode: "grid", title: "Kachelansicht", Icon: LayoutGrid, expert: false },
+  { mode: "list", title: "Listenansicht", Icon: List, expert: false },
+  { mode: "network", title: "Netzwerkansicht", Icon: Network, expert: true },
+  { mode: "teams", title: "Teamansicht", Icon: Users, expert: true },
+];
+
 export default function AgentsPage() {
   const { agents, loading, refresh } = useAgents();
   const confirm = useConfirm();
@@ -47,7 +64,13 @@ export default function AgentsPage() {
   const meineId = useAuthStore((s) => s.user?.id);
   const [showCreate, setShowCreate] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  // Ansicht, Listen-Einrichtung und gespeicherte Filter liegen am Konto.
+  const { prefs, update: updatePrefs } = useAgentsPagePrefs();
+  const viewMode = prefs.ansicht;
+  const setViewMode = (ansicht: ViewMode) => updatePrefs((p) => ({ ...p, ansicht }), { immediate: true });
+  // Netzwerk und Teams gibt es in der einfachen Ansicht nicht — dort gilt dann die Kachelansicht.
+  const effectiveView: ViewMode =
+    simpleMode && (viewMode === "network" || viewMode === "teams") ? "grid" : viewMode;
   const [stoppingAll, setStoppingAll] = useState(false);
   const [startingAll, setStartingAll] = useState(false);
   const [restartingAll, setRestartingAll] = useState(false);
@@ -105,8 +128,48 @@ export default function AgentsPage() {
   // Menge, auf die diese Oberfläche nicht ausgelegt ist.
   const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [groupBy, setGroupBy] = useState<GroupBy>("team");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter[]>([]);
+  // Die Gruppierung gilt für Karten und Liste gleichermaßen und wird mitgespeichert.
+  const groupBy: GroupBy = prefs.liste.gruppierung;
+  const setGroupBy = (gruppierung: GroupBy) =>
+    updatePrefs((p) => ({ ...p, liste: { ...p.liste, gruppierung } }));
   const [sortBy, setSortBy] = useState<SortBy>("name");
+
+  const sortList = (spalte: ListColumn) =>
+    updatePrefs((p) => {
+      const cur = p.liste.sortierung;
+      const richtung = cur.spalte === spalte && cur.richtung === "asc" ? "desc" : "asc";
+      return { ...p, liste: { ...p.liste, sortierung: { spalte, richtung } } };
+    });
+  const setListColumns = (spalten: ListColumn[]) =>
+    updatePrefs((p) => ({ ...p, liste: { ...p.liste, spalten } }));
+
+  const applyPreset = (f: SavedFilter) => {
+    setQuery(f.suche);
+    setTagFilter(f.schlagwort || null);
+    setStatusFilter(f.status);
+  };
+  const savePreset = (name: string) =>
+    updatePrefs(
+      (p) =>
+        p.filter.length >= MAX_SAVED_FILTERS
+          ? p
+          : {
+              ...p,
+              filter: [
+                ...p.filter,
+                { id: newFilterId(), name, suche: query.trim(), schlagwort: tagFilter ?? "", status: statusFilter },
+              ],
+            },
+      { immediate: true },
+    );
+  const deletePreset = (id: string) =>
+    updatePrefs((p) => ({ ...p, filter: p.filter.filter((f) => f.id !== id) }), { immediate: true });
+  const resetFilters = () => {
+    setQuery("");
+    setTagFilter(null);
+    setStatusFilter([]);
+  };
 
   const allTags = useMemo(() => {
     const seen = new Set<string>();
@@ -122,6 +185,7 @@ export default function AgentsPage() {
     return agents.filter((a) => {
       const tag = getAgentTag(a.config as Record<string, unknown> | null);
       if (tagFilter && tag !== tagFilter) return false;
+      if (statusFilter.length > 0 && !statusFilter.includes(agentStatusKey(a) as StatusFilter)) return false;
       if (!q) return true;
       // Name, Rolle und Schlagwort — die drei Dinge, nach denen man einen Agenten
       // im Kopf sucht.
@@ -131,13 +195,28 @@ export default function AgentsPage() {
         tag.toLowerCase().includes(q)
       );
     });
-  }, [agents, query, tagFilter]);
+  }, [agents, query, tagFilter, statusFilter]);
 
-  // Gruppierung: nach Team (Verhalten) ODER nach Schlagwort (Organisation).
+  // Erstes Team je Agent — für die Gruppierung und die Spalte „Gruppe“ der Liste.
+  const teamOf = useMemo(() => {
+    const map: Record<string, AgentTeam> = {};
+    for (const t of teams) for (const m of t.member_agent_ids) if (!map[m]) map[m] = t;
+    return map;
+  }, [teams]);
+  const teamNameOf = useMemo(
+    () => Object.fromEntries(Object.entries(teamOf).map(([id, t]) => [id, t.name])),
+    [teamOf],
+  );
+
+  // Gruppierung: nach Team (Verhalten) ODER nach Schlagwort (Organisation) — oder gar nicht.
   const agentGroups = useMemo(() => {
     const byKey: Record<string, { key: string; name: string; isTeam: boolean; leadName: string | null; agents: typeof agents }> = {};
 
-    if (groupBy === "tag") {
+    if (groupBy === "none") {
+      if (visibleAgents.length > 0) {
+        byKey.__all__ = { key: "__all__", name: "Alle Agenten", isTeam: false, leadName: null, agents: [...visibleAgents] };
+      }
+    } else if (groupBy === "tag") {
       for (const a of visibleAgents) {
         const tag = getAgentTag(a.config as Record<string, unknown> | null);
         const key = tag || "__none__";
@@ -147,8 +226,6 @@ export default function AgentsPage() {
         byKey[key].agents.push(a);
       }
     } else {
-      const teamOf: Record<string, AgentTeam> = {};
-      for (const t of teams) for (const m of t.member_agent_ids) if (!teamOf[m]) teamOf[m] = t;
       for (const a of visibleAgents) {
         const t = teamOf[a.id];
         const key = t ? t.id : "__none__";
@@ -186,7 +263,7 @@ export default function AgentsPage() {
       if (groupBy === "team" && a.isTeam !== b.isTeam) return a.isTeam ? -1 : 1;
       return a.name.localeCompare(b.name, "de");
     });
-  }, [agents, visibleAgents, teams, groupBy, sortBy]);
+  }, [agents, visibleAgents, teamOf, groupBy, sortBy]);
 
   const handleUpdateAll = async () => {
     const ok = await confirm({
@@ -286,6 +363,23 @@ export default function AgentsPage() {
     }
   };
 
+  const handleRestart = async (id: string) => {
+    const ok = await confirm({
+      title: "Diesen Agenten neu starten?",
+      message: "Der Agent wird mit frischen Umgebungsvariablen neu erstellt. Laufende Aufgaben werden dabei abgebrochen; Daten bleiben erhalten.",
+      variant: "warning",
+      confirmLabel: "Neu starten",
+    });
+    if (!ok) return;
+    setActionLoading(id);
+    try {
+      await api.restartAgent(id);
+      await refresh();
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleRemove = async (id: string) => {
     const ok = await confirm({
       title: "Diesen Agenten entfernen?",
@@ -324,43 +418,30 @@ export default function AgentsPage() {
         subtitle={simpleMode ? "Deine KI-Mitarbeiter — Klick auf einen öffnet den Chat" : "Deine Agenten verwalten: starten, stoppen, aktualisieren"}
         actions={
           <div className="flex items-center gap-2">
-            {/* Ansichten und Sammelaktionen sind Betrieb, nicht Alltag —
-                in der einfachen Ansicht nur "Neuer Agent". */}
-            {!simpleMode && (<>
-            {/* View mode toggle */}
+            {/* Ansicht-Umschalter. Karten und Liste für alle — wer viele Agenten hat,
+                braucht die Liste auch in der einfachen Ansicht; Netzwerk und Teams
+                sind Betrieb, nicht Alltag. */}
             <div className="flex items-center rounded-lg border border-foreground/[0.06] bg-card/50 p-0.5">
-              <button
-                onClick={() => setViewMode("grid")}
-                className={cn(
-                  "rounded-lg px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all duration-200",
-                  viewMode === "grid" && "bg-foreground/[0.08] text-foreground"
-                )}
-                title="Kachelansicht"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setViewMode("network")}
-                className={cn(
-                  "rounded-lg px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all duration-200",
-                  viewMode === "network" && "bg-foreground/[0.08] text-foreground"
-                )}
-                title="Netzwerkansicht"
-              >
-                <Network className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setViewMode("teams")}
-                className={cn(
-                  "rounded-lg px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all duration-200",
-                  viewMode === "teams" && "bg-foreground/[0.08] text-foreground"
-                )}
-                title="Teamansicht"
-              >
-                <Users className="h-4 w-4" />
-              </button>
+              {VIEW_BUTTONS.filter((v) => !simpleMode || !v.expert).map(({ mode, title, Icon }) => (
+                <button
+                  key={mode}
+                  data-testid={`view-${mode}`}
+                  onClick={() => setViewMode(mode)}
+                  aria-pressed={effectiveView === mode}
+                  className={cn(
+                    "rounded-lg px-2.5 py-2 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] transition-all duration-200",
+                    effectiveView === mode && "bg-foreground/[0.08] text-foreground"
+                  )}
+                  title={title}
+                >
+                  <Icon className="h-4 w-4" />
+                </button>
+              ))}
             </div>
 
+            {/* Sammelaktionen sind Betrieb, nicht Alltag — in der einfachen Ansicht
+                nur "Neuer Agent". */}
+            {!simpleMode && (<>
             {/* Update All — only visible when at least one agent has an update */}
             {agentsNeedingUpdate.length > 0 && (
               <button
@@ -435,7 +516,7 @@ export default function AgentsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {viewMode === "teams" ? (
+        {effectiveView === "teams" ? (
           <TeamsSection agents={agents} />
         ) : loading && agents.length === 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -446,7 +527,7 @@ export default function AgentsPage() {
               />
             ))}
           </div>
-        ) : viewMode === "network" ? (
+        ) : effectiveView === "network" ? (
           <AgentNetworkView agents={agents} />
         ) : agents.length === 0 ? (
           <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-16 text-center">
@@ -467,29 +548,52 @@ export default function AgentsPage() {
           </div>
         ) : (
           <div className="space-y-7">
-            {/* Erst ab einer Menge, die man nicht mehr überblickt — darunter ist die
-                Leiste nur Ballast über einer Handvoll Karten. */}
-            {(agents.length > 5 || allTags.length > 0) && (
-              <AgentFilterBar
-                query={query}
-                onQuery={setQuery}
-                tags={allTags}
-                tagFilter={tagFilter}
-                onTagFilter={setTagFilter}
-                groupBy={groupBy}
-                onGroupBy={setGroupBy}
-                sortBy={sortBy}
-                onSortBy={setSortBy}
-                shown={visibleAgents.length}
-                total={agents.length}
-              />
-            )}
+            {/* Immer sichtbar: Status-Filter und gespeicherte Filter gehören zum
+                Alltag, auch bei wenigen Agenten. */}
+            <AgentFilterBar
+              query={query}
+              onQuery={setQuery}
+              tags={allTags}
+              tagFilter={tagFilter}
+              onTagFilter={setTagFilter}
+              groupBy={groupBy}
+              onGroupBy={setGroupBy}
+              sortBy={sortBy}
+              onSortBy={setSortBy}
+              showSort={effectiveView !== "list"}
+              statusFilter={statusFilter}
+              onStatusFilter={setStatusFilter}
+              presets={prefs.filter}
+              onApplyPreset={applyPreset}
+              onSavePreset={savePreset}
+              onDeletePreset={deletePreset}
+              shown={visibleAgents.length}
+              total={agents.length}
+            />
 
+            {effectiveView === "list" ? (
+              <AgentListView
+                groups={agentGroups}
+                grouping={groupBy}
+                teamNameOf={teamNameOf}
+                columns={prefs.liste.spalten}
+                sortColumn={prefs.liste.sortierung.spalte}
+                sortDirection={prefs.liste.sortierung.richtung}
+                onSort={sortList}
+                onColumnsChange={setListColumns}
+                actionLoading={actionLoading}
+                onStart={handleStart}
+                onStop={handleStop}
+                onRestart={handleRestart}
+                onRemove={handleRemove}
+                onRefresh={refresh}
+              />
+            ) : (<>
             {visibleAgents.length === 0 && (
               <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-10 text-center text-sm text-muted-foreground">
                 Kein Agent passt zu dieser Suche.
                 <button
-                  onClick={() => { setQuery(""); setTagFilter(null); }}
+                  onClick={resetFilters}
                   className="ml-2 text-primary hover:underline"
                 >
                   Filter zurücksetzen
@@ -567,6 +671,7 @@ export default function AgentsPage() {
               </div>
             </section>
             ))}
+            </>)}
           </div>
         )}
       </motion.div>

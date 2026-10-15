@@ -391,6 +391,25 @@ export async function updateAgentBrowserMode(agentId: string, browserMode: boole
   });
 }
 
+// Persönliche Oberflächen-Einstellungen am Konto (gelten auf jedem Gerät).
+// PATCH ersetzt nur die übergebenen Schlüssel; Antwort ist das ganze Objekt.
+export type UiPreferences = Record<string, unknown>;
+
+export async function getUiPreferences(): Promise<UiPreferences> {
+  return fetchJSON(`${getBase()}/auth/me/ui-preferences`);
+}
+
+export async function patchUiPreferences(
+  changes: UiPreferences,
+  init?: Pick<RequestInit, "keepalive">,
+): Promise<UiPreferences> {
+  return fetchJSON(`${getBase()}/auth/me/ui-preferences`, {
+    method: "PATCH",
+    body: JSON.stringify(changes),
+    ...init,
+  });
+}
+
 export async function stopAgent(id: string): Promise<void> {
   await fetchJSON(`${getBase()}/agents/${id}/stop`, { method: "POST" });
 }

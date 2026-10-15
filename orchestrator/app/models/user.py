@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -70,6 +70,10 @@ class User(Base, TimestampMixin):
     # Willkommensfenster mit den Klick-Tutorials: einmal beim ersten Start. Gesetzt,
     # sobald der Nutzer es schliesst — danach nur noch ueber Hilfe & FAQ.
     tutorial_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Persoenliche Einrichtung der Oberflaeche (Ansicht, Spalten, gespeicherte
+    # Filter), je Bereich ein Schluessel — am Konto statt im Browser, damit sie auf
+    # jedem Geraet gilt. Erlaubte Schluessel und Groessengrenze: core/ui_einstellungen.
+    ui_preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Zwei-Faktor per TOTP (#915) — nur für Passwort-Anmeldungen. Das Geheimnis liegt
     # Fernet-verschlüsselt (core/encryption). Gesetzt, aber ohne ``mfa_enabled_at``
     # = Einrichtung begonnen, noch nicht bestätigt. Wiederherstellungscodes nur als

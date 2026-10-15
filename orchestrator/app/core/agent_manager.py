@@ -12,6 +12,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
+from app.core.agent_duty import vom_nutzer_angehalten
 from app.core.encryption import decrypt_token
 from app.core.githost.registry import get_git_host_provider
 from app.core.log_redaction import scrub_log
@@ -2824,6 +2825,8 @@ class AgentManager:
             "user_id": agent.user_id,
             "created_at": agent.created_at,
             "updated_at": agent.updated_at,
+            "last_active_at": agent.last_active_at,
+            "stopped_by_user": vom_nutzer_angehalten(agent),
             "knowledge_template": config.get("knowledge_template", ""),
             "interaction_model": config.get("interaction_model"),
             "interaction_account_id": config.get("interaction_account_id"),

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_agent_version, settings
 from app.core import autonomy_matrix
+from app.core.agent_duty import vom_nutzer_angehalten
 from app.core.agent_appearance import apply_appearance
 from app.core.agent_manager import DEFAULT_PERMISSIONS, AgentManager
 from app.core.file_manager import FileManager
@@ -657,6 +658,8 @@ async def list_agents(
                 user_id=agent.user_id,
                 created_at=agent.created_at,
                 updated_at=agent.updated_at,
+                last_active_at=agent.last_active_at,
+                stopped_by_user=vom_nutzer_angehalten(agent),
                 config=safe_config,
                 current_task="",
                 queue_depth=0,
