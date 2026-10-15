@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.363.1] - 2026-10-15
+
+### Behoben
+- **Dokument-Prüfung lieferte kein gültiges JSON.** `dokument pruefen --json` gab vor dem
+  Ergebnis eine Warnung der PDF-Bibliothek aus (`import fitz` ist in pymupdf 1.28 veraltet und
+  meldet das auf stdout). Agenten konnten das Prüfergebnis dadurch nicht auslesen. Jetzt wird
+  `pymupdf` direkt geladen, mit Rückfall für ältere Versionen.
+
+### Intern
+- CI wieder grün: Redis-Dienst für die Orchestrator-Tests ergänzt (die Adresse war gesetzt,
+  der Dienst fehlte), veraltete Testattrappen nachgezogen.
+
+---
+
 ## [1.363.0] - 2026-10-15
 
 ### Neu
