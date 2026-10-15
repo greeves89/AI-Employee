@@ -1758,7 +1758,7 @@ Beschreibung, darunter die Rechte in vier Gruppen *(seit 1.358.3)*:
 | Gruppe | Rechte |
 |---|---|
 | **Modelle & Konten** | LLM-Provider, Modelle, AI-Accounts |
-| **Keys & Werkzeuge** | Keys / Secrets, MCP-Server, Integrationen |
+| **Keys & Werkzeuge** | Keys / Secrets, MCP-Server, Integrationen, Suchindizes |
 | **Wissen & Daten** | Mountshares |
 | **Oberfläche & Zugriff** | Menüpfade, Templates, URL-Host-Patterns |
 
@@ -1785,6 +1785,19 @@ der Rollengrenze**, welche Agenten mehr dürfen, als die Rolle ihres Besitzers h
 **zurückstufen** geht in den Einstellungen des jeweiligen Agenten.
 
 ![Kasten „Agenten über der Rollengrenze“](screenshots/55-admin-rollen-grenze.png)
+
+**Suchindizes** *(seit 1.364.1)*: Neben der Websuche gibt es eine eigene **Nachrichtensuche**
+(Werkzeug `news_search`). Sie liefert nur Meldungen mit Datum und Quelle, die Websuche dagegen
+auch Dokumentation und Nachschlagewerke. Welche Rolle sie nutzen darf, legst du so fest:
+
+1. Rolle in der Liste links anklicken.
+2. In der Gruppe **Keys & Werkzeuge** auf **Suchindizes** klicken, sodass die Zeile aufklappt.
+3. **Nachrichtenindex (news_search)** an- oder abwählen. **Unbegrenzt** stellt zurück auf „alle“.
+4. **Speichern**.
+
+Ohne Freigabe wird das Werkzeug den Agenten dieser Rolle gar nicht angeboten, und der Server
+lehnt einen Aufruf ab. Die Websuche bleibt immer verfügbar. Der Nachrichtenindex braucht
+**Brave** als Suchanbieter (Admin → Websuche).
 
 Jedes Recht ist **eingeklappt** und zeigt rechts seinen Stand — z. B. **„3 von 7“**,
 **„alle“** oder **„keine“**. Ein Klick auf die Zeile klappt sie auf; dort setzt du die
