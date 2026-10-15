@@ -5,6 +5,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.363.8] - 2026-10-15
+
+### Geändert
+- **Die PDF-Vorschau läuft auf einer neuen Hauptversion ihrer Anzeige-Bibliothek — für Sie
+  ändert sich nichts.** Die neue Version lädt Dokumente standardmäßig so, dass ein
+  Ladefehler nicht mehr in der Vorschau selbst landet, sondern nach außen durchgereicht
+  wird. Dann wäre bei einer beschädigten oder passwortgeschützten Datei die gewohnte
+  Meldung „PDF kann nicht angezeigt werden" samt Link „Stattdessen herunterladen"
+  verschwunden; Sie hätten nur noch den allgemeinen Hinweis gesehen, dass die Datei nicht
+  angezeigt werden kann — ohne Ausweg zum Download. Deshalb bleibt das bisherige
+  Lade- und Fehlerverhalten in der Vorschau ausdrücklich festgelegt.
+- Eine Quelltext-Wache hält das künftig fest: Wird die Festlegung beim Aufräumen entfernt,
+  fällt das in den Tests auf, statt erst beim nächsten kaputten PDF.
+- Mitgehoben wird die darunterliegende PDF-Bibliothek auf ihre neue Hauptversion. Die
+  gemeldeten Schwachstellen des Frontends bleiben dabei unverändert bei zehn — es kommt
+  keine hinzu.
+
+---
+
 ## [1.363.7] - 2026-10-15
 
 ### Geändert

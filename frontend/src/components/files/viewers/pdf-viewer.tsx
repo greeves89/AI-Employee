@@ -101,6 +101,10 @@ export default function PdfViewer({ fileUrl }: PdfViewerProps) {
           options={PDF_OPTIONEN}
           // react-pdf 11 laedt standardmaessig per React-Suspense. Diese Ansicht
           // steuert Laden und Fehler selbst (loading/fehler oben) — so bleibt es.
+          // Ohne die Zeile wuerde ein Ladefehler zwar noch `onLoadError` melden,
+          // danach aber weitergeworfen; die Meldung mit dem Download-Link unten
+          // waere tot. Eine Wache haelt das fest, siehe
+          // orchestrator/tests/test_pdf_betrachter_laedt_ohne_suspense.py.
           suspense={false}
         >
           <Page
