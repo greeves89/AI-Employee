@@ -72,11 +72,13 @@ START=$(date +%s)
 SCHRITT="Vorbereitung"
 VOLUME_ANZAHL=0
 
-# Ziel nicht eingehängt: protokollieren, wo es sicher geht, und nichts anlegen.
+# Ziel nicht eingehängt: nichts anlegen, nur auf die Ausgabe protokollieren
+# (Journal bzw. Cron-Log). Keine Ersatzdatei in /tmp — das Skript läuft als
+# root, ein fester Dateiname dort ließe sich per Symlink umlenken.
 ZIEL_FEHLT=false
 if [ -n "${BACKUP_MOUNT:-}" ] && ! ziel_eingehaengt "$BACKUP_MOUNT"; then
     ZIEL_FEHLT=true
-    LOG="${TMPDIR:-/tmp}/ai-employee-backup.log"
+    LOG=/dev/null
 else
     mkdir -p "$BACKUP_DIR"
     chmod 700 "$BACKUP_DIR"
