@@ -115,3 +115,73 @@ test("missing hookSpecificOutput in a malformed-but-200 response fails open", as
     await stop(server);
   }
 });
+
+// ── gateAktivieren (#781 PR 2) ──────────────────────────────────────────────
+const { gateAktivieren } = await import("./_tool_gate.mjs");
+const { CallToolRequestSchema, ListToolsRequestSchema } = await import(
+  "@modelcontextprotocol/sdk/types.js"
+);
+
+/** Minimaler Server-Ersatz: merkt sich, welcher Handler fuer welches Schema registriert wurde. */
+function fakeServer() {
+  const handlers = new Map();
+  return {
+    handlers,
+    setRequestHandler(schema, handler) {
+      handlers.set(schema, handler);
+    },
+  };
+}
+
+test("gateAktivieren: Ablehnung verhindert den Werkzeug-Handler", async () => {
+  const server = await startStub((_body, _req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: "braucht Kategorie custom",
+      },
+    }));
+  });
+  try {
+    const mcp = gateAktivieren(fakeServer(), "email");
+    let aufgerufen = false;
+    mcp.setRequestHandler(CallToolRequestSchema, async () => {
+      aufgerufen = true;
+      return { content: [{ type: "text", text: "gesendet" }] };
+    });
+    const antwort = await mcp.handlers.get(CallToolRequestSchema)({
+      params: { name: "email_send", arguments: { to: "a@example.invalid" } },
+    });
+    assert.equal(aufgerufen, false);
+    assert.equal(antwort.isError, true);
+    assert.match(antwort.content[0].text, /Kategorie custom/);
+  } finally {
+    await stop(server);
+  }
+});
+
+test("gateAktivieren: Erlaubnis ruft den Handler, Werkzeugliste bleibt ungegated", async () => {
+  let hookAufrufe = 0;
+  const server = await startStub((body, _req, res) => {
+    hookAufrufe += 1;
+    assert.equal(body.tool_name, "mcp__email__email_read");
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ hookSpecificOutput: { permissionDecision: "allow" } }));
+  });
+  try {
+    const mcp = gateAktivieren(fakeServer(), "email");
+    const liste = async () => ({ tools: [] });
+    mcp.setRequestHandler(ListToolsRequestSchema, liste);
+    mcp.setRequestHandler(CallToolRequestSchema, async () => ({ content: [{ type: "text", text: "ok" }] }));
+    assert.equal(mcp.handlers.get(ListToolsRequestSchema), liste, "tools/list wird nicht umschlossen");
+    const antwort = await mcp.handlers.get(CallToolRequestSchema)({
+      params: { name: "email_read", arguments: {} },
+    });
+    assert.equal(antwort.content[0].text, "ok");
+    assert.equal(hookAufrufe, 1);
+  } finally {
+    await stop(server);
+  }
+});

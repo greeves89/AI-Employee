@@ -88,6 +88,8 @@ services:
       - internal
 
   orchestrator:
+    # Fertiges Abbild aus der Registry (#889); ohne Registry baut `build:` lokal.
+    image: ${AI_EMPLOYEE_REGISTRY:-ghcr.io/greeves89}/ai-employee-orchestrator:${AI_EMPLOYEE_VERSION:-latest}
     build:
       context: ./orchestrator
       dockerfile: Dockerfile
@@ -260,6 +262,8 @@ services:
       - agent-network
 
   embedding-service:
+    # Fertiges Abbild aus der Registry (#889); ohne Registry baut `build:` lokal.
+    image: ${AI_EMPLOYEE_REGISTRY:-ghcr.io/greeves89}/ai-employee-embedding-service:${AI_EMPLOYEE_VERSION:-latest}
     build:
       context: ./embedding-service
       dockerfile: Dockerfile
@@ -285,6 +289,8 @@ services:
       - internal
 
   stt-service:
+    # Fertiges Abbild aus der Registry (#889); ohne Registry baut `build:` lokal.
+    image: ${AI_EMPLOYEE_REGISTRY:-ghcr.io/greeves89}/ai-employee-stt-service:${AI_EMPLOYEE_VERSION:-latest}
     build:
       context: ./stt-service
       dockerfile: Dockerfile
@@ -307,6 +313,8 @@ services:
       - internal
 
   frontend:
+    # Fertiges Abbild aus der Registry (#889); ohne Registry baut `build:` lokal.
+    image: ${AI_EMPLOYEE_REGISTRY:-ghcr.io/greeves89}/ai-employee-frontend:${AI_EMPLOYEE_VERSION:-latest}
     build:
       context: ./frontend
       dockerfile: Dockerfile

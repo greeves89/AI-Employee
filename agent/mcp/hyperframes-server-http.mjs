@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { gateAktivieren } from "./_tool_gate.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -113,6 +114,7 @@ function buildMcpServer() {
     { name: "hyperframes", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
+  gateAktivieren(server, "hyperframes");  // Autonomie-Gate fuer jeden Werkzeugaufruf (#781)
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [

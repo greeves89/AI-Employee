@@ -99,6 +99,9 @@ export default function PdfViewer({ fileUrl }: PdfViewerProps) {
           }}
           loading=""
           options={PDF_OPTIONEN}
+          // react-pdf 11 laedt standardmaessig per React-Suspense. Diese Ansicht
+          // steuert Laden und Fehler selbst (loading/fehler oben) — so bleibt es.
+          suspense={false}
         >
           <Page
             pageNumber={currentPage}

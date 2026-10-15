@@ -18,6 +18,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.364.0] - 2026-10-15
+
+### Sicherheit
+- **Werkzeugrechte gelten jetzt auch für Codex-Agenten** (#781). Codex bekommt einen
+  PreToolUse-Hook, der dieselbe Entscheidung trifft wie bei Claude Code: Shell-Befehle,
+  Dateiänderungen, MCP-Werkzeuge und Subagenten laufen durch die Autonomie-Matrix. Bisher
+  lief Codex ohne jede Durchsetzung. Zusätzlich prüft jeder eingebaute MCP-Server selbst,
+  unabhängig von der Laufzeit.
+- **Laufzeit-Konfiguration geschützt.** Schreiben in `.claude/` bzw. `.codex/` braucht jetzt
+  die Fähigkeit „Pakete / Config“. Vorher konnte ein Agent, der nur Dateien schreiben durfte,
+  den Werkzeug-Hook in `/workspace/.claude/settings.json` entfernen oder über
+  `/workspace/.codex/hooks.json` Befehle ausführen.
+- Befehlsregeln (Command Policies) gelten für alle Shell-Werkzeuge, nicht nur für `Bash`.
+
+### Behoben
+- **54 MCP-Werkzeuge ohne Kategorie** (Browser-Steuerung, E-Mail, Microsoft 365, Videos)
+  waren bei eingeschränkter Autonomie als „unbekannt“ gesperrt, auch für Claude-Code-Agenten.
+  Lesen eigener Daten zählt jetzt als „Dateien lesen“, Senden/Ändern als „E-Mail / M365“.
+
+### Neu
+- **Fertige Abbilder aus der Registry** (#889). Jedes Release baut Orchestrator, Oberfläche,
+  Agenten-Abbild, Embedding- und Sprachdienst für amd64 und arm64 und legt sie in
+  `ghcr.io/greeves89` ab. `scripts/update.sh` und `scripts/setup.sh` holen sie, statt auf der
+  Anlage 20 bis 40 Minuten zu bauen; ohne erreichbare Registry oder mit `--lokal-bauen` wird
+  wie bisher lokal gebaut. Die Versionsnummer steht als `AI_EMPLOYEE_VERSION` in der `.env`.
+- Das Versions-Label steht am Ende des Agenten-Dockerfiles; ein Release baut damit nicht mehr
+  jede Schicht neu.
+
+### Abhängigkeiten
+- `react-pdf` 11 (PDF.js 6). Die PDF-Ansicht steuert Laden und Fehler weiter selbst
+  (`suspense={false}`) (#819).
+
+### Intern
+- CI führt die Node-Tests der MCP-Server aus.
+
+---
+
 ## [1.363.7] - 2026-10-15
 
 ### Geändert

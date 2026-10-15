@@ -16,6 +16,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { gateAktivieren } from "./_tool_gate.mjs";
 
 const ORCHESTRATOR_URL = process.env.ORCHESTRATOR_URL || "http://ai-employee-orchestrator:8000";
 const AGENT_ID = process.env.AGENT_ID || "";
@@ -29,6 +30,7 @@ export function buildServer() {
     { name: "mcp-brain", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
+  gateAktivieren(server, "brain");  // Autonomie-Gate fuer jeden Werkzeugaufruf (#781)
 
   async function apiCall(path, options = {}) {
     const url = `${ORCHESTRATOR_URL}/api/v1${path}`;

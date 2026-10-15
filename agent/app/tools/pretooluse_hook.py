@@ -43,6 +43,8 @@ shell entirely, a worse outcome than the rare window this trades for.
 """
 from __future__ import annotations
 
+import re
+
 from app.tools.executor import (
     ALWAYS_ALLOWED_TOOLS,
     TOOL_CATEGORY_MAP,
@@ -76,6 +78,18 @@ _NATIVE_ALWAYS_ALLOWED = frozenset({
     "ScheduleWakeup", "CronCreate", "CronList", "CronDelete",  # wie `create_schedule`
     "ReportFindings",  # reine Ausgabe an die Oberflaeche
     "ListMcpResourcesTool", "ReadMcpResourceTool", "ReadMcpResourceDirTool",
+    # Codex CLI (#781 PR 3): eigene Werkzeuge ohne Aussenwirkung — Plan,
+    # Bild ansehen, Subagenten, Rueckfrage, MCP-Ressourcen lesen, Werkzeugsuche.
+    # Namen aus codex-cli 0.162 (im Programm nachgesehen).
+    "update_plan", "view_image", "spawn_agent", "send_input", "wait_agent",
+    "close_agent", "resume_agent", "request_user_input", "request_permissions",
+    "list_mcp_resources", "read_mcp_resource", "list_mcp_resource_templates",
+    "tool_search",
+    # Subagenten meldet Codex mit Namensraum davor (live gesehen: 
+    # "collaborationspawn_agent"). Der Subagent laeuft selbst unter diesem
+    # Hook — live geprueft: sein Shell-Befehl wurde gesperrt.
+    "collaborationspawn_agent", "collaborationsend_input", "collaborationwait_agent",
+    "collaborationclose_agent", "collaborationresume_agent",
 })
 _NATIVE_CATEGORY_MAP: dict[str, str] = {
     "Bash": "shell_exec",
@@ -85,15 +99,55 @@ _NATIVE_CATEGORY_MAP: dict[str, str] = {
     "NotebookEdit": "file_write",
     "EnterWorktree": "file_write",  # legt einen git-Worktree im Dateisystem an
     "ExitWorktree": "file_write",
+    # Codex CLI: Shell meldet der Hook als "Bash" (oben); die internen Namen
+    # stehen zur Sicherheit mit drin, falls eine Version sie durchreicht.
+    "apply_patch": "file_write",
+    "exec_command": "shell_exec",
+    "shell_command": "shell_exec",
+    "local_shell": "shell_exec",
+    "write_stdin": "shell_exec",
 }
 
 # Plattform-eigene MCP-Server, deren Werkzeuge NICHT in den custom_llm-Tabellen
 # stehen (dort gibt es sie nicht): `read-logs` (eigene Containerlogs, nur
 # lesend) und der Desktop-Server, dessen Werkzeuge `computer_<aktion>` heissen
 # und in der Summe genau das sind, was `computer_use` in TOOL_CATEGORY_MAP ist.
-_MCP_BARE_ALWAYS_ALLOWED = frozenset({"read_logs"})
+_MCP_BARE_ALWAYS_ALLOWED = frozenset({
+    "read_logs",
+    "skill_record_usage",  # reine Buchfuehrung, wie skill_rate
+})
 _MCP_BARE_PREFIX_CATEGORY: dict[str, str] = {
     "computer_": TOOL_CATEGORY_MAP["computer_use"],
+    # Browser-Steuerung (Playwright bzw. Ego-Browser) — dasselbe Risiko wie das
+    # Sammelwerkzeug `browser` der custom_llm-Laufzeit.
+    "browser_": TOOL_CATEGORY_MAP["browser"],
+    "ego_": TOOL_CATEGORY_MAP["browser"],
+}
+
+# Werkzeuge der MCP-Server E-Mail, Microsoft 365 und Videos (#781 PR 2). Bis
+# hierhin standen sie in keiner Tabelle: mit konfigurierter Freigabeliste galten
+# sie als "unbekannt" und waren gesperrt — auch fuer Claude-Code-Agenten.
+# Lesen eigener Daten = Dateien lesen; Schreiben/Senden = die Faehigkeit
+# "E-Mail / M365 senden" (Kategorie "custom", wie in autonomy_matrix).
+_LESEN = "file_read"
+_M365 = "custom"
+_MCP_BARE_CATEGORY: dict[str, str] = {
+    # email-server
+    "email_list": _LESEN, "email_read": _LESEN, "email_search": _LESEN,
+    "email_send": _M365, "email_reply": _M365, "email_mark_read": _M365,
+    # msgraph-server
+    "list_calendar_events": _LESEN, "list_channels": _LESEN, "list_emails": _LESEN,
+    "list_onedrive_files": _LESEN, "list_planner_plans": _LESEN,
+    "list_planner_tasks": _LESEN, "list_teams": _LESEN, "list_teams_chats": _LESEN,
+    "list_todo_lists": _LESEN, "list_todo_tasks": _LESEN, "read_email": _LESEN,
+    "read_onedrive_file": _LESEN, "search_onedrive": _LESEN,
+    "send_email": _M365, "reply_email": _M365, "send_teams_message": _M365,
+    "send_teams_chat_message": _M365, "create_calendar_event": _M365,
+    "update_calendar_event": _M365, "delete_calendar_event": _M365,
+    "create_planner_task": _M365, "update_planner_task": _M365,
+    "create_todo_task": _M365, "complete_todo_task": _M365,
+    # hyperframes-server (Videos im eigenen Arbeitsordner)
+    "get_docs": _LESEN, "list_videos": _LESEN, "render_video": "file_write",
 }
 
 
@@ -107,7 +161,48 @@ def _decide_for(category: str, *, label: str) -> dict:
     return _allow()
 
 
+# Shell-Werkzeuge, deren Befehl zusaetzlich gegen die command_policies laeuft.
+_SHELL_WERKZEUGE = frozenset({"Bash", "exec_command", "shell_command", "local_shell", "write_stdin"})
+
+# Konfiguration der Laufzeit selbst: dort stehen ihre Hooks — bei Claude Code
+# auch genau dieser Gate-Hook (/workspace/.claude/settings.json). Wer dort
+# schreiben darf, kann das Gate entfernen oder eigene Kommando-Hooks anlegen
+# (live geprueft: Codex fuehrt /workspace/.codex/hooks.json aus). Schreiben dort
+# ist deshalb "Pakete / Config" (system_config), nicht "Dateien schreiben".
+_LAUFZEIT_KONFIG = re.compile(r"(^|[\\/])\.(claude|codex)([\\/]|$)")
+_PATCH_ZIEL = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.M)
+_SCHREIBWERKZEUGE = frozenset({
+    "Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch",
+    "write_file", "edit_file", "multi_edit",
+})
+
+
+def _schreibziele(tool_name: str, tool_input: dict | None) -> list[str]:
+    """Pfade, die ein Schreibwerkzeug anfassen wuerde."""
+    eingabe = tool_input or {}
+    if tool_name == "apply_patch":
+        return [z.strip() for z in _PATCH_ZIEL.findall(str(eingabe.get("command") or eingabe.get("input") or ""))]
+    return [str(eingabe[k]) for k in ("file_path", "notebook_path", "path") if eingabe.get(k)]
+
+
+def _bare(tool_name: str) -> str:
+    if tool_name.startswith("mcp__"):
+        teile = tool_name.split("__", 2)
+        return teile[2] if len(teile) == 3 else ""
+    return tool_name
+
+
 def decide(tool_name: str, tool_input: dict | None = None) -> dict:
+    """Kategorie-Entscheidung; Schreiben in die Laufzeit-Konfiguration braucht
+    zusaetzlich ``system_config`` (siehe ``_LAUFZEIT_KONFIG``)."""
+    if _bare(tool_name) in _SCHREIBWERKZEUGE and any(
+        _LAUFZEIT_KONFIG.search(z) for z in _schreibziele(_bare(tool_name), tool_input)
+    ):
+        return _decide_for("system_config", label=f"{tool_name} (Laufzeit-Konfiguration)")
+    return _decide_kategorie(tool_name, tool_input)
+
+
+def _decide_kategorie(tool_name: str, tool_input: dict | None = None) -> dict:
     """Return a PreToolUse hook response for one tool call.
 
     ``tool_input`` is accepted (and reserved) for a future finer-grained,
@@ -130,6 +225,8 @@ def decide(tool_name: str, tool_input: dict | None = None) -> dict:
             return _allow()
         if bare in TOOL_CATEGORY_MAP:
             return _decide_for(TOOL_CATEGORY_MAP[bare], label=tool_name)
+        if bare in _MCP_BARE_CATEGORY:
+            return _decide_for(_MCP_BARE_CATEGORY[bare], label=tool_name)
         for prefix, category in _MCP_BARE_PREFIX_CATEGORY.items():
             if bare.startswith(prefix):
                 return _decide_for(category, label=tool_name)
@@ -163,9 +260,12 @@ async def decide_async(tool_name: str, tool_input: dict | None = None) -> dict:
     base = decide(tool_name, tool_input)
     if base["hookSpecificOutput"]["permissionDecision"] == "deny":
         return base  # category gate already said no — nothing finer to check
-    if tool_name != "Bash":
+    if tool_name not in _SHELL_WERKZEUGE:
         return base
-    command = (tool_input or {}).get("command") or ""
+    eingabe = tool_input or {}
+    command = eingabe.get("command") or eingabe.get("cmd") or eingabe.get("chars") or ""
+    if isinstance(command, list):
+        command = " ".join(str(t) for t in command)
     if not command:
         return base
     effect, reason = await _evaluate_command_policy(command)
