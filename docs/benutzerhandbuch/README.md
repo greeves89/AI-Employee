@@ -2791,6 +2791,23 @@ Die Sicherung enthält Geheimnisse: Ordner und Dateien sind nur für `root` lesb
 (700/600). Wer sie außer Haus bringt, verschlüsselt sie dort (z. B. mit restic oder
 borg).
 
+**Auf ein NAS sichern, zweimal am Tag.** Eine Sicherung auf derselben Platte wie die
+Anlage hilft nicht, wenn genau diese Platte ausfällt. Besser ist ein NAS im eigenen Netz:
+
+1. Freigabe des NAS dauerhaft einhängen, z. B. per NFS mit systemd-Automount in
+   `/etc/fstab`:
+   `nas.example.invalid:/nfs/Freigabe /mnt/nas nfs rw,soft,vers=3,_netdev,noauto,x-systemd.automount 0 0`
+2. Einplanen:
+   `sudo ./scripts/install-backup-cron.sh --systemd --backup-dir /mnt/nas/ai-employee-sicherung --mount /mnt/nas --zeiten "02:30,14:30" --keep-daily 14`
+   (zweimal am Tag, sieben Tage täglicher Stände plus vier wöchentliche).
+3. Erste Sicherung von Hand anstoßen: `sudo systemctl start ai-employee-backup.service`.
+
+Mit `--mount` prüft `backup.sh` vor jedem Lauf, ob das NAS wirklich eingehängt ist. Ist
+es das nicht, bricht der Lauf ab und meldet den Fehler in der Karte **Datensicherung**,
+statt auf die Platte der Anlage zu schreiben. Außerdem prüft jeder Lauf vorher, ob am
+Ziel Platz für eine weitere Sicherung ist (Größe der letzten plus 2 GB). Die Sicherung
+läuft mit niedrigster Priorität, damit die Anlage dabei nicht langsamer antwortet.
+
 **Herzschlag an die Oberfläche.** Am Ende meldet `backup.sh` das Ergebnis an
 `POST /api/v1/admin/backup-status`. Angemeldet wird mit einem lokalen Schlüssel
 `BACKUP_STATUS_TOKEN` aus der `.env`; `setup.sh` und `backup.sh` legen ihn an, falls er

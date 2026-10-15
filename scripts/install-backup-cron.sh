@@ -6,24 +6,63 @@
 #
 # Usage:
 #   sudo ./scripts/install-backup-cron.sh [--systemd] [--backup-dir /path/to/backups]
+#        [--zeiten "02:30,14:30"] [--mount /mnt/nas] [--keep-daily 14]
+#
+#   --zeiten      Uhrzeiten (systemd: mehrere möglich, Standard: einmal täglich)
+#   --mount       Mountpunkt, der eingehängt sein muss (NAS). backup.sh bricht
+#                 sonst ab, statt auf die Platte der Anlage zu schreiben.
+#   --keep-daily  Aufbewahrung der täglichen Sicherungen (bei zwei Läufen am Tag
+#                 entsprechend verdoppeln)
+#
+# Die Sicherung läuft mit niedrigster CPU- und Platten-Priorität: Sie darf der
+# Anlage nicht die Maschine wegnehmen.
 
 set -euo pipefail
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/ai-employee}"
 USE_SYSTEMD=false
+ZEITEN=""
+MOUNT=""
+KEEP_DAILY=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --systemd) USE_SYSTEMD=true; shift ;;
         --backup-dir) BACKUP_DIR="$2"; shift 2 ;;
+        --zeiten) ZEITEN="$2"; shift 2 ;;
+        --mount) MOUNT="$2"; shift 2 ;;
+        --keep-daily) KEEP_DAILY="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
 
+# Mit --mount: das Ziel erst anlegen, wenn das Laufwerk wirklich da ist.
+if [ -n "$MOUNT" ]; then
+    # shellcheck source=lib/sicherung.sh
+    . "${INSTALL_DIR}/scripts/lib/sicherung.sh"
+    ziel_eingehaengt "$MOUNT" || { echo "FEHLER: ${MOUNT} ist nicht eingehängt."; exit 1; }
+fi
 mkdir -p "$BACKUP_DIR"
 
+UMGEBUNG="Environment=BACKUP_DIR=${BACKUP_DIR}"
+[ -n "$MOUNT" ] && UMGEBUNG="${UMGEBUNG}
+Environment=BACKUP_MOUNT=${MOUNT}"
+[ -n "$KEEP_DAILY" ] && UMGEBUNG="${UMGEBUNG}
+Environment=BACKUP_KEEP_DAILY=${KEEP_DAILY}"
+
 if $USE_SYSTEMD; then
+    KALENDER="OnCalendar=daily"
+    if [ -n "$ZEITEN" ]; then
+        KALENDER=""
+        for zeit in ${ZEITEN//,/ }; do
+            KALENDER="${KALENDER}OnCalendar=*-*-* ${zeit}:00
+"
+        done
+    fi
+    ABHAENGIG=""
+    [ -n "$MOUNT" ] && ABHAENGIG="RequiresMountsFor=${MOUNT}"
+
     # ── Systemd Timer (preferred) ──────────────────────────────────────────────
 
     cat > /etc/systemd/system/ai-employee-backup.service << EOF
@@ -31,12 +70,15 @@ if $USE_SYSTEMD; then
 Description=AI Employee Platform Backup
 After=docker.service
 Requires=docker.service
+${ABHAENGIG}
 
 [Service]
 Type=oneshot
 User=root
 WorkingDirectory=${INSTALL_DIR}
-Environment=BACKUP_DIR=${BACKUP_DIR}
+${UMGEBUNG}
+Nice=19
+IOSchedulingClass=idle
 ExecStart=${INSTALL_DIR}/scripts/backup.sh
 StandardOutput=journal
 StandardError=journal
@@ -46,11 +88,9 @@ EOF
     cat > /etc/systemd/system/ai-employee-backup.timer << EOF
 [Unit]
 Description=Daily AI Employee Platform Backup
-Requires=ai-employee-backup.service
 
 [Timer]
-OnCalendar=daily
-RandomizedDelaySec=300
+${KALENDER}RandomizedDelaySec=300
 Persistent=true
 
 [Install]
@@ -67,7 +107,11 @@ EOF
 else
     # ── Cron Job (fallback) ────────────────────────────────────────────────────
 
-    CRON_CMD="0 2 * * * cd ${INSTALL_DIR} && BACKUP_DIR=${BACKUP_DIR} ./scripts/backup.sh >> ${BACKUP_DIR}/backup.log 2>&1"
+    [ -n "$ZEITEN" ] && { echo "--zeiten gibt es nur mit --systemd"; exit 1; }
+    VARS="BACKUP_DIR=${BACKUP_DIR}"
+    [ -n "$MOUNT" ] && VARS="${VARS} BACKUP_MOUNT=${MOUNT}"
+    [ -n "$KEEP_DAILY" ] && VARS="${VARS} BACKUP_KEEP_DAILY=${KEEP_DAILY}"
+    CRON_CMD="0 2 * * * cd ${INSTALL_DIR} && ${VARS} nice -n 19 ./scripts/backup.sh >> /var/log/ai-employee-backup.log 2>&1"
 
     # Remove old entry if exists
     crontab -l 2>/dev/null | grep -v "ai-employee.*backup" | crontab - || true

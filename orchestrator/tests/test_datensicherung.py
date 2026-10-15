@@ -396,6 +396,102 @@ class PlatzPruefungVorDemZurueckspielenTests(unittest.TestCase):
         self.assertIn("WARNUNG", lauf.stdout)
 
 
+class PlatzAmZielVorDerSicherungTests(unittest.TestCase):
+    """Eine Sicherung ist 17 GB groß. Bevor sie geschrieben wird, prüft backup.sh
+    den Platz am Ziel — gemessen an der letzten vollständigen Sicherung. Liegt das
+    Ziel auf der Platte der Anlage, würde eine volle Platte sonst die laufende
+    Datenbank mitreißen (so geschehen beim Zurückspielen, #892)."""
+
+    def setUp(self):
+        import tempfile
+
+        self.ziel = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.ziel, ignore_errors=True)
+
+    def _sicherung(self, art: str, zeit: str, kb: int, vollstaendig: bool = True):
+        ordner = self.ziel / art / zeit
+        ordner.mkdir(parents=True)
+        (ordner / "postgres.sql.gz").write_bytes(b"x" * kb * 1024)
+        if vollstaendig:
+            (ordner / "MANIFEST").write_text("format=2\n")
+        return ordner
+
+    def _bash(self, befehl: str):
+        return subprocess.run(
+            ["bash", "-c", f'source "{HILFSDATEI}"; {befehl}', "_", str(self.ziel)],
+            capture_output=True, text=True, timeout=30,
+        )
+
+    def test_bedarf_ist_die_letzte_vollstaendige_sicherung(self):
+        self._sicherung("daily", "20261001_020000", 100)
+        self._sicherung("weekly", "20261004_020000", 300)
+        self._sicherung("daily", "20261005_020000", 900, vollstaendig=False)  # abgebrochen
+        bedarf = int(self._bash('ziel_bedarf_kb "$1"').stdout.strip())
+        self.assertGreaterEqual(bedarf, 300)
+        self.assertLess(bedarf, 900, "eine abgebrochene Sicherung ist kein Maßstab")
+
+    def test_ohne_fruehere_sicherung_gibt_es_keinen_massstab(self):
+        self.assertEqual(self._bash('ziel_bedarf_kb "$1"').stdout.strip(), "0")
+        lauf = self._bash('ziel_frei_kb() { echo 1; }; ziel_platz_pruefen "$1" && echo WEITER')
+        self.assertIn("WEITER", lauf.stdout)
+
+    def test_zu_wenig_platz_bricht_ab(self):
+        self._sicherung("daily", "20261001_020000", 1000)
+        lauf = self._bash('ziel_frei_kb() { echo 2000000; }; ziel_platz_pruefen "$1" && echo WEITER')
+        self.assertNotEqual(lauf.returncode, 0)
+        self.assertNotIn("WEITER", lauf.stdout)
+        self.assertIn("zu wenig", lauf.stdout.lower())
+
+    def test_genug_platz_mit_reserve(self):
+        self._sicherung("daily", "20261001_020000", 1000)
+        lauf = self._bash('ziel_frei_kb() { echo 4000000; }; ziel_platz_pruefen "$1" && echo WEITER')
+        self.assertIn("WEITER", lauf.stdout)
+
+
+class ZielMussEingehaengtSeinTests(unittest.TestCase):
+    """Liegt das Ziel auf einem NAS und ist es nicht eingehängt, landete die
+    Sicherung im leeren Mountpunkt — also auf der Platte der Anlage."""
+
+    def _bash(self, befehl: str, pfad: str):
+        return subprocess.run(
+            ["bash", "-c", f'source "{HILFSDATEI}"; {befehl}', "_", pfad],
+            capture_output=True, text=True, timeout=30,
+        )
+
+    def test_ein_gewoehnlicher_ordner_ist_kein_eingehaengtes_ziel(self):
+        import tempfile
+
+        ordner = tempfile.mkdtemp()
+        self.assertNotEqual(self._bash('ziel_eingehaengt "$1"', ordner).returncode, 0)
+
+    def test_ein_fehlender_pfad_ist_kein_eingehaengtes_ziel(self):
+        self.assertNotEqual(self._bash('ziel_eingehaengt "$1"', "/gibt/es/nicht").returncode, 0)
+
+    def test_backup_sh_prueft_das_ziel_bevor_es_etwas_anlegt(self):
+        """Verhalten: mit BACKUP_MOUNT auf einen gewöhnlichen Ordner bricht der Lauf
+        ab, und im Ziel entsteht nichts (kein Sicherungsordner, kein Protokoll)."""
+        import os
+        import shutil
+        import tempfile
+
+        ordner = Path(tempfile.mkdtemp())
+        ziel = ordner / "sicherung"
+        try:
+            env = {**os.environ, "BACKUP_MOUNT": str(ordner), "BACKUP_DIR": str(ziel),
+                   "TMPDIR": str(ordner / "tmp")}
+            (ordner / "tmp").mkdir()
+            lauf = subprocess.run(["bash", str(REPO / "scripts" / "backup.sh")],
+                                  env=env, capture_output=True, text=True, timeout=60)
+            self.assertNotEqual(lauf.returncode, 0)
+            self.assertIn("nicht eingehängt", lauf.stdout + lauf.stderr)
+            self.assertFalse(ziel.exists(), "im nicht eingehängten Ziel darf nichts entstehen")
+        finally:
+            shutil.rmtree(ordner, ignore_errors=True)
+
+
 _CURL_ATTRAPPE = r"""#!/usr/bin/env bash
 # Attrappe fuer curl: Argumente (= das, was `ps` zeigt) und stdin mitschreiben.
 printf '%s\n' "$@" > "$CURL_ARGS"

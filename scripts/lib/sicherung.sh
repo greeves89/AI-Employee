@@ -229,3 +229,59 @@ platz_pruefen() {
         exit 1
     fi
 }
+
+# ─── Sicherungsziel ───────────────────────────────────────────────────────────
+
+# Ist <mountpunkt> wirklich eingehängt (und kein leerer Ordner auf der Platte der
+# Anlage)? Ein Zugriff weckt einen systemd-Automount; dessen Platzhalter (autofs)
+# allein zählt nicht — dahinter muss das eigentliche Laufwerk hängen.
+#   ziel_eingehaengt <mountpunkt>
+ziel_eingehaengt() {
+    local pfad="$1" typ
+    ls "$pfad" >/dev/null 2>&1 || return 1
+    command -v mountpoint >/dev/null 2>&1 && mountpoint -q "$pfad" || return 1
+    typ=$(findmnt -rn -o FSTYPE -M "$pfad" 2>/dev/null | tail -n 1)
+    [ -n "$typ" ] && [ "$typ" != "autofs" ]
+}
+
+# Freier Platz am Sicherungsziel (Kilobyte).
+ziel_frei_kb() {
+    df -Pk "$1" 2>/dev/null | awk 'NR==2 {print $4}'
+}
+
+# Größe der letzten vollständigen Sicherung unter <sicherungsziel> (Kilobyte),
+# 0 wenn es noch keine gibt. Maßstab für den Platz der nächsten.
+#   ziel_bedarf_kb <sicherungsziel>
+ziel_bedarf_kb() {
+    local ziel="$1" o letzte="" kb
+    for o in "$ziel"/daily/* "$ziel"/weekly/*; do
+        [ -d "$o" ] || continue
+        [ "$(sicherung_zustand "$o")" = "vollstaendig" ] || continue
+        echo "$(basename "$o") $o"
+    done | sort | tail -n 1 > "${TMPDIR:-/tmp}/.ziel_bedarf.$$"
+    letzte=$(cut -d' ' -f2- < "${TMPDIR:-/tmp}/.ziel_bedarf.$$")
+    rm -f "${TMPDIR:-/tmp}/.ziel_bedarf.$$"
+    if [ -z "$letzte" ]; then
+        echo 0
+        return 0
+    fi
+    kb=$(du -sk "$letzte" 2>/dev/null | cut -f1)
+    echo "${kb:-0}"
+}
+
+# Reicht der Platz am Ziel für eine weitere Sicherung? Bedarf wie die letzte,
+# dazu 2 GB Reserve. Ohne frühere Sicherung gibt es keinen Maßstab — dann läuft
+# die erste durch. Rückgabe 1 = zu wenig Platz (Meldung auf stdout).
+#   ziel_platz_pruefen <sicherungsziel>
+ziel_platz_pruefen() {
+    local bedarf frei reserve=2097152
+    bedarf=$(ziel_bedarf_kb "$1")
+    [ "$bedarf" -gt 0 ] || return 0
+    frei=$(ziel_frei_kb "$1")
+    frei="${frei:-0}"
+    if [ $(( bedarf + reserve )) -gt "$frei" ]; then
+        echo "Zu wenig Platz am Ziel: etwa $(( (bedarf + 1048575) / 1048576 )) GB nötig (wie die letzte Sicherung) plus 2 GB Reserve, frei $(( frei / 1048576 )) GB."
+        return 1
+    fi
+    return 0
+}
