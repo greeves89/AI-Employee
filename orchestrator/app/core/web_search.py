@@ -232,7 +232,7 @@ async def brave_news_key(svc) -> str | None:
     ``web_search_api_key`` ist EIN Feld fuer den jeweils eingestellten Provider
     (Brave ODER SerpApi, siehe ``schemas/settings.py``). Ist SerpApi
     eingestellt, ist es ein SerpApi-Schluessel; ihn an Brave zu schicken hiesse,
-    ein Zugangsdatum an einen fremden Dienst zu geben (Review zu #812, K1).
+    ein Zugangsdatum an einen fremden Dienst zu geben.
     Deshalb gibt es den Nachrichtenindex nur, wenn ein Brave-Provider
     eingestellt ist. ``/capabilities`` nutzt dieselbe Aufloesung.
     """
@@ -295,7 +295,7 @@ async def web_search_with_settings(
     Nachrichtenindex. Den darf aber nicht jeder (``search_indexes``). Ohne
     Freigabe sucht sie deshalb mit demselben Brave-Schluessel im Webindex —
     sonst waere die Sperre von ``/agent-search/news`` ueber die Websuche
-    umgehbar (Review zu #812, K2). Standard ist ``False``: Wer die Freigabe
+    umgehbar. Standard ist ``False``: Wer die Freigabe
     nicht prueft, bekommt den Nachrichtenindex nicht.
     """
     from app.services.settings_service import SettingsService

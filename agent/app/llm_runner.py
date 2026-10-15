@@ -83,9 +83,8 @@ class LLMRunner:
         # tool call fails with "Unknown MCP tool".
         self._tool_executor._mcp_client = self._mcp_client
         self._all_tools: list[dict] | None = None
-        # Siehe llm_chat_handler: Freigabe-Stand des Katalogs + MCP getrennt (K3).
+        # Siehe llm_chat_handler: mit welchen Freigaben der Katalog abgeglichen ist.
         self._katalog_freigaben: dict[str, bool] | None = None
-        self._mcp_katalog: list[dict] | None = None
         # Modelle, die in diesem Lauf schon ausgefallen sind (#200) — verhindert,
         # dass die Ausweichkette im Kreis laeuft.
         self._models_tried: set[str] = set()
@@ -178,22 +177,25 @@ class LLMRunner:
         # Siehe llm_chat_handler._get_catalog: freigabepflichtige Werkzeuge
         # gehoeren hier raus, sonst sieht Custom-LLM etwas, das Claude Code
         # und Codex ueber den MCP-Filter gar nicht erst angeboten bekommen —
-        # und der Katalog folgt spaeteren Aenderungen der Freigaben (K3).
-        from app.tools.capabilities import freigaben, freigegebene_werkzeuge
+        # und der Katalog folgt spaeteren Aenderungen der Freigaben.
+        from app.tools.capabilities import (
+            freigaben, freigaben_nachziehen, freigegebene_werkzeuge,
+        )
         erlaubt = await freigaben()
-        if self._all_tools is not None and erlaubt == getattr(self, "_katalog_freigaben", None):
+        if self._all_tools is not None:
+            if erlaubt != getattr(self, "_katalog_freigaben", None):
+                # An Ort und Stelle: Streichungen des Laufs bleiben erhalten.
+                self._all_tools[:] = freigaben_nachziehen(self._all_tools, erlaubt)
+                self._katalog_freigaben = erlaubt
             return self._all_tools
         katalog = await freigegebene_werkzeuge(list(TOOL_DEFINITIONS), erlaubt)
-        if getattr(self, "_mcp_katalog", None) is None:
-            self._mcp_katalog = []
-            try:
-                mcp_tools = await self._mcp_client.discover_tools()
-                if mcp_tools:
-                    self._mcp_katalog = list(mcp_tools)
-                    logger.info(f"Discovered {len(mcp_tools)} MCP tools")
-            except Exception as e:
-                logger.warning(f"MCP tool discovery failed: {e}")
-        katalog.extend(self._mcp_katalog)
+        try:
+            mcp_tools = await self._mcp_client.discover_tools()
+            if mcp_tools:
+                katalog.extend(mcp_tools)
+                logger.info(f"Discovered {len(mcp_tools)} MCP tools")
+        except Exception as e:
+            logger.warning(f"MCP tool discovery failed: {e}")
         self._all_tools = katalog
         self._katalog_freigaben = erlaubt
         # Pre-activate integration MCP tools (M365/msgraph, Exchange, …) so they are

@@ -48,7 +48,7 @@ async def agent_web_search(
     from app.core.web_search import web_search_uses_news_index, web_search_with_settings
 
     # Ist brave_news eingestellt, ist die Websuche der Nachrichtenindex — dann
-    # gilt dieselbe Freigabe wie fuer /news (Review zu #812, K2).
+    # gilt dieselbe Freigabe wie fuer /news.
     allow_news = await web_search_uses_news_index(db) and await _darf_index(
         auth.get("agent_id", ""), NEWS, db)
     results = await web_search_with_settings(
@@ -79,7 +79,7 @@ async def agent_search_capabilities(
 
     agent_id = auth.get("agent_id", "")
     # Dieselbe Aufloesung wie die Suche selbst: ein SerpApi-Schluessel macht
-    # den Nachrichtenindex NICHT verfuegbar (Review zu #812, K1).
+    # den Nachrichtenindex NICHT verfuegbar.
     hat_schluessel = bool(await brave_news_key(SettingsService(db)))
     return {
         "web": True,
@@ -99,6 +99,6 @@ async def agent_news_search(
     from app.core.web_search import news_search_with_settings
 
     if not await _darf_index(auth.get("agent_id", ""), NEWS, db):
-        raise HTTPException(status_code=403, detail="Nachrichtensuche ist fuer dich nicht freigegeben.")
+        raise HTTPException(status_code=403, detail="Nachrichtensuche ist für dich nicht freigegeben.")
     results = await news_search_with_settings(body.query, body.max_results, db)
     return {"results": results}

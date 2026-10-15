@@ -3509,7 +3509,7 @@ class RealtimeVoiceSession:
         async with async_session_factory() as db:
             # Dieselbe Freigabe wie /agent-search/news — sonst waere der
             # Nachrichtenindex (brave_news) ueber die Sprache erreichbar,
-            # obwohl er dem Besitzer gesperrt ist (Review zu #812, K2).
+            # obwohl er dem Besitzer gesperrt ist.
             allow_news = await web_search_uses_news_index(db) and await agent_may_use_index(
                 getattr(self, "agent_id", "") or "", NEWS, db)
             results = await web_search_with_settings(

@@ -159,7 +159,7 @@ class WebSearchWithSettingsTests(unittest.IsolatedAsyncioTestCase):
         ctx, client = _client_returning({"results": []})
         async with self.Session() as db:
             with patch("httpx.AsyncClient", return_value=ctx):
-                # Nachrichtenindex nur mit Freigabe (Review zu #812, K2).
+                # Nachrichtenindex nur mit Freigabe.
                 await web_search_with_settings("pokemon karten", 5, db, allow_news=True)
         self.assertEqual(client.get.call_args.kwargs["params"]["freshness"], "pw")
 
@@ -464,6 +464,53 @@ class SearchIndexPermissionTests(unittest.TestCase):
 
     def test_no_index_asked_for_is_always_fine(self):
         self.assertTrue(can_use_search_index({"search_indexes": []}, None))
+
+
+class RoleSearchIndexRoundTripTests(unittest.IsolatedAsyncioTestCase):
+    """Der Rollen-Editor speichert ``search_indexes`` — der Endpunkt muss den
+    Schluessel unveraendert ablegen und zurueckgeben, und die Pruefung muss ihn
+    aus einer eigenen Rolle lesen. Ein Schema, das unbekannte Felder still
+    abschneidet, wuerde die Freigabe sonst lautlos auf "alles erlaubt" setzen."""
+
+    ADMIN = SimpleNamespace(id="adm", role=UserRole.ADMIN)
+
+    def _db(self, rolle=None):
+        db = MagicMock(add=MagicMock(), commit=AsyncMock(), refresh=AsyncMock())
+        db.get = AsyncMock(return_value=rolle)
+        db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
+        return db
+
+    async def test_create_returns_search_indexes(self):
+        from app.api import roles as api
+
+        with patch("app.core.audit.protokolliere", AsyncMock()):
+            out = await api.create_role(
+                {"name": "Recherche", "permissions": {"search_indexes": ["web"]}},
+                user=self.ADMIN, db=self._db(),
+            )
+        self.assertEqual(out["permissions"]["search_indexes"], ["web"])
+
+    async def test_update_returns_search_indexes(self):
+        from app.api import roles as api
+        from app.models.custom_role import CustomRole
+
+        rolle = CustomRole(id=7, name="Team", description=None, is_system=False,
+                           permissions={"max_agents": 2})
+        with patch("app.core.audit.protokolliere", AsyncMock()):
+            out = await api.update_role(
+                7, {"permissions": {"max_agents": 2, "search_indexes": []}},
+                user=self.ADMIN, db=self._db(rolle), manager=MagicMock(),
+            )
+        self.assertEqual(out["permissions"]["search_indexes"], [])
+
+    async def test_a_custom_role_without_news_denies_the_news_index(self):
+        from app.core.permissions import get_effective_permissions
+
+        rolle = SimpleNamespace(permissions={"search_indexes": ["web"]})
+        nutzer = SimpleNamespace(id="m", role=UserRole.MEMBER, custom_role_id=7)
+        perms = await get_effective_permissions(nutzer, self._db(rolle))
+        self.assertFalse(can_use_search_index(perms, "news"))
+        self.assertTrue(can_use_search_index(perms, "web"))
 
 
 class NewsSearchWithSettingsTests(unittest.IsolatedAsyncioTestCase):

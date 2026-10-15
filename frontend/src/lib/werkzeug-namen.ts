@@ -80,6 +80,7 @@ const KURZNAMEN: Record<string, string> = {
   glob: "Dateisuche",
   websearch: "Websuche",
   web_search: "Websuche",
+  news_search: "Nachrichtensuche",
   webfetch: "Webseite",
   web_fetch: "Webseite",
   task: "Helfer",

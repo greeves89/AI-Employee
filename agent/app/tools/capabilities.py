@@ -20,7 +20,7 @@ im Stoerfall gleich verhalten.
 neu. Frueher hielt dieser Pfad einen Fehlschlag fuer die ganze Lebenszeit des
 Agentenprozesses fest — und der lebt lange (``main.py`` startet die Consumer
 dauerhaft): Ein kurzer Aussetzer des Orchestrators oder eine spaetere
-Freigabe durch den Admin kam nie an (Review zu #812, K3). Jetzt gilt ein
+Freigabe durch den Admin kam nie an. Jetzt gilt ein
 Ergebnis nur begrenzt: ein Erfolg ``GUELTIG_ERFOLG`` Sekunden, ein Fehlschlag
 nur ``GUELTIG_FEHLER`` Sekunden. Die Werkzeugkataloge der Handler fragen bei
 jedem Aufbau hier nach und bauen sich neu, wenn sich die Freigaben geaendert
@@ -94,6 +94,30 @@ def filtern(werkzeuge: list[dict], erlaubt: dict[str, bool]) -> list[dict]:
         return True if schluessel is None else bool(erlaubt.get(schluessel))
 
     return [t for t in werkzeuge if durchlassen(t)]
+
+
+def freigaben_nachziehen(katalog: list[dict], erlaubt: dict[str, bool]) -> list[dict]:
+    """Einen schon aufgebauten Katalog an geaenderte Freigaben anpassen.
+
+    Nimmt nicht mehr freigegebene Werkzeuge heraus und fuegt neu freigegebene
+    aus ``TOOL_DEFINITIONS`` hinzu. Alles andere bleibt, wie es ist: MCP wird
+    nicht erneut abgefragt, und ein Werkzeug, das die Sitzung wegen eines vom
+    Anbieter abgelehnten Schemas gestrichen hat (``app/werkzeug_schema.py``),
+    kommt nicht durch einen Neuaufbau zurueck.
+    """
+    from app.tools.definitions import TOOL_DEFINITIONS
+
+    def name_von(t: dict) -> str:
+        return (t.get("function") or {}).get("name") or t.get("name") or ""
+
+    ergebnis = filtern(katalog, erlaubt)
+    vorhanden = {name_von(t) for t in ergebnis}
+    for t in TOOL_DEFINITIONS:
+        name = name_von(t)
+        schluessel = FREIGABEPFLICHTIG.get(name)
+        if schluessel and erlaubt.get(schluessel) and name not in vorhanden:
+            ergebnis.append(t)
+    return ergebnis
 
 
 async def freigegebene_werkzeuge(

@@ -188,11 +188,11 @@ class LLMChatHandler:
         # registry) — otherwise every MCP call fails with "Unknown MCP tool".
         self._tool_executor._mcp_client = self._mcp_client
         self._all_tools: list[dict] | None = None   # full catalog (cached), searchable
-        # Mit welchen Freigaben _all_tools gebaut wurde, und die MCP-Werkzeuge
-        # getrennt davon: Aendern sich die Freigaben, wird nur der eingebaute
-        # Teil neu gefiltert, ohne MCP erneut abzufragen (Review zu #812, K3).
+        # Mit welchen Freigaben _all_tools zuletzt abgeglichen wurde. Aendern
+        # sie sich, wird der Katalog angepasst statt neu aufgebaut — MCP wird
+        # nicht erneut abgefragt, und ein wegen seines Schemas gestrichenes
+        # Werkzeug bleibt gestrichen.
         self._katalog_freigaben: dict[str, bool] | None = None
-        self._mcp_katalog: list[dict] | None = None
         # Tools loaded on demand via search_tools (recency order; capped). Only these
         # plus the CORE set are actually sent to the LLM — keeps us under the 128 cap.
         self._activated: list[str] = []
@@ -376,24 +376,27 @@ class LLMChatHandler:
         # Freigabepflichtige Werkzeuge rausfiltern, BEVOR der Katalog ans Modell
         # geht. Claude Code und Codex bekommen denselben Filter ueber den
         # MCP-Server, der bei jedem tools/list neu fragt; hier wird bei jedem
-        # Aufbau nachgesehen (begrenzt zwischengespeichert) und neu gefiltert,
-        # wenn sich etwas geaendert hat — sonst bliebe ein Aussetzer oder eine
-        # alte Rolle fuer immer haengen (Harness-Paritaet, Review zu #812, K3).
-        from app.tools.capabilities import freigaben, freigegebene_werkzeuge
+        # Aufruf nachgesehen (begrenzt zwischengespeichert) und der Katalog
+        # angepasst, wenn sich etwas geaendert hat — sonst bliebe ein Aussetzer
+        # oder eine alte Rolle fuer immer haengen (Harness-Paritaet).
+        from app.tools.capabilities import (
+            freigaben, freigaben_nachziehen, freigegebene_werkzeuge,
+        )
         erlaubt = await freigaben()
-        if self._all_tools is not None and erlaubt == getattr(self, "_katalog_freigaben", None):
+        if self._all_tools is not None:
+            if erlaubt != getattr(self, "_katalog_freigaben", None):
+                # An Ort und Stelle: Streichungen der Sitzung bleiben erhalten.
+                self._all_tools[:] = freigaben_nachziehen(self._all_tools, erlaubt)
+                self._katalog_freigaben = erlaubt
             return self._all_tools
         catalog = await freigegebene_werkzeuge(list(TOOL_DEFINITIONS), erlaubt)
-        if getattr(self, "_mcp_katalog", None) is None:
-            self._mcp_katalog = []
-            try:
-                mcp_tools = await self._mcp_client.discover_tools()
-                if mcp_tools:
-                    self._mcp_katalog = list(mcp_tools)
-                    logger.info(f"Discovered {len(mcp_tools)} MCP tools")
-            except Exception as e:
-                logger.warning(f"MCP tool discovery failed: {e}")
-        catalog.extend(self._mcp_katalog)
+        try:
+            mcp_tools = await self._mcp_client.discover_tools()
+            if mcp_tools:
+                catalog.extend(mcp_tools)
+                logger.info(f"Discovered {len(mcp_tools)} MCP tools (catalog size {len(catalog)})")
+        except Exception as e:
+            logger.warning(f"MCP tool discovery failed: {e}")
         self._all_tools = catalog
         self._katalog_freigaben = erlaubt
         # Pre-activate the agent's integration MCP tools (M365/msgraph, Exchange, …)

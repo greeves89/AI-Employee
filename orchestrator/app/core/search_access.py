@@ -4,7 +4,7 @@ Den Nachrichtenindex erreicht man auf drei Wegen: das eigene Werkzeug
 ``news_search`` (``/agent-search/news``), die allgemeine Websuche, wenn der
 Admin ``brave_news`` als Provider eingestellt hat (``/agent-search/web``), und
 die Websuche der Sprachfront. Stand die Pruefung nur am ersten Weg, war die
-Sperre ueber die beiden anderen umgehbar (Review zu #812, K2). Deshalb liegt
+Sperre ueber die beiden anderen umgehbar. Deshalb liegt
 die Entscheidung hier und alle drei fragen dieselbe Funktion.
 """
 
@@ -32,7 +32,7 @@ async def agent_may_use_index(agent_id: str, index: str, db: AsyncSession) -> bo
     - kein Besitzer: nur, wenn der Agent ausdruecklich als Plattform-Agent
       freigegeben ist (``is_platform_agent``). ``user_id=NULL`` allein ist
       meist ein Versehen (geloeschter Nutzer, Skript ohne Besitzer), keine
-      Entscheidung — siehe ``models/agent.py`` (Review zu #812, K4).
+      Entscheidung — siehe ``models/agent.py``.
     - Besitzer gesetzt, aber geloescht: nein — sonst waere ein geloeschter
       Nutzer der Weg zu mehr Rechten, als der lebende hatte.
     - sonst: die Rolle des Besitzers entscheidet.

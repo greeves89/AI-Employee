@@ -1,20 +1,19 @@
-"""Nachrichtenindex: die Punkte aus dem Re-Review zu #812.
+"""Nachrichtenindex: Schluessel, Freigabe an allen Zugaengen, herrenlose Agenten.
 
-K1  Ein SerpApi-Schluessel darf nie an Brave gehen.
-K2  Die Freigabe gilt an JEDEM Zugang zum Nachrichtenindex — auch ueber die
-    allgemeine Websuche mit Provider ``brave_news`` und ueber die Sprachfront.
-K4  Ein Agent ohne Besitzer ist nicht automatisch ein Plattform-Agent.
-Log Agent-/Nutzerkennungen werden vor dem Loggen bereinigt (CodeQL py/log-injection).
-HTTP Die Routen ueber echtes HTTP mit echter Token-Pruefung: 401 ohne, mit
-    falschem und mit fremdem Token; 403 ohne Freigabe; der Header entscheidet,
-    nicht ein eingeschleustes ``agent_id`` im Body.
+Schluessel  Ein SerpApi-Schluessel darf nie an Brave gehen.
+Zugaenge    Die Freigabe gilt an JEDEM Zugang zum Nachrichtenindex — auch ueber die
+            allgemeine Websuche mit Provider ``brave_news`` und ueber die Sprachfront.
+Besitzer    Ein Agent ohne Besitzer ist nicht automatisch ein Plattform-Agent.
+Log         Agent-/Nutzerkennungen werden vor dem Loggen bereinigt (CodeQL py/log-injection).
+HTTP        Die Routen ueber echtes HTTP mit echter Token-Pruefung: 401 ohne, mit
+            falschem und mit fremdem Token; 403 ohne Freigabe; der Header entscheidet,
+            nicht ein eingeschleustes ``agent_id`` im Body.
 
 Alle Anbieter-Aufrufe sind abgefangen — kein echter Schluessel, kein Netz.
 """
 
 import logging
 import unittest
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -75,7 +74,7 @@ class _MitDatenbank(unittest.IsolatedAsyncioTestCase):
             await db.commit()
 
 
-class K1SchluesselNurFuerBraveTests(_MitDatenbank):
+class SchluesselNurFuerBraveTests(_MitDatenbank):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         await self.nutzer("u1", UserRole.MEMBER)
@@ -115,7 +114,7 @@ class K1SchluesselNurFuerBraveTests(_MitDatenbank):
             self.assertTrue((await agent_search_capabilities({"agent_id": "a1"}, db))["news"])
 
 
-class K2AlleZugaengeTests(_MitDatenbank):
+class AlleZugaengeTests(_MitDatenbank):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         await self.einstellungen(web_search_provider="brave_news", web_search_api_key="bk")
@@ -168,7 +167,7 @@ class K2AlleZugaengeTests(_MitDatenbank):
         self.assertIn("news/search", await self._stimme("a-member"))
 
 
-class K4HerrenloseAgentenTests(_MitDatenbank):
+class HerrenloseAgentenTests(_MitDatenbank):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         await self.einstellungen(web_search_provider="brave", web_search_api_key="bk")

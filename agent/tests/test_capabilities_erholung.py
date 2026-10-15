@@ -1,6 +1,6 @@
 """Freigaben erholen sich: ein Aussetzer versteckt news_search nicht fuer immer.
 
-Re-Review zu #812, K3: Der Python-Pfad (Custom-LLM, Sprachfront) speicherte
+Der Python-Pfad (Custom-LLM, Sprachfront) speicherte
 einen Fehlschlag von ``/agent-search/capabilities`` fuer die ganze Lebenszeit
 des Agentenprozesses, und beide Handler hielten ihren Katalog zusaetzlich fest.
 Eine spaetere Freigabe oder das Ende eines Orchestrator-Aussetzers kam nie an.
@@ -125,6 +125,24 @@ class _KatalogBasis(_Basis):
         katalog = await h._get_catalog()
         self.assertIn("mcp_beispiel", _namen(katalog))
         h._mcp_client.discover_tools.assert_awaited_once()
+
+    async def test_a_tool_struck_for_its_schema_stays_struck_after_a_grant(self):
+        """Eine geaenderte Freigabe baut den Katalog nicht neu auf: Ein Werkzeug,
+        das der Anbieter wegen seines Schemas abgelehnt hat, bleibt gestrichen."""
+        from app.werkzeug_schema import abgelehntes_werkzeug_streichen
+
+        self.antworten({"news": False}, {"news": True})
+        h = self.handler()
+        await h._get_catalog()
+        gestrichen = abgelehntes_werkzeug_streichen(
+            h._all_tools, h._activated,
+            "API error 400: Invalid schema for function 'mcp_beispiel': kaputt",
+        )
+        self.assertEqual(gestrichen, "mcp_beispiel")
+        self.uhr.t += capabilities.GUELTIG_ERFOLG + 1
+        katalog = await h._get_catalog()
+        self.assertIn("news_search", _namen(katalog))
+        self.assertNotIn("mcp_beispiel", _namen(katalog))
 
 
 def _mcp():

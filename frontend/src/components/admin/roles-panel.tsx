@@ -49,6 +49,14 @@ function grenzZusammenfassung(wahl: GrenzWahl): string {
   return `höchstens ${wahl.toUpperCase()}`;
 }
 
+// Freigabepflichtige Suchindizes (Schlüssel ``search_indexes``). Der
+// Nachrichtenindex ist das Werkzeug ``news_search``; ohne Liste ist alles
+// erlaubt, eine leere Liste sperrt alles. Die Websuche ist nicht
+// freigabepflichtig und steht deshalb nicht zur Wahl.
+const SEARCH_INDEXES: { value: string; label: string }[] = [
+  { value: "news", label: "Nachrichtenindex (news_search)" },
+];
+
 const LLM_PROVIDERS = ["anthropic", "bedrock", "vertex", "foundry", "openai", "google", "ollama", "lm-studio"];
 
 function listToText(value?: string[] | number[] | null) {
@@ -90,6 +98,7 @@ interface RoleDraft {
   secret_ids: number[] | null;
   mcp_server_ids: number[] | null;
   integration_providers: string[] | null;
+  search_indexes: string[] | null;
   url_host_patterns: string;
   menu_paths: string[] | null;
   max_autonomy_level: GrenzWahl;
@@ -110,6 +119,7 @@ function draftFromRole(role?: CustomRole): RoleDraft {
     secret_ids: p.secret_ids ?? null,
     mcp_server_ids: p.mcp_server_ids ?? null,
     integration_providers: p.integration_providers ?? null,
+    search_indexes: p.search_indexes ?? null,
     url_host_patterns: listToText(p.url_host_patterns),
     menu_paths: p.menu_paths ?? null,
     max_autonomy_level: !("max_autonomy_level" in p)
@@ -130,6 +140,7 @@ function permissionsFromDraft(draft: RoleDraft): RolePermissions {
     secret_ids: draft.secret_ids,
     mcp_server_ids: draft.mcp_server_ids,
     integration_providers: draft.integration_providers,
+    search_indexes: draft.search_indexes,
     url_host_patterns: parseStringList(draft.url_host_patterns),
     menu_paths: draft.menu_paths,
     // Fehlt der Schlüssel, erbt die Rolle die Grenze ihrer Grundrolle.
@@ -572,6 +583,26 @@ export function RolesPanel({ users, onUserRoleAssigned, onRolesChanged }: Props)
                   ))}
                 </div>
                 <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, integration_providers: null }))} />
+              </PermissionBlock>
+              <PermissionBlock title="Suchindizes" zusammenfassung={zaehlen(draft.search_indexes, SEARCH_INDEXES.length, "alle")}>
+                <div className="flex flex-wrap gap-2">
+                  {SEARCH_INDEXES.map((idx) => (
+                    <ToggleChip
+                      key={idx.value}
+                      active={draft.search_indexes == null || draft.search_indexes.includes(idx.value)}
+                      muted={draft.search_indexes == null}
+                      label={idx.label}
+                      onClick={() => setDraft((d) => ({
+                        ...d,
+                        search_indexes: toggleListValue(d.search_indexes, idx.value),
+                      }))}
+                    />
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Der Nachrichtenindex braucht Brave als Anbieter unter Admin → Websuche. Ohne Freigabe wird das Werkzeug den Agenten dieser Rolle gar nicht angeboten; die Websuche bleibt immer verfügbar.
+                </p>
+                <SetUnlimitedButton onClick={() => setDraft((d) => ({ ...d, search_indexes: null }))} />
               </PermissionBlock>
             </RechteGruppe>
             <RechteGruppe titel="Wissen & Daten">
