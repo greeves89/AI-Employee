@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.365.2] - 2026-10-16
+
+### Behoben
+- **`update.sh` lief nach dem Pull in der alten Fassung weiter.** Bringt `git pull` eine neue
+  Fassung des Skripts selbst, las bash weiter aus der bereits geöffneten alten Datei — beim
+  Umstieg auf die Registry-Abbilder baute eine Anlage deshalb noch lokal. Jetzt startet sich
+  das Skript in diesem Fall mit der neuen Fassung neu; Sicherung und Pull laufen dabei nicht
+  doppelt. Wirkt ab dem nächsten Update (die laufende Fassung muss den Neustart schon kennen).
+
+### Intern
+- Releases v1.364.2 bis v1.365.1 nachträglich getaggt: ohne Tag gab es für sie keine
+  Registry-Abbilder.
+
+---
+
 ## [1.365.1] - 2026-10-15
 
 ### Behoben
