@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.363.3] - 2026-10-15
+
+### Behoben
+- **Gesetze über 2 MB fehlten dauerhaft in der Wissensbasis** (#866). Das SGB V war als eine
+  Datei größer als die Grenze je Datei und wurde bei jedem täglichen Lauf verworfen; wer danach
+  suchte, bekam keinen Treffer. Zu große Gesetze werden jetzt in Teile von höchstens 1,5 MB
+  aufgeteilt (`<kennung>.md`, `<kennung>.teil-2.md` …, Überschrift „Teil i von n“), jeder
+  Paragraph steht genau einmal. Teile eines früheren, längeren Stands werden aus Ordner und
+  Suchindex entfernt.
+- Die Sammelmeldung des Crawlers nennt jetzt die betroffenen Gesetze und sagt, wenn derselbe
+  Fehlschlag seit mehreren Läufen unverändert besteht.
+
+---
+
 ## [1.363.2] - 2026-10-15
 
 ### Behoben
@@ -32,20 +46,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   und zusätzlich jede Nacht, denn der Bruch vom 06.10. kam ohne einen einzigen Commit, nur
   durch eine neue Paketversion. Vorher wurde das Embedding-Image in der CI gar nicht
   gebaut, und der Bau für den Sicherheitsscan meldete einen Fehlschlag nur als Hinweis.
-
----
-
-## [1.363.2] - 2026-10-15
-
-### Behoben
-- **Gesetze über 2 MB fehlten dauerhaft in der Wissensbasis** (#866). Das SGB V war als eine
-  Datei größer als die Grenze je Datei und wurde bei jedem täglichen Lauf verworfen; wer danach
-  suchte, bekam keinen Treffer. Zu große Gesetze werden jetzt in Teile von höchstens 1,5 MB
-  aufgeteilt (`<kennung>.md`, `<kennung>.teil-2.md` …, Überschrift „Teil i von n“), jeder
-  Paragraph steht genau einmal. Teile eines früheren, längeren Stands werden aus Ordner und
-  Suchindex entfernt.
-- Die Sammelmeldung des Crawlers nennt jetzt die betroffenen Gesetze und sagt, wenn derselbe
-  Fehlschlag seit mehreren Läufen unverändert besteht.
 
 ---
 
