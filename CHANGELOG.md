@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.363.6] - 2026-10-15
+
+### Behoben
+- **Die Sicherung lastete die Anlage voll aus.** `pg_dump`, `tar` und `gzip` laufen in
+  Containern, die dockerd startet; die niedrige Priorität der systemd-Unit erreichte sie nicht.
+  Gemessen: gzip mit voller Priorität, 73 °C, Lüfter hörbar. Jetzt laufen Dump und Packen mit
+  `nice -n 19`, die Hilfscontainer auf einem Kern (`BACKUP_CPUS`, Standard 1).
+
+---
+
 ## [1.363.5] - 2026-10-15
 
 ### Behoben
