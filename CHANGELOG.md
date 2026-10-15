@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.365.1] - 2026-10-15
+
+### Behoben
+- **Die Anleitung führte am neuen Signatur-Check vorbei.** Seit 1.365.0 prüft
+  `./scripts/update.sh` die Signatur jedes geholten Abbilds, bevor es benutzt wird. Vier
+  Stellen empfahlen aber weiterhin ein blankes `docker compose pull` — also genau den Weg,
+  der nichts prüft. Wer der Sicherheitsanleitung folgte, bekam die zugesagte Prüfung nicht.
+  - `SECURITY.md` und `docs/INSTALLATION.md` nennen jetzt `./scripts/update.sh` als
+    Update-Weg und sagen dazu, dass cosign installiert sein muss, damit die Prüfung
+    überhaupt läuft — und wann sie trotz cosign ausbleibt (eigener Spiegel ohne
+    hinterlegte Identität, Schalter aus). Der Handweg steht als Einzelschritte daneben,
+    mit der Sicherung davor: in einer `&&`-Kette liefert `abbilder_bereitstellen` auch
+    nach einem gescheiterten lokalen Bau noch 0, und `docker compose up -d` würde den
+    Stapel mit dem ALTEN Agenten-Abbild starten.
+  - Die Monatsliste in `docs/OPERATIONS.md` verweist auf `./scripts/update.sh`.
+  - Im Abschnitt zu Basis-Abbildern in `docs/UPGRADE.md` stand `docker compose pull` ohne
+    Dienstangabe. Das holt nicht nur die fremden Abbilder, sondern auch unsere vier
+    ungeprüft aus der Registry, und der `up -d` zwei Zeilen später startet sie. Der Holvorgang
+    nennt jetzt nur die fremden Dienste; unsere werden mit `build --pull` neu gebaut.
+
+---
+
 ## [1.365.0] - 2026-10-15
 
 ### Sicherheit

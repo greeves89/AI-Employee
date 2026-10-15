@@ -114,10 +114,20 @@ If you are running AI-Employee in production, please follow these guidelines:
 
 ### Updates & Patching
 
-- **Keep Docker images up to date** — pull weekly at minimum:
+- **Keep Docker images up to date** — update weekly at minimum, with the update script:
   ```bash
-  docker compose pull && docker compose up -d
+  ./scripts/update.sh
   ```
+  It takes a backup first and aborts if that fails, then verifies the signature of each
+  image it pulls before using it and builds locally if the signature does not match. A
+  plain `docker compose pull` verifies **nothing** — do not use it as your update route.
+  For the manual steps (and for an air-gapped install) see
+  [UPGRADE.md](docs/UPGRADE.md).
+- **Install [cosign](https://docs.sigstore.dev/cosign/system_config/installation/)** —
+  without it the signature check cannot run: the images are used unverified and only a
+  hint is logged. Note that the check is also skipped for an internal mirror unless you
+  set `AI_EMPLOYEE_SIGNATUR_IDENTITAET`, and of course when
+  `AI_EMPLOYEE_SIGNATUR_PRUEFEN=0`.
 - **Subscribe to release notifications** on GitHub to hear about security releases.
 - **Update the host OS** regularly, especially Docker Engine itself.
 

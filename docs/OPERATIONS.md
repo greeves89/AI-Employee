@@ -398,7 +398,7 @@ Adjust in `docker-compose.yml` under `deploy.resources.limits`.
 ### Monthly Tasks
 
 - [ ] Rotate API keys that are > 90 days old
-- [ ] Check for security updates: `docker compose pull` and rebuild
+- [ ] Check for security updates: `./scripts/update.sh` (verifies image signatures; a plain `docker compose pull` does not)
 - [ ] Review and prune unused agent containers: `docker container prune`
 - [ ] Clean up old Docker images: `docker image prune -a --filter "until=720h"`
 - [ ] Test backup restore procedure in staging
