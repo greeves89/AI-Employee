@@ -8,6 +8,8 @@ drei Uhr morgens einen Menschen.
 
 import unittest
 
+from app.core import self_healing as sh
+
 from app.core.self_healing import (
     DEFAULT_POLICY,
     PERMANENT,
@@ -55,6 +57,18 @@ class ClassifyTests(unittest.TestCase):
         ):
             with self.subTest(err=err):
                 self.assertEqual(classify_error(err), PERMANENT)
+
+    def test_abgelaufene_anmeldung_und_kontingent_sind_dauerhaft(self):
+        """#926: dreimal am Morgen wiederholt, jedes Mal sinnlos."""
+        for fehler in ("Codex-Anmeldedaten seit 62009s abgelaufen — bitte neu anmelden (Device-Auth).",
+                       "Kontingent erschoepft", "Kontingent erschöpft",
+                       "You've hit your weekly limit · resets Oct 9",
+                       "refresh_token_reused"):
+            with self.subTest(fehler=fehler):
+                self.assertEqual(sh.classify_error(fehler), sh.PERMANENT)
+
+    def test_redis_stoerung_bleibt_voruebergehend(self):
+        self.assertEqual(sh.classify_error("Timeout reading from redis:6379"), sh.TRANSIENT)
 
     def test_permanent_wins_over_transient(self):
         """„503 — invalid api key" liest sich vorne wie ein Ausfall, ist keiner.
