@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.364.1] - 2026-10-15
+
+### Behoben
+- **Die Hauptlinie war rot.** Mit der Umstellung auf fertige Abbilder aus der Registry zog
+  das Update-Skript den Bau in eine gemeinsame Stelle um — die Prüfung dafür suchte die
+  Versionszeile aber noch am alten Ort und schlug fehl. Die Auslieferung selbst war nie
+  betroffen: Die Version findet auf beiden Wegen ins Bundle.
+- **Dabei fiel eine echte Lücke auf.** Die Prüfung deckte nur den Fall ab, dass die Anlage
+  die Abbilder selbst baut. Seit die Abbilder im Normalfall fertig geholt werden, entscheidet
+  der Bau in der Registry darüber, ob die Oberfläche ihre eigene Version kennt — und genau
+  der war ungeprüft. Ohne sie erschiene der Hinweis „Veraltete Oberfläche — neu laden" nach
+  einem Update nie wieder, still. Beide Wege sind jetzt abgedeckt, ebenso dass Einrichtung
+  und Update denselben Bau benutzen.
+
+---
+
 ## [1.364.0] - 2026-10-15
 
 ### Sicherheit
