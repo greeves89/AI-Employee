@@ -15,13 +15,25 @@
  * geprueft: eine Ablehnung verhindert Befehl und Dateiaenderung, auch mit
  * `--dangerously-bypass-approvals-and-sandbox`.
  *
- * Fail-open wie der Claude-Code-Hook: ist der lokale Entscheidungspunkt nicht
- * erreichbar, gibt das Skript nichts aus und endet mit 0 — Codex fuehrt das
- * Werkzeug dann aus. Begruendung siehe `_tool_gate.mjs`.
+ * Fail-open NUR, wenn der lokale Entscheidungspunkt nicht erreichbar ist (wie
+ * Claude Codes HTTP-Hook, Begruendung in `_tool_gate.mjs`). Antwortet er, aber
+ * mit Fehlerstatus oder unlesbar, oder ist schon die Eingabe kaputt, wird
+ * abgelehnt — das ist ein Fehler im Abbild, kein Netzaussetzer, und soll
+ * auffallen statt still durchzulassen.
  */
 
 const HOOK_URL = process.env.AGENT_HOOK_URL || "http://localhost:8080/hooks/pretooluse";
 const HOOK_TIMEOUT_MS = 12_000;
+
+function ablehnung(grund) {
+  return JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: grund,
+    },
+  });
+}
 
 async function stdinLesen() {
   const teile = [];
@@ -41,8 +53,8 @@ export async function entscheide(roh) {
   try {
     eingabe = JSON.parse(roh || "{}");
   } catch {
-    console.error("[codex-hook] Eingabe ist kein JSON — laesst durch (fail-open)");
-    return "";
+    console.error("[codex-hook] Eingabe ist kein JSON — abgelehnt");
+    return ablehnung("Werkzeugpruefung: Eingabe unlesbar.");
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), HOOK_TIMEOUT_MS);
@@ -57,19 +69,20 @@ export async function entscheide(roh) {
       signal: controller.signal,
     });
     if (!res.ok) {
-      console.error(`[codex-hook] Hook antwortete HTTP ${res.status} — laesst durch (fail-open)`);
-      return "";
+      console.error(`[codex-hook] Hook antwortete HTTP ${res.status} — abgelehnt`);
+      return ablehnung(`Werkzeugpruefung fehlgeschlagen (HTTP ${res.status}).`);
     }
-    const body = await res.json();
-    const out = body?.hookSpecificOutput;
-    if (out?.permissionDecision !== "deny") return "";
-    return JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: out.permissionDecisionReason || "Werkzeug durch Autonomie-Regeln blockiert.",
-      },
-    });
+    let out;
+    try {
+      out = (await res.json())?.hookSpecificOutput;
+    } catch {
+      return ablehnung("Werkzeugpruefung: Antwort unlesbar.");
+    }
+    if (out?.permissionDecision === "allow") return "";
+    if (out?.permissionDecision === "deny") {
+      return ablehnung(out.permissionDecisionReason || "Werkzeug durch Autonomie-Regeln blockiert.");
+    }
+    return ablehnung("Werkzeugpruefung: keine Entscheidung erhalten.");
   } catch (err) {
     console.error(`[codex-hook] Hook nicht erreichbar: ${err.message} — laesst durch (fail-open)`);
     return "";

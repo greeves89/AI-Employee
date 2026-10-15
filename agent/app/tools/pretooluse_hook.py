@@ -43,6 +43,8 @@ shell entirely, a worse outcome than the rare window this trades for.
 """
 from __future__ import annotations
 
+import re
+
 from app.tools.executor import (
     ALWAYS_ALLOWED_TOOLS,
     TOOL_CATEGORY_MAP,
@@ -83,6 +85,11 @@ _NATIVE_ALWAYS_ALLOWED = frozenset({
     "close_agent", "resume_agent", "request_user_input", "request_permissions",
     "list_mcp_resources", "read_mcp_resource", "list_mcp_resource_templates",
     "tool_search",
+    # Subagenten meldet Codex mit Namensraum davor (live gesehen: 
+    # "collaborationspawn_agent"). Der Subagent laeuft selbst unter diesem
+    # Hook — live geprueft: sein Shell-Befehl wurde gesperrt.
+    "collaborationspawn_agent", "collaborationsend_input", "collaborationwait_agent",
+    "collaborationclose_agent", "collaborationresume_agent",
 })
 _NATIVE_CATEGORY_MAP: dict[str, str] = {
     "Bash": "shell_exec",
@@ -154,7 +161,48 @@ def _decide_for(category: str, *, label: str) -> dict:
     return _allow()
 
 
+# Shell-Werkzeuge, deren Befehl zusaetzlich gegen die command_policies laeuft.
+_SHELL_WERKZEUGE = frozenset({"Bash", "exec_command", "shell_command", "local_shell", "write_stdin"})
+
+# Konfiguration der Laufzeit selbst: dort stehen ihre Hooks — bei Claude Code
+# auch genau dieser Gate-Hook (/workspace/.claude/settings.json). Wer dort
+# schreiben darf, kann das Gate entfernen oder eigene Kommando-Hooks anlegen
+# (live geprueft: Codex fuehrt /workspace/.codex/hooks.json aus). Schreiben dort
+# ist deshalb "Pakete / Config" (system_config), nicht "Dateien schreiben".
+_LAUFZEIT_KONFIG = re.compile(r"(^|[\\/])\.(claude|codex)([\\/]|$)")
+_PATCH_ZIEL = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.M)
+_SCHREIBWERKZEUGE = frozenset({
+    "Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch",
+    "write_file", "edit_file", "multi_edit",
+})
+
+
+def _schreibziele(tool_name: str, tool_input: dict | None) -> list[str]:
+    """Pfade, die ein Schreibwerkzeug anfassen wuerde."""
+    eingabe = tool_input or {}
+    if tool_name == "apply_patch":
+        return [z.strip() for z in _PATCH_ZIEL.findall(str(eingabe.get("command") or eingabe.get("input") or ""))]
+    return [str(eingabe[k]) for k in ("file_path", "notebook_path", "path") if eingabe.get(k)]
+
+
+def _bare(tool_name: str) -> str:
+    if tool_name.startswith("mcp__"):
+        teile = tool_name.split("__", 2)
+        return teile[2] if len(teile) == 3 else ""
+    return tool_name
+
+
 def decide(tool_name: str, tool_input: dict | None = None) -> dict:
+    """Kategorie-Entscheidung; Schreiben in die Laufzeit-Konfiguration braucht
+    zusaetzlich ``system_config`` (siehe ``_LAUFZEIT_KONFIG``)."""
+    if _bare(tool_name) in _SCHREIBWERKZEUGE and any(
+        _LAUFZEIT_KONFIG.search(z) for z in _schreibziele(_bare(tool_name), tool_input)
+    ):
+        return _decide_for("system_config", label=f"{tool_name} (Laufzeit-Konfiguration)")
+    return _decide_kategorie(tool_name, tool_input)
+
+
+def _decide_kategorie(tool_name: str, tool_input: dict | None = None) -> dict:
     """Return a PreToolUse hook response for one tool call.
 
     ``tool_input`` is accepted (and reserved) for a future finer-grained,
@@ -212,9 +260,12 @@ async def decide_async(tool_name: str, tool_input: dict | None = None) -> dict:
     base = decide(tool_name, tool_input)
     if base["hookSpecificOutput"]["permissionDecision"] == "deny":
         return base  # category gate already said no — nothing finer to check
-    if tool_name != "Bash":
+    if tool_name not in _SHELL_WERKZEUGE:
         return base
-    command = (tool_input or {}).get("command") or ""
+    eingabe = tool_input or {}
+    command = eingabe.get("command") or eingabe.get("cmd") or eingabe.get("chars") or ""
+    if isinstance(command, list):
+        command = " ".join(str(t) for t in command)
     if not command:
         return base
     effect, reason = await _evaluate_command_policy(command)

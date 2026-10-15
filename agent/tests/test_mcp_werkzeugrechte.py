@@ -143,3 +143,64 @@ class CodexHook(unittest.TestCase):
 def _entscheidung_nativ(werkzeug: str, erlaubt: set[str] | None) -> str:
     with patch.object(hook, "_get_allowed_categories", return_value=erlaubt):
         return hook.decide(werkzeug)["hookSpecificOutput"]["permissionDecision"]
+
+
+class LaufzeitKonfigurationIstGeschuetzt(unittest.TestCase):
+    """Bei Claude Code steht DIESES Gate in /workspace/.claude/settings.json, bei
+    Codex fuehrt die Laufzeit /workspace/.codex/hooks.json aus (live geprueft).
+    Ein Agent, der nur Dateien schreiben darf, haette darueber das Gate entfernen
+    oder eigene Befehle ausfuehren koennen. Schreiben dort braucht system_config."""
+
+    nur_schreiben = {"file_read", "web_search", "file_write"}
+
+    def _nativ(self, werkzeug, eingabe, erlaubt):
+        with patch.object(hook, "_get_allowed_categories", return_value=erlaubt):
+            return hook.decide(werkzeug, eingabe)["hookSpecificOutput"]["permissionDecision"]
+
+    def test_claude_settings_bearbeiten_braucht_system_config(self):
+        for werkzeug in ("Write", "Edit"):
+            self.assertEqual(self._nativ(werkzeug, {"file_path": "/workspace/.claude/settings.json"},
+                                         self.nur_schreiben), "deny", werkzeug)
+        self.assertEqual(self._nativ("Edit", {"file_path": "/workspace/.claude/settings.json"},
+                                     self.nur_schreiben | {"system_config"}), "allow")
+
+    def test_codex_hook_per_patch_anlegen_braucht_system_config(self):
+        patch_text = "*** Begin Patch\n*** Add File: /workspace/.codex/hooks.json\n+{}\n*** End Patch"
+        self.assertEqual(self._nativ("apply_patch", {"command": patch_text}, self.nur_schreiben), "deny")
+
+    def test_gewoehnliche_dateien_bleiben_dateischreiben(self):
+        patch_text = "*** Begin Patch\n*** Update File: src/app.py\n@@\n-a\n+b\n*** End Patch"
+        self.assertEqual(self._nativ("apply_patch", {"command": patch_text}, self.nur_schreiben), "allow")
+        self.assertEqual(self._nativ("Write", {"file_path": "/workspace/claude-notizen.md"},
+                                     self.nur_schreiben), "allow")
+
+    def test_ohne_regeln_bleibt_alles_frei(self):
+        self.assertEqual(self._nativ("Write", {"file_path": "/workspace/.claude/settings.json"}, None), "allow")
+
+    def test_codex_subagenten_mit_namensraum_sind_frei(self):
+        for w in ("collaborationspawn_agent", "collaborationwait_agent"):
+            self.assertEqual(self._nativ(w, {}, set()), "allow", w)
+
+
+class BefehlsregelnFuerAlleShellNamen(unittest.IsolatedAsyncioTestCase):
+    async def test_codex_interne_shell_namen_laufen_durch_die_befehlsregeln(self):
+        async def _blockiert(befehl):
+            return ("blocked", "rm verboten") if "rm -rf" in befehl else (None, None)
+
+        with patch.object(hook, "_get_allowed_categories", return_value=None), \
+                patch.object(hook, "_evaluate_command_policy", _blockiert):
+            for werkzeug, eingabe in (("Bash", {"command": "rm -rf /"}),
+                                      ("exec_command", {"cmd": "rm -rf /"}),
+                                      ("shell_command", {"command": ["sh", "-c", "rm -rf /"]})):
+                aus = await hook.decide_async(werkzeug, eingabe)
+                self.assertEqual(aus["hookSpecificOutput"]["permissionDecision"], "deny", werkzeug)
+
+
+class GateStehtVorJedemHandler(unittest.TestCase):
+    def test_gate_vor_dem_ersten_set_request_handler(self):
+        for pfad in _server_dateien():
+            if pfad.name in _OHNE_GATEAKTIVIEREN:
+                continue
+            text = pfad.read_text()
+            with self.subTest(server=pfad.name):
+                self.assertLess(text.index("gateAktivieren(server"), text.index("server.setRequestHandler("))

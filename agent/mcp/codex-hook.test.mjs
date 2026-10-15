@@ -62,6 +62,17 @@ test("Hook nicht erreichbar: keine Ausgabe (fail-open wie bei Claude Code)", asy
   assert.equal(await entscheide(CODEX_EINGABE), "");
 });
 
-test("kaputte Eingabe: keine Ausgabe", async () => {
-  assert.equal(await entscheide("kein json"), "");
+test("kaputte Eingabe: abgelehnt", async () => {
+  const aus = JSON.parse(await entscheide("kein json"));
+  assert.equal(aus.hookSpecificOutput.permissionDecision, "deny");
+});
+
+test("Fehlerstatus oder Antwort ohne Entscheidung: abgelehnt", async () => {
+  const s = await stub({ etwas: "anderes" });
+  try {
+    const aus = JSON.parse(await entscheide(CODEX_EINGABE));
+    assert.equal(aus.hookSpecificOutput.permissionDecision, "deny");
+  } finally {
+    await stop(s);
+  }
 });
