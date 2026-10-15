@@ -126,6 +126,20 @@ class EineListeEineNummer(unittest.TestCase):
         self.assertIn("arch: amd64", self.workflow)
         self.assertIn("arch: arm64", self.workflow)
 
+    def test_der_registry_bau_backt_die_version_ins_bundle(self):
+        """Das Gegenstueck zu test_lokaler_bau_bekommt_die_version — fuer den
+        Weg, den die Anlage seit #889 im NORMALFALL nimmt.
+
+        Lokal setzt abbilder.sh ``APP_VERSION`` vor ``docker compose build``.
+        Werden die Abbilder dagegen fertig geholt, hat die Anlage gar nichts
+        mehr gebaut: dann entscheidet allein dieser Workflow, was im Bundle
+        steht. Fehlt hier das Build-Arg, greift der Vorgabewert ``dev`` aus
+        dem Frontend-Dockerfile, der Abgleich in update-banner.tsx scheitert
+        still an der SEMVER-Pruefung, und der Hinweis "Veraltete Oberflaeche"
+        erscheint nach einem Update nie wieder. Genau der Vorfall vom
+        21.08.2026, nur auf dem neuen Weg."""
+        self.assertIn("APP_VERSION=${{ needs.version.outputs.tag }}", self.workflow)
+
     def test_tag_label_und_version_muessen_uebereinstimmen(self):
         self.assertIn('"${GITHUB_REF_NAME#v}" = "$VERSION"', self.workflow)
         self.assertIn('"$LABEL" = "$VERSION"', self.workflow)

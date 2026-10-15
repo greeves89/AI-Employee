@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.364.2] - 2026-10-15
+
+### Behoben
+- **Eine Lücke in der Absicherung der Versionsanzeige geschlossen.** Seit die Anlage ihre
+  Abbilder fertig aus der Registry holt, statt sie selbst zu bauen, entscheidet allein der
+  Bau in der Registry darüber, ob die Oberfläche ihre eigene Version kennt — und genau der
+  war ungeprüft. Fiele dort die Versionsangabe weg, erschiene der Hinweis „Veraltete
+  Oberfläche — neu laden" nach einem Update nie wieder, ohne dass irgendetwas auffällt.
+  Nachgewiesen: Vor dieser Änderung blieben alle Prüfungen grün, obwohl die Versionsangabe
+  entfernt war.
+
+---
+
 ## [1.364.1] - 2026-10-15
 
 ### Hinzugefügt
