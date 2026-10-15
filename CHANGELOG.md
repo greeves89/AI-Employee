@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.363.5] - 2026-10-15
+
+### Behoben
+- Das Fehlerlog der Anlage ist wieder lesbar: 85 % aller WARNING/ERROR-Zeilen (936 von 1107
+  in 8 Tagen) waren eine einzige harmlose Meldung des Skill-Marktplatz-Crawlers. Sie sagte
+  je Skill und je Lauf, dass ein selbst angelegter Skill gleichen Namens nicht überschrieben
+  wurde — also genau das, was er tun soll. Wer nach einer echten Störung suchte, musste das
+  vorher wegfiltern. Die Meldung steht jetzt auf DEBUG, und je Lauf erscheint eine Sammelzeile
+  mit der Zahl der übersprungenen Namen. Dieselbe Umstellung an der Geschwisterstelle für
+  mitgelieferte Skills. Welcher Skill überschrieben wird und welcher stehen bleibt, ändert
+  sich nicht. (#933)
+
+---
+
 ## [1.363.4] - 2026-10-15
 
 ### Sicherheit

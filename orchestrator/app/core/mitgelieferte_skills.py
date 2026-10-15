@@ -55,7 +55,7 @@ async def synchronisieren() -> tuple[int, int]:
     from app.db.session import resilient_session
     from app.models.skill import Skill, SkillCategory, SkillStatus
 
-    neu = aktualisiert = 0
+    neu = aktualisiert = fremd_belegt = 0
     async with resilient_session() as db:
         for s in laden():
             try:
@@ -82,7 +82,14 @@ async def synchronisieren() -> tuple[int, int]:
                     vorhanden.description = s["description"]
                     aktualisiert += 1
             else:
-                logger.warning("Mitgelieferter Skill %s: Name schon von %s belegt — nicht angefasst",
-                               s["name"], vorhanden.source_repo or vorhanden.created_by)
+                # Gewollter Ausgang (siehe Modulkopf): ein gleichnamiger Skill
+                # anderer Herkunft wird NIE angefasst. Kein Fehler, also je Lauf
+                # eine Sammelzeile statt einer Warnung je Skill (#933).
+                fremd_belegt += 1
+                logger.debug("Mitgelieferter Skill %s: Name schon von %s belegt — nicht angefasst",
+                             s["name"], vorhanden.source_repo or vorhanden.created_by)
         await db.commit()
+    if fremd_belegt:
+        logger.info("Mitgelieferte Skills: %d Namen gehören einem Skill anderer Herkunft — nicht angefasst",
+                    fremd_belegt)
     return neu, aktualisiert
