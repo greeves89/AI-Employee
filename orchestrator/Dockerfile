@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config gcc libc6-dev \
     libxml2 libxml2-dev libxslt1-dev zlib1g-dev \
     libxmlsec1 libxmlsec1-dev libxmlsec1-openssl \
-    && npm install -g @anthropic-ai/claude-code \
-    && npm install -g @openai/codex \
+    && npm install -g --engine-strict @anthropic-ai/claude-code \
+    && npm install -g --engine-strict @openai/codex \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

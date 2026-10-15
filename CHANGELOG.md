@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.363.2] - 2026-10-15
+
+### Behoben
+- **Neuinstallation: Embedding-Dienst startete nicht.** `transformers` war nicht fest
+  gepinnt und kam bei jedem frischen Bau in der neuesten Version ins Image. Version 5.19
+  braucht ein neueres `torch` als das gepinnte 2.6.0 und brach schon beim Import ab. Der
+  Container hing in einer Neustart-Schleife, und Gedächtnis- und Wissenssuche fanden nur
+  noch exakte Stichwörter statt nach Bedeutung. 1.362.13 hatte `transformers` unter 5.19
+  begrenzt. Jetzt steht `torch` auf 2.7.1 und `transformers` exakt auf 5.19.0. Neue
+  Versionen kommen damit als Dependabot-PR und werden vor dem Merge geprüft, statt still
+  in einen Neubau zu rutschen.
+- **Orchestrator lief mit Node 20, die Claude-Code-CLI verlangt Node 22.** Das Image nahm
+  `nodejs` aus Debian (v20). Jetzt kommt Node 22 aus NodeSource, wie im Agent-Image schon.
+  `npm install` läuft außerdem mit `--engine-strict`: Verlangt eine künftige CLI-Version
+  eine neuere Node-Version, scheitert der Bau sofort, statt nur eine Warnung auszugeben,
+  die niemand liest.
+
+### Intern
+- Neuer CI-Schritt „Image frisch bauen + Startprobe“ für den Embedding-Dienst und den
+  Orchestrator. Er baut ohne Cache, scheitert hart und prüft danach den Import bzw. die
+  Node- und CLI-Versionen. Vorher wurde das Embedding-Image in der CI gar nicht gebaut,
+  und der Bau für den Sicherheitsscan meldete einen Fehlschlag nur als Hinweis. Deshalb
+  hat der Fehler vom 06.10. keine Prüfung rot gemacht.
+
+---
+
 ## [1.363.1] - 2026-10-15
 
 ### Behoben
