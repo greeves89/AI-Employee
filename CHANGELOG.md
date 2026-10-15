@@ -5,7 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
-## [Unreleased]
+## [1.364.1] - 2026-10-15
 
 ### Hinzugefügt
 - Neues Werkzeug `news_search` — der Brave-Nachrichtenindex als eigenes Werkzeug neben der Websuche, mit Datum und Herausgeber je Meldung. Freigabe über die Rollenberechtigung `search_indexes` (Standard: Mitglieder und Admins ja, Viewer und nicht zugewiesene Rollen nein). Wer es nicht nutzen darf, bekommt es auf keiner Laufzeit angeboten (Claude Code, Codex, Custom-LLM, Sprachfront). (#812)
@@ -15,6 +15,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Der Nachrichtenindex ist nur verfügbar, wenn ein Brave-Provider eingestellt ist — ein SerpApi-Schlüssel wird nie an Brave geschickt.
 - Dieselbe Freigabe gilt an allen Zugängen zum Nachrichtenindex: auch die allgemeine Websuche mit Provider `brave_news` und die Websuche der Sprachfront sucht ohne Freigabe im Webindex statt im Nachrichtenindex.
 - Agenten ohne Besitzer bekommen den Index nur, wenn sie ausdrücklich Plattform-Agenten sind; Agent- und Nutzerkennungen werden vor dem Loggen bereinigt.
+- Abbild-Workflow: Docker-Actions auf feste Commit-Hashes gepinnt (der Workflow darf in die Registry schreiben).
+
+### Behoben
+- Zwei Tests zur Versionsnummer im Frontend-Bundle prüften noch den alten Bauweg in
+  `update.sh`; sie prüfen jetzt die gemeinsame Abbild-Bereitstellung, eine Docker-Attrappe
+  belegt, dass beim lokalen Bau die richtige Version ankommt. Der Rücksprung-Hinweis am Ende
+  von `update.sh` nennt den neuen Weg.
+
+### Dokumentation
+- Handbuch 37.0 „Hardware je Edition“ aus auf einer laufenden Anlage gemessenen Werten
+  (Starter 16 GB, Team 32 GB, Business 64 GB, Enterprise 128 GB Arbeitsspeicher);
+  Mindestangaben in README und Installationsanleitung vereinheitlicht.
+- Handbuch 22.4: Rollenrecht „Suchindizes“ Klick für Klick.
 
 ---
 
