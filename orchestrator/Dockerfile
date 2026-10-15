@@ -5,11 +5,18 @@ FROM python:3.12-slim AS base
 # Die -dev-Pakete und pkg-config stehen dabei, damit pip das xmlsec-Modul auch dann
 # uebersetzen kann, wenn fuer die Plattform (z. B. arm64 auf dem Pi) kein fertiges
 # Rad vorliegt.
+#
+# Node.js kommt wie im Agent-Image aus NodeSource 22: Debians nodejs ist v20, die
+# Claude-Code-CLI verlangt Node >= 22. --engine-strict macht aus der npm-Warnung
+# (EBADENGINE) einen Abbruch -- verlangt eine kuenftige CLI mehr, scheitert der Bau
+# sichtbar, statt ein Image zu liefern, das erst zur Laufzeit bricht.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git nodejs npm \
+    curl git \
     pkg-config gcc libc6-dev \
     libxml2 libxml2-dev libxslt1-dev zlib1g-dev \
     libxmlsec1 libxmlsec1-dev libxmlsec1-openssl \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && npm install -g --engine-strict @anthropic-ai/claude-code \
     && npm install -g --engine-strict @openai/codex \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
