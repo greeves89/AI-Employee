@@ -20,14 +20,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   `nodejs` aus Debian (v20). Jetzt kommt Node 22 aus NodeSource, wie im Agent-Image schon.
   `npm install` läuft außerdem mit `--engine-strict`: Verlangt eine künftige CLI-Version
   eine neuere Node-Version, scheitert der Bau sofort, statt nur eine Warnung auszugeben,
-  die niemand liest.
+  die niemand liest. Dasselbe gilt für das CLI-Update beim Start eines Agenten: Passt eine
+  neue Fassung nicht zur Node-Version im Image, bleibt die vorhandene Fassung installiert.
 
 ### Intern
-- Neuer CI-Schritt „Image frisch bauen + Startprobe“ für den Embedding-Dienst und den
-  Orchestrator. Er baut ohne Cache, scheitert hart und prüft danach den Import bzw. die
-  Node- und CLI-Versionen. Vorher wurde das Embedding-Image in der CI gar nicht gebaut,
-  und der Bau für den Sicherheitsscan meldete einen Fehlschlag nur als Hinweis. Deshalb
-  hat der Fehler vom 06.10. keine Prüfung rot gemacht.
+- Neuer Workflow „Frischer Image-Bau“ für den Embedding-Dienst und den Orchestrator. Er
+  baut ohne Cache, scheitert hart und prüft danach den echten Startweg: Modell laden und
+  einmal kodieren bzw. Node- und CLI-Versionen. Er läuft bei Änderungen an diesen Images
+  und zusätzlich jede Nacht, denn der Bruch vom 06.10. kam ohne einen einzigen Commit, nur
+  durch eine neue Paketversion. Vorher wurde das Embedding-Image in der CI gar nicht
+  gebaut, und der Bau für den Sicherheitsscan meldete einen Fehlschlag nur als Hinweis.
 
 ---
 
