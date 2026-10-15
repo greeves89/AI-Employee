@@ -18,6 +18,7 @@ HILFSDATEI = REPO / "scripts" / "lib" / "abbilder.sh"
 
 _DOCKER_ATTRAPPE = r"""#!/usr/bin/env bash
 echo "$*" >> "$ATTRAPPE_LOG"
+[ "$*" = "compose build" ] && echo "APP_VERSION=${APP_VERSION:-}" >> "$ATTRAPPE_LOG"
 case "$*" in
   "compose pull"*) [ "${PULL_GEHT:-1}" = 1 ] || exit 1 ;;
   "pull "*) [ "${PULL_GEHT:-1}" = 1 ] || exit 1 ;;
@@ -71,6 +72,13 @@ class AbbilderBereitstellen(unittest.TestCase):
         aufrufe = self._aufrufe()
         self.assertIn("build -t ai-employee-agent:latest ./agent", aufrufe)
         self.assertIn("compose build", aufrufe)
+
+    def test_lokaler_bau_bekommt_die_version(self):
+        """Sonst steht im Frontend-Bundle "dev" und der Versionsabgleich der
+        Oberflaeche (update-banner.tsx) meldet falsch."""
+        self._lauf(lokal="1")
+        aufrufe = self._aufrufe()
+        self.assertIn("APP_VERSION=1.400.2", aufrufe[aufrufe.index("compose build") + 1:])
 
     def test_lokal_bauen_fragt_die_registry_gar_nicht(self):
         self._lauf(lokal="1")

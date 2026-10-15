@@ -30,14 +30,14 @@ class DieVersionKommtBisInsBundleTests(unittest.TestCase):
         self.assertIn("ARG APP_VERSION=dev", _DOCKERFILE)
         self.assertIn("ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION", _DOCKERFILE)
 
-    def test_das_update_skript_nimmt_sie_aus_der_VERSION_datei(self):
-        """Genau dieser Schritt fehlte beim Bauen von Hand."""
-        self.assertIn('export APP_VERSION="$(cat VERSION', _UPDATE_SH)
-
-    def test_das_skript_setzt_sie_vor_dem_bauen(self):
-        vor = _UPDATE_SH.index("export APP_VERSION=")
-        bauen = _UPDATE_SH.index("docker compose up -d --build")
-        self.assertLess(vor, bauen, "Ein spaeter gesetztes ARG wirkt nicht mehr")
+    def test_das_update_skript_nutzt_die_gemeinsame_bereitstellung(self):
+        """Seit #889 holt/baut scripts/lib/abbilder.sh die Abbilder — dort wird
+        APP_VERSION aus der VERSION-Datei gesetzt. Dass sie beim lokalen Bau
+        wirklich ankommt, prueft test_abbilder_aus_registry mit einer
+        Docker-Attrappe (test_lokaler_bau_bekommt_die_version)."""
+        self.assertIn("abbilder_bereitstellen", _UPDATE_SH)
+        self.assertNotIn("docker compose up -d --build", _UPDATE_SH,
+                         "kein zweiter, eigener Bauweg neben der gemeinsamen Funktion")
 
 
 class EinBundleOhneVersionFaelltAufTests(unittest.TestCase):

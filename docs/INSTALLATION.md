@@ -4,12 +4,14 @@
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| CPU | 2 cores | 4+ cores |
-| RAM | 4 GB | 8+ GB |
-| Disk | 20 GB | 50+ GB SSD |
+| CPU | 4 cores | 8+ cores |
+| RAM | 8 GB (trial, 1–2 working agents) | 16 GB (3 agents), 32 GB (10 agents) |
+| Disk | 64 GB SSD | 128 GB+ NVMe (≈25 GB base + up to 10 GB per agent) |
 | OS | Ubuntu 22.04 / Debian 12 / macOS 13+ | Ubuntu 24.04 LTS |
 | Docker | 24.0+ | Latest |
 | Docker Compose | 2.20+ | Latest |
+
+Sizing per edition (measured values, 3/10/30/100 agents): see the user manual, chapter 37.0 "Hardware je Edition".
 
 ## Prerequisites
 

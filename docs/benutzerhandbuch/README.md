@@ -1758,7 +1758,7 @@ Beschreibung, darunter die Rechte in vier Gruppen *(seit 1.358.3)*:
 | Gruppe | Rechte |
 |---|---|
 | **Modelle & Konten** | LLM-Provider, Modelle, AI-Accounts |
-| **Keys & Werkzeuge** | Keys / Secrets, MCP-Server, Integrationen |
+| **Keys & Werkzeuge** | Keys / Secrets, MCP-Server, Integrationen, Suchindizes |
 | **Wissen & Daten** | Mountshares |
 | **Oberfläche & Zugriff** | Menüpfade, Templates, URL-Host-Patterns |
 
@@ -1785,6 +1785,19 @@ der Rollengrenze**, welche Agenten mehr dürfen, als die Rolle ihres Besitzers h
 **zurückstufen** geht in den Einstellungen des jeweiligen Agenten.
 
 ![Kasten „Agenten über der Rollengrenze“](screenshots/55-admin-rollen-grenze.png)
+
+**Suchindizes** *(seit 1.364.1)*: Neben der Websuche gibt es eine eigene **Nachrichtensuche**
+(Werkzeug `news_search`). Sie liefert nur Meldungen mit Datum und Quelle, die Websuche dagegen
+auch Dokumentation und Nachschlagewerke. Welche Rolle sie nutzen darf, legst du so fest:
+
+1. Rolle in der Liste links anklicken.
+2. In der Gruppe **Keys & Werkzeuge** auf **Suchindizes** klicken, sodass die Zeile aufklappt.
+3. **Nachrichtenindex (news_search)** an- oder abwählen. **Unbegrenzt** stellt zurück auf „alle“.
+4. **Speichern**.
+
+Ohne Freigabe wird das Werkzeug den Agenten dieser Rolle gar nicht angeboten, und der Server
+lehnt einen Aufruf ab. Die Websuche bleibt immer verfügbar. Der Nachrichtenindex braucht
+**Brave** als Suchanbieter (Admin → Websuche).
 
 Jedes Recht ist **eingeklappt** und zeigt rechts seinen Stand — z. B. **„3 von 7“**,
 **„alle“** oder **„keine“**. Ein Klick auf die Zeile klappt sie auf; dort setzt du die
@@ -2744,6 +2757,47 @@ Ausweichmodell bricht der Auftrag dann ab.
 Dieses Kapitel richtet sich an die IT, die die Anlage betreibt: was wo liegt, wie
 gesichert, zurückgespielt und aktualisiert wird, welche Daten die Anlage verlassen
 und wie gelöscht wird. Alle Befehle laufen auf dem Server im Installationsordner.
+
+### 37.0 Hardware je Edition
+
+Die KI-Modelle laufen beim Anbieter (oder auf einem eigenen Modellserver), nicht auf der
+Anlage. Eine Grafikkarte ist deshalb nicht nötig. Den Bedarf bestimmen vor allem die Agenten:
+Jeder Agent ist ein eigener Container mit eigener Laufzeit und eigenem Arbeitsordner.
+
+**Gemessen** (15.10.2026, laufende Anlage, Spitzenwerte seit dem Start):
+
+| Teil | Arbeitsspeicher |
+|---|---|
+| Agent bei der Arbeit (z. B. Programmieren mit Build) | 2,2 GB |
+| Agent im Leerlauf | 0,2 GB |
+| Datenbank | 1,6 GB |
+| Sprach- und Embedding-Dienst | 1,2 GB + 1,1 GB |
+| Orchestrator, Oberfläche, Redis | zusammen 0,8 GB |
+
+Daraus gerechnet: etwa **5 GB Grundbedarf** plus **2,5 GB je gleichzeitig arbeitendem
+Agenten**. Nicht alle Agenten arbeiten gleichzeitig; untätige Agenten hält die Anlage an. Die
+Tabelle rechnet mit einem Drittel gleichzeitig arbeitender Agenten, bei Starter mit allen.
+Platte: rund 25 GB für Abbilder und Datenbank plus bis zu 10 GB Arbeitsordner je Agent
+(einstellbar).
+
+| Edition | Agenten | CPU-Kerne | Arbeitsspeicher | SSD (NVMe) | Typische Hardware |
+|---|---|---|---|---|---|
+| Starter | 3 | 4 | 16 GB | 128 GB | Mini-PC, kleiner gemieteter Server |
+| Team | 10 | 8 | 32 GB | 256 GB | Mini-PC (Ryzen/Intel), Server mit 8 Kernen |
+| Business | 30 | 16 | 64 GB | 512 GB–1 TB | Server oder VM mit 16 Kernen |
+| Enterprise | 100 | 32 | 128 GB | 1–2 TB | Server; Datenbank optional getrennt |
+
+Hinweise:
+
+- **x86_64 bevorzugt.** arm64 wird unterstützt (fertige Abbilder für beide), manche Werkzeuge
+  im Agenten gibt es aber nur für x86_64.
+- **Ein Raspberry Pi 5 (8 GB)** reicht zum Ausprobieren und für eine Vorführung mit ein bis
+  zwei gleichzeitig arbeitenden Agenten — mit dem offiziellen 27-W-Netzteil und
+  Netzwerkkabel. Ein schwaches Netzteil führt unter Last zu harten Neustarts.
+- **Sicherung** gehört auf ein anderes Gerät (NAS, zweite Platte), siehe 37.2; eine
+  vollständige Sicherung ist etwa so groß wie Datenbank plus Arbeitsordner.
+- Der Speicher je Agent ist mit `AGENT_MEMORY_LIMIT` begrenzt (Standard 8 GB), die CPU mit
+  `AGENT_CPU_QUOTA` (Standard 200000 = 2 Kerne).
 
 ### 37.1 Was liegt wo
 
