@@ -1,4 +1,4 @@
-fastapi==0.141.1
+fastapi==0.143.0
 uvicorn[standard]==0.53.0
 sentence-transformers==6.1.0
 # transformers kommt sonst ungepinnt ueber sentence-transformers. 5.19 setzt ein
