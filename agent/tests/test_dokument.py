@@ -446,9 +446,8 @@ body { margin: 0; font-family: Arial, sans-serif; font-size: 10pt; }
 
 
 def _seiten(pfad: Path) -> list[str]:
-    from pypdf import PdfReader
-
-    return [(p.extract_text() or "") for p in PdfReader(str(pfad)).pages]
+    # Derselbe Lesepfad wie das Produkt (pymupdf, sonst pypdf).
+    return dokument._pdf_lesen(pfad)[1]
 
 
 class LetzteSeiteFastLeerTests(unittest.TestCase):

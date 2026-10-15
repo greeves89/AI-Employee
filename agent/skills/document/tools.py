@@ -50,7 +50,10 @@ async def analyze_document(params: dict) -> str:
     try:
         if ext == ".pdf":
             try:
-                import fitz  # PyMuPDF  # noqa: PLC0415
+                try:
+                    import pymupdf as fitz  # noqa: PLC0415 — ``import fitz`` warnt nach stdout
+                except ImportError:
+                    import fitz  # noqa: PLC0415 — aeltere PyMuPDF-Versionen
                 doc = fitz.open(path)
                 meta["pages"] = doc.page_count
                 text = "\n\n".join(page.get_text() for page in doc)
