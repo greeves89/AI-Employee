@@ -473,6 +473,7 @@ class SkillCrawlerService:
             async with resilient_session() as db:
                 imported = 0
                 blocked = 0
+                uebersprungen_eigene = 0
                 for s in skills:
                     # #192/#371: crawled skills are executable instruction text — gate them
                     # exactly like API-imported skills.
@@ -495,8 +496,13 @@ class SkillCrawlerService:
                         # Selbst angelegte Skills (Nutzer, Agent) nie mit Crawl-Inhalt
                         # überschreiben — nur Importe derselben Art werden nachgezogen.
                         if not (existing.created_by or "").startswith("import:"):
-                            logger.warning("Crawled skill '%s': Name gehört einem selbst angelegten Skill — nicht überschrieben",
-                                           s["name"])
+                            # Erwarteter, gewollter Ausgang: der Name ist belegt, also
+                            # bleibt der eigene Skill stehen. Das ist kein Fehler und
+                            # gehört darum nicht ins Fehlerlog — je Lauf eine
+                            # Sammelzeile statt einer Warnung je Skill (#933).
+                            uebersprungen_eigene += 1
+                            logger.debug("Crawled skill '%s': Name gehört einem selbst angelegten Skill — nicht überschrieben",
+                                         s["name"])
                             continue
                         if s.get("content") and s["content"] != existing.content:
                             existing.content = s["content"]
@@ -519,9 +525,10 @@ class SkillCrawlerService:
                         ))
                         imported += 1
                 await db.commit()
-                if imported or blocked:
-                    logger.info("Skill crawler: imported %d new, %d blocked by security gate",
-                                imported, blocked)
+                if imported or blocked or uebersprungen_eigene:
+                    logger.info("Skill crawler: imported %d new, %d blocked by security gate, "
+                                "%d skipped (name belongs to a self-created skill)",
+                                imported, blocked, uebersprungen_eigene)
         except Exception as e:
             logger.warning("Skill crawler: DB sync failed: %s", e)
 
