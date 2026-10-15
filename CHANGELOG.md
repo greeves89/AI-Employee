@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.364.3] - 2026-10-15
+
+### Intern
+- **Der Schalter, der das Lade- und Fehlerverhalten der PDF-Vorschau festlegt, ist jetzt durch
+  einen Test abgesichert.** Er besteht aus einer einzigen Zeile, die ein Aufräumen still
+  entfernen kann — alles bliebe grün, und der Rückschritt fiele erst auf, wenn jemand ein
+  beschädigtes PDF öffnet und statt der Meldung mit Download-Link nur noch den allgemeinen
+  Hinweis sieht. Der Test greift, solange die PDF-Bibliothek mindestens Version 11 ist.
+
+---
+
 ## [1.364.2] - 2026-10-15
 
 ### Behoben
