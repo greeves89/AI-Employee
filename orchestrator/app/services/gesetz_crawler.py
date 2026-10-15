@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import os
 import re
 import zipfile
 from datetime import UTC
@@ -232,6 +233,134 @@ def render_markdown(law: dict) -> str:
     return "\n".join(lines)
 
 
+#: Groesste Datei je Gesetzesteil. Bewusst unter ``vault.MAX_FILE_BYTES``
+#: (2 MB): das SGB V allein ist als eine Datei groesser und wurde bei jedem
+#: Lauf abgelehnt (#866). Die Grenze hochzusetzen verschoebe das Problem nur
+#: bis zum naechsten grossen Gesetz.
+TEIL_MAX_BYTES = 1_500_000
+
+_TEIL_RE = re.compile(r"^(?P<basis>.+)\.teil-(?P<nr>[0-9]+)\.md$")
+
+
+def _teil_pfad(basis: str, nr: int) -> str:
+    """Teil 1 behaelt den bisherigen Dateinamen, weitere Teile ``<basis>.teil-N.md``."""
+    return f"{basis}.md" if nr == 1 else f"{basis}.teil-{nr}.md"
+
+
+def _bytes(text: str) -> int:
+    return len(text.encode("utf-8"))
+
+
+def _hart_teilen(text: str, budget: int) -> list[str]:
+    """Text in Stuecke von hoechstens ``budget`` Bytes, ohne ein Zeichen zu zerbrechen."""
+    stuecke: list[str] = []
+    rest = text.encode("utf-8")
+    while rest:
+        stueck = rest[:budget].decode("utf-8", errors="ignore")
+        stuecke.append(stueck)
+        rest = rest[len(stueck.encode("utf-8")):]
+    return stuecke
+
+
+def _bloecke(law: dict, budget: int) -> list[str]:
+    """Ein Block je Paragraph (``## § N Titel`` + Text). Ein Paragraph, der
+    allein das Budget sprengt, wird an Absatzgrenzen (notfalls hart) geteilt;
+    die Folgestuecke tragen ``(Fortsetzung)`` in der Ueberschrift, damit jeder
+    Treffer in der Suche weiss, wohin er gehoert."""
+    bloecke: list[str] = []
+    for p in law["paragraphs"]:
+        heading = f"## {p['enbez']}" + (f" {p['titel']}" if p["titel"] else "")
+        block = f"{heading}\n\n{p['text']}\n"
+        if _bytes(block) <= budget:
+            bloecke.append(block)
+            continue
+        fortsetzung = f"## {p['enbez']} (Fortsetzung)"
+        kopf_max = max(_bytes(heading), _bytes(fortsetzung)) + 3
+        absaetze: list[str] = []
+        for absatz in p["text"].split("\n\n"):
+            absaetze.extend(_hart_teilen(absatz, budget - kopf_max))
+        aktuell: list[str] = []
+        for absatz in absaetze:
+            if aktuell and _bytes("\n\n".join(aktuell + [absatz])) + kopf_max > budget:
+                kopf = heading if not bloecke or not bloecke[-1].startswith(heading) else fortsetzung
+                bloecke.append(f"{kopf}\n\n" + "\n\n".join(aktuell) + "\n")
+                aktuell = []
+            aktuell.append(absatz)
+        if aktuell:
+            kopf = heading if not bloecke or not bloecke[-1].startswith(heading) else fortsetzung
+            bloecke.append(f"{kopf}\n\n" + "\n\n".join(aktuell) + "\n")
+    return bloecke
+
+
+def render_markdown_teile(law: dict, max_bytes: int | None = None) -> list[str]:
+    """Wie ``render_markdown``, aber in Teilen von hoechstens ``max_bytes``.
+
+    Passt das Gesetz in eine Datei, ist das Ergebnis genau ``[render_markdown(law)]``
+    — fuer alle anderen Gesetze aendert sich nichts. Sonst entstehen mehrere
+    Teile mit der Ueberschrift ``# <jurabk> — <Titel> (Teil i von n)``; jeder
+    Paragraph steht genau einmal, in der Originalreihenfolge.
+    """
+    max_bytes = max_bytes or TEIL_MAX_BYTES
+    ganz = render_markdown(law)
+    if _bytes(ganz) <= max_bytes:
+        return [ganz]
+
+    titel = f"# {law['jurabk']} — {law['title']}".rstrip(" —")
+    # Platz fuer die laengste denkbare Teil-Ueberschrift freihalten.
+    kopf_max = _bytes(f"{titel} (Teil 9999 von 9999)\n\n")
+    budget = max_bytes - kopf_max
+
+    gruppen: list[list[str]] = [[]]
+    for block in _bloecke(law, budget):
+        gruppe = gruppen[-1]
+        if gruppe and _bytes("\n".join(gruppe + [block])) > budget:
+            gruppen.append([block])
+        else:
+            gruppe.append(block)
+    n = len(gruppen)
+    return [f"{titel} (Teil {i} von {n})\n\n" + "\n".join(g) for i, g in enumerate(gruppen, 1)]
+
+
+def _vorhandene_teile(host_path: str) -> dict[str, set[int]]:
+    """Welche Folgeteile (Teil 2 und hoeher) liegen schon im Ordner? Einmal je Lauf
+    gelesen, damit verwaiste Teile eines frueheren, laengeren Stands auffallen."""
+    try:
+        namen = os.listdir(host_path)
+    except FileNotFoundError:
+        return {}
+    teile: dict[str, set[int]] = {}
+    for name in namen:
+        m = _TEIL_RE.match(name)
+        if m:
+            teile.setdefault(m.group("basis"), set()).add(int(m.group("nr")))
+    return teile
+
+
+async def _gesetz_schreiben(
+    host_path: str, brain_label: str, basis: str, law: dict, vorhandene: dict[str, set[int]],
+) -> None:
+    """Ein Gesetz als eine oder mehrere Dateien schreiben und indizieren;
+    Folgeteile, die es nicht mehr gibt, aus Ordner und Index entfernen."""
+    from app.core import vault
+    from app.db.session import resilient_session
+    from app.services import vault_indexer
+
+    teile = render_markdown_teile(law)
+    for nr, md in enumerate(teile, 1):
+        rel_path = _teil_pfad(basis, nr)
+        vault.write_file(host_path, rel_path, md)
+        async with resilient_session() as db:
+            await vault_indexer.index_file(db, brain_label, host_path, rel_path)
+    for nr in sorted(n for n in vorhandene.get(basis, ()) if n > len(teile)):
+        rel_path = _teil_pfad(basis, nr)
+        try:
+            vault.delete_file(host_path, rel_path)
+        except FileNotFoundError:
+            pass
+        async with resilient_session() as db:
+            await vault_indexer.remove_file(db, brain_label, rel_path)
+
+
 class _AusfallZaehler:
     """Zaehlt Fehlschlaege eines Crawl-Laufs und meldet sie EINMAL am Ende.
 
@@ -244,24 +373,48 @@ class _AusfallZaehler:
     Sammelmeldung mit Anzahl und erstem Grund statt Zeile fuer Zeile.
     """
 
+    #: So viele Kennungen nennt die Meldung hoechstens.
+    MAX_KENNUNGEN = 5
+
     def __init__(self, bereich: str):
         self.bereich = bereich
         self.anzahl = 0
         self.erster_grund: str | None = None
+        self.kennungen: list[str] = []
 
     def melde(self, kennung: str, fehler: BaseException) -> None:
         self.anzahl += 1
+        self.kennungen.append(kennung)
         if self.erster_grund is None:
             self.erster_grund = f"{kennung}: {type(fehler).__name__}: {fehler}"
 
-    def bericht(self, geschrieben: int) -> str | None:
-        """Sammelmeldung, oder ``None`` wenn nichts zu melden ist."""
+    def bericht(self, geschrieben: int, seit_laeufen: int = 1) -> str | None:
+        """Sammelmeldung, oder ``None`` wenn nichts zu melden ist.
+
+        ``seit_laeufen`` > 1: dieselben Normen scheitern seit so vielen Laeufen
+        in Folge — ein stehender Mangel, kein Netzaussetzer (#866)."""
         if not self.anzahl:
             return None
-        return (
+        genannt = ", ".join(self.kennungen[: self.MAX_KENNUNGEN])
+        if len(self.kennungen) > self.MAX_KENNUNGEN:
+            genannt += " …"
+        text = (
             f"{self.bereich}: {self.anzahl} Normen fehlgeschlagen, "
-            f"{geschrieben} geschrieben — erster Grund: {self.erster_grund}"
+            f"{geschrieben} geschrieben — erster Grund: {self.erster_grund} — betroffen: {genannt}"
         )
+        if seit_laeufen > 1:
+            text += f" — unverändert seit {seit_laeufen} Läufen"
+        return text
+
+
+def _stehend(vorher: tuple[frozenset, int] | None, jetzt: _AusfallZaehler) -> tuple[frozenset, int] | None:
+    """Neuer Stand fuer die Erkennung stehender Fehlschlaege: (Kennungen, Laeufe in Folge)."""
+    if not jetzt.anzahl:
+        return None
+    kennungen = frozenset(jetzt.kennungen)
+    if vorher and vorher[0] == kennungen:
+        return kennungen, vorher[1] + 1
+    return kennungen, 1
 
 
 class GesetzCrawlerService:
@@ -274,6 +427,8 @@ class GesetzCrawlerService:
         self.law_count: int = 0
         self.eu_last_crawled_at: str | None = None
         self.eu_law_count: int = 0
+        # Bereich -> (scheiternde Kennungen, Laeufe in Folge): stehende Fehlschlaege
+        self._stehend: dict[str, tuple[frozenset, int] | None] = {}
 
     async def run(self) -> None:
         """Background loop — EU first (fast, higher priority), then the full
@@ -294,6 +449,11 @@ class GesetzCrawlerService:
             except Exception as e:
                 logger.error("Gesetz crawler (DE) error: %s", e, exc_info=True)
             await asyncio.sleep(CRAWL_INTERVAL)
+
+    def _bericht(self, ausfaelle: _AusfallZaehler, geschrieben: int) -> str | None:
+        stand = _stehend(self._stehend.get(ausfaelle.bereich), ausfaelle)
+        self._stehend[ausfaelle.bereich] = stand
+        return ausfaelle.bericht(geschrieben, stand[1] if stand else 1)
 
     async def _fetch_toc(self, client: httpx.AsyncClient) -> list[tuple[str, str]]:
         """Return [(title, slug), ...] from gii-toc.xml."""
@@ -322,13 +482,10 @@ class GesetzCrawlerService:
 
     async def crawl(self) -> int:
         """Fetch the full TOC, index every law, return the count actually written."""
-        from app.core import vault
-        from app.db.session import resilient_session
-        from app.services import vault_indexer
-
         headers = {"User-Agent": "AI-Employee-Gesetze-Crawler/1.0"}
         written = 0
         ausfaelle = _AusfallZaehler("Gesetz crawler")
+        vorhandene = _vorhandene_teile(HOST_PATH)
         async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT, headers=headers) as client:
             toc = await self._fetch_toc(client)
             logger.info("Gesetz crawler: %d Normen im Index", len(toc))
@@ -338,11 +495,7 @@ class GesetzCrawlerService:
                     law = await self._fetch_one(client, slug)
                     if not law:
                         continue
-                    md = render_markdown(law)
-                    rel_path = f"{slug}.md"
-                    vault.write_file(HOST_PATH, rel_path, md)
-                    async with resilient_session() as db:
-                        await vault_indexer.index_file(db, BRAIN_LABEL, HOST_PATH, rel_path)
+                    await _gesetz_schreiben(HOST_PATH, BRAIN_LABEL, slug, law, vorhandene)
                     written += 1
                 except Exception as e:
                     logger.debug("Gesetz crawler: %s (%s) failed: %s", slug, title, e)
@@ -352,7 +505,7 @@ class GesetzCrawlerService:
 
         self.last_crawled_at = datetime.now(UTC).isoformat()
         self.law_count = written
-        bericht = ausfaelle.bericht(written)
+        bericht = self._bericht(ausfaelle, written)
         if bericht:
             logger.warning(bericht)
         logger.info("Gesetz crawler: %d Normen indiziert", written)
@@ -361,13 +514,10 @@ class GesetzCrawlerService:
     async def crawl_eu(self) -> int:
         """Fetch the curated EU-law list, index every one, return the count
         actually written. Small, fixed list — no discovery/pagination needed."""
-        from app.core import vault
-        from app.db.session import resilient_session
-        from app.services import vault_indexer
-
         headers = {"User-Agent": "Mozilla/5.0", "Accept-Language": "deu"}
         written = 0
         ausfaelle = _AusfallZaehler("Gesetz crawler (EU)")
+        vorhandene = _vorhandene_teile(EU_HOST_PATH)
         async with httpx.AsyncClient(
             timeout=_REQUEST_TIMEOUT, headers=headers, follow_redirects=True
         ) as client:
@@ -383,11 +533,7 @@ class GesetzCrawlerService:
                     law = parse_eu_regulation_xhtml(resp.content, kurzname)
                     if not law:
                         continue
-                    md = render_markdown(law)
-                    rel_path = f"{celex}.md"
-                    vault.write_file(EU_HOST_PATH, rel_path, md)
-                    async with resilient_session() as db:
-                        await vault_indexer.index_file(db, EU_BRAIN_LABEL, EU_HOST_PATH, rel_path)
+                    await _gesetz_schreiben(EU_HOST_PATH, EU_BRAIN_LABEL, celex, law, vorhandene)
                     written += 1
                 except Exception as e:
                     logger.debug("Gesetz crawler (EU): %s (%s) failed: %s", celex, kurzname, e)
@@ -397,7 +543,7 @@ class GesetzCrawlerService:
 
         self.eu_last_crawled_at = datetime.now(UTC).isoformat()
         self.eu_law_count = written
-        bericht = ausfaelle.bericht(written)
+        bericht = self._bericht(ausfaelle, written)
         if bericht:
             logger.warning(bericht)
         logger.info("Gesetz crawler (EU): %d Normen indiziert", written)
