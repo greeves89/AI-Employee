@@ -49,8 +49,13 @@ ok "Docker is running"
 # ── 2. Sicherung vor dem Update (#892) ────────────────────────────────────────
 # Ein Update ändert Datenbankschema und Abbilder. Geht dabei etwas schief, ist
 # die Sicherung von vorhin der Rückweg. Abschaltbar, aber nicht stillschweigend.
-VORHER_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unbekannt)"
-if [ "$OHNE_SICHERUNG" = "1" ]; then
+# Zweiter Durchgang nach einem Neustart mit der neuen Fassung (siehe Schritt 3):
+# Sicherung und Pull sind dann schon erledigt.
+NEU_GESTARTET="${UPDATE_NEU_GESTARTET:-0}"
+VORHER_COMMIT="${UPDATE_VORHER_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo unbekannt)}"
+if [ "$NEU_GESTARTET" = "1" ]; then
+    info "Neue Fassung von update.sh läuft — Sicherung und Pull sind schon erledigt."
+elif [ "$OHNE_SICHERUNG" = "1" ]; then
     warn "Sicherung vor dem Update übersprungen (--ohne-sicherung / UPDATE_OHNE_SICHERUNG=1)."
 else
     info "Sichere vor dem Update (scripts/backup.sh)..."
@@ -60,9 +65,19 @@ else
 fi
 
 # ── 3. Pull latest code ───────────────────────────────────────────────────────
-info "Pulling latest code..."
-git pull
-ok "Code up to date (vorher: ${VORHER_COMMIT})"
+if [ "$NEU_GESTARTET" != "1" ]; then
+    SKRIPT_VORHER="$(git hash-object scripts/update.sh 2>/dev/null || true)"
+    info "Pulling latest code..."
+    git pull
+    ok "Code up to date (vorher: ${VORHER_COMMIT})"
+    # Bringt der Pull eine neue Fassung DIESES Skripts, liefe sonst die alte
+    # weiter: bash liest aus der bereits geoeffneten (alten) Datei. So geschehen
+    # beim Umstieg auf die Registry-Abbilder (v1.364): das Update baute noch lokal.
+    if [ "$(git hash-object scripts/update.sh 2>/dev/null || true)" != "$SKRIPT_VORHER" ]; then
+        info "update.sh hat sich mit dem Update geändert — starte die neue Fassung."
+        UPDATE_NEU_GESTARTET=1 UPDATE_VORHER_COMMIT="$VORHER_COMMIT" exec ./scripts/update.sh "$@"
+    fi
+fi
 
 # ── 4. Abbilder: aus der Registry holen, sonst lokal bauen (#889) ─────────────
 # Capture the current agent image id so we can tell which running agents are
