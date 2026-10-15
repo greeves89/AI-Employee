@@ -121,13 +121,22 @@ git diff HEAD~1 .env.example
 
 Add any new required variables to your `.env` file before continuing.
 
-### Step 3: Build New Images
+### Step 3: Get the New Images
+
+Every release tag publishes ready-made images for `linux/amd64` and `linux/arm64`
+to `ghcr.io/greeves89` (workflow `.github/workflows/images.yml`). `./scripts/update.sh`
+does all of this for you; by hand:
 
 ```bash
-docker compose build --no-cache
+. scripts/lib/abbilder.sh && abbilder_bereitstellen 0
 ```
 
-The `--no-cache` flag ensures you get fresh builds without stale layers.
+This writes `AI_EMPLOYEE_VERSION=<VERSION>` to `.env`, pulls the compose images and the
+agent image of exactly that version, and tags the agent image as
+`ai-employee-agent:latest`. If the registry is unreachable (air-gapped networks) or the
+version has not been built, it falls back to building locally. Force a local build with
+`abbilder_bereitstellen 1` (or `./scripts/update.sh --lokal-bauen`); use an internal
+mirror with `AI_EMPLOYEE_REGISTRY` in `.env`.
 
 ### Step 4: Stop Current Services
 

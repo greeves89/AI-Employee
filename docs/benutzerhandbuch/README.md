@@ -2851,14 +2851,20 @@ erhalten.
 
 `update.sh` **sichert vorher automatisch** und bricht ab, wenn die Sicherung scheitert
 — dann ist noch nichts verändert. Bewusst ohne Sicherung: `--ohne-sicherung` oder
-`UPDATE_OHNE_SICHERUNG=1`. Danach werden Code geholt, das Agenten-Abbild und die
-Dienste neu gebaut; am Ende nennt das Skript die Agenten, die noch auf dem alten
-Abbild laufen, und den Commit vor dem Update.
+`UPDATE_OHNE_SICHERUNG=1`. Danach holt das Skript den Code und die **fertigen Abbilder
+genau dieser Version** aus der Registry (`ghcr.io/greeves89`, für Agenten, Oberfläche,
+Orchestrator und die Hilfsdienste, jeweils für amd64 und arm64). Gebaut wird auf der
+Anlage nur noch, wenn die Registry nicht erreichbar ist, z. B. in einem abgeschotteten
+Netz, oder wenn man es mit `--lokal-bauen` verlangt. Eine eigene Registry (interner
+Spiegel) lässt sich mit `AI_EMPLOYEE_REGISTRY` in der `.env` einstellen. Die Versionsnummer
+steht danach als `AI_EMPLOYEE_VERSION` in der `.env`, damit Code und Abbilder
+zusammenpassen. Am Ende nennt das Skript die Agenten, die noch auf dem alten Abbild laufen,
+und den Commit vor dem Update.
 
-**Rücksprung** auf den Stand vor dem Update: `git checkout <commit von vorher>`,
-`docker build -t ai-employee-agent:latest ./agent && docker compose up -d --build`, dann
-die Sicherung von vorhin mit `restore.sh` zurückspielen — das Datenbankschema kann sich
-mit dem Update geändert haben.
+**Rücksprung** auf den Stand vor dem Update: `git checkout <commit von vorher>`, dann
+`bash -c '. scripts/lib/abbilder.sh && abbilder_bereitstellen 0' && docker compose up -d`
+(holt die Abbilder dieser älteren Version), dann die Sicherung von vorhin mit
+`restore.sh` zurückspielen — das Datenbankschema kann sich mit dem Update geändert haben.
 
 ### 37.5 Welche Daten die Anlage verlassen
 

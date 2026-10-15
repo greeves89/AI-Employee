@@ -106,12 +106,13 @@ fi
 docker volume inspect ai-employee-shared &>/dev/null || docker volume create ai-employee-shared
 ok "Shared volume ready"
 
-# ── 6. Build images ───────────────────────────────────────────────────────────
+# ── 6. Abbilder: fertig aus der Registry, sonst lokal bauen (#889) ─────────────
 echo ""
-info "Building Docker images (this takes a few minutes on first run)..."
-docker build -t ai-employee-agent:latest ./agent
-docker compose build
-ok "Images built"
+info "Stelle Docker-Abbilder bereit (lokaler Bau nur als Rückfall, dauert dann einige Minuten)..."
+# shellcheck source=lib/abbilder.sh
+. ./scripts/lib/abbilder.sh
+abbilder_bereitstellen "${SETUP_LOKAL_BAUEN:-0}"
+ok "Abbilder bereit (Quelle: ${ABBILD_QUELLE})"
 
 # ── 7. Start stack ────────────────────────────────────────────────────────────
 info "Starting all services..."

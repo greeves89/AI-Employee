@@ -1,8 +1,5 @@
 FROM python:3.12-slim AS base
 
-# Version label - change this to trigger update detection for running agents
-LABEL ai-employee.version="1.363.7"
-
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -168,3 +165,8 @@ RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["tini", "--", "/entrypoint.sh"]
 CMD ["python", "-m", "app.main"]
+
+# Versions-Label GANZ AM ENDE (#889): stand es oben, machte jede neue Versionsnummer
+# alle folgenden Schichten ungueltig — jedes Release baute das ganze Abbild neu.
+# Hier aendert es nur noch die letzte, leere Schicht. Muss VERSION entsprechen.
+LABEL ai-employee.version="1.363.7"
