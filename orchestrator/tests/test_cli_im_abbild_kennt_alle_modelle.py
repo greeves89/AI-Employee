@@ -21,7 +21,7 @@ def _fassung(text: str) -> tuple[int, ...]:
 
 class CliImAbbildTests(unittest.TestCase):
     def test_abbild_mindestens_so_neu_wie_der_katalog_verlangt(self):
-        treffer = re.search(r"npm install -g @anthropic-ai/claude-code@(\d+\.\d+\.\d+)",
+        treffer = re.search(r"npm install -g(?:\s+--[\w-]+)*\s+@anthropic-ai/claude-code@(\d+\.\d+\.\d+)",
                             DOCKERFILE.read_text(encoding="utf-8"))
         self.assertIsNotNone(treffer, "Fest installierte CLI-Fassung im Dockerfile nicht gefunden")
         self.assertGreaterEqual(
