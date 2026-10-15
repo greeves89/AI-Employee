@@ -32,6 +32,7 @@
 #   COMPOSE_PROJECT_NAME  Compose-Projekt (Standard: am Postgres-Container abgelesen)
 #   ORCHESTRATOR_URL      Für den Herzschlag (Standard: http://127.0.0.1:8000)
 #   BACKUP_KEEP_DAILY / BACKUP_KEEP_WEEKLY   Aufbewahrung (7 / 4)
+#   BACKUP_CPUS           Kerne für Packen und Prüfen (Standard: 1)
 #   BACKUP_MOUNT          Mountpunkt, der eingehängt sein MUSS (z. B. ein NAS).
 #                         Ist er es nicht, bricht der Lauf ab, bevor er etwas
 #                         anlegt — sonst landete die Sicherung auf der Platte
@@ -62,6 +63,12 @@ ORCHESTRATOR_URL="${ORCHESTRATOR_URL:-http://127.0.0.1:$(env_wert "$ENV_DATEI" O
 KEEP_DAILY="${BACKUP_KEEP_DAILY:-7}"
 KEEP_WEEKLY="${BACKUP_KEEP_WEEKLY:-4}"
 ALPINE_IMAGE="${ALPINE_IMAGE:-alpine:3.21}"
+# Die Arbeit (pg_dump, tar, gzip) läuft in Containern — die startet dockerd,
+# also erben sie weder `nice` noch die Priorität der systemd-Unit. Deshalb hier
+# ausdrücklich: ein Kern, niedrigste Priorität. Gemessen auf einer Anlage:
+# gzip mit voller Priorität auf einem Kern, der Lüfter hörbar, 73 °C.
+SICHERUNG_CPUS="${BACKUP_CPUS:-1}"
+NIEDRIG="nice -n 19"
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_TYPE="daily"
@@ -161,8 +168,8 @@ SCHRITT="Datenbank"
 PROJEKT=$(compose_projekt "$INSTALL_DIR")
 
 log "Datenbank ${POSTGRES_DB} …"
-docker exec "$PG_CONTAINER" pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" \
-    | gzip > "${BACKUP_PATH}/postgres.sql.gz"
+docker exec "$PG_CONTAINER" $NIEDRIG pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" \
+    | $NIEDRIG gzip > "${BACKUP_PATH}/postgres.sql.gz"
 log "Datenbank gesichert ($(du -sh "${BACKUP_PATH}/postgres.sql.gz" | cut -f1))"
 # Größe der Datenbank auf der Platte — restore.sh prüft damit VOR dem Zurückspielen,
 # ob der Platz reicht (eine volle Platte reißt die laufende Datenbank mit).
@@ -179,15 +186,15 @@ while read -r archiv volume; do
     log "Volume ${volume} …"
     # Entpackte Größe mitschreiben: ein Arbeitsordner ist entpackt oft ein
     # Mehrfaches seines Archivs (gemessen: 57 GB statt 17 GB).
-    kb=$(docker run --rm -v "${volume}:/data:ro" "$ALPINE_IMAGE" du -sk /data 2>/dev/null | cut -f1 | tr -dc '0-9' || true)
+    kb=$(docker run --rm --cpus "$SICHERUNG_CPUS" -v "${volume}:/data:ro" "$ALPINE_IMAGE" $NIEDRIG du -sk /data 2>/dev/null | cut -f1 | tr -dc '0-9' || true)
     ENTPACKT_KB=$((ENTPACKT_KB + ${kb:-0}))
     # Das Archiv schreibt die Shell, nicht der Container: sonst gehört es root,
     # und das abschließende chmod 600 scheitert für einen normalen Nutzer
     # (zweiter echter Lauf auf einer Anlage: Abbruch im Schritt „Manifest“).
-    docker run --rm \
+    docker run --rm --cpus "$SICHERUNG_CPUS" \
         -v "${volume}:/data:ro" \
         "$ALPINE_IMAGE" \
-        tar czf - -C /data . > "${BACKUP_PATH}/volumes/${archiv}.tar.gz"
+        $NIEDRIG tar czf - -C /data . > "${BACKUP_PATH}/volumes/${archiv}.tar.gz"
     VOLUME_ANZAHL=$((VOLUME_ANZAHL + 1))
 done <<< "$AUSWAHL"
 log "${VOLUME_ANZAHL} Volume(s) gesichert"

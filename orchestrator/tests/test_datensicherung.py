@@ -326,6 +326,13 @@ class VolumeArchiveGehoerenDemNutzerTests(unittest.TestCase):
             self.assertEqual(archive[0].stat().st_mode & 0o777, 0o600)
             aufruf = next(a for a in log.read_text().splitlines() if "/data:ro" in a)
             self.assertNotIn(":/backup", aufruf, "der Sicherungsordner wird nicht in den Container gereicht")
+            # Die Container starten unter dockerd und erben keine Priorität: Begrenzung
+            # und `nice` müssen im Aufruf selbst stehen (sonst gzip mit voller Kraft).
+            packen = next(a for a in log.read_text().splitlines() if "tar czf" in a)
+            self.assertIn("--cpus 1", packen)
+            self.assertIn("nice -n 19 tar czf", packen)
+            dump = next(a for a in log.read_text().splitlines() if "pg_dump" in a)
+            self.assertIn("nice -n 19 pg_dump", dump)
             self.assertTrue(list((tmp / "ziel").glob("*/*/MANIFEST")), "der Lauf kommt bis zum Manifest")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
