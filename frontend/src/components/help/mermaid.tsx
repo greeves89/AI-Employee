@@ -23,6 +23,11 @@ export function Mermaid({ chart, caption }: { chart: string; caption?: string })
           startOnLoad: false,
           theme: "dark",
           securityLevel: "strict",
+          // Mermaid 12 changed the defaults to the ELK layout engine and the "neo" look.
+          // Both are pinned to the previous behaviour so these diagrams keep rendering the
+          // way they always have; drop these two lines to opt into the new look.
+          layout: "dagre",
+          look: "classic",
           flowchart: { curve: "basis", htmlLabels: true },
           themeVariables: { fontFamily: "inherit" },
         });
