@@ -5,6 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.362.14] - 2026-10-15
+
+### Behoben
+- **Ein Neuversuch lief parallel zum noch lebenden ersten Lauf** (#926). Brach ein Lauf
+  wegen einer kurzen Redis-Störung beim Senden des Protokolls ab, galt die Aufgabe als
+  gescheitert, der Kommandozeilen-Prozess samt Kindprozessen arbeitete aber weiter. Der
+  Neuversuch startete dann im selben Arbeitsordner daneben.
+  - Ein Fehler beim Senden eines Protokollereignisses bricht den Lauf nicht mehr ab.
+  - Endet ein Lauf mit Fehler oder wird er abgebrochen, wird seine ganze Prozessgruppe
+    beendet (Claude Code und Codex).
+  - Ein Neuversuch startet erst, wenn der vorige Lauf derselben Aufgabe nicht mehr läuft;
+    sonst wartet er jeweils eine Minute.
+  - Abgelaufene Anmeldung, „Kontingent erschöpft“ und Nutzungslimits gelten als dauerhafter
+    Fehler und werden nicht mehr sinnlos wiederholt.
+
+---
+
 ## [1.362.13] - 2026-10-07
 
 ### Behoben
