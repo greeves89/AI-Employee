@@ -86,7 +86,7 @@ For a detailed, honest comparison including scenarios where competitors are the 
 ### Prerequisites
 
 - Docker Desktop 4.x or Docker Engine 24+ with **Docker Compose v2** (`docker compose`, not `docker-compose`)
-- 8 GB RAM minimum, 16 GB recommended
+- 8 GB RAM for a trial, 16 GB for 3 agents, 32 GB for 10 agents (sizing per edition: user manual, chapter 37.0)
 - Model access — one of:
   - a **Claude subscription** (sign in from the web UI, no per-token cost)
   - an **Anthropic API key**
