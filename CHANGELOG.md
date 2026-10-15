@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.363.7] - 2026-10-15
+
+### Geändert
+- **Die Diagramme der Architektur-Hilfeseite laufen auf einer neuen Hauptversion der
+  Diagramm-Bibliothek — sehen aber unverändert aus.** Die neue Version stellt ihr
+  Standard-Layout und ihren Standard-Look um; beides würde die beiden Flussdiagramme
+  sichtbar umbauen (das Topologie-Diagramm etwa von breit auf schmal und hoch). Deshalb
+  bleibt die bisherige Darstellung in der Diagramm-Komponente ausdrücklich festgelegt: Die
+  Seite ändert ihr Aussehen nicht ungefragt. Wer die neue Darstellung möchte, entfernt die
+  zwei festgelegten Zeilen in `frontend/src/components/help/mermaid.tsx`.
+- Als Nebeneffekt bringt die neue Version eine korrigierte Fassung der Bibliothek mit, die
+  im Frontend Fremdtexte säubert. Damit fällt eine der bisher gemeldeten Schwachstellen des
+  Frontends weg; neue kommen durch die Anhebung keine hinzu.
+
+---
+
 ## [1.363.6] - 2026-10-15
 
 ### Behoben
