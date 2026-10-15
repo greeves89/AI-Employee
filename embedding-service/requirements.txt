@@ -6,7 +6,7 @@ sentence-transformers==6.1.0
 # ("Cannot access accelerator device when none is available"). Pin anheben
 # erst zusammen mit torch im Dockerfile.
 transformers>=5.17,<5.19
-pydantic==2.13.5
+pydantic==2.14.1
 # NOTE: torch is installed separately in the Dockerfile from the CPU-only
 # PyTorch index — the default PyPI wheel bundles ~2 GB of NVIDIA CUDA
 # libraries this service never uses (it runs CPU inference only).
