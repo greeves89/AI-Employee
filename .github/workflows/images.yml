@@ -1,0 +1,144 @@
+name: Abbilder
+
+# Fertige Abbilder je Release (#889). Jede Anlage baute bisher alles selbst:
+# auf kleiner Hardware (arm64, 8 GB) 20 bis 40 Minuten unter Volllast, und ein
+# Abbruch hinterliess einen halben Stand. Dieser Workflow baut bei jedem
+# Versions-Tag alle Abbilder mit eigenem Dockerfile fuer amd64 UND arm64 (native
+# Runner, keine Emulation) und legt sie in GHCR ab. scripts/update.sh holt sie;
+# ohne erreichbare Registry baut es wie bisher lokal.
+#
+# Tags: <VERSION> und latest. Per Hand gestartet (workflow_dispatch) entsteht
+# nur ein Probe-Tag probe-<commit>, damit ein Test nie "latest" verschiebt.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: abbilder-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Version festlegen
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      latest: ${{ steps.v.outputs.latest }}
+      registry: ${{ steps.v.outputs.registry }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::VERSION hat kein gueltiges Format"; exit 1; }
+          LABEL="$(sed -n 's/^LABEL ai-employee.version="\([^"]*\)".*/\1/p' agent/Dockerfile)"
+          # VERSION-Datei, Dockerfile-Label, git-Tag und Abbild-Tag sind EINE Zahl.
+          [ "$LABEL" = "$VERSION" ] || { echo "::error::agent/Dockerfile-Label ($LABEL) != VERSION ($VERSION)"; exit 1; }
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            [ "${GITHUB_REF_NAME#v}" = "$VERSION" ] || { echo "::error::Tag ${GITHUB_REF_NAME} != VERSION ${VERSION}"; exit 1; }
+            echo "tag=${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=probe-${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "registry=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+  bauen:
+    name: ${{ matrix.dienst.name }} (${{ matrix.plattform.arch }})
+    needs: version
+    runs-on: ${{ matrix.plattform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        dienst:
+          - { name: orchestrator, context: ./orchestrator, target: base }
+          - { name: frontend, context: ./frontend, target: production }
+          - { name: agent, context: ./agent, target: "" }
+          - { name: embedding-service, context: ./embedding-service, target: "" }
+          - { name: stt-service, context: ./stt-service, target: "" }
+        plattform:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    env:
+      IMAGE: ${{ needs.version.outputs.registry }}/ai-employee-${{ matrix.dienst.name }}
+    steps:
+      # Das Agenten-Abbild hat mehrere Gigabyte; die Runner bringen von Haus aus
+      # zu wenig freien Platz mit.
+      - name: Platz schaffen
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af >/dev/null || true
+          df -h /
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: bau
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.dienst.context }}
+          target: ${{ matrix.dienst.target }}
+          platforms: linux/${{ matrix.plattform.arch }}
+          build-args: |
+            APP_VERSION=${{ needs.version.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.version.outputs.tag }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.plattform.arch }}
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache-${{ matrix.plattform.arch }},mode=max
+      - name: Digest merken
+        run: |
+          mkdir -p /tmp/digests
+          d="${{ steps.bau.outputs.digest }}"
+          touch "/tmp/digests/${d#sha256:}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.dienst.name }}-${{ matrix.plattform.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  zusammenfuehren:
+    name: ${{ matrix.dienst }} (Manifest)
+    needs: [version, bauen]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dienst: [orchestrator, frontend, agent, embedding-service, stt-service]
+    env:
+      IMAGE: ${{ needs.version.outputs.registry }}/ai-employee-${{ matrix.dienst }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.dienst }}-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Manifest fuer beide Architekturen
+        working-directory: /tmp/digests
+        run: |
+          TAGS="-t ${IMAGE}:${{ needs.version.outputs.tag }}"
+          if [ "${{ needs.version.outputs.latest }}" = "true" ]; then TAGS="$TAGS -t ${IMAGE}:latest"; fi
+          docker buildx imagetools create $TAGS $(printf "${IMAGE}@sha256:%s " *)
+      - name: Pruefen
+        run: |
+          docker buildx imagetools inspect "${IMAGE}:${{ needs.version.outputs.tag }}" | tee /tmp/inspect.txt
+          grep -q "linux/amd64" /tmp/inspect.txt
+          grep -q "linux/arm64" /tmp/inspect.txt

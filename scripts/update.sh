@@ -1,14 +1,15 @@
 #!/bin/bash
 # AI Employee Platform — Update Script
-# Usage: ./scripts/update.sh [--ohne-sicherung]
+# Usage: ./scripts/update.sh [--ohne-sicherung] [--lokal-bauen]
 #
 # Sichert vorher automatisch (scripts/backup.sh) und bricht ab, wenn das
 # scheitert. Abschalten: --ohne-sicherung oder UPDATE_OHNE_SICHERUNG=1.
 #
-# Rebuilds EVERY image that ships code, including the dynamically-launched
-# agent image (ai-employee-agent:latest) which `docker compose up --build`
-# never touches because it is not a compose service (see issue #433).
-# Idempotent: safe to run multiple times.
+# Abbilder (#889): holt die fertigen Abbilder genau dieser Version aus der
+# Registry (AI_EMPLOYEE_REGISTRY, Standard ghcr.io/greeves89) — auch das
+# Agenten-Abbild, das kein Compose-Dienst ist (#433). Nur wenn die Registry
+# nicht erreichbar ist oder --lokal-bauen gesetzt ist, wird wie frueher lokal
+# gebaut. Idempotent: safe to run multiple times.
 set -euo pipefail
 
 # ── colours ──────────────────────────────────────────────────────────────────
@@ -22,9 +23,11 @@ die()  { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 cd "$(dirname "$0")/.."
 
 OHNE_SICHERUNG="${UPDATE_OHNE_SICHERUNG:-0}"
+LOKAL_BAUEN="${UPDATE_LOKAL_BAUEN:-0}"
 for arg in "$@"; do
     case "$arg" in
         --ohne-sicherung) OHNE_SICHERUNG=1 ;;
+        --lokal-bauen) LOKAL_BAUEN=1 ;;
         *) die "Unbekannte Option: $arg" ;;
     esac
 done
@@ -61,25 +64,23 @@ info "Pulling latest code..."
 git pull
 ok "Code up to date (vorher: ${VORHER_COMMIT})"
 
-# ── 4. Rebuild the agent image (NOT a compose service — must be built here) ────
+# ── 4. Abbilder: aus der Registry holen, sonst lokal bauen (#889) ─────────────
 # Capture the current agent image id so we can tell which running agents are
-# still on the old image after the rebuild.
+# still on the old image afterwards.
 OLD_AGENT_IMAGE_ID="$(docker images -q ai-employee-agent:latest 2>/dev/null || true)"
-info "Rebuilding agent image (ai-employee-agent:latest)..."
-docker build -t ai-employee-agent:latest ./agent
+# shellcheck source=lib/abbilder.sh
+. ./scripts/lib/abbilder.sh
+abbilder_bereitstellen "$LOKAL_BAUEN"
 NEW_AGENT_IMAGE_ID="$(docker images -q ai-employee-agent:latest 2>/dev/null || true)"
 if [ -n "$OLD_AGENT_IMAGE_ID" ] && [ "$OLD_AGENT_IMAGE_ID" = "$NEW_AGENT_IMAGE_ID" ]; then
     ok "Agent image unchanged"
 else
-    ok "Agent image rebuilt ($NEW_AGENT_IMAGE_ID)"
+    ok "Agent image updated ($NEW_AGENT_IMAGE_ID, Quelle: ${ABBILD_QUELLE})"
 fi
 
-# ── 5. Rebuild + restart the compose services (orchestrator, frontend, ...) ────
-info "Rebuilding and restarting the stack..."
-# Bake the current VERSION into the frontend bundle so the running UI can warn
-# when the served bundle is older than the backend (see update-banner.tsx).
-export APP_VERSION="$(cat VERSION 2>/dev/null || echo dev)"
-docker compose up -d --build
+# ── 5. Restart the compose services (orchestrator, frontend, ...) ─────────────
+info "Restarting the stack..."
+docker compose up -d
 ok "Stack restarted"
 
 # ── 6. Wait for orchestrator ──────────────────────────────────────────────────
