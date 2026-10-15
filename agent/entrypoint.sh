@@ -84,7 +84,10 @@ update_cli() {
   stage="$(cd "$stage" && pwd -P)"
   log="/tmp/entrypoint-npm-${bin}.log"
 
-  if ! timeout -k 10 "$NPM_FRIST" npm install -g --prefix "$stage" "${pkg}@latest" >"$log" 2>&1; then
+  # --engine-strict: verlangt die neue Fassung eine neuere Node-Version als die im
+  # Image, scheitert die Installation hier -- und die vorhandene Fassung bleibt,
+  # statt dass ein CLI eingehaengt wird, das mit dieser Node nicht laeuft.
+  if ! timeout -k 10 "$NPM_FRIST" npm install -g --engine-strict --prefix "$stage" "${pkg}@latest" >"$log" 2>&1; then
     rm -rf "$stage"
     echo "[entrypoint] ${pkg} nicht aktualisiert (offline, Registry-Fehler oder Frist) -- vorhandene Fassung bleibt unangetastet"
     return 0

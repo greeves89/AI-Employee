@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 # Version label - change this to trigger update detection for running agents
-LABEL ai-employee.version="1.363.1"
+LABEL ai-employee.version="1.363.2"
 
 # Install system dependencies + Node.js (required for Claude Code CLI)
 # Pre-install common tools the agent might need
@@ -34,14 +34,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # longer required just to pick up a newer CLI release.
 # Mindestens orchestrator/app/core/model_catalog.py::CLAUDE_CLI_MINDESTENS -- sonst
 # scheitern neue Modelle, bis das Hintergrund-Update durch ist (Test wacht darueber).
-RUN npm install -g @anthropic-ai/claude-code@2.1.288
+RUN npm install -g --engine-strict @anthropic-ai/claude-code@2.1.288
 
 # Install OpenAI Codex CLI for ChatGPT-subscription backed agents. Same as
 # above: entrypoint.sh keeps this current on every container start.
-RUN npm install -g @openai/codex
+RUN npm install -g --engine-strict @openai/codex
 
 # Install Hyperframes CLI for agent video rendering
-RUN npm install -g hyperframes
+RUN npm install -g --engine-strict hyperframes
 
 # Pre-install Playwright + Chromium for browser automation (Computer-Use Phase 1)
 # Only activated when COMPUTER_USE_BROWSER=true — pre-installing avoids runtime download delays

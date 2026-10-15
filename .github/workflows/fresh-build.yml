@@ -1,0 +1,92 @@
+name: Frischer Image-Bau
+
+# Die Dockerfiles ziehen bei jedem Bau ohne Cache die jeweils neuesten indirekten
+# Pakete (transformers ueber sentence-transformers, die Claude-Code-CLI ueber npm).
+# Am 06.10.2026 kam so transformers 5.19 ins Embedding-Image, das mit dem gepinnten
+# torch schon beim Import abbrach -- der Dienst hing in einer Neustart-Schleife, und
+# keine Pruefung hat es gesehen: das Embedding-Image wurde nirgends gebaut, und der
+# Trivy-Bau in security.yml meldet einen Fehlschlag nur als Hinweis.
+#
+# Dieser Lauf baut jedes Image ohne Cache, scheitert hart und startet danach genau
+# den Weg, an dem der Dienst damals gestorben ist. Er laeuft auch NAECHTLICH: der
+# Bruch vom 06.10. kam ohne einen einzigen Commit, nur durch eine neue Paketversion
+# im Netz -- ein Lauf, der nur bei Pull Requests startet, sieht so etwas nie.
+#
+# Bewusst nur amd64 (ubuntu-latest). Die Pi-Anlagen laufen auf arm64, dort kommt
+# torch aus einer eigenen Rad-Linie; ein QEMU-Lauf waere ein Vielfaches langsamer.
+# Wer torch anhebt, prueft arm64 deshalb einmal von Hand.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "embedding-service/**"
+      - "orchestrator/Dockerfile"
+      - "orchestrator/pyproject.toml"
+      - "agent/Dockerfile"
+      - "agent/pyproject.toml"
+      - ".github/workflows/fresh-build.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "embedding-service/**"
+      - "orchestrator/Dockerfile"
+      - "orchestrator/pyproject.toml"
+      - "agent/Dockerfile"
+      - "agent/pyproject.toml"
+      - ".github/workflows/fresh-build.yml"
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image-fresh-build:
+    name: Image frisch bauen + Startprobe (${{ matrix.image.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: embedding-service
+            context: ./embedding-service
+            # Derselbe Weg wie beim Start (app/main.py): torch-Threads setzen,
+            # SentenceTransformer laden, einmal kodieren. Mit einem kleinen Modell
+            # (~90 MB) statt bge-m3 (2,3 GB); die XLM-RoBERTa-Klassen von bge-m3
+            # werden zusaetzlich importiert, weil transformers sie erst bei Bedarf laedt.
+            probe: >-
+              python -c "import torch, transformers;
+              torch.set_num_threads(1);
+              from transformers import XLMRobertaModel, XLMRobertaTokenizerFast;
+              from sentence_transformers import SentenceTransformer;
+              m = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2', cache_folder='/tmp/hf');
+              v = m.encode(['Startprobe'], normalize_embeddings=True);
+              assert v.shape == (1, 384), v.shape;
+              print('torch', torch.__version__, 'transformers', transformers.__version__, 'encode ok')"
+          - name: orchestrator
+            context: ./orchestrator
+            # Die Claude-Code-CLI verlangt Node >= 22; Debians nodejs ist v20.
+            probe: >-
+              node -e "const m=+process.versions.node.split('.')[0];
+              if(m<22){console.error('Node '+process.versions.node+' < 22');process.exit(1)}"
+              && node --version && claude --version && codex --version
+          - name: agent
+            context: ./agent
+            # Gleiche Fehlerklasse: codex und hyperframes kommen ungepinnt ueber npm,
+            # jede neue Fassung kann eine neuere Node-Version verlangen.
+            probe: >-
+              node -e "const m=+process.versions.node.split('.')[0];
+              if(m<22){console.error('Node '+process.versions.node+' < 22');process.exit(1)}"
+              && node --version && claude --version && codex --version
+              && python -c "import redis, aiohttp, pydantic_settings, httpx, pandas, fitz, docx, pptx, matplotlib, numpy; print('python deps ok')"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Bauen (ohne Cache)
+        run: docker build --no-cache -t "fresh-${{ matrix.image.name }}:ci" "${{ matrix.image.context }}"
+      - name: Startprobe
+        # Ueber die Umgebung statt eingesetzt: die Probe enthaelt selbst Anfuehrungszeichen.
+        env:
+          PROBE: ${{ matrix.image.probe }}
+        run: docker run --rm --entrypoint sh "fresh-${{ matrix.image.name }}:ci" -c "$PROBE"

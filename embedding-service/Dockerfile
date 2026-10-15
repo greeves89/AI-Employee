@@ -14,8 +14,11 @@ WORKDIR /app
 # torch is installed from the CPU-only PyTorch index — the default PyPI wheel
 # pulls ~2 GB of NVIDIA CUDA libraries this CPU-inference service never uses.
 # CPU-only keeps the image ~2 GB smaller and the build dramatically faster.
+# torch steht hier und nicht in requirements.txt (anderer Index) -- Dependabot sieht
+# es deshalb nicht. Beim Anheben von transformers pruefen, ob es ein neueres torch
+# verlangt; 5.19 brach mit 2.6.0 beim Import ab. Die CI-Startprobe faengt das.
 COPY requirements.txt .
-RUN pip install --no-cache-dir torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu \
+RUN pip install --no-cache-dir torch==2.7.1 --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir -r requirements.txt
 
 # Model is downloaded at runtime into the mounted /models volume on first start.
