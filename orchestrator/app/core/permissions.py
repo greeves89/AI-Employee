@@ -38,6 +38,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         # Hoechste Autonomiestufe, die diese Rolle ihren Agenten geben darf
         # (None = unbegrenzt). Siehe app/core/autonomie_grenze.py.
         "max_autonomy_level": None,
+        "search_indexes": None,
     },
     UserRole.MANAGER: {
         "max_agents": 20,
@@ -54,6 +55,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         # Hoechste Autonomiestufe, die diese Rolle ihren Agenten geben darf
         # (None = unbegrenzt). Siehe app/core/autonomie_grenze.py.
         "max_autonomy_level": None,
+        "search_indexes": None,
     },
     UserRole.MEMBER: {
         "max_agents": 5,
@@ -70,6 +72,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         # Hoechste Autonomiestufe, die diese Rolle ihren Agenten geben darf
         # (None = unbegrenzt). Siehe app/core/autonomie_grenze.py.
         "max_autonomy_level": "l3",
+        "search_indexes": None,
     },
     UserRole.VIEWER: {
         "max_agents": 0,
@@ -86,6 +89,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         # Hoechste Autonomiestufe, die diese Rolle ihren Agenten geben darf
         # (None = unbegrenzt). Siehe app/core/autonomie_grenze.py.
         "max_autonomy_level": "l1",
+        "search_indexes": [],
     },
     # Ohne Zuweisung: nichts. Die Liste steht hier trotzdem vollstaendig da, statt
     # sich auf einen Sonderfall im Code zu verlassen — wer spaeter ein Recht
@@ -109,6 +113,7 @@ DEFAULT_PERMISSIONS_BY_ROLE: dict[UserRole, dict[str, Any]] = {
         # Hoechste Autonomiestufe, die diese Rolle ihren Agenten geben darf
         # (None = unbegrenzt). Siehe app/core/autonomie_grenze.py.
         "max_autonomy_level": "l1",
+        "search_indexes": [],
     },
 }
 
@@ -159,6 +164,7 @@ def _merge_defaults(p: dict[str, Any]) -> dict[str, Any]:
         "integration_providers": None,
         "url_host_patterns": None,
         "menu_paths": None,
+        "search_indexes": None,
     }
     out.update(p or {})
     return out
@@ -173,6 +179,20 @@ def can_use_integration(permissions: dict, provider: str | None) -> bool:
         return True
     allowed = permissions.get("integration_providers")
     return allowed is None or provider in allowed
+
+
+def can_use_search_index(permissions: dict, index: str | None) -> bool:
+    """Ob die Gruppe diesen Suchindex nutzen darf ("web" | "news").
+
+    Gleiche Logik wie ``can_use_integration``: None = alles erlaubt, eine Liste
+    schraenkt ein. Der Nachrichtenindex ist damit etwas, das der Admin einrichtet
+    und freigibt — der Nutzer konfiguriert nichts, sein Agent bekommt das
+    Werkzeug angebunden oder eben nicht.
+    """
+    if not index:
+        return True
+    allowed = permissions.get("search_indexes")
+    return allowed is None or index in allowed
 
 
 def can_use_template(permissions: dict, template_id: int | None) -> bool:

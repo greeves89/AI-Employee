@@ -746,6 +746,8 @@ export interface RolePermissions {
   secret_ids?: number[] | null;
   mcp_server_ids?: number[] | null;
   integration_providers?: string[] | null;
+  /** Freigegebene Suchindizes ("web", "news"). null = alle, [] = keiner. */
+  search_indexes?: string[] | null;
   url_host_patterns?: string[] | null;
   menu_paths?: string[] | null;
   /** Höchste Autonomiestufe für die Agenten dieser Rolle (#910). Fehlt = wie die

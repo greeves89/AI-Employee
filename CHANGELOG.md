@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [Unreleased]
+
+### Hinzugefügt
+- Neues Werkzeug `news_search` — der Brave-Nachrichtenindex als eigenes Werkzeug neben der Websuche, mit Datum und Herausgeber je Meldung. Freigabe über die Rollenberechtigung `search_indexes` (Standard: Mitglieder und Admins ja, Viewer und nicht zugewiesene Rollen nein). Wer es nicht nutzen darf, bekommt es auf keiner Laufzeit angeboten (Claude Code, Codex, Custom-LLM, Sprachfront). (#812)
+- Im Rollen-Editor der Verwaltung lässt sich die Freigabe der Suchindizes je Rolle setzen oder entziehen (Block „Suchindizes“, gleiche Bedienung wie bei den Integrationen).
+
+### Sicherheit
+- Der Nachrichtenindex ist nur verfügbar, wenn ein Brave-Provider eingestellt ist — ein SerpApi-Schlüssel wird nie an Brave geschickt.
+- Dieselbe Freigabe gilt an allen Zugängen zum Nachrichtenindex: auch die allgemeine Websuche mit Provider `brave_news` und die Websuche der Sprachfront sucht ohne Freigabe im Webindex statt im Nachrichtenindex.
+- Agenten ohne Besitzer bekommen den Index nur, wenn sie ausdrücklich Plattform-Agenten sind; Agent- und Nutzerkennungen werden vor dem Loggen bereinigt.
+
+---
+
 ## [1.364.0] - 2026-10-15
 
 ### Sicherheit

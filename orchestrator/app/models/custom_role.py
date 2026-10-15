@@ -10,6 +10,7 @@ Permissions JSON shape:
   "secret_ids": int[] | null,          # null = all secrets usable; listed = only these
   "mcp_server_ids": int[] | null,      # null = the servers an admin made available to all (fuer_alle, #909); listed = only these
   "integration_providers": string[] | null, # null = all integrations (M365/Exchange/…); listed = only these providers
+  "search_indexes": string[] | null,   # null = all search indexes; listed = only these ("web", "news" = news_search tool)
   "url_host_patterns": string[] | null,# null = no extra restrictions
   "menu_paths": string[] | null        # null = all menus visible
 }

@@ -382,6 +382,8 @@ function getToolDisplay(tool: string, input: Record<string, unknown>): { label: 
     case "WebSearch":
     case "web_search":
       return { label, description: String(inp.query || "Websuche"), detail: String(inp.query || "") };
+    case "news_search":
+      return { label, description: String(inp.query || "Nachrichtensuche"), detail: String(inp.query || "") };
     case "WebFetch":
     case "web_fetch":
       return { label, description: "Webseite abrufen", detail: String(inp.url || "") };

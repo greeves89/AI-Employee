@@ -188,6 +188,11 @@ class LLMChatHandler:
         # registry) — otherwise every MCP call fails with "Unknown MCP tool".
         self._tool_executor._mcp_client = self._mcp_client
         self._all_tools: list[dict] | None = None   # full catalog (cached), searchable
+        # Mit welchen Freigaben _all_tools zuletzt abgeglichen wurde. Aendern
+        # sie sich, wird der Katalog angepasst statt neu aufgebaut — MCP wird
+        # nicht erneut abgefragt, und ein wegen seines Schemas gestrichenes
+        # Werkzeug bleibt gestrichen.
+        self._katalog_freigaben: dict[str, bool] | None = None
         # Tools loaded on demand via search_tools (recency order; capped). Only these
         # plus the CORE set are actually sent to the LLM — keeps us under the 128 cap.
         self._activated: list[str] = []
@@ -368,9 +373,23 @@ class LLMChatHandler:
     async def _get_catalog(self) -> list[dict]:
         """Full tool catalog (built-in + orchestrator API + MCP), cached. This is the
         SEARCHABLE set — not everything here is sent to the LLM."""
+        # Freigabepflichtige Werkzeuge rausfiltern, BEVOR der Katalog ans Modell
+        # geht. Claude Code und Codex bekommen denselben Filter ueber den
+        # MCP-Server, der bei jedem tools/list neu fragt; hier wird bei jedem
+        # Aufruf nachgesehen (begrenzt zwischengespeichert) und der Katalog
+        # angepasst, wenn sich etwas geaendert hat — sonst bliebe ein Aussetzer
+        # oder eine alte Rolle fuer immer haengen (Harness-Paritaet).
+        from app.tools.capabilities import (
+            freigaben, freigaben_nachziehen, freigegebene_werkzeuge,
+        )
+        erlaubt = await freigaben()
         if self._all_tools is not None:
+            if erlaubt != getattr(self, "_katalog_freigaben", None):
+                # An Ort und Stelle: Streichungen der Sitzung bleiben erhalten.
+                self._all_tools[:] = freigaben_nachziehen(self._all_tools, erlaubt)
+                self._katalog_freigaben = erlaubt
             return self._all_tools
-        catalog = list(TOOL_DEFINITIONS)
+        catalog = await freigegebene_werkzeuge(list(TOOL_DEFINITIONS), erlaubt)
         try:
             mcp_tools = await self._mcp_client.discover_tools()
             if mcp_tools:
@@ -379,6 +398,7 @@ class LLMChatHandler:
         except Exception as e:
             logger.warning(f"MCP tool discovery failed: {e}")
         self._all_tools = catalog
+        self._katalog_freigaben = erlaubt
         # Pre-activate the agent's integration MCP tools (M365/msgraph, Exchange, …)
         # so they are ALWAYS callable. Without this they're only reachable via
         # search_tools, and the model unreliably claims "no M365 tool available"
