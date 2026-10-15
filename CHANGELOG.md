@@ -19,6 +19,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.363.3] - 2026-10-15
+
+### Neu
+- **Sicherung auf ein NAS, mehrmals am Tag.** `install-backup-cron.sh --systemd` nimmt
+  jetzt `--zeiten "02:30,14:30"`, `--mount <mountpunkt>` und `--keep-daily <n>`. Die
+  Sicherung läuft mit niedrigster CPU- und Platten-Priorität.
+
+### Behoben
+- **Sicherung schrieb ohne eingehängtes Ziel auf die Platte der Anlage.** Mit
+  `BACKUP_MOUNT` bricht `backup.sh` ab, bevor es etwas anlegt, wenn das Laufwerk nicht
+  eingehängt ist, und meldet den Fehler an die Karte „Datensicherung“.
+- **Keine Platzprüfung vor dem Sichern.** Jeder Lauf prüft vorher, ob am Ziel Platz für
+  eine weitere Sicherung ist (Größe der letzten plus 2 GB Reserve).
+- Das Einrichten des systemd-Timers startete sofort eine Sicherung (`Requires=` im Timer);
+  jetzt läuft die erste erst zur geplanten Zeit oder von Hand.
+
+---
+
 ## [1.363.2] - 2026-10-15
 
 ### Behoben
