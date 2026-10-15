@@ -34,6 +34,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   nicht) — die Karte konnte „Image veraltet“ nie zeigen.
 - Ansicht-Umschalter auch in der einfachen Ansicht (Karten und Liste).
 
+### Abhängigkeiten
+- Frontend: Radix-Komponenten, `lucide-react` 1.53, `next` 16.4, `postcss`, `@types/node` und `react-force-graph-3d` auf den neuesten Minor-Stand (#929).
+- Embedding-Dienst: `fastapi` 0.143.0, `uvicorn` 0.54.0, `pydantic` 2.14.0 (#921, #927, #928).
+
 ### Wichtig beim Update
 - Migration `c7e2a9d4f1b3`: neue Spalten `users.ui_preferences` und `agents.last_active_at`.
 
