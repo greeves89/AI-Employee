@@ -138,6 +138,32 @@ version has not been built, it falls back to building locally. Force a local bui
 `abbilder_bereitstellen 1` (or `./scripts/update.sh --lokal-bauen`); use an internal
 mirror with `AI_EMPLOYEE_REGISTRY` in `.env`.
 
+**Signature check (optional, recommended).** Every manifest is signed keyless via GitHub
+OIDC, carrying the service name as an annotation. If
+[cosign](https://docs.sigstore.dev/cosign/system_config/installation/) is installed,
+`abbilder_bereitstellen` verifies the pulled digest before it uses the image. It only accepts
+a signature from the images workflow of this account/repository, for exactly this version and
+exactly this service. On a mismatch it removes the pulled image and builds locally. Without
+cosign it logs a hint and behaves as before.
+
+Switches (environment or `.env` — the update scripts now read both for these keys):
+
+| Key | Effect |
+| --- | --- |
+| `AI_EMPLOYEE_SIGNATUR_PRUEFEN=0` | Skip the check (only `0`/`false`/`no`/`off`/`nein`/`aus` switch it off) |
+| `AI_EMPLOYEE_SIGNATUR_IDENTITAET` | Expected signer identity as a regexp — required for an internal mirror, which carries your own signature instead of ours. Without it, a non-`ghcr.io` registry is pulled but not verified. |
+| `AI_EMPLOYEE_SIGNATUR_AUSSTELLER` | Expected OIDC issuer (default: GitHub Actions) |
+
+Not covered: pulling the images without `./scripts/update.sh` (plain
+`docker compose pull` with `docker-compose.community.yml`, or the demo VM setup) performs no
+verification. Verify by hand with:
+
+```bash
+cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/(?i:OWNER/AI-Employee)/\.github/workflows/images\.yml@refs/tags/vVERSION$' \
+  -a dienst=orchestrator ghcr.io/OWNER/ai-employee-orchestrator:VERSION
+```
+
 ### Step 4: Stop Current Services
 
 ```bash

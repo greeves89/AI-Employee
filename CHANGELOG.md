@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.365.0] - 2026-10-15
+
+### Sicherheit
+- **Die fertigen Abbilder werden jetzt signiert, und die Anlage prüft die Signatur, bevor sie
+  ein Abbild benutzt.** Bisher holte jede Anlage die Abbilder allein anhand des Versions-Tags.
+  Wer Zugriff auf das Konto oder den Bau-Vorgang erlangt, kann unter einem gültigen Tag ein
+  fremdes Abbild ablegen — die Anlage hätte es beim nächsten Update gestartet, ohne dass
+  irgendetwas aufgefallen wäre. Signiert wird beim Bauen schlüssellos über die Kennung des
+  Bau-Vorgangs. Geprüft wird nicht der Tag, sondern genau das heruntergeladene Abbild, und
+  anerkannt wird nur eine Signatur, die aus dem Bau-Vorgang **genau dieser Version** stammt
+  **und für genau diesen Dienst** ausgestellt ist — sonst ließe sich ein gültig signiertes
+  Abbild auf den Namen eines anderen Dienstes kopieren und der Agent liefe mit den Zugängen
+  des Orchestrators. Stimmt etwas nicht, wird das geholte Abbild **entfernt** und wie früher
+  lokal gebaut; liegenbleiben darf es nicht, sonst startet es ein späteres
+  `docker compose up -d` von Hand doch noch.
+- **Bestehende Anlagen brechen dadurch nicht.** Das Prüfwerkzeug (`cosign`) ist neu und
+  deshalb freiwillig: fehlt es, steht ein Hinweis im Protokoll und es bleibt beim bisherigen
+  Verhalten. Abschalten mit `AI_EMPLOYEE_SIGNATUR_PRUEFEN=0`, eigene Signatur-Kennung (etwa
+  für einen internen Spiegel) mit `AI_EMPLOYEE_SIGNATUR_IDENTITAET` — beides neu in
+  `.env.example` beschrieben. Wer einen Spiegel ohne diese Angabe betreibt, bekommt wie
+  bisher seine Abbilder, nur ungeprüft.
+- **Noch nicht abgedeckt:** Wer die Abbilder ohne `scripts/update.sh` holt (die
+  Community-Compose-Datei, der Demo-Rechner), bekommt weiterhin keine Prüfung. Und solange
+  `cosign` auf einer Anlage nicht installiert ist, prüft sie nichts — der Hinweis im
+  Update-Protokoll ist die einzige Aufforderung dazu.
+
+### Behoben
+- **`AI_EMPLOYEE_REGISTRY` aus `.env` wirkte nur zur Hälfte.** Das Handbuch nennt `.env` als
+  Ort für einen internen Spiegel; `docker compose` liest die Datei selbst, die Update-Skripte
+  aber nicht. Sie gingen deshalb weiter von der Standard-Registry aus. Mit der neuen
+  Signaturprüfung hätte das jede Spiegel-Anlage bei **jedem** Update in einen vollständigen
+  lokalen Neubau geschickt (20 bis 40 Minuten auf kleiner Hardware).
+
+---
+
 ## [1.364.3] - 2026-10-15
 
 ### Intern
