@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.363.4] - 2026-10-15
+
+### Sicherheit
+- `backup.sh` legt keine Dateien mit festem Namen mehr in `/tmp` an (Ersatzprotokoll bei
+  fehlendem Ziel, Zwischendatei der Platzprüfung). Das Skript läuft als root; ein Symlink an
+  dieser Stelle hätte das Schreiben auf eine beliebige Datei umlenken können. Eingeführt in
+  v1.363.3.
+
+---
+
 ## [1.363.3] - 2026-10-15
 
 ### Behoben

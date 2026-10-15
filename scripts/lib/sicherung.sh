@@ -253,14 +253,14 @@ ziel_frei_kb() {
 # 0 wenn es noch keine gibt. Maßstab für den Platz der nächsten.
 #   ziel_bedarf_kb <sicherungsziel>
 ziel_bedarf_kb() {
-    local ziel="$1" o letzte="" kb
-    for o in "$ziel"/daily/* "$ziel"/weekly/*; do
+    local ziel="$1" letzte="" kb
+    # Ohne Zwischendatei: backup.sh läuft als root, eine Datei mit festem Namen
+    # in /tmp ließe sich per Symlink auf eine fremde Datei umlenken.
+    letzte=$(for o in "$ziel"/daily/* "$ziel"/weekly/*; do
         [ -d "$o" ] || continue
         [ "$(sicherung_zustand "$o")" = "vollstaendig" ] || continue
         echo "$(basename "$o") $o"
-    done | sort | tail -n 1 > "${TMPDIR:-/tmp}/.ziel_bedarf.$$"
-    letzte=$(cut -d' ' -f2- < "${TMPDIR:-/tmp}/.ziel_bedarf.$$")
-    rm -f "${TMPDIR:-/tmp}/.ziel_bedarf.$$"
+    done | sort | tail -n 1 | cut -d' ' -f2-)
     if [ -z "$letzte" ]; then
         echo 0
         return 0
