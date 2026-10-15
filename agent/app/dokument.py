@@ -72,7 +72,12 @@ ANZEIGE_HINWEIS = (
 def _pdf_lesen(pfad: str | os.PathLike) -> tuple[list[tuple[float, float]], list[str]]:
     """(Seitengrößen in pt, Text je Seite). pymupdf im Abbild, sonst pypdf."""
     try:
-        import fitz  # pymupdf
+        # ``import fitz`` schreibt in neueren pymupdf-Versionen eine Warnung nach
+        # stdout — das zerbrach die JSON-Ausgabe von ``dokument pruefen --json``.
+        try:
+            import pymupdf as fitz
+        except ImportError:
+            import fitz  # aeltere pymupdf-Versionen
 
         with fitz.open(str(pfad)) as doc:
             groessen = [(p.rect.width, p.rect.height) for p in doc]

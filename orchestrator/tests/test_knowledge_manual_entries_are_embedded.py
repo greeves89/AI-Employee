@@ -104,9 +104,13 @@ class AnbieterVerfuegbarTests(unittest.IsolatedAsyncioTestCase):
     """MC/DC über (lokal erreichbar, Cloud-Schlüssel gesetzt)."""
 
     async def _verfuegbar(self, lokal, schluessel):
+        # Nicht ueber den Modulpfad patchen: test_memory_linker ersetzt
+        # ``app.services.embedding_service`` in sys.modules schon beim
+        # Einsammeln durch eine Attrappe — der Pfad zeigte dann dorthin.
         svc = EmbeddingService()
         with patch.object(svc, "_check_local_available", new=AsyncMock(return_value=lokal)), \
-             patch("app.services.embedding_service.settings", SimpleNamespace(openai_api_key=schluessel)):
+             patch.dict(EmbeddingService.available.__globals__,
+                        {"settings": SimpleNamespace(openai_api_key=schluessel)}):
             return await svc.available()
 
     async def test_nur_lokal(self):

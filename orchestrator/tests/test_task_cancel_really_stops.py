@@ -311,8 +311,10 @@ class TheUiHasAManualStopTests(unittest.TestCase):
         sonst_ab = re.compile(r"\n\s*:").search(block, dann_ab).start()
         sonst_bis = block.index("\n", sonst_ab + 1)
         dann, sonst = block[dann_ab:sonst_ab], block[sonst_ab:sonst_bis]
-        self.assertNotIn("opacity-0 group-hover:opacity-100", dann)
-        self.assertIn("opacity-0 group-hover:opacity-100", sonst)
+        # Versteckt wird nur auf Geraeten mit Maus (`can-hover:`) — auf dem
+        # Handy gibt es kein Darueberfahren, dort bleibt der Knopf sichtbar.
+        self.assertNotRegex(dann, r"(^|[\s:\"])opacity-0\b")
+        self.assertIn("can-hover:opacity-0 can-hover:group-hover:opacity-100", sonst)
 
     def test_the_words_distinguish_the_two_cases(self):
         """Eine wartende Aufgabe nimmt man aus der Schlange, eine laufende

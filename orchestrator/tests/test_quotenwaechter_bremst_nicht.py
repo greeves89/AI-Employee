@@ -67,6 +67,7 @@ class PrioritaetTest(unittest.TestCase):
         container = _FakeContainer()
         dienst = DockerService.__new__(DockerService)
         dienst.client = _FakeClient(container)
+        dienst._platz_gemessen = {}  # setzt sonst __init__
         ergebnis = dienst.get_workspace_disk_usage("c1", 10.0)
         return ergebnis, container.befehle
 

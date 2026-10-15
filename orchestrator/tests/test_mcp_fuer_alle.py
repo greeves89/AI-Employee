@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core import mcp_zugriff
 from app.core.agent_mcp_servers import servers_for_agent, voice_toolspecs
 from app.models.agent import Agent, AgentState
+from app.models.audit_log import AuditLog
 from app.models.custom_role import CustomRole
 from app.models.mcp_server import McpServer
 from app.models.user import User, UserRole
@@ -41,7 +42,8 @@ class McpFuerAlleBasis(unittest.IsolatedAsyncioTestCase):
         async with self.engine.begin() as conn:
             await conn.run_sync(
                 McpServer.metadata.create_all,
-                tables=[McpServer.__table__, User.__table__, CustomRole.__table__, Agent.__table__],
+                tables=[McpServer.__table__, User.__table__, CustomRole.__table__, Agent.__table__,
+                        AuditLog.__table__],
             )
         self.db = async_sessionmaker(self.engine, expire_on_commit=False)()
         self.rolle = CustomRole(id=7, name="Vertrieb", permissions={"mcp_server_ids": []})
