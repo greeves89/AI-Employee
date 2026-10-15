@@ -21,6 +21,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { startServer } from "./_transport.mjs";
+import { gateAktivieren } from "./_tool_gate.mjs";
 
 const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v1`;
 const AGENT_TOKEN = process.env.AGENT_TOKEN || "";
@@ -588,6 +589,7 @@ export function buildServer() {
     { name: "mcp-computer-use", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
+  gateAktivieren(server, "desktop");  // Autonomie-Gate fuer jeden Werkzeugaufruf (#781)
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 

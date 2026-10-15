@@ -23,6 +23,8 @@
  * dieses Verhalten abgeschaut ist.
  */
 
+import { CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+
 const HOOK_URL = process.env.AGENT_HOOK_URL || "http://localhost:8080/hooks/pretooluse";
 // Gleicher Wert wie Claude Codes PreToolUse-Hook-Timeout
 // (agent_manager.py::_CLAUDE_PRETOOLUSE_SETTINGS_JSON) — deckt denselben
@@ -85,4 +87,47 @@ export async function checkToolPermission(serverLabel, toolName, toolInput) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Umschliesst einen CallTool-Handler mit dem Autonomie-Gate: erst die
+ * Entscheidung des lokalen Hooks, dann (nur bei "erlaubt") der Handler.
+ * Eine Ablehnung kommt als Werkzeugfehler zurueck, ohne Seitenwirkung.
+ *
+ * @param {string} serverLabel
+ * @param {(request: object) => Promise<object>} handler
+ */
+export function mitGate(serverLabel, handler) {
+  return async (request) => {
+    const { name, arguments: args } = request?.params || {};
+    const gate = await checkToolPermission(serverLabel, name, args);
+    if (!gate.allowed) {
+      return { content: [{ type: "text", text: gate.reason }], isError: true };
+    }
+    return handler(request);
+  };
+}
+
+/**
+ * Schaltet das Gate fuer einen ganzen MCP-Server ein (Issue #781 PR 2): jeder
+ * spaeter registrierte CallTool-Handler wird automatisch mit `mitGate`
+ * umschlossen. Eine Zeile direkt nach `new Server(...)` genuegt — der Handler
+ * selbst bleibt unveraendert, und ein neu hinzugefuegter Server kann das Gate
+ * nicht vergessen, solange er diese Zeile traegt (Test in
+ * agent/tests/test_mcp_werkzeugrechte.py).
+ *
+ * @param {import("@modelcontextprotocol/sdk/server/index.js").Server} server
+ * @param {string} serverLabel - derselbe Schluessel wie in
+ *   `codex_runner.py::_ensure_codex_mcp_config` (`builtin_servers`)
+ */
+export function gateAktivieren(server, serverLabel) {
+  const original = server.setRequestHandler.bind(server);
+  server.setRequestHandler = (schema, handler) =>
+    original(
+      schema,
+      schema === CallToolRequestSchema || schema?.shape?.method?.value === "tools/call"
+        ? mitGate(serverLabel, handler)
+        : handler
+    );
+  return server;
 }

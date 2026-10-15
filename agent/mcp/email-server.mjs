@@ -17,6 +17,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { gateAktivieren } from "./_tool_gate.mjs";
 
 const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v1`;
 const AGENT_ID = process.env.AGENT_ID || "unknown";
@@ -118,6 +119,7 @@ export function buildServer() {
     { name: "email", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
+  gateAktivieren(server, "email");  // Autonomie-Gate fuer jeden Werkzeugaufruf (#781)
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [

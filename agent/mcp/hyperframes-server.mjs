@@ -21,6 +21,7 @@ import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { gateAktivieren } from "./_tool_gate.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -59,6 +60,7 @@ export function buildServer() {
     { name: "hyperframes", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
+  gateAktivieren(server, "hyperframes");  // Autonomie-Gate fuer jeden Werkzeugaufruf (#781)
 
   const HYPERFRAMES_DOCS = `# Hyperframes — Video Rendering Guide for Agents
 
