@@ -32,6 +32,10 @@
 #   COMPOSE_PROJECT_NAME  Compose-Projekt (Standard: am Postgres-Container abgelesen)
 #   ORCHESTRATOR_URL      Für den Herzschlag (Standard: http://127.0.0.1:8000)
 #   BACKUP_KEEP_DAILY / BACKUP_KEEP_WEEKLY   Aufbewahrung (7 / 4)
+#   BACKUP_MOUNT          Mountpunkt, der eingehängt sein MUSS (z. B. ein NAS).
+#                         Ist er es nicht, bricht der Lauf ab, bevor er etwas
+#                         anlegt — sonst landete die Sicherung auf der Platte
+#                         der Anlage und füllte sie.
 #
 # Rückspielen: ./scripts/restore.sh --backup <ordner>
 
@@ -68,8 +72,15 @@ START=$(date +%s)
 SCHRITT="Vorbereitung"
 VOLUME_ANZAHL=0
 
-mkdir -p "$BACKUP_DIR"
-chmod 700 "$BACKUP_DIR"
+# Ziel nicht eingehängt: protokollieren, wo es sicher geht, und nichts anlegen.
+ZIEL_FEHLT=false
+if [ -n "${BACKUP_MOUNT:-}" ] && ! ziel_eingehaengt "$BACKUP_MOUNT"; then
+    ZIEL_FEHLT=true
+    LOG="${TMPDIR:-/tmp}/ai-employee-backup.log"
+else
+    mkdir -p "$BACKUP_DIR"
+    chmod 700 "$BACKUP_DIR"
+fi
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
 
@@ -122,6 +133,13 @@ beim_ende() {
 trap beim_ende EXIT
 
 die() { log "FEHLER: $*"; exit 1; }
+
+SCHRITT="Ziel"
+$ZIEL_FEHLT && die "Sicherungsziel ${BACKUP_MOUNT} ist nicht eingehängt — nichts gesichert."
+if ! meldung=$(ziel_platz_pruefen "$BACKUP_DIR"); then
+    die "$meldung"
+fi
+SCHRITT="Vorbereitung"
 
 command -v docker >/dev/null 2>&1 || die "docker nicht gefunden"
 command -v gzip >/dev/null 2>&1 || die "gzip nicht gefunden"
