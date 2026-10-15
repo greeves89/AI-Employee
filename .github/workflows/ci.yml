@@ -208,6 +208,28 @@ jobs:
   #    TypeScript-/Build-Fehler im Frontend wurde erst beim manuellen Build vor
   #    einem Deploy sichtbar, nicht schon beim Push/PR. Oeffentliches Repo, GitHub
   #    Actions ist damit kostenlos — kein Grund, das laenger nur lokal zu pruefen. ──
+  # ── MCP-Server der Agenten (Node). Die Tests dort (Autonomie-Gate #781,
+  #    Transport, Dokumentpruefung) liefen bis v1.363.7 nur lokal. ──
+  mcp-tests:
+    name: MCP-Server (node --test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: agent/mcp/package-lock.json
+      - name: Install dependencies
+        working-directory: agent/mcp
+        run: npm ci
+      - name: Syntax aller Server
+        working-directory: agent/mcp
+        run: for f in *.mjs; do node --check "$f"; done
+      - name: Run tests
+        working-directory: agent/mcp
+        run: node --test
+
   frontend-build:
     name: Frontend build + typecheck
     runs-on: ubuntu-latest

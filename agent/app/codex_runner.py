@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import functools
 import json
 import time
 import logging
 import os
 import signal
+import subprocess
 from typing import AsyncIterator
 
 from app import codex_auth_sync
@@ -250,6 +252,13 @@ class CodexAgentRunner:
             "--dangerously-bypass-approvals-and-sandbox",
             "-m", model,
         ]
+        # Der PreToolUse-Hook (config.toml, CODEX_HOOK_SKRIPT) stammt aus dem
+        # Abbild, nicht vom Nutzer — ohne diesen Schalter liefe er erst nach
+        # einer interaktiven Vertrauensbestaetigung, also nie (#781). Eine
+        # aeltere Codex-Version ohne den Schalter bricht sonst mit
+        # "unexpected argument" ab; dann bleibt es beim Gate in den MCP-Servern.
+        if await asyncio.to_thread(_codex_kennt_hook_trust):
+            common.append("--dangerously-bypass-hook-trust")
         # Per-message reasoning level chosen by the user in the chat. Passed as a
         # CLI override (not the config TOML) so it applies to THIS turn only.
         # Stufe am Lauf gewinnt; sonst die Standard-Denktiefe des Agenten —
@@ -579,6 +588,49 @@ def _valid_http_url(url: str) -> bool:
         return False
 
 
+@functools.lru_cache(maxsize=1)
+def _codex_kennt_hook_trust() -> bool:
+    """Kennt das installierte Codex ``--dangerously-bypass-hook-trust``? Einmal je Prozess geprueft."""
+    try:
+        hilfe = subprocess.run(
+            ["codex", "exec", "--help"], capture_output=True, text=True, timeout=20,
+        ).stdout
+    except Exception:  # noqa: BLE001
+        return False
+    if "--dangerously-bypass-hook-trust" in hilfe:
+        return True
+    logger.warning("Codex kennt --dangerously-bypass-hook-trust nicht — PreToolUse-Hook bleibt aus (#781)")
+    return False
+
+
+#: Weiterleitung von Codex' PreToolUse-Hook zum lokalen Entscheidungspunkt.
+CODEX_HOOK_SKRIPT = "/opt/mcp/codex-hook.mjs"
+
+
+def _codex_hook_abschnitt() -> list[str]:
+    """PreToolUse-Hook fuer JEDEN Werkzeugaufruf (Issue #781 PR 3).
+
+    Codex schickt Shell (``Bash``), Dateiaenderungen (``apply_patch``) und
+    MCP-Werkzeuge durch diesen Hook; das Skript fragt denselben lokalen
+    Entscheidungspunkt wie Claude Codes HTTP-Hook. Damit gilt die
+    Autonomie-Matrix fuer Codex genauso fein wie fuer Claude Code — vorher
+    lief Codex ganz ohne Durchsetzung. Tabellen (``[[...]]``) stehen am Ende
+    der Datei, nach allen ``[mcp_servers.*]``-Abschnitten.
+    """
+    return [
+        "",
+        "# Autonomie-Gate fuer jeden Werkzeugaufruf (#781)",
+        "[[hooks.PreToolUse]]",
+        'matcher = ".*"',
+        "",
+        "[[hooks.PreToolUse.hooks]]",
+        'type = "command"',
+        f'command = "node {CODEX_HOOK_SKRIPT}"',
+        "timeout = 15",
+        "",
+    ]
+
+
 def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
     """Write ~/.codex/config.toml with built-in + custom MCP servers.
 
@@ -707,6 +759,8 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
                 lines.append("")
         except Exception as e:
             logger.warning("Failed to parse CUSTOM_MCP_SERVERS for Codex config: %s", e)
+
+    lines.extend(_codex_hook_abschnitt())
 
     # Write with owner-only permissions (0o600) — contains AGENT_TOKEN
     data = "\n".join(lines).encode()

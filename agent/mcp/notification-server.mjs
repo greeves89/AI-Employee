@@ -19,6 +19,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import fs from "node:fs";
 import path from "node:path";
+import { gateAktivieren } from "./_tool_gate.mjs";
 
 const API = `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8000"}/api/v1`;
 const AGENT_ID = process.env.AGENT_ID || "unknown";
@@ -90,6 +91,7 @@ export function buildServer() {
     { name: "mcp-notifications", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
+  gateAktivieren(server, "notification");  // Autonomie-Gate fuer jeden Werkzeugaufruf (#781)
 
   // --- List available tools ---
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
