@@ -394,8 +394,13 @@ async def respond_to_approval(
             approval = await db.scalar(
                 select(CommandApproval).where(CommandApproval.id == int(approval_id))
             )
+            negative = body.choice.lower() in {"deny", "denied", "no", "nein", "cancel", "abort", "ablehnen"}
+            if approval and approval.status == ApprovalStatus.PENDING and not negative \
+                    and (approval.meta or {}).get("kind") == "mail_senden":
+                # Freigeben HEISST hier senden — das geht nur dort, wo die Mail zu sehen ist
+                # und der Server sie verschickt (Seite Heute / Freigaben). Ablehnen geht überall.
+                approval = None
             if approval and approval.status == ApprovalStatus.PENDING:
-                negative = body.choice.lower() in {"deny", "denied", "no", "nein", "cancel", "abort", "ablehnen"}
                 approval.status = ApprovalStatus.DENIED if negative else ApprovalStatus.APPROVED
                 approval.resolved_at = datetime.now(timezone.utc)
                 approval.user_response = body.choice

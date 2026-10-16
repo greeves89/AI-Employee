@@ -321,6 +321,15 @@ class SchedulerService:
                         await projekt_git.alle_abgleichen(self.redis)
                     except Exception as e:
                         logger.warning("[Scheduler] Git-Abgleich: %s", e)
+                # Fällige Erinnerungen (Sekretariat) — einmal je Takt (30 s), eine kleine Abfrage.
+                try:
+                    from app.core import sekretariat
+                    from app.db.session import async_session_factory
+
+                    async with async_session_factory() as edb:
+                        await sekretariat.erinnerungen_melden(edb)
+                except Exception as e:
+                    logger.warning("[Scheduler] Erinnerungen: %s", e)
                 # Missed-run watchdog: catches schedules whose task never reported
                 # a terminal status (silent drops). Self-throttles to once per hour.
                 try:
@@ -1074,6 +1083,10 @@ class SchedulerService:
         auftrag_metadaten = {"schedule_id": schedule.id, "adaptive": ist_adaptiv}
         if takt_team_id:
             auftrag_metadaten["team_id"] = takt_team_id
+        elif schedule.team_id:
+            # schedules.team_id setzt nur Server-Code (Projekt-Termine, Sekretariat) — die
+            # Zeitplan-API kennt die Spalte nicht. Der Lauf zählt dann zum Team (Kosten, Budget).
+            auftrag_metadaten["team_id"] = schedule.team_id
         try:
             task = await router.create_and_route_task(
                 title=f"[Scheduled] {schedule.name}",

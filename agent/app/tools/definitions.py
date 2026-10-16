@@ -848,6 +848,21 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "erinnerung_anlegen",
+            "description": "Sekretariat only: remind your human at a given time (shown on the page 'Heute' and sent as a notification). Use it for deadlines and appointments you find in mails. faellig is ISO date-time, e.g. 2026-10-20T09:00 (local time of the installation).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "What to remind of — short, in German."},
+                    "faellig": {"type": "string", "description": "ISO date-time, e.g. 2026-10-20T09:00"}
+                },
+                "required": ["text", "faellig"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "projekt_termin_anlegen",
             "description": "Lead only: schedule a meeting of the project's agents — art=daily (Mon–Fri at uhrzeit), art=weekly (wochentag + uhrzeit) or art=einmalig (datum YYYY-MM-DD + uhrzeit). Minutes go to the project knowledge, action items become cards in 'bereit'.",
             "parameters": {

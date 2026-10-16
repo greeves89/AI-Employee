@@ -742,6 +742,18 @@ export function buildServer() {
         },
       },
       {
+        name: "erinnerung_anlegen",
+        description: "Sekretariat only: remind your human at a given time (shown on the page 'Heute' and sent as a notification). Use it for deadlines and appointments you find in mails. faellig is ISO date-time, e.g. 2026-10-20T09:00 (local time of the installation).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: { type: "string", description: "What to remind of — short, in German." },
+            faellig: { type: "string", description: "ISO date-time, e.g. 2026-10-20T09:00" },
+          },
+          required: ["text", "faellig"],
+        },
+      },
+      {
         name: "projekt_termin_anlegen",
         description:
           "Lead only: schedule a meeting of the project's agents — art=daily (Mon–Fri at uhrzeit), art=weekly " +
@@ -1860,6 +1872,14 @@ export function buildServer() {
 
       case "chat_search":
         return chatSearch(args);
+
+      case "erinnerung_anlegen": {
+        const e = await apiCall("/sekretariat/erinnerungen", {
+          method: "POST",
+          body: JSON.stringify({ text: args.text, faellig: args.faellig }),
+        });
+        return { content: [{ type: "text", text: `Erinnerung angelegt für ${e.faellig}: ${e.text}` }] };
+      }
 
       case "projekt_gespraech_lesen":
       case "projekt_gespraech_schreiben":

@@ -62,7 +62,7 @@ _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #:
 #: **Wer eine Migration ergaenzt, die eine Tabelle anlegt, traegt sie hier
 #: ein** -- sonst faellt dieser Test mit einer irrefuehrenden Meldung um.
-_TABELLEN_NACH_DER_MARKE = ("app_favorites", "projekt_karten", "projekt_nachrichten")
+_TABELLEN_NACH_DER_MARKE = ("app_favorites", "projekt_karten", "projekt_nachrichten", "erinnerungen")
 
 #: Spalten, die eine Migration NACH ``_REVISION_DAVOR`` an einer schon
 #: BESTEHENDEN Tabelle erst anlegt (Paare aus Tabelle, Spalte).
@@ -100,6 +100,7 @@ _SPALTEN_NACH_DER_MARKE = (
     ("teams", "repo_secret_id"),
     ("teams", "budget_usd"),
     ("kosten_historie", "team_id"),
+    ("teams", "art"),
     ("meeting_rooms", "team_id"),
     ("schedules", "team_id"),
     # #941 adaptiver Takt

@@ -6,7 +6,7 @@ import {
   Plug, CheckCircle2, Loader2, RefreshCw, AlertCircle,
   Network, ChevronRight, Wrench, Brain, Bell, Cpu,
   Shield, Plus, Trash2, ChevronDown, KeyRound, ExternalLink,
-  Eye, PenLine, Lock, Users,
+  Eye, PenLine, Lock, ShieldCheck, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
@@ -61,7 +61,8 @@ interface IntegrationSelectorProps {
 export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [agentIntegrations, setAgentIntegrations] = useState<string[]>([]);
-  const [msgraphAccess, setMsgraphAccess] = useState<"read" | "write">("read");
+  // „entwurf“: Mails nur als Entwurf, gesendet wird nach Freigabe durch den Menschen.
+  const [msgraphAccess, setMsgraphAccess] = useState<"read" | "entwurf" | "write">("read");
   const [exchangeAccess, setExchangeAccess] = useState<"read" | "write">("read");
   // Plattformweiter Nur-Lesen-Zwang für Microsoft (M365 + on-prem Exchange).
   // Solange er steht, ist Read+Write gesperrt — der Server würde es ohnehin ablehnen.
@@ -115,7 +116,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
       ]);
       setIntegrations(all);
       setAgentIntegrations(agentIntResp.integrations);
-      setMsgraphAccess(agentIntResp.msgraph_access === "write" ? "write" : "read");
+      setMsgraphAccess(agentIntResp.msgraph_access === "write" ? "write" : agentIntResp.msgraph_access === "entwurf" ? "entwurf" : "read");
       setExchangeAccess(agentIntResp.exchange_access === "write" ? "write" : "read");
       setMsReadOnly(agentIntResp.microsoft_read_only !== false);
       setMcpServers(servers);
@@ -561,6 +562,21 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                         <button
                           type="button"
                           disabled={msReadOnly}
+                          onClick={() => { setMsgraphAccess("entwurf"); setChanged(true); }}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                            msgraphAccess === "entwurf"
+                              ? "bg-primary/10 text-primary border-primary/30"
+                              : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.04]",
+                            msReadOnly && "opacity-40 cursor-not-allowed hover:bg-transparent"
+                          )}
+                        >
+                          {msReadOnly ? <Lock className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
+                          Entwürfe + Freigabe
+                        </button>
+                        <button
+                          type="button"
+                          disabled={msReadOnly}
                           onClick={() => { setMsgraphAccess("write"); setChanged(true); }}
                           className={cn(
                             "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
@@ -577,7 +593,11 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                       <p className="text-[11px] text-muted-foreground/60 mt-2">
                         {msReadOnly
                           ? "Microsoft ist plattformweit auf Nur-Lesen gestellt. Kein Agent kann senden oder ändern — ein Administrator löst das in den Einstellungen."
-                          : "Lesen + Schreiben: Der Agent darf schreiben — ausgehende Mail wird als Entwurf angelegt."}
+                          : msgraphAccess === "entwurf"
+                            ? "Entwürfe + Freigabe: Der Agent legt Mails nur als Entwurf an und darf ablegen. Gesendet wird erst, wenn du unter Freigaben zustimmst."
+                            : msgraphAccess === "write"
+                              ? "Lesen + Schreiben: Der Agent sendet Mails und ändert Termine selbst — ohne Rückfrage."
+                              : "Lesen: Der Agent liest Mails und Termine, schreibt nichts."}
                       </p>
                     </div>
                   )}

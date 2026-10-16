@@ -25,6 +25,19 @@ def read_only_enabled() -> bool:
     return bool(getattr(settings, "msgraph_read_only", True))
 
 
+#: Modus „Entwurf“ (nur M365): lesen, Entwürfe anlegen und ablegen; gesendet wird erst
+#: nach Freigabe durch den Menschen (core/mail_freigabe.py). Auch er gilt nur, solange
+#: der plattformweite Nur-Lesen-Zwang aus ist — der Schalter bleibt die oberste Regel.
+ENTWURF = "entwurf"
+
+
+def entwurf_enabled(agent_config: dict | None) -> bool:
+    """Darf dieser Agent Mails als Entwurf anlegen und zur Freigabe stellen?"""
+    if read_only_enabled():
+        return False
+    return (agent_config or {}).get("msgraph_access", "read") == ENTWURF
+
+
 def write_enabled(agent_config: dict | None, access_key: str) -> bool:
     """Darf dieser Agent ueber den genannten Weg schreiben?
 

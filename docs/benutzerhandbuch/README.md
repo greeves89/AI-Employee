@@ -1169,7 +1169,10 @@ die Agenten nicht steuern.
 ## 6b. Finanzen: was die Agenten kosten *(seit 1.373.0)*
 
 Seitenleiste → **Finanzen**. Die Seite zeigt, was deine Agenten kosten — **je Monat, je Projekt
-und je Agent**. Mitglieder sehen nur ihre eigenen Agenten und Projekte; Administratoren sehen die
+und je Agent**.
+
+![Seite „Finanzen“: Kacheln, Verlauf je Monat, Projekte und Agenten](screenshots/80-finanzen.png)
+ Mitglieder sehen nur ihre eigenen Agenten und Projekte; Administratoren sehen die
 Kosten der ganzen Anlage, aber auch hier nur die Projekte, die sie selbst angelegt haben oder die
 ihnen freigegeben sind.
 
@@ -1195,6 +1198,8 @@ die Zeile **Kosten diesen Monat** (mit Budget); ein Klick darauf führt hierher.
 2. Den Betrag eintragen (in der Währung der Anlage) — leer lassen heißt: kein Budget.
 3. **Speichern** (oder Enter).
 
+![Monatsbudget eines Projekts eintragen](screenshots/81-finanzen-projektbudget.png)
+
 Der Balken darunter zeigt den Verbrauch: grün, ab 80 % gelb, ab 100 % rot. **Ist das Budget
 aufgebraucht, starten bis Monatsende keine neuen Läufe des Projekts mehr** — weder Karten noch
 Takt oder Gespräch, und fällige Termine (Daily, Weekly) fallen aus. Du bekommst einmal im Monat eine Benachrichtigung. Die Agenten
@@ -1209,6 +1214,51 @@ letzten zwölf Monate, Beträge in US-Dollar.
 
 > Abgerechnet wird bei den Anbietern in US-Dollar. Angezeigt wird in der Währung der Anlage
 > (Verwaltung → Einstellungen); mit der Maus über einem Betrag siehst du den Originalwert.
+
+## 6c. Sekretariat und die Seite „Heute“ *(seit 1.374.0)*
+
+Ein **Sekretariat** sind ein bis vier deiner Agenten, die dein **Postfach und deinen Kalender**
+(Microsoft 365) betreuen: Sie sichten neue Mails, entwerfen Antworten, legen ab, behalten
+Fristen im Blick und schreiben dir morgens ein Tagesbriefing. **Gesendet wird nichts ohne dich.**
+
+**Voraussetzung:** dein Microsoft-Konto ist unter **Integrationen** verbunden, und ein
+Administrator hat **Microsoft nur lesend** gelöst (Kap. 20.1). Ist der Schalter noch an, liest das
+Sekretariat nur.
+
+### 6c.1 Einrichten
+
+1. Seitenleiste → **Heute**.
+2. Unter **1. Agenten wählen** ein bis vier deiner Agenten anklicken. Der **erste** ist der Lead —
+   er sichtet das Postfach; die weiteren übernehmen Entwerfen, Prüfen, Ablegen.
+3. Unter **2.** wählen, wie oft das Postfach gesichtet wird (werktags 7–18 Uhr).
+4. Unter **3.** die Uhrzeit des **Tagesbriefings** (Mo–Fr).
+5. **Sekretariat einrichten** klicken.
+
+Die Agenten bekommen dabei Microsoft 365 im Modus **Entwürfe + Freigabe** und werden einmal neu
+gestartet. Je Nutzer gibt es ein Sekretariat; es ist nur für dich sichtbar.
+
+### 6c.2 Die Seite „Heute“
+
+- **Eingabezeile oben:** Was du hier schreibst, bekommt das Sekretariat als Auftrag. Beginnt der
+  Text mit **„Merke:“**, wird er eine **feste Regel** für alle Agenten des Sekretariats, z. B.
+  „Merke: Mails von der Steuerkanzlei immer sofort an mich“.
+- **Wartet auf dich** — Antworten, die das Sekretariat entworfen hat, mit Empfängern, Betreff und
+  Text. **Freigeben und senden** schickt die Mail ab, **Ablehnen** lässt den Entwurf im Postfach
+  liegen. Das Sekretariat schreibt nur **reinen Text** (auch Antworten samt zitierter Mail), damit
+  du genau siehst, was rausgeht. Gelbe Hinweise sagen, was die Vorschau nicht vollständig zeigt (Anhänge, Formatierung,
+  sehr langer Text) — dann im Postfach prüfen. Mails gibst du nur hier oder unter **Freigaben**
+  frei; über Telegram oder die Glocke kannst du sie nur ablehnen. Auch Rückfragen der Agenten
+  stehen hier.
+- **Termine heute** — direkt aus deinem Kalender.
+- **Posteingang** — die ungelesenen Mails; ein Stern markiert wichtige oder markierte.
+- **Erinnerungen** — eigene (Text und Zeitpunkt eintragen, **+**) und solche, die das Sekretariat
+  aus Mails anlegt (Fristen, Termine). Zur Zeit bekommst du eine Benachrichtigung; das Häkchen
+  hakt eine Erinnerung ab.
+- **Tagesbriefing** — was heute ansteht, was wichtig ist, was auf dich wartet.
+- **Regeln** — alle „Merke:“-Regeln; der Papierkorb löscht eine.
+
+Das Sekretariat ist ein Team wie ein Projekt: Unten auf der Seite führt ein Link zu Raum, Board
+und Gespräch, ein zweiter zu seinen Kosten unter **Finanzen**. In der Projektliste steht es nicht.
 
 ## 7. Analytics
 
@@ -1821,6 +1871,18 @@ Solange er aktiv ist, sieht der Agent die Schreib-Werkzeuge gar nicht erst, und 
 Agenten steht die Auswahl **Read + Write** gesperrt (mit Schloss-Symbol) unter
 **Settings → Integrationen**. Erst wenn ein Administrator den Schalter löst, lässt sich
 Schreibzugriff pro Agent freigeben.
+
+**Drei Stufen je Agent** *(seit 1.374.0)* — beim Agenten unter **Integrationen** → Microsoft 365:
+- **Lesen** — liest Mails und Termine, schreibt nichts.
+- **Entwürfe + Freigabe** — liest, legt Mails nur als **Entwurf** an und darf ablegen (verschieben,
+  als gelesen markieren). Jede Mail, die er senden oder beantworten will, landet als Entwurf in
+  deinem Postfach **und** unter **Freigaben** bzw. auf der Seite **Heute** unter „Wartet auf dich“
+  — mit Empfängern, Betreff und Text, so wie sie im Postfach stehen. Erst wenn du **Freigeben**
+  klickst, sendet der Server die Mail. Wurde der Entwurf nach der Anfrage noch verändert (etwa ein
+  anderer Empfänger), wird nichts gesendet. Freigeben kann nur, wem das Postfach gehört.
+- **Lesen + Schreiben** — sendet Mails und ändert Termine selbst, ohne Rückfrage.
+
+Auch „Entwürfe + Freigabe“ ist erst wählbar, wenn der Nur-Lesen-Schalter gelöst ist.
 
 > **Hinweis:** Der externe MCP-Zugang für OpenWebUI ist **immer** nur lesend — unabhängig
 > von diesem Schalter. Und die Anmeldung dorthin läuft seit 1.154.0 über das

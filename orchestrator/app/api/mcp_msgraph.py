@@ -73,6 +73,12 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
     async with async_session_factory() as db:
         agent = (await db.execute(select(Agent).where(Agent.id == agent_id))).scalar_one_or_none()
     may_write = ms_access.write_enabled(agent.config if agent else None, "msgraph_access")
+    entwurf = None
+    if not may_write and ms_access.entwurf_enabled(agent.config if agent else None):
+        from app.core.mail_freigabe import anfragen
 
-    resp, status = await handle_mcp_request(body, resolve_token, write_enabled=may_write)
+        async def entwurf(message_id: str, betreff: str) -> str:
+            return await anfragen(agent_id, message_id, betreff)
+
+    resp, status = await handle_mcp_request(body, resolve_token, write_enabled=may_write, entwurf_freigabe=entwurf)
     return JSONResponse(resp, status_code=status)

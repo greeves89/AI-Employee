@@ -10,6 +10,7 @@ import {
   Cpu,
   ListTodo,
   FolderKanban,
+  Sun,
   Wallet,
   FolderOpen,
   Plug,
@@ -127,6 +128,7 @@ const navGroups: NavGroup[] = [
     label: "Übersicht",
     key: "overview",
     items: [
+      { href: "/heute", label: "Heute", icon: Sun, simpleVisible: true },
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, simpleVisible: true },
       { href: "/agents", label: "Agenten", icon: Cpu, simpleVisible: true },
       // Onboarding vorerst ausgeblendet (Seite bleibt unter /onboarding erreichbar)

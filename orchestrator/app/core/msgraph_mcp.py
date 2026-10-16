@@ -859,6 +859,18 @@ MSGRAPH_TOOLS = [
     },
 ]
 
+# Zugriffsmodus „Entwurf“ (Sekretariat): lesen, Entwürfe anlegen, ablegen — aber nichts,
+# was das Postfach verlässt. ``ms_send_email``/``ms_reply_email`` werden dort zu Entwürfen,
+# die automatisch zur Freigabe gehen (``entwurf_freigabe``); gesendet wird erst, wenn der
+# Mensch freigibt — und dann vom Server, nicht vom Agenten (core/mail_freigabe.py).
+ENTWURF_TOOLS = {
+    "ms_send_email",
+    "ms_reply_email",
+    "ms_move_email",
+    "ms_mark_email_read",
+    "ms_create_mail_folder",
+}
+
 # Tools that CREATE/SEND/MODIFY Microsoft data. Everything else in MSGRAPH_TOOLS
 # is read-only. Agents in read-only mode (and the external per-user transport)
 # never see or get to call these.
@@ -1246,8 +1258,8 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
             message["ccRecipients"] = [{"emailAddress": {"address": a.strip()}} for a in args["cc"].split(",")]
         if args.get("draft"):
             # Create an Outlook draft — the user reviews and sends it manually.
-            await _graph("POST", "/me/messages", token, content=json.dumps(message))
-            return f"Email-Entwurf erstellt (NICHT gesendet): '{args['subject']}'."
+            entwurf = await _graph("POST", "/me/messages", token, content=json.dumps(message))
+            return f"Email-Entwurf erstellt (NICHT gesendet): '{args['subject']}'. Entwurfs-ID: {entwurf.get('id', '?')}"
         payload: dict = {"message": message, "saveToSentItems": True}
         await _graph("POST", "/me/sendMail", token, content=json.dumps(payload))
         return f"Email sent to {args['to']}."
@@ -1257,9 +1269,9 @@ async def handle_tool(name: str, args: dict, token: str) -> str:
             # createReply / createReplyAll produces a reply draft WITH the body
             # prefilled (comment) — not sent; the user sends it manually.
             action = "createReplyAll" if args.get("reply_all") else "createReply"
-            await _graph("POST", f"/me/messages/{_gid(args['email_id'])}/{action}", token,
-                        content=json.dumps({"comment": args["body"]}))
-            return "Antwort-Entwurf erstellt (NICHT gesendet)."
+            entwurf = await _graph("POST", f"/me/messages/{_gid(args['email_id'])}/{action}", token,
+                                   content=json.dumps({"comment": args["body"]}))
+            return f"Antwort-Entwurf erstellt (NICHT gesendet). Entwurfs-ID: {entwurf.get('id', '?')}"
         endpoint = "/me/messages/{}/replyAll" if args.get("reply_all") else "/me/messages/{}/reply"
         payload = {"comment": args["body"]}
         await _graph("POST", endpoint.format(_gid(args["email_id"])), token, content=json.dumps(payload))
@@ -2391,13 +2403,19 @@ async def handle_mcp_request(
     resolve_token: Callable[[], Awaitable[str | None]],
     *,
     write_enabled: bool = False,
+    entwurf_freigabe: Callable[[str, str], Awaitable[str]] | None = None,
 ) -> tuple[dict, int]:
     """Handle one MCP JSON-RPC message; ``resolve_token`` yields the caller's
     Microsoft access token (or None if not connected). Returns ``(json, status)``.
 
     ``write_enabled`` gates the write/send tools (``WRITE_TOOLS``): when False they
     are hidden from tools/list and refused in tools/call. In write mode outbound
-    mail is sent for real (send/reply/forward)."""
+    mail is sent for real (send/reply/forward).
+
+    ``entwurf_freigabe`` (Modus „Entwurf“, nur ohne ``write_enabled``): die
+    ``ENTWURF_TOOLS`` sind frei, Senden und Antworten legen zwingend einen Entwurf an
+    und reichen ihn mit ``entwurf_freigabe(entwurfs_id, betreff)`` zur Freigabe ein."""
+    entwurf_modus = entwurf_freigabe is not None and not write_enabled
     method = body.get("method", "")
     id_ = body.get("id")
 
@@ -2415,7 +2433,12 @@ async def handle_mcp_request(
         return mcp_result(id_, {}), 200
 
     if method == "tools/list":
-        tools = MSGRAPH_TOOLS if write_enabled else [t for t in MSGRAPH_TOOLS if t["name"] not in WRITE_TOOLS]
+        if write_enabled:
+            tools = MSGRAPH_TOOLS
+        elif entwurf_modus:
+            tools = [t for t in MSGRAPH_TOOLS if t["name"] not in WRITE_TOOLS or t["name"] in ENTWURF_TOOLS]
+        else:
+            tools = [t for t in MSGRAPH_TOOLS if t["name"] not in WRITE_TOOLS]
         return mcp_result(id_, {"tools": tools}), 200
 
     if method == "tools/call":
@@ -2423,7 +2446,7 @@ async def handle_mcp_request(
         tool_name = params.get("name", "")
         args = params.get("arguments", {})
         # Refuse write/send tools in read-only mode BEFORE resolving any token.
-        if tool_name in WRITE_TOOLS and not write_enabled:
+        if tool_name in WRITE_TOOLS and not write_enabled and not (entwurf_modus and tool_name in ENTWURF_TOOLS):
             return mcp_result(id_, tool_result(
                 "This agent has read-only Microsoft access. Enable Read+Write in the "
                 "agent's Integrations settings to use write tools.",
@@ -2451,6 +2474,25 @@ async def handle_mcp_request(
                 is_error=True,
             )), 200
         try:
+            if entwurf_modus and tool_name in ("ms_send_email", "ms_reply_email"):
+                # Nie direkt senden: Entwurf anlegen und zur Freigabe einreichen. Nur Klartext —
+                # in HTML könnten Linkziele oder versteckter Text stecken, die die Vorschau
+                # der Freigabe nicht zeigt.
+                args = {**args, "draft": True, "body_type": "Text"}
+                result_text = await handle_tool(tool_name, args, token)
+                # Am ENDE verankert: der Betreff steht weiter vorn im Text und kommt vom Agenten.
+                treffer = re.search(r"Entwurfs-ID: (\S+)\s*\Z", result_text)
+                if not treffer or treffer.group(1) == "?":
+                    return mcp_result(id_, tool_result(
+                        "Der Entwurf wurde angelegt, aber ohne Kennung zurückgegeben — er liegt im "
+                        "Entwürfe-Ordner, wurde NICHT gesendet und nicht zur Freigabe gestellt.", is_error=True)), 200
+                if tool_name == "ms_reply_email":
+                    # Antwort-Entwürfe legt Microsoft als HTML an (mit zitierter Original-Mail).
+                    # In reinen Text umwandeln — dann zeigt die Freigabe genau, was gesendet wird.
+                    from app.core.mail_freigabe import als_klartext_speichern
+                    await als_klartext_speichern(token, treffer.group(1))
+                hinweis = await entwurf_freigabe(treffer.group(1), str(args.get("subject") or "Antwort"))
+                return mcp_result(id_, tool_result(f"{result_text}\n{hinweis}")), 200
             result_text = await handle_tool(tool_name, args, token)
             return mcp_result(id_, tool_result(result_text)), 200
         except GraphError as e:

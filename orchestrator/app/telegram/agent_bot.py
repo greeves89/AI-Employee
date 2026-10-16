@@ -773,10 +773,14 @@ class TelegramAgentBot:
                             approval = await db.scalar(
                                 select(CommandApproval).where(CommandApproval.id == int(approval_id))
                             )
+                            negative = choice.lower() in {
+                                "deny", "denied", "no", "nein", "cancel", "abort", "ablehnen"
+                            }
+                            if approval and not negative and (approval.meta or {}).get("kind") == "mail_senden":
+                                # Mail freigeben = senden: nur auf der Seite Heute / Freigaben,
+                                # wo die Mail zu sehen ist. Ablehnen geht auch hier.
+                                approval = None
                             if approval and approval.status == ApprovalStatus.PENDING:
-                                negative = choice.lower() in {
-                                    "deny", "denied", "no", "nein", "cancel", "abort", "ablehnen"
-                                }
                                 approval.status = ApprovalStatus.DENIED if negative else ApprovalStatus.APPROVED
                                 approval.resolved_at = datetime.now(timezone.utc)
                                 approval.user_response = choice

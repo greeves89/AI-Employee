@@ -83,6 +83,7 @@ def _serialize(t: Team) -> dict:
         "repo_fehler": getattr(t, "repo_fehler", None),
         "repo_secret_id": getattr(t, "repo_secret_id", None),
         "budget_usd": getattr(t, "budget_usd", None),
+        "art": getattr(t, "art", None) or "projekt",
     }
 
 
@@ -319,7 +320,9 @@ async def projekte_uebersicht(user=Depends(require_auth), db: AsyncSession = Dep
     sichtbar = await _get_user_agent_ids(user, db)
     ergebnis = []
     for t in rows:
-        if not await _is_team_member(t, user, db):
+        # Das Sekretariat hat seine eigene Seite (Heute) — es bleibt ein Team mit Board,
+        # Gespräch und Kosten, steht aber nicht in der Projektliste.
+        if getattr(t, "art", None) == "sekretariat" or not await _is_team_member(t, user, db):
             continue
         b = await projekte.board(db, t.id, sichtbar)
         ergebnis.append({

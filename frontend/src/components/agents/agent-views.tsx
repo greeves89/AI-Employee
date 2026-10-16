@@ -22,7 +22,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { Check, ImageOff, Loader2 } from "lucide-react";
+import { Check, ImageOff, Loader2, Mail } from "lucide-react";
 import * as api from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -129,10 +129,43 @@ function ImageChoice({ agentId, data, antworten, beschaeftigt }: AgentViewProps)
   );
 }
 
+/** Mail-Entwurf zur Freigabe (orchestrator: core/mail_freigabe). Die Daten liest der
+ *  Server aus dem Postfach — nicht der Agent. Reine Anzeige: freigegeben bzw.
+ *  abgelehnt wird mit den Knöpfen der Freigabe; Freigeben sendet die Mail. */
+function MailEntwurf({ data }: AgentViewProps) {
+  const liste = (wert: unknown) => (Array.isArray(wert) ? wert.map(String).filter(Boolean) : []);
+  const an = liste(data.an);
+  const cc = liste(data.cc);
+  const bcc = liste(data.bcc);
+  const antwortAn = liste(data.antwort_an);
+  const warnungen = liste(data.warnungen);
+  return (
+    <div className="overflow-hidden rounded-xl border border-foreground/[0.08] bg-background/60 text-sm">
+      <div className="space-y-0.5 border-b border-foreground/[0.06] px-3 py-2 text-xs">
+        <p className="flex items-center gap-1.5 font-medium"><Mail className="h-3.5 w-3.5 text-muted-foreground" />
+          {String(data.betreff ?? "(ohne Betreff)")}</p>
+        <p className="text-muted-foreground"><span className="text-foreground/70">An:</span> {an.join(", ") || "—"}</p>
+        {cc.length > 0 && <p className="text-muted-foreground"><span className="text-foreground/70">Cc:</span> {cc.join(", ")}</p>}
+        {bcc.length > 0 && <p className="text-muted-foreground"><span className="text-foreground/70">Bcc:</span> {bcc.join(", ")}</p>}
+        {antwortAn.length > 0 && <p className="text-muted-foreground"><span className="text-foreground/70">Antwort an:</span> {antwortAn.join(", ")}</p>}
+      </div>
+      {warnungen.length > 0 && (
+        <ul className="space-y-0.5 border-b border-amber-500/20 bg-amber-500/5 px-3 py-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+          {warnungen.map((w) => <li key={w}>{w}</li>)}
+        </ul>
+      )}
+      <p className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2 text-[13px] text-foreground/90">
+        {String(data.text ?? "")}
+      </p>
+    </div>
+  );
+}
+
 /** Die Liste. Ein Name, den es hier nicht gibt, wird nicht gezeichnet — der
  *  Aufrufer fällt dann auf die Wortoptionen zurück. */
 export const AGENT_VIEWS: Record<string, (p: AgentViewProps) => React.ReactElement> = {
   image_choice: ImageChoice,
+  mail: MailEntwurf,
 };
 
 export function AgentView(

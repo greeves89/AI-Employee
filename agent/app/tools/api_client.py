@@ -576,6 +576,16 @@ class OrchestratorAPIClient:
         text = "Termine:\n" + ("\n".join(termine) or "- keine") + "\n\nLetzte Besprechungen:\n" + ("\n".join(raeume) or "- keine")
         return self._gerahmt("projekt-termine", text)
 
+    async def erinnerung_anlegen(self, params: dict) -> str:
+        """Erinnerung für den eigenen Menschen (Sekretariat; Parität: orchestrator-server.mjs)."""
+        if not params.get("text") or not params.get("faellig"):
+            return "Error: text and faellig are required"
+        e = await self._request("POST", "/sekretariat/erinnerungen",
+                                json={"text": params["text"], "faellig": params["faellig"]})
+        if isinstance(e, str):
+            return e
+        return f"Erinnerung angelegt für {e.get('faellig')}: {e.get('text')}"
+
     async def projekt_termin_anlegen(self, params: dict) -> str:
         pfad = self._projekt_pfad(params, "termine")
         if not pfad or not params.get("art") or not params.get("uhrzeit"):

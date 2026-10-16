@@ -92,7 +92,7 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
     "orchestrator": [
         "app_logs", "chat_search", "complete_onboarding", "complete_todo",
         "create_schedule", "create_skill", "create_task", "create_task_batch",
-        "delegate_and_wait", "get_agent_conversation", "get_day_plan",
+        "delegate_and_wait", "erinnerung_anlegen", "get_agent_conversation", "get_day_plan",
         "get_tasks_status", "list_agent_messages", "list_apps", "list_my_team",
         "list_schedules", "list_tasks", "list_team", "list_team_tasks", "list_todos",
         "manage_schedule", "news_search", "plan_day", "projekt_board",
@@ -137,6 +137,7 @@ DEFINITION_TOOLS = [
     "create_task_batch",
     "delegate_and_wait",
     "edit_file",
+    "erinnerung_anlegen",
     "escalate_if_unsure",
     "gesetze_search",
     "get_agent_conversation",
