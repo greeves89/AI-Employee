@@ -124,7 +124,9 @@ def ist_git_netzfehler(fehlerausgabe: str) -> bool:
     return any(marker in fehlerausgabe.lower() for marker in GIT_NETZ_MARKER)
 
 
-def lauf_unvollstaendig(*, erzeugt: int, bisher: int, verbindungsausfaelle: int) -> bool:
+def lauf_unvollstaendig(
+    *, erzeugt: int, bisher: int, verbindungsausfaelle: int, weitere_ausfaelle: int = 0,
+) -> bool:
     """Darf dieser Lauf den Frischestempel NICHT weiterruecken?
 
     Zwei Bedingungen zusammen: am Netz gescheitert UND schlechter als der bisherige
@@ -138,8 +140,17 @@ def lauf_unvollstaendig(*, erzeugt: int, bisher: int, verbindungsausfaelle: int)
     Die Pruefung auf ``erzeugt == 0`` deckt den ersten Lauf ab: dort ist ``bisher``
     ebenfalls 0, und "gerade gecrawlt, 0 Treffer" ist genau die Falschaussage, um
     die es in #746 geht — ``/api/compliance`` zeigt Stempel und Zahl zusammen an.
+
+    ``weitere_ausfaelle`` sind Abrufe, die eine ANTWORT bekamen und trotzdem keine
+    Daten lieferten: HTTP 403 (Limit ohne Zugangsschluessel), 404, ein Baum-Abruf,
+    der nie zustande kam. Die Verbindung stand dabei, es ist also kein
+    Verbindungsfehler — aber fuer die Frage "ist das Ergebnis leer, weil es nichts
+    gibt, oder weil wir es nicht geholt haben" zaehlt es genauso (#977, Punkt 4).
+    Getrennte Parameter statt einer Summe, damit der Aufrufer sichtbar entscheidet,
+    welche Klassen er mitrechnet; die Meldung an den Betreiber soll beide Zahlen
+    einzeln nennen.
     """
-    if verbindungsausfaelle <= 0:
+    if verbindungsausfaelle + weitere_ausfaelle <= 0:
         return False
     return erzeugt == 0 or erzeugt < bisher
 
@@ -155,6 +166,12 @@ class Netzwache:
     * ``serie`` — wie viele davon unmittelbar hintereinander. Beantwortet: laeuft
       die Wiederholung ins Leere und sollte der Lauf aufgeben
       (:attr:`abbrechen`, siehe ``HINTERGRUND_ABBRUCH_NACH``).
+    * ``abrufausfaelle`` — wie viele Abrufe eine Antwort bekamen und trotzdem keine
+      Daten lieferten (403, Lesetimeout, kaputtes JSON). Beantwortet dieselbe Frage
+      wie ``anzahl``, zaehlt aber NICHT fuer den Abbruch (siehe :meth:`melde_abruf`).
+    * ``quellen_weg`` — wie viele Quellen dauerhaft verschwunden sind (404). Zaehlt
+      fuer die Statusmeldung der Quelle, aber NICHT fuer die Frage, ob der Lauf
+      unvollstaendig war (siehe :meth:`melde_quelle_weg`).
     """
 
     def __init__(self, zweck: str, grenze: int | None = None) -> None:
@@ -165,6 +182,37 @@ class Netzwache:
         self.grenze = HINTERGRUND_ABBRUCH_NACH if grenze is None else grenze
         self.anzahl = 0
         self.serie = 0
+        # Abrufe, die eine Antwort bekamen und trotzdem keine Daten lieferten
+        # (403 Limit, Lesetimeout, kaputtes JSON). Siehe ``melde_abruf``.
+        self.abrufausfaelle = 0
+        # Quellen, die es nicht mehr gibt (404). Siehe ``melde_quelle_weg`` —
+        # bewusst NICHT Teil der Stempel-Entscheidung.
+        self.quellen_weg = 0
+
+    def melde_quelle_weg(self, grund: str) -> None:
+        """Die Quelle selbst ist weg (HTTP 404) — dauerhaft, nicht voruebergehend.
+
+        Eigener Zaehler, weil diese Klasse NICHT in die Stempel-Entscheidung
+        gehoert: ein umbenanntes oder geloeschtes Repo in der Quellenliste ist
+        Alltag und wuerde sonst jeden Lauf als "unvollstaendig" abbrechen, bis ein
+        Administrator die Zeile entfernt. Fuer die Statusmeldung DIESER Quelle
+        zaehlt sie aber — "ok: 0 Skills" waere dort eine Falschaussage.
+        """
+        self.quellen_weg += 1
+        self.serie = 0
+        logger.warning("%s: Quelle nicht mehr vorhanden (%s)", self.zweck, grund)
+
+    def melde_abruf(self, grund: str) -> None:
+        """Ein Abruf kam durch, lieferte aber keine Daten (403/404, Baum leer).
+
+        Setzt die Serie zurueck — die Antwort beweist, dass die Verbindung stand.
+        Darum ein eigener Zaehler und nicht ``anzahl``: ``abbrechen`` darf davon
+        nicht ausgeloest werden, sonst bricht ein Lauf ab, weil eine Quelle
+        dauerhaft 404 liefert.
+        """
+        self.abrufausfaelle += 1
+        self.serie = 0
+        logger.warning("%s: Abruf ohne Daten (%s)", self.zweck, grund)
 
     def melde(self, fehler: BaseException) -> bool:
         """Fehler einsortieren. Gibt zurueck, ob es ein Verbindungsfehler war.
@@ -188,6 +236,15 @@ class Netzwache:
     def erfolg(self) -> None:
         """Ein Abruf hat geklappt — die Serie beginnt neu."""
         self.serie = 0
+
+    @property
+    def ausfaelle_gesamt(self) -> int:
+        """Alle drei Klassen zusammen — fuer "ist DIESE Quelle gescheitert".
+
+        Nicht fuer die Stempel-Entscheidung verwenden: dort gehoert ``quellen_weg``
+        bewusst nicht dazu (siehe :meth:`melde_quelle_weg`).
+        """
+        return self.anzahl + self.abrufausfaelle + self.quellen_weg
 
     @property
     def abbrechen(self) -> bool:

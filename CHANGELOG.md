@@ -5,6 +5,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.7] - 2026-10-17
+
+### Behoben — Hintergrundläufe meldeten Erfolg, obwohl sie am Netz gescheitert waren (#977)
+
+Drei Läufe, die regelmäßig im Hintergrund arbeiten, schrieben nach einem Netzaussetzer einen
+frischen Erfolgsstempel. Im Ergebnis stand dann „gerade gelaufen, 0 Einträge" — und das war von
+„es gibt wirklich nichts Neues" nicht zu unterscheiden. Betroffen war:
+
+- **Wissens-Quellen (Feeds).** Fiel die Namensauflösung aus, stand in der Übersicht trotzdem
+  „ok" ohne Fehler. Jetzt steht dort ein Fehler, wenn kein einziger Abruf durchkam, und bei einem
+  halben Lauf ein Hinweis, wie viele Quellen gefehlt haben. Die Abrufe hängen außerdem nicht mehr
+  an einem einzigen Versuch, sondern haken bis zu 40 Sekunden nach.
+- **Trend-Suche nach neuen Werkzeugen.** Sie setzte ihren Zeitstempel, BEVOR sie gesucht hat — ein
+  am Netz verlorener Lauf verbrannte damit das ganze Tagesfenster. Der Stempel wird jetzt erst
+  nach dem ersten erfolgreichen Abruf gesetzt; scheitert alles, wird in 15 Minuten erneut versucht.
+- **Skill-Katalog.** Antwortete GitHub mit einer Sperre (Limit ohne Zugangsschlüssel), rückte der
+  Katalog mit 0 Skills als „frisch" weiter und blieb eine Woche so stehen. Eine Sperre hält den
+  alten Katalog jetzt zurück. Eine Quelle, die es wirklich nicht mehr gibt (umbenannt, gelöscht),
+  blockiert dagegen bewusst NICHT den ganzen Lauf — sie wird nur einzeln als fehlgeschlagen
+  vermerkt, statt wie bisher mit „ok: 0 Skills".
+
+Ein erreichbarer Dienst, der wirklich nichts liefert, gilt unverändert als erfolgreicher Lauf —
+sonst wäre aus der Diagnose eine Dauerstörung geworden.
+
+---
+
 ## [1.376.6] - 2026-10-17
 
 ### Behoben

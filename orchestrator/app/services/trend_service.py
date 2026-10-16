@@ -15,6 +15,11 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from app.core.skill_herkunft import CREATED_BY_TREND
+from app.core.verbindungswiederholung import (
+    PAUSEN_HINTERGRUND_S,
+    Netzwache,
+    mit_verbindungswiederholung,
+)
 from app.db.session import resilient_session
 from app.models.skill import Skill, SkillCategory, SkillStatus
 
@@ -37,12 +42,21 @@ _README_MAX_CHARS = 6000
 
 SETTING_LETZTER_LAUF = "skill_trend_last_run"
 
+# Wie lange nach einem Lauf, bei dem KEIN EINZIGER Abruf durchkam, nicht erneut
+# versucht wird. Der Scheduler ruft ``tick()`` alle 30 Sekunden; ohne diese Pause
+# wuerde ein Netzaussetzer 120 Versuche je Stunde erzeugen, statt der einen, die
+# der verbrannte 23-Stunden-Stempel vorher gekostet hat. Nur im Speicher: ein
+# Neustart kostet hoechstens einen zusaetzlichen Versuch, und ein ueberlebender
+# Fehlstempel waere schlimmer als einer zu viel.
+FEHLVERSUCH_PAUSE = timedelta(minutes=15)
+
 
 class TrendService:
     def __init__(self, redis_service=None, github_token: str | None = None):
         self.redis = redis_service
         self._github_token = github_token
         self._last_run: datetime | None = None
+        self._letzter_fehlversuch: datetime | None = None
 
     def _gh_headers(self) -> dict:
         h = {"Accept": "application/vnd.github.v3+json"}
@@ -88,14 +102,53 @@ class TrendService:
         letzter = await self._letzter_lauf()
         if letzter and (now - letzter) < timedelta(hours=23):
             return {"skipped": True}
+        if self._letzter_fehlversuch and (now - self._letzter_fehlversuch) < FEHLVERSUCH_PAUSE:
+            return {"skipped": True, "netzpause": True}
+
+        # Der Stempel wird NACH dem Scan gesetzt, nicht davor. Vorher verbrannte ein
+        # am Netz verlorener Scan das ganze 23-Stunden-Fenster, ohne einen einzigen
+        # Treffer geholt zu haben — und niemand konnte das von "diese Woche war
+        # nichts Neues dabei" unterscheiden (#977, Punkt 2).
+        # Die Pause gilt fuer JEDEN Lauf, der den Stempel nicht setzt — auch fuer
+        # einen, der mit einer Ausnahme endet (``_get_existing_source_repos`` kann
+        # bei einem Datenbank-Ausfall durchschlagen). Vorher stand ``_lauf_merken``
+        # VOR dem Scan und setzte ``self._last_run`` im Speicher selbst dann, wenn
+        # das Schreiben scheiterte; die 23-Stunden-Sperre hielt also immer. Ohne
+        # das ``except`` hier haette der Umbau genau diese Eigenschaft verloren und
+        # aus einem Datenbank-Ausfall 120 GitHub-Abrufreihen je Stunde gemacht.
+        try:
+            ergebnis = await self.scan()
+        except Exception:
+            self._letzter_fehlversuch = now
+            raise
+        if ergebnis.get("netzausfall"):
+            self._letzter_fehlversuch = now
+            logger.warning(
+                "[TrendService] kein Abruf kam durch — Frischestempel bleibt stehen, "
+                "naechster Versuch in %d Minuten", int(FEHLVERSUCH_PAUSE.total_seconds() // 60),
+            )
+            return ergebnis
+        self._letzter_fehlversuch = None
         await self._lauf_merken(now)
-        return await self.scan()
+        return ergebnis
 
     async def scan(self) -> dict:
         """Fetch trending repos and generate skills for new ones."""
         if not self._aktiv():
             return {"scanned": 0, "new": 0, "generated": 0, "errors": 0, "disabled": True}
-        repos = await self._collect_trending_repos()
+        wache = Netzwache("TrendService")
+        repos = await self._collect_trending_repos(wache)
+        # "Null Treffer" heisst zweierlei: nichts Neues im Netz, oder nichts vom
+        # Netz. Nur der zweite Fall darf den Frischestempel aufhalten (siehe
+        # ``tick``); eine echte Leerwoche muss ihn weiterruecken, sonst laeuft der
+        # Scan alle 15 Minuten gegen eine Quelle, die einfach nichts hergibt.
+        if not repos and (wache.anzahl + wache.abrufausfaelle) > 0:
+            return {
+                "scanned": 0, "new": 0, "generated": 0, "errors": 0,
+                "netzausfall": True,
+                "verbindungsausfaelle": wache.anzahl,
+                "abrufausfaelle": wache.abrufausfaelle,
+            }
         existing = await self._get_existing_source_repos()
         new_repos = [r for r in repos if r["full_name"] not in existing]
 
@@ -117,8 +170,16 @@ class TrendService:
 
         return {"scanned": len(repos), "new": len(new_repos), "generated": generated, "errors": errors}
 
-    async def _collect_trending_repos(self) -> list[dict]:
-        """Fetch repos from GitHub Search + HN Algolia."""
+    async def _collect_trending_repos(self, wache: Netzwache | None = None) -> list[dict]:
+        """Fetch repos from GitHub Search + HN Algolia.
+
+        ``wache`` zaehlt mit, welche Abrufe gescheitert sind. Ohne sie ist ein
+        leeres Ergebnis nicht von einem Netzaussetzer zu unterscheiden (#977).
+        Der Parameter ist optional, damit bestehende Aufrufer und Testdoppel
+        unveraendert bleiben; ohne Wache verhaelt sich die Methode wie vorher.
+        """
+        if wache is None:
+            wache = Netzwache("TrendService")
         repos: dict[str, dict] = {}
         since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
 
@@ -126,12 +187,19 @@ class TrendService:
             # GitHub Search
             for q in _GITHUB_SEARCH_QUERIES:
                 try:
-                    resp = await client.get(
-                        _GH_SEARCH,
-                        params={"q": f"{q} pushed:>{since}", "sort": "stars", "per_page": 10},
-                        headers=self._gh_headers(),
+                    resp = await mit_verbindungswiederholung(
+                        lambda q=q: client.get(
+                            _GH_SEARCH,
+                            params={"q": f"{q} pushed:>{since}", "sort": "stars", "per_page": 10},
+                            headers=self._gh_headers(),
+                        ),
+                        zweck=f"TrendService (GitHub-Suche, {q})",
+                        pausen=PAUSEN_HINTERGRUND_S,
                     )
-                    if resp.status_code == 200:
+                    if resp.status_code != 200:
+                        wache.melde_abruf(f"GitHub-Suche '{q}': HTTP {resp.status_code}")
+                    else:
+                        wache.erfolg()
                         for item in resp.json().get("items", []):
                             if item.get("stargazers_count", 0) >= _MIN_STARS:
                                 repos[item["full_name"]] = {
@@ -142,15 +210,25 @@ class TrendService:
                                     "language": item.get("language") or "",
                                 }
                 except Exception as e:
-                    logger.debug(f"[TrendService] GitHub search error ({q}): {e}")
+                    if not wache.melde(e):
+                        wache.melde_abruf(f"GitHub-Suche '{q}': {type(e).__name__}")
+                    logger.warning(f"[TrendService] GitHub search error ({q}): {e}")
 
             # Hacker News via Algolia
             try:
-                resp = await client.get(
-                    _HN_API,
-                    params={"query": "github.com AI agent MCP claude", "tags": "story", "hitsPerPage": 20},
+                resp = await mit_verbindungswiederholung(
+                    lambda: client.get(
+                        _HN_API,
+                        params={"query": "github.com AI agent MCP claude", "tags": "story",
+                                "hitsPerPage": 20},
+                    ),
+                    zweck="TrendService (Hacker News)",
+                    pausen=PAUSEN_HINTERGRUND_S,
                 )
-                if resp.status_code == 200:
+                if resp.status_code != 200:
+                    wache.melde_abruf(f"Hacker News: HTTP {resp.status_code}")
+                else:
+                    wache.erfolg()
                     for hit in resp.json().get("hits", []):
                         if hit.get("points", 0) < _MIN_HN_POINTS:
                             continue
@@ -170,7 +248,9 @@ class TrendService:
                                     "language": "",
                                 }
             except Exception as e:
-                logger.debug(f"[TrendService] HN error: {e}")
+                if not wache.melde(e):
+                    wache.melde_abruf(f"Hacker News: {type(e).__name__}")
+                logger.warning(f"[TrendService] HN error: {e}")
 
         return list(repos.values())
 

@@ -294,6 +294,9 @@ class SkillCrawlerService:
             for src in db_sources:
                 if wache.abbrechen:
                     break
+                # Stand der Wache VOR dieser Quelle: nur so laesst sich "diese
+                # Quelle ist gescheitert" von "eine fruehere war es" trennen.
+                abrufe_vorher = wache.ausfaelle_gesamt
                 try:
                     if src["kind"] == "git":
                         skills = await self._crawl_git_source(src)
@@ -311,7 +314,13 @@ class SkillCrawlerService:
                                            else f"import:source:{src['id']}")
                         s["trusted"] = src["trusted"]
                     all_skills.extend(skills)
-                    await self._update_source_status(src["id"], f"ok: {len(skills)} skills")
+                    # Nicht "ok: 0 skills" schreiben, wenn der Abruf gar nicht
+                    # durchkam — das ist die Falschmeldung, um die es in #977 geht.
+                    if not skills and wache.ausfaelle_gesamt > abrufe_vorher:
+                        await self._update_source_status(
+                            src["id"], "fehlgeschlagen: Quelle nicht abgerufen (Netz/HTTP)")
+                    else:
+                        await self._update_source_status(src["id"], f"ok: {len(skills)} skills")
                 except Exception as e:
                     wache.melde(e)
                     logger.warning("Failed to crawl source '%s' (%s): %s",
@@ -340,13 +349,15 @@ class SkillCrawlerService:
         # Zwischenspeicher stehen zu lassen.
         if lauf_unvollstaendig(
             erzeugt=len(unique), bisher=bisher,
-            verbindungsausfaelle=wache.anzahl,
+            verbindungsausfaelle=wache.anzahl, weitere_ausfaelle=wache.abrufausfaelle,
         ):
             meldung = (
                 f"Skill crawler: nur {len(unique)} von bisher {bisher} Skills — "
                 f"{wache.anzahl} Quelle(n) scheiterten an der Verbindung "
-                f"(Namensaufloesung/Netz). Zwischenspeicher und Frischestempel "
-                f"bleiben unveraendert, kein gekuerzter Katalog."
+                f"(Namensaufloesung/Netz), {wache.abrufausfaelle} lieferten eine "
+                f"Antwort ohne Baum (HTTP 403/5xx; {wache.quellen_weg} Quelle(n) "
+                f"sind dauerhaft weg und zaehlen hier nicht). Zwischenspeicher und "
+                f"Frischestempel bleiben unveraendert, kein gekuerzter Katalog."
             )
             logger.error(meldung)
             # Als Ausnahme, nicht als leere Liste: ein Aufrufer aus der
@@ -386,6 +397,7 @@ class SkillCrawlerService:
         candidate_refs = [r for r in [ref, "main", "master"] if r]
         tree = None
         used_ref = None
+        letzter_status: int | None = None
         for r in candidate_refs:
             ziel = f"https://api.github.com/repos/{repo}/git/trees/{r}?recursive=1"
             resp = await mit_verbindungswiederholung(
@@ -393,11 +405,29 @@ class SkillCrawlerService:
                 zweck=f"Skill-Crawler ({repo}, Baum {r})",
                 pausen=PAUSEN_HINTERGRUND_S,
             )
+            letzter_status = resp.status_code
             if resp.status_code == 200:
                 tree = resp.json().get("tree", [])
                 used_ref = r
                 break
         if tree is None:
+            # Kein Verbindungsfehler — die Antwort kam an, sie enthielt nur keinen
+            # Baum (403 = GitHub-Limit ohne Zugangsschluessel, 404 = Repo/Ref weg).
+            # Vorher ging genau das als "ok: 0 skills" durch und ruckte den
+            # Frischestempel weiter; bei einem Limit auf ALLE Quellen stand damit
+            # ein leerer Katalog eine Woche lang als frisch da (#977, Punkt 4).
+            if wache is not None:
+                if letzter_status == 404:
+                    # Repo umbenannt, geloescht oder privat gestellt: dauerhaft weg.
+                    # Das darf den Katalog NICHT sperren — sonst bricht eine einzige
+                    # verwaiste Zeile in der Quellenliste jeden Lauf ab, bis ein
+                    # Administrator sie entfernt.
+                    wache.melde_quelle_weg(f"{repo}: HTTP 404")
+                else:
+                    # 403 (Limit ohne Zugangsschluessel) und 5xx treffen in der Regel
+                    # ALLE Quellen gleichzeitig und sind voruebergehend — genau dann
+                    # soll der alte Katalog stehen bleiben.
+                    wache.melde_abruf(f"{repo}: Baum nicht geholt (HTTP {letzter_status})")
             return []
         sub = subdir.strip("/") + "/" if subdir else ""
         skill_paths = [
