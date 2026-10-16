@@ -219,10 +219,26 @@ def verlauf(brain: SecondBrain, pfad: str, limit: int = 30) -> list[dict]:
 
 
 def version_lesen(brain: SecondBrain, pfad: str, version: str) -> str:
+    """Eine frühere Fassung GENAU EINER Datei.
+
+    ``git show <rev>:<pfad>`` ist dafür das falsche Werkzeug, weil es drei Fälle
+    mit Rückgabewert 0 beantwortet, die keine Datei sind (alle nachgemessen):
+
+    * ``pfad`` enthält ein Musterzeichen (``*``, ``?``, ``[``) → rc=0, LEERE
+      Ausgabe — nicht unterscheidbar von einer legitim leeren ``.md``,
+    * ``pfad`` ist leer → rc=0 und die BAUMAUFLISTUNG der ganzen Ablage,
+    * ``pfad`` zeigt auf einen Ordner → rc=0 und dessen Baumauflistung.
+
+    Geprüft wurde nur ``returncode != 0``, also ging das als Dateiinhalt weiter:
+    die Oberfläche zeigte eine leere oder erfundene alte Fassung, und
+    ``wissen_wiederherstellen`` hätte sie genau so zurückgeschrieben.
+    ``cat-file blob`` verlangt ein Blob und meldet alle drei Fälle als Fehler,
+    lässt eine wirklich leere ``.md`` aber unverändert durch (Issue #968).
+    """
     vault.resolve_path(brain.host_path, pfad)
     if not re.fullmatch(r"[0-9a-f]{7,40}", version or ""):
         raise ValueError("Unbekannte Version.")
-    r = _git(brain.host_path, "show", f"{version}:{pfad}")
+    r = _git(brain.host_path, "cat-file", "blob", f"{version}:{pfad}")
     if r.returncode != 0:
         raise FileNotFoundError(pfad)
     return r.stdout

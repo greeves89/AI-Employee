@@ -470,7 +470,33 @@ class SkillCrawlerService:
             # PLAIN TEXT file (its target path as content) instead of a real link. A
             # malicious repo therefore cannot point SKILL.md at a host file
             # (/shared/.auth/token.json, the encryption key, …) to exfiltrate it.
-            cmd = ["git", "-c", "core.symlinks=false", "clone", "--depth", "1"]
+            # Dieselben -c-SCHALTER wie ``vault._GIT_SICHER`` (#963) und der
+            # Worktree-Aufraeumlauf (#967): ``core.hooksPath``, ``core.fsmonitor``
+            # und ``credential.helper`` starten jeweils ein PROGRAMM, und zwar im
+            # Orchestrator. Anderer Bedrohungsweg als #964 — hier setzt ein
+            # Administrator die URL, und beim KLONEN liest git die Konfiguration
+            # der Gegenseite nicht —, es war aber die letzte Stelle im
+            # Orchestrator, an der git ohne die gemeinsame Haertung lief (#968).
+            #
+            # Die minimale UMGEBUNG der beiden Vorbilder (``HOME=/nonexistent``,
+            # ``GIT_CONFIG_NOSYSTEM``, ``GIT_CONFIG_GLOBAL``) wird hier bewusst
+            # NICHT nachgezogen: dieser Aufruf geht ins Netz und braucht die
+            # Konfiguration des Behaelters (z. B. ``http.proxy``). Ein global
+            # gesetztes ``url.<x>.insteadOf`` oder ``GIT_ASKPASS`` wirkt deshalb
+            # weiter — das setzt aber der Betreiber, nicht ein Agent.
+            #
+            # Die Protokolle der Gegenseite bleiben absichtlich offen (``https``
+            # ist die dokumentierte Form, eine eigene Forge ueber ``http`` oder
+            # ``ssh`` aber erlaubt). Verboten werden nur ``ext::`` — ein
+            # Programmstart, von git schon im Default gesperrt — und das
+            # ``file``-Transport, also ``file://`` UND ein lokaler Pfad: beides
+            # zeigt in das Dateisystem des Orchestrators und ist als Skill-Quelle
+            # nie gemeint (gemessen: ``fatal: transport 'file' not allowed``).
+            cmd = ["git", "-c", "core.symlinks=false",
+                   "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
+                   "-c", "core.pager=cat", "-c", "credential.helper=",
+                   "-c", "protocol.ext.allow=never", "-c", "protocol.file.allow=never",
+                   "clone", "--depth", "1"]
             if ref:
                 cmd += ["--branch", ref]
             # `--` terminates option parsing so the URL/dir can never be read as flags.

@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.5] - 2026-10-16
+
+### Behoben — alte Fassung einer Projektwissen-Seite (#968)
+- **„Frühere Fassung ansehen" zeigt keine erfundenen Inhalte mehr.** Wurde als
+  Dateiname ein Muster angefragt (etwa `*.md`), zeigte die Ansicht eine LEERE
+  alte Fassung — nicht unterscheidbar von einer Seite, die damals wirklich leer
+  war. Ohne Dateinamen oder mit einem Ordner zeigte sie sogar das
+  Inhaltsverzeichnis der Ablage als Seitentext an. „Zurückholen" hätte genau das
+  in die Seite zurückgeschrieben. Jetzt kommt in allen drei Fällen „Version
+  nicht gefunden"; eine wirklich leere Seite bleibt weiter lesbar.
+
+### Geändert — Sicherheit beim Einlesen fremder Skill-Quellen (#968)
+- **Der Klon einer selbst gehosteten Git-Quelle läuft jetzt mit derselben
+  Absicherung wie alle anderen git-Aufrufe der Anlage**: Haken, Dateiwächter und
+  Anmeldehelfer können dabei kein Programm mehr starten.
+- **Nur noch echte Fernzweige als Skill-Quelle.** `ext::`-Adressen und lokale
+  Pfade bzw. `file://`-Adressen werden beim Klonen abgelehnt. Wer eine Skill-Quelle
+  bisher auf ein Verzeichnis DIESES Servers gezeigt hat (nicht dokumentiert, von
+  der Oberfläche nie angeboten), muss sie auf `https://` umstellen — die Quelle
+  meldet sonst sichtbar einen Fehler, der Katalog bleibt unverändert stehen.
+
+### Intern
+- Der Protokollzweig für fehlgeschlagene git-Aufrufe im Aufräumlauf (1.373.1) ist
+  jetzt getestet — bisher hätte ein stiller Ausfall des Aufräumens niemandem
+  auffallen können.
+
+---
+
 ## [1.376.4] - 2026-10-16
 
 ### Behoben — Crawler-Netzaussetzer, zweiter Durchgang (#746)
