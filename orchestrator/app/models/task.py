@@ -14,7 +14,7 @@ from sqlalchemy import (
     event,
     select,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, object_session, relationship
 
 from app.models.base import Base, TimestampMixin
 
@@ -126,6 +126,14 @@ def _projekt_erben(mapper, connection, target: Task) -> None:
     if target.team_id or not target.agent_id:
         return
     team_id = (target.metadata_ or {}).get("team_id")
+    if not team_id and target.parent_task_id:
+        # Eltern-Auftrag im selben Flush angelegt? Dann steht er noch nicht in
+        # der Datenbank, wohl aber (mit seinem Projekt) in der Sitzung.
+        sitzung = object_session(target)
+        for neu in (sitzung.new if sitzung is not None else ()):
+            if isinstance(neu, Task) and neu.id == target.parent_task_id:
+                team_id = neu.team_id
+                break
     if not team_id and target.parent_task_id:
         tasks = Task.__table__
         team_id = connection.execute(

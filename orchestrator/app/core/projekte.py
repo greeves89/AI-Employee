@@ -22,17 +22,21 @@ from __future__ import annotations
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from app.models.task import Task, TaskStatus
 
 AKTIV = (TaskStatus.PENDING, TaskStatus.QUEUED, TaskStatus.RUNNING)
 ABNAHMEFAEHIG = (TaskStatus.COMPLETED, TaskStatus.FAILED)
+ENDE = (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED)
 FENSTER_ERLEDIGT = timedelta(days=30)
 # Wie lange ein nicht abgenommenes Ergebnis auf dem Board wartet.
 FENSTER_ABNAHME = timedelta(days=90)
 MAX_ERLEDIGT = 40
+MAX_AKTIV = 200
+MAX_ABNAHME = 200
 VERLAUF_TAGE = 7
 
 
@@ -76,8 +80,19 @@ def _kurz(text: str | None, n: int) -> str | None:
     return text if len(text) <= n else text[: n - 1].rstrip() + "…"
 
 
+def _geladen(task: Task, feld: str) -> bool:
+    """Ob ``feld`` geladen ist — das Board laedt Ergebnis und Fehler nur fuer
+    offene Abnahmen; ein Zugriff auf eine nicht geladene Spalte scheitert in
+    einer asynchronen Sitzung."""
+    try:
+        return feld not in inspect(task).unloaded
+    except Exception:  # noqa: BLE001 — kein ORM-Objekt (Tests)
+        return True
+
+
 def karte(task: Task) -> dict:
     meta = task.metadata_ or {}
+    zeigen = spalte(task) == "zur_abnahme"
     return {
         "id": task.id,
         "titel": task.title,
@@ -92,86 +107,110 @@ def karte(task: Task) -> dict:
         "fertig": _utc(task.completed_at),
         "abgenommen": _utc(task.abgenommen_at),
         "kosten_usd": task.cost_usd,
-        "ergebnis": _kurz(task.result, 280),
-        "fehler": _kurz(task.error, 200),
+        "ergebnis": _kurz(task.result, 280) if zeigen and _geladen(task, "result") else None,
+        "fehler": _kurz(task.error, 200) if zeigen and _geladen(task, "error") else None,
     }
+
+
+def _basis(team_id: str, sichtbar: list[str] | None):
+    bedingung = Task.team_id == team_id
+    if sichtbar is not None:
+        bedingung = and_(bedingung, Task.agent_id.in_(sichtbar))
+    return bedingung
 
 
 async def auftraege(
     db: AsyncSession, team_id: str, sichtbar: list[str] | None, *, jetzt: datetime | None = None
 ) -> list[Task]:
-    """Die Auftraege, die das Board braucht — laufende, offene Abnahmen, juengst Erledigtes."""
+    """Die Auftraege, die das Board zeigt — in drei getrennten Abfragen.
+
+    Eine gemeinsame Abfrage mit einem Limit schnitt bei grossen Projekten offene
+    Abnahmen ab: viele frisch erledigte Teilarbeiten verdraengten ein aelteres
+    Ergebnis, das niemand mehr abnehmen konnte. Prompt (und ausser bei offenen
+    Abnahmen auch Ergebnis/Fehler) werden nicht geladen — die Uebersicht fragt
+    alle zehn Sekunden.
+    """
+    if sichtbar is not None and not sichtbar:
+        return []
     jetzt = jetzt or datetime.now(timezone.utc)
-    bedingung = and_(
-        Task.team_id == team_id,
-        or_(
-            Task.status.in_(AKTIV),
-            and_(Task.status.in_(ABNAHMEFAEHIG), Task.abgenommen_at.is_(None),
-                 Task.created_at >= jetzt - FENSTER_ABNAHME),
-            Task.completed_at >= jetzt - FENSTER_ERLEDIGT,
-            Task.abgenommen_at >= jetzt - FENSTER_ERLEDIGT,
-        ),
-    )
-    if sichtbar is not None:
-        if not sichtbar:
-            return []
-        bedingung = and_(bedingung, Task.agent_id.in_(sichtbar))
-    rows = (await db.execute(select(Task).where(bedingung).order_by(Task.created_at.desc()).limit(500))).scalars().all()
-    return list(rows)
+    basis = _basis(team_id, sichtbar)
+    schlank = defer(Task.prompt), defer(Task.result), defer(Task.error)
+
+    aktiv = (await db.execute(
+        select(Task).options(*schlank).where(basis, Task.status.in_(AKTIV))
+        .order_by(Task.created_at.desc()).limit(MAX_AKTIV)
+    )).scalars().all()
+    abnahmen = (await db.execute(
+        select(Task).options(defer(Task.prompt)).where(
+            basis, Task.status.in_(ABNAHMEFAEHIG), Task.abgenommen_at.is_(None),
+            Task.metadata_["abnahme"].as_boolean().is_(True),
+            Task.created_at >= jetzt - FENSTER_ABNAHME,
+        ).order_by(Task.created_at.desc()).limit(MAX_ABNAHME)
+    )).scalars().all()
+    zuletzt = func.coalesce(Task.abgenommen_at, Task.completed_at, Task.updated_at)
+    erledigt = (await db.execute(
+        select(Task).options(*schlank).where(
+            basis, Task.status.in_(ENDE), zuletzt >= jetzt - FENSTER_ERLEDIGT,
+        ).order_by(zuletzt.desc()).limit(MAX_ERLEDIGT + len(abnahmen))
+    )).scalars().all()
+
+    gesehen: set[str] = set()
+    ergebnis: list[Task] = []
+    for task in [*aktiv, *abnahmen, *erledigt]:
+        if task.id not in gesehen:
+            gesehen.add(task.id)
+            ergebnis.append(task)
+    return ergebnis
 
 
-def _tagesverlauf(tasks: list[Task], jetzt: datetime, zone: ZoneInfo) -> list[dict]:
+async def kennzahlen_fertig(
+    db: AsyncSession, team_id: str, sichtbar: list[str] | None, *, jetzt: datetime | None = None
+) -> dict:
+    """Fertige Auftraege heute und je Tag der letzten sieben — gezaehlt, nicht aus der Board-Auswahl."""
+    jetzt = jetzt or datetime.now(timezone.utc)
+    zone = _zone()
     heute = jetzt.astimezone(zone).date()
     tage = [heute - timedelta(days=i) for i in range(VERLAUF_TAGE - 1, -1, -1)]
     zaehler = {t: 0 for t in tage}
-    for task in tasks:
-        fertig = _utc(task.completed_at)
-        if task.status != TaskStatus.COMPLETED or fertig is None:
-            continue
-        tag = fertig.astimezone(zone).date()
-        if tag in zaehler:
-            zaehler[tag] += 1
-    return [{"tag": t.isoformat(), "anzahl": zaehler[t]} for t in tage]
+    if sichtbar is None or sichtbar:
+        beginn = datetime.combine(tage[0], time(12), tzinfo=zone) - timedelta(hours=12)
+        zeitpunkte = (await db.execute(
+            select(Task.completed_at).where(
+                _basis(team_id, sichtbar), Task.status == TaskStatus.COMPLETED,
+                Task.completed_at >= beginn.astimezone(timezone.utc),
+            )
+        )).scalars().all()
+        for fertig in zeitpunkte:
+            tag = _utc(fertig).astimezone(zone).date()
+            if tag in zaehler:
+                zaehler[tag] += 1
+    verlauf = [{"tag": t.isoformat(), "anzahl": zaehler[t]} for t in tage]
+    return {
+        "heute_fertig": zaehler[heute],
+        "verlauf": verlauf,
+        "fertig_7_tage": sum(zaehler.values()),
+    }
 
 
-def board_aus(tasks: list[Task], *, jetzt: datetime | None = None) -> dict:
-    jetzt = jetzt or datetime.now(timezone.utc)
-    zone = _zone()
+def board_aus(tasks: list[Task], fertig: dict) -> dict:
     spalten: dict[str, list[dict]] = {"wartet": [], "in_arbeit": [], "zur_abnahme": [], "erledigt": []}
     for task in tasks:
         spalten[spalte(task)].append(karte(task))
-
-    def _wann(k: dict) -> datetime:
-        return k["abgenommen"] or k["fertig"] or k["erstellt"] or jetzt
-
-    # Die Abfrage holt nicht abgenommene Ergebnisse 90 Tage zurueck — ob eines
-    # eine Abnahme braucht, steht in den Metadaten. Was davon erledigt ist,
-    # zeigt das Board nur so lange wie alles andere Erledigte.
-    grenze = jetzt - FENSTER_ERLEDIGT
-    spalten["erledigt"] = sorted(
-        (k for k in spalten["erledigt"] if _wann(k) >= grenze), key=_wann, reverse=True
-    )[:MAX_ERLEDIGT]
+    spalten["erledigt"] = spalten["erledigt"][:MAX_ERLEDIGT]
     spalten["wartet"].reverse()  # aelteste zuerst: so werden sie auch abgearbeitet
-    verlauf = _tagesverlauf(tasks, jetzt, zone)
-    heute_beginn = datetime.combine(jetzt.astimezone(zone).date(), time.min, tzinfo=zone)
     return {
         "spalten": spalten,
         "kennzahlen": {
             "wartet": len(spalten["wartet"]),
             "in_arbeit": len(spalten["in_arbeit"]),
             "zur_abnahme": len(spalten["zur_abnahme"]),
-            "heute_fertig": sum(
-                1 for t in tasks
-                if t.status == TaskStatus.COMPLETED and t.completed_at and _utc(t.completed_at) >= heute_beginn
-            ),
-            "verlauf": verlauf,
-            "fertig_7_tage": sum(v["anzahl"] for v in verlauf),
+            **fertig,
         },
     }
 
 
 async def board(db: AsyncSession, team_id: str, sichtbar: list[str] | None) -> dict:
-    return board_aus(await auftraege(db, team_id, sichtbar))
+    return board_aus(await auftraege(db, team_id, sichtbar), await kennzahlen_fertig(db, team_id, sichtbar))
 
 
 def titel_aus(text: str, n: int = 80) -> str:

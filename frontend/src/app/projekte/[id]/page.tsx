@@ -7,7 +7,8 @@ import { ArrowLeft, Crown, Loader2, MessageSquare, Pencil, Send, Trash2 } from "
 import { Header } from "@/components/layout/header";
 import { CreateTeamModal } from "@/components/agents/create-team-modal";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
-import { ProjektRaum, raumZustand } from "@/components/projekte/projekt-raum";
+import { ProjektRaum } from "@/components/projekte/projekt-raum";
+import { raumZustand } from "@/components/raum/iso";
 import { ProjektBoardAnsicht, ProjektVerlauf } from "@/components/projekte/projekt-board";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { useAgents } from "@/hooks/use-agents";
@@ -34,18 +35,35 @@ export default function ProjektPage() {
   const eingabe = useRef<HTMLTextAreaElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
+  // Zuletzt gezeigter Stand: alle fünf Sekunden kommt meist dasselbe — dann
+  // bleibt der Raum unangetastet statt neu gezeichnet zu werden.
+  const zuletzt = useRef("");
+  // Zählt Ladevorgänge: eine späte Antwort (anderes Projekt, Abnahme dazwischen)
+  // darf keinen neueren Stand überschreiben.
+  const lauf = useRef(0);
+
   const laden = useCallback(async () => {
+    const meiner = ++lauf.current;
     try {
       const r = await api.getProjektBoard(id);
+      if (meiner !== lauf.current) return;
+      const stand = JSON.stringify(r);
+      if (stand === zuletzt.current) return;
+      zuletzt.current = stand;
       setProjekt(r.projekt);
       setBoard({ spalten: r.spalten, kennzahlen: r.kennzahlen });
       setFehler(null);
     } catch (e) {
-      setFehler(apiFehlertext(e, "Das Projekt konnte nicht geladen werden."));
+      if (meiner === lauf.current) setFehler(apiFehlertext(e, "Das Projekt konnte nicht geladen werden."));
     }
   }, [id]);
 
   useEffect(() => {
+    // Anderes Projekt: den alten Stand nicht stehen lassen, bis der neue da ist.
+    zuletzt.current = "";
+    setProjekt(null);
+    setBoard(null);
+    setFehler(null);
     laden();
     return setVisibleInterval(laden, 5000);
   }, [laden]);

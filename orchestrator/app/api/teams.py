@@ -206,10 +206,14 @@ async def projekte_uebersicht(user=Depends(require_auth), db: AsyncSession = Dep
     from app.core import projekte
 
     rows = (await db.execute(select(Team).where(Team.is_active == True))).scalars().all()  # noqa: E712
+    # Sichtbarkeit EINMAL bestimmen statt je Team (_is_team_member fragt sonst
+    # bei jedem Team neu) — die Uebersicht laedt alle zehn Sekunden.
     sichtbar = await _get_user_agent_ids(user, db)
+    eigene = None if sichtbar is None else set(sichtbar)
     ergebnis = []
     for t in rows:
-        if not await _is_team_member(t, user, db):
+        beteiligt = set(t.member_agent_ids or []) | ({t.lead_agent_id} if t.lead_agent_id else set())
+        if eigene is not None and not (beteiligt & eigene):
             continue
         b = await projekte.board(db, t.id, sichtbar)
         laufend = [k for k in b["spalten"]["in_arbeit"]]
@@ -406,7 +410,7 @@ async def _darf_beauftragen(agent_id: str, user, db: AsyncSession) -> None:
 
 
 async def _an_lead(t: Team, title: str, prompt: str, priority: int, request: Request,
-                   router_: TaskRouter, db: AsyncSession, user, **meta):
+                   router_: TaskRouter, db: AsyncSession, user, parent_task_id: str | None = None, **meta):
     """Auftrag an den Lead des Teams — mit Anleitung und Roster davor."""
     if not t.lead_agent_id:
         raise HTTPException(status_code=400, detail="assign a lead first")
@@ -417,7 +421,7 @@ async def _an_lead(t: Team, title: str, prompt: str, priority: int, request: Req
     prefix = LEAD_INSTRUCTION.format(roster=roster)
     return await router_.create_and_route_task(
         title=title, prompt=prefix + "\n## Aufgabe\n" + prompt,
-        priority=priority, agent_id=t.lead_agent_id,
+        priority=priority, agent_id=t.lead_agent_id, parent_task_id=parent_task_id,
         # "auftrag": der Text, wie der Mensch ihn erteilt hat (Nacharbeit, Board).
         # "abnahme": das Ergebnis landet auf dem Board unter „Zur Abnahme“.
         metadata={"team_id": t.id, "delegated_to_team": True, "auftrag": prompt, "abnahme": True, **meta},
@@ -521,9 +525,13 @@ async def projekt_abnehmen(team_id: str, task_id: str,
     _kein_betrachter(user)
     t = await _get_team(team_id, db)
     await _require_team_access(t, user, db)
-    task = await _projekt_auftrag_laden(t, task_id, user, db)
+    # Gesperrt wie beim Zurueckgeben: sonst kann ein Auftrag zugleich abgenommen
+    # und zur Nacharbeit zurueckgegeben werden.
+    task = await _projekt_auftrag_laden(t, task_id, user, db, sperren=True)
     if task.status not in projekte.ABNAHMEFAEHIG:
         raise HTTPException(status_code=409, detail="Der Auftrag ist noch nicht fertig.")
+    if not projekte.braucht_abnahme(task):
+        raise HTTPException(status_code=409, detail="Dieser Auftrag braucht keine Abnahme.")
     if (task.metadata_ or {}).get("zurueckgegeben_als"):
         raise HTTPException(status_code=409, detail="Dieser Auftrag wurde zur Nacharbeit zurückgegeben.")
     if task.abgenommen_at is None:
@@ -562,20 +570,34 @@ async def projekt_zurueckgeben(team_id: str, task_id: str, body: Zurueckgeben, r
     hinweis = body.hinweis.strip()
     titel = f"Nacharbeit: {task.title}"[:200]
     nacharbeit = projekte.nacharbeit_prompt(task, hinweis)
+    # Der urspruengliche Auftrag bleibt "auftrag" — sonst zitiert jede weitere
+    # Nacharbeit die vorige als Auftrag, und die Texte verschachteln sich.
+    ursprung = projekte.auftragstext(task)
     try:
         if meta.get("delegated_to_team") and t.lead_agent_id:
-            neu = await _an_lead(t, titel, nacharbeit, task.priority, request, router_, db, user)
+            neu = await _an_lead(t, titel, nacharbeit, task.priority, request, router_, db, user,
+                                 parent_task_id=task.id, auftrag=ursprung)
         else:
             if not task.agent_id:
                 raise HTTPException(status_code=409, detail="Der Auftrag hat keinen Agenten mehr.")
             neu = await router_.create_and_route_task(
                 title=titel, prompt=nacharbeit, priority=task.priority,
                 agent_id=task.agent_id, parent_task_id=task.id,
-                metadata={"team_id": t.id, "auftrag": nacharbeit, "abnahme": True},
+                metadata={"team_id": t.id, "auftrag": ursprung, "abnahme": True},
             )
     except Exception:
         await db.rollback()
-        task.metadata_ = meta  # Markierung zuruecknehmen: erneut zurueckgeben bleibt moeglich
+        # Der Router legt den Auftrag an, bevor er ihn einreiht. Scheiterte erst
+        # das Einreihen, gibt es die Nacharbeit schon — dann bleibt sie markiert,
+        # sonst legte ein zweiter Klick eine zweite an.
+        from app.models.task import Task
+
+        angelegt = await db.scalar(
+            select(Task.id).where(Task.parent_task_id == task_id, Task.title == titel)
+            .order_by(Task.created_at.desc()).limit(1)
+        )
+        alt = await db.get(Task, task_id)
+        alt.metadata_ = {**meta, "zurueckgegeben_als": angelegt} if angelegt else meta
         await db.commit()
         raise
     task.metadata_ = {**meta, "zurueckgegeben_als": neu.id}

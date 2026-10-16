@@ -99,6 +99,13 @@ class ProjektWirdVererbt(Basis):
             self.assertEqual((await db.get(Task, "e")).team_id, "p1")
             self.assertIsNone((await db.get(Task, "x")).team_id)
 
+    async def test_eltern_und_kind_im_selben_schritt(self):
+        async with self.Session() as db:
+            db.add(Task(id="w", title="w", prompt="p", agent_id="a1", metadata_={"team_id": "p1"}))
+            db.add(Task(id="k", title="k", prompt="p", agent_id="a2", parent_task_id="w"))
+            await db.commit()
+            self.assertEqual((await db.get(Task, "k")).team_id, "p1")
+
     async def test_agent_ausserhalb_des_projekts_erbt_nicht(self):
         """Ein Mensch darf jeden Eltern-Auftrag nennen — sein fremder Agent landet trotzdem nicht im Projekt."""
         async with self.Session() as db:

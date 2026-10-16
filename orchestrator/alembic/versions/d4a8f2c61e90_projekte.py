@@ -9,6 +9,7 @@ Bisher stand das nur in ``metadata.team_id`` des Auftrags, den der Lead bekam â€
 seine Unterauftraege trugen es nicht. Die Rueckfuellung uebernimmt den Wert aus
 den Metadaten und reicht ihn rekursiv an alle Unterauftraege weiter (UNION statt
 UNION ALL: ein Kreis in parent_task_id kann die Rekursion nicht endlos machen).
+Danach bleibt die Zuordnung nur, wo der ausfuehrende Agent zum Projekt gehoert.
 ``tasks.abgenommen_at``: wann der Mensch das Ergebnis abgenommen hat.
 ``teams.farbe``: Kennfarbe des Projekts.
 """
@@ -39,6 +40,19 @@ def upgrade() -> None:
         )
         UPDATE tasks SET team_id = baum.team_id
         FROM baum WHERE tasks.id = baum.id AND tasks.team_id IS NULL
+        """
+    )
+    # Wie zur Laufzeit (models/task._projekt_erben): zum Projekt gehoert nur, was
+    # ein Agent des Projekts ausfuehrt.
+    op.execute(
+        """
+        UPDATE tasks SET team_id = NULL
+        WHERE team_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM teams
+            WHERE teams.id = tasks.team_id
+              AND (teams.lead_agent_id = tasks.agent_id
+                   OR teams.member_agent_ids::jsonb @> jsonb_build_array(tasks.agent_id))
+        )
         """
     )
 

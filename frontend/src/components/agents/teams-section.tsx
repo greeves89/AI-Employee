@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Plus, Users, Crown, Pencil, Send, Trash2, Loader2, ListTodo } from "lucide-react";
+import Link from "next/link";
+import { Plus, Users, Crown, Pencil, Send, Trash2, Loader2, ListTodo, FolderKanban } from "lucide-react";
 import * as api from "@/lib/api";
 import type { Team } from "@/lib/api";
 import type { Agent, Task } from "@/lib/types";
@@ -197,6 +198,14 @@ export function TeamsSection({ agents }: { agents: Agent[] }) {
                       </div>
                     ) : (
                       <>
+                        <Link
+                          href={`/projekte/${team.id}`}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
+                          title="Als Projekt öffnen (Raum und Board)"
+                          aria-label="Als Projekt öffnen"
+                        >
+                          <FolderKanban className="h-3.5 w-3.5" />
+                        </Link>
                         <button
                           onClick={() => setEditTeam(team)}
                           className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors"
