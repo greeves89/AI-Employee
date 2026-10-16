@@ -1239,7 +1239,10 @@ gestartet. Je Nutzer gibt es ein Sekretariat; es ist nur für dich sichtbar.
   „Merke: Mails von der Steuerkanzlei immer sofort an mich“.
 - **Wartet auf dich** — Antworten, die das Sekretariat entworfen hat, mit Empfängern, Betreff und
   Text. **Freigeben und senden** schickt die Mail ab, **Ablehnen** lässt den Entwurf im Postfach
-  liegen. Auch Rückfragen der Agenten stehen hier.
+  liegen. Gelbe Hinweise sagen, was die Vorschau nicht vollständig zeigt (Anhänge, Formatierung,
+  sehr langer Text) — dann im Postfach prüfen. Mails gibst du nur hier oder unter **Freigaben**
+  frei; über Telegram oder die Glocke kannst du sie nur ablehnen. Auch Rückfragen der Agenten
+  stehen hier.
 - **Termine heute** — direkt aus deinem Kalender.
 - **Posteingang** — die ungelesenen Mails; ein Stern markiert wichtige oder markierte.
 - **Erinnerungen** — eigene (Text und Zeitpunkt eintragen, **+**) und solche, die das Sekretariat

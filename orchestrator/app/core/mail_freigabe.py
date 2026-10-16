@@ -27,8 +27,8 @@ from fastapi import HTTPException
 log = logging.getLogger(__name__)
 
 ART = "mail_senden"
-FELDER = "subject,toRecipients,ccRecipients,bccRecipients,body,isDraft"
-MAX_TEXT = 4000
+FELDER = "subject,toRecipients,ccRecipients,bccRecipients,replyTo,body,isDraft,hasAttachments"
+MAX_TEXT = 6000
 
 
 async def _token(db, user_id: str | None) -> str | None:
@@ -56,8 +56,9 @@ def _adressen(m: dict, feld: str) -> list[str]:
 def fingerabdruck(m: dict) -> str:
     teile = {
         "an": sorted(_adressen(m, "toRecipients")), "cc": sorted(_adressen(m, "ccRecipients")),
-        "bcc": sorted(_adressen(m, "bccRecipients")), "betreff": m.get("subject") or "",
-        "text": ((m.get("body") or {}).get("content") or ""),
+        "bcc": sorted(_adressen(m, "bccRecipients")), "antwort_an": sorted(_adressen(m, "replyTo")),
+        "betreff": m.get("subject") or "", "text": ((m.get("body") or {}).get("content") or ""),
+        "typ": ((m.get("body") or {}).get("contentType") or ""), "anhaenge": bool(m.get("hasAttachments")),
     }
     return hashlib.sha256(json.dumps(teile, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
@@ -67,17 +68,38 @@ def _klartext(m: dict) -> str:
     text = body.get("content") or ""
     if (body.get("contentType") or "").lower() == "html":
         text = re.sub(r"(?is)<(script|style).*?</\1>", "", text)
+        # Linkziele sichtbar machen: ein harmloser Linktext darf kein fremdes Ziel verdecken.
+        text = re.sub(r'(?is)<a\b[^>]*?href\s*=\s*["\']([^"\']*)["\'][^>]*>(.*?)</a>', r"\2 (\1)", text)
         text = re.sub(r"(?i)<br\s*/?>|</p>", "\n", text)
         text = re.sub(r"<[^>]+>", "", text)
         text = re.sub(r"&nbsp;", " ", text)
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    return text[:MAX_TEXT] + (" …" if len(text) > MAX_TEXT else "")
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def vorschau(m: dict) -> dict:
-    return {"an": _adressen(m, "toRecipients"), "cc": _adressen(m, "ccRecipients"),
-            "bcc": _adressen(m, "bccRecipients"), "betreff": m.get("subject") or "(ohne Betreff)",
-            "text": _klartext(m)}
+    """Was der Mensch vor dem Freigeben sieht. Alles, was die Vorschau NICHT vollständig
+    zeigen kann (HTML, Länge, Anhänge), steht als Warnung dabei."""
+    text = _klartext(m)
+    warnungen = []
+    if len(text) > MAX_TEXT:
+        text = text[:MAX_TEXT]
+        warnungen.append("Der Text ist länger als die Vorschau — den vollständigen Entwurf im Postfach prüfen.")
+    if ((m.get("body") or {}).get("contentType") or "").lower() == "html":
+        warnungen.append("Formatierte Mail (HTML): Gestaltung und Bilder zeigt die Vorschau nicht.")
+    if m.get("hasAttachments"):
+        warnungen.append("Der Entwurf hat Anhänge — die Vorschau zeigt sie nicht.")
+    v = {"an": _adressen(m, "toRecipients"), "cc": _adressen(m, "ccRecipients"),
+         "bcc": _adressen(m, "bccRecipients"), "antwort_an": _adressen(m, "replyTo"),
+         "betreff": m.get("subject") or "(ohne Betreff)", "text": text, "warnungen": warnungen}
+    # Die Ansicht muss in die Obergrenze der Freigaben passen (api/approvals.ANSICHT_MAX_ZEICHEN,
+    # gemessen wie dort) — sonst fiele sie still weg, und freigegeben würde blind.
+    from app.api.approvals import ANSICHT_MAX_ZEICHEN
+
+    while len(json.dumps(v, default=str)) > ANSICHT_MAX_ZEICHEN - 200 and v["text"]:
+        v["text"] = v["text"][: max(0, len(v["text"]) - 500)]
+        if not any(w.startswith("Der Text ist länger") for w in v["warnungen"]):
+            v["warnungen"].append("Der Text ist länger als die Vorschau — den vollständigen Entwurf im Postfach prüfen.")
+    return v
 
 
 async def anfragen(agent_id: str, message_id: str, betreff: str) -> str:
@@ -129,6 +151,8 @@ async def senden(db, approval, user) -> dict:
         raise HTTPException(status_code=502, detail="Microsoft ist gerade nicht erreichbar — bitte später erneut.")
     if not m.get("isDraft"):
         raise HTTPException(status_code=409, detail="Die Mail ist schon gesendet.")
+    if ((approval.meta or {}).get("view") or {}).get("name") != "mail":
+        raise HTTPException(status_code=409, detail="Ohne Vorschau wird nicht gesendet — bitte im Postfach prüfen und dort senden.")
     if fingerabdruck(m) != eingabe.get("fingerabdruck"):
         raise HTTPException(status_code=409, detail=(
             "Der Entwurf wurde seit der Anfrage geändert — es wird nichts gesendet. Bitte im Postfach prüfen "

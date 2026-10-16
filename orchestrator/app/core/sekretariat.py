@@ -40,6 +40,8 @@ ROLLEN = ("Sichten", "Entwerfen", "Prüfen", "Ablegen")
 MAX_AGENTEN = 4
 REGEL_PRAEFIX = "regel-"
 MAX_REGEL = 500
+MAX_OFFENE_ERINNERUNGEN = 100
+MAX_AGENT_ERINNERUNGEN_JE_TAG = 20
 
 SICHTEN_AUFTRAG = """Du betreust das Postfach deines Menschen (Sekretariat). Sieh die ungelesenen Mails seit deinem letzten Lauf durch (ms_list_emails).
 
@@ -135,7 +137,14 @@ async def einrichten(db, user, agent_ids: list[str], *, sichten_minuten: int = 3
 
 
 def _regel_schluessel(text: str) -> str:
-    return REGEL_PRAEFIX + hashlib.sha256(text.strip().lower().encode()).hexdigest()[:12]
+    """Schlüssel mit dem Geheimnis der Anlage: Agenten schreiben in ihr eigenes Gedächtnis,
+    können aber keinen Eintrag anlegen, der hier als Regel des Menschen durchgeht."""
+    import hmac
+
+    from app.config import settings
+
+    return REGEL_PRAEFIX + hmac.new(f"sekretariat-regel:{settings.api_secret_key}".encode(),
+                                    text.strip().lower().encode(), hashlib.sha256).hexdigest()[:16]
 
 
 async def merken(db, team: Team, text: str) -> str:
@@ -165,8 +174,13 @@ async def regeln(db, team: Team) -> list[dict]:
     rows = (await db.execute(select(AgentMemory).where(
         AgentMemory.agent_id == team.lead_agent_id, AgentMemory.key.like(f"{REGEL_PRAEFIX}%"),
     ).order_by(AgentMemory.created_at.desc()))).scalars().all()
-    return [{"schluessel": r.key, "text": (r.content or "").removeprefix("Regel meines Menschen: "),
-             "seit": r.created_at.isoformat() if r.created_at else None} for r in rows]
+    erg = []
+    for r in rows:
+        text = (r.content or "").removeprefix("Regel meines Menschen: ")
+        if r.key != _regel_schluessel(text):
+            continue  # nicht vom Menschen angelegt
+        erg.append({"schluessel": r.key, "text": text, "seit": r.created_at.isoformat() if r.created_at else None})
+    return erg
 
 
 async def regel_loeschen(db, team: Team, schluessel: str) -> int:
@@ -191,9 +205,21 @@ def _mitglieder(team: Team) -> list[str]:
 async def erinnerung_anlegen(db, user_id: str, text: str, faellig: datetime, von: str = "nutzer"):
     from app.models.erinnerung import Erinnerung
 
-    text = (text or "").strip()[:1000]
+    from sqlalchemy import func
+
+    text = (text or "").strip()[:1000 if von == "nutzer" else 300]
     if not text:
         raise SekretariatFehler("Die Erinnerung ist leer.")
+    offen = await db.scalar(select(func.count(Erinnerung.id)).where(
+        Erinnerung.user_id == str(user_id), Erinnerung.erledigt_at.is_(None))) or 0
+    if offen >= MAX_OFFENE_ERINNERUNGEN:
+        raise SekretariatFehler(f"Es sind schon {offen} Erinnerungen offen — erst welche abhaken.")
+    if von != "nutzer":
+        # Eine Mail kann einen Agenten zu vielen Erinnerungen verleiten — gedeckelt je Tag.
+        heute = await db.scalar(select(func.count(Erinnerung.id)).where(
+            Erinnerung.von == von, Erinnerung.created_at >= datetime.now(timezone.utc) - timedelta(days=1))) or 0
+        if heute >= MAX_AGENT_ERINNERUNGEN_JE_TAG:
+            raise SekretariatFehler("Für heute sind genug Erinnerungen angelegt.")
     if faellig.tzinfo is None:
         faellig = faellig.replace(tzinfo=ZoneInfo(_zone()))
     if faellig < datetime.now(timezone.utc) - timedelta(minutes=5):

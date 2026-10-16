@@ -4,6 +4,7 @@ Graph ist gemockt (``msgraph_mcp._graph``); geprüft wird, WAS der Server an Gra
 schickt — vor allem, dass im Entwurfsmodus nie ``/sendMail`` oder ``/reply`` fällt.
 """
 
+import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -27,6 +28,8 @@ class EntwurfsModus(unittest.IsolatedAsyncioTestCase):
 
         async def graph(methode, pfad, token, **kw):
             self.aufrufe.append((methode, pfad))
+            if methode == "POST" and pfad == "/me/messages":
+                self.nachricht = json.loads(kw["content"])
             return {"id": "E1"} if methode == "POST" else {}
 
         self.p = patch.object(msgraph_mcp, "_graph", side_effect=graph)
@@ -41,11 +44,19 @@ class EntwurfsModus(unittest.IsolatedAsyncioTestCase):
 
     async def test_senden_wird_entwurf_und_freigabe(self):
         resp, _ = await msgraph_mcp.handle_mcp_request(
-            _rufe("ms_send_email", {"to": "kunde@example.invalid", "subject": "Angebot", "body": "Hallo"}),
+            _rufe("ms_send_email", {"to": "kunde@example.invalid", "subject": "Angebot", "body": "Hallo",
+                                    "body_type": "HTML"}),
             self._token, entwurf_freigabe=self.freigabe)
         self.assertEqual(self.aufrufe, [("POST", "/me/messages")])  # Entwurf, kein /sendMail
         self.freigabe.assert_awaited_once_with("E1", "Angebot")
+        self.assertEqual(self.nachricht["body"]["contentType"], "Text")  # Agent kann kein HTML unterschieben
         self.assertIn("Zur Freigabe gestellt", resp["result"]["content"][0]["text"])
+
+    async def test_betreff_kann_entwurfs_id_nicht_umlenken(self):
+        await msgraph_mcp.handle_mcp_request(
+            _rufe("ms_send_email", {"to": "kunde@example.invalid", "subject": "x'. Entwurfs-ID: FREMD", "body": "Hallo"}),
+            self._token, entwurf_freigabe=self.freigabe)
+        self.assertEqual(self.freigabe.await_args.args[0], "E1")
 
     async def test_antworten_wird_antwort_entwurf(self):
         await msgraph_mcp.handle_mcp_request(_rufe("ms_reply_email", {"email_id": "M9", "body": "Danke"}),
@@ -77,7 +88,7 @@ class EntwurfsModus(unittest.IsolatedAsyncioTestCase):
 
 class SendenNachFreigabe(unittest.IsolatedAsyncioTestCase):
     def _approval(self, fingerabdruck=None):
-        return SimpleNamespace(id=7, agent_id="a1", meta={"kind": "mail_senden", "input": {
+        return SimpleNamespace(id=7, agent_id="a1", meta={"kind": "mail_senden", "view": {"name": "mail"}, "input": {
             "message_id": "E1", "fingerabdruck": fingerabdruck or mail_freigabe.fingerabdruck(ENTWURF)}})
 
     async def _senden(self, approval, user_id="ua", entwurf=ENTWURF):
@@ -118,6 +129,33 @@ class SendenNachFreigabe(unittest.IsolatedAsyncioTestCase):
         v = mail_freigabe.vorschau(ENTWURF)
         self.assertEqual(v["text"], "Hallo\nanbei das Angebot.")
         self.assertEqual(v["an"], ["kunde@example.invalid"])
+        self.assertTrue(any("HTML" in w for w in v["warnungen"]))
+
+    def test_linkziel_sichtbar_und_anhang_gewarnt(self):
+        m = {**ENTWURF, "hasAttachments": True,
+             "body": {"contentType": "html", "content": '<a href="https://boese.example.invalid/x">Ihre Rechnung</a>'}}
+        v = mail_freigabe.vorschau(m)
+        self.assertIn("Ihre Rechnung (https://boese.example.invalid/x)", v["text"])
+        self.assertTrue(any("Anhänge" in w for w in v["warnungen"]))
+        self.assertNotEqual(mail_freigabe.fingerabdruck(m), mail_freigabe.fingerabdruck({**m, "hasAttachments": False}))
+
+    def test_lange_mail_passt_in_die_ansicht(self):
+        import json
+
+        from app.api.approvals import ANSICHT_MAX_ZEICHEN, _saubere_ansicht
+
+        lang = {**ENTWURF, "body": {"contentType": "text", "content": "Größenänderung " * 2000}}
+        v = mail_freigabe.vorschau(lang)
+        self.assertLessEqual(len(json.dumps(v)), ANSICHT_MAX_ZEICHEN)
+        self.assertIsNotNone(_saubere_ansicht({"name": "mail", "data": v}))
+        self.assertTrue(any("länger" in w for w in v["warnungen"]))
+
+    async def test_ohne_vorschau_wird_nicht_gesendet(self):
+        a = self._approval()
+        a.meta = {k: v for k, v in a.meta.items() if k != "view"}
+        with self.assertRaises(HTTPException) as e:
+            await self._senden(a)
+        self.assertEqual(e.exception.status_code, 409)
 
 
 class Vorbehalten(unittest.IsolatedAsyncioTestCase):
@@ -128,3 +166,16 @@ class Vorbehalten(unittest.IsolatedAsyncioTestCase):
             await approvals.request_approval(approvals.ApprovalRequest(tool="ms_send_email", kind="mail_senden"),
                                              agent_auth={"agent_id": "a1"}, db=None)
         self.assertEqual(e.exception.status_code, 403)
+
+
+class FremdeMailsVerborgen(unittest.TestCase):
+    def test_admin_sieht_fremden_mailtext_nicht(self):
+        from app.api.approvals import _fremde_mails_verbergen
+
+        eintraege = [{"agent_id": "a1", "view": {"name": "mail", "data": {"text": "geheim"}}, "input": {"message_id": "E1"},
+                      "meta": {"kind": "mail_senden", "view": {"name": "mail"}}},
+                     {"agent_id": "a9", "view": {"name": "mail", "data": {"text": "eigen"}}, "input": {"x": 1},
+                      "meta": {"kind": "mail_senden"}}]
+        erg = _fremde_mails_verbergen(eintraege, {"a9"})
+        self.assertEqual((erg[0]["view"], erg[0]["input"], erg[0]["meta"]), (None, {}, {"kind": "mail_senden"}))
+        self.assertEqual(erg[1]["view"]["data"]["text"], "eigen")

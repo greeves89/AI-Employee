@@ -23,6 +23,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   allen Laufzeiten.
 - Läufe aus Zeitplänen mit Teambezug zählen zum Team (Kosten unter Finanzen, Projektbudget).
 
+### Sicherheit
+- Mail-Freigaben: Agenten legen im Entwurfsmodus nur Klartext an; die Vorschau zeigt Linkziele,
+  „Antwort an“ und warnt bei HTML, Anhängen und gekürztem Text; ohne Vorschau wird nie gesendet.
+  Der Fingerabdruck deckt auch Antwort-an, Format und Anhänge ab. Freigeben (= senden) geht nur auf
+  der Seite Heute bzw. unter Freigaben — über Telegram und die Glocke nur Ablehnen. Ein Doppelklick
+  sendet nicht zweimal; zwei ähnliche Entwürfe verschmelzen nicht zu einer Freigabe.
+- Administratoren und Manager sehen in Freigabelisten den Text fremder Mails nicht.
+- Tagesbriefing lädt keine Bilder (eingeschleuste Bilder hätten beim Öffnen Daten abfließen lassen).
+- Erinnerungen von Agenten sind je Tag gedeckelt; Regeln lassen sich von Agenten nicht vortäuschen.
+
 ### Behoben
 - Die Einstellung „Lesen + Schreiben“ für Microsoft 365 behauptete, ausgehende Mail werde als
   Entwurf angelegt — tatsächlich wird gesendet. Der Text sagt das jetzt.

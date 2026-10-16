@@ -11,9 +11,13 @@ import { cn } from "@/lib/utils";
 export const MarkdownContent = memo(function MarkdownContent({
   content,
   className,
+  ohneBilder = false,
 }: {
   content: string;
   className?: string;
+  /** Bilder nicht laden — für Text, der aus fremden Inhalten (Mails) zusammengefasst ist:
+   *  ein eingeschleustes Bild würde beim Öffnen Daten an fremde Adressen schicken. */
+  ohneBilder?: boolean;
 }) {
   return (
     <div
@@ -50,7 +54,10 @@ export const MarkdownContent = memo(function MarkdownContent({
         className,
       )}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}
+        components={ohneBilder ? { img: ({ alt }) => <span className="text-muted-foreground">[Bild: {alt || "ohne Titel"}]</span> } : undefined}>
+        {content}
+      </ReactMarkdown>
     </div>
   );
 });

@@ -2475,10 +2475,13 @@ async def handle_mcp_request(
             )), 200
         try:
             if entwurf_modus and tool_name in ("ms_send_email", "ms_reply_email"):
-                # Nie direkt senden: Entwurf anlegen und zur Freigabe einreichen.
-                args = {**args, "draft": True}
+                # Nie direkt senden: Entwurf anlegen und zur Freigabe einreichen. Nur Klartext —
+                # in HTML könnten Linkziele oder versteckter Text stecken, die die Vorschau
+                # der Freigabe nicht zeigt.
+                args = {**args, "draft": True, "body_type": "Text"}
                 result_text = await handle_tool(tool_name, args, token)
-                treffer = re.search(r"Entwurfs-ID: (\S+)", result_text)
+                # Am ENDE verankert: der Betreff steht weiter vorn im Text und kommt vom Agenten.
+                treffer = re.search(r"Entwurfs-ID: (\S+)\s*\Z", result_text)
                 if not treffer or treffer.group(1) == "?":
                     return mcp_result(id_, tool_result(
                         "Der Entwurf wurde angelegt, aber ohne Kennung zurückgegeben — er liegt im "

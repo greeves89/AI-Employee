@@ -177,6 +177,22 @@ def _saubere_ansicht(roh: dict) -> dict | None:
     return {"name": name, "data": daten}
 
 
+def _fremde_mails_verbergen(eintraege: list[dict], eigene: set[str]) -> list[dict]:
+    """Mail-Entwürfe (``mail_senden``) zeigt die Liste nur dem Besitzer des Postfachs.
+
+    Administratoren und Manager sehen Freigaben aller Agenten — den Text fremder Mails
+    sollen sie trotzdem nicht lesen (Nutzertrennung)."""
+    for d in eintraege:
+        if (d.get("meta") or {}).get("kind") == "mail_senden" and d.get("agent_id") not in eigene:
+            d["view"], d["input"] = None, {}
+            d["meta"] = {"kind": "mail_senden"}
+    return eintraege
+
+
+async def _eigene_agenten(db: AsyncSession, user) -> set[str]:
+    return set((await db.execute(select(Agent.id).where(Agent.user_id == str(user.id)))).scalars().all())
+
+
 def _approval_to_dict(a: CommandApproval) -> dict:
     meta = a.meta or {}
     return {
@@ -285,7 +301,7 @@ async def anfrage_anlegen(db: AsyncSession, agent_id: str, body: ApprovalRequest
     # in ``meta`` und ist in SQL über die Datenbanken hinweg schlecht vergleichbar —
     # deshalb die Vorauswahl im Query, der Rest hier. Die Vorauswahl ist klein: im
     # Normalfall hat ein Agent keine, im Flutfall genau eine offene Frage.
-    candidates = (await db.execute(
+    candidates = [] if body.kind in SERVER_ARTEN else (await db.execute(
         select(CommandApproval).where(
             CommandApproval.agent_id == agent_id,
             CommandApproval.status == ApprovalStatus.PENDING,
@@ -680,7 +696,7 @@ async def list_pending_approvals(
         d = _approval_to_dict(a)
         d["notification_id"] = notif_ids.get(str(a.id))
         eintraege.append(d)
-    return {"approvals": eintraege, "count": len(approvals)}
+    return {"approvals": _fremde_mails_verbergen(eintraege, await _eigene_agenten(db, user)), "count": len(approvals)}
 
 
 async def _notification_ids_for(db: AsyncSession, approval_ids: list[str]) -> dict[str, str]:
@@ -807,7 +823,8 @@ async def list_all_approvals(
         query = select(CommandApproval).where(CommandApproval.agent_id.in_(allowed_ids)).order_by(CommandApproval.created_at.desc()).limit(100)
     result = await db.execute(query)
     approvals = result.scalars().all()
-    return {"approvals": [_approval_to_dict(a) for a in approvals], "count": len(approvals)}
+    return {"approvals": _fremde_mails_verbergen([_approval_to_dict(a) for a in approvals], await _eigene_agenten(db, user)),
+            "count": len(approvals)}
 
 
 #: Was der Verlauf zeigt — alles Entschiedene, nichts Offenes. ``denied`` umfasst
@@ -873,7 +890,7 @@ async def approval_history(
         d["agent_name"] = namen.get(z.agent_id) or z.agent_id
         d["resolved_by_name"] = personen.get(z.resolved_by_user_id) if z.resolved_by_user_id else None
         eintraege.append(d)
-    return {"approvals": eintraege, "total": total}
+    return {"approvals": _fremde_mails_verbergen(eintraege, await _eigene_agenten(db, user)), "total": total}
 
 
 @router.post("/{approval_id}/approve")
@@ -883,7 +900,8 @@ async def approve_request(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(CommandApproval).where(CommandApproval.id == int(approval_id)))
+    # Zeilensperre: ein Doppelklick auf „Freigeben und senden“ schickt die Mail nicht zweimal.
+    result = await db.execute(select(CommandApproval).where(CommandApproval.id == int(approval_id)).with_for_update())
     approval = result.scalar_one_or_none()
 
     if not approval:

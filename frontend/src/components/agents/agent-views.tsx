@@ -137,6 +137,8 @@ function MailEntwurf({ data }: AgentViewProps) {
   const an = liste(data.an);
   const cc = liste(data.cc);
   const bcc = liste(data.bcc);
+  const antwortAn = liste(data.antwort_an);
+  const warnungen = liste(data.warnungen);
   return (
     <div className="overflow-hidden rounded-xl border border-foreground/[0.08] bg-background/60 text-sm">
       <div className="space-y-0.5 border-b border-foreground/[0.06] px-3 py-2 text-xs">
@@ -145,7 +147,13 @@ function MailEntwurf({ data }: AgentViewProps) {
         <p className="text-muted-foreground"><span className="text-foreground/70">An:</span> {an.join(", ") || "—"}</p>
         {cc.length > 0 && <p className="text-muted-foreground"><span className="text-foreground/70">Cc:</span> {cc.join(", ")}</p>}
         {bcc.length > 0 && <p className="text-muted-foreground"><span className="text-foreground/70">Bcc:</span> {bcc.join(", ")}</p>}
+        {antwortAn.length > 0 && <p className="text-muted-foreground"><span className="text-foreground/70">Antwort an:</span> {antwortAn.join(", ")}</p>}
       </div>
+      {warnungen.length > 0 && (
+        <ul className="space-y-0.5 border-b border-amber-500/20 bg-amber-500/5 px-3 py-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+          {warnungen.map((w) => <li key={w}>{w}</li>)}
+        </ul>
+      )}
       <p className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2 text-[13px] text-foreground/90">
         {String(data.text ?? "")}
       </p>

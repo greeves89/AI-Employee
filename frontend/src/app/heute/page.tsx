@@ -350,7 +350,7 @@ export default function HeutePage() {
 
               <Kasten titel="Tagesbriefing" icon={Sun}>
                 {daten.briefing ? (
-                  <div className="max-h-80 overflow-y-auto text-sm"><MarkdownContent content={daten.briefing.text} /></div>
+                  <div className="max-h-80 overflow-y-auto text-sm"><MarkdownContent content={daten.briefing.text} ohneBilder /></div>
                 ) : (
                   <p className="text-xs text-muted-foreground">Das Briefing von heute liegt noch nicht vor — es kommt zur eingestellten Uhrzeit.</p>
                 )}
