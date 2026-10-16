@@ -116,7 +116,7 @@ export function BueroAnsicht({ agents }: { agents: Agent[] }) {
 
           {plaetze.map((pl) => (
             <Schreibtisch key={`${pl.bereich}:${pl.platz}`} p={p} x={pl.x} y={pl.y} w={TISCH_B} d={TISCH_T}
-              glow={glow} farbe={bereichFarbe(pl.bereich)} arbeitet={raumZustand(pl.agent) === "arbeitet"}
+              glow={glow} farbe={bereichFarbe(pl.bereich)} arbeitet={raumZustand(pl.agent) === "arbeitet"} besetzt={!!pl.agent}
               platzX={pl.x + TISCH_B / 2} platzY={pl.y + TISCH_T + 0.75} />
           ))}
         </svg>

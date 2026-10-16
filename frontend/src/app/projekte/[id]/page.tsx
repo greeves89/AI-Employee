@@ -220,8 +220,10 @@ export default function ProjektPage() {
       />
 
       <div className="space-y-6 p-4 sm:p-6">
+        {/* min-w-0: sonst drückt ein langer Text (Titel im Leitstand) die Seite auf dem
+            Handy breiter als den Bildschirm, und der Raum wird abgeschnitten. */}
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <div className="rounded-2xl border border-foreground/[0.08] bg-card p-3">
               <ProjektRaum
                 name={projekt.name}
@@ -235,7 +237,7 @@ export default function ProjektPage() {
               />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_14rem]">
+            <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_14rem]">
               {darfSchreiben ? (
                 <div className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
                   <h2 className="text-sm font-semibold">Auftrag geben</h2>

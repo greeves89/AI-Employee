@@ -611,6 +611,8 @@ class StandUndAusgabe(Basis):
             await db.commit()
             b = await api.projekt_board("p1", user=MITGLIED, db=db)
         self.assertEqual(b["laufend"][0]["letzte_ausgabe"], "nutzt create_schedule")
+        self.assertEqual(projekte.taetigkeit("WebSearch"), "sucht im Web")
+        self.assertEqual(projekte.taetigkeit("mcp__orchestrator__projekt_board"), "liest das Projekt-Board")
 
 
 class Farbe(unittest.TestCase):
