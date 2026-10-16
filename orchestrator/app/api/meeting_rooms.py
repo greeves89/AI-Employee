@@ -19,6 +19,11 @@ from app.models.agent import Agent, AgentState
 
 logger = logging.getLogger(__name__)
 
+#: Reserviert in ``adaptiver_takt.FREMDGETAKTETE_PRAEFIXE`` (#961) — als
+#: Konstante statt als wiederholtes Literal, damit eine AST-Inventur den
+#: Namen hier erkennen kann.
+PRAEFIX = "[Meeting] "
+
 router = APIRouter(prefix="/meeting-rooms", tags=["meeting-rooms"])
 
 # Track running rooms in memory
@@ -582,7 +587,7 @@ async def schedule_meeting(
 
     schedule = Schedule(
         id=uuid.uuid4().hex[:12],
-        name=f"[Meeting] {body.name}",
+        name=f"{PRAEFIX}{body.name}",
         prompt=f"__meeting__:{meeting_config}",
         interval_seconds=0,
         cron_expression=body.cron_expression,

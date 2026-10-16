@@ -75,7 +75,30 @@ MAX_SCHWELLE = 50
 #: verbietet daraufhin ``adaptive``. Die Abgrenzung haelt
 #: ``test_report_run_zeitplan.test_die_beiden_praefixlisten_bleiben_getrennt``
 #: fest (#946, Punkt 6).
-FREMDGETAKTETE_PRAEFIXE = ("[Proactive]", "[Rhythmus]", "[Plan]", "[Projekt]")
+#:
+#: #961: Drei weitere Schedule-Erzeuger fehlten hier, obwohl sie denselben
+#: ``startswith``-Vergleich durchlaufen — ``projekt_termine.PRAEFIX``,
+#: ``api.meeting_rooms.PRAEFIX`` und ``sekretariat.PRAEFIX`` (letzteres stand
+#: nicht einmal im Issue-Text, sondern kam erst durch die volle AST-Inventur
+#: in ``test_schedule_praefix_inventur`` ans Licht). Alle drei legen den
+#: Zeitplan direkt am Modell an, nie ueber ``api.schedules.create_schedule``,
+#: darum aendert ihre Aufnahme hier nichts am Verhalten — nur die Sperre
+#: (Umbenennen, `adaptive`, Anlegen von Hand ueber die freie API) greift jetzt
+#: auch fuer sie. ``[Projekt-Termin]`` bleibt bewusst ein EIGENER Eintrag statt
+#: eines Teilstrings von ``[Projekt]``: ``"[Projekt]".startswith``-Vergleiche
+#: treffen ``"[Projekt-Termin] ..."`` nicht (9. Zeichen ``-`` statt ``]``), die
+#: beiden Namensraeume sind unabhaengig voneinander zu sperren.
+#:
+#: Diese Handliste wird durch ``test_schedule_praefix_inventur`` gegengerechnet:
+#: eine AST-Inventur sammelt ALLE ``Schedule(...)``-Konstruktionen unter
+#: ``app/core``, ``app/services`` und ``app/api`` ein (Import-Alias, f-String-
+#: und Schleifen-Aufloesung eingeschlossen) und verlangt exakte Mengen-
+#: mitgliedschaft hier — ein neuer Erzeuger mit unbekanntem Praefix faerbt
+#: diesen Test rot, statt still durchzulaufen (#961).
+FREMDGETAKTETE_PRAEFIXE = (
+    "[Proactive]", "[Rhythmus]", "[Plan]", "[Projekt]",
+    "[Projekt-Termin]", "[Meeting]", "[Sekretariat]",
+)
 
 
 def fremdgetaktet(name: str | None) -> bool:

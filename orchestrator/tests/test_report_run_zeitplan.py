@@ -950,7 +950,12 @@ class EinGefuehrterZeitplanBehaeltSeinenNamen(_Basis):
         from app.core.eigeninitiative import PROAKTIV_PRAEFIX
         from app.core.plan_rhythm import SCHEDULE_PREFIX
 
-        for quelle in (PROAKTIV_PRAEFIX, SCHEDULE_PREFIX):
+        from app.core.projekt_termine import PRAEFIX as TERMIN_PRAEFIX
+        from app.core.sekretariat import PRAEFIX as SEKRETARIAT_PRAEFIX
+        from app.api.meeting_rooms import PRAEFIX as MEETING_PRAEFIX
+
+        for quelle in (PROAKTIV_PRAEFIX, SCHEDULE_PREFIX, TERMIN_PRAEFIX,
+                       SEKRETARIAT_PRAEFIX, MEETING_PRAEFIX):
             self.assertTrue(
                 adaptiver_takt.fremdgetaktet(f"{quelle}Irgendwas"),
                 f"{quelle!r} fehlt in FREMDGETAKTETE_PRAEFIXE",
@@ -959,6 +964,10 @@ class EinGefuehrterZeitplanBehaeltSeinenNamen(_Basis):
         self.assertTrue(adaptiver_takt.fremdgetaktet("[Plan] 09:00 Irgendwas"))
         # Und die Liste enthaelt nichts, was gar nicht gefuehrt wird.
         self.assertFalse(adaptiver_takt.fremdgetaktet("PR-Beobachter"))
+        # #961: "[Projekt-Termin]" braucht einen EIGENEN Eintrag — "[Projekt]"
+        # ist davon kein Praefix (9. Zeichen "-" statt "]"), startswith allein
+        # haette das Loch nicht geschlossen.
+        self.assertTrue(adaptiver_takt.fremdgetaktet("[Projekt-Termin] Daily: Ein Projekt"))
 
     def test_die_beiden_praefixlisten_bleiben_getrennt(self):
         """#946, Punkt 6: ``FREMDGETAKTETE_PRAEFIXE`` und
@@ -982,10 +991,17 @@ class EinGefuehrterZeitplanBehaeltSeinenNamen(_Basis):
             "SYSTEM_ZEITPLAN_PRAEFIXE muss echte Teilmenge von "
             f"FREMDGETAKTETE_PRAEFIXE sein: {verwaltet} vs. {gesperrt}",
         )
-        # Und zwar genau um diese beiden Besitzer, die die Plattform NICHT je
-        # Agent anlegt und darum auch nicht loeschen darf.
-        self.assertEqual(gesperrt - verwaltet, {"[Plan]", "[Projekt]"})
-        for fremder in ("[Plan] 09:00 Irgendwas", "[Projekt] Ein Projekt"):
+        # Und zwar genau um diese Besitzer, die die Plattform NICHT je Agent
+        # anlegt und darum auch nicht loeschen darf (#961 erweitert die drei
+        # neuen Praefixe um dieselbe Begruendung: Projekt-Termine, Meetings
+        # und Sekretariate sind keine Eigeninitiative-Zeitplaene).
+        self.assertEqual(
+            gesperrt - verwaltet,
+            {"[Plan]", "[Projekt]", "[Projekt-Termin]", "[Meeting]", "[Sekretariat]"},
+        )
+        for fremder in ("[Plan] 09:00 Irgendwas", "[Projekt] Ein Projekt",
+                        "[Projekt-Termin] Daily: Ein Projekt", "[Meeting] Standup",
+                        "[Sekretariat] Postfach sichten"):
             self.assertTrue(adaptiver_takt.fremdgetaktet(fremder))
             self.assertFalse(
                 ist_system_zeitplan(fremder),
