@@ -107,9 +107,9 @@ export default function ProjektPage() {
     verschieben: (k, aenderung) => ausfuehren("Nicht verschoben", () => api.karteAendern(id, k.id, aenderung)),
     vergeben: (k, agentId) => ausfuehren("Nicht vergeben", () => api.karteVergeben(id, k.id, agentId)),
     abnehmen: (k) => ausfuehren("Nicht abgenommen", () => api.karteAbnehmen(id, k.id)),
-    zurueckgeben: async (k, hinweis) => {
+    zurueckgeben: async (k, hinweis, agentId) => {
       try {
-        await api.karteZurueckgeben(id, k.id, hinweis);
+        await api.karteZurueckgeben(id, k.id, hinweis, agentId);
         toast.success("Zurückgegeben", "Die Nacharbeit läuft.");
         await laden();
       } catch (e) {

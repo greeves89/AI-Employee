@@ -73,7 +73,11 @@ export function ProjektRaum({
   const [sx, sy] = p(1.4, 1.45, 0.55 + blaetter * 0.075);
 
   return (
-    <div ref={ref} className="relative w-full select-none overflow-hidden" style={{ aspectRatio: `${B} / ${H}` }}>
+    // Höchstens 34rem hoch: auf breiten Bildschirmen wächst der Raum sonst mit der
+    // Breite immer weiter. Die Breite folgt dem Seitenverhältnis, damit die Beschriftungen
+    // (in Prozent gesetzt) auf dem Bild bleiben.
+    <div ref={ref} className="relative mx-auto w-full select-none overflow-hidden"
+      style={{ aspectRatio: `${B} / ${H}`, maxWidth: `calc(34rem * ${B} / ${H})` }}>
       <svg viewBox={`0 0 ${B} ${H}`} className="absolute inset-0 h-full w-full" aria-hidden>
         <defs>
           <GlowFilter id={glow} />

@@ -972,9 +972,14 @@ Auszug aus dem Ergebnis.
 
 - **Abnehmen** — das Ergebnis passt. Die Karte wandert zu **Erledigt**.
 - **Zurückgeben** — es öffnet sich ein Fenster. Schreibe hinein, was anders werden soll,
-  und klicke **Zurückgeben**. Derselbe Agent (bei Lead-Aufträgen wieder der Lead) bekommt
-  eine **Nacharbeit** mit deinem Hinweis, der Karte und seinem bisherigen Ergebnis. Danach
-  steht die Karte wieder unter Prüfung.
+  und klicke **Zurückgeben**. Unter **Wer arbeitet nach?** steht vorausgewählt:
+  - **Wie bisher** — derselbe Agent (bei Lead-Aufträgen wieder der Lead), oder
+  - **Lead entscheidet** — wenn der bisherige Agent nicht mehr im Projekt ist (z. B. weil du
+    ihn herausgenommen hast); der Lead gibt die Nacharbeit an ein passendes Mitglied.
+
+  Im selben Feld kannst du auch ein anderes Mitglied direkt wählen. Der Agent bekommt eine
+  **Nacharbeit** mit deinem Hinweis, der Karte und dem bisherigen Ergebnis. Danach steht die
+  Karte wieder unter Prüfung.
 
 Wird ein Lauf abgebrochen, geht seine Karte zurück nach **Bereit**.
 

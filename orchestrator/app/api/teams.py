@@ -924,6 +924,9 @@ async def _ergebnis_festhalten(db: AsyncSession, t: Team, karte: dict, task, use
 
 class Zurueckgeben(BaseModel):
     hinweis: str = Field(min_length=1, max_length=8000)
+    # Leer: an den bisherigen Bearbeiter, solange er im Projekt ist — sonst an den Lead.
+    # Sonst direkt an dieses Mitglied (oder den Lead).
+    agent_id: str | None = None
 
 
 @router.post("/{team_id}/karten/{karte_id}/zurueckgeben", status_code=201)
@@ -944,11 +947,25 @@ async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, re
         raise HTTPException(status_code=409, detail="Zurückgeben geht nur in der Prüfung.")
     alt = await _lauf_der_karte(db, karte, user)
     team_id, lead_id = t.id, t.lead_agent_id
+    mitglieder = set(t.member_agent_ids or []) | ({lead_id} if lead_id else set())
+    if body.agent_id:
+        if body.agent_id not in mitglieder:
+            await db.rollback()
+            raise HTTPException(status_code=400, detail="Dieser Agent gehört nicht zum Projekt.")
+        ueber_lead, ziel = False, body.agent_id
+    else:
+        # Der bisherige Bearbeiter — ist er nicht mehr im Projekt (herausgenommen,
+        # am Limit), entscheidet der Lead, wer nacharbeitet.
+        bisher = karte.agent_id or (alt.agent_id if alt else None)
+        ueber_lead = bool(lead_id and (
+            bisher not in mitglieder or (alt is not None and (alt.metadata_ or {}).get("delegated_to_team"))))
+        ziel = None if ueber_lead else bisher
+        if not ueber_lead and ziel not in mitglieder:
+            await db.rollback()
+            raise HTTPException(status_code=409, detail="Der bisherige Agent ist nicht mehr im Projekt — wähle, wer nacharbeitet.")
     karte.spalte = "in_arbeit"  # Sperre: ein Doppelklick legt keine zweite Nacharbeit an
     await db.commit()
 
-    ueber_lead = bool(alt is not None and (alt.metadata_ or {}).get("delegated_to_team") and t.lead_agent_id)
-    ziel = None if ueber_lead else (karte.agent_id or (alt.agent_id if alt else None))
     fremd = await _fremd_fuer(karte, ziel or t.lead_agent_id, db)
     prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name, fremd=fremd)
     titel = f"Nacharbeit: {projekte.lauf_titel(karte, fremd)}"[:200]
@@ -957,8 +974,6 @@ async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, re
             neu = await _an_lead(t, titel, prompt, 1, request, router_, db, user,
                                  parent_task_id=alt.id if alt else None, karte_id=karte.id)
         else:
-            if not ziel:
-                raise HTTPException(status_code=409, detail="Die Karte hat keinen Agenten mehr — vergib sie neu.")
             await _darf_beauftragen(ziel, user, db)
             neu = await router_.create_and_route_task(
                 title=titel, prompt=prompt, priority=1, agent_id=ziel,

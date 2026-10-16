@@ -4741,10 +4741,10 @@ export async function karteAbnehmen(id: string, karteId: string): Promise<Projek
   return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/abnehmen`, { method: "POST" });
 }
 
-export async function karteZurueckgeben(id: string, karteId: string, hinweis: string): Promise<ProjektKarte> {
+export async function karteZurueckgeben(id: string, karteId: string, hinweis: string, agentId?: string | null): Promise<ProjektKarte> {
   return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/zurueckgeben`, {
     method: "POST",
-    body: JSON.stringify({ hinweis }),
+    body: JSON.stringify({ hinweis, ...(agentId ? { agent_id: agentId } : {}) }),
   });
 }
 
