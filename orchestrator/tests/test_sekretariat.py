@@ -139,6 +139,27 @@ class MsGraphEndpunkt(_Sek):
         self.assertNotIn("ms_forward_email", namen)    # direktes Senden gibt es nicht
         self.assertNotIn("ms_create_calendar_event", namen)
 
+    async def test_mitgliedschaft_gibt_lesen_keine_entwuerfe(self):
+        import json as _json
+
+        from app.api import mcp_msgraph
+        from app.dependencies import make_agent_token
+        from app.models.agent import Agent
+
+        async with self.Session() as db:
+            await self._einrichten(db)
+            a2 = await db.get(Agent, "a2")
+            a2.config = {"msgraph_access": "read"}
+            await db.commit()
+        anfrage = SimpleNamespace(headers={"Authorization": f"Bearer {make_agent_token('a2')}"},
+                                  json=AsyncMock(return_value={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))
+        with patch("app.api.mcp_msgraph.async_session_factory", self.Session), \
+                patch("app.core.ms_access.read_only_enabled", return_value=False):
+            antwort = await mcp_msgraph.mcp_msgraph_endpoint("a2", anfrage)
+        namen = {t["name"] for t in _json.loads(antwort.body)["result"]["tools"]}
+        self.assertNotIn("ms_send_email", namen)
+        self.assertNotIn("ms_move_email", namen)
+
 
 class Aufraeumen(_Sek):
     async def test_loeschen_nimmt_zeitplaene_mit_und_lead_wechsel_haengt_um(self):
