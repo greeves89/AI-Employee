@@ -87,7 +87,7 @@ async def mcp_msgraph_endpoint(agent_id: str, request: Request):
     # Die Mitgliedschaft im Sekretariat stuft nur HERAB (Schreiben → Entwurf), sie gibt nie
     # mehr Rechte als die eigene Einstellung des Agenten: „Lesen“ bleibt „Lesen“.
     if not may_write and (ms_access.entwurf_enabled(agent.config if agent else None)
-                          or (im_sekretariat and ms_access.entwurf_freigeschaltet()
+                          or (im_sekretariat and not ms_access.read_only_enabled()
                               and (agent.config or {}).get("msgraph_access") in ms_access._WRITE_VALUES)):
         from app.core.mail_freigabe import anfragen
 

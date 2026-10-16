@@ -77,8 +77,8 @@ function Einrichten({ onFertig, entwurfFrei }: { onFertig: () => void; entwurfFr
         </p>
         {!entwurfFrei && (
           <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-            „Entwürfe + Freigabe“ ist auf dieser Anlage noch nicht freigeschaltet. Das Sekretariat liest dann Postfach und
-            Kalender, entwirft aber keine Antworten, bis ein Administrator es in der Admin-Konsole freischaltet.
+            Microsoft ist auf dieser Anlage gesperrt (nur lesend). Das Sekretariat liest dann Postfach und Kalender, entwirft
+            aber keine Antworten — aufheben kann das nur ein Administrator.
           </p>
         )}
       </div>

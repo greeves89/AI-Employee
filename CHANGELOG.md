@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.0] - 2026-10-16
+
+### Geändert — Microsoft nutzerbezogen
+- Jeder Nutzer stellt seine eigenen Agenten selbst ein: Lesen, Entwürfe + Freigabe oder Lesen +
+  Schreiben. Der Administrator regelt über die Rolle, wer Microsoft überhaupt nutzen darf, und kann
+  die Anlage mit „Microsoft nur lesend“ sperren — dann sendet, entwirft oder ändert niemand etwas
+  (z. B. für Anlagen, die M365 ausschließlich lesend wollen).
+- Der zusätzliche Schalter „Entwürfe mit Freigabe erlauben“ aus 1.375.0 entfällt.
+
+---
+
 ## [1.375.0] - 2026-10-16
 
 ### Geändert — alles nutzerbezogen, der Admin schaltet frei

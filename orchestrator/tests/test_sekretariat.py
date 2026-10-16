@@ -116,28 +116,28 @@ class NieDirektSenden(_Sek):
         self.assertEqual(e.exception.status_code, 422)
 
 
-class AdminSchaltetFrei(_Sek):
-    async def test_ohne_freigabe_kein_entwurfsmodus(self):
+class NutzerEntscheidetAdminSperrt(_Sek):
+    async def test_gesperrte_anlage_und_freie_anlage(self):
         from app.api import agents as agents_api
-        from app.config import settings
         from app.models.agent import Agent
 
         async with self.Session() as db:
             manager = SimpleNamespace(_get_agent=AsyncMock(return_value=await db.get(Agent, "b1")),
                                       restart_agent=AsyncMock())
             with patch("app.api.agents._check_owner", AsyncMock()), \
-                    patch("app.core.ms_access.read_only_enabled", return_value=True), \
                     patch("app.core.permissions.get_effective_permissions", AsyncMock(return_value={})), \
                     patch("app.core.permissions.can_use_integration", return_value=True):
-                with patch.object(settings, "msgraph_entwurf_erlaubt", False):
-                    with self.assertRaises(HTTPException) as e:
-                        await agents_api.update_agent_integrations(
-                            "b1", {"integrations": ["microsoft"], "msgraph_access": "entwurf"}, user=B, db=db, manager=manager)
-                    self.assertEqual(e.exception.status_code, 422)
-                with patch.object(settings, "msgraph_entwurf_erlaubt", True):
-                    r = await agents_api.update_agent_integrations(
-                        "b1", {"integrations": ["microsoft"], "msgraph_access": "entwurf"}, user=B, db=db, manager=manager)
-        self.assertEqual((r["msgraph_access"], r["microsoft_entwurf_erlaubt"]), ("entwurf", True))
+                with patch("app.core.ms_access.read_only_enabled", return_value=True):
+                    for modus in ("entwurf", "write"):
+                        with self.assertRaises(HTTPException) as e:
+                            await agents_api.update_agent_integrations(
+                                "b1", {"integrations": ["microsoft"], "msgraph_access": modus}, user=B, db=db, manager=manager)
+                        self.assertEqual(e.exception.status_code, 422)
+                with patch("app.core.ms_access.read_only_enabled", return_value=False):
+                    for modus in ("entwurf", "write"):  # der Nutzer entscheidet selbst
+                        r = await agents_api.update_agent_integrations(
+                            "b1", {"integrations": ["microsoft"], "msgraph_access": modus}, user=B, db=db, manager=manager)
+                        self.assertEqual(r["msgraph_access"], modus)
 
 
 class MsGraphEndpunkt(_Sek):

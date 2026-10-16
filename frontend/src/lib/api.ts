@@ -512,10 +512,6 @@ export async function patchDayPlanItem(
   });
 }
 
-export async function setMsgraphEntwurf(erlaubt: boolean): Promise<{ msgraph_entwurf_erlaubt: boolean }> {
-  return fetchJSON(`${getBase()}/settings/msgraph-entwurf`, { method: "PUT", body: JSON.stringify({ erlaubt }) });
-}
-
 export async function setMsgraphReadOnly(read_only: boolean): Promise<{ msgraph_read_only: boolean }> {
   return fetchJSON(`${getBase()}/settings/msgraph-read-only`, {
     method: "PUT",
@@ -1348,7 +1344,7 @@ export async function disconnectIntegration(provider: string): Promise<void> {
   await fetchJSON(`${getBase()}/integrations/${provider}`, { method: "DELETE" });
 }
 
-export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[]; msgraph_access?: string; exchange_access?: string; microsoft_read_only?: boolean; microsoft_entwurf_erlaubt?: boolean }> {
+export async function getAgentIntegrations(agentId: string): Promise<{ agent_id: string; integrations: string[]; msgraph_access?: string; exchange_access?: string; microsoft_read_only?: boolean }> {
   return fetchJSON(`${getBase()}/agents/${agentId}/integrations`);
 }
 
@@ -4680,7 +4676,7 @@ export interface SekretariatRegel {
 export interface Heute {
   eingerichtet: boolean;
   m365_verbunden: boolean;
-  /** Hat der Admin „Entwürfe + Freigabe“ freigeschaltet? */
+  /** Ist Microsoft auf der Anlage NICHT gesperrt (nur lesend)? Dann darf das Sekretariat entwerfen. */
   m365_entwurf_frei: boolean;
   team: { id: string; name: string; lead_agent_id: string | null; member_agent_ids: string[] } | null;
   termine: HeuteTermin[] | null;

@@ -1222,8 +1222,8 @@ Ein **Sekretariat** sind ein bis vier deiner Agenten, die dein **Postfach und de
 Fristen im Blick und schreiben dir morgens ein Tagesbriefing. **Gesendet wird nichts ohne dich.**
 
 **Voraussetzung:** Du hast **dein eigenes** Microsoft-Konto unter **Integrationen** verbunden, und
-ein Administrator hat **Entwürfe mit Freigabe erlauben** eingeschaltet (Kap. 20.1). Ist das noch
-aus, liest das Sekretariat nur.
+die Anlage ist nicht auf **Microsoft nur lesend** gesperrt (Kap. 20.1). Ist sie gesperrt, liest das
+Sekretariat nur.
 
 ### 6c.1 Einrichten
 
@@ -1892,10 +1892,10 @@ Schreibzugriff pro Agent freigeben.
   anderer Empfänger), wird nichts gesendet. Freigeben kann nur, wem das Postfach gehört.
 - **Lesen + Schreiben** — sendet Mails und ändert Termine selbst, ohne Rückfrage.
 
-„Lesen + Schreiben“ ist nur wählbar, wenn der Nur-Lesen-Schalter gelöst ist. „Entwürfe + Freigabe“
-schaltet der Administrator eigens frei — direkt darunter, Schalter **Entwürfe mit Freigabe erlauben**
-(steht ab Werk auf aus). Ist er an, stellt **jeder Nutzer seine eigenen Agenten** selbst darauf ein;
-Mails gibt immer nur frei, wem das Postfach gehört. Der Nur-Lesen-Schalter darf dabei an bleiben.
+*Seit 1.376.0:* Die Stufe wählt **jeder Nutzer für seine eigenen Agenten selbst** — sein
+Microsoft-Konto verbindet er ebenfalls selbst. Der Schalter **Microsoft nur lesend** ist die Sperre
+der Anlage durch den Administrator: Ist er an, sendet, entwirft oder ändert kein Agent etwas, und nur
+**Lesen** ist wählbar. Mails im Modus „Entwürfe + Freigabe“ gibt immer nur frei, wem das Postfach gehört.
 
 > **Hinweis:** Der externe MCP-Zugang für OpenWebUI ist **immer** nur lesend — unabhängig
 > von diesem Schalter. Und die Anmeldung dorthin läuft seit 1.154.0 über das

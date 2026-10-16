@@ -198,8 +198,6 @@ class SettingsResponse(BaseModel):
     msgraph_mcp_external_enabled: bool = False
     # Platform-wide read-only enforcement for M365/Graph + on-prem Exchange
     msgraph_read_only: bool = True
-    # Admin-Freigabe: „Entwürfe + Freigabe“ für Microsoft 365 (unabhängig von Nur-Lesen)
-    msgraph_entwurf_erlaubt: bool = False
     # Lifecycle
     agent_idle_timeout_minutes: int = 30
     # Improvement engine thresholds

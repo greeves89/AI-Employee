@@ -92,7 +92,6 @@ async def get_settings(user=Depends(require_auth), db: AsyncSession = Depends(ge
         msgraph_mcp_external_enabled=(await svc.get("msgraph_mcp_external_enabled") or "false").lower() in ("true", "1", "yes"),
         # Read-only is the default — an unset value means "on", not "off".
         msgraph_read_only=(await svc.get("msgraph_read_only") or "true").lower() in ("true", "1", "yes"),
-        msgraph_entwurf_erlaubt=(await svc.get("msgraph_entwurf_erlaubt") or "false").lower() in ("true", "1", "yes"),
         # Lifecycle
         agent_idle_timeout_minutes=int(await svc.get("agent_idle_timeout_minutes") or "30"),
         # Improvement engine thresholds
@@ -648,11 +647,12 @@ async def set_msgraph_read_only(
     user=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin: platform-wide read-only enforcement for ALL Microsoft access.
+    """Admin: die Anlage für Microsoft sperren (nur lesend).
 
-    While enabled (the default), no agent can send mail, create events or change
-    files — neither via M365/Graph nor via the on-prem Exchange connector, whatever
-    the per-agent access mode says. Takes effect immediately for every following MCP
+    An (Standard): kein Agent sendet, entwirft oder ändert — weder über M365/Graph noch
+    über den on-prem-Exchange-Connector, gleich was beim Agenten eingestellt ist. Aus:
+    jeder Nutzer stellt seine eigenen Agenten selbst ein (Lesen / Entwürfe + Freigabe /
+    Lesen + Schreiben). Takes effect immediately for every following MCP
     request; running agents additionally get a fresh tool list on their next restart.
     """
     enable = bool(body.get("read_only", True))
@@ -664,27 +664,6 @@ async def set_msgraph_read_only(
     logger.info("Microsoft read-only enforcement %s by admin %s",
                 "ENABLED" if enable else "DISABLED", user.id)
     return {"msgraph_read_only": enable}
-
-
-@router.put("/msgraph-entwurf")
-async def set_msgraph_entwurf(
-    body: dict,
-    user=Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """Admin: Microsoft-Modus „Entwürfe + Freigabe“ für die Nutzer freischalten.
-
-    Ist er frei, stellt jeder Nutzer SEINE Agenten selbst darauf ein (sein Postfach,
-    seine Anmeldung). Agenten legen dann nur Entwürfe an; gesendet wird erst, wenn der
-    Postfach-Besitzer freigibt — vom Server. Der Nur-Lesen-Schalter bleibt davon
-    unberührt und sperrt weiter direktes Senden und Ändern."""
-    erlaubt = bool(body.get("erlaubt", False))
-    svc = SettingsService(db)
-    await svc.set("msgraph_entwurf_erlaubt", "true" if erlaubt else "false")
-    await _einstellungen_protokollieren(db, user, ["msgraph_entwurf_erlaubt"])
-    await db.commit()
-    settings.msgraph_entwurf_erlaubt = erlaubt  # wirkt sofort
-    return {"msgraph_entwurf_erlaubt": erlaubt}
 
 
 # ── Datenschutz & Aufbewahrung (#892): Fristen + Lebenszeichen ──

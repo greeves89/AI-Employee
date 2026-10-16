@@ -325,8 +325,6 @@ export interface Settings {
   has_apple_oauth: boolean;
   msgraph_mcp_external_enabled: boolean;
   msgraph_read_only: boolean;
-  /** Admin-Freigabe für den Microsoft-Modus „Entwürfe + Freigabe“. */
-  msgraph_entwurf_erlaubt?: boolean;
   // Security / Login
   sso_only_login?: boolean;
   /** Duerfen Mitarbeiter ihr eigenes Claude-/ChatGPT-Abo einbinden? */
