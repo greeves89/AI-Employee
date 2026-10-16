@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.373.0] - 2026-10-16
+
+### Neu — Finanzen
+- **Seite „Finanzen“** (Seitenleiste): Kosten je Monat (Verlauf über 3, 6 oder 12 Monate), je
+  Projekt und je Agent, getrennt nach Aufgaben und Chat, mit Tokens und Vormonatsvergleich.
+  Mitglieder sehen ihre eigenen Agenten und Projekte, Administratoren die Anlage — fremde
+  Projekte auch dann nicht.
+- **Monatsbudget je Projekt:** setzt, wer das Projekt angelegt hat. Ist es aufgebraucht, starten
+  bis Monatsende keine neuen Läufe des Projekts (Karten, Takt, Gespräch), fällige Termine fallen
+  aus; der Ersteller wird einmal im Monat benachrichtigt — auch in gemischten Projekten nur er,
+  und nur er sieht die Beträge. Die Agenten arbeiten anderswo weiter.
+- **CSV-Export** der Zahlen (Monate, Projekte, Agenten; Namen gegen Formel-Einschleusung
+  entschärft).
+- Projektseite: unter „Erledigt“ stehen die Kosten des Monats samt Budget, mit Sprung zu Finanzen.
+- Gelöschte Aufgaben behalten ihr Projekt in der Kosten-Historie — Projektkosten bleiben nach dem
+  Aufräumen vollständig.
+
+### Handbuch
+- Kapitel 6b „Finanzen“; Abbildungen 70–79 zu Projekten, Gespräch, Terminen, Wissens-Verlauf und
+  Büro.
+
+---
+
 ## [1.372.3] - 2026-10-16
 
 ### Sicherheit

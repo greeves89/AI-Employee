@@ -98,6 +98,8 @@ _SPALTEN_NACH_DER_MARKE = (
     ("teams", "repo_abgleich_at"),
     ("teams", "repo_fehler"),
     ("teams", "repo_secret_id"),
+    ("teams", "budget_usd"),
+    ("kosten_historie", "team_id"),
     ("meeting_rooms", "team_id"),
     ("schedules", "team_id"),
     # #941 adaptiver Takt

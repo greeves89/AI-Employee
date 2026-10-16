@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,5 +41,8 @@ class Team(Base, TimestampMixin):
     # Schlüssel aus der Schlüsselverwaltung (agent_secrets.id) für private Repos; leer =
     # GitHub-Verbindung der Anlage (nur bei Projekten von Admins) bzw. anonym.
     repo_secret_id: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # Monatsbudget des Projekts in USD (leer = keins): neue Läufe des Projekts werden
+    # abgelehnt, sobald seine Kosten im Monat es erreichen (core/budget.projekt_budget_pruefen).
+    budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     # Slug des Second Brain mit dem Projektwissen (core/projekt_wissen.py).
     wissen_slug: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)

@@ -323,6 +323,8 @@ reichen die Plätze nicht, kommen Anbauten dazu).
 4. Mit der Maus über einem Agenten siehst du Name, Zustand und Bereich; ein **Klick** öffnet
    ihn (Chat, Einstellungen).
 
+![Agenten-Seite in der Ansicht „Büro“ — das Gebäude-Symbol oben rechts schaltet um](screenshots/76-agenten-buero.png)
+
 Suche und Statusfilter oberhalb wirken auch hier — wer nicht passt, verlässt kurz seinen
 Platz. Jeder **neue Agent** bekommt beim Anlegen einen **zufälligen freien Platz**; ältere
 Agenten bekommen einen festen Platz, der sich nicht ändert. Auf schmalen Bildschirmen zeigt
@@ -898,13 +900,19 @@ Ergebnisse ab**. Ein Projekt ist dasselbe wie ein **Team** auf der Agentenseite 
 10. **Projekt erstellen** klicken. Das Projekt bekommt dabei automatisch seine eigene
    **Wissensablage** (siehe 6a.7).
 
+![Fenster „Projekt erstellen“ mit Name, Beschreibung, Farbe und Mitgliedern](screenshots/71-projekt-anlegen.png)
+
 Die Übersicht zeigt je Projekt eine Karte mit dem Raum, den Zahlen **bereit**, **in Arbeit**,
 **Prüfung** und **heute fertig**, dem, was gerade läuft, was als Nächstes kommt, und dem
 Arbeitstakt.
 
+![Seite „Projekte“ — Menüpunkt in der Seitenleiste, je Projekt eine Karte mit Raum und Zahlen](screenshots/70-projekte-uebersicht.png)
+
 ### 6a.2 Raum und Leitstand
 
 Ein Klick auf eine Projektkarte öffnet das Projekt.
+
+![Projektseite: Raum mit den Agenten, Leitstand rechts, darunter „Auftrag geben“](screenshots/72-projekt-raum.png)
 
 **Der Raum** (links oben):
 - **Schreibtische** — je Mitglied einer. Arbeitet ein Agent, leuchtet sein Bildschirm in der
@@ -944,6 +952,8 @@ Unter dem Raum liegt der Reiter **Board** mit fünf Spalten:
 | **Prüfung** | Der Agent ist fertig (oder gescheitert) | **Abnehmen** oder **Zurückgeben** |
 | **Erledigt** | Abgenommen oder verworfen (letzte 30 Tage) | — |
 
+![Das Board mit den Spalten Eingang, Bereit, In Arbeit, Prüfung und Erledigt](screenshots/73-projekt-board.png)
+
 - Das kleine Kürzel **P1/P2/P3** vor dem Titel ist die Priorität. Ein Klick darauf schaltet
   sie weiter. Karten mit P1 stehen oben und kommen zuerst dran.
 - Das **+** in der Spalte Eingang legt eine neue Karte an (Titel und Beschreibung).
@@ -970,6 +980,8 @@ Unter dem Raum liegt der Reiter **Board** mit fünf Spalten:
 Ist ein Lauf fertig (oder gescheitert), steht seine Karte unter **Prüfung** — mit einem
 Auszug aus dem Ergebnis.
 
+![Karten in der Prüfung mit Ergebnis, Kosten und den Knöpfen Abnehmen und Zurückgeben](screenshots/74-projekt-abnahme.png)
+
 - **Abnehmen** — das Ergebnis passt. Die Karte wandert zu **Erledigt**.
 - **Zurückgeben** — es öffnet sich ein Fenster. Schreibe hinein, was anders werden soll,
   und klicke **Zurückgeben**. Unter **Wer arbeitet nach?** steht vorausgewählt:
@@ -980,6 +992,8 @@ Auszug aus dem Ergebnis.
   Im selben Feld kannst du auch ein anderes Mitglied direkt wählen. Der Agent bekommt eine
   **Nacharbeit** mit deinem Hinweis, der Karte und dem bisherigen Ergebnis. Danach steht die
   Karte wieder unter Prüfung.
+
+![Fenster „Zur Nacharbeit zurückgeben“ mit der Auswahl, wer nacharbeitet](screenshots/75-projekt-zurueckgeben.png)
 
 Wird ein Lauf abgebrochen, geht seine Karte zurück nach **Bereit**.
 
@@ -1023,6 +1037,8 @@ Reiter **Gespräch**: Hier sprechen du und die Agenten des Projekts miteinander.
    Entscheidungen landen zusätzlich in `entscheidungen.md` im Projektwissen.
 4. **Senden** (oder Strg/Cmd + Enter).
 
+![Reiter „Gespräch“: Fragen, Entscheidungen, Antworten der Agenten; unten Ansprechen und Senden](screenshots/77-projekt-gespraech.png)
+
 Der angesprochene Agent bekommt einen eigenen Lauf mit deiner Nachricht und dem jüngsten
 Gesprächsverlauf; seine Antwort erscheint nach kurzer Zeit im Gespräch. Bis dahin steht unter
 dem Gespräch „*Name* antwortet gleich …“ — ein gestoppter Agent wird dafür erst gestartet, das
@@ -1041,6 +1057,8 @@ Reiter **Termine** (anlegen darf der Ersteller des Projekts — und der Lead sel
    **Einmalig** (mit Datum).
 2. Uhrzeit wählen, optional ein Thema eintragen.
 3. **Termin anlegen**.
+
+![Reiter „Termine“ mit einem Daily und dem Formular „Neuer Termin“](screenshots/78-projekt-termine.png)
 
 Zur Zeit treffen sich die Agenten des Projekts in einer Besprechung (Ablauf nach Vorlage: beim
 Daily Stand → Hindernisse → nächster Schritt). Danach:
@@ -1061,6 +1079,8 @@ Agenten **hängen** Neues an (`projekt_wissen_ergaenzen`) statt Seiten zu übers
 hat einen **Verlauf**: im Reiter Wissen auf **Verlauf** klicken, links eine Version wählen, rechts
 ansehen und bei Bedarf **Diese Version zurückholen** (das wird selbst eine neue Version — nichts
 geht verloren).
+
+![Verlauf einer Wissensseite mit „Diese Version zurückholen“](screenshots/79-projekt-wissen-verlauf.png)
 
 **Wissen aufbauen lassen** (links im Reiter Wissen) gibt dem Lead eine Karte: Er liest das Repo
 bzw. die Beschreibung und schreibt `index.md`, `architektur.md` und `glossar.md`.
@@ -1145,6 +1165,50 @@ die Agenten nicht steuern.
 > ausführende Agent gehört. Die Agenten des Projekts erreichen Board und Wissen immer.
 
 ---
+
+## 6b. Finanzen: was die Agenten kosten *(seit 1.373.0)*
+
+Seitenleiste → **Finanzen**. Die Seite zeigt, was deine Agenten kosten — **je Monat, je Projekt
+und je Agent**. Mitglieder sehen nur ihre eigenen Agenten und Projekte; Administratoren sehen die
+Kosten der ganzen Anlage, aber auch hier nur die Projekte, die sie selbst angelegt haben oder die
+ihnen freigegeben sind.
+
+**Oben vier Kacheln:**
+- **Dieser Monat** — alles zusammen, darunter der Vormonat zum Vergleich.
+- **Aufgaben und Projekte** — Läufe, also Aufträge, Zeitpläne, Projektkarten, Takt und
+  Projektgespräch; darunter, was davon **ohne Projekt** lief.
+- **Chat** — Gespräche mit den Agenten, auch die Runden in Besprechungen. Chat gehört zu keinem
+  Projekt.
+- **Dein Monatsbudget** — falls ein Administrator dir eins gesetzt hat; sonst die Kosten
+  gelöschter Agenten und Verläufe, die in der Summe bleiben.
+
+**Verlauf je Monat** — Balken je Monat, Aufgaben und Chat übereinander. Oben rechts wählst du
+**3, 6 oder 12 Monate**.
+
+**Projekte** — je Projekt die Kosten dieses Monats, des Vormonats und insgesamt, dazu die Tokens.
+Ein Klick auf den Namen öffnet das Projekt. Auf der Projektseite selbst steht unter **Erledigt**
+die Zeile **Kosten diesen Monat** (mit Budget); ein Klick darauf führt hierher.
+
+**Ein Monatsbudget für ein Projekt setzen** (nur, wer das Projekt angelegt hat):
+
+1. In der Zeile des Projekts unter **Monatsbudget** auf den **Stift** klicken.
+2. Den Betrag eintragen (in der Währung der Anlage) — leer lassen heißt: kein Budget.
+3. **Speichern** (oder Enter).
+
+Der Balken darunter zeigt den Verbrauch: grün, ab 80 % gelb, ab 100 % rot. **Ist das Budget
+aufgebraucht, starten bis Monatsende keine neuen Läufe des Projekts mehr** — weder Karten noch
+Takt oder Gespräch, und fällige Termine (Daily, Weekly) fallen aus. Du bekommst einmal im Monat eine Benachrichtigung. Die Agenten
+selbst arbeiten in anderen Projekten und im Chat weiter. Ein höheres Budget gibt das Projekt sofort
+wieder frei.
+
+**Agenten** — je Agent Aufgaben, Chat, Summe des Monats (mit seinem Budget, falls gesetzt),
+Vormonat und Tokens.
+
+**CSV** (oben rechts) lädt die Zahlen als Tabelle herunter: Monate, Projekte und Agenten der
+letzten zwölf Monate, Beträge in US-Dollar.
+
+> Abgerechnet wird bei den Anbietern in US-Dollar. Angezeigt wird in der Währung der Anlage
+> (Verwaltung → Einstellungen); mit der Maus über einem Betrag siehst du den Originalwert.
 
 ## 7. Analytics
 

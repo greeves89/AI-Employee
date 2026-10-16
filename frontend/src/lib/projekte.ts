@@ -52,6 +52,8 @@ export interface ProjektKennzahlen {
   pruefung: number;
   wartet_auf_merge: number;
   laeufe: number;
+  /** Kosten der Läufe des Projekts im laufenden Monat (USD). */
+  kosten_monat_usd?: number;
   heute_fertig: number;
   fertig_7_tage: number;
   verlauf: { tag: string; anzahl: number }[];

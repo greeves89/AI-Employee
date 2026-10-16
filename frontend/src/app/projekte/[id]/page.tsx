@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, CalendarClock, Crown, GitBranch, KanbanSquare, Loader2, MessageSquare, MessagesSquare, Pencil, RefreshCw, Send, Trash2, TriangleAlert, Users } from "lucide-react";
+import { ArrowLeft, BookOpen, CalendarClock, Crown, GitBranch, KanbanSquare, Loader2, MessageSquare, MessagesSquare, Pencil, RefreshCw, Send, Trash2, TriangleAlert, Users, Wallet } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { CreateTeamModal } from "@/components/agents/create-team-modal";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
@@ -16,6 +16,7 @@ import { ProjektTermine } from "@/components/projekte/projekt-termine";
 import { raumZustand } from "@/components/raum/iso";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { useAgents } from "@/hooks/use-agents";
+import { useMoney } from "@/hooks/use-money";
 import { useAuthStore } from "@/lib/auth";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
@@ -38,6 +39,7 @@ export default function ProjektPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const toast = useToast();
+  const money = useMoney();
   const confirm = useConfirm();
   const rolle = useAuthStore((s) => s.user?.role);
   const darfSchreiben = rolle !== "viewer";
@@ -303,6 +305,14 @@ export default function ProjektPage() {
                   <span className="text-[11px] text-muted-foreground">{board.kennzahlen.fertig_7_tage} in 7 Tagen</span>
                 </div>
                 <div className="mt-3"><ProjektVerlauf kennzahlen={board.kennzahlen} farbe={farbe} /></div>
+                <Link href={`/finanzen?projekt=${projekt.id}`} title={money.title(board.kennzahlen.kosten_monat_usd ?? 0)}
+                  className="mt-3 flex items-center justify-between gap-2 border-t border-foreground/[0.06] pt-2 text-[11px] text-muted-foreground hover:text-foreground">
+                  <span className="inline-flex items-center gap-1"><Wallet className="h-3 w-3" /> Kosten diesen Monat</span>
+                  <span className={cn("tabular-nums", projekt.budget_usd && (board.kennzahlen.kosten_monat_usd ?? 0) >= projekt.budget_usd && "font-semibold text-red-500")}>
+                    {money.fmt(board.kennzahlen.kosten_monat_usd ?? 0)}
+                    {projekt.budget_usd ? ` von ${money.fmt(projekt.budget_usd)}` : ""}
+                  </span>
+                </Link>
               </div>
             </div>
           </div>

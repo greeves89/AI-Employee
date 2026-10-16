@@ -174,6 +174,9 @@ async def board(db: AsyncSession, team_id: str, sichtbar: list[str] | None) -> d
 
     laufend = await _laufende_laeufe(db, team_id, sichtbar, {k.id: k for k in offen})
     fertig = await _fertig_verlauf(db, team_id, jetzt)
+    from app.core import kosten as _kosten
+
+    kosten_monat = (await _kosten.je_projekt(db, [team_id], seit=_kosten.monatsbeginn())).get(team_id, 0.0)
     return {
         "spalten": spalten,
         "laufend": laufend,
@@ -184,6 +187,7 @@ async def board(db: AsyncSession, team_id: str, sichtbar: list[str] | None) -> d
             "pruefung": len(spalten["pruefung"]),
             "wartet_auf_merge": sum(1 for k in spalten["pruefung"] if k["pr_zustand"] in PR_OFFEN),
             "laeufe": len(laufend),
+            "kosten_monat_usd": round(kosten_monat, 4),
             **fertig,
         },
     }
