@@ -16,7 +16,7 @@ Zugriffsprüfung, keine nachgebaute Logik:
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
 from sqlalchemy import Column, MetaData, Table, Text
@@ -135,7 +135,9 @@ class _Basis(unittest.IsolatedAsyncioTestCase):
             db.add(Task(
                 id=task_id, title=f"[Scheduled] {frisch.name}", prompt=frisch.prompt,
                 status=TaskStatus.RUNNING, agent_id=frisch.agent_id, started_at=slot,
-                metadata_={"schedule_id": frisch.id},
+                # Genau die Metadaten, die ``scheduler_service`` absetzt — der
+                # Melde-Auftrag haengt an ``adaptive``, nicht am Zeitplan.
+                metadata_={"schedule_id": frisch.id, "adaptive": bool(frisch.adaptive)},
             ))
             frisch.last_run_at = slot
             frisch.total_runs += 1
@@ -617,6 +619,332 @@ class FremdgetakteteZeitplaeneBleibenFremdgetaktet(_Basis):
                 plan.id, ScheduleUpdate(adaptive=True), user=self.agent, db=db,
             )
         self.assertTrue(antwort.adaptive)
+
+
+class ZweiLaufendeZeitplanAuftraege(_Basis):
+    """#944-Review, Punkte 1 und 2: ``report_run`` ohne Auftragskennung nahm den
+    JUENGSTEN laufenden Zeitplan-Auftrag. Ein Agent kann aber mehrere
+    gleichzeitig haben — den adaptiven Beobachter und daneben den Arbeitstakt
+    eines Projekts oder einen Probelauf von Hand. Die Meldung ging dann an den
+    falschen Zeitplan, der echte Lauf durfte wegen ``schon_gemeldet`` nicht
+    nachfassen, und der adaptive Zeitplan taktete nie.
+
+    Der Weg OHNE ``task_id`` ist der Standardweg: Der Melde-Hinweis am Prompt
+    bittet um sie, verlangt sie aber nicht.
+    """
+
+    async def _fremder_lauf(self, task_id: str, name: str, start,
+                            adaptive=False, agent_id="a1", **meta):
+        """Ein zweiter laufender Auftrag desselben Agenten."""
+        async with self.Session() as db:
+            db.add(Schedule(
+                id=f"s_{task_id}", name=name, prompt="p", interval_seconds=3600,
+                next_run_at=START, timezone="UTC", agent_id=agent_id, enabled=True,
+                adaptive=adaptive, basis_intervall_s=3600 if adaptive else None,
+                leer_schwelle=1, total_runs=0, success_count=0, fail_count=0,
+            ))
+            db.add(Task(
+                id=task_id, title=f"[Scheduled] {name}", prompt="p",
+                status=TaskStatus.RUNNING, agent_id="a1", started_at=start,
+                metadata_={"schedule_id": f"s_{task_id}", "adaptive": adaptive, **meta},
+            ))
+            await db.commit()
+
+    async def test_der_arbeitstakt_eines_projekts_frisst_die_meldung_nicht(self):
+        plan = await self._zeitplan(adaptive=True, basis_intervall_s=1800, leer_schwelle=1)
+        await self._lauf_starten(plan, START, 1)
+        await self._fremder_lauf("tprojekt", "[Projekt] Ein Projekt",
+                                 START + timedelta(minutes=1))
+
+        antwort = await self._melden(self.agent, "idle",
+                                     jetzt=START + timedelta(minutes=2))
+
+        self.assertTrue(antwort.adaptive, antwort.hinweis)
+        self.assertTrue(antwort.geaendert)
+        async with self.Session() as db:
+            self.assertEqual((await db.get(Schedule, plan.id)).leerlaeufe, 1)
+            # Der fremde Zeitplan bleibt unberuehrt.
+            self.assertEqual((await db.get(Schedule, "s_tprojekt")).interval_seconds, 3600)
+
+    async def test_ein_probelauf_von_hand_frisst_die_meldung_nicht(self):
+        plan = await self._zeitplan(adaptive=True, basis_intervall_s=1800, leer_schwelle=1)
+        await self._lauf_starten(plan, START, 1)
+        async with self.Session() as db:
+            db.add(Task(id="tmanual", title="[Manual] PR-Beobachter", prompt="p",
+                        status=TaskStatus.RUNNING, agent_id="a1",
+                        started_at=START + timedelta(minutes=1),
+                        metadata_={"schedule_id": plan.id, "adaptive": True,
+                                   "manual_trigger": True}))
+            await db.commit()
+
+        antwort = await self._melden(self.agent, "idle",
+                                     jetzt=START + timedelta(minutes=2))
+
+        self.assertTrue(antwort.geaendert, antwort.hinweis)
+        async with self.Session() as db:
+            self.assertEqual((await db.get(Schedule, plan.id)).leerlaeufe, 1)
+
+    async def test_zwei_adaptive_laeufe_werden_nicht_geraten(self):
+        """Der Gegenfall zur Rangfolge: Laufen ZWEI Melde-Auftraege, ist von
+        aussen nicht entscheidbar, welcher meldet. Ein Fehlgriff zaehlte dem
+        fremden Zeitplan einen Leerlauf an UND verbrauchte dessen echte Meldung
+        (``schon_gemeldet``) — deshalb 409 mit der Bitte um die Kennung."""
+        plan = await self._zeitplan(adaptive=True, basis_intervall_s=1800, leer_schwelle=1)
+        await self._lauf_starten(plan, START, 1)
+        await self._fremder_lauf("tzweiter", "Zweiter Beobachter",
+                                 START + timedelta(minutes=1), adaptive=True)
+
+        with self.assertRaises(HTTPException) as fehler:
+            await self._melden(self.agent, "idle", jetzt=START + timedelta(minutes=2))
+
+        self.assertEqual(fehler.exception.status_code, 409)
+        self.assertIn("task_id", fehler.exception.detail)
+        async with self.Session() as db:
+            # KEINER der beiden wurde angefasst.
+            self.assertEqual((await db.get(Schedule, plan.id)).leerlaeufe, 0)
+            self.assertEqual((await db.get(Schedule, "s_tzweiter")).leerlaeufe, 0)
+
+    async def test_ein_probelauf_bucht_nicht_auf_einem_fremden_zeitplan(self):
+        """Der Probelauf traegt keinen Melde-Auftrag. Meldet er trotzdem
+        (ungefragt), darf er nicht den Lauf eines ANDEREN adaptiven Zeitplans
+        verbrauchen: dessen Meldung waere danach als Dublette abgewiesen."""
+        probe = await self._zeitplan(adaptive=True, basis_intervall_s=1800, leer_schwelle=1)
+        async with self.Session() as db:
+            db.add(Task(id="tmanual", title="[Manual] PR-Beobachter", prompt="p",
+                        status=TaskStatus.RUNNING, agent_id="a1",
+                        started_at=START + timedelta(minutes=1),
+                        metadata_={"schedule_id": probe.id, "adaptive": True,
+                                   "manual_trigger": True}))
+            await db.commit()
+        await self._fremder_lauf("tandere", "Anderer Beobachter", START, adaptive=True)
+
+        antwort = await self._melden(self.agent, "idle",
+                                     jetzt=START + timedelta(minutes=2))
+
+        # Gemeldet wird auf dem EINZIGEN Melde-Auftrag — der fremde Zeitplan
+        # taktet, der Probelauf hat keinen Takt verbraucht.
+        self.assertEqual(antwort.schedule_id, "s_tandere")
+        async with self.Session() as db:
+            self.assertEqual((await db.get(Schedule, probe.id)).leerlaeufe, 0)
+
+    async def test_ein_umgehaengter_zeitplan_blockiert_die_eigene_meldung_nicht(self):
+        """Ein Zeitplan kann einem anderen Agenten uebergeben werden, waehrend
+        ein alter Lauf noch laeuft. Gewann dieser Alt-Auftrag, antwortete die
+        Zugriffspruefung im Endpunkt mit 403 — und der Agent konnte GAR NICHTS
+        mehr melden, auch nicht fuer seinen eigenen Lauf."""
+        plan = await self._zeitplan(adaptive=True, basis_intervall_s=1800, leer_schwelle=1)
+        await self._lauf_starten(plan, START, 1)
+        await self._fremder_lauf("tabgegeben", "Abgegebener Beobachter",
+                                 START + timedelta(minutes=1), adaptive=True,
+                                 agent_id="b1")
+
+        antwort = await self._melden(self.agent, "idle",
+                                     jetzt=START + timedelta(minutes=2))
+
+        self.assertEqual(antwort.schedule_id, plan.id)
+        self.assertTrue(antwort.geaendert)
+
+    async def test_ohne_adaptiven_kandidaten_bleibt_die_alte_antwort(self):
+        """Gegenprobe zur Rangfolge: Gibt es keinen Melde-Auftrag, meldet der
+        juengste Lauf wie bisher — mit dem Hinweis „nicht adaptiv"."""
+        plan = await self._zeitplan()
+        await self._lauf_starten(plan, START, 1)
+
+        antwort = await self._melden(self.agent, "idle",
+                                     jetzt=START + timedelta(minutes=2))
+
+        self.assertFalse(antwort.adaptive)
+        self.assertIn("nicht adaptiv", antwort.hinweis)
+
+    async def test_nur_ein_probelauf_laeuft_antwort_bleibt_der_probelauf(self):
+        """Gegenprobe: Der Probelauf-Hinweis darf nicht verschwinden, nur weil
+        Probelaeufe keinen Melde-Auftrag tragen."""
+        plan = await self._zeitplan(adaptive=True, basis_intervall_s=1800, leer_schwelle=1)
+        async with self.Session() as db:
+            db.add(Task(id="tmanual", title="[Manual] PR-Beobachter", prompt="p",
+                        status=TaskStatus.RUNNING, agent_id="a1", started_at=START,
+                        metadata_={"schedule_id": plan.id, "manual_trigger": True}))
+            await db.commit()
+
+        antwort = await self._melden(self.agent, "idle")
+
+        self.assertIn("Probelauf von Hand", antwort.hinweis)
+
+    async def test_die_angegebene_auftragskennung_schlaegt_die_rangfolge(self):
+        """Mit ``task_id`` hat der Agent entschieden — auch wenn ein
+        Melde-Auftrag daneben laeuft."""
+        plan = await self._zeitplan(adaptive=True, basis_intervall_s=1800, leer_schwelle=1)
+        await self._lauf_starten(plan, START, 1)
+        await self._fremder_lauf("tanderer", "Anderer Beobachter", START)
+
+        antwort = await self._melden(self.agent, "idle", task_id="tanderer")
+
+        self.assertFalse(antwort.adaptive)
+        async with self.Session() as db:
+            self.assertEqual((await db.get(Schedule, plan.id)).leerlaeufe, 0)
+
+
+class EinProbelaufVerschiebtDenAnkerNicht(_Basis):
+    """#944-Review, Punkt 2 (zweite Haelfte): „Jetzt ausfuehren" setzte
+    ``schedule.last_run_at`` — und genau das ist bei einem adaptiven Zeitplan
+    der Phasenanker, auf dem der naechste Lauf gerechnet wird. Ein Blick von
+    Hand verschob damit die Uhrzeit des naechsten regulaeren Laufs.
+    """
+
+    async def _probelauf(self, plan_id: str):
+        """``trigger_schedule`` echt aufrufen, nur Redis und Router gedoppelt."""
+        redis = MagicMock()
+        redis.connect = AsyncMock()
+        redis.disconnect = AsyncMock()
+        router = MagicMock()
+        router.create_and_route_task = AsyncMock(
+            return_value=SimpleNamespace(id="tmanual")
+        )
+        async with self.Session() as db:
+            with patch("app.services.redis_service.RedisService", return_value=redis), \
+                 patch("app.core.load_balancer.LoadBalancer", MagicMock()), \
+                 patch("app.core.task_router.TaskRouter", return_value=router), \
+                 patch("app.api.tasks._erreichbare_agenten",
+                       AsyncMock(return_value=None)):
+                return await api.trigger_schedule(plan_id, user=self.agent, db=db)
+
+    async def test_der_probelauf_laesst_last_run_at_stehen(self):
+        plan = await self._zeitplan(adaptive=True, basis_intervall_s=1800,
+                                    leer_schwelle=1, last_run_at=START)
+        await self._probelauf(plan.id)
+        async with self.Session() as db:
+            frisch = await db.get(Schedule, plan.id)
+        anker = frisch.last_run_at
+        if anker.tzinfo is None:
+            anker = anker.replace(tzinfo=timezone.utc)
+        self.assertEqual(anker, START)
+        self.assertEqual(frisch.total_runs, 1)  # sichtbar bleibt er trotzdem
+
+    async def test_ohne_adaptive_bleibt_last_run_at_die_anzeige(self):
+        """Gegenprobe: An einem gewoehnlichen Zeitplan wird der Probelauf
+        weiter als letzter Lauf eingetragen — die Zeile ist dort reine
+        Anzeige."""
+        plan = await self._zeitplan(last_run_at=START)
+        await self._probelauf(plan.id)
+        async with self.Session() as db:
+            frisch = await db.get(Schedule, plan.id)
+        anker = frisch.last_run_at
+        if anker.tzinfo is None:
+            anker = anker.replace(tzinfo=timezone.utc)
+        self.assertGreater(anker, START)
+
+    async def test_die_phase_des_naechsten_laufs_bleibt_am_slot(self):
+        """Das Ergebnis, auf das es ankommt: Probelauf dazwischen, der echte
+        Lauf meldet — der naechste Lauf steht 2 Std nach dem SLOT, nicht nach
+        dem Probelauf."""
+        plan = await self._zeitplan(adaptive=True, basis_intervall_s=1800,
+                                    leer_schwelle=1)
+        task_id = await self._lauf_starten(plan, START, 1)
+        await self._probelauf(plan.id)
+
+        await self._melden(self.agent, "idle", task_id=task_id,
+                           jetzt=START + timedelta(minutes=2))
+
+        async with self.Session() as db:
+            frisch = await db.get(Schedule, plan.id)
+        naechster = frisch.next_run_at
+        if naechster.tzinfo is None:
+            naechster = naechster.replace(tzinfo=timezone.utc)
+        self.assertEqual(int((naechster - START).total_seconds()), 7200)
+
+
+class EinGefuehrterZeitplanBehaeltSeinenNamen(_Basis):
+    """#944-Review, Punkt 4: ``update_schedule`` war nur gegen ``adaptive``
+    abgesichert. ``name`` wurde ungeprueft gesetzt — und der Scheduler erkennt
+    einen gefuehrten Zeitplan NUR am Praefix: ein umbenannter Projekt-Takt
+    faellt bei leerem Board nicht mehr aus und laeuft ohne Projektzuordnung.
+    """
+
+    async def _umbenennen(self, plan_id: str, neuer_name: str):
+        async with self.Session() as db:
+            return await api.update_schedule(
+                plan_id, ScheduleUpdate(name=neuer_name), user=self.agent, db=db,
+            )
+
+    async def test_projekt_takt_umbenennen_wird_abgelehnt(self):
+        plan = await self._zeitplan(name="[Projekt] Ein Projekt")
+        with self.assertRaises(HTTPException) as fehler:
+            await self._umbenennen(plan.id, "Mein eigener Takt")
+        self.assertEqual(fehler.exception.status_code, 400)
+        async with self.Session() as db:
+            # Abgelehnt heisst unberuehrt — nicht „halb gesetzt".
+            self.assertEqual((await db.get(Schedule, plan.id)).name, "[Projekt] Ein Projekt")
+
+    async def test_auch_ein_praefix_zulegen_wird_abgelehnt(self):
+        """Die andere Richtung: Ein eigener Zeitplan darf sich die Behandlung
+        der Plattform nicht selbst anhaengen."""
+        plan = await self._zeitplan(name="PR-Beobachter")
+        with self.assertRaises(HTTPException) as fehler:
+            await self._umbenennen(plan.id, "[Projekt] Ein Projekt")
+        self.assertEqual(fehler.exception.status_code, 400)
+
+    async def test_gleicher_name_ist_kein_umbenennen(self):
+        """Gegenprobe: Ein Aufruf, der den Namen unveraendert mitschickt, geht
+        durch — sonst liesse sich ein gefuehrter Zeitplan nicht mehr
+        pausieren."""
+        plan = await self._zeitplan(name="[Projekt] Ein Projekt")
+        async with self.Session() as db:
+            antwort = await api.update_schedule(
+                plan.id,
+                ScheduleUpdate(name="[Projekt] Ein Projekt", enabled=False),
+                user=self.agent, db=db,
+            )
+        self.assertFalse(antwort.enabled)
+
+    async def test_ein_gewoehnlicher_zeitplan_laesst_sich_umbenennen(self):
+        """Gegenprobe: Die Sperre trifft nur die gefuehrten Praefixe."""
+        plan = await self._zeitplan(name="PR-Beobachter")
+        antwort = await self._umbenennen(plan.id, "PR- und Issue-Beobachter")
+        self.assertEqual(antwort.name, "PR- und Issue-Beobachter")
+
+    def test_die_sperrliste_haelt_gegen_die_echten_konstanten(self):
+        """Die Sperrliste steht woertlich in ``adaptiver_takt``. Hier wird sie
+        gegen die Quellen gehalten, aus denen die Namen wirklich entstehen —
+        eine Umbenennung dort reisst sonst still ein Loch in die Sperre.
+        ``[Projekt]`` prueft ``test_die_sperrliste_kennt_das_praefix_des_projekt_takts``.
+        """
+        from app.core import adaptiver_takt
+        from app.core.eigeninitiative import PROAKTIV_PRAEFIX
+        from app.core.plan_rhythm import SCHEDULE_PREFIX
+
+        for quelle in (PROAKTIV_PRAEFIX, SCHEDULE_PREFIX):
+            self.assertTrue(
+                adaptiver_takt.fremdgetaktet(f"{quelle}Irgendwas"),
+                f"{quelle!r} fehlt in FREMDGETAKTETE_PRAEFIXE",
+            )
+        # Tagesplan-Bloecke: der Scheduler legt sie mit diesem Praefix an.
+        self.assertTrue(adaptiver_takt.fremdgetaktet("[Plan] 09:00 Irgendwas"))
+        # Und die Liste enthaelt nichts, was gar nicht gefuehrt wird.
+        self.assertFalse(adaptiver_takt.fremdgetaktet("PR-Beobachter"))
+
+    async def test_mit_gefuehrtem_praefix_anlegen_wird_abgelehnt(self):
+        """Dieselbe Reservierung beim Anlegen — vorher nur gegen ``adaptive``
+        geprueft: Ein Zeitplan „[Projekt] …" von Hand wurde beim ersten
+        Faelligwerden still abgeschaltet."""
+        async with self.Session() as db:
+            with self.assertRaises(HTTPException) as fehler:
+                await api.create_schedule(
+                    ScheduleCreate(name="[Projekt] Mein Beobachter", prompt="p",
+                                   interval_seconds=1800, agent_id="a1"),
+                    user=self.agent, db=db, redis=MagicMock(),
+                )
+        self.assertEqual(fehler.exception.status_code, 400)
+
+    async def test_ohne_namen_gibt_es_eine_klare_absage(self):
+        """``{"name": null}`` lief vorher in die Schleife und endete als 500
+        (NOT NULL)."""
+        plan = await self._zeitplan()
+        async with self.Session() as db:
+            with self.assertRaises(HTTPException) as fehler:
+                await api.update_schedule(
+                    plan.id, ScheduleUpdate(name=None), user=self.agent, db=db,
+                )
+        self.assertEqual(fehler.exception.status_code, 400)
 
 
 if __name__ == "__main__":

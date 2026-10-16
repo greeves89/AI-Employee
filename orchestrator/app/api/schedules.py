@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from app.core.adaptiver_takt import (
     FREMDGETAKTET_GRUND,
     LEER_SCHWELLE_STANDARD,
+    UMBENENNEN_GRUND,
     fremdgetaktet,
 )
 from app.services.scheduler_service import _calc_next_run
@@ -273,6 +274,14 @@ async def create_schedule(
     # verhaelt sich wie bisher.
     if data.adaptive and fremdgetaktet(data.name):
         raise HTTPException(status_code=400, detail=FREMDGETAKTET_GRUND)
+    # Das Praefix ist reserviert, unabhaengig von ``adaptive``: Ein von Hand
+    # angelegter Zeitplan „[Projekt] …" wurde beim ersten Faelligwerden still
+    # abgeschaltet (``projekt_takt.pruefen`` findet kein Projekt dazu), und ein
+    # „[Proactive] …" bekam statt des eigenen Auftrags den Eigeninitiative-Prompt
+    # untergeschoben. Die Plattform legt ihre eigenen Zeitplaene direkt an und
+    # laeuft nicht durch diese Pruefung.
+    if fremdgetaktet(data.name):
+        raise HTTPException(status_code=400, detail=UMBENENNEN_GRUND)
     basis_intervall_s = data.basis_intervall_s or (data.interval_seconds if data.adaptive else None)
     stufen = list(data.stufen) if data.stufen else None
 
@@ -394,6 +403,17 @@ async def update_schedule(
         if not is_admin(user):
             raise HTTPException(status_code=400, detail="Ein Zeitplan braucht einen Agenten, der ihn ausführt.")
 
+    # Umbenennen eines von der Plattform gefuehrten Zeitplans (#941, Punkt 4):
+    # Bisher war nur ``adaptive`` gegen diese Zeitplaene abgesichert, ``name``
+    # wurde ungeprueft gesetzt — und der Scheduler erkennt sie NUR am Praefix.
+    # Geprueft vor dem Setzen, damit der Zeitplan bei einer Absage unberuehrt
+    # bleibt. Beide Richtungen, siehe UMBENENNEN_GRUND.
+    if "name" in data.model_fields_set and not data.name:
+        raise HTTPException(status_code=400, detail="Ein Zeitplan braucht einen Namen.")
+    if data.name is not None and data.name != schedule.name and (
+            fremdgetaktet(schedule.name) or fremdgetaktet(data.name)):
+        raise HTTPException(status_code=400, detail=UMBENENNEN_GRUND)
+
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(schedule, field, value)
 
@@ -504,7 +524,14 @@ async def trigger_schedule(schedule_id: str, user=Depends(require_auth_or_agent)
         )
 
         now = datetime.now(timezone.utc)
-        schedule.last_run_at = now
+        # Bei einem adaptiven Zeitplan ist ``last_run_at`` nicht nur Anzeige,
+        # sondern der Phasenanker, auf dem ``takt_service`` den naechsten Lauf
+        # rechnet (``adaptiver_takt.naechster_lauf``). Ein Probelauf von Hand
+        # darf ihn nicht verschieben — sonst wanderte die Uhrzeit des naechsten
+        # regulaeren Laufs, nur weil jemand nachgesehen hat (#941). Der Probelauf
+        # selbst ist als Auftrag sichtbar und zaehlt in ``total_runs``.
+        if not getattr(schedule, "adaptive", False):
+            schedule.last_run_at = now
         schedule.total_runs += 1
         await db.commit()
 

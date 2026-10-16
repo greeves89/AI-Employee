@@ -53,8 +53,9 @@ async def zeitplan_des_laufs(
     """Der Zeitplan, zu dem der laufende Auftrag dieses Agenten gehoert.
 
     Mit ``task_id`` (der Agent kennt sie aus seinem Auftragstext) wird genau
-    dieser Auftrag genommen; ohne sie der juengste LAUFENDE Auftrag des
-    Agenten, der zu einem Zeitplan gehoert. Beides muss dem Agenten gehoeren —
+    dieser Auftrag genommen; ohne sie der passendste unter den LAUFENDEN
+    Auftraegen des Agenten, die zu einem Zeitplan gehoeren — nach der Rangfolge
+    weiter unten, nicht einfach der juengste. Beides muss dem Agenten gehoeren —
     eine fremde Auftragskennung fuehrt in denselben Fehler wie eine unbekannte,
     damit sie nicht zum Suchwerkzeug fuer fremde Auftraege wird.
     """
@@ -93,13 +94,62 @@ async def zeitplan_des_laufs(
                 "eines ZEITPLAN-Laufs — im Chat gibt es nichts zu melden."
             )
 
+    # Ohne Auftragsangabe ist der JUENGSTE laufende Zeitplan-Auftrag nicht
+    # automatisch der gemeinte: Ein Agent kann mehrere gleichzeitig haben —
+    # neben dem adaptiven Beobachter etwa den Arbeitstakt eines Projekts oder
+    # einen Probelauf von Hand („Jetzt ausfuehren"), der dieselbe
+    # ``schedule_id`` traegt. Ist so einer juenger, landete die Meldung auf
+    # einem Zeitplan, der sie nicht braucht: der echte Lauf bekam „nicht
+    # adaptiv, Takt bleibt" bzw. „Probelauf zaehlt nicht" zu hoeren, durfte
+    # wegen ``schon_gemeldet`` nicht nachfassen, und der adaptive Zeitplan
+    # taktete nie.
+    #
+    # Entschieden wird deshalb am MELDE-AUFTRAG und nicht am Zustand des
+    # Zeitplans: ``scheduler_service`` stempelt ``adaptive`` in die Metadaten
+    # JEDES Laufs, den es absetzt, und haengt genau diesen Laeufen den
+    # Melde-Hinweis an den Prompt (``MELDE_HINWEIS``). Ein Probelauf von Hand
+    # bekommt beides nicht. Damit ist „dieser Lauf soll melden" eine Eigenschaft
+    # des Laufs, keine Vermutung.
+    #
+    # Gibt es MEHRERE solche Laeufe, wird nicht geraten: Welcher von ihnen
+    # gerade meldet, ist von aussen nicht entscheidbar, und ein Fehlgriff
+    # zaehlte einem fremden Zeitplan einen Leerlauf an UND verbraucht dessen
+    # echte Meldung (``schon_gemeldet``). Dann lieber 409 mit der Bitte um die
+    # Auftragskennung — die steht im Auftragstext.
+    treffer: list[tuple[int, Schedule, Task]] = []
     for task in kandidaten:
-        schedule_id = (task.metadata_ or {}).get("schedule_id")
+        meta = task.metadata_ or {}
+        schedule_id = meta.get("schedule_id")
         if not schedule_id:
             continue
         schedule = await db.get(Schedule, schedule_id)
-        if schedule is not None:
+        if schedule is None:
+            continue
+        if task_id:
             return schedule, task
+        # Ein Zeitplan, der inzwischen einem ANDEREN Agenten gehoert
+        # (``update_schedule(agent_id=…)``), kommt zuletzt: Sonst gewaenne ein
+        # noch laufender Alt-Auftrag, und die Zugriffspruefung im Endpunkt
+        # beantwortete jede Meldung dieses Agenten mit 403 — auch die seines
+        # eigenen Laufs.
+        fremder_zeitplan = schedule.agent_id is not None and schedule.agent_id != agent_id
+        melde_auftrag = bool(meta.get("adaptive")) and not meta.get("manual_trigger")
+        rang = (0 if melde_auftrag else 1) + (2 if fremder_zeitplan else 0)
+        treffer.append((rang, schedule, task))
+
+    melde_auftraege = [eintrag for eintrag in treffer if eintrag[0] == 0]
+    if len(melde_auftraege) > 1:
+        raise KeinZeitplanLauf(
+            f"Dieser Agent hat gerade {len(melde_auftraege)} Läufe adaptiver "
+            "Zeitpläne offen — welcher meldet, ist von hier aus nicht "
+            "entscheidbar. Rufe report_run mit der task_id deines eigenen Laufs "
+            "auf (sie steht in deinem Auftrag); geraten wird hier nicht."
+        )
+    if treffer:
+        # Stabil: bei gleichem Rang bleibt die Reihenfolge der Abfrage
+        # (juengster Lauf zuerst) erhalten.
+        treffer.sort(key=lambda eintrag: eintrag[0])
+        return treffer[0][1], treffer[0][2]
 
     raise KeinZeitplanLauf(
         "Dieser Lauf gehört zu keinem Zeitplan — es gibt keinen Takt, der "
@@ -163,7 +213,10 @@ def takt_anwenden(schedule: Schedule, ergebnis: str, jetzt: datetime | None = No
         schedule.interval_seconds = neues
         # Anker ist der Lauf, der gerade gemeldet wird — nicht ``next_run_at``,
         # das der Scheduler beim Feuern schon um den ALTEN Takt weitergestellt
-        # hat (siehe adaptiver_takt.naechster_lauf).
+        # hat (siehe adaptiver_takt.naechster_lauf). ``last_run_at`` ist der
+        # SLOT des Laufs, nicht der Zeitpunkt, an dem der Agent ihn abgeholt
+        # hat — deshalb nicht ``task.started_at``, das bei Wartezeit oder
+        # Neustart Stunden spaeter liegt und die Phase wandern liesse.
         schedule.next_run_at = naechster_lauf(schedule.last_run_at, jetzt, neues)
 
     return {

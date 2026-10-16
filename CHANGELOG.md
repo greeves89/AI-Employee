@@ -38,6 +38,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Tagesplan-Blöcke) lassen sich nicht auf adaptiv stellen: Ihr Takt kommt aus der
   Agenten-Konfiguration, beides zusammen würde sich gegenseitig überschreiben.
 - Dasselbe gilt für den Arbeitstakt eines Projekts: dessen Zeitplan führt das Projekt.
+  Sein Name lässt sich über die Schnittstelle auch nicht mehr ändern: Am Namenspräfix
+  erkennt die Plattform, wie sie einen Zeitplan behandelt — ein umbenannter Projekt-Takt
+  wäre bei leerem Board nicht mehr entfallen (jeder Lauf hätte wieder Geld gekostet) und
+  seine Läufe hätten nicht mehr zum Projekt gezählt.
+- Hat ein Agent mehrere wiederkehrende Aufgaben gleichzeitig laufen, zählt die Meldung
+  jetzt auf dem Lauf, der sie abgeben soll. Zuvor nahm sie den zuletzt gestarteten Lauf:
+  Wer neben dem adaptiven Beobachter noch einen Projekt-Takt oder einen Probelauf von Hand
+  laufen hatte, taktete deshalb nie — der Beobachter blieb für immer im Grundtakt stehen.
+  Laufen zwei adaptive Zeitpläne gleichzeitig, wird nicht geraten: Der Agent wird nach der
+  Kennung seines Laufs gefragt, statt den Takt eines fremden Zeitplans zu verstellen.
+  Ein Probelauf über „Jetzt ausführen" verschiebt zudem nicht mehr die Uhrzeit des nächsten
+  regulären Laufs.
+- Reservierte Zeitplan-Namen lassen sich auch nicht mehr von Hand anlegen: Ein eigener
+  Zeitplan „[Projekt] …" wurde bisher beim ersten Fälligwerden stillschweigend
+  abgeschaltet, ein „[Proactive] …" bekam statt des eigenen Auftrags den
+  Eigeninitiative-Auftrag untergeschoben.
 
 ---
 

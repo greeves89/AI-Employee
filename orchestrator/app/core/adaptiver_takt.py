@@ -71,6 +71,27 @@ def fremdgetaktet(name: str | None) -> bool:
     return bool(name) and name.startswith(FREMDGETAKTETE_PRAEFIXE)
 
 
+#: Das Praefix ist kein Schmuck, sondern das Erkennungsmerkmal: Der Scheduler
+#: liest es vor JEDEM Lauf (``scheduler_service`` prueft ``[Projekt] `` und
+#: ``[Proactive]``), ``eigeninitiative.abgleichen`` findet seine Zeitplaene
+#: ausschliesslich darueber. Umbenennen schaltet diese Behandlung still ab:
+#: ein umbenannter Projekt-Takt faellt bei leerem Board nicht mehr aus (jeder
+#: Lauf kostet wieder) und seine Laeufe entstehen ohne Projektzuordnung — die
+#: Karte bleibt in „in Arbeit" stehen. Deshalb ist die Umbenennung ueber die
+#: Schnittstelle in BEIDE Richtungen gesperrt: ein gefuehrter Zeitplan behaelt
+#: sein Praefix, und ein eigener kann sich keines zulegen (#941, Punkt 4).
+#: Die Plattform selbst benennt direkt am Modell um (``projekt_takt.abgleichen``
+#: zieht den Projektnamen nach) und laeuft nicht durch diese Pruefung.
+UMBENENNEN_GRUND = (
+    "Das Namenspräfix dieses Zeitplans führt die Plattform selbst: Daran erkennt "
+    "der Scheduler, wie er ihn behandelt ([Projekt] entfällt bei leerem Board und "
+    "zählt auf das Projekt, [Proactive]/[Rhythmus] bekommen ihren Takt aus der "
+    "Agenten-Konfiguration, [Plan] ist ein Einmal-Lauf). Ein anderer Name würde "
+    "diese Behandlung stillschweigend abschalten. Für einen eigenen Job legst du "
+    "einen eigenen Zeitplan an."
+)
+
+
 FREMDGETAKTET_GRUND = (
     "Diesen Zeitplan taktet die Plattform selbst ([Proactive]/[Rhythmus] aus der "
     "Agenten-Konfiguration, [Plan] ist ein Einmal-Lauf, [Projekt] der Arbeitstakt "
@@ -92,7 +113,10 @@ MELDE_HINWEIS = (
     "- `outcome=\"idle\"` — es gab nichts zu tun\n"
     "- `outcome=\"waiting\"` — du wartest auf eine Entscheidung des Nutzers (zählt wie idle)\n"
     "Ohne diese Meldung bleibt der Takt für immer stehen. Ein Aufruf genügt; "
-    "eine zweite Meldung zum selben Lauf wird nicht gezählt."
+    "eine zweite Meldung zum selben Lauf wird nicht gezählt.\n"
+    "Gib `task_id` deines Auftrags mit, wenn du sie kennst: Laufen mehrere "
+    "Zeitpläne dieses Agenten gleichzeitig, ist ohne sie nicht entscheidbar, "
+    "welcher Lauf meldet — dann wird nicht geraten, sondern nachgefragt."
 )
 
 
