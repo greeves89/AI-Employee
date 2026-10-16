@@ -160,3 +160,23 @@ class RepoSetzen(Basis):
                 self.assertEqual(e.exception.status_code, 422)
             r = await api.update_team("p1", api.UpdateTeam(repo=""), user=admin, db=db)
             self.assertIsNone(r["repo"])
+
+
+class Anonym(Basis):
+    def test_ohne_token_kein_authorization_kopf(self):
+        from app.core.githost.github import GitHubHostProvider
+
+        self.assertNotIn("Authorization", GitHubHostProvider._headers(""))
+        self.assertIn("Authorization", GitHubHostProvider._headers("t"))
+
+    async def test_unbekanntes_repo_meldet_sich_verstaendlich(self):
+        class _Weg(_Anbieter):
+            async def list_open_issues(self, client, token, repo, hoechstens):
+                raise LookupError(repo)
+
+        async with self.Session() as db:
+            team = await db.get(Team, "p1")
+            team.repo = "o/privat"
+            with self.assertRaises(projekt_git.GitFehler) as e:
+                await projekt_git.abgleichen(db, team, "", _Weg(), client=None)
+        self.assertIn("privat", str(e.exception))

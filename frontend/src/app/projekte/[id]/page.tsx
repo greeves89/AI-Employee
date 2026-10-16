@@ -86,6 +86,9 @@ export default function ProjektPage() {
   const farbe = projektFarbe(projekt?.farbe);
   const lead = projekt?.lead_agent_id ? agentById.get(projekt.lead_agent_id) : undefined;
   const brauchtWahl = !projekt?.lead_agent_id && mitglieder.length > 1;
+  // Agenten auf altem Abbild kennen die Projekt-Werkzeuge nicht (projekt_board …).
+  const veraltet = mitglieder.filter((m) => m.agent?.update_available || m.agent?.image_outdated);
+  const istAdmin = rolle === "admin";
 
   const ausfuehren = async (titel: string, fn: () => Promise<unknown>) => {
     try {
@@ -303,6 +306,32 @@ export default function ProjektPage() {
         </div>
 
         <div ref={boardRef} className="scroll-mt-20 space-y-4">
+          {veraltet.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+              <TriangleAlert className="h-3.5 w-3.5" />
+              <span>
+                {veraltet.length === 1 ? "Ein Agent läuft" : `${veraltet.length} Agenten laufen`} auf altem Stand — ohne
+                Aktualisieren fehlen {veraltet.length === 1 ? "ihm" : "ihnen"} die Projekt-Werkzeuge (Board, Karten, Wissen):
+              </span>
+              {veraltet.map((m) => (
+                <Link key={m.id} href={`/agents/${m.id}`} className="font-medium underline-offset-2 hover:underline">{m.agent?.name}</Link>
+              ))}
+            </div>
+          )}
+          {!projekt.repo && projekt.darf_verwalten && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-dashed border-foreground/[0.12] px-3 py-2 text-xs text-muted-foreground">
+              <GitBranch className="h-3.5 w-3.5" />
+              <span>Kein GitHub-Repo verbunden — mit Repo kommen offene Issues und Pull Requests von selbst aufs Board.</span>
+              {istAdmin ? (
+                <button type="button" onClick={() => setBearbeiten(true)}
+                  className="ml-auto rounded-lg border border-foreground/[0.1] px-2 py-1 text-foreground hover:bg-foreground/[0.04]">
+                  Repo verbinden
+                </button>
+              ) : (
+                <span>Ein Administrator kann eines verbinden.</span>
+              )}
+            </div>
+          )}
           {projekt.repo && (
             <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-3 py-2 text-xs",
               projekt.repo_fehler ? "border-red-500/30 bg-red-500/5" : "border-foreground/[0.08] bg-card")}>
