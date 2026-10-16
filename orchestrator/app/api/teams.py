@@ -1242,9 +1242,8 @@ async def termin_anlegen(team_id: str, body: NeuerTermin, user=Depends(require_a
     typ, autor_id, name = await _autor(user, db)
     termin = projekt_termine.termin_dict(sched)
     await projekt_gespraech.posten(db, t, autor_typ="system", autor_id=None, autor_name="Termine",
-                                   text=f"{name} hat einen Termin angelegt: {body.art} {termin['uhrzeit']}"
-                                        + (f" ({body.wochentag})" if body.wochentag else "")
-                                        + (f" am {body.datum}" if body.datum else "") + f" — {termin['thema']}")
+                                   text=f"{name} hat einen Termin angelegt: "
+                                        f"{projekt_termine.beschreibung(termin, body.datum)} — {termin['thema']}")
     await db.commit()
     return termin
 

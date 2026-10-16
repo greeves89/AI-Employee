@@ -12,6 +12,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   gestartet war (mehrere Sekunden, die Nachricht erschien so lange nicht). Das Wecken läuft
   jetzt im Hintergrund; die Nachricht steht sofort da, darunter „… antwortet gleich“, bis die
   Antwort kommt. Der Senden-Knopf hat eine Beschriftung für Screenreader.
+- Projektgespräch: Ein neuer Termin wird lesbar angekündigt („wöchentlich sonntags um 07:15“)
+  statt mit internen Kürzeln („weekly 07:15 (so)“).
 
 ---
 

@@ -6,6 +6,7 @@ Läufe ist nachgestellt (``_Router`` aus test_projekte).
 
 import asyncio
 import contextlib
+import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -197,6 +198,15 @@ class Termine(_Arbeitsraum):
             brain = await projekt_wissen.brain_des_projekts(db, await db.get(Team, "p1"))
             seiten = [e["path"] for e in projekt_wissen.vault.list_entries(brain.host_path)]
             self.assertTrue(any(s.startswith("protokolle/") for s in seiten))
+
+
+class TerminText(unittest.TestCase):
+    def test_lesbar_statt_kuerzel(self):
+        self.assertEqual(projekt_termine.beschreibung({"art": "daily", "uhrzeit": "09:00"}), "Daily (Mo–Fr) um 09:00")
+        self.assertEqual(projekt_termine.beschreibung({"art": "weekly", "uhrzeit": "07:15", "wochentag": "so"}),
+                         "wöchentlich sonntags um 07:15")
+        self.assertEqual(projekt_termine.beschreibung({"art": "einmalig", "uhrzeit": "10:00"}, "2026-10-20"),
+                         "einmalig am 20.10.2026 um 10:00")
 
 
 class WissenWaechst(_Arbeitsraum):
