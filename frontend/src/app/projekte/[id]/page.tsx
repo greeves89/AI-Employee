@@ -262,7 +262,7 @@ export default function ProjektPage() {
                       onChange={(e) => setZiel(e.target.value)}
                       aria-label="Empfänger"
                       disabled={nurEingang}
-                      className="min-w-0 flex-1 rounded-lg border border-foreground/[0.1] bg-background/80 px-2.5 py-2 text-sm outline-none disabled:opacity-50"
+                      className="min-w-0 flex-[1_1_100%] rounded-lg border border-foreground/[0.1] bg-background/80 px-2.5 py-2 text-sm outline-none disabled:opacity-50 sm:flex-1"
                     >
                       {projekt.lead_agent_id ? (
                         <option value="">An den Lead{lead ? ` (${lead.name})` : ""} — er verteilt</option>

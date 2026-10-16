@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.6] - 2026-10-17
+
+### Behoben
+- Projektseite auf dem Handy: Die Auswahl unter „Auftrag geben“ (an wen der Auftrag geht) war auf
+  wenige Buchstaben zusammengedrückt. Sie steht jetzt in voller Breite in einer eigenen Zeile.
+
+---
+
 ## [1.376.5] - 2026-10-16
 
 ### Behoben — alte Fassung einer Projektwissen-Seite (#968)
