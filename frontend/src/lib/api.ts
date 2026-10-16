@@ -1,6 +1,6 @@
 import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, FeedbackStatus, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
-import type { ProjektBoard, ProjektKarte, ProjektKennzahlen, ProjektLauf, ProjektTakt } from "./projekte";
+import type { ProjektBesprechung, ProjektBoard, ProjektKarte, ProjektKennzahlen, ProjektLauf, ProjektNachricht, ProjektTakt, ProjektTermin } from "./projekte";
 
 let _refreshing: Promise<void> | null = null;
 
@@ -4646,6 +4646,54 @@ export async function projektRepoAbgleichen(
   id: string,
 ): Promise<{ neu: number; aktualisiert: number; erledigt: number; offene_issues: number; offene_prs: number }> {
   return fetchJSON(`${getBase()}/teams/${id}/repo/abgleichen`, { method: "POST" });
+}
+
+export async function projektGespraech(id: string, limit = 100): Promise<{ nachrichten: ProjektNachricht[] }> {
+  return fetchJSON(`${getBase()}/teams/${id}/gespraech?limit=${limit}`);
+}
+
+export async function projektGespraechSchreiben(
+  id: string,
+  body: { text: string; art?: string; an?: string[] },
+): Promise<ProjektNachricht & { geweckt: string[] }> {
+  return fetchJSON(`${getBase()}/teams/${id}/gespraech`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function projektTermine(id: string): Promise<{ termine: ProjektTermin[]; besprechungen: ProjektBesprechung[] }> {
+  return fetchJSON(`${getBase()}/teams/${id}/termine`);
+}
+
+export async function projektTerminAnlegen(
+  id: string,
+  body: { art: string; uhrzeit: string; wochentag?: string; datum?: string; thema?: string },
+): Promise<ProjektTermin> {
+  return fetchJSON(`${getBase()}/teams/${id}/termine`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function projektTerminEntfernen(id: string, terminId: string): Promise<void> {
+  await fetchJSON(`${getBase()}/teams/${id}/termine/${terminId}`, { method: "DELETE" });
+}
+
+export async function projektWissenVerlauf(
+  id: string,
+  pfad: string,
+): Promise<{ versionen: { version: string; wer: string; wann: string }[] }> {
+  return fetchJSON(`${getBase()}/teams/${id}/wissen/verlauf?pfad=${encodeURIComponent(pfad)}`);
+}
+
+export async function projektWissenVersion(id: string, pfad: string, version: string): Promise<{ inhalt: string }> {
+  return fetchJSON(`${getBase()}/teams/${id}/wissen/version?pfad=${encodeURIComponent(pfad)}&version=${version}`);
+}
+
+export async function projektWissenWiederherstellen(id: string, pfad: string, version: string): Promise<void> {
+  await fetchJSON(`${getBase()}/teams/${id}/wissen/wiederherstellen`, {
+    method: "POST",
+    body: JSON.stringify({ pfad, version }),
+  });
+}
+
+export async function projektWissenAufbauen(id: string): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/wissen/aufbauen`, { method: "POST" });
 }
 
 export async function getProjektVerzeichnis(): Promise<{ users: { id: string; name: string; email?: string }[] }> {

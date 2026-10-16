@@ -142,3 +142,54 @@ export function bis(iso: string | null): string | null {
   const std = Math.floor(min / 60);
   return `in ${std} Std.${min % 60 ? ` ${min % 60} Min.` : ""}`;
 }
+
+export type NachrichtArt = "nachricht" | "frage" | "entscheidung" | "antwort" | "protokoll" | "bericht" | "ergebnis";
+
+export interface ProjektNachricht {
+  id: number;
+  autor_typ: "mensch" | "agent" | "system";
+  autor_id: string | null;
+  autor_name: string;
+  text: string;
+  art: NachrichtArt;
+  an: string[];
+  karte_id: string | null;
+  task_id: string | null;
+  erstellt: string | null;
+}
+
+export const NACHRICHT_ART: Record<NachrichtArt, { label: string; klasse: string }> = {
+  nachricht: { label: "", klasse: "" },
+  frage: { label: "Frage", klasse: "bg-sky-500/15 text-sky-700 dark:text-sky-300" },
+  entscheidung: { label: "Entscheidung", klasse: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
+  antwort: { label: "Antwort", klasse: "bg-foreground/[0.06] text-muted-foreground" },
+  protokoll: { label: "Protokoll", klasse: "bg-violet-500/15 text-violet-700 dark:text-violet-300" },
+  bericht: { label: "Tagesbericht", klasse: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
+  ergebnis: { label: "Ergebnis", klasse: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
+};
+
+export interface ProjektTermin {
+  id: string;
+  art: "daily" | "weekly" | "einmalig";
+  thema: string;
+  uhrzeit: string | null;
+  wochentag: string | null;
+  cron: string | null;
+  aktiv: boolean;
+  naechster: string | null;
+  zuletzt: string | null;
+}
+
+export interface ProjektBesprechung {
+  id: string;
+  name: string;
+  zustand: string;
+  erstellt: string | null;
+  zusammenfassung: string | null;
+}
+
+export const WOCHENTAGE: { key: string; label: string }[] = [
+  { key: "mo", label: "Montag" }, { key: "di", label: "Dienstag" }, { key: "mi", label: "Mittwoch" },
+  { key: "do", label: "Donnerstag" }, { key: "fr", label: "Freitag" }, { key: "sa", label: "Samstag" },
+  { key: "so", label: "Sonntag" },
+];

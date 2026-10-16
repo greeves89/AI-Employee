@@ -2367,7 +2367,10 @@ class SchedulerService:
             stages_config=config.get("stages_config"),
             use_moderator=config.get("use_moderator", True),
             created_by=config.get("created_by", "schedule"),
-            team_id=config.get("team_id"),
+            # NUR aus der Spalte — die setzt allein core/projekt_termine. Der Auftragstext
+            # ist über die allgemeine Zeitplan-API frei schreibbar; ein team_id darin hätte
+            # Protokoll und Karten in ein fremdes Projekt geschoben.
+            team_id=schedule.team_id if schedule.team_id and config.get("team_id") == schedule.team_id else None,
             messages=[{
                 "role": "system",
                 "agent_id": None,

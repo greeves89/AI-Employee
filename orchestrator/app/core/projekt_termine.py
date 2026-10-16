@@ -145,7 +145,6 @@ def _items(markdown: str) -> list[str]:
 async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung: str, agent_ids: list[str]) -> None:
     """Ende einer Projekt-Besprechung: Protokoll ins Wissen und ins Gespräch, Items als Karten."""
     from app.core import projekt_wissen, projekte
-    from app.core.projekt_git import _ersteller
     from app.db.session import async_session_factory
     from app.models.agent import Agent
     from app.models.projekt_nachricht import ProjektNachricht
@@ -172,11 +171,12 @@ async def abschluss(room_id: str, team_id: str, raum_name: str, zusammenfassung:
             pfad = None
 
         items = _items(zusammenfassung)
-        ersteller = await _ersteller(db, team)
         for item in items:
+            # Ohne Ersteller: die Items schreiben Agenten (womöglich nach Issue-Texten) —
+            # der Text geht deshalb gerahmt als Material an den Bearbeiter, nicht als
+            # Anweisung im Namen des Projekt-Erstellers.
             karte = projekte.neue_karte(team.id, item[:300], f"Aus der Besprechung „{raum_name}“ ({jetzt:%d.%m.%Y}).",
-                                        spalte="bereit", von=f"besprechung:{room_id}",
-                                        ersteller_user_id=ersteller.id if ersteller else None)
+                                        spalte="bereit", von=f"besprechung:{room_id}", ersteller_user_id=None)
             karte.notiz = "Aus Besprechung"
             db.add(karte)
         kurz = (zusammenfassung or "").strip()

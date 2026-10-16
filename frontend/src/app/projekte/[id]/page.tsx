@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Crown, GitBranch, KanbanSquare, Loader2, MessageSquare, Pencil, RefreshCw, Send, Trash2, TriangleAlert, Users } from "lucide-react";
+import { ArrowLeft, BookOpen, CalendarClock, Crown, GitBranch, KanbanSquare, Loader2, MessageSquare, MessagesSquare, Pencil, RefreshCw, Send, Trash2, TriangleAlert, Users } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { CreateTeamModal } from "@/components/agents/create-team-modal";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
@@ -11,6 +11,8 @@ import { ProjektRaum } from "@/components/projekte/projekt-raum";
 import { ProjektBoardAnsicht, ProjektVerlauf, type BoardAktionen } from "@/components/projekte/projekt-board";
 import { ProjektLeitstand } from "@/components/projekte/projekt-leitstand";
 import { ProjektWissen } from "@/components/projekte/projekt-wissen";
+import { ProjektGespraech } from "@/components/projekte/projekt-gespraech";
+import { ProjektTermine } from "@/components/projekte/projekt-termine";
 import { raumZustand } from "@/components/raum/iso";
 import { useConfirm, useToast } from "@/components/ui/dialog-provider";
 import { useAgents } from "@/hooks/use-agents";
@@ -22,10 +24,12 @@ import { projektFarbe, type ProjektBoard } from "@/lib/projekte";
 import { setVisibleInterval } from "@/lib/visible-interval";
 import { cn, timeAgo } from "@/lib/utils";
 
-type Reiter = "board" | "wissen" | "team";
+type Reiter = "board" | "gespraech" | "termine" | "wissen" | "team";
 
 const REITER: { key: Reiter; label: string; Icon: typeof KanbanSquare }[] = [
   { key: "board", label: "Board", Icon: KanbanSquare },
+  { key: "gespraech", label: "Gespräch", Icon: MessagesSquare },
+  { key: "termine", label: "Termine", Icon: CalendarClock },
   { key: "wissen", label: "Wissen", Icon: BookOpen },
   { key: "team", label: "Team", Icon: Users },
 ];
@@ -352,10 +356,10 @@ export default function ProjektPage() {
               )}
             </div>
           )}
-          <div className="flex gap-1 border-b border-foreground/[0.06]">
+          <div className="flex gap-1 overflow-x-auto border-b border-foreground/[0.06]">
             {REITER.map(({ key, label, Icon }) => (
               <button key={key} type="button" onClick={() => setReiter(key)}
-                className={cn("-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm",
+                className={cn("-mb-px inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm",
                   reiter === key ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
                 <Icon className="h-4 w-4" /> {label}
               </button>
@@ -366,7 +370,25 @@ export default function ProjektPage() {
             <ProjektBoardAnsicht board={board} agents={agents} mitglieder={mitgliederIds} leadId={projekt.lead_agent_id}
               farbe={farbe} aktionen={aktionen} />
           )}
-          {reiter === "wissen" && <ProjektWissen projektId={projekt.id} darfSchreiben={darfSchreiben} />}
+          {reiter === "gespraech" && (
+            <ProjektGespraech projektId={projekt.id} mitglieder={mitglieder} leadId={projekt.lead_agent_id} darfSchreiben={darfSchreiben} />
+          )}
+          {reiter === "termine" && (
+            <ProjektTermine projektId={projekt.id} darfVerwalten={darfSchreiben && !!projekt.darf_verwalten}
+              anzahlAgenten={new Set([...mitgliederIds, ...(projekt.lead_agent_id ? [projekt.lead_agent_id] : [])]).size} />
+          )}
+          {reiter === "wissen" && (
+            <ProjektWissen projektId={projekt.id} darfSchreiben={darfSchreiben}
+              onAufbauen={async () => {
+                try {
+                  const k = await api.projektWissenAufbauen(projekt.id);
+                  toast.success("Wissen wird aufgebaut", `Karte „${k.titel}“ ist vergeben.`);
+                  await laden();
+                } catch (e) {
+                  toast.error("Nicht gestartet", apiFehlertext(e));
+                }
+              }} />
+          )}
           {reiter === "team" && (
             <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {mitglieder.map(({ id: mid, agent }) => {

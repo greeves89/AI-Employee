@@ -167,7 +167,8 @@ class Termine(_Arbeitsraum):
 
             karten = (await db.execute(select(ProjektKarte).where(ProjektKarte.team_id == "p1"))).scalars().all()
             self.assertEqual(sorted(k.titel for k in karten), ["Doku ergänzen", "Login-Fehler nachstellen"])
-            self.assertTrue(all(k.spalte == "bereit" and k.ersteller_user_id == "ua" for k in karten))
+            # Ohne Ersteller → beim Vergeben gerahmt (die Items stammen von Agenten).
+            self.assertTrue(all(k.spalte == "bereit" and k.ersteller_user_id is None for k in karten))
             letzte = (await projekt_gespraech.liste(db, "p1"))[-1]
             self.assertEqual(letzte.art, "protokoll")
             brain = await projekt_wissen.brain_des_projekts(db, await db.get(Team, "p1"))
@@ -255,3 +256,29 @@ class Sichtbarkeit(_Arbeitsraum):
             with self.assertRaises(HTTPException) as e:
                 await api.gespraech_lesen("p1", user=admin, db=db)
         self.assertEqual(e.exception.status_code, 403)
+
+
+class ZeitplanOhneProjektRecht(_Arbeitsraum):
+    async def test_team_id_im_auftragstext_allein_reicht_nicht(self):
+        """Ein selbst geschriebener __meeting__-Zeitplan schiebt nichts in ein fremdes Projekt."""
+        import json
+        from unittest.mock import AsyncMock, MagicMock
+
+        from app.services.scheduler_service import SchedulerService
+
+        dienst = SchedulerService.__new__(SchedulerService)
+        dienst.docker, dienst.redis = None, MagicMock()
+        for mit_spalte, erwartet in ((None, None), ("p2", "p2")):
+            async with self.Session() as db:
+                sched = Schedule(id=f"s{erwartet}", name="x", interval_seconds=0, agent_id=None, enabled=True,
+                                 next_run_at=datetime.now(timezone.utc), team_id=mit_spalte,
+                                 prompt="__meeting__:" + json.dumps({"name": "n", "agent_ids": ["b1", "a1"], "team_id": "p2"}))
+                db.add(sched)
+                await db.commit()
+                with patch("app.api.meeting_rooms._run_meeting", new=AsyncMock()), \
+                        patch("asyncio.create_task", new=lambda c: c.close()):
+                    await dienst._execute_meeting_schedule(db, sched)
+                from sqlalchemy import select
+
+                raum = (await db.execute(select(MeetingRoom).order_by(MeetingRoom.created_at.desc()))).scalars().first()
+                self.assertEqual(raum.team_id, erwartet)

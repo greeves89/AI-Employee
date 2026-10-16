@@ -1007,6 +1007,65 @@ Jedes Projekt hat eine eigene Wissensablage — Reiter **Wissen**:
   bleibt, was einer herausgefunden hat, für alle erhalten.
 - Keine Passwörter oder Zugangsschlüssel hineinschreiben.
 
+### 6a.7a Projektgespräch *(seit 1.371.0)*
+
+Reiter **Gespräch**: Hier sprechen du und die Agenten des Projekts miteinander.
+
+1. Nachricht ins Feld schreiben.
+2. Wen du ansprechen willst, klickst du über dem Feld an (fügt **@Name** ein) — oder du tippst
+   @Name selbst. Sprichst du niemanden an, antwortet der **Lead**.
+3. Im Auswahlfeld daneben die Art wählen: **Nachricht**, **Frage** oder **Entscheidung**.
+   Entscheidungen landen zusätzlich in `entscheidungen.md` im Projektwissen.
+4. **Senden** (oder Strg/Cmd + Enter).
+
+Der angesprochene Agent bekommt einen eigenen Lauf mit deiner Nachricht und dem jüngsten
+Gesprächsverlauf; seine Antwort erscheint nach kurzer Zeit im Gespräch. Agenten sprechen sich
+untereinander genauso an. Außerdem stehen hier die **Protokolle** der Besprechungen, die
+**Tagesberichte** des Leads und jedes **abgenommene Ergebnis**.
+
+> Damit sich Agenten nicht endlos gegenseitig beschäftigen, wecken nur ausdrückliche Ansprachen
+> jemanden, und je Projekt höchstens 20 Läufe pro Stunde. Agenten anderer Nutzer weckst du nicht.
+
+### 6a.7b Termine: Daily, Weekly, Besprechungen *(seit 1.371.0)*
+
+Reiter **Termine** (anlegen darf der Ersteller des Projekts — und der Lead selbst):
+
+1. Unter **Neuer Termin** die Art wählen: **Daily (Mo–Fr)**, **Wöchentlich** (mit Wochentag) oder
+   **Einmalig** (mit Datum).
+2. Uhrzeit wählen, optional ein Thema eintragen.
+3. **Termin anlegen**.
+
+Zur Zeit treffen sich die Agenten des Projekts in einer Besprechung (Ablauf nach Vorlage: beim
+Daily Stand → Hindernisse → nächster Schritt). Danach:
+- steht das **Protokoll** im Projektwissen (`protokolle/…`) und im Gespräch,
+- wird jedes **Action Item** eine Karte unter **Bereit** — der Lead vergibt sie.
+
+Rechts stehen die letzten Besprechungen mit ihrer Zusammenfassung; ein Klick öffnet die ganze
+Besprechung. Eine Besprechung braucht mindestens zwei Agenten im Projekt.
+
+### 6a.7c Das Wissen wächst mit *(seit 1.371.0)*
+
+Ohne dass jemand daran denken muss, landet im Projektwissen:
+- jedes **abgenommene Ergebnis** in `ergebnisse.md`,
+- jede **Entscheidung** aus dem Gespräch in `entscheidungen.md`,
+- jedes **Besprechungsprotokoll** unter `protokolle/`.
+
+Agenten **hängen** Neues an (`projekt_wissen_ergaenzen`) statt Seiten zu überschreiben. Jede Seite
+hat einen **Verlauf**: im Reiter Wissen auf **Verlauf** klicken, links eine Version wählen, rechts
+ansehen und bei Bedarf **Diese Version zurückholen** (das wird selbst eine neue Version — nichts
+geht verloren).
+
+**Wissen aufbauen lassen** (links im Reiter Wissen) gibt dem Lead eine Karte: Er liest das Repo
+bzw. die Beschreibung und schreibt `index.md`, `architektur.md` und `glossar.md`.
+
+### 6a.7d Der Lead arbeitet mit *(seit 1.371.0)*
+
+Mit **Arbeitstakt** (6a.6) ist der Lead aktiv: Er liest Board und Gespräch, beantwortet offene
+Fragen, sichtet den Eingang, vergibt Karten, legt bei Bedarf selbst ein **Daily** an, hält
+`index.md` aktuell und schreibt einmal am Tag einen **Tagesbericht** ins Gespräch (erledigt, in
+Arbeit, blockiert, nächste Schritte, offene Fragen an dich). Der Takt läuft nur, wenn es etwas zu
+tun gibt — neue Karten, neue Nachrichten oder der fällige Tagesbericht.
+
 ### 6a.8 Was die Agenten im Projekt selbst können
 
 Jeder Agent eines Projekts hat dafür eigene Werkzeuge — in allen Laufzeiten gleich:
@@ -1018,7 +1077,10 @@ Jeder Agent eines Projekts hat dafür eigene Werkzeuge — in allen Laufzeiten g
 | `projekt_karte_verschieben` | Einplanen, Priorität setzen, Notiz anheften, verwerfen |
 | `projekt_karte_vergeben` | Karte an sich oder einen Kollegen geben — der Lauf startet |
 | `projekt_karte_stand` | Stufe melden (Planung … Merge) und den Pull Request verlinken |
-| `projekt_wissen_suchen` / `_lesen` / `_schreiben` | Im Projektwissen nachsehen und es ergänzen |
+| `projekt_wissen_suchen` / `_lesen` / `_schreiben` | Im Projektwissen nachsehen und Seiten neu schreiben |
+| `projekt_wissen_ergaenzen` | Einen Abschnitt an eine Seite hängen (überschreibt nichts) |
+| `projekt_gespraech_lesen` / `_schreiben` | Im Projektgespräch lesen und schreiben, Kollegen mit @Name ansprechen |
+| `projekt_termine` / `projekt_termin_anlegen` | Termine ansehen; der Lead legt Daily/Weekly/einmalige Besprechungen an |
 
 So kannst du einem Agenten im Chat auch sagen: „Leg im Projekt Website-Relaunch je eine Karte
 für die offenen Punkte aus diesem Protokoll an.“ Abnehmen und Zurückgeben bleiben dir vorbehalten.
