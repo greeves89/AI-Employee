@@ -58,11 +58,79 @@ def _session_bind_path(environment: dict | None) -> str:
 # Worktrees ohne gleichnamigen Fernzweig (z. B. Claude Codes eigene
 # `.claude/worktrees/agent-*`-Sitzungen) werden bewusst NICHT angefasst, weil
 # fuer sie kein Fernabgleich moeglich ist.
+# Sicherheit: git laeuft hier ueber Ablagen, die der AGENT selbst beschreibt —
+# deren `.git/config` ist damit nicht vertrauenswuerdig. `core.fsmonitor`,
+# `core.hooksPath` und `core.sshCommand` starten jeweils ein Programm, und zwar im
+# Helfer-Container, den der ORCHESTRATOR startet (gemessen: ohne die -c-Schalter
+# unten laeuft ein `core.fsmonitor`-Programm bei `git status` wirklich an).
+# `ext::`-Fernzweige verbietet git selbst schon im Default — nachgemessen, deshalb
+# steht dazu auch kein Test hier; `protocol.allow=never` schliesst zusaetzlich
+# `git://` und `ssh://`. Die -c-Schalter der Kommandozeile gewinnen gegen die
+# Repo-Konfiguration, GIT_CONFIG_NOSYSTEM/GIT_CONFIG_GLOBAL schalten System- und
+# Nutzerkonfiguration ab. Vorbild und Begruendung: `vault._GIT_SICHER` (#963).
+# Nicht abgedeckt bleibt `filter.*.clean` aus der repo-eigenen `.git/config`
+# (Issue #964 Punkt 4) — dagegen hilft nur, git hier gar nicht laufen zu lassen.
 WORKTREE_PRUNE_SCRIPT = r"""
-import os, subprocess
+import os, subprocess, tempfile
 
-def sh(cmd, cwd=None):
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+GIT_HART = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
+            "-c", "core.pager=cat", "-c", "core.sshCommand=false",
+            "-c", "credential.helper=",
+            # Nicht nur die Schalter, die ein Programm starten, auch die, die das
+            # SICHERHEITSURTEIL bilden: mit `status.showUntrackedFiles=no` oder einem
+            # eigenen `core.excludesFile` meldet `git status --short` eine Worktree mit
+            # unversionierter Arbeit als sauber -- und dann entfernt der Lauf sie
+            # (gemessen: 0 statt 1 Zeile Ausschlag).
+            "-c", "status.showUntrackedFiles=normal", "-c", "core.excludesFile=/dev/null",
+            # Alles ausser https (Betrieb) und file (lokale Testrepos) ist verboten.
+            "-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
+            "-c", "protocol.file.allow=always"]
+
+# Die Eigentuemer-Pruefung von git muss fuer die untersuchten Ablagen aufgehoben
+# werden: das Volume gehoert uid 1000 (agent), dieser Helfer laeuft als root, und
+# ohne die Ausnahme raeumt er nichts mehr auf (das war der Zweck, Issue #830).
+# Sie landet aber NICHT mehr per `git config --global --add` in der Konfiguration
+# des Abbilds, wo jeder Eintrag fuer den Rest des Laufs und fuer jede spaeter
+# gefundene Ablage mitgilt, sondern in einer Konfiguration nur fuer diesen Lauf,
+# die ausschliesslich die Pfade enthaelt, die wir bewusst ansehen.
+try:
+    _cfg_fd, GIT_CFG = tempfile.mkstemp(prefix="prune-git-", suffix=".cfg")
+    os.close(_cfg_fd)
+except OSError:
+    # Kein beschreibbares Temp-Verzeichnis: dann scheitert `erlaube` sichtbar
+    # (GIT_FEHLER) statt dass der Lauf hier schon stirbt und nichts meldet.
+    GIT_CFG = "/dev/null"
+GIT_ENV = dict(os.environ, HOME="/nonexistent", GIT_CONFIG_NOSYSTEM="1",
+               GIT_CONFIG_GLOBAL=GIT_CFG, GIT_TERMINAL_PROMPT="0",
+               GIT_ASKPASS="/bin/false")
+
+fehler = []
+
+def sh(cmd, cwd=None, timeout=60):
+    # Das Etikett fuer die Fehlerzeile VOR dem Umschreiben bilden, sonst zeigt es
+    # bei einem Nicht-git-Befehl ins Leere.
+    etikett = " ".join(cmd[1:3]) if cmd and cmd[0] == "git" else (cmd[0] if cmd else "?")
+    if cmd and cmd[0] == "git":
+        cmd = ["git", *GIT_HART, *cmd[1:]]
+    try:
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                           timeout=timeout, env=GIT_ENV)
+    except subprocess.TimeoutExpired:
+        fehler.append("%s in %s: Zeitgrenze %ss" % (etikett, cwd, timeout))
+        return subprocess.CompletedProcess(cmd, 1, "", "")
+    if r.returncode != 0:
+        # Eine Zeile, egal was git schreibt: der Orchestrator liest die Ausgabe
+        # zeilenweise, und eine stderr-Zeile, die mit PRUNED anfaengt (git gibt
+        # `remote:`-Texte des Gegenuebers weiter), waere sonst ein gefaelschtes
+        # Ergebnis im Protokoll.
+        meldung = " ".join((r.stderr or "").split())[:160]
+        fehler.append("%s in %s: rc=%s %s" % (etikett, cwd, r.returncode, meldung))
+    return r
+
+def erlaube(pfad):
+    # Der eine Aufruf, der gelingen MUSS, darf nicht der einzige ohne Protokoll sein:
+    # ist GIT_CFG nicht schreibbar, saehe man sonst nur die Folgefehler.
+    sh(["git", "config", "--global", "--add", "safe.directory", pfad], timeout=20)
 
 # Ueberschreibbar fuers Testen (echte Git-Repos in einem Temp-Verzeichnis statt
 # /workspace) -- der Helfer-Container selbst setzt sie nie, Default bleibt also
@@ -70,42 +138,54 @@ def sh(cmd, cwd=None):
 root_dir = os.environ.get("WORKTREE_PRUNE_ROOT", "/workspace")
 
 pruned = []
-for root, dirs, files in os.walk(root_dir):
-    if ".git" in dirs:
-        repo = root
-        sh(["git", "config", "--global", "--add", "safe.directory", repo])
-        listing = sh(["git", "worktree", "list", "--porcelain"], repo)
-        entries, current = [], {}
-        for line in listing.stdout.splitlines():
-            if line.startswith("worktree "):
-                if current:
-                    entries.append(current)
-                current = {"path": line[len("worktree "):]}
-            elif line.startswith("branch "):
-                current["branch"] = line[len("branch "):]
-        if current:
-            entries.append(current)
-        for entry in entries:
-            wt = entry["path"]
-            if wt == repo:
-                continue
-            branch = entry.get("branch", "").replace("refs/heads/", "")
-            if not branch:
-                continue
-            sh(["git", "config", "--global", "--add", "safe.directory", wt])
-            status = sh(["git", "status", "--short"], wt)
-            if status.returncode != 0 or status.stdout.strip():
-                continue  # dirty or unreadable -- keep
-            head = sh(["git", "rev-parse", "HEAD"], wt).stdout.strip()
-            remote_line = sh(["git", "ls-remote", "origin", branch], repo).stdout
-            remote_head = remote_line.split("\t")[0].strip() if remote_line else ""
-            if remote_head and head and head == remote_head:
-                result = sh(["git", "worktree", "remove", wt, "--force"], repo)
-                if result.returncode == 0:
-                    pruned.append(wt)
-    dirs[:] = [d for d in dirs if d not in (".git", "node_modules", ".venv", "__pycache__")]
-
-print(f"PRUNED {len(pruned)}: {pruned}")
+try:
+  for root, dirs, files in os.walk(root_dir):
+      if ".git" in dirs:
+          repo = root
+          erlaube(repo)
+          listing = sh(["git", "worktree", "list", "--porcelain"], repo)
+          entries, current = [], {}
+          for line in listing.stdout.splitlines():
+              if line.startswith("worktree "):
+                  if current:
+                      entries.append(current)
+                  current = {"path": line[len("worktree "):]}
+              elif line.startswith("branch "):
+                  current["branch"] = line[len("branch "):]
+          if current:
+              entries.append(current)
+          for entry in entries:
+              wt = entry["path"]
+              if wt == repo:
+                  continue
+              branch = entry.get("branch", "").replace("refs/heads/", "")
+              if not branch:
+                  continue
+              erlaube(wt)
+              status = sh(["git", "status", "--short"], wt)
+              if status.returncode != 0 or status.stdout.strip():
+                  continue  # dirty or unreadable -- keep
+              head = sh(["git", "rev-parse", "HEAD"], wt).stdout.strip()
+              remote_line = sh(["git", "ls-remote", "origin", branch], repo).stdout
+              remote_head = remote_line.split("\t")[0].strip() if remote_line else ""
+              if remote_head and head and head == remote_head:
+                  result = sh(["git", "worktree", "remove", wt, "--force"], repo)
+                  if result.returncode == 0:
+                      pruned.append(wt)
+      dirs[:] = [d for d in dirs if d not in (".git", "node_modules", ".venv", "__pycache__")]
+except Exception as e:
+  fehler.append("Abbruch des Laufs: %r" % (e,))
+finally:
+  # Was schon entfernt wurde, muss auch bei einem Abbruch im Protokoll stehen --
+  # sonst sieht ein halber Lauf wie gar keiner aus.
+  try:
+      if GIT_CFG != "/dev/null":
+          os.unlink(GIT_CFG)
+  except OSError:
+      pass
+  for eintrag in fehler[:20]:
+      print("GIT_FEHLER " + eintrag)
+  print(f"PRUNED {len(pruned)}: {pruned}")
 """
 
 
@@ -672,6 +752,11 @@ class DockerService:
             for line in text.strip().splitlines():
                 if line.startswith("PRUNED"):
                     logger.info("Workspace-Aufraeumlauf Volume %s: %s", volume_name, line)
+                elif line.startswith("GIT_FEHLER"):
+                    # Ein fehlgeschlagener git-Aufruf laesst die Worktree stehen (sichere
+                    # Richtung) — lautlos soll er aber nicht sein, sonst sieht niemand,
+                    # dass hier seit Wochen nichts mehr aufgeraeumt wird.
+                    logger.warning("Workspace-Aufraeumlauf Volume %s: %s", volume_name, line)
 
         script = (
             "rm -rf /workspace/data/cache /workspace/tmp /workspace/.cache 2>/dev/null; "

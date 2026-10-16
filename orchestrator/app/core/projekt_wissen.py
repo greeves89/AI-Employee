@@ -162,23 +162,52 @@ async def anhaengen(db: AsyncSession, brain: SecondBrain, pfad: str, abschnitt: 
 _git = vault.git_sicher
 
 
+def _pfadspek(pfad: str) -> str:
+    """Ein Dateiname für git, und zwar als Name und nicht als Muster.
+
+    ``--`` schaltet die Options-Erkennung ab, **nicht** die Pathspec-Magie: ein
+    ``pfad`` wie ``:(glob)**/*.md`` passiert ``vault.resolve_path`` und die
+    Suffixprüfung und nimmt im anschließenden Commit dann *jede* Datei der Ablage
+    auf — der Commit lautet aber auf eine einzelne Datei und einen einzelnen
+    Autor. ``:(literal)`` nimmt der Zeichenkette genau diese Deutung (Issue #964).
+
+    Ein LEERER ``pfad`` muss dabei abgefangen werden: ``":(literal)"`` allein ist
+    für git „alles", wo das nackte ``""`` noch ein ``fatal`` war.
+    """
+    if not pfad or not pfad.strip():
+        raise ValueError("Leerer Pfad.")
+    return ":(literal)" + pfad
+
+
 def _version_festhalten(host_path: str, pfad: str, wer: str) -> None:
     """Jede Änderung als Commit — Grundlage für Verlauf und Zurückholen. Best effort."""
+    if not pfad or not pfad.strip():
+        return
     try:
         if not os.path.isdir(os.path.join(host_path, ".git")):
             _git(host_path, "init", "-q")
-        _git(host_path, "add", "--", pfad)
+        _git(host_path, "add", "--", _pfadspek(pfad))
         name = re.sub(r"[^\w .:@-]", "", wer)[:80] or "Projekt"
         _git(host_path, "-c", f"user.name={name}", "-c", "user.email=projekt@ai-employee.local",
-             "commit", "-q", "-m", f"{pfad}: {name}", "--", pfad)
+             "commit", "-q", "-m", f"{pfad}: {name}", "--", _pfadspek(pfad))
     except (OSError, subprocess.SubprocessError) as e:
         log.warning("Version von %s nicht festgehalten: %s", vault.safe_log(pfad), vault.safe_log(e))
 
 
 def verlauf(brain: SecondBrain, pfad: str, limit: int = 30) -> list[dict]:
+    if not pfad or not pfad.strip():
+        return []
     vault.resolve_path(brain.host_path, pfad)  # Pfad prüfen (kein Ausbruch)
+    # ``limit`` wird zu ``-<n>`` und landet damit an der Stelle einer git-Option:
+    # heute ruft nur ein Aufrufer ohne Argument (Default 30), ein künftiger mit
+    # einem Abfrageparameter hätte dort eine offene Option (Issue #964).
     try:
-        r = _git(brain.host_path, "log", f"-{limit}", "--format=%H%x1f%an%x1f%aI", "--", pfad)
+        anzahl = max(1, min(int(limit), 1000))
+    except (TypeError, ValueError):
+        anzahl = 30
+    try:
+        r = _git(brain.host_path, "log", f"-{anzahl}", "--format=%H%x1f%an%x1f%aI",
+                 "--", _pfadspek(pfad))
     except (OSError, subprocess.SubprocessError):
         return []
     eintraege = []

@@ -5,6 +5,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.373.1] - 2026-10-16
+
+### Sicherheit
+- Der nächtliche Aufräumlauf, der liegengebliebene Git-Arbeitsbäume aus einem Arbeitsbereich
+  entfernt, liest dafür Ablagen, die der Agent selbst beschreibt. Deren Git-Konfiguration kann
+  Programme benennen, die Git beim Nachsehen startet — und gestartet wurden sie bisher in dem
+  Helfer, den die Anlage selbst hochfährt, nicht im Behälter des Agenten. Nachgemessen: ein
+  solcher Eintrag lief wirklich an. Das ist geschlossen; zum Fernrepo sind dazu nur noch
+  verschlüsselte Verbindungen erlaubt.
+- Die Ausnahme von der Eigentümer-Prüfung, die der Aufräumlauf braucht, bleibt jetzt auf den
+  einzelnen Lauf und auf die Ablagen beschränkt, die er bewusst ansieht. Zuvor trug sie sich
+  dauerhaft in die Konfiguration des Abbilds ein und galt damit auch für jede später gefundene
+  Ablage.
+
+### Behoben
+- **Verlust unversionierter Arbeit verhindert:** Eine Ablage konnte dem Aufräumlauf per eigener
+  Git-Einstellung melden, sie sei sauber, obwohl ungesicherte Dateien darin lagen — der
+  Arbeitsbaum wurde dann entfernt und die Arbeit war weg. Der Lauf urteilt jetzt unabhängig von
+  dieser Einstellung.
+- Der Versionsverlauf einer Wissens-Ablage weist wieder genau die Datei aus, auf die ein Commit
+  lautet. Ein Dateiname, der ein Git-Suchmuster enthielt, zog zuvor sämtliche Dateien der Ablage
+  in den Commit, der aber auf eine einzelne Datei und einen einzelnen Autor lautete; eine leere
+  Angabe lieferte den Verlauf der ganzen Ablage statt nichts.
+- Scheitert ein Git-Aufruf des Aufräumlaufs, steht das jetzt im Protokoll. Bisher endete jeder
+  Fehlschlag in der Stille — ein Arbeitsbereich, in dem seit Wochen nichts mehr aufgeräumt wird,
+  sah genauso aus wie einer ohne Arbeitsbäume. Der Lauf bricht außerdem nicht mehr ohne Meldung
+  ab und hat eine Zeitgrenze je Git-Aufruf.
+
+### Hinweise für Betreiber
+- `filter.*.clean` aus der Konfiguration einer Ablage bleibt wie in 1.372.3 beschrieben ein
+  bekannter Rand: dagegen hilft nur, dort gar kein Git laufen zu lassen.
+
+---
+
 ## [1.373.0] - 2026-10-16
 
 ### Neu — Finanzen

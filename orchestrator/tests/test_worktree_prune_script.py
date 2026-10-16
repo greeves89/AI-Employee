@@ -149,5 +149,172 @@ class WorktreePruneScriptTest(unittest.TestCase):
             self.assertIn("PRUNED 2", result.stdout)
 
 
+class WorktreePruneHaertungTest(unittest.TestCase):
+    """Issue #964 Punkt 1: der Helfer liest Ablagen, die der AGENT beschreibt.
+
+    Deren ``.git/config`` ist damit kein vertrauenswuerdiger Eingabewert: ein
+    ``core.fsmonitor``-Eintrag startet beim naechsten ``git status`` ein beliebiges
+    Programm — und zwar in dem Container, den der ORCHESTRATOR hochfaehrt, nicht im
+    Container des Agenten. Die Tests pruefen das Verhalten (laeuft das Programm?),
+    nicht die Schreibweise der ``-c``-Schalter.
+    """
+
+    def _repo_mit_bosartiger_konfig(self, base: Path, schluessel: str) -> tuple[Path, Path, Path]:
+        remote = make_bare_remote(base)
+        repo = make_clone(base, remote)
+        wt = base / "wt-done"
+        run_git(["worktree", "add", "-q", "-b", "fix/done", str(wt)], repo)
+        run_git(["push", "-q", "-u", "origin", "fix/done"], wt)
+
+        marker = base / "marker"
+        programm = base / "boese.sh"
+        programm.write_text("#!/bin/sh\ntouch %s\nexit 1\n" % marker)
+        programm.chmod(0o755)
+        # In BEIDE Konfigurationen: die Worktree teilt die Konfiguration des Repos
+        # nicht in jedem Fall (``extensions.worktreeConfig``).
+        run_git(["config", schluessel, str(programm)], repo)
+        run_git(["config", schluessel, str(programm)], wt)
+        return repo, wt, marker
+
+    def test_core_fsmonitor_der_ablage_wird_nicht_ausgefuehrt(self):
+        with TemporaryDirectory() as d:
+            base = Path(d)
+            _repo, wt, marker = self._repo_mit_bosartiger_konfig(base, "core.fsmonitor")
+
+            result = run_prune(base)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(marker.exists(),
+                             "core.fsmonitor aus der Ablage wurde ausgefuehrt: " + result.stdout)
+            # Und die Haertung darf den Zweck nicht aufheben — sauber + gepusht
+            # heisst weiterhin: weg damit (Issue #830).
+            self.assertFalse(wt.exists(), "Haertung hat das Aufraeumen mitgenommen: " + result.stdout)
+            self.assertIn("PRUNED 1", result.stdout)
+
+    def test_core_sshcommand_der_ablage_wird_nicht_ausgefuehrt(self):
+        with TemporaryDirectory() as d:
+            base = Path(d)
+            repo, wt, marker = self._repo_mit_bosartiger_konfig(base, "core.sshCommand")
+            # ls-remote ueber ssh waere der Weg, auf dem core.sshCommand greift.
+            run_git(["remote", "set-url", "origin", "ssh://example.invalid/x.git"], repo)
+
+            result = run_prune(base)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(marker.exists(),
+                             "core.sshCommand aus der Ablage wurde ausgefuehrt: " + result.stdout)
+            # Kein Fernabgleich moeglich -> Worktree bleibt stehen (sichere Richtung).
+            self.assertTrue(wt.exists())
+            self.assertIn("PRUNED 0", result.stdout)
+
+    def test_status_showuntrackedfiles_der_ablage_verdeckt_keine_arbeit(self):
+        """Der schwerere Teil derselben Klasse: nicht nur Schalter, die ein Programm
+        STARTEN, sondern die, die das SICHERHEITSURTEIL bilden. Mit
+        ``status.showUntrackedFiles=no`` meldet ``git status --short`` eine Worktree
+        mit unversionierter Arbeit als sauber — und dann wird sie entfernt."""
+        with TemporaryDirectory() as d:
+            base = Path(d)
+            remote = make_bare_remote(base)
+            repo = make_clone(base, remote)
+            wt = base / "wt-dirty"
+            run_git(["worktree", "add", "-q", "-b", "fix/dirty", str(wt)], repo)
+            run_git(["push", "-q", "-u", "origin", "fix/dirty"], wt)
+            (wt / "nicht-gesicherte-arbeit.md").write_text("die einzige Fassung\n")
+            run_git(["config", "status.showUntrackedFiles", "no"], wt)
+
+            result = run_prune(base)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(wt.exists(),
+                            "Worktree mit unversionierter Arbeit wurde entfernt: " + result.stdout)
+            self.assertIn("PRUNED 0", result.stdout)
+
+    def test_core_excludesfile_der_ablage_verdeckt_keine_arbeit(self):
+        with TemporaryDirectory() as d:
+            base = Path(d)
+            remote = make_bare_remote(base)
+            repo = make_clone(base, remote)
+            wt = base / "wt-dirty"
+            run_git(["worktree", "add", "-q", "-b", "fix/dirty", str(wt)], repo)
+            run_git(["push", "-q", "-u", "origin", "fix/dirty"], wt)
+            (wt / "nicht-gesicherte-arbeit.md").write_text("die einzige Fassung\n")
+            (base / "alles-ignorieren").write_text("*\n")
+            run_git(["config", "core.excludesFile", str(base / "alles-ignorieren")], wt)
+
+            result = run_prune(base)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(wt.exists(),
+                            "Worktree mit unversionierter Arbeit wurde entfernt: " + result.stdout)
+            self.assertIn("PRUNED 0", result.stdout)
+
+    def test_fehlgeschlagener_git_aufruf_wird_gemeldet(self):
+        """Vorher endete jeder Fehlschlag in einem stillen ``continue`` — ein Volume,
+        auf dem seit Wochen nichts mehr aufgeraeumt wird, sah genauso aus wie eines
+        ohne Worktrees."""
+        with TemporaryDirectory() as d:
+            base = Path(d)
+            remote = make_bare_remote(base)
+            repo = make_clone(base, remote)
+            wt = base / "wt-done"
+            run_git(["worktree", "add", "-q", "-b", "fix/done", str(wt)], repo)
+            run_git(["push", "-q", "-u", "origin", "fix/done"], wt)
+            # Fernzweig unerreichbar machen: ls-remote scheitert. Bewusst ein
+            # lokaler Pfad OHNE Repo -- git antwortet darauf MEHRZEILIG, und genau
+            # das ist der Fall, den die Einzeiler-Zusicherung unten pruefen soll.
+            kein_repo = base / "gar-kein-repo"
+            kein_repo.mkdir()
+            run_git(["remote", "set-url", "origin", str(kein_repo)], repo)
+
+            result = run_prune(base)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("GIT_FEHLER", result.stdout)
+            self.assertTrue(wt.exists())
+            # Der Orchestrator liest die Ausgabe ZEILENWEISE: eine mehrzeilige
+            # git-Meldung verliert dort alles ab der zweiten Zeile, und eine
+            # stderr-Zeile, die mit PRUNED anfaengt, waere ein gefaelschtes Ergebnis.
+            fehlerzeilen = [z for z in result.stdout.splitlines() if z.startswith("GIT_FEHLER")]
+            self.assertTrue(fehlerzeilen)
+            ergebniszeilen = [z for z in result.stdout.splitlines() if z.startswith("PRUNED")]
+            self.assertEqual(len(ergebniszeilen), 1, result.stdout)
+            for zeile in fehlerzeilen:
+                self.assertIn("rc=", zeile)
+                self.assertNotIn("\n", zeile)
+            # Vorbedingung des Tests: git hat hier WIRKLICH mehrzeilig geantwortet,
+            # sonst waere die Zusicherung oben leer.
+            self.assertIn("does not appear to be a git repository",
+                          " ".join(fehlerzeilen), result.stdout)
+            # Zweite git-Zeile muss in DERSELBEN Protokollzeile stehen.
+            self.assertIn("Could not read from remote repository",
+                          " ".join(fehlerzeilen), result.stdout)
+
+    def test_safe_directory_landet_nicht_in_der_konfiguration_des_abbilds(self):
+        """``git config --global --add`` schrieb in die Konfiguration des Abbilds;
+        dort gilt jeder Eintrag fuer den Rest des Laufs und fuer jede spaeter
+        gefundene Ablage. Jetzt gilt er nur fuer diesen Lauf."""
+        import os
+        with TemporaryDirectory() as d:
+            base = Path(d)
+            heim = base / "heim"
+            heim.mkdir()
+            remote = make_bare_remote(base)
+            repo = make_clone(base, remote)
+            wt = base / "wt-done"
+            run_git(["worktree", "add", "-q", "-b", "fix/done", str(wt)], repo)
+            run_git(["push", "-q", "-u", "origin", "fix/done"], wt)
+
+            env = dict(os.environ)
+            env.update(WORKTREE_PRUNE_ROOT=str(base), HOME=str(heim))
+            env.pop("GIT_CONFIG_GLOBAL", None)
+            result = subprocess.run([sys.executable, "-c", WORKTREE_PRUNE_SCRIPT],
+                                    capture_output=True, text=True, env=env)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("PRUNED 1", result.stdout)
+            self.assertFalse((heim / ".gitconfig").exists(),
+                             "safe.directory wurde in die Konfiguration des Abbilds geschrieben")
+
+
 if __name__ == "__main__":
     unittest.main()
