@@ -5,6 +5,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.366.2] - 2026-10-16
+
+### Behoben
+- **Eine Meldung aufs Handy geht nicht mehr an einem Zwei-Sekunden-Netzaussetzer verloren.**
+  Fällt die Namensauflösung kurz aus — auf einer Kundenanlage mehrfach gemessen, meist
+  nachts —, dann war die Push-Mitteilung weg: Beide Zustellwege (iPhone und Browser)
+  machten genau einen Versuch, protokollierten eine Zeile und gaben auf. Im
+  Benachrichtigungszentrum stand die Meldung noch, das Gerät blieb still. Bei einer
+  Freigabe-Anfrage heißt das, dass ein Agent wartet und niemand davon erfährt. Beide Wege
+  versuchen es jetzt zweimal nach (nach 0,4 s und nach 1,6 s) — aber **nur**, wenn die
+  Verbindung gar nicht zustande kam. Bleibt die Antwort aus, nachdem die Anfrage schon
+  draußen war, wird bewusst nicht wiederholt: eine verlorene Meldung ist besser als
+  dieselbe zweimal auf dem Bildschirm. Wenn das Netz in Ordnung ist, ändert sich nichts —
+  es entstehen keine zusätzlichen Aufrufe und keine Wartezeit.
+- **Eine Netzstörung hält den Meldungs-Aufruf nicht mehr minutenlang auf.** Die Geräte
+  eines Nutzers wurden der Reihe nach bedient, jedes mit eigenem Zeitlimit und ohne
+  gemeinsame Obergrenze. Bei einem Netz, das Pakete verwirft, summierte sich das:
+  gemessen über drei Minuten für einen Nutzer mit zwei iPhones und drei Browser-
+  Anmeldungen — und weil das Anlegen einer Meldung oder Freigabe darauf wartet, lief die
+  Anfrage in eine Zeitüberschreitung, obwohl die eigentliche Arbeit längst erledigt war.
+  Die Zustellung an alle Geräte hat jetzt zusammen zehn Sekunden; was danach noch offen
+  ist, wird übersprungen und protokolliert. Datenbankzugriffe bleiben vom Deckel
+  unberührt — ein dort abgebrochener Vorgang würde mehr Schaden anrichten als die
+  verlorene Meldung.
+
+---
+
 ## [1.366.1] - 2026-10-16
 
 ### Behoben

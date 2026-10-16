@@ -11,8 +11,10 @@ an jede Browser-Anmeldung. Die Aufrufer wissen davon nichts. Kommt ein dritter K
 dazu, aendert sich genau hier etwas.
 """
 
+import asyncio
 import json
 import logging
+import time
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +23,33 @@ from app.models.device_token import DeviceToken
 from app.models.push_subscription import PushSubscription
 
 logger = logging.getLogger(__name__)
+
+# Deckel fuer die GESAMTE Auffaecherung. Zwei Aufrufer (``POST /notifications/`` und
+# das Anlegen einer Freigabe) warten im HTTP-Pfad einer Nutzeranfrage darauf, und die
+# Geraete werden der Reihe nach bedient. Ohne Deckel addieren sich bei einer
+# Netzstoerung die Zeitlimits ALLER Geraete des Nutzers: gemessen wurden fuer zwei
+# iPhones und drei Browser-Anmeldungen bei verworfenen Paketen ueber drei Minuten —
+# der Nutzer bekommt dann eine Zeitueberschreitung auf eine Anfrage, deren eigentliche
+# Arbeit laengst erledigt ist.
+#
+# Der Deckel umfasst ausschliesslich die NETZZUSTELLUNG, nicht die Datenbankzugriffe
+# dieser Datei. Ein mitten im Datenbankaufruf abgebrochener Vorgang wuerde die Sitzung
+# des Aufrufers beschaedigen und aus einer verlorenen Meldung einen gescheiterten
+# Vorgang machen — das waere schlimmer als das Problem.
+ZUSTELLBUDGET_S = 10.0
+
+
+class _Budget:
+    """Wie viel Zeit die Zustellung insgesamt noch hat."""
+
+    def __init__(self, sekunden: float) -> None:
+        self._ende = time.monotonic() + sekunden
+
+    def rest(self) -> float:
+        return self._ende - time.monotonic()
+
+    def erschoepft(self) -> bool:
+        return self.rest() <= 0
 
 
 async def push_to_user(
@@ -37,24 +66,40 @@ async def push_to_user(
     """
     if not user_id:
         return
-    await _push_apns(db, user_id, title, body, data)
-    await _push_web(db, user_id, title, body, data)
+    budget = _Budget(ZUSTELLBUDGET_S)
+    await _push_apns(db, user_id, title, body, data, budget)
+    await _push_web(db, user_id, title, body, data, budget)
 
 
-async def _push_apns(db, user_id, title, body, data) -> None:
+async def _push_apns(db, user_id, title, body, data, budget: "_Budget") -> None:
     try:
         from app.services.apns_service import APNsService
 
         if not APNsService.configured():
             return
         rows = await db.execute(select(DeviceToken).where(DeviceToken.user_id == user_id))
-        for dt in rows.scalars().all():
-            await APNsService.send(dt.token, title, body, data=data)
+        geraete = rows.scalars().all()
+        for nummer, dt in enumerate(geraete):
+            if budget.erschoepft():
+                logger.warning(
+                    "Zustellbudget aufgebraucht: %d von %d iOS-Geraeten von %s nicht "
+                    "mehr versucht", len(geraete) - nummer, len(geraete), user_id,
+                )
+                return
+            try:
+                await asyncio.wait_for(
+                    APNsService.send(dt.token, title, body, data=data),
+                    timeout=budget.rest(),
+                )
+            except (TimeoutError, asyncio.TimeoutError):
+                logger.warning("APNs-Zustellung an ein Geraet von %s abgebrochen "
+                               "(Zustellbudget)", user_id)
+                return
     except Exception as e:  # noqa: BLE001
         logger.warning("APNs-Zustellung an %s fehlgeschlagen: %s", user_id, e)
 
 
-async def _push_web(db, user_id, title, body, data) -> None:
+async def _push_web(db, user_id, title, body, data, budget: "_Budget") -> None:
     """Browser-Zustellung, inklusive Aufraeumen erloschener Anmeldungen.
 
     Ohne das Aufraeumen sammeln sich Karteileichen (deinstallierter Browser, entzogene
@@ -77,11 +122,20 @@ async def _push_web(db, user_id, title, body, data) -> None:
         payload = json.dumps({"title": title, "body": body, "data": data or {}}).encode()
         subject = await vapid_subject(db)
         gone: list[PushSubscription] = []
-        for sub in subs:
+        for nummer, sub in enumerate(subs):
+            if budget.erschoepft():
+                logger.warning(
+                    "Zustellbudget aufgebraucht: %d von %d Browser-Anmeldungen von %s "
+                    "nicht mehr versucht", len(subs) - nummer, len(subs), user_id,
+                )
+                break
             try:
-                status = await webpush.send(
-                    endpoint=sub.endpoint, p256dh=sub.p256dh, auth=sub.auth,
-                    payload=payload, keys=keys, subject=subject,
+                status = await asyncio.wait_for(
+                    webpush.send(
+                        endpoint=sub.endpoint, p256dh=sub.p256dh, auth=sub.auth,
+                        payload=payload, keys=keys, subject=subject,
+                    ),
+                    timeout=budget.rest(),
                 )
                 if webpush.is_gone(status):
                     gone.append(sub)
