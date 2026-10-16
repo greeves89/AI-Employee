@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, List, Network, Users, StopCircle, ArrowUpCircle, Crown, RotateCw } from "lucide-react";
+import { Plus, Play, Square, Trash2, Loader2, Bot, LayoutGrid, List, Network, Users, Building2, StopCircle, ArrowUpCircle, Crown, RotateCw } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
 import { Header } from "@/components/layout/header";
 import { AgentCard } from "@/components/dashboard/agent-card";
@@ -14,6 +14,7 @@ import { useConfirm } from "@/components/ui/dialog-provider";
 import { getAgentTag } from "@/components/agents/agent-avatar";
 import { AgentFilterBar, type GroupBy, type SortBy } from "@/components/agents/agent-filter-bar";
 import { AgentListView } from "@/components/agents/agent-list-view";
+import { BueroAnsicht } from "@/components/raum/buero-ansicht";
 import { useAgentsPagePrefs } from "@/hooks/use-agents-page-prefs";
 import {
   MAX_SAVED_FILTERS,
@@ -53,6 +54,7 @@ const AgentNetworkView = dynamic(
 const VIEW_BUTTONS: { mode: ViewMode; title: string; Icon: typeof LayoutGrid; expert: boolean }[] = [
   { mode: "grid", title: "Kachelansicht", Icon: LayoutGrid, expert: false },
   { mode: "list", title: "Listenansicht", Icon: List, expert: false },
+  { mode: "buero", title: "Büro", Icon: Building2, expert: false },
   { mode: "network", title: "Netzwerkansicht", Icon: Network, expert: true },
   { mode: "teams", title: "Teamansicht", Icon: Users, expert: true },
 ];
@@ -560,7 +562,7 @@ export default function AgentsPage() {
               onGroupBy={setGroupBy}
               sortBy={sortBy}
               onSortBy={setSortBy}
-              showSort={effectiveView !== "list"}
+              showSort={effectiveView !== "list" && effectiveView !== "buero"}
               statusFilter={statusFilter}
               onStatusFilter={setStatusFilter}
               presets={prefs.filter}
@@ -588,6 +590,8 @@ export default function AgentsPage() {
                 onRemove={handleRemove}
                 onRefresh={refresh}
               />
+            ) : effectiveView === "buero" ? (
+              <BueroAnsicht agents={visibleAgents} />
             ) : (<>
             {visibleAgents.length === 0 && (
               <div className="rounded-xl border border-dashed border-foreground/[0.1] bg-card/30 p-10 text-center text-sm text-muted-foreground">

@@ -12,8 +12,8 @@ import type { Agent } from "./types";
 
 export const AGENTS_PAGE_KEY = "agents_page";
 
-export type ViewMode = "grid" | "network" | "teams" | "list";
-export const VIEW_MODES: ViewMode[] = ["grid", "network", "teams", "list"];
+export type ViewMode = "grid" | "network" | "teams" | "list" | "buero";
+export const VIEW_MODES: ViewMode[] = ["grid", "network", "teams", "list", "buero"];
 
 export type ListGrouping = "team" | "tag" | "none";
 export const LIST_GROUPINGS: ListGrouping[] = ["team", "tag", "none"];

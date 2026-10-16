@@ -10,6 +10,7 @@ import type { Team } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { useToast } from "@/components/ui/dialog-provider";
+import { PROJEKT_FARBEN } from "@/lib/projekte";
 
 interface CreateTeamModalProps {
   open: boolean;
@@ -18,6 +19,8 @@ interface CreateTeamModalProps {
   agents: Agent[];
   /** When provided, the modal edits this team instead of creating a new one. */
   team?: Team | null;
+  /** Als Projekt (Seite /projekte): andere Worte und eine Kennfarbe — dasselbe Team darunter. */
+  projekt?: boolean;
 }
 
 export function CreateTeamModal({
@@ -26,14 +29,17 @@ export function CreateTeamModal({
   onSaved,
   agents,
   team,
+  projekt = false,
 }: CreateTeamModalProps) {
   const toast = useToast();
   const isEdit = Boolean(team);
+  const wort = projekt ? "Projekt" : "Team";
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [leadAgentId, setLeadAgentId] = useState<string>("");
+  const [farbe, setFarbe] = useState<string>("blau");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +50,7 @@ export function CreateTeamModal({
       setDescription(team?.description ?? "");
       setMemberIds(team?.member_agent_ids ?? []);
       setLeadAgentId(team?.lead_agent_id ?? "");
+      setFarbe(team?.farbe ?? "blau");
       setError(null);
     }
   }, [open, team]);
@@ -72,18 +79,19 @@ export function CreateTeamModal({
         description: description.trim() || undefined,
         member_agent_ids: memberIds,
         lead_agent_id: leadAgentId || null,
+        ...(projekt ? { farbe } : {}),
       };
       if (isEdit && team) {
         await api.updateTeam(team.id, body);
-        toast.success("Team aktualisiert", name.trim());
+        toast.success(`${wort} aktualisiert`, name.trim());
       } else {
         await api.createTeam(body);
-        toast.success("Team erstellt", name.trim());
+        toast.success(`${wort} erstellt`, name.trim());
       }
       onOpenChange(false);
       onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Team konnte nicht gespeichert werden");
+      setError(e instanceof Error ? e.message : `${wort} konnte nicht gespeichert werden`);
     } finally {
       setSaving(false);
     }
@@ -129,7 +137,7 @@ export function CreateTeamModal({
                   {/* Header */}
                   <div className="flex items-center justify-between border-b border-foreground/[0.06] px-6 py-4">
                     <Dialog.Title className="text-lg font-semibold">
-                      {isEdit ? "Team bearbeiten" : "Team erstellen"}
+                      {isEdit ? `${wort} bearbeiten` : `${wort} erstellen`}
                     </Dialog.Title>
                     <Dialog.Close className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06] transition-colors">
                       <X className="h-4 w-4" />
@@ -148,7 +156,7 @@ export function CreateTeamModal({
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && !saving && handleSave()}
-                        placeholder="z.B. Research-Team, Delivery-Squad..."
+                        placeholder={projekt ? "z. B. Website-Relaunch, Messe 2027 …" : "z.B. Research-Team, Delivery-Squad..."}
                         autoFocus
                         className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                       />
@@ -162,11 +170,33 @@ export function CreateTeamModal({
                       <textarea
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Wofür ist dieses Team zuständig?"
+                        placeholder={projekt ? "Worum geht es, und woran merkt man, dass es fertig ist? Die Agenten lesen das bei jedem Auftrag." : "Wofür ist dieses Team zuständig?"}
                         rows={2}
                         className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none"
                       />
                     </div>
+
+                    {projekt && (
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">Farbe</label>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(PROJEKT_FARBEN).map(([key, f]) => (
+                            <button
+                              key={key}
+                              type="button"
+                              title={f.name}
+                              aria-label={f.name}
+                              onClick={() => setFarbe(key)}
+                              className={cn(
+                                "h-7 w-7 rounded-full ring-offset-2 ring-offset-card transition-all",
+                                farbe === key ? "ring-2 ring-foreground" : "hover:scale-110",
+                              )}
+                              style={{ background: f.hex }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Members */}
                     <div>
@@ -239,7 +269,9 @@ export function CreateTeamModal({
                         ))}
                       </select>
                       <p className="text-[11px] text-muted-foreground/50 mt-1">
-                        Der Lead muss Mitglied des Teams sein und erhält delegierte Tasks.
+                        {projekt
+                          ? "Der Lead verteilt Aufträge ans Projekt an die passenden Kollegen. Ohne Lead wählst du je Auftrag selbst."
+                          : "Der Lead muss Mitglied des Teams sein und erhält delegierte Tasks."}
                       </p>
                     </div>
 
@@ -268,7 +300,7 @@ export function CreateTeamModal({
                       ) : (
                         <Plus className="h-4 w-4" />
                       )}
-                      {saving ? "Speichere..." : isEdit ? "Speichern" : "Team erstellen"}
+                      {saving ? "Speichere..." : isEdit ? "Speichern" : `${wort} erstellen`}
                     </button>
                   </div>
                 </motion.div>

@@ -45,6 +45,7 @@ Bevor du loslegst — diese Begriffe begegnen dir überall:
 4. [Agenten](#4-agenten)
 5. [Agent-Detailseite (Chat, Todos, Activity, Workspace, Wissen, Settings)](#5-agent-detailseite)
 6. [Tasks](#6-tasks)
+6a. [Projekte: Agenten im Raum, Aufträge, Abnahme](#6a-projekte-agenten-im-raum-aufträge-abnahme)
 7. [Analytics](#7-analytics)
 8. [Knowledge Base](#8-knowledge-base)
 9. [Meeting Rooms](#9-meeting-rooms)
@@ -118,7 +119,7 @@ unten gut zu sehen). Sie ist in **Gruppen** organisiert:
 ![Seitenleiste & Dashboard](screenshots/01-dashboard.png)
 
 - **Übersicht** — **Dashboard** (Startseite), **Agents** (deine Agenten), **Onboarding**,
-  **Tasks** (Aufträge), **Activity** (Tageskalender aller Agenten, siehe Kap. 33),
+  **Tasks** (Aufträge), **Projekte** (Agenten im Raum, siehe Kap. 6a), **Activity** (Tageskalender aller Agenten, siehe Kap. 33),
   **Analytics** (Auswertungen).
 - **Zusammenarbeit** — **Knowledge** (Wissensablage), **Meeting Rooms**
   (Multi-Agent-Zusammenarbeit).
@@ -149,7 +150,7 @@ Unten auf dein **Profil** (Name/Avatar) klicken → **Abmelden**.
 Wer **kein Systemadmin** ist, sieht die Plattform automatisch in der **einfachen
 Ansicht**. Sie zeigt nur, was man für die Arbeit mit seinen Agenten braucht:
 
-- **Seitenleiste:** Dashboard, Agenten, Aufgaben, Freigaben, Dateien, Hilfe.
+- **Seitenleiste:** Dashboard, Agenten, Aufgaben, Projekte, Freigaben, Dateien, Hilfe.
   Hat der Admin deiner Rolle eigene Menüpunkte zugeteilt (Kap. 22.4), gelten diese.
 - **Agenten-Seite:** links der **Chat**, rechts die **Aufgaben** des Agenten in
   drei Reitern:
@@ -306,6 +307,29 @@ Seitenleiste → **Agents**. Jeder Agent erscheint als **Kachel**. Was du darauf
 
 > Du siehst hier nur **deine eigenen** Agenten. Als Admin findest du **alle** unter
 > **Admin-Konsole → Alle Agenten**.
+
+### 4.1a Ansicht „Büro“: alle Agenten an ihrem Platz *(seit 1.367.0)*
+
+Neben Kachel- und Listenansicht gibt es das **Büro**: alle deine Agenten an ihren
+Schreibtischen, aufgeteilt in Bereiche (Werkstatt, Bibliothek, Lounge, Fensterfront —
+reichen die Plätze nicht, kommen Anbauten dazu).
+
+1. Seitenleiste → **Agenten**.
+2. Oben rechts in der Leiste der Ansichten das **Gebäude-Symbol** („Büro“) anklicken.
+3. Jeder Agent sitzt an seinem Platz:
+   - **Arbeitet** er, leuchtet sein Bildschirm, er wippt leicht, und der Boden unter ihm
+     glimmt grün.
+   - **Bereit**: blauer Ring. **Gestoppt**: blass. **Fehler**: roter Ring.
+4. Mit der Maus über einem Agenten siehst du Name, Zustand und Bereich; ein **Klick** öffnet
+   ihn (Chat, Einstellungen).
+
+Suche und Statusfilter oberhalb wirken auch hier — wer nicht passt, verlässt kurz seinen
+Platz. Jeder **neue Agent** bekommt beim Anlegen einen **zufälligen freien Platz**; ältere
+Agenten bekommen einen festen Platz, der sich nicht ändert. Auf schmalen Bildschirmen zeigt
+das Büro nur die Symbole; Antippen öffnet den Agenten.
+
+> Wer weniger Bewegung eingestellt hat (Bedienungshilfen des Betriebssystems), sieht den Raum
+> ohne Animation.
 
 ### 4.2 Einen Agenten anlegen — Schritt für Schritt
 
@@ -842,6 +866,98 @@ Nach **Create Task** läuft der Agent los; der Task erscheint in der Liste und w
 3. **Estimate cost** prüfen → **Create Task**.
 4. Ergebnis in der Liste öffnen, PDF aus dem **Workspace** herunterladen, **bewerten**.
 5. Soll das **jede Woche** laufen? Dann lege es als **Schedule** an (Kap. 12).
+
+---
+
+## 6a. Projekte: Agenten im Raum, Aufträge, Abnahme
+
+*(seit 1.367.0)*
+
+Ein **Projekt** fasst mehrere Agenten für ein Vorhaben zusammen. Du siehst sie in einem
+**Raum** bei der Arbeit, gibst dem Projekt **Aufträge** und **nimmst die Ergebnisse ab** —
+oder gibst sie mit einem Hinweis zur Nacharbeit zurück. Ein Projekt ist dasselbe wie ein
+**Team** auf der Agentenseite (Ansicht „Teamansicht“): Lead, Mitglieder und Beschreibung
+gelten an beiden Stellen.
+
+### 6a.1 Ein Projekt anlegen
+
+1. Seitenleiste → **Projekte**.
+2. Oben rechts auf **Neues Projekt** klicken.
+3. **Name** eintragen, z. B. „Website-Relaunch“.
+4. **Beschreibung**: Worum geht es, und woran merkt man, dass es fertig ist? Die Agenten
+   lesen diesen Text bei jedem Auftrag des Projekts mit (Abschnitt „Wozu dieser Auftrag
+   dient“).
+5. Eine **Farbe** wählen — sie färbt die Leuchtleiste im Raum und den Punkt in der Übersicht.
+6. Unter **Mitglieder** die Agenten anklicken, die mitarbeiten sollen. Du kannst nur deine
+   eigenen Agenten zuweisen.
+7. Optional einen **Lead** wählen. Der Lead verteilt Aufträge an die passenden Kollegen.
+   Ohne Lead wählst du bei jedem Auftrag selbst, wer ihn bekommt.
+8. **Projekt erstellen** klicken.
+
+Die Übersicht zeigt je Projekt eine Karte mit dem Raum, den Zahlen **wartet**,
+**in Arbeit**, **zur Abnahme** und **heute fertig**, dem, was gerade läuft, und den
+erledigten Aufträgen der letzten sieben Tage.
+
+### 6a.2 Der Raum
+
+Ein Klick auf eine Projektkarte öffnet das Projekt. Links siehst du den Raum:
+
+- **Schreibtische** — je Mitglied einer. Arbeitet ein Agent, leuchtet sein Bildschirm in der
+  Projektfarbe, der Boden unter ihm glimmt grün, und über ihm steht der Titel des Auftrags.
+- **Krone** — markiert den Lead.
+- **Papierstapel** neben der Tür — die Aufträge, die noch warten. Ein Klick darauf springt
+  zum Board.
+- **Board an der Wand** — farbige Zettel: blau = in Arbeit, orange = zur Abnahme,
+  grün = heute fertig.
+
+Auf schmalen Bildschirmen blendet der Raum Namen und Sprechblasen aus; die Liste
+**Im Raum** daneben (bzw. darunter) zeigt sie weiter.
+
+Rechts daneben steht unter **Im Raum** jedes Mitglied mit seinem Zustand („Arbeitet an: …“,
+„Bereit“, „Gestoppt“).
+
+### 6a.3 Einen Auftrag geben
+
+1. Im Kasten **Auftrag geben** beschreiben, was erledigt werden soll. Die **erste Zeile**
+   wird zum Titel.
+2. Im Auswahlfeld darunter festlegen, wer den Auftrag bekommt:
+   - **An den Lead — er verteilt**: der Lead zerlegt den Auftrag und gibt Teile an die
+     Kollegen weiter.
+   - **Direkt an …**: genau dieser Agent arbeitet ihn ab.
+   Schneller: im Raum oder in der Liste **Im Raum** auf einen Agenten klicken — er wird
+   als Empfänger eingetragen.
+3. **Abgeben** klicken (oder Strg/Cmd + Enter).
+
+Der Auftrag erscheint sofort unter **Wartet** und wandert zu **In Arbeit**, sobald der
+Agent beginnt. Teilaufträge, die der Lead an Kollegen gibt, gehören automatisch zum Projekt
+und stehen mit dem Vermerk **Teilarbeit** auf dem Board.
+
+Über **Chat mit … öffnen** unter dem Auswahlfeld wechselst du in den Chat des gewählten
+Agenten, wenn du lieber im Gespräch klären willst.
+
+### 6a.4 Ergebnisse abnehmen oder zurückgeben
+
+Ist ein Auftrag fertig (oder gescheitert), steht er unter **Zur Abnahme** — mit einem
+Auszug aus dem Ergebnis.
+
+- **Abnehmen** — das Ergebnis passt. Der Auftrag wandert zu **Erledigt**.
+- **Zurückgeben** — es öffnet sich ein Fenster. Schreibe hinein, was anders werden soll,
+  und klicke **Zurückgeben**. Derselbe Agent (bei Lead-Aufträgen wieder der Lead) bekommt
+  einen Auftrag **„Nacharbeit: …“** mit deinem Hinweis, dem ursprünglichen Auftrag und
+  seinem bisherigen Ergebnis. Dessen Ergebnis landet wieder unter **Zur Abnahme**.
+
+Ein Klick auf den Titel einer Karte öffnet die Aufgabe mit allen Schritten und dem
+vollständigen Ergebnis.
+
+### 6a.5 Projekt bearbeiten oder löschen
+
+- **Bearbeiten** (oben rechts) — Name, Beschreibung, Farbe, Mitglieder und Lead ändern.
+- **Papierkorb** (oben rechts) — das Projekt verschwindet aus der Übersicht. Agenten und
+  ihre Aufträge bleiben erhalten.
+
+> **Wer sieht was?** Du siehst nur Projekte, in denen mindestens einer deiner Agenten
+> mitarbeitet, und auf dem Board nur die Aufträge deiner eigenen Agenten.
+> Administratoren sehen alle Projekte.
 
 ---
 

@@ -57,7 +57,7 @@ async def team_zweck(db: AsyncSession, task: Task) -> str | None:
 
     aktuell, gesehen = task, {task.id}
     for _ in range(MAX_TIEFE):
-        team_id = (aktuell.metadata_ or {}).get("team_id")
+        team_id = getattr(aktuell, "team_id", None) or (aktuell.metadata_ or {}).get("team_id")
         if team_id:
             team = await db.get(Team, team_id)
             if team is None:

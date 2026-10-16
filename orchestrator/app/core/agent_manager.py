@@ -1803,6 +1803,16 @@ class AgentManager:
         except Exception as e:
             logger.warning(f"Could not update team registry: {e}")
 
+        # Platz im Buero (Agenten-Seite, Ansicht „Buero") — zufaellig unter den
+        # freien Plaetzen des Besitzers; rein kosmetisch, darf das Anlegen nie stoppen.
+        try:
+            from app.core.buero import freier_platz
+
+            buero_platz = await freier_platz(self.db, user_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Kein Buero-Platz fuer %s: %s", agent_id, e)
+            buero_platz = None
+
         # Save to DB
         agent = Agent(
             id=agent_id,
@@ -1833,6 +1843,7 @@ class AgentManager:
                 "integrations": integrations or [],
                 "agent_version": get_agent_version(),
                 "metrics": {"total": 0, "success": 0, "fail": 0, "success_rate": 0.0},
+                **({"buero": buero_platz} if buero_platz else {}),
             },
             access_policy={
                 "permissions": agent_permissions,

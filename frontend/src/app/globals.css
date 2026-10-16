@@ -167,3 +167,25 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);
 }
+
+/* Isometrische Räume (Projekte, Büro): ein arbeitender Agent wippt, sein
+   Bildschirm schreibt Zeilen, der Boden unter ihm glimmt. Ruhig gehalten und
+   ganz aus, wenn das System weniger Bewegung wünscht. */
+@keyframes raum-wippen {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes raum-tippen {
+  0% { stroke-dashoffset: 1; }
+  60%, 100% { stroke-dashoffset: 0; }
+}
+@keyframes raum-pulsen {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.45; }
+}
+.raum-wippen { animation: raum-wippen 1.6s ease-in-out infinite; }
+.raum-tippen { stroke-dasharray: 1; animation: raum-tippen 1.4s ease-out infinite; }
+.raum-pulsen { animation: raum-pulsen 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .raum-wippen, .raum-tippen, .raum-pulsen { animation: none; }
+}

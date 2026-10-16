@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Cpu,
   ListTodo,
+  FolderKanban,
   FolderOpen,
   Plug,
   Shield,
@@ -130,6 +131,7 @@ const navGroups: NavGroup[] = [
       // Onboarding vorerst ausgeblendet (Seite bleibt unter /onboarding erreichbar)
       // { href: "/onboarding", label: "Onboarding", icon: Rocket, simpleVisible: true },
       { href: "/tasks", label: "Aufgaben", icon: ListTodo, simpleVisible: true },
+      { href: "/projekte", label: "Projekte", icon: FolderKanban, simpleVisible: true },
       { href: "/activity", label: "Aktivität", icon: Activity, simpleVisible: false },
       { href: "/analytics", label: "Auswertung", icon: BarChart3, simpleVisible: false },
       { href: "/learning", label: "Gelerntes", icon: Sparkles, simpleVisible: false },

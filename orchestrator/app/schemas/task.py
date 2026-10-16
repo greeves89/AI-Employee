@@ -37,6 +37,8 @@ class TaskResponse(BaseModel):
     parent_task_id: str | None = None
     dry_run: bool = False
     original_prompt: str | None = None
+    team_id: str | None = None
+    abgenommen_at: datetime | None = None
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
