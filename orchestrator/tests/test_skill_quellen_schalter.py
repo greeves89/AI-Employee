@@ -108,7 +108,7 @@ class CrawlRuftNurAktiveQuellenAbTests(_DbTestCase):
             await db.commit()
         abgerufen = []
 
-        async def _fake(self_, client, repo, ref=None, subdir=None):
+        async def _fake(self_, client, repo, ref=None, subdir=None, wache=None):
             abgerufen.append(repo)
             return [{"name": f"s-{repo}", "description": "d", "category": "TOOL", "content": "x"}]
 

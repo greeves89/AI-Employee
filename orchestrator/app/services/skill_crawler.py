@@ -12,13 +12,17 @@ import re
 from datetime import datetime, timezone
 
 import httpx
+import yaml
 
 from app.core.verbindungswiederholung import (
     PAUSEN_HINTERGRUND_S,
-    VERBINDUNGSFEHLER,
+    NetzaussetzerAbbruch,
+    Netzwache,
+    VerbindungNichtZustandeGekommen,
+    ist_git_netzfehler,
+    lauf_unvollstaendig,
     mit_verbindungswiederholung,
 )
-import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +213,11 @@ class SkillCrawlerService:
         while True:
             try:
                 await self.crawl()
+            except NetzaussetzerAbbruch as e:
+                # Kein Programmfehler, sondern ein Netzaussetzer: der Grund steht
+                # schon als Fehlerzeile im Protokoll, ein Stapelverlauf bringt
+                # hier nichts.
+                logger.warning("Skill crawler: Lauf am Netz abgebrochen (%s)", e)
             except Exception as e:
                 logger.error("Skill crawler error: %s", e, exc_info=True)
             await asyncio.sleep(CRAWL_INTERVAL)
@@ -247,10 +256,16 @@ class SkillCrawlerService:
                     len(github_repos), len(db_sources), len(zeilen))
 
         all_skills: list[dict] = []
-        # Quellen, die nicht am Inhalt, sondern an der VERBINDUNG scheiterten.
-        # Die Zahl entscheidet unten, ob ein leeres Ergebnis ein echtes "nichts
-        # gefunden" ist oder ein Netzaussetzer (#746).
-        verbindungsausfaelle = 0
+        # Zaehlt die Quellen, die nicht am Inhalt, sondern an der VERBINDUNG
+        # scheiterten. Die Zahl entscheidet unten, ob ein leeres Ergebnis ein
+        # echtes "nichts gefunden" ist oder ein Netzaussetzer (#746). Was als
+        # Verbindungsfehler gilt, steht genau einmal — in der Netzwache.
+        wache = Netzwache("Skill-Crawler")
+        # Stand VOR diesem Lauf: ohne ihn kann ein Lauf, der am Netz nur die
+        # HAELFTE geschafft hat, den guten Katalog nicht von einem echten
+        # Schrumpfen unterscheiden.
+        vorher = await self.get_catalog() or {}
+        bisher = int(vorher.get("skill_count") or 0)
         from app.config import settings
         headers = {"Accept": "application/vnd.github.v3+json"}
         if settings.github_token:
@@ -260,8 +275,10 @@ class SkillCrawlerService:
             # 1. Per Umgebung (SKILL_REPOS) gesetzte Repos ohne eigene Zeile
             #    (public → untrusted provenance).
             for repo in github_repos:
+                if wache.abbrechen:
+                    break
                 try:
-                    skills = await self._crawl_github(client, repo)
+                    skills = await self._crawl_github(client, repo, wache=wache)
                     for s in skills:
                         s.setdefault("source_repo", repo)
                         s.setdefault("source_url", f"https://github.com/{repo}")
@@ -269,20 +286,22 @@ class SkillCrawlerService:
                         s.setdefault("trusted", False)
                     all_skills.extend(skills)
                 except Exception as e:
-                    if isinstance(e, VERBINDUNGSFEHLER):
-                        verbindungsausfaelle += 1
+                    wache.melde(e)
                     logger.warning("Failed to crawl %s: %s", repo, e)
 
             # 2. Quellen aus der Datenbank: eingebaute (system:builtin) und vom Admin
             #    eingetragene (GitHub-with-config or any Git host).
             for src in db_sources:
+                if wache.abbrechen:
+                    break
                 try:
                     if src["kind"] == "git":
                         skills = await self._crawl_git_source(src)
                         url = src["location"]
                     else:
                         skills = await self._crawl_github(
-                            client, src["location"], ref=src.get("ref"), subdir=src.get("subdir"))
+                            client, src["location"], ref=src.get("ref"),
+                            subdir=src.get("subdir"), wache=wache)
                         url = f"https://github.com/{src['location']}"
                     for s in skills:
                         s["source_repo"] = src["location"]
@@ -294,8 +313,7 @@ class SkillCrawlerService:
                     all_skills.extend(skills)
                     await self._update_source_status(src["id"], f"ok: {len(skills)} skills")
                 except Exception as e:
-                    if isinstance(e, VERBINDUNGSFEHLER):
-                        verbindungsausfaelle += 1
+                    wache.melde(e)
                     logger.warning("Failed to crawl source '%s' (%s): %s",
                                    src["name"], src["location"], e)
                     await self._update_source_status(src["id"], f"error: {str(e)[:180]}")
@@ -309,22 +327,32 @@ class SkillCrawlerService:
                 unique.append(s)
         unique.sort(key=lambda s: s["name"])
 
-        # Ein Netzaussetzer darf nicht als "gecrawlt, 0 Skills" im Zwischenspeicher
-        # landen. Vorher ueberschrieb jeder solche Lauf den guten Katalog mit einer
-        # leeren Liste UND einem frischen ``crawled_at`` — sieben Tage Haltbarkeit,
-        # also bis zum naechsten Wochenlauf. Wer in die Verwaltung sah, bekam
-        # "gerade gecrawlt, 0 Quellen" und konnte nicht unterscheiden, ob es oben
-        # nichts Neues gibt oder ob hier das Netz weg war. Die Datenbank bleibt
+        # Ein Netzaussetzer darf nicht als "gecrawlt, N Skills" im Zwischenspeicher
+        # landen. Vorher ueberschrieb jeder solche Lauf den guten Katalog mit dem
+        # Rest, den er noch bekommen hat, UND einem frischen ``crawled_at`` —
+        # sieben Tage Haltbarkeit, also bis zum naechsten Wochenlauf. Wer in die
+        # Verwaltung sah, bekam "gerade gecrawlt, 0 Quellen" und konnte nicht
+        # unterscheiden, ob es oben nichts Neues gibt oder ob hier das Netz weg
+        # war. Das gilt genauso fuer den unauffaelligeren Fall, dass 18 von 20
+        # Quellen am Netz gescheitert sind: dann stuende ein auf wenige Eintraege
+        # gekuerzter Katalog eine Woche lang als frisch da. Die Datenbank bleibt
         # unberuehrt (der Abgleich fuegt nur hinzu), deshalb genuegt es, den
         # Zwischenspeicher stehen zu lassen.
-        if not unique and verbindungsausfaelle:
-            logger.error(
-                "Skill crawler: kein Ergebnis — %d Quelle(n) scheiterten an der "
-                "Verbindung (Namensaufloesung/Netz). Zwischenspeicher und "
-                "Frischestempel bleiben unveraendert, kein leerer Katalog.",
-                verbindungsausfaelle,
+        if lauf_unvollstaendig(
+            erzeugt=len(unique), bisher=bisher,
+            verbindungsausfaelle=wache.anzahl,
+        ):
+            meldung = (
+                f"Skill crawler: nur {len(unique)} von bisher {bisher} Skills — "
+                f"{wache.anzahl} Quelle(n) scheiterten an der Verbindung "
+                f"(Namensaufloesung/Netz). Zwischenspeicher und Frischestempel "
+                f"bleiben unveraendert, kein gekuerzter Katalog."
             )
-            return []
+            logger.error(meldung)
+            # Als Ausnahme, nicht als leere Liste: ein Aufrufer aus der
+            # Oberflaeche ("Aktualisieren") bekam sonst "ok, 0 importiert"
+            # gemeldet, obwohl ueberhaupt kein Lauf zustande kam (#746).
+            raise NetzaussetzerAbbruch(meldung)
 
         payload = {
             "skills": unique,
@@ -346,8 +374,15 @@ class SkillCrawlerService:
         return unique
 
     async def _crawl_github(self, client: httpx.AsyncClient, repo: str,
-                            ref: str | None = None, subdir: str | None = None) -> list[dict]:
-        """Crawl a GitHub repo via the API. Tries the configured ref, then main/master."""
+                            ref: str | None = None, subdir: str | None = None,
+                            wache: Netzwache | None = None) -> list[dict]:
+        """Crawl a GitHub repo via the API. Tries the configured ref, then main/master.
+
+        ``wache`` zaehlt die Verbindungsfehler der INNEREN Schleife mit. Ohne sie
+        war ein Aussetzer, der erst nach dem Baum-Abruf begann, unsichtbar: alle
+        Datei-Abrufe scheiterten, die Funktion gab stillschweigend ``[]`` zurueck
+        und die Quelle wurde als "ok: 0 skills" vermerkt (#746).
+        """
         candidate_refs = [r for r in [ref, "main", "master"] if r]
         tree = None
         used_ref = None
@@ -383,8 +418,20 @@ class SkillCrawlerService:
                     s = self._skill_from_content(resp.text, path, repo)
                     if s:
                         skills.append(s)
+                    if wache is not None:
+                        wache.erfolg()
             except Exception as e:
-                logger.debug("fetch %s/%s failed: %s", repo, path, e)
+                if wache is not None and wache.melde(e):
+                    # Netzausfall: nicht auf debug verstecken, sonst ist genau der
+                    # Vorfall unsichtbar, den #746 beschreibt.
+                    logger.warning(
+                        "Skill crawler: %s/%s an der Verbindung gescheitert: %s",
+                        repo, path, e,
+                    )
+                    if wache.abbrechen:
+                        break
+                else:
+                    logger.debug("fetch %s/%s failed: %s", repo, path, e)
         return skills
 
     async def _crawl_git_source(self, src: dict) -> list[dict]:
@@ -440,6 +487,14 @@ class SkillCrawlerService:
             if proc.returncode != 0:
                 # Scrub the injected credential from any error before it surfaces.
                 err = (stderr.decode("utf-8", "replace") if stderr else "").replace(clone_url, url)
+                # Netzausfall und Mangel an der Quelle sehen hier gleich aus (beides
+                # Rueckgabewert != 0). Die Unterscheidung entscheidet aber, ob ein
+                # leeres Ergebnis den guten Katalog ueberschreiben darf (#746) —
+                # deshalb die eigene Fehlerklasse, die die Netzwache kennt.
+                if ist_git_netzfehler(err):
+                    raise VerbindungNichtZustandeGekommen(
+                        f"git clone failed (Netz): {err.strip()[:180]}"
+                    )
                 raise RuntimeError(f"git clone failed: {err.strip()[:180]}")
 
             # Re-anchor the subdir INSIDE the checkout — a "../.." subdir must not escape.

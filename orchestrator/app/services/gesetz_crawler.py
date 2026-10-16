@@ -44,14 +44,15 @@ from xml.etree.ElementTree import (
 )
 
 import httpx
+from defusedxml import (
+    ElementTree,  # XML from an external source: XXE/billion-laughs hardened
+)
 
 from app.core.verbindungswiederholung import (
     PAUSEN_HINTERGRUND_S,
-    VERBINDUNGSFEHLER,
+    Netzwache,
+    lauf_unvollstaendig,
     mit_verbindungswiederholung,
-)
-from defusedxml import (
-    ElementTree,  # XML from an external source: XXE/billion-laughs hardened
 )
 
 logger = logging.getLogger(__name__)
@@ -382,20 +383,24 @@ class _AusfallZaehler:
     #: So viele Kennungen nennt die Meldung hoechstens.
     MAX_KENNUNGEN = 5
 
-    def __init__(self, bereich: str):
+    def __init__(self, bereich: str, wache: Netzwache | None = None):
         self.bereich = bereich
         self.anzahl = 0
         self.erster_grund: str | None = None
         self.kennungen: list[str] = []
-        #: Davon an der VERBINDUNG gescheitert (Netz/Namensaufloesung), nicht am
-        #: Inhalt. Trennt den Netzaussetzer vom stehenden Mangel (#746).
-        self.verbindungsausfaelle = 0
+        #: Trennt den Netzaussetzer vom stehenden Mangel (#746). Die Entscheidung,
+        #: WAS ein Verbindungsfehler ist, steht genau einmal — in der Netzwache.
+        self.wache = wache or Netzwache(bereich)
+
+    @property
+    def verbindungsausfaelle(self) -> int:
+        """Von den Fehlschlaegen an der VERBINDUNG gescheitert, nicht am Inhalt."""
+        return self.wache.anzahl
 
     def melde(self, kennung: str, fehler: BaseException) -> None:
         self.anzahl += 1
         self.kennungen.append(kennung)
-        if isinstance(fehler, VERBINDUNGSFEHLER):
-            self.verbindungsausfaelle += 1
+        self.wache.melde(fehler)
         if self.erster_grund is None:
             self.erster_grund = f"{kennung}: {type(fehler).__name__}: {fehler}"
 
@@ -462,16 +467,23 @@ class GesetzCrawlerService:
             await asyncio.sleep(CRAWL_INTERVAL)
 
     @staticmethod
-    def _netzaussetzer(ausfaelle: _AusfallZaehler, geschrieben: int) -> bool:
-        """Lauf hat nichts geschrieben und scheiterte an der Verbindung?
+    def _netzaussetzer(ausfaelle: _AusfallZaehler, geschrieben: int, bisher: int) -> bool:
+        """Darf der Frischestempel dieses Laufs NICHT weiterruecken?
 
-        Dann darf der Frischestempel NICHT weiterruecken: ``/api/compliance``
-        zeigt ihn mit der Normenzahl zusammen an, und "gerade gecrawlt, 0 Normen"
-        liest sich wie ein leerer Bestand statt wie ein Netzaussetzer (#746). Der
-        alte Stempel ist die ehrlichere Angabe: er sagt, wann zuletzt wirklich
-        etwas geholt wurde.
+        ``/api/compliance`` zeigt Stempel und Normenzahl zusammen an. "Gerade
+        gecrawlt, 0 Normen" liest sich wie ein leerer Bestand statt wie ein
+        Netzaussetzer (#746) — und "gerade gecrawlt, 40 Normen" statt 6123 ist
+        dieselbe Falschaussage, nur unauffaelliger: ein Aussetzer MITTEN im Lauf
+        ueber rund 6000 Normen bricht ihn nicht ab, sondern kuerzt ihn. Deshalb
+        entscheidet nicht "nichts geschrieben", sondern "am Netz gescheitert UND
+        schlechter als der bisherige Stand". Der alte Stempel ist dann die
+        ehrlichere Angabe: er sagt, wann zuletzt wirklich etwas geholt wurde.
         """
-        return geschrieben == 0 and ausfaelle.verbindungsausfaelle > 0
+        return lauf_unvollstaendig(
+            erzeugt=geschrieben,
+            bisher=bisher,
+            verbindungsausfaelle=ausfaelle.verbindungsausfaelle,
+        )
 
     def _bericht(self, ausfaelle: _AusfallZaehler, geschrieben: int) -> str | None:
         stand = _stehend(self._stehend.get(ausfaelle.bereich), ausfaelle)
@@ -522,23 +534,31 @@ class GesetzCrawlerService:
             logger.info("Gesetz crawler: %d Normen im Index", len(toc))
 
             for title, slug in toc:
+                # Hoert die Verbindung gar nicht mehr auf zu scheitern, wird hier
+                # abgebrochen: sonst wartet der Lauf 40 s je Norm und blockiert
+                # ueber Tage den nachgelagerten EU-Lauf (HINTERGRUND_ABBRUCH_NACH).
+                if ausfaelle.wache.abbrechen:
+                    break
                 try:
                     law = await self._fetch_one(client, slug)
                     if not law:
                         continue
                     await _gesetz_schreiben(HOST_PATH, BRAIN_LABEL, slug, law, vorhandene)
                     written += 1
+                    ausfaelle.wache.erfolg()
                 except Exception as e:
                     logger.debug("Gesetz crawler: %s (%s) failed: %s", slug, title, e)
                     ausfaelle.melde(slug, e)
 
         from datetime import datetime
 
-        if self._netzaussetzer(ausfaelle, written):
+        if self._netzaussetzer(ausfaelle, written, self.law_count):
             logger.error(
-                "Gesetz crawler: 0 Normen geschrieben, %d von %d Fehlschlaegen an der "
-                "Verbindung (Namensaufloesung/Netz) — Frischestempel bleibt auf %s.",
-                ausfaelle.verbindungsausfaelle, ausfaelle.anzahl, self.last_crawled_at,
+                "Gesetz crawler: nur %d von bisher %d Normen geschrieben, %d von %d "
+                "Fehlschlaegen an der Verbindung (Namensaufloesung/Netz) — "
+                "Frischestempel bleibt auf %s.",
+                written, self.law_count, ausfaelle.verbindungsausfaelle,
+                ausfaelle.anzahl, self.last_crawled_at or "(noch nie gesetzt)",
             )
         else:
             self.last_crawled_at = datetime.now(UTC).isoformat()
@@ -560,6 +580,8 @@ class GesetzCrawlerService:
             timeout=_REQUEST_TIMEOUT, headers=headers, follow_redirects=True
         ) as client:
             for celex, kurzname in EU_CURATED_LAWS:
+                if ausfaelle.wache.abbrechen:
+                    break
                 try:
                     eu_ziel = EU_CELLAR_URL.format(celex=celex)
                     resp = await mit_verbindungswiederholung(
@@ -577,17 +599,20 @@ class GesetzCrawlerService:
                         continue
                     await _gesetz_schreiben(EU_HOST_PATH, EU_BRAIN_LABEL, celex, law, vorhandene)
                     written += 1
+                    ausfaelle.wache.erfolg()
                 except Exception as e:
                     logger.debug("Gesetz crawler (EU): %s (%s) failed: %s", celex, kurzname, e)
                     ausfaelle.melde(celex, e)
 
         from datetime import datetime
 
-        if self._netzaussetzer(ausfaelle, written):
+        if self._netzaussetzer(ausfaelle, written, self.eu_law_count):
             logger.error(
-                "Gesetz crawler (EU): 0 Normen geschrieben, %d von %d Fehlschlaegen an "
-                "der Verbindung (Namensaufloesung/Netz) — Frischestempel bleibt auf %s.",
-                ausfaelle.verbindungsausfaelle, ausfaelle.anzahl, self.eu_last_crawled_at,
+                "Gesetz crawler (EU): nur %d von bisher %d Normen geschrieben, %d von %d "
+                "Fehlschlaegen an der Verbindung (Namensaufloesung/Netz) — "
+                "Frischestempel bleibt auf %s.",
+                written, self.eu_law_count, ausfaelle.verbindungsausfaelle,
+                ausfaelle.anzahl, self.eu_last_crawled_at or "(noch nie gesetzt)",
             )
         else:
             self.eu_last_crawled_at = datetime.now(UTC).isoformat()
