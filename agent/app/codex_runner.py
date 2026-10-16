@@ -22,6 +22,7 @@ from app.ai_credential_status import report_result_status
 from app.log_publisher import LogPublisher
 from app.proc_watchdog import prozessgruppe_beenden
 from app.llm_chat_handler import DESKTOP_MCP_ACTIVE_ENV
+from app.tools.api_client import CHAT_SESSION_ENV, chat_suche_env
 from app.runner_hooks import (
     SELF_IMPROVEMENT_SUFFIX,
     compose_prompt_bundle,
@@ -282,6 +283,13 @@ class CodexAgentRunner:
         else:
             cmd = ["codex", "exec"] + common + ["-C", settings.workspace_dir, "-"]
         env = _codex_env()
+        # chat_search: das Gespraech dieses Zuges — nur im Chat, nie in einer
+        # Aufgabe. Codex reicht die Variable per ``env_vars`` an den
+        # Orchestrator-MCP-Server weiter (siehe _ensure_codex_mcp_config).
+        if stream == "chat":
+            chat_suche_env(env)
+        else:
+            env.pop(CHAT_SESSION_ENV, None)
 
         stderr_lines: list[str] = []
         text_output: list[str] = []
@@ -738,11 +746,19 @@ def _ensure_codex_mcp_config(codex_home: str, env: dict) -> bool:
                 f'AGENT_NAME = "{_toml_escape(agent_name)}"',
                 f'DEFAULT_MODEL = "{_toml_escape(default_model)}"',
             ]
+        # Codex gibt einem MCP-Server nur die Variablen aus [env] mit — und die
+        # stehen in dieser Datei fest, gelten also fuer jeden Lauf. Das Gespraech
+        # eines Chat-Zuges (chat_search) wechselt je Lauf und laeuft parallel;
+        # ``env_vars`` reicht es aus der Umgebung DIESES Codex-Prozesses durch.
+        durchreichen = (
+            [f'env_vars = ["{CHAT_SESSION_ENV}"]'] if name == "orchestrator" else []
+        )
         geschrieben.add(name)
         lines += [
             f"[mcp_servers.{name}]",
             'command = "node"',
             f'args = ["{script}"]',
+            *durchreichen,
             "",
             *server_env,
             "",

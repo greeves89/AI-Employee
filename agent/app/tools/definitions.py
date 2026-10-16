@@ -737,6 +737,38 @@ ORCHESTRATOR_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            # Bewusst OHNE Gespraechskennung als Parameter: das Gespraech setzt
+            # die Laufzeit (current_chat_session), nie das Modell — sonst laese
+            # es in fremden Unterhaltungen (ChatMessage kennt keinen Nutzer).
+            "name": "chat_search",
+            "description": (
+                "Search the verbatim history of the chat conversation you are in right now "
+                "(only this conversation — never other chats or other users). Use it when the user "
+                "refers to something said earlier in this chat that is no longer in your context — "
+                "e.g. after a long conversation was condensed or continued in a new session (\"the "
+                "number I gave you earlier\", \"what did we agree on last week?\"). Look it up instead "
+                "of guessing. Returns matching messages (newest first) with role, time and an excerpt."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Words to search for (case-insensitive; with several words, all must occur in the message).",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of matches (default: 10, max: 30).",
+                        "default": 10,
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "send_message",
             "description": "Send a message to another agent for coordination. Use list_team to find agent IDs.",
             "parameters": {

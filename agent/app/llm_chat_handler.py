@@ -80,6 +80,9 @@ CORE_TOOL_NAMES = {
     # must always be loaded — otherwise the agent hits "tool not available" mid-workflow
     # (it cannot search_tools for a capability the workflow already required).
     "skill_search", "skill_install", "skill_rate", "skill_propose", "rate_task",
+    # Gerade NACH einer Verdichtung des Verlaufs gebraucht — dann weiss das Modell
+    # nicht mehr, dass es etwas nachzuschlagen gibt, und sucht nicht erst danach.
+    "chat_search",
 }
 MAX_ACTIVATED_TOOLS = 60  # core (~27) + search_tools + activated stays well under 128
 DESKTOP_MCP_ACTIVE_ENV = "AI_EMPLOYEE_DESKTOP_MCP_ACTIVE"

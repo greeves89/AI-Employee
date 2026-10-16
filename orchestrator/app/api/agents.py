@@ -2947,18 +2947,8 @@ async def get_chat_history(
     # Return in chronological order (oldest first)
     messages = list(reversed(messages))
 
-    deduped = []
-    seen: set[tuple[str, str, str]] = set()
-    for msg in messages:
-        key = (msg.message_id or str(msg.id), msg.role, msg.content or "")
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(msg)
-
-    if for_model:
-        from app.core.chat_history import excluded_from_model, tool_output_excluded
-        deduped = [m for m in deduped if not excluded_from_model(m)]
+    from app.core.chat_history import sichtbare_nachrichten, tool_output_excluded
+    deduped = sichtbare_nachrichten(messages, for_model=for_model)
 
     def _normalise_tool_calls(tool_calls):
         if not isinstance(tool_calls, list):
@@ -3008,6 +2998,33 @@ async def get_chat_history(
         "has_more": has_more,
         "next_before_id": next_before_id,
     }
+
+
+@router.get("/{agent_id}/chat/search")
+async def search_chat(
+    agent_id: str,
+    session_id: str = Query(..., min_length=1, max_length=200),
+    q: str = Query(..., min_length=1, max_length=200),
+    limit: int = Query(10, ge=1, le=30),
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Wörtliche Suche im LAUFENDEN Gespräch — für das Werkzeug ``chat_search``.
+
+    Nur der Agent selbst: das Werkzeug ist für ihn gebaut, der Mensch hat seinen
+    Verlauf in der Oberfläche. Gesucht wird ausschliesslich im übergebenen
+    Gespräch, und das bestimmt die Laufzeit des Agenten, nicht das Modell (siehe
+    ``search_session``). Was der Agent über den Verlauf nicht sieht —
+    verdichtet oder aus dem Kontext genommen —, findet er auch hier nicht.
+    """
+    from app.core.chat_history import search_session
+
+    if not is_agent_principal(user):
+        raise HTTPException(status_code=403, detail="Nur für den Agenten selbst")
+    await _check_owner_or_self(agent_id, user, db)
+    if not q.strip():
+        raise HTTPException(status_code=422, detail="Suchbegriff fehlt")
+    return await search_session(db, agent_id, session_id, q, limit)
 
 
 @router.delete("/{agent_id}/chat/sessions/{session_id}")

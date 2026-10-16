@@ -165,7 +165,9 @@ class WiringTests(unittest.TestCase):
         src = (Path(__file__).resolve().parents[1] / "app/api/agents.py").read_text()
         block = src.split("async def get_chat_history")[1].split("\n@router")[0]
         self.assertIn("is_agent_principal", block)
-        self.assertIn("excluded_from_model", block)
+        # Die Filterregel selbst steht EINMAL in core/chat_history.py und gilt
+        # auch fuer die Chat-Suche; verhaltensgeprueft in test_chat_search.py.
+        self.assertIn("sichtbare_nachrichten(messages, for_model=for_model)", block)
         self.assertIn("tool_output_excluded", block)
 
 
