@@ -5,6 +5,7 @@ Writing into a shared knowledge vault is a real side effect, so the jailing
 """
 
 import os
+import stat
 import tempfile
 import unittest
 
@@ -67,6 +68,52 @@ class VaultWriteTests(unittest.TestCase):
         tree = vault.tree_text(self.root)
         self.assertIn("A/", tree)
         self.assertIn("x.md", tree)
+
+
+class GitSicherTests(unittest.TestCase):
+    """``vault.git_sicher`` läuft über Inhalte, die Agenten schreiben.
+
+    Die Härtung hat zwei Hälften, die unabhängig voneinander verschwinden können:
+    die ``-c``-Optionen (Hooks, fsmonitor) und die schlanke Umgebung (keine System-,
+    keine Benutzer-Konfiguration, nichts aus ``os.environ``). Beide werden hier an
+    ihrer Wirkung festgenagelt, nicht am Quelltext.
+    """
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        vault.git_sicher(self.root, "init", "-q")
+        with open(os.path.join(self.root, "a.md"), "w") as f:
+            f.write("eins\n")
+
+    def _commit(self):
+        vault.git_sicher(self.root, "add", "--", "a.md")
+        return vault.git_sicher(self.root, "-c", "user.name=Test", "-c", "user.email=t@example.invalid",
+                                "commit", "-q", "-m", "x", "--", "a.md")
+
+    def test_hook_aus_der_ablage_laeuft_nicht(self):
+        spur = os.path.join(tempfile.mkdtemp(), "hook-lief")
+        for hook in ("pre-commit", "post-commit"):
+            pfad = os.path.join(self.root, ".git", "hooks", hook)
+            with open(pfad, "w") as f:
+                f.write("#!/bin/sh\ntouch %s\n" % spur)
+            os.chmod(pfad, os.stat(pfad).st_mode | stat.S_IEXEC)
+        self.assertEqual(self._commit().returncode, 0)
+        self.assertFalse(os.path.exists(spur))
+
+    def test_umgebung_des_orchestrators_faerbt_nicht_ab(self):
+        """Ohne schlanke Umgebung würde ``GIT_AUTHOR_NAME`` den Autor bestimmen."""
+        os.environ["GIT_AUTHOR_NAME"] = "Durchgereicht"
+        self.addCleanup(os.environ.pop, "GIT_AUTHOR_NAME", None)
+        self.assertEqual(self._commit().returncode, 0)
+        autor = vault.git_sicher(self.root, "log", "-1", "--format=%an").stdout.strip()
+        self.assertEqual(autor, "Test")
+
+    def test_fehlschlag_wird_protokolliert_statt_verschluckt(self):
+        """Ein kaputter Verlauf darf nicht lautlos als "keine Versionen" erscheinen."""
+        with self.assertLogs("app.core.vault", level="WARNING") as protokoll:
+            r = vault.git_sicher(self.root, "log", "-1", "--", "gibtsnicht-als-commit.md")
+            self.assertNotEqual(r.returncode, 0)
+        self.assertTrue(any("rc=" in z for z in protokoll.output), protokoll.output)
 
 
 if __name__ == "__main__":

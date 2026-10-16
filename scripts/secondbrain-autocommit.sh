@@ -12,6 +12,14 @@ set -euo pipefail
 BASE="${SECONDBRAIN_BASE:-/srv/secondbrain}"
 [ -d "$BASE" ] || exit 0
 
+# Dieses Skript laeuft als root ueber Ablagen, in die Agenten schreiben. git darf
+# dabei nichts ausfuehren, was dort liegt: keine Hooks, kein fsmonitor (den startet
+# schon "status"), kein Pager, kein ssh-Kommando, keine Netz-Protokolle und keine
+# Benutzer-Konfiguration. Gegenstueck zu vault.git_sicher im Orchestrator.
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0
+git() { command git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c core.pager=cat \
+                   -c core.sshCommand=false -c protocol.allow=never "$@"; }
+
 for d in "$BASE"/*/; do
   [ -d "$d" ] || continue
   # The orchestrator image has no git, so a UI-created vault arrives without a

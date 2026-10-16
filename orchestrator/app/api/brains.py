@@ -123,12 +123,15 @@ def _provision_vault(host_path: str, name: str, standard: str = "freeform") -> N
         _seed_file(os.path.join(real, "Drucker", "_template.md"), _IT_TEMPLATE)
     if not os.path.isdir(os.path.join(real, ".git")):
         try:
-            env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-            subprocess.run(["git", "init", "-q"], cwd=real, check=True, env=env, timeout=20)
-            subprocess.run(["git", "config", "user.email", "secondbrain@ai-employee.local"], cwd=real, check=False, timeout=10)
-            subprocess.run(["git", "config", "user.name", "Second Brain"], cwd=real, check=False, timeout=10)
-            subprocess.run(["git", "add", "-A"], cwd=real, check=False, timeout=20)
-            subprocess.run(["git", "commit", "-q", "-m", "init vault"], cwd=real, check=False, env=env, timeout=20)
+            # Über denselben Ordner wie der Verlauf (``projekt_wissen``) — und dieser
+            # Aufruf kann einen Ordner vorfinden, in dem schon Agenten-Inhalte liegen
+            # (Brain gelöscht, Dateien behalten, Slug neu angelegt). Deshalb gehärtet.
+            if vault.git_sicher(real, "init", "-q", timeout=20).returncode != 0:
+                raise OSError("git init fehlgeschlagen")
+            vault.git_sicher(real, "config", "user.email", "secondbrain@ai-employee.local", timeout=10)
+            vault.git_sicher(real, "config", "user.name", "Second Brain", timeout=10)
+            vault.git_sicher(real, "add", "-A", timeout=20)
+            vault.git_sicher(real, "commit", "-q", "-m", "init vault", timeout=20)
         except (OSError, subprocess.SubprocessError) as e:
             log.warning("git init for vault %s failed (history disabled): %s", vault.safe_log(real), vault.safe_log(e))
 

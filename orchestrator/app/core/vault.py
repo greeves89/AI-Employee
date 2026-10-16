@@ -10,11 +10,15 @@ is bind-mounted into the orchestrator (same mount used for provisioning).
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
+import subprocess
 
 # Files larger than this are skipped (search) / refused (read) — vaults are
 # Markdown knowledge bases, not binary stores.
+_log = logging.getLogger(__name__)
+
 MAX_FILE_BYTES = 2_000_000
 
 _SEARCHABLE_SUFFIXES = (".md", ".markdown", ".txt")
@@ -295,3 +299,37 @@ def build_graph(host_path: str) -> dict:
     } for fr in files]
 
     return {"nodes": nodes, "edges": edges, "truncated": truncated}
+
+
+# ─── Git über einer Vault-Ablage ────────────────────────────────
+#
+# Git läuft hier über Inhalte, die Agenten schreiben. ``resolve_path`` sperrt ``.git``
+# für jeden Schreibweg; das hier ist die Absicherung dahinter: Git führt beim Arbeiten
+# nichts aus, was in der Ablage selbst liegt — keine Hooks, kein fsmonitor, kein Pager,
+# kein ssh-Kommando, keine Netz-Protokolle, keine System-/Benutzer-Konfiguration und
+# eine schlanke Umgebung (nichts aus ``os.environ`` ausser PATH).
+#
+# ACHTUNG: Nicht abgedeckt sind Treiber aus der repo-eigenen ``.git/config``
+# (``filter.*.clean``, ``diff.*.textconv``). Die greifen bei einem Schreibzugriff auf
+# ``.git`` — genau den sperrt ``resolve_path``. Schreibt man NEUEN Code, der git über
+# eine agentenbeschriebene Ablage laufen lässt, gehört er hierher und nicht in ein
+# eigenes ``subprocess.run(["git", ...])``.
+_GIT_SICHER = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.pager=cat",
+               "-c", "core.sshCommand=false", "-c", "protocol.allow=never")
+
+
+def git_sicher(cwd: str, *args: str, timeout: int = 20) -> subprocess.CompletedProcess:
+    """``git`` über einer Ablage, die nicht vertrauenswürdige Inhalte enthält.
+
+    Schlägt der Aufruf fehl, wird das protokolliert: der Verlauf ist Beiwerk und
+    bricht nie den Schreibweg ab, soll aber auch nicht lautlos verschwinden (z. B.
+    "dubious ownership", wenn ``.git`` einer anderen Kennung gehört).
+    """
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/nonexistent", "LANG": "C.UTF-8",
+           "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_TERMINAL_PROMPT": "0"}
+    r = subprocess.run(["git", *_GIT_SICHER, *args], cwd=cwd, capture_output=True, text=True,
+                       timeout=timeout, env=env)
+    if r.returncode != 0:
+        _log.warning("git %s in %s: rc=%s %s", safe_log(args[0] if args else "?"), safe_log(cwd),
+                     r.returncode, safe_log((r.stderr or "").strip()[:200]))
+    return r

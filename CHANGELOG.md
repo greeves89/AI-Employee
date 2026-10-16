@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.372.3] - 2026-10-16
+
+### Sicherheit
+- Die Härtung des Ablagen-Verlaufs aus 1.372.1 greift jetzt an **allen drei Stellen**, die Git
+  über eine Wissens-Ablage laufen lassen: beim Festhalten einer Version, beim erstmaligen Anlegen
+  der Ablage und im nächtlichen Schnappschuss-Dienst des Servers. Zuvor war nur der erste Weg
+  abgesichert — die beiden anderen ließen Hooks und den Dateiwächter aus der Ablage weiterhin
+  anlaufen, der Schnappschuss-Dienst sogar mit vollen Rechten.
+- Schlägt der Verlauf fehl (etwa weil der Ordner einer anderen Kennung gehört), steht das jetzt
+  im Protokoll. Bisher erschien die Seite einfach ohne Versionen, ohne jeden Hinweis.
+
+### Hinweise für Betreiber
+- Nicht abgedeckt bleiben Umwandlungs-Treiber aus der repo-eigenen `.git/config`
+  (`filter.*.clean`, `diff.*.textconv`). Dorthin kommt man nur mit Schreibzugriff auf `.git`,
+  und den sperrt die Pfadprüfung der Ablage auf allen Wegen.
+
+---
+
 ## [1.372.2] - 2026-10-16
 
 ### Behoben
