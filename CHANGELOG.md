@@ -27,11 +27,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   `projekt_wissen_schreiben`. Damit legt ein Agent z. B. Karten aus offenen Issues an.
 - Aufträge aus der Teamansicht der Agentenseite landen ebenfalls als Karte auf dem Board.
 
+### Geändert
+- **Projekte sieht zunächst nur, wer sie angelegt hat** — auch kein Administrator und kein
+  Besitzer eines Mitglieds-Agenten. Der Ersteller gibt sie unter „Freigeben für“ weiteren
+  Nutzern frei; diese sehen Board und Wissen und arbeiten mit, verwalten aber nicht. Gilt auch
+  für die Teamansicht der Agentenseite.
+
 ### Sicherheit
 - Board, Karten und Wissen nur für Mitglieder des Projekts; Agenten beauftragen nur Agenten
   desselben Nutzers; Ergebnisse eines Laufs sieht nur, wem der Agent gehört.
 - Issue-Texte, Board-Text und Projektwissen gehen als gerahmte Daten an die Agenten;
   Markierungen im Text werden entschärft.
+- Karten merken sich ihren Besitzer: geht eine Karte an den Agenten eines anderen Nutzers, ist
+  ihr Text Material, keine Anweisung. Titel und Text ändert nur der Besitzer, nur im Eingang.
 
 ---
 

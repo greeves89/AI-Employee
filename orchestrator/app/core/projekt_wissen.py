@@ -56,10 +56,11 @@ def _slug(team: Team) -> str:
 
 
 async def brain_des_projekts(db: AsyncSession, team: Team) -> SecondBrain | None:
-    if not team.wissen_slug:
+    slug = getattr(team, "wissen_slug", None)
+    if not slug:
         return None
     return (await db.execute(
-        select(SecondBrain).where(SecondBrain.slug == team.wissen_slug, SecondBrain.is_active.is_(True))
+        select(SecondBrain).where(SecondBrain.slug == slug, SecondBrain.is_active.is_(True))
     )).scalar_one_or_none()
 
 

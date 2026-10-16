@@ -43,4 +43,8 @@ class ProjektKarte(Base, TimestampMixin):
     # offen | ci_laeuft | ci_rot | ci_gruen | gemergt | geschlossen
     pr_zustand: Mapped[str | None] = mapped_column(String(20), nullable=True)
     erstellt_von: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Nutzer, dem die Karte gehoert (Mensch selbst oder Besitzer des anlegenden
+    # Agenten). Geht sie an den Agenten eines ANDEREN Nutzers, ist ihr Text Material,
+    # keine Anweisung (gemischte Projekte, core/projekte.karten_auftrag).
+    ersteller_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     erledigt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

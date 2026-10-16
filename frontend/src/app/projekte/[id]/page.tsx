@@ -185,7 +185,7 @@ export default function ProjektPage() {
             <Link href="/projekte" className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">
               <ArrowLeft className="h-4 w-4" /> Alle Projekte
             </Link>
-            {darfSchreiben && (
+            {darfSchreiben && projekt.darf_verwalten && (
               <>
                 <button type="button" onClick={() => setBearbeiten(true)} className="inline-flex items-center gap-1 rounded-lg border border-foreground/[0.1] px-2.5 py-1.5 text-sm hover:bg-foreground/[0.04]">
                   <Pencil className="h-3.5 w-3.5" /> Bearbeiten

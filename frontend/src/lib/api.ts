@@ -4545,6 +4545,10 @@ export interface Team {
   farbe?: string | null;
   /** Arbeitstakt in Minuten; leer = aus. */
   takt_minuten?: number | null;
+  /** Nutzer, denen der Ersteller das Projekt freigegeben hat. */
+  geteilt_mit?: string[];
+  /** Ob der angemeldete Nutzer das Projekt angelegt hat (nur er verwaltet es). */
+  darf_verwalten?: boolean;
 }
 
 export async function listTeams(): Promise<{ teams: Team[] }> {
@@ -4558,6 +4562,7 @@ export async function createTeam(body: {
   lead_agent_id?: string | null;
   farbe?: string | null;
   takt_minuten?: number | null;
+  geteilt_mit?: string[];
 }): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/`, {
     method: "POST",
@@ -4578,6 +4583,7 @@ export async function updateTeam(
     lead_agent_id?: string | null;
     farbe?: string | null;
     takt_minuten?: number | null;
+    geteilt_mit?: string[];
   },
 ): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/${id}`, {
@@ -4624,6 +4630,10 @@ export interface ProjektUebersicht extends Team {
   laufend: ProjektLauf[];
   naechste: ProjektKarte[];
   takt: ProjektTakt;
+}
+
+export async function getProjektVerzeichnis(): Promise<{ users: { id: string; name: string; email?: string }[] }> {
+  return fetchJSON(`${getBase()}/teams/verzeichnis`);
 }
 
 export async function getProjekte(): Promise<{ projekte: ProjektUebersicht[] }> {

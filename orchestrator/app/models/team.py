@@ -28,5 +28,8 @@ class Team(Base, TimestampMixin):
     # regelmaessig das Board und vergibt die naechsten Karten (core/projekt_takt.py).
     takt_minuten: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     takt_schedule_id: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    # Wem der Ersteller das Projekt freigegeben hat (Nutzer-IDs). Ohne Freigabe
+    # sieht ein Projekt NUR, wer es angelegt hat (api/teams._is_team_member).
+    geteilt_mit: Mapped[list] = mapped_column(JSONB, default=list)
     # Slug des Second Brain mit dem Projektwissen (core/projekt_wissen.py).
     wissen_slug: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)

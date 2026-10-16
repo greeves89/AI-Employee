@@ -38,6 +38,8 @@ def _admin(**mehr):
     """Die Mechanik-Tests laufen als Administrator: wer welches Team anfassen
     darf, prueft tests/test_nutzertrennung_endpunkte.py."""
     from app.models.user import UserRole
+    mehr.setdefault("id", "admin-1")
+    mehr.setdefault("email", "admin@example.invalid")
     return MagicMock(role=UserRole.ADMIN, **mehr)
 
 
@@ -87,7 +89,7 @@ async def test_get_team_404_when_missing():
 async def test_set_lead_rejects_non_member():
     from app.api.teams import set_lead, SetLead, Team
     from unittest.mock import AsyncMock, MagicMock
-    t = Team(id="t1", name="T", member_agent_ids=["a1"], lead_agent_id=None, is_active=True)
+    t = Team(id="t1", name="T", created_by="admin-1", member_agent_ids=["a1"], lead_agent_id=None, is_active=True)
     db = AsyncMock()
     db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
     with pytest.raises(HTTPException) as e:
@@ -99,7 +101,7 @@ async def test_set_lead_rejects_non_member():
 async def test_set_lead_ok_for_member():
     from app.api.teams import set_lead, SetLead, Team
     from unittest.mock import AsyncMock, MagicMock
-    t = Team(id="t1", name="T", member_agent_ids=["a1", "lead1"], lead_agent_id=None, is_active=True)
+    t = Team(id="t1", name="T", created_by="admin-1", member_agent_ids=["a1", "lead1"], lead_agent_id=None, is_active=True)
     db = AsyncMock()
     db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
     out = await set_lead("t1", SetLead(lead_agent_id="lead1"), user=_admin(), db=db)
@@ -110,7 +112,7 @@ async def test_set_lead_ok_for_member():
 async def test_remove_member_clears_lead():
     from app.api.teams import change_members, MembersChange, Team
     from unittest.mock import AsyncMock, MagicMock
-    t = Team(id="t1", name="T", member_agent_ids=["a1", "lead1"], lead_agent_id="lead1", is_active=True)
+    t = Team(id="t1", name="T", created_by="admin-1", member_agent_ids=["a1", "lead1"], lead_agent_id="lead1", is_active=True)
     db = AsyncMock()
     db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
     out = await change_members("t1", MembersChange(remove=["lead1"]), user=_admin(), db=db)
@@ -126,7 +128,7 @@ async def test_delegate_requires_lead():
     from app.api.teams import delegate_to_team, DelegateTask
     from app.models.team import Team
     from unittest.mock import AsyncMock, MagicMock
-    t = Team(id="t1", name="T", member_agent_ids=["a1"], lead_agent_id=None, is_active=True)
+    t = Team(id="t1", name="T", created_by="admin-1", member_agent_ids=["a1"], lead_agent_id=None, is_active=True)
     db = AsyncMock(); db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=t))
     with pytest.raises(HTTPException) as e:
         await delegate_to_team("t1", DelegateTask(title="x", prompt="do"),

@@ -893,7 +893,9 @@ Ergebnisse ab**. Ein Projekt ist dasselbe wie ein **Team** auf der Agentenseite 
 7. Einen **Lead** wählen. Der Lead verteilt Aufträge an die passenden Kollegen und
    sichtet im Takt den Eingang. Ohne Lead wählst du bei jedem Auftrag selbst, wer ihn bekommt.
 8. **Arbeitstakt** wählen (siehe 6a.6) — für den Anfang „Aus — nur auf Klick“.
-9. **Projekt erstellen** klicken. Das Projekt bekommt dabei automatisch seine eigene
+9. Optional unter **Freigeben für** Kollegen anhaken, die das Projekt sehen sollen. Ohne
+   Freigabe siehst **nur du** das Projekt — auch Administratoren nicht.
+10. **Projekt erstellen** klicken. Das Projekt bekommt dabei automatisch seine eigene
    **Wissensablage** (siehe 6a.7).
 
 Die Übersicht zeigt je Projekt eine Karte mit dem Raum, den Zahlen **bereit**, **in Arbeit**,
@@ -1017,13 +1019,16 @@ für die offenen Punkte aus diesem Protokoll an.“ Abnehmen und Zurückgeben bl
 
 ### 6a.9 Projekt bearbeiten oder löschen
 
-- **Bearbeiten** (oben rechts) — Name, Beschreibung, Farbe, Mitglieder, Lead und Arbeitstakt.
+- **Bearbeiten** (oben rechts, nur für den Ersteller) — Name, Beschreibung, Farbe, Mitglieder,
+  Lead, Arbeitstakt und Freigabe.
 - **Papierkorb** (oben rechts) — das Projekt verschwindet aus der Übersicht, sein Takt hört
   auf. Agenten, Aufträge und das Projektwissen bleiben erhalten.
 
-> **Wer sieht was?** Du siehst nur Projekte, in denen mindestens einer deiner Agenten
-> mitarbeitet. Karten sind für alle Projektbeteiligten sichtbar; Ergebnisse und Kosten eines
-> Laufs nur für den, dem der ausführende Agent gehört. Administratoren sehen alle Projekte.
+> **Wer sieht was?** Ein Projekt sieht zunächst **nur, wer es angelegt hat** — auch kein
+> Administrator. Unter **Bearbeiten → Freigeben für** gibst du es Kollegen frei: Sie sehen
+> Board und Wissen und arbeiten mit (Aufträge geben sie nur ihren eigenen Agenten); verwalten,
+> freigeben und löschen kannst nur du. Ergebnisse und Kosten eines Laufs sieht nur, wem der
+> ausführende Agent gehört. Die Agenten des Projekts erreichen Board und Wissen immer.
 
 ---
 

@@ -116,7 +116,11 @@ async def _projektwissen(db: AsyncSession, team) -> str:
     """Der Kern des Projektwissens (index.md) als eigener Abschnitt — leer ohne Wissen."""
     from app.core import projekt_wissen
 
-    auszug = await projekt_wissen.auszug(db, team)
+    # Eigene Absicherung: scheitert das Wissen, bleibt die Zielkette davor stehen.
+    try:
+        auszug = await projekt_wissen.auszug(db, team)
+    except Exception:  # noqa: BLE001
+        return ""
     if not auszug:
         return ""
     # Das Wissen pflegen Projektbeteiligte — auch Agenten, die dabei Issue-Texte

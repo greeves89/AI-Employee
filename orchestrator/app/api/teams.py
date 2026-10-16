@@ -31,6 +31,7 @@ class CreateTeam(BaseModel):
     lead_agent_id: str | None = None
     farbe: str | None = None
     takt_minuten: int | None = None
+    geteilt_mit: list[str] = []
 
 
 class UpdateTeam(BaseModel):
@@ -41,6 +42,8 @@ class UpdateTeam(BaseModel):
     farbe: str | None = None
     # 0 schaltet den Takt ab; sonst einer der Werte aus projekt_takt.TAKTE.
     takt_minuten: int | None = None
+    # Nutzer-IDs, die das Projekt sehen dürfen (ersetzt die bisherige Liste).
+    geteilt_mit: list[str] | None = None
 
 
 def _farbe(wert: str | None) -> str | None:
@@ -68,7 +71,26 @@ def _serialize(t: Team) -> dict:
         "lead_agent_id": t.lead_agent_id, "is_active": t.is_active,
         "created_by": t.created_by, "farbe": getattr(t, "farbe", None),
         "takt_minuten": getattr(t, "takt_minuten", None),
+        "geteilt_mit": list(getattr(t, "geteilt_mit", None) or []),
     }
+
+
+def _fuer(t: Team, user) -> dict:
+    """Wie _serialize, dazu, ob ``user`` das Projekt verwalten darf."""
+    return {**_serialize(t), "darf_verwalten": _ist_ersteller(t, user)}
+
+
+async def _freigabe(db: AsyncSession, ids: list[str], user) -> list[str]:
+    from app.models.user import User
+
+    ids = sorted({str(i) for i in ids if i} - {str(getattr(user, "id", ""))})
+    if not ids:
+        return []
+    bekannt = set((await db.execute(select(User.id).where(User.id.in_(ids)))).scalars().all())
+    unbekannt = set(ids) - {str(b) for b in bekannt}
+    if unbekannt:
+        raise HTTPException(status_code=422, detail="Unbekannter Nutzer in der Freigabe.")
+    return ids
 
 
 async def _projekt_nachziehen(db: AsyncSession, t: Team) -> None:
@@ -91,24 +113,33 @@ async def _get_team(team_id: str, db: AsyncSession) -> Team:
     return t
 
 
+def _ist_ersteller(team: Team, user) -> bool:
+    """Hat ``user`` das Projekt angelegt? (``created_by`` haelt E-Mail oder ID.)"""
+    kennungen = {str(getattr(user, "id", "")), str(getattr(user, "email", "") or "")} - {""}
+    return bool(team.created_by) and team.created_by in kennungen
+
+
 async def _is_team_member(team: Team, user, db: AsyncSession) -> bool:
-    """True if `user` may see this team's internals (roster/tasks).
+    """True if `user` may see this team's internals (roster/tasks/board).
 
     Agent principals: must literally be the lead or a member — an agent has
     no business enumerating teams it isn't part of.
-    Human users: admins see everything; everyone else must own (or have
-    AgentAccess to) the lead or at least one member agent — mirrors the
-    ownership scoping tasks.py already applies to the plain task list.
+    Menschen: ein Projekt sieht zunaechst NUR, wer es angelegt hat — auch kein
+    Administrator und kein Besitzer eines Mitglieds-Agenten. Weitere Nutzer
+    sehen es erst, wenn der Ersteller es ihnen freigibt (``geteilt_mit``).
     """
     member_ids = set(team.member_agent_ids or [])
     if team.lead_agent_id:
         member_ids.add(team.lead_agent_id)
     if is_agent_principal(user):
         return str(getattr(user, "id", "")) in member_ids
-    agent_ids = await _get_user_agent_ids(user, db)
-    if agent_ids is None:  # admin — no restriction
-        return True
-    return bool(member_ids & set(agent_ids))
+    return _ist_ersteller(team, user) or str(getattr(user, "id", "")) in set(getattr(team, "geteilt_mit", None) or [])
+
+
+def _nur_ersteller(team: Team, user) -> None:
+    """Einstellungen des Projekts (Name, Mitglieder, Lead, Takt, Freigabe, Löschen) ändert nur der Ersteller."""
+    if not _ist_ersteller(team, user):
+        raise HTTPException(status_code=403, detail="Nur wer das Projekt angelegt hat, kann es ändern.")
 
 
 async def _require_team_access(team: Team, user, db: AsyncSession) -> None:
@@ -140,6 +171,7 @@ async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSes
         id=uuid.uuid4().hex[:32], name=body.name, description=body.description,
         member_agent_ids=body.member_agent_ids, lead_agent_id=body.lead_agent_id,
         farbe=_farbe(body.farbe), takt_minuten=_takt(body.takt_minuten),
+        geteilt_mit=await _freigabe(db, body.geteilt_mit, user),
         created_by=getattr(user, "email", None) or str(getattr(user, "id", "")),
     )
     db.add(team)
@@ -148,7 +180,7 @@ async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSes
     await _wissen_sicherstellen(db, team, user)
     await _projekt_nachziehen(db, team)
     await db.refresh(team)
-    return _serialize(team)
+    return _fuer(team, user)
 
 
 @router.get("/")
@@ -234,21 +266,27 @@ async def projekte_uebersicht(user=Depends(require_auth), db: AsyncSession = Dep
     # Sichtbarkeit EINMAL bestimmen statt je Team (_is_team_member fragt sonst
     # bei jedem Team neu) — die Uebersicht laedt alle zehn Sekunden.
     sichtbar = await _get_user_agent_ids(user, db)
-    eigene = None if sichtbar is None else set(sichtbar)
     ergebnis = []
     for t in rows:
-        beteiligt = set(t.member_agent_ids or []) | ({t.lead_agent_id} if t.lead_agent_id else set())
-        if eigene is not None and not (beteiligt & eigene):
+        if not await _is_team_member(t, user, db):
             continue
         b = await projekte.board(db, t.id, sichtbar)
         ergebnis.append({
-            **_serialize(t),
+            **_fuer(t, user),
             "kennzahlen": b["kennzahlen"],
             "laufend": b["laufend"][:5],
             "naechste": b["spalten"]["bereit"][:3],
             "takt": await _takt_info(db, t),
         })
     return {"projekte": ergebnis}
+
+
+@router.get("/verzeichnis")
+async def projekt_freigabe_verzeichnis(user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Nutzerliste für den Freigabe-Dialog eines Projekts (wie bei Apps und Workflows)."""
+    from app.core.nutzer_verzeichnis import verzeichnis
+
+    return {"users": await verzeichnis(db, user)}
 
 
 @router.get("/{team_id}")
@@ -302,7 +340,9 @@ async def list_team_tasks(
 async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)
     await _require_team_access(t, user, db)
+    _nur_ersteller(t, user)
     await _nur_eigene_agenten([*(body.member_agent_ids or []), body.lead_agent_id], user, db)
+    if body.geteilt_mit is not None: t.geteilt_mit = await _freigabe(db, body.geteilt_mit, user)
     if body.name is not None: t.name = body.name
     if body.description is not None: t.description = body.description
     if body.member_agent_ids is not None: t.member_agent_ids = body.member_agent_ids
@@ -313,13 +353,14 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
     await db.commit(); await db.refresh(t)
     await _projekt_nachziehen(db, t)
     await db.refresh(t)
-    return _serialize(t)
+    return _fuer(t, user)
 
 
 @router.delete("/{team_id}")
 async def delete_team(team_id: str, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)
     await _require_team_access(t, user, db)
+    _nur_ersteller(t, user)
     t.is_active = False
     await db.commit()
     await _projekt_nachziehen(db, t)  # Takt aus
@@ -339,6 +380,7 @@ class SetLead(BaseModel):
 async def change_members(team_id: str, body: MembersChange, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)
     await _require_team_access(t, user, db)
+    _nur_ersteller(t, user)
     await _nur_eigene_agenten(body.add, user, db)
     members = list(t.member_agent_ids or [])
     for a in body.add:
@@ -358,6 +400,7 @@ async def change_members(team_id: str, body: MembersChange, user=Depends(require
 async def set_lead(team_id: str, body: SetLead, user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)
     await _require_team_access(t, user, db)
+    _nur_ersteller(t, user)
     await _nur_eigene_agenten([body.lead_agent_id], user, db)
     _validate_lead(t.member_agent_ids, body.lead_agent_id)
     t.lead_agent_id = body.lead_agent_id
@@ -470,7 +513,8 @@ async def delegate_to_team(team_id: str, body: DelegateTask, request: Request,
     await _require_team_access(t, user, db)
     if not t.lead_agent_id:
         raise HTTPException(status_code=400, detail="assign a lead first")
-    karte = projekte.neue_karte(t.id, body.title, body.prompt, spalte="bereit", von=_wer(user))
+    karte = projekte.neue_karte(t.id, body.title, body.prompt, spalte="bereit", von=_wer(user),
+                                ersteller_user_id=await _besitzer(user, db))
     db.add(karte)
     await db.commit()
     karte = await _vergeben(t, karte.id, None, user, request, router_, db)
@@ -510,6 +554,22 @@ async def _sicht(user, db: AsyncSession) -> list[str] | None:
             return [str(user.id)]
         return list((await db.execute(select(Agent.id).where(Agent.user_id == ich.user_id))).scalars().all())
     return await _get_user_agent_ids(user, db)
+
+
+async def _besitzer(user, db: AsyncSession) -> str | None:
+    """Der Nutzer hinter ``user`` — bei einem Agenten sein Besitzer."""
+    if is_agent_principal(user):
+        ich = await db.get(Agent, str(user.id))
+        return ich.user_id if ich else None
+    return str(getattr(user, "id", "")) or None
+
+
+async def _fremd_fuer(karte, agent_id: str | None, db: AsyncSession) -> bool:
+    """Stammt die Karte von einem anderen Nutzer als dem Besitzer des Ziel-Agenten?"""
+    if not karte.ersteller_user_id or not agent_id:
+        return False
+    ziel = await db.get(Agent, agent_id)
+    return ziel is None or ziel.user_id != karte.ersteller_user_id
 
 
 async def _projekt(team_id: str, user, db: AsyncSession) -> Team:
@@ -555,7 +615,7 @@ async def projekt_board(team_id: str, user=Depends(require_auth_or_agent), db: A
     if not t.wissen_slug and not is_agent_principal(user):
         await _wissen_sicherstellen(db, t, user)
     return {
-        "projekt": _serialize(t),
+        "projekt": _serialize(t) if is_agent_principal(user) else _fuer(t, user),
         "takt": await _takt_info(db, t),
         **(await projekte.board(db, t.id, await _sicht(user, db))),
     }
@@ -595,7 +655,8 @@ async def karte_anlegen(team_id: str, body: NeueKarte, user=Depends(require_auth
     t = await _projekt(team_id, user, db)
     try:
         karte = projekte.neue_karte(t.id, body.titel, body.text, spalte=body.spalte,
-                                    prioritaet=body.prioritaet, von=_wer(user))
+                                    prioritaet=body.prioritaet, von=_wer(user),
+                                    ersteller_user_id=await _besitzer(user, db))
     except projekte.KartenFehler as e:
         raise HTTPException(status_code=422, detail=str(e))
     db.add(karte)
@@ -626,9 +687,16 @@ async def karte_aendern(team_id: str, karte_id: str, body: KarteAendern, user=De
     except (LookupError, projekte.KartenFehler) as e:
         await db.rollback()
         raise _kartenfehler(e)
-    # Titel und Text eines Issues kommen aus dem Repo und würden beim nächsten
-    # Abgleich überschrieben — nur eigene Karten sind hier änderbar.
-    if karte.quelle == "eigen":
+    # Titel und Text: nur eigene Karten (Issues kommen aus dem Repo), nur im Eingang
+    # (danach ist sie eingeplant oder vergeben) und nur vom Nutzer, dem die Karte
+    # gehoert — sonst liesse sich ein Auftrag an fremde Agenten unterschieben.
+    if body.titel is not None or body.text is not None:
+        sicht = await _sicht(user, db)
+        if karte.quelle != "eigen" or karte.spalte != "eingang" or (
+            sicht is not None and karte.ersteller_user_id and karte.ersteller_user_id != await _besitzer(user, db)
+        ):
+            await db.rollback()
+            raise HTTPException(status_code=409, detail="Titel und Text ändert nur, wem die Karte gehört — und nur im Eingang.")
         if body.titel is not None:
             karte.titel = body.titel.strip()
         if body.text is not None:
@@ -677,7 +745,7 @@ async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request:
     await db.commit()
 
     prioritaet = {1: 2, 2: 1, 3: 0}.get(karte.prioritaet, 1)
-    auftrag = projekte.karten_auftrag(karte, t.name)
+    auftrag = projekte.karten_auftrag(karte, t.name, fremd=await _fremd_fuer(karte, ziel or t.lead_agent_id, db))
     try:
         if an_lead:
             task = await _an_lead(t, karte.titel[:200], auftrag, prioritaet, request, router_, db, user,
@@ -785,9 +853,10 @@ async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, re
     karte.spalte = "in_arbeit"  # Sperre: ein Doppelklick legt keine zweite Nacharbeit an
     await db.commit()
 
-    prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name)
     ueber_lead = bool(alt is not None and (alt.metadata_ or {}).get("delegated_to_team") and t.lead_agent_id)
     ziel = None if ueber_lead else (karte.agent_id or (alt.agent_id if alt else None))
+    prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name,
+                                        fremd=await _fremd_fuer(karte, ziel or t.lead_agent_id, db))
     try:
         if ueber_lead:
             neu = await _an_lead(t, f"Nacharbeit: {karte.titel}"[:200], prompt, 1, request, router_, db, user,
@@ -837,7 +906,7 @@ async def projekt_auftrag(team_id: str, body: ProjektAuftrag, request: Request,
         raise HTTPException(status_code=422, detail="Der Auftrag ist leer.")
     titel = (body.titel or "").strip() or projekte.titel_aus(text)
     karte = projekte.neue_karte(t.id, titel, text, spalte="eingang" if body.nur_eingang else "bereit",
-                                prioritaet=body.prioritaet, von=_wer(user))
+                                prioritaet=body.prioritaet, von=_wer(user), ersteller_user_id=await _besitzer(user, db))
     db.add(karte)
     await db.commit()
     if body.nur_eingang:

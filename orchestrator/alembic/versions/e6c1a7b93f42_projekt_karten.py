@@ -40,6 +40,7 @@ def upgrade() -> None:
             pr_url VARCHAR(500),
             pr_zustand VARCHAR(20),
             erstellt_von VARCHAR(100),
+            ersteller_user_id VARCHAR(36),
             erledigt_at TIMESTAMP WITH TIME ZONE,
             created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
             updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
@@ -53,9 +54,11 @@ def upgrade() -> None:
     op.execute("ALTER TABLE teams ADD COLUMN IF NOT EXISTS takt_minuten INTEGER")
     op.execute("ALTER TABLE teams ADD COLUMN IF NOT EXISTS takt_schedule_id VARCHAR")
     op.execute("ALTER TABLE teams ADD COLUMN IF NOT EXISTS wissen_slug VARCHAR(64)")
+    op.execute("ALTER TABLE teams ADD COLUMN IF NOT EXISTS geteilt_mit JSONB NOT NULL DEFAULT '[]'::jsonb")
 
 
 def downgrade() -> None:
+    op.execute("ALTER TABLE teams DROP COLUMN IF EXISTS geteilt_mit")
     op.execute("ALTER TABLE teams DROP COLUMN IF EXISTS wissen_slug")
     op.execute("ALTER TABLE teams DROP COLUMN IF EXISTS takt_schedule_id")
     op.execute("ALTER TABLE teams DROP COLUMN IF EXISTS takt_minuten")
