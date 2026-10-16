@@ -3,9 +3,10 @@
 Rechnet nichts selbst: alle Beträge kommen aus ``core/kosten`` (der einen
 Kostenquelle) und gelten in USD; umgerechnet wird nur für die Anzeige.
 
-Nutzertrennung wie überall:
-* Monate und Agenten im Bereich ``kosten.bereich_fuer_nutzer`` — ein Mitglied
-  sieht genau seine sichtbaren Agenten, ein Administrator die Anlage;
+Nutzerbezogen — für JEDEN, auch Administratoren:
+* Monate und Agenten: die eigenen und freigegebenen Agenten des Nutzers
+  (``eigener_bereich``). Die Kosten der ganzen Anlage stehen nur in der
+  Admin-Konsole (``api/admin.py``), nicht hier;
 * Projekte nur, die der Nutzer sehen darf (``sichtbares_projekt``: Ersteller oder
   freigegeben — auch Administratoren sehen fremde Projekte nicht).
 
@@ -41,6 +42,18 @@ def monate(anzahl: int, jetzt: datetime | None = None) -> list[tuple[str, dateti
         von = _monat_plus(aktuell, -i)
         erg.append((f"{von:%Y-%m}", von, _monat_plus(von, 1)))
     return erg
+
+
+async def eigener_bereich(db, user) -> _kosten.Bereich:
+    """Eigene und freigegebene Agenten — ohne die Ausnahme für Administratoren,
+    die ``kosten.bereich_fuer_nutzer`` (Dashboard der Anlage) macht."""
+    from app.models.agent import Agent
+    from app.models.agent_access import AgentAccess
+
+    uid = str(getattr(user, "id", "") or "")
+    eigene = set((await db.execute(select(Agent.id).where(Agent.user_id == uid))).scalars().all())
+    eigene |= set((await db.execute(select(AgentAccess.agent_id).where(AgentAccess.user_id == uid))).scalars().all())
+    return _kosten.Bereich.agenten(eigene)
 
 
 async def sichtbare_projekte(db, user) -> list:
@@ -84,7 +97,7 @@ async def uebersicht(db, user, anzahl_monate: int = 6) -> dict:
     from app.models.agent import Agent
     from app.models.user import User
 
-    bereich = await _kosten.bereich_fuer_nutzer(user, db)
+    bereich = await eigener_bereich(db, user)
     zeitraeume = monate(anzahl_monate)
     monat_von, monat_bis = zeitraeume[-1][1], zeitraeume[-1][2]
     vormonat_von = _monat_plus(monat_von, -1)

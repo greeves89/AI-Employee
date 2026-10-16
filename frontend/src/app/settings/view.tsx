@@ -8,7 +8,7 @@ import {
   CheckCircle2, AlertCircle, Shield, Bot, Gauge, Coins,
   UserPlus, Cloud, Server, Lock, Globe, Cpu,
   ExternalLink, Copy, LogIn, Info, ChevronRight, Sparkles, Network,
-  AlertTriangle, Moon } from "lucide-react";
+  AlertTriangle, Moon, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
 import { ModelCatalogAdmin } from "@/components/settings/model-catalog-admin";
 import { SystemControl } from "@/components/settings/system-control";
@@ -238,6 +238,18 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
       setMessage(e instanceof Error ? e.message : "Konnte Nur-Lesen nicht ändern");
     } finally {
       setMsgraphRoSaving(false);
+    }
+  };
+  const [entwurfSaving, setEntwurfSaving] = useState(false);
+  const toggleMsgraphEntwurf = async (erlaubt: boolean) => {
+    setEntwurfSaving(true);
+    try {
+      await api.setMsgraphEntwurf(erlaubt);
+      setSettings(await api.getSettings());
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Konnte „Entwürfe + Freigabe“ nicht ändern");
+    } finally {
+      setEntwurfSaving(false);
     }
   };
   const [ssoOnlySaving, setSsoOnlySaving] = useState(false);
@@ -1667,6 +1679,42 @@ export function SettingsView({ bereich }: { bereich: AnlagenBereich }) {
                       Schreibzugriff ist freigegeben. Agenten mit &quot;Read + Write&quot; können in echten Postfächern senden und ändern.
                     </p>
                   )}
+                </div>
+
+                {/* Admin: Modus „Entwürfe + Freigabe“ freischalten (Sekretariat) */}
+                <div className="px-5 pb-4 pt-3 border-t border-foreground/[0.04]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-[12px] font-medium">
+                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        Entwürfe mit Freigabe erlauben
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground/60">
+                        Nutzer dürfen ihre Agenten auf „Entwürfe + Freigabe“ stellen (z. B. fürs Sekretariat): Agenten legen Mails
+                        nur als Entwurf im Postfach des Nutzers an; gesendet wird erst, wenn der Postfach-Besitzer freigibt. Gilt auch,
+                        wenn „Microsoft nur lesend“ an ist.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => toggleMsgraphEntwurf(!settings?.msgraph_entwurf_erlaubt)}
+                      disabled={entwurfSaving}
+                      aria-label="Entwürfe mit Freigabe erlauben"
+                      className={cn(
+                        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors",
+                        settings?.msgraph_entwurf_erlaubt ? "bg-emerald-500" : "bg-foreground/[0.1]",
+                        entwurfSaving && "opacity-40 cursor-not-allowed",
+                      )}
+                    >
+                      {entwurfSaving ? (
+                        <Loader2 className="mx-auto h-3 w-3 animate-spin text-white" />
+                      ) : (
+                        <span className={cn(
+                          "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                          settings?.msgraph_entwurf_erlaubt ? "translate-x-6" : "translate-x-1",
+                        )} />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Admin: expose the MS Graph MCP server to external LLMs (OpenWebUI) */}

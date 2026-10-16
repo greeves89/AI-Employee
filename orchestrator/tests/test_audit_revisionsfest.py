@@ -95,7 +95,7 @@ class RueckfragenSindKeineFreigaben(_Basis):
     async def test_abbrechen_wird_als_antwort_protokolliert_nicht_als_freigabe(self):
         async with self.Session() as db:
             aid = await self._frage(db)
-            await api.approve_request(aid, api.ApprovalAnswer(answer="Abbrechen"), user=_admin(), db=db)
+            await api.approve_request(aid, api.ApprovalAnswer(answer="Abbrechen"), user=_member(), db=db)
 
             self.assertEqual(await self._eintraege(db, "command_approved"), [],
                              "Eine Rückfrage-Antwort ist keine Freigabe")
@@ -103,24 +103,24 @@ class RueckfragenSindKeineFreigaben(_Basis):
             self.assertEqual(eintrag.command, "Rückfrage beantwortet: Abbrechen")
             self.assertEqual(eintrag.meta["answer"], "Abbrechen")
             self.assertEqual(eintrag.meta["option"], "Abbrechen")
-            self.assertEqual(eintrag.user_id, "u1")
+            self.assertEqual(eintrag.user_id, "u2")
             self.assertEqual(eintrag.meta["agent_name"], "Buchhaltung")
 
             zeile = await db.get(CommandApproval, int(aid))
-            self.assertEqual(zeile.resolved_by_user_id, "u1")
+            self.assertEqual(zeile.resolved_by_user_id, "u2")
 
     async def test_ein_befehl_bleibt_eine_freigabe(self):
         async with self.Session() as db:
             aid = await self._befehl(db)
-            await api.approve_request(aid, None, user=_admin(), db=db)
+            await api.approve_request(aid, None, user=_member(), db=db)
             [eintrag] = await self._eintraege(db, "command_approved")
-            self.assertEqual(eintrag.user_id, "u1")
+            self.assertEqual(eintrag.user_id, "u2")
             self.assertEqual(await self._eintraege(db, "question_answered"), [])
 
     async def test_freitext_antwort_hat_keine_option(self):
         async with self.Session() as db:
             aid = await self._frage(db)
-            await api.approve_request(aid, api.ApprovalAnswer(answer="Erst morgen"), user=_admin(), db=db)
+            await api.approve_request(aid, api.ApprovalAnswer(answer="Erst morgen"), user=_member(), db=db)
             [eintrag] = await self._eintraege(db, "question_answered")
             self.assertEqual(eintrag.meta["answer"], "Erst morgen")
             self.assertIsNone(eintrag.meta["option"])
@@ -130,30 +130,30 @@ class VerwerfenUndAblaufWerdenProtokolliert(_Basis):
     async def test_einzeln_verwerfen(self):
         async with self.Session() as db:
             aid = await self._befehl(db)
-            await api.cancel_approval_request(aid, user=_admin(), db=db)
+            await api.cancel_approval_request(aid, user=_member(), db=db)
             [eintrag] = await self._eintraege(db, "approval_cancelled")
             self.assertEqual(eintrag.approval_id, aid)
-            self.assertEqual(eintrag.user_id, "u1")
+            self.assertEqual(eintrag.user_id, "u2")
 
     async def test_verwerfen_einer_erledigten_freigabe_wird_abgewiesen(self):
         """Sonst überschriebe ein spätes Verwerfen Entscheider und Ergebnis."""
         async with self.Session() as db:
             aid = await self._befehl(db)
-            await api.approve_request(aid, None, user=_admin(), db=db)
+            await api.approve_request(aid, None, user=_member(), db=db)
             with self.assertRaises(HTTPException) as ctx:
-                await api.cancel_approval_request(aid, user=_admin(), db=db)
+                await api.cancel_approval_request(aid, user=_member(), db=db)
             self.assertEqual(ctx.exception.status_code, 400)
             self.assertEqual(await self._eintraege(db, "approval_cancelled"), [])
 
     async def test_alle_verwerfen_schreibt_je_freigabe_einen_eintrag(self):
         async with self.Session() as db:
             ids = [await self._frage(db, question=f"Frage {i}?") for i in range(3)]
-            res = await api.clear_pending_approvals(user=_admin(), db=db)
+            res = await api.clear_pending_approvals(user=_member(), db=db)
             self.assertEqual(res["cleared"], 3)
             eintraege = await self._eintraege(db, "approval_cancelled")
             self.assertEqual(sorted(e.approval_id for e in eintraege), sorted(ids))
             self.assertTrue(all(e.meta.get("sammelverwerfung") for e in eintraege))
-            self.assertTrue(all(e.user_id == "u1" for e in eintraege))
+            self.assertTrue(all(e.user_id == "u2" for e in eintraege))
 
     async def test_ablauf(self):
         from app.services.scheduler_service import _APPROVAL_TTL_HOURS, SchedulerService
@@ -225,11 +225,11 @@ class NamenUndPerson(_Basis):
     async def test_person_wird_aufgeloest(self):
         async with self.Session() as db:
             aid = await self._frage(db)
-            await api.approve_request(aid, api.ApprovalAnswer(answer="Weiter"), user=_admin(), db=db)
+            await api.approve_request(aid, api.ApprovalAnswer(answer="Weiter"), user=_member(), db=db)
             res = await self._liste(db, _admin(), event_type="question_answered")
             [eintrag] = res["logs"]
-            self.assertEqual(eintrag["user_id"], "u1")
-            self.assertEqual(eintrag["person"], "Chefin")
+            self.assertEqual(eintrag["user_id"], "u2")
+            self.assertEqual(eintrag["person"], "Mitglied")
 
 
 class Export(_Basis):

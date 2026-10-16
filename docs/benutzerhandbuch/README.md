@@ -1171,10 +1171,10 @@ die Agenten nicht steuern.
 Seitenleiste → **Finanzen**. Die Seite zeigt, was deine Agenten kosten — **je Monat, je Projekt
 und je Agent**.
 
+Jeder sieht hier nur seine eigenen (und ihm freigegebenen) Agenten und Projekte — **auch
+Administratoren**. Die Kosten der ganzen Anlage stehen für Administratoren in der Admin-Konsole.
+
 ![Seite „Finanzen“: Kacheln, Verlauf je Monat, Projekte und Agenten](screenshots/80-finanzen.png)
- Mitglieder sehen nur ihre eigenen Agenten und Projekte; Administratoren sehen die
-Kosten der ganzen Anlage, aber auch hier nur die Projekte, die sie selbst angelegt haben oder die
-ihnen freigegeben sind.
 
 **Oben vier Kacheln:**
 - **Dieser Monat** — alles zusammen, darunter der Vormonat zum Vergleich.
@@ -1221,9 +1221,9 @@ Ein **Sekretariat** sind ein bis vier deiner Agenten, die dein **Postfach und de
 (Microsoft 365) betreuen: Sie sichten neue Mails, entwerfen Antworten, legen ab, behalten
 Fristen im Blick und schreiben dir morgens ein Tagesbriefing. **Gesendet wird nichts ohne dich.**
 
-**Voraussetzung:** dein Microsoft-Konto ist unter **Integrationen** verbunden, und ein
-Administrator hat **Microsoft nur lesend** gelöst (Kap. 20.1). Ist der Schalter noch an, liest das
-Sekretariat nur.
+**Voraussetzung:** Du hast **dein eigenes** Microsoft-Konto unter **Integrationen** verbunden, und
+ein Administrator hat **Entwürfe mit Freigabe erlauben** eingeschaltet (Kap. 20.1). Ist das noch
+aus, liest das Sekretariat nur.
 
 ### 6c.1 Einrichten
 
@@ -1531,6 +1531,10 @@ wie es war.
 **Freigaben** sind die Sicherheitsbremse: Bevor ein Agent (auf Autonomie-Level **L3**,
 Kap. 5.6) eine potenziell heikle Aktion ausführt, **fragt er nach** — und wartet, bis du
 entscheidest. Seitenleiste → **Approvals**.
+
+*Seit 1.375.0:* Hier stehen nur die Freigaben **deiner eigenen** (und dir freigegebenen) Agenten —
+auch für Administratoren und Manager. Fremde Freigaben sieht und entscheidet niemand. Nur
+Administratoren sehen zusätzlich Meldungen der Anlage selbst (ohne Agent).
 
 ![Approvals](screenshots/18-approvals.png)
 
@@ -1888,7 +1892,10 @@ Schreibzugriff pro Agent freigeben.
   anderer Empfänger), wird nichts gesendet. Freigeben kann nur, wem das Postfach gehört.
 - **Lesen + Schreiben** — sendet Mails und ändert Termine selbst, ohne Rückfrage.
 
-Auch „Entwürfe + Freigabe“ ist erst wählbar, wenn der Nur-Lesen-Schalter gelöst ist.
+„Lesen + Schreiben“ ist nur wählbar, wenn der Nur-Lesen-Schalter gelöst ist. „Entwürfe + Freigabe“
+schaltet der Administrator eigens frei — direkt darunter, Schalter **Entwürfe mit Freigabe erlauben**
+(steht ab Werk auf aus). Ist er an, stellt **jeder Nutzer seine eigenen Agenten** selbst darauf ein;
+Mails gibt immer nur frei, wem das Postfach gehört. Der Nur-Lesen-Schalter darf dabei an bleiben.
 
 > **Hinweis:** Der externe MCP-Zugang für OpenWebUI ist **immer** nur lesend — unabhängig
 > von diesem Schalter. Und die Anmeldung dorthin läuft seit 1.154.0 über das

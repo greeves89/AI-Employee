@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 
 from app.api import approvals as api
+from app.models.agent_access import AgentAccess
 from app.models.agent import Agent, AgentState
 from app.models.audit_log import AuditLog
 from app.models.command_approval import ApprovalStatus, CommandApproval
@@ -51,7 +52,7 @@ class ApprovalFloodTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (Agent, CommandApproval, Notification, AuditLog):
+            for model in (AgentAccess, Agent, CommandApproval, Notification, AuditLog):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.Session() as db:
@@ -165,7 +166,9 @@ class ApprovalFloodTests(unittest.IsolatedAsyncioTestCase):
             await self._ask(db)
             await self._ask(db, question="Zweite Frage")
 
-            out = await api.clear_pending_approvals(user=_admin(), db=db)
+            # Nutzerbezogen: der Besitzer räumt seine Freigaben auf — ein Admin nicht fremde.
+            self.assertEqual((await api.clear_pending_approvals(user=_admin(), db=db))["cleared"], 0)
+            out = await api.clear_pending_approvals(user=_member(), db=db)
             self.assertEqual(out["cleared"], 2)
 
             rows = (await db.execute(select(CommandApproval))).scalars().all()
@@ -173,7 +176,7 @@ class ApprovalFloodTests(unittest.IsolatedAsyncioTestCase):
             for row in rows:
                 self.assertEqual(row.status, ApprovalStatus.DENIED)
                 self.assertIsNotNone(row.resolved_at)
-                self.assertIn("admin@example.test", row.user_response)
+                self.assertIn("u2@example.test", row.user_response)
 
     async def test_clear_all_only_touches_your_own_agents(self):
         """Sonst raeumt ein Nutzer die Entscheidungen eines anderen weg."""

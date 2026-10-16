@@ -79,7 +79,9 @@ class AnsweringAQuestionTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (Agent, CommandApproval, Notification, AuditLog):
+            from app.models.agent_access import AgentAccess
+
+            for model in (Agent, AgentAccess, CommandApproval, Notification, AuditLog):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.Session() as db:

@@ -59,10 +59,11 @@ async def einrichten(body: Einrichten, user=Depends(require_auth), db: AsyncSess
     await _wissen_sicherstellen(db, team, user)
 
     hinweise = []
-    zugang = "read" if ms_access.read_only_enabled() else ms_access.ENTWURF
+    zugang = ms_access.ENTWURF if ms_access.entwurf_freigeschaltet() else "read"
     if zugang == "read":
-        hinweise.append("Microsoft steht plattformweit auf Nur-Lesen: das Sekretariat liest Postfach und Kalender, "
-                        "entwirft aber noch nichts. Ein Administrator löst das unter Einstellungen.")
+        hinweise.append("„Entwürfe + Freigabe“ ist auf dieser Anlage noch nicht freigeschaltet: das Sekretariat liest "
+                        "Postfach und Kalender, entwirft aber noch nichts. Ein Administrator schaltet es in der "
+                        "Admin-Konsole unter Integrationen frei.")
     for agent_id in body.agent_ids:
         agent = await db.get(Agent, agent_id)
         cfg = dict(agent.config or {}) if agent else {}

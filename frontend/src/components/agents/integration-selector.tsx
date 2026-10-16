@@ -67,6 +67,8 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
   // Plattformweiter Nur-Lesen-Zwang für Microsoft (M365 + on-prem Exchange).
   // Solange er steht, ist Read+Write gesperrt — der Server würde es ohnehin ablehnen.
   const [msReadOnly, setMsReadOnly] = useState(true);
+  // „Entwürfe + Freigabe“ schaltet der Admin eigens frei (unabhängig von Nur-Lesen).
+  const [entwurfFrei, setEntwurfFrei] = useState(false);
   const [mcpServers, setMcpServers] = useState<McpServerInfo[]>([]);
   const [agentMcpServerIds, setAgentMcpServerIds] = useState<number[] | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
@@ -119,6 +121,7 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
       setMsgraphAccess(agentIntResp.msgraph_access === "write" ? "write" : agentIntResp.msgraph_access === "entwurf" ? "entwurf" : "read");
       setExchangeAccess(agentIntResp.exchange_access === "write" ? "write" : "read");
       setMsReadOnly(agentIntResp.microsoft_read_only !== false);
+      setEntwurfFrei(agentIntResp.microsoft_entwurf_erlaubt === true);
       setMcpServers(servers);
       setAgentMcpServerIds(mcpResp.mcp_servers);
       setAllowlist(entries);
@@ -561,17 +564,17 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                         </button>
                         <button
                           type="button"
-                          disabled={msReadOnly}
+                          disabled={!entwurfFrei}
                           onClick={() => { setMsgraphAccess("entwurf"); setChanged(true); }}
                           className={cn(
                             "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors",
                             msgraphAccess === "entwurf"
                               ? "bg-primary/10 text-primary border-primary/30"
                               : "border-foreground/[0.08] text-muted-foreground hover:bg-foreground/[0.04]",
-                            msReadOnly && "opacity-40 cursor-not-allowed hover:bg-transparent"
+                            !entwurfFrei && "opacity-40 cursor-not-allowed hover:bg-transparent"
                           )}
                         >
-                          {msReadOnly ? <Lock className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
+                          {!entwurfFrei ? <Lock className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
                           Entwürfe + Freigabe
                         </button>
                         <button
@@ -591,13 +594,13 @@ export function IntegrationSelector({ agentId }: IntegrationSelectorProps) {
                         </button>
                       </div>
                       <p className="text-[11px] text-muted-foreground/60 mt-2">
-                        {msReadOnly
-                          ? "Microsoft ist plattformweit auf Nur-Lesen gestellt. Kein Agent kann senden oder ändern — ein Administrator löst das in den Einstellungen."
-                          : msgraphAccess === "entwurf"
+                        {msgraphAccess === "entwurf"
                             ? "Entwürfe + Freigabe: Der Agent legt Mails nur als Entwurf an und darf ablegen. Gesendet wird erst, wenn du unter Freigaben zustimmst."
                             : msgraphAccess === "write"
                               ? "Lesen + Schreiben: Der Agent sendet Mails und ändert Termine selbst — ohne Rückfrage."
                               : "Lesen: Der Agent liest Mails und Termine, schreibt nichts."}
+                        {msReadOnly && " Direktes Senden (Lesen + Schreiben) hat der Administrator gesperrt."}
+                        {!entwurfFrei && " „Entwürfe + Freigabe“ schaltet ein Administrator frei."}
                       </p>
                     </div>
                   )}
