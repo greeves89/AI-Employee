@@ -61,7 +61,7 @@ export function ProjektLeitstand({
   const taktLabel = TAKTE.find((t) => t.minuten === (takt.minuten ?? 0))?.label ?? "Aus";
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {/* Gerade in Arbeit */}
       <section className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
         <div className="flex items-baseline justify-between gap-2">
@@ -107,7 +107,7 @@ export function ProjektLeitstand({
         )}
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
         {/* Reststapel */}
         <section className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
           <h2 className="text-sm font-semibold">Reststapel</h2>

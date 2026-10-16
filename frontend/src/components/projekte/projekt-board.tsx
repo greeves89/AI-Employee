@@ -201,7 +201,7 @@ function Karte({
             </Knopf>
           </>
         )}
-        {karte.spalte === "pruefung" && (
+        {karte.spalte === "pruefung" && karte.task_id && (
           <>
             <Knopf haupt onClick={() => aktionen.abnehmen(karte)}>
               <Check className="h-3 w-3" /> Abnehmen
@@ -210,6 +210,13 @@ function Karte({
               <CornerUpLeft className="h-3 w-3" /> Zurückgeben
             </Knopf>
           </>
+        )}
+        {/* Ohne eigenen Lauf (PR aus dem Repo, Issue mit fremdem PR) gibt es nichts
+            abzunehmen oder zurückzugeben — nur „erledigt“, wenn er gemergt ist. */}
+        {karte.spalte === "pruefung" && !karte.task_id && (
+          <Knopf titel="Nach Erledigt (z. B. nach dem Merge)" onClick={() => aktionen.verschieben(karte, { spalte: "erledigt" })}>
+            <Check className="h-3 w-3" /> Erledigt
+          </Knopf>
         )}
       </div>
     </div>

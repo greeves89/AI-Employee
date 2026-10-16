@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.370.1] - 2026-10-16
+
+### Behoben (aus einem Durchlauf im Browser)
+- Auf dem Handy war die Projektseite breiter als der Bildschirm; der Raum wurde abgeschnitten.
+- „Wartet auf Merge“ kürzte die Titel bis zur Unlesbarkeit — Reststapel und Merge stehen in der
+  Seitenspalte jetzt untereinander.
+- Karten ohne eigenen Lauf (PR aus dem Repo, Issue mit fremdem PR) zeigen in der Prüfung nur
+  „Erledigt“ statt „Abnehmen/Zurückgeben“, das dort ins Leere lief.
+- Büro: leere Plätze ohne Bodenfleck.
+- Die letzte Ausgabe nennt, was ein Agent tut („sucht im Web“, „liest eine Datei“), statt des
+  Werkzeugnamens.
+
+---
+
 ## [1.370.0] - 2026-10-16
 
 ### Neu

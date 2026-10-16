@@ -219,9 +219,32 @@ async def _laufende_laeufe(db: AsyncSession, team_id: str, sichtbar, karten: dic
     return ergebnis
 
 
+# Was ein Werkzeug für den Menschen bedeutet — sonst steht im Raum „nutzt Bash“.
+WERKZEUG_TAETIGKEIT = {
+    "WebSearch": "sucht im Web", "web_search": "sucht im Web", "news_search": "sucht Nachrichten",
+    "WebFetch": "liest eine Webseite", "web_fetch": "liest eine Webseite",
+    "Read": "liest eine Datei", "read_file": "liest eine Datei", "Grep": "durchsucht Dateien",
+    "grep": "durchsucht Dateien", "Glob": "sucht Dateien", "glob": "sucht Dateien",
+    "Write": "schreibt eine Datei", "write_file": "schreibt eine Datei", "Edit": "ändert eine Datei",
+    "edit_file": "ändert eine Datei", "MultiEdit": "ändert eine Datei", "Bash": "führt einen Befehl aus",
+    "bash": "führt einen Befehl aus", "Task": "gibt eine Teilaufgabe weiter", "TodoWrite": "plant die nächsten Schritte",
+    "create_task": "gibt eine Aufgabe weiter", "send_message": "schreibt einem Kollegen",
+    "projekt_board": "liest das Projekt-Board", "projekt_karte_stand": "meldet den Stand",
+    "projekt_karte_anlegen": "legt eine Karte an", "projekt_karte_vergeben": "vergibt eine Karte",
+    "projekt_wissen_suchen": "sucht im Projektwissen", "projekt_wissen_lesen": "liest im Projektwissen",
+    "projekt_wissen_schreiben": "schreibt ins Projektwissen", "memory_save": "merkt sich etwas",
+    "memory_search": "erinnert sich", "browser": "bedient den Browser",
+}
+
+
 def _werkzeug_name(roh: str) -> str:
     """mcp__orchestrator__create_schedule → create_schedule"""
     return roh.rsplit("__", 1)[-1] if roh.startswith("mcp__") else roh
+
+
+def taetigkeit(werkzeug: str) -> str:
+    name = _werkzeug_name(werkzeug)
+    return WERKZEUG_TAETIGKEIT.get(name, f"nutzt {name}")
 
 
 async def letzte_ausgaben(db: AsyncSession, task_ids: list[str]) -> dict[str, str]:
@@ -244,7 +267,7 @@ async def letzte_ausgaben(db: AsyncSession, task_ids: list[str]) -> dict[str, st
         if schritt.event_type == "text":
             text = " ".join(str(daten.get("text") or "").split())
         else:
-            text = f"nutzt {_werkzeug_name(str(daten.get('tool') or 'ein Werkzeug'))}"
+            text = taetigkeit(str(daten.get("tool") or "ein Werkzeug"))
         if text:
             ergebnis[task_id] = _kurz(text, 160)
     return ergebnis

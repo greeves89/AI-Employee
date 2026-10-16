@@ -71,10 +71,12 @@ export function GlowFilter({ id }: { id: string }) {
 
 /** Schreibtisch mit Bildschirm; arbeitet der Agent, leuchtet der Bildschirm und schreibt Zeilen. */
 export function Schreibtisch({
-  p, x, y, w = 1.9, d = 1.1, arbeitet, farbe, glow, platzX, platzY,
+  p, x, y, w = 1.9, d = 1.1, arbeitet, farbe, glow, platzX, platzY, besetzt = true,
 }: {
   p: Projektion; x: number; y: number; w?: number; d?: number;
   arbeitet: boolean; farbe: string; glow: string;
+  /** Leere Plätze (Büro) ohne Bodenfleck — sonst wirkt der Raum unruhig. */
+  besetzt?: boolean;
   /** Wo der Agent steht (Bodenfleck). */
   platzX: number; platzY: number;
 }) {
@@ -85,10 +87,10 @@ export function Schreibtisch({
   const [fx, fy] = p(platzX, platzY);
   return (
     <g>
-      <ellipse cx={fx} cy={fy} rx={22} ry={11}
+      {besetzt && <ellipse cx={fx} cy={fy} rx={22} ry={11}
         fill={arbeitet ? "#10b981" : "hsl(var(--foreground))"} opacity={arbeitet ? 0.35 : 0.08}
         filter={arbeitet ? `url(#${glow})` : undefined}
-        className={arbeitet ? "raum-pulsen" : undefined} />
+        className={arbeitet ? "raum-pulsen" : undefined} />}
       <Quader p={p} x={x} y={y} w={w} d={d} h={h} deckel={fg(0.2)} seiteL={fg(0.12)} seiteR={fg(0.16)} />
       <polygon
         points={punkte(p(mx0, my, h), p(mx1, my, h), p(mx1, my, h + 0.72), p(mx0, my, h + 0.72))}

@@ -978,6 +978,10 @@ Auszug aus dem Ergebnis.
 
 Wird ein Lauf abgebrochen, geht seine Karte zurück nach **Bereit**.
 
+Karten **ohne eigenen Lauf** — ein Pull Request aus dem Repo oder ein Issue, an dem schon ein PR
+hängt — haben in der Prüfung nur den Knopf **Erledigt** (z. B. nach dem Merge); abnehmen oder
+zurückgeben lässt sich dort nichts.
+
 ### 6a.6 Arbeitstakt: die Agenten holen sich selbst Arbeit
 
 Mit einem **Arbeitstakt** (Bearbeiten → Arbeitstakt: alle 30 Minuten, stündlich, alle 2 oder
