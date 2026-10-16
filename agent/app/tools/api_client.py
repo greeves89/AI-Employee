@@ -419,6 +419,13 @@ class OrchestratorAPIClient:
     # ── Projekt-Board und Projektwissen (Paritaet: orchestrator-server.mjs) ──
 
     @staticmethod
+    def _gerahmt(quelle: str, text: str) -> str:
+        """Fremden Text als Daten rahmen — Markierungen im Text entschaerft, sonst
+        koennte ein Issue oder eine Wissensseite aus dem Rahmen ausbrechen."""
+        text = (text or "").replace("[EXTERNAL-DATA", "(EXTERNAL-DATA").replace("[/EXTERNAL-DATA", "(/EXTERNAL-DATA")
+        return f'[EXTERNAL-DATA source="{quelle}"]\n{text}\n[/EXTERNAL-DATA]'
+
+    @staticmethod
     def _projekt_pfad(params: dict, *teile: str) -> str | None:
         projekt = str(params.get("projekt_id") or "").strip()
         if not projekt:
@@ -433,7 +440,7 @@ class OrchestratorAPIClient:
         r = await self._request("GET", pfad)
         if isinstance(r, str):
             return r
-        return f'[EXTERNAL-DATA source="projekt-board"]\n{r.get("text", "")}\n[/EXTERNAL-DATA]'
+        return self._gerahmt("projekt-board", r.get("text", ""))
 
     async def projekt_karte_anlegen(self, params: dict) -> str:
         pfad = self._projekt_pfad(params, "karten")
@@ -495,7 +502,7 @@ class OrchestratorAPIClient:
         if not treffer:
             return f"Nichts gefunden zu „{frage}“."
         text = "\n".join(f"{t.get('path')}: {' … '.join(t.get('snippets') or [])}" for t in treffer)
-        return f'[EXTERNAL-DATA source="projektwissen"]\n{text}\n[/EXTERNAL-DATA]'
+        return self._gerahmt("projektwissen", text)
 
     async def projekt_wissen_lesen(self, params: dict) -> str:
         basis = self._projekt_pfad(params, "wissen")
@@ -510,7 +517,7 @@ class OrchestratorAPIClient:
         r = await self._request("GET", f"{basis}/datei", params={"pfad": params["pfad"]})
         if isinstance(r, str):
             return r
-        return f'[EXTERNAL-DATA source="projektwissen"]\n{r.get("inhalt", "")}\n[/EXTERNAL-DATA]'
+        return self._gerahmt("projektwissen", r.get("inhalt", ""))
 
     async def projekt_wissen_schreiben(self, params: dict) -> str:
         pfad = self._projekt_pfad(params, "wissen", "datei")

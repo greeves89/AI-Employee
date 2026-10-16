@@ -461,6 +461,7 @@ class Wissen(Basis):
             vorspann = await zielkette.vorspann(db, task)
             self.assertIn("Projektwissen", vorspann)
             self.assertIn("Deploy nur per git", vorspann)
+            self.assertIn('[EXTERNAL-DATA source="projektwissen"]', vorspann)
             self.assertEqual(team.wissen_slug, "projekt-p1")
 
 

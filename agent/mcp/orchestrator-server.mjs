@@ -118,13 +118,20 @@ async function apiCall(path, options = {}) {
 // Der Server prueft bei jedem Aufruf, dass der Agent zum Projekt gehoert; das
 // Board kommt fertig formatiert (core/projekte.board_als_text) — EINE Darstellung
 // fuer alle Laufzeiten.
+// Fremden Text (Issue-Texte im Board, Wissensseiten) als Daten rahmen; Markierungen
+// im Text entschaerft, damit er nicht aus dem Rahmen ausbrechen kann.
+export function projektGerahmt(quelle, text) {
+  const sauber = String(text ?? "").replaceAll("[EXTERNAL-DATA", "(EXTERNAL-DATA").replaceAll("[/EXTERNAL-DATA", "(/EXTERNAL-DATA");
+  return wrapData(quelle, sauber);
+}
+
 export const PROJEKT_WERKZEUGE = new Set(["projekt_board", "projekt_karte_anlegen", "projekt_karte_verschieben", "projekt_karte_vergeben", "projekt_karte_stand", "projekt_wissen_suchen", "projekt_wissen_lesen", "projekt_wissen_schreiben"]);
 
 export async function projektWerkzeug(name, args = {}) {
   switch (name) {
     case "projekt_board": {
       const r = await apiCall(`/teams/${encodeURIComponent(args.projekt_id)}/board/text`);
-      return { content: [{ type: "text", text: wrapData("projekt-board", r.text) }] };
+      return { content: [{ type: "text", text: projektGerahmt("projekt-board", r.text) }] };
     }
 
     case "projekt_karte_anlegen": {
@@ -173,7 +180,7 @@ export async function projektWerkzeug(name, args = {}) {
       const treffer = r.treffer || [];
       if (!treffer.length) return { content: [{ type: "text", text: `Nichts gefunden zu „${args.frage}“.` }] };
       const text = treffer.map((t) => `${t.path || t.pfad}: ${(t.snippets || []).join(" … ") || t.title || ""}`).join("\n");
-      return { content: [{ type: "text", text: wrapData("projektwissen", text) }] };
+      return { content: [{ type: "text", text: projektGerahmt("projektwissen", text) }] };
     }
 
     case "projekt_wissen_lesen": {
@@ -184,7 +191,7 @@ export async function projektWerkzeug(name, args = {}) {
         return { content: [{ type: "text", text: text || "Noch keine Seiten." }] };
       }
       const r = await apiCall(`${basis}/datei?pfad=${encodeURIComponent(args.pfad)}`);
-      return { content: [{ type: "text", text: wrapData("projektwissen", r.inhalt) }] };
+      return { content: [{ type: "text", text: projektGerahmt("projektwissen", r.inhalt) }] };
     }
 
     case "projekt_wissen_schreiben": {
