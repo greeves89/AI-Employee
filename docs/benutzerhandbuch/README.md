@@ -1026,7 +1026,7 @@ Anlage (Admin → Integrationen → GitHub, dann alle 10 Minuten). Ohne Repo zei
 den Hinweis „Kein GitHub-Repo verbunden“ mit dem Knopf **Repo verbinden**.
 
 1. Projekt anlegen oder **Bearbeiten** öffnen.
-2. Unter **GitHub-Repo** `owner/name` eintragen, z. B. `greeves89/AI-Employee` (eine kopierte
+2. Unter **GitHub-Repo** `owner/name` eintragen, z. B. `beispiel-org/beispiel-repo` (eine kopierte
    GitHub-Adresse geht auch).
 3. **Speichern**.
 
