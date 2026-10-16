@@ -379,6 +379,51 @@ class Abnahme(Basis):
                                              router_=router, user=MITGLIED, db=db)
             self.assertEqual(e.exception.status_code, 409)
 
+    async def test_zurueckgeben_ohne_bisherigen_agenten_geht_an_den_lead(self):
+        async with self.Session() as db:
+            await self._in_pruefung(db, agent_id="a2")
+            team = await db.get(Team, "p1")
+            team.member_agent_ids, team.lead_agent_id = ["a1"], "a1"  # a2 aus dem Projekt genommen
+            await db.commit()
+            router = _Router(db)
+            with patch("app.api.teams._team_roster", new=AsyncMock(return_value="- A1 (LEAD)")):
+                r = await api.karte_zurueckgeben("p1", "k1", api.Zurueckgeben(hinweis="Nochmal"), request=None,
+                                                 router_=router, user=MITGLIED, db=db)
+        self.assertEqual(router.aufrufe[0]["agent_id"], "a1")
+        self.assertTrue(router.aufrufe[0]["metadata"]["delegated_to_team"])
+        self.assertEqual((r["spalte"], r["agent_id"]), ("in_arbeit", "a1"))
+
+    async def test_zurueckgeben_an_gewaehlten_agenten(self):
+        async with self.Session() as db:
+            await self._in_pruefung(db)
+            router = _Router(db)
+            r = await api.karte_zurueckgeben("p1", "k1", api.Zurueckgeben(hinweis="Mach du", agent_id="a2"),
+                                             request=None, router_=router, user=MITGLIED, db=db)
+        self.assertEqual(router.aufrufe[0]["agent_id"], "a2")
+        self.assertNotIn("delegated_to_team", router.aufrufe[0]["metadata"])
+        self.assertEqual(r["agent_id"], "a2")
+
+    async def test_zurueckgeben_nur_an_mitglieder(self):
+        async with self.Session() as db:
+            await self._in_pruefung(db)
+            with self.assertRaises(HTTPException) as e:
+                await api.karte_zurueckgeben("p1", "k1", api.Zurueckgeben(hinweis="x", agent_id="b1"), request=None,
+                                             router_=_Router(db), user=MITGLIED, db=db)
+            self.assertEqual(e.exception.status_code, 400)
+            self.assertEqual((await db.get(ProjektKarte, "k1")).spalte, "pruefung")
+
+    async def test_zurueckgeben_ohne_lead_und_ohne_bisherigen_agenten_fragt_nach(self):
+        async with self.Session() as db:
+            await self._in_pruefung(db, agent_id="a2")
+            team = await db.get(Team, "p1")
+            team.member_agent_ids = ["a1"]
+            await db.commit()
+            with self.assertRaises(HTTPException) as e:
+                await api.karte_zurueckgeben("p1", "k1", api.Zurueckgeben(hinweis="x"), request=None,
+                                             router_=_Router(db), user=MITGLIED, db=db)
+            self.assertEqual(e.exception.status_code, 409)
+            self.assertEqual((await db.get(ProjektKarte, "k1")).spalte, "pruefung")
+
 
 class Board(Basis):
     async def test_spalten_laufende_und_verlauf(self):

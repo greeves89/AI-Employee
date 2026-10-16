@@ -51,7 +51,8 @@ export interface BoardAktionen {
   verschieben: (k: ProjektKarte, aenderung: { spalte?: string; prioritaet?: number }) => Promise<void>;
   vergeben: (k: ProjektKarte, agentId: string | null) => Promise<void>;
   abnehmen: (k: ProjektKarte) => Promise<void>;
-  zurueckgeben: (k: ProjektKarte, hinweis: string) => Promise<void>;
+  // agentId leer: der bisherige Bearbeiter — ist er nicht mehr im Projekt, der Lead.
+  zurueckgeben: (k: ProjektKarte, hinweis: string, agentId: string | null) => Promise<void>;
   anlegen: (titel: string, text: string) => Promise<void>;
 }
 
@@ -240,6 +241,14 @@ export function ProjektBoardAnsicht({
   const [titel, setTitel] = useState("");
   const [text, setText] = useState("");
   const agentById = new Map(agents.map((a) => [a.id, a]));
+  const [nacharbeiter, setNacharbeiter] = useState("");
+  const imProjekt = [...new Set([...(leadId ? [leadId] : []), ...mitglieder])];
+  const bisherDa = !!zurueck?.agent_id && imProjekt.includes(zurueck.agent_id);
+  const standardNacharbeit = bisherDa
+    ? `Wie bisher: ${agentById.get(zurueck!.agent_id!)?.name ?? "Agent"}`
+    : leadId
+      ? `Lead entscheidet: ${agentById.get(leadId)?.name ?? "Lead"}`
+      : "Agent wählen …";
 
   return (
     <>
@@ -269,7 +278,7 @@ export function ProjektBoardAnsicht({
                 ) : (
                   karten.map((k) => (
                     <Karte key={k.id} karte={k} agents={agentById} mitglieder={mitglieder} leadId={leadId} farbe={farbe}
-                      aktionen={aktionen} onZurueck={(karte) => { setHinweis(""); setZurueck(karte); }} />
+                      aktionen={aktionen} onZurueck={(karte) => { setHinweis(""); setNacharbeiter(""); setZurueck(karte); }} />
                   ))
                 )}
               </div>
@@ -301,8 +310,18 @@ export function ProjektBoardAnsicht({
       <Fenster offen={!!zurueck} schliessen={() => setZurueck(null)} titel="Zur Nacharbeit zurückgeben" breite="max-w-lg">
         <div className="space-y-3 p-5">
           <p className="text-sm text-muted-foreground">
-            „{zurueck?.titel}“ geht mit deinem Hinweis zurück an den Agenten. Danach steht die Karte wieder in der Prüfung.
+            „{zurueck?.titel}“ geht mit deinem Hinweis zur Nacharbeit. Danach steht die Karte wieder in der Prüfung.
           </p>
+          <label className="block text-xs font-medium text-muted-foreground">
+            Wer arbeitet nach?
+            <select value={nacharbeiter} onChange={(e) => setNacharbeiter(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-2 py-1.5 text-sm text-foreground">
+              <option value="">{standardNacharbeit}</option>
+              {imProjekt.map((m) => (
+                <option key={m} value={m}>{agentById.get(m)?.name ?? m}{m === leadId ? " (Lead)" : ""}</option>
+              ))}
+            </select>
+          </label>
           <textarea value={hinweis} onChange={(e) => setHinweis(e.target.value)} rows={4} autoFocus
             placeholder="Was soll anders werden?"
             className="w-full resize-none rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50" />
@@ -310,12 +329,12 @@ export function ProjektBoardAnsicht({
             <button type="button" onClick={() => setZurueck(null)} className="rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-foreground/[0.04]">Abbrechen</button>
             <button
               type="button"
-              disabled={!hinweis.trim() || sendet}
+              disabled={!hinweis.trim() || sendet || (!nacharbeiter && !bisherDa && !leadId)}
               onClick={async () => {
                 if (!zurueck) return;
                 setSendet(true);
                 try {
-                  await aktionen.zurueckgeben(zurueck, hinweis.trim());
+                  await aktionen.zurueckgeben(zurueck, hinweis.trim(), nacharbeiter || null);
                   setZurueck(null);
                 } finally {
                   setSendet(false);

@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.371.1] - 2026-10-16
+
+### Geändert
+- Projekte: Beim **Zurückgeben** wählst du, wer nacharbeitet. Ist der bisherige Agent nicht mehr
+  im Projekt, geht die Nacharbeit an den Lead (er verteilt) statt mit einem Fehler zu enden.
+- Projekte: Der Raum wächst auf breiten Bildschirmen nicht mehr endlos mit, sondern bleibt
+  höchstens 34rem hoch und mittig.
+
+---
+
 ## [1.371.0] - 2026-10-16
 
 ### Neu — das Projekt wird zum Arbeitsraum
