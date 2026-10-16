@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.374.2] - 2026-10-16
+
+### Behoben — adaptiver Takt
+- **Ein pausierter Zeitplan wird nicht mehr langsamer.** Meldete ein noch laufender Auftrag
+  eines gerade pausierten Beobachters „nichts zu tun", zählte der Leerlaufzähler weiter. Wer
+  einen Zeitplan eine Woche pausierte, bekam ihn im 8-Stunden-Takt zurück — ohne dass
+  dazwischen ein einziger Lauf stattgefunden hatte. Eine Meldung „habe gearbeitet" wirkt
+  weiterhin und stellt den Grundtakt her.
+- **Die eigene Stufenleiter ist jetzt auch lesbar.** Sie ließ sich setzen, aber nicht wieder
+  abfragen: Ein Agent wusste nach einem Neustart nicht mehr, welche Leiter er sich gegeben
+  hatte. Sie steht nun in der Zeitplan-Antwort und in der Zeitplan-Liste der Agenten. Eine
+  unbrauchbare Altzeile lässt die Liste dabei nicht scheitern, sondern gilt als „Standardleiter".
+- **Der Grund für einen unveränderten Takt wird genannt.** Bei einem Cron-Zeitplan oder einem
+  pausierten Zeitplan stand bisher nur „Takt unverändert" ohne Begründung.
+
+### Intern
+- Die beiden Präfixlisten für Plattform-Zeitpläne bleiben bewusst getrennt — sie beantworten
+  verschiedene Fragen, und eine Zusammenlegung hätte beim Abschalten der Eigeninitiative
+  Tagesplan-Blöcke und Projekt-Arbeitstakte mitgelöscht. Zwei Tests halten das jetzt fest.
+
+---
+
 ## [1.374.1] - 2026-10-16
 
 ### Behoben

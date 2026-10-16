@@ -63,6 +63,18 @@ MAX_SCHWELLE = 50
 #: adaptiv dort verboten (#941, Punkt 4). Das Praefix steht hier woertlich und
 #: nicht als Import, damit dieses Modul ohne Projekt-Modell ladbar bleibt;
 #: ``test_report_run_zeitplan`` haelt es gegen ``projekt_takt.TAKT_PRAEFIX``.
+#:
+#: NICHT mit ``task_router.SYSTEM_ZEITPLAN_PRAEFIXE`` zusammenlegen, obwohl
+#: beide Listen gleich aussehen: Jene beantwortet „legt die Plattform diesen
+#: Zeitplan je Agent SELBST an" und steuert ueber
+#: ``eigeninitiative._system_zeitplan_filter`` eine **Loeschung** (dort werden
+#: alle Treffer entfernt, sobald ein Agent keine Bereiche oder keine
+#: Eigeninitiative mehr hat). Stuende ``[Plan]``/``[Projekt]`` dort mit drin,
+#: wuerden Tagesplan-Bloecke und Projekt-Arbeitstakte dabei mitgeloescht.
+#: Diese Liste hier beantwortet nur „fuehrt die Plattform den TAKT selbst" und
+#: verbietet daraufhin ``adaptive``. Die Abgrenzung haelt
+#: ``test_report_run_zeitplan.test_die_beiden_praefixlisten_bleiben_getrennt``
+#: fest (#946, Punkt 6).
 FREMDGETAKTETE_PRAEFIXE = ("[Proactive]", "[Rhythmus]", "[Plan]", "[Projekt]")
 
 

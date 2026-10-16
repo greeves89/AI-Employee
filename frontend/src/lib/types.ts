@@ -247,6 +247,8 @@ export interface Schedule {
   adaptive?: boolean;
   /** Grundtakt in Sekunden, auf den ein Lauf mit Arbeit zurückstellt. */
   basis_intervall_s?: number | null;
+  /** Eigene Stufenleiter in Sekunden, falls gesetzt (null = Standardleiter). */
+  stufen?: number[] | null;
   /** Leere Läufe hintereinander, bevor es langsamer wird (Standard 3). */
   leer_schwelle?: number;
   /** Leere Läufe in Folge. */

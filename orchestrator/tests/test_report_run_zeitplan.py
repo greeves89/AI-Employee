@@ -359,6 +359,44 @@ class DenEigenenTaktAendern(_Basis):
         self.assertEqual(frisch.stufen, [1800, 3600])
         self.assertEqual(frisch.leer_schwelle, 2)
 
+    async def test_die_eigene_stufenleiter_ist_auch_lesbar(self):
+        """#946, Punkt 2: ``stufen`` war schreib-, aber nicht lesbar — ein Agent
+        wusste nach einem Neustart nicht, welche Leiter er gesetzt hatte."""
+        leiter = [1800, 3600, 7200]
+        plan = await self._zeitplan(adaptive=True, basis_intervall_s=1800)
+        antwort = await self._aendern(plan.id, stufen=leiter)
+        self.assertEqual(antwort.stufen, leiter)
+        # Und die Leseseite liefert sie auch beim Auflisten — dort holt sie ein
+        # frisch geladener Zeitplan, nicht das Objekt des Schreibaufrufs.
+        async with self.Session() as db:
+            liste = await api.list_schedules(user=self.agent, db=db)
+        meiner = next(p for p in liste.schedules if p.id == plan.id)
+        self.assertEqual(meiner.stufen, leiter)
+
+    async def test_ohne_eigene_leiter_bleibt_das_feld_leer(self):
+        """Gegenprobe: ``None`` heisst "Standardleiter" und wird nicht geraten —
+        sonst wuerde der Test oben auch gruen bleiben, wenn die Antwort einfach
+        immer die Standardleiter zurueckgibt."""
+        plan = await self._zeitplan(adaptive=True, basis_intervall_s=1800)
+        antwort = await self._aendern(plan.id, leer_schwelle=2)
+        self.assertIsNone(antwort.stufen)
+
+    async def test_kaputte_stufen_in_der_datenbank_reissen_die_liste_nicht(self):
+        """#946, Punkt 2: Die neue Leseseite darf nicht strenger sein als
+        ``stufen_von``. Eine von Hand verbogene Zeile liesse sonst
+        ``GET /schedules/`` fuer die GANZE Liste scheitern — bei einem Verwalter
+        also fuer alle Zeitplaene der Anlage."""
+        plan = await self._zeitplan(adaptive=True, basis_intervall_s=1800)
+        for kaputt in ({"a": 1}, "kaputt", [7200, 1800], [], [0], 1800):
+            async with self.Session() as db:
+                frisch = await db.get(Schedule, plan.id)
+                frisch.stufen = kaputt
+                await db.commit()
+            async with self.Session() as db:
+                liste = await api.list_schedules(user=self.agent, db=db)
+            meiner = next(p for p in liste.schedules if p.id == plan.id)
+            self.assertIsNone(meiner.stufen, f"{kaputt!r} haette None ergeben muessen")
+
     async def test_unsinnige_stufenleiter_kommt_nicht_durch(self):
         with self.assertRaises(Exception):
             ScheduleUpdate(stufen=[7200, 1800])
@@ -921,6 +959,38 @@ class EinGefuehrterZeitplanBehaeltSeinenNamen(_Basis):
         self.assertTrue(adaptiver_takt.fremdgetaktet("[Plan] 09:00 Irgendwas"))
         # Und die Liste enthaelt nichts, was gar nicht gefuehrt wird.
         self.assertFalse(adaptiver_takt.fremdgetaktet("PR-Beobachter"))
+
+    def test_die_beiden_praefixlisten_bleiben_getrennt(self):
+        """#946, Punkt 6: ``FREMDGETAKTETE_PRAEFIXE`` und
+        ``task_router.SYSTEM_ZEITPLAN_PRAEFIXE`` sehen gleich aus, beantworten
+        aber verschiedene Fragen — und die Versuchung, sie "zu vereinheitlichen",
+        ist die eigentliche Gefahr: Ein Treffer in der zweiten Liste bedeutet
+        "gehoert der Eigeninitiative-Verwaltung" und wird von
+        ``eigeninitiative.abgleichen`` GELOESCHT, sobald der Agent keine
+        Verantwortungsbereiche mehr hat. Stuenden ``[Plan]`` und ``[Projekt]``
+        dort mit drin, verlor ein Agent beim Abschalten der Eigeninitiative
+        seine Tagesplan-Bloecke und den Arbeitstakt jedes Projekts.
+        """
+        from app.core import adaptiver_takt
+        from app.core.task_router import SYSTEM_ZEITPLAN_PRAEFIXE, ist_system_zeitplan
+
+        # Die Takt-Sperre ist die WEITERE der beiden.
+        gesperrt = {p.strip() for p in adaptiver_takt.FREMDGETAKTETE_PRAEFIXE}
+        verwaltet = {p.strip() for p in SYSTEM_ZEITPLAN_PRAEFIXE}
+        self.assertTrue(
+            verwaltet < gesperrt,
+            "SYSTEM_ZEITPLAN_PRAEFIXE muss echte Teilmenge von "
+            f"FREMDGETAKTETE_PRAEFIXE sein: {verwaltet} vs. {gesperrt}",
+        )
+        # Und zwar genau um diese beiden Besitzer, die die Plattform NICHT je
+        # Agent anlegt und darum auch nicht loeschen darf.
+        self.assertEqual(gesperrt - verwaltet, {"[Plan]", "[Projekt]"})
+        for fremder in ("[Plan] 09:00 Irgendwas", "[Projekt] Ein Projekt"):
+            self.assertTrue(adaptiver_takt.fremdgetaktet(fremder))
+            self.assertFalse(
+                ist_system_zeitplan(fremder),
+                f"{fremder!r} wuerde von eigeninitiative.abgleichen geloescht",
+            )
 
     async def test_mit_gefuehrtem_praefix_anlegen_wird_abgelehnt(self):
         """Dieselbe Reservierung beim Anlegen — vorher nur gegen ``adaptive``

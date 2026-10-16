@@ -391,6 +391,12 @@ async def _build_approval_rules_prefix(db: AsyncSession, agent_id: str) -> str:
 
 
 
+#: Zeitplaene, die die Plattform je Agent SELBST anlegt und wieder entfernt.
+#: Absichtlich kuerzer als ``adaptiver_takt.FREMDGETAKTETE_PRAEFIXE``: Ein
+#: Treffer hier bedeutet „gehoert der Eigeninitiative-Verwaltung" und wird von
+#: ``eigeninitiative.abgleichen`` geloescht, wenn der Agent keine Bereiche mehr
+#: hat. ``[Plan]``- und ``[Projekt]``-Zeitplaene gehoeren anderen Besitzern und
+#: duerfen deshalb hier NICHT auftauchen (#946, Punkt 6).
 SYSTEM_ZEITPLAN_PRAEFIXE = ("[Proactive] ", "[Rhythmus] ")
 
 
