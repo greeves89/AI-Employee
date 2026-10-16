@@ -6,12 +6,17 @@ verhinderte der Zustand, der aufgeraeumt werden musste.
 Muster wie ``copy_workspace_volume``: ein kurzlebiger Helfer-Container, der
 NUR das Volume mountet) — braucht den Agenten-Container selbst nicht.
 """
+import unittest
+
 from app.services.docker_service import DockerService
 
 
 class _FakeContainersApi:
-    def __init__(self, output=b"42\n", raise_on_run=False):
+    def __init__(self, output=b"42\n", raise_on_run=False, outputs=None):
+        # ``outputs``: je Helfer-Lauf eine eigene Ausgabe (erst Worktree-Lauf,
+        # dann Cache/Log-Lauf) — ``output`` gilt fuer alle Laeufe.
         self._output = output
+        self._outputs = list(outputs) if outputs is not None else None
         self._raise_on_run = raise_on_run
         self.run_calls = []
 
@@ -19,6 +24,8 @@ class _FakeContainersApi:
         self.run_calls.append(kwargs)
         if self._raise_on_run:
             raise RuntimeError("docker daemon unreachable")
+        if self._outputs is not None:
+            return self._outputs.pop(0) if self._outputs else b""
         return self._output
 
 
@@ -66,3 +73,52 @@ def test_a_failed_helper_run_returns_none_not_raises():
 def test_unparseable_output_returns_none():
     svc = _service(output=b"")
     assert svc.cleanup_workspace_volume("workspace-a1") is None
+
+
+class ProtokollDesWorktreeLaufsTests(unittest.TestCase):
+    """Issue #968 Punkt 2: der ``GIT_FEHLER``-Zweig aus #967 war ungetestet.
+
+    Ein fehlgeschlagener git-Aufruf im Aufraeumlauf laesst die Worktree stehen
+    (sichere Richtung) und ist damit genau die Art Fehler, die man nur merkt,
+    wenn sie protokolliert wird — sonst sieht niemand, dass hier seit Wochen
+    nichts mehr aufgeraeumt wird. Geprueft wird deshalb der WARNING selbst, nicht
+    die Schreibweise der Zeile.
+    """
+
+    def _lauf(self, prune_ausgabe: bytes):
+        svc = _service(outputs=[prune_ausgabe, b"42\n"])
+        with self.assertLogs("app.services.docker_service", level="INFO") as protokoll:
+            ergebnis = svc.cleanup_workspace_volume("workspace-a1")
+        return ergebnis, protokoll.output
+
+    def test_eine_git_fehler_zeile_wird_als_warnung_protokolliert(self):
+        ergebnis, zeilen = self._lauf(b"GIT_FEHLER /workspace/projects/wt-x: rc=128 dubious ownership\n")
+
+        warnungen = [z for z in zeilen if z.startswith("WARNING")]
+        self.assertTrue(warnungen, f"keine Warnung protokolliert: {zeilen}")
+        self.assertIn("wt-x", warnungen[0])
+        self.assertEqual(ergebnis, 42, "der Cache/Log-Lauf muss trotzdem weiterlaufen")
+
+    def test_eine_pruned_zeile_ist_kein_fehler_sondern_eine_meldung(self):
+        """Trennschaerfe: ein Zweig, der JEDE Zeile warnt, wuerde den Test oben
+        auch gruen faerben — hier muss der Erfolgsfall INFO bleiben."""
+        _, zeilen = self._lauf(b"PRUNED /workspace/projects/wt-y (branch fix/x)\n")
+
+        self.assertEqual([z for z in zeilen if z.startswith("WARNING")], [])
+        self.assertTrue([z for z in zeilen if z.startswith("INFO") and "wt-y" in z],
+                        f"Erfolg nicht protokolliert: {zeilen}")
+
+    def test_beide_zeilenarten_in_einem_lauf_landen_getrennt(self):
+        _, zeilen = self._lauf(b"PRUNED /workspace/projects/wt-y\nGIT_FEHLER /workspace/projects/wt-z: rc=1\n")
+
+        self.assertEqual(len([z for z in zeilen if z.startswith("WARNING")]), 1, zeilen)
+        self.assertEqual(len([z for z in zeilen if z.startswith("INFO")]), 1, zeilen)
+
+    def test_unbekannte_zeilen_erzeugen_kein_rauschen(self):
+        svc = _service(outputs=[b"irgendwas\n\n", b"42\n"])
+        with self.assertNoLogs("app.services.docker_service", level="INFO"):
+            self.assertEqual(svc.cleanup_workspace_volume("workspace-a1"), 42)
+
+
+if __name__ == "__main__":
+    unittest.main()
