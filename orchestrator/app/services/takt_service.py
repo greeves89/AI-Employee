@@ -161,8 +161,10 @@ async def zeitplan_des_laufs(
 def takt_anwenden(schedule: Schedule, ergebnis: str, jetzt: datetime | None = None) -> dict:
     """Die Meldung auf den Zeitplan anwenden. Gibt die Veraenderung zurueck.
 
-    Zaehler und Stufe werden IMMER gefuehrt, sobald der Zeitplan adaptiv ist —
-    auch wenn sich das Intervall dadurch (noch) nicht aendert. ``next_run_at``
+    Zaehler und Stufe werden gefuehrt, sobald der Zeitplan adaptiv ist — auch
+    wenn sich das Intervall dadurch (noch) nicht aendert. Ausnahme: Ein
+    pausierter Zeitplan wird von einem LEEREN Lauf nicht weiter verlangsamt
+    (#946, Punkt 1). ``next_run_at``
     wird nur angefasst, wenn der Takt tatsaechlich wechselt: Sonst wanderte die
     Phase des Zeitplans bei jeder Meldung ein Stueck weiter.
     """
@@ -181,6 +183,32 @@ def takt_anwenden(schedule: Schedule, ergebnis: str, jetzt: datetime | None = No
             "hinweis": (
                 "Dieser Zeitplan ist nicht adaptiv — der Takt bleibt, wie er ist. "
                 "Mit update_schedule(adaptive=true) stellst du ihn um."
+            ),
+        }
+    if ist_leer(ergebnis) and not getattr(schedule, "enabled", True):
+        # Ein pausierter Zeitplan laeuft nicht — ein LEERER Lauf, der ihn
+        # trotzdem erreicht (ein noch fliegender Auftrag des letzten Laufs),
+        # darf ihn nicht weiter verlangsamen. Sonst kaeme ein eine Woche
+        # pausierter Beobachter im 8-Std-Takt zurueck, ohne dass dazwischen ein
+        # einziger Lauf stattgefunden hat (#946, Punkt 1).
+        #
+        # ``worked`` laeuft bewusst WEITER durch: Es stellt auf den Grundtakt
+        # zurueck, also in die ungefaehrliche Richtung, und ``resume_schedule``
+        # rechnet ``next_run_at`` ohnehin neu aus ``interval_seconds``. Wird die
+        # Meldung hier verschluckt, bekommt der Betreiber einen Beobachter mit
+        # 8 Std Erstlauf zurueck, obwohl der letzte Lauf Arbeit gefunden hat —
+        # dieselbe Entscheidung wie in ``schon_gemeldet``.
+        return {
+            "adaptive": True,
+            "geaendert": False,
+            "ergebnis": ergebnis,
+            "intervall_vorher_s": vorher,
+            "intervall_s": vorher,
+            "leerlaeufe": int(getattr(schedule, "leerlaeufe", 0) or 0),
+            "stufe": int(getattr(schedule, "stufe", 0) or 0),
+            "hinweis": (
+                "Dieser Zeitplan ist pausiert — der Takt bleibt stehen, bis er "
+                "wieder eingeschaltet wird."
             ),
         }
     if schedule.cron_expression or not schedule.interval_seconds:

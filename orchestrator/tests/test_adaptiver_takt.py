@@ -42,6 +42,7 @@ class _Zeitplan:
         self.leer_schwelle = LEER_SCHWELLE_STANDARD
         self.leerlaeufe = 0
         self.stufe = 0
+        self.enabled = True
         self.cron_expression = None
         self.last_run_at = datetime(2026, 10, 15, 8, 0, tzinfo=timezone.utc)
         self.next_run_at = self.last_run_at + timedelta(seconds=1800)
@@ -121,6 +122,64 @@ class GegenprobeOhneFeature(unittest.TestCase):
         wechsel = takt_anwenden(_Zeitplan(adaptive=False), "idle")
         self.assertIn("nicht adaptiv", wechsel["hinweis"])
         self.assertIn("update_schedule", wechsel["hinweis"])
+
+    def test_pausierter_zeitplan_wird_nicht_umgetaktet(self):
+        """#946, Punkt 1: Ein pausierter Zeitplan laeuft nicht — also darf eine
+        Meldung seinen Takt auch nicht weiterdrehen. Sonst kommt ein eine Woche
+        pausierter Beobachter im 8-Std-Takt zurueck, ohne einen einzigen Lauf."""
+        plan = _Zeitplan(enabled=False)
+        anker = plan.next_run_at
+        for ergebnis in ["idle"] * 6:
+            wechsel = takt_anwenden(plan, ergebnis)
+            self.assertFalse(wechsel["geaendert"])
+        # Weder Takt noch Zaehler noch Phase haben sich bewegt.
+        self.assertEqual(plan.interval_seconds, 1800)
+        self.assertEqual((plan.leerlaeufe, plan.stufe), (0, 0))
+        self.assertEqual(plan.next_run_at, anker)
+        self.assertIn("pausiert", wechsel["hinweis"])
+
+    def test_pausiert_aber_worked_stellt_trotzdem_zurueck(self):
+        """Die Pause verschluckt nur LEERE Meldungen. ``worked`` wirkt weiter —
+        sonst bekaeme der Betreiber einen Beobachter mit 8-Std-Erstlauf zurueck,
+        obwohl der letzte Lauf Arbeit gefunden hat (``resume_schedule`` rechnet
+        ``next_run_at`` aus ``interval_seconds``). Ohne diesen Test ist die
+        Bedingung ``ist_leer(ergebnis) and not enabled`` von ``not enabled``
+        allein nicht zu unterscheiden."""
+        plan = _Zeitplan(enabled=True)
+        for _ in range(4):
+            takt_anwenden(plan, "idle")
+        self.assertEqual(plan.interval_seconds, 14400)
+        plan.enabled = False
+        wechsel = takt_anwenden(plan, "worked")
+        self.assertTrue(wechsel["geaendert"])
+        self.assertEqual(plan.interval_seconds, 1800)
+        self.assertEqual((plan.leerlaeufe, plan.stufe), (0, 0))
+
+    def test_pausiert_und_nicht_adaptiv_meldet_nicht_adaptiv(self):
+        """Reihenfolge der Abbruchzweige: ``adaptive`` wird VOR der Pause
+        geprueft. Sonst meldete ein nicht adaptiver, pausierter Zeitplan
+        ``adaptive: true`` — und beide Clients schalten daran ihre Ausgabe um."""
+        wechsel = takt_anwenden(_Zeitplan(adaptive=False, enabled=False), "idle")
+        self.assertFalse(wechsel["adaptive"])
+        self.assertIn("nicht adaptiv", wechsel["hinweis"])
+
+    def test_eingeschaltet_taktet_weiterhin_um(self):
+        """Gegenprobe zur Pause: ``enabled=True`` aendert nichts am Verhalten —
+        sonst wuerde der Test oben auch gruen bleiben, wenn der neue Zweig
+        JEDE Meldung abfaengt."""
+        plan = _Zeitplan(enabled=True)
+        for ergebnis in ["idle"] * 4:
+            takt_anwenden(plan, ergebnis)
+        self.assertEqual(plan.interval_seconds, 14400)
+        self.assertEqual(plan.leerlaeufe, 4)
+
+    def test_ohne_das_feld_gilt_der_zeitplan_als_aktiv(self):
+        """Ein Objekt ohne ``enabled`` (aeltere Aufrufer, Testdoppel) darf nicht
+        still als pausiert gelten — das waere die Pause fuer alle."""
+        plan = _Zeitplan()
+        del plan.enabled
+        takt_anwenden(plan, "idle")
+        self.assertEqual(plan.leerlaeufe, 1)
 
     def test_cron_zeitplan_wird_nicht_umgetaktet(self):
         """Adaptiv gilt nur für Intervall-Zeitpläne (#941, Abgrenzung)."""

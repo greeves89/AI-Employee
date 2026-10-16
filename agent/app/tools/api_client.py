@@ -806,7 +806,22 @@ class OrchestratorAPIClient:
                 else f"every {s.get('interval_seconds', '?')}s"
             )
             next_run = f", next {s.get('next_run_at')}" if s.get("next_run_at") else ""
-            lines.append(f"- {s.get('name', '?')} ({active}, {timing}{next_run}, id: {s.get('id')})")
+            # Der adaptive Takt gehoert in die Zeile, sonst ist er fuer den
+            # Agenten unsichtbar: „welche Stufenleiter habe ich gesetzt" war
+            # nach einem Neustart nicht mehr beantwortbar (#946, Punkt 2).
+            adaptiv = ""
+            if s.get("adaptive"):
+                adaptiv = ", adaptive"
+                if s.get("basis_intervall_s"):
+                    adaptiv += f" (base {s['basis_intervall_s']}s"
+                    if s.get("stufen"):
+                        adaptiv += f", steps {s['stufen']}"
+                    adaptiv += ")"
+                elif s.get("stufen"):
+                    adaptiv += f" (steps {s['stufen']})"
+            lines.append(
+                f"- {s.get('name', '?')} ({active}, {timing}{next_run}{adaptiv}, id: {s.get('id')})"
+            )
         return "\n".join(lines)
 
     async def manage_schedule(self, params: dict) -> str:
@@ -848,9 +863,14 @@ class OrchestratorAPIClient:
             if result.get("geaendert")
             else f"tempo unchanged ({result.get('intervall_s')}s)"
         )
+        # Der Hinweis gehoert auch in den adaptiven Zweig: Die Abbruchgruende
+        # (Cron-Zeitplan, pausiert) melden adaptive=true und stehen sonst ohne
+        # Begruendung als „tempo unchanged" da (#946, Punkt 1).
+        hinweis = f" {result.get('hinweis')}" if result.get("hinweis") else ""
         return (
             f"Reported '{outcome}' for '{result.get('name')}' — {wechsel}, "
-            f"{result.get('leerlaeufe')} empty run(s) in a row, next: {result.get('next_run_at')}"
+            f"{result.get('leerlaeufe')} empty run(s) in a row, "
+            f"next: {result.get('next_run_at')}.{hinweis}"
         )
 
     async def update_schedule(self, params: dict) -> str:

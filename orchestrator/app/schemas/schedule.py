@@ -215,6 +215,15 @@ class ScheduleResponse(BaseModel):
     # ── Adaptiver Takt (#941) ───────────────────────────────────────────────
     adaptive: bool = False
     basis_intervall_s: int | None = None
+    #: Die GESPEICHERTE eigene Stufenleiter, falls eine gesetzt ist (``None`` =
+    #: Standardleiter). Schreibbar war sie seit #941, lesbar nicht — ein Agent,
+    #: der sie selbst gesetzt hat, wusste nach einem Neustart nicht mehr, welche
+    #: (#946, Punkt 2). Bewusst die gespeicherte und nicht die WIRKSAME: Letztere
+    #: haengt am Grundtakt (``adaptiver_takt.stufen_von`` streicht jede Stufe,
+    #: die nicht langsamer als der Grundtakt ist) und steht als ``stufen_s`` in
+    #: der Antwort von ``report_run``. Hier lautet die Frage „welche habe ich
+    #: gesetzt", dort „welche gilt".
+    stufen: list[int] | None = None
     leer_schwelle: int = 3
     leerlaeufe: int = 0
     stufe: int = 0
@@ -225,6 +234,25 @@ class ScheduleResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("stufen", mode="before")
+    @classmethod
+    def lies_stufen(cls, v):
+        """Unbrauchbares faellt auf ``None`` zurueck, statt die Antwort zu reissen.
+
+        Dieselbe Hausregel wie ``adaptiver_takt.stufen_von``: Was in der
+        Datenbank steht, hat die Pruefung beim Schreiben bestanden — Altbestand
+        oder von Hand Verbogenes aber nicht. Ohne diesen Rueckfall liesse eine
+        einzige kaputte Zeile ``GET /schedules/`` fuer die GANZE Liste
+        scheitern, bei einem Verwalter also fuer alle Zeitplaene der Anlage.
+        """
+        if v is None:
+            return None
+        from app.core.adaptiver_takt import stufen_pruefen
+        try:
+            return stufen_pruefen(v)
+        except (ValueError, TypeError):
+            return None
 
     @classmethod
     def from_schedule(cls, schedule) -> "ScheduleResponse":
@@ -254,6 +282,7 @@ class ScheduleResponse(BaseModel):
             takt=describe_schedule(schedule),
             adaptive=bool(getattr(schedule, "adaptive", False)),
             basis_intervall_s=getattr(schedule, "basis_intervall_s", None),
+            stufen=getattr(schedule, "stufen", None) or None,
             leer_schwelle=getattr(schedule, "leer_schwelle", None) or 3,
             leerlaeufe=getattr(schedule, "leerlaeufe", None) or 0,
             stufe=getattr(schedule, "stufe", None) or 0,

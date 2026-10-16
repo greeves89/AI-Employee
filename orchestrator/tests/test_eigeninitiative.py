@@ -170,6 +170,32 @@ class Abgleichen(_DbBasis):
         self.assertEqual([s.id for s in await self._zeitplaene()], ["eigen"])
         self.assertNotIn("schedule_id", (await self._config())["proactive"])
 
+    async def test_fremde_plattform_zeitplaene_ueberleben_den_abgleich(self):
+        """#946, Punkt 6: Die eigentliche Gefahr hinter den zwei Praefixlisten.
+
+        ``abgleichen`` LOESCHT alles, was ``_system_zeitplan_filter`` trifft,
+        sobald ein Agent keine Verantwortungsbereiche mehr hat. Wuerde man
+        ``SYSTEM_ZEITPLAN_PRAEFIXE`` mit der weiteren Liste
+        ``adaptiver_takt.FREMDGETAKTETE_PRAEFIXE`` "vereinheitlichen" (so der
+        Vorschlag im Issue), verlore der Agent dabei seine Tagesplan-Bloecke und
+        den Arbeitstakt jedes Projekts. Dieser Test faerbt rot, bevor das
+        passiert — der Mengenvergleich der Konstanten allein tut das nicht.
+        """
+        await self._agent(config=_cfg(bereiche=BEREICHE))
+        async with self.Session() as db:
+            for kennung, name in (("plan", "[Plan] 09:00 Blockarbeit"),
+                                  ("projekt", "[Projekt] Kundenprojekt")):
+                db.add(Schedule(id=kennung, name=name, prompt="x", interval_seconds=1800,
+                                agent_id="a1", enabled=True,
+                                next_run_at=datetime.now(UTC) + timedelta(hours=1)))
+            await db.commit()
+        await self._abgleichen()
+        # Jetzt alle Bereiche weg: die System-Zeitplaene gehen, die fremden bleiben.
+        await self._setze_config(_cfg(bereiche=[]))
+        await self._abgleichen()
+        self.assertEqual(await self._system(), [])
+        self.assertEqual(sorted(s.id for s in await self._zeitplaene()), ["plan", "projekt"])
+
     async def test_abgeschalteter_rhythmus_bleibt_aus(self):
         await self._agent(config=_cfg(bereiche=BEREICHE))
         await self._abgleichen()

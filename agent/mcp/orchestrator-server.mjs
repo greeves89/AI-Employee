@@ -2216,7 +2216,18 @@ export function buildServer() {
               ? `cron ${s.cron_expression}`
               : `every ${s.interval_seconds}s`;
             const next = s.next_run_at ? `, next ${s.next_run_at}` : "";
-            return `[${status}] #${s.id}: ${s.name} (${timing}${next})`;
+            // Der adaptive Takt gehoert in die Zeile, sonst ist er fuer den
+            // Agenten unsichtbar: "welche Stufenleiter habe ich gesetzt" war
+            // nach einem Neustart nicht mehr beantwortbar (#946, Punkt 2).
+            let adaptiv = "";
+            if (s.adaptive) {
+              adaptiv = ", adaptive";
+              const teile = [];
+              if (s.basis_intervall_s) teile.push(`base ${s.basis_intervall_s}s`);
+              if (s.stufen?.length) teile.push(`steps [${s.stufen.join(", ")}]`);
+              if (teile.length) adaptiv += ` (${teile.join(", ")})`;
+            }
+            return `[${status}] #${s.id}: ${s.name} (${timing}${next}${adaptiv})`;
           }
         );
         return {
@@ -2270,8 +2281,12 @@ export function buildServer() {
         return {
           content: [{
             type: "text",
+            // Der Hinweis gehoert auch in den adaptiven Zweig: Die
+            // Abbruchgruende (Cron-Zeitplan, pausiert) melden adaptive=true und
+            // stehen sonst ohne Begruendung als "Tempo unchanged" da (#946, Punkt 1).
             text: `Reported "${args.outcome}" for "${result.name}". ${wechsel}. ` +
-              `Now: ${takt}. Empty runs in a row: ${result.leerlaeufe}. Next run: ${result.next_run_at}.`,
+              `Now: ${takt}. Empty runs in a row: ${result.leerlaeufe}. Next run: ${result.next_run_at}.` +
+              (result.hinweis ? ` ${result.hinweis}` : ""),
           }],
         };
       }
