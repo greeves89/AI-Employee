@@ -395,6 +395,18 @@ async def _validate_probation_skills(db: AsyncSession) -> None:
 
         probation_start_aware = probation_start.replace(tzinfo=timezone.utc) if probation_start.tzinfo is None else probation_start
 
+        # Seit der Freigabe noch einmal geaendert (Agent, Admin)? Dann prueft die
+        # Probezeit nicht mehr die Verbesserung, und ein Rueckbau loeschte die
+        # neuere Korrektur gleich mit (core/skill_herkunft). Probezeit beenden.
+        from app.core.skill_herkunft import nach_freigabe_geaendert
+        if await nach_freigabe_geaendert(db, skill.id, probation_start_aware):
+            skill.improvement_status = None
+            logger.info(
+                f"[ImprovementEngine] Skill '{skill.name}' (id={skill.id}): nach der Freigabe "
+                "erneut geaendert — Probezeit ohne Rueckbau beendet"
+            )
+            continue
+
         # Count rated usages since probation started
         post_improvement = (await db.execute(
             select(

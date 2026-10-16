@@ -474,6 +474,7 @@ class SkillCrawlerService:
                 imported = 0
                 blocked = 0
                 uebersprungen_eigene = 0
+                lokal_behalten = 0
                 for s in skills:
                     # #192/#371: crawled skills are executable instruction text — gate them
                     # exactly like API-imported skills.
@@ -505,6 +506,12 @@ class SkillCrawlerService:
                                          s["name"])
                             continue
                         if s.get("content") and s["content"] != existing.content:
+                            # Hier korrigiert (Agent, Admin)? Dann gewinnt die
+                            # Korrektur — sonst setzte jeder Crawl sie zurück.
+                            from app.core.skill_herkunft import lokal_geaendert
+                            if await lokal_geaendert(db, existing.id):
+                                lokal_behalten += 1
+                                continue
                             existing.content = s["content"]
                             existing.description = s.get("description", existing.description)
                     else:
@@ -525,6 +532,9 @@ class SkillCrawlerService:
                         ))
                         imported += 1
                 await db.commit()
+                if lokal_behalten:
+                    logger.info("Skill crawler: %d importierte Skills hier korrigiert — lokale Fassung behalten, Quelle nicht übernommen",
+                                lokal_behalten)
                 if imported or blocked or uebersprungen_eigene:
                     logger.info("Skill crawler: imported %d new, %d blocked by security gate, "
                                 "%d skipped (name belongs to a self-created skill)",

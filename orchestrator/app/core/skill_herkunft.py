@@ -94,3 +94,49 @@ def risiko_hinweise(content: str | None, art: str) -> list[str]:
         if muster.search(probe):
             hinweise.append(text)
     return hinweise
+
+
+# ── Auf dieser Anlage verändert? (Korrekturen bleiben erhalten) ──────────────
+#
+# Mitgelieferte Skills (``mitgelieferte_skills``) und aus Git-Quellen importierte
+# (``skill_crawler``) wurden bei jedem Abgleich auf den Stand der Quelle gesetzt,
+# sobald sich der Inhalt unterschied — also auch nach jeder bewussten Korrektur
+# durch einen Agenten (``skill_update``) oder einen Admin. Der Abgleich lief beim
+# Start des Orchestrators (jedes Deploy) und wöchentlich; eine Korrektur hielt so
+# oft nur Stunden. Gemeldet: ein Agent machte zwei Tage nach seiner Korrektur
+# wieder denselben Fehler.
+#
+# Jede Änderung auf der Anlage legt vorher einen ``SkillVersion``-Schnappschuss an
+# (Oberfläche, Agent, freigegebene Verbesserung, Rücksprung auf eine Version). Gibt
+# es solche Schnappschüsse, ist der Skill hier verändert worden — dann gewinnt die
+# lokale Fassung, und der Abgleich lässt ihn stehen.
+
+#: Grund des Schnappschusses, den die Freigabe eines Verbesserungsvorschlags anlegt.
+#: Er markiert den Beginn der Probezeit, ist also keine spätere Änderung.
+FREIGABE_SCHNAPPSCHUSS = "Pre-improvement snapshot (proposal approved)"
+
+
+async def lokal_geaendert(db, skill_id: int) -> bool:
+    """Wurde der Skill auf dieser Anlage je verändert (Schnappschuss vorhanden)?"""
+    from sqlalchemy import exists, select
+
+    from app.models.skill import SkillVersion
+
+    return bool(await db.scalar(select(exists().where(SkillVersion.skill_id == skill_id))))
+
+
+async def nach_freigabe_geaendert(db, skill_id: int, seit) -> bool:
+    """Wurde der Skill seit Beginn der Probezeit noch einmal verändert?
+
+    Dann prüft die Probezeit nicht mehr die freigegebene Verbesserung, sondern
+    einen neueren Stand — ein Rückbau würde diese neuere Korrektur löschen.
+    """
+    from sqlalchemy import exists, select
+
+    from app.models.skill import SkillVersion
+
+    return bool(await db.scalar(select(exists().where(
+        SkillVersion.skill_id == skill_id,
+        SkillVersion.created_at >= seit,
+        SkillVersion.change_reason.is_distinct_from(FREIGABE_SCHNAPPSCHUSS),
+    ))))

@@ -164,12 +164,22 @@ def _decide_for(category: str, *, label: str) -> dict:
 # Shell-Werkzeuge, deren Befehl zusaetzlich gegen die command_policies laeuft.
 _SHELL_WERKZEUGE = frozenset({"Bash", "exec_command", "shell_command", "local_shell", "write_stdin"})
 
-# Konfiguration der Laufzeit selbst: dort stehen ihre Hooks — bei Claude Code
-# auch genau dieser Gate-Hook (/workspace/.claude/settings.json). Wer dort
-# schreiben darf, kann das Gate entfernen oder eigene Kommando-Hooks anlegen
-# (live geprueft: Codex fuehrt /workspace/.codex/hooks.json aus). Schreiben dort
-# ist deshalb "Pakete / Config" (system_config), nicht "Dateien schreiben".
-_LAUFZEIT_KONFIG = re.compile(r"(^|[\\/])\.(claude|codex)([\\/]|$)")
+# Dateien, mit denen die Laufzeit selbst Befehle startet: Hooks (bei Claude Code
+# steht dort auch genau dieser Gate-Hook, /workspace/.claude/settings.json),
+# Codex-Konfiguration und -Hooks (live geprueft: Codex fuehrt
+# /workspace/.codex/hooks.json aus) und Projekt-MCP-Server (.mcp.json startet
+# Programme). Wer dort schreiben darf, kann das Gate entfernen oder eigene
+# Befehle ausfuehren lassen. Schreiben dort ist deshalb "Pakete / Config"
+# (system_config), nicht "Dateien schreiben".
+# NICHT gemeint: .claude/skills/, .claude/commands/ u. a. — reine Anleitungen,
+# dort legen Agenten ihre Skills dauerhaft im Arbeitsordner ab.
+_LAUFZEIT_KONFIG = re.compile(
+    r"(^|[\\/])("
+    r"\.claude[\\/]settings[^\\/]*\.json"
+    r"|\.codex([\\/]|$)"
+    r"|\.mcp\.json"
+    r")$|(^|[\\/])\.codex[\\/]"
+)
 _PATCH_ZIEL = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.M)
 _SCHREIBWERKZEUGE = frozenset({
     "Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch",

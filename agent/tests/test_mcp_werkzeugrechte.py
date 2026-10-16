@@ -177,6 +177,16 @@ class LaufzeitKonfigurationIstGeschuetzt(unittest.TestCase):
     def test_ohne_regeln_bleibt_alles_frei(self):
         self.assertEqual(self._nativ("Write", {"file_path": "/workspace/.claude/settings.json"}, None), "allow")
 
+    def test_skills_im_arbeitsordner_bleiben_dateischreiben(self):
+        """Dort legen Agenten Skills dauerhaft ab (Claude Code findet sie von selbst);
+        eine Anleitung startet nichts."""
+        for pfad in ("/workspace/.claude/skills/video/SKILL.md", "/workspace/.claude/commands/neu.md"):
+            self.assertEqual(self._nativ("Write", {"file_path": pfad}, self.nur_schreiben), "allow", pfad)
+
+    def test_projekt_mcp_server_braucht_system_config(self):
+        """.mcp.json startet Programme — wie ein Hook."""
+        self.assertEqual(self._nativ("Write", {"file_path": "/workspace/.mcp.json"}, self.nur_schreiben), "deny")
+
     def test_codex_subagenten_mit_namensraum_sind_frei(self):
         for w in ("collaborationspawn_agent", "collaborationwait_agent"):
             self.assertEqual(self._nativ(w, {}, set()), "allow", w)

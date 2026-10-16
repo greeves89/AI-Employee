@@ -106,6 +106,7 @@ class TestValidateProbationSkills:
         db = AsyncMock()
         db.execute = mock_execute
         db.flush = AsyncMock()
+        db.scalar = AsyncMock(return_value=False)  # seit der Freigabe nicht erneut geaendert
 
         await _validate_probation_skills(db)
 
@@ -161,6 +162,7 @@ class TestValidateProbationSkills:
         db = AsyncMock()
         db.execute = mock_execute
         db.flush = AsyncMock()
+        db.scalar = AsyncMock(return_value=False)  # seit der Freigabe nicht erneut geaendert
 
         await _validate_probation_skills(db)
 
@@ -205,6 +207,7 @@ class TestValidateProbationSkills:
         db = AsyncMock()
         db.execute = mock_execute
         db.flush = AsyncMock()
+        db.scalar = AsyncMock(return_value=False)  # seit der Freigabe nicht erneut geaendert
 
         await _validate_probation_skills(db)
 

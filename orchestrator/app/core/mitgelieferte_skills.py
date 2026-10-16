@@ -7,7 +7,8 @@ der Marktplatz-Crawler braucht GitHub, eine Kundenanlage hat das nicht immer.
 
 Synchronisiert wird beim Start (und nach jedem Crawl): fehlt der Skill, wird er
 angelegt; stammt ein vorhandener gleichnamiger Skill von hier, wird sein Inhalt
-nachgezogen. Einen gleichnamigen Skill anderer Herkunft (z. B. von einem Agenten
+nachgezogen — es sei denn, er wurde auf der Anlage korrigiert (Agent, Admin):
+dann bleibt die Korrektur stehen (core/skill_herkunft). Einen gleichnamigen Skill anderer Herkunft (z. B. von einem Agenten
 selbst angelegt) fasst dieser Weg NIE an.
 """
 
@@ -51,11 +52,12 @@ async def synchronisieren() -> tuple[int, int]:
     """Mitgelieferte Skills in den Marktplatz bringen. Gibt (neu, aktualisiert) zurück."""
     from sqlalchemy import select
 
+    from app.core.skill_herkunft import lokal_geaendert
     from app.core.skill_security import SkillSecurityError, check_skill_content
     from app.db.session import resilient_session
     from app.models.skill import Skill, SkillCategory, SkillStatus
 
-    neu = aktualisiert = fremd_belegt = 0
+    neu = aktualisiert = fremd_belegt = lokal_behalten = 0
     async with resilient_session() as db:
         for s in laden():
             try:
@@ -78,6 +80,11 @@ async def synchronisieren() -> tuple[int, int]:
                 neu += 1
             elif vorhanden.source_repo == QUELLE:
                 if vorhanden.content != s["content"] or vorhanden.description != s["description"]:
+                    # Hier korrigiert (Agent, Admin)? Dann gewinnt die Korrektur —
+                    # sonst setzte jeder Start sie zurück (core/skill_herkunft).
+                    if await lokal_geaendert(db, vorhanden.id):
+                        lokal_behalten += 1
+                        continue
                     vorhanden.content = s["content"]
                     vorhanden.description = s["description"]
                     aktualisiert += 1
@@ -89,6 +96,9 @@ async def synchronisieren() -> tuple[int, int]:
                 logger.debug("Mitgelieferter Skill %s: Name schon von %s belegt — nicht angefasst",
                              s["name"], vorhanden.source_repo or vorhanden.created_by)
         await db.commit()
+    if lokal_behalten:
+        logger.info("Mitgelieferte Skills: %d hier korrigiert — lokale Fassung behalten, neue Fassung der Quelle nicht übernommen",
+                    lokal_behalten)
     if fremd_belegt:
         logger.info("Mitgelieferte Skills: %d Namen gehören einem Skill anderer Herkunft — nicht angefasst",
                     fremd_belegt)
