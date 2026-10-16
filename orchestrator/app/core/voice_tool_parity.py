@@ -70,6 +70,9 @@ DELEGIERT = frozenset({
     "install_package", "skill_search",
     "list_apps", "start_app", "stop_app", "rebuild_app", "app_logs",
     "complete_onboarding", "restart_own_container",
+    # Sucht im Gespraech, in dem der Agent gerade steht — das kennt nur seine
+    # Laufzeit. Die Sprachfront fragt den Agenten, der weiss, welches es ist.
+    "chat_search",
 })
 
 #: Andere Namen für dieselbe Sache. Die Sprachfront ist historisch gewachsen und

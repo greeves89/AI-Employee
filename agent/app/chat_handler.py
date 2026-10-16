@@ -459,6 +459,10 @@ class ChatHandler:
             oauth_token = get_oauth_token()
             if oauth_token:
                 env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
+        # Fuer chat_search: in welchem Gespraech dieser Zug laeuft. Die MCP-Server
+        # der CLI erben die Umgebung (siehe chat_suche_env).
+        from app.tools.api_client import chat_suche_env
+        chat_suche_env(env)
 
         self._interrupted = False  # set by stop_current() when steering cuts this turn short
         result_data: dict = {"status": "completed", "text": ""}

@@ -88,6 +88,8 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     # Read-only / informational — same risk class as the group above.
     "app_logs", "check_approval", "get_agent_conversation", "get_day_plan",
     "list_agent_messages", "list_apps", "gesetze_search",
+    # Liest nur im laufenden Gespraech, das der Nutzer ohnehin vor sich hat.
+    "chat_search",
     # Presents something TO the user — same class as present_view, no effect
     # beyond display.
     "present_file", "present_image",
@@ -153,6 +155,8 @@ CONCURRENT_SAFE_TOOLS = frozenset({
     "web_search", "news_search", "web_fetch",
     "memory_search", "brain_search", "brain_get", "brain_list", "brain_related", "list_team",
     "list_tasks", "list_todos", "list_schedules", "trigger_list",
+    # Nicht in _CACHEABLE_TOOLS: der Schluessel dort kennt das Gespraech nicht.
+    "chat_search",
 })
 
 # Subset of concurrent-safe tools whose results are worth caching
