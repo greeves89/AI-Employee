@@ -68,6 +68,17 @@ class Uebersicht(_Finanzen):
         self.assertEqual(len(u["verlauf"]), 3)
         self.assertEqual(u["verlauf"][-1]["gesamt_usd"], 2.25)
 
+    async def test_summe_geht_auf_auch_mit_geloeschtem_projekt(self):
+        async with self.Session() as db:
+            db.add(Task(id="tx", title="alt", prompt="p", agent_id="a2", team_id="weg", status=TaskStatus.COMPLETED,
+                        cost_usd=0.75, created_at=JETZT))
+            await db.commit()
+            u = await finanzen.uebersicht(db, MITGLIED, 1)
+        s = u["summe"]
+        self.assertEqual(s["andere_projekte_aufgaben_usd"], 0.75)
+        projekte = sum(p["monat_usd"] for p in u["je_projekt"])
+        self.assertAlmostEqual(projekte + s["ohne_projekt_aufgaben_usd"] + s["andere_projekte_aufgaben_usd"], s["aufgaben_usd"])
+
     async def test_admin_sieht_fremde_projekte_nicht(self):
         async with self.Session() as db:
             u = await finanzen.uebersicht(db, ADMIN, 1)

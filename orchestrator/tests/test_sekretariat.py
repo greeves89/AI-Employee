@@ -81,6 +81,34 @@ class Einrichten(_Sek):
         self.assertIn("p1", namen)
 
 
+class Aufraeumen(_Sek):
+    async def test_loeschen_nimmt_zeitplaene_mit_und_lead_wechsel_haengt_um(self):
+        from app.api import teams
+
+        async with self.Session() as db:
+            team = await self._einrichten(db)
+            team.lead_agent_id = "a2"
+            await teams._projekt_nachziehen(db, team)
+            plaene = (await db.execute(select(Schedule).where(Schedule.team_id == team.id))).scalars().all()
+            self.assertEqual({s.agent_id for s in plaene}, {"a2"})
+            await teams.delete_team(team.id, user=A, db=db)
+            rest = (await db.execute(select(Schedule).where(Schedule.team_id == team.id))).scalars().all()
+        self.assertEqual(rest, [])
+
+    async def test_zeitplaner_schaltet_verwaiste_ab(self):
+        from app.services.scheduler_service import SchedulerService
+
+        async with self.Session() as db:
+            plan = Schedule(id="w1", name="[Projekt-Termin] Daily: weg", prompt="__meeting__:{}", interval_seconds=0,
+                            next_run_at=datetime.now(timezone.utc), enabled=True, team_id="gibt-es-nicht")
+            db.add(plan)
+            await db.commit()
+            router = SimpleNamespace(create_and_route_task=AsyncMock())
+            await SchedulerService.__new__(SchedulerService)._execute_schedule(db, router, plan, datetime.now(timezone.utc))
+        self.assertFalse(plan.enabled)
+        router.create_and_route_task.assert_not_awaited()
+
+
 class Regeln(_Sek):
     async def test_merke_wird_regel_bei_allen_agenten(self):
         async with self.Session() as db:

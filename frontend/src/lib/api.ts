@@ -4596,6 +4596,8 @@ export interface Finanzen {
     vormonat_usd: number;
     geloescht_usd: number;
     ohne_projekt_aufgaben_usd: number;
+    /** Läufe gelöschter Projekte oder solcher, die der Nutzer nicht (mehr) sieht. */
+    andere_projekte_aufgaben_usd?: number;
   };
   budget: { budget_usd: number; verbraucht_usd: number } | null;
   verlauf: { monat: string; aufgaben_usd: number; chat_usd: number; gesamt_usd: number }[];

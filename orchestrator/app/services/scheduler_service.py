@@ -776,6 +776,18 @@ class SchedulerService:
         now: datetime,
     ) -> None:
         """Create a task from a schedule and advance next_run_at."""
+        # Zeitplan eines gelöschten Teams (Projekt-Termin, Sekretariat): abschalten statt
+        # weiter Besprechungen und Läufe zu starten. Bis 1.374.0 nahm das Löschen eines
+        # Teams seine Zeitpläne nicht mit (heute: api/teams._projekt_nachziehen).
+        if schedule.team_id:
+            from app.models.team import Team
+
+            aktiv = (await db.execute(select(Team.is_active).where(Team.id == schedule.team_id))).scalar_one_or_none()
+            if not aktiv:
+                logger.info("[Scheduler] %s abgeschaltet — Team gibt es nicht mehr", schedule.name)
+                schedule.enabled = False
+                return
+
         # Defensiv gegen einen Plan-Block, der abgehakt wurde, BEVOR sein
         # Einmal-Zeitplan je gefeuert hat (#748): sync_block_schedule deckt den
         # PATCH-Pfad bereits ab, aber ein direkter DB-Schreibvorgang (Migration,
