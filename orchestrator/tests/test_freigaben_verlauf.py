@@ -16,6 +16,7 @@ from sqlalchemy.ext.compiler import compiles
 
 from app.api import approval_rules as rules_api
 from app.api import approvals as api
+from app.models.agent_access import AgentAccess
 from app.models.agent import Agent, AgentState
 from app.models.approval_rule import ApprovalRule
 from app.models.audit_log import AuditLog
@@ -42,7 +43,7 @@ class FreigabenVerlauf(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (CustomRole, User, Agent, CommandApproval, Notification, AuditLog, ApprovalRule):
+            for model in (CustomRole, User, AgentAccess, Agent, CommandApproval, Notification, AuditLog, ApprovalRule):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.Session() as db:
@@ -95,26 +96,31 @@ class FreigabenVerlauf(unittest.IsolatedAsyncioTestCase):
         async with self.Session() as db:
             eigen = await self._befehl(db, "a1")
             fremd = await self._befehl(db, "a2", cmd="pwd")
-            await api.approve_request(eigen, None, user=_admin(), db=db)
-            await api.approve_request(fremd, None, user=_admin(), db=db)
+            await api.approve_request(eigen, None, user=_member(), db=db)
+            await api.approve_request(fremd, None, user=_member("u9"), db=db)
 
             mitglied = await self._verlauf(db, _member())
             self.assertEqual([a["approval_id"] for a in mitglied["approvals"]], [eigen])
             # Auch nicht über den Agentenfilter.
             gezielt = await self._verlauf(db, _member(), agent_id="a2")
             self.assertEqual(gezielt["approvals"], [])
-            self.assertEqual((await self._verlauf(db, _admin()))["total"], 2)
+            # Nutzerbezogen — auch der Admin sieht fremde Freigaben nicht und entscheidet sie nicht.
+            self.assertEqual((await self._verlauf(db, _admin()))["total"], 0)
+            noch = await self._befehl(db, "a2", cmd="whoami")
+            with self.assertRaises(HTTPException) as e:
+                await api.approve_request(noch, None, user=_admin(), db=db)
+            self.assertEqual(e.exception.status_code, 403)
 
     async def test_filter_status(self):
         async with self.Session() as db:
             a = await self._befehl(db, cmd="eins")
             b = await self._befehl(db, cmd="zwei")
-            await api.approve_request(a, None, user=_admin(), db=db)
-            await api.deny_request(b, api.ApprovalDecision(decision="deny"), user=_admin(), db=db)
-            res = await self._verlauf(db, _admin(), status="denied")
+            await api.approve_request(a, None, user=_member(), db=db)
+            await api.deny_request(b, api.ApprovalDecision(decision="deny"), user=_member(), db=db)
+            res = await self._verlauf(db, _member(), status="denied")
             self.assertEqual([x["approval_id"] for x in res["approvals"]], [b])
             with self.assertRaises(HTTPException):
-                await self._verlauf(db, _admin(), status="pending")
+                await self._verlauf(db, _member(), status="pending")
 
     async def test_filter_zeitraum(self):
         async with self.Session() as db:
@@ -126,9 +132,9 @@ class FreigabenVerlauf(unittest.IsolatedAsyncioTestCase):
             db.add(alt)
             await db.commit()
             neu = await self._befehl(db)
-            await api.approve_request(neu, None, user=_admin(), db=db)
+            await api.approve_request(neu, None, user=_member(), db=db)
             heute = date.today()
-            res = await self._verlauf(db, _admin(), von=heute - timedelta(days=1), bis=heute)
+            res = await self._verlauf(db, _member(), von=heute - timedelta(days=1), bis=heute)
             self.assertEqual([x["approval_id"] for x in res["approvals"]], [neu])
 
 
@@ -136,7 +142,7 @@ class RegelKopienMitAgentenname(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (Agent, ApprovalRule):
+            for model in (AgentAccess, Agent, ApprovalRule):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
 

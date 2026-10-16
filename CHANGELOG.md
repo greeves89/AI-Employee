@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.375.0] - 2026-10-16
+
+### Geändert — alles nutzerbezogen, der Admin schaltet frei
+- **Freigaben:** Jeder — auch Administratoren und Manager — sieht und entscheidet nur die
+  Freigaben seiner eigenen und ihm freigegebenen Agenten (Liste, Zähler, Verlauf, Sammel-Verwerfen,
+  Freigeben, Ablehnen). Administratoren sehen zusätzlich Meldungen der Anlage selbst.
+- **Finanzen:** Jeder sieht nur die Kosten seiner eigenen Agenten und Projekte, auch Administratoren;
+  die Kosten der ganzen Anlage stehen in der Admin-Konsole.
+- **Microsoft „Entwürfe + Freigabe“:** schaltet der Administrator eigens frei (Admin-Konsole →
+  Integrationen → „Entwürfe mit Freigabe erlauben“, ab Werk aus) — unabhängig vom Nur-Lesen-Schalter,
+  der weiter direktes Senden und Ändern sperrt. Ist es frei, stellt jeder Nutzer seine eigenen Agenten
+  selbst darauf ein; sein Microsoft-Konto verbindet jeder selbst.
+
+---
+
 ## [1.374.2] - 2026-10-16
 
 ### Behoben — adaptiver Takt

@@ -79,11 +79,13 @@ class Uebersicht(_Finanzen):
         projekte = sum(p["monat_usd"] for p in u["je_projekt"])
         self.assertAlmostEqual(projekte + s["ohne_projekt_aufgaben_usd"] + s["andere_projekte_aufgaben_usd"], s["aufgaben_usd"])
 
-    async def test_admin_sieht_fremde_projekte_nicht(self):
+    async def test_admin_sieht_nur_eigenes(self):
+        """Nutzerbezogen: auch der Admin sieht hier weder fremde Projekte noch fremde Kosten."""
         async with self.Session() as db:
             u = await finanzen.uebersicht(db, ADMIN, 1)
         self.assertEqual(u["je_projekt"], [])
-        self.assertEqual(u["summe"]["monat_usd"], 11.25)  # die Anlage
+        self.assertEqual(u["je_agent"], [])
+        self.assertEqual(u["summe"]["monat_usd"], 0)
 
     async def test_geloeschte_aufgabe_behaelt_ihr_projekt(self):
         async with self.Session() as db:

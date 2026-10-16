@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import freigabe_entschieden, protokolliere
 from app.core.log_redaction import scrub_log
 from app.db.session import get_db
-from app.dependencies import require_agent_access, require_auth, verify_agent_token
+from app.dependencies import require_auth, verify_agent_token
 from app.models.agent import Agent
 from app.models.audit_log import AuditEventType
 from app.models.command_approval import ApprovalStatus, CommandApproval
@@ -676,14 +676,9 @@ async def list_pending_approvals(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models.user import UserRole
 
-    query = select(CommandApproval).where(CommandApproval.status == ApprovalStatus.PENDING)
-
-    if user.role not in (UserRole.ADMIN, UserRole.MANAGER):
-        agent_result = await db.execute(select(Agent.id).where(Agent.user_id == user.id))
-        allowed_ids = list(agent_result.scalars().all())
-        query = query.where(CommandApproval.agent_id.in_(allowed_ids))
+    query = select(CommandApproval).where(CommandApproval.status == ApprovalStatus.PENDING,
+                                          CommandApproval.agent_id.in_(await _visible_agent_ids(user, db)))
 
     query = query.order_by(CommandApproval.created_at.desc())
     result = await db.execute(query)
@@ -729,19 +724,29 @@ async def _notification_ids_for(db: AsyncSession, approval_ids: list[str]) -> di
     return out
 
 
-async def _visible_agent_ids(user, db: AsyncSession) -> list[str] | None:
-    """Agenten, deren Freigaben dieser Nutzer sehen darf. ``None`` = alle.
+async def _visible_agent_ids(user, db: AsyncSession) -> list[str]:
+    """Agenten, deren Freigaben dieser Nutzer sehen und entscheiden darf.
 
-    Dieselbe Regel wie in ``list_pending_approvals`` — an EINER Stelle, damit die
-    Zählung im Menü nicht eine andere Menge meint als die Liste darunter.
+    Die App ist nutzerbezogen: JEDER — auch Administrator und Manager — sieht nur die
+    Freigaben seiner eigenen und ihm freigegebenen Agenten. Ein Administrator sieht
+    zusätzlich die der Anlage selbst (Absender ``system``, z. B. eine Eskalation ohne
+    Agenten). An EINER Stelle, damit Liste, Zählung, Verlauf und Entscheiden dieselbe
+    Menge meinen.
     """
+    from app.models.agent_access import AgentAccess
     from app.models.user import UserRole
 
-    if user.role in (UserRole.ADMIN, UserRole.MANAGER):
-        return None
-    return list((await db.execute(
-        select(Agent.id).where(Agent.user_id == user.id)
-    )).scalars().all())
+    uid = str(getattr(user, "id", "") or "")
+    eigene = set((await db.execute(select(Agent.id).where(Agent.user_id == uid))).scalars().all())
+    eigene |= set((await db.execute(select(AgentAccess.agent_id).where(AgentAccess.user_id == uid))).scalars().all())
+    if getattr(user, "role", None) == UserRole.ADMIN:
+        eigene.add("system")
+    return sorted(str(a) for a in eigene)
+
+
+async def _darf_entscheiden(agent_id: str, user, db: AsyncSession) -> None:
+    if agent_id not in await _visible_agent_ids(user, db):
+        raise HTTPException(status_code=403, detail="Diese Freigabe gehört zu einem Agenten, der nicht deiner ist.")
 
 
 @router.get("/pending/count")
@@ -758,9 +763,7 @@ async def count_pending_approvals(
     query = select(func.count(CommandApproval.id)).where(
         CommandApproval.status == ApprovalStatus.PENDING
     )
-    allowed = await _visible_agent_ids(user, db)
-    if allowed is not None:
-        query = query.where(CommandApproval.agent_id.in_(allowed))
+    query = query.where(CommandApproval.agent_id.in_(await _visible_agent_ids(user, db)))
     return {"count": int((await db.execute(query)).scalar() or 0)}
 
 
@@ -779,9 +782,7 @@ async def clear_pending_approvals(
     bleiben — es gab eine Anfrage, und sie wurde nicht genehmigt.
     """
     query = select(CommandApproval).where(CommandApproval.status == ApprovalStatus.PENDING)
-    allowed = await _visible_agent_ids(user, db)
-    if allowed is not None:
-        query = query.where(CommandApproval.agent_id.in_(allowed))
+    query = query.where(CommandApproval.agent_id.in_(await _visible_agent_ids(user, db)))
 
     rows = (await db.execute(query)).scalars().all()
     now = datetime.now(timezone.utc)
@@ -818,12 +819,8 @@ async def list_all_approvals(
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models.user import UserRole
-    query = select(CommandApproval).order_by(CommandApproval.created_at.desc()).limit(100)
-    if user.role not in (UserRole.ADMIN, UserRole.MANAGER):
-        agent_result = await db.execute(select(Agent.id).where(Agent.user_id == user.id))
-        allowed_ids = list(agent_result.scalars().all())
-        query = select(CommandApproval).where(CommandApproval.agent_id.in_(allowed_ids)).order_by(CommandApproval.created_at.desc()).limit(100)
+    query = select(CommandApproval).where(CommandApproval.agent_id.in_(await _visible_agent_ids(user, db))) \
+        .order_by(CommandApproval.created_at.desc()).limit(100)
     result = await db.execute(query)
     approvals = result.scalars().all()
     return {"approvals": _fremde_mails_verbergen([_approval_to_dict(a) for a in approvals], await _eigene_agenten(db, user)),
@@ -849,7 +846,7 @@ async def approval_history(
     """Entschiedene Freigaben mit Entscheider (#897).
 
     Dieselbe Sichtbarkeitsregel wie die offene Liste (``_visible_agent_ids``):
-    ein Mitglied sieht nur, was zu seinen eigenen Agenten gehoert.
+    jeder — auch ein Administrator — sieht nur, was zu seinen eigenen Agenten gehoert.
     """
     from app.models.user import User
 
@@ -857,9 +854,7 @@ async def approval_history(
         raise HTTPException(status_code=400, detail=f"status muss einer von {list(VERLAUF_STATUS)} sein")
 
     bedingungen = [CommandApproval.status.in_([status] if status else list(VERLAUF_STATUS))]
-    allowed = await _visible_agent_ids(user, db)
-    if allowed is not None:
-        bedingungen.append(CommandApproval.agent_id.in_(allowed))
+    bedingungen.append(CommandApproval.agent_id.in_(await _visible_agent_ids(user, db)))
     if agent_id:
         bedingungen.append(CommandApproval.agent_id == agent_id)
     if von:
@@ -910,7 +905,7 @@ async def approve_request(
     if not approval:
         raise HTTPException(status_code=404, detail="Freigabe-Anfrage nicht gefunden")
 
-    await require_agent_access(approval.agent_id, user, db)
+    await _darf_entscheiden(approval.agent_id, user, db)
 
     if approval.status != ApprovalStatus.PENDING:
         raise HTTPException(status_code=400, detail=f"Die Anfrage ist bereits entschieden ({approval.status})")
@@ -995,7 +990,7 @@ async def deny_request(
     if not approval:
         raise HTTPException(status_code=404, detail="Freigabe-Anfrage nicht gefunden")
 
-    await require_agent_access(approval.agent_id, user, db)
+    await _darf_entscheiden(approval.agent_id, user, db)
 
     if approval.status != ApprovalStatus.PENDING:
         raise HTTPException(status_code=400, detail=f"Die Anfrage ist bereits entschieden ({approval.status})")
@@ -1044,7 +1039,7 @@ async def cancel_approval_request(
         raise HTTPException(status_code=404, detail="Freigabe-Anfrage nicht gefunden")
     # Ownership: only the agent's owner/admin may cancel its pending approval
     # (mirrors approve_request/deny_request).
-    await require_agent_access(approval.agent_id, user, db)
+    await _darf_entscheiden(approval.agent_id, user, db)
     # Nur Offenes laesst sich verwerfen. Vorher ueberschrieb ein spaetes Verwerfen
     # eine laengst getroffene Entscheidung samt Entscheider — im Protokoll stuende
     # dann eine Freigabe, die es so nie gab.

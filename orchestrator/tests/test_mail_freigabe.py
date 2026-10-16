@@ -80,9 +80,16 @@ class EntwurfsModus(unittest.IsolatedAsyncioTestCase):
         self.assertTrue({"ms_send_email", "ms_reply_email", "ms_move_email", "ms_list_emails"} <= namen)
         self.assertFalse({"ms_forward_email", "ms_delete_email", "ms_create_calendar_event"} & namen)
 
-    def test_entwurf_nur_ohne_plattformsperre(self):
+    def test_entwurf_schaltet_der_admin_eigens_frei(self):
+        from app.config import settings
+
         with patch.object(ms_access, "read_only_enabled", return_value=True):
-            self.assertFalse(ms_access.entwurf_enabled({"msgraph_access": "entwurf"}))
+            with patch.object(settings, "msgraph_entwurf_erlaubt", False):
+                self.assertFalse(ms_access.entwurf_enabled({"msgraph_access": "entwurf"}))
+            with patch.object(settings, "msgraph_entwurf_erlaubt", True):
+                # Freigeschaltet: Entwürfe ja — direktes Senden bleibt gesperrt.
+                self.assertTrue(ms_access.entwurf_enabled({"msgraph_access": "entwurf"}))
+                self.assertFalse(ms_access.write_enabled({"msgraph_access": "write"}, "msgraph_access"))
         with patch.object(ms_access, "read_only_enabled", return_value=False):
             self.assertTrue(ms_access.entwurf_enabled({"msgraph_access": "entwurf"}))
             self.assertFalse(ms_access.write_enabled({"msgraph_access": "entwurf"}, "msgraph_access"))

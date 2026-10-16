@@ -42,7 +42,7 @@ function Kasten({ titel, icon: Icon, rechts, children }: { titel: string; icon: 
   );
 }
 
-function Einrichten({ onFertig, nurLesen }: { onFertig: () => void; nurLesen: boolean }) {
+function Einrichten({ onFertig, entwurfFrei }: { onFertig: () => void; entwurfFrei: boolean }) {
   const { agents } = useAgents();
   const toast = useToast();
   const [gewaehlt, setGewaehlt] = useState<string[]>([]);
@@ -75,10 +75,10 @@ function Einrichten({ onFertig, nurLesen }: { onFertig: () => void; nurLesen: bo
           legen ab und behalten Fristen im Blick. <strong>Gesendet wird nichts ohne dich</strong> — jede Antwort
           liegt hier unter „Wartet auf dich“, bis du sie freigibst.
         </p>
-        {nurLesen && (
+        {!entwurfFrei && (
           <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-            Microsoft steht auf dieser Anlage auf „Nur lesen“. Das Sekretariat liest dann Postfach und Kalender, entwirft
-            aber keine Antworten, bis ein Administrator den Schalter unter Einstellungen löst.
+            „Entwürfe + Freigabe“ ist auf dieser Anlage noch nicht freigeschaltet. Das Sekretariat liest dann Postfach und
+            Kalender, entwirft aber keine Antworten, bis ein Administrator es in der Admin-Konsole freischaltet.
           </p>
         )}
       </div>
@@ -246,7 +246,7 @@ export default function HeutePage() {
         {!daten ? (
           <div className="flex justify-center py-16 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
         ) : !daten.eingerichtet ? (
-          <Einrichten onFertig={laden} nurLesen={daten.m365_nur_lesen} />
+          <Einrichten onFertig={laden} entwurfFrei={daten.m365_entwurf_frei} />
         ) : (
           <>
             {!daten.m365_verbunden && (

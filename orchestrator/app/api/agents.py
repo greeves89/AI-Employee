@@ -3559,6 +3559,7 @@ async def get_agent_integrations(
             # Platform-wide read-only enforcement — the UI locks the write option and
             # explains why, instead of offering a switch that silently does nothing.
             "microsoft_read_only": ms_access.read_only_enabled(),
+            "microsoft_entwurf_erlaubt": ms_access.entwurf_freigeschaltet(),
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
@@ -3597,12 +3598,17 @@ async def update_agent_integrations(
         # instead of being stored as a setting that the MCP transports ignore anyway.
         from app.core import ms_access
         ms_read_only = ms_access.read_only_enabled()
-        if ms_read_only and ("write" in (body.get("msgraph_access"), body.get("exchange_access"))
-                             or body.get("msgraph_access") == ms_access.ENTWURF):
+        if ms_read_only and "write" in (body.get("msgraph_access"), body.get("exchange_access")):
             raise HTTPException(
                 status_code=422,
                 detail="Microsoft-Zugriff ist plattformweit auf Nur-Lesen gestellt. "
                        "Ein Administrator muss den Schalter in den Einstellungen zuerst lösen.",
+            )
+        if body.get("msgraph_access") == ms_access.ENTWURF and not ms_access.entwurf_freigeschaltet():
+            raise HTTPException(
+                status_code=422,
+                detail="„Entwürfe + Freigabe“ ist auf dieser Anlage noch nicht freigeschaltet — "
+                       "das macht ein Administrator in der Admin-Konsole unter Integrationen.",
             )
 
         if body.get("msgraph_access") == "write":
@@ -3639,6 +3645,7 @@ async def update_agent_integrations(
             "msgraph_access": config.get("msgraph_access", "read"),
             "exchange_access": config.get("exchange_access", "read"),
             "microsoft_read_only": ms_read_only,
+            "microsoft_entwurf_erlaubt": ms_access.entwurf_freigeschaltet(),
         }
     except ValueError:
         raise HTTPException(status_code=404, detail="Agent nicht gefunden")
