@@ -82,8 +82,12 @@ class _Klartext(HTMLParser):
     def _attr(attrs, name):
         return next((v for k, v in attrs if k == name), None)
 
+    # Nur, was KEIN Mailprogramm anzeigt, bleibt verborgen. ``head``/``title`` nicht: ein
+    # Browser zeigt Inhalt, der dort fälschlich steht, trotzdem an — die Vorschau auch.
+    VERBORGEN = ("script", "style")
+
     def handle_starttag(self, tag, attrs):
-        if tag in ("script", "style", "head", "title"):
+        if tag in self.VERBORGEN:
             self.versteckt += 1
         elif tag == "a":
             self.links.append(self._attr(attrs, "href"))
@@ -92,8 +96,13 @@ class _Klartext(HTMLParser):
         if tag in self.BLOCK:
             self.teile.append("\n")
 
+    def handle_comment(self, data):
+        # Bedingte Kommentare (<!--[if mso]> … <![endif]-->) zeigt Outlook an.
+        if data.lstrip().lower().startswith("[if"):
+            self.teile.append(f" [Nur in Outlook sichtbar: {re.sub(r'<[^>]+>', ' ', data)}] ")
+
     def handle_endtag(self, tag):
-        if tag in ("script", "style", "head", "title"):
+        if tag in self.VERBORGEN:
             self.versteckt = max(0, self.versteckt - 1)
         elif tag == "a" and self.links:
             ziel = self.links.pop()

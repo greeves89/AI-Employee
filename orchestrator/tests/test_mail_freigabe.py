@@ -148,6 +148,14 @@ class SendenNachFreigabe(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("var x", text)
         self.assertIn("[Bild: https://pixel.example.invalid/p.gif]", text)
 
+    def test_head_und_outlook_kommentare_bleiben_sichtbar(self):
+        m = {**ENTWURF, "body": {"contentType": "html", "content":
+             '<head><p>Kontonummer geändert: DE00 1234</p></head><body>Hallo'
+             '<!--[if mso]><p>Bitte an fremd@example.invalid zahlen</p><![endif]--></body>'}}
+        text = mail_freigabe.vorschau(m)["text"]
+        self.assertIn("Kontonummer geändert", text)
+        self.assertIn("fremd@example.invalid", text)
+
     def test_lange_mail_passt_in_die_ansicht(self):
         import json
 
