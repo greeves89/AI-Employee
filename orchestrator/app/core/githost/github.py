@@ -87,7 +87,9 @@ class GitHubHostProvider(GitHostProvider):
     # ── Projekt-Board (core/projekt_git.py) ──
 
     async def _seiten(self, client: httpx.AsyncClient, token: str, pfad: str, params: dict, hoechstens: int) -> list[dict]:
-        """Alle Seiten einer Liste bis ``hoechstens`` Einträge. Fehler → Ausnahme (nie still leer)."""
+        """Alle Seiten einer Liste bis ``hoechstens`` Einträge. Fehler → Ausnahme (nie still leer).
+
+        404 heisst: Repo gibt es nicht — oder es ist privat und der Zugang fehlt."""
         ergebnis: list[dict] = []
         seite = 1
         while len(ergebnis) < hoechstens:
@@ -95,6 +97,10 @@ class GitHubHostProvider(GitHostProvider):
                 f"{self.api_base}{pfad}", headers=self._headers(token),
                 params={**params, "per_page": 100, "page": seite},
             )
+            if resp.status_code == 404:
+                raise LookupError(pfad)
+            if resp.status_code in (401, 403) and resp.headers.get("x-ratelimit-remaining") == "0":
+                raise RuntimeError("GitHub-Abfragegrenze erreicht — mit verbundenem GitHub-Zugang ist sie viel höher")
             if resp.status_code != 200:
                 raise RuntimeError(f"GitHub {resp.status_code} für {pfad}")
             daten = resp.json()
@@ -147,4 +153,8 @@ class GitHubHostProvider(GitHostProvider):
 
     @staticmethod
     def _headers(token: str) -> dict[str, str]:
-        return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+        # Ohne Token: anonym (nur öffentliche Repos, niedrige Abfragegrenze).
+        kopf = {"Accept": "application/vnd.github+json"}
+        if token:
+            kopf["Authorization"] = f"Bearer {token}"
+        return kopf

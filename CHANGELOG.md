@@ -5,6 +5,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.369.1] - 2026-10-16
+
+### Behoben
+- **Öffentliche Repos ohne GitHub-Verbindung.** War auf der Anlage kein GitHub-Zugang eingerichtet,
+  scheiterte der Abgleich jedes Projekts. Öffentliche Repos werden jetzt anonym abgeglichen (alle
+  30 Minuten wegen der niedrigeren Abfragegrenze), private brauchen weiter die Verbindung; ein
+  unbekanntes oder privates Repo meldet sich verständlich.
+- **Projektseite zeigt, was fehlt:** „Kein GitHub-Repo verbunden“ (mit „Repo verbinden“ für
+  Administratoren) und gelb, welche Mitglieder auf altem Stand laufen und deshalb die
+  Projekt-Werkzeuge nicht kennen. Das Repo-Feld steht im Projekt-Fenster weiter oben.
+
+---
+
 ## [1.369.0] - 2026-10-16
 
 ### Neu

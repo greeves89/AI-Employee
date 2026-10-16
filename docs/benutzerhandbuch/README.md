@@ -1020,15 +1020,17 @@ für die offenen Punkte aus diesem Protokoll an.“ Abnehmen und Zurückgeben bl
 ### 6a.9 Git-Projekte: Issues und Pull Requests auf dem Board *(seit 1.369.0)*
 
 Ein Projekt kann mit einem **GitHub-Repo** verbunden werden — dann kommt die Arbeit von selbst aufs
-Board. Das Repo trägt ein **Administrator** ein, denn dafür wird die GitHub-Verbindung der ganzen
-Anlage genutzt (Admin → Integrationen → GitHub).
+Board. Das Repo trägt ein **Administrator** ein. **Öffentliche Repos** gehen ohne weitere
+Einrichtung (abgeglichen alle 30 Minuten); **private Repos** brauchen die GitHub-Verbindung der
+Anlage (Admin → Integrationen → GitHub, dann alle 10 Minuten). Ohne Repo zeigt die Projektseite
+den Hinweis „Kein GitHub-Repo verbunden“ mit dem Knopf **Repo verbinden**.
 
 1. Projekt anlegen oder **Bearbeiten** öffnen.
 2. Unter **GitHub-Repo** `owner/name` eintragen, z. B. `greeves89/AI-Employee` (eine kopierte
    GitHub-Adresse geht auch).
 3. **Speichern**.
 
-Ab dann, alle zehn Minuten:
+Ab dann, regelmäßig:
 - Jedes **offene Issue** erscheint als Karte im **Eingang** (mit Nummer `#12` und Link). Ändert
   sich Titel oder Text im Repo, zieht die Karte nach — ihre Spalte und Priorität bleiben, wie du
   bzw. der Lead sie gesetzt habt.
@@ -1041,6 +1043,10 @@ Ab dann, alle zehn Minuten:
 Über dem Board zeigt eine Leiste das Repo, wann zuletzt abgeglichen wurde und gegebenenfalls einen
 Fehler (z. B. „GitHub ist auf dieser Anlage nicht verbunden“). **Jetzt abgleichen** holt den Stand
 sofort.
+
+> **Agenten aktualisieren:** Die Projekt-Werkzeuge kennen nur Agenten auf aktuellem Stand. Läuft
+> ein Mitglied noch auf einem älteren, zeigt die Projektseite das gelb an — dann beim Agenten
+> **Aktualisieren** klicken.
 
 Mit **Arbeitstakt** sichtet der Lead die neuen Issues selbstständig, plant sie ein und vergibt sie;
 die Agenten legen Branches und Pull Requests mit ihrem GitHub-Zugang an und melden den PR an der

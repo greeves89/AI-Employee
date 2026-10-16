@@ -193,6 +193,26 @@ export function CreateTeamModal({
                       />
                     </div>
 
+                    {projekt && istAdmin && (
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                          GitHub-Repo <span className="text-muted-foreground/40">(optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={repo}
+                          onChange={(e) => setRepo(e.target.value)}
+                          placeholder="owner/name, z. B. greeves89/AI-Employee"
+                          className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                        />
+                        <p className="text-[11px] text-muted-foreground/50 mt-1">
+                          Offene Issues kommen in den Eingang, Pull Requests mit CI-Stand unter „Wartet auf Merge“.
+                          Öffentliche Repos gehen ohne GitHub-Verbindung (alle 30 Min.), private brauchen sie
+                          (Integrationen → GitHub, dann alle 10 Min.).
+                        </p>
+                      </div>
+                    )}
+
                     {projekt && (
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-1.5">Farbe</label>
@@ -291,25 +311,6 @@ export function CreateTeamModal({
                           : "Der Lead muss Mitglied des Teams sein und erhält delegierte Tasks."}
                       </p>
                     </div>
-
-                    {projekt && istAdmin && (
-                      <div>
-                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                          GitHub-Repo <span className="text-muted-foreground/40">(optional)</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={repo}
-                          onChange={(e) => setRepo(e.target.value)}
-                          placeholder="owner/name, z. B. greeves89/AI-Employee"
-                          className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
-                        />
-                        <p className="text-[11px] text-muted-foreground/50 mt-1">
-                          Offene Issues kommen alle zehn Minuten in den Eingang, Pull Requests mit CI-Stand unter
-                          „Wartet auf Merge“. Nutzt die GitHub-Verbindung der Anlage (Integrationen).
-                        </p>
-                      </div>
-                    )}
 
                     {projekt && (
                       <div>

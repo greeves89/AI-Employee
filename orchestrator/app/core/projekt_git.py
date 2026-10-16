@@ -14,8 +14,11 @@ auch sofort (``POST /teams/{id}/repo/abgleichen``):
 * PR gemergt/geschlossen → Stand nachgezogen; eine reine PR-Karte ist erledigt.
 
 Zugang: die GitHub-Verbindung der Anlage (Admin, ``oauth_integrations`` ohne
-Nutzer). Deshalb darf nur ein Administrator ein Repo an ein Projekt hängen —
-sonst holte sich jeder über diesen Zugang fremde private Repos aufs Board.
+Nutzer), sonst ``GITHUB_TOKEN`` aus der Umgebung, sonst ANONYM — dann gehen nur
+öffentliche Repos, mit niedriger Abfragegrenze (60/Stunde); der Takt gleicht
+anonyme Projekte deshalb nur alle 30 Minuten ab. Ein Repo an ein Projekt hängen
+darf nur ein Administrator — sonst holte sich jeder über den Zugang der Anlage
+fremde private Repos aufs Board.
 Die Plattform LIEST nur; schreiben (Branches, PRs, Kommentare) tun die Agenten
 mit ihrem eigenen GitHub-Werkzeug.
 """
@@ -42,6 +45,7 @@ MAX_ISSUES = 300
 MAX_PRS = 30
 TEXT_ZEICHEN = 8000
 TAKT_SEKUNDEN = 600
+ANONYM_ABSTAND_SEKUNDEN = 1800
 
 
 class GitFehler(RuntimeError):
@@ -58,15 +62,17 @@ def repo_pruefen(repo: str | None) -> str | None:
 
 
 async def zugang(db: AsyncSession, redis):
-    """(Token, Anbieter) der GitHub-Verbindung der Anlage — oder GitFehler."""
+    """(Token, Anbieter) — Token leer heisst anonym (nur öffentliche Repos)."""
+    import os
+
     from app.core.githost.registry import get_git_host_provider
     from app.models.oauth_integration import OAuthIntegration, OAuthProvider
     from app.services.oauth_service import OAuthService
 
     try:
         token = await OAuthService(db, redis).get_valid_token("github")
-    except Exception as e:  # noqa: BLE001
-        raise GitFehler("GitHub ist auf dieser Anlage nicht verbunden (Admin → Integrationen → GitHub).") from e
+    except Exception:  # noqa: BLE001 — keine Verbindung: Umgebung, sonst anonym
+        token = os.environ.get("GITHUB_TOKEN", "")
     zeile = (await db.execute(
         select(OAuthIntegration).where(OAuthIntegration.provider == OAuthProvider.GITHUB,
                                        OAuthIntegration.user_id.is_(None))
@@ -85,6 +91,11 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
     try:
         issues = await anbieter.list_open_issues(client, token, repo, MAX_ISSUES)
         pulls = await anbieter.list_open_pulls(client, token, repo, MAX_PRS)
+    except LookupError as e:
+        if token:
+            raise GitFehler(f"Repo {repo} nicht gefunden — oder der GitHub-Zugang der Anlage darf es nicht lesen.") from e
+        raise GitFehler(f"Repo {repo} nicht gefunden. Ist es privat, braucht die Anlage einen GitHub-Zugang "
+                        "(Admin → Integrationen → GitHub).") from e
     except (RuntimeError, httpx.HTTPError) as e:
         raise GitFehler(f"GitHub antwortet nicht für {repo}: {e}") from e
 
@@ -201,7 +212,13 @@ async def alle_abgleichen(redis) -> int:
         teams = (await db.execute(
             select(Team).where(Team.is_active.is_(True), Team.repo.is_not(None))
         )).scalars().all()
+        anonym = not (await zugang(db, redis))[0] if teams else False
+        jetzt = datetime.now(timezone.utc)
         for team in teams:
+            # Anonym nur alle 30 Minuten: die Abfragegrenze (60/h) teilen sich alle Projekte.
+            zuletzt = team.repo_abgleich_at
+            if anonym and zuletzt and (jetzt - (zuletzt if zuletzt.tzinfo else zuletzt.replace(tzinfo=timezone.utc))).total_seconds() < ANONYM_ABSTAND_SEKUNDEN:
+                continue
             try:
                 await projekt_abgleichen(db, redis, team)
             except GitFehler as e:
