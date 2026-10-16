@@ -37,10 +37,25 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+class VerbindungNichtZustandeGekommen(OSError):
+    """Verbindungsfehler aus einem Transport, der kein ``httpx`` ist.
+
+    ``httpx`` bildet einen Namensaufloesungs-Aussetzer auf ``ConnectError`` ab, und
+    darauf kann man pruefen. Der Skill-Crawler klont seine Git-Quellen aber ueber
+    ``git clone`` als Unterprozess: dort kommt derselbe Ausfall als Rueckgabewert
+    ungleich 0 mit "Could not resolve host" auf der Fehlerausgabe an und steckte
+    bisher in einem allgemeinen ``RuntimeError``. Damit war er von einem echten
+    Mangel an der Quelle (Repo weg, Zugangsdaten falsch) nicht zu unterscheiden —
+    und genau diese Unterscheidung entscheidet, ob ein leeres Ergebnis den guten
+    Katalog ueberschreiben darf.
+    """
+
+
 # Genau diese Klasse: die Verbindung kam nicht zustande, die Anfrage ist also sicher
 # nicht beim Dienst gelandet. Die DNS-Aussetzer der Anlage landen hier
 # (ConnectError "[Errno -3] Temporary failure in name resolution").
 VERBINDUNGSFEHLER: tuple[type[BaseException], ...] = (
+    VerbindungNichtZustandeGekommen,  # git clone & andere Transporte ohne httpx
     httpx.ConnectError,      # DNS/TCP: "[Errno -3] Temporary failure in name resolution"
     httpx.ConnectTimeout,    # Netz schluckt Pakete, Verbindung kam nie zustande
     httpx.PoolTimeout,       # keine Verbindung aus dem Pool bekommen
@@ -69,6 +84,112 @@ PAUSEN_S: tuple[float, ...] = (0.4, 1.6)
 # Verbindungsfehler) und im kranken Fall hoechstens 40 s an einem Lauf, der sonst
 # komplett verloren ist.
 PAUSEN_HINTERGRUND_S: tuple[float, ...] = (2.0, 8.0, 30.0)
+
+# Nach so vielen Verbindungsfehlern HINTEREINANDER wird ein Hintergrundlauf
+# abgebrochen. Grund: die Leiter oben deckt 40 s je Abruf, und der Gesetz-Crawler
+# holt rund 6000 Normen sequentiell. Bleibt das Netz dauerhaft weg, waeren das
+# 6000 x 40 s = rund 68 Stunden in EINEM Lauf — der nachgelagerte EU-Lauf kaeme
+# tagelang nicht mehr dran. Vorher war ein solcher Lauf in Minuten durch und am
+# naechsten Tag wieder faellig; diese Eigenschaft soll der Fix nicht kosten.
+# 20 Fehler in Folge sind eindeutig: ein Aussetzer, der nur ein Fenster lang
+# dauert, wird von der Leiter abgefangen und setzt die Serie zurueck.
+HINTERGRUND_ABBRUCH_NACH = 20
+
+# Fehlerausgaben von ``git``, die einen Netz-/Namensaufloesungsausfall bedeuten und
+# nicht einen Mangel an der Quelle selbst. Kleingeschrieben verglichen.
+GIT_NETZ_MARKER: tuple[str, ...] = (
+    "could not resolve host",
+    "temporary failure in name resolution",
+    "connection timed out",
+    "connection refused",
+    "network is unreachable",
+    "failed to connect to",
+    "could not read from remote repository",
+    "ssl connect error",
+)
+
+
+class NetzaussetzerAbbruch(RuntimeError):
+    """Der Lauf ist am Netz gescheitert und hat nichts Brauchbares erzeugt.
+
+    Wichtig fuer die Aufrufer AUS DER OBERFLAECHE: ein leeres Ergebnis ohne diese
+    Ausnahme ist von "es gibt wirklich nichts" nicht zu unterscheiden. Ein
+    Administrator, der "Aktualisieren" drueckt, bekam deshalb "ok, 0 importiert"
+    gemeldet, obwohl ueberhaupt kein Lauf zustande kam (#746).
+    """
+
+
+def ist_git_netzfehler(fehlerausgabe: str) -> bool:
+    """Steht in der Fehlerausgabe von ``git`` ein Netzausfall?"""
+    return any(marker in fehlerausgabe.lower() for marker in GIT_NETZ_MARKER)
+
+
+def lauf_unvollstaendig(*, erzeugt: int, bisher: int, verbindungsausfaelle: int) -> bool:
+    """Darf dieser Lauf den Frischestempel NICHT weiterruecken?
+
+    Zwei Bedingungen zusammen: am Netz gescheitert UND schlechter als der bisherige
+    Stand. Die erste allein genuegt nicht (ein paar verlorene Normen von 6000 sind
+    kein Grund, den Stempel einzufrieren), die zweite allein auch nicht (eine Quelle
+    darf schrumpfen, wenn sie wirklich geschrumpft ist).
+
+    Die Pruefung auf ``erzeugt == 0`` deckt den ersten Lauf ab: dort ist ``bisher``
+    ebenfalls 0, und "gerade gecrawlt, 0 Treffer" ist genau die Falschaussage, um
+    die es in #746 geht — ``/api/compliance`` zeigt Stempel und Zahl zusammen an.
+    """
+    if verbindungsausfaelle <= 0:
+        return False
+    return erzeugt == 0 or erzeugt < bisher
+
+
+class Netzwache:
+    """Zaehlt die Verbindungsfehler eines Hintergrundlaufs und begrenzt ihn.
+
+    Zwei Zahlen, zwei verschiedene Fragen:
+
+    * ``anzahl`` — wie viele Abrufe des Laufs sind an der VERBINDUNG gescheitert.
+      Beantwortet: ist ein leeres Ergebnis ein Netzaussetzer oder ein echter
+      Leerstand (siehe :func:`lauf_unvollstaendig`).
+    * ``serie`` — wie viele davon unmittelbar hintereinander. Beantwortet: laeuft
+      die Wiederholung ins Leere und sollte der Lauf aufgeben
+      (:attr:`abbrechen`, siehe ``HINTERGRUND_ABBRUCH_NACH``).
+    """
+
+    def __init__(self, zweck: str, grenze: int | None = None) -> None:
+        self.zweck = zweck
+        # Erst hier nachsehen, nicht als Standardargument: ein Standardwert wird
+        # zur Definitionszeit gebunden, und ein Test, der die Grenze setzt, waere
+        # wirkungslos (dieselbe Falle wie bei ``PAUSEN_S`` weiter unten).
+        self.grenze = HINTERGRUND_ABBRUCH_NACH if grenze is None else grenze
+        self.anzahl = 0
+        self.serie = 0
+
+    def melde(self, fehler: BaseException) -> bool:
+        """Fehler einsortieren. Gibt zurueck, ob es ein Verbindungsfehler war.
+
+        Ein Fehler AM INHALT (kaputtes XML, Quelle weg) setzt die Serie zurueck: er
+        beweist, dass die Verbindung stand.
+        """
+        if isinstance(fehler, VERBINDUNGSFEHLER):
+            self.anzahl += 1
+            self.serie += 1
+            if self.abbrechen:
+                logger.error(
+                    "%s: %d Verbindungsfehler hintereinander — Lauf wird abgebrochen, "
+                    "damit er nicht in der Wiederholung haengen bleibt.",
+                    self.zweck, self.serie,
+                )
+            return True
+        self.serie = 0
+        return False
+
+    def erfolg(self) -> None:
+        """Ein Abruf hat geklappt — die Serie beginnt neu."""
+        self.serie = 0
+
+    @property
+    def abbrechen(self) -> bool:
+        return self.serie >= self.grenze
+
 
 T = TypeVar("T")
 

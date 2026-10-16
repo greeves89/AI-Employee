@@ -24,6 +24,7 @@ from app.core.skill_security import (
     check_skill_file,
     is_allowlisted,
 )
+from app.core.verbindungswiederholung import NetzaussetzerAbbruch
 
 logger = logging.getLogger(__name__)
 
@@ -1624,9 +1625,18 @@ async def seed_from_crawler(
         redis_svc.client = client
 
         crawler = SkillCrawlerService(redis_svc)
-        skills = await crawler.crawl()
-        await client.aclose()
+        try:
+            skills = await crawler.crawl()
+        finally:
+            await client.aclose()
         return {"status": "ok", "imported": len(skills)}
+    except NetzaussetzerAbbruch as e:
+        # Nicht als Erfolg mit 0 Treffern melden: es gab keinen Lauf (#746).
+        raise HTTPException(
+            status_code=503, detail=f"Netzaussetzer — Katalog unveraendert gelassen: {e}",
+        ) from e
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Crawl failed: {e}")
 
@@ -1787,7 +1797,21 @@ async def recrawl_skill_sources(request: Request, user=Depends(require_admin)):
     crawler = getattr(request.app.state, "skill_crawler", None)
     if not crawler:
         raise HTTPException(status_code=503, detail="Skill crawler not running")
-    _asyncio.create_task(crawler.crawl())
+    async def _lauf():
+        """Eigener Fehlerfang, damit der Lauf nicht als nackte Aufgabe stirbt.
+
+        Ein ``create_task`` ohne Fehlerfang ist genau die Quelle der Zeilen
+        "Future exception was never retrieved" aus #746: der Fehler nennt dann
+        weder die Komponente noch das Ziel.
+        """
+        try:
+            await crawler.crawl()
+        except NetzaussetzerAbbruch as e:
+            logger.warning("Skill-Quellen-Neulauf am Netz abgebrochen: %s", e)
+        except Exception as e:  # noqa: BLE001 — Hintergrundaufgabe, niemand wartet
+            logger.error("Skill-Quellen-Neulauf gescheitert: %s", e, exc_info=True)
+
+    _asyncio.create_task(_lauf())
     return {"status": "started"}
 
 

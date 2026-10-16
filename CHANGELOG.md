@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.4] - 2026-10-16
+
+### Behoben — Crawler-Netzaussetzer, zweiter Durchgang (#746)
+- **Ein Aussetzer MITTEN im Lauf täuscht keine Frische mehr vor.** Bisher griff der
+  Schutz aus 1.376.1 nur, wenn ein Lauf gar nichts geholt hat. Fiel das Netz
+  während des Durchlaufs über rund 6000 Normen aus, meldete die Anzeige „gerade
+  gecrawlt, 40 Normen" statt der 6123 von vorher — dieselbe Falschaussage, nur
+  unauffälliger. Jetzt bleiben Bestand und Frischestempel stehen, sobald ein am
+  Netz gescheiterter Lauf schlechter ausfällt als der bisherige Stand.
+- **„Aktualisieren" meldet keinen Erfolg mehr, wenn gar kein Lauf zustande kam.**
+  Wer den Skill-Katalog von Hand aktualisierte, bekam bei einem Netzaussetzer
+  „ok, 0 importiert" zurück. Jetzt kommt eine klare Fehlermeldung, und der
+  bisherige Katalog bleibt unverändert stehen.
+- **Selbst gehostete Git-Quellen** (Forgejo, GitLab, Gitea): ein Netzausfall beim
+  Klonen wird jetzt als Netzausfall erkannt und nicht mehr mit „Quelle kaputt"
+  verwechselt — nur so bleibt der gute Katalog geschützt.
+- **Ein Ausfall, der erst nach dem ersten Abruf beginnt, bleibt nicht länger
+  unsichtbar**: betroffene Quellen wurden bisher als „ok: 0 Skills" vermerkt.
+- **Ein dauerhaft gestörtes Netz hält einen Lauf nicht mehr fest.** Die längere
+  Wiederholung hätte einen Lauf im Extremfall tagelang beschäftigen können und
+  damit den nachgelagerten EU-Lauf blockiert; nach 20 Fehlschlägen in Folge gibt
+  der Lauf auf und ist am nächsten Tag wieder fällig.
+
+---
+
 ## [1.376.3] - 2026-10-16
 
 ### Sicherheit

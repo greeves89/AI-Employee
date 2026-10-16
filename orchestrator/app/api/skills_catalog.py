@@ -1,9 +1,10 @@
 """API endpoints for the skill catalog (crawled from skills.sh repos + DB marketplace)."""
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.verbindungswiederholung import NetzaussetzerAbbruch
 from app.db.session import get_db
 from app.dependencies import require_admin, require_auth
 from app.models.skill import Skill, SkillStatus
@@ -94,5 +95,13 @@ async def refresh_skill_catalog(request: Request, user=Depends(require_admin)):
     if not crawler:
         return {"detail": "Crawler not available"}
 
-    skills = await crawler.crawl()
+    try:
+        skills = await crawler.crawl()
+    except NetzaussetzerAbbruch as e:
+        # Ehrlich antworten statt "0 Skills": der Lauf kam nicht zustande, der
+        # bisherige Katalog steht unveraendert weiter (#746).
+        raise HTTPException(
+            status_code=503,
+            detail=f"Netzaussetzer — Katalog unveraendert gelassen: {e}",
+        ) from e
     return {"detail": f"Refreshed catalog with {len(skills)} skills"}
