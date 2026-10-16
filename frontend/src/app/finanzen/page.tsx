@@ -205,7 +205,7 @@ function FinanzenSeite() {
                     <XAxis dataKey="monat" tick={{ fontSize: 11 }} stroke="currentColor" strokeOpacity={0.4} />
                     <YAxis tick={{ fontSize: 11 }} stroke="currentColor" strokeOpacity={0.4} width={48}
                       tickFormatter={(v: number) => `${v.toFixed(0)} ${money.symbol}`} />
-                    <Tooltip formatter={(v: number) => `${v.toFixed(2).replace(".", ",")} ${money.symbol}`}
+                    <Tooltip formatter={(v) => `${Number(v).toFixed(2).replace(".", ",")} ${money.symbol}`}
                       contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                     <Bar dataKey="Aufgaben" stackId="k" fill="#6366f1" radius={[0, 0, 0, 0]} />
                     <Bar dataKey="Chat" stackId="k" fill="#22c55e" radius={[4, 4, 0, 0]} />
