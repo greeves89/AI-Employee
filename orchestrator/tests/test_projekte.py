@@ -270,6 +270,26 @@ class GemischtesProjekt(Basis):
             r = await api.karte_aendern("p1", "k3", api.KarteAendern(titel="Neuer Titel"), user=MITGLIED, db=db)
             self.assertEqual(r["titel"], "Neuer Titel")
 
+    async def test_auch_ein_admin_schreibt_fremde_karten_nicht_um(self):
+        from app.models.user import UserRole
+
+        admin = SimpleNamespace(id="admin", role=UserRole.ADMIN, email="admin@example.invalid")
+        async with self.Session() as db:
+            team = await db.get(Team, "p1")
+            team.geteilt_mit = ["admin"]
+            await db.commit()
+            await self._karte(db, "k1", "eingang", ersteller_user_id="ua")
+            with self.assertRaises(HTTPException) as e:
+                await api.karte_aendern("p1", "k1", api.KarteAendern(text="Tu etwas anderes"), user=admin, db=db)
+            self.assertEqual(e.exception.status_code, 409)
+
+    async def test_unbekannter_ersteller_gilt_als_fremd(self):
+        async with self.Session() as db:
+            await self._karte(db, "k1", ersteller_user_id=None)
+            router = _Router(db)
+            await api._vergeben(await db.get(Team, "p1"), "k1", "a1", MITGLIED, None, router, db)
+        self.assertIn('source="karte-eines-anderen-nutzers"', router.aufrufe[0]["prompt"])
+
     async def test_angelegte_karten_kennen_ihren_besitzer(self):
         async with self.Session() as db:
             k = await api.karte_anlegen("p1", api.NeueKarte(titel="x"), user=agent("b1"), db=db)
@@ -543,6 +563,19 @@ class Sichtbarkeit(Basis):
             with self.assertRaises(HTTPException) as e:
                 await api.update_team("p1", api.UpdateTeam(geteilt_mit=["gibt-es-nicht"]), user=MITGLIED, db=db)
             self.assertEqual(e.exception.status_code, 422)
+
+    async def test_freigegebene_sehen_keine_fremde_adresse(self):
+        from app.models.user import UserRole
+
+        async with self.Session() as db:
+            team = await db.get(Team, "p1")
+            team.created_by = "a@example.invalid"
+            team.geteilt_mit = ["ub"]
+            await db.commit()
+            fremd = SimpleNamespace(id="ub", role=UserRole.MEMBER, email="b@example.invalid")
+            p = (await api.projekt_board("p1", user=fremd, db=db))["projekt"]
+        self.assertIsNone(p["created_by"])
+        self.assertEqual((p["geteilt_mit"], p["darf_verwalten"]), ([], False))
 
     async def test_agenten_des_projekts_erreichen_es_weiter(self):
         async with self.Session() as db:

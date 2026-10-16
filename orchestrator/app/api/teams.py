@@ -76,8 +76,17 @@ def _serialize(t: Team) -> dict:
 
 
 def _fuer(t: Team, user) -> dict:
-    """Wie _serialize, dazu, ob ``user`` das Projekt verwalten darf."""
-    return {**_serialize(t), "darf_verwalten": _ist_ersteller(t, user)}
+    """Wie _serialize, dazu, ob ``user`` das Projekt verwalten darf.
+
+    ``created_by`` traegt die E-Mail des Erstellers — die gehoert nur ihm selbst
+    (Freigegebene sehen fremde Adressen nicht, wie im Nutzerverzeichnis).
+    """
+    darf = _ist_ersteller(t, user)
+    daten = _serialize(t)
+    if not darf:
+        daten["created_by"] = None
+        daten["geteilt_mit"] = []
+    return {**daten, "darf_verwalten": darf}
 
 
 async def _freigabe(db: AsyncSession, ids: list[str], user) -> list[str]:
@@ -565,11 +574,15 @@ async def _besitzer(user, db: AsyncSession) -> str | None:
 
 
 async def _fremd_fuer(karte, agent_id: str | None, db: AsyncSession) -> bool:
-    """Stammt die Karte von einem anderen Nutzer als dem Besitzer des Ziel-Agenten?"""
-    if not karte.ersteller_user_id or not agent_id:
-        return False
+    """Stammt die Karte von einem anderen Nutzer als dem Besitzer des Ziel-Agenten?
+
+    Unbekannter Ersteller (z. B. ein Plattform-Agent ohne Besitzer) gilt als fremd:
+    im Zweifel ist der Text Material, nicht Anweisung.
+    """
+    if not agent_id:
+        return True
     ziel = await db.get(Agent, agent_id)
-    return ziel is None or ziel.user_id != karte.ersteller_user_id
+    return ziel is None or not karte.ersteller_user_id or ziel.user_id != karte.ersteller_user_id
 
 
 async def _projekt(team_id: str, user, db: AsyncSession) -> Team:
@@ -691,9 +704,9 @@ async def karte_aendern(team_id: str, karte_id: str, body: KarteAendern, user=De
     # (danach ist sie eingeplant oder vergeben) und nur vom Nutzer, dem die Karte
     # gehoert — sonst liesse sich ein Auftrag an fremde Agenten unterschieben.
     if body.titel is not None or body.text is not None:
-        sicht = await _sicht(user, db)
+        # Auch fuer Administratoren: sonst liesse sich die Rahmung fremder Karten umgehen.
         if karte.quelle != "eigen" or karte.spalte != "eingang" or (
-            sicht is not None and karte.ersteller_user_id and karte.ersteller_user_id != await _besitzer(user, db)
+            karte.ersteller_user_id != await _besitzer(user, db)
         ):
             await db.rollback()
             raise HTTPException(status_code=409, detail="Titel und Text ändert nur, wem die Karte gehört — und nur im Eingang.")
@@ -740,6 +753,7 @@ async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Nur Karten aus Eingang oder Bereit lassen sich vergeben.")
     vorher = karte.spalte
+    team_id, lead_id = t.id, t.lead_agent_id
     karte.spalte = "in_arbeit"
     karte.task_id = None
     await db.commit()
@@ -756,13 +770,14 @@ async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request:
                 metadata={"team_id": t.id, "karte_id": karte.id, "auftrag": karte.text or karte.titel},
             )
     except Exception:
+        # Nach dem Rollback sind geladene Objekte verfallen — nur gemerkte Werte nutzen.
         await db.rollback()
-        karte = await projekte.karte_laden(db, t.id, karte_id)
+        karte = await projekte.karte_laden(db, team_id, karte_id)
         karte.spalte = vorher
         await db.commit()
         raise
-    karte = await projekte.karte_laden(db, t.id, karte_id)
-    projekte.in_arbeit_setzen(karte, task, ziel or t.lead_agent_id)
+    karte = await projekte.karte_laden(db, team_id, karte_id)
+    projekte.in_arbeit_setzen(karte, task, ziel or lead_id)
     await db.commit()
     return projekte.karte_dict(karte, task)
 
@@ -850,6 +865,7 @@ async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, re
         await db.rollback()
         raise HTTPException(status_code=409, detail="Zurückgeben geht nur in der Prüfung.")
     alt = await _lauf_der_karte(db, karte, user)
+    team_id, lead_id = t.id, t.lead_agent_id
     karte.spalte = "in_arbeit"  # Sperre: ein Doppelklick legt keine zweite Nacharbeit an
     await db.commit()
 
@@ -872,12 +888,12 @@ async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, re
             )
     except Exception:
         await db.rollback()
-        karte = await projekte.karte_laden(db, t.id, karte_id)
+        karte = await projekte.karte_laden(db, team_id, karte_id)
         karte.spalte = "pruefung"
         await db.commit()
         raise
-    karte = await projekte.karte_laden(db, t.id, karte_id)
-    projekte.in_arbeit_setzen(karte, neu, ziel or t.lead_agent_id)
+    karte = await projekte.karte_laden(db, team_id, karte_id)
+    projekte.in_arbeit_setzen(karte, neu, ziel or lead_id)
     await db.commit()
     return projekte.karte_dict(karte, neu)
 
