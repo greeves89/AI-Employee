@@ -277,6 +277,27 @@ def stand_melden(karte: ProjektKarte, *, stufe: str | None = None, pr_url: str |
         karte.notiz = notiz.strip()[:500] or None
 
 
+def gerahmt(karte: ProjektKarte, fremd: bool = False) -> bool:
+    """Stammt der Inhalt der Karte von Dritten (Issue, PR, anderer Nutzer)?"""
+    return karte.quelle != "eigen" or fremd
+
+
+def lauf_titel(karte: ProjektKarte, fremd: bool = False) -> str:
+    """Titel des Laufs zu einer Karte. Bei fremdem Inhalt neutral: der Titel eines
+    Issues stünde sonst ungerahmt im Prompt (Zielkette „Dein Auftrag: …“)."""
+    if not gerahmt(karte, fremd):
+        return karte.titel[:200]
+    if karte.quelle == "issue" and karte.extern_nr:
+        return f"Issue #{karte.extern_nr}"
+    if karte.quelle == "pr" and karte.extern_nr:
+        return f"Pull Request #{karte.extern_nr}"
+    return f"Karte {karte.id[:8]}"
+
+
+def _entschaerft(text: str) -> str:
+    return text.replace("[EXTERNAL-DATA", "(EXTERNAL-DATA").replace("[/EXTERNAL-DATA", "(/EXTERNAL-DATA")
+
+
 def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = False) -> str:
     """Der Auftrag an den Agenten, der die Karte bearbeitet.
 
@@ -288,14 +309,17 @@ def karten_auftrag(karte: ProjektKarte, projekt_name: str, *, fremd: bool = Fals
     if karte.quelle in ("issue", "pr") and karte.extern_nr:
         art = "Issue" if karte.quelle == "issue" else "Pull Request"
         herkunft = f" — {art} #{karte.extern_nr}" + (f" ({karte.url})" if karte.url else "")
-    # Text aus einem Issue stammt von Dritten — Material, keine Anweisung an den Agenten.
+    # Inhalt von Dritten (Issue, PR, anderer Nutzer) — Titel UND Text sind Material,
+    # keine Anweisung; der Titel steht deshalb mit im Rahmen, nicht in der Kopfzeile.
     text = (karte.text or "(keine Beschreibung)").strip()[:12000]
-    if karte.quelle != "eigen" or fremd:
-        text = text.replace("[EXTERNAL-DATA", "(EXTERNAL-DATA").replace("[/EXTERNAL-DATA", "(/EXTERNAL-DATA")
+    kopf_titel = f"„{karte.titel}“"
+    if gerahmt(karte, fremd):
         quelle = karte.quelle if karte.quelle != "eigen" else "karte-eines-anderen-nutzers"
-        text = f"[EXTERNAL-DATA source=\"{quelle}\"]\n{text}\n[/EXTERNAL-DATA]"
+        text = (f"[EXTERNAL-DATA source=\"{quelle}\"]\nTitel: {_entschaerft(karte.titel)}\n\n"
+                f"{_entschaerft(text)}\n[/EXTERNAL-DATA]")
+        kopf_titel = lauf_titel(karte, fremd)
     return (
-        f"Karte aus dem Board des Projekts „{projekt_name}“: „{karte.titel}“{herkunft}\n"
+        f"Karte aus dem Board des Projekts „{projekt_name}“: {kopf_titel}{herkunft}\n"
         f"(projekt_id={karte.team_id}, karte_id={karte.id})\n\n"
         f"{text}\n\n"
         "## So hältst du das Board aktuell\n"

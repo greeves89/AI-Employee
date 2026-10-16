@@ -784,14 +784,16 @@ async def _vergeben(t: Team, karte_id: str, agent_id: str | None, user, request:
     await db.commit()
 
     prioritaet = {1: 2, 2: 1, 3: 0}.get(karte.prioritaet, 1)
-    auftrag = projekte.karten_auftrag(karte, t.name, fremd=await _fremd_fuer(karte, ziel or t.lead_agent_id, db))
+    fremd = await _fremd_fuer(karte, ziel or t.lead_agent_id, db)
+    auftrag = projekte.karten_auftrag(karte, t.name, fremd=fremd)
+    titel = projekte.lauf_titel(karte, fremd)
     try:
         if an_lead:
-            task = await _an_lead(t, karte.titel[:200], auftrag, prioritaet, request, router_, db, user,
+            task = await _an_lead(t, titel, auftrag, prioritaet, request, router_, db, user,
                                   karte_id=karte.id)
         else:
             task = await router_.create_and_route_task(
-                title=karte.titel[:200], prompt=auftrag, priority=prioritaet, agent_id=ziel,
+                title=titel, prompt=auftrag, priority=prioritaet, agent_id=ziel,
                 metadata={"team_id": t.id, "karte_id": karte.id, "auftrag": karte.text or karte.titel},
             )
     except Exception:
@@ -896,18 +898,19 @@ async def karte_zurueckgeben(team_id: str, karte_id: str, body: Zurueckgeben, re
 
     ueber_lead = bool(alt is not None and (alt.metadata_ or {}).get("delegated_to_team") and t.lead_agent_id)
     ziel = None if ueber_lead else (karte.agent_id or (alt.agent_id if alt else None))
-    prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name,
-                                        fremd=await _fremd_fuer(karte, ziel or t.lead_agent_id, db))
+    fremd = await _fremd_fuer(karte, ziel or t.lead_agent_id, db)
+    prompt = projekte.nacharbeit_prompt(karte, alt, body.hinweis, t.name, fremd=fremd)
+    titel = f"Nacharbeit: {projekte.lauf_titel(karte, fremd)}"[:200]
     try:
         if ueber_lead:
-            neu = await _an_lead(t, f"Nacharbeit: {karte.titel}"[:200], prompt, 1, request, router_, db, user,
+            neu = await _an_lead(t, titel, prompt, 1, request, router_, db, user,
                                  parent_task_id=alt.id if alt else None, karte_id=karte.id)
         else:
             if not ziel:
                 raise HTTPException(status_code=409, detail="Die Karte hat keinen Agenten mehr — vergib sie neu.")
             await _darf_beauftragen(ziel, user, db)
             neu = await router_.create_and_route_task(
-                title=f"Nacharbeit: {karte.titel}"[:200], prompt=prompt, priority=1, agent_id=ziel,
+                title=titel, prompt=prompt, priority=1, agent_id=ziel,
                 parent_task_id=alt.id if alt else None,
                 metadata={"team_id": t.id, "karte_id": karte.id, "auftrag": karte.text or karte.titel},
             )
