@@ -1334,6 +1334,16 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                         "type": "string",
                         "description": "IANA timezone for cron_expression. LEAVE EMPTY unless you mean a different zone than your own — the server uses yours. Setting 'UTC' by hand is how a schedule named '(07:00)' ends up firing at 09:00.",
                     },
+                    "adaptive": {
+                        "type": "boolean",
+                        "description": (
+                            "ADAPTIVE TEMPO for a WATCHING job (open PRs, issues, inbox, tickets): slows "
+                            "itself down while there is nothing to do (base → 2h → 4h → 8h after 3 empty "
+                            "runs) and snaps back to the base tempo as soon as there is work. Needs "
+                            "interval_seconds (that becomes the base tempo), and you MUST call "
+                            "report_run at the end of every run — otherwise the tempo never changes."
+                        ),
+                    },
                 },
                 "required": ["name", "prompt"],
             },
@@ -1370,6 +1380,73 @@ ORCHESTRATOR_TOOLS: list[dict] = [
                     },
                 },
                 "required": ["schedule_id", "action"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "report_run",
+            "description": (
+                "Report how THIS scheduled run went — call it at the END of every run of an "
+                "ADAPTIVE schedule. The platform then adjusts your own tempo: 'idle'/'waiting' "
+                "slow you down step by step (base → 2h → 4h → 8h after 3 empty runs), 'worked' "
+                "snaps you back to the base tempo at once. The schedule keeps its ID and history. "
+                "No schedule ID needed — the run you are in identifies it. Outside a scheduled "
+                "run this returns an error, so do not call it in a chat."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "outcome": {
+                        "type": "string",
+                        "description": (
+                            "worked = there was work and you did it; idle = nothing to do; "
+                            "waiting = blocked on a decision by the user (counts as idle)."
+                        ),
+                        "enum": ["worked", "idle", "waiting"],
+                    },
+                    "task_id": {
+                        "type": "string",
+                        "description": "Optional: CURRENT_TASK_ID from your prompt. Without it the server takes your running scheduled task.",
+                    },
+                },
+                "required": ["outcome"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_schedule",
+            "description": (
+                "Change one of YOUR OWN schedules in place — timing, adaptive tempo, or "
+                "active/paused — without losing its ID, run history or success counters. Use "
+                "this instead of deleting a schedule and creating it again."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "schedule_id": {"type": "string", "description": "ID of the schedule (see list_schedules)"},
+                    "name": {"type": "string", "description": "New name"},
+                    "prompt": {"type": "string", "description": "New instructions for the run"},
+                    "interval_seconds": {"type": "integer", "description": "New interval in seconds (minimum 60)"},
+                    "cron_expression": {"type": "string", "description": "New cron expression"},
+                    "timezone": {"type": "string", "description": "IANA timezone for the cron expression"},
+                    "enabled": {"type": "boolean", "description": "false = pause, true = resume"},
+                    "adaptive": {
+                        "type": "boolean",
+                        "description": "Self-adjusting tempo on/off (interval schedules only). On: current interval becomes the base tempo. Off: base tempo restored.",
+                    },
+                    "basis_intervall_s": {"type": "integer", "description": "Base tempo in seconds — where 'worked' returns to"},
+                    "stufen": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Tempo ladder in seconds, ascending. Default [1800, 7200, 14400, 28800].",
+                    },
+                    "leer_schwelle": {"type": "integer", "description": "Empty runs in a row before slowing down (default 3)"},
+                },
+                "required": ["schedule_id"],
             },
         },
     },

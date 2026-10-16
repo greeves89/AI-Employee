@@ -111,6 +111,10 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     # the setup itself does not bypass anything. Core proactive-agent
     # capability ("use this instead of sleeping/waiting").
     "create_schedule", "manage_schedule",
+    # Taktet den EIGENEN Zeitplan um bzw. meldet nur, wie der laufende Lauf
+    # ausging (#941) — dieselbe Klasse: keine Wirkung ausserhalb der Plattform,
+    # und was der Zeitplan spaeter ausfuehrt, geht erneut durch diese Pruefung.
+    "report_run", "update_schedule",
     "trigger_create", "trigger_delete", "trigger_toggle",
     # Saves/proposes a skill as a DRAFT for review — no immediate effect,
     # same risk class as the already-allowed skill_install.

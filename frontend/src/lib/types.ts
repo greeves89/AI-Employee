@@ -243,6 +243,18 @@ export interface Schedule {
   success_rate: number;
   /** Takt als lesbare Zeile vom Server („täglich 22:00", „alle 30 Min"). */
   takt?: string;
+  /** #941: Takt passt sich bei Leerlauf selbst an (nur Intervall-Zeitpläne). */
+  adaptive?: boolean;
+  /** Grundtakt in Sekunden, auf den ein Lauf mit Arbeit zurückstellt. */
+  basis_intervall_s?: number | null;
+  /** Leere Läufe hintereinander, bevor es langsamer wird (Standard 3). */
+  leer_schwelle?: number;
+  /** Leere Läufe in Folge. */
+  leerlaeufe?: number;
+  /** Aktuelle Stufe der Taktleiter (0 = Grundtakt). */
+  stufe?: number;
+  /** Ganze Zeile für die Liste: „alle 4 Std (5 Leerläufe), Grundtakt alle 30 Min". */
+  takt_adaptiv?: string;
   created_at: string;
   updated_at: string;
 }

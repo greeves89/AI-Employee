@@ -20,6 +20,7 @@ Geprueft wird der Quelltext der Revisionen — der Lauf selbst haengt in der CI
 (Job `migrations-offline`).
 """
 
+import ast
 import re
 import unittest
 from pathlib import Path
@@ -110,6 +111,106 @@ class DieVorschauHaengtInDerCiTests(unittest.TestCase):
         block = _CI.split("migrations-offline:", 1)[1].split("\n  release-track:", 1)[0]
         self.assertNotIn("services:", block)
         self.assertNotIn("postgres", block.lower())
+
+
+
+
+class GenauEinKopfTests(unittest.TestCase):
+    """Die Revisionskette darf nur EINEN Kopf haben — sonst bleiben Migrationen liegen.
+
+    Die Luecke, die dieser Test schliesst, ist eine, die die eigene CI nicht
+    sehen kann, weil beide Seiten dasselbe Wort unterschiedlich beugen:
+
+    * Der CI-Job „Migrations-Vorschau" fuehrt ``alembic upgrade heads``
+      (MEHRZAHL, ci.yml) — mehrere Koepfe sind dort ausdruecklich erlaubt.
+    * Der Start der Anlage fuehrt ``alembic upgrade head`` (EINZAHL,
+      ``app/main.py``) — und bricht bei zwei Koepfen mit „Multiple head
+      revisions are present" ab. Der Start selbst geht weiter: der Rueckfall
+      in ``_migrate_or_fallback`` haelt die Anlage oben, laesst die
+      ausstehenden Migrationen aber LIEGEN. Auf einer versorgten Datenbank
+      heisst das: die neuen Spalten fehlen, laut und wiederholt, ohne dass
+      jemand einen Startabbruch sieht.
+
+    Praktische Folge: Zwei PRs, die je eine Migration mitbringen, sind EINZELN
+    gruen und ZUSAMMEN kaputt. Gemerkt hat es bisher nur, wer die Koepfe von
+    Hand nachgezaehlt hat — zweimal knapp vor dem Merge, einmal erst beim
+    Rebase, als ein fremder PR eine Migration dazwischengeschoben hatte.
+
+    Gezaehlt wird am Quelltext (``ast``), nicht per Regex und ohne Datenbank:
+    Merge-Revisionen schreiben ``down_revision`` als mehrzeiliges Tupel, und
+    ein Teil der Revisionen schreibt ``revision: str = "..."`` mit Typangabe
+    (``ast.AnnAssign``) statt als einfache Zuweisung. Wer nur ``ast.Assign``
+    liest, zaehlt genau diese Dateien nicht mit und erfindet sich dadurch
+    zusaetzliche Koepfe — ein Fehlalarm, der teurer ist als kein Test.
+    """
+
+    @staticmethod
+    def _namen(knoten):
+        if isinstance(knoten, ast.Assign):
+            return [z.id for z in knoten.targets if isinstance(z, ast.Name)]
+        if isinstance(knoten, ast.AnnAssign) and isinstance(knoten.target, ast.Name):
+            return [knoten.target.id]
+        return []
+
+    @staticmethod
+    def _werte(knoten):
+        wert = knoten.value
+        if wert is None:
+            return []
+        if isinstance(wert, ast.Constant):
+            return [wert.value] if wert.value else []
+        if isinstance(wert, (ast.Tuple, ast.List)):
+            return [e.value for e in wert.elts
+                    if isinstance(e, ast.Constant) and e.value]
+        return []
+
+    def _kette(self):
+        """``{revision: [eltern]}`` ueber alle Revisionsdateien."""
+        kette, ohne = {}, []
+        for pfad in _revisionen():
+            baum = ast.parse(pfad.read_text(encoding="utf-8"))
+            revision, eltern = None, []
+            for knoten in baum.body:
+                namen = self._namen(knoten)
+                if "revision" in namen:
+                    werte = self._werte(knoten)
+                    revision = werte[0] if werte else None
+                if "down_revision" in namen:
+                    eltern = self._werte(knoten)
+            if revision is None:
+                ohne.append(pfad.name)
+            else:
+                kette[revision] = eltern
+        return kette, ohne
+
+    def test_jede_revisionsdatei_nennt_ihre_revision(self):
+        """Vorbedingung des Kopf-Tests: Wird eine Datei nicht gelesen, fehlt
+        sie als Elternteil und der Kopf-Test schlaegt grundlos an."""
+        kette, ohne = self._kette()
+        self.assertEqual([], ohne, f"Revision nicht erkannt in: {ohne}")
+        self.assertEqual(len(kette), len(_revisionen()),
+                         "Zwei Dateien tragen dieselbe Revisionskennung")
+
+    def test_die_kette_hat_genau_einen_kopf(self):
+        kette, _ = self._kette()
+        eltern = {e for liste in kette.values() for e in liste}
+        koepfe = sorted(r for r in kette if r not in eltern)
+        self.assertEqual(
+            1, len(koepfe),
+            "Die Revisionskette hat {} Koepfe: {}. `alembic upgrade head` "
+            "(Einzahl, beim Start der Anlage) bricht damit ab. Entweder "
+            "`down_revision` der neuen Revision auf den Kopf der Hauptlinie "
+            "ziehen oder eine Merge-Revision anlegen.".format(len(koepfe), koepfe),
+        )
+
+    def test_jedes_genannte_elternteil_existiert(self):
+        """Ein Tippfehler in ``down_revision`` erzeugt sonst leise einen
+        zweiten Kopf UND eine Revision, die Alembic nie erreicht."""
+        kette, _ = self._kette()
+        fehlend = sorted({e for liste in kette.values() for e in liste}
+                         - set(kette))
+        self.assertEqual([], fehlend,
+                         f"down_revision zeigt auf unbekannte Revisionen: {fehlend}")
 
 
 if __name__ == "__main__":

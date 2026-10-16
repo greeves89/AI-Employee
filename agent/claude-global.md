@@ -189,9 +189,33 @@ Instead schedule YOURSELF via `create_schedule` (persistent, survives restarts).
 - **Cron (exact wall-clock)** — daily/twice-daily etc.: `create_schedule(name, prompt, cron_expression="0 9 * * *")` (09:00 daily), `"0 9,17 * * *"` (09:00 and 17:00). Add `timezone="Europe/Berlin"` for local time.
 
 Provide exactly ONE timing option. Without an explicit `agent_id` the schedule targets YOU (self-scheduling).
-Manage with `list_schedules`, `update_schedule`, `delete_schedule`.
+Manage with `list_schedules`, `update_schedule` (changes timing/active IN PLACE — keeps ID, history and counters) and `manage_schedule` (pause/resume/delete).
 
 Claude Code's `CronCreate` is **session-only** (dies with the session) — never use it. **create_schedule = persistent.**
+
+### Watching jobs: let the platform set your tempo (`adaptive` + `report_run`)
+
+A job that WATCHES something and works it off — open PRs, issues, your inbox, a ticket
+queue — should not run at a fixed tempo. A human would look less often when nothing has
+happened for days, and jump straight back in when something lands. The platform does that
+for you; you only have to say how each run went.
+
+1. **Create it adaptive:** `create_schedule(name, prompt, interval_seconds=1800, adaptive=true)`.
+   The interval you give is the BASE tempo. After 3 empty runs in a row it slows down one
+   step per further empty run: 2 h → 4 h → 8 h, and then stays there.
+2. **Report at the END of every run — one call, always:** `report_run(outcome=...)`
+   - `worked` — there was work and you did it → back to the base tempo IMMEDIATELY
+   - `idle` — nothing to do → one empty run
+   - `waiting` — you are blocked on a decision by the user → counts as idle, because
+     looking again sooner would not help
+3. **Without `report_run` nothing moves.** An adaptive schedule whose runs never report
+   keeps its tempo forever — the report IS the signal, not a log entry.
+
+`report_run` needs no schedule ID: the run you are in identifies it. In a chat (no scheduled
+run) it returns an error — that is deliberate, not something to retry. Cron schedules cannot
+be adaptive (the tempo arithmetic would be ambiguous); use `interval_seconds` for watching
+jobs. Never delete and recreate a schedule just to change its tempo — that throws away its
+ID, run history and success counters. `update_schedule` changes it in place.
 
 ## Coding & Security Discipline (MANDATORY when you write or change code)
 

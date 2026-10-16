@@ -992,6 +992,16 @@ export function buildServer() {
                 "by hand is how a schedule named '(07:00)' ends up firing at 09:00. " +
                 "Ignored for interval_seconds schedules.",
             },
+            adaptive: {
+              type: "boolean",
+              description:
+                "ADAPTIVE TEMPO for a WATCHING job (open PRs, issues, inbox, tickets): the " +
+                "schedule slows itself down while there is nothing to do (base → 2h → 4h → 8h " +
+                "after 3 empty runs) and snaps back to the base tempo the moment there is work. " +
+                "Requires interval_seconds (that interval becomes the base tempo). " +
+                "You MUST then call report_run('worked'|'idle'|'waiting') at the end of every " +
+                "run — without it the tempo never changes.",
+            },
           },
           required: ["name", "prompt"],
         },
@@ -1067,6 +1077,70 @@ export function buildServer() {
             },
           },
           required: ["schedule_id", "action"],
+        },
+      },
+      {
+        name: "report_run",
+        description:
+          "Report how THIS scheduled run went — call it at the END of every run of an " +
+          "ADAPTIVE schedule. The platform then sets your own tempo: 'idle' or 'waiting' " +
+          "slow you down step by step (base → 2h → 4h → 8h after 3 empty runs), 'worked' " +
+          "snaps you back to the base tempo immediately. Keeps the schedule's ID and history " +
+          "(unlike deleting and recreating it). No schedule ID needed — the run you are in " +
+          "identifies it. Outside a scheduled run this returns an error, so don't call it in chat.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            outcome: {
+              type: "string",
+              enum: ["worked", "idle", "waiting"],
+              description:
+                "worked = there was work and you did it. idle = nothing to do. " +
+                "waiting = you are blocked on a decision by the user (counts as idle, " +
+                "because looking again sooner would not help).",
+            },
+            task_id: {
+              type: "string",
+              description:
+                "Optional: the CURRENT_TASK_ID from your prompt. Without it the server " +
+                "takes your currently running scheduled task.",
+            },
+          },
+          required: ["outcome"],
+        },
+      },
+      {
+        name: "update_schedule",
+        description:
+          "Change one of YOUR OWN schedules in place — timing (interval_seconds, " +
+          "cron_expression, timezone), adaptive tempo, or active/paused — without losing its " +
+          "ID, run history or success counters. Use this instead of deleting a schedule and " +
+          "creating it again.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            schedule_id: { type: "string", description: "ID of the schedule to change (see list_schedules)." },
+            name: { type: "string", description: "New name." },
+            prompt: { type: "string", description: "New instructions for the run." },
+            interval_seconds: { type: "number", minimum: 60, description: "New interval in seconds (min 60)." },
+            cron_expression: { type: "string", description: "New cron expression (wall-clock times)." },
+            timezone: { type: "string", description: "IANA timezone for the cron expression." },
+            enabled: { type: "boolean", description: "false = pause, true = resume." },
+            adaptive: {
+              type: "boolean",
+              description:
+                "Turn the self-adjusting tempo on/off (interval schedules only). On: the " +
+                "current interval becomes the base tempo. Off: the base tempo is restored.",
+            },
+            basis_intervall_s: { type: "number", minimum: 60, description: "Base tempo in seconds — where 'worked' returns to." },
+            stufen: {
+              type: "array",
+              items: { type: "number" },
+              description: "Tempo ladder in seconds, ascending. Default [1800, 7200, 14400, 28800].",
+            },
+            leer_schwelle: { type: "number", minimum: 1, description: "Empty runs in a row before slowing down (default 3)." },
+          },
+          required: ["schedule_id"],
         },
       },
       {
@@ -2057,6 +2131,9 @@ export function buildServer() {
         } else {
           body.interval_seconds = args.interval_seconds;
         }
+        // Adaptiver Takt (#941): nur mit Intervall sinnvoll — der Server weist
+        // die Kombination mit cron/run_in_seconds ab, statt sie zu erraten.
+        if (args.adaptive) body.adaptive = true;
         const result = await apiCall("/schedules/", {
           method: "POST",
           body: JSON.stringify(body),
@@ -2148,6 +2225,62 @@ export function buildServer() {
               text: `Schedule ${schedule_id} ${action === "pause" ? "paused" : "resumed"}.`,
             },
           ],
+        };
+      }
+
+      case "report_run": {
+        const body = { outcome: args.outcome };
+        if (args.task_id) body.task_id = args.task_id;
+        const result = await apiCall("/schedules/report-run", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        if (!result.adaptive) {
+          return {
+            content: [{
+              type: "text",
+              text: `Noted "${args.outcome}" for schedule "${result.name}". ${result.hinweis || "This schedule is not adaptive — the tempo stays as it is."}`,
+            }],
+          };
+        }
+        const takt = result.takt || `every ${result.intervall_s}s`;
+        const wechsel = result.geaendert
+          ? `Tempo changed: ${result.intervall_vorher_s}s → ${result.intervall_s}s`
+          : `Tempo unchanged (${result.intervall_s}s)`;
+        return {
+          content: [{
+            type: "text",
+            text: `Reported "${args.outcome}" for "${result.name}". ${wechsel}. ` +
+              `Now: ${takt}. Empty runs in a row: ${result.leerlaeufe}. Next run: ${result.next_run_at}.`,
+          }],
+        };
+      }
+
+      case "update_schedule": {
+        const { schedule_id } = args;
+        if (!schedule_id) throw new Error("schedule_id is required.");
+        const body = {};
+        for (const feld of [
+          "name", "prompt", "interval_seconds", "cron_expression", "timezone",
+          "enabled", "adaptive", "basis_intervall_s", "stufen", "leer_schwelle",
+        ]) {
+          if (args[feld] !== undefined) body[feld] = args[feld];
+        }
+        if (Object.keys(body).length === 0) {
+          throw new Error("Nothing to change — name one field besides schedule_id.");
+        }
+        const result = await apiCall(`/schedules/${schedule_id}`, {
+          method: "PUT",
+          body: JSON.stringify(body),
+        });
+        const takt = result.takt_adaptiv || result.takt ||
+          (result.cron_expression ? `cron ${result.cron_expression}` : `every ${result.interval_seconds}s`);
+        return {
+          content: [{
+            type: "text",
+            text: `Schedule "${result.name}" updated (id: ${result.id}): ${takt}` +
+              `${result.enabled ? "" : " — PAUSED"}, next run: ${result.next_run_at}.`,
+          }],
         };
       }
 

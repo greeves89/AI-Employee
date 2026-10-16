@@ -100,10 +100,11 @@ MCP_SERVER_TOOLS: dict[str, list[str]] = {
         "projekt_karte_anlegen", "projekt_karte_stand", "projekt_karte_vergeben",
         "projekt_karte_verschieben", "projekt_termin_anlegen", "projekt_termine",
         "projekt_wissen_ergaenzen", "projekt_wissen_lesen", "projekt_wissen_schreiben",
-        "projekt_wissen_suchen", "rate_task", "rebuild_app", "restart_own_container",
+        "projekt_wissen_suchen", "rate_task", "rebuild_app", "report_run",
+        "restart_own_container",
         "schedule_meeting", "send_message", "send_message_and_wait", "skill_update",
         "start_app", "stop_app", "tickets", "trigger_create", "trigger_delete",
-        "trigger_list", "trigger_toggle", "update_todos", "web_search"
+        "trigger_list", "trigger_toggle", "update_schedule", "update_todos", "web_search"
     ],
     "read-logs": [
         "read_logs"
@@ -182,6 +183,7 @@ DEFINITION_TOOLS = [
     "rate_task",
     "read_file",
     "rebuild_app",
+    "report_run",
     "request_approval",
     "restart_own_container",
     "schedule_meeting",
@@ -206,6 +208,7 @@ DEFINITION_TOOLS = [
     "trigger_delete",
     "trigger_list",
     "trigger_toggle",
+    "update_schedule",
     "update_todos",
     "view_image",
     "web_fetch",

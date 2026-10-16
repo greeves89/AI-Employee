@@ -1151,6 +1151,13 @@ class TaskRouter:
         # Bewertungsanfragen und Rueckrufe gehoeren zum urspruenglichen Lauf; sie
         # ein zweites Mal auszuloesen wuerde denselben Vorgang doppelt melden.
         meta.pop("rating_requested", None)
+        # Dasselbe gilt fuer die Lauf-Meldung eines adaptiven Zeitplans (#941):
+        # Sie ist der Idempotenz-Schluessel von ``report_run``. Erbte der
+        # Wiederholungslauf sie, gaelte seine eigene Meldung als Dublette — der
+        # geheilte Lauf fiele still aus der Taktfuehrung heraus und der Takt
+        # bliebe auf der Stufe des gescheiterten Versuchs stehen.
+        meta.pop("takt_wechsel", None)
+        meta.pop("lauf_ergebnis", None)
 
         base_title = _RETRY_TITLE_SUFFIX_RE.sub("", task.title or "")
         retry = Task(
