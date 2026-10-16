@@ -1244,7 +1244,8 @@ gestartet. Je Nutzer gibt es ein Sekretariat; es ist nur für dich sichtbar.
   „Merke: Mails von der Steuerkanzlei immer sofort an mich“.
 - **Wartet auf dich** — Antworten, die das Sekretariat entworfen hat, mit Empfängern, Betreff und
   Text. **Freigeben und senden** schickt die Mail ab, **Ablehnen** lässt den Entwurf im Postfach
-  liegen. Gelbe Hinweise sagen, was die Vorschau nicht vollständig zeigt (Anhänge, Formatierung,
+  liegen. Das Sekretariat schreibt nur **reinen Text** (auch Antworten samt zitierter Mail), damit
+  du genau siehst, was rausgeht. Gelbe Hinweise sagen, was die Vorschau nicht vollständig zeigt (Anhänge, Formatierung,
   sehr langer Text) — dann im Postfach prüfen. Mails gibst du nur hier oder unter **Freigaben**
   frei; über Telegram oder die Glocke kannst du sie nur ablehnen. Auch Rückfragen der Agenten
   stehen hier.

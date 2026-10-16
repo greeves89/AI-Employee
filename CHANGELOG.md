@@ -24,7 +24,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 - Läufe aus Zeitplänen mit Teambezug zählen zum Team (Kosten unter Finanzen, Projektbudget).
 
 ### Sicherheit
-- Mail-Freigaben: Agenten legen im Entwurfsmodus nur Klartext an; die Vorschau zeigt Linkziele,
+- Mail-Freigaben: Im Entwurfsmodus geht nur reiner Text raus — auch Antworten (die zitierte
+  Original-Mail wird als Text übernommen), damit die Vorschau genau zeigt, was gesendet wird;
+  HTML-Entwürfe gibt der Server nicht frei. Die Vorschau zeigt Linkziele,
   „Antwort an“ und warnt bei HTML, Anhängen und gekürztem Text; ohne Vorschau wird nie gesendet.
   Der Fingerabdruck deckt auch Antwort-an, Format und Anhänge ab. Freigeben (= senden) geht nur auf
   der Seite Heute bzw. unter Freigaben — über Telegram und die Glocke nur Ablehnen. Ein Doppelklick

@@ -20,6 +20,7 @@ def _rufe(name, args):
 
 ENTWURF = {"id": "E1", "isDraft": True, "subject": "Angebot", "toRecipients": [{"emailAddress": {"address": "kunde@example.invalid"}}],
            "body": {"contentType": "html", "content": "<p>Hallo<br>anbei das Angebot.</p>"}}
+TEXTENTWURF = {**ENTWURF, "body": {"contentType": "text", "content": "Hallo\nanbei das Angebot."}}
 
 
 class EntwurfsModus(unittest.IsolatedAsyncioTestCase):
@@ -58,10 +59,11 @@ class EntwurfsModus(unittest.IsolatedAsyncioTestCase):
             self._token, entwurf_freigabe=self.freigabe)
         self.assertEqual(self.freigabe.await_args.args[0], "E1")
 
-    async def test_antworten_wird_antwort_entwurf(self):
-        await msgraph_mcp.handle_mcp_request(_rufe("ms_reply_email", {"email_id": "M9", "body": "Danke"}),
-                                             self._token, entwurf_freigabe=self.freigabe)
-        self.assertEqual(self.aufrufe, [("POST", "/me/messages/M9/createReply")])
+    async def test_antworten_wird_klartext_entwurf(self):
+        with patch.object(mail_freigabe, "_entwurf", AsyncMock(return_value=ENTWURF)):
+            await msgraph_mcp.handle_mcp_request(_rufe("ms_reply_email", {"email_id": "M9", "body": "Danke"}),
+                                                 self._token, entwurf_freigabe=self.freigabe)
+        self.assertEqual(self.aufrufe, [("POST", "/me/messages/M9/createReply"), ("PATCH", "/me/messages/E1")])
         self.freigabe.assert_awaited_once()
 
     async def test_weiterleiten_und_termine_bleiben_gesperrt(self):
@@ -87,11 +89,11 @@ class EntwurfsModus(unittest.IsolatedAsyncioTestCase):
 
 
 class SendenNachFreigabe(unittest.IsolatedAsyncioTestCase):
-    def _approval(self, fingerabdruck=None):
+    def _approval(self, fingerabdruck=None, entwurf=TEXTENTWURF):
         return SimpleNamespace(id=7, agent_id="a1", meta={"kind": "mail_senden", "view": {"name": "mail"}, "input": {
-            "message_id": "E1", "fingerabdruck": fingerabdruck or mail_freigabe.fingerabdruck(ENTWURF)}})
+            "message_id": "E1", "fingerabdruck": fingerabdruck or mail_freigabe.fingerabdruck(entwurf)}})
 
-    async def _senden(self, approval, user_id="ua", entwurf=ENTWURF):
+    async def _senden(self, approval, user_id="ua", entwurf=TEXTENTWURF):
         db = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(id="a1", user_id="ua")))
         aufrufe = []
 
@@ -110,7 +112,7 @@ class SendenNachFreigabe(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((erg["gesendet"], erg["an"]), (True, ["kunde@example.invalid"]))
 
     async def test_geaenderter_entwurf_wird_nicht_gesendet(self):
-        anders = {**ENTWURF, "toRecipients": [{"emailAddress": {"address": "fremd@example.invalid"}}]}
+        anders = {**TEXTENTWURF, "toRecipients": [{"emailAddress": {"address": "fremd@example.invalid"}}]}
         with self.assertRaises(HTTPException) as e:
             await self._senden(self._approval(), entwurf=anders)
         self.assertEqual(e.exception.status_code, 409)
@@ -122,7 +124,7 @@ class SendenNachFreigabe(unittest.IsolatedAsyncioTestCase):
 
     async def test_schon_gesendet(self):
         with self.assertRaises(HTTPException) as e:
-            await self._senden(self._approval(), entwurf={**ENTWURF, "isDraft": False})
+            await self._senden(self._approval(), entwurf={**TEXTENTWURF, "isDraft": False})
         self.assertEqual(e.exception.status_code, 409)
 
     def test_vorschau_als_klartext(self):
@@ -166,6 +168,11 @@ class SendenNachFreigabe(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(len(json.dumps(v)), ANSICHT_MAX_ZEICHEN)
         self.assertIsNotNone(_saubere_ansicht({"name": "mail", "data": v}))
         self.assertTrue(any("länger" in w for w in v["warnungen"]))
+
+    async def test_html_entwurf_wird_nicht_freigegeben(self):
+        with self.assertRaises(HTTPException) as e:
+            await self._senden(self._approval(entwurf=ENTWURF), entwurf=ENTWURF)
+        self.assertEqual(e.exception.status_code, 409)
 
     async def test_ohne_vorschau_wird_nicht_gesendet(self):
         a = self._approval()

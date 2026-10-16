@@ -128,6 +128,20 @@ def _klartext(m: dict) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+async def als_klartext_speichern(token: str, message_id: str) -> None:
+    """Einen HTML-Entwurf in reinen Text umwandeln (Modus „Entwurf“).
+
+    Nur bei reinem Text ist die Vorschau der Freigabe genau das, was gesendet wird —
+    HTML kann verbergen, was ein Mailprogramm trotzdem zeigt."""
+    from app.core.msgraph_mcp import _gid, _graph
+
+    m = await _entwurf(token, message_id)
+    if ((m.get("body") or {}).get("contentType") or "").lower() != "html":
+        return
+    await _graph("PATCH", f"/me/messages/{_gid(message_id)}", token,
+                 content=json.dumps({"body": {"contentType": "Text", "content": _klartext(m)}}))
+
+
 def vorschau(m: dict) -> dict:
     """Was der Mensch vor dem Freigeben sieht. Alles, was die Vorschau NICHT vollständig
     zeigen kann (HTML, Länge, Anhänge), steht als Warnung dabei."""
@@ -203,6 +217,10 @@ async def senden(db, approval, user) -> dict:
         raise HTTPException(status_code=502, detail="Microsoft ist gerade nicht erreichbar — bitte später erneut.")
     if not m.get("isDraft"):
         raise HTTPException(status_code=409, detail="Die Mail ist schon gesendet.")
+    if ((m.get("body") or {}).get("contentType") or "").lower() == "html":
+        raise HTTPException(status_code=409, detail=(
+            "Formatierte Mail (HTML): die Vorschau kann nicht alles zeigen, was gesendet würde — "
+            "bitte im Postfach prüfen und dort senden."))
     if ((approval.meta or {}).get("view") or {}).get("name") != "mail":
         raise HTTPException(status_code=409, detail="Ohne Vorschau wird nicht gesendet — bitte im Postfach prüfen und dort senden.")
     if fingerabdruck(m) != eingabe.get("fingerabdruck"):

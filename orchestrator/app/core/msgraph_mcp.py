@@ -2486,6 +2486,11 @@ async def handle_mcp_request(
                     return mcp_result(id_, tool_result(
                         "Der Entwurf wurde angelegt, aber ohne Kennung zurückgegeben — er liegt im "
                         "Entwürfe-Ordner, wurde NICHT gesendet und nicht zur Freigabe gestellt.", is_error=True)), 200
+                if tool_name == "ms_reply_email":
+                    # Antwort-Entwürfe legt Microsoft als HTML an (mit zitierter Original-Mail).
+                    # In reinen Text umwandeln — dann zeigt die Freigabe genau, was gesendet wird.
+                    from app.core.mail_freigabe import als_klartext_speichern
+                    await als_klartext_speichern(token, treffer.group(1))
                 hinweis = await entwurf_freigabe(treffer.group(1), str(args.get("subject") or "Antwort"))
                 return mcp_result(id_, tool_result(f"{result_text}\n{hinweis}")), 200
             result_text = await handle_tool(tool_name, args, token)
