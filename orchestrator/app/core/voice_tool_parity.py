@@ -73,6 +73,10 @@ DELEGIERT = frozenset({
     # Sucht im Gespraech, in dem der Agent gerade steht — das kennt nur seine
     # Laufzeit. Die Sprachfront fragt den Agenten, der weiss, welches es ist.
     "chat_search",
+    # Projekt-Board und Projektwissen: der Agent arbeitet darin; die Sprachfront
+    # bittet ihn darum, statt eine zweite Fassung der Werkzeuge zu fuehren.
+    "projekt_board", "projekt_karte_anlegen", "projekt_karte_verschieben", "projekt_karte_vergeben",
+    "projekt_karte_stand", "projekt_wissen_suchen", "projekt_wissen_lesen", "projekt_wissen_schreiben",
 })
 
 #: Andere Namen für dieselbe Sache. Die Sprachfront ist historisch gewachsen und

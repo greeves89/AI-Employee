@@ -10,7 +10,7 @@ import { ProjektVerlauf } from "@/components/projekte/projekt-board";
 import { useAgents } from "@/hooks/use-agents";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
-import { projektFarbe } from "@/lib/projekte";
+import { TAKTE, bis, projektFarbe } from "@/lib/projekte";
 import { setVisibleInterval } from "@/lib/visible-interval";
 
 function Zahl({ wert, label, farbe }: { wert: number; label: string; farbe?: string }) {
@@ -105,11 +105,15 @@ export default function ProjektePage() {
                         <span className="truncate">{pr.name}</span>
                       </h2>
                       {pr.description && <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{pr.description}</p>}
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {pr.takt?.aktiv ? `Takt ${TAKTE.find((t) => t.minuten === pr.takt.minuten)?.label.toLowerCase() ?? "an"} · nächster ${bis(pr.takt.naechster_lauf) ?? "—"}` : "Takt aus"}
+                        {pr.kennzahlen.eingang ? ` · ${pr.kennzahlen.eingang} im Eingang` : ""}
+                      </p>
                     </div>
                     <div className="flex shrink-0 gap-4">
-                      <Zahl wert={pr.kennzahlen.wartet} label="wartet" />
-                      <Zahl wert={pr.kennzahlen.in_arbeit} label="in Arbeit" farbe={farbe} />
-                      <Zahl wert={pr.kennzahlen.zur_abnahme} label="zur Abnahme" farbe="#f97316" />
+                      <Zahl wert={pr.kennzahlen.bereit} label="bereit" farbe={farbe} />
+                      <Zahl wert={pr.kennzahlen.in_arbeit} label="in Arbeit" />
+                      <Zahl wert={pr.kennzahlen.pruefung} label="Prüfung" farbe="#f97316" />
                       <Zahl wert={pr.kennzahlen.heute_fertig} label="heute fertig" />
                     </div>
                   </div>
@@ -129,12 +133,20 @@ export default function ProjektePage() {
                       {pr.laufend.length === 0 && pr.naechste.length === 0 ? (
                         <p className="text-xs text-muted-foreground">Gerade nichts in Arbeit.</p>
                       ) : (
-                        [...pr.laufend.slice(0, 2), ...pr.naechste.slice(0, 1)].map((k) => (
-                          <p key={k.id} className="truncate text-xs">
-                            <span className="text-muted-foreground">{k.spalte === "in_arbeit" ? "Läuft: " : "Als Nächstes: "}</span>
-                            {k.titel}
-                          </p>
-                        ))
+                        <>
+                          {pr.laufend.slice(0, 2).map((l) => (
+                            <p key={l.task_id} className="truncate text-xs">
+                              <span className="text-muted-foreground">Läuft: </span>
+                              {l.karte_titel ?? l.titel}
+                            </p>
+                          ))}
+                          {pr.naechste.slice(0, 1).map((k) => (
+                            <p key={k.id} className="truncate text-xs">
+                              <span className="text-muted-foreground">Als Nächstes: </span>
+                              {k.titel}
+                            </p>
+                          ))}
+                        </>
                       )}
                     </div>
                     <div className="w-40">

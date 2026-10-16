@@ -871,13 +871,14 @@ Nach **Create Task** läuft der Agent los; der Task erscheint in der Liste und w
 
 ## 6a. Projekte: Agenten im Raum, Aufträge, Abnahme
 
-*(seit 1.367.0)*
+*(seit 1.367.0; Leitstand, Karten, Takt und Projektwissen seit 1.368.0)*
 
-Ein **Projekt** fasst mehrere Agenten für ein Vorhaben zusammen. Du siehst sie in einem
-**Raum** bei der Arbeit, gibst dem Projekt **Aufträge** und **nimmst die Ergebnisse ab** —
-oder gibst sie mit einem Hinweis zur Nacharbeit zurück. Ein Projekt ist dasselbe wie ein
-**Team** auf der Agentenseite (Ansicht „Teamansicht“): Lead, Mitglieder und Beschreibung
-gelten an beiden Stellen.
+Ein **Projekt** fasst mehrere Agenten für ein Vorhaben zusammen — etwa „Website-Relaunch“ oder
+die Weiterentwicklung einer eigenen Software. Seine Arbeit liegt als **Karten** auf einem
+**Board**; die Agenten nehmen sich Karten, planen ein, arbeiten sie ab und melden, wie weit sie
+sind. Du siehst im **Raum** und im **Leitstand**, was gerade wer macht, und **nimmst die
+Ergebnisse ab**. Ein Projekt ist dasselbe wie ein **Team** auf der Agentenseite (Ansicht
+„Teamansicht“): Lead, Mitglieder und Beschreibung gelten an beiden Stellen.
 
 ### 6a.1 Ein Projekt anlegen
 
@@ -885,79 +886,149 @@ gelten an beiden Stellen.
 2. Oben rechts auf **Neues Projekt** klicken.
 3. **Name** eintragen, z. B. „Website-Relaunch“.
 4. **Beschreibung**: Worum geht es, und woran merkt man, dass es fertig ist? Die Agenten
-   lesen diesen Text bei jedem Auftrag des Projekts mit (Abschnitt „Wozu dieser Auftrag
-   dient“).
+   lesen diesen Text bei jedem Auftrag des Projekts mit.
 5. Eine **Farbe** wählen — sie färbt die Leuchtleiste im Raum und den Punkt in der Übersicht.
 6. Unter **Mitglieder** die Agenten anklicken, die mitarbeiten sollen. Du kannst nur deine
    eigenen Agenten zuweisen.
-7. Optional einen **Lead** wählen. Der Lead verteilt Aufträge an die passenden Kollegen.
-   Ohne Lead wählst du bei jedem Auftrag selbst, wer ihn bekommt.
-8. **Projekt erstellen** klicken.
+7. Einen **Lead** wählen. Der Lead verteilt Aufträge an die passenden Kollegen und
+   sichtet im Takt den Eingang. Ohne Lead wählst du bei jedem Auftrag selbst, wer ihn bekommt.
+8. **Arbeitstakt** wählen (siehe 6a.6) — für den Anfang „Aus — nur auf Klick“.
+9. Optional unter **Freigeben für** Kollegen anhaken, die das Projekt sehen sollen. Ohne
+   Freigabe siehst **nur du** das Projekt — auch Administratoren nicht.
+10. **Projekt erstellen** klicken. Das Projekt bekommt dabei automatisch seine eigene
+   **Wissensablage** (siehe 6a.7).
 
-Die Übersicht zeigt je Projekt eine Karte mit dem Raum, den Zahlen **wartet**,
-**in Arbeit**, **zur Abnahme** und **heute fertig**, dem, was gerade läuft, und den
-erledigten Aufträgen der letzten sieben Tage.
+Die Übersicht zeigt je Projekt eine Karte mit dem Raum, den Zahlen **bereit**, **in Arbeit**,
+**Prüfung** und **heute fertig**, dem, was gerade läuft, was als Nächstes kommt, und dem
+Arbeitstakt.
 
-### 6a.2 Der Raum
+### 6a.2 Raum und Leitstand
 
-Ein Klick auf eine Projektkarte öffnet das Projekt. Links siehst du den Raum:
+Ein Klick auf eine Projektkarte öffnet das Projekt.
 
+**Der Raum** (links oben):
 - **Schreibtische** — je Mitglied einer. Arbeitet ein Agent, leuchtet sein Bildschirm in der
-  Projektfarbe, der Boden unter ihm glimmt grün, und über ihm steht der Titel des Auftrags.
+  Projektfarbe, der Bildschirm „schreibt“, der Agent wippt, und über ihm steht der Titel
+  der Karte.
 - **Krone** — markiert den Lead.
-- **Papierstapel** neben der Tür — die Aufträge, die noch warten. Ein Klick darauf springt
-  zum Board.
-- **Board an der Wand** — farbige Zettel: blau = in Arbeit, orange = zur Abnahme,
-  grün = heute fertig.
+- **Papierstapel** neben der Tür — alles, was noch nicht vergeben ist (Eingang und Bereit).
+  Ein Klick darauf springt zum Board.
+- **Board an der Wand** — farbige Zettel: blau = in Arbeit, orange = Prüfung, grün = heute fertig.
 
-Auf schmalen Bildschirmen blendet der Raum Namen und Sprechblasen aus; die Liste
-**Im Raum** daneben (bzw. darunter) zeigt sie weiter.
+**Der Leitstand** (rechts):
+- **Gerade in Arbeit** — je Lauf der Agent, die Karte und die **Stufe**:
+  Planung → Bau → Tests → PR → CI → Merge. Die Agenten melden die Stufe selbst.
+  „Teilarbeit“ heißt: Der Lead hat einen Teil an einen Kollegen weitergegeben.
+- **Takt** — ob der Arbeitstakt läuft und wann der nächste Lauf ist.
+- **Reststapel** — wie viele Karten im Eingang und auf Bereit liegen, und **als Nächstes**
+  die wichtigste bereite Karte.
+- **Wartet auf Merge** — Karten mit offenem Pull Request, mit Stand (offen, CI läuft,
+  CI grün/rot); ein Klick öffnet den Pull Request.
 
-Rechts daneben steht unter **Im Raum** jedes Mitglied mit seinem Zustand („Arbeitet an: …“,
-„Bereit“, „Gestoppt“).
+Darunter zeigt **Erledigt** die fertigen Karten der letzten sieben Tage als Balken.
 
-### 6a.3 Einen Auftrag geben
+Auf schmalen Bildschirmen blendet der Raum Namen und Sprechblasen aus; der Reiter **Team**
+zeigt sie weiter.
+
+### 6a.3 Das Board: vom Eingang bis Erledigt
+
+Unter dem Raum liegt der Reiter **Board** mit fünf Spalten:
+
+| Spalte | Bedeutung | Was du tun kannst |
+|---|---|---|
+| **Eingang** | Neu, noch nicht gesichtet | **Einplanen** (→ Bereit) oder **verwerfen** (Papierkorb) |
+| **Bereit** | Eingeplant, wartet auf einen Agenten | Empfänger wählen und **Los** klicken — der Agent legt los |
+| **In Arbeit** | Ein Agent arbeitet daran | Stufe und Pull Request ansehen; Klick auf den Titel öffnet den Lauf |
+| **Prüfung** | Der Agent ist fertig (oder gescheitert) | **Abnehmen** oder **Zurückgeben** |
+| **Erledigt** | Abgenommen oder verworfen (letzte 30 Tage) | — |
+
+- Das kleine Kürzel **P1/P2/P3** vor dem Titel ist die Priorität. Ein Klick darauf schaltet
+  sie weiter. Karten mit P1 stehen oben und kommen zuerst dran.
+- Das **+** in der Spalte Eingang legt eine neue Karte an (Titel und Beschreibung).
+- Beim **Los** in der Spalte Bereit wählst du im Auswahlfeld „Lead verteilt“ oder
+  „Direkt: …“ einen bestimmten Agenten.
+
+### 6a.4 Einen Auftrag geben
 
 1. Im Kasten **Auftrag geben** beschreiben, was erledigt werden soll. Die **erste Zeile**
-   wird zum Titel.
+   wird zum Titel der Karte.
 2. Im Auswahlfeld darunter festlegen, wer den Auftrag bekommt:
    - **An den Lead — er verteilt**: der Lead zerlegt den Auftrag und gibt Teile an die
      Kollegen weiter.
    - **Direkt an …**: genau dieser Agent arbeitet ihn ab.
-   Schneller: im Raum oder in der Liste **Im Raum** auf einen Agenten klicken — er wird
-   als Empfänger eingetragen.
-3. **Abgeben** klicken (oder Strg/Cmd + Enter).
+   Schneller: im Raum auf einen Agenten klicken — er wird als Empfänger eingetragen.
+3. Soll der Auftrag erst einmal nur gesammelt werden, den Haken **nur in den Eingang**
+   setzen — dann entsteht nur eine Karte im Eingang, und niemand legt los.
+4. **Abgeben** klicken (oder Strg/Cmd + Enter).
 
-Der Auftrag erscheint sofort unter **Wartet** und wandert zu **In Arbeit**, sobald der
-Agent beginnt. Teilaufträge, die der Lead an Kollegen gibt, gehören automatisch zum Projekt
-und stehen mit dem Vermerk **Teilarbeit** auf dem Board.
+Über **Chat mit … öffnen** wechselst du in den Chat des gewählten Agenten.
 
-Über **Chat mit … öffnen** unter dem Auswahlfeld wechselst du in den Chat des gewählten
-Agenten, wenn du lieber im Gespräch klären willst.
+### 6a.5 Ergebnisse abnehmen oder zurückgeben
 
-### 6a.4 Ergebnisse abnehmen oder zurückgeben
-
-Ist ein Auftrag fertig (oder gescheitert), steht er unter **Zur Abnahme** — mit einem
+Ist ein Lauf fertig (oder gescheitert), steht seine Karte unter **Prüfung** — mit einem
 Auszug aus dem Ergebnis.
 
-- **Abnehmen** — das Ergebnis passt. Der Auftrag wandert zu **Erledigt**.
+- **Abnehmen** — das Ergebnis passt. Die Karte wandert zu **Erledigt**.
 - **Zurückgeben** — es öffnet sich ein Fenster. Schreibe hinein, was anders werden soll,
   und klicke **Zurückgeben**. Derselbe Agent (bei Lead-Aufträgen wieder der Lead) bekommt
-  einen Auftrag **„Nacharbeit: …“** mit deinem Hinweis, dem ursprünglichen Auftrag und
-  seinem bisherigen Ergebnis. Dessen Ergebnis landet wieder unter **Zur Abnahme**.
+  eine **Nacharbeit** mit deinem Hinweis, der Karte und seinem bisherigen Ergebnis. Danach
+  steht die Karte wieder unter Prüfung.
 
-Ein Klick auf den Titel einer Karte öffnet die Aufgabe mit allen Schritten und dem
-vollständigen Ergebnis.
+Wird ein Lauf abgebrochen, geht seine Karte zurück nach **Bereit**.
 
-### 6a.5 Projekt bearbeiten oder löschen
+### 6a.6 Arbeitstakt: die Agenten holen sich selbst Arbeit
 
-- **Bearbeiten** (oben rechts) — Name, Beschreibung, Farbe, Mitglieder und Lead ändern.
-- **Papierkorb** (oben rechts) — das Projekt verschwindet aus der Übersicht. Agenten und
-  ihre Aufträge bleiben erhalten.
+Mit einem **Arbeitstakt** (Bearbeiten → Arbeitstakt: alle 30 Minuten, stündlich, alle 2 oder
+4 Stunden) wird der **Lead** regelmäßig aktiv:
+1. Er liest das Board.
+2. Er sichtet den Eingang: Klares kommt nach Bereit (mit Priorität), Unklares bekommt eine
+   **Notiz** mit der offenen Frage (gelb auf der Karte), Doppeltes wird verworfen.
+3. Er vergibt die wichtigsten bereiten Karten — höchstens eine je Kollege, der gerade frei ist.
 
-> **Wer sieht was?** Du siehst nur Projekte, in denen mindestens einer deiner Agenten
-> mitarbeitet, und auf dem Board nur die Aufträge deiner eigenen Agenten.
-> Administratoren sehen alle Projekte.
+Die eigentliche Arbeit passiert in den vergebenen Läufen. **Liegt nichts im Eingang und nichts
+auf Bereit, fällt der Takt-Lauf aus** und kostet nichts. Der Takt braucht einen Lead (oder
+genau ein Mitglied).
+
+### 6a.7 Projektwissen
+
+Jedes Projekt hat eine eigene Wissensablage — Reiter **Wissen**:
+- Links stehen die Seiten, oben die **Suche**. Rechts liest du eine Seite; **Bearbeiten**
+  öffnet sie zum Ändern, **Speichern** sichert sie, **Neue Seite** legt eine weitere an.
+- **index.md** ist die wichtigste Seite: Sie geht bei **jedem** Projektauftrag an den Agenten
+  mit. Halte sie kurz (Ziel, wichtige Orte, Vereinbarungen) und lagere Ausführliches in eigene
+  Seiten aus (z. B. `entscheidungen.md`, `architektur.md`).
+- Die Agenten des Projekts können das Wissen selbst durchsuchen, lesen und ergänzen — so
+  bleibt, was einer herausgefunden hat, für alle erhalten.
+- Keine Passwörter oder Zugangsschlüssel hineinschreiben.
+
+### 6a.8 Was die Agenten im Projekt selbst können
+
+Jeder Agent eines Projekts hat dafür eigene Werkzeuge — in allen Laufzeiten gleich:
+
+| Werkzeug | Wozu |
+|---|---|
+| `projekt_board` | Board lesen: Karten je Spalte, wer gerade woran arbeitet |
+| `projekt_karte_anlegen` | Neue Karte in Eingang oder Bereit (z. B. Folgearbeit, gefundene Fehler) |
+| `projekt_karte_verschieben` | Einplanen, Priorität setzen, Notiz anheften, verwerfen |
+| `projekt_karte_vergeben` | Karte an sich oder einen Kollegen geben — der Lauf startet |
+| `projekt_karte_stand` | Stufe melden (Planung … Merge) und den Pull Request verlinken |
+| `projekt_wissen_suchen` / `_lesen` / `_schreiben` | Im Projektwissen nachsehen und es ergänzen |
+
+So kannst du einem Agenten im Chat auch sagen: „Leg im Projekt Website-Relaunch je eine Karte
+für die offenen Punkte aus diesem Protokoll an.“ Abnehmen und Zurückgeben bleiben dir vorbehalten.
+
+### 6a.9 Projekt bearbeiten oder löschen
+
+- **Bearbeiten** (oben rechts, nur für den Ersteller) — Name, Beschreibung, Farbe, Mitglieder,
+  Lead, Arbeitstakt und Freigabe.
+- **Papierkorb** (oben rechts) — das Projekt verschwindet aus der Übersicht, sein Takt hört
+  auf. Agenten, Aufträge und das Projektwissen bleiben erhalten.
+
+> **Wer sieht was?** Ein Projekt sieht zunächst **nur, wer es angelegt hat** — auch kein
+> Administrator. Unter **Bearbeiten → Freigeben für** gibst du es Kollegen frei: Sie sehen
+> Board und Wissen und arbeiten mit (Aufträge geben sie nur ihren eigenen Agenten); verwalten,
+> freigeben und löschen kannst nur du. Ergebnisse und Kosten eines Laufs sieht nur, wem der
+> ausführende Agent gehört. Die Agenten des Projekts erreichen Board und Wissen immer.
 
 ---
 

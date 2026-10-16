@@ -10,7 +10,7 @@ import type { Team } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { useToast } from "@/components/ui/dialog-provider";
-import { PROJEKT_FARBEN } from "@/lib/projekte";
+import { PROJEKT_FARBEN, TAKTE } from "@/lib/projekte";
 
 interface CreateTeamModalProps {
   open: boolean;
@@ -40,6 +40,9 @@ export function CreateTeamModal({
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [leadAgentId, setLeadAgentId] = useState<string>("");
   const [farbe, setFarbe] = useState<string>("blau");
+  const [takt, setTakt] = useState<number>(0);
+  const [geteilt, setGeteilt] = useState<string[]>([]);
+  const [nutzer, setNutzer] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,9 +54,17 @@ export function CreateTeamModal({
       setMemberIds(team?.member_agent_ids ?? []);
       setLeadAgentId(team?.lead_agent_id ?? "");
       setFarbe(team?.farbe ?? "blau");
+      setTakt(team?.takt_minuten ?? 0);
+      setGeteilt(team?.geteilt_mit ?? []);
       setError(null);
     }
   }, [open, team]);
+
+  // Nutzerliste für die Freigabe — nur im Projekt-Fenster gebraucht.
+  useEffect(() => {
+    if (!open || !projekt) return;
+    api.getProjektVerzeichnis().then((r) => setNutzer(r.users)).catch(() => setNutzer([]));
+  }, [open, projekt]);
 
   const toggleMember = (id: string) => {
     setMemberIds((prev) => {
@@ -79,7 +90,7 @@ export function CreateTeamModal({
         description: description.trim() || undefined,
         member_agent_ids: memberIds,
         lead_agent_id: leadAgentId || null,
-        ...(projekt ? { farbe } : {}),
+        ...(projekt ? { farbe, takt_minuten: takt, geteilt_mit: geteilt } : {}),
       };
       if (isEdit && team) {
         await api.updateTeam(team.id, body);
@@ -274,6 +285,64 @@ export function CreateTeamModal({
                           : "Der Lead muss Mitglied des Teams sein und erhält delegierte Tasks."}
                       </p>
                     </div>
+
+                    {projekt && (
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">Arbeitstakt</label>
+                        <select
+                          value={takt}
+                          onChange={(e) => setTakt(Number(e.target.value))}
+                          className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                        >
+                          {TAKTE.map((t) => (
+                            <option key={t.minuten} value={t.minuten}>{t.label}</option>
+                          ))}
+                        </select>
+                        <p className="text-[11px] text-muted-foreground/50 mt-1">
+                          Im Takt sichtet der Lead den Eingang, plant ein und vergibt die nächsten Karten. Ohne offene
+                          Karten fällt der Lauf aus — er kostet dann nichts. Braucht einen Lead (oder genau ein Mitglied).
+                        </p>
+                      </div>
+                    )}
+
+                    {projekt && (
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                          Freigeben für <span className="text-muted-foreground/40">(optional)</span>
+                        </label>
+                        <p className="text-[11px] text-muted-foreground/60 mb-2">
+                          Ohne Freigabe siehst nur du das Projekt. Freigegebene sehen Board und Wissen und arbeiten mit —
+                          ihren eigenen Agenten geben sie Aufträge. Verwalten kannst nur du.
+                        </p>
+                        {nutzer.length === 0 ? (
+                          <p className="text-xs text-muted-foreground/50">Keine weiteren Nutzer auf dieser Anlage.</p>
+                        ) : (
+                          <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-foreground/[0.06] p-1.5">
+                            {nutzer.map((n) => {
+                              const an = geteilt.includes(n.id);
+                              return (
+                                <button
+                                  key={n.id}
+                                  type="button"
+                                  onClick={() => setGeteilt((g) => (an ? g.filter((x) => x !== n.id) : [...g, n.id]))}
+                                  className={cn(
+                                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                                    an ? "bg-primary/[0.08]" : "hover:bg-foreground/[0.04]",
+                                  )}
+                                >
+                                  <span className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+                                    an ? "border-primary bg-primary text-white" : "border-foreground/20")}>
+                                    {an && <Check className="h-3 w-3" />}
+                                  </span>
+                                  <span className="truncate">{n.name}</span>
+                                  {n.email && <span className="truncate text-xs text-muted-foreground">{n.email}</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Error */}
                     {error && (
