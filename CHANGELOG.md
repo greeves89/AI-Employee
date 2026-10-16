@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.371.2] - 2026-10-16
+
+### Sicherheit
+- Projektwissen: Der Verlauf (Git der Ablage) führt nichts aus, was in der Ablage liegt — keine
+  Hooks, kein fsmonitor, keine System- oder Benutzer-Konfiguration, schlanke Umgebung. Der Zugriff
+  auf `.git` war für alle Schreibwege schon gesperrt; das ist die zweite Sicherung dahinter.
+
+---
+
 ## [1.371.1] - 2026-10-16
 
 ### Geändert
