@@ -1,6 +1,6 @@
 import type { ActivityTimelineResponse, AdminUser, Agent, AgentMemory, AgentMode, AgentTemplate, AgentTodo, AIAccount, ApprovalRequest, AuditLog, AuditSummary, Feedback, FeedbackListResponse, FeedbackStatus, KnowledgeEntry, KnowledgeGraphEdge, KnowledgeGraphNode, KnowledgeTag, LLMConfig, LLMConfigResponse, MeetingRoom, Notification, PermissionPackage, DayPlanItem, ProactiveResponse, Responsibility, ReflectionRun, ReflectionStatus, Task, Schedule, FileEntry, Settings, SecondBrain, Integration, TodoListResponse, WebhookEvent } from "./types";
 import { getApiUrl, getBase, getWsUrl } from "./config";
-import type { ProjektBoard, ProjektKarte, ProjektKennzahlen } from "./projekte";
+import type { ProjektBoard, ProjektKarte, ProjektKennzahlen, ProjektLauf, ProjektTakt } from "./projekte";
 
 let _refreshing: Promise<void> | null = null;
 
@@ -4543,6 +4543,8 @@ export interface Team {
   created_by: string | null;
   /** Kennfarbe des Projekts (Schlüssel aus PROJEKT_FARBEN). */
   farbe?: string | null;
+  /** Arbeitstakt in Minuten; leer = aus. */
+  takt_minuten?: number | null;
 }
 
 export async function listTeams(): Promise<{ teams: Team[] }> {
@@ -4555,6 +4557,7 @@ export async function createTeam(body: {
   member_agent_ids?: string[];
   lead_agent_id?: string | null;
   farbe?: string | null;
+  takt_minuten?: number | null;
 }): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/`, {
     method: "POST",
@@ -4574,6 +4577,7 @@ export async function updateTeam(
     member_agent_ids?: string[];
     lead_agent_id?: string | null;
     farbe?: string | null;
+    takt_minuten?: number | null;
   },
 ): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/${id}`, {
@@ -4613,12 +4617,13 @@ export async function delegateToTeam(
   });
 }
 
-// Projekte (= Teams mit Board und Raum)
+// Projekte (= Teams mit Board aus Karten, Raum, Takt und Wissen)
 
 export interface ProjektUebersicht extends Team {
   kennzahlen: ProjektKennzahlen;
-  laufend: ProjektKarte[];
+  laufend: ProjektLauf[];
   naechste: ProjektKarte[];
+  takt: ProjektTakt;
 }
 
 export async function getProjekte(): Promise<{ projekte: ProjektUebersicht[] }> {
@@ -4631,23 +4636,67 @@ export async function getProjektBoard(id: string): Promise<ProjektBoard & { proj
 
 export async function projektAuftrag(
   id: string,
-  body: { text: string; titel?: string; agent_id?: string | null },
+  body: { text: string; titel?: string; agent_id?: string | null; nur_eingang?: boolean; prioritaet?: number },
 ): Promise<ProjektKarte> {
-  return fetchJSON(`${getBase()}/teams/${id}/auftrag`, {
+  return fetchJSON(`${getBase()}/teams/${id}/auftrag`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function karteAnlegen(
+  id: string,
+  body: { titel: string; text?: string; spalte?: "eingang" | "bereit"; prioritaet?: number },
+): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/karten`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function karteAendern(
+  id: string,
+  karteId: string,
+  body: { spalte?: string; prioritaet?: number; reihenfolge?: number; notiz?: string; titel?: string; text?: string },
+): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export async function karteVergeben(id: string, karteId: string, agentId?: string | null): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/vergeben`, {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ agent_id: agentId || null }),
   });
 }
 
-export async function projektAbnehmen(id: string, taskId: string): Promise<ProjektKarte> {
-  return fetchJSON(`${getBase()}/teams/${id}/aufgaben/${taskId}/abnehmen`, { method: "POST" });
+export async function karteAbnehmen(id: string, karteId: string): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/abnehmen`, { method: "POST" });
 }
 
-export async function projektZurueckgeben(id: string, taskId: string, hinweis: string): Promise<ProjektKarte> {
-  return fetchJSON(`${getBase()}/teams/${id}/aufgaben/${taskId}/zurueckgeben`, {
+export async function karteZurueckgeben(id: string, karteId: string, hinweis: string): Promise<ProjektKarte> {
+  return fetchJSON(`${getBase()}/teams/${id}/karten/${karteId}/zurueckgeben`, {
     method: "POST",
     body: JSON.stringify({ hinweis }),
   });
+}
+
+export interface WissenEintrag {
+  path: string;
+  name: string;
+  type: "file" | "dir";
+}
+
+export async function projektWissenListe(id: string): Promise<{ dateien: WissenEintrag[] }> {
+  return fetchJSON(`${getBase()}/teams/${id}/wissen`);
+}
+
+export async function projektWissenLesen(id: string, pfad: string): Promise<{ pfad: string; inhalt: string }> {
+  return fetchJSON(`${getBase()}/teams/${id}/wissen/datei?pfad=${encodeURIComponent(pfad)}`);
+}
+
+export async function projektWissenSchreiben(id: string, pfad: string, inhalt: string): Promise<{ path: string; created: boolean }> {
+  return fetchJSON(`${getBase()}/teams/${id}/wissen/datei`, { method: "PUT", body: JSON.stringify({ pfad, inhalt }) });
+}
+
+export async function projektWissenSuchen(
+  id: string,
+  frage: string,
+): Promise<{ treffer: { path: string; snippets: string[] }[] }> {
+  return fetchJSON(`${getBase()}/teams/${id}/wissen/suche?frage=${encodeURIComponent(frage)}`);
 }
 
 export async function getTeamTasks(id: string): Promise<{ tasks: Task[]; total: number; team_id: string }> {

@@ -8,7 +8,7 @@
 
 import { useId } from "react";
 import type { Agent } from "@/lib/types";
-import type { ProjektKarte, ProjektKennzahlen } from "@/lib/projekte";
+import type { ProjektKennzahlen, ProjektLauf } from "@/lib/projekte";
 import {
   AgentFigur, GlowFilter, Quader, RaumEbene, Schreibtisch, WandText,
   fg, isoRahmen, punkte, raumZustand, useMassstab,
@@ -44,8 +44,8 @@ export function ProjektRaum({
   mitglieder: { id: string; agent?: Agent }[];
   leadId?: string | null;
   kennzahlen: ProjektKennzahlen;
-  /** Laufende Aufträge — für die Sprechblase über dem Agenten. */
-  laufend: ProjektKarte[];
+  /** Was gerade läuft — für die Sprechblase über dem Agenten. */
+  laufend: ProjektLauf[];
   kompakt?: boolean;
   onAgent?: (agentId: string) => void;
   onStapel?: () => void;
@@ -57,14 +57,18 @@ export function ProjektRaum({
 
   const plaetze = mitglieder.slice(0, PLAETZE.length);
   const weitere = mitglieder.length - plaetze.length;
-  const blaetter = Math.min(kennzahlen.wartet, 12);
+  // Der Stapel an der Tür: alles, was noch nicht vergeben ist (Eingang + Bereit).
+  const offen = kennzahlen.eingang + kennzahlen.bereit;
+  const blaetter = Math.min(offen, 12);
   const zettel = [
     ...Array(Math.min(kennzahlen.in_arbeit, 4)).fill("#3b82f6"),
-    ...Array(Math.min(kennzahlen.zur_abnahme, 4)).fill("#f97316"),
+    ...Array(Math.min(kennzahlen.pruefung, 4)).fill("#f97316"),
     ...Array(Math.min(kennzahlen.heute_fertig, 4)).fill("#22c55e"),
   ].slice(0, 12);
   const titelJeAgent = new Map<string, string>();
-  for (const k of laufend) if (k.agent_id && !titelJeAgent.has(k.agent_id)) titelJeAgent.set(k.agent_id, k.titel);
+  for (const l of laufend) {
+    if (l.agent_id && !titelJeAgent.has(l.agent_id)) titelJeAgent.set(l.agent_id, l.karte_titel ?? l.titel);
+  }
   const [sx, sy] = p(1.4, 1.45, 0.55 + blaetter * 0.075);
 
   return (
@@ -128,14 +132,14 @@ export function ProjektRaum({
       </svg>
 
       <RaumEbene breite={B} hoehe={H} massstab={massstab}>
-        {mitText && kennzahlen.wartet > 0 && (
+        {mitText && offen > 0 && (
           <button
             type="button"
             onClick={onStapel}
             className="pointer-events-auto absolute -translate-x-1/2 -translate-y-full rounded-md bg-background/90 px-1.5 py-0.5 text-[10px] font-medium shadow ring-1 ring-foreground/10"
             style={{ left: sx, top: sy - 4 }}
           >
-            {kennzahlen.wartet} wartet
+            {offen} offen
           </button>
         )}
         {plaetze.map(({ id, agent }, i) => {

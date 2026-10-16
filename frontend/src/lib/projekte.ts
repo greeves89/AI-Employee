@@ -1,47 +1,113 @@
-/** Projekte: ein Projekt ist ein Team mit Board und Raum (orchestrator: core/projekte.py). */
+/** Projekte: ein Projekt ist ein Team mit Board aus Karten, Raum, Takt und Wissen
+ *  (orchestrator: core/projekte.py, api/teams.py). */
 
-export type ProjektSpalte = "wartet" | "in_arbeit" | "zur_abnahme" | "erledigt";
+export type ProjektSpalte = "eingang" | "bereit" | "in_arbeit" | "pruefung" | "erledigt";
+export type ProjektStufe = "planung" | "bau" | "tests" | "pr" | "ci" | "merge";
 
 export interface ProjektKarte {
   id: string;
   titel: string;
-  status: string;
+  text: string | null;
+  quelle: "eigen" | "issue" | "pr";
+  extern_nr: number | null;
+  url: string | null;
+  labels: string[];
   spalte: ProjektSpalte;
+  /** 1 hoch, 2 normal, 3 niedrig */
+  prioritaet: number;
   agent_id: string | null;
-  /** Über das Projekt erteilt: das Ergebnis braucht eine Abnahme. */
-  abnahme: boolean;
-  /** Teilarbeit des Leads oder eines Kollegen — ohne eigene Abnahme. */
-  teilauftrag: boolean;
-  zurueckgegeben_als: string | null;
+  task_id: string | null;
+  task_status: string | null;
+  stufe: ProjektStufe | null;
+  notiz: string | null;
+  pr_nr: number | null;
+  pr_url: string | null;
+  pr_zustand: string | null;
   erstellt: string | null;
-  gestartet: string | null;
-  fertig: string | null;
-  abgenommen: string | null;
+  aktualisiert: string | null;
+  erledigt: string | null;
   kosten_usd: number | null;
   ergebnis: string | null;
   fehler: string | null;
 }
 
+export interface ProjektLauf {
+  task_id: string;
+  titel: string;
+  agent_id: string | null;
+  status: string;
+  gestartet: string | null;
+  karte_id: string | null;
+  karte_titel: string | null;
+  stufe: ProjektStufe | null;
+  teilarbeit: boolean;
+}
+
 export interface ProjektKennzahlen {
-  wartet: number;
+  eingang: number;
+  bereit: number;
   in_arbeit: number;
-  zur_abnahme: number;
+  pruefung: number;
+  wartet_auf_merge: number;
+  laeufe: number;
   heute_fertig: number;
   fertig_7_tage: number;
   verlauf: { tag: string; anzahl: number }[];
 }
 
+export interface ProjektTakt {
+  minuten: number | null;
+  aktiv: boolean;
+  naechster_lauf: string | null;
+  agent_id: string | null;
+}
+
 export interface ProjektBoard {
   spalten: Record<ProjektSpalte, ProjektKarte[]>;
+  laufend: ProjektLauf[];
   kennzahlen: ProjektKennzahlen;
+  takt: ProjektTakt;
 }
 
 export const SPALTEN: { key: ProjektSpalte; label: string; leer: string }[] = [
-  { key: "wartet", label: "Wartet", leer: "Nichts in der Warteschlange." },
-  { key: "in_arbeit", label: "In Arbeit", leer: "Gerade arbeitet niemand." },
-  { key: "zur_abnahme", label: "Zur Abnahme", leer: "Nichts abzunehmen." },
+  { key: "eingang", label: "Eingang", leer: "Nichts Neues." },
+  { key: "bereit", label: "Bereit", leer: "Nichts eingeplant." },
+  { key: "in_arbeit", label: "In Arbeit", leer: "Gerade arbeitet niemand an einer Karte." },
+  { key: "pruefung", label: "Prüfung", leer: "Nichts abzunehmen." },
   { key: "erledigt", label: "Erledigt", leer: "Noch nichts erledigt." },
 ];
+
+export const STUFEN: { key: ProjektStufe; label: string }[] = [
+  { key: "planung", label: "Planung" },
+  { key: "bau", label: "Bau" },
+  { key: "tests", label: "Tests" },
+  { key: "pr", label: "PR" },
+  { key: "ci", label: "CI" },
+  { key: "merge", label: "Merge" },
+];
+
+export const PRIORITAETEN: Record<number, { label: string; klasse: string }> = {
+  1: { label: "P1", klasse: "bg-red-500/15 text-red-600 dark:text-red-400" },
+  2: { label: "P2", klasse: "bg-foreground/[0.06] text-muted-foreground" },
+  3: { label: "P3", klasse: "bg-foreground/[0.04] text-muted-foreground/70" },
+};
+
+export const TAKTE: { minuten: number; label: string }[] = [
+  { minuten: 0, label: "Aus — nur auf Klick" },
+  { minuten: 30, label: "Alle 30 Minuten" },
+  { minuten: 60, label: "Stündlich" },
+  { minuten: 120, label: "Alle 2 Stunden" },
+  { minuten: 240, label: "Alle 4 Stunden" },
+];
+
+export const PR_ZUSTAND: Record<string, string> = {
+  offen: "PR offen",
+  ci_laeuft: "CI läuft",
+  ci_rot: "CI rot",
+  ci_gruen: "CI grün",
+  gemergt: "gemergt",
+  geschlossen: "geschlossen",
+};
 
 /** Kennfarben — dieselben Schlüssel wie PROJEKT_FARBEN im Orchestrator (api/teams.py). */
 export const PROJEKT_FARBEN: Record<string, { name: string; hex: string }> = {
@@ -63,4 +129,14 @@ export function projektFarbe(farbe: string | null | undefined): string {
 export function wochentag(isoTag: string): string {
   const d = new Date(`${isoTag}T12:00:00`);
   return ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][d.getDay()];
+}
+
+/** „in 12 Min.“ bis zu einem Zeitpunkt (Takt). */
+export function bis(iso: string | null): string | null {
+  if (!iso) return null;
+  const min = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+  if (min <= 0) return "gleich";
+  if (min < 60) return `in ${min} Min.`;
+  const std = Math.floor(min / 60);
+  return `in ${std} Std.${min % 60 ? ` ${min % 60} Min.` : ""}`;
 }
