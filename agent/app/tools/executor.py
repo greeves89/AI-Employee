@@ -352,6 +352,21 @@ class ToolExecutor:
                         f"user approval before attempting this action."
                     )
 
+        # Schreibschutz (Laufzeit-Konfiguration, ausserhalb der Arbeitsbereiche) —
+        # dieselbe Regel wie der PreToolUse-Hook fuer Claude Code und Codex.
+        from app.tools.schreibschutz import geschuetzte_kategorie
+        schutz = geschuetzte_kategorie(tool_name, tool_input)
+        if schutz:
+            kategorie, grund = schutz
+            allowed = _get_allowed_categories()
+            if allowed is not None and kategorie not in allowed:
+                return (
+                    f"[AUTONOMY BLOCK] Tool '{tool_name}' ({grund}) requires category "
+                    f"'{kategorie}' which is NOT in your current whitelist. "
+                    f"You MUST call `request_approval` first and wait for "
+                    f"user approval before attempting this action."
+                )
+
         if tool_name in CONCURRENT_SAFE_TOOLS:
             async with self._semaphore:
                 return await self._execute_inner(tool_name, tool_input)

@@ -43,8 +43,6 @@ shell entirely, a worse outcome than the rare window this trades for.
 """
 from __future__ import annotations
 
-import re
-
 from app.tools.executor import (
     ALWAYS_ALLOWED_TOOLS,
     TOOL_CATEGORY_MAP,
@@ -164,57 +162,18 @@ def _decide_for(category: str, *, label: str) -> dict:
 # Shell-Werkzeuge, deren Befehl zusaetzlich gegen die command_policies laeuft.
 _SHELL_WERKZEUGE = frozenset({"Bash", "exec_command", "shell_command", "local_shell", "write_stdin"})
 
-# Konfiguration der Laufzeit selbst — ALLES unter .claude/ und .codex/ sowie
-# .mcp.json: dort stehen Hooks (bei Claude Code auch genau dieser Gate-Hook,
-# /workspace/.claude/settings.json), Codex-Konfiguration und -Hooks (live
-# geprueft: Codex fuehrt /workspace/.codex/hooks.json aus) und Projekt-MCP-Server
-# (.mcp.json startet Programme). Auch Skills, Befehle und Subagenten unter
-# .claude/ zaehlen dazu: ihr Kopf kann eigene Hooks tragen, Befehle koennen per
-# !`…` Shell ausfuehren. Wer dort schreiben darf, kann das Gate umgehen.
-# Schreiben dort ist deshalb "Pakete / Config" (system_config). Den sicheren Weg
-# fuer eigene Skills bietet create_skill (Datenbank, Sicherheitspruefung).
-# Dazu ~/.claude.json: die Benutzerkonfiguration von Claude Code traegt dort
-# ebenfalls "mcpServers" (Programme, die beim Start laufen) — liegt aber NICHT
-# unter .claude/, sondern daneben (im Agenten-Container nachgesehen).
-# Und Git: core.fsmonitor in .git/config bzw. ~/.gitconfig startet bei JEDEM
-# `git status` ein Programm (Claude Code ruft es beim Sitzungsstart selbst auf,
-# git_status ist immer erlaubt), .git/hooks/* laufen bei Git-Befehlen.
-_LAUFZEIT_KONFIG = re.compile(
-    r"(^|[\\/])("
-    r"\.(claude|codex)([\\/]|$)"
-    r"|\.mcp\.json$|\.claude\.json$"
-    r"|\.gitconfig$|\.git[\\/](config$|hooks([\\/]|$))"
-    r")"
-)
-_PATCH_ZIEL = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.M)
-_SCHREIBWERKZEUGE = frozenset({
-    "Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch",
-    "write_file", "edit_file", "multi_edit",
-})
-
-
-def _schreibziele(tool_name: str, tool_input: dict | None) -> list[str]:
-    """Pfade, die ein Schreibwerkzeug anfassen wuerde."""
-    eingabe = tool_input or {}
-    if tool_name == "apply_patch":
-        return [z.strip() for z in _PATCH_ZIEL.findall(str(eingabe.get("command") or eingabe.get("input") or ""))]
-    return [str(eingabe[k]) for k in ("file_path", "notebook_path", "path") if eingabe.get(k)]
-
-
-def _bare(tool_name: str) -> str:
-    if tool_name.startswith("mcp__"):
-        teile = tool_name.split("__", 2)
-        return teile[2] if len(teile) == 3 else ""
-    return tool_name
+# Schreibschutz (Laufzeit-Konfiguration, Arbeitsbereiche): gemeinsame Regel fuer
+# Hook und custom_llm-Executor, siehe app/tools/schreibschutz.py.
+from app.tools.schreibschutz import geschuetzte_kategorie  # noqa: E402
 
 
 def decide(tool_name: str, tool_input: dict | None = None) -> dict:
     """Kategorie-Entscheidung; Schreiben in die Laufzeit-Konfiguration braucht
     zusaetzlich ``system_config`` (siehe ``_LAUFZEIT_KONFIG``)."""
-    if _bare(tool_name) in _SCHREIBWERKZEUGE and any(
-        _LAUFZEIT_KONFIG.search(z) for z in _schreibziele(_bare(tool_name), tool_input)
-    ):
-        return _decide_for("system_config", label=f"{tool_name} (Laufzeit-Konfiguration)")
+    schutz = geschuetzte_kategorie(tool_name, tool_input)
+    if schutz:
+        kategorie, grund = schutz
+        return _decide_for(kategorie, label=f"{tool_name} ({grund})")
     return _decide_kategorie(tool_name, tool_input)
 
 
