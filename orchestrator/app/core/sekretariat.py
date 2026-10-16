@@ -158,7 +158,7 @@ async def merken(db, team: Team, text: str) -> str:
         raise SekretariatFehler("Die Regel ist leer.")
     text = text[:MAX_REGEL]
     schluessel = _regel_schluessel(text)
-    for agent_id in _mitglieder(team):
+    for agent_id in await _eigene_mitglieder(db, team):
         await save_memory_core(db, MemorySave(
             agent_id=agent_id, category="preference", key=schluessel, content=f"Regel meines Menschen: {text}",
             importance=5, source="user", tags=["sekretariat-regel"],
@@ -191,12 +191,29 @@ async def regel_loeschen(db, team: Team, schluessel: str) -> int:
     if not schluessel.startswith(REGEL_PRAEFIX):
         raise SekretariatFehler("Unbekannte Regel.")
     erg = await db.execute(delete(AgentMemory).where(
-        AgentMemory.agent_id.in_(_mitglieder(team)), AgentMemory.key == schluessel))
+        AgentMemory.agent_id.in_(await _eigene_mitglieder(db, team)), AgentMemory.key == schluessel))
     return erg.rowcount or 0
 
 
 def _mitglieder(team: Team) -> list[str]:
     return list(dict.fromkeys([*(team.member_agent_ids or []), *([team.lead_agent_id] if team.lead_agent_id else [])]))
+
+
+async def _eigene_mitglieder(db, team: Team) -> list[str]:
+    """Nur Agenten, die dem Ersteller gehören. Über die Team-Verwaltung könnte ein
+    Administrator fremde Agenten hineinnehmen — deren Freigaben (Mailtexte) und
+    Gedächtnis gehen ihn trotzdem nichts an."""
+    from app.models.agent import Agent
+    from app.models.user import User
+
+    ersteller = await db.scalar(select(User.id).where(
+        (User.id == team.created_by) | (User.email == team.created_by)).limit(1))
+    ids = _mitglieder(team)
+    if not ersteller or not ids:
+        return []
+    eigene = set((await db.execute(select(Agent.id).where(
+        Agent.id.in_(ids), Agent.user_id == str(ersteller)))).scalars().all())
+    return [a for a in ids if a in eigene]
 
 
 # ─── Erinnerungen ───────────────────────────────────────────────
@@ -342,7 +359,7 @@ async def heute(db, user) -> dict:
             log.warning("Heute: Postfach nicht gelesen: %s", e)
     if team is None:
         return erg
-    mitglieder = _mitglieder(team)
+    mitglieder = await _eigene_mitglieder(db, team)
     erg["team"] = {"id": team.id, "name": team.name, "lead_agent_id": team.lead_agent_id,
                    "member_agent_ids": team.member_agent_ids or []}
     offen = (await db.execute(select(CommandApproval).where(

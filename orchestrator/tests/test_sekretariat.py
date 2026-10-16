@@ -191,6 +191,22 @@ class Heute(_Sek):
         self.assertEqual([w["art"] for w in h["wartet"]], ["mail_senden"])  # nicht die fremde Freigabe
         self.assertEqual(h["briefing"]["text"], "Heute: Jour fixe um 9.")
 
+    async def test_fremder_agent_im_sekretariat_bleibt_unsichtbar(self):
+        """Hat ein Admin einen fremden Agenten ins Team geholt: dessen Freigaben zeigt Heute nicht."""
+        async with self.Session() as db:
+            team = await self._einrichten(db)
+            team.member_agent_ids = ["a1", "a2", "b1"]
+            db.add(CommandApproval(agent_id="b1", command="ms_send_email", description="Mail an x",
+                                   status=ApprovalStatus.PENDING, meta={"kind": "mail_senden", "view": {"name": "mail", "data": {"text": "fremd"}}}))
+            await db.commit()
+            with patch("app.core.sekretariat._m365", AsyncMock(return_value=None)):
+                h = await sekretariat.heute(db, A)
+            await sekretariat.merken(db, team, "Merke: nur eigene")
+            await db.commit()
+            beim_fremden = (await db.execute(select(AgentMemory).where(AgentMemory.agent_id == "b1"))).scalars().all()
+        self.assertEqual(h["wartet"], [])
+        self.assertEqual(beim_fremden, [])
+
     async def test_heute_ohne_sekretariat_und_ohne_m365(self):
         async with self.Session() as db:
             with patch("app.core.sekretariat._m365", AsyncMock(return_value=None)):
