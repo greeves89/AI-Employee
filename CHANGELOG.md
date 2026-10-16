@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.2] - 2026-10-16
+
+### Behoben — Sperrliste reservierter Zeitplan-Namen
+- **Drei Zeitplan-Arten konnten sich fälschlich umbenennen oder den adaptiven Takt
+  anschalten lassen:** Projekt-Termine, Besprechungen und Sekretariats-Zeitpläne liefen
+  nicht durch dieselbe Sperre wie Tagesplan-Blöcke, Projekt-Arbeitstakte & Co. — eine
+  freie Zeitplan-Erzeugung konnte sogar einen Namen aus diesem Bereich kapern. Heute ohne
+  sichtbare Auswirkung (keiner dieser drei nutzt den adaptiven Takt), schließt aber die
+  Lücke, bevor sie es tut.
+- **Die Prüfliste dafür war von Hand gepflegt und hat genau das verschleiert:** eine neue,
+  automatische Bestandsaufnahme liest jetzt JEDE Stelle im Code, die einen Zeitplan anlegt,
+  und vergleicht sie gegen die Sperrliste — ein künftiger neuer Zeitplan-Typ mit
+  unbekanntem Namens-Präfix fällt dadurch sofort auf, statt still durchzulaufen.
+
+---
+
 ## [1.376.1] - 2026-10-16
 
 ### Behoben — Crawler-Netzaussetzer (#746)
