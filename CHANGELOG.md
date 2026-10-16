@@ -16,6 +16,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   ohne dass an der Regel etwas falsch war. Er legt die erlaubten Bereiche jetzt selbst
   fest, statt sie von der Lage des Temp-Ordners zu borgen — und erkennt eine ausgehebelte
   Regel weiterhin (gegengeprüft).
+- **Zweiter roter Haken derselben Hauptlinie.** Die Wache gegen wachsende Zeichenfenster
+  meldete einen *Fortschritt* als Fehler: Eine Testdatei war von drei auf zwei Fenster
+  verbessert worden, ohne dass der neue Wert in der Basislinie landete. Der Wert ist jetzt
+  nachgetragen — damit fällt auch wieder auf, wenn die Zahl erneut steigt (beide Richtungen
+  gegengeprüft).
 
 ---
 
