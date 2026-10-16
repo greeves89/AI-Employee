@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.376.3] - 2026-10-16
+
+### Sicherheit
+- Aufräumen der Git-Arbeitsbäume (#967): Im Betrieb ist der lokale Git-Transport (`file`) wieder
+  verboten, und `ls-remote` gibt das Upload-Programm selbst vor. Vorher konnte ein Agent über
+  `remote.origin.uploadpack` in seiner eigenen `.git/config` ein Programm eintragen, das der
+  Aufräum-Helfer als root ausführte. Ein `-c`-Überschreiben hätte nicht gereicht — git nimmt dort den
+  ersten Wert, also den der Ablage. Zwei Tests stellen den Weg nach.
+
+---
+
 ## [1.376.2] - 2026-10-16
 
 ### Behoben — Sperrliste reservierter Zeitplan-Namen
