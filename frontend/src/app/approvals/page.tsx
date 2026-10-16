@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ApprovalModal } from "@/components/agents/approval-modal";
+import { AGENT_VIEWS, AgentView } from "@/components/agents/agent-views";
 import { CommandPoliciesTab } from "@/components/agents/command-policies-tab";
 import {
   getPendingApprovals, approveCommand, denyCommand,
@@ -915,11 +916,18 @@ export default function ApprovalsPage() {
                           </>
                         ) : (
                           <>
-                            {/* Command preview */}
-                            <div className="text-xs font-mono bg-foreground/[0.04] border border-foreground/[0.06] rounded-lg px-3 py-2 mb-2 overflow-x-auto text-muted-foreground">
-                              {(approval.input?.command as string) ||
-                                JSON.stringify(approval.input)}
-                            </div>
+                            {/* Command preview — oder die Ansicht, die der Server mitgibt (Mail-Entwurf) */}
+                            {approval.view && AGENT_VIEWS[approval.view.name] ? (
+                              <div className="mb-2">
+                                <AgentView name={approval.view.name} agentId={approval.agent_id}
+                                  data={approval.view.data || {}} antworten={() => {}} />
+                              </div>
+                            ) : (
+                              <div className="text-xs font-mono bg-foreground/[0.04] border border-foreground/[0.06] rounded-lg px-3 py-2 mb-2 overflow-x-auto text-muted-foreground">
+                                {(approval.input?.command as string) ||
+                                  JSON.stringify(approval.input)}
+                              </div>
+                            )}
                             {/* Reasoning */}
                             <p className="text-[11px] text-muted-foreground/60 line-clamp-2">
                               {approval.reasoning}

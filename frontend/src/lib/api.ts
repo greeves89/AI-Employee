@@ -4627,6 +4627,87 @@ export async function exportFinanzen(monate = 12): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+// ─── Sekretariat und Seite „Heute“ (orchestrator: core/sekretariat) ───
+
+export interface HeuteTermin {
+  betreff: string;
+  beginn: string | null;
+  ende: string | null;
+  ort: string;
+  online: boolean;
+  ganztags: boolean;
+}
+
+export interface HeuteMail {
+  betreff: string;
+  von: string;
+  eingang: string | null;
+  vorschau: string;
+  wichtig: boolean;
+}
+
+export interface HeuteWartet {
+  approval_id: string;
+  agent_id: string;
+  /** "mail_senden" = Mail-Entwurf, Freigeben sendet ihn; sonst eine Rückfrage. */
+  art: string;
+  frage: string | null;
+  view: { name: string; data: Record<string, unknown> } | null;
+  erstellt: string | null;
+}
+
+export interface Erinnerung {
+  id: number;
+  text: string;
+  faellig: string;
+  von: string;
+  gemeldet: string | null;
+  erledigt: string | null;
+}
+
+export interface SekretariatRegel {
+  schluessel: string;
+  text: string;
+  seit: string | null;
+}
+
+export interface Heute {
+  eingerichtet: boolean;
+  m365_verbunden: boolean;
+  m365_nur_lesen: boolean;
+  team: { id: string; name: string; lead_agent_id: string | null; member_agent_ids: string[] } | null;
+  termine: HeuteTermin[] | null;
+  ungelesen: HeuteMail[] | null;
+  wartet: HeuteWartet[];
+  regeln: SekretariatRegel[];
+  erinnerungen: Erinnerung[];
+  briefing: { text: string; task_id: string; erstellt: string | null } | null;
+}
+
+export async function getHeute(): Promise<Heute> {
+  return fetchJSON(`${getBase()}/sekretariat/heute`);
+}
+
+export async function sekretariatEinrichten(body: { agent_ids: string[]; sichten_minuten: number; briefing: string }): Promise<{ id: string; hinweise: string[] }> {
+  return fetchJSON(`${getBase()}/sekretariat/einrichten`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function sekretariatRegelAnlegen(text: string): Promise<{ schluessel: string; regeln: SekretariatRegel[] }> {
+  return fetchJSON(`${getBase()}/sekretariat/regeln`, { method: "POST", body: JSON.stringify({ text }) });
+}
+
+export async function sekretariatRegelLoeschen(schluessel: string): Promise<{ regeln: SekretariatRegel[] }> {
+  return fetchJSON(`${getBase()}/sekretariat/regeln/${encodeURIComponent(schluessel)}`, { method: "DELETE" });
+}
+
+export async function erinnerungAnlegen(text: string, faellig: string): Promise<Erinnerung> {
+  return fetchJSON(`${getBase()}/sekretariat/erinnerungen`, { method: "POST", body: JSON.stringify({ text, faellig }) });
+}
+
+export async function erinnerungErledigt(id: number): Promise<Erinnerung> {
+  return fetchJSON(`${getBase()}/sekretariat/erinnerungen/${id}/erledigt`, { method: "POST" });
+}
+
 export async function listTeams(): Promise<{ teams: Team[] }> {
   return fetchJSON(`${getBase()}/teams/`);
 }

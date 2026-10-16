@@ -41,6 +41,9 @@ class Team(Base, TimestampMixin):
     # Schlüssel aus der Schlüsselverwaltung (agent_secrets.id) für private Repos; leer =
     # GitHub-Verbindung der Anlage (nur bei Projekten von Admins) bzw. anonym.
     repo_secret_id: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # Art: None/"projekt" = Projekt (Seite Projekte), "sekretariat" = persönliches
+    # Sekretariat eines Nutzers (Seite Heute, core/sekretariat.py).
+    art: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
     # Monatsbudget des Projekts in USD (leer = keins): neue Läufe des Projekts werden
     # abgelehnt, sobald seine Kosten im Monat es erreichen (core/budget.projekt_budget_pruefen).
     budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)

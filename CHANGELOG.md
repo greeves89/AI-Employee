@@ -5,6 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.374.0] - 2026-10-16
+
+### Neu — Sekretariat und die Seite „Heute“
+- **Sekretariat:** ein bis vier eigene Agenten betreuen Postfach und Kalender (Microsoft 365) —
+  Postfach sichten (werktags im gewählten Takt), Antworten entwerfen, ablegen, Fristen als
+  Erinnerung anlegen, Tagesbriefing. Einrichten mit einem Assistenten auf der Seite **Heute**.
+- **Seite „Heute“:** Termine des Tages und ungelesene Mails direkt aus M365, „Wartet auf dich“
+  (Mail-Entwürfe mit Vorschau — Freigeben sendet), Erinnerungen, Regeln, Tagesbriefing und eine
+  Eingabezeile: „Merke: …“ wird eine feste Regel für alle Agenten des Sekretariats, alles andere
+  ein Auftrag.
+- **Microsoft-Zugriff „Entwürfe + Freigabe“** je Agent: Senden und Antworten werden zum Entwurf
+  plus Freigabe; gesendet wird erst nach Zustimmung — vom Server, mit Prüfung, dass der Entwurf
+  seitdem unverändert ist, und nur durch den Besitzer des Postfachs. Freigaben zeigen Mails als
+  Vorschau statt als Rohdaten.
+- **Erinnerungen** mit Benachrichtigung zur Fälligkeit; neues Werkzeug `erinnerung_anlegen` in
+  allen Laufzeiten.
+- Läufe aus Zeitplänen mit Teambezug zählen zum Team (Kosten unter Finanzen, Projektbudget).
+
+### Behoben
+- Die Einstellung „Lesen + Schreiben“ für Microsoft 365 behauptete, ausgehende Mail werde als
+  Entwurf angelegt — tatsächlich wird gesendet. Der Text sagt das jetzt.
+
+---
+
 ## [1.373.1] - 2026-10-16
 
 ### Sicherheit

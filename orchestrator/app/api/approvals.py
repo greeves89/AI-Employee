@@ -151,6 +151,9 @@ ERLAUBTE_ANSICHTEN = {
     # haeufigsten Fall ab (Marketing-Agent erzeugt Varianten) und braucht keine
     # Bearbeitung im Browser.
     "image_choice",
+    # Mail-Entwurf zur Freigabe (core/mail_freigabe): An, Betreff, Text — vom Server
+    # aus dem Postfach gelesen, nicht vom Agenten geliefert.
+    "mail",
 }
 
 #: Obergrenze fuer die Nutzlast einer Ansicht. Sie liegt in ``meta`` derselben
@@ -241,14 +244,28 @@ async def _push_ios_for_agent(
 # AGENT ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
 
+#: Arten, die nur der Server selbst anlegt — ein Agent darf sie nicht über
+#: ``/request`` vortäuschen. ``mail_senden``: beim Freigeben sendet der Server einen
+#: Entwurf aus dem Postfach des Besitzers (core/mail_freigabe.py).
+SERVER_ARTEN = {"mail_senden"}
+
+
 @router.post("/request")
 async def request_approval(
     body: ApprovalRequest,
     agent_auth: dict = Depends(verify_agent_token),
     db: AsyncSession = Depends(get_db),
 ):
-    agent_id = agent_auth["agent_id"]
+    if body.kind in SERVER_ARTEN:
+        raise HTTPException(status_code=403, detail="Diese Art von Freigabe legt nur der Server an.")
+    return await anfrage_anlegen(db, agent_auth["agent_id"], body)
 
+
+async def anfrage_anlegen(db: AsyncSession, agent_id: str, body: ApprovalRequest) -> dict:
+    """Eine Freigabe anlegen und überall melden (Glocke, Telegram, iOS, Chat).
+
+    Gemeinsamer Weg für den Agenten-Endpunkt ``/request`` und Server-Bausteine
+    wie ``core/mail_freigabe``."""
     if body.risk_level == "blocked":
         logger.warning(f"Agent {scrub_log(agent_id)} attempted blocked command: {scrub_log(body.tool)}")
         raise HTTPException(status_code=403, detail="This command is forbidden and cannot be executed even with approval.")
@@ -881,6 +898,11 @@ async def approve_request(
     # container is waiting on Redis). Apply FIRST — if it fails, the approval
     # stays pending so the admin can retry.
     applied = None
+    if (approval.meta or {}).get("kind") == "mail_senden":
+        # Freigeben HEISST senden: der Server schickt den Entwurf aus dem Postfach des
+        # Besitzers. Scheitert es, bleibt die Freigabe offen (wie bei der Reflexion).
+        from app.core.mail_freigabe import senden
+        applied = await senden(db, approval, user)
     if (approval.meta or {}).get("kind") == "reflection":
         from app.services.reflection_service import apply_reflection_approval
         try:

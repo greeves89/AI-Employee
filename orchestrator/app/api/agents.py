@@ -3597,7 +3597,8 @@ async def update_agent_integrations(
         # instead of being stored as a setting that the MCP transports ignore anyway.
         from app.core import ms_access
         ms_read_only = ms_access.read_only_enabled()
-        if ms_read_only and "write" in (body.get("msgraph_access"), body.get("exchange_access")):
+        if ms_read_only and ("write" in (body.get("msgraph_access"), body.get("exchange_access"))
+                             or body.get("msgraph_access") == ms_access.ENTWURF):
             raise HTTPException(
                 status_code=422,
                 detail="Microsoft-Zugriff ist plattformweit auf Nur-Lesen gestellt. "
@@ -3605,7 +3606,7 @@ async def update_agent_integrations(
             )
 
         old_msgraph_access = config.get("msgraph_access", "read")
-        if "msgraph_access" in body and body["msgraph_access"] in ("read", "write"):
+        if "msgraph_access" in body and body["msgraph_access"] in ("read", ms_access.ENTWURF, "write"):
             config["msgraph_access"] = body["msgraph_access"]
         msgraph_access_changed = config.get("msgraph_access", "read") != old_msgraph_access
 

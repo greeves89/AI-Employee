@@ -97,6 +97,9 @@ ALWAYS_ALLOWED_TOOLS = frozenset({
     "projekt_karte_stand", "projekt_wissen_suchen", "projekt_wissen_lesen", "projekt_wissen_schreiben",
     "projekt_gespraech_lesen", "projekt_gespraech_schreiben", "projekt_wissen_ergaenzen", "projekt_termine",
     "projekt_termin_anlegen",
+    # Erinnerung an den eigenen Menschen (Sekretariat) — der Server prueft, dass der
+    # Agent zu dessen Sekretariat gehoert.
+    "erinnerung_anlegen",
     # Presents something TO the user — same class as present_view, no effect
     # beyond display.
     "present_file", "present_image",

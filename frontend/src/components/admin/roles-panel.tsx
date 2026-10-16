@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/dialog-provider";
 // Fest eingebaute Menuepunkte. Selbst angelegte Seiten kommen zur Laufzeit dazu
 // (siehe ``menuOptions``) — deshalb steht hier nur, was im Code verdrahtet ist.
 const MENU_PATHS = [
+  "/heute",
   "/dashboard",
   "/agents",
   "/tasks",
