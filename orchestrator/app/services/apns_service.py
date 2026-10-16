@@ -14,6 +14,7 @@ import time
 import httpx
 import jwt
 from app.config import settings
+from app.core.verbindungswiederholung import mit_verbindungswiederholung
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +104,12 @@ class APNsService:
         try:
             async with httpx.AsyncClient(http2=True, timeout=10.0) as client:
                 for versuch, host in enumerate(hosts):
-                    r = await client.post(
-                        f"https://{host}/3/device/{device_token}",
-                        headers=headers, json=payload,
+                    ziel = f"https://{host}/3/device/{device_token}"
+                    r = await mit_verbindungswiederholung(
+                        lambda ziel=ziel: client.post(
+                            ziel, headers=headers, json=payload,
+                        ),
+                        zweck=f"APNs ({host})",
                     )
                     if r.status_code == 200:
                         if versuch:
