@@ -2,11 +2,13 @@
 
 Es gibt zwei Ebenen, und die obere gewinnt immer:
 
-  1. ``msgraph_read_only`` — plattformweite Admin-Einstellung. Standard AN.
-     Solange sie aktiv ist, sieht KEIN Agent ein Schreib-Werkzeug und kann auch
-     keines aufrufen, egal was in seiner Konfiguration steht.
-  2. ``msgraph_access`` / ``exchange_access`` pro Agent ("read" | "write") —
-     greift nur, wenn der globale Schalter ausgeschaltet wurde.
+  1. ``msgraph_read_only`` — der Admin SPERRT die Anlage. Standard AN. Solange sie
+     aktiv ist, sieht KEIN Agent ein Schreib- oder Entwurfs-Werkzeug und kann auch
+     keines aufrufen, egal was in seiner Konfiguration steht (Kundenanlagen, die
+     M365 ausschliesslich lesend wollen).
+  2. ``msgraph_access`` / ``exchange_access`` pro Agent ("read" | "entwurf" | "write")
+     — stellt der NUTZER fuer seine eigenen Agenten ein (nutzerbezogen, v1.376.0),
+     sobald die Anlage nicht gesperrt ist.
 
 Beide MCP-Transporte (``api/mcp_msgraph.py``, ``api/mcp_exchange.py``) fragen
 ausschliesslich hier, damit es keinen zweiten Weg an der Regel vorbei gibt. Der
@@ -26,22 +28,14 @@ def read_only_enabled() -> bool:
 
 
 #: Modus „Entwurf“ (nur M365): lesen, Entwürfe anlegen und ablegen; gesendet wird erst
-#: nach Freigabe durch den Postfach-Besitzer (core/mail_freigabe.py). Der Admin schaltet
-#: ihn eigens frei (``msgraph_entwurf_erlaubt``) — unabhängig vom Nur-Lesen-Zwang, der
-#: weiter nur direktes Senden und Ändern sperrt. Einstellen tut ihn jeder Nutzer für
-#: seine eigenen Agenten.
+#: nach Freigabe durch den Postfach-Besitzer (core/mail_freigabe.py). Stellt der Nutzer
+#: für seine Agenten ein; gesperrt nur, wenn der Admin die Anlage auf Nur-Lesen setzt.
 ENTWURF = "entwurf"
-
-
-def entwurf_freigeschaltet() -> bool:
-    """Hat der Admin „Entwürfe + Freigabe“ freigeschaltet? Ohne Nur-Lesen-Zwang gilt
-    ohnehin mehr (Lesen + Schreiben), also auch das."""
-    return bool(getattr(settings, "msgraph_entwurf_erlaubt", False)) or not read_only_enabled()
 
 
 def entwurf_enabled(agent_config: dict | None) -> bool:
     """Darf dieser Agent Mails als Entwurf anlegen und zur Freigabe stellen?"""
-    if not entwurf_freigeschaltet():
+    if read_only_enabled():
         return False
     return (agent_config or {}).get("msgraph_access", "read") == ENTWURF
 

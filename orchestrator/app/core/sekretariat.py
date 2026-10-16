@@ -351,7 +351,7 @@ async def heute(db, user) -> dict:
     token = await _m365(db, getattr(user, "id", ""))
     erg: dict = {
         "eingerichtet": team is not None, "m365_verbunden": bool(token),
-        "m365_entwurf_frei": ms_access.entwurf_freigeschaltet(), "team": None, "termine": None, "ungelesen": None,
+        "m365_entwurf_frei": not ms_access.read_only_enabled(), "team": None, "termine": None, "ungelesen": None,
         "wartet": [], "regeln": [], "briefing": None,
         "erinnerungen": [erinnerung_dict(e) for e in await erinnerungen(db, getattr(user, "id", ""))],
     }

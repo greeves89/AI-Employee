@@ -333,10 +333,6 @@ class Settings(BaseSettings):
     # on-prem Exchange). Default ON: no agent gets a write/send tool, whatever its
     # own msgraph_access/exchange_access says. Admin can lift it in Settings.
     msgraph_read_only: bool = True
-    # Admin schaltet frei: Agenten dürfen Mails als Entwurf anlegen, gesendet wird nur nach
-    # Freigabe des Postfach-Besitzers (Modus „Entwurf“, core/mail_freigabe). Unabhängig vom
-    # Nur-Lesen-Schalter, der direktes Senden/Ändern sperrt. Aus, bis der Admin es freigibt.
-    msgraph_entwurf_erlaubt: bool = False
     # Optional independent signing key for MCP access tokens. Empty = derive from
     # api_secret_key (domain-separated). Set for full key isolation from sessions.
     mcp_signing_key: str = ""

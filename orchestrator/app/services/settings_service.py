@@ -129,8 +129,6 @@ ALLOWED_KEYS = SECRET_KEYS | {
     "msgraph_mcp_external_enabled",
     # Platform-wide read-only enforcement for M365/Graph AND on-prem Exchange
     "msgraph_read_only",
-    # Admin-Freigabe für den Microsoft-Modus „Entwürfe + Freigabe“ (core/ms_access)
-    "msgraph_entwurf_erlaubt",
     # Improvement engine thresholds
     "improvement_suggestion_model",
     "improvement_min_ratings",
