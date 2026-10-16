@@ -21,6 +21,7 @@ import hashlib
 import json
 import logging
 import re
+from html.parser import HTMLParser
 
 from fastapi import HTTPException
 
@@ -63,16 +64,58 @@ def fingerabdruck(m: dict) -> str:
     return hashlib.sha256(json.dumps(teile, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
+class _Klartext(HTMLParser):
+    """HTML → Text, wie ihn ein Mensch prüfen kann: Linkziele und Bildadressen stehen
+    sichtbar im Text (ein harmloser Linktext darf kein fremdes Ziel verdecken), Skripte
+    und Stile fallen weg. Attribute liest der Parser wie ein Browser — eine Regex hielt
+    ``data-href`` für ``href``."""
+
+    BLOCK = {"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "table"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.teile: list[str] = []
+        self.links: list[str | None] = []
+        self.versteckt = 0
+
+    @staticmethod
+    def _attr(attrs, name):
+        return next((v for k, v in attrs if k == name), None)
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "head", "title"):
+            self.versteckt += 1
+        elif tag == "a":
+            self.links.append(self._attr(attrs, "href"))
+        elif tag == "img":
+            self.teile.append(f" [Bild: {self._attr(attrs, 'src') or '?'}] ")
+        if tag in self.BLOCK:
+            self.teile.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "head", "title"):
+            self.versteckt = max(0, self.versteckt - 1)
+        elif tag == "a" and self.links:
+            ziel = self.links.pop()
+            if ziel:
+                self.teile.append(f" ({ziel})")
+        if tag in self.BLOCK:
+            self.teile.append("\n")
+
+    def handle_data(self, data):
+        if not self.versteckt:
+            self.teile.append(data)
+
+
 def _klartext(m: dict) -> str:
     body = m.get("body") or {}
     text = body.get("content") or ""
     if (body.get("contentType") or "").lower() == "html":
-        text = re.sub(r"(?is)<(script|style).*?</\1>", "", text)
-        # Linkziele sichtbar machen: ein harmloser Linktext darf kein fremdes Ziel verdecken.
-        text = re.sub(r'(?is)<a\b[^>]*?href\s*=\s*["\']([^"\']*)["\'][^>]*>(.*?)</a>', r"\2 (\1)", text)
-        text = re.sub(r"(?i)<br\s*/?>|</p>", "\n", text)
-        text = re.sub(r"<[^>]+>", "", text)
-        text = re.sub(r"&nbsp;", " ", text)
+        p = _Klartext()
+        p.feed(text)
+        p.close()
+        text = "".join(p.teile).replace("\xa0", " ")
+        text = re.sub(r"[ \t]+\n", "\n", text)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 

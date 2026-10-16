@@ -139,6 +139,15 @@ class SendenNachFreigabe(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("Anhänge" in w for w in v["warnungen"]))
         self.assertNotEqual(mail_freigabe.fingerabdruck(m), mail_freigabe.fingerabdruck({**m, "hasAttachments": False}))
 
+    def test_data_href_taeuscht_kein_linkziel_vor(self):
+        m = {**ENTWURF, "body": {"contentType": "html", "content":
+             '<a data-href="https://intern.example.invalid" href="https://boese.example.invalid">intern</a>'
+             '<script>var x=1</script><img src="https://pixel.example.invalid/p.gif">'}}
+        text = mail_freigabe.vorschau(m)["text"]
+        self.assertIn("intern (https://boese.example.invalid)", text)
+        self.assertNotIn("var x", text)
+        self.assertIn("[Bild: https://pixel.example.invalid/p.gif]", text)
+
     def test_lange_mail_passt_in_die_ansicht(self):
         import json
 
@@ -178,4 +187,5 @@ class FremdeMailsVerborgen(unittest.TestCase):
                       "meta": {"kind": "mail_senden"}}]
         erg = _fremde_mails_verbergen(eintraege, {"a9"})
         self.assertEqual((erg[0]["view"], erg[0]["input"], erg[0]["meta"]), (None, {}, {"kind": "mail_senden"}))
+        self.assertNotIn("geheim", str(erg[0]))
         self.assertEqual(erg[1]["view"]["data"]["text"], "eigen")

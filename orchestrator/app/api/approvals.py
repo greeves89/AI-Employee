@@ -186,6 +186,9 @@ def _fremde_mails_verbergen(eintraege: list[dict], eigene: set[str]) -> list[dic
         if (d.get("meta") or {}).get("kind") == "mail_senden" and d.get("agent_id") not in eigene:
             d["view"], d["input"] = None, {}
             d["meta"] = {"kind": "mail_senden"}
+            # Auch Betreff und Empfänger (stehen in der Begründung) gehören dem Besitzer.
+            d["reasoning"] = "Mail-Freigabe — Inhalt sieht nur, wem das Postfach gehört."
+            d["question"] = None
     return eintraege
 
 
