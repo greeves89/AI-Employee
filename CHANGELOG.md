@@ -5,6 +5,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.367.1] - 2026-10-16
+
+### Behoben
+- **Projekt-Migration auf bestehenden Anlagen besser abgesichert.** Der Postgres-Test
+  entfernt jetzt auch Projektzuordnung, Abnahmezeitpunkt, Projektfarbe und den
+  Projektindex aus dem vorbereiteten Schema. So muss die Migration diese selbst
+  anlegen; Fehler dabei bleiben nicht mehr durch bereits vorhandene Spalten verdeckt.
+
+---
+
 ## [1.367.0] - 2026-10-16
 
 ### Neu

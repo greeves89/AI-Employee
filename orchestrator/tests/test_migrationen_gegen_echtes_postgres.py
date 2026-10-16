@@ -79,6 +79,9 @@ _SPALTEN_NACH_DER_MARKE = (
     ("schedules", "chat_session_id"),
     ("agent_secrets", "owner_id"),
     ("agent_templates", "build_tools"),
+    ("tasks", "team_id"),
+    ("tasks", "abgenommen_at"),
+    ("teams", "farbe"),
 )
 
 
@@ -145,6 +148,8 @@ class MigrationAufGewachsenerDatenbank(unittest.TestCase):
                 await c.execute(text("ALTER TABLE agents DROP COLUMN IF EXISTS access_policy"))
                 for tabelle in _TABELLEN_NACH_DER_MARKE:
                     await c.execute(text(f"DROP TABLE IF EXISTS {tabelle} CASCADE"))
+                # Auch den Modell-Index zuruecksetzen, damit die Projekt-Migration ihn anlegt.
+                await c.execute(text("DROP INDEX IF EXISTS ix_tasks_team_id"))
                 for tabelle, spalte in _SPALTEN_NACH_DER_MARKE:
                     await c.execute(text(f"ALTER TABLE {tabelle} DROP COLUMN IF EXISTS {spalte}"))
 
