@@ -33,6 +33,7 @@ class CreateTeam(BaseModel):
     takt_minuten: int | None = None
     geteilt_mit: list[str] = []
     repo: str | None = None
+    repo_secret_id: int | None = None
 
 
 class UpdateTeam(BaseModel):
@@ -45,8 +46,10 @@ class UpdateTeam(BaseModel):
     takt_minuten: int | None = None
     # Nutzer-IDs, die das Projekt sehen dürfen (ersetzt die bisherige Liste).
     geteilt_mit: list[str] | None = None
-    # GitHub-Repo (owner/name); leer entfernt es. Nur Administratoren.
+    # GitHub-Repo (owner/name); leer entfernt es.
     repo: str | None = None
+    # Schlüssel für private Repos (Schlüsselverwaltung); 0 entfernt ihn.
+    repo_secret_id: int | None = None
 
 
 def _farbe(wert: str | None) -> str | None:
@@ -78,6 +81,7 @@ def _serialize(t: Team) -> dict:
         "repo": getattr(t, "repo", None),
         "repo_abgleich_at": t.repo_abgleich_at.isoformat() if getattr(t, "repo_abgleich_at", None) else None,
         "repo_fehler": getattr(t, "repo_fehler", None),
+        "repo_secret_id": getattr(t, "repo_secret_id", None),
     }
 
 
@@ -152,19 +156,30 @@ async def _is_team_member(team: Team, user, db: AsyncSession) -> bool:
 
 
 def _repo_setzen(t: Team, repo: str, user) -> None:
-    """Repo an ein Projekt hängen — nur Administratoren: der GitHub-Zugang gilt für
-    die ganze Anlage, und über ihn liessen sich sonst fremde private Repos lesen."""
+    """Repo an ein Projekt hängen (Ersteller). Gelesen wird mit dem Schlüssel des
+    Projekts, anonym — oder, NUR bei Projekten von Administratoren, mit dem
+    GitHub-Zugang der Anlage (core/projekt_git.zugang)."""
     from app.core.projekt_git import repo_pruefen
-    from app.models.user import UserRole
 
-    if getattr(user, "role", None) != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Ein Repo verbindet nur ein Administrator.")
     try:
         neu = repo_pruefen(repo)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     if neu != t.repo:
         t.repo, t.repo_abgleich_at, t.repo_fehler = neu, None, None
+
+
+async def _repo_schluessel(db: AsyncSession, secret_id: int, user) -> int | None:
+    """Schlüssel fürs Repo: nur einer, den ``user`` selbst nutzen darf (0 = keiner)."""
+    if not secret_id:
+        return None
+    from app.core import secret_zugriff
+    from app.models.agent_secret import AgentSecret
+
+    secret = await db.get(AgentSecret, secret_id)
+    if secret is None or not secret.is_active or await secret_zugriff.zugang(db, user, secret) is None:
+        raise HTTPException(status_code=403, detail="Diesen Schlüssel darfst du nicht verwenden.")
+    return secret.id
 
 
 def _nur_ersteller(team: Team, user) -> None:
@@ -207,6 +222,8 @@ async def create_team(body: CreateTeam, user=Depends(require_auth), db: AsyncSes
     )
     if body.repo:
         _repo_setzen(team, body.repo, user)
+    if body.repo_secret_id:
+        team.repo_secret_id = await _repo_schluessel(db, body.repo_secret_id, user)
     db.add(team)
     await db.commit()
     await db.refresh(team)
@@ -377,6 +394,7 @@ async def update_team(team_id: str, body: UpdateTeam, user=Depends(require_auth)
     await _nur_eigene_agenten([*(body.member_agent_ids or []), body.lead_agent_id], user, db)
     if body.geteilt_mit is not None: t.geteilt_mit = await _freigabe(db, body.geteilt_mit, user)
     if body.repo is not None: _repo_setzen(t, body.repo, user)
+    if body.repo_secret_id is not None: t.repo_secret_id = await _repo_schluessel(db, body.repo_secret_id, user)
     if body.name is not None: t.name = body.name
     if body.description is not None: t.description = body.description
     if body.member_agent_ids is not None: t.member_agent_ids = body.member_agent_ids

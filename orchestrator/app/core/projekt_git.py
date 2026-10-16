@@ -13,12 +13,14 @@ auch sofort (``POST /teams/{id}/repo/abgleichen``):
   CI-Stand aus den Checks.
 * PR gemergt/geschlossen → Stand nachgezogen; eine reine PR-Karte ist erledigt.
 
-Zugang: die GitHub-Verbindung der Anlage (Admin, ``oauth_integrations`` ohne
-Nutzer), sonst ``GITHUB_TOKEN`` aus der Umgebung, sonst ANONYM — dann gehen nur
-öffentliche Repos, mit niedriger Abfragegrenze (60/Stunde); der Takt gleicht
-anonyme Projekte deshalb nur alle 30 Minuten ab. Ein Repo an ein Projekt hängen
-darf nur ein Administrator — sonst holte sich jeder über den Zugang der Anlage
-fremde private Repos aufs Board.
+Zugang je Projekt (``zugang``), in dieser Reihenfolge:
+1. ein Schlüssel aus der Schlüsselverwaltung (``teams.repo_secret_id``) — nur,
+   solange der Ersteller des Projekts ihn nutzen darf;
+2. die GitHub-Verbindung der Anlage bzw. ``GITHUB_TOKEN`` — NUR für Projekte, die
+   ein Administrator angelegt hat (sonst läse jeder über den Anlagen-Zugang
+   fremde private Repos);
+3. anonym — nur öffentliche Repos, niedrige Abfragegrenze (60/Stunde); der Takt
+   gleicht anonyme Projekte deshalb nur alle 30 Minuten ab.
 Die Plattform LIEST nur; schreiben (Branches, PRs, Kommentare) tun die Agenten
 mit ihrem eigenen GitHub-Werkzeug.
 """
@@ -61,18 +63,50 @@ def repo_pruefen(repo: str | None) -> str | None:
     return repo
 
 
-async def zugang(db: AsyncSession, redis):
-    """(Token, Anbieter) — Token leer heisst anonym (nur öffentliche Repos)."""
+async def _ersteller(db: AsyncSession, team: Team):
+    from app.models.user import User
+
+    if not team.created_by:
+        return None
+    return (await db.execute(
+        select(User).where((User.id == team.created_by) | (User.email == team.created_by))
+    )).scalars().first()
+
+
+async def schluessel_token(db: AsyncSession, team: Team) -> str | None:
+    """Token aus dem Schlüssel des Projekts — None ohne Schlüssel, GitFehler ohne Zugriff."""
+    if not team.repo_secret_id:
+        return None
+    from app.core import secret_zugriff
+    from app.core.encryption import decrypt_token
+    from app.models.agent_secret import AgentSecret
+
+    secret = await db.get(AgentSecret, team.repo_secret_id)
+    ersteller = await _ersteller(db, team)
+    if secret is None or not secret.is_active or ersteller is None \
+            or await secret_zugriff.zugang(db, ersteller, secret) is None:
+        raise GitFehler("Der Schlüssel des Projekts fehlt oder ist für den Ersteller nicht mehr freigegeben.")
+    return decrypt_token(secret.value_encrypted).strip()
+
+
+async def zugang(db: AsyncSession, redis, team: Team | None = None):
+    """(Token, Anbieter) für ``team`` — Token leer heisst anonym (nur öffentliche Repos)."""
     import os
 
     from app.core.githost.registry import get_git_host_provider
     from app.models.oauth_integration import OAuthIntegration, OAuthProvider
+    from app.models.user import UserRole
     from app.services.oauth_service import OAuthService
 
-    try:
-        token = await OAuthService(db, redis).get_valid_token("github")
-    except Exception:  # noqa: BLE001 — keine Verbindung: Umgebung, sonst anonym
-        token = os.environ.get("GITHUB_TOKEN", "")
+    token = await schluessel_token(db, team) if team is not None else None
+    if token is None:
+        ersteller = await _ersteller(db, team) if team is not None else None
+        token = ""
+        if team is None or (ersteller is not None and ersteller.role == UserRole.ADMIN):
+            try:
+                token = await OAuthService(db, redis).get_valid_token("github")
+            except Exception:  # noqa: BLE001 — keine Verbindung: Umgebung, sonst anonym
+                token = os.environ.get("GITHUB_TOKEN", "")
     zeile = (await db.execute(
         select(OAuthIntegration).where(OAuthIntegration.provider == OAuthProvider.GITHUB,
                                        OAuthIntegration.user_id.is_(None))
@@ -93,9 +127,9 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
         pulls = await anbieter.list_open_pulls(client, token, repo, MAX_PRS)
     except LookupError as e:
         if token:
-            raise GitFehler(f"Repo {repo} nicht gefunden — oder der GitHub-Zugang der Anlage darf es nicht lesen.") from e
-        raise GitFehler(f"Repo {repo} nicht gefunden. Ist es privat, braucht die Anlage einen GitHub-Zugang "
-                        "(Admin → Integrationen → GitHub).") from e
+            raise GitFehler(f"Repo {repo} nicht gefunden — oder der Schlüssel darf es nicht lesen.") from e
+        raise GitFehler(f"Repo {repo} nicht gefunden. Ist es privat, braucht das Projekt einen Schlüssel "
+                        "(Bearbeiten → Schlüssel für das Repo).") from e
     except (RuntimeError, httpx.HTTPError) as e:
         raise GitFehler(f"GitHub antwortet nicht für {repo}: {e}") from e
 
@@ -154,6 +188,7 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
         if verknuepft:
             for karte in verknuepft:
                 karte.pr_nr, karte.pr_url, karte.pr_zustand = nr, pr.get("html_url"), zustand
+                karte.stufe = projekte.hoehere_stufe(karte.stufe, "ci" if zustand.startswith("ci_") else "pr")
                 if karte.spalte in ("eingang", "bereit"):
                     # Jemand arbeitet schon daran (außerhalb des Boards): ab in die Prüfung.
                     karte.spalte = "pruefung"
@@ -176,6 +211,8 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
         zustand = await anbieter.pull_state(client, token, repo, karte.pr_nr)
         if zustand in ("gemergt", "geschlossen"):
             karte.pr_zustand = zustand
+            if zustand == "gemergt":
+                karte.stufe = "merge"
             if karte.quelle == "pr" and karte.spalte != "erledigt":
                 karte.spalte, karte.erledigt_at = "erledigt", jetzt
                 erledigt += 1
@@ -188,15 +225,18 @@ async def abgleichen(db: AsyncSession, team: Team, token: str, anbieter, client:
 
 async def projekt_abgleichen(db: AsyncSession, redis, team: Team) -> dict:
     """Ein Projekt abgleichen und den Ausgang am Projekt festhalten (auch Fehler)."""
+    # Kennung VOR dem Abgleich merken: nach einem Rollback ist ``team`` verfallen,
+    # ein Zugriff darauf lüde nach — in der asynchronen Sitzung ein 500er.
+    team_id = team.id
     try:
-        token, anbieter = await zugang(db, redis)
+        token, anbieter = await zugang(db, redis, team)
         async with httpx.AsyncClient(timeout=20) as client:
             ergebnis = await abgleichen(db, team, token, anbieter, client)
         await db.commit()
         return ergebnis
     except GitFehler as e:
         await db.rollback()
-        t = await db.get(Team, team.id)
+        t = await db.get(Team, team_id)
         if t is not None:
             t.repo_fehler = str(e)[:300]
             t.repo_abgleich_at = datetime.now(timezone.utc)
@@ -209,12 +249,19 @@ async def alle_abgleichen(redis) -> int:
     from app.db.session import resilient_session
 
     async with resilient_session() as db:
-        teams = (await db.execute(
-            select(Team).where(Team.is_active.is_(True), Team.repo.is_not(None))
+        ids = (await db.execute(
+            select(Team.id).where(Team.is_active.is_(True), Team.repo.is_not(None))
         )).scalars().all()
-        anonym = not (await zugang(db, redis))[0] if teams else False
         jetzt = datetime.now(timezone.utc)
-        for team in teams:
+        for team_id in ids:
+            # Je Projekt frisch laden: ein Rollback beim vorigen lässt geladene Objekte verfallen.
+            team = await db.get(Team, team_id)
+            if team is None:
+                continue
+            try:
+                anonym = not (await zugang(db, redis, team))[0]
+            except GitFehler:
+                anonym = False  # Schlüssel kaputt: der Abgleich meldet es am Projekt
             # Anonym nur alle 30 Minuten: die Abfragegrenze (60/h) teilen sich alle Projekte.
             zuletzt = team.repo_abgleich_at
             if anonym and zuletzt and (jetzt - (zuletzt if zuletzt.tzinfo else zuletzt.replace(tzinfo=timezone.utc))).total_seconds() < ANONYM_ABSTAND_SEKUNDEN:
@@ -222,8 +269,8 @@ async def alle_abgleichen(redis) -> int:
             try:
                 await projekt_abgleichen(db, redis, team)
             except GitFehler as e:
-                log.info("Git-Abgleich %s: %s", team.id, e)
+                log.info("Git-Abgleich %s: %s", team_id, e)
             except Exception as e:  # noqa: BLE001 — ein Projekt darf die anderen nicht aufhalten
                 await db.rollback()
-                log.warning("Git-Abgleich %s gescheitert: %s", team.id, e)
-        return len(teams)
+                log.warning("Git-Abgleich %s gescheitert: %s", team_id, e)
+        return len(ids)

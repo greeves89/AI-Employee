@@ -67,7 +67,8 @@ export function ProjektRaum({
   ].slice(0, 12);
   const titelJeAgent = new Map<string, string>();
   for (const l of laufend) {
-    if (l.agent_id && !titelJeAgent.has(l.agent_id)) titelJeAgent.set(l.agent_id, l.karte_titel ?? l.titel);
+    // Die letzte Ausgabe zeigt, was der Agent GERADE tut; sonst der Titel der Karte.
+    if (l.agent_id && !titelJeAgent.has(l.agent_id)) titelJeAgent.set(l.agent_id, l.letzte_ausgabe ?? l.karte_titel ?? l.titel);
   }
   const [sx, sy] = p(1.4, 1.45, 0.55 + blaetter * 0.075);
 

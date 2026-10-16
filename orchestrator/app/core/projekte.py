@@ -70,6 +70,38 @@ def _kurz(text: str | None, n: int) -> str | None:
     return text if len(text) <= n else text[: n - 1].rstrip() + "…"
 
 
+def hoehere_stufe(a: str | None, b: str | None) -> str | None:
+    """Die weiter fortgeschrittene von zwei Stufen (Planung < Bau < … < Merge)."""
+    rang = {s: i for i, s in enumerate(STUFEN)}
+    if a not in rang:
+        return b if b in rang else None
+    if b not in rang:
+        return a
+    return a if rang[a] >= rang[b] else b
+
+
+def stufe_aus(k: ProjektKarte, task: Task | None) -> str | None:
+    """Der Stand einer Karte — gemeldet ODER aus Fakten abgeleitet.
+
+    Agenten melden ihre Stufe nicht immer (ältere Abbilder kennen das Werkzeug
+    nicht, manche vergessen es). Was sich belegen lässt, zieht der Stand selbst
+    nach: ein laufender Lauf ist mindestens „Bau“, ein verknüpfter PR „PR“,
+    laufende/fertige Prüfungen „CI“, ein gemergter PR „Merge“.
+    """
+    stufe = k.stufe
+    if k.spalte == "in_arbeit":
+        stufe = hoehere_stufe(stufe, "planung")
+        if task is not None and task.status == TaskStatus.RUNNING:
+            stufe = hoehere_stufe(stufe, "bau")
+    if k.pr_url:
+        stufe = hoehere_stufe(stufe, "pr")
+    if (k.pr_zustand or "").startswith("ci_"):
+        stufe = hoehere_stufe(stufe, "ci")
+    if k.pr_zustand == "gemergt":
+        stufe = "merge"
+    return stufe
+
+
 def titel_aus(text: str, n: int = 80) -> str:
     """Kurzer Titel aus der ersten Zeile eines Auftrags."""
     erste = next((z.strip() for z in text.splitlines() if z.strip()), "Auftrag")
@@ -94,7 +126,7 @@ def karte_dict(k: ProjektKarte, task: Task | None = None, *, lauf_sichtbar: bool
         "agent_id": k.agent_id,
         "task_id": k.task_id,
         "task_status": (task.status.value if hasattr(task.status, "value") else str(task.status)) if task else None,
-        "stufe": k.stufe,
+        "stufe": stufe_aus(k, task),
         "notiz": k.notiz,
         "pr_nr": k.pr_nr,
         "pr_url": k.pr_url,
@@ -168,10 +200,12 @@ async def _laufende_laeufe(db: AsyncSession, team_id: str, sichtbar, karten: dic
         select(Task).options(defer(Task.prompt), defer(Task.result), defer(Task.error))
         .where(bedingung).order_by(Task.created_at.asc()).limit(50)
     )).scalars().all()
+    ausgaben = await letzte_ausgaben(db, [t.id for t in rows if t.status == TaskStatus.RUNNING])
     ergebnis = []
     for t in rows:
         karte = karten.get((t.metadata_ or {}).get("karte_id") or "")
         ergebnis.append({
+            "letzte_ausgabe": ausgaben.get(t.id),
             "task_id": t.id,
             "titel": t.title,
             "agent_id": t.agent_id,
@@ -179,9 +213,40 @@ async def _laufende_laeufe(db: AsyncSession, team_id: str, sichtbar, karten: dic
             "gestartet": _utc(t.started_at) or _utc(t.created_at),
             "karte_id": karte.id if karte else None,
             "karte_titel": karte.titel if karte else None,
-            "stufe": karte.stufe if karte else None,
+            "stufe": stufe_aus(karte, t) if karte else None,
             "teilarbeit": karte is None,
         })
+    return ergebnis
+
+
+def _werkzeug_name(roh: str) -> str:
+    """mcp__orchestrator__create_schedule → create_schedule"""
+    return roh.rsplit("__", 1)[-1] if roh.startswith("mcp__") else roh
+
+
+async def letzte_ausgaben(db: AsyncSession, task_ids: list[str]) -> dict[str, str]:
+    """Was ein laufender Agent zuletzt geschrieben oder getan hat — je Lauf eine Zeile.
+
+    Aus den Schritten des Laufs (``task_steps``, schon maskiert): der letzte Text
+    oder, wenn danach ein Werkzeug lief, „nutzt <Werkzeug>“.
+    """
+    from app.models.task_step import TaskStep
+
+    ergebnis: dict[str, str] = {}
+    for task_id in task_ids[:20]:
+        schritt = (await db.execute(
+            select(TaskStep).where(TaskStep.task_id == task_id, TaskStep.event_type.in_(("text", "tool_call")))
+            .order_by(TaskStep.sequence.desc()).limit(1)
+        )).scalars().first()
+        if schritt is None:
+            continue
+        daten = schritt.event_data or {}
+        if schritt.event_type == "text":
+            text = " ".join(str(daten.get("text") or "").split())
+        else:
+            text = f"nutzt {_werkzeug_name(str(daten.get('tool') or 'ein Werkzeug'))}"
+        if text:
+            ergebnis[task_id] = _kurz(text, 160)
     return ergebnis
 
 

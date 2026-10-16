@@ -63,7 +63,9 @@ class Basis(unittest.IsolatedAsyncioTestCase):
             pass
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         async with self.engine.begin() as conn:
-            for model in (User, Agent, Task, Team, ProjektKarte, Schedule, SecondBrain):
+            from app.models.task_step import TaskStep
+
+            for model in (User, Agent, Task, Team, ProjektKarte, Schedule, SecondBrain, TaskStep):
                 await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.Session() as db:
@@ -581,6 +583,34 @@ class Sichtbarkeit(Basis):
         async with self.Session() as db:
             b = await api.projekt_board("p1", user=agent("a1"), db=db)
         self.assertEqual(b["projekt"]["id"], "p1")
+
+
+class StandUndAusgabe(Basis):
+    def test_stand_wird_aus_fakten_nachgezogen(self):
+        k = ProjektKarte(id="k", team_id="p1", titel="t", spalte="in_arbeit", stufe="planung")
+        laeuft = Task(id="t", title="t", prompt="p", status=TaskStatus.RUNNING)
+        self.assertEqual(projekte.stufe_aus(k, laeuft), "bau")
+        k.pr_url, k.pr_zustand = "https://github.com/o/r/pull/1", "ci_laeuft"
+        self.assertEqual(projekte.stufe_aus(k, laeuft), "ci")
+        k.pr_zustand = "gemergt"
+        self.assertEqual(projekte.stufe_aus(k, laeuft), "merge")
+        k2 = ProjektKarte(id="k2", team_id="p1", titel="t", spalte="in_arbeit", stufe="tests")
+        self.assertEqual(projekte.stufe_aus(k2, laeuft), "tests")  # gemeldet geht nicht zurück
+
+    async def test_letzte_ausgabe_des_laufs(self):
+        from app.models.task_step import TaskStep
+
+        async with self.Session() as db:
+            db.add(Task(id="t1", title="t", prompt="p", agent_id="a1", team_id="p1", status=TaskStatus.RUNNING))
+            await db.commit()
+            db.add_all([
+                TaskStep(task_id="t1", sequence=0, event_type="text", event_data={"text": "Ich lese die Issues."}),
+                TaskStep(task_id="t1", sequence=1, event_type="tool_call",
+                         event_data={"tool": "mcp__orchestrator__create_schedule"}),
+            ])
+            await db.commit()
+            b = await api.projekt_board("p1", user=MITGLIED, db=db)
+        self.assertEqual(b["laufend"][0]["letzte_ausgabe"], "nutzt create_schedule")
 
 
 class Farbe(unittest.TestCase):

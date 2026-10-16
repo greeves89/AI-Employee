@@ -5,6 +5,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.370.0] - 2026-10-16
+
+### Neu
+- **Schlüssel für private Repos.** Im Projekt lässt sich ein Schlüssel aus der Schlüsselverwaltung
+  wählen (GitHub-Token mit Leserecht); damit gleicht das Board auch private Repos ab. Ein Repo
+  verbindet jetzt, wer das Projekt angelegt hat — die GitHub-Verbindung der Anlage nutzen nur
+  Projekte von Administratoren.
+- **Was der Agent gerade tut:** Sprechblase im Raum und „Gerade in Arbeit“ zeigen seine letzte
+  Ausgabe (zuletzt geschriebener Text bzw. „nutzt …“).
+- **Stand der Karten zieht selbst nach:** laufender Lauf = mindestens „Bau“, verknüpfter PR = „PR“,
+  laufende Prüfungen = „CI“, gemergt = „Merge“ — auch wenn der Agent die Stufe nicht meldet.
+
+### Behoben
+- „Jetzt abgleichen“ endete bei einem nicht erreichbaren Repo mit „Internal Server Error“ statt
+  der Meldung; im Hintergrund-Abgleich konnte derselbe Fehler die übrigen Projekte aufhalten.
+
+---
+
 ## [1.369.2] - 2026-10-16
 
 ### Geändert

@@ -44,6 +44,8 @@ export function CreateTeamModal({
   const [takt, setTakt] = useState<number>(0);
   const [geteilt, setGeteilt] = useState<string[]>([]);
   const [repo, setRepo] = useState("");
+  const [schluessel, setSchluessel] = useState<number>(0);
+  const [schluesselListe, setSchluesselListe] = useState<{ id: number; name: string; key_name: string }[]>([]);
   const istAdmin = useAuthStore((s) => s.user?.role) === "admin";
   const [nutzer, setNutzer] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [saving, setSaving] = useState(false);
@@ -60,6 +62,7 @@ export function CreateTeamModal({
       setTakt(team?.takt_minuten ?? 0);
       setGeteilt(team?.geteilt_mit ?? []);
       setRepo(team?.repo ?? "");
+      setSchluessel(team?.repo_secret_id ?? 0);
       setError(null);
     }
   }, [open, team]);
@@ -68,6 +71,7 @@ export function CreateTeamModal({
   useEffect(() => {
     if (!open || !projekt) return;
     api.getProjektVerzeichnis().then((r) => setNutzer(r.users)).catch(() => setNutzer([]));
+    api.listSecrets().then((s) => setSchluesselListe(s.filter((x) => x.is_active))).catch(() => setSchluesselListe([]));
   }, [open, projekt]);
 
   const toggleMember = (id: string) => {
@@ -95,8 +99,7 @@ export function CreateTeamModal({
         member_agent_ids: memberIds,
         lead_agent_id: leadAgentId || null,
         ...(projekt ? { farbe, takt_minuten: takt, geteilt_mit: geteilt } : {}),
-        // Das Repo verbindet nur ein Administrator (der GitHub-Zugang gilt für die Anlage).
-        ...(projekt && istAdmin ? { repo: repo.trim() } : {}),
+        ...(projekt ? { repo: repo.trim(), repo_secret_id: repo.trim() ? schluessel : 0 } : {}),
       };
       if (isEdit && team) {
         await api.updateTeam(team.id, body);
@@ -193,7 +196,7 @@ export function CreateTeamModal({
                       />
                     </div>
 
-                    {projekt && istAdmin && (
+                    {projekt && (
                       <div>
                         <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                           GitHub-Repo <span className="text-muted-foreground/40">(optional)</span>
@@ -207,9 +210,28 @@ export function CreateTeamModal({
                         />
                         <p className="text-[11px] text-muted-foreground/50 mt-1">
                           Offene Issues kommen in den Eingang, Pull Requests mit CI-Stand unter „Wartet auf Merge“.
-                          Öffentliche Repos gehen ohne GitHub-Verbindung (alle 30 Min.), private brauchen sie
-                          (Integrationen → GitHub, dann alle 10 Min.).
                         </p>
+                        {repo.trim() && (
+                          <div className="mt-2">
+                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Schlüssel für das Repo</label>
+                            <select
+                              value={schluessel}
+                              onChange={(e) => setSchluessel(Number(e.target.value))}
+                              className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                            >
+                              <option value={0}>
+                                {istAdmin ? "Kein eigener — GitHub-Verbindung der Anlage bzw. öffentlich" : "Keiner — nur öffentliche Repos"}
+                              </option>
+                              {schluesselListe.map((k) => (
+                                <option key={k.id} value={k.id}>{k.name} ({k.key_name})</option>
+                              ))}
+                            </select>
+                            <p className="text-[11px] text-muted-foreground/50 mt-1">
+                              Für private Repos: einen GitHub-Zugangsschlüssel (Token mit Leserecht) aus der
+                              Schlüsselverwaltung wählen. Öffentliche Repos gehen ohne (abgeglichen alle 30 Min.).
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
 

@@ -97,6 +97,7 @@ _SPALTEN_NACH_DER_MARKE = (
     ("teams", "repo"),
     ("teams", "repo_abgleich_at"),
     ("teams", "repo_fehler"),
+    ("teams", "repo_secret_id"),
 )
 
 

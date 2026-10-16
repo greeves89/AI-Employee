@@ -38,5 +38,8 @@ class Team(Base, TimestampMixin):
     repo: Mapped[str | None] = mapped_column(String(200), nullable=True, default=None)
     repo_abgleich_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     repo_fehler: Mapped[str | None] = mapped_column(String(300), nullable=True, default=None)
+    # Schlüssel aus der Schlüsselverwaltung (agent_secrets.id) für private Repos; leer =
+    # GitHub-Verbindung der Anlage (nur bei Projekten von Admins) bzw. anonym.
+    repo_secret_id: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     # Slug des Second Brain mit dem Projektwissen (core/projekt_wissen.py).
     wissen_slug: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
