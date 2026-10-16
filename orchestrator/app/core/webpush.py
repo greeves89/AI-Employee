@@ -31,6 +31,8 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
+from app.core.verbindungswiederholung import mit_verbindungswiederholung
+
 logger = logging.getLogger(__name__)
 
 # Der Push-Dienst darf die Nachricht so lange vorhalten, falls das Geraet offline ist.
@@ -173,7 +175,10 @@ async def send(
         "Urgency": "normal",
     }
     async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(endpoint, content=body, headers=headers)
+        resp = await mit_verbindungswiederholung(
+            lambda: client.post(endpoint, content=body, headers=headers),
+            zweck="Web Push",
+        )
     return resp.status_code
 
 

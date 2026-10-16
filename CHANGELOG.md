@@ -5,6 +5,52 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.366.2] - 2026-10-16
+
+### Behoben
+- **Eine Meldung aufs Handy geht nicht mehr an einem Zwei-Sekunden-Netzaussetzer verloren.**
+  Fällt die Namensauflösung kurz aus — auf einer Kundenanlage mehrfach gemessen, meist
+  nachts —, dann war die Push-Mitteilung weg: Beide Zustellwege (iPhone und Browser)
+  machten genau einen Versuch, protokollierten eine Zeile und gaben auf. Im
+  Benachrichtigungszentrum stand die Meldung noch, das Gerät blieb still. Bei einer
+  Freigabe-Anfrage heißt das, dass ein Agent wartet und niemand davon erfährt. Beide Wege
+  versuchen es jetzt zweimal nach (nach 0,4 s und nach 1,6 s) — aber **nur**, wenn die
+  Verbindung gar nicht zustande kam. Bleibt die Antwort aus, nachdem die Anfrage schon
+  draußen war, wird bewusst nicht wiederholt: eine verlorene Meldung ist besser als
+  dieselbe zweimal auf dem Bildschirm. Wenn das Netz in Ordnung ist, ändert sich nichts —
+  es entstehen keine zusätzlichen Aufrufe und keine Wartezeit.
+- **Eine Netzstörung hält den Meldungs-Aufruf nicht mehr minutenlang auf.** Die Geräte
+  eines Nutzers wurden der Reihe nach bedient, jedes mit eigenem Zeitlimit und ohne
+  gemeinsame Obergrenze. Bei einem Netz, das Pakete verwirft, summierte sich das:
+  gemessen über drei Minuten für einen Nutzer mit zwei iPhones und drei Browser-
+  Anmeldungen — und weil das Anlegen einer Meldung oder Freigabe darauf wartet, lief die
+  Anfrage in eine Zeitüberschreitung, obwohl die eigentliche Arbeit längst erledigt war.
+  Die Zustellung an alle Geräte hat jetzt zusammen zehn Sekunden; was danach noch offen
+  ist, wird übersprungen und protokolliert. Datenbankzugriffe bleiben vom Deckel
+  unberührt — ein dort abgebrochener Vorgang würde mehr Schaden anrichten als die
+  verlorene Meldung.
+
+---
+
+## [1.366.1] - 2026-10-16
+
+### Behoben
+- **Die Hauptlinie ist wieder grün.** Die Prüfung „Schreiben nur in den Arbeitsbereichen"
+  aus 1.366.0 arbeitet korrekt — ihr Test tat es nicht: Er erzeugte sich mit
+  `tempfile.mkdtemp()` ein Verzeichnis und nahm an, es liege außerhalb der erlaubten
+  Bereiche. Auf macOS stimmt das, auf Linux liegt es unter `/tmp`, und `/tmp` ist
+  ausdrücklich erlaubt. Der Test lief beim Entwickeln grün und auf dem Bauserver rot,
+  ohne dass an der Regel etwas falsch war. Er legt die erlaubten Bereiche jetzt selbst
+  fest, statt sie von der Lage des Temp-Ordners zu borgen — und erkennt eine ausgehebelte
+  Regel weiterhin (gegengeprüft).
+- **Zweiter roter Haken derselben Hauptlinie.** Die Wache gegen wachsende Zeichenfenster
+  meldete einen *Fortschritt* als Fehler: Eine Testdatei war von drei auf zwei Fenster
+  verbessert worden, ohne dass der neue Wert in der Basislinie landete. Der Wert ist jetzt
+  nachgetragen — damit fällt auch wieder auf, wenn die Zahl erneut steigt (beide Richtungen
+  gegengeprüft).
+
+---
+
 ## [1.366.0] - 2026-10-16
 
 ### Neu

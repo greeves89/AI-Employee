@@ -234,13 +234,24 @@ class CustomLlmHatDieselbeRegel(unittest.IsolatedAsyncioTestCase):
     im ToolExecutor — dort galt der Schreibschutz bis v1.365.5 gar nicht."""
 
     async def test_write_file_ausserhalb_wird_gesperrt_und_nichts_geschrieben(self):
+        """„Ausserhalb" muss der Test SELBST herstellen, nicht von der Lage des
+        Temp-Ordners borgen: ``tempfile.mkdtemp()`` liefert auf Linux ``/tmp/…``
+        — und ``/tmp`` ist ein erlaubter Arbeitsbereich. Der Test lief deshalb
+        nur auf macOS (dort ``/var/folders/…``) und war auf dem Bauknecht rot,
+        ohne dass die Regel selbst etwas falsch machte. Also wird die Liste der
+        Arbeitsbereiche hier festgelegt: genau der Arbeitsordner, nichts sonst.
+        """
+        import os
         import tempfile
 
         from app.tools import executor as ex
 
-        ziel = Path(tempfile.mkdtemp()) / "home" / ".bashrc"  # ausserhalb der Arbeitsbereiche
-        ausfuehrer = ex.ToolExecutor(workspace_dir=tempfile.mkdtemp())
-        with patch.object(ex, "_get_allowed_categories", return_value={"file_read", "file_write"}):
+        arbeitsordner = tempfile.mkdtemp()
+        ziel = Path(tempfile.mkdtemp()) / "home" / ".bashrc"
+        with patch.object(ex, "_get_allowed_categories", return_value={"file_read", "file_write"}), \
+                patch("app.tools.schreibschutz._ARBEITSBEREICHE",
+                      (os.path.realpath(arbeitsordner),)):
+            ausfuehrer = ex.ToolExecutor(workspace_dir=arbeitsordner)
             antwort = await ausfuehrer.execute("write_file", {"path": str(ziel), "content": "boese"})
         self.assertIn("AUTONOMY BLOCK", antwort)
         self.assertFalse(ziel.exists())
@@ -248,10 +259,18 @@ class CustomLlmHatDieselbeRegel(unittest.IsolatedAsyncioTestCase):
     async def test_write_file_im_arbeitsordner_geht(self):
         from app.tools import executor as ex
 
+        import os
+        import tempfile
+
+        # Dieselbe Festlegung wie im Test darueber, statt eine Liste moeglicher
+        # Temp-Orte je Betriebssystem zu pflegen.
+        ordner = tempfile.mkdtemp()
+        # ``WORKSPACE_DIR`` mit: ein RELATIVER Pfad wird gegen diese Variable
+        # aufgeloest, nicht gegen ``workspace_dir`` des Ausfuehrers. Im Betrieb
+        # ist beides derselbe Ordner — im Test muss man es sagen.
         with patch.object(ex, "_get_allowed_categories", return_value={"file_read", "file_write"}), \
-                patch("app.tools.schreibschutz._ARBEITSBEREICHE", ("/workspace", "/tmp", "/private/tmp", "/var/folders", "/private/var/folders")):
-            import tempfile
-            ordner = tempfile.mkdtemp()
+                patch.dict(os.environ, {"WORKSPACE_DIR": ordner}), \
+                patch("app.tools.schreibschutz._ARBEITSBEREICHE", (os.path.realpath(ordner),)):
             ausfuehrer = ex.ToolExecutor(workspace_dir=ordner)
             antwort = await ausfuehrer.execute("write_file", {"path": "notiz.md", "content": "ok"})
         self.assertNotIn("AUTONOMY BLOCK", antwort)
