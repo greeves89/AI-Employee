@@ -5,6 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.365.4] - 2026-10-16
+
+### Sicherheit
+- **Schutz der Laufzeit-Konfiguration wieder vollständig.** v1.365.3 hatte Skills, Befehle und
+  Subagenten unter `.claude/` für Agenten mit reinem Schreibrecht freigegeben. Deren Kopf kann
+  aber eigene Hooks tragen, Befehle können per ``!`…` `` Shell ausführen — darüber ließe sich das
+  Werkzeug-Gate umgehen. Wieder gilt: alles unter `.claude/` und `.codex/` sowie `.mcp.json`
+  braucht die Fähigkeit „Pakete / Config“. Eigene Skills legt ein Agent ohne diese Fähigkeit
+  über `create_skill` an (Datenbank, Sicherheitsprüfung, dauerhaft).
+
+---
+
 ## [1.365.3] - 2026-10-16
 
 ### Behoben

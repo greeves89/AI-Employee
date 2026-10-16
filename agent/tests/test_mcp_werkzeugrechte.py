@@ -177,11 +177,16 @@ class LaufzeitKonfigurationIstGeschuetzt(unittest.TestCase):
     def test_ohne_regeln_bleibt_alles_frei(self):
         self.assertEqual(self._nativ("Write", {"file_path": "/workspace/.claude/settings.json"}, None), "allow")
 
-    def test_skills_im_arbeitsordner_bleiben_dateischreiben(self):
-        """Dort legen Agenten Skills dauerhaft ab (Claude Code findet sie von selbst);
-        eine Anleitung startet nichts."""
-        for pfad in ("/workspace/.claude/skills/video/SKILL.md", "/workspace/.claude/commands/neu.md"):
-            self.assertEqual(self._nativ("Write", {"file_path": pfad}, self.nur_schreiben), "allow", pfad)
+    def test_skills_befehle_und_subagenten_unter_claude_sind_geschuetzt(self):
+        """Ihr Kopf kann eigene Hooks tragen, Befehle koennen per !`…` Shell
+        ausfuehren — Schreiben dort braucht system_config. Eigene Skills legt ein
+        Agent ohne diese Faehigkeit ueber create_skill an (immer erlaubt)."""
+        for pfad in ("/workspace/.claude/skills/video/SKILL.md", "/workspace/.claude/commands/neu.md",
+                     "/workspace/.claude/agents/helfer.md", "/workspace/.claude/hooks/x.sh"):
+            self.assertEqual(self._nativ("Write", {"file_path": pfad}, self.nur_schreiben), "deny", pfad)
+            self.assertEqual(self._nativ("Write", {"file_path": pfad}, self.nur_schreiben | {"system_config"}),
+                             "allow", pfad)
+        self.assertEqual(_entscheidung("create_skill", set()), "allow")
 
     def test_projekt_mcp_server_braucht_system_config(self):
         """.mcp.json startet Programme — wie ein Hook."""

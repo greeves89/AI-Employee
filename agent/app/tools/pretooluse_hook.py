@@ -164,22 +164,16 @@ def _decide_for(category: str, *, label: str) -> dict:
 # Shell-Werkzeuge, deren Befehl zusaetzlich gegen die command_policies laeuft.
 _SHELL_WERKZEUGE = frozenset({"Bash", "exec_command", "shell_command", "local_shell", "write_stdin"})
 
-# Dateien, mit denen die Laufzeit selbst Befehle startet: Hooks (bei Claude Code
-# steht dort auch genau dieser Gate-Hook, /workspace/.claude/settings.json),
-# Codex-Konfiguration und -Hooks (live geprueft: Codex fuehrt
-# /workspace/.codex/hooks.json aus) und Projekt-MCP-Server (.mcp.json startet
-# Programme). Wer dort schreiben darf, kann das Gate entfernen oder eigene
-# Befehle ausfuehren lassen. Schreiben dort ist deshalb "Pakete / Config"
-# (system_config), nicht "Dateien schreiben".
-# NICHT gemeint: .claude/skills/, .claude/commands/ u. a. — reine Anleitungen,
-# dort legen Agenten ihre Skills dauerhaft im Arbeitsordner ab.
-_LAUFZEIT_KONFIG = re.compile(
-    r"(^|[\\/])("
-    r"\.claude[\\/]settings[^\\/]*\.json"
-    r"|\.codex([\\/]|$)"
-    r"|\.mcp\.json"
-    r")$|(^|[\\/])\.codex[\\/]"
-)
+# Konfiguration der Laufzeit selbst — ALLES unter .claude/ und .codex/ sowie
+# .mcp.json: dort stehen Hooks (bei Claude Code auch genau dieser Gate-Hook,
+# /workspace/.claude/settings.json), Codex-Konfiguration und -Hooks (live
+# geprueft: Codex fuehrt /workspace/.codex/hooks.json aus) und Projekt-MCP-Server
+# (.mcp.json startet Programme). Auch Skills, Befehle und Subagenten unter
+# .claude/ zaehlen dazu: ihr Kopf kann eigene Hooks tragen, Befehle koennen per
+# !`…` Shell ausfuehren. Wer dort schreiben darf, kann das Gate umgehen.
+# Schreiben dort ist deshalb "Pakete / Config" (system_config). Den sicheren Weg
+# fuer eigene Skills bietet create_skill (Datenbank, Sicherheitspruefung).
+_LAUFZEIT_KONFIG = re.compile(r"(^|[\\/])(\.(claude|codex)([\\/]|$)|\.mcp\.json$)")
 _PATCH_ZIEL = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.M)
 _SCHREIBWERKZEUGE = frozenset({
     "Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch",
