@@ -189,8 +189,12 @@ class LaufzeitKonfigurationIstGeschuetzt(unittest.TestCase):
         self.assertEqual(_entscheidung("create_skill", set()), "allow")
 
     def test_projekt_mcp_server_braucht_system_config(self):
-        """.mcp.json startet Programme — wie ein Hook."""
-        self.assertEqual(self._nativ("Write", {"file_path": "/workspace/.mcp.json"}, self.nur_schreiben), "deny")
+        """.mcp.json und ~/.claude.json (mcpServers) starten Programme — wie ein Hook."""
+        for pfad in ("/workspace/.mcp.json", "/home/agent/.claude.json",
+                     "/workspace/.git/config", "/workspace/projekt/.git/hooks/pre-commit",
+                     "/home/agent/.gitconfig"):
+            self.assertEqual(self._nativ("Write", {"file_path": pfad}, self.nur_schreiben), "deny", pfad)
+            self.assertEqual(self._nativ("Edit", {"file_path": pfad}, self.nur_schreiben), "deny", pfad)
 
     def test_codex_subagenten_mit_namensraum_sind_frei(self):
         for w in ("collaborationspawn_agent", "collaborationwait_agent"):
