@@ -157,9 +157,18 @@ async def anhaengen(db: AsyncSession, brain: SecondBrain, pfad: str, abschnitt: 
 # ─── Verlauf (Git der Ablage) ───────────────────────────────────
 
 
+# Git läuft hier über Inhalte, die Agenten schreiben. ``vault.resolve_path`` sperrt
+# ``.git`` für jeden Schreibweg; zusätzlich führt Git hier nichts aus der Ablage aus:
+# keine Hooks, kein fsmonitor, keine System-/Benutzer-Konfiguration, schlanke Umgebung.
+_GIT_SICHER = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.pager=cat",
+               "-c", "core.sshCommand=false", "-c", "protocol.allow=never")
+
+
 def _git(cwd: str, *args: str, timeout: int = 20) -> subprocess.CompletedProcess:
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env)
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/nonexistent", "LANG": "C.UTF-8",
+           "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_TERMINAL_PROMPT": "0"}
+    return subprocess.run(["git", *_GIT_SICHER, *args], cwd=cwd, capture_output=True, text=True,
+                          timeout=timeout, env=env)
 
 
 def _version_festhalten(host_path: str, pfad: str, wer: str) -> None:
