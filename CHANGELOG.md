@@ -5,6 +5,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.365.5] - 2026-10-16
+
+### Sicherheit
+- **Weitere Dateien, über die sich Befehle starten lassen, brauchen „Pakete / Config“:**
+  `~/.claude.json` (die Benutzerkonfiguration von Claude Code trägt eigene `mcpServers`),
+  `.git/config` und `~/.gitconfig` (`core.fsmonitor` startet bei jedem `git status` ein
+  Programm — Claude Code ruft es beim Sitzungsstart selbst auf) sowie `.git/hooks/`.
+  Ein Agent mit reinem Schreibrecht konnte darüber Befehle ausführen lassen.
+
+---
+
 ## [1.365.4] - 2026-10-16
 
 ### Sicherheit
