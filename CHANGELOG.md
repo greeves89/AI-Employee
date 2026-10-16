@@ -5,6 +5,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.367.0] - 2026-10-16
+
+### Neu
+- **Projekte.** Neuer Menüpunkt „Projekte“: ein Projekt fasst Agenten für ein Vorhaben
+  zusammen (es baut auf den bestehenden Teams auf — Lead, Mitglieder und Beschreibung gelten
+  an beiden Stellen). Je Projekt:
+  - ein **Raum**, isometrisch gezeichnet: Schreibtische der Mitglieder (arbeitet ein Agent,
+    leuchtet sein Bildschirm, er wippt, darüber steht sein Auftrag), Stapel wartender
+    Aufträge, Board an der Wand;
+  - eine **Auftragszeile**: an den Lead (er verteilt) oder direkt an ein Mitglied, auch per
+    Klick auf den Agenten im Raum;
+  - ein **Board** mit Wartet / In Arbeit / Zur Abnahme / Erledigt. Ergebnisse werden
+    **abgenommen** oder mit Hinweis **zurückgegeben** — dann entsteht ein Auftrag
+    „Nacharbeit: …“ mit Hinweis, ursprünglichem Auftrag und bisherigem Ergebnis;
+  - Kennzahlen (heute fertig, letzte sieben Tage) und eine Übersicht aller Projekte.
+- **Aufträge gehören zu einem Projekt** (`tasks.team_id`). Teilaufträge, die der Lead an
+  Kollegen gibt, erben das Projekt — an einer Stelle für alle Anlege-Wege. Bestehende
+  Team-Aufträge werden bei der Migration zugeordnet.
+- **Agenten-Seite, Ansicht „Büro“.** Alle Agenten an ihren Schreibtischen in Bereichen
+  (Werkstatt, Bibliothek, Lounge, Fensterfront, bei Bedarf Anbauten). Jeder neue Agent
+  bekommt beim Anlegen einen zufälligen freien Platz; ältere einen festen.
+- Animationen ruhen, wenn das Betriebssystem weniger Bewegung wünscht. Auf schmalen
+  Bildschirmen skaliert der Raum und blendet Namen aus.
+
+### Sicherheit
+- Aufträge ans Projekt gehen nur an Agenten, die der Nutzer selbst beauftragen darf — auch
+  der Lead eines gemischten (vom Administrator angelegten) Projekts. Das gilt jetzt auch für
+  die bisherige Team-Delegation.
+- Ein Auftrag erbt ein Projekt nur, wenn sein Agent zum Projekt gehört (ein frei gewählter
+  Eltern-Auftrag hängt nichts an fremde Projekte).
+- Abnehmen und Zurückgeben sperren den Auftrag; ein Doppelklick legt keine zweite Nacharbeit
+  an. Das bisherige Ergebnis steht in der Nacharbeit als gerahmtes Material, nicht als
+  Anweisung.
+
+---
+
 ## [1.366.2] - 2026-10-16
 
 ### Behoben
