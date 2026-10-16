@@ -19,6 +19,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
+from sqlalchemy import Column, MetaData, Table, Text
+from sqlalchemy.dialects import sqlite as sqlite_dialekt
+from sqlalchemy.exc import CompileError, UnsupportedCompilationError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api import schedules as api
@@ -27,9 +30,37 @@ from app.models.agent import Agent
 from app.models.agent_access import AgentAccess
 from app.models.schedule import Schedule
 from app.models.task import Task, TaskStatus
+from app.models.team import Team
 from app.models.user import User, UserRole
 from app.schemas.schedule import ReportRunRequest, ScheduleCreate, ScheduleUpdate
 from app.services.scheduler_service import _calc_next_run
+
+
+def _sqlite_tabelle(modell):
+    """Spiegelt die Tabelle eines Modells so, dass SQLite sie anlegen kann.
+
+    Jede Spalte wird uebernommen; nur Typen, die der SQLite-Dialekt nicht
+    uebersetzen kann (JSONB, vector), fallen auf ``TEXT`` zurueck. Damit
+    erbt der Testaufbau jede kuenftige Spalte des Modells automatisch — eine
+    von Hand gepflegte DDL laeuft dagegen bei der naechsten Migration
+    auseinander und der Test scheitert an einer Stelle, die mit dem Pruefziel
+    nichts zu tun hat.
+    """
+    dialekt = sqlite_dialekt.dialect()
+    spalten = []
+    for spalte in modell.__table__.columns:
+        typ = spalte.type
+        try:
+            typ.compile(dialect=dialekt)
+        except (UnsupportedCompilationError, CompileError):
+            # Eng geklammert: NUR ein Typ, den der Dialekt nicht uebersetzen
+            # kann, faellt auf TEXT zurueck. Ein breites ``except`` wuerde auch
+            # einen kaputten Typ im Modell lautlos durchlassen.
+            typ = Text()
+        spalten.append(Column(spalte.name, typ, primary_key=spalte.primary_key,
+                              nullable=spalte.nullable))
+    return Table(modell.__tablename__, MetaData(), *spalten)
+
 
 NUTZER = SimpleNamespace(id="ua", role=UserRole.MEMBER)
 START = datetime(2026, 10, 15, 8, 0, tzinfo=timezone.utc)
@@ -62,14 +93,13 @@ class _Basis(unittest.IsolatedAsyncioTestCase):
                 Schedule.__table__, Task.__table__,
             ])
             # ``_erreichbare_agenten`` fragt bei einem Agenten-Token die Teams ab.
-            # Das Modell benutzt JSONB, das SQLite nicht anlegen kann — hier
-            # genuegt die leere Tabelle: Dieser Agent ist in keinem Team, und die
-            # Zugriffsgrenze soll gerade OHNE Team-Umweg gelten.
-            await conn.exec_driver_sql(
-                "CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT, description TEXT, "
-                "member_agent_ids TEXT, lead_agent_id TEXT, created_by TEXT, "
-                "is_active BOOLEAN, created_at TIMESTAMP, updated_at TIMESTAMP)"
-            )
+            # Dieser Agent ist in keinem Team — die leere Tabelle genuegt, die
+            # Zugriffsgrenze soll gerade OHNE Team-Umweg gelten. Die Tabelle
+            # kommt aus dem MODELL (``_sqlite_tabelle``), nicht aus einer von
+            # Hand geschriebenen DDL: eine neue Spalte am Team-Modell liess den
+            # Test sonst mit ``no such column`` stehen, obwohl am Takt nichts
+            # kaputt war.
+            await conn.run_sync(_sqlite_tabelle(Team).metadata.create_all)
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.Session() as db:
             db.add_all([
