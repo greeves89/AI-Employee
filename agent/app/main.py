@@ -5,7 +5,7 @@ import re
 import signal
 import subprocess
 
-from app.config import settings
+from app.config import settings, stdio_mcp_server
 from app.health import start_health_server
 from app.task_consumer import TaskConsumer
 from app.chat_consumer import ChatConsumer
@@ -216,15 +216,7 @@ def register_mcp_servers() -> None:
                 "AGENT_TOKEN": settings.agent_token,
             },
         },
-        "memory": {
-            "command": "node",
-            "args": ["/opt/mcp/memory-server.mjs"],
-            "env": {
-                "ORCHESTRATOR_URL": settings.orchestrator_url,
-                "AGENT_ID": settings.agent_id,
-                "AGENT_TOKEN": settings.agent_token,
-            },
-        },
+        "memory": stdio_mcp_server("memory-server.mjs"),
         "notifications": {
             "command": "node",
             "args": ["/opt/mcp/notification-server.mjs"],

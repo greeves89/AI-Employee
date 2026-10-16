@@ -348,10 +348,12 @@ class ChatConsumer:
     into the running conversation for that same channel only.
     """
 
-    # Die Sitzungskennung je Kanal laeuft NICHT mehr ab. Bis v1.365 verfiel sie
-    # nach 7 Tagen Ruhe, und das Gespraech begann ohne Vorgeschichte neu — strenger
-    # als jedes Vergleichssystem (Hermes setzt nie von selbst zurueck). Geloescht
-    # wird sie bei /reset, beim Modellwechsel und bei einer Uebergabe.
+    # Die Sitzungskennung je Kanal verfiel bis v1.365 nach 7 Tagen Ruhe, und das
+    # Gespraech begann ohne Vorgeschichte neu — strenger als jedes Vergleichssystem
+    # (Hermes setzt nie von selbst zurueck). Jetzt 180 Tage, bei jeder Nachricht neu
+    # gesetzt: praktisch unbegrenzt, der Bestand bleibt aber endlich. Geloescht wird
+    # sie bei /reset, beim Modellwechsel, bei einer Uebergabe und mit dem Chat.
+    _SITZUNG_AUFBEWAHRUNG_S = 180 * 86400
 
     def __init__(self, agent_id: str):
         self.agent_id = agent_id
@@ -492,7 +494,7 @@ class ChatConsumer:
                      "kosten_stand": getattr(handler, "_kosten_stand", None)}
             if hasattr(handler, "_nutzung_stand"):  # nur Codex zaehlt je Faden fortlaufend
                 stand["nutzung_stand"] = handler._nutzung_stand
-            await self.redis.set(key, json.dumps(stand))
+            await self.redis.setex(key, self._SITZUNG_AUFBEWAHRUNG_S, json.dumps(stand))
         elif hasattr(handler, "session_id"):
             # Sitzung gewechselt (Uebergabe, zu langer Verlauf): die alte Kennung
             # darf nach einem Neustart nicht wieder aufleben.

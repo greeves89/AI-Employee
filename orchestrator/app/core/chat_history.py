@@ -155,12 +155,19 @@ AUSSCHNITT_LAENGE = 400
 _SUCHE_KANDIDATEN_MAX = 1000
 
 
+#: Mehr Suchwoerter bringen keine bessere Suche, nur mehr ILIKE-Bedingungen.
+MAX_SUCHWOERTER = 8
+
+
 def suchwoerter(q: str) -> list[str]:
-    """Die Wörter der Anfrage, ohne Dubletten, in Kleinschreibung."""
+    """Die Wörter der Anfrage, ohne Dubletten, in Kleinschreibung — höchstens
+    ``MAX_SUCHWOERTER`` (die ersten zählen)."""
     out: list[str] = []
     for wort in (q or "").lower().split():
         if wort not in out:
             out.append(wort)
+        if len(out) >= MAX_SUCHWOERTER:
+            break
     return out
 
 

@@ -3034,6 +3034,7 @@ async def delete_chat_session(
     force: bool = Query(False),
     user=Depends(require_auth),
     db: AsyncSession = Depends(get_db),
+    redis: RedisService = Depends(get_redis_service),
 ):
     """Delete all messages in a chat session.
 
@@ -3064,7 +3065,29 @@ async def delete_chat_session(
         .where(ChatSession.session_id == session_id)
     )
     await db.commit()
+    await _chat_faden_vergessen(redis, agent_id, session_id)
     return {"deleted": result.rowcount}
+
+
+async def _chat_faden_vergessen(redis, agent_id: str, session_id: str) -> None:
+    """Mit dem Chat auch seinen Faden beim Agenten loeschen: Sitzungskennung,
+    Uebergabe und Neuanfang-Marke (agent/app/chat_uebertrag). Sonst tauchte eine
+    alte Uebergabe in einem spaeteren Gespraech desselben Kanals wieder auf.
+    Best effort — der Chat ist geloescht, auch wenn Redis gerade nicht antwortet."""
+    if redis is None or getattr(redis, "client", None) is None:
+        return
+    # Kanal-Schluessel des Agenten: webapp:/ios:/voice: + Sitzung; Kanaele wie
+    # telegram:<chat_id> tragen den Praefix schon in der Sitzungskennung.
+    quellen = [f"{art}:{session_id}" for art in ("webapp", "ios", "voice")]
+    if ":" in session_id:
+        quellen.append(session_id)
+    schluessel = [f"agent:{agent_id}:{art}:{quelle}"
+                  for quelle in quellen
+                  for art in ("claude_session", "chat_uebergabe", "chat_neuanfang")]
+    try:
+        await redis.client.delete(*schluessel)
+    except Exception:  # noqa: BLE001
+        logger.warning("Chat-Faden von %s nicht aus Redis geloescht", scrub_log(agent_id), exc_info=True)
 
 
 @router.delete("/{agent_id}/chat/sessions/{session_id}/goal")

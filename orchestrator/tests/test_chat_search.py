@@ -220,3 +220,31 @@ class SichtbareNachrichtenTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+def test_hoechstens_acht_suchwoerter():
+    from app.core.chat_history import MAX_SUCHWOERTER, suchwoerter
+    assert len(suchwoerter(" ".join(f"w{i}" for i in range(50)))) == MAX_SUCHWOERTER
+
+
+def test_chat_loeschen_vergisst_den_faden_beim_agenten():
+    """Sonst taucht eine alte Uebergabe in einem spaeteren Gespraech wieder auf."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from app.api.agents import _chat_faden_vergessen
+
+    geloescht = []
+
+    class _Client:
+        async def delete(self, *schluessel):
+            geloescht.extend(schluessel)
+
+    asyncio.run(_chat_faden_vergessen(SimpleNamespace(client=_Client()), "a1", "s1"))
+    assert "agent:a1:chat_uebergabe:webapp:s1" in geloescht
+    assert "agent:a1:claude_session:ios:s1" in geloescht
+    assert "agent:a1:chat_neuanfang:voice:s1" in geloescht
+    geloescht.clear()
+    asyncio.run(_chat_faden_vergessen(SimpleNamespace(client=_Client()), "a1", "telegram:7"))
+    assert "agent:a1:chat_uebergabe:telegram:7" in geloescht

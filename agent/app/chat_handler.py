@@ -472,7 +472,7 @@ class ChatHandler:
         laut = self.log_publisher
         self.log_publisher = _StillerPublisher(laut)
         try:
-            zug = await self._execute_cli(message_id, UEBERGABE_AUFTRAG, model)
+            zug = await self._execute_cli(message_id, UEBERGABE_AUFTRAG, model, nur_gedaechtnis=True)
         finally:
             self.log_publisher = laut
         for feld in ("cost_usd", "input_tokens", "output_tokens", "cache_write_tokens", "cached_tokens"):
@@ -491,9 +491,14 @@ class ChatHandler:
         self._kontext_tokens = 0
 
     async def _execute_cli(
-        self, message_id: str, text: str, model: str
+        self, message_id: str, text: str, model: str, nur_gedaechtnis: bool = False,
     ) -> dict:
-        """Execute a single Claude CLI invocation and stream results."""
+        """Execute a single Claude CLI invocation and stream results.
+
+        ``nur_gedaechtnis``: der Zug sieht KEINE eingebauten Werkzeuge und nur den
+        Memory-Server (Uebergabe-Zug, siehe _uebergeben) — Erlaubnisliste statt
+        Sperrliste.
+        """
         cmd = ["claude"]
 
         # Resume previous session for conversation continuity
@@ -524,6 +529,17 @@ class ChatHandler:
             "--disallowedTools", "AskUserQuestion",
             "--model", model,
         ])
+        mcp_datei = None
+        if nur_gedaechtnis:
+            import tempfile
+
+            from app.config import stdio_mcp_server
+            # Datei statt Kommandozeile: die Konfiguration traegt das Agenten-Token,
+            # und die Kommandozeile sieht jeder Prozess im Container.
+            fd, mcp_datei = tempfile.mkstemp(prefix="uebergabe-mcp-", suffix=".json")
+            with os.fdopen(fd, "w") as fh:
+                json.dump({"mcpServers": {"memory": stdio_mcp_server("memory-server.mjs")}}, fh)
+            cmd.extend(["--tools", "", "--strict-mcp-config", "--mcp-config", mcp_datei])
 
         env = os.environ.copy()
         reasoning = getattr(self, "_reasoning", "")
@@ -678,6 +694,12 @@ class ChatHandler:
             await self.log_publisher.publish_chat(
                 message_id, "error", {"message": str(e)}
             )
+        finally:
+            if mcp_datei:
+                try:
+                    os.unlink(mcp_datei)
+                except OSError:
+                    pass
 
         return result_data
 

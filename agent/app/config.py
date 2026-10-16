@@ -147,6 +147,20 @@ _STUFEN_LLM = {"off": ""}                          # Rest unveraendert
 _STUFEN_CODEX = {"off": "minimal", "max": "xhigh"}  # Codex kennt "max" nicht
 
 
+def stdio_mcp_server(datei: str) -> dict:
+    """Ein eingebauter stdio-MCP-Server, wie ihn die Claude-Konfiguration fuehrt
+    (main.py) — auch fuer den Uebergabe-Zug, der NUR den Memory-Server bekommt."""
+    return {
+        "command": "node",
+        "args": [f"/opt/mcp/{datei}"],
+        "env": {
+            "ORCHESTRATOR_URL": settings.orchestrator_url,
+            "AGENT_ID": settings.agent_id,
+            "AGENT_TOKEN": settings.agent_token,
+        },
+    }
+
+
 def chat_uebergabe_schwelle(model: str) -> int:
     """Ab wie vielen Token Kontext ein Chat uebergeben wird.
 
