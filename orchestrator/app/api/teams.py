@@ -392,13 +392,27 @@ class DelegateTask(BaseModel):
     priority: int = 5
 
 
+async def _darf_beauftragen(agent_id: str, user, db: AsyncSession) -> None:
+    """403, wenn ``user`` diesem Agenten keine Arbeit geben darf.
+
+    Teamzugang allein reicht nicht: gemischte Teams (nur von Administratoren
+    angelegt) enthalten Agenten mehrerer Nutzer. Wer nur EINEN Agenten im Team
+    hat, darf deshalb nicht den Lead oder ein Mitglied eines anderen Nutzers
+    beauftragen.
+    """
+    erlaubt = await _get_user_agent_ids(user, db)
+    if erlaubt is not None and agent_id not in erlaubt:
+        raise HTTPException(status_code=403, detail="Diesem Agenten kannst du keine Aufträge geben.")
+
+
 async def _an_lead(t: Team, title: str, prompt: str, priority: int, request: Request,
-                   router_: TaskRouter, db: AsyncSession, **meta):
+                   router_: TaskRouter, db: AsyncSession, user, **meta):
     """Auftrag an den Lead des Teams — mit Anleitung und Roster davor."""
     if not t.lead_agent_id:
         raise HTTPException(status_code=400, detail="assign a lead first")
     if not (t.member_agent_ids or []):
         raise HTTPException(status_code=400, detail="team has no members")
+    await _darf_beauftragen(t.lead_agent_id, user, db)
     roster = await _team_roster(t, db, request)
     prefix = LEAD_INSTRUCTION.format(roster=roster)
     return await router_.create_and_route_task(
@@ -416,7 +430,7 @@ async def delegate_to_team(team_id: str, body: DelegateTask, request: Request,
                            user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
     t = await _get_team(team_id, db)
     await _require_team_access(t, user, db)
-    task = await _an_lead(t, body.title, body.prompt, body.priority, request, router_, db)
+    task = await _an_lead(t, body.title, body.prompt, body.priority, request, router_, db, user)
     return {"task_id": task.id, "lead_agent_id": t.lead_agent_id, "status": task.status}
 
 
@@ -445,7 +459,7 @@ class ProjektAuftrag(BaseModel):
     titel: str | None = Field(default=None, max_length=200)
     # Leer: an den Lead (oder das einzige Mitglied). Sonst direkt an dieses Mitglied.
     agent_id: str | None = None
-    priority: int = 5
+    priority: int = Field(default=5, ge=0, le=10)
 
 
 @router.post("/{team_id}/auftrag", status_code=201)
@@ -476,22 +490,21 @@ async def projekt_auftrag(team_id: str, body: ProjektAuftrag, request: Request,
     if ziel:
         if ziel not in mitglieder:
             raise HTTPException(status_code=400, detail="Dieser Agent gehört nicht zum Projekt.")
-        erlaubt = await _get_user_agent_ids(user, db)
-        if erlaubt is not None and ziel not in erlaubt:
-            raise HTTPException(status_code=403, detail="Diesem Agenten kannst du keine Aufträge geben.")
+        await _darf_beauftragen(ziel, user, db)
         task = await router_.create_and_route_task(
             title=titel, prompt=text, priority=body.priority, agent_id=ziel,
             metadata={"team_id": t.id, "auftrag": text, "abnahme": True},
         )
     else:
-        task = await _an_lead(t, titel, text, body.priority, request, router_, db)
+        task = await _an_lead(t, titel, text, body.priority, request, router_, db, user)
     return projekte.karte(task)
 
 
-async def _projekt_auftrag_laden(t: Team, task_id: str, user, db: AsyncSession):
+async def _projekt_auftrag_laden(t: Team, task_id: str, user, db: AsyncSession, *, sperren: bool = False):
     from app.models.task import Task
 
-    task = await db.get(Task, task_id)
+    abfrage = select(Task).where(Task.id == task_id).execution_options(populate_existing=True)
+    task = await db.scalar(abfrage.with_for_update() if sperren else abfrage)
     sichtbar = await _get_user_agent_ids(user, db)
     if task is None or task.team_id != t.id or (sichtbar is not None and task.agent_id not in sichtbar):
         raise HTTPException(status_code=404, detail="Auftrag nicht gefunden.")
@@ -511,6 +524,8 @@ async def projekt_abnehmen(team_id: str, task_id: str,
     task = await _projekt_auftrag_laden(t, task_id, user, db)
     if task.status not in projekte.ABNAHMEFAEHIG:
         raise HTTPException(status_code=409, detail="Der Auftrag ist noch nicht fertig.")
+    if (task.metadata_ or {}).get("zurueckgegeben_als"):
+        raise HTTPException(status_code=409, detail="Dieser Auftrag wurde zur Nacharbeit zurückgegeben.")
     if task.abgenommen_at is None:
         task.abgenommen_at = datetime.now(timezone.utc)
         await db.commit()
@@ -532,27 +547,37 @@ async def projekt_zurueckgeben(team_id: str, task_id: str, body: Zurueckgeben, r
     _kein_betrachter(user)
     t = await _get_team(team_id, db)
     await _require_team_access(t, user, db)
-    task = await _projekt_auftrag_laden(t, task_id, user, db)
+    # Zeile sperren und SOFORT als zurueckgegeben markieren: ein Doppelklick
+    # darf keine zweite Nacharbeit anlegen. Der Router committet in derselben
+    # Sitzung, die Sperre haelt also nur bis zur Markierung.
+    task = await _projekt_auftrag_laden(t, task_id, user, db, sperren=True)
     if task.status not in projekte.ABNAHMEFAEHIG:
         raise HTTPException(status_code=409, detail="Der Auftrag ist noch nicht fertig.")
     meta = dict(task.metadata_ or {})
     if meta.get("zurueckgegeben_als") or task.abgenommen_at is not None:
         raise HTTPException(status_code=409, detail="Dieser Auftrag wurde schon abgenommen oder zurückgegeben.")
+    task.metadata_ = {**meta, "zurueckgegeben_als": "wird angelegt"}
+    await db.commit()
 
     hinweis = body.hinweis.strip()
     titel = f"Nacharbeit: {task.title}"[:200]
-    if meta.get("delegated_to_team") and t.lead_agent_id:
-        neu = await _an_lead(t, titel, projekte.nacharbeit_prompt(task, hinweis), task.priority, request,
-                             router_, db)
-    else:
-        if not task.agent_id:
-            raise HTTPException(status_code=409, detail="Der Auftrag hat keinen Agenten mehr.")
-        neu = await router_.create_and_route_task(
-            title=titel, prompt=projekte.nacharbeit_prompt(task, hinweis), priority=task.priority,
-            agent_id=task.agent_id, parent_task_id=task.id,
-            metadata={"team_id": t.id, "auftrag": projekte.nacharbeit_prompt(task, hinweis), "abnahme": True},
-        )
-    meta["zurueckgegeben_als"] = neu.id
-    task.metadata_ = meta
+    nacharbeit = projekte.nacharbeit_prompt(task, hinweis)
+    try:
+        if meta.get("delegated_to_team") and t.lead_agent_id:
+            neu = await _an_lead(t, titel, nacharbeit, task.priority, request, router_, db, user)
+        else:
+            if not task.agent_id:
+                raise HTTPException(status_code=409, detail="Der Auftrag hat keinen Agenten mehr.")
+            neu = await router_.create_and_route_task(
+                title=titel, prompt=nacharbeit, priority=task.priority,
+                agent_id=task.agent_id, parent_task_id=task.id,
+                metadata={"team_id": t.id, "auftrag": nacharbeit, "abnahme": True},
+            )
+    except Exception:
+        await db.rollback()
+        task.metadata_ = meta  # Markierung zuruecknehmen: erneut zurueckgeben bleibt moeglich
+        await db.commit()
+        raise
+    task.metadata_ = {**meta, "zurueckgegeben_als": neu.id}
     await db.commit()
     return projekte.karte(neu)

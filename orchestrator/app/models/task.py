@@ -105,8 +105,13 @@ def _projekt_erben(mapper, connection, target: Task) -> None:
     ein Auftrag hier das Projekt seines Eltern-Auftrags. ``metadata.team_id``
     setzen nur Server-Wege (Team-Delegation); ueber die API kann niemand
     Metadaten mitgeben.
+
+    Zugeordnet wird nur, wenn der ausfuehrende Agent zum Projekt gehoert. Ein
+    Mensch darf beim Anlegen einen beliebigen Eltern-Auftrag nennen — ohne diese
+    Pruefung haenge er seinen Auftrag an ein fremdes Projekt (Board, Kosten,
+    Projektbeschreibung im Prompt seines Agenten).
     """
-    if target.team_id:
+    if target.team_id or not target.agent_id:
         return
     team_id = (target.metadata_ or {}).get("team_id")
     if not team_id and target.parent_task_id:
@@ -114,5 +119,18 @@ def _projekt_erben(mapper, connection, target: Task) -> None:
         team_id = connection.execute(
             select(tasks.c.team_id).where(tasks.c.id == target.parent_task_id)
         ).scalar_one_or_none()
-    if team_id:
+    if not team_id:
+        return
+    from app.models.team import Team
+
+    teams = Team.__table__
+    zeile = connection.execute(
+        select(teams.c.member_agent_ids, teams.c.lead_agent_id).where(teams.c.id == str(team_id)[:32])
+    ).first()
+    if zeile is None:
+        return
+    mitglieder = set(zeile.member_agent_ids or [])
+    if zeile.lead_agent_id:
+        mitglieder.add(zeile.lead_agent_id)
+    if target.agent_id in mitglieder:
         target.team_id = str(team_id)[:32]

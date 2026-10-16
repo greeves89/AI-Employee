@@ -99,6 +99,15 @@ class ProjektWirdVererbt(Basis):
             self.assertEqual((await db.get(Task, "e")).team_id, "p1")
             self.assertIsNone((await db.get(Task, "x")).team_id)
 
+    async def test_agent_ausserhalb_des_projekts_erbt_nicht(self):
+        """Ein Mensch darf jeden Eltern-Auftrag nennen — sein fremder Agent landet trotzdem nicht im Projekt."""
+        async with self.Session() as db:
+            db.add(Task(id="w", title="w", prompt="p", agent_id="a1", team_id="p1"))
+            await db.commit()
+            db.add(Task(id="k", title="k", prompt="p", agent_id="b1", parent_task_id="w"))
+            await db.commit()
+            self.assertIsNone((await db.get(Task, "k")).team_id)
+
     async def test_ausdrueckliche_zuordnung_geht_vor(self):
         async with self.Session() as db:
             db.add(Task(id="w", title="w", prompt="p", agent_id="a1", team_id="p1"))
@@ -202,6 +211,28 @@ class Auftrag(Basis):
         self.assertEqual(aufruf["metadata"]["auftrag"], "Plane das Fest")
         self.assertTrue(aufruf["metadata"]["abnahme"])
 
+    async def test_fremder_lead_eines_gemischten_projekts_bekommt_keinen_auftrag(self):
+        async with self.Session() as db:
+            team = await db.get(Team, "p1")
+            team.member_agent_ids = ["a1", "b1"]
+            team.lead_agent_id = "b1"
+            await db.commit()
+            with patch("app.api.teams._team_roster", new=AsyncMock(return_value="- B1")), \
+                    self.assertRaises(HTTPException) as e:
+                await self._auftrag(db, text="Plane das Fest")
+        self.assertEqual(e.exception.status_code, 403)
+
+    async def test_alte_team_delegation_prueft_den_lead_ebenso(self):
+        async with self.Session() as db:
+            team = await db.get(Team, "p1")
+            team.member_agent_ids = ["a1", "b1"]
+            team.lead_agent_id = "b1"
+            await db.commit()
+            with self.assertRaises(HTTPException) as e:
+                await api.delegate_to_team("p1", api.DelegateTask(title="t", prompt="p"), request=None,
+                                           router_=_Router(db), user=MITGLIED, db=db)
+        self.assertEqual(e.exception.status_code, 403)
+
     async def test_betrachter_darf_nicht(self):
         async with self.Session() as db:
             with self.assertRaises(HTTPException) as e:
@@ -255,10 +286,27 @@ class Abnahme(Basis):
             self.assertIn("Kürzer bitte", neu.prompt)
             self.assertIn("Erster Entwurf", neu.prompt)
             self.assertIn("Schreib den Text", neu.prompt)
+            self.assertIn("[EXTERNAL-DATA", neu.prompt)
             with self.assertRaises(HTTPException) as e:
                 await api.projekt_zurueckgeben("p1", "t", api.Zurueckgeben(hinweis="nochmal"),
                                                request=None, router_=router, user=MITGLIED, db=db)
             self.assertEqual(e.exception.status_code, 409)
+            with self.assertRaises(HTTPException) as e:
+                await api.projekt_abnehmen("p1", "t", user=MITGLIED, db=db)
+            self.assertEqual(e.exception.status_code, 409)
+
+    async def test_scheitert_die_nacharbeit_bleibt_zurueckgeben_moeglich(self):
+        async with self.Session() as db:
+            db.add(self._task("t", result="x"))
+            await db.commit()
+            router = _Router(db)
+            router.create_and_route_task = AsyncMock(side_effect=ValueError("Budget erschöpft"))
+            with self.assertRaises(ValueError):
+                await api.projekt_zurueckgeben("p1", "t", api.Zurueckgeben(hinweis="h"),
+                                               request=None, router_=router, user=MITGLIED, db=db)
+            alt = await db.get(Task, "t")
+            await db.refresh(alt)
+            self.assertNotIn("zurueckgegeben_als", alt.metadata_)
 
 
 class Farbe(unittest.TestCase):
