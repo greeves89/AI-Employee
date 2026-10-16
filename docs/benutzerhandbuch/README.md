@@ -308,6 +308,29 @@ Seitenleiste → **Agents**. Jeder Agent erscheint als **Kachel**. Was du darauf
 > Du siehst hier nur **deine eigenen** Agenten. Als Admin findest du **alle** unter
 > **Admin-Konsole → Alle Agenten**.
 
+### 4.1a Ansicht „Büro“: alle Agenten an ihrem Platz *(seit 1.367.0)*
+
+Neben Kachel- und Listenansicht gibt es das **Büro**: alle deine Agenten an ihren
+Schreibtischen, aufgeteilt in Bereiche (Werkstatt, Bibliothek, Lounge, Fensterfront —
+reichen die Plätze nicht, kommen Anbauten dazu).
+
+1. Seitenleiste → **Agenten**.
+2. Oben rechts in der Leiste der Ansichten das **Gebäude-Symbol** („Büro“) anklicken.
+3. Jeder Agent sitzt an seinem Platz:
+   - **Arbeitet** er, leuchtet sein Bildschirm, er wippt leicht, und der Boden unter ihm
+     glimmt grün.
+   - **Bereit**: blauer Ring. **Gestoppt**: blass. **Fehler**: roter Ring.
+4. Mit der Maus über einem Agenten siehst du Name, Zustand und Bereich; ein **Klick** öffnet
+   ihn (Chat, Einstellungen).
+
+Suche und Statusfilter oberhalb wirken auch hier — wer nicht passt, verlässt kurz seinen
+Platz. Jeder **neue Agent** bekommt beim Anlegen einen **zufälligen freien Platz**; ältere
+Agenten bekommen einen festen Platz, der sich nicht ändert. Auf schmalen Bildschirmen zeigt
+das Büro nur die Symbole; Antippen öffnet den Agenten.
+
+> Wer weniger Bewegung eingestellt hat (Bedienungshilfen des Betriebssystems), sieht den Raum
+> ohne Animation.
+
 ### 4.2 Einen Agenten anlegen — Schritt für Schritt
 
 **Schritt 1 — Vorlage wählen.** Klicke oben rechts auf **+ New Agent**. Es öffnet sich
@@ -886,6 +909,9 @@ Ein Klick auf eine Projektkarte öffnet das Projekt. Links siehst du den Raum:
   zum Board.
 - **Board an der Wand** — farbige Zettel: blau = in Arbeit, orange = zur Abnahme,
   grün = heute fertig.
+
+Auf schmalen Bildschirmen blendet der Raum Namen und Sprechblasen aus; die Liste
+**Im Raum** daneben (bzw. darunter) zeigt sie weiter.
 
 Rechts daneben steht unter **Im Raum** jedes Mitglied mit seinem Zustand („Arbeitet an: …“,
 „Bereit“, „Gestoppt“).
