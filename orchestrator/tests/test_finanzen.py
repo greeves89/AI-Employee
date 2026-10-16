@@ -108,6 +108,7 @@ class Projektbudget(_Finanzen):
             with self.assertRaises(ValueError) as e:
                 await self._router(db)._projekt_budget_durchsetzen("a1", {"team_id": "p1"}, None)
             self.assertIn("Monatsbudget des Projekts", str(e.exception))
+            self.assertNotIn("$", str(e.exception))  # keine Beträge im Hinweis an den Auftraggeber
             # Unterauftrag eines Projektmitglieds erbt das Projekt — und die Sperre.
             with self.assertRaises(ValueError):
                 await self._router(db)._projekt_budget_durchsetzen("a2", None, "t1")
@@ -117,6 +118,27 @@ class Projektbudget(_Finanzen):
             meldungen = (await db.execute(select(Notification))).scalars().all()
         self.assertEqual(len(meldungen), 1)  # einmal je Projekt und Monat
         self.assertEqual(meldungen[0].action_url, "/finanzen?projekt=p1")
+
+    async def test_meldung_nur_an_den_ersteller(self):
+        """Gemischtes Projekt: der abgewiesene Agent gehört B — die Meldung geht an A (Ersteller)."""
+        async with self.Session() as db:
+            t = await db.get(Team, "p1")
+            t.budget_usd, t.member_agent_ids = 1.0, ["b1", "a2"]
+            await db.commit()
+            with self.assertRaises(ValueError):
+                await self._router(db)._projekt_budget_durchsetzen("b1", {"team_id": "p1"}, None)
+            meldungen = (await db.execute(select(Notification))).scalars().all()
+        self.assertEqual([m.agent_id for m in meldungen], ["a2"])  # Agent von A, nicht b1
+        self.assertIn("von", meldungen[0].message)  # Beträge nur in der Meldung an den Ersteller
+
+    async def test_ohne_agent_des_erstellers_keine_meldung(self):
+        async with self.Session() as db:
+            t = await db.get(Team, "p1")
+            t.budget_usd, t.member_agent_ids = 1.0, ["b1"]
+            await db.commit()
+            with self.assertRaises(ValueError):
+                await self._router(db)._projekt_budget_durchsetzen("b1", {"team_id": "p1"}, None)
+            self.assertEqual((await db.execute(select(Notification))).scalars().all(), [])
 
     async def test_budget_mit_luft_und_ohne_budget(self):
         async with self.Session() as db:
@@ -140,6 +162,25 @@ class Projektbudget(_Finanzen):
             self.assertEqual(e.exception.status_code, 403)
             await api.projekt_budget_setzen("p1", api.ProjektBudget(budget_usd=0), user=MITGLIED, db=db)
             self.assertIsNone((await db.get(Team, "p1")).budget_usd)
+
+    async def test_faelliger_termin_faellt_bei_aufgebrauchtem_budget_aus(self):
+        import json
+
+        from app.models.meeting_room import MeetingRoom
+        from app.models.schedule import Schedule
+        from app.services.scheduler_service import SchedulerService
+
+        async with self.engine.begin() as conn:
+            await conn.run_sync(MeetingRoom.metadata.create_all, tables=[MeetingRoom.__table__])
+        async with self.Session() as db:
+            (await db.get(Team, "p1")).budget_usd = 1.0
+            sched = Schedule(id="s1", name="[Projekt-Termin] Daily", interval_seconds=0, team_id="p1", next_run_at=JETZT,
+                             prompt="__meeting__:" + json.dumps({"team_id": "p1", "agent_ids": ["a1", "a2"]}))
+            db.add(sched)
+            await db.commit()
+            dienst = SchedulerService.__new__(SchedulerService)
+            await dienst._execute_meeting_schedule(db, sched)
+            self.assertEqual((await db.execute(select(MeetingRoom))).scalars().all(), [])
 
     async def test_board_nennt_die_monatskosten(self):
         from app.core import projekte

@@ -2376,6 +2376,15 @@ class SchedulerService:
             logger.warning("[Scheduler] Bad meeting config for %s: %s", schedule.id, e)
             return
 
+        if schedule.team_id:
+            # Projektbudget aufgebraucht → der Termin fällt aus (Besprechungsrunden laufen
+            # über den Chat der Agenten, nicht über den TaskRouter mit seiner Sperre).
+            from app.core import budget as _budget
+
+            if (await _budget.projekt_budget_pruefen(db, schedule.team_id)).art == _budget.BLOCKIEREN:
+                logger.info("[Scheduler] Projekt-Termin %s faellt aus: Projektbudget aufgebraucht", schedule.id)
+                return
+
         room = MeetingRoom(
             id=_uuid.uuid4().hex[:12],
             name=config.get("name", schedule.name),

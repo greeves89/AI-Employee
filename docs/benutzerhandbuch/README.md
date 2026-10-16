@@ -1175,9 +1175,10 @@ ihnen freigegeben sind.
 
 **Oben vier Kacheln:**
 - **Dieser Monat** — alles zusammen, darunter der Vormonat zum Vergleich.
-- **Aufgaben und Projekte** — Läufe, also Aufträge, Zeitpläne, Projektkarten, Takt, Gespräch und
-  Besprechungen; darunter, was davon **ohne Projekt** lief.
-- **Chat** — Gespräche mit den Agenten. Chat gehört zu keinem Projekt.
+- **Aufgaben und Projekte** — Läufe, also Aufträge, Zeitpläne, Projektkarten, Takt und
+  Projektgespräch; darunter, was davon **ohne Projekt** lief.
+- **Chat** — Gespräche mit den Agenten, auch die Runden in Besprechungen. Chat gehört zu keinem
+  Projekt.
 - **Dein Monatsbudget** — falls ein Administrator dir eins gesetzt hat; sonst die Kosten
   gelöschter Agenten und Verläufe, die in der Summe bleiben.
 
@@ -1196,7 +1197,7 @@ die Zeile **Kosten diesen Monat** (mit Budget); ein Klick darauf führt hierher.
 
 Der Balken darunter zeigt den Verbrauch: grün, ab 80 % gelb, ab 100 % rot. **Ist das Budget
 aufgebraucht, starten bis Monatsende keine neuen Läufe des Projekts mehr** — weder Karten noch
-Takt, Gespräch oder Besprechungen. Du bekommst einmal im Monat eine Benachrichtigung. Die Agenten
+Takt oder Gespräch, und fällige Termine (Daily, Weekly) fallen aus. Du bekommst einmal im Monat eine Benachrichtigung. Die Agenten
 selbst arbeiten in anderen Projekten und im Chat weiter. Ein höheres Budget gibt das Projekt sofort
 wieder frei.
 

@@ -13,8 +13,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
   Mitglieder sehen ihre eigenen Agenten und Projekte, Administratoren die Anlage — fremde
   Projekte auch dann nicht.
 - **Monatsbudget je Projekt:** setzt, wer das Projekt angelegt hat. Ist es aufgebraucht, starten
-  bis Monatsende keine neuen Läufe des Projekts (Karten, Takt, Gespräch, Besprechungen); der
-  Ersteller wird einmal im Monat benachrichtigt. Die Agenten arbeiten anderswo weiter.
+  bis Monatsende keine neuen Läufe des Projekts (Karten, Takt, Gespräch), fällige Termine fallen
+  aus; der Ersteller wird einmal im Monat benachrichtigt — auch in gemischten Projekten nur er,
+  und nur er sieht die Beträge. Die Agenten arbeiten anderswo weiter.
 - **CSV-Export** der Zahlen (Monate, Projekte, Agenten; Namen gegen Formel-Einschleusung
   entschärft).
 - Projektseite: unter „Erledigt“ stehen die Kosten des Monats samt Budget, mit Sprung zu Finanzen.

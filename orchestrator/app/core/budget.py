@@ -177,23 +177,52 @@ async def projekt_budget_pruefen(db, team_id: str | None) -> Entscheid:
     summe = (await _kosten.kosten(db, _kosten.Bereich.projekt(team_id), seit=_kosten.monatsbeginn())).gesamt
     if summe < team.budget_usd:
         return ERLAUBT
+    # Ohne Beträge: den Hinweis liest, wer den Lauf anstoßen wollte — in gemischten
+    # Projekten nicht unbedingt der Ersteller. Die Zahlen stehen in seiner Meldung.
     hinweis = (
-        f"Das Monatsbudget des Projekts „{team.name}“ ist aufgebraucht ({_kosten.betrag_anzeigen(summe)} von "
-        f"{_kosten.betrag_anzeigen(team.budget_usd)}). Neue Läufe des Projekts starten erst im nächsten Monat — "
-        "oder nachdem das Budget unter Finanzen erhöht wurde."
+        f"Das Monatsbudget des Projekts „{team.name}“ ist aufgebraucht. Neue Läufe des Projekts starten erst im "
+        "nächsten Monat — oder nachdem der Ersteller das Budget unter Finanzen erhöht hat."
     )
     return Entscheid(BLOCKIEREN, hinweis=hinweis, grenze="projekt", verbraucht_usd=summe,
                      budget_usd=float(team.budget_usd))
 
 
+async def _agent_des_erstellers(db, team) -> str | None:
+    """Ein Agent des Projekts, der dem Ersteller gehört (Lead zuerst).
+
+    Benachrichtigungen sieht, wem ihr Absender-Agent gehört. In gemischten Projekten
+    (nur Administratoren legen sie an) gehört der abgewiesene Agent womöglich einem
+    anderen Nutzer — der soll Projektname und Beträge nicht lesen."""
+    from app.models.agent import Agent
+    from app.models.user import User
+
+    if not team.created_by:
+        return None
+    ersteller = await db.scalar(select(User.id).where(
+        (User.id == team.created_by) | (User.email == team.created_by)).limit(1))
+    if not ersteller:
+        return None
+    kandidaten = [a for a in [team.lead_agent_id, *(team.member_agent_ids or [])] if a]
+    if not kandidaten:
+        return None
+    eigene = set((await db.execute(
+        select(Agent.id).where(Agent.id.in_(kandidaten), Agent.user_id == str(ersteller)))).scalars().all())
+    return next((a for a in kandidaten if a in eigene), None)
+
+
 async def projekt_sperre_melden(db, team_id: str, agent, entscheid: Entscheid) -> bool:
     """Den Ersteller des Projekts benachrichtigen — einmal je Projekt und Monat.
 
-    Absender ist der Agent, dessen Lauf abgelehnt wurde: Benachrichtigungen sieht,
-    wem der Agent gehört, und Projekte legen Nutzer mit ihren eigenen Agenten an."""
+    Absender ist ein Agent des Erstellers im Projekt (``_agent_des_erstellers``), nicht
+    der abgewiesene Agent: der kann einem anderen Nutzer gehören."""
     from app.models.notification import Notification
+    from app.models.team import Team
 
     if entscheid.art != BLOCKIEREN or agent is None:
+        return False
+    team = await db.get(Team, team_id)
+    absender = await _agent_des_erstellers(db, team) if team is not None else None
+    if not absender:
         return False
     ziel = f"/finanzen?projekt={team_id}"
     # Einmal je Projekt — gleich, welcher seiner Agenten zuerst abgewiesen wurde.
@@ -201,8 +230,11 @@ async def projekt_sperre_melden(db, team_id: str, agent, entscheid: Entscheid) -
             Notification.action_url == ziel, Notification.created_at >= _kosten.monatsbeginn()).limit(1)):
         return False
     neu = await _melden(
-        db, absender=agent.id, ziel=ziel, typ="error",
-        titel="Projektbudget aufgebraucht", text=entscheid.hinweis, agent_id=agent.id,
+        db, absender=absender, ziel=ziel, typ="error",
+        titel="Projektbudget aufgebraucht", agent_id=absender,
+        text=(f"Das Monatsbudget des Projekts „{team.name}“ ist aufgebraucht ({_kosten.betrag_anzeigen(entscheid.verbraucht_usd)} "
+              f"von {_kosten.betrag_anzeigen(entscheid.budget_usd)}). Neue Läufe des Projekts starten erst wieder, wenn "
+              "du das Budget unter Finanzen erhöhst — sonst im nächsten Monat."),
     )
     if neu:
         await db.commit()

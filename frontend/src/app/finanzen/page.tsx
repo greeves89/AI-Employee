@@ -217,7 +217,7 @@ function FinanzenSeite() {
             <section className="rounded-2xl border border-foreground/[0.08] bg-card p-4">
               <div className="flex items-baseline justify-between gap-2">
                 <h3 className="text-sm font-semibold">Projekte</h3>
-                <span className="text-[11px] text-muted-foreground">Läufe des Projekts: Karten, Takt, Gespräch, Besprechungen</span>
+                <span className="text-[11px] text-muted-foreground">Läufe des Projekts: Karten, Takt, Gespräch</span>
               </div>
               {daten.je_projekt.length === 0 ? (
                 <p className="mt-3 text-xs text-muted-foreground">
