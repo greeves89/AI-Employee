@@ -188,7 +188,7 @@ export function AgentFigur({
       style={{ left: x, top: y + 4 }}
     >
       {mitText && titel && (
-        <div className="mb-1 max-w-[9rem] truncate rounded-lg bg-background/95 px-2 py-0.5 text-[10px] shadow ring-1 ring-emerald-500/30" title={titel}>
+        <div className="mb-1 line-clamp-2 max-w-[11rem] rounded-lg bg-background/95 px-2 py-0.5 text-[10px] leading-snug shadow ring-1 ring-emerald-500/30" title={titel}>
           {titel}
         </div>
       )}

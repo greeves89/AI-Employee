@@ -41,6 +41,8 @@ export interface ProjektLauf {
   karte_titel: string | null;
   stufe: ProjektStufe | null;
   teilarbeit: boolean;
+  /** Was der Agent zuletzt geschrieben oder getan hat (nur bei laufenden Läufen). */
+  letzte_ausgabe: string | null;
 }
 
 export interface ProjektKennzahlen {

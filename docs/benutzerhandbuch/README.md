@@ -908,16 +908,18 @@ Ein Klick auf eine Projektkarte öffnet das Projekt.
 
 **Der Raum** (links oben):
 - **Schreibtische** — je Mitglied einer. Arbeitet ein Agent, leuchtet sein Bildschirm in der
-  Projektfarbe, der Bildschirm „schreibt“, der Agent wippt, und über ihm steht der Titel
-  der Karte.
+  Projektfarbe, der Bildschirm „schreibt“, der Agent wippt, und über ihm steht, was er
+  gerade tut (seine letzte Ausgabe).
 - **Krone** — markiert den Lead.
 - **Papierstapel** neben der Tür — alles, was noch nicht vergeben ist (Eingang und Bereit).
   Ein Klick darauf springt zum Board.
 - **Board an der Wand** — farbige Zettel: blau = in Arbeit, orange = Prüfung, grün = heute fertig.
 
 **Der Leitstand** (rechts):
-- **Gerade in Arbeit** — je Lauf der Agent, die Karte und die **Stufe**:
-  Planung → Bau → Tests → PR → CI → Merge. Die Agenten melden die Stufe selbst.
+- **Gerade in Arbeit** — je Lauf der Agent, die Karte, **was er zuletzt geschrieben oder getan
+  hat** und die **Stufe**: Planung → Bau → Tests → PR → CI → Merge. Die Agenten melden die Stufe;
+  was sich belegen lässt, zieht der Stand selbst nach (ein laufender Lauf ist mindestens „Bau“,
+  ein verknüpfter Pull Request „PR“, laufende Prüfungen „CI“, ein gemergter PR „Merge“).
   „Teilarbeit“ heißt: Der Lead hat einen Teil an einen Kollegen weitergegeben.
 - **Takt** — ob der Arbeitstakt läuft und wann der nächste Lauf ist.
 - **Reststapel** — wie viele Karten im Eingang und auf Bereit liegen, und **als Nächstes**
@@ -1020,15 +1022,18 @@ für die offenen Punkte aus diesem Protokoll an.“ Abnehmen und Zurückgeben bl
 ### 6a.9 Git-Projekte: Issues und Pull Requests auf dem Board *(seit 1.369.0)*
 
 Ein Projekt kann mit einem **GitHub-Repo** verbunden werden — dann kommt die Arbeit von selbst aufs
-Board. Das Repo trägt ein **Administrator** ein. **Öffentliche Repos** gehen ohne weitere
-Einrichtung (abgeglichen alle 30 Minuten); **private Repos** brauchen die GitHub-Verbindung der
-Anlage (Admin → Integrationen → GitHub, dann alle 10 Minuten). Ohne Repo zeigt die Projektseite
-den Hinweis „Kein GitHub-Repo verbunden“ mit dem Knopf **Repo verbinden**.
+Board. Das Repo trägt ein, wer das Projekt angelegt hat. **Öffentliche Repos** gehen ohne weitere
+Einrichtung (abgeglichen alle 30 Minuten). **Private Repos** brauchen einen **Schlüssel**: Lege in
+der Schlüsselverwaltung (Keys) einen GitHub-Zugangsschlüssel mit Leserecht an und wähle ihn im
+Projekt unter **Schlüssel für das Repo** (dann alle 10 Minuten). Projekte von Administratoren
+können stattdessen die GitHub-Verbindung der Anlage nutzen. Ohne Repo zeigt die Projektseite den
+Hinweis „Kein GitHub-Repo verbunden“ mit dem Knopf **Repo verbinden**.
 
 1. Projekt anlegen oder **Bearbeiten** öffnen.
 2. Unter **GitHub-Repo** `owner/name` eintragen, z. B. `beispiel-org/beispiel-repo` (eine kopierte
    GitHub-Adresse geht auch).
-3. **Speichern**.
+3. Bei einem privaten Repo unter **Schlüssel für das Repo** den passenden Schlüssel wählen.
+4. **Speichern**.
 
 Ab dann, regelmäßig:
 - Jedes **offene Issue** erscheint als Karte im **Eingang** (mit Nummer `#12` und Link). Ändert

@@ -88,7 +88,6 @@ export default function ProjektPage() {
   const brauchtWahl = !projekt?.lead_agent_id && mitglieder.length > 1;
   // Agenten auf altem Abbild kennen die Projekt-Werkzeuge nicht (projekt_board …).
   const veraltet = mitglieder.filter((m) => m.agent?.update_available || m.agent?.image_outdated);
-  const istAdmin = rolle === "admin";
 
   const ausfuehren = async (titel: string, fn: () => Promise<unknown>) => {
     try {
@@ -322,14 +321,10 @@ export default function ProjektPage() {
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-dashed border-foreground/[0.12] px-3 py-2 text-xs text-muted-foreground">
               <GitBranch className="h-3.5 w-3.5" />
               <span>Kein GitHub-Repo verbunden — mit Repo kommen offene Issues und Pull Requests von selbst aufs Board.</span>
-              {istAdmin ? (
-                <button type="button" onClick={() => setBearbeiten(true)}
-                  className="ml-auto rounded-lg border border-foreground/[0.1] px-2 py-1 text-foreground hover:bg-foreground/[0.04]">
-                  Repo verbinden
-                </button>
-              ) : (
-                <span>Ein Administrator kann eines verbinden.</span>
-              )}
+              <button type="button" onClick={() => setBearbeiten(true)}
+                className="ml-auto rounded-lg border border-foreground/[0.1] px-2 py-1 text-foreground hover:bg-foreground/[0.04]">
+                Repo verbinden
+              </button>
             </div>
           )}
           {projekt.repo && (

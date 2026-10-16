@@ -4,15 +4,12 @@ GitHub wird nachgestellt (``_Anbieter``); die Datenbank ist echt (SQLite), weil
 Karten, Spalten und Eindeutigkeit (team, quelle, nummer) mitspielen.
 """
 
-from types import SimpleNamespace
-
 from fastapi import HTTPException
 
 from app.api import teams as api
 from app.core import projekt_git
 from app.models.projekt_karte import ProjektKarte
 from app.models.team import Team
-from app.models.user import UserRole
 from tests.test_projekte import MITGLIED, Basis
 
 
@@ -142,24 +139,85 @@ class Abgleich(Basis):
 
 
 class RepoSetzen(Basis):
-    async def test_nur_admins_verbinden_ein_repo(self):
+    async def test_ersteller_verbindet_ein_repo(self):
         async with self.Session() as db:
-            with self.assertRaises(HTTPException) as e:
-                await api.update_team("p1", api.UpdateTeam(repo="o/r"), user=MITGLIED, db=db)
-            self.assertEqual(e.exception.status_code, 403)
-            team = await db.get(Team, "p1")
-            team.created_by = "admin"
-            await db.commit()
-            admin = SimpleNamespace(id="admin", role=UserRole.ADMIN, email="admin@example.invalid")
             r = await api.update_team("p1", api.UpdateTeam(repo="https://github.com/beispiel-org/beispiel-repo"),
-                                      user=admin, db=db)
+                                      user=MITGLIED, db=db)
             self.assertEqual(r["repo"], "beispiel-org/beispiel-repo")
             for falsch in ("nur-ein-teil", "a/b/c", "../x"):
                 with self.assertRaises(HTTPException) as e:
-                    await api.update_team("p1", api.UpdateTeam(repo=falsch), user=admin, db=db)
+                    await api.update_team("p1", api.UpdateTeam(repo=falsch), user=MITGLIED, db=db)
                 self.assertEqual(e.exception.status_code, 422)
-            r = await api.update_team("p1", api.UpdateTeam(repo=""), user=admin, db=db)
+            r = await api.update_team("p1", api.UpdateTeam(repo=""), user=MITGLIED, db=db)
             self.assertIsNone(r["repo"])
+
+
+class Schluessel(Basis):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        from unittest.mock import patch
+
+        from app.models.agent_secret import AgentSecret, AgentSecretAssignment
+        from app.models.oauth_integration import OAuthIntegration
+
+        # Ohne Schlüsseldatei der Anlage: Ver-/Entschlüsseln nachgestellt.
+        self.entschluesseln = patch("app.core.encryption.decrypt_token", lambda wert: wert[4:])
+        self.entschluesseln.start()
+        self.addCleanup(self.entschluesseln.stop)
+        encrypt_token = lambda wert: f"enc:{wert}"  # noqa: E731
+
+        async with self.engine.begin() as conn:
+            for model in (AgentSecret, AgentSecretAssignment, OAuthIntegration):
+                await conn.run_sync(model.metadata.create_all, tables=[model.__table__])
+        async with self.Session() as db:
+            db.add(AgentSecret(id=7, name="GitHub privat", key_name="GITHUB_TOKEN",
+                               value_encrypted=encrypt_token("ghp_beispiel"), owner_id="ua", is_active=True))
+            db.add(AgentSecret(id=8, name="fremd", key_name="X", value_encrypted=encrypt_token("x"),
+                               owner_id="ub", is_active=True))
+            await db.commit()
+
+    async def test_eigener_schluessel_wird_genutzt(self):
+        async with self.Session() as db:
+            await api.update_team("p1", api.UpdateTeam(repo="o/privat", repo_secret_id=7), user=MITGLIED, db=db)
+            team = await db.get(Team, "p1")
+            token, _ = await projekt_git.zugang(db, None, team)
+        self.assertEqual(token, "ghp_beispiel")
+
+    async def test_fremder_schluessel_ist_gesperrt(self):
+        from unittest.mock import AsyncMock, patch
+
+        async with self.Session() as db:
+            with patch("app.core.secret_zugriff.zugang", new=AsyncMock(return_value=None)), \
+                    self.assertRaises(HTTPException) as e:
+                await api.update_team("p1", api.UpdateTeam(repo_secret_id=8), user=MITGLIED, db=db)
+        self.assertEqual(e.exception.status_code, 403)
+
+    async def test_ohne_schluessel_nutzt_ein_mitglied_nicht_den_anlagenzugang(self):
+        from unittest.mock import AsyncMock, patch
+
+        async with self.Session() as db:
+            team = await db.get(Team, "p1")
+            with patch("app.services.oauth_service.OAuthService.get_valid_token",
+                       new=AsyncMock(return_value="anlagen-token")):
+                token, _ = await projekt_git.zugang(db, None, team)
+        self.assertEqual(token, "")  # anonym — der Ersteller ist kein Administrator
+
+    async def test_abgleichfehler_wird_festgehalten_nicht_500(self):
+        from unittest.mock import AsyncMock, patch
+
+        class _Weg(_Anbieter):
+            async def list_open_issues(self, client, token, repo, hoechstens):
+                raise LookupError(repo)
+
+        async with self.Session() as db:
+            team = await db.get(Team, "p1")
+            team.repo = "o/privat"
+            await db.commit()
+            with patch("app.core.projekt_git.zugang", new=AsyncMock(return_value=("", _Weg()))), \
+                    self.assertRaises(projekt_git.GitFehler):
+                await projekt_git.projekt_abgleichen(db, None, team)
+            team = await db.get(Team, "p1")
+            self.assertIn("nicht gefunden", team.repo_fehler)
 
 
 class Anonym(Basis):

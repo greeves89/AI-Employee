@@ -4553,6 +4553,8 @@ export interface Team {
   repo?: string | null;
   repo_abgleich_at?: string | null;
   repo_fehler?: string | null;
+  /** Schlüssel aus der Schlüsselverwaltung für private Repos. */
+  repo_secret_id?: number | null;
 }
 
 export async function listTeams(): Promise<{ teams: Team[] }> {
@@ -4568,6 +4570,7 @@ export async function createTeam(body: {
   takt_minuten?: number | null;
   geteilt_mit?: string[];
   repo?: string;
+  repo_secret_id?: number;
 }): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/`, {
     method: "POST",
@@ -4590,6 +4593,7 @@ export async function updateTeam(
     takt_minuten?: number | null;
     geteilt_mit?: string[];
     repo?: string;
+    repo_secret_id?: number;
   },
 ): Promise<Team> {
   return fetchJSON(`${getBase()}/teams/${id}`, {

@@ -87,6 +87,11 @@ export function ProjektLeitstand({
                       <Link href={`/tasks/${l.task_id}`} className="block truncate text-sm font-medium hover:underline">
                         {l.karte_titel ?? l.titel}
                       </Link>
+                      {l.letzte_ausgabe && (
+                        <p className="line-clamp-2 text-[11px] italic text-foreground/70" title={l.letzte_ausgabe}>
+                          „{l.letzte_ausgabe}“
+                        </p>
+                      )}
                       <p className="truncate text-[11px] text-muted-foreground">
                         {a?.name ?? "Agent"}{l.teilarbeit ? " · Teilarbeit" : ""}
                         {l.status === "running" ? " · arbeitet" : " · wartet auf Start"}
