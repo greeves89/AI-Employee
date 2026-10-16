@@ -196,6 +196,29 @@ class WissenWaechst(_Arbeitsraum):
             self.assertNotIn("zweiter", inhalt)
             self.assertEqual(len((await api.wissen_verlauf("p1", "erkenntnisse.md", user=MITGLIED, db=db))["versionen"]), 3)
 
+    async def test_git_fuehrt_nichts_aus_der_ablage_aus(self):
+        """Ein Hook in der Ablage (wie auch immer er dort hinkäme) läuft beim Festhalten nicht."""
+        import os
+        import stat
+
+        from app.core import projekt_wissen, vault
+
+        async with self.Session() as db:
+            await api.wissen_ergaenzen("p1", api.WissenAbschnitt(pfad="a.md", abschnitt="eins"), user=agent("a1"), db=db)
+            brain = await projekt_wissen.brain_des_projekts(db, await db.get(Team, "p1"))
+            spur = os.path.join(brain.host_path, "..", "hook-lief")
+            for hook in ("pre-commit", "post-commit"):
+                pfad = os.path.join(brain.host_path, ".git", "hooks", hook)
+                with open(pfad, "w") as f:
+                    f.write(f"#!/bin/sh\ntouch {spur}\n")
+                os.chmod(pfad, os.stat(pfad).st_mode | stat.S_IEXEC)
+            await api.wissen_ergaenzen("p1", api.WissenAbschnitt(pfad="a.md", abschnitt="zwei"), user=agent("a1"), db=db)
+            self.assertFalse(os.path.exists(spur))
+            self.assertEqual(len((await api.wissen_verlauf("p1", "a.md", user=MITGLIED, db=db))["versionen"]), 2)
+            for boese in (".git/hooks/post-commit", "x/../.git/config"):
+                with self.assertRaises(ValueError):
+                    vault.resolve_path(brain.host_path, boese)
+
     async def test_abnahme_schreibt_ergebnisse(self):
         async with self.Session() as db:
             await self._karte(db, "k1", "pruefung", task_id="t1", agent_id="a1")
