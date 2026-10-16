@@ -4,7 +4,9 @@ Echte (SQLite-)Datenbank und echtes Git der Wissensablage; nur der Versand der
 Läufe ist nachgestellt (``_Router`` aus test_projekte).
 """
 
+import asyncio
 import contextlib
+import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -36,10 +38,32 @@ class _Arbeitsraum(Basis):
 
 
 class Gespraech(_Arbeitsraum):
-    async def _schreiben(self, db, text, wer=MITGLIED, **kw):
-        router = _Router(db)
-        r = await api.gespraech_schreiben("p1", api.GespraechNachricht(text=text, **kw), router_=router, user=wer, db=db)
+    async def _schreiben(self, db, text, wer=MITGLIED, router=None, abwarten=True, **kw):
+        router = router or _Router(db)
+        with patch("app.db.session.async_session_factory", self.Session):
+            r = await api.gespraech_schreiben("p1", api.GespraechNachricht(text=text, **kw), router_=router, user=wer,
+                                              db=db)
+            if abwarten:
+                await asyncio.gather(*list(projekt_gespraech._HINTERGRUND))
         return r, router
+
+    async def test_senden_wartet_nicht_aufs_wecken(self):
+        """Einen gestoppten Agenten zu starten dauert Sekunden — die Nachricht kommt sofort zurück."""
+        frei = asyncio.Event()
+
+        class _Langsam(_Router):
+            async def create_and_route_task(self, **kw):
+                await frei.wait()
+                return await super().create_and_route_task(**kw)
+
+        async with self.Session() as db:
+            router = _Langsam(db)
+            with patch("app.db.session.async_session_factory", self.Session):
+                r, _ = await self._schreiben(db, "@A2 bitte prüfen", router=router, abwarten=False)
+                self.assertEqual((r["geweckt"], router.aufrufe), (["a2"], []))
+                frei.set()
+                await asyncio.gather(*list(projekt_gespraech._HINTERGRUND))
+        self.assertEqual(router.aufrufe[0]["agent_id"], "a2")
 
     async def test_mensch_ohne_ansprache_weckt_den_lead(self):
         async with self.Session() as db:
@@ -174,6 +198,15 @@ class Termine(_Arbeitsraum):
             brain = await projekt_wissen.brain_des_projekts(db, await db.get(Team, "p1"))
             seiten = [e["path"] for e in projekt_wissen.vault.list_entries(brain.host_path)]
             self.assertTrue(any(s.startswith("protokolle/") for s in seiten))
+
+
+class TerminText(unittest.TestCase):
+    def test_lesbar_statt_kuerzel(self):
+        self.assertEqual(projekt_termine.beschreibung({"art": "daily", "uhrzeit": "09:00"}), "Daily (Mo–Fr) um 09:00")
+        self.assertEqual(projekt_termine.beschreibung({"art": "weekly", "uhrzeit": "07:15", "wochentag": "so"}),
+                         "wöchentlich sonntags um 07:15")
+        self.assertEqual(projekt_termine.beschreibung({"art": "einmalig", "uhrzeit": "10:00"}, "2026-10-20"),
+                         "einmalig am 20.10.2026 um 10:00")
 
 
 class WissenWaechst(_Arbeitsraum):

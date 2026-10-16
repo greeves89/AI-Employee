@@ -72,6 +72,25 @@ def termin_dict(s: Schedule) -> dict:
     }
 
 
+TAG_NAME = {"mo": "Montag", "di": "Dienstag", "mi": "Mittwoch", "do": "Donnerstag", "fr": "Freitag",
+            "sa": "Samstag", "so": "Sonntag"}
+
+
+def beschreibung(termin: dict, datum: str | None = None) -> str:
+    """Lesbar für Gespräch und Bericht: „Daily (Mo–Fr) um 09:00“, „wöchentlich sonntags um 07:15“."""
+    uhr = termin.get("uhrzeit") or ""
+    if termin.get("art") == "daily":
+        return f"Daily (Mo–Fr) um {uhr}"
+    if termin.get("art") == "weekly":
+        tag = TAG_NAME.get(termin.get("wochentag") or "", "")
+        return f"wöchentlich {tag.lower() + 's ' if tag else ''}um {uhr}"
+    try:
+        tag = datetime.fromisoformat((datum or "").strip()).strftime("%d.%m.%Y")
+    except ValueError:
+        tag = ""
+    return f"einmalig{' am ' + tag if tag else ''} um {uhr}"
+
+
 async def liste(db: AsyncSession, team_id: str) -> list[Schedule]:
     return list((await db.execute(
         select(Schedule).where(Schedule.team_id == team_id).order_by(Schedule.next_run_at)
