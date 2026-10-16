@@ -100,6 +100,13 @@ _SPALTEN_NACH_DER_MARKE = (
     ("teams", "repo_secret_id"),
     ("meeting_rooms", "team_id"),
     ("schedules", "team_id"),
+    # #941 adaptiver Takt
+    ("schedules", "adaptive"),
+    ("schedules", "basis_intervall_s"),
+    ("schedules", "stufen"),
+    ("schedules", "leer_schwelle"),
+    ("schedules", "leerlaeufe"),
+    ("schedules", "stufe"),
 )
 
 

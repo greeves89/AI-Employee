@@ -729,7 +729,20 @@ function ScheduledTasksView({ hervorgehoben = "" }: { hervorgehoben?: string }) 
               <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
                 <div className="flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5" />
-                  <span title={schedule.cron_expression ?? undefined}>{schedule.takt || formatInterval(schedule.interval_seconds)}</span>
+                  {/* #941: Bei einem adaptiven Zeitplan sagt die Zeile auch, WARUM
+                      der Takt gerade so ist — „alle 4 Std (5 Leerläufe), Grundtakt
+                      alle 30 Min". Sonst bleibt es bei der bisherigen Zeile. */}
+                  <span title={schedule.cron_expression ?? undefined}>
+                    {schedule.takt_adaptiv || schedule.takt || formatInterval(schedule.interval_seconds)}
+                  </span>
+                  {schedule.adaptive && (
+                    <span
+                      title="Der Takt passt sich selbst an: bei Leerlauf langsamer, bei neuer Arbeit sofort wieder im Grundtakt."
+                      className="rounded-md border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-400"
+                    >
+                      adaptiv
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Timer className="h-3.5 w-3.5" />

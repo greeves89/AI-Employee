@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -42,6 +42,34 @@ class Schedule(Base, TimestampMixin):
     # Kachel. Ohne Herkunft (Formular) schreibt der Zeitplan in ein eigenes
     # Gespraech — siehe task_router.faden_fuer_aufgabe.
     chat_session_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # ── Adaptiver Takt (#941) ────────────────────────────────────────────────
+    # Ein Beobachtungs-Job wird bei Leerlauf von selbst langsamer und bei neuer
+    # Arbeit sofort wieder schnell. Rechenregel: app.core.adaptiver_takt.
+    # Standard AUS — ein bestehender Zeitplan behaelt seinen festen Takt.
+    # Nur fuer INTERVALL-Zeitplaene: bei Cron waere die Taktrechnung mehrdeutig.
+    adaptive: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    # Der Grundtakt, auf den ein Lauf mit Arbeit zurueckstellt. Leer = das
+    # Intervall, mit dem der Zeitplan angelegt wurde.
+    basis_intervall_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Die Stufenleiter in Sekunden, aufsteigend; leer = STUFEN_STANDARD
+    # (30 Min / 2 Std / 4 Std / 8 Std). Stufe 0 ist immer der Grundtakt.
+    stufen: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # So viele leere Laeufe hintereinander, BEVOR es langsamer wird.
+    leer_schwelle: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3, server_default="3"
+    )
+    # Zustand, vom Werkzeug report_run gefuehrt: leere Laeufe in Folge und die
+    # aktuell geltende Stufe. ``interval_seconds`` bleibt das fuehrende Feld —
+    # der Scheduler rechnet next_run_at weiterhin daraus.
+    leerlaeufe: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    stufe: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
     # Der Mensch, der den Zeitplan angelegt hat (users.id). Ein Zeitplan ohne Agent
     # ("Automatisch") gehoert ihm: er sieht, pausiert und loescht ihn, und beim
     # Feuern waehlt der Lastverteiler nur unter SEINEN Agenten (#901). NULL bei

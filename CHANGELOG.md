@@ -5,6 +5,41 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.372.0] - 2026-10-16
+
+### Neu
+- **Wiederkehrende Beobachtungs-Aufgaben passen ihren Takt jetzt selbst an.** Ein Agent, der
+  offene Pull Requests, Issues, ein Postfach oder eine Ticket-Liste beobachtet, lief bisher
+  stur im gleichen Takt: Gab es tagelang nichts zu tun, startete er trotzdem alle 30 Minuten
+  und hinterließ leere Karten im Chat — machte man ihn langsamer, reagierte er zu spät, wenn
+  plötzlich etwas anfiel. Ein solcher Zeitplan lässt sich nun als „adaptiv" anlegen: Nach
+  drei leeren Läufen in Folge wird er je weiterem leeren Lauf eine Stufe langsamer
+  (2 Stunden, 4 Stunden, 8 Stunden), und sobald es wieder Arbeit gibt, ist er mit dem
+  nächsten Lauf zurück im Grundtakt. Die Zeitplan-Liste zeigt, warum der Takt gerade so ist:
+  „alle 4 Std (5 Leerläufe), Grundtakt alle 30 Min".
+- **Ein Agent darf seinen eigenen Zeitplan ändern, ohne ihn zu verlieren.** Bisher konnte er
+  einen Takt nur wechseln, indem er den Zeitplan löschte und neu anlegte — dabei gingen
+  Kennung, Laufhistorie und Erfolgszähler verloren, und im Kalender entstand ein neuer
+  Eintrag. Jetzt ändert er Takt, Uhrzeit und aktiv/pausiert an Ort und Stelle. Für fremde
+  Zeitpläne gilt dieselbe Grenze wie in der Oberfläche: Er kann nur seine eigenen umstellen.
+- **Eine Taktkorrektur von Hand bleibt stehen.** Ändert jemand in der Oberfläche das
+  Intervall eines adaptiven Zeitplans, gilt der neue Wert ab sofort als Grundtakt und die
+  Leerlauf-Strecke fängt von vorn an — die Korrektur wird nicht beim nächsten Lauf still
+  zurückgedreht. Ein Probelauf über „Jetzt ausführen" zählt nicht als Leerlauf: Wer
+  nachsieht, soll den Beobachter nicht ausbremsen.
+
+### Hinweise für Betreiber
+- Bestehende Zeitpläne bleiben unverändert: „adaptiv" ist ausgeschaltet, bis es jemand
+  ausdrücklich einschaltet. Zeitpläne mit fester Uhrzeit (Cron) bleiben ganz außen vor —
+  dort wäre ein wandernder Takt mehrdeutig.
+- Taktwechsel stehen im Lauf-Verlauf des Zeitplans und lösen bewusst keine Benachrichtigung
+  aus: Ein Agent, der sich dreimal am Tag selbst umtaktet, soll niemanden wecken.
+- Die von der Plattform selbst geführten Zeitpläne (Eigeninitiative, Tagesrhythmus,
+  Tagesplan-Blöcke) lassen sich nicht auf adaptiv stellen: Ihr Takt kommt aus der
+  Agenten-Konfiguration, beides zusammen würde sich gegenseitig überschreiben.
+
+---
+
 ## [1.371.1] - 2026-10-16
 
 ### Geändert

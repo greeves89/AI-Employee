@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -22,6 +23,19 @@ def _validate_cron(expr: str) -> str:
     except ImportError:
         pass  # croniter not installed yet; validate at runtime
     return expr
+
+
+def _validate_stufen(stufen):
+    """Die Stufenleiter eines adaptiven Zeitplans (#941) — streng geprueft.
+
+    Die Pruefregeln stehen in ``app.core.adaptiver_takt``, damit Werkzeug,
+    Formular und Scheduler dieselbe Grenze kennen. Hier wird sie nur in einen
+    Pydantic-Fehler uebersetzt.
+    """
+    if stufen is None:
+        return None
+    from app.core.adaptiver_takt import stufen_pruefen
+    return stufen_pruefen(stufen)
 
 
 def _validate_timezone(tz: str) -> str:
@@ -49,6 +63,36 @@ class ScheduleCreate(BaseModel):
     priority: int = 1
     agent_id: str | None = None
     model: str | None = None
+    # ── Adaptiver Takt (#941) ───────────────────────────────────────────────
+    # Fuer Beobachtungs-Jobs: Bei Leerlauf wird der Takt von selbst langsamer,
+    # bei Arbeit sofort wieder der Grundtakt. Nur mit interval_seconds.
+    adaptive: bool = False
+    basis_intervall_s: int | None = None
+    stufen: list[int] | None = None
+    leer_schwelle: int | None = None
+
+    @field_validator("stufen")
+    @classmethod
+    def validate_stufen(cls, v):
+        return _validate_stufen(v)
+
+    @field_validator("leer_schwelle")
+    @classmethod
+    def validate_schwelle(cls, v: int | None) -> int | None:
+        from app.core.adaptiver_takt import MAX_SCHWELLE
+        if v is not None and not 1 <= v <= MAX_SCHWELLE:
+            raise ValueError(f"leer_schwelle muss zwischen 1 und {MAX_SCHWELLE} liegen")
+        return v
+
+    @field_validator("basis_intervall_s")
+    @classmethod
+    def validate_basis(cls, v: int | None) -> int | None:
+        from app.core.adaptiver_takt import MAX_INTERVALL_S, MIN_INTERVALL_S
+        if v is not None and not MIN_INTERVALL_S <= v <= MAX_INTERVALL_S:
+            raise ValueError(
+                f"basis_intervall_s muss zwischen {MIN_INTERVALL_S} und {MAX_INTERVALL_S} Sekunden liegen"
+            )
+        return v
 
     @model_validator(mode="after")
     def validate_timing(self) -> "ScheduleCreate":
@@ -73,6 +117,14 @@ class ScheduleCreate(BaseModel):
         # a 500 instead of leaving the field for the endpoint to fill in (#572).
         if self.timezone:
             self.timezone = _validate_timezone(self.timezone)
+        # Adaptiv gilt nur fuer Intervall-Zeitplaene: Bei Cron ist die
+        # Taktrechnung mehrdeutig (#941, Abgrenzung), und ein Einmal-Lauf hat
+        # keinen Takt, den man anpassen koennte.
+        if self.adaptive and (self.cron_expression or not self.interval_seconds):
+            raise ValueError(
+                "adaptive gilt nur für Intervall-Zeitpläne: bitte interval_seconds "
+                "angeben (kein cron_expression, kein run_in_seconds)"
+            )
         return self
 
 
@@ -85,6 +137,37 @@ class ScheduleUpdate(BaseModel):
     priority: int | None = None
     agent_id: str | None = None
     model: str | None = None
+    # Aktiv/pausiert war bisher nur ueber die eigenen Endpunkte /pause und
+    # /resume erreichbar — ein Agent, der seinen Zeitplan umtaktet, soll ihn im
+    # selben Aufruf auch anhalten koennen (#941, Punkt 3).
+    enabled: bool | None = None
+    adaptive: bool | None = None
+    basis_intervall_s: int | None = None
+    stufen: list[int] | None = None
+    leer_schwelle: int | None = None
+
+    @field_validator("stufen")
+    @classmethod
+    def validate_stufen(cls, v):
+        return _validate_stufen(v)
+
+    @field_validator("leer_schwelle")
+    @classmethod
+    def validate_schwelle(cls, v: int | None) -> int | None:
+        from app.core.adaptiver_takt import MAX_SCHWELLE
+        if v is not None and not 1 <= v <= MAX_SCHWELLE:
+            raise ValueError(f"leer_schwelle muss zwischen 1 und {MAX_SCHWELLE} liegen")
+        return v
+
+    @field_validator("basis_intervall_s")
+    @classmethod
+    def validate_basis(cls, v: int | None) -> int | None:
+        from app.core.adaptiver_takt import MAX_INTERVALL_S, MIN_INTERVALL_S
+        if v is not None and not MIN_INTERVALL_S <= v <= MAX_INTERVALL_S:
+            raise ValueError(
+                f"basis_intervall_s muss zwischen {MIN_INTERVALL_S} und {MAX_INTERVALL_S} Sekunden liegen"
+            )
+        return v
 
     @field_validator("timezone")
     @classmethod
@@ -129,6 +212,15 @@ class ScheduleResponse(BaseModel):
     # rechnete ihn selbst aus dem Intervall und zeigte bei Cron-Zeitplaenen
     # (Intervall 0) „Every 0 min".
     takt: str = ""
+    # ── Adaptiver Takt (#941) ───────────────────────────────────────────────
+    adaptive: bool = False
+    basis_intervall_s: int | None = None
+    leer_schwelle: int = 3
+    leerlaeufe: int = 0
+    stufe: int = 0
+    # Die ganze Zeile fuer die Zeitplan-Ansicht: „alle 4 Std (5 Leerläufe),
+    # Grundtakt alle 30 Min". Leer, wenn der Zeitplan nicht adaptiv ist.
+    takt_adaptiv: str = ""
     created_at: datetime
     updated_at: datetime
 
@@ -136,6 +228,7 @@ class ScheduleResponse(BaseModel):
 
     @classmethod
     def from_schedule(cls, schedule) -> "ScheduleResponse":
+        from app.core.adaptiver_takt import beschreibe as beschreibe_takt
         from app.core.plan_rhythm import describe_schedule
 
         rate = 0.0
@@ -159,9 +252,47 @@ class ScheduleResponse(BaseModel):
             fail_count=schedule.fail_count,
             success_rate=rate,
             takt=describe_schedule(schedule),
+            adaptive=bool(getattr(schedule, "adaptive", False)),
+            basis_intervall_s=getattr(schedule, "basis_intervall_s", None),
+            leer_schwelle=getattr(schedule, "leer_schwelle", None) or 3,
+            leerlaeufe=getattr(schedule, "leerlaeufe", None) or 0,
+            stufe=getattr(schedule, "stufe", None) or 0,
+            takt_adaptiv=beschreibe_takt(schedule),
             created_at=schedule.created_at,
             updated_at=schedule.updated_at,
         )
+
+
+class ReportRunRequest(BaseModel):
+    """Was ein Lauf gebracht hat (#941, Punkt 1).
+
+    ``worked``  es gab Arbeit und ich habe sie gemacht → zurück auf den Grundtakt
+    ``idle``    es gab nichts zu tun → ein leerer Lauf
+    ``waiting`` ich warte auf eine Entscheidung des Nutzers → zählt wie ``idle``,
+                denn häufiger nachzusehen bringt nichts
+
+    ``task_id`` ist optional: Ohne Angabe nimmt der Server den laufenden
+    Zeitplan-Auftrag dieses Agenten.
+    """
+
+    outcome: Literal["worked", "idle", "waiting"]
+    task_id: str | None = None
+
+
+class ReportRunResponse(BaseModel):
+    schedule_id: str
+    name: str
+    outcome: str
+    adaptive: bool
+    #: Ob sich das Intervall durch diese Meldung tatsächlich geändert hat.
+    geaendert: bool
+    intervall_vorher_s: int
+    intervall_s: int
+    leerlaeufe: int
+    stufe: int
+    next_run_at: datetime | None = None
+    takt: str = ""
+    hinweis: str = ""
 
 
 class ScheduleListResponse(BaseModel):

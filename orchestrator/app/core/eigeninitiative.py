@@ -114,6 +114,19 @@ async def rhythmus_sicherstellen(
     return angelegt
 
 
+def _takt_abweicht(schedule, takt: int) -> bool:
+    """Weicht der Takt des Zeitplans von dem aus der Konfiguration ab?
+
+    Bei einem adaptiven Zeitplan ist der GRUNDTAKT die Groesse, die mit der
+    Konfiguration abgeglichen wird — ``interval_seconds`` steht dort je nach
+    Leerlauf-Strecke auf einer hoeheren Stufe und waere jedes Mal „abweichend"
+    (#941, Punkt 4).
+    """
+    if getattr(schedule, "adaptive", False):
+        return (schedule.basis_intervall_s or schedule.interval_seconds) != takt
+    return schedule.interval_seconds != takt
+
+
 def _proactive_mit(agent, **aenderungen) -> None:
     """``config['proactive']`` ändern — als NEUES dict, damit das JSON-Feld als
     geändert gilt. ``None`` entfernt einen Schlüssel."""
@@ -208,10 +221,22 @@ async def abgleichen(
         if hinweis:
             _hinweis(db, agent, takt)
         logger.info("[Eigeninitiative] [Proactive] fuer %s angelegt (%ss)", agent.id, takt)
-    elif not behalten.enabled or behalten.interval_seconds != takt:
+    elif not behalten.enabled or _takt_abweicht(behalten, takt):
         behalten.enabled = True
-        behalten.interval_seconds = takt
-        behalten.next_run_at = now + timedelta(seconds=takt)
+        if getattr(behalten, "adaptive", False):
+            # Sollte es nicht geben — die API weist adaptiv auf System-Zeitplaenen
+            # ab (#941, Punkt 4). Per Direktschreiben in die Datenbank ist es
+            # trotzdem moeglich, und dann duerfen sich Abgleich und Taktrechnung
+            # nicht gegenseitig ueberschreiben: Der Takt aus der Konfiguration
+            # ist dann der GRUNDTAKT. Die Stufe, auf der der Zeitplan gerade
+            # steht, bleibt stehen, statt bei jedem Abgleich zurueckzuspringen.
+            behalten.basis_intervall_s = takt
+            # Wie im Zweig darunter: Ein wieder eingeschalteter Zeitplan braucht
+            # einen Termin in der Zukunft, sonst feuert er sofort nach.
+            behalten.next_run_at = now + timedelta(seconds=behalten.interval_seconds or takt)
+        else:
+            behalten.interval_seconds = takt
+            behalten.next_run_at = now + timedelta(seconds=takt)
     if gemerkt != behalten.id:
         _proactive_mit(agent, schedule_id=behalten.id)
 

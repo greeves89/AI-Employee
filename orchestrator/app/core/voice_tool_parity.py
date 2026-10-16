@@ -49,6 +49,8 @@ DIREKT = frozenset({
     "get_agent_conversation", "schedule_meeting",
     # Planung
     "plan_day", "get_day_plan", "create_schedule", "list_schedules", "manage_schedule",
+    # Der eigene Takt (#941): Lauf melden und den eigenen Zeitplan umtakten.
+    "report_run", "update_schedule",
     "list_todos", "update_todos", "complete_todo",
     "trigger_create", "trigger_delete", "trigger_list", "trigger_toggle",
     # Den Nutzer erreichen
@@ -118,6 +120,10 @@ ANDERS_BENANNT = {
 #: wurde das Konfidenz-Gate gebaut.
 NOCH_OFFEN = frozenset({
     "create_schedule",
+    # #941: Taktsteuerung wiederkehrender Laeufe. In der Sprachfront gibt es
+    # keinen Zeitplan-Lauf, in dem gemeldet werden koennte — ``report_run``
+    # ergaenzt sie erst, wenn sie selbst geplante Laeufe ausfuehrt.
+    "report_run", "update_schedule",
     "notify_user", "send_telegram", "send_voice",
     "memory_list", "memory_delete",
     "brain_list", "brain_update", "brain_delete",

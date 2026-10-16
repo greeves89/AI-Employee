@@ -762,6 +762,10 @@ class OrchestratorAPIClient:
                 body["timezone"] = params["timezone"]
         else:
             body["interval_seconds"] = max(int(interval_seconds), 60)
+            # Adaptiver Takt (#941) — nur mit Intervall; der Server weist die
+            # Kombination mit cron/one-shot ab, statt sie zu erraten.
+            if params.get("adaptive"):
+                body["adaptive"] = True
         result = await self._request("POST", "/schedules/", json=body)
         if isinstance(result, str):
             return result
@@ -812,6 +816,62 @@ class OrchestratorAPIClient:
         if isinstance(result, str):
             return result
         return f"Schedule {schedule_id} {action}d successfully"
+
+    async def report_run(self, params: dict) -> str:
+        """Report how this scheduled run went — the platform retimes the schedule (#941)."""
+        outcome = params.get("outcome", "")
+        if outcome not in ("worked", "idle", "waiting"):
+            return "Error: outcome must be one of worked, idle, waiting"
+        body: dict[str, Any] = {"outcome": outcome}
+        if params.get("task_id"):
+            body["task_id"] = params["task_id"]
+        result = await self._request("POST", "/schedules/report-run", json=body)
+        if isinstance(result, str):
+            return result
+        if not result.get("adaptive"):
+            return (
+                f"Noted '{outcome}' for schedule '{result.get('name')}'. "
+                + (result.get("hinweis") or "This schedule is not adaptive — the tempo stays as it is.")
+            )
+        wechsel = (
+            f"tempo changed: {result.get('intervall_vorher_s')}s -> {result.get('intervall_s')}s"
+            if result.get("geaendert")
+            else f"tempo unchanged ({result.get('intervall_s')}s)"
+        )
+        return (
+            f"Reported '{outcome}' for '{result.get('name')}' — {wechsel}, "
+            f"{result.get('leerlaeufe')} empty run(s) in a row, next: {result.get('next_run_at')}"
+        )
+
+    async def update_schedule(self, params: dict) -> str:
+        """Change one of the agent's own schedules in place (timing/adaptive/active)."""
+        schedule_id = params.get("schedule_id", "")
+        if not schedule_id:
+            return "Error: schedule_id is required"
+        body = {
+            feld: params[feld]
+            for feld in (
+                "name", "prompt", "interval_seconds", "cron_expression", "timezone",
+                "enabled", "adaptive", "basis_intervall_s", "stufen", "leer_schwelle",
+            )
+            if params.get(feld) is not None
+        }
+        if not body:
+            return "Error: name at least one field to change besides schedule_id"
+        result = await self._request("PUT", f"/schedules/{schedule_id}", json=body)
+        if isinstance(result, str):
+            return result
+        takt = (
+            result.get("takt_adaptiv")
+            or result.get("takt")
+            or (f"cron {result.get('cron_expression')}" if result.get("cron_expression")
+                else f"every {result.get('interval_seconds')}s")
+        )
+        zustand = "" if result.get("enabled", True) else " — PAUSED"
+        return (
+            f"Schedule '{result.get('name')}' updated (id: {result.get('id')}): "
+            f"{takt}{zustand}, next: {result.get('next_run_at')}"
+        )
 
     # ── Event Trigger Management (orchestrator-server.mjs) ──
 

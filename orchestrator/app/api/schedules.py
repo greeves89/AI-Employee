@@ -2,6 +2,11 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from app.core.adaptiver_takt import (
+    FREMDGETAKTET_GRUND,
+    LEER_SCHWELLE_STANDARD,
+    fremdgetaktet,
+)
 from app.services.scheduler_service import _calc_next_run
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +18,8 @@ from app.dependencies import get_redis_service, is_agent_principal, require_auth
 from app.models.schedule import Schedule
 from app.services.redis_service import RedisService
 from app.schemas.schedule import (
+    ReportRunRequest,
+    ReportRunResponse,
     ScheduleCreate,
     ScheduleListResponse,
     ScheduleResponse,
@@ -260,12 +267,25 @@ async def create_schedule(
         from app.core.task_router import faden_des_laufenden_zuges
         chat_session_id = await faden_des_laufenden_zuges(redis, agent_id)
 
+    # Adaptiver Takt (#941): Der Grundtakt ist das Intervall, mit dem der
+    # Zeitplan angelegt wurde — danach taktet ``report_run`` ihn selbst. Ohne
+    # ``adaptive`` bleiben alle Felder auf ihrem Standard, und der Zeitplan
+    # verhaelt sich wie bisher.
+    if data.adaptive and fremdgetaktet(data.name):
+        raise HTTPException(status_code=400, detail=FREMDGETAKTET_GRUND)
+    basis_intervall_s = data.basis_intervall_s or (data.interval_seconds if data.adaptive else None)
+    stufen = list(data.stufen) if data.stufen else None
+
     schedule = Schedule(
         id=schedule_id,
         name=data.name,
         prompt=data.prompt,
         chat_session_id=chat_session_id,
         interval_seconds=data.interval_seconds,
+        adaptive=bool(data.adaptive),
+        basis_intervall_s=basis_intervall_s,
+        stufen=stufen,
+        leer_schwelle=data.leer_schwelle or LEER_SCHWELLE_STANDARD,
         cron_expression=data.cron_expression,
         timezone=data.timezone,
         priority=data.priority,
@@ -282,6 +302,71 @@ async def create_schedule(
     await db.commit()
     await db.refresh(schedule)
     return ScheduleResponse.from_schedule(schedule)
+
+
+@router.post("/report-run", response_model=ReportRunResponse)
+async def report_run(
+    body: ReportRunRequest,
+    user=Depends(require_auth_or_agent),
+    db: AsyncSession = Depends(get_db),
+):
+    """Das Ergebnis des LAUFENDEN Zeitplan-Laufs melden und den Takt anpassen (#941).
+
+    Der Aufrufer nennt keine Zeitplan-Kennung: Zugeordnet wird ueber den
+    laufenden Auftrag, der die Kennung seines Zeitplans in den Metadaten traegt.
+    Damit ist die Meldung auch nicht missbrauchbar — ein Agent ohne laufenden
+    Zeitplan-Auftrag kann keinen Takt veraendern, und der Zeitplan muss
+    zusaetzlich die normale Zugriffspruefung bestehen.
+
+    Ohne zugehoerigen Zeitplan-Lauf gibt es 409 mit Begruendung und ausdruecklich
+    KEIN stilles Nichts (#941, Abnahme).
+    """
+    from app.services.takt_service import KeinZeitplanLauf, lauf_melden, zeitplan_des_laufs
+
+    # Ein Agenten-Token meldet fuer sich selbst. Ein Mensch (oder ein
+    # Administrator, der nachhilft) muss den Auftrag nennen — sonst waere nicht
+    # entscheidbar, welcher Lauf gemeint ist.
+    agent_id = user.id if is_agent_principal(user) else None
+    if agent_id is None:
+        if not body.task_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Ohne Agenten-Token bitte task_id des Zeitplan-Laufs angeben.",
+            )
+        from app.models.task import Task as _Task
+        task = await db.get(_Task, body.task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="Auftrag nicht gefunden")
+        from app.api.tasks import _erreichbare_agenten
+        erreichbar = await _erreichbare_agenten(user, db)
+        if erreichbar is not None and task.agent_id not in erreichbar:
+            raise HTTPException(status_code=403, detail="Kein Zugriff auf diesen Auftrag")
+        agent_id = task.agent_id
+
+    try:
+        schedule, task = await zeitplan_des_laufs(db, agent_id, body.task_id)
+    except KeinZeitplanLauf as fehler:
+        raise HTTPException(status_code=409, detail=str(fehler))
+
+    # Derselbe Zugriffsschutz wie bei jedem anderen Zugriff auf einen Zeitplan:
+    # ein fremder Zeitplan wird abgewiesen, auch wenn der Auftrag passt.
+    await _check_schedule_access(schedule, user, db)
+
+    wechsel = await lauf_melden(db, schedule, task, body.outcome)
+    return ReportRunResponse(
+        schedule_id=schedule.id,
+        name=schedule.name,
+        outcome=body.outcome,
+        adaptive=bool(wechsel.get("adaptive")),
+        geaendert=bool(wechsel.get("geaendert")),
+        intervall_vorher_s=int(wechsel.get("intervall_vorher_s") or 0),
+        intervall_s=int(wechsel.get("intervall_s") or 0),
+        leerlaeufe=int(wechsel.get("leerlaeufe") or 0),
+        stufe=int(wechsel.get("stufe") or 0),
+        next_run_at=schedule.next_run_at,
+        takt=wechsel.get("takt") or "",
+        hinweis=wechsel.get("hinweis") or "",
+    )
 
 
 @router.get("/{schedule_id}", response_model=ScheduleResponse)
@@ -312,10 +397,63 @@ async def update_schedule(
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(schedule, field, value)
 
+    # Adaptiver Takt (#941): Nur fuer Intervall-Zeitplaene — bei Cron ist die
+    # Taktrechnung mehrdeutig. Geprueft wird der Zeitplan NACH den Aenderungen
+    # dieses Aufrufs, sonst liesse sich adaptiv und cron im selben Aufruf setzen.
+    if schedule.adaptive and (schedule.cron_expression or not schedule.interval_seconds):
+        raise HTTPException(
+            status_code=400,
+            detail=("Adaptiver Takt gilt nur für Intervall-Zeitpläne: Dieser Zeitplan "
+                    "läuft nach Cron (oder hat kein Intervall)."),
+        )
+    # Und nicht auf Zeitplaenen, deren Takt die Plattform selbst fuehrt (#941,
+    # Punkt 4) — sonst ueberschreiben sich adaptiver Takt und Abgleich
+    # gegenseitig, und der Nutzer sieht einen Zeitplan, der ohne Grund springt.
+    if schedule.adaptive and fremdgetaktet(schedule.name):
+        raise HTTPException(status_code=400, detail=FREMDGETAKTET_GRUND)
+    # ── Grundtakt und Zustand (#941) ────────────────────────────────────────
+    # Der Grundtakt ist der Takt, auf den ein Lauf mit Arbeit zurueckstellt.
+    # Vier Faelle, bewusst in dieser Reihenfolge und sich gegenseitig
+    # ausschliessend — eine spaetere Zeile darf keine fruehere still
+    # zurueckdrehen (genau das war Punkt 2 des Reviews).
+    if data.adaptive is False:
+        # Ausschalten: Der Zustand bleibt stehen (er erklaert die Historie),
+        # das Intervall faellt auf den Grundtakt zurueck — sonst bliebe der
+        # Zeitplan fuer immer im 8-Stunden-Leerlauftakt haengen. Kommt im
+        # SELBEN Aufruf ein neues Intervall mit, gilt dieses: Wer beides setzt,
+        # meint das neue Intervall, nicht den alten Grundtakt.
+        if schedule.basis_intervall_s and data.interval_seconds is None:
+            schedule.interval_seconds = schedule.basis_intervall_s
+        schedule.leerlaeufe = 0
+        schedule.stufe = 0
+    elif data.basis_intervall_s is not None and schedule.adaptive:
+        # Grundtakt ausdruecklich gesetzt: Er gilt ab sofort auch als laufender
+        # Takt, sonst zeigte die Ansicht weiter die alte Stufe.
+        schedule.interval_seconds = schedule.basis_intervall_s
+        schedule.leerlaeufe = 0
+        schedule.stufe = 0
+    elif data.interval_seconds is not None and schedule.adaptive:
+        # Wer das Intervall eines adaptiven Zeitplans von Hand korrigiert, meint
+        # den GRUNDTAKT — nicht die Stufe, auf der er gerade steht. Ohne diese
+        # Zeile holte der naechste Lauf den alten Grundtakt zurueck, und ein
+        # Zeitplan auf der letzten Stufe sprang nach EINEM leeren Lauf sofort
+        # wieder auf 8 Std: die Korrektur waere still verpufft (#941, Punkt 2).
+        # Der Zaehler faengt neu an, denn die alte Leerlauf-Strecke gehoert zum
+        # alten Takt.
+        schedule.basis_intervall_s = schedule.interval_seconds
+        schedule.leerlaeufe = 0
+        schedule.stufe = 0
+    elif data.adaptive is True and schedule.basis_intervall_s is None:
+        # Einschalten ohne eigene Angabe: das aktuelle Intervall ist der Grundtakt.
+        schedule.basis_intervall_s = schedule.interval_seconds
+
     # Recalculate next_run if timing or timezone changed
     if (data.interval_seconds is not None
             or data.cron_expression is not None
-            or data.timezone is not None):
+            or data.timezone is not None
+            or data.adaptive is False
+            or data.basis_intervall_s is not None
+            or data.enabled is True):
         now = datetime.now(timezone.utc)
         schedule.next_run_at = _calc_next_run(schedule, now)
 

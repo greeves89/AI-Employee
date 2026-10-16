@@ -1000,6 +1000,17 @@ class SchedulerService:
         else:
             prompt = schedule.prompt
 
+        # Adaptiver Takt (#941, Punkt 3): Der Lauf muss WISSEN, dass er am Ende
+        # melden soll. Rechenregel und Werkzeug allein genuegen nicht — ohne
+        # diesen Anhang ruft niemand ``report_run``, der Takt steht fuer immer
+        # still, und nichts warnt davor (alles gruen, Wirkung null). Der Hinweis
+        # haengt am Prompt JEDES adaptiven Laufs, und die Auftrags-Metadaten
+        # tragen die Eigenschaft mit, damit sie auch im Verlauf sichtbar ist.
+        from app.core.adaptiver_takt import MELDE_HINWEIS
+        ist_adaptiv = bool(getattr(schedule, "adaptive", False))
+        if ist_adaptiv:
+            prompt = prompt + MELDE_HINWEIS
+
         # Ohne Agent ("Automatisch") waehlt der Lastverteiler — aber nur unter den
         # Agenten dessen, der den Zeitplan angelegt hat (#901). Bisher unter ALLEN
         # Agenten der Anlage: der Auftrag eines Mitglieds lief womoeglich auf dem
@@ -1063,7 +1074,11 @@ class SchedulerService:
                 priority=schedule.priority,
                 agent_id=schedule.agent_id,
                 model=schedule.model,
-                metadata={"schedule_id": schedule.id, **({"team_id": takt_team_id} if takt_team_id else {})},
+                metadata={
+                    "schedule_id": schedule.id,
+                    "adaptive": ist_adaptiv,
+                    **({"team_id": takt_team_id} if takt_team_id else {}),
+                },
                 erlaubte_agenten=kandidaten,
             )
         finally:
