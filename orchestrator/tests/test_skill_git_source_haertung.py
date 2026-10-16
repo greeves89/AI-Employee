@@ -46,7 +46,10 @@ def _git_attrappe(verzeichnis: str, protokoll: str) -> str:
         'mkdir -p "$ziel"\n'
         "exit 0\n"
     )
-    os.chmod(pfad, 0o755)
+    # Nur fuer den eigenen Benutzer ausfuehrbar: den Test fuehrt derselbe Benutzer
+    # aus, der die Attrappe anlegt — 0o755 waere eine Datei, die jeder auf dem
+    # Rechner lesen und starten kann (py/overly-permissive-file).
+    os.chmod(pfad, 0o700)
     return bin_dir
 
 
