@@ -82,9 +82,15 @@ GIT_HART = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
             # unversionierter Arbeit als sauber -- und dann entfernt der Lauf sie
             # (gemessen: 0 statt 1 Zeile Ausschlag).
             "-c", "status.showUntrackedFiles=normal", "-c", "core.excludesFile=/dev/null",
-            # Alles ausser https (Betrieb) und file (lokale Testrepos) ist verboten.
+            # Nur https. Lokale Pfade (``file``) NICHT: mit ihnen startet
+            # ``ls-remote`` das ``remote.<name>.uploadpack`` aus der Agenten-
+            # Konfiguration als Programm — als root in diesem Helfer (gemessen,
+            # Gegenprobe zu #967). Ein ``-c remote.origin.uploadpack=…`` hilft
+            # NICHT: git nimmt bei mehreren Werten den ERSTEN, also den der Ablage
+            # (gemessen). Deshalb zusätzlich ``--upload-pack`` direkt am Aufruf.
+            # Die Tests erlauben ``file`` eigens (lokale Testrepos).
             "-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
-            "-c", "protocol.file.allow=always"]
+            "-c", "protocol.file.allow=" + ("always" if os.environ.get("WORKTREE_PRUNE_LOKALE_REPOS") == "1" else "never")]
 
 # Die Eigentuemer-Pruefung von git muss fuer die untersuchten Ablagen aufgehoben
 # werden: das Volume gehoert uid 1000 (agent), dieser Helfer laeuft als root, und
@@ -166,7 +172,7 @@ try:
               if status.returncode != 0 or status.stdout.strip():
                   continue  # dirty or unreadable -- keep
               head = sh(["git", "rev-parse", "HEAD"], wt).stdout.strip()
-              remote_line = sh(["git", "ls-remote", "origin", branch], repo).stdout
+              remote_line = sh(["git", "ls-remote", "--upload-pack=git-upload-pack", "origin", branch], repo).stdout
               remote_head = remote_line.split("\t")[0].strip() if remote_line else ""
               if remote_head and head and head == remote_head:
                   result = sh(["git", "worktree", "remove", wt, "--force"], repo)

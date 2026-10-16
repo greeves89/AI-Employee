@@ -25,9 +25,12 @@ def run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True)
 
 
-def run_prune(root: Path) -> subprocess.CompletedProcess:
+def run_prune(root: Path, lokale_repos: bool = True) -> subprocess.CompletedProcess:
     import os
+    # Die Testrepos liegen lokal (``file``-Transport) — im Betrieb ist der verboten.
     env = dict(**os.environ, WORKTREE_PRUNE_ROOT=str(root))
+    if lokale_repos:
+        env["WORKTREE_PRUNE_LOKALE_REPOS"] = "1"
     return subprocess.run(
         [sys.executable, "-c", WORKTREE_PRUNE_SCRIPT],
         capture_output=True, text=True, env=env,
@@ -191,6 +194,34 @@ class WorktreePruneHaertungTest(unittest.TestCase):
             self.assertFalse(wt.exists(), "Haertung hat das Aufraeumen mitgenommen: " + result.stdout)
             self.assertIn("PRUNED 1", result.stdout)
 
+    def test_uploadpack_der_ablage_wird_nicht_ausgefuehrt(self):
+        """Gegenprobe zu #967: ``remote.origin.uploadpack`` in der Agenten-Konfiguration
+        startet bei ``ls-remote`` über einen lokalen Pfad ein beliebiges Programm."""
+        with TemporaryDirectory() as d:
+            base = Path(d)
+            _repo, wt, marker = self._repo_mit_bosartiger_konfig(base, "remote.origin.uploadpack")
+
+            result = run_prune(base)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(marker.exists(),
+                             "remote.origin.uploadpack aus der Ablage wurde ausgefuehrt: " + result.stdout)
+            self.assertIn("PRUNED 1", result.stdout)  # der Zweck bleibt
+
+    def test_im_betrieb_kein_lokaler_transport(self):
+        """Ohne die Testfreigabe ist ``file`` verboten: kein Programm, und die Worktree bleibt
+        stehen (ohne Fernabgleich wird nichts entfernt — die sichere Richtung)."""
+        with TemporaryDirectory() as d:
+            base = Path(d)
+            _repo, wt, marker = self._repo_mit_bosartiger_konfig(base, "remote.origin.uploadpack")
+
+            result = run_prune(base, lokale_repos=False)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(marker.exists())
+            self.assertTrue(wt.exists())
+            self.assertIn("PRUNED 0", result.stdout)
+
     def test_core_sshcommand_der_ablage_wird_nicht_ausgefuehrt(self):
         with TemporaryDirectory() as d:
             base = Path(d)
@@ -305,7 +336,7 @@ class WorktreePruneHaertungTest(unittest.TestCase):
             run_git(["push", "-q", "-u", "origin", "fix/done"], wt)
 
             env = dict(os.environ)
-            env.update(WORKTREE_PRUNE_ROOT=str(base), HOME=str(heim))
+            env.update(WORKTREE_PRUNE_ROOT=str(base), HOME=str(heim), WORKTREE_PRUNE_LOKALE_REPOS="1")
             env.pop("GIT_CONFIG_GLOBAL", None)
             result = subprocess.run([sys.executable, "-c", WORKTREE_PRUNE_SCRIPT],
                                     capture_output=True, text=True, env=env)
