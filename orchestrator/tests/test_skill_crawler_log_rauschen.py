@@ -44,6 +44,10 @@ class _FakeDB:
     async def execute(self, _stmt):
         return _FakeResult(self._existing)
 
+    async def scalar(self, _stmt):
+        # lokal_geaendert(): keine Schnappschuesse — der Skill wurde hier nie korrigiert.
+        return False
+
     def add(self, obj):
         self.added.append(obj)
 
@@ -54,6 +58,7 @@ class _FakeDB:
 def _eigener_skill():
     """Ein Skill, den der Nutzer selbst angelegt hat (kein 'import:'-Präfix)."""
     return types.SimpleNamespace(
+        id=1,
         name="triage",
         content="EIGENER INHALT",
         description="eigene Beschreibung",

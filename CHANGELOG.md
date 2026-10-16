@@ -5,6 +5,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.365.3] - 2026-10-16
+
+### Behoben
+- **Korrekturen an Skills gingen verloren.** Mitgelieferte und aus Git-Quellen importierte
+  Skills wurden bei jedem Orchestrator-Start bzw. jedem Crawl (beim Start und wöchentlich) auf
+  den Stand der Quelle gesetzt, sobald sich der Inhalt unterschied — auch nach einer bewussten
+  Korrektur durch einen Agenten (`skill_update`) oder einen Admin. Ein Agent machte deshalb
+  Tage später wieder denselben Fehler. Jetzt gewinnt eine Korrektur auf der Anlage: wurde ein
+  Skill hier verändert (Versions-Schnappschuss vorhanden), lässt der Abgleich ihn stehen und
+  meldet das im Protokoll. Unveränderte Skills bekommen neue Fassungen ihrer Quelle wie bisher.
+  Selbst angelegte Skills waren nie betroffen.
+- **Probezeit baute spätere Korrekturen zurück.** Wurde ein Skill nach der Freigabe eines
+  Verbesserungsvorschlags noch einmal geändert, stellte ein Rückbau nach schlechten Bewertungen
+  den Stand vor dieser Änderung wieder her. Jetzt endet die Probezeit in diesem Fall ohne
+  Rückbau.
+- **Schutz der Laufzeit-Konfiguration genauer** (aus v1.364.0): geschützt sind nur noch die
+  Dateien, mit denen eine Laufzeit Befehle startet — `.claude/settings*.json`, `.codex/` und
+  jetzt auch `.mcp.json`. Skills und Befehls-Anleitungen unter `.claude/` darf ein Agent mit
+  Schreibrecht wieder selbst im Arbeitsordner ablegen.
+
+---
+
 ## [1.365.2] - 2026-10-16
 
 ### Behoben

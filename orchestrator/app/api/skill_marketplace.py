@@ -16,7 +16,7 @@ from app.dependencies import require_auth, require_admin, verify_agent_token
 from app.models.skill import Skill, SkillStatus, SkillCategory, AgentSkillAssignment, SkillFile, SkillTaskUsage, SkillVersion
 from app.models.task import Task
 from app.models.audit_log import AuditLog, AuditEventType
-from app.core.skill_herkunft import CREATED_BY_TREND
+from app.core.skill_herkunft import CREATED_BY_TREND, FREIGABE_SCHNAPPSCHUSS
 from app.core.skill_file_storage import validate_filename, save_file, read_file, delete_file, get_all_files_for_agent
 from app.core.skill_security import (
     SkillSecurityError,
@@ -523,7 +523,7 @@ async def approve_improvement(
     # Snapshot the current (pre-improvement) content so a rollback is possible.
     await _snapshot_version(
         db, skill, created_by=f"user:{getattr(user, 'id', 'user')}",
-        change_reason="Pre-improvement snapshot (proposal approved)",
+        change_reason=FREIGABE_SCHNAPPSCHUSS,
     )
 
     skill.content = proposal.get("suggested_content", skill.content)
