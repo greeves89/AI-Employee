@@ -173,7 +173,19 @@ _SHELL_WERKZEUGE = frozenset({"Bash", "exec_command", "shell_command", "local_sh
 # !`…` Shell ausfuehren. Wer dort schreiben darf, kann das Gate umgehen.
 # Schreiben dort ist deshalb "Pakete / Config" (system_config). Den sicheren Weg
 # fuer eigene Skills bietet create_skill (Datenbank, Sicherheitspruefung).
-_LAUFZEIT_KONFIG = re.compile(r"(^|[\\/])(\.(claude|codex)([\\/]|$)|\.mcp\.json$)")
+# Dazu ~/.claude.json: die Benutzerkonfiguration von Claude Code traegt dort
+# ebenfalls "mcpServers" (Programme, die beim Start laufen) — liegt aber NICHT
+# unter .claude/, sondern daneben (im Agenten-Container nachgesehen).
+# Und Git: core.fsmonitor in .git/config bzw. ~/.gitconfig startet bei JEDEM
+# `git status` ein Programm (Claude Code ruft es beim Sitzungsstart selbst auf,
+# git_status ist immer erlaubt), .git/hooks/* laufen bei Git-Befehlen.
+_LAUFZEIT_KONFIG = re.compile(
+    r"(^|[\\/])("
+    r"\.(claude|codex)([\\/]|$)"
+    r"|\.mcp\.json$|\.claude\.json$"
+    r"|\.gitconfig$|\.git[\\/](config$|hooks([\\/]|$))"
+    r")"
+)
 _PATCH_ZIEL = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.M)
 _SCHREIBWERKZEUGE = frozenset({
     "Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch",
