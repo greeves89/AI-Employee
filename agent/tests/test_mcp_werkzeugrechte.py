@@ -201,6 +201,62 @@ class LaufzeitKonfigurationIstGeschuetzt(unittest.TestCase):
             self.assertEqual(self._nativ(w, {}, set()), "allow", w)
 
 
+class SchreibenNurInDenArbeitsbereichen(unittest.TestCase):
+    """Erlaubnis statt Sperrliste: ausserhalb von /workspace, /shared, /mnt, /tmp
+    (Home mit Shell-Konfiguration, site-packages, Systempfade) braucht
+    system_config — eine Sperrliste ausfuehrbarer Orte wird nie vollstaendig."""
+
+    nur_schreiben = {"file_read", "web_search", "file_write"}
+
+    def _write(self, pfad, erlaubt):
+        with patch.object(hook, "_get_allowed_categories", return_value=erlaubt):
+            return hook.decide("Write", {"file_path": pfad})["hookSpecificOutput"]["permissionDecision"]
+
+    def test_ausserhalb_braucht_system_config(self):
+        for pfad in ("~/.bashrc", "/home/agent/.profile", "/root/.bashrc",
+                     "/root/.local/lib/python3.12/site-packages/x.pth",
+                     "/usr/lib/python3/dist-packages/sitecustomize.py", "/etc/cron.d/x",
+                     "/workspace/../home/agent/.bashrc", "/opt/mcp/codex-hook.mjs"):
+            self.assertEqual(self._write(pfad, self.nur_schreiben), "deny", pfad)
+            self.assertEqual(self._write(pfad, self.nur_schreiben | {"system_config"}), "allow", pfad)
+
+    def test_in_den_arbeitsbereichen_reicht_dateischreiben(self):
+        for pfad in ("/workspace/bericht.md", "src/app.py", "/shared/uebergabe/plan.md",
+                     "/mnt/brains/projektwissen/notiz.md", "/tmp/zwischenstand.txt"):
+            self.assertEqual(self._write(pfad, self.nur_schreiben), "allow", pfad)
+
+    def test_ohne_regeln_bleibt_alles_frei(self):
+        self.assertEqual(self._write("~/.bashrc", None), "allow")
+
+
+class CustomLlmHatDieselbeRegel(unittest.IsolatedAsyncioTestCase):
+    """Harness-Paritaet: die custom_llm-Laufzeit fragt keinen Hook, sondern prueft
+    im ToolExecutor — dort galt der Schreibschutz bis v1.365.5 gar nicht."""
+
+    async def test_write_file_ausserhalb_wird_gesperrt_und_nichts_geschrieben(self):
+        import tempfile
+
+        from app.tools import executor as ex
+
+        ziel = Path(tempfile.mkdtemp()) / "home" / ".bashrc"  # ausserhalb der Arbeitsbereiche
+        ausfuehrer = ex.ToolExecutor(workspace_dir=tempfile.mkdtemp())
+        with patch.object(ex, "_get_allowed_categories", return_value={"file_read", "file_write"}):
+            antwort = await ausfuehrer.execute("write_file", {"path": str(ziel), "content": "boese"})
+        self.assertIn("AUTONOMY BLOCK", antwort)
+        self.assertFalse(ziel.exists())
+
+    async def test_write_file_im_arbeitsordner_geht(self):
+        from app.tools import executor as ex
+
+        with patch.object(ex, "_get_allowed_categories", return_value={"file_read", "file_write"}), \
+                patch("app.tools.schreibschutz._ARBEITSBEREICHE", ("/workspace", "/tmp", "/private/tmp", "/var/folders", "/private/var/folders")):
+            import tempfile
+            ordner = tempfile.mkdtemp()
+            ausfuehrer = ex.ToolExecutor(workspace_dir=ordner)
+            antwort = await ausfuehrer.execute("write_file", {"path": "notiz.md", "content": "ok"})
+        self.assertNotIn("AUTONOMY BLOCK", antwort)
+
+
 class BefehlsregelnFuerAlleShellNamen(unittest.IsolatedAsyncioTestCase):
     async def test_codex_interne_shell_namen_laufen_durch_die_befehlsregeln(self):
         async def _blockiert(befehl):
