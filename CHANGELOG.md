@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.365.6] - 2026-10-16
+
+### Sicherheit
+- **Schreiben nur noch in den Arbeitsbereichen.** Mit „Dateien schreiben“ darf ein Agent nur
+  noch in `/workspace`, `/shared`, eingebundenen Ordnern (`/mnt`) und `/tmp` schreiben. Alles
+  andere — Home-Verzeichnis (Shell-Konfiguration, die Claude Code beim Sitzungsstart einliest),
+  `site-packages` (`.pth`/`sitecustomize` laufen in jedem Python), Systempfade — braucht
+  „Pakete / Config“. Statt einer Sperrliste ausführbarer Orte, die nie vollständig wird, gilt
+  jetzt eine Erlaubnis-Liste. Pfade werden vorher aufgelöst (`..`, Symlinks).
+- **Gleiche Regel in allen Laufzeiten.** Der Schreibschutz galt bisher nur im Hook für Claude
+  Code und Codex; die custom_llm-Laufzeit prüft ihn jetzt im Executor ebenso
+  (`app/tools/schreibschutz.py`, eine Regel für beide).
+
+---
+
 ## [1.365.5] - 2026-10-16
 
 ### Sicherheit
