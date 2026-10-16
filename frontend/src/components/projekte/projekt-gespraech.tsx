@@ -1,0 +1,164 @@
+"use client";
+
+/**
+ * Projektgespräch: Menschen und Agenten eines Projekts (orchestrator: core/projekt_gespraech).
+ * @Name spricht einen Agenten an — er antwortet in einem eigenen Lauf hier im Gespräch.
+ * Wer niemanden anspricht, spricht den Lead an.
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Bot, Loader2, Send, User, Wand2 } from "lucide-react";
+import type { Agent } from "@/lib/types";
+import * as api from "@/lib/api";
+import { apiFehlertext } from "@/lib/api-fehler";
+import { NACHRICHT_ART, type ProjektNachricht } from "@/lib/projekte";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
+import { MarkdownContent } from "@/components/ui/markdown-content";
+import { useToast } from "@/components/ui/dialog-provider";
+import { setVisibleInterval } from "@/lib/visible-interval";
+import { cn, timeAgo } from "@/lib/utils";
+
+export function ProjektGespraech({
+  projektId,
+  mitglieder,
+  leadId,
+  darfSchreiben,
+}: {
+  projektId: string;
+  mitglieder: { id: string; agent?: Agent }[];
+  leadId: string | null;
+  darfSchreiben: boolean;
+}) {
+  const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+  const [nachrichten, setNachrichten] = useState<ProjektNachricht[] | null>(null);
+  const [text, setText] = useState("");
+  const [art, setArt] = useState<"nachricht" | "frage" | "entscheidung">("nachricht");
+  const [sendet, setSendet] = useState(false);
+  const ende = useRef<HTMLDivElement>(null);
+  const zuletzt = useRef("");
+  const agentById = new Map(mitglieder.filter((m) => m.agent).map((m) => [m.id, m.agent as Agent]));
+
+  const laden = useCallback(async () => {
+    try {
+      const r = await api.projektGespraech(projektId);
+      const stand = JSON.stringify(r.nachrichten.map((n) => n.id));
+      if (stand === zuletzt.current) return;
+      zuletzt.current = stand;
+      setNachrichten(r.nachrichten);
+      requestAnimationFrame(() => ende.current?.scrollIntoView({ block: "end" }));
+    } catch (e) {
+      toastRef.current.error("Gespräch nicht geladen", apiFehlertext(e));
+    }
+  }, [projektId]);
+
+  useEffect(() => {
+    zuletzt.current = "";
+    laden();
+    return setVisibleInterval(laden, 5000);
+  }, [laden]);
+
+  const senden = async () => {
+    if (!text.trim()) return;
+    setSendet(true);
+    try {
+      const r = await api.projektGespraechSchreiben(projektId, { text: text.trim(), art });
+      setText("");
+      setArt("nachricht");
+      if (r.geweckt.length) {
+        toastRef.current.success("Gesendet", `${r.geweckt.map((id) => agentById.get(id)?.name ?? id).join(", ")} antwortet gleich.`);
+      }
+      await laden();
+    } catch (e) {
+      toastRef.current.error("Nicht gesendet", apiFehlertext(e));
+    } finally {
+      setSendet(false);
+    }
+  };
+
+  const lead = leadId ? agentById.get(leadId) : undefined;
+
+  return (
+    <div className="flex min-w-0 flex-col rounded-2xl border border-foreground/[0.08] bg-card">
+      <div className="max-h-[36rem] min-h-[16rem] space-y-3 overflow-y-auto p-4">
+        {nachrichten === null ? (
+          <div className="flex justify-center py-10 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /></div>
+        ) : nachrichten.length === 0 ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            Noch nichts besprochen. Schreib eine Nachricht — mit @Name sprichst du einen Agenten direkt an,
+            ohne Ansprache antwortet {lead ? lead.name : "der Lead"}.
+          </p>
+        ) : (
+          nachrichten.map((n) => {
+            const agent = n.autor_id ? agentById.get(n.autor_id) : undefined;
+            const meta = NACHRICHT_ART[n.art] ?? NACHRICHT_ART.nachricht;
+            const system = n.autor_typ === "system";
+            return (
+              <div key={n.id} className={cn("flex gap-2.5", system && "rounded-xl bg-foreground/[0.03] p-2.5")}>
+                <div className="shrink-0 pt-0.5">
+                  {n.autor_typ === "agent" ? (
+                    <AgentAvatar config={agent?.config} size="sm" />
+                  ) : (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground/[0.06]">
+                      {system ? <Wand2 className="h-4 w-4 text-muted-foreground" /> : <User className="h-4 w-4 text-muted-foreground" />}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                    <span className="font-semibold">{n.autor_name}</span>
+                    {meta.label && <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", meta.klasse)}>{meta.label}</span>}
+                    {n.an.length > 0 && (
+                      <span className="text-muted-foreground">an {n.an.map((id) => agentById.get(id)?.name ?? id).join(", ")}</span>
+                    )}
+                    {n.erstellt && <span className="text-muted-foreground">{timeAgo(n.erstellt)}</span>}
+                  </div>
+                  <div className="mt-0.5 text-sm text-foreground/90"><MarkdownContent content={n.text} /></div>
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div ref={ende} />
+      </div>
+
+      {darfSchreiben && (
+        <div className="border-t border-foreground/[0.06] p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span>Ansprechen:</span>
+            {mitglieder.map(({ id, agent }) => agent && (
+              <button key={id} type="button" onClick={() => setText((t) => `${t}${t && !t.endsWith(" ") ? " " : ""}@${agent.name} `)}
+                className="inline-flex items-center gap-1 rounded-full border border-foreground/[0.1] px-2 py-0.5 hover:bg-foreground/[0.04]">
+                <Bot className="h-3 w-3" /> {agent.name}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-end gap-2">
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) senden(); }}
+              rows={2}
+              placeholder={`Nachricht ans Projekt — ohne @Name antwortet ${lead ? lead.name : "der Lead"}`}
+              className="min-w-0 flex-1 resize-none rounded-lg border border-foreground/[0.1] bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary/50"
+            />
+            <select value={art} onChange={(e) => setArt(e.target.value as typeof art)} aria-label="Art der Nachricht"
+              className="rounded-lg border border-foreground/[0.1] bg-background/80 px-2 py-2 text-xs">
+              <option value="nachricht">Nachricht</option>
+              <option value="frage">Frage</option>
+              <option value="entscheidung">Entscheidung</option>
+            </select>
+            <button type="button" onClick={senden} disabled={sendet || !text.trim()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+              {sendet ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </button>
+          </div>
+          {art === "entscheidung" && (
+            <p className="mt-1.5 text-[11px] text-muted-foreground">Entscheidungen landen zusätzlich in entscheidungen.md im Projektwissen.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

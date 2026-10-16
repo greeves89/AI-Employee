@@ -15,6 +15,9 @@ suchen zu müssen.
 from __future__ import annotations
 
 import logging
+import os
+import re
+import subprocess
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -123,9 +126,10 @@ async def suchen(db: AsyncSession, brain: SecondBrain, frage: str, limit: int = 
     return await vault_search.hybrid_search(db, brain.label, brain.host_path, frage, limit)
 
 
-async def schreiben(db: AsyncSession, brain: SecondBrain, pfad: str, inhalt: str) -> dict:
-    """Seite anlegen oder überschreiben und für die Suche neu einlesen."""
+async def schreiben(db: AsyncSession, brain: SecondBrain, pfad: str, inhalt: str, *, wer: str = "Projekt") -> dict:
+    """Seite anlegen oder überschreiben, als Version festhalten und für die Suche neu einlesen."""
     ergebnis = vault.write_file(brain.host_path, pfad, inhalt)
+    _version_festhalten(brain.host_path, pfad, wer)
     try:
         from app.services import vault_indexer
 
@@ -133,3 +137,63 @@ async def schreiben(db: AsyncSession, brain: SecondBrain, pfad: str, inhalt: str
     except Exception as e:  # noqa: BLE001 — Einlesen darf das Schreiben nie scheitern lassen
         log.warning("Projektwissen nicht neu eingelesen (%s): %s", vault.safe_log(pfad), vault.safe_log(e))
     return ergebnis
+
+
+async def anhaengen(db: AsyncSession, brain: SecondBrain, pfad: str, abschnitt: str, *, wer: str = "Projekt",
+                    kopf: str | None = None) -> dict:
+    """Abschnitt an eine Seite anhängen (legt sie an) — nie etwas Bestehendes überschreiben.
+
+    So landen Ergebnisse, Entscheidungen und Protokolle zuverlässig im Wissen, ohne
+    dass ein Agent die Seite erst lesen und vollständig neu schreiben muss.
+    """
+    try:
+        bisher = vault.read_file(brain.host_path, pfad)
+    except FileNotFoundError:
+        bisher = f"# {kopf}\n" if kopf else ""
+    neu = (bisher.rstrip() + "\n\n" + abschnitt.strip() + "\n").lstrip()
+    return await schreiben(db, brain, pfad, neu, wer=wer)
+
+
+# ─── Verlauf (Git der Ablage) ───────────────────────────────────
+
+
+def _git(cwd: str, *args: str, timeout: int = 20) -> subprocess.CompletedProcess:
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env)
+
+
+def _version_festhalten(host_path: str, pfad: str, wer: str) -> None:
+    """Jede Änderung als Commit — Grundlage für Verlauf und Zurückholen. Best effort."""
+    try:
+        if not os.path.isdir(os.path.join(host_path, ".git")):
+            _git(host_path, "init", "-q")
+        _git(host_path, "add", "--", pfad)
+        name = re.sub(r"[^\w .:@-]", "", wer)[:80] or "Projekt"
+        _git(host_path, "-c", f"user.name={name}", "-c", "user.email=projekt@ai-employee.local",
+             "commit", "-q", "-m", f"{pfad}: {name}", "--", pfad)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("Version von %s nicht festgehalten: %s", vault.safe_log(pfad), vault.safe_log(e))
+
+
+def verlauf(brain: SecondBrain, pfad: str, limit: int = 30) -> list[dict]:
+    vault.resolve_path(brain.host_path, pfad)  # Pfad prüfen (kein Ausbruch)
+    try:
+        r = _git(brain.host_path, "log", f"-{limit}", "--format=%H%x1f%an%x1f%aI", "--", pfad)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    eintraege = []
+    for zeile in r.stdout.splitlines():
+        teile = zeile.split("\x1f")
+        if len(teile) == 3:
+            eintraege.append({"version": teile[0], "wer": teile[1], "wann": teile[2]})
+    return eintraege
+
+
+def version_lesen(brain: SecondBrain, pfad: str, version: str) -> str:
+    vault.resolve_path(brain.host_path, pfad)
+    if not re.fullmatch(r"[0-9a-f]{7,40}", version or ""):
+        raise ValueError("Unbekannte Version.")
+    r = _git(brain.host_path, "show", f"{version}:{pfad}")
+    if r.returncode != 0:
+        raise FileNotFoundError(pfad)
+    return r.stdout

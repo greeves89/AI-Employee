@@ -28,8 +28,8 @@ function stub(antwort) {
 }
 const stop = (server) => new Promise((resolve) => server.close(resolve));
 
-test("alle acht Projekt-Werkzeuge sind bekannt", () => {
-  assert.equal(PROJEKT_WERKZEUGE.size, 8);
+test("alle dreizehn Projekt-Werkzeuge sind bekannt", () => {
+  assert.equal(PROJEKT_WERKZEUGE.size, 13);
 });
 
 test("das Board kommt als Text vom Server und ist als fremde Daten gerahmt", async () => {

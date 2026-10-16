@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.371.0] - 2026-10-16
+
+### Neu — das Projekt wird zum Arbeitsraum
+- **Projektgespräch** (Reiter „Gespräch“): Menschen und Agenten des Projekts sprechen miteinander.
+  @Name spricht einen Agenten an — er antwortet in einem eigenen Lauf, die Antwort steht danach im
+  Gespräch (in jeder Laufzeit). Ohne Ansprache antwortet der Lead. Arten: Nachricht, Frage,
+  Entscheidung; dazu Protokolle, Tagesberichte und abgenommene Ergebnisse.
+- **Termine** (Reiter „Termine“): Daily (Mo–Fr), wöchentlich oder einmalig als Besprechung der
+  Mitglieder. Das Protokoll kommt ins Projektwissen und ins Gespräch, Action Items werden Karten
+  unter „Bereit“. Der Lead kann Termine selbst anlegen.
+- **Das Wissen wächst mit:** Abgenommene Ergebnisse → `ergebnisse.md`, Entscheidungen →
+  `entscheidungen.md`, Protokolle → `protokolle/`. Anhängen statt Überschreiben, **Verlauf je Seite**
+  mit „Zurückholen“, und „Wissen aufbauen lassen“ (der Lead liest Repo bzw. Beschreibung).
+- **Der Lead arbeitet mit:** Im Takt liest er Gespräch und Board, beantwortet Fragen, plant Termine,
+  pflegt `index.md` und schreibt einen Tagesbericht. Der Takt läuft auch bei neuen Nachrichten und
+  für den fälligen Bericht — sonst fällt er aus.
+- Fünf neue Werkzeuge in allen Laufzeiten: `projekt_gespraech_lesen`, `projekt_gespraech_schreiben`,
+  `projekt_wissen_ergaenzen`, `projekt_termine`, `projekt_termin_anlegen`.
+
+### Behoben
+- Besprechungen nach Vorlage bekamen für „diskutieren / entscheiden / planen“ keine eigene
+  Anweisung (fielen still auf die allgemeine zurück).
+- Eine geplante Besprechung konnte starten, bevor ihr Raum gespeichert war, und endete dann sofort.
+
+### Sicherheit
+- Im Gespräch weckt man nur Agenten, die man selbst beauftragen darf; je Projekt höchstens 20 Läufe
+  pro Stunde aus dem Gespräch. Der Verlauf geht gerahmt als Material an den Agenten.
+- Das Projekt einer Besprechung kommt nur aus der Termin-Funktion, nicht aus einem frei
+  geschriebenen Zeitplan; Action Items aus Besprechungen gehen gerahmt an den Bearbeiter.
+
+---
+
 ## [1.370.1] - 2026-10-16
 
 ### Behoben (aus einem Durchlauf im Browser)

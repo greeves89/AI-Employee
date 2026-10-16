@@ -51,3 +51,6 @@ class MeetingRoom(Base, TimestampMixin):
     created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Active flag
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Projekt (Team), zu dem die Besprechung gehört: Protokoll ins Projektwissen,
+    # Action Items als Karten aufs Board (core/projekt_termine.abschluss).
+    team_id: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None, index=True)

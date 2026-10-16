@@ -885,8 +885,41 @@ async def karte_abnehmen(team_id: str, karte_id: str, user=Depends(require_auth)
     except (LookupError, projekte.KartenFehler) as e:
         await db.rollback()
         raise _kartenfehler(e)
+    antwort = projekte.karte_dict(karte)
     await db.commit()
-    return projekte.karte_dict(karte)
+    await _ergebnis_festhalten(db, t, antwort, task, user)
+    return antwort
+
+
+async def _ergebnis_festhalten(db: AsyncSession, t: Team, karte: dict, task, user) -> None:
+    """Abgenommenes Ergebnis ins Projektwissen (ergebnisse.md) und ins Gespräch.
+
+    So wächst das Wissen mit, ohne dass ein Agent daran denken muss. Best effort —
+    die Abnahme selbst ist schon gespeichert."""
+    from datetime import datetime
+
+    from app.core import projekt_gespraech, projekt_wissen
+
+    try:
+        team_id, team_name = t.id, t.name
+        agent = await db.get(Agent, task.agent_id) if task is not None and task.agent_id else None
+        ergebnis = ((task.result if task is not None else "") or "").strip()
+        if len(ergebnis) > 2000:
+            ergebnis = ergebnis[:2000].rstrip() + "\n[… gekürzt]"
+        nr = f" (#{karte['extern_nr']})" if karte.get("extern_nr") else ""
+        abschnitt = (f"## {datetime.now().strftime('%d.%m.%Y')} — {karte['titel']}{nr}\n"
+                     f"Abgenommen; bearbeitet von {agent.name if agent else '—'}.\n\n{ergebnis or '(ohne Ergebnistext)'}")
+        brain = await projekt_wissen.sicherstellen(db, t)
+        await projekt_wissen.anhaengen(db, brain, "ergebnisse.md", abschnitt, wer=getattr(user, "email", None) or "Abnahme",
+                                       kopf=f"Ergebnisse — {team_name}")
+        t = await db.get(Team, team_id)
+        await projekt_gespraech.posten(db, t, autor_typ="system", autor_id=None, autor_name="Abnahme",
+                                       text=f"Abgenommen: {karte['titel']}{nr} — steht in ergebnisse.md.", art="ergebnis",
+                                       karte_id=karte["id"])
+        await db.commit()
+    except Exception as e:  # noqa: BLE001
+        await db.rollback()
+        logger.warning("Ergebnis von Karte %s nicht festgehalten: %s", karte.get("id"), e)
 
 
 class Zurueckgeben(BaseModel):
@@ -1058,3 +1091,256 @@ async def repo_abgleichen(team_id: str, user=Depends(require_auth), db: AsyncSes
         return await projekt_git.projekt_abgleichen(db, redis, t)
     except projekt_git.GitFehler as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ─── Projektgespräch ───────────────────────────────────────────
+
+
+async def _autor(user, db: AsyncSession) -> tuple[str, str | None, str]:
+    """(autor_typ, autor_id, Anzeigename) des Aufrufers."""
+    if is_agent_principal(user):
+        ich = await db.get(Agent, str(user.id))
+        return "agent", str(user.id), ich.name if ich else "Agent"
+    return "mensch", str(getattr(user, "id", "")), getattr(user, "name", None) or getattr(user, "email", None) or "Mensch"
+
+
+@router.get("/{team_id}/gespraech")
+async def gespraech_lesen(team_id: str, limit: int = 100, vor_id: int | None = None,
+                          user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_gespraech
+
+    t = await _projekt(team_id, user, db)
+    nachrichten = await projekt_gespraech.liste(db, t.id, limit=limit, vor_id=vor_id)
+    return {"projekt_id": t.id, "nachrichten": [projekt_gespraech.nachricht_dict(n) for n in nachrichten]}
+
+
+class GespraechNachricht(BaseModel):
+    text: str = Field(min_length=1, max_length=8000)
+    art: str = "nachricht"
+    # Angesprochene Agenten (IDs). Zusätzlich wirkt „@Name“ im Text.
+    an: list[str] = []
+    karte_id: str | None = None
+
+
+@router.post("/{team_id}/gespraech", status_code=201)
+async def gespraech_schreiben(team_id: str, body: GespraechNachricht,
+                              router_: TaskRouter = Depends(_get_task_router),
+                              user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+    """Ins Projektgespräch schreiben. Angesprochene Agenten antworten in einem eigenen Lauf;
+    schreibt ein Mensch niemanden an, antwortet der Lead."""
+    from app.core import projekt_gespraech, projekt_wissen
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    typ, autor_id, name = await _autor(user, db)
+    namen = await projekt_gespraech.mitglieder_namen(db, t)
+    an = list(dict.fromkeys([*body.an, *projekt_gespraech.angesprochen(body.text, namen)]))
+    if not an and typ == "mensch" and t.lead_agent_id and body.art in ("nachricht", "frage"):
+        an = [t.lead_agent_id]
+    sicht = await _sicht(user, db)
+    try:
+        nachricht = await projekt_gespraech.posten(
+            db, t, autor_typ=typ, autor_id=autor_id, autor_name=name, text=body.text, art=body.art, an=an,
+            karte_id=body.karte_id, darf_wecken=None if sicht is None else set(sicht),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    await db.commit()
+    await db.refresh(nachricht)
+    if body.art == "entscheidung":
+        try:
+            brain = await projekt_wissen.sicherstellen(db, t)
+            await projekt_wissen.anhaengen(db, brain, "entscheidungen.md",
+                                           f"## {nachricht.created_at:%d.%m.%Y} — {name}\n{body.text.strip()}",
+                                           wer=name, kopf=f"Entscheidungen — {t.name}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Entscheidung nicht ins Wissen geschrieben: %s", e)
+    geweckt = await projekt_gespraech.wecken(db, router_, t, nachricht)
+    return {**projekt_gespraech.nachricht_dict(nachricht), "geweckt": geweckt}
+
+
+# ─── Termine ───────────────────────────────────────────────────
+
+
+def _darf_termine(t: Team, user) -> None:
+    """Termine legt der Ersteller des Projekts an — oder sein Lead (selbständige Abstimmung)."""
+    if is_agent_principal(user):
+        if str(user.id) != t.lead_agent_id:
+            raise HTTPException(status_code=403, detail="Termine legt der Lead des Projekts an.")
+        return
+    _nur_ersteller(t, user)
+
+
+@router.get("/{team_id}/termine")
+async def termine_liste(team_id: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_termine
+    from app.models.meeting_room import MeetingRoom
+
+    t = await _projekt(team_id, user, db)
+    raeume = (await db.execute(
+        select(MeetingRoom).where(MeetingRoom.team_id == t.id).order_by(MeetingRoom.created_at.desc()).limit(20)
+    )).scalars().all()
+
+    def _zusammenfassung(r):
+        for m in reversed(r.messages or []):
+            if m.get("role") == "summary":
+                return (m.get("content") or "")[:600]
+        return None
+
+    return {
+        "projekt_id": t.id,
+        "termine": [projekt_termine.termin_dict(s) for s in await projekt_termine.liste(db, t.id)],
+        "besprechungen": [
+            {"id": r.id, "name": r.name, "zustand": r.state, "erstellt": r.created_at.isoformat() if r.created_at else None,
+             "zusammenfassung": _zusammenfassung(r)}
+            for r in raeume
+        ],
+    }
+
+
+class NeuerTermin(BaseModel):
+    art: str  # daily | weekly | einmalig
+    uhrzeit: str = Field(min_length=4, max_length=5)
+    wochentag: str | None = Field(default=None, max_length=10)
+    datum: str | None = Field(default=None, max_length=10)
+    thema: str | None = Field(default=None, max_length=300)
+
+
+@router.post("/{team_id}/termine", status_code=201)
+async def termin_anlegen(team_id: str, body: NeuerTermin, user=Depends(require_auth_or_agent),
+                         db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_gespraech, projekt_termine
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    _darf_termine(t, user)
+    try:
+        sched = await projekt_termine.anlegen(db, t, art=body.art, uhrzeit=body.uhrzeit, wochentag=body.wochentag,
+                                              datum=body.datum, thema=body.thema,
+                                              von_user_id=await _besitzer(user, db))
+    except projekt_termine.TerminFehler as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    typ, autor_id, name = await _autor(user, db)
+    termin = projekt_termine.termin_dict(sched)
+    await projekt_gespraech.posten(db, t, autor_typ="system", autor_id=None, autor_name="Termine",
+                                   text=f"{name} hat einen Termin angelegt: {body.art} {termin['uhrzeit']}"
+                                        + (f" ({body.wochentag})" if body.wochentag else "")
+                                        + (f" am {body.datum}" if body.datum else "") + f" — {termin['thema']}")
+    await db.commit()
+    return termin
+
+
+@router.delete("/{team_id}/termine/{schedule_id}")
+async def termin_entfernen(team_id: str, schedule_id: str, user=Depends(require_auth_or_agent),
+                           db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_termine
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    _darf_termine(t, user)
+    try:
+        await projekt_termine.entfernen(db, t.id, schedule_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    await db.commit()
+    return {"status": "entfernt", "id": schedule_id}
+
+
+# ─── Projektwissen: anhängen, Verlauf, aufbauen ────────────────
+
+
+class WissenAbschnitt(BaseModel):
+    pfad: str = Field(min_length=1, max_length=300)
+    abschnitt: str = Field(min_length=1, max_length=50_000)
+
+
+@router.post("/{team_id}/wissen/ergaenzen")
+async def wissen_ergaenzen(team_id: str, body: WissenAbschnitt, user=Depends(require_auth_or_agent),
+                           db: AsyncSession = Depends(get_db)):
+    """Abschnitt an eine Seite hängen (legt sie an) — überschreibt nichts."""
+    from app.core import projekt_wissen
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    brain = await _projekt_brain(t, user, db)
+    _, _, name = await _autor(user, db)
+    try:
+        return await projekt_wissen.anhaengen(db, brain, body.pfad.strip(), body.abschnitt, wer=name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{team_id}/wissen/verlauf")
+async def wissen_verlauf(team_id: str, pfad: str, user=Depends(require_auth_or_agent), db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_wissen
+
+    t = await _projekt(team_id, user, db)
+    brain = await _projekt_brain(t, user, db)
+    try:
+        return {"pfad": pfad, "versionen": projekt_wissen.verlauf(brain, pfad)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{team_id}/wissen/version")
+async def wissen_version(team_id: str, pfad: str, version: str, user=Depends(require_auth_or_agent),
+                         db: AsyncSession = Depends(get_db)):
+    from app.core import projekt_wissen
+
+    t = await _projekt(team_id, user, db)
+    brain = await _projekt_brain(t, user, db)
+    try:
+        return {"pfad": pfad, "version": version, "inhalt": projekt_wissen.version_lesen(brain, pfad, version)}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Version nicht gefunden.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class Wiederherstellen(BaseModel):
+    pfad: str = Field(min_length=1, max_length=300)
+    version: str = Field(min_length=7, max_length=40)
+
+
+@router.post("/{team_id}/wissen/wiederherstellen")
+async def wissen_wiederherstellen(team_id: str, body: Wiederherstellen, user=Depends(require_auth),
+                                  db: AsyncSession = Depends(get_db)):
+    """Eine frühere Version zurückholen — als neue Version, nichts geht verloren."""
+    from app.core import projekt_wissen
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    brain = await _projekt_brain(t, user, db)
+    try:
+        alt = projekt_wissen.version_lesen(brain, body.pfad, body.version)
+        _, _, name = await _autor(user, db)
+        return await projekt_wissen.schreiben(db, brain, body.pfad, alt, wer=f"{name} (zurückgeholt)")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Version nicht gefunden.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{team_id}/wissen/aufbauen", status_code=201)
+async def wissen_aufbauen(team_id: str, request: Request, router_: TaskRouter = Depends(_get_task_router),
+                          user=Depends(require_auth), db: AsyncSession = Depends(get_db)):
+    """Karte für den Lead: das Projektwissen aus Repo und Beschreibung aufbauen."""
+    from app.core import projekte
+
+    _kein_betrachter(user)
+    t = await _projekt(team_id, user, db)
+    quelle = f"das Repo {t.repo} (README, Dokumentation, Struktur, offene Issues)" if t.repo else "die Projektbeschreibung und vorhandene Dateien"
+    text = (
+        f"Lies {quelle} und baue daraus das Projektwissen auf:\n"
+        "- `index.md` (höchstens 40 Zeilen): Ziel, Stand, wichtige Orte, Vereinbarungen, Ansprechpartner — "
+        "das bekommt jeder Agent bei jedem Projektauftrag mit.\n"
+        "- `architektur.md`: Aufbau, Bausteine, wie man etwas startet, testet und ausliefert.\n"
+        "- `glossar.md`: Fachbegriffe des Projekts.\n"
+        "Schreibe mit `projekt_wissen_schreiben`; nichts erfinden, Unklares als offene Frage notieren. "
+        "Keine Passwörter oder Zugangsschlüssel."
+    )
+    karte = projekte.neue_karte(t.id, "Projektwissen aufbauen", text, spalte="bereit", prioritaet=1, von=_wer(user),
+                                ersteller_user_id=await _besitzer(user, db))
+    db.add(karte)
+    await db.commit()
+    return await _vergeben(t, karte.id, None, user, request, router_, db)

@@ -53,6 +53,23 @@ STAGE_PROMPTS = {
         "Nenne konkrete nächste Schritte die du persönlich übernehmen würdest.\n"
         "Max 250 Wörter."
     ),
+    # Die Stufen der Vorlagen (core/meeting_templates) — bis v1.370 fielen sie still
+    # auf „default“ zurück, weil es diese Schwerpunkte hier nicht gab.
+    "discuss": (
+        "Du bist in der **Diskussionsphase** des Meetings.\n"
+        "Geh auf das ein, was die anderen gesagt haben: Wo stimmst du zu, wo nicht, und warum?\n"
+        "Nenne Hindernisse und Risiken konkret. Max 250 Wörter."
+    ),
+    "decide": (
+        "Du bist in der **Entscheidungsphase** des Meetings.\n"
+        "Schlage eine klare Entscheidung vor und begründe sie in zwei Sätzen.\n"
+        "Wenn schon ein Vorschlag auf dem Tisch liegt: zustimmen oder einen besseren nennen. Max 150 Wörter."
+    ),
+    "plan": (
+        "Du bist in der **Planungsphase** des Meetings.\n"
+        "Nenne die nächsten konkreten Schritte als kurze Liste — wer macht was bis wann.\n"
+        "Nur Schritte, die du selbst übernehmen kannst oder die klar jemandem zugeordnet sind. Max 200 Wörter."
+    ),
     "default": (
         "Lies /workspace/knowledge.md für relevantes Wissen.\n"
         "Bringe neue Perspektiven ein. Wiederhole nicht was andere sagten.\n"
@@ -1450,6 +1467,17 @@ async def _generate_todo_summary(room: MeetingRoom, redis, mod_agent_id: str | N
         _json.dumps(summary_msg),
     )
     logger.info(f"Meeting room {room.id} todo summary generated")
+
+    # Projekt-Besprechung: Protokoll ins Projektwissen und -gespräch, Action Items
+    # als Karten aufs Board (der Lead vergibt) — keine Aufträge am Board vorbei.
+    if getattr(room, "team_id", None):
+        try:
+            from app.core import projekt_termine
+
+            await projekt_termine.abschluss(room.id, room.team_id, room.name, todo_content, list(room.agent_ids or []))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Projekt-Abschluss der Besprechung %s gescheitert: %s", room.id, e)
+        return
 
     # Assign action items to agents as real tasks
     if todo_content and "Action Items" in todo_content:

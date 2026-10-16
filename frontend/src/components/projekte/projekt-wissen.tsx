@@ -6,14 +6,22 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, Loader2, Pencil, Plus, Save, Search, X } from "lucide-react";
+import { FileText, History, Loader2, Pencil, Plus, RotateCcw, Save, Search, Sparkles, X } from "lucide-react";
 import * as api from "@/lib/api";
 import { apiFehlertext } from "@/lib/api-fehler";
 import { MarkdownContent } from "@/components/ui/markdown-content";
+import { Fenster } from "@/components/ui/fenster";
 import { useToast } from "@/components/ui/dialog-provider";
 import { cn } from "@/lib/utils";
 
-export function ProjektWissen({ projektId, darfSchreiben }: { projektId: string; darfSchreiben: boolean }) {
+export function ProjektWissen({
+  projektId, darfSchreiben, onAufbauen,
+}: {
+  projektId: string;
+  darfSchreiben: boolean;
+  /** Karte „Projektwissen aufbauen“ für den Lead anlegen. */
+  onAufbauen?: () => Promise<void>;
+}) {
   const toast = useToast();
   // Über eine Referenz, damit Laden/Öffnen nicht bei jedem Rendern neu entstehen
   // (sonst lüde der Effekt unten endlos nach, falls useToast kein festes Objekt liefert).
@@ -27,6 +35,39 @@ export function ProjektWissen({ projektId, darfSchreiben }: { projektId: string;
   const [speichert, setSpeichert] = useState(false);
   const [frage, setFrage] = useState("");
   const [treffer, setTreffer] = useState<{ path: string; snippets: string[] }[] | null>(null);
+  const [verlauf, setVerlauf] = useState<{ version: string; wer: string; wann: string }[] | null>(null);
+  const [alt, setAlt] = useState<{ version: string; inhalt: string } | null>(null);
+  const [baut, setBaut] = useState(false);
+
+  const verlaufOeffnen = async () => {
+    setAlt(null);
+    try {
+      setVerlauf((await api.projektWissenVerlauf(projektId, pfad)).versionen);
+    } catch (e) {
+      toastRef.current.error("Verlauf nicht geladen", apiFehlertext(e));
+    }
+  };
+
+  const versionZeigen = async (version: string) => {
+    try {
+      setAlt({ version, inhalt: (await api.projektWissenVersion(projektId, pfad, version)).inhalt });
+    } catch (e) {
+      toastRef.current.error("Version nicht geladen", apiFehlertext(e));
+    }
+  };
+
+  const zurueckholen = async () => {
+    if (!alt) return;
+    try {
+      await api.projektWissenWiederherstellen(projektId, pfad, alt.version);
+      toastRef.current.success("Zurückgeholt", `${pfad} — als neue Version gespeichert`);
+      setVerlauf(null);
+      setAlt(null);
+      await oeffnen(pfad);
+    } catch (e) {
+      toastRef.current.error("Nicht zurückgeholt", apiFehlertext(e));
+    }
+  };
 
   const liste = useCallback(async () => {
     try {
@@ -122,6 +163,13 @@ export function ProjektWissen({ projektId, darfSchreiben }: { projektId: string;
           ))}
           {treffer && treffer.length === 0 && <li className="px-2 text-xs text-muted-foreground">Nichts gefunden.</li>}
         </ul>
+        {darfSchreiben && onAufbauen && (
+          <button type="button" disabled={baut} onClick={async () => { setBaut(true); try { await onAufbauen(); } finally { setBaut(false); } }}
+            title="Der Lead liest Repo und Beschreibung und schreibt index.md, architektur.md und glossar.md"
+            className="flex w-full items-center gap-1.5 rounded-lg border border-dashed border-foreground/[0.15] px-2 py-1.5 text-xs text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground disabled:opacity-50">
+            {baut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Wissen aufbauen lassen
+          </button>
+        )}
         {darfSchreiben && (
           <button type="button" onClick={neueSeite}
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">
@@ -133,6 +181,12 @@ export function ProjektWissen({ projektId, darfSchreiben }: { projektId: string;
       <section className="min-w-0 rounded-2xl border border-foreground/[0.08] bg-card p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h3 className="truncate text-sm font-semibold">{pfad}</h3>
+          {!bearbeiten && inhalt !== null && (
+            <button type="button" onClick={verlaufOeffnen}
+              className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">
+              <History className="h-3 w-3" /> Verlauf
+            </button>
+          )}
           {darfSchreiben && !bearbeiten && inhalt !== null && (
             <button type="button" onClick={() => { setEntwurf(inhalt); setBearbeiten(true); }}
               className="inline-flex items-center gap-1 rounded-lg border border-foreground/[0.1] px-2.5 py-1 text-xs hover:bg-foreground/[0.04]">
@@ -167,6 +221,37 @@ export function ProjektWissen({ projektId, darfSchreiben }: { projektId: string;
           <p className="text-sm text-muted-foreground">Die Seite ist leer.</p>
         )}
       </section>
+      <Fenster offen={verlauf !== null} schliessen={() => { setVerlauf(null); setAlt(null); }} titel={`Verlauf: ${pfad}`} breite="max-w-3xl">
+        <div className="grid gap-3 p-4 sm:grid-cols-[14rem_minmax(0,1fr)]">
+          <ul className="max-h-[60vh] space-y-1 overflow-y-auto">
+            {(verlauf ?? []).length === 0 && <li className="text-xs text-muted-foreground">Noch keine Versionen.</li>}
+            {(verlauf ?? []).map((v) => (
+              <li key={v.version}>
+                <button type="button" onClick={() => versionZeigen(v.version)}
+                  className={cn("w-full rounded-lg px-2 py-1.5 text-left text-xs hover:bg-foreground/[0.04]", alt?.version === v.version && "bg-primary/[0.08]")}>
+                  <span className="block font-medium">{new Date(v.wann).toLocaleString("de-DE")}</span>
+                  <span className="text-muted-foreground">{v.wer}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="min-w-0">
+            {alt ? (
+              <>
+                <div className="max-h-[52vh] overflow-y-auto rounded-lg bg-foreground/[0.03] p-3 text-sm"><MarkdownContent content={alt.inhalt} /></div>
+                {darfSchreiben && (
+                  <button type="button" onClick={zurueckholen}
+                    className="mt-2 inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                    <RotateCcw className="h-3 w-3" /> Diese Version zurückholen
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground">Eine Version links wählen, um sie anzusehen.</p>
+            )}
+          </div>
+        </div>
+      </Fenster>
     </div>
   );
 }
