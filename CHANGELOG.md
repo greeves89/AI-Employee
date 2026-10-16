@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [1.369.2] - 2026-10-16
+
+### Geändert
+- Beispiel im Feld „GitHub-Repo“, in der Fehlermeldung und im Handbuch neutral
+  (`beispiel-org/beispiel-repo`) statt eines echten Repos.
+
+---
+
 ## [1.369.1] - 2026-10-16
 
 ### Behoben

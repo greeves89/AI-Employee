@@ -57,7 +57,7 @@ def repo_pruefen(repo: str | None) -> str | None:
     if not repo:
         return None
     if not REPO_RE.match(repo) or ".." in repo:
-        raise ValueError("Repo bitte als owner/name angeben, z. B. greeves89/AI-Employee.")
+        raise ValueError("Repo bitte als owner/name angeben, z. B. beispiel-org/beispiel-repo.")
     return repo
 
 

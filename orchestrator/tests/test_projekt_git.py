@@ -151,9 +151,9 @@ class RepoSetzen(Basis):
             team.created_by = "admin"
             await db.commit()
             admin = SimpleNamespace(id="admin", role=UserRole.ADMIN, email="admin@example.invalid")
-            r = await api.update_team("p1", api.UpdateTeam(repo="https://github.com/greeves89/AI-Employee"),
+            r = await api.update_team("p1", api.UpdateTeam(repo="https://github.com/beispiel-org/beispiel-repo"),
                                       user=admin, db=db)
-            self.assertEqual(r["repo"], "greeves89/AI-Employee")
+            self.assertEqual(r["repo"], "beispiel-org/beispiel-repo")
             for falsch in ("nur-ein-teil", "a/b/c", "../x"):
                 with self.assertRaises(HTTPException) as e:
                     await api.update_team("p1", api.UpdateTeam(repo=falsch), user=admin, db=db)

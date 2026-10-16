@@ -202,7 +202,7 @@ export function CreateTeamModal({
                           type="text"
                           value={repo}
                           onChange={(e) => setRepo(e.target.value)}
-                          placeholder="owner/name, z. B. greeves89/AI-Employee"
+                          placeholder="owner/name, z. B. beispiel-org/beispiel-repo"
                           className="w-full rounded-lg border border-foreground/[0.1] bg-background/80 px-4 py-2.5 text-sm outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
                         />
                         <p className="text-[11px] text-muted-foreground/50 mt-1">
