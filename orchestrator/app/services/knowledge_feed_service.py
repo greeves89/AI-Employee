@@ -19,8 +19,16 @@ raw items. The shared code dedupes them against the DB and commits.
 New items are published on Redis channel `knowledge_feed:new` so other
 services (agents, UI) can react.
 
-All HTTP calls use httpx with a 30s timeout. Network errors are caught
-per-feed and recorded in `last_error` without crashing the whole run.
+All HTTP calls use httpx with a 30s timeout und laufen ueber
+``mit_verbindungswiederholung`` (Hintergrund-Leiter, 40 s Deckung).
+
+Ein Lauf, der am Netz gescheitert ist, darf NICHT als ``last_status="ok"``
+erscheinen: der Scheduler ruft diesen Dienst alle 5 Minuten, und die Oberflaeche
+zeigt Stempel und Status zusammen an — "gerade gelaufen, 0 neue Eintraege" war
+von einem echten Leerstand nicht zu unterscheiden (#977, Punkt 1). Jedes Plugin
+bekommt dafuer eine :class:`Netzwache` und zaehlt darin mit, welche Quelle am
+Netz (``melde``) bzw. an einer Antwort ohne Daten (``melde_abruf``, HTTP != 200)
+gescheitert ist. ``_run_single_feed`` entscheidet damit am Ende.
 
 CRITICAL: plugin functions must NEVER write to the DB directly — they
 only return dicts. The service handles persistence + dedup in one place.
@@ -40,6 +48,12 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.verbindungswiederholung import (
+    PAUSEN_HINTERGRUND_S,
+    Netzwache,
+    lauf_unvollstaendig,
+    mit_verbindungswiederholung,
+)
 from app.db.session import resilient_session
 from app.models.knowledge_feed import KnowledgeFeed, KnowledgeFeedItem
 from app.services.redis_service import RedisService
@@ -58,8 +72,12 @@ USER_AGENT = "AI-Employee-KnowledgeFeed/1.0"
 #   {"external_id", "title", "url"?, "summary"?, "content"?, "metadata"?,
 #    "published_at"?}
 # raw items. external_id is what gets deduped.
+#
+# Das zweite Argument ist die Netzwache des Laufs. Jedes Plugin MUSS jeden
+# verschluckten Abruf-Fehlschlag dort melden — sonst kann der Aufrufer ein leeres
+# Ergebnis nicht von einem Netzaussetzer unterscheiden (#977).
 
-FeedPlugin = Callable[[dict[str, Any]], Awaitable[list[dict[str, Any]]]]
+FeedPlugin = Callable[[dict[str, Any], Netzwache], Awaitable[list[dict[str, Any]]]]
 
 FEED_PLUGINS: dict[str, FeedPlugin] = {}
 
@@ -79,18 +97,30 @@ MCP_CATALOG_API = "https://api.github.com/repos/modelcontextprotocol/servers/con
 
 
 @register("mcp_registry")
-async def fetch_mcp_registry(config: dict[str, Any]) -> list[dict[str, Any]]:
+async def fetch_mcp_registry(config: dict[str, Any], wache: Netzwache) -> list[dict[str, Any]]:
     """Fetch list of MCP servers from modelcontextprotocol/servers.
 
     Returns one item per server directory. external_id = GitHub path.
+
+    Einzige der vier Quellen, die ihre Ausnahme schon vorher durchliess (kein
+    ``except``/``continue``) — ein Verbindungsfehler wurde hier also bereits als
+    ``last_status="error"`` sichtbar. Geaendert hat sich nur die Wiederholung und
+    die Zaehlung einer Antwort OHNE Daten: ``raise_for_status`` faengt 403/404,
+    aber ein Katalog, der ``{}`` statt einer Liste liefert, kam vorher als
+    "ok, 0 Eintraege" durch.
     """
     source = config.get("source_url") or MCP_CATALOG_API
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, headers={"User-Agent": USER_AGENT}) as client:
-        resp = await client.get(source)
+        resp = await mit_verbindungswiederholung(
+            lambda: client.get(source),
+            zweck=f"KnowledgeFeed (mcp_registry, {source})",
+            pausen=PAUSEN_HINTERGRUND_S,
+        )
         resp.raise_for_status()
         entries = resp.json()
 
     if not isinstance(entries, list):
+        wache.melde_abruf(f"{source}: Antwort ist keine Liste")
         return []
 
     items: list[dict[str, Any]] = []
@@ -127,7 +157,7 @@ DEFAULT_AI_NEWS_SOURCES = [
 
 
 @register("ai_news")
-async def fetch_ai_news(config: dict[str, Any]) -> list[dict[str, Any]]:
+async def fetch_ai_news(config: dict[str, Any], wache: Netzwache) -> list[dict[str, Any]]:
     """Very small RSS reader — fetches configured feeds and extracts
     <item>…<title>…<link>…<description> tuples via regex (no extra deps).
     """
@@ -136,11 +166,23 @@ async def fetch_ai_news(config: dict[str, Any]) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, headers={"User-Agent": USER_AGENT}) as client:
         for source in sources:
             try:
-                resp = await client.get(source)
+                resp = await mit_verbindungswiederholung(
+                    lambda source=source: client.get(source),
+                    zweck=f"KnowledgeFeed (ai_news, {source})",
+                    pausen=PAUSEN_HINTERGRUND_S,
+                )
                 if resp.status_code != 200:
+                    wache.melde_abruf(f"{source}: HTTP {resp.status_code}")
                     continue
                 xml = resp.text
+                wache.erfolg()
             except Exception as e:
+                if not wache.melde(e):
+                    # Lesetimeout, Protokollfehler, kaputtes JSON: die Verbindung
+                    # stand, die Daten kamen trotzdem nicht. Ohne diese Zeile
+                    # zaehlte KEIN Zaehler mit und der Lauf galt wieder als "ok" —
+                    # genau die Luecke, die #977 schliessen soll.
+                    wache.melde_abruf(f"{source}: {type(e).__name__}")
                 logger.warning(f"[KnowledgeFeed] ai_news fetch failed for {source}: {e}")
                 continue
 
@@ -181,22 +223,31 @@ DEFAULT_COMPETITOR_SOURCES = {
 
 
 @register("competitor")
-async def fetch_competitor_releases(config: dict[str, Any]) -> list[dict[str, Any]]:
+async def fetch_competitor_releases(config: dict[str, Any], wache: Netzwache) -> list[dict[str, Any]]:
     """Poll GitHub releases for competitor tools. Each release = one item."""
     sources: dict[str, str] = config.get("sources") or DEFAULT_COMPETITOR_SOURCES
     items: list[dict[str, Any]] = []
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, headers={"User-Agent": USER_AGENT}) as client:
         for competitor, url in sources.items():
             try:
-                resp = await client.get(url)
+                resp = await mit_verbindungswiederholung(
+                    lambda url=url: client.get(url),
+                    zweck=f"KnowledgeFeed (competitor, {competitor})",
+                    pausen=PAUSEN_HINTERGRUND_S,
+                )
                 if resp.status_code != 200:
+                    wache.melde_abruf(f"{competitor}: HTTP {resp.status_code}")
                     continue
                 data = resp.json()
+                wache.erfolg()
             except Exception as e:
+                if not wache.melde(e):
+                    wache.melde_abruf(f"{competitor}: {type(e).__name__}")
                 logger.warning(f"[KnowledgeFeed] competitor fetch failed for {competitor}: {e}")
                 continue
 
             if not isinstance(data, list):
+                wache.melde_abruf(f"{competitor}: Antwort ist keine Liste")
                 continue
             for release in data[:10]:
                 if not isinstance(release, dict):
@@ -229,7 +280,7 @@ DEFAULT_BEST_PRACTICES_SOURCES = [
 
 
 @register("best_practices")
-async def fetch_best_practices(config: dict[str, Any]) -> list[dict[str, Any]]:
+async def fetch_best_practices(config: dict[str, Any], wache: Netzwache) -> list[dict[str, Any]]:
     """Find recently-updated repos whose README describes Claude Code
     best practices. Feeds the CLAUDE.md auto-updater with candidate
     snippets to review.
@@ -239,11 +290,19 @@ async def fetch_best_practices(config: dict[str, Any]) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, headers={"User-Agent": USER_AGENT}) as client:
         for source in sources:
             try:
-                resp = await client.get(source)
+                resp = await mit_verbindungswiederholung(
+                    lambda source=source: client.get(source),
+                    zweck=f"KnowledgeFeed (best_practices, {source})",
+                    pausen=PAUSEN_HINTERGRUND_S,
+                )
                 if resp.status_code != 200:
+                    wache.melde_abruf(f"{source}: HTTP {resp.status_code}")
                     continue
                 data = resp.json()
+                wache.erfolg()
             except Exception as e:
+                if not wache.melde(e):
+                    wache.melde_abruf(f"{source}: {type(e).__name__}")
                 logger.warning(f"[KnowledgeFeed] best_practices fetch failed for {source}: {e}")
                 continue
 
@@ -288,10 +347,28 @@ async def _run_single_feed(session: AsyncSession, feed: KnowledgeFeed) -> tuple[
     if not plugin:
         return 0, f"unknown feed type: {feed.feed_type}"
 
+    wache = Netzwache(f"KnowledgeFeed ({feed.feed_type})")
     try:
-        raw_items = await plugin(dict(feed.config or {}))
+        raw_items = await plugin(dict(feed.config or {}), wache)
     except Exception as e:
         return 0, f"plugin raised: {type(e).__name__}: {e}"
+
+    # Null Ergebnisse UND mindestens ein gescheiterter Abruf: das ist kein
+    # Leerstand, sondern ein Lauf, der nicht zustande kam. Wuerde hier weiter
+    # ``last_status="ok"`` stehen, waere der Netzaussetzer in der Oberflaeche
+    # unsichtbar (#977). ``bisher=0`` ist Absicht: ein Lauf, der WENIGER als
+    # sonst geholt hat, bleibt "ok" — ein Feed darf schrumpfen, und
+    # ``items_count`` ist eine Gesamtsumme ueber alle Laeufe, kein Stand, gegen
+    # den man einen einzelnen Lauf halten koennte.
+    if lauf_unvollstaendig(
+        erzeugt=len(raw_items), bisher=0,
+        verbindungsausfaelle=wache.anzahl, weitere_ausfaelle=wache.abrufausfaelle,
+    ):
+        return 0, (
+            f"kein Ergebnis: {wache.anzahl} Quelle(n) an der Verbindung und "
+            f"{wache.abrufausfaelle} ohne Daten gescheitert — Stempel bleibt auf "
+            f"\"error\", damit ein Netzaussetzer nicht wie ein Leerstand aussieht"
+        )
 
     new_count = 0
     now = datetime.now(timezone.utc)
@@ -319,7 +396,15 @@ async def _run_single_feed(session: AsyncSession, feed: KnowledgeFeed) -> tuple[
 
     feed.last_run_at = now
     feed.last_status = "ok"
-    feed.last_error = None
+    # Teil-Ausfall: es kamen Eintraege, aber nicht von allen Quellen. Der Status
+    # bleibt "ok" (der Lauf hat etwas geliefert), der Hinweis steht aber im
+    # Fehlertext — sonst sieht ein halber Lauf aus wie ein ganzer.
+    ausgefallen = wache.anzahl + wache.abrufausfaelle
+    feed.last_error = (
+        None if ausgefallen == 0
+        else f"Teil-Lauf: {wache.anzahl} Quelle(n) am Netz, "
+             f"{wache.abrufausfaelle} ohne Daten gescheitert"
+    )
     feed.items_count = (feed.items_count or 0) + new_count
     await session.commit()
     return new_count, None
