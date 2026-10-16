@@ -1633,7 +1633,7 @@ async def seed_from_crawler(
     except NetzaussetzerAbbruch as e:
         # Nicht als Erfolg mit 0 Treffern melden: es gab keinen Lauf (#746).
         raise HTTPException(
-            status_code=503, detail=f"Netzaussetzer — Katalog unveraendert gelassen: {e}",
+            status_code=503, detail=f"Netzaussetzer — Katalog unverändert gelassen: {e}",
         ) from e
     except HTTPException:
         raise

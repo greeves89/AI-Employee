@@ -128,9 +128,12 @@ def lauf_unvollstaendig(*, erzeugt: int, bisher: int, verbindungsausfaelle: int)
     """Darf dieser Lauf den Frischestempel NICHT weiterruecken?
 
     Zwei Bedingungen zusammen: am Netz gescheitert UND schlechter als der bisherige
-    Stand. Die erste allein genuegt nicht (ein paar verlorene Normen von 6000 sind
-    kein Grund, den Stempel einzufrieren), die zweite allein auch nicht (eine Quelle
-    darf schrumpfen, wenn sie wirklich geschrumpft ist).
+    Stand. Die zweite allein genügt nicht (eine Quelle darf schrumpfen, wenn sie
+    wirklich geschrumpft ist — ohne Netzfehler rückt der Stempel weiter). Bewusst
+    streng: gab es auch nur EINEN Verbindungsfehler und liegt das Ergebnis unter dem
+    bisherigen Stand, bleibt der Stempel stehen — auch bei wenigen fehlenden Normen.
+    Das heilt sich mit dem nächsten vollständigen Lauf; eine Toleranzschwelle würde
+    genau die gekürzten Teil-Läufe wieder als frisch durchlassen.
 
     Die Pruefung auf ``erzeugt == 0`` deckt den ersten Lauf ab: dort ist ``bisher``
     ebenfalls 0, und "gerade gecrawlt, 0 Treffer" ist genau die Falschaussage, um

@@ -102,6 +102,6 @@ async def refresh_skill_catalog(request: Request, user=Depends(require_admin)):
         # bisherige Katalog steht unveraendert weiter (#746).
         raise HTTPException(
             status_code=503,
-            detail=f"Netzaussetzer — Katalog unveraendert gelassen: {e}",
+            detail=f"Netzaussetzer — Katalog unverändert gelassen: {e}",
         ) from e
     return {"detail": f"Refreshed catalog with {len(skills)} skills"}
